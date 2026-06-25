@@ -2,14 +2,14 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatStore } from "@/store/chatStore";
-import { Composer } from "./ChatPage";
+import { Composer, composerHarnessLabel, formatModelEffortStatusLabel } from "./ChatPage";
 
 // Pins the visibility rules for the status-line tray under the composer:
-// it shows the worktree branch (truncated so the tray never wraps) and the
-// context ring, and must not render at all when neither has data — no dead
-// shelf attached to the composer. Session cost was moved OUT of this tray
-// into the header agent-info popover, so a priced cost must NOT resurrect
-// the tray or appear here.
+// it shows the worktree branch (truncated so the tray never wraps), current
+// model/effort, and the context ring. It must not render at all when none
+// has data — no dead shelf attached to the composer. Session cost was moved
+// OUT of this tray into the header agent-info popover, so a priced cost must
+// NOT resurrect the tray or appear here.
 
 /** Minimal ComposerProps for an interactive (writable, idle) composer. */
 function composerProps(overrides: Partial<Parameters<typeof Composer>[0]> = {}) {
@@ -31,14 +31,17 @@ function composerProps(overrides: Partial<Parameters<typeof Composer>[0]> = {}) 
     effortLevels: ["low", "medium", "high"] as const,
     showEffort: true,
     showModels: false,
+    modelPickerKind: null,
+    codexModelOptions: [],
+    showCodexPlanMode: false,
     ...overrides,
   };
 }
 
-function renderComposer() {
+function renderComposer(overrides: Partial<Parameters<typeof Composer>[0]> = {}) {
   return render(
     <TooltipProvider>
-      <Composer {...composerProps()} />
+      <Composer {...composerProps(overrides)} />
     </TooltipProvider>,
   );
 }
@@ -57,6 +60,13 @@ describe("Composer status line (branch + context ring)", () => {
       tokensUsed: null,
       sessionCostUsd: null,
       gitBranch: null,
+      llmModel: null,
+      selectedModel: null,
+      selectedEffort: null,
+      codexModelOptions: [],
+      codexPlanMode: false,
+      nativeVendorOwnsModel: false,
+      sessionHarness: null,
     });
   });
 
@@ -89,6 +99,44 @@ describe("Composer status line (branch + context ring)", () => {
     // 25k of 100k → 25% used; a wrong value means the ring wired the
     // wrong store fields through its props.
     expect(screen.getByLabelText("25% of context used")).toBeInTheDocument();
+  });
+
+  it("shows the harness label immediately left of the context ring", () => {
+    // The model/effort label moved to the picker trigger; the tray now shows
+    // the harness identity. Codex-native reads as the bare vendor name.
+    useChatStore.setState({ contextWindow: 100_000, tokensUsed: 25_000 });
+    renderComposer({ modelPickerKind: "codex" });
+
+    const harness = screen.getByTestId("composer-harness");
+    const ring = screen.getByLabelText("25% of context used");
+    expect(harness).toHaveTextContent("Codex");
+    expect(harness.compareDocumentPosition(ring) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("shows the agent + brain harness identity for SDK sessions", () => {
+    // SDK/bundle agents read as "<Agent> (<Harness>)" — e.g. Polly on Pi.
+    useChatStore.setState({ sessionHarness: "pi" });
+    renderComposer({ agents: [{ id: "a1", name: "polly" }], selectedAgentId: "a1" });
+
+    expect(screen.getByTestId("composer-harness")).toHaveTextContent("Polly (Pi)");
+  });
+
+  it("no longer renders model/effort in the status tray (moved to the picker trigger)", () => {
+    // The swap moved the model/effort label out of the tray and into the
+    // AgentPicker trigger, so it must never resurface here — even for a
+    // vendor-owned native session where the model used to be (wrongly) shown.
+    useChatStore.setState({
+      llmModel: "claude-sonnet-4-6",
+      selectedEffort: "medium",
+      nativeVendorOwnsModel: true,
+      contextWindow: 100_000,
+      tokensUsed: 25_000,
+    });
+    renderComposer();
+
+    expect(screen.queryByTestId("composer-model-effort")).toBeNull();
   });
 
   it("draws the ring arc as what's used, not what's left", () => {
@@ -154,5 +202,79 @@ describe("Composer status line (branch + context ring)", () => {
     renderComposer();
     expect(statusLine()).not.toBeNull();
     expect(screen.queryByTestId("composer-git-branch")).toBeNull();
+  });
+
+  it("shows a persistent Plan mode badge when Codex Plan mode is active", () => {
+    useChatStore.setState({ codexPlanMode: true });
+    renderComposer();
+
+    expect(statusLine()).not.toBeNull();
+    expect(screen.getByTestId("composer-plan-mode")).toHaveTextContent("Plan mode");
+  });
+
+  it("places Plan mode to the left of the harness label", () => {
+    useChatStore.setState({ codexPlanMode: true });
+    renderComposer({ modelPickerKind: "codex" });
+
+    const plan = screen.getByTestId("composer-plan-mode");
+    const harness = screen.getByTestId("composer-harness");
+    expect(plan.compareDocumentPosition(harness) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+});
+
+describe("composerHarnessLabel", () => {
+  it("reads native wrappers as the bare vendor name", () => {
+    expect(composerHarnessLabel("claude", null, "claude-native")).toBe("Claude");
+    expect(composerHarnessLabel("codex", null, "codex-native")).toBe("Codex");
+  });
+
+  it("reads SDK agents as '<Agent> (<Harness>)'", () => {
+    expect(composerHarnessLabel(null, "polly", "pi")).toBe("Polly (Pi)");
+  });
+
+  it("falls back to the agent name alone when the harness is unmapped", () => {
+    expect(composerHarnessLabel(null, "polly", "some-unknown-harness")).toBe("Polly");
+    expect(composerHarnessLabel(null, "polly", null)).toBe("Polly");
+  });
+
+  it("returns null when nothing is known", () => {
+    expect(composerHarnessLabel(null, null, null)).toBeNull();
+  });
+});
+
+describe("formatModelEffortStatusLabel", () => {
+  it("uses Codex display names exactly as returned in model metadata", () => {
+    expect(
+      formatModelEffortStatusLabel("gpt-5.5", "xhigh", [
+        {
+          id: "gpt-5.5",
+          model: "databricks-gpt-5-5",
+          displayName: "codex says GPT-5.5",
+          defaultReasoningEffort: "high",
+          supportedReasoningEfforts: [
+            { reasoningEffort: "low", description: "Low" },
+            { reasoningEffort: "medium", description: "Medium" },
+            { reasoningEffort: "high", description: "High" },
+            { reasoningEffort: "xhigh", description: "Extra high" },
+          ],
+          isDefault: true,
+        },
+      ]),
+    ).toBe("codex says GPT-5.5 xhigh");
+  });
+
+  it("leaves unknown model ids raw", () => {
+    expect(formatModelEffortStatusLabel("gpt-5.5", "xhigh")).toBe("gpt-5.5 xHigh");
+    expect(formatModelEffortStatusLabel("databricks-gpt-5-5", "xhigh")).toBe(
+      "databricks-gpt-5-5 xHigh",
+    );
+  });
+
+  it("omits missing pieces", () => {
+    expect(formatModelEffortStatusLabel("opus", null)).toBe("Opus");
+    expect(formatModelEffortStatusLabel(null, "low")).toBe("Low");
+    expect(formatModelEffortStatusLabel(null, null)).toBeNull();
   });
 });

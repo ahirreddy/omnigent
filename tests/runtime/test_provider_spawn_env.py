@@ -28,8 +28,11 @@ import yaml as _yaml
 from omnigent.runtime.workflow import (
     _build_claude_sdk_spawn_env,
     _build_codex_spawn_env,
+    _build_goose_spawn_env,
+    _build_kimi_spawn_env,
     _build_openai_agents_sdk_spawn_env,
     _build_pi_spawn_env,
+    _build_qwen_spawn_env,
 )
 from omnigent.spec.types import (
     AgentSpec,
@@ -91,6 +94,7 @@ def _make_spec(
     model: str | None = None,
     profile: str | None = None,
     auth: ApiKeyAuth | DatabricksAuth | ProviderAuth | None = None,
+    os_env: object | None = None,
 ) -> AgentSpec:
     """
     Build a minimal :class:`AgentSpec` for a given harness.
@@ -115,6 +119,7 @@ def _make_spec(
         instructions="You are a test agent.",
         executor=ExecutorSpec(type="omnigent", config=config, model=model, auth=auth),
         llm=LLMConfig(model=model) if model is not None else None,
+        os_env=os_env,  # type: ignore[arg-type]
     )
 
 
@@ -575,6 +580,92 @@ def test_openai_agents_falls_back_to_catalog_default_model(config_home: Path) ->
     assert env["HARNESS_OPENAI_AGENTS_MODEL"] == catalog_default
 
 
+def test_qwen_uses_openai_global_default(config_home: Path) -> None:
+    """
+    A ``default: true`` openai provider routes the qwen harness.
+
+    Qwen consumes the openai family (OpenAI-compatible wire), so it should
+    emit env vars for gateway configuration.
+    """
+    _write_config(config_home, _openai_default_config())
+    spec = _make_spec(harness="qwen")
+
+    env = _build_qwen_spawn_env(spec, workdir=None)
+
+    # qwen uses OpenAI-compatible provider routing via HARNESS_QWEN_GATEWAY
+    assert env["HARNESS_QWEN_GATEWAY"] == "true"
+    # The base URL host is the origin of the gateway endpoint
+    assert env["HARNESS_QWEN_GATEWAY_HOST"] == "https://openai.example.com"
+    assert env["HARNESS_QWEN_GATEWAY_AUTH_COMMAND"] == "printf %s sk-oai-secret"
+    # Model comes from provider's default_model
+    assert env["HARNESS_QWEN_MODEL"] == "gpt-default-model"
+
+
+def test_goose_spawn_env_forwards_model_and_no_gateway(config_home: Path) -> None:
+    """The headless goose builder forwards a spec model as ``HARNESS_GOOSE_MODEL``
+    and wires NO provider/gateway credential (Goose owns its own auth)."""
+    _write_config(config_home, _openai_default_config())
+    spec = _make_spec(harness="goose", model="claude-haiku-4-5")
+
+    env = _build_goose_spawn_env(spec, workdir=None)
+
+    assert env["HARNESS_GOOSE_MODEL"] == "claude-haiku-4-5"
+    # Unlike qwen, goose emits no gateway/provider env (uses goose configure).
+    assert not any(k.startswith("HARNESS_GOOSE_GATEWAY") for k in env)
+    assert "OPENAI_API_KEY" not in env and "GOOSE_PROVIDER" not in env
+
+
+def test_goose_spawn_env_drops_databricks_model(config_home: Path) -> None:
+    """A ``databricks-*`` model isn't a valid Goose model id, so it's dropped
+    (provider/model then come from the user's goose config)."""
+    _write_config(config_home, _openai_default_config())
+    spec = _make_spec(harness="goose", model="databricks-claude-opus-4-8")
+
+    env = _build_goose_spawn_env(spec, workdir=None)
+
+    assert "HARNESS_GOOSE_MODEL" not in env
+
+
+def test_goose_spawn_env_no_model_is_empty(config_home: Path) -> None:
+    """With no spec model, goose falls back entirely to its ambient config."""
+    _write_config(config_home, _openai_default_config())
+    spec = _make_spec(harness="goose")
+
+    env = _build_goose_spawn_env(spec, workdir=None)
+
+    assert "HARNESS_GOOSE_MODEL" not in env
+
+
+def test_qwen_falls_back_to_catalog_default_model(config_home: Path) -> None:
+    """
+    An openai ``key`` provider with no ``models.default`` resolves the
+    catalog default for the qwen harness.
+
+    Proves the analogous fallback in :func:`_build_qwen_spawn_env`.
+    """
+    from omnigent.onboarding.providers import default_chat_model
+
+    config: dict[str, object] = {
+        "providers": {
+            "openai": {
+                "kind": "key",
+                "default": True,
+                "openai": _key_family_no_model("https://api.openai.com/v1", "sk-oai-secret"),
+            }
+        }
+    }
+    _write_config(config_home, config)
+    spec = _make_spec(harness="qwen")
+
+    env = _build_qwen_spawn_env(spec, workdir=None)
+
+    catalog_default = default_chat_model("openai")
+    assert catalog_default is not None
+    # qwen uses the single gateway base URL (not JSON object like pi)
+    assert env["HARNESS_QWEN_GATEWAY_BASE_URL"] == "https://api.openai.com/v1"
+    assert env["HARNESS_QWEN_MODEL"] == catalog_default
+
+
 def test_pi_falls_back_to_catalog_default_model(config_home: Path) -> None:
     """
     An anthropic ``key`` provider with no ``models.default`` resolves the
@@ -917,3 +1008,124 @@ def test_codex_undismissed_config_provider_routes_via_detection(
     env = _build_codex_spawn_env(spec, workdir=None)
 
     assert env["HARNESS_CODEX_MODEL_PROVIDER"] == "Databricks"
+
+
+# ── Kimi Code CLI spawn-env ────────────────────────────────────────────────
+
+
+def test_kimi_spawn_env_threads_spec_model_only(config_home: Path) -> None:
+    """The kimi builder only emits ``HARNESS_KIMI_MODEL`` (when set) and
+    ``HARNESS_KIMI_CWD`` (when workdir given). Upstream kimi has no per-spawn
+    provider override, so no HARNESS_KIMI_GATEWAY_* / _DATABRICKS_PROFILE
+    env vars are emitted — provider routing lives in ``~/.kimi/config.toml``."""
+    _write_config(config_home, {"providers": {}})
+    spec = _make_spec(harness="kimi", model="kimi-k2-turbo")
+
+    env = _build_kimi_spawn_env(spec, cwd=None)
+
+    assert env == {"HARNESS_KIMI_MODEL": "kimi-k2-turbo"}
+
+
+def test_kimi_cwd_threads_through_as_subprocess_cwd(config_home: Path, tmp_path: Path) -> None:
+    """``cwd`` (the session workspace) lands in ``HARNESS_KIMI_CWD`` so kimi's
+    subprocess operates on the user's project — NOT the /tmp agent bundle dir.
+
+    Regression: the builder previously threaded the bundle ``workdir`` here, so
+    `omni --harness kimi` / web kimi sessions ran kimi out of the bundle dir and
+    it reported only ``kimi.yaml`` instead of the repo. Mirrors pi's cwd."""
+    _write_config(config_home, {"providers": {}})
+    spec = _make_spec(harness="kimi")
+
+    env = _build_kimi_spawn_env(spec, cwd=tmp_path)
+
+    assert env["HARNESS_KIMI_CWD"] == str(tmp_path)
+
+
+def test_kimi_no_provider_emits_no_gateway_vars(config_home: Path) -> None:
+    """With no provider configured and no spec auth, kimi uses its own
+    ``kimi login`` credentials — no HARNESS_KIMI_GATEWAY_* leaks in.
+
+    A regression here would either steal an ambient OPENAI_API_KEY (mis-billing)
+    or point at a stale URL the user never configured. Upstream kimi reads its
+    provider config from ``~/.kimi/config.toml``; Omnigent never injects."""
+    _write_config(config_home, {"providers": {}})
+    spec = _make_spec(harness="kimi")
+
+    env = _build_kimi_spawn_env(spec, cwd=None)
+
+    assert "HARNESS_KIMI_GATEWAY_BASE_URL" not in env
+    assert "HARNESS_KIMI_GATEWAY_API_KEY" not in env
+    assert "HARNESS_KIMI_GATEWAY_PROVIDER" not in env
+    assert "HARNESS_KIMI_DATABRICKS_PROFILE" not in env
+
+
+def test_kimi_ignores_global_default_provider(config_home: Path) -> None:
+    """An openai default provider does NOT inject creds into the kimi env.
+
+    Counterpart to the other harnesses: their spawn-env builders adopt the
+    global default. For kimi we DO NOT — upstream has no per-spawn provider
+    override flag, so silently injecting a key the executor can't pass to the
+    subprocess would be misleading (and would mis-bill the user against an
+    OpenAI key when their ``~/.kimi/config.toml`` actually points at
+    Moonshot). The builder emits no gateway vars regardless of what's
+    configured."""
+    _write_config(config_home, _openai_default_config())
+    spec = _make_spec(harness="kimi")
+
+    env = _build_kimi_spawn_env(spec, cwd=None)
+
+    assert "HARNESS_KIMI_GATEWAY_BASE_URL" not in env
+    assert "HARNESS_KIMI_GATEWAY_API_KEY" not in env
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [
+        ApiKeyAuth(api_key="sk-secret"),
+        DatabricksAuth(profile="my-profile"),
+        ProviderAuth(name="vendor-named"),
+    ],
+)
+def test_kimi_declared_auth_raises(
+    config_home: Path,
+    auth: ApiKeyAuth | DatabricksAuth | ProviderAuth,
+) -> None:
+    """A kimi spec that declares any ``executor.auth`` fails loud.
+
+    Upstream kimi has no per-spawn provider override (no ``--config-file`` /
+    ``--mcp-config-file``), so declared auth can't be threaded. Silently
+    launching against whatever ambient ``~/.kimi/config.toml`` resolves to
+    would be a confused-deputy / mis-attribution risk, so the builder raises
+    instead. Regression guard for the originally-dead ``OmnigentError``."""
+    from omnigent.errors import OmnigentError
+
+    _write_config(config_home, {"providers": {}})
+    spec = _make_spec(harness="kimi", auth=auth)
+
+    with pytest.raises(OmnigentError, match=r"kimi.*does not support"):
+        _build_kimi_spawn_env(spec, cwd=None)
+
+
+def test_kimi_os_env_serialized(config_home: Path) -> None:
+    """``spec.os_env`` is serialized into ``HARNESS_KIMI_OS_ENV`` so the wrap
+    can rebuild the sandbox spec and confine kimi's in-process Bash/edit/read
+    tools — parity with every sibling builder. Without this the executor's
+    sandbox launcher never engages and kimi runs unconfined."""
+    import json as _json
+
+    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
+
+    _write_config(config_home, {"providers": {}})
+    os_env = OSEnvSpec(
+        type="caller_process",
+        cwd=None,
+        sandbox=OSEnvSandboxSpec(type="darwin_seatbelt"),
+        fork=False,
+    )
+    spec = _make_spec(harness="kimi", os_env=os_env)
+
+    env = _build_kimi_spawn_env(spec, cwd=None)
+
+    assert "HARNESS_KIMI_OS_ENV" in env
+    decoded = _json.loads(env["HARNESS_KIMI_OS_ENV"])
+    assert decoded["sandbox"]["type"] == "darwin_seatbelt"

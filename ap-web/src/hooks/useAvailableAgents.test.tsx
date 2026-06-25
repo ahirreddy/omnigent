@@ -108,6 +108,24 @@ describe("useAvailableAgents", () => {
             harness: "pi-native",
           },
           {
+            id: "ag_kiro_native",
+            name: "kiro-native-ui",
+            description: null,
+            harness: "kiro-native",
+          },
+          {
+            id: "ag_agy_native",
+            name: "antigravity-native-ui",
+            description: null,
+            harness: "antigravity-native",
+          },
+          {
+            id: "ag_opencode_native",
+            name: "opencode-native-ui",
+            description: null,
+            harness: "opencode-native",
+          },
+          {
             id: "ag_nessie",
             name: "nessie",
             description: "Multi-agent coding orchestrator.",
@@ -160,6 +178,30 @@ describe("useAvailableAgents", () => {
         display_name: "Pi",
         description: null,
         harness: "pi-native",
+        skills: [],
+      },
+      {
+        id: "ag_kiro_native",
+        name: "kiro-native-ui",
+        display_name: "Kiro",
+        description: null,
+        harness: "kiro-native",
+        skills: [],
+      },
+      {
+        id: "ag_agy_native",
+        name: "antigravity-native-ui",
+        display_name: "Antigravity",
+        description: null,
+        harness: "antigravity-native",
+        skills: [],
+      },
+      {
+        id: "ag_opencode_native",
+        name: "opencode-native-ui",
+        display_name: "OpenCode",
+        description: null,
+        harness: "opencode-native",
         skills: [],
       },
       {
@@ -259,6 +301,18 @@ describe("useAvailableAgents", () => {
             agent_id: "ag_clone",
             agent_name: "claude-native-ui (fork conv_9)",
           },
+          // A fork OF A fork of the built-in — nested clone suffixes. A
+          // single-layer strip leaves "claude-native-ui (fork conv_9)"
+          // (not a built-in name), so the clone leaks into the picker;
+          // once enriched its claude-native harness resolves to the
+          // "Claude Code" display name, surfacing as a DUPLICATE of the
+          // built-in. agentRootName peels every layer so it drops by
+          // name before it is ever enriched.
+          {
+            id: "conv_6",
+            agent_id: "ag_clone2",
+            agent_name: "claude-native-ui (fork conv_9) (fork conv_10)",
+          },
           // Genuinely custom agent; survives and is enriched below.
           { id: "conv_3", agent_id: "ag_doc", agent_name: "doc-writer" },
           // Same custom agent on an older session — deduped by id, and
@@ -277,13 +331,26 @@ describe("useAvailableAgents", () => {
         harness: "claude-sdk",
         skills: [{ name: "humanizer", description: "Remove AI writing patterns" }],
       }),
+      // Reached only if the fork-of-fork leaks (i.e. the fix regressed):
+      // its claude-native harness would resolve to "Claude Code", proving
+      // the leak renders as a duplicate built-in. With the fix conv_6 is
+      // dropped before enrichment, so this mock is never hit.
+      "/v1/sessions/conv_6/agent": mockResponse({
+        id: "ag_clone2",
+        object: "agent",
+        name: "claude-native-ui (fork conv_9) (fork conv_10)",
+        harness: "claude-native",
+        skills: [],
+      }),
     });
 
     const { result } = renderHook(() => useAvailableAgents(), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    // One built-in + one custom. ag_clone or ag_native appearing twice
-    // means shadow-dropping regressed; ag_doc missing means kind=any
+    // One built-in + one custom. A second "Claude Code" row (from
+    // ag_clone/ag_clone2 leaking) means shadow-dropping regressed —
+    // ag_clone2 specifically guards the nested fork-of-fork case that
+    // surfaces as a duplicate built-in; ag_doc missing means kind=any
     // discovery broke; two ag_doc rows mean the by-id dedup broke.
     expect(result.current.data).toEqual([
       {
@@ -310,6 +377,53 @@ describe("useAvailableAgents", () => {
       .map((c) => c[0] as string)
       .filter((u) => u.endsWith("/agent"));
     expect(enrichCalls).toEqual(["/v1/sessions/conv_3/agent"]);
+  });
+
+  it("dedupes native built-ins and hides session-discovered native shadows", async () => {
+    routeFetch({
+      [BUILTINS_URL]: mockResponse({
+        object: "list",
+        data: [
+          // Stale/non-canonical native row from older local state; it
+          // resolves by harness but must not compete with the seeded row.
+          { id: "ag_stale_kiro", name: "kiro-naitive", harness: "kiro-native" },
+          { id: "ag_kiro", name: "kiro-native-ui", harness: "kiro-native" },
+        ],
+        has_more: false,
+      }),
+      [SCAN_URL]: mockResponse({
+        object: "list",
+        data: [
+          // This distinct session-bound id used to enrich into a second
+          // Kiro row because it did not shadow the built-in by name/id.
+          { id: "conv_kiro", agent_id: "ag_session_kiro", agent_name: "kiro-naitive" },
+          // Legacy failed Kiro attempts used a plain "kiro" agent name and
+          // no harness; that row must not surface as a custom Kiro picker row.
+          { id: "conv_legacy", agent_id: "ag_legacy_kiro", agent_name: "kiro" },
+        ],
+        has_more: false,
+      }),
+      "/v1/sessions/conv_kiro/agent": mockResponse({
+        id: "ag_session_kiro",
+        object: "agent",
+        name: "kiro-naitive",
+        harness: "kiro-native",
+      }),
+    });
+
+    const { result } = renderHook(() => useAvailableAgents(), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(result.current.data).toEqual([
+      {
+        id: "ag_kiro",
+        name: "kiro-native-ui",
+        display_name: "Kiro",
+        description: null,
+        harness: "kiro-native",
+        skills: [],
+      },
+    ]);
   });
 
   it("collapses same-named custom agents with distinct agent_ids to the newest session's row", async () => {

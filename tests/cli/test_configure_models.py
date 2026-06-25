@@ -47,12 +47,14 @@ from omnigent.onboarding import secrets
 from omnigent.onboarding.configure_models import (
     add_menu_options,
     add_menu_options_for_family,
+    build_bedrock_provider_entry,
     credential_label,
     kind_glyph,
     provider_display_name,
 )
 from omnigent.onboarding.provider_config import (
     ANTHROPIC_FAMILY,
+    GEMINI_FAMILY,
     OPENAI_FAMILY,
     get_default_provider,
     load_config,
@@ -524,18 +526,21 @@ def test_add_menu_options_ordering() -> None:
     and Databricks sits just above the catch-all "Other". A regression to
     the old interleaved order (or Other above Databricks) fails here.
     """
-    # Full menu: keys, then subscriptions, then Gateway, OpenRouter,
-    # Databricks, Other.
+    # Full menu: first-party keys (OpenAI, Anthropic, Gemini), then
+    # subscriptions, then Gateway, OpenRouter, Databricks, Other.
     full = [o.label.split(None, 1)[1] for o in add_menu_options()]
     assert full == [
         "OpenAI — API key",
         "Anthropic — API key",
+        "Gemini — API key",
         "ChatGPT — subscription",
         "Claude — subscription (Pro/Max)",
         "Gateway — custom base URL + key (e.g. OpenRouter)",
         "OpenRouter — API key",
         "Databricks — workspace",
         "Other provider — API key",
+        # Bedrock is appended last so it never shifts the established order.
+        "AWS Bedrock — API key",
     ]
 
     # Codex (openai) scoped: API key, subscription, Gateway, OpenRouter,
@@ -559,7 +564,14 @@ def test_add_menu_options_ordering() -> None:
         "Claude — subscription (Pro/Max)",
         "Gateway — custom base URL + key (e.g. OpenRouter)",
         "Databricks — workspace",
+        "AWS Bedrock — API key",
     ]
+
+    # Gemini (antigravity) scoped: API key only — Gemini is key-only (no
+    # subscription/gateway/Databricks), and it must NOT appear in the
+    # openai-family "Other provider" catch-all (asserted via `codex` above).
+    gemini = [o.label.split(None, 1)[1] for o in add_menu_options_for_family(GEMINI_FAMILY)]
+    assert gemini == ["Gemini — API key"]
 
 
 def test_add_menu_databricks_option_gated_on_extra(monkeypatch) -> None:
@@ -1544,6 +1556,34 @@ def test_overview_marks_unconfigured_with_x_and_configured_without_checkmark(
     assert "no credential yet" in out
 
 
+def test_overview_lists_kiro_native_row(isolated_config, monkeypatch) -> None:
+    """Level 1: Kiro appears as an installable native harness row.
+
+    Kiro (``kiro-native``) is a native CLI harness with its own auth
+    (``kiro-cli login``), so — like Goose/Hermes — it belongs in the setup
+    overview. Absent the CLI it renders a red ✗ plus its curl install hint;
+    installed, it renders ready with the sign-in reminder. A regression that
+    drops the Kiro row (the gap this PR closes) fails here.
+    """
+    # CLI absent → Kiro row + the curl install hint. (The red ✗ marker carries an
+    # ANSI reset between the glyph and the name, so assert on the stable text.)
+    monkeypatch.setattr(
+        "omnigent.onboarding.harness_install.harness_cli_installed",
+        lambda family: False,
+    )
+    out = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input="q\n").output
+    assert "Kiro" in out
+    assert "cli.kiro.dev/install" in out
+
+    # CLI present → ready row naming the sign-in step (no Omnigent credential).
+    monkeypatch.setattr(
+        "omnigent.onboarding.harness_install.harness_cli_installed",
+        lambda family: True,
+    )
+    out = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input="q\n").output
+    assert "kiro-cli login" in out
+
+
 def test_drill_into_uninstalled_installs_then_proceeds(isolated_config, monkeypatch) -> None:
     """Selecting an uninstalled harness → 'Yes, install' runs the install and
     proceeds to credential setup.
@@ -1974,7 +2014,28 @@ def test_add_menu_readds_dismissed_cli_config_credential(isolated_config) -> Non
 # login probe. ``isolated_config`` clears any ambient ``CURSOR_API_KEY``.
 
 
-def test_cursor_set_api_key_paste_writes_block_and_secret(isolated_config) -> None:
+@pytest.fixture()
+def _cursor_sdk_present(monkeypatch):
+    """Force ``cursor-sdk`` detection to report installed.
+
+    The key-management tests below script the Cursor drill-in assuming no
+    install-offer. ``cursor-sdk`` is an opt-in extra (absent in CI), so without
+    this the drill-in's install-offer fires — consuming a scripted menu token
+    (desyncing the input) and even running a real ``uv pip install``. Patching the
+    source-module attribute is seen at every call site (it's resolved at call
+    time). Mirror of :func:`_cursor_sdk_absent`.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    monkeypatch.setattr(
+        "omnigent.onboarding.cursor_auth.cursor_sdk_installed",
+        lambda: True,
+    )
+
+
+def test_cursor_set_api_key_paste_writes_block_and_secret(
+    isolated_config, _cursor_sdk_present
+) -> None:
     """Pasting a ``crsr_`` key stores the secret + writes the ``cursor:`` block.
 
     Proves the api-key path: the secret lands in the store (never plaintext in
@@ -1993,7 +2054,9 @@ def test_cursor_set_api_key_paste_writes_block_and_secret(isolated_config) -> No
     assert secrets.load_secret("cursor") == "crsr_test_key_123"
 
 
-def test_cursor_adopt_env_api_key_writes_env_ref(isolated_config, monkeypatch) -> None:
+def test_cursor_adopt_env_api_key_writes_env_ref(
+    isolated_config, monkeypatch, _cursor_sdk_present
+) -> None:
     """Adopting an existing ``$CURSOR_API_KEY`` records an ``env:`` ref only.
 
     The env path must NOT copy the secret into the store — it points the config
@@ -2011,7 +2074,9 @@ def test_cursor_adopt_env_api_key_writes_env_ref(isolated_config, monkeypatch) -
     assert secrets.load_secret("cursor") is None
 
 
-def test_cursor_remove_api_key_drops_block_and_secret(isolated_config) -> None:
+def test_cursor_remove_api_key_drops_block_and_secret(
+    isolated_config, _cursor_sdk_present
+) -> None:
     """Removing a Cursor key deletes the stored secret AND drops the config block."""
     # Seed a stored key: the keychain secret + the ``cursor:`` block referencing it.
     secrets.store_secret("cursor", "crsr_seeded")
@@ -2030,7 +2095,9 @@ def test_cursor_remove_api_key_drops_block_and_secret(isolated_config) -> None:
     assert secrets.load_secret("cursor") is None
 
 
-def test_cursor_set_api_key_non_crsr_declined_is_not_stored(isolated_config) -> None:
+def test_cursor_set_api_key_non_crsr_declined_is_not_stored(
+    isolated_config, _cursor_sdk_present
+) -> None:
     """A non-``crsr_`` paste that the user declines to force is NOT persisted.
 
     The soft prefix check warns and asks to store anyway; declining must leave
@@ -2045,6 +2112,110 @@ def test_cursor_set_api_key_non_crsr_declined_is_not_stored(isolated_config) -> 
     cfg = _config_yaml(isolated_config)
     assert "cursor" not in cfg
     assert secrets.load_secret("cursor") is None
+
+
+# ── Cursor SDK-extra install offer (the optional ``cursor`` extra) ───────────
+# ``cursor-sdk`` is now an OPTIONAL extra, so a key can be set with no SDK and
+# setup must offer to install it (like antigravity post-#322). These tests force
+# detection absent (the SDK is actually present in the test venv).
+
+
+@pytest.fixture()
+def _cursor_sdk_absent(monkeypatch):
+    """Force ``cursor-sdk`` detection to report missing.
+
+    Both the overview row and the drill-in resolve ``cursor_sdk_installed`` from
+    the source module at call time, so patching the module attribute covers both.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    """
+    monkeypatch.setattr(
+        "omnigent.onboarding.cursor_auth.cursor_sdk_installed",
+        lambda: False,
+    )
+
+
+def test_cursor_overview_surfaces_install_command_when_sdk_missing(
+    isolated_config, _cursor_sdk_absent
+) -> None:
+    """L1 overview: the Cursor row names the extra install command when absent.
+
+    The exact ``pip install "omnigent[cursor]"`` is shown (escaped so the
+    literal brackets render).
+    """
+    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input="q\n")
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "not installed — open to install" in out
+    # The literal command (brackets included) reaches the rendered output.
+    assert 'pip install "omnigent[cursor]"' in out
+
+
+def test_cursor_drillin_offers_install_when_sdk_missing(
+    isolated_config, _cursor_sdk_absent
+) -> None:
+    """Drilling into Cursor with the SDK absent presents the install offer.
+
+    Here the user picks "show the command" (choice 3), which prints it and falls
+    through to the key menu, then backs out.
+    """
+    # L1 4=Cursor → install offer 3=show command → key menu q=back → L1 q.
+    stdin = "\n".join(["4", "3", "q", "q"]) + "\n"
+    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "isn't installed" in out
+    assert 'pip install "omnigent[cursor]"' in out
+
+
+def test_cursor_key_settable_when_sdk_missing(isolated_config, _cursor_sdk_absent) -> None:
+    """The Cursor key is still storable when the SDK is absent (no hard block).
+
+    The deliberate divergence from pi: the drill-in offers the install but does
+    NOT gate key management on it. Here the user declines ("set the key anyway" =
+    choice 2), then sets the key — which must persist as it does with the SDK.
+    """
+    # L1 4=Cursor → install offer 2=set key anyway → key menu 1=Set →
+    # paste crsr_ key → key menu q=back → L1 q=quit.
+    stdin = "\n".join(["4", "2", "1", "crsr_key_no_sdk", "q", "q"]) + "\n"
+    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    assert result.exit_code == 0, result.output
+
+    cfg = _config_yaml(isolated_config)
+    assert cfg["cursor"] == {"api_key_ref": "keychain:cursor"}
+    assert secrets.load_secret("cursor") == "crsr_key_no_sdk"
+
+
+def test_cursor_install_now_invokes_runner_without_index(
+    isolated_config, _cursor_sdk_absent, monkeypatch
+) -> None:
+    """Choosing "install it now" shells the install with ``omnigent[cursor]``.
+
+    Mocks the subprocess and asserts the argv targets the extra and carries NO
+    hardcoded index URL / proxy. Forces the ``uv``-absent path for determinism.
+    """
+    import subprocess
+
+    calls: list[list[str]] = []
+
+    def _run(argv: list[str], *, check: bool = False, timeout: float | None = None):
+        calls.append(argv)
+        return subprocess.CompletedProcess(args=argv, returncode=0)
+
+    monkeypatch.setattr("omnigent.onboarding.cursor_auth.shutil.which", lambda name: None)
+    monkeypatch.setattr("omnigent.onboarding.cursor_auth.subprocess.run", _run)
+
+    # L1 4=Cursor → install offer 1=install now → key menu q=back → L1 q.
+    stdin = "\n".join(["4", "1", "q", "q"]) + "\n"
+    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    assert result.exit_code == 0, result.output
+
+    assert len(calls) == 1, f"expected exactly one install invocation, got {calls}"
+    argv = calls[0]
+    assert "omnigent[cursor]" in argv
+    assert "install" in argv
+    # No index URL / proxy is baked into committed code.
+    assert not any("index" in part or "://" in part for part in argv)
 
 
 # ── Antigravity Gemini API-key flow ─────────────────────────────────────────
@@ -2286,3 +2457,134 @@ def test_antigravity_install_now_invokes_runner_without_index(
     assert "install" in argv
     # No index URL / proxy is baked into committed code.
     assert not any("index" in part or "://" in part for part in argv)
+
+
+def _other_key_add_menu_index(family: str) -> int:
+    """Return the 1-based numbered-fallback position of "Other provider — API key".
+
+    Computed from the live per-family add menu rather than hardcoded, so a
+    reordering of :func:`add_menu_options` doesn't aim this test's piped stdin
+    at the wrong row.
+
+    :param family: The harness surface whose add menu is inspected.
+    :returns: The 1-based index of the catch-all ``other``-key option.
+    """
+    from omnigent.onboarding.configure_models import add_menu_options_for_family
+    from omnigent.onboarding.provider_config import KEY_KIND
+
+    opts = add_menu_options_for_family(family)
+    return next(i for i, o in enumerate(opts) if o.kind == KEY_KIND and o.other) + 1
+
+
+def test_configure_harnesses_add_other_key_no_remaining_providers_aborts_cleanly(
+    isolated_config, monkeypatch
+) -> None:
+    """Picking "Other provider — API key" with no catalog providers left aborts
+    cleanly instead of crashing.
+
+    Regression for #820: when every catch-all key provider is already configured,
+    ``other_key_providers()`` returns ``[]`` and the secondary ``select`` was
+    handed an empty option list, raising ``ValueError: select() requires at least
+    one option`` out of ``omnigent setup``. The add branch must detect the empty
+    list, tell the user, and return — exit code 0, no traceback. Driven under Pi
+    (the surface from the report), with the harness CLI forced installed so the
+    drill-in reaches the add menu.
+    """
+    from omnigent.onboarding.provider_config import PI_SURFACE
+
+    # Force the harness CLI "installed" so the Pi drill-in shows the add menu
+    # rather than the install prompt, and pretend the catch-all catalog is
+    # exhausted (the real-world trigger: all of Groq/DeepSeek/… already added).
+    monkeypatch.setattr(
+        "omnigent.onboarding.harness_install.harness_cli_installed", lambda family: True
+    )
+    monkeypatch.setattr("omnigent.onboarding.configure_models.other_key_providers", list)
+
+    other = _other_key_add_menu_index(PI_SURFACE)
+    # L1 3=Pi → L2 1=+Add → add menu <other>=Other provider — API key → L2 q=back → L1 q=exit.
+    stdin = "\n".join(["3", "1", str(other), "q", "q"]) + "\n"
+    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+
+    # Pre-fix this exited non-zero with a ValueError; the guard makes it graceful.
+    assert result.exit_code == 0, result.output
+    assert result.exception is None, result.exception
+    assert "No other API-key providers" in result.output
+
+
+def test_build_bedrock_provider_entry_shape() -> None:
+    """`build_bedrock_provider_entry` produces a kind: bedrock / anthropic body."""
+    entry = build_bedrock_provider_entry(
+        base_url="https://bedrock-runtime.us-east-1.amazonaws.com",
+        api_key_ref="env:AWS_BEARER_TOKEN_BEDROCK",
+        default_model="us.anthropic.claude-opus-4-5-20251101-v1:0",
+    )
+    assert entry == {
+        "kind": "bedrock",
+        "anthropic": {
+            "base_url": "https://bedrock-runtime.us-east-1.amazonaws.com",
+            "api_key_ref": "env:AWS_BEARER_TOKEN_BEDROCK",
+            "models": {"default": "us.anthropic.claude-opus-4-5-20251101-v1:0"},
+        },
+    }
+
+
+def test_configure_models_add_bedrock_writes_entry_and_secret(
+    isolated_config, monkeypatch
+) -> None:
+    """Adding 'AWS Bedrock — API key' from the Claude menu writes a kind: bedrock entry.
+
+    Drives the new interactive path: Claude harness → +Add → 'AWS Bedrock —
+    API key' (last in the Claude-scoped menu) → name, base_url, pasted bearer
+    token, Bedrock model id. Asserts the persisted ``kind: bedrock`` body, the
+    keychain secret, and that it auto-becomes the anthropic default. A
+    regression means the setup menu can't create a bedrock provider — the gap
+    this closes.
+    """
+    # No exported token → the paste→keychain path (deterministic prompts).
+    monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
+    # L1 1=Claude → L2 1=+Add → Claude menu 5='AWS Bedrock — API key'
+    # (1=Anthropic key, 2=Claude sub, 3=Gateway, 4=Databricks, 5=Bedrock) →
+    # name; base_url; pasted key; default model → L2 q=back → L1 q=exit.
+    stdin = (
+        "\n".join(
+            [
+                "1",
+                "1",
+                "5",
+                "mybr",
+                "https://bedrock-runtime.us-east-1.amazonaws.com",
+                "absk-test",
+                "us.anthropic.claude-opus-4-5-20251101-v1:0",
+                "q",
+                "q",
+            ]
+        )
+        + "\n"
+    )
+    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    assert result.exit_code == 0, result.output
+
+    cfg = _config_yaml(isolated_config)
+    entry = cfg["providers"]["mybr"]
+    assert entry["kind"] == "bedrock"
+    assert entry["anthropic"]["base_url"] == "https://bedrock-runtime.us-east-1.amazonaws.com"
+    assert entry["anthropic"]["api_key_ref"] == "keychain:mybr"
+    assert entry["anthropic"]["models"]["default"] == "us.anthropic.claude-opus-4-5-20251101-v1:0"
+    assert secrets.load_secret("mybr") == "absk-test"
+    # A bedrock provider serves the anthropic surface, so it auto-claims the
+    # (previously empty) Claude default.
+    assert get_default_provider(cfg, "anthropic").name == "mybr"
+
+
+def test_credential_label_bedrock_not_duplicated() -> None:
+    """A bedrock credential reads 'AWS Bedrock', never 'Bedrock Bedrock'.
+
+    The entry name is user-chosen (the default is 'bedrock'); naming the
+    credential after the provider id used to render 'Bedrock Bedrock'. The
+    generic default collapses to 'AWS Bedrock'; a custom name is qualified.
+    """
+    from omnigent.onboarding.configure_models import credential_label
+    from omnigent.onboarding.provider_config import BEDROCK_KIND
+
+    assert credential_label(BEDROCK_KIND, "bedrock") == "AWS Bedrock"
+    assert credential_label(BEDROCK_KIND, "nexus") == "AWS Bedrock (nexus)"
