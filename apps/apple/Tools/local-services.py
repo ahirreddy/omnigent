@@ -20,7 +20,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[4]
+REPO = Path(__file__).resolve().parents[3]
 BASE_URL = "http://127.0.0.1:6767"
 LABELS = {kind: f"ai.omnigent.native-lab.{kind}" for kind in ("api", "host")}
 SCRIPTS = {"api": "local-server.sh", "host": "local-host.sh"}
@@ -135,7 +135,7 @@ class Services:
                 "Run in the logged-in user's GUI session (outside the agent sandbox)."
             )
         output = result.stdout
-        script = str(self.repo / "web/ios/NativeLab/bin" / SCRIPTS[kind])
+        script = str(self.repo / "apps/apple/Tools" / SCRIPTS[kind])
         if not any(line.strip() == script for line in output.splitlines()):
             raise ServiceError(f"{LABELS[kind]} belongs to another checkout; leaving it alone")
         pid = re.search(r"^\s*pid = (\d+)$", output, re.MULTILINE)
@@ -164,7 +164,7 @@ class Services:
             "Label": LABELS[kind],
             "ProgramArguments": [
                 "/bin/bash",
-                str(self.repo / "web/ios/NativeLab/bin" / SCRIPTS[kind]),
+                str(self.repo / "apps/apple/Tools" / SCRIPTS[kind]),
             ],
             "WorkingDirectory": str(self.repo),
             "EnvironmentVariables": {

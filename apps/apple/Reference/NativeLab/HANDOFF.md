@@ -34,11 +34,11 @@ harness. From the repository root:
 
 ```sh
 OMNIGENT_SKIP_WEB_UI=true uv sync --frozen --extra dev
-bash web/ios/NativeLab/bin/local-services.sh install
-bash web/ios/NativeLab/bin/local-services.sh start
-bash web/ios/NativeLab/bin/local-services.sh status
-.venv/bin/python web/ios/NativeLab/bin/seed-local-fixtures.py
-open web/ios/NativeLab/NativeLab.xcodeproj
+bash apps/apple/Tools/local-services.sh install
+bash apps/apple/Tools/local-services.sh start
+bash apps/apple/Tools/local-services.sh status
+.venv/bin/python apps/apple/Tools/seed-local-fixtures.py
+open apps/apple/Reference/NativeLab/NativeLab.xcodeproj
 ```
 
 Select **NativeLab**, choose a regular iPhone simulator and run. Connect to
@@ -50,7 +50,7 @@ For real replies, configure and sign into the Codex native harness on your own
 machine, then run:
 
 ```sh
-.venv/bin/python web/ios/NativeLab/bin/prepare-live-session.py
+.venv/bin/python apps/apple/Tools/prepare-live-session.py
 ```
 
 Open the resulting **Native live chat** and send a message. An online host alone
@@ -61,9 +61,9 @@ authenticated HTTPS server; its loopback address is not the Mac's server.
 
 ```sh
 OMNI_LOCAL_API_TESTS=1 OMNI_KEYCHAIN_TESTS=1 \
-  swift test --package-path web/ios/NativeLab
-.venv/bin/python -m unittest discover -s web/ios/NativeLab/bin -p test_local_services.py
-.venv/bin/python -m unittest discover -s web/ios/NativeLab/bin -p test_smoke_live_chat.py
+  swift test --package-path apps/apple/Reference/NativeLab
+.venv/bin/python -m unittest discover -s apps/apple/Tools -p test_local_services.py
+.venv/bin/python -m unittest discover -s apps/apple/Tools -p test_smoke_live_chat.py
 ```
 
 The latest core run passed 288 tests with both opt-ins enabled and no skips;
@@ -79,7 +79,7 @@ Start with an SSE-only streaming probe, then use the coordinated native/web
 observer described in the linked streaming report:
 
 ```sh
-.venv/bin/python web/ios/NativeLab/bin/smoke-live-chat.py \
+.venv/bin/python apps/apple/Tools/smoke-live-chat.py \
   --create-session --send-test-prompt --require-incremental \
   --evidence-dir /private/tmp/omni-streaming-new-run
 ```

@@ -18,7 +18,7 @@ and generic text, not prompts, tool arguments or conversation contents.
    uv pip install --python .venv/bin/python 'httpx[http2]>=0.27,<1'
    ```
 
-4. Build with the opt-in settings from `web/ios/NativeLab`:
+4. Build with the opt-in settings from `apps/apple/Reference/NativeLab`:
 
    ```sh
    xcodebuild -project NativeLab.xcodeproj -scheme NativeLab \
@@ -42,7 +42,7 @@ and generic text, not prompts, tool arguments or conversation contents.
    export OMNIGENT_APNS_KEY_ID=YOUR_KEY_ID
    export OMNIGENT_APNS_KEY_PATH=/absolute/private/path/AuthKey.p8
    export OMNIGENT_APNS_TOPIC=YOUR_APP_ID
-   bash web/ios/NativeLab/bin/local-server.sh
+   bash apps/apple/Tools/local-server.sh
    ```
 
    The launcher fixes the push origin to `http://127.0.0.1:6767`, selects sandbox

@@ -7,7 +7,7 @@ import httpx
 
 
 def main() -> None:
-    repo = Path(__file__).resolve().parents[4]
+    repo = Path(__file__).resolve().parents[3]
     workspace = repo / ".native-lab-server" / "chat-workspace"
     if workspace.resolve() != workspace or not workspace.is_dir():
         raise SystemExit("Run bin/local-host.sh first; the workspace must not be a symlink.")

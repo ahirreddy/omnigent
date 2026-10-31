@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def main() -> None:
-    repo = Path(__file__).resolve().parents[4]
+    repo = Path(__file__).resolve().parents[3]
     runtime = repo / ".native-lab-server"
     database = runtime / "data" / "chat.db"
     if database.resolve() != database or not database.is_file():

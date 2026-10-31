@@ -36,7 +36,7 @@ class FakeLaunchd(services.Services):
             if kind not in self.loaded:
                 code, error = 113, "Could not find service"
             else:
-                script = self.repo / "web/ios/NativeLab/bin" / services.SCRIPTS[kind]
+                script = self.repo / "apps/apple/Tools" / services.SCRIPTS[kind]
                 output = f"arguments = {{\n\t/bin/bash\n\t{script}\n}}\n"
                 output += f"state = running\npid = {self.loaded[kind]}\n"
         elif args[0] == "bootstrap":

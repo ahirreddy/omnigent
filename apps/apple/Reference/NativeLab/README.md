@@ -26,7 +26,7 @@ are installed on this Mac.
 From the repository root:
 
 ```sh
-open web/ios/NativeLab/NativeLab.xcodeproj
+open apps/apple/Reference/NativeLab/NativeLab.xcodeproj
 ```
 
 Select **NativeLab**, choose an iPhone or iPad simulator and press **Cmd-R**.
@@ -214,9 +214,9 @@ From the repository root:
 
 ```sh
 OMNIGENT_SKIP_WEB_UI=true uv sync --frozen --no-dev
-bash web/ios/NativeLab/bin/local-services.sh install
-bash web/ios/NativeLab/bin/local-services.sh start
-bash web/ios/NativeLab/bin/local-services.sh status
+bash apps/apple/Tools/local-services.sh install
+bash apps/apple/Tools/local-services.sh start
+bash apps/apple/Tools/local-services.sh status
 ```
 
 The API is at `http://127.0.0.1:6767`; interactive API documentation is at
@@ -228,7 +228,7 @@ Use `local-services.sh stop` or `uninstall` to stop these dedicated services;
 both preserve their data. See [startup validation](../../../designs/ios-native/startup-validation.md).
 
 For foreground debugging, stop the managed services first, then run
-`bash web/ios/NativeLab/bin/local-server.sh`. **Ctrl-C** stops that foreground API.
+`bash apps/apple/Tools/local-server.sh`. **Ctrl-C** stops that foreground API.
 
 The launcher uses this checkout's `.venv`, clears inherited deployment settings,
 and keeps its database, artifacts, configuration and logs in the gitignored
@@ -239,7 +239,7 @@ four local test conversations, including a 60-message history for pagination
 and a separate mutable stream-validation fixture:
 
 ```sh
-.venv/bin/python web/ios/NativeLab/bin/seed-local-fixtures.py
+.venv/bin/python apps/apple/Tools/seed-local-fixtures.py
 ```
 
 This script only targets this checkout's `.native-lab-server/data/chat.db`.
@@ -257,7 +257,7 @@ Managed startup already starts the isolated host. If using foreground debugging
 instead, register it in a second terminal at the repository root:
 
 ```sh
-bash web/ios/NativeLab/bin/local-host.sh
+bash apps/apple/Tools/local-host.sh
 ```
 
 This foreground host uses separate lifecycle/configuration state inside
@@ -267,7 +267,7 @@ local login; it does not copy credentials into the isolated state directory.
 In a third terminal, create/reuse a dedicated host-backed chat:
 
 ```sh
-.venv/bin/python web/ios/NativeLab/bin/prepare-live-session.py
+.venv/bin/python apps/apple/Tools/prepare-live-session.py
 ```
 
 The script requires a configured local Codex native harness. It creates
@@ -280,14 +280,14 @@ An opt-in terminal smoke check sends one text-only prompt and requires both
 SSE text deltas and a completed generated reply:
 
 ```sh
-.venv/bin/python web/ios/NativeLab/bin/smoke-live-chat.py <SESSION_ID> --send-test-prompt
+.venv/bin/python apps/apple/Tools/smoke-live-chat.py <SESSION_ID> --send-test-prompt
 ```
 
 That short connection check does not prove progressive rendering from the model.
 For a longer reply that must arrive in multiple temporally separated chunks:
 
 ```sh
-.venv/bin/python web/ios/NativeLab/bin/smoke-live-chat.py <SESSION_ID> \
+.venv/bin/python apps/apple/Tools/smoke-live-chat.py <SESSION_ID> \
   --send-test-prompt --require-incremental
 ```
 
@@ -303,9 +303,9 @@ keep the API and host running and choose a booted iPhone simulator UDID from
 
 ```sh
 OMNI_TEST_DEVICE=FB1F71AC-0B76-4F2B-B251-6EE3E1955B14
-python3 web/ios/NativeLab/bin/seed-picker-file.py "$OMNI_TEST_DEVICE"
+python3 apps/apple/Tools/seed-picker-file.py "$OMNI_TEST_DEVICE"
 TEST_RUNNER_OMNI_LIVE_MODEL_UI_TESTS=1 xcodebuild \
-  -project web/ios/NativeLab/NativeLab.xcodeproj -scheme NativeLab \
+  -project apps/apple/Reference/NativeLab/NativeLab.xcodeproj -scheme NativeLab \
   -destination "platform=iOS Simulator,id=$OMNI_TEST_DEVICE" \
   -parallel-testing-enabled NO \
   -only-testing:NativeLabUITests/NativeLabLiveUITests/testOptInLiveCreationAndNativeFileSend test
@@ -438,14 +438,14 @@ they are not a durable download library.
 Core checks run without a simulator:
 
 ```sh
-swift test --package-path web/ios/NativeLab
+swift test --package-path apps/apple/Reference/NativeLab
 ```
 
 Run core tests plus all native UI journeys:
 
 ```sh
 xcrun simctl list devices available
-bash web/ios/NativeLab/bin/check.sh <SIMULATOR_UUID>
+bash apps/apple/Tools/check.sh <SIMULATOR_UUID>
 ```
 
 The script prints the temporary directory containing build output and
@@ -459,7 +459,7 @@ local API. With the
 server running and fixtures seeded, enable it with:
 
 ```sh
-OMNI_LOCAL_API_TESTS=1 swift test --package-path web/ios/NativeLab
+OMNI_LOCAL_API_TESTS=1 swift test --package-path apps/apple/Reference/NativeLab
 ```
 
 Add `OMNI_KEYCHAIN_TESTS=1` to exercise real isolated Keychain CRUD as well; those
@@ -479,7 +479,7 @@ journeys run without a backend.
 To run the live/connection journeys after seeding:
 
 ```sh
-xcodebuild -project web/ios/NativeLab/NativeLab.xcodeproj -scheme NativeLab \
+xcodebuild -project apps/apple/Reference/NativeLab/NativeLab.xcodeproj -scheme NativeLab \
   -destination 'platform=iOS Simulator,name=Omni iPhone 17 Pro' \
   -only-testing:NativeLabUITests/NativeLabLiveUITests \
   -parallel-testing-enabled NO -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO test
@@ -498,7 +498,7 @@ through the native editor and checks the completed reply and stored items:
 
 ```sh
 TEST_RUNNER_OMNI_LIVE_MODEL_UI_TESTS=1 xcodebuild \
-  -project web/ios/NativeLab/NativeLab.xcodeproj -scheme NativeLab \
+  -project apps/apple/Reference/NativeLab/NativeLab.xcodeproj -scheme NativeLab \
   -destination 'platform=iOS Simulator,name=Omni iPhone 17 Pro' \
   -only-testing:NativeLabUITests/NativeLabLiveUITests/testOptInRealModelReplyArrivesWithoutRefresh \
   -parallel-testing-enabled NO -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO test
@@ -515,7 +515,7 @@ not permission to resend: inspect the dedicated session's status/history first.
 With the local API and host running, prepare a separate inert conversation:
 
 ```sh
-.venv/bin/python web/ios/NativeLab/bin/prepare-configuration-fixture.py
+.venv/bin/python apps/apple/Tools/prepare-configuration-fixture.py
 ```
 
 It creates/reuses **Native configuration validation**, stores a marked fixture
@@ -526,7 +526,7 @@ chat** is inspected but never changed by these tests. Run serially:
 ```sh
 picker_run_dir="$(mktemp -d /tmp/omnigent-picker.XXXXXX)"
 TEST_RUNNER_OMNI_CONFIG_MUTATION_UI_TESTS=1 xcodebuild \
-  -project web/ios/NativeLab/NativeLab.xcodeproj -scheme NativeLab \
+  -project apps/apple/Reference/NativeLab/NativeLab.xcodeproj -scheme NativeLab \
   -destination 'platform=iOS Simulator,name=Omni iPhone 17 Pro' \
   -derivedDataPath "$picker_run_dir/DerivedData" \
   -resultBundlePath "$picker_run_dir/Picker.xcresult" \

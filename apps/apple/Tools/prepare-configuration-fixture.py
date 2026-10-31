@@ -7,7 +7,7 @@ import httpx
 
 
 def main() -> None:
-    workspace = Path(__file__).resolve().parents[4] / ".native-lab-server" / "chat-workspace"
+    workspace = Path(__file__).resolve().parents[3] / ".native-lab-server" / "chat-workspace"
     title = "Native configuration validation"
     marker = "Stored configuration fixture. No model response was generated."
     if workspace.resolve() != workspace or not workspace.is_dir():

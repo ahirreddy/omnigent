@@ -67,7 +67,7 @@ def validate_incremental_reply(
 
 
 API = "http://127.0.0.1:6767"
-WORKSPACE = Path(__file__).resolve().parents[4] / ".native-lab-server" / "chat-workspace"
+WORKSPACE = Path(__file__).resolve().parents[3] / ".native-lab-server" / "chat-workspace"
 TITLE_PREFIX = "Native streaming validation "
 
 

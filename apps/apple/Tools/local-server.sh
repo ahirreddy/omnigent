@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
 runtime_dir="$repo_dir/.native-lab-server"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  echo "Usage: bash web/ios/NativeLab/bin/local-server.sh"
+  echo "Usage: bash apps/apple/Tools/local-server.sh"
   echo "Starts an API-only development server at http://127.0.0.1:6767."
   echo "State: $runtime_dir. Stop with Ctrl-C; state is preserved."
   echo "For automatic startup at login: bin/local-services.sh install, then start."
@@ -24,7 +24,7 @@ fi
 umask 077
 mkdir -p "$runtime_dir/config" "$runtime_dir/data" "$runtime_dir/artifacts"
 cd "$runtime_dir"
-"$repo_dir/.venv/bin/python" "$repo_dir/web/ios/NativeLab/bin/local-services.py" check-port
+"$repo_dir/.venv/bin/python" "$repo_dir/apps/apple/Tools/local-services.py" check-port
 
 push_env=(OMNIGENT_APNS_ENABLED=0)
 if [[ "${OMNIGENT_APNS_ENABLED:-0}" == "1" ]]; then

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
 runtime_dir="$repo_dir/.native-lab-server"
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  echo "Usage: bash web/ios/NativeLab/bin/local-host.sh"
+  echo "Usage: bash apps/apple/Tools/local-host.sh"
   echo "Registers this Mac with the dedicated API at http://127.0.0.1:6767."
   echo "Foreground process; Ctrl-C stops this host. Other hosts are untouched."
   echo "For automatic startup at login: bin/local-services.sh install, then start."
@@ -19,9 +19,9 @@ fi
 umask 077
 mkdir -p "$runtime_dir/host-config" "$runtime_dir/host-data" "$runtime_dir/chat-workspace"
 cd "$runtime_dir/chat-workspace"
-"$repo_dir/.venv/bin/python" "$repo_dir/web/ios/NativeLab/bin/local-services.py" wait-api
+"$repo_dir/.venv/bin/python" "$repo_dir/apps/apple/Tools/local-services.py" wait-api
 host_id="$(env -i HOME="${HOME:?HOME must be set}" PATH="$PATH" \
-  "$repo_dir/.venv/bin/python" "$repo_dir/web/ios/NativeLab/bin/local-services.py" host-id)"
+  "$repo_dir/.venv/bin/python" "$repo_dir/apps/apple/Tools/local-services.py" host-id)"
 
 # Keep local host lifecycle records separate from any hosted Omnigent connection.
 exec env -i \
