@@ -1,0 +1,7 @@
+// Opt in with -xcconfig Config/PushDevelopment.xcconfig and a push-capable signing team.
+// Keep the default NativeLab build free of paid push signing requirements.
+CODE_SIGN_ENTITLEMENTS = $(SRCROOT)/Config/Push.entitlements
+INFOPLIST_FILE = $(SRCROOT)/Config/PushInfo.plist
+GENERATE_INFOPLIST_FILE = YES
+NATIVE_LAB_APS_ENVIRONMENT = development
+NATIVE_LAB_APNS_ENVIRONMENT = sandbox

@@ -1,0 +1,549 @@
+{
+  "probe_id": "oct31wire2",
+  "session_id": "c8f822f49a854768bd8c60fd7b294332",
+  "source": "configured-live-provider",
+  "prompt_sent": true,
+  "generated_reply_received": true,
+  "passed": false,
+  "final_chars": 8816,
+  "reply_chunks": 1,
+  "growth_seconds": 0.0,
+  "first_delta_epoch": 1793485717.264062,
+  "completed_epoch": 1793485717.351386,
+  "actual_model": null,
+  "actual_harness": "codex-native",
+  "failure_type": "RuntimeError",
+  "failure": "FAIL: incremental streaming not verified; provider/gateway buffering may be present: need at least 2 nonempty reply chunks before the completed item; reply growth must span at least 0.25s; the first partial already contained the full final response",
+  "events": [
+    {
+      "type": "session.heartbeat",
+      "monotonic": 160649.170744375,
+      "epoch": 1793485598.069524
+    },
+    {
+      "type": "session.changed_files.invalidated",
+      "monotonic": 160649.344625583,
+      "epoch": 1793485598.243402
+    },
+    {
+      "type": "session.presence",
+      "monotonic": 160649.362350708,
+      "epoch": 1793485598.261127
+    },
+    {
+      "type": "session.skills",
+      "monotonic": 160659.540316958,
+      "epoch": 1793485608.438922
+    },
+    {
+      "type": "session.terminal_pending",
+      "monotonic": 160667.840357916,
+      "epoch": 1793485616.738823
+    },
+    {
+      "type": "session.terminal_pending",
+      "monotonic": 160667.847094958,
+      "epoch": 1793485616.7455602
+    },
+    {
+      "type": "session.resource.created",
+      "monotonic": 160667.848295875,
+      "epoch": 1793485616.7467608
+    },
+    {
+      "type": "session.terminal_pending",
+      "monotonic": 160667.849291083,
+      "epoch": 1793485616.747756
+    },
+    {
+      "type": "session.status",
+      "monotonic": 160668.086057875,
+      "epoch": 1793485616.984519,
+      "response_id": null,
+      "status": "running"
+    },
+    {
+      "type": "response.in_progress",
+      "monotonic": 160668.203467083,
+      "epoch": 1793485617.1019268
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160670.020028833,
+      "epoch": 1793485618.9184582
+    },
+    {
+      "type": "session.mcp_startup",
+      "monotonic": 160670.502803666,
+      "epoch": 1793485619.401224
+    },
+    {
+      "type": "session.model_options",
+      "monotonic": 160670.73131775,
+      "epoch": 1793485619.629735
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160671.479424958,
+      "epoch": 1793485620.377829
+    },
+    {
+      "type": "response.completed",
+      "monotonic": 160673.822696458,
+      "epoch": 1793485622.7210612
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160674.120096125,
+      "epoch": 1793485623.018456
+    },
+    {
+      "type": "session.model",
+      "monotonic": 160674.651268541,
+      "epoch": 1793485623.549619
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160675.452886583,
+      "epoch": 1793485624.351224
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160678.07109,
+      "epoch": 1793485626.969383
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160679.718474208,
+      "epoch": 1793485628.61674
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160684.690094875,
+      "epoch": 1793485633.588277
+    },
+    {
+      "type": "session.input.consumed",
+      "monotonic": 160684.75101,
+      "epoch": 1793485633.649191
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160685.906545541,
+      "epoch": 1793485634.804708
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160688.876885166,
+      "epoch": 1793485637.774997
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160690.067392416,
+      "epoch": 1793485638.9654841
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160692.544948416,
+      "epoch": 1793485641.4429991
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160695.016644708,
+      "epoch": 1793485643.914654
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160697.342400541,
+      "epoch": 1793485646.240371
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160700.635689666,
+      "epoch": 1793485649.5336041
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160701.704132541,
+      "epoch": 1793485650.6020281
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160704.1142705,
+      "epoch": 1793485653.012126
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160705.812232958,
+      "epoch": 1793485654.7100601
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160707.446274875,
+      "epoch": 1793485656.344075
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160709.227633833,
+      "epoch": 1793485658.125404
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160710.553925458,
+      "epoch": 1793485659.451673
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160712.012337458,
+      "epoch": 1793485660.91006
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160713.74903875,
+      "epoch": 1793485662.646734
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160715.204759916,
+      "epoch": 1793485664.102429
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160716.392126958,
+      "epoch": 1793485665.2897768
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160719.508563916,
+      "epoch": 1793485668.4061608
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160720.672228875,
+      "epoch": 1793485669.569806
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160721.836019666,
+      "epoch": 1793485670.733578
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160723.153585,
+      "epoch": 1793485672.05112
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160724.79183075,
+      "epoch": 1793485673.689339
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160725.90284725,
+      "epoch": 1793485674.8003368
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160727.030827458,
+      "epoch": 1793485675.928298
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160728.147269375,
+      "epoch": 1793485677.044721
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160729.273475291,
+      "epoch": 1793485678.170908
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160730.452828958,
+      "epoch": 1793485679.3502421
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160731.568344708,
+      "epoch": 1793485680.465739
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160732.872965541,
+      "epoch": 1793485681.770338
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160734.2691365,
+      "epoch": 1793485683.166486
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160735.428099791,
+      "epoch": 1793485684.32543
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160736.4931175,
+      "epoch": 1793485685.390429
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160737.57671375,
+      "epoch": 1793485686.4740071
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160738.690208958,
+      "epoch": 1793485687.587484
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160739.857564333,
+      "epoch": 1793485688.7548192
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160741.019635666,
+      "epoch": 1793485689.9168708
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160742.10435325,
+      "epoch": 1793485691.0015712
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160743.326163416,
+      "epoch": 1793485692.22336
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160744.884922041,
+      "epoch": 1793485693.782093
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160746.006122083,
+      "epoch": 1793485694.903274
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160747.128619375,
+      "epoch": 1793485696.025752
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160748.304434125,
+      "epoch": 1793485697.201548
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160749.461227666,
+      "epoch": 1793485698.358321
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160750.8556725,
+      "epoch": 1793485699.752743
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160752.147587708,
+      "epoch": 1793485701.044636
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160753.466170375,
+      "epoch": 1793485702.3631968
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160754.662836875,
+      "epoch": 1793485703.559843
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160755.787037375,
+      "epoch": 1793485704.684025
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160756.935907875,
+      "epoch": 1793485705.832876
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160758.094660875,
+      "epoch": 1793485706.99161
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160759.194813083,
+      "epoch": 1793485708.091743
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160760.3519325,
+      "epoch": 1793485709.248843
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160761.433159583,
+      "epoch": 1793485710.3300521
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160762.5695855,
+      "epoch": 1793485711.4664588
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160763.614555333,
+      "epoch": 1793485712.511411
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160764.735077375,
+      "epoch": 1793485713.631915
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160765.785445583,
+      "epoch": 1793485714.682265
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160766.955661458,
+      "epoch": 1793485715.852461
+    },
+    {
+      "type": "session.terminal.activity",
+      "monotonic": 160768.069856583,
+      "epoch": 1793485716.966638
+    },
+    {
+      "type": "response.reasoning.started",
+      "monotonic": 160768.135038375,
+      "epoch": 1793485717.031818
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.1365865,
+      "epoch": 1793485717.033366
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.161073125,
+      "epoch": 1793485717.057853
+    },
+    {
+      "type": "response.reasoning.started",
+      "monotonic": 160768.2130685,
+      "epoch": 1793485717.109847
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.214934041,
+      "epoch": 1793485717.111713
+    },
+    {
+      "type": "response.reasoning.started",
+      "monotonic": 160768.230547583,
+      "epoch": 1793485717.127326
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.232746541,
+      "epoch": 1793485717.129525
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.2382885,
+      "epoch": 1793485717.135067
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.246546708,
+      "epoch": 1793485717.1433249
+    },
+    {
+      "type": "response.reasoning.started",
+      "monotonic": 160768.266633166,
+      "epoch": 1793485717.163411
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.268095166,
+      "epoch": 1793485717.164873
+    },
+    {
+      "type": "response.reasoning.started",
+      "monotonic": 160768.2812505,
+      "epoch": 1793485717.178028
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.282788,
+      "epoch": 1793485717.179565
+    },
+    {
+      "type": "response.reasoning.started",
+      "monotonic": 160768.303007208,
+      "epoch": 1793485717.199784
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.304682166,
+      "epoch": 1793485717.201459
+    },
+    {
+      "type": "response.reasoning.started",
+      "monotonic": 160768.325774208,
+      "epoch": 1793485717.222551
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.32764525,
+      "epoch": 1793485717.224422
+    },
+    {
+      "type": "response.reasoning.started",
+      "monotonic": 160768.341552125,
+      "epoch": 1793485717.238328
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.343136708,
+      "epoch": 1793485717.239913
+    },
+    {
+      "type": "response.reasoning.started",
+      "monotonic": 160768.353413166,
+      "epoch": 1793485717.25019
+    },
+    {
+      "type": "response.reasoning_text.delta",
+      "monotonic": 160768.355054708,
+      "epoch": 1793485717.251831
+    },
+    {
+      "type": "response.output_text.delta",
+      "monotonic": 160768.367286166,
+      "epoch": 1793485717.264062,
+      "message_id": "codex:01a19412-bdbf-7821-b0d2-8255da0c9b2b:01a19412-c3f5-74d1-8155-412d811bc5bc:agentMessage:msg_0dc25af7675056e8016ae66b94f77887d1a0484dc4ec92d094",
+      "index": 0,
+      "final": false,
+      "duplicate": false,
+      "delta_chars": 8816
+    },
+    {
+      "type": "response.output_item.done",
+      "monotonic": 160768.454611916,
+      "epoch": 1793485717.351386,
+      "item_id": "e9dccaa3deca4775870faa31d3625715",
+      "role": "assistant",
+      "chars": 8816
+    }
+  ]
+}

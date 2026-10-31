@@ -1,0 +1,380 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B10000000000000000000001 = {isa = PBXBuildFile; fileRef = A10000000000000000000001; };
+		B10000000000000000000002 = {isa = PBXBuildFile; fileRef = A10000000000000000000002; };
+		B10000000000000000000003 = {isa = PBXBuildFile; fileRef = A10000000000000000000003; };
+		B10000000000000000000004 = {isa = PBXBuildFile; fileRef = A10000000000000000000004; };
+		B10000000000000000000005 = {isa = PBXBuildFile; fileRef = A10000000000000000000005; };
+		B10000000000000000000006 = {isa = PBXBuildFile; fileRef = A10000000000000000000006; };
+		B10000000000000000000007 = {isa = PBXBuildFile; fileRef = A10000000000000000000007; };
+		B10000000000000000000008 = {isa = PBXBuildFile; fileRef = A10000000000000000000008; };
+		B10000000000000000000009 = {isa = PBXBuildFile; fileRef = A10000000000000000000009; };
+		B10000000000000000000010 = {isa = PBXBuildFile; fileRef = A10000000000000000000010; };
+		B10000000000000000000011 = {isa = PBXBuildFile; fileRef = A10000000000000000000011; };
+		B20000000000000000000001 = {isa = PBXBuildFile; fileRef = A20000000000000000000001; };
+		B20000000000000000000002 = {isa = PBXBuildFile; fileRef = A20000000000000000000002; };
+		B20000000000000000000003 = {isa = PBXBuildFile; fileRef = A20000000000000000000003; };
+		B30000000000000000000001 /* NativeLabCore in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000002; };
+		B10000000000000000000012 = {isa = PBXBuildFile; fileRef = A10000000000000000000012; };
+		B10000000000000000000013 = {isa = PBXBuildFile; fileRef = A10000000000000000000013; };
+		B10000000000000000000014 = {isa = PBXBuildFile; fileRef = A10000000000000000000014; };
+		B20000000000000000000004 = {isa = PBXBuildFile; fileRef = A20000000000000000000004; };
+		B20000000000000000000005 = {isa = PBXBuildFile; fileRef = A20000000000000000000005; };
+		B10000000000000000000015 = {isa = PBXBuildFile; fileRef = A10000000000000000000015; };
+		B20000000000000000000006 = {isa = PBXBuildFile; fileRef = A20000000000000000000006; };
+		B20000000000000000000007 = {isa = PBXBuildFile; fileRef = A20000000000000000000007; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E00000000000000000000001 = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000005;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000006;
+			remoteInfo = NativeLab;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A10000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLabApp.swift; sourceTree = "<group>"; };
+		A10000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		A10000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
+		A10000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
+		A10000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSessionView.swift; sourceTree = "<group>"; };
+		A10000000000000000000006 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileComponents.swift; sourceTree = "<group>"; };
+		A10000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionConfigurationView.swift; sourceTree = "<group>"; };
+		A10000000000000000000008 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HarnessAppearance.swift; sourceTree = "<group>"; };
+		A10000000000000000000009 = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "HarnessBranding-NOTICE.md"; sourceTree = "<group>"; };
+		A10000000000000000000010 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeActivityViews.swift; sourceTree = "<group>"; };
+		A10000000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestFormView.swift; sourceTree = "<group>"; };
+		A20000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLabUITests.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLabLiveUITests.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeEventUITests.swift; sourceTree = "<group>"; };
+		A30000000000000000000001 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NativeLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A30000000000000000000002 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NativeLabUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000012 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentComposerViews.swift; sourceTree = "<group>"; };
+		A10000000000000000000013 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeNotificationController.swift; sourceTree = "<group>"; };
+		A10000000000000000000014 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeNotificationSettingsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCreationUITests.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUploadUITests.swift; sourceTree = "<group>"; };
+		A10000000000000000000015 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConnectionControls.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeServerConnectionUITests.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProgressiveStreamingUITests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C00000000000000000000002 = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (B30000000000000000000001 /* NativeLabCore in Frameworks */);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C00000000000000000000005 = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000003 /* App */,
+				A00000000000000000000004 /* UITests */,
+				A00000000000000000000002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000002 /* Products */ = {
+			isa = PBXGroup;
+			children = (A30000000000000000000001, A30000000000000000000002);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000003 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000001,
+				A10000000000000000000002,
+				A10000000000000000000003,
+				A10000000000000000000004,
+				A10000000000000000000005,
+				A10000000000000000000006,
+				A10000000000000000000007,
+				A10000000000000000000008,
+				A10000000000000000000009,
+				A10000000000000000000010,
+				A10000000000000000000011,
+				A10000000000000000000014,
+				A10000000000000000000015,
+				A10000000000000000000013,
+				A10000000000000000000012,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000004 /* UITests */ = {
+			isa = PBXGroup;
+			children = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003, A20000000000000000000005, A20000000000000000000006, A20000000000000000000007, A20000000000000000000004);
+			path = UITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A00000000000000000000006 /* NativeLab */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D10000000000000000000001;
+			buildPhases = (C00000000000000000000001, C00000000000000000000002, C00000000000000000000003);
+			buildRules = ();
+			dependencies = ();
+			name = NativeLab;
+			packageProductDependencies = (F00000000000000000000002 /* NativeLabCore */);
+			productName = NativeLab;
+			productReference = A30000000000000000000001;
+			productType = "com.apple.product-type.application";
+		};
+		A00000000000000000000007 /* NativeLabUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D20000000000000000000001;
+			buildPhases = (C00000000000000000000004, C00000000000000000000005, C00000000000000000000006);
+			buildRules = ();
+			dependencies = (E00000000000000000000002);
+			name = NativeLabUITests;
+			productName = NativeLabUITests;
+			productReference = A30000000000000000000002;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000005 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A00000000000000000000006 = {CreatedOnToolsVersion = 16.0; };
+					A00000000000000000000007 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = A00000000000000000000006;
+					};
+				};
+			};
+			buildConfigurationList = D00000000000000000000001;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = A00000000000000000000001;
+			packageReferences = (F00000000000000000000001 /* Local package */);
+			productRefGroup = A00000000000000000000002;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (A00000000000000000000006, A00000000000000000000007);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C00000000000000000000003 = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (B10000000000000000000009);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C00000000000000000000006 = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C00000000000000000000001 = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000001,
+				B10000000000000000000002,
+				B10000000000000000000003,
+				B10000000000000000000004,
+				B10000000000000000000005,
+				B10000000000000000000006,
+				B10000000000000000000007,
+				B10000000000000000000008,
+				B10000000000000000000010,
+				B10000000000000000000011,
+				B10000000000000000000014, B10000000000000000000015,
+				B10000000000000000000013,
+				B10000000000000000000012,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C00000000000000000000004 = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (B20000000000000000000001, B20000000000000000000002, B20000000000000000000003, B20000000000000000000005, B20000000000000000000006, B20000000000000000000007, B20000000000000000000004);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E00000000000000000000002 = {
+			isa = PBXTargetDependency;
+			target = A00000000000000000000006;
+			targetProxy = E00000000000000000000001;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		D00000000000000000000002 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		D00000000000000000000003 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		D10000000000000000000002 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Omnigent Lab";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.omnigent.ios.lab;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D10000000000000000000003 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Omnigent Lab";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.omnigent.ios.lab;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		D20000000000000000000002 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.omnigent.ios.lab.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = NativeLab;
+			};
+			name = Debug;
+		};
+		D20000000000000000000003 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.omnigent.ios.lab.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = NativeLab;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		D00000000000000000000001 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (D00000000000000000000002, D00000000000000000000003);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D10000000000000000000001 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (D10000000000000000000002, D10000000000000000000003);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D20000000000000000000001 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (D20000000000000000000002, D20000000000000000000003);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F00000000000000000000001 /* Local package */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F00000000000000000000002 /* NativeLabCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F00000000000000000000001;
+			productName = NativeLabCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A00000000000000000000005 /* Project object */;
+}
