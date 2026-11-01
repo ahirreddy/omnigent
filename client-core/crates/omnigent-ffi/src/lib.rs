@@ -31,6 +31,7 @@
     reason = "crate-internal items of private modules; `pub` would trip rustc's unreachable_pub"
 )]
 
+pub mod browser;
 pub mod config;
 pub mod configuration;
 pub mod creation;

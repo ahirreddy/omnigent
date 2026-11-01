@@ -449,6 +449,15 @@ impl Engine {
                 message,
             });
         }
+        if let Some(request) = applied.effects.browser_action {
+            let request = crate::browser::BrowserActionRequest::from(request);
+            self.emit(CoreEvent::BrowserActionRequested {
+                session_id: request.session_id,
+                action_id: request.action_id,
+                action: request.action,
+                args_json: request.args_json,
+            });
+        }
         if let Some(environment) = applied.effects.changed_files_environment {
             let sessions = Arc::clone(&self.sessions);
             let id = session_id.to_owned();

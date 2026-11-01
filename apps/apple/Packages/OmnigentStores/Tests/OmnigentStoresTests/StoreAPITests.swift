@@ -279,3 +279,88 @@ struct TerminalAttachTests {
     }
   }
 }
+
+/// Records every action it is asked to run.
+private final class RecordingPerformer: BrowserActionPerforming {
+  var performed: [String] = []
+  var failure: (any Error)?
+
+  // swiftlint:disable:next async_without_await
+  func perform(_ request: BrowserActionRequest) async throws -> Data {
+    performed.append(request.actionId)
+    if let failure { throw failure }
+    return Data(#"{"ok":true,"data":{"final_url":"https://example.com/"}}"#.utf8)
+  }
+}
+
+private struct PerformerFailure: Error, CustomStringConvertible {
+  var description: String { "engine unavailable" }
+}
+
+@MainActor
+struct BrowserActionStoreTests {
+  private let session = "conv_a"
+
+  private func request(_ id: String) -> BrowserActionRequest {
+    BrowserActionRequest(
+      sessionId: session, actionId: id, action: "navigate",
+      argsJson: #"{"url":"https://example.com"}"#)
+  }
+
+  private func server() -> RouteServer {
+    let server = RouteServer()
+    server.route(
+      "/v1/sessions/conv_a/browser/action_claim/baction_won", method: "POST",
+      .json(#"{"claimed":true,"claim_token":"tok_1"}"#))
+    server.route(
+      "/v1/sessions/conv_a/browser/action_claim/baction_lost", method: "POST",
+      .json(#"{"claimed":false}"#))
+    server.route(
+      "/v1/sessions/conv_a/browser/action_result/baction_won", method: "POST",
+      .json(#"{"resolved":true}"#, status: 202))
+    return server
+  }
+
+  @Test(.timeLimit(.minutes(1))) func runsOnlyClaimedActionsAndPostsTheResult() async throws {
+    let server = server()
+    let store = try await connectedStore(server)
+    let actions = try #require(store.browserActions)
+    let performer = RecordingPerformer()
+    actions.performer = performer
+
+    await actions.handle(request("baction_lost"))
+    #expect(performer.performed.isEmpty, "an unclaimed action never runs")
+    #expect(actions.actions.last?.phase == .notClaimed)
+
+    await actions.handle(request("baction_won"))
+    #expect(performer.performed == ["baction_won"])
+    #expect(actions.actions.last?.phase == .delivered(.resolved))
+
+    performer.failure = PerformerFailure()
+    server.route(
+      "/v1/sessions/conv_a/browser/action_result/baction_won", method: "POST",
+      .json(
+        #"{"error":{"message":"browser action result requires a matching claim_token"}}"#,
+        status: 403))
+    await actions.handle(request("baction_won"))
+    #expect(actions.actions.last?.performerError?.contains("engine unavailable") == true)
+    guard case .failed(.Session(let kind, _, _, _, _)) = actions.actions.last?.phase else {
+      Issue.record("phase: \(String(describing: actions.actions.last?.phase))")
+      return
+    }
+    #expect(kind == .browserAction)
+    #expect(actions.lastError != nil)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func withoutAPerformerNothingIsClaimed() async throws {
+    let server = server()
+    let store = try await connectedStore(server)
+    let actions = try #require(store.browserActions)
+    await actions.handle(request("baction_won"))
+    #expect(actions.actions.last?.phase == .unhandled)
+    let event = try JSONSerialization.jsonObject(with: request("baction_won").eventJSON())
+    let object = try #require(event as? [String: Any])
+    #expect(object["type"] as? String == "browser.action_request")
+    #expect((object["args"] as? [String: Any])?["url"] as? String == "https://example.com")
+  }
+}

@@ -624,12 +624,20 @@ impl LiveReducer {
                 format!("event:browser:{}", request.action_id),
                 ActivityKind::Browser,
                 &title,
-                "Waiting for the connected desktop browser. This phone does not execute browser-agent actions.",
+                "Waiting for a desktop client with a browser to run this action.",
             )
             .status("desktop_required")
             .details(vec![DetailSection::new("request", "Request", args, false)]),
         );
-        changed()
+        Effects {
+            browser_action: Some(super::live::BrowserActionRequest {
+                session_id: self.snap.header.id.clone(),
+                action_id: request.action_id.clone(),
+                action: request.action.clone(),
+                args: request.args.clone(),
+            }),
+            ..changed()
+        }
     }
 
     fn sidechat(&mut self, sidechat: &SessionBtwSidechatEvent) -> Effects {

@@ -23,6 +23,7 @@
     reason = "each operation applies its state changes under one guard so they land atomically"
 )]
 
+pub mod browser;
 pub mod configure;
 pub mod create;
 pub mod databricks_session;

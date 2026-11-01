@@ -503,3 +503,60 @@ fn harness_mirror_matches_sync_changes_across_hydration() {
     ));
     assert_eq!(harness.ids(), ["m"]);
 }
+
+#[test]
+fn browser_action_requests_reach_the_host_once_across_replays_and_reconnects() {
+    let request = json!({
+        "type": "browser.action_request",
+        "action_id": "baction_1",
+        "action": "navigate",
+        "args": {"url": "https://example.com"}
+    });
+    let mut sync = ConversationSync::new(SESSION);
+    let first = sync.open_stream();
+    let update = sync.handle_event(request.clone()).expect("applies");
+    let action = update
+        .effects
+        .browser_action
+        .expect("an action for the host");
+    assert_eq!(action.session_id, SESSION);
+    assert_eq!(action.action_id, "baction_1");
+    assert_eq!(action.action, "navigate");
+    assert_eq!(action.args["url"], "https://example.com");
+    // The buffered copy replays onto history without asking again.
+    let snapshot = session(json!({"id": SESSION, "status": "running", "created_at": 1}));
+    let replayed = sync
+        .finish_hydration(&first, &snapshot, &[])
+        .expect("hydration");
+    assert!(replayed.effects.browser_action.is_none());
+    assert!(
+        ids(&sync).iter().any(|id| id == "event:browser:baction_1"),
+        "{:?}",
+        ids(&sync)
+    );
+    // A reconnect starts a fresh reducer; a repeated delivery is still not repeated.
+    sync.open_stream();
+    let again = sync.handle_event(request).expect("applies");
+    assert!(again.effects.browser_action.is_none());
+    let other = sync
+        .handle_event(json!({
+            "type": "browser.action_request",
+            "action_id": "baction_2",
+            "action": "snapshot",
+            "args": null
+        }))
+        .expect("applies");
+    let action = other.effects.browser_action.expect("a new action");
+    assert!(action.args.is_empty());
+    // Another session's request never reaches this one.
+    let foreign = sync
+        .handle_event(json!({
+            "type": "browser.action_request",
+            "conversation_id": "conv_other",
+            "action_id": "baction_3",
+            "action": "snapshot",
+            "args": {}
+        }))
+        .expect("applies");
+    assert!(foreign.effects.browser_action.is_none());
+}

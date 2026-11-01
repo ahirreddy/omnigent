@@ -57,6 +57,12 @@ extension ConnectionStore {
       credentialRotations += 1
     case .terminalsChanged(let id, let rows, let harness):
       terminals(id)?.apply(terminals: rows, harness: harness)
+    case .browserActionRequested(let id, let actionID, let action, let args):
+      if let browserActions {
+        let request = BrowserActionRequest(
+          sessionId: id, actionId: actionID, action: action, argsJson: args)
+        Task { await browserActions.handle(request) }
+      }
     default:
       applyServerEvent(event)
     }

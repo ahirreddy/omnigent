@@ -401,6 +401,19 @@ pub enum CoreEvent {
         /// What the session's Terminal view can show.
         harness: crate::terminal::HarnessTerminal,
     },
+    /// The server asked a desktop client to perform an agent browser action (once per action
+    /// id). Claim it with `claim_browser_action` before running it; post the result with
+    /// `post_browser_action_result`.
+    BrowserActionRequested {
+        /// The session whose stream delivered it; claim and post to this session.
+        session_id: String,
+        /// The server's correlation id.
+        action_id: String,
+        /// The `browser_` tool name without the prefix, for example `navigate`.
+        action: String,
+        /// The tool arguments, a JSON object.
+        args_json: String,
+    },
     /// The server's host inventory changed.
     HostsChanged,
     /// The server's project list changed.

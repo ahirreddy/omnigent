@@ -58,6 +58,8 @@ public final class ConnectionStore {
   public let sessionList = SessionListStore()
   /// Notifications and the badge.
   public let notifications: NotificationsStore?
+  /// Agent browser actions; install its `performer` to run them.
+  public let browserActions: BrowserActionStore?
   /// Open conversations, by session id.
   public private(set) var conversations: [String: ConversationStore] = [:]
   /// Workspace stores of open sessions, by session id.
@@ -79,6 +81,7 @@ public final class ConnectionStore {
   public init(core: ClientCore) {
     self.core = core
     notifications = NotificationsStore(core: core)
+    browserActions = BrowserActionStore(core: core)
     sessionList.core = core
     _ = core.subscribe(listener: relay)
     startPump()
@@ -87,6 +90,7 @@ public final class ConnectionStore {
   private init(startupError: CoreError) {
     core = nil
     notifications = nil
+    browserActions = nil
     record(scope: .connection, startupError)
     phase = .failed(serverUrl: "", error: startupError)
   }

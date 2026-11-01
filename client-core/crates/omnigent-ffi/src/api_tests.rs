@@ -881,3 +881,112 @@ fn terminal_lists_and_resource_events_publish_the_inventory_and_harness_view() {
     assert_eq!(terminal.id, "terminal_codex_main");
     assert!(terminal.is_agent_terminal);
 }
+
+#[test]
+fn browser_action_requests_are_reported_once_and_claimed_before_posting() {
+    use crate::browser::{BrowserActionClaim, BrowserActionDelivery};
+    let mut harness = connected();
+    let session = "facbcc05b00f4321b98b1929d217abc5";
+    harness.http.route(
+        &format!("/v1/sessions/{session}"),
+        json(
+            200,
+            &envelope_response("sessions/recorded-session-get-no-items.json"),
+        ),
+    );
+    harness.http.route(
+        &format!("/v1/sessions/{session}/items"),
+        json(200, r#"{"object":"list","data":[],"has_more":false}"#),
+    );
+    harness.core.open_session(session.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(
+        200,
+        vec![crate::http::HttpHeader {
+            name: "Content-Type".into(),
+            value: "text/event-stream".into(),
+        }],
+    );
+    let frame = "event: browser.action_request\ndata: {\"type\":\"browser.action_request\",\"action_id\":\"baction_1\",\"action\":\"navigate\",\"args\":{\"url\":\"https://example.com\"}}\n\n";
+    sink.chunk(b"event: session.heartbeat\ndata: {\"type\":\"session.heartbeat\"}\n\n".to_vec());
+    sink.chunk(frame.as_bytes().to_vec());
+    sink.chunk(frame.as_bytes().to_vec());
+    harness.pump();
+    let requests: Vec<CoreEvent> = harness
+        .events
+        .all()
+        .into_iter()
+        .filter(|event| matches!(event, CoreEvent::BrowserActionRequested { .. }))
+        .collect();
+    assert_eq!(
+        requests,
+        vec![CoreEvent::BrowserActionRequested {
+            session_id: session.into(),
+            action_id: "baction_1".into(),
+            action: "navigate".into(),
+            args_json: r#"{"url":"https://example.com"}"#.into(),
+        }]
+    );
+
+    harness.http.route_method(
+        "POST",
+        &format!("/v1/sessions/{session}/browser/action_claim/baction_1"),
+        json(200, r#"{"claimed":true,"claim_token":"tok_1"}"#),
+    );
+    harness.http.route_method(
+        "POST",
+        &format!("/v1/sessions/{session}/browser/action_result/baction_1"),
+        json(202, r#"{"resolved":true}"#),
+    );
+    let core = Arc::clone(&harness.core);
+    let claim = harness
+        .run(async move {
+            core.claim_browser_action(session.into(), "baction_1".into())
+                .await
+        })
+        .unwrap();
+    assert_eq!(
+        claim,
+        BrowserActionClaim::Claimed {
+            claim_token: "tok_1".into()
+        }
+    );
+    let core = Arc::clone(&harness.core);
+    let delivery = harness
+        .run(async move {
+            core.post_browser_action_result(
+                session.into(),
+                "baction_1".into(),
+                "tok_1".into(),
+                r#"{"ok":true}"#.into(),
+            )
+            .await
+        })
+        .unwrap();
+    assert_eq!(delivery, BrowserActionDelivery::Resolved);
+    let posted = lock(&harness.http.requests)
+        .iter()
+        .rev()
+        .find(|request| request.url.contains("action_result"))
+        .cloned()
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&posted.body.unwrap()).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({"result": {"ok": true}, "claim_token": "tok_1"})
+    );
+    let core = Arc::clone(&harness.core);
+    let error = harness
+        .run(async move {
+            core.post_browser_action_result(
+                session.into(),
+                "baction_1".into(),
+                "tok_1".into(),
+                "[1]".into(),
+            )
+            .await
+        })
+        .unwrap_err();
+    assert!(matches!(error, CoreError::Decode { .. }));
+}

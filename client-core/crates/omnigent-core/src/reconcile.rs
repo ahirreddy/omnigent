@@ -32,6 +32,8 @@ use crate::reducer::{
     decode_event, diff_rows, project_item, sections,
 };
 
+/// Browser action ids remembered for de-duplication across replays and reconnects.
+pub const MAX_REMEMBERED_BROWSER_ACTIONS: usize = 512;
 /// Events buffered at most while a history read is in flight.
 pub const MAX_BUFFERED_EVENTS: usize = 1_024;
 /// Title of a session that has none.
@@ -623,6 +625,8 @@ pub struct ConversationSync {
     buffered: Vec<ServerStreamEvent>,
     ledger: MetadataLedger,
     revision: u64,
+    /// Browser actions already handed to the host, oldest first; survives reconnects.
+    browser_actions: std::collections::VecDeque<String>,
 }
 
 impl ConversationSync {
@@ -641,6 +645,7 @@ impl ConversationSync {
             buffered: Vec::new(),
             ledger: MetadataLedger::default(),
             revision: 0,
+            browser_actions: std::collections::VecDeque::new(),
         }
     }
 
@@ -858,8 +863,18 @@ impl ConversationSync {
         let Some(reducer) = self.reducer.as_mut() else {
             return Ok(self.publish(changes));
         };
-        let outcome = reducer.apply(&event)?;
+        let mut outcome = reducer.apply(&event)?;
         self.ledger.record_event(&self.session_id, &event);
+        if let Some(request) = &outcome.effects.browser_action {
+            if self.browser_actions.contains(&request.action_id) {
+                outcome.effects.browser_action = None;
+            } else {
+                if self.browser_actions.len() >= MAX_REMEMBERED_BROWSER_ACTIONS {
+                    self.browser_actions.pop_front();
+                }
+                self.browser_actions.push_back(request.action_id.clone());
+            }
+        }
         changes.extend(outcome.changes);
         if self.is_hydrating() {
             self.buffered.push(event);

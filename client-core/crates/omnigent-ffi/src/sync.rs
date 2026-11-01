@@ -93,6 +93,9 @@ pub struct SyncEffects {
     pub error: Option<String>,
     /// Refetch changed files for this environment.
     pub changed_files_environment: Option<String>,
+    /// An agent browser action to claim and run (once per action id).
+    #[uniffi(default)]
+    pub browser_action: Option<crate::browser::BrowserActionRequest>,
 }
 
 /// What one sync input changed and asks for.
@@ -156,6 +159,7 @@ impl SyncUpdate {
                 consumed_pending_id: applied.effects.consumed_pending_id,
                 error: applied.effects.error,
                 changed_files_environment: applied.effects.changed_files_environment,
+                browser_action: applied.effects.browser_action.map(Into::into),
             },
             hydrate: applied
                 .hydrate

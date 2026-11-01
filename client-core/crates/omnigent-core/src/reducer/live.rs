@@ -41,6 +41,21 @@ pub struct Effects {
     pub error: Option<String>,
     /// Refetch changed files for this environment.
     pub changed_files_environment: Option<String>,
+    /// `browser.action_request`: an agent browser action a capable host may claim and run.
+    pub browser_action: Option<BrowserActionRequest>,
+}
+
+/// One agent browser action the server asked a desktop client to perform.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrowserActionRequest {
+    /// The session whose stream delivered it; the claim and result go to this session.
+    pub session_id: String,
+    /// The server's correlation id, for example `baction_…`.
+    pub action_id: String,
+    /// The `browser_` tool name without the prefix, for example `navigate`.
+    pub action: String,
+    /// The tool arguments, as sent.
+    pub args: serde_json::Map<String, Value>,
 }
 
 /// The result of applying one event.

@@ -144,6 +144,9 @@ pub enum SessionError {
     /// A history read could not be applied to the live conversation; reconnect the stream.
     #[error("{0}")]
     Sync(SyncError),
+    /// An agent browser action call failed.
+    #[error("{0}")]
+    BrowserAction(crate::client::browser::BrowserActionError),
 }
 
 impl SessionError {
@@ -217,6 +220,12 @@ impl From<DraftError> for SessionError {
 impl From<UploadError> for SessionError {
     fn from(error: UploadError) -> Self {
         Self::Upload(error)
+    }
+}
+
+impl From<crate::client::browser::BrowserActionError> for SessionError {
+    fn from(error: crate::client::browser::BrowserActionError) -> Self {
+        Self::BrowserAction(error)
     }
 }
 
