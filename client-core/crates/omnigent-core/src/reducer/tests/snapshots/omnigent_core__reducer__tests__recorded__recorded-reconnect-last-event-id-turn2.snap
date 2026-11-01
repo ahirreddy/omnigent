@@ -3,7 +3,7 @@ source: crates/omnigent-core/src/reducer/tests/recorded.rs
 expression: render(harness.snapshot())
 ---
 session facbcc05b00f4321b98b1929d217abc5 "Session" status=idle read_only=false failure=None
-- [user] 2869dc82b2e040cd938f39a5ad5bbc60 
+- [user] 2869dc82b2e040cd938f39a5ad5bbc60
     text: "Now stream a second answer."
 - [assistant] bcad26706c29487ba4c9fd884997094d response=resp_fbcd4d6f91a14300b3c9de39
     text: "Second turn streams its answer in deltas."

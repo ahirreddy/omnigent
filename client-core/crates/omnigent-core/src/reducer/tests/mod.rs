@@ -254,14 +254,11 @@ fn render_row(out: &mut String, row: &Row) {
     if let Some(call) = &row.call_id {
         flags.push(format!("call={call}"));
     }
-    writeln!(
-        out,
-        "- [{}] {} {}",
-        row.role.as_str(),
-        row.id,
-        flags.join(" ")
-    )
-    .unwrap();
+    write!(out, "- [{}] {}", row.role.as_str(), row.id).unwrap();
+    for flag in &flags {
+        write!(out, " {flag}").unwrap();
+    }
+    out.push('\n');
     writeln!(out, "    text: {:?}", row.text).unwrap();
     if let Some(activity) = &row.activity {
         writeln!(

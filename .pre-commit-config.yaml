@@ -199,14 +199,14 @@ repos:
       - id: client-core-cargo-fmt
         name: client-core cargo fmt
         language: system
-        entry: bash -c 'command -v cargo >/dev/null 2>&1 || exit 0; cd client-core && exec cargo fmt --all --check'
+        entry: bash -c '[ -n "${CI:-}" ] && exit 0; command -v cargo >/dev/null 2>&1 || exit 0; cd client-core && exec cargo fmt --all --check'
         files: ^client-core/
         pass_filenames: false
 
       - id: client-core-clippy
         name: client-core clippy
         language: system
-        entry: bash -c 'command -v cargo >/dev/null 2>&1 || exit 0; cd client-core && exec cargo clippy --workspace --all-targets -- -D warnings'
+        entry: bash -c '[ -n "${CI:-}" ] && exit 0; command -v cargo >/dev/null 2>&1 || exit 0; cd client-core && exec cargo clippy --workspace --all-targets -- -D warnings'
         files: ^client-core/
         pass_filenames: false
 

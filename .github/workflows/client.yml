@@ -7,7 +7,7 @@ name: Client
 #
 # The macOS desktop app is the primary target: `rust` and `apple-macos` must
 # pass. `apple-macos` builds and tests both Mac editions: OmnigentMac
-# (Developer ID, embeds CEF) and OmnigentMacAppStore (App Sandbox, WebKit
+# (Developer ID, embeds the CEF web host) and OmnigentMacAppStore (App Sandbox, WebKit
 # only). `apple-ios` (simulator build + test) is non-blocking for now.
 #
 # None of these jobs are in the generated merge-ready REQUIRED list
@@ -20,6 +20,11 @@ on:
       - "client-core/**"
       - "apps/apple/**"
       - ".github/workflows/client.yml"
+      - ".github/workflows/security-gate.yml"
+      - ".github/actions/setup-uv/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
   push:
     branches:
       - main
@@ -27,6 +32,11 @@ on:
       - "client-core/**"
       - "apps/apple/**"
       - ".github/workflows/client.yml"
+      - ".github/workflows/security-gate.yml"
+      - ".github/actions/setup-uv/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
 
 permissions:
   contents: read
@@ -99,8 +109,8 @@ jobs:
     name: Apple client (macOS)
     needs: gate
     if: ${{ !github.event.pull_request.draft }}
-    # Newest hosted macOS image.
-    runs-on: macos-26
+    # Xcode 27 ships on the `xcode-27` image (public preview), not macos-26.
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - name: Check out repo
@@ -108,13 +118,19 @@ jobs:
         with:
           persist-credentials: false
 
-      # The project targets Xcode 27.2. If the runner image does not ship it
-      # yet, latest-stable selects the newest installed release; bump this to
-      # an explicit '27.2' once the image carries it.
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
-        with:
-          xcode-version: latest-stable
+      # The project requires Xcode 27.2 (Tuist compatibleXcodeVersions); the
+      # image may only carry it under a release-candidate app name.
+      - name: Select Xcode 27.2
+        run: |
+          app="$(find /Applications -maxdepth 1 -name 'Xcode_27.2*.app' | sort | head -1)"
+          if [ -z "$app" ]; then
+            echo "::error::Xcode 27.2 is not installed on this runner"
+            find /Applications -maxdepth 1 -name 'Xcode*.app'
+            exit 1
+          fi
+          sudo xcode-select -s "$app"
+          xcodebuild -version
+          xcrun simctl list runtimes
 
       - name: Install pinned Rust toolchain
         working-directory: client-core
@@ -159,7 +175,7 @@ jobs:
       - name: Cache CEF
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: apps/apple/Vendor/cef
+          path: apps/apple/Vendor/cef/out
           key: ${{ steps.cef.outputs.key }}
 
       # Verifies both checksums, builds libcef_dll_wrapper and stages
@@ -239,7 +255,7 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     # Non-blocking while macOS is the primary target.
     continue-on-error: true
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - name: Check out repo
@@ -247,11 +263,18 @@ jobs:
         with:
           persist-credentials: false
 
-      # See apple-macos: the project targets Xcode 27.2.
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
-        with:
-          xcode-version: latest-stable
+      # See apple-macos: the project requires Xcode 27.2.
+      - name: Select Xcode 27.2
+        run: |
+          app="$(find /Applications -maxdepth 1 -name 'Xcode_27.2*.app' | sort | head -1)"
+          if [ -z "$app" ]; then
+            echo "::error::Xcode 27.2 is not installed on this runner"
+            find /Applications -maxdepth 1 -name 'Xcode*.app'
+            exit 1
+          fi
+          sudo xcode-select -s "$app"
+          xcodebuild -version
+          xcrun simctl list runtimes
 
       - name: Install pinned Rust toolchain
         working-directory: client-core
@@ -284,7 +307,7 @@ jobs:
           xcodebuild build
           -workspace apps/apple/Omnigent.xcworkspace
           -scheme Omnigent
-          -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+          -destination 'platform=iOS Simulator,name=iPhone 18 Pro'
           -derivedDataPath apps/apple/build/DerivedData
 
       - name: Test iOS app
@@ -292,5 +315,5 @@ jobs:
           xcodebuild test
           -workspace apps/apple/Omnigent.xcworkspace
           -scheme Omnigent
-          -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+          -destination 'platform=iOS Simulator,name=iPhone 18 Pro'
           -derivedDataPath apps/apple/build/DerivedData
