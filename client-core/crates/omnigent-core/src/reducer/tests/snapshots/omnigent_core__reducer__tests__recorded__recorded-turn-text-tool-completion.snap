@@ -1,0 +1,25 @@
+---
+source: crates/omnigent-core/src/reducer/tests/recorded.rs
+expression: render(harness.snapshot())
+---
+session facbcc05b00f4321b98b1929d217abc5 "Session" status=idle read_only=false failure=None
+- [user] 045b5946e6fd4d06bd2c069cc197b83b 
+    text: "Run the command echo fixture-hello and tell me the result."
+- [tool] fc_e7c5a6a2f2a1 response=resp_e8fb358f78a34e1e962751e7 call=call_fixture_shell_1
+    text: "Tool call: sys_os_shell\ncommand: echo fixture-hello"
+    activity: toolCall "sys_os_shell" / "command: echo fixture-hello" status=Some("completed")
+      arguments "Arguments": "command: echo fixture-hello"
+- [tool] fco_9a23b560712f response=resp_e8fb358f78a34e1e962751e7 call=call_fixture_shell_1
+    text: "cwd: /workspace/tmp/omnigent-runner-os-envs/facbcc05b00f4321b98b1929d217abc5/workspace\nexit_code: 0\nshell: /bin/bash\nstderr: \nstdout: fixture-hello\n\ntimed_out: false"
+    activity: toolResult "Tool result" / "cwd: /workspace/tmp/omnigent-runner-os-envs/facbcc05b00f4321b98b1929d217abc5/workspace\nexit_code: 0\nshell: /bin/bash\nstderr: \nstdout: fixture-hello\n\ntimed_out: false" status=Some("completed")
+      output "Output": "cwd: /workspace/tmp/omnigent-runner-os-envs/facbcc05b00f4321b98b1929d217abc5/workspace\nexit_code: 0\nshell: /bin/bash\nstderr: \nstdout: fixture-hello\n\ntimed_out: false"
+- [assistant] fc970dc6e5674629bc7cf78f82f80cac response=resp_e8fb358f78a34e1e962751e7
+    text: "The command printed fixture-hello."
+section status "Session": "Idle"
+section usage "Usage": "15 context tokens"
+  context_tokens "Context tokens": "15"
+  context_window "Context window": "128000"
+  total_cost_usd "Total cost (USD)": "0.000009"
+  usage_by_model "Usage by model": "mock-model: input_tokens: 20, output_tokens: 10, total_tokens: 30, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, total_cost_usd: 0.000009"
+section presence "Viewers": "0 connected"
+section files-default "Changed files": "Loading changed files…"

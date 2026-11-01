@@ -1,0 +1,28 @@
+---
+source: crates/omnigent-core/src/reducer/tests/recorded.rs
+expression: render(&snapshot)
+---
+session facbcc05b00f4321b98b1929d217abc5 "fixture turn session" status=idle read_only=false failure=None
+- [user] 045b5946e6fd4d06bd2c069cc197b83b response=turn_5c3ff496250f48dda13bc055d25df2f3
+    text: "Run the command echo fixture-hello and tell me the result."
+- [tool] 1925c34ba9774eccacfc49669d9e8ccb response=resp_e8fb358f78a34e1e962751e7 call=call_fixture_shell_1
+    text: "Tool call: sys_os_shell\ncommand: echo fixture-hello"
+    activity: toolCall "sys_os_shell" / "command: echo fixture-hello" status=Some("completed")
+      arguments "Arguments": "command: echo fixture-hello"
+- [tool] be9a01ee49794c88b4d47ca91fab7ab3 response=resp_e8fb358f78a34e1e962751e7 call=call_fixture_shell_1
+    text: "cwd: /workspace/tmp/omnigent-runner-os-envs/facbcc05b00f4321b98b1929d217abc5/workspace\nexit_code: 0\nshell: /bin/bash\nstderr: \nstdout: fixture-hello\n\ntimed_out: false"
+    activity: toolResult "Tool result" / "cwd: /workspace/tmp/omnigent-runner-os-envs/facbcc05b00f4321b98b1929d217abc5/workspace\nexit_code: 0\nshell: /bin/bash\nstderr: \nstdout: fixture-hello\n\ntimed_out: false" status=Some("completed")
+      output "Output": "cwd: /workspace/tmp/omnigent-runner-os-envs/facbcc05b00f4321b98b1929d217abc5/workspace\nexit_code: 0\nshell: /bin/bash\nstderr: \nstdout: fixture-hello\n\ntimed_out: false"
+- [assistant] fc970dc6e5674629bc7cf78f82f80cac response=resp_e8fb358f78a34e1e962751e7
+    text: "The command printed fixture-hello."
+- [user] 2869dc82b2e040cd938f39a5ad5bbc60 response=turn_598e4442c2d349309146f2679933ad29
+    text: "Now stream a second answer."
+- [assistant] bcad26706c29487ba4c9fd884997094d response=resp_fbcd4d6f91a14300b3c9de39
+    text: "Second turn streams its answer in deltas."
+section status "Session": "Idle"
+section usage "Usage": "17 context tokens"
+  context_tokens "Context tokens": "17"
+  context_window "Context window": "128000"
+  total_cost_usd "Total cost (USD)": "0.0000147"
+  usage_by_model "Usage by model": "mock-model: input_tokens: 30, output_tokens: 17, total_tokens: 47, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, total_cost_usd: 0.0000147"
+section todos "Tasks": "0 of 0 complete"

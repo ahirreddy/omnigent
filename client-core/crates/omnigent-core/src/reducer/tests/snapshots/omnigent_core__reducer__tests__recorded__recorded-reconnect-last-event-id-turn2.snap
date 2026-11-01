@@ -1,0 +1,17 @@
+---
+source: crates/omnigent-core/src/reducer/tests/recorded.rs
+expression: render(harness.snapshot())
+---
+session facbcc05b00f4321b98b1929d217abc5 "Session" status=idle read_only=false failure=None
+- [user] 2869dc82b2e040cd938f39a5ad5bbc60 
+    text: "Now stream a second answer."
+- [assistant] bcad26706c29487ba4c9fd884997094d response=resp_fbcd4d6f91a14300b3c9de39
+    text: "Second turn streams its answer in deltas."
+section status "Session": "Idle"
+section usage "Usage": "17 context tokens"
+  context_tokens "Context tokens": "17"
+  context_window "Context window": "128000"
+  total_cost_usd "Total cost (USD)": "0.0000147"
+  usage_by_model "Usage by model": "mock-model: input_tokens: 30, output_tokens: 17, total_tokens: 47, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, total_cost_usd: 0.0000147"
+section presence "Viewers": "0 connected"
+section files-default "Changed files": "Loading changed files…"
