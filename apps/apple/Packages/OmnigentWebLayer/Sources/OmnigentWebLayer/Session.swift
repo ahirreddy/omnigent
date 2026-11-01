@@ -67,6 +67,12 @@ public final class Session {
     isReady && hostMinor >= UInt64(OWL_PROTOCOL_MINOR_PROMPTS)
   }
 
+  /// Whether the running host reports browsing state (favicons, navigation history, audible
+  /// state) and takes mute and hard reload: protocol 1.2 or later.
+  public var supportsBrowsing: Bool {
+    isReady && hostMinor >= UInt64(OWL_PROTOCOL_MINOR_BROWSING)
+  }
+
   /// The running host, if any.
   public var hostInfo: HostInfo? {
     if case .ready(let info) = state { return info }

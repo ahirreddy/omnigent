@@ -43,7 +43,9 @@ OWLDialogKind DialogKindFor(cef_jsdialog_type_t type) {
   return OWLDialogKindAlert;
 }
 
-uint64_t PermissionsFromPrompt(uint32_t requested) {
+/// `local_network`: whether the client knows OWLPermissionLocalNetwork (protocol 1.3); older
+/// clients get those requests as OWLPermissionOther.
+uint64_t PermissionsFromPrompt(uint32_t requested, bool local_network) {
   uint64_t result = 0;
   uint32_t known = 0;
   auto map = [&](uint32_t cef, OWLPermission owl) {
@@ -59,6 +61,11 @@ uint64_t PermissionsFromPrompt(uint32_t requested) {
   map(CEF_PERMISSION_TYPE_NOTIFICATIONS, OWLPermissionNotifications);
   map(CEF_PERMISSION_TYPE_CLIPBOARD, OWLPermissionClipboard);
   map(CEF_PERMISSION_TYPE_MIDI_SYSEX, OWLPermissionMIDI);
+  if (local_network) {
+    map(CEF_PERMISSION_TYPE_LOCAL_NETWORK_ACCESS_DEPRECATED | CEF_PERMISSION_TYPE_LOCAL_NETWORK |
+            CEF_PERMISSION_TYPE_LOOPBACK_NETWORK,
+        OWLPermissionLocalNetwork);
+  }
   if ((requested & ~known) != 0) {
     result |= OWLPermissionOther;
   }
@@ -401,7 +408,8 @@ bool BrowserClient::OnShowPermissionPrompt(CefRefPtr<CefBrowser>, uint64_t cef_p
        Encoder()
            .U64(OWLFieldPromptID, prompt_id)
            .String(OWLFieldOrigin, requesting_origin.ToString())
-           .U64(OWLFieldPermissions, PermissionsFromPrompt(requested_permissions)));
+           .U64(OWLFieldPermissions,
+                PermissionsFromPrompt(requested_permissions, ClientHandlesSignIn())));
   return true;
 }
 

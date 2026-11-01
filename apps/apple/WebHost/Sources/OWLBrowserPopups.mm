@@ -190,13 +190,10 @@ bool BrowserClient::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<Ce
 
 bool BrowserClient::OnBeforeBrowse(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
                                    CefRefPtr<CefRequest> request, bool, bool is_redirect) {
-  if (!rules_.enabled) {
-    return false;
-  }
   const std::string url = request->GetURL().ToString();
-  const std::string reason = rules_.Check(url);
+  const std::string reason = rules_.enabled ? rules_.Check(url) : "";
   if (reason.empty()) {
-    return false;
+    return HandOffExternalNavigation(frame, url);
   }
   Emit(OWLMessageKindNavigationBlocked,
        Encoder()

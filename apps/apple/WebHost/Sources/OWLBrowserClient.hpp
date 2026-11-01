@@ -44,7 +44,7 @@ class BrowserClient : public CefClient,
   void Navigate(const std::string& url);
   void GoBack();
   void GoForward();
-  void Reload();
+  void Reload(bool ignore_cache);
   void Stop();
   void Resize(double width, double height, double scale, double screen_x, double screen_y);
   void SetVisible(bool visible);
@@ -69,6 +69,16 @@ class BrowserClient : public CefClient,
   void SetOpener(uint64_t opener_id) { opener_id_ = opener_id; }
   /// Applies the PopupPolicy and Rules fields of ViewCreate before the first navigation.
   void ApplyInitialPolicies(const Decoder& fields);
+
+  // 1.2 browsing state (OWLBrowserBrowsing.mm).
+  void SetAudioMuted(bool muted);
+
+  // 1.3 sign-in plumbing (OWLBrowserSignIn.mm).
+  /// Whether the client speaks 1.3: local-network permissions and external-protocol hand-off.
+  bool ClientHandlesSignIn() const;
+  /// Cancels a navigation to a scheme Chromium does not render and offers it to the client.
+  /// Returns whether it did (OnBeforeBrowse, UI thread).
+  bool HandOffExternalNavigation(CefRefPtr<CefFrame> frame, const std::string& url);
 
   // CefClient
   CefRefPtr<CefRenderHandler> GetRenderHandler() override { return this; }
@@ -101,6 +111,8 @@ class BrowserClient : public CefClient,
   void OnAddressChange(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                        const CefString& url) override;
   void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override;
+  void OnFaviconURLChange(CefRefPtr<CefBrowser> browser,
+                          const std::vector<CefString>& icon_urls) override;
   void OnLoadingProgressChange(CefRefPtr<CefBrowser> browser, double progress) override;
   bool OnCursorChange(CefRefPtr<CefBrowser> browser, CefCursorHandle cursor,
                       cef_cursor_type_t type, const CefCursorInfo& custom_cursor_info) override;
@@ -257,6 +269,15 @@ class BrowserClient : public CefClient,
   void HandleColorReply(const Decoder& fields);
   /// Installs the isolated-world bridge that projects `<input type=color>` (OWLBrowserInput.mm).
   void InstallPageBridge();
+  /// Whether the client speaks 1.2 and wants browsing state.
+  bool ClientHandlesBrowsing() const;
+  /// Adds the media-state binding and script to the bridge world (1.2).
+  void InstallMediaBridge();
+  /// Sends the back/forward list (1.2).
+  void EmitNavigationHistory();
+  /// Handles bridge events for media state; true when `method` was one of them (1.2).
+  bool HandleMediaEvent(const std::string& method, CefRefPtr<CefDictionaryValue> event);
+  void EmitAudioState();
   /// Runs a DevTools method whose result only matters when it fails (reported as a host error).
   void RunInternalDevTools(const std::string& method, CefRefPtr<CefDictionaryValue> params);
   void FocusForAgent(OWLInputOrigin origin);
@@ -303,6 +324,12 @@ class BrowserClient : public CefClient,
   OWLPopupPolicy popup_policy_ = OWLPopupPolicyRequireGesture;
   NavigationRules rules_;
   OWLInputOrigin last_pointer_origin_ = OWLInputOriginUser;
+
+  // 1.2 state.
+  std::map<int, bool> audible_contexts_;  // execution context ID -> audible
+  bool audible_ = false;
+  bool muted_ = false;
+  std::string last_history_json_;
 
   IMPLEMENT_REFCOUNTING(BrowserClient);
 };

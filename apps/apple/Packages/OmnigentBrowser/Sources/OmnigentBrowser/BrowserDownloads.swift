@@ -42,6 +42,8 @@ public final class BrowserDownload: Identifiable {
   public package(set) var totalBytes: Int64?
   /// Progress state.
   public package(set) var state = BrowserDownloadState.inProgress
+  /// The storage identifier of the profile whose tab started it.
+  public package(set) var profileIdentifier: String?
   @ObservationIgnored private let cancelAction: () throws(BrowserError) -> Void
 
   /// Creates a download; `cancel` asks the engine to stop it.
@@ -92,6 +94,16 @@ public final class BrowserDownloadCenter {
   /// Removes finished downloads. Files stay on disk.
   public func clearFinished() {
     items.removeAll { $0.state.isFinal }
+  }
+
+  /// Removes one profile's finished downloads.
+  public func clearFinished(profileIdentifier: String) {
+    items.removeAll { $0.state.isFinal && $0.profileIdentifier == profileIdentifier }
+  }
+
+  /// One profile's downloads, newest first.
+  public func items(profileIdentifier: String) -> [BrowserDownload] {
+    items.filter { $0.profileIdentifier == profileIdentifier }
   }
 
   /// Whether anything is still downloading.

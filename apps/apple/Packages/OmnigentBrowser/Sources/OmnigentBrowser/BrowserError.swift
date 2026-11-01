@@ -51,6 +51,16 @@ nonisolated public enum BrowserError: Error, Hashable, Sendable {
   case credentialStoreFailed(String)
   /// Agent input or an agent action failed.
   case agentActionFailed(String)
+  /// Reading or writing the browser's files (profiles, history, bookmarks, restore state) failed.
+  case storageFailed(String)
+  /// Saved state is from a newer version of the app.
+  case restoreStateUnsupported(version: Int)
+  /// No profile has this ID.
+  case profileNotFound(UUID)
+  /// A profile operation is not possible (deleting the last profile, an empty name).
+  case profileInvalid(String)
+  /// Printing failed.
+  case printFailed(String)
 
   /// Whether the error only reflects a superseded or stopped navigation.
   public var isCancellation: Bool {
@@ -111,6 +121,16 @@ extension BrowserError: LocalizedError {
       "Saving or reading the password failed: \(message)"
     case .agentActionFailed(let message):
       "The browser action failed: \(message)"
+    case .storageFailed(let message):
+      "Saving or reading browser data failed: \(message)"
+    case .restoreStateUnsupported(let version):
+      "The saved browser state (version \(version)) is from a newer version of the app."
+    case .profileNotFound(let id):
+      "No browser profile has the ID \(id.uuidString)."
+    case .profileInvalid(let message):
+      message
+    case .printFailed(let message):
+      "Printing failed: \(message)"
     }
   }
 }

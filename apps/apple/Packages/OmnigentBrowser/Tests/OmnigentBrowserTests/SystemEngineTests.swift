@@ -93,4 +93,44 @@ struct SystemEngineTests {
     #expect(tab.state.isClosed)
     await #expect(throws: BrowserError.tabClosed) { try await tab.evaluateJavaScript("1") }
   }
+
+  @Test func historyAndInteractionStateRestoreIntoANewTab() async throws {
+    let engine = SystemBrowserEngine()
+    let first = try writePage("h1.html", title: "History One", body: "")
+    let second = try writePage("h2.html", title: "History Two", body: "")
+    let tab = try engine.makeTab(profile: .ephemeral("test-restore"), initialURL: first)
+    defer { tab.close() }
+    #expect(try await waitUntil { !tab.state.isLoading && tab.state.title == "History One" })
+    tab.load(second)
+    #expect(try await waitUntil { !tab.state.isLoading && tab.state.title == "History Two" })
+    let history = tab.navigationHistory
+    #expect(history.entries.map(\.title) == ["History One", "History Two"])
+    #expect(history.currentIndex == 1)
+    let data = try #require(tab.engineRestoreData)
+
+    let restored = try engine.makeTab(profile: .ephemeral("test-restore"), initialURL: nil)
+    defer { restored.close() }
+    #expect(restored.restoreEngineState(data))
+    #expect(
+      try await waitUntil { !restored.state.isLoading && restored.state.title == "History Two" })
+    #expect(restored.state.canGoBack)
+    restored.goBack()
+    #expect(try await waitUntil { restored.state.title == "History One" })
+  }
+
+  @Test func zoomHardReloadAndMuteUpdateState() async throws {
+    let engine = SystemBrowserEngine()
+    let page = try writePage("z.html", title: "Zoom", body: "<audio></audio>")
+    let tab = try engine.makeTab(profile: .ephemeral("test-zoom"), initialURL: page)
+    defer { tab.close() }
+    #expect(try await waitUntil { !tab.state.isLoading && tab.state.title == "Zoom" })
+    tab.setZoomFactor(1.25)
+    #expect(tab.state.zoomFactor == 1.25)
+    tab.setAudioMuted(true)
+    #expect(tab.state.isMuted)
+    tab.reload(ignoringCache: true)
+    #expect(try await waitUntil { !tab.state.isLoading && tab.state.title == "Zoom" })
+    let source = try await tab.viewSourceURL()
+    #expect(source.scheme == "data")
+  }
 }

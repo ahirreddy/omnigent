@@ -37,6 +37,14 @@ public final class BrowserTabState {
   public package(set) var pendingPrompts: [BrowserPrompt] = []
   /// The most recent window the popup policy stopped, for a "popup blocked" notice.
   public package(set) var lastBlockedPopup: BrowserBlockedPopup?
+  /// The page's best icon URL, when the engine knows it.
+  public package(set) var faviconURL: URL?
+  /// Whether the page is playing media with sound (muted or not).
+  public package(set) var isAudible = false
+  /// Whether the tab's audio is muted.
+  public package(set) var isMuted = false
+  /// Page zoom; 1 is 100%.
+  public package(set) var zoomFactor: Double = 1
 
   /// Creates empty state.
   public init() {}
@@ -98,6 +106,8 @@ public protocol BrowserTab: AnyObject {
   func goForward()
   /// Reloads the current page.
   func reload()
+  /// Reloads; `ignoringCache` revalidates every resource (hard reload).
+  func reload(ignoringCache: Bool)
   /// Stops the current load.
   func stopLoading()
   /// Evaluates a script in the main frame and returns its completion value. Promises are not
@@ -108,8 +118,27 @@ public protocol BrowserTab: AnyObject {
   /// Highlights the next match for `text`.
   func find(_ text: String, forward: Bool, caseSensitive: Bool) async throws(BrowserError)
     -> BrowserFindResult
+  /// Clears find-in-page highlights.
+  func stopFinding()
   /// Opens the engine's web inspector.
   func showDevTools() throws(BrowserError)
+  /// Sets the page zoom (1 is 100%); `state.zoomFactor` follows.
+  func setZoomFactor(_ factor: Double)
+  /// Mutes or unmutes the tab; `state.isMuted` follows.
+  func setAudioMuted(_ muted: Bool)
+  /// The back/forward list, for session restore.
+  var navigationHistory: BrowserNavigationHistory { get }
+  /// Opaque engine state that restores history more completely (WebKit's `interactionState`);
+  /// nil when the engine has none.
+  var engineRestoreData: Data? { get }
+  /// Applies `engineRestoreData` from an earlier tab of the same engine, before anything loads.
+  /// Returns false when the engine cannot use the data; the caller then restores the history
+  /// itself.
+  func restoreEngineState(_ data: Data) -> Bool
+  /// Shows the print panel for the page.
+  func printPage() async throws(BrowserError)
+  /// A URL showing the page's source, for a new tab.
+  func viewSourceURL() async throws(BrowserError) -> URL
   /// Tears down the engine view. Idempotent.
   func close()
 

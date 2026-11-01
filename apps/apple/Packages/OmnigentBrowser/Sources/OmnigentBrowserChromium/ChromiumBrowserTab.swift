@@ -100,6 +100,10 @@
       state.canGoForward = webView.canGoForward
       state.lastError = webView.lastError.map(Self.convert)
       state.isClosed = webView.status == .closed
+      state.faviconURL = webView.faviconURLs.first
+      state.isAudible = webView.isAudible
+      state.isMuted = webView.isAudioMuted
+      state.zoomFactor = pow(1.2, webView.zoomLevel)
     }
 
     static func webPolicy(_ policy: BrowserPopupPolicy) -> WebPopupPolicy {

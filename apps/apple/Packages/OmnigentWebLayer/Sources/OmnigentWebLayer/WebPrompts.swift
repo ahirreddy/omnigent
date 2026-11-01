@@ -17,6 +17,17 @@ public protocol WebViewUIDelegate: AnyObject {
   func webView(_ webView: WebView, didOpen popup: WebPopup)
   /// The popup policy stopped a new window.
   func webView(_ webView: WebView, didBlock popup: WebBlockedPopup)
+  /// The page navigated to a scheme Chromium does not handle, such as Okta Verify's
+  /// `com-okta-authenticator:` (protocol 1.3). Ask the user before opening it with the OS. The
+  /// default reports it as `WebViewEvent.featureBlocked`.
+  func webView(_ webView: WebView, wantsToOpenExternally request: WebExternalURLRequest)
+}
+
+extension WebViewUIDelegate {
+  /// Reports the request as blocked.
+  public func webView(_ webView: WebView, wantsToOpenExternally request: WebExternalURLRequest) {
+    webView.reportUnhandledExternalURL(request)
+  }
 }
 
 /// A page request that needs an answer.
@@ -177,6 +188,9 @@ nonisolated public struct WebPermissions: OptionSet, Sendable, Hashable {
   public static let screenCapture = Self(rawValue: OWLPermission.screenCapture.rawValue)
   /// MIDI system exclusive messages.
   public static let midi = Self(rawValue: OWLPermission.MIDI.rawValue)
+  /// Requests to loopback or private-network addresses, such as Okta FastPass probing Okta
+  /// Verify on 127.0.0.1 (protocol 1.3; older hosts report them as `other`).
+  public static let localNetwork = Self(rawValue: OWLPermission.localNetwork.rawValue)
   /// A request type with no case of its own. Deny it.
   public static let other = Self(rawValue: OWLPermission.other.rawValue)
 }

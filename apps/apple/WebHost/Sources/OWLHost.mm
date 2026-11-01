@@ -639,7 +639,10 @@ void Host::HandleViewMessage(owl_message* message, const Decoder& fields) {
       view->GoForward();
       break;
     case OWLMessageKindReload:
-      view->Reload();
+      view->Reload(fields.Bool(OWLFieldIgnoreCache).value_or(false));
+      break;
+    case OWLMessageKindSetAudioMuted:
+      view->SetAudioMuted(fields.Bool(OWLFieldMuted).value_or(false));
       break;
     case OWLMessageKindStop:
       view->Stop();

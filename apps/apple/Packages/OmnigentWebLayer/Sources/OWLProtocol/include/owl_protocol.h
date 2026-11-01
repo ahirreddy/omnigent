@@ -13,12 +13,22 @@
 #include <stdint.h>
 
 #define OWL_PROTOCOL_MAJOR 1
-#define OWL_PROTOCOL_MINOR 1
+#define OWL_PROTOCOL_MINOR 3
 
 /// The first minor version with projected browser UI (prompts, downloads, popups, IME, drag and
 /// drop). Each side enables those features only when the peer advertises at least this minor;
 /// otherwise the host keeps blocking them as in 1.0.
 #define OWL_PROTOCOL_MINOR_PROMPTS 1
+
+/// The first minor version with browsing state for a full browser: favicons, navigation history
+/// for session restore, audible state and per-view mute, and hard reload. Each side sends these
+/// only when the peer advertises at least this minor.
+#define OWL_PROTOCOL_MINOR_BROWSING 2
+
+/// The first minor version with sign-in plumbing: local-network permission requests (Okta
+/// FastPass and device-trust agents probe 127.0.0.1) and custom-scheme hand-off to native apps
+/// (`com-okta-authenticator:`). Older clients get them as OWLPermissionOther and FeatureBlocked.
+#define OWL_PROTOCOL_MINOR_SIGN_IN 3
 
 /// Payload encoding: a sequence of fields, each an 8-byte header followed by `length` bytes.
 /// Integers and floats are little-endian. Strings are UTF-8 without a terminator.
@@ -166,6 +176,10 @@ typedef CF_ENUM(uint16_t, OWLField) {
   OWLFieldColor = 122,
   OWLFieldDownloadCommand = 123,
   OWLFieldAgentInput = 124,
+  // 1.2: browsing state. See DESIGN.md, "Browsing state (protocol 1.2)".
+  OWLFieldMuted = 125,
+  OWLFieldAudible = 126,
+  OWLFieldIgnoreCache = 127,
 };
 
 /// Structured 1.1 fields are UTF-8 JSON strings, because the TLV encoding has no lists:
@@ -181,6 +195,11 @@ typedef CF_ENUM(uint16_t, OWLField) {
 /// - Rects: `[[x, y, width, height], ...]` in view points, top-left origin.
 /// - DragData: `{"text", "html", "url", "urlTitle", "fileName", "paths": [...]}`, every key
 ///   optional.
+///
+/// 1.2 JSON fields (in OWLFieldJSON):
+/// - FaviconURLChanged: `["https://example.com/favicon.ico", ...]`, best first.
+/// - NavigationHistory: `{"index": 1, "entries": [{"url": "...", "title": "..."}, ...]}`, the
+///   view's whole back/forward list; `index` is the current entry.
 
 /// Message kinds. "C->H" is client to host, "H->C" host to client. `target` in the envelope is
 /// the profile or view ID the message addresses (0 for session messages). `request` pairs a
@@ -215,7 +234,7 @@ typedef CF_ENUM(uint16_t, OWLMessageKind) {
   OWLMessageKindNavigate = 35,       // C->H URL
   OWLMessageKindGoBack = 36,         // C->H
   OWLMessageKindGoForward = 37,      // C->H
-  OWLMessageKindReload = 38,         // C->H
+  OWLMessageKindReload = 38,         // C->H IgnoreCache? (1.2; older hosts reload normally)
   OWLMessageKindStop = 39,           // C->H
   OWLMessageKindSetZoom = 40,        // C->H ZoomLevel
   OWLMessageKindEvaluate = 41,       // C->H Script (request) -> EvaluateResult
@@ -280,6 +299,10 @@ typedef CF_ENUM(uint16_t, OWLMessageKind) {
   OWLMessageKindDragSourceEnded = 99,    // C->H X Y DragOperations
   OWLMessageKindColorReply = 100,        // C->H PromptID Accepted Color?
 
+  // 1.2, client to host (target: view ID). Sent only to hosts that advertise
+  // OWL_PROTOCOL_MINOR_BROWSING.
+  OWLMessageKindSetAudioMuted = 101,     // C->H Muted
+
   // 1.1, host to client (target: view ID; PopupCreated targets the new view).
   OWLMessageKindJSDialog = 110,          // H->C PromptID DialogKind Origin Message DefaultText?
                                          //      IsReload?
@@ -305,6 +328,18 @@ typedef CF_ENUM(uint16_t, OWLMessageKind) {
   OWLMessageKindDragCursor = 124,        // H->C DragOperations
   OWLMessageKindColorChooser = 125,      // H->C PromptID Color
   OWLMessageKindTextSelectionChanged = 126, // H->C Text RangeStart RangeEnd
+
+  // 1.2, host to client (target: view ID). Sent only to clients that advertise
+  // OWL_PROTOCOL_MINOR_BROWSING.
+  OWLMessageKindFaviconURLChanged = 127, // H->C JSON (URL list)
+  OWLMessageKindNavigationHistory = 128, // H->C JSON (entries and current index)
+  OWLMessageKindAudioStateChanged = 129, // H->C Audible Muted
+
+  // 1.3, host to client (target: view ID). Sent only to clients that advertise
+  // OWL_PROTOCOL_MINOR_SIGN_IN.
+  OWLMessageKindExternalProtocol = 130,  // H->C URL Origin? (a navigation to a scheme Chromium
+                                         //      does not handle; the client may open it with
+                                         //      the OS, the host never does)
 };
 
 /// How the host delivers pixels. See DESIGN.md, "Rendering".
@@ -420,6 +455,8 @@ typedef CF_OPTIONS(uint64_t, OWLPermission) {
   OWLPermissionClipboard = 1 << 4,
   OWLPermissionScreenCapture = 1 << 5,
   OWLPermissionMIDI = 1 << 6,
+  /// 1.3: requests to loopback or private-network addresses (Chromium's Local Network Access).
+  OWLPermissionLocalNetwork = 1 << 7,
   /// Any request type without its own bit. Clients deny it.
   OWLPermissionOther = 1 << 30,
 };

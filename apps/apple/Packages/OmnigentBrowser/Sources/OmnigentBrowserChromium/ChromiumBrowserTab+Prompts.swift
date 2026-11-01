@@ -52,6 +52,11 @@
       delegate?.tab(self, didBlock: blocked)
     }
 
+    func webView(_ webView: WebView, wantsToOpenExternally request: WebExternalURLRequest) {
+      BrowserExternalApplication.request(
+        request.url, origin: request.origin, from: self, delegate: delegate)
+    }
+
     /// Finishes a prompt locally once it is answered.
     private func finished(_ id: UInt64) {
       if let mapped = prompts.removeValue(forKey: id) {

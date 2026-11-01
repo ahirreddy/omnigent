@@ -1,0 +1,17 @@
+# Pins Omnigent's own CEF build for `fetch-cef.sh --source omnigent`. Sourced by bash.
+#
+# The release workflow (engine/chromium-engine.yml) prints these values. Leave them empty until
+# the first build is published; fetch-cef.sh then refuses --source omnigent. When pinning a
+# build, also set BrowserTargets.cefVersion to OMNIGENT_CEF_VERSION in the same change.
+#
+# OMNIGENT_CEF_VERSION      CEF's own version string; the archive extracts to
+#                           cef_binary_<version>_<platform>_minimal.
+# OMNIGENT_CEF_BUILD        Omnigent build ID, for example 156.0.8078.80-omnigent.1; also the
+#                           release tag suffix (engine-<build>).
+# OMNIGENT_CEF_RELEASE_URL  Release download base, without a trailing slash.
+# OMNIGENT_CEF_SHA256_*     SHA-256 of omnigent-cef-<build>-<platform>-minimal.tar.bz2.
+OMNIGENT_CEF_VERSION=""
+OMNIGENT_CEF_BUILD=""
+OMNIGENT_CEF_RELEASE_URL=""
+OMNIGENT_CEF_SHA256_MACOSARM64=""
+OMNIGENT_CEF_SHA256_MACOSX64=""

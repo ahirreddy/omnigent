@@ -37,7 +37,7 @@ public final class Profile {
   /// Filesystem-safe directory key derived from the identifier: the first 16 bytes of its
   /// SHA-256, hex encoded.
   public var storageKey: String {
-    SHA256.hash(data: Data(identifier.utf8)).prefix(16).map(\.hexByte).joined()
+    Self.storageKey(for: identifier)
   }
 
   /// Creates a view in this profile. It appears once the host is ready.
@@ -56,6 +56,13 @@ public final class Profile {
       view.close()
     }
     session.remove(self)
+  }
+}
+
+/// The first 16 bytes of SHA-256, hex encoded.
+nonisolated enum SHA256Digest16 {
+  static func hex(_ text: String) -> String {
+    SHA256.hash(data: Data(text.utf8)).prefix(16).map(\.hexByte).joined()
   }
 }
 

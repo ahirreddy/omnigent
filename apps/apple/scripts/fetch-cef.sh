@@ -3,8 +3,12 @@
 # verify it against pinned SHA-256 and SHA-1 checksums, build libcef_dll_wrapper, and
 # stage a stable consumable layout under apps/apple/Vendor/cef/out.
 #
-# Usage: fetch-cef.sh [--arch arm64|x86_64|universal] [--force]
+# Usage: fetch-cef.sh [--arch arm64|x86_64|universal] [--source spotify|omnigent] [--force]
 #   default arch is the host architecture.
+#   --source spotify (default): the stock build from CEF's automated builder.
+#   --source omnigent: Omnigent's own CEF build (CI, GitHub Releases), pinned in
+#     scripts/engine/omnigent-cef.lock. See docs/browser-engine-decision.md. The source can
+#     also be set with OMNIGENT_CEF_SOURCE.
 #
 # Output layout (consumed by OmnigentBrowser/Package.swift and BrowserTargets.swift):
 #   Vendor/cef/out/include/...                          CEF headers (include "include/cef_app.h")
@@ -40,14 +44,49 @@ die() { echo "fetch-cef: error: $*" >&2; exit 1; }
 
 ARCH=""
 FORCE=0
+SOURCE="${OMNIGENT_CEF_SOURCE:-spotify}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --arch) ARCH="${2:-}"; shift 2 ;;
+    --source) SOURCE="${2:-}"; shift 2 ;;
     --force) FORCE=1; shift ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) die "unknown argument '$1'" ;;
   esac
 done
+
+# Archive name on the server for a platform; the extracted directory keeps CEF's own name.
+archive_name() { echo "cef_binary_${CEF_VERSION}_${1}_${CEF_DIST}.tar.bz2"; }
+# Keeps Omnigent builds apart from stock ones, which extract to the same directory name.
+SOURCE_TAG=""
+case "$SOURCE" in
+  spotify) ;;
+  omnigent)
+    lock="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/engine/omnigent-cef.lock"
+    [[ -f "$lock" ]] || die "missing $lock"
+    # shellcheck source=engine/omnigent-cef.lock
+    source "$lock"
+    [[ -n "${OMNIGENT_CEF_VERSION:-}" && -n "${OMNIGENT_CEF_RELEASE_URL:-}" ]] \
+      || die "no Omnigent CEF build is pinned in $lock yet; use --source spotify"
+    CEF_VERSION="$OMNIGENT_CEF_VERSION"
+    SOURCE_TAG="omnigent-${OMNIGENT_CEF_BUILD:?OMNIGENT_CEF_BUILD is not set in $lock}"
+    CEF_CDN="$OMNIGENT_CEF_RELEASE_URL"
+    # GitHub Releases rewrites '+' in asset names, so Omnigent assets use their own names.
+    archive_name() { echo "omnigent-cef-${OMNIGENT_CEF_BUILD}-${1}-${CEF_DIST}.tar.bz2"; }
+    sha256_for() {
+      local value
+      case "$1" in
+        macosarm64) value="${OMNIGENT_CEF_SHA256_MACOSARM64:-}" ;;
+        macosx64) value="${OMNIGENT_CEF_SHA256_MACOSX64:-}" ;;
+      esac
+      [[ -n "$value" ]] || { echo "fetch-cef: no pinned sha256 for platform '$1' in $lock" >&2; return 1; }
+      echo "$value"
+    }
+    # Omnigent builds pin SHA-256 only; the release workflow publishes no SHA-1.
+    sha1_for() { echo "-"; }
+    ;;
+  *) die "unknown --source '$SOURCE' (expected spotify or omnigent)" ;;
+esac
 if [[ -z "$ARCH" ]]; then
   ARCH="$(uname -m)"
 fi
@@ -65,9 +104,9 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENDOR="$(cd "$SCRIPT_DIR/.." && pwd)/Vendor/cef"
 DOWNLOADS="$VENDOR/downloads"
-DIST_ROOT="$VENDOR/dist"
+DIST_ROOT="$VENDOR/dist${SOURCE_TAG:+-$SOURCE_TAG}"
 OUT="$VENDOR/out"
-STAMP_CONTENT="$CEF_VERSION $CEF_DIST $ARCH versioned-framework"
+STAMP_CONTENT="$CEF_VERSION $CEF_DIST $ARCH versioned-framework${SOURCE_TAG:+ $SOURCE_TAG}"
 FRAMEWORK_NAME="Chromium Embedded Framework.framework"
 
 if [[ $FORCE -eq 0 && -f "$OUT/CEF_VERSION" && "$(cat "$OUT/CEF_VERSION")" == "$STAMP_CONTENT" ]]; then
@@ -86,6 +125,7 @@ verify() {
     return 1
   }
   expected="$(sha1_for "$platform")"
+  [[ "$expected" == "-" ]] && return 0
   actual="$(shasum -a 1 "$file" | awk '{print $1}')"
   [[ "$actual" == "$expected" ]] || {
     echo "fetch-cef: SHA-1 mismatch for $file: expected $expected, got $actual" >&2
@@ -96,8 +136,10 @@ verify() {
 fetch_platform() {
   local platform="$1"
   local base="cef_binary_${CEF_VERSION}_${platform}_${CEF_DIST}"
-  local archive="$DOWNLOADS/$base.tar.bz2"
-  local encoded="${base//+/%2B}.tar.bz2"
+  local name
+  name="$(archive_name "$platform")"
+  local archive="$DOWNLOADS/$name"
+  local encoded="${name//+/%2B}"
 
   if [[ -f "$archive" ]] && ! verify "$archive" "$platform"; then
     echo "fetch-cef: cached archive failed verification; re-downloading" >&2
@@ -109,7 +151,7 @@ fetch_platform() {
     mv "$archive.partial" "$archive"
     verify "$archive" "$platform" || { rm -f "$archive"; die "downloaded archive failed checksum verification"; }
   fi
-  echo "fetch-cef: verified $base.tar.bz2 (sha256 $(sha256_for "$platform"))"
+  echo "fetch-cef: verified $name (sha256 $(sha256_for "$platform"))"
 
   local dist="$DIST_ROOT/$base"
   if [[ ! -f "$dist/.extracted" ]]; then

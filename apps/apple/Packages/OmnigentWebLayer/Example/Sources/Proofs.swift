@@ -30,6 +30,14 @@ final class Proofs {
     "popups": { $0.popups }, "menu": { $0.contextMenu }, "ime": { $0.ime },
     "drag": { $0.dragAndDrop },
     "color": { $0.color }, "agent-actions": { $0.agentActions },
+    // Browsing through BrowserTabModel (`--engine` picks one).
+    "profiles": { $0.browserProfiles }, "browsing": { $0.browsingEssentials },
+    "reopen": { $0.reopenClosedTab }, "restore": { $0.restoreAcrossRelaunch },
+    "restore-verify": { $0.restoreVerify },
+    // Sign-in capability spikes (Proofs+Authentication.swift).
+    "webauthn": { $0.webAuthnProbe }, "webauthn-virtual": { $0.webAuthnVirtual },
+    "webauthn-tab": { $0.webAuthnTab },
+    "loopback": { $0.loopbackProbe }, "external-scheme": { $0.externalScheme },
   ]
 
   /// The 1.1 proofs, in order.
@@ -64,7 +72,12 @@ final class Proofs {
     window?.makeKeyAndOrderFront(nil)
     defer { server?.stop() }
     let expanded = names.flatMap { name in
-      name == "all" ? Self.all : name == "browser-ui" ? Self.browserUI : [name]
+      name == "all"
+        ? Self.all
+        : name == "browser-ui"
+          ? Self.browserUI
+          : name == "browser2"
+            ? Self.browsing : name == "authentication" ? Self.authentication : [name]
     }
     for name in expanded {
       Clock.log("== proof \(name)")

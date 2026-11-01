@@ -123,6 +123,7 @@ public final class BrowserPromptPresenter: BrowserTabDelegate {
 
   /// Adds the download to the downloads list.
   public func tab(_ tab: any BrowserTab, didStart download: BrowserDownload) {
+    download.profileIdentifier = tab.profile.identifier
     downloadCenter.add(download)
   }
 

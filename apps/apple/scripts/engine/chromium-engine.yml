@@ -1,0 +1,93 @@
+# DRAFT, not active: move to .github/workflows/chromium-engine.yml once the self-hosted macOS
+# builders exist (see apps/apple/docs/browser-engine-decision.md, "Prebuilt engine pipeline").
+#
+# Builds Omnigent's patched CEF for macOS arm64 and x86_64 on self-hosted Macs, attests the
+# archives, and publishes them as a GitHub release `engine-<build>`. A maintainer then pins the
+# printed checksums in apps/apple/scripts/engine/omnigent-cef.lock and BrowserTargets.cefVersion.
+name: chromium-engine
+
+on:
+  workflow_dispatch:
+    inputs:
+      cef_branch:
+        description: CEF branch (Chromium build number, e.g. 8078)
+        required: true
+      cef_commit:
+        description: CEF commit on that branch
+        required: true
+      build:
+        description: Omnigent build ID, e.g. 156.0.8078.80-omnigent.1
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chromium-engine-${{ inputs.build }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: arm64
+            platform: macosarm64
+          - arch: x86_64
+            platform: macosx64
+    # Hosted macOS runners have 14 GB of disk and a 6-hour job limit; Chromium needs about
+    # 150 GB and several hours. Self-hosted builders keep the checkout between runs.
+    runs-on: [self-hosted, macOS, ARM64, chromium-engine]
+    timeout-minutes: 900
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build CEF
+        run: >-
+          apps/apple/scripts/engine/build-cef.sh
+          --arch "${{ matrix.arch }}"
+          --cef-branch "${{ inputs.cef_branch }}"
+          --cef-commit "${{ inputs.cef_commit }}"
+          --build "${{ inputs.build }}"
+          --work "$HOME/chromium-engine/${{ matrix.arch }}"
+          --out "$RUNNER_TEMP/engine"
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ runner.temp }}/engine/omnigent-cef-*.tar.bz2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-${{ matrix.platform }}
+          path: ${{ runner.temp }}/engine/
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: engine
+          merge-multiple: true
+      - name: Verify checksums
+        working-directory: engine
+        run: shasum -a 256 --check ./*.sha256
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "engine-${{ inputs.build }}" engine/*
+          --repo "${{ github.repository }}" --prerelease
+          --title "Omnigent Chromium engine ${{ inputs.build }}"
+          --notes "CEF ${{ inputs.cef_branch }}@${{ inputs.cef_commit }} with apps/apple/scripts/engine/patches at ${{ github.sha }}."
+      - name: Print lock values
+        run: |
+          echo "OMNIGENT_CEF_BUILD=\"${{ inputs.build }}\""
+          echo "OMNIGENT_CEF_RELEASE_URL=\"https://github.com/${{ github.repository }}/releases/download/engine-${{ inputs.build }}\""
+          for file in engine/*.sha256; do cat "$file"; done

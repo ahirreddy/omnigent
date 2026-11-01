@@ -144,6 +144,9 @@ nonisolated public struct BrowserPermissions: OptionSet, Sendable, Hashable {
   public static let screenCapture = Self(rawValue: 1 << 5)
   /// MIDI.
   public static let midi = Self(rawValue: 1 << 6)
+  /// Loopback and private-network requests, such as Okta FastPass probing Okta Verify on
+  /// 127.0.0.1 (Chromium's Local Network Access).
+  public static let localNetwork = Self(rawValue: 1 << 7)
   /// Anything else; always denied.
   public static let other = Self(rawValue: 1 << 30)
 
@@ -151,7 +154,9 @@ nonisolated public struct BrowserPermissions: OptionSet, Sendable, Hashable {
   public static let named: [(Self, String)] = [
     (.camera, "camera"), (.microphone, "microphone"), (.geolocation, "location"),
     (.notifications, "notifications"), (.clipboard, "clipboard"),
-    (.screenCapture, "screen capture"), (.midi, "MIDI devices"), (.other, "other features"),
+    (.screenCapture, "screen capture"), (.midi, "MIDI devices"),
+    (.localNetwork, "apps and devices on your computer and local network"),
+    (.other, "other features"),
   ]
 
   /// The names of the permissions in this set.

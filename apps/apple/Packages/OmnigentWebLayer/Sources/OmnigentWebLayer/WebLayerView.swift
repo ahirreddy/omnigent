@@ -230,6 +230,12 @@ final class WebSurfaceView: NSView {
   private func redispatch(_ event: NSEvent) {
     redispatching = true
     defer { redispatching = false }
+    // The window first, as AppKit orders key equivalents: shortcuts of SwiftUI controls in the
+    // window (a browser toolbar's Find, Zoom) live in its view hierarchy, not the main menu.
+    if event.modifierFlags.contains(.command), hostWindow?.performKeyEquivalent(with: event) == true
+    {
+      return
+    }
     if NSApp.mainMenu?.performKeyEquivalent(with: event) == true {
       return
     }

@@ -9,6 +9,10 @@ extension SystemBrowserTab: WKNavigationDelegate {
     state.lastError = nil
   }
 
+  func webView(_ webView: WKWebView, didCommit navigation: WKNavigation?) {
+    mainFrameCommitted()
+  }
+
   func webView(
     _ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation?,
     withError error: any Error
@@ -36,6 +40,15 @@ extension SystemBrowserTab: WKNavigationDelegate {
     {
       state.lastError = .navigationBlocked(url: url, reason: reason)
       decisionHandler(.cancel)
+      return
+    }
+    if let url = navigationAction.request.url, let scheme = url.scheme,
+      !WKWebView.handlesURLScheme(scheme), BrowserExternalApplication.isExternal(url)
+    {
+      // WebKit would fail with "unsupported URL"; offer the registered app instead.
+      decisionHandler(.cancel)
+      BrowserExternalApplication.request(
+        url, origin: navigationAction.sourceFrame.request.url, from: self, delegate: delegate)
       return
     }
     decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow)

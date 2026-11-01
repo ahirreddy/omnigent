@@ -10,7 +10,10 @@ extension Proofs {
 
   func proofServer() async throws -> ProofServer {
     if let server { return server }
-    let started = try ProofServer(pages: Self.servedPages)
+    let started = try ProofServer(
+      pages: Self.servedPages.merging(Self.browsingPages) { first, _ in first }
+        .merging(Self.authenticationPages) { first, _ in first },
+      port: model.options.serverPort)
     try await started.start()
     server = started
     return started
@@ -131,7 +134,7 @@ extension Proofs {
     return try await capture(name, ["-R\(rect)"])
   }
 
-  private func capture(_ name: String, _ arguments: [String]) async throws -> URL {
+  func capture(_ name: String, _ arguments: [String]) async throws -> URL {
     let url = outputDirectory.appending(path: "owl2-\(name)-\(engineSuffix).png")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")

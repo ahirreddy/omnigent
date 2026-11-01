@@ -28,6 +28,14 @@ extension Session {
       state = .failed(.hostNotBundled(path: configuration.hostAppURL.path))
       return
     }
+    do throws(WebLayerError) {
+      try sweepPendingDeletions()
+    } catch {
+      // Leftover storage of a deleted profile is retried at the next launch.
+      Logger.session.error(
+        "Removing deleted profiles failed: \(error.localizedDescription, privacy: .public)")
+      lastProtocolError = error
+    }
     requestedMode = configuration.renderMode
     if requestedMode == .remoteLayer, !LayerHost.isRemoteLayerSupported {
       Logger.session.error("CALayerHost is unavailable; using the IOSurface rendering path.")

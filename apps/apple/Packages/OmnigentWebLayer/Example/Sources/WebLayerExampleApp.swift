@@ -12,6 +12,8 @@ internal import SwiftUI
 /// - `--proof <name>[,<name>...]`: runs proof scenarios, logs results and quits. See `Proofs`.
 /// - `--output <dir>`: where proofs write screenshots (default /private/tmp/claude-502).
 /// - `--engine chromium|system`: the engine for the browser-UI proofs (default chromium).
+/// - `--browser-dir <dir>`, `--server-port <port>`: state directory and server port for the
+///   browsing proofs; the restore proof passes them to the relaunched app.
 @main
 struct WebLayerExampleApp: App {
   @State private var model = ExampleModel()
@@ -87,6 +89,10 @@ struct ExampleOptions {
   var output = URL(fileURLWithPath: "/private/tmp/claude-502", isDirectory: true)
   var keepOpen = false
   var engine = BrowserEngineKind.chromium
+  /// The browsing proofs' state directory (profiles, history, saved tabs).
+  var browserDirectory: URL?
+  /// A fixed proof-server port, so a relaunch can load the pages it saved.
+  var serverPort: UInt16?
 
   init(arguments: [String]) {
     var iterator = arguments.dropFirst().makeIterator()
@@ -98,6 +104,9 @@ struct ExampleOptions {
       case "--output": output = URL(fileURLWithPath: iterator.next() ?? ".", isDirectory: true)
       case "--keep-open": keepOpen = true
       case "--engine": engine = iterator.next().flatMap(BrowserEngineKind.init) ?? .chromium
+      case "--browser-dir":
+        browserDirectory = iterator.next().map { URL(fileURLWithPath: $0, isDirectory: true) }
+      case "--server-port": serverPort = iterator.next().flatMap { UInt16($0) }
       default: break
       }
     }

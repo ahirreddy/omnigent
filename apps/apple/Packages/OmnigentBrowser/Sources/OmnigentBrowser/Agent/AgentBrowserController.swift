@@ -132,9 +132,12 @@ public final class AgentBrowserController: AgentBrowserActing {
   // MARK: Pages
 
   private func session(for conversationID: String) throws(BrowserError) -> AgentSession {
-    let session =
-      sessions[conversationID]
-      ?? AgentSession(profile: profileForConversation(conversationID))
+    let profile = sessions[conversationID]?.profile ?? profileForConversation(conversationID)
+    // Agents never browse with a person's cookies.
+    guard !BrowserUserProfile.isUserProfile(profile) else {
+      throw .notAllowed("Agent pages cannot use the user's browser profile \(profile.identifier).")
+    }
+    let session = sessions[conversationID] ?? AgentSession(profile: profile)
     sessions[conversationID] = session
     session.pruneClosedPages()
     if session.activePage == nil {

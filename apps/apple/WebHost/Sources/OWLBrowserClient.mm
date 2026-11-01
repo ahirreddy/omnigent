@@ -100,8 +100,13 @@ void BrowserClient::GoForward() {
   }
 }
 
-void BrowserClient::Reload() {
-  if (browser_) {
+void BrowserClient::Reload(bool ignore_cache) {
+  if (!browser_) {
+    return;
+  }
+  if (ignore_cache) {
+    browser_->ReloadIgnoreCache();
+  } else {
     browser_->Reload();
   }
 }
@@ -401,6 +406,7 @@ void BrowserClient::OnAddressChange(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> f
 
 void BrowserClient::OnTitleChange(CefRefPtr<CefBrowser>, const CefString& title) {
   Emit(OWLMessageKindTitleChanged, Encoder().String(OWLFieldTitle, title.ToString()));
+  EmitNavigationHistory();
 }
 
 void BrowserClient::OnLoadingProgressChange(CefRefPtr<CefBrowser>, double progress) {
@@ -421,6 +427,7 @@ void BrowserClient::OnLoadingStateChange(CefRefPtr<CefBrowser>, bool is_loading,
                                        .Bool(OWLFieldIsLoading, is_loading)
                                        .Bool(OWLFieldCanGoBack, can_go_back)
                                        .Bool(OWLFieldCanGoForward, can_go_forward));
+  EmitNavigationHistory();
 }
 
 void BrowserClient::OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
@@ -448,6 +455,9 @@ void BrowserClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
   }
   if (ClientHandlesPrompts()) {
     InstallPageBridge();
+  }
+  if (ClientHandlesBrowsing()) {
+    InstallMediaBridge();
   }
   Emit(OWLMessageKindViewCreated, Encoder());
 }

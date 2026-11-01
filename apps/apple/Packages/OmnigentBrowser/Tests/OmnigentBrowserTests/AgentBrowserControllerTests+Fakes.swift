@@ -108,6 +108,15 @@ final class AgentFakeTab: BrowserTab {
 
   func showDevTools() throws(BrowserError) {}
   func close() { state.isClosed = true }
+  func reload(ignoringCache: Bool) {}
+  func stopFinding() {}
+  func setZoomFactor(_ factor: Double) {}
+  func setAudioMuted(_ muted: Bool) {}
+  var navigationHistory: BrowserNavigationHistory { .empty }
+  var engineRestoreData: Data? { nil }
+  func restoreEngineState(_ data: Data) -> Bool { false }
+  func printPage() throws(BrowserError) {}
+  func viewSourceURL() throws(BrowserError) -> URL { throw .tabNotReady }
 }
 
 @MainActor
@@ -126,4 +135,10 @@ final class AgentFakeEngine: BrowserEngine, BrowserEngineProvider {
     tabs.append(tab)
     return tab
   }
+
+  func removeData(
+    _ types: BrowserDataTypes, for profile: BrowserProfile, since: Date?, origins: [URL]
+  ) throws(BrowserError) {}
+
+  func deleteProfileData(_ profile: BrowserProfile) throws(BrowserError) {}
 }

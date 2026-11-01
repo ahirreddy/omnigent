@@ -48,6 +48,14 @@ public final class WebView {
   public internal(set) var zoomLevel: Double = 0
   /// Prompts waiting for an answer, oldest first (protocol 1.1).
   public internal(set) var pendingPrompts: [WebPrompt] = []
+  /// The page's icon URLs, best first (protocol 1.2).
+  public internal(set) var faviconURLs: [URL] = []
+  /// Whether a media element in the page is playing with sound (protocol 1.2).
+  public internal(set) var isAudible = false
+  /// Whether the view's audio is muted. Applied when the view is created (protocol 1.2).
+  public internal(set) var isAudioMuted = false
+  /// The back/forward list as the host last reported it (protocol 1.2); nil until then.
+  public internal(set) var navigationHistory: WebNavigationHistory?
   /// Which page-opened windows are allowed. Applied in the host before the first navigation.
   public var popupPolicy = WebPopupPolicy.requireUserGesture {
     didSet { sendPolicies() }
@@ -140,10 +148,12 @@ public final class WebView {
 
   /// Reloads the page. When the host has exited, restarts it and re-creates the view at its last
   /// URL.
-  public func reload() {
+  /// - Parameter ignoringCache: Revalidates every resource (hard reload). Hosts before 1.2 do a
+  ///   normal reload.
+  public func reload(ignoringCache: Bool = false) {
     switch status {
     case .live:
-      send(.reload)
+      send(.reload, WireEncoder().bool(.ignoreCache, ignoringCache))
     case .unavailable:
       status = .waitingForHost
       lastError = nil

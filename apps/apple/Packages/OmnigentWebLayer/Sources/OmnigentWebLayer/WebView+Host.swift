@@ -62,7 +62,8 @@ extension WebView {
       return
     }
     if handleNavigation(kind, message.fields) || handlePageEvent(kind, message.fields)
-      || handleBrowserUI(kind, message.fields)
+      || handleBrowserUI(kind, message.fields) || handleBrowsing(kind, message.fields)
+      || handleSignIn(kind, message.fields)
     {
       changed()
       return
@@ -171,6 +172,7 @@ extension WebView {
     sendIfLive(.viewVisibility, WireEncoder().bool(.visible, isVisible))
     if isFocused { sendIfLive(.viewFocus, WireEncoder().bool(.focused, true)) }
     if zoomLevel != 0 { sendIfLive(.setZoom, WireEncoder().double(.zoomLevel, zoomLevel)) }
+    if isAudioMuted { sendMuted() }
     sendPolicies()
     if navigationPendingCreation, let requestedURL {
       navigationPendingCreation = false

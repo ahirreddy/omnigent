@@ -17,6 +17,15 @@ public protocol BrowserEngine: AnyObject {
   var kind: BrowserEngineKind { get }
   /// Creates a tab, optionally starting a load.
   func makeTab(profile: BrowserProfile, initialURL: URL?) throws(BrowserError) -> any BrowserTab
+  /// Removes cookies, cache or site data (`types` outside `BrowserDataTypes.engineData` are
+  /// ignored) for `profile`, changed since `since` (nil: all time). `origins` names sites for
+  /// engines that clear site storage per origin.
+  func removeData(
+    _ types: BrowserDataTypes, for profile: BrowserProfile, since: Date?, origins: [URL]
+  ) async throws(BrowserError)
+  /// Deletes everything the engine stores for a profile that is being deleted. Its tabs should
+  /// be closed first.
+  func deleteProfileData(_ profile: BrowserProfile) async throws(BrowserError)
 }
 
 /// Resolves engine kinds to engines. Inject a fake in tests.

@@ -29,6 +29,11 @@ public final class BrowserController {
   public private(set) var content: Content = .idle
   /// The URL to restore when a tab is (re)created.
   public private(set) var requestedURL: URL?
+  /// Gives a new tab its first content instead of loading `requestedURL` (session restore,
+  /// carrying history across an engine switch). Called after the tab is installed.
+  @ObservationIgnored public var prepareTab: ((any BrowserTab) -> Void)?
+  /// Called with the tab an engine switch or retry is about to close.
+  @ObservationIgnored public var willReplaceTab: ((any BrowserTab) -> Void)?
 
   /// Creates a controller. Call `activate()` to create the first tab.
   public init(
@@ -155,6 +160,7 @@ public final class BrowserController {
 
   private func replaceTab(with kind: BrowserEngineKind) {
     if let current = tab {
+      willReplaceTab?(current)
       if let url = current.state.url {
         requestedURL = url
       }
@@ -162,9 +168,11 @@ public final class BrowserController {
     }
     do {
       let engine = try provider.engine(for: kind)
-      let newTab = try engine.makeTab(profile: profile, initialURL: requestedURL)
+      let newTab = try engine.makeTab(
+        profile: profile, initialURL: prepareTab == nil ? requestedURL : nil)
       newTab.delegate = presenter
       content = .tab(newTab)
+      prepareTab?(newTab)
     } catch {
       content = .engineUnavailable(requested: kind, error: error)
     }

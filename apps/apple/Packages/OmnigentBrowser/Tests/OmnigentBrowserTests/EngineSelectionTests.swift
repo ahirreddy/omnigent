@@ -38,7 +38,8 @@ final class FakeTab: BrowserTab {
   func reload() {}
   func stopLoading() {}
   func evaluateJavaScript(_ script: String) throws(BrowserError) -> BrowserScriptValue {
-    .undefined
+    record(script)
+    return .bool(true)
   }
   func takeSnapshotPNG() throws(BrowserError) -> Data { Data() }
   func find(_ text: String, forward: Bool, caseSensitive: Bool) throws(BrowserError)
@@ -48,12 +49,44 @@ final class FakeTab: BrowserTab {
   }
   func showDevTools() throws(BrowserError) {}
   func close() { state.isClosed = true }
+
+  private(set) var hardReloads = 0
+  private(set) var scripts: [String] = []
+  var history = BrowserNavigationHistory.empty
+  var restoreData: Data?
+  private(set) var restoredData: Data?
+
+  func reload(ignoringCache: Bool) { if ignoringCache { hardReloads += 1 } }
+  func stopFinding() {}
+  func setZoomFactor(_ factor: Double) { state.zoomFactor = factor }
+  func setAudioMuted(_ muted: Bool) { state.isMuted = muted }
+  var navigationHistory: BrowserNavigationHistory {
+    if !history.entries.isEmpty { return history }
+    guard let url = state.url else { return .empty }
+    return BrowserNavigationHistory(
+      entries: [BrowserNavigationEntry(url: url, title: state.title)], currentIndex: 0)
+  }
+  var engineRestoreData: Data? { restoreData }
+  func restoreEngineState(_ data: Data) -> Bool {
+    guard engineKind == .system else { return false }
+    restoredData = data
+    return true
+  }
+  func printPage() throws(BrowserError) {}
+  func viewSourceURL() throws(BrowserError) -> URL {
+    guard let url = state.url else { throw .tabNotReady }
+    return url
+  }
+  /// Records scripts; evaluation answers `.bool(true)`.
+  func record(_ script: String) { scripts.append(script) }
 }
 
 @MainActor
 final class FakeEngine: BrowserEngine {
   let kind: BrowserEngineKind
   private(set) var tabs: [FakeTab] = []
+  private(set) var removed: [(BrowserDataTypes, BrowserProfile)] = []
+  private(set) var deleted: [BrowserProfile] = []
 
   init(kind: BrowserEngineKind) { self.kind = kind }
 
@@ -61,6 +94,16 @@ final class FakeEngine: BrowserEngine {
     let tab = FakeTab(kind: kind, profile: profile, initialURL: initialURL)
     tabs.append(tab)
     return tab
+  }
+
+  func removeData(
+    _ types: BrowserDataTypes, for profile: BrowserProfile, since: Date?, origins: [URL]
+  ) throws(BrowserError) {
+    removed.append((types, profile))
+  }
+
+  func deleteProfileData(_ profile: BrowserProfile) throws(BrowserError) {
+    deleted.append(profile)
   }
 }
 

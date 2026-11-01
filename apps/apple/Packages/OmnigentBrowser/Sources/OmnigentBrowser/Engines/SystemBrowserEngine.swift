@@ -14,8 +14,10 @@ public final class SystemBrowserEngine: BrowserEngine {
   public let kind = BrowserEngineKind.system
   private var ephemeralStores: [String: WKWebsiteDataStore] = [:]
 
-  /// Creates the engine. WebKit needs no global start-up.
-  public init() {}
+  /// Creates the engine, removing data stores of profiles deleted while they were in use.
+  public init() {
+    Task { await Self.removeQueuedStores() }
+  }
 
   /// See `BrowserEngine.makeTab(profile:initialURL:)`.
   public func makeTab(profile: BrowserProfile, initialURL: URL?) throws(BrowserError)
@@ -28,7 +30,11 @@ public final class SystemBrowserEngine: BrowserEngine {
     return tab
   }
 
-  private func dataStore(for profile: BrowserProfile) -> WKWebsiteDataStore {
+  func forgetEphemeralStore(_ profile: BrowserProfile) {
+    ephemeralStores[profile.identifier] = nil
+  }
+
+  func dataStore(for profile: BrowserProfile) -> WKWebsiteDataStore {
     switch profile.persistence {
     case .persistent:
       return WKWebsiteDataStore(forIdentifier: profile.dataStoreIdentifier)
@@ -54,6 +60,10 @@ final class SystemBrowserTab: NSObject, BrowserTab {
   var certificateExceptions: Set<String> = []
   /// Downloads in flight, retained until they finish.
   var downloadTrackers: [ObjectIdentifier: SystemDownloadTracker] = [:]
+  /// Frames the bridge script runs in, by the script's frame ID.
+  var bridgeFrames: [String: WKFrameInfo] = [:]
+  /// Whether each frame has audible media.
+  var audibleFrames: [String: Bool] = [:]
   private(set) lazy var agentInput: any BrowserAgentInput = SystemAgentInput(tab: self)
 
   var popupPolicy = BrowserPopupPolicy.requireUserGesture {
@@ -77,6 +87,7 @@ final class SystemBrowserTab: NSObject, BrowserTab {
   /// `configuration` must be the one WebKit passes for a popup, so the opener link holds.
   init(profile: BrowserProfile, configuration: WKWebViewConfiguration) {
     self.profile = profile
+    SystemPageBridge.shared.install(in: configuration.userContentController)
     webView = WKWebView(frame: .zero, configuration: configuration)
     super.init()
     applyPopupPolicy()
@@ -86,6 +97,7 @@ final class SystemBrowserTab: NSObject, BrowserTab {
     #if os(iOS)
       webView.isFindInteractionEnabled = true
     #endif
+    SystemPageBridge.shared.register(self)
     observeWebView()
   }
 
@@ -109,6 +121,9 @@ final class SystemBrowserTab: NSObject, BrowserTab {
       webView.observe(\.canGoForward, options: [.new]) { [weak self] _, _ in
         MainActor.assumeIsolated { self?.syncState() }
       },
+      webView.observe(\.pageZoom, options: [.new]) { [weak self] _, _ in
+        MainActor.assumeIsolated { self?.syncState() }
+      },
     ]
   }
 
@@ -119,6 +134,7 @@ final class SystemBrowserTab: NSObject, BrowserTab {
     state.estimatedProgress = webView.estimatedProgress
     state.canGoBack = webView.canGoBack
     state.canGoForward = webView.canGoForward
+    state.zoomFactor = webView.pageZoom
   }
 
   func load(_ url: URL) {

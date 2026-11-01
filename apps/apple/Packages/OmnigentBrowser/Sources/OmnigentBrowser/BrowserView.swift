@@ -26,7 +26,17 @@ public struct BrowserView: View {
     .onChange(of: controller.preferences.engine) { controller.activate() }
   }
 
-  @ViewBuilder private var content: some View {
+  private var content: some View {
+    BrowserPageView(controller: controller)
+  }
+}
+
+/// The page of a controller's tab with its interstitial and banners, or the engine-unavailable
+/// panel.
+struct BrowserPageView: View {
+  let controller: BrowserController
+
+  var body: some View {
     switch controller.content {
     case .idle:
       Color.clear

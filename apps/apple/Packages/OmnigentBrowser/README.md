@@ -31,7 +31,30 @@ server's `browser.action_request` bridge (`omnigent/server/routes/sessions/route
 | Agent actions (`browser.action_request`: navigate/snapshot/click/type/screenshot) | yes | `AgentBrowserController` (`AgentBrowserActing.perform`) runs them, plus press, scroll, evaluate and wait_for_load, in a per-conversation ephemeral profile; renderer-direct input on Chromium. Claiming and posting results is left to the stores |
 | URL policy for agent navigation (localhost/proxy checks) | `browserUrlPolicy.js` | `BrowserURLPolicy` / `BrowserURLRules` (schemes, allow and deny lists, private and loopback IP literals), enforced by the engine for every navigation including redirects |
 | JS dialogs, permission prompts, file choosers, HTTP auth, certificate errors, context menus, color inputs, IME, drag and drop | yes | Native UI shared by both engines (`BrowserPromptPresenter`, `BrowserView`); see `../OmnigentWebLayer/DESIGN.md`, "Browser UI over the channel" |
+| Profiles, session restore, omnibox, history, bookmarks, find, zoom, mute, print | Chrome-level | `BrowserEnvironment`, `BrowserTabModel`, `BrowserTabContentView`; see [`INTEGRATION.md`](INTEGRATION.md) |
 | Design mode, Chrome cookie import | yes | Not yet |
+
+## Browser tabs
+
+`BrowserTabModel` is one browser tab for the app's tab strip, with its profile, restore state and
+lazy activation; `BrowserTabContentView` is its toolbar and page. The contract for the tab system
+is [`INTEGRATION.md`](INTEGRATION.md).
+
+- **Profiles** (`BrowserProfileStore`, `profiles.json`): named, colored, with an avatar; storage
+  identity `user:<uuid>` (Chromium `Profile-<key>`, WebKit `WKWebsiteDataStore(forIdentifier:)`).
+  Agents refuse `user:` profiles.
+- **Per profile** under `Profiles/<id>/`: `history.json` (`BrowserHistoryStore`, 20 000 visits),
+  `bookmarks.json` (`BrowserBookmarkStore`, bar and Other Bookmarks, Netscape HTML import), and
+  `zoom.json` (`BrowserZoomStore`, per host). Downloads and permissions are tagged with the
+  profile.
+- **Restore** (`BrowserTabRestoreState`): Codable and versioned; history through WebKit's
+  `interactionState` or a rebuilt list on Chromium (`BrowserRestorePlaceholder`, see the web
+  layer's DESIGN.md, "Browsing state"). Files are written atomically and debounced
+  (`BrowserPersistentFile`); a damaged file is moved aside and reported.
+- **Omnibox** (`BrowserOmnibox`): URL or search detection (schemes, hosts with a TLD, localhost,
+  IP literals, `host:port`, `?` forces a search), suggestions from what was typed, open tabs,
+  bookmarks and history (frecency). Search engines: Google, DuckDuckGo, Bing, Brave, Kagi, Ecosia
+  or a custom `%s` template (`BrowserSettings`).
 
 ## Engine selection and failure handling
 
@@ -123,6 +146,11 @@ product's helper, so the sample builds exactly what the app uses.
 - error and script-value mapping from the web layer
 - WebKit tab state, history and JS evaluation, using local file URLs
 - reporting of navigation failures
+- profiles (create, rename, default, delete, damaged files, isolation), history and bookmark
+  persistence and search, bookmark HTML import, omnibox URL and search detection, restore state
+  round trips (history, placeholders, versions), lazy restore and history rebuild in the tab
+  model, zoom memory, mute, reopen, profile deletion and clearing data
+- WebKit `interactionState` restore with back history, zoom, hard reload and view source
 
 The Chromium path is exercised by the example apps: it needs a bundled host, so it cannot run
 headless under `swift test`. `OmnigentWebLayer` has its own tests for the wire format, the Mach

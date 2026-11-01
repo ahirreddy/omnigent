@@ -96,20 +96,30 @@ struct BrowserDownloadsButton: View {
 public struct BrowserDownloadsView: View {
   private let center: BrowserDownloadCenter
   @Bindable private var settings: BrowserDownloadSettings
+  private let profileIdentifier: String?
 
   /// Creates the view.
-  public init(center: BrowserDownloadCenter, settings: BrowserDownloadSettings) {
+  /// - Parameters:
+  ///   - center: The downloads.
+  ///   - settings: Folder and ask-first settings.
+  ///   - profileIdentifier: Shows only that profile's downloads; nil shows all.
+  public init(
+    center: BrowserDownloadCenter, settings: BrowserDownloadSettings,
+    profileIdentifier: String? = nil
+  ) {
     self.center = center
     self.settings = settings
+    self.profileIdentifier = profileIdentifier
   }
 
   /// The view body.
   public var body: some View {
+    let items = profileIdentifier.map(center.items(profileIdentifier:)) ?? center.items
     VStack(alignment: .leading, spacing: 0) {
-      if center.items.isEmpty {
+      if items.isEmpty {
         ContentUnavailableView("No Downloads", systemImage: "arrow.down.circle")
       } else {
-        List(center.items) { download in
+        List(items) { download in
           BrowserDownloadRow(download: download)
         }
       }

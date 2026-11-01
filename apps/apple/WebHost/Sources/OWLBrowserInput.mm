@@ -328,12 +328,18 @@ void BrowserClient::InstallPageBridge() {
 
 void BrowserClient::OnDevToolsEvent(CefRefPtr<CefBrowser>, const CefString& method,
                                     const void* params, size_t params_size) {
-  if (method != "Runtime.bindingCalled") {
-    return;  // Domain events the bridge enables (console, contexts) are not needed here.
+  const std::string name = method.ToString();
+  if (name != "Runtime.bindingCalled" && name != "Runtime.executionContextDestroyed" &&
+      name != "Runtime.executionContextsCleared") {
+    return;  // Other domain events the bridge enables (console, pages) are not needed here.
   }
   CefRefPtr<CefDictionaryValue> event =
-      ParseObject(std::string(static_cast<const char*>(params), params_size));
-  if (!event || event->GetString("name") != kColorBinding) {
+      params_size == 0 ? CefDictionaryValue::Create()
+                       : ParseObject(std::string(static_cast<const char*>(params), params_size));
+  if (!event || HandleMediaEvent(name, event)) {
+    return;
+  }
+  if (name != "Runtime.bindingCalled" || event->GetString("name") != kColorBinding) {
     return;
   }
   CefRefPtr<CefDictionaryValue> payload = ParseObject(event->GetString("payload").ToString());

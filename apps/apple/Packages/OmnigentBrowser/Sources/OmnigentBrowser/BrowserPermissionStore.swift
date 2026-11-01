@@ -66,6 +66,13 @@ public final class BrowserPermissionStore {
     }
   }
 
+  /// Forgets one remembered decision ("origin|permission bit" key from `decisions(for:)`).
+  public func forget(key: String, profile: BrowserProfile) {
+    var stored = decisions(for: profile)
+    stored[key] = nil
+    save(stored, for: profile)
+  }
+
   /// Forgets a profile's decisions.
   public func reset(profile: BrowserProfile) {
     switch profile.persistence {

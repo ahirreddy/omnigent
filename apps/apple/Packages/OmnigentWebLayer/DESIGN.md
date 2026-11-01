@@ -389,6 +389,84 @@ output directory.
 | `color` | NSColorPanel opens in the client (none in the host); the input becomes #00ff00 |
 | `agent-actions` | see "Agent browser actions" |
 
+## Browsing state (protocol 1.2)
+
+What a full browser needs beyond page UI. `OWL_PROTOCOL_MINOR_BROWSING` (2); each side uses these
+only when the peer advertises minor 2, so a 1.2 client still works with a 1.1 host (no favicons,
+history or audible state; mute reports `featureBlocked`; hard reload is a normal reload) and a 1.2
+host never sends them to a 1.1 client.
+
+| Message | Direction | CEF source | Client |
+|---|---|---|---|
+| `Reload` + `IgnoreCache` field | C->H | `ReloadIgnoreCache()` | `WebView.reload(ignoringCache:)` |
+| `SetAudioMuted` (`Muted`) | C->H | `CefBrowserHost::SetAudioMuted` | `WebView.setAudioMuted(_:)`, re-sent when the view is (re)created |
+| `FaviconURLChanged` (JSON list) | H->C | `OnFaviconURLChange` | `WebView.faviconURLs`; the browser fetches and normalizes the icon |
+| `NavigationHistory` (JSON `{index, entries}`) | H->C | `GetNavigationEntries` after every loading-state and title change, deduplicated | `WebView.navigationHistory`, for session restore |
+| `AudioStateChanged` (`Audible`, `Muted`) | H->C | the bridge world's `owlMediaState` binding | `WebView.isAudible`, `isAudioMuted` |
+
+- **Audible.** CEF does not tell embedders when a page is audible. A script in the isolated
+  `owl-browser-ui` world watches media events captured on the document and reports, per frame,
+  whether any media element plays with sound; the host ORs frames and drops destroyed execution
+  contexts. Web Audio and detached `Audio` objects are not seen. WebKit uses the same script in a
+  `WKContentWorld`, plus mute by `muted` on media elements (WebKit has no public page mute).
+- **History restore.** CEF cannot restore navigation entries. `OmnigentBrowser` rebuilds them in
+  the page: it loads `about:blank#omnigent-restore`, adds one `pushState` entry per saved page
+  (`about:blank#omnigent-restore&u=<url>&t=<title>`, fragment-only so an opaque origin allows it),
+  goes to the current entry and `location.replace`s it with the real page. Entries load lazily:
+  going back onto a placeholder loads `about:blank` with that fragment, and the tab model replaces
+  it. The scripts run through `Evaluate`, which has a user gesture, so the history-manipulation
+  intervention does not skip the entries. WebKit restores natively from `interactionState`.
+- **Print.** `Page.printToPDF` over `DevToolsMethod`; the client prints the PDF with PDFKit, so no
+  print UI opens in the host. View Source loads `view-source:` in a new tab.
+- **Profile deletion.** `Session.deletePersistentStorage(identifier:)` closes the profile, removes
+  `Profile-<key>`, and queues it in `pending-profile-deletions.json`; the next launch removes
+  anything Chromium wrote while it was releasing the context.
+- **Unhandled keys** now go to the client window's `performKeyEquivalent` before the main menu, so
+  SwiftUI keyboard shortcuts in the browser toolbar (⌘F, ⌘+, ⌥⌘I) work while the page has focus.
+
+### Proofs (`--proof browser2`)
+
+Through `BrowserTabModel` and `BrowserTabContentView` (`BrowserTabHarness`), on either engine and
+render mode. Screenshots are `browser2-<proof>-<engine>.png`.
+
+| Proof | What it shows |
+|---|---|
+| `profiles` | Two user profiles in two tabs; `owl=alpha` in one is never seen by the other, which sets `owl=beta`; the work profile is deleted with its data |
+| `browsing` | Favicon; ⌘F opens find with 6 matches (Chromium); ⌘= zooms to 110% (CSS width 1100 to 1000), remembered for the host and not for another host; ⌘0; ⌥⌘I opens DevTools (a host window on Chromium, a reported refusal on WebKit); a playing tone marks the tab audible, mute toggles; View Source opens a tab; omnibox suggestions |
+| `reopen` | Closing a tab records its history; reopening restores it and Back works |
+| `restore` | Saves two tabs (one pinned, muted, in a second profile), shuts Chromium down and relaunches the app with `restore-verify`, which shows saved titles and favicons without loading, loads the selected tab on show, goes back twice and forward once, and keeps the background tab unloaded |
+
+## Sign-in (protocol 1.3)
+
+What enterprise sign-in (Okta FastPass, device-trust agents, authenticator apps) needs.
+`OWL_PROTOCOL_MINOR_SIGN_IN` (3); a 1.3 host sends these only to 1.3 clients, so older clients keep
+the 1.2 behavior (local-network requests arrive as `OWLPermissionOther` and are denied; custom
+schemes fail with `ERR_UNKNOWN_URL_SCHEME`). See `apps/apple/docs/browser-engine-decision.md`.
+
+| Message | Direction | CEF source | Client |
+|---|---|---|---|
+| `PermissionRequest` with `OWLPermissionLocalNetwork` | H->C | `OnShowPermissionPrompt` for `LOCAL_NETWORK_ACCESS`, `LOCAL_NETWORK`, `LOOPBACK_NETWORK` | `WebPermissions.localNetwork`; the shared UI asks and remembers it per site |
+| `ExternalProtocol` (`URL`, `Origin`) | H->C | `OnBeforeBrowse` cancels navigations to schemes Chromium does not render | `WebViewUIDelegate.webView(_:wantsToOpenExternally:)`; `BrowserExternalApplication` confirms, then `NSWorkspace` opens it |
+
+- **Local Network Access.** Chromium 142+ asks before a public page fetches `127.0.0.1` or a
+  private address. Okta FastPass probes Okta Verify on `127.0.0.1:8769` this way, and device-trust
+  agents do the same. Before 1.3 the shared UI denied the request as an unknown permission.
+- **External schemes.** The host never launches apps. Agent tabs decline the confirmation, and
+  navigation rules with a scheme list block these navigations before they are offered. WebKit
+  does the same in `decidePolicyFor` for schemes `WKWebView` does not handle.
+- **WebAuthn** needs no protocol: Chrome's own WebAuthn dialogs open as native windows in the host
+  process, which activates to show them. Platform passkeys need entitlements on the host bundle.
+
+### Proofs (`--proof authentication`)
+
+| Proof | What it shows |
+|---|---|
+| `webauthn` | Feature detection on `https://example.com`; a platform request and a presence-only security-key request, logging the host windows Chromium opens and their stacking |
+| `webauthn-virtual` | A CDP virtual authenticator registers and asserts on webauthn.io and passkeys.io |
+| `webauthn-tab` | The same requests through the shared UI on `--engine`, results polled from the page |
+| `loopback` | A fetch from `https://example.com` to `127.0.0.1:8769` (Okta Verify, or a mock when it is not running) asks for local-network access and succeeds once allowed |
+| `external-scheme` | A `com-okta-authenticator:` link asks to open Okta Verify (the proof cancels); an unregistered scheme is reported |
+
 ## Agent browser actions
 
 `AgentBrowserController` (`OmnigentBrowser/Agent`) runs the server's agent-driven browsing on
@@ -617,8 +695,6 @@ Universal Release builds roughly double the framework, as before.
 - **Autofill and passwords.** There is no autofill UI. It needs a projected autofill dropdown
   (another popup-widget-like surface) and a password store; HTTP auth credentials already use the
   Keychain on opt-in.
-- **Bookmarks and history UI.** This is app-side data plus navigation APIs; no host work is
-  needed beyond history queries.
 - **Projected DevTools.** `showDevTools()` still opens CEF's own DevTools window inside the host
   process. A projected version would be a second `WebView` attached through
   `CefBrowserHost::ShowDevTools` with an off-screen `CefWindowInfo`, or through the remote

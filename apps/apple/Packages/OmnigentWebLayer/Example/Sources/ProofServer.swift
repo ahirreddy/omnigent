@@ -8,6 +8,9 @@ internal import Network
 /// - `GET /download` is a 256 KiB `Content-Disposition: attachment` text file.
 /// - `GET /auth` needs Basic `owl:secret` and answers 401 otherwise.
 /// - `GET /redirect?to=<url>` answers 302 to `url`.
+/// - `GET /icon.png` is a small PNG, for favicons.
+/// - `/probe` answers like Okta Verify's FastPass loopback listener, with CORS and Private Network
+///   Access headers, for any method (preflights included).
 final class ProofServer {
   private let listener: NWListener
   private(set) var port: UInt16 = 0
@@ -15,10 +18,19 @@ final class ProofServer {
 
   nonisolated static let downloadSize = 256 * 1024
   nonisolated static let credential = "owl:secret"
+  /// A 1x1 red PNG.
+  nonisolated static let iconPNG =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
 
-  init(pages: [String: String] = [:]) throws {
+  /// - Parameters:
+  ///   - pages: Pages served under `/page/`.
+  ///   - fixedPort: A fixed port (the restore proof reuses one across a relaunch); any when nil.
+  /// - Throws: When the listener cannot be created.
+  init(pages: [String: String] = [:], port fixedPort: UInt16? = nil) throws {
     let parameters = NWParameters.tcp
-    parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: .any)
+    parameters.allowLocalEndpointReuse = true
+    parameters.requiredLocalEndpoint = NWEndpoint.hostPort(
+      host: "127.0.0.1", port: fixedPort.flatMap(NWEndpoint.Port.init(rawValue:)) ?? .any)
     listener = try NWListener(using: parameters)
     self.pages = pages
   }
@@ -78,6 +90,16 @@ final class ProofServer {
       .map { String($0.dropFirst(name.count + 1)).trimmingCharacters(in: .whitespaces) }
   }
 
+  /// Okta Verify's loopback answer: CORS for the asking origin and Private Network Access.
+  private nonisolated static func probeResponse(origin: String) -> ([String], Data) {
+    let headers = [
+      "Content-Type: application/json", "Connection: close",
+      "Access-Control-Allow-Origin: \(origin)", "Access-Control-Allow-Headers: *",
+      "Access-Control-Allow-Private-Network: true", "Access-Control-Allow-Local-Network: true",
+    ]
+    return (headers, Data("{\"probe\":\"owl-mock-okta-verify\"}".utf8))
+  }
+
   private nonisolated static func respond(to request: String, pages: [String: String]) -> Data {
     let lines = request.components(separatedBy: "\r\n")
     let target = lines.first?.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
@@ -109,6 +131,11 @@ final class ProofServer {
         headers.append("WWW-Authenticate: Basic realm=\"OWL Proof\"")
         body = Data("<title>unauthorized</title><p id=result>unauthorized</p>".utf8)
       }
+    case "/icon.png":
+      headers = ["Content-Type: image/png", "Connection: close"]
+      body = Data(base64Encoded: iconPNG) ?? Data()
+    case "/probe":
+      (headers, body) = probeResponse(origin: header(lines, "origin") ?? "*")
     case "/redirect":
       status = "302 Found"
       headers.append("Location: \(query.first { $0.name == "to" }?.value ?? "/")")

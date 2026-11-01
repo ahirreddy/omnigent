@@ -75,4 +75,10 @@ nonisolated public enum BrowserScriptValue: Hashable, Sendable {
     if case .string(let value) = self { return value }
     return nil
   }
+
+  /// The number payload, if this is a number.
+  public var numberValue: Double? {
+    if case .number(let value) = self { return value }
+    return nil
+  }
 }
