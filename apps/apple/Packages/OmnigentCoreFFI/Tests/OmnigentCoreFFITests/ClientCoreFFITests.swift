@@ -81,7 +81,8 @@ private func fixture(_ name: String) throws -> Data {
       .failure(.Offline(message: "The Internet connection appears to be offline.")))
     let core = ClientCore(transport: transport)
     await #expect(
-      throws: CoreError.Transport(message: "offline: The Internet connection appears to be offline.")
+      throws: CoreError.Transport(
+        message: "offline: The Internet connection appears to be offline.")
     ) {
       try await core.discoverServer(serverUrl: "https://omnigent.example.com")
     }

@@ -35,9 +35,9 @@ def main() -> None:
         host = hosts[0]
         agents = get("/v1/agents?limit=1000")["data"]
         agent = next(value for value in agents if value["name"] == "codex-native-ui")
-        matches = get("/v1/sessions?limit=1000&search_query=Native%20configuration%20validation")[
-            "data"
-        ]
+        matches = get(
+            "/v1/sessions?visibility=all&limit=1000&search_query=Native%20configuration%20validation"
+        )["data"]
         matches = [session for session in matches if session.get("title") == title]
         if len(matches) > 1:
             raise SystemExit("Multiple configuration fixtures exist; refusing to choose one.")

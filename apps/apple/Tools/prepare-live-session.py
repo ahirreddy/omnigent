@@ -35,7 +35,9 @@ def main() -> None:
         agent = next((value for value in agents if value["name"] == "codex-native-ui"), None)
         if agent is None:
             raise SystemExit("Built-in codex-native-ui agent is missing.")
-        sessions = get("/v1/sessions?limit=1000&search_query=Native%20live%20chat")["data"]
+        sessions = get("/v1/sessions?visibility=all&limit=1000&search_query=Native%20live%20chat")[
+            "data"
+        ]
         for session in sessions:
             if (
                 session.get("title") == "Native live chat"

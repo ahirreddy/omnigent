@@ -146,7 +146,7 @@
     "kind": "default",
     "parent_session_id": null,
     "root_conversation_id": "facbcc05b00f4321b98b1929d217abc5",
-    "llm_model": "gpt-4o-mini",
+    "llm_model": "mock-model",
     "harness": "openai-agents",
     "model_override": null,
     "cost_control_mode_override": null,
@@ -156,7 +156,7 @@
     "last_total_tokens": 17,
     "total_cost_usd": 1.47e-05,
     "usage_by_model": {
-      "gpt-4o-mini": {
+      "mock-model": {
         "input_tokens": 30,
         "output_tokens": 17,
         "total_tokens": 47,

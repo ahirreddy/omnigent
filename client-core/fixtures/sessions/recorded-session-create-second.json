@@ -12,7 +12,7 @@
         "bundle": {
           "filename": "agent.tar.gz",
           "archive_members": {
-            "config.yaml": "spec_version: 1\nname: fixture_agent\nprompt: |\n  You are a deterministic fixture assistant. When the user asks you to run a\n  command, call sys_os_shell with the exact command requested, then reply briefly.\n\nexecutor:\n  model: gpt-4o-mini\n  config:\n    harness: openai-agents\n\nos_env:\n  type: caller_process\n  cwd: .\n  sandbox:\n    type: none\n"
+            "config.yaml": "spec_version: 1\nname: fixture_agent\nprompt: |\n  You are a deterministic fixture assistant. When the user asks you to run a\n  command, call sys_os_shell with the exact command requested, then reply briefly.\n\nexecutor:\n  model: mock-model\n  config:\n    harness: openai-agents\n\nos_env:\n  type: caller_process\n  cwd: .\n  sandbox:\n    type: none\n"
           }
         }
       }
