@@ -44,7 +44,8 @@ pub enum DecisionResponse {
     ApproveCommandPolicy(Vec<String>),
     /// Accept with Codex or Antigravity persistence.
     ApprovePersist(PersistMode),
-    /// Decline a plan review with feedback for the agent. Must not be blank.
+    /// Decline with feedback the agent receives, on a card that
+    /// [accepts it](Decision::accepts_feedback). Must not be blank.
     DeclineWithFeedback(String),
 }
 
@@ -231,7 +232,7 @@ impl Decision {
             }
             DecisionResponse::DeclineWithFeedback(feedback) => {
                 let feedback = feedback.trim();
-                require(self.is_plan_review() && !feedback.is_empty())?;
+                require(self.accepts_feedback() && !feedback.is_empty())?;
                 Ok(ElicitationResult {
                     content: Some(one("feedback", ElicitationValue::Text(feedback.to_owned()))),
                     ..bare(ElicitationAction::Decline)

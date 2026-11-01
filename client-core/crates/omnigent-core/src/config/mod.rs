@@ -1,8 +1,10 @@
 //! Client configuration logic.
 //!
+//! - [`approval`]: each harness's approval modes under clear names.
 //! - [`managed`]: organization-provided (MDM) server lists and feature flags.
 //! - [`settings`]: the user's saved server, recent servers and protocol grants.
 
+pub mod approval;
 pub mod managed;
 pub mod session;
 pub mod settings;

@@ -677,6 +677,24 @@ impl ClientCore {
         Ok(terminals.into_iter().map(Into::into).collect())
     }
 
+    /// The terminal names `session_id`'s agent declares, in declaration order: the only names
+    /// `create_terminal` accepts (for a native harness, the host's shells with `$SHELL` first).
+    /// Empty when the agent declares none, so no terminal can be created; `None` when the
+    /// server does not report them.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`].
+    pub async fn declared_terminal_names(
+        &self,
+        session_id: String,
+    ) -> Result<Option<Vec<String>>, CoreError> {
+        self.sessions()
+            .declared_terminal_names(&session_id)
+            .await
+            .map_err(CoreError::from)
+    }
+
     /// Re-reads `session_id`'s terminals in the background; the result arrives as
     /// `TerminalsChanged`, a failure as an `Error` event for the session.
     pub fn refresh_terminals(&self, session_id: String) {

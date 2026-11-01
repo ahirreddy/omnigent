@@ -342,6 +342,16 @@ pub enum AnswerError {
     },
 }
 
+/// The first problem with an answer set, and the field it is about.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FormProblem {
+    /// The key of the field the problem is about; `None` when it concerns no form field (an
+    /// unknown key).
+    pub field_key: Option<String>,
+    /// What is wrong.
+    pub error: AnswerError,
+}
+
 /// A native form: fields in display order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecisionForm {
@@ -356,15 +366,32 @@ impl DecisionForm {
     ///
     /// The first problem found.
     pub fn validate(&self, values: &BTreeMap<String, ElicitationValue>) -> Result<(), AnswerError> {
+        self.problem(values)
+            .map_or(Ok(()), |problem| Err(problem.error))
+    }
+
+    /// The first problem with an answer set, with the key of the field it is about, so the UI
+    /// can show it next to that field. `None` when the answers are valid.
+    #[must_use]
+    pub fn problem(&self, values: &BTreeMap<String, ElicitationValue>) -> Option<FormProblem> {
         if let Some(key) = values
             .keys()
             .find(|key| !self.fields.iter().any(|field| &field.key == *key))
         {
-            return Err(AnswerError::UnknownField { key: key.clone() });
+            return Some(FormProblem {
+                field_key: None,
+                error: AnswerError::UnknownField { key: key.clone() },
+            });
         }
-        self.fields
-            .iter()
-            .try_for_each(|field| field.validate(values.get(&field.key)))
+        self.fields.iter().find_map(|field| {
+            field
+                .validate(values.get(&field.key))
+                .err()
+                .map(|error| FormProblem {
+                    field_key: Some(field.key.clone()),
+                    error,
+                })
+        })
     }
 
     /// Parses a flat MCP `requestedSchema` object.

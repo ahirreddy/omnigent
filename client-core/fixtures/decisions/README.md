@@ -56,3 +56,29 @@ Swift string interpolation was resolved to the concrete values each test uses, a
 - `LocalServerSessionClient--StructuredFormPostsTypedContentWithoutCoercion.jsonl`: 2 HTTP exchange(s) in order: GET /v1/sessions/conv_a; POST /v1/sessions/conv_a/elicitations/form1/resolve; used by LocalServerSessionClientTests.swift::testStructuredFormPostsTypedContentWithoutCoercion; expected: typed form values resolve as accept with exact JSON types (string, number, bool, string array).
 - `LocalServerSessionClient--TypedQuestionNeverPostsBinaryApproval.jsonl`: 1 HTTP exchange(s) in order: GET /v1/sessions/conv_a; used by LocalServerSessionClientTests.swift::testTypedQuestionNeverPostsBinaryApproval; expected: a typed question cannot be answered with a binary approve; no POST is made.
 - `LocalServerSessionClient--UnadvertisedPermissionOptionsNeverPost.jsonl`: 1 HTTP exchange(s) in order: GET /v1/sessions/conv_a; used by LocalServerSessionClientTests.swift::testUnadvertisedPermissionOptionsNeverPost; expected: permission options absent from requestedSchema are rejected invalidDecision before any POST.
+
+## Hand-built from the server's request shapes
+
+- `FileChanges--ServerApprovalShapes.json`: elicitation requests keyed by label, each built with the
+  formula of the server code that sends it: `routes_hooks.py` (native `PermissionRequest` hooks:
+  `ToolName(<json.dumps(tool_input)[:1024]>)` plus `tool_name`), `_executor_adapter.py` (SDK
+  harnesses, 300-character cap), `orchestration.py` policy evaluation
+  (`json.dumps({"name", "arguments"})[:1024]`) and `_codex_elicitation.py` (`applyPatchApproval`
+  with `fileChanges` and the sorted `files` list; `item/fileChange/requestApproval`, which carries
+  no changes). The Codex `FileChange` uses the `{"type": ...}` tagging. Expected file changes:
+  - `claude-edit`: `auth/session.rs`, modify, +3 −1; the message and the tool input come apart.
+  - `claude-edit-cut`: the preview is cut inside `old_string`: the path, modify, no counts.
+  - `claude-multiedit`: `README.md`, modify, +2 −1 (the batch's edits added up).
+  - `claude-write`: `docs/notes.md`, write, +4, removals unknown.
+  - `claude-notebook`: `analysis.ipynb`, modify, an inserted cell: +2 −0.
+  - `claude-bash`: no files.
+  - `devin-edit` (`oldText`/`newText` keys): `/repo/app.py`, modify, +1 −1.
+  - `pi-sdk-write-cut`: cut inside an escape in `content`: the path, write, no counts.
+  - `policy-sys-os-edit` (`mcp__omnigent__sys_os_edit`): `/repo/src/lib.rs`, modify, +1 −0.
+  - `policy-apply-patch` (`changes: [{path, kind, diff}]`): `new.rs` create +1 −0, `old.rs`
+    delete +0 −2, `main.rs` modify +1 −1, in that order.
+  - `codex-apply-patch`: in `files` order, `main.rs` modify +2 −1, `new.rs` create +1 −0,
+    `old.rs` delete +0 −1.
+  - `codex-apply-patch-cut`: cut inside `big.rs`: `a.rs` modify +1 −1, `big.rs` create without
+    counts, `z.rs` with no kind or counts (listed only in `files`).
+  - `codex-file-change`: no files.

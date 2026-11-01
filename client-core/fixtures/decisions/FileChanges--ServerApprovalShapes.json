@@ -1,0 +1,207 @@
+{
+  "claude-edit": {
+    "elicitation_id": "elicit_claude_edit",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **Edit**",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "Edit({\"file_path\": \"/Users/dev/omnigent/client-core/crates/omnigent-core/src/auth/session.rs\", \"old_string\": \"fn refresh(&self) {\\n    self.token.clear();\\n}\\n\", \"new_string\": \"fn refresh(&self) -> Result<(), AuthError> {\\n    self.token.clear();\\n    self.store.save()?;\\n    Ok(())\\n}\\n\", \"replace_all\": false})",
+      "tool_name": "Edit",
+      "cwd": "/Users/dev/omnigent",
+      "permission_mode": "default",
+      "allow_all_edits": true
+    }
+  },
+  "claude-edit-cut": {
+    "elicitation_id": "elicit_claude_edit_cut",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **Edit**",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "Edit({\"file_path\": \"/Users/dev/omnigent/client-core/crates/omnigent-core/src/auth/session.rs\", \"old_string\": \"    let value_0 = compute(0);\\n    let value_1 = compute(1);\\n    let value_2 = compute(2);\\n    let value_3 = compute(3);\\n    let value_4 = compute(4);\\n    let value_5 = compute(5);\\n    let value_6 = compute(6);\\n    let value_7 = compute(7);\\n    let value_8 = compute(8);\\n    let value_9 = compute(9);\\n    let value_10 = compute(10);\\n    let value_11 = compute(11);\\n    let value_12 = compute(12);\\n    let value_13 = compute(13);\\n    let value_14 = compute(14);\\n    let value_15 = compute(15);\\n    let value_16 = compute(16);\\n    let value_17 = compute(17);\\n    let value_18 = compute(18);\\n    let value_19 = compute(19);\\n    let value_20 = compute(20);\\n    let value_21 = compute(21);\\n    let value_22 = compute(22);\\n    let value_23 = compute(23);\\n    let value_24 = compute(24);\\n    let value_25 = compute(25);\\n    let value_26 = compute(26);\\n    let value_27 = compute(27);\\n    let value_2)",
+      "tool_name": "Edit",
+      "cwd": "/Users/dev/omnigent",
+      "permission_mode": "default",
+      "allow_all_edits": true
+    }
+  },
+  "claude-multiedit": {
+    "elicitation_id": "elicit_claude_multiedit",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **MultiEdit**",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "MultiEdit({\"file_path\": \"/Users/dev/omnigent/README.md\", \"edits\": [{\"old_string\": \"## Setup\", \"new_string\": \"## Getting started\"}, {\"old_string\": \"Run `just build`.\\n\", \"new_string\": \"Run `just build`.\\nThen `just test`.\\n\", \"replace_all\": false}]})",
+      "tool_name": "MultiEdit",
+      "cwd": "/Users/dev/omnigent",
+      "permission_mode": "default"
+    }
+  },
+  "claude-write": {
+    "elicitation_id": "elicit_claude_write",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **Write**",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "Write({\"file_path\": \"/Users/dev/omnigent/docs/notes.md\", \"content\": \"# Notes\\n\\nFirst line.\\nSecond line.\\n\"})",
+      "tool_name": "Write",
+      "cwd": "/Users/dev/omnigent",
+      "permission_mode": "default"
+    }
+  },
+  "claude-notebook": {
+    "elicitation_id": "elicit_claude_notebook",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **NotebookEdit**",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "NotebookEdit({\"notebook_path\": \"/Users/dev/analysis.ipynb\", \"cell_id\": \"c3\", \"new_source\": \"import pandas as pd\\ndf = pd.read_csv('x.csv')\", \"cell_type\": \"code\", \"edit_mode\": \"insert\"})",
+      "tool_name": "NotebookEdit",
+      "cwd": "/Users/dev/omnigent",
+      "permission_mode": "default"
+    }
+  },
+  "claude-bash": {
+    "elicitation_id": "elicit_claude_bash",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **Bash**",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "pre_tool_use",
+      "policy_name": "claude_native_permission",
+      "content_preview": "Bash({\"command\": \"cargo test -p omnigent-core\", \"description\": \"Run core tests\"})",
+      "tool_name": "Bash",
+      "cwd": "/Users/dev/omnigent",
+      "permission_mode": "default"
+    }
+  },
+  "devin-edit": {
+    "elicitation_id": "elicit_devin_edit",
+    "params": {
+      "mode": "form",
+      "message": "Claude wants to call **edit**",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "pre_tool_use",
+      "policy_name": "devin_native_permission",
+      "content_preview": "edit({\"path\": \"/repo/app.py\", \"oldText\": \"a = 1\\n\", \"newText\": \"a = 2\\n\"})",
+      "tool_name": "edit",
+      "cwd": "/Users/dev/omnigent",
+      "permission_mode": "default"
+    }
+  },
+  "pi-sdk-write-cut": {
+    "elicitation_id": "elicit_pi_sdk_write_cut",
+    "params": {
+      "mode": "form",
+      "message": "Pi wants to use **write**",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "tool_call",
+      "policy_name": "pi_sdk_permission",
+      "content_preview": "write({\"path\": \"/repo/generated/schema.json\", \"content\": \"{\\n  \\\"field_0\\\": 0,\\n  \\\"field_1\\\": 1,\\n  \\\"field_2\\\": 2,\\n  \\\"field_3\\\": 3,\\n  \\\"field_4\\\": 4,\\n  \\\"field_5\\\": 5,\\n  \\\"field_6\\\": 6,\\n  \\\"field_7\\\": 7,\\n  \\\"field_8\\\": 8,\\n  \\\"field_9\\\": 9,\\n  \\\"field_10\\\": 10,\\n  \\\"field_11\\\": 11,\\n  \\\"field_12\\)"
+    }
+  },
+  "policy-sys-os-edit": {
+    "elicitation_id": "elicit_policy_sys_os_edit",
+    "params": {
+      "mode": "form",
+      "message": "Edits under src/ need review",
+      "requestedSchema": {},
+      "url": null,
+      "phase": "tool_call",
+      "policy_name": "review_src_edits",
+      "content_preview": "{\"name\": \"mcp__omnigent__sys_os_edit\", \"arguments\": {\"path\": \"/repo/src/lib.rs\", \"old_string\": \"pub fn a() {}\", \"new_string\": \"pub fn a() {}\\npub fn b() {}\"}}"
+    }
+  },
+  "policy-apply-patch": {
+    "elicitation_id": "elicit_policy_apply_patch",
+    "params": {
+      "mode": "form",
+      "message": "Edits under src/ need review",
+      "requestedSchema": {},
+      "url": null,
+      "phase": "tool_call",
+      "policy_name": "review_src_edits",
+      "content_preview": "{\"name\": \"apply_patch\", \"arguments\": {\"changes\": [{\"path\": \"/repo/src/new.rs\", \"kind\": {\"type\": \"add\"}, \"diff\": \"pub fn new() {}\\n\"}, {\"path\": \"/repo/src/old.rs\", \"kind\": {\"type\": \"delete\"}, \"diff\": \"fn old() {}\\nfn older() {}\\n\"}, {\"path\": \"/repo/src/main.rs\", \"kind\": {\"type\": \"update\", \"move_path\": null}, \"diff\": \"--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1,3 +1,3 @@\\n fn main() {\\n-    old();\\n+    new();\\n }\\n\"}]}}"
+    }
+  },
+  "codex-apply-patch": {
+    "elicitation_id": "elicit_codex_apply_patch",
+    "params": {
+      "mode": "form",
+      "message": "Codex wants to apply a patch",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "codex_apply_patch_approval",
+      "policy_name": "codex_native_apply_patch_approval",
+      "content_preview": "{\"conversationId\": \"thr_123\", \"callId\": \"call_9\", \"fileChanges\": {\"/repo/src/new.rs\": {\"type\": \"add\", \"content\": \"pub fn new() {}\\n\"}, \"/repo/src/main.rs\": {\"type\": \"update\", \"unified_diff\": \"@@ -1,3 +1,4 @@\\n fn main() {\\n-    old();\\n+    new();\\n+    done();\\n }\\n\", \"move_path\": null}, \"/repo/src/old.rs\": {\"type\": \"delete\", \"content\": \"fn old() {}\\n\"}}, \"reason\": \"Apply the refactor\", \"grantRoot\": null}",
+      "codex_method": "applyPatchApproval",
+      "codex_request_id": 12,
+      "reason": "Apply the refactor",
+      "thread_id": "thr_123",
+      "call_id": "call_9",
+      "files": [
+        "/repo/src/main.rs",
+        "/repo/src/new.rs",
+        "/repo/src/old.rs"
+      ]
+    }
+  },
+  "codex-apply-patch-cut": {
+    "elicitation_id": "elicit_codex_apply_patch_cut",
+    "params": {
+      "mode": "form",
+      "message": "Codex wants to apply a patch",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "codex_apply_patch_approval",
+      "policy_name": "codex_native_apply_patch_approval",
+      "content_preview": "{\"conversationId\": \"thr_123\", \"callId\": \"call_9\", \"fileChanges\": {\"/repo/src/a.rs\": {\"type\": \"update\", \"unified_diff\": \"@@ -1 +1 @@\\n-a\\n+b\\n\", \"move_path\": null}, \"/repo/src/big.rs\": {\"type\": \"add\", \"content\": \"fn f0() {}\\nfn f1() {}\\nfn f2() {}\\nfn f3() {}\\nfn f4() {}\\nfn f5() {}\\nfn f6() {}\\nfn f7() {}\\nfn f8() {}\\nfn f9() {}\\nfn f10() {}\\nfn f11() {}\\nfn f12() {}\\nfn f13() {}\\nfn f14() {}\\nfn f15() {}\\nfn f16() {}\\nfn f17() {}\\nfn f18() {}\\nfn f19() {}\\nfn f20() {}\\nfn f21() {}\\nfn f22() {}\\nfn f23() {}\\nfn f24() {}\\nfn f25() {}\\nfn f26() {}\\nfn f27() {}\\nfn f28() {}\\nfn f29() {}\\nfn f30() {}\\nfn f31() {}\\nfn f32() {}\\nfn f33() {}\\nfn f34() {}\\nfn f35() {}\\nfn f36() {}\\nfn f37() {}\\nfn f38() {}\\nfn f39() {}\\nfn f40() {}\\nfn f41() {}\\nfn f42() {}\\nfn f43() {}\\nfn f44() {}\\nfn f45() {}\\nfn f46() {}\\nfn f47() {}\\nfn f48() {}\\nfn f49() {}\\nfn f50() {}\\nfn f51() {}\\nfn f52() {}\\nfn f53() {}\\nfn f54() {}\\nfn f55() {}\\nfn f56() {}\\nfn f57() {}\\nfn f58() {}\\nfn f59() {}\\nfn f60() {}\\nfn f61() {}\\nfn f62() {}\\nfn ",
+      "codex_method": "applyPatchApproval",
+      "codex_request_id": 12,
+      "reason": "Apply the refactor",
+      "thread_id": "thr_123",
+      "call_id": "call_9",
+      "files": [
+        "/repo/src/a.rs",
+        "/repo/src/big.rs",
+        "/repo/src/z.rs"
+      ]
+    }
+  },
+  "codex-file-change": {
+    "elicitation_id": "elicit_codex_file_change",
+    "params": {
+      "mode": "form",
+      "message": "Codex wants to modify files",
+      "requestedSchema": null,
+      "url": null,
+      "phase": "codex_file_change_approval",
+      "policy_name": "codex_native_file_change_approval",
+      "content_preview": "{\"threadId\": \"thr_123\", \"turnId\": \"turn_4\", \"itemId\": \"item_7\", \"reason\": \"Write the fix\"}",
+      "codex_method": "item/fileChange/requestApproval",
+      "codex_request_id": 13,
+      "reason": "Write the fix",
+      "thread_id": "thr_123",
+      "turn_id": "turn_4",
+      "item_id": "item_7"
+    }
+  }
+}

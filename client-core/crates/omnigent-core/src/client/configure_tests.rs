@@ -420,3 +420,96 @@ fn list_event_crossing_snapshot_read_rejects_stale_configuration() {
     // value; the point is that the stale snapshot did not replace the newer row.
     assert!(core.cached_summary("conv_a").is_some());
 }
+
+fn claude_fields(mode: &str) -> Value {
+    json!({
+        "harness": "claude-native", "agent_id": "claude",
+        "labels": {
+            "omnigent.wrapper": "claude-code-native-ui",
+            "omnigent.claude_native.permission_mode": mode,
+        },
+        "host_id": "demo-host", "host_online": true, "runner_online": true,
+    })
+}
+
+#[test]
+fn approval_mode_patches_the_harness_field_while_a_turn_runs() {
+    let transport = RouteTransport::local();
+    let mut running = claude_fields("default");
+    running["status"] = json!("running");
+    stub_session(&transport, &running);
+    let mut landed = claude_fields("acceptEdits");
+    landed["status"] = json!("running");
+    transport.respond(
+        Some("PATCH"),
+        PATH,
+        None,
+        Reply::json(200, wire(&landed, true).to_string()),
+    );
+    let core = live(transport);
+    let saved = block_on(core.set_approval_mode("acceptEdits", "conv_a")).unwrap();
+    assert_eq!(
+        saved.configuration.unwrap().approval_mode.as_deref(),
+        Some("acceptEdits")
+    );
+    assert_eq!(
+        mutation_bodies(core.transport()),
+        vec![json!({"permission_mode": "acceptEdits"})]
+    );
+}
+
+#[test]
+fn approval_mode_rejects_launch_only_modes_and_reports_a_different_landing() {
+    let transport = RouteTransport::local();
+    stub_session(&transport, &claude_fields("default"));
+    let core = live(transport);
+    let error = block_on(core.set_approval_mode("bypassPermissions", "conv_a")).unwrap_err();
+    assert!(
+        matches!(
+            error,
+            SessionError::Configuration(ConfigurationError::Unavailable(_))
+        ),
+        "{error:?}"
+    );
+    assert_eq!(mutation_bodies(core.transport()), Vec::<Value>::new());
+
+    let transport = RouteTransport::local();
+    stub_session(&transport, &claude_fields("default"));
+    transport.respond(
+        Some("PATCH"),
+        PATH,
+        None,
+        Reply::json(200, wire(&claude_fields("plan"), true).to_string()),
+    );
+    let core = live(transport);
+    let error = block_on(core.set_approval_mode("auto", "conv_a")).unwrap_err();
+    assert_eq!(
+        error,
+        SessionError::Configuration(ConfigurationError::Unavailable(
+            "Claude Code stayed in Plan only instead of switching to Auto-approve.".into()
+        ))
+    );
+}
+
+#[test]
+fn approval_mode_without_an_acknowledged_mode_is_uncertain() {
+    let transport = RouteTransport::local();
+    let fields = merged(&json!({}));
+    stub_session(&transport, &fields);
+    transport.respond(
+        Some("PATCH"),
+        PATH,
+        None,
+        Reply::json(200, wire(&fields, true).to_string()),
+    );
+    let core = live(transport);
+    let error = block_on(core.set_approval_mode("full-access", "conv_a")).unwrap_err();
+    assert!(
+        matches!(error, SessionError::DeliveryUncertain { .. }),
+        "{error:?}"
+    );
+    assert_eq!(
+        mutation_bodies(core.transport()),
+        vec![json!({"approval_mode": "full-access"})]
+    );
+}

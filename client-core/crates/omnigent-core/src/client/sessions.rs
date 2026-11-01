@@ -45,6 +45,9 @@ pub struct SessionSummary {
     pub preview: String,
     /// List status.
     pub status: SummaryStatus,
+    /// Pending decisions the server reports: the list row's `pending_elicitations_count`, or the
+    /// snapshot's pending requests (which include sub-agent requests it carries).
+    pub pending_requests: u32,
     /// Below edit permission (or unknown permission).
     pub is_read_only: bool,
     /// Last activity, Unix seconds.
@@ -67,6 +70,19 @@ pub struct SessionSummary {
     pub configuration: Option<SessionConfiguration>,
     /// Monotonic stamp of the metadata read this summary came from; higher is newer.
     pub configuration_revision: Option<u64>,
+    /// The caller's read state as the server last reported it (`viewer_last_seen`,
+    /// `viewer_unread` on list and update rows); `None` until a row reports it.
+    pub viewer_read: Option<ViewerRead>,
+}
+
+/// The caller's read state for one session, as the server reports it
+/// (`PUT /v1/sessions/{id}/read-state` writes it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ViewerRead {
+    /// When the caller last saw the session, Unix seconds; `None` when never.
+    pub last_seen: Option<i64>,
+    /// The caller explicitly marked it unread.
+    pub unread: bool,
 }
 
 impl SessionSummary {
@@ -82,6 +98,7 @@ impl SessionSummary {
             title: title.into(),
             preview: preview.into(),
             status: SummaryStatus::Idle,
+            pending_requests: 0,
             is_read_only: false,
             updated_at: 0,
             workspace: "Omni mobile".to_owned(),
@@ -93,6 +110,7 @@ impl SessionSummary {
             failure_message: None,
             configuration: None,
             configuration_revision: None,
+            viewer_read: None,
         }
     }
 
@@ -172,7 +190,8 @@ pub(crate) struct SessionProjection {
     labels: Field<BTreeMap<String, String>>,
     archived: Field<bool>,
     pending_count: Field<u64>,
-    pending_elicitations: usize,
+    /// The snapshot's pending requests; `None` for a list row.
+    pending_elicitations: Option<usize>,
     search_snippet: Field<String>,
     permission_level: Field<i64>,
     last_task_error_message: Option<String>,
@@ -189,6 +208,10 @@ pub(crate) struct SessionProjection {
     host_resumable: Field<bool>,
     parent_id: Field<String>,
     routing_mode: Field<String>,
+    launch_args: Field<Vec<String>>,
+    git_branch: Field<String>,
+    viewer_last_seen: Field<i64>,
+    viewer_unread: Field<bool>,
 }
 
 impl SessionProjection {
@@ -206,7 +229,7 @@ impl SessionProjection {
             labels: row.labels.clone(),
             archived: row.archived.clone(),
             pending_count: row.pending_elicitations_count.clone(),
-            pending_elicitations: 0,
+            pending_elicitations: None,
             search_snippet: row.search_snippet.clone(),
             permission_level: row.permission_level.clone(),
             last_task_error_message: None,
@@ -223,6 +246,10 @@ impl SessionProjection {
             host_resumable: Field::Absent,
             parent_id: row.parent_session_id.clone(),
             routing_mode: Field::Absent,
+            launch_args: Field::Absent,
+            git_branch: row.git_branch.clone(),
+            viewer_last_seen: row.viewer_last_seen.clone(),
+            viewer_unread: row.viewer_unread.clone(),
         }
     }
 
@@ -243,7 +270,7 @@ impl SessionProjection {
             labels: snapshot.labels.clone(),
             archived: snapshot.archived.clone(),
             pending_count: Field::Absent,
-            pending_elicitations: snapshot.pending_elicitations.len(),
+            pending_elicitations: Some(snapshot.pending_elicitations.len()),
             search_snippet: Field::Absent,
             permission_level: snapshot.permission_level.clone(),
             last_task_error_message: snapshot
@@ -263,12 +290,25 @@ impl SessionProjection {
             host_resumable: snapshot.host_resumable.clone(),
             parent_id: snapshot.parent_session_id.clone(),
             routing_mode: snapshot.cost_control_mode_override.clone(),
+            launch_args: snapshot.terminal_launch_args.clone(),
+            git_branch: snapshot.git_branch.clone(),
+            viewer_last_seen: Field::Absent,
+            viewer_unread: Field::Absent,
         }
     }
 
     /// Whether the row reports the harness and model, so it can replace detail metadata.
     pub(crate) const fn has_configuration_identity(&self) -> bool {
         self.harness.is_reported() && self.model_override.is_reported()
+    }
+
+    /// Pending decisions: the reported count or the snapshot's requests, whichever is larger,
+    /// so a pending decision is never hidden. A list row without a count reports none.
+    fn pending_requests(&self) -> u32 {
+        let reported = self.pending_count.value().copied().unwrap_or(0);
+        let carried = u64::try_from(self.pending_elicitations.unwrap_or(0)).unwrap_or(u64::MAX);
+        // More than four billion pending decisions saturates rather than wrapping.
+        u32::try_from(reported.max(carried)).unwrap_or(u32::MAX)
     }
 
     /// The summary, merged over `previous` (the last summary of the same session, if any).
@@ -280,8 +320,7 @@ impl SessionProjection {
         &self,
         previous: Option<&SessionSummary>,
     ) -> Result<SessionSummary, String> {
-        let has_pending = self.pending_count.value().is_some_and(|count| *count > 0)
-            || self.pending_elicitations > 0;
+        let pending_requests = self.pending_requests();
         let (status, status_preview) = match &self.status {
             SessionStatus::Idle => (SummaryStatus::Idle, "Idle"),
             SessionStatus::Running => (SummaryStatus::Running, "Running"),
@@ -302,6 +341,7 @@ impl SessionProjection {
             |level| level < 2,
         );
         let labels = self.labels.value();
+        let configuration = self.configuration(previous.and_then(|p| p.configuration.as_ref()));
         Ok(SessionSummary {
             id: self.id.clone(),
             title: self
@@ -310,7 +350,7 @@ impl SessionProjection {
                 .filter(|title| !title.is_empty())
                 .cloned()
                 .unwrap_or_else(|| "Untitled session".to_owned()),
-            preview: if has_pending {
+            preview: if pending_requests > 0 {
                 "Needs your response".to_owned()
             } else {
                 self.search_snippet
@@ -318,11 +358,12 @@ impl SessionProjection {
                     .cloned()
                     .unwrap_or_else(|| status_preview.to_owned())
             },
-            status: if has_pending {
+            status: if pending_requests > 0 {
                 SummaryStatus::NeedsResponse
             } else {
                 status
             },
+            pending_requests,
             is_read_only,
             updated_at: self
                 .updated_at
@@ -355,11 +396,22 @@ impl SessionProjection {
                     omnigent_protocol::sessions::DEFAULT_FAILURE_MESSAGE.to_owned()
                 })
             }),
-            configuration: Some(
-                self.configuration(previous.and_then(|p| p.configuration.as_ref())),
-            ),
+            configuration: Some(configuration),
             configuration_revision: None,
+            viewer_read: self.viewer_read(previous),
         })
+    }
+
+    /// The reported read state, else the previous summary's.
+    fn viewer_read(&self, previous: Option<&SessionSummary>) -> Option<ViewerRead> {
+        if self.viewer_last_seen.is_reported() || self.viewer_unread.is_reported() {
+            Some(ViewerRead {
+                last_seen: self.viewer_last_seen.value().copied(),
+                unread: self.viewer_unread.value().copied().unwrap_or(false),
+            })
+        } else {
+            previous.and_then(|previous| previous.viewer_read)
+        }
     }
 
     fn configuration(&self, prior: Option<&SessionConfiguration>) -> SessionConfiguration {
@@ -433,6 +485,16 @@ impl SessionProjection {
         self.routing_mode
             .clone()
             .apply_to(&mut configuration.routing_mode);
+        if let Some(mode) = crate::config::approval::reported_approval_mode(
+            configuration.wrapper.as_deref(),
+            &self.labels,
+            &self.launch_args,
+        ) {
+            configuration.approval_mode = mode;
+        }
+        self.git_branch
+            .clone()
+            .apply_to(&mut configuration.git_branch);
         configuration
     }
 }
@@ -831,6 +893,94 @@ impl<T: HttpTransport> ClientCore<T> {
         Ok(updated)
     }
 
+    /// Writes the caller's read state for one session: `PUT /v1/sessions/{id}/read-state`.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::NotConnected`];
+    /// [`SessionError::Unauthorized`] (the connection ends); [`SessionError::Forbidden`] without
+    /// read access; [`SessionError::Rejected`] for another 4xx (an older server without the
+    /// route answers 404 or 405); [`SessionError::DeliveryUncertain`] when the outcome is
+    /// unknown.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn put_read_state(
+        &self,
+        mark: &crate::read_state::ReadMark,
+    ) -> Result<(), SessionError> {
+        validate_identifier(&mark.session_id)?;
+        let path = format!("/v1/sessions/{}/read-state", mark.session_id);
+        let body = json!({"last_seen": mark.last_seen, "unread": mark.unread});
+        let result = self
+            .write(self.prepare("PUT", &path, &[], Some(&body))?)
+            .await;
+        self.dispatch();
+        result.map(|_| ())
+    }
+
+    /// The terminal names the session's agent declares (`GET /v1/sessions/{id}/agent`,
+    /// `terminals`), in declaration order: the only names a terminal can be created with (the
+    /// server rejects others). For a native harness these are the host's shells, its `$SHELL`
+    /// first. Empty when the agent declares none; `None` when the server does not report them.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request, [`SessionError::SessionNotFound`]
+    /// for a 404, the read errors, and [`SessionError::MalformedResponse`] when `terminals` is not
+    /// a list of non-empty names.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn declared_terminal_names(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<Vec<String>>, SessionError> {
+        let result = self.read_declared_terminals(session_id).await;
+        self.dispatch();
+        result
+    }
+
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn read_declared_terminals(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<Vec<String>>, SessionError> {
+        validate_identifier(session_id)?;
+        let path = format!("/v1/sessions/{session_id}/agent");
+        let agent = match self.get_json(&path, &[]).await {
+            Err(SessionError::HttpStatus { status: 404 }) => {
+                return Err(SessionError::SessionNotFound {
+                    session_id: session_id.to_owned(),
+                });
+            }
+            other => other?,
+        };
+        let Some(terminals) = agent.get("terminals").filter(|value| !value.is_null()) else {
+            return Ok(None);
+        };
+        let malformed = || SessionError::MalformedResponse {
+            detail: format!("{path}: `terminals` is not a list of terminal names"),
+        };
+        terminals
+            .as_array()
+            .ok_or_else(malformed)?
+            .iter()
+            .map(|name| {
+                name.as_str()
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned)
+                    .ok_or_else(malformed)
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Some)
+    }
+
     /// Applies `/v1/sessions/updates` `snapshot` or `changed` rows (see
     /// [`crate::realtime::UpdatesFrame`]): each becomes a summary merged over the cached one.
     /// A sparse row for the live session (no harness and model) asks for re-hydration.
@@ -996,6 +1146,7 @@ mod tests {
         let summary = row.summary(None).unwrap();
         assert_eq!(summary.title, "Untitled session");
         assert_eq!(summary.status, SummaryStatus::NeedsResponse);
+        assert_eq!(summary.pending_requests, 1);
         assert_eq!(summary.preview, "Needs your response");
         assert!(summary.is_read_only);
         assert!(summary.is_archived);
@@ -1031,6 +1182,27 @@ mod tests {
             generic.failure_message.as_deref(),
             Some("The last response failed. Check the server or provider sign-in.")
         );
+    }
+
+    #[test]
+    fn pending_requests_follow_each_read_and_clear_with_the_count() {
+        let row = |count: u64| {
+            decode_list_row(json!({
+                "id": "conv_wait", "status": "running", "created_at": 1,
+                "permission_level": 4, "pending_elicitations_count": count
+            }))
+            .unwrap()
+        };
+        let waiting = row(3).summary(None).unwrap();
+        assert_eq!(waiting.pending_requests, 3);
+        assert_eq!(waiting.status, SummaryStatus::NeedsResponse);
+        let answered = row(0).summary(Some(&waiting)).unwrap();
+        assert_eq!(answered.pending_requests, 0);
+        assert_eq!(answered.status, SummaryStatus::Running);
+        let snapshot = summary_of(&json!({ "pending_elicitations_count": 2 }), None, true);
+        assert_eq!(snapshot.pending_requests, 2);
+        let cleared = summary_of(&json!({}), Some(&snapshot), true);
+        assert_eq!(cleared.pending_requests, 0);
     }
 
     #[test]

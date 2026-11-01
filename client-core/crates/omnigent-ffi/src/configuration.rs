@@ -81,6 +81,12 @@ pub struct SessionConfiguration {
     pub parent_id: Option<String>,
     /// Cost-control (smart routing) mode override.
     pub routing_mode: Option<String>,
+    /// The live approval mode's wire value; `None` when not reported.
+    #[uniffi(default)]
+    pub approval_mode: Option<String>,
+    /// The workspace's git branch.
+    #[uniffi(default)]
+    pub git_branch: Option<String>,
 }
 
 /// A pending model and effort choice against the configuration it started from.
@@ -250,6 +256,8 @@ impl From<core::SessionConfiguration> for SessionConfiguration {
             host_resumable: configuration.host_resumable,
             parent_id: configuration.parent_id,
             routing_mode: configuration.routing_mode,
+            approval_mode: configuration.approval_mode,
+            git_branch: configuration.git_branch,
         }
     }
 }
@@ -273,6 +281,8 @@ impl From<SessionConfiguration> for core::SessionConfiguration {
             host_resumable: configuration.host_resumable,
             parent_id: configuration.parent_id,
             routing_mode: configuration.routing_mode,
+            approval_mode: configuration.approval_mode,
+            git_branch: configuration.git_branch,
         }
     }
 }
@@ -438,6 +448,13 @@ pub fn configuration_efforts(
 #[uniffi::export]
 pub fn configuration_supports_models(configuration: SessionConfiguration) -> bool {
     core::SessionConfiguration::from(configuration).supports_models()
+}
+
+/// Whether a message sent mid-turn steers the running turn (otherwise it waits for the turn).
+#[must_use]
+#[uniffi::export]
+pub fn configuration_supports_steering(configuration: SessionConfiguration) -> bool {
+    core::SessionConfiguration::from(configuration).supports_steering()
 }
 
 /// Whether the wrapper forwards reasoning-effort changes.

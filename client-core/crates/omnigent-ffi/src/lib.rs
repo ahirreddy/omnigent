@@ -31,6 +31,8 @@
     reason = "crate-internal items of private modules; `pub` would trip rustc's unreachable_pub"
 )]
 
+pub mod approval;
+pub mod attention;
 pub mod browser;
 pub mod config;
 pub mod configuration;
@@ -51,6 +53,7 @@ pub mod client;
 pub mod connection;
 mod databricks;
 mod engine;
+mod read_driver;
 mod runtime;
 mod stream_driver;
 mod terminal_driver;
@@ -60,6 +63,8 @@ mod updates_driver;
 mod api_tests;
 #[cfg(test)]
 mod driver_tests;
+#[cfg(test)]
+mod read_tests;
 #[cfg(test)]
 mod test_support;
 

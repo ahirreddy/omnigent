@@ -13,15 +13,20 @@
 //! and the resolve paths of `LocalServerSessionClient` and `DemoSessionClient`, plus the web
 //! `ApprovalCard` permission variants (Codex persistence, Antigravity, auto mode, directories).
 
+mod changes;
 pub mod form;
 pub mod ledger;
+mod partial_json;
 pub mod resolve;
 
 use omnigent_protocol::{ElicitationMode, ElicitationRequest};
 use serde_json::{Map, Value};
 use url::Url;
 
-pub use form::{AnswerError, DecisionForm, FieldKind, FormError, FormField, FormOption};
+pub use changes::{FileChange, FileChangeKind};
+pub use form::{
+    AnswerError, DecisionForm, FieldKind, FormError, FormField, FormOption, FormProblem,
+};
 pub use ledger::{
     DecisionEntry, DecisionEventOutcome, DecisionState, MAX_RETIRED_IDS, RequestOutcome,
     ResolvedOutcome, SessionDecisions,
@@ -34,6 +39,11 @@ pub use resolve::{
 const NEEDS_WEB_SCHEMA: &str = "This form uses a schema that needs the web app.";
 const AGY_PERMISSION_PHASE: &str = "agy_permission";
 const ASK_USER_QUESTION_CALL: &str = "AskUserQuestion(";
+const PRE_TOOL_USE_PHASE: &str = "pre_tool_use";
+/// Native permission hooks whose bridge hands a decline's `content.feedback` to the agent as the
+/// denial reason (the server's `PermissionRequest` hook route for Claude and Devin). Other
+/// harnesses drop it, so they are not offered feedback.
+const FEEDBACK_POLICIES: [&str; 2] = ["claude_native_permission", "devin_native_permission"];
 
 /// What a card asks for.
 #[derive(Debug, Clone, PartialEq)]
@@ -183,10 +193,13 @@ pub struct PermissionOptions {
     pub persist_modes: Vec<PersistMode>,
     /// Antigravity details.
     pub antigravity: Option<AntigravityPermission>,
+    /// The files the gated edit would change (see [`FileChange`]); empty when the request is not
+    /// an edit or does not say.
+    pub file_changes: Vec<FileChange>,
 }
 
 impl PermissionOptions {
-    fn from_params(phase: Option<&str>, extra: &Map<String, Value>) -> Self {
+    fn from_params(phase: Option<&str>, preview: Option<&str>, extra: &Map<String, Value>) -> Self {
         let text = |key: &str| {
             extra
                 .get(key)
@@ -226,6 +239,7 @@ impl PermissionOptions {
                 action_description: text("action_description"),
                 always_allow_pattern: text("always_allow_pattern"),
             }),
+            file_changes: changes::file_changes(phase, preview, extra),
         }
     }
 
@@ -286,6 +300,11 @@ pub struct Decision {
     pub title: String,
     /// Card body: message, command, preview, plan, policy and command metadata.
     pub detail: String,
+    /// The agent's or policy's message on its own, when it sent one.
+    pub message: Option<String>,
+    /// The gated tool call's input formatted for display (the web's `formatPreview`), when the
+    /// card shows it: not for forms, plan reviews or Codex commands, which show their own fields.
+    pub tool_input: Option<String>,
     /// What the card asks for.
     pub kind: DecisionKind,
     /// Permission choices beyond approve and decline.
@@ -304,7 +323,25 @@ impl Decision {
         let params = &request.params;
         let preview = params.content_preview.as_deref().unwrap_or_default();
         let kind = request_kind(request);
-        let permissions = PermissionOptions::from_params(params.phase.as_deref(), &params.extra);
+        let permissions = PermissionOptions::from_params(
+            params.phase.as_deref(),
+            params.content_preview.as_deref(),
+            &params.extra,
+        );
+        let message = params
+            .message
+            .as_deref()
+            .map(str::trim)
+            .filter(|message| !message.is_empty())
+            .map(str::to_owned);
+        let shows_own_fields = matches!(kind, DecisionKind::Form(_))
+            || permissions.plan.is_some()
+            || permissions.command.is_some();
+        let tool_input = if shows_own_fields {
+            None
+        } else {
+            changes::format_preview(preview)
+        };
         let detail = detail_text(
             params.message.as_deref(),
             preview,
@@ -324,6 +361,8 @@ impl Decision {
             target_session_id: request.target_session(carrying_session_id).to_owned(),
             title: title.to_owned(),
             detail,
+            message,
+            tool_input,
             kind,
             permissions,
             phase: params.phase.clone(),
@@ -362,6 +401,22 @@ impl Decision {
     #[must_use]
     pub const fn is_plan_review(&self) -> bool {
         self.permissions.plan.is_some()
+    }
+
+    /// Whether a decline can carry feedback the agent receives
+    /// ([`DecisionResponse::DeclineWithFeedback`]): plan reviews, and approvals from a native
+    /// permission hook that forwards it.
+    #[must_use]
+    pub fn accepts_feedback(&self) -> bool {
+        if self.kind != DecisionKind::Approval {
+            return false;
+        }
+        self.is_plan_review()
+            || (self.phase.as_deref() == Some(PRE_TOOL_USE_PHASE)
+                && self
+                    .policy_name
+                    .as_deref()
+                    .is_some_and(|policy| FEEDBACK_POLICIES.contains(&policy)))
     }
 
     /// The "don't ask again" label (host, else tool), if offered.
@@ -569,5 +624,7 @@ fn detail_text(
     }
 }
 
+#[cfg(test)]
+mod changes_tests;
 #[cfg(test)]
 mod tests;

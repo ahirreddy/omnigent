@@ -489,3 +489,92 @@ fn demo_harness_switch_and_catalog_routes() {
         Some("claude-code-native-ui")
     );
 }
+
+#[test]
+fn the_demo_design_approval_lists_the_files_its_patch_changes() {
+    use crate::decisions::FileChangeKind;
+
+    let core = sample();
+    let design = block_on(core.conversation_snapshot("demo-design")).unwrap();
+    let card = &design.decisions[0];
+    assert_eq!(
+        card.message.as_deref().map(|m| m.lines().next()),
+        Some(Some("Apply the sample design?"))
+    );
+    let files: Vec<_> = card
+        .permissions
+        .file_changes
+        .iter()
+        .map(|file| {
+            (
+                file.path.as_str(),
+                file.kind,
+                file.lines_added,
+                file.lines_removed,
+            )
+        })
+        .collect();
+    assert_eq!(
+        files,
+        [
+            (
+                "Omni/iOS/SessionRow.swift",
+                Some(FileChangeKind::Modify),
+                Some(4),
+                Some(1)
+            ),
+            (
+                "Omni/iOS/AttentionSection.swift",
+                Some(FileChangeKind::Create),
+                Some(11),
+                Some(0)
+            ),
+        ]
+    );
+    assert!(
+        card.tool_input
+            .as_deref()
+            .unwrap()
+            .starts_with("apply_patch({\n  \"changes\":[")
+    );
+}
+
+#[test]
+fn the_demo_keeps_the_viewers_read_state() {
+    let core = sample();
+    let rows = |core: &ClientCore<DemoTransport>| block_on(core.sessions()).unwrap();
+    let design = |rows: Vec<crate::client::sessions::SessionSummary>| {
+        rows.into_iter()
+            .find(|row| row.id == "demo-design")
+            .unwrap()
+    };
+    let read = design(rows(&core)).viewer_read;
+    assert_eq!(
+        read,
+        Some(crate::client::sessions::ViewerRead {
+            last_seen: None,
+            unread: false
+        })
+    );
+    let mark = crate::read_state::ReadMark {
+        session_id: "demo-design".into(),
+        last_seen: DEFAULT_NOW + 5,
+        unread: false,
+    };
+    block_on(core.put_read_state(&mark)).unwrap();
+    assert_eq!(
+        design(rows(&core)).viewer_read,
+        Some(crate::client::sessions::ViewerRead {
+            last_seen: Some(DEFAULT_NOW + 5),
+            unread: false
+        })
+    );
+    let missing = crate::read_state::ReadMark {
+        session_id: "missing".into(),
+        ..mark
+    };
+    assert!(matches!(
+        block_on(core.put_read_state(&missing)),
+        Err(SessionError::Rejected { status: 404, .. })
+    ));
+}

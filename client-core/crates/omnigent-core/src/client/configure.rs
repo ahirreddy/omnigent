@@ -22,6 +22,7 @@ use serde_json::{Map, Value};
 use super::requests::validate_identifier;
 use super::sessions::{SessionSummary, SummaryStatus, decode_snapshot_value};
 use super::{ClientCore, ClientEvent, SessionError, lock};
+use crate::config::approval::approval_mode_menu;
 use crate::config::session::{
     ConfigurationCatalog, ConfigurationEdit, ConfigurationError, ConfigurationHost, HarnessChoice,
     ModelChoice, SessionConfiguration, canonical_harness,
@@ -507,5 +508,118 @@ impl<T: HttpTransport> ClientCore<T> {
             ));
         }
         Ok(Self::accept_configuration(&mut lock(&self.state), updated))
+    }
+
+    /// Switches `session_id`'s live approval mode to `value`, through the harness's own field.
+    /// Allowed while a turn runs, as on the web. Never retried.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::Busy`] while another change is in flight; [`SessionError::ReadOnly`] below
+    /// owner level; [`SessionError::Archived`]; [`SessionError::StreamNotReady`];
+    /// [`ConfigurationError::Unavailable`] when the host is offline, the harness has no live
+    /// switch, `value` is not switchable, or the harness landed on another mode (that mode is
+    /// kept); [`SessionError::DeliveryUncertain`] when the acknowledgement shows no mode.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn set_approval_mode(
+        &self,
+        value: &str,
+        session_id: &str,
+    ) -> Result<SessionSummary, SessionError> {
+        let result = self.switch_approval_mode(value, session_id).await;
+        self.dispatch();
+        result
+    }
+
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn switch_approval_mode(
+        &self,
+        value: &str,
+        session_id: &str,
+    ) -> Result<SessionSummary, SessionError> {
+        validate_identifier(session_id)?;
+        let _guard = self.begin_mutation(session_id)?;
+        let summary = self.config_snapshot(session_id).await?;
+        if !summary.can_archive() {
+            return Err(SessionError::ReadOnly);
+        }
+        if summary.is_archived {
+            return Err(SessionError::Archived);
+        }
+        if lock(&self.state).live_session.as_deref() != Some(session_id) {
+            return Err(SessionError::StreamNotReady);
+        }
+        let configuration = summary
+            .configuration
+            .as_ref()
+            .ok_or_else(|| unavailable("Settings are unavailable."))?;
+        if configuration.host_online != Some(true) && configuration.runner_online != Some(true) {
+            return Err(unavailable(
+                "Reconnect the session's host before changing the approval mode.",
+            ));
+        }
+        let menu = approval_mode_menu(configuration)
+            .ok_or_else(|| unavailable("This harness has no approval modes to switch."))?;
+        let target = menu
+            .options
+            .iter()
+            .find(|option| option.value == value && option.switchable)
+            .ok_or_else(|| {
+                ConfigurationError::Unavailable(format!(
+                    "{} can't switch a running session to this mode.",
+                    menu.harness
+                ))
+            })?;
+        let mut body = Map::new();
+        body.insert(
+            menu.field.wire_name().to_owned(),
+            Value::String(value.to_owned()),
+        );
+        let epoch = lock(&self.state).metadata_epoch(session_id);
+        let path = format!("/v1/sessions/{session_id}");
+        let acknowledgement = self
+            .write_json("PATCH", &path, &Value::Object(body))
+            .await?;
+        let decoded = decode_snapshot_value(acknowledgement)
+            .map_err(|detail| uncertain(format!("unreadable PATCH acknowledgement: {detail}")))?;
+        if decoded.snapshot.id != session_id {
+            return Err(uncertain("the PATCH acknowledgement names another session"));
+        }
+        let updated = if lock(&self.state).metadata_epoch(session_id) == epoch {
+            let state = lock(&self.state);
+            decoded
+                .projection
+                .summary(state.summaries.get(session_id))
+                .map_err(uncertain)?
+        } else {
+            self.config_snapshot(session_id)
+                .await
+                .map_err(|error| uncertain(format!("re-read after a crossing event: {error}")))?
+        };
+        let landed = updated
+            .configuration
+            .as_ref()
+            .and_then(approval_mode_menu)
+            .and_then(|menu| menu.selected_option().cloned());
+        let Some(landed) = landed else {
+            return Err(uncertain(
+                "the server did not acknowledge the approval mode",
+            ));
+        };
+        Self::accept_configuration(&mut lock(&self.state), updated.clone());
+        if landed.value != target.value {
+            return Err(ConfigurationError::Unavailable(format!(
+                "{} stayed in {} instead of switching to {}.",
+                menu.harness, landed.title, target.title
+            ))
+            .into());
+        }
+        Ok(updated)
     }
 }

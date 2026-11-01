@@ -35,7 +35,7 @@ pub struct EventSection {
 }
 
 impl EventSection {
-    fn new(id: &str, title: &str, summary: impl Into<String>) -> Self {
+    pub(super) fn new(id: &str, title: &str, summary: impl Into<String>) -> Self {
         Self {
             id: id.to_owned(),
             title: title.to_owned(),
@@ -411,15 +411,8 @@ fn child_sections(state: &SessionEventState, result: &mut Vec<EventSection>) {
     let Some(children) = &state.children else {
         return;
     };
-    for (id, child) in children {
-        let title = string_field(child, "title")
-            .or_else(|| string_field(child, "agent_name"))
-            .unwrap_or("Subagent");
-        let summary = string_field(child, "status").unwrap_or("Created");
-        let mut section = EventSection::new(&format!("child-{id}"), title, summary)
-            .with_details(vec![detail("id", "Session ID", id)]);
-        section.session_id = Some(id.clone());
-        result.push(section);
+    for (id, child) in super::children::ordered(children) {
+        result.push(super::children::child_section(id, child));
     }
 }
 

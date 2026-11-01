@@ -5,7 +5,7 @@
 //! - **Reads** accept 200 and 202. A 3xx is [`SessionError::RedirectNotAllowed`], 401 ends the
 //!   connection, 403 is [`SessionError::Forbidden`], anything else is
 //!   [`SessionError::HttpStatus`]. A transport failure keeps its kind.
-//! - **Writes** accept 200, 201 and 202. A transport failure, cancellation, 3xx, 5xx, a result
+//! - **Writes** accept 200, 201, 202 and 204. A transport failure, cancellation, 3xx, 5xx, a result
 //!   from an older connection, or an unreadable acknowledgement is
 //!   [`SessionError::DeliveryUncertain`]: the write may have landed and is never retried. A 401
 //!   ends the connection; 403 and other 4xx definitely did not deliver.
@@ -188,7 +188,7 @@ impl<T: HttpTransport> ClientCore<T> {
             ));
         }
         match response.status {
-            200..=202 => Ok(response),
+            200..=202 | 204 => Ok(response),
             status @ 300..=399 => Err(uncertain(format!(
                 "the server redirected the write (HTTP {status})"
             ))),

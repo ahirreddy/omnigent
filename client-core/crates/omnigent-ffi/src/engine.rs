@@ -105,7 +105,7 @@ pub(crate) struct SignInContext {
 }
 
 /// The view the user is looking at, for notifications and the badge.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct View {
     pub(crate) active_session_id: Option<String>,
     pub(crate) focused: bool,
@@ -196,6 +196,8 @@ pub(crate) enum Msg {
     },
     /// An activity badge lapsed.
     TerminalTick { session_id: String },
+    /// Read state: a caller's mark, or a finished write.
+    Read(crate::read_driver::ReadMsg),
     /// Stop everything and end the engine.
     Shutdown,
 }
@@ -243,6 +245,9 @@ pub(crate) struct Engine {
     pub(crate) updates_timers: HashMap<u64, AbortHandle>,
     pub(crate) drivers: HashMap<String, SessionDriver>,
     pub(crate) attention: Attention,
+    /// Read state of every known session, and the unread sessions last reported.
+    pub(crate) read: core::read_state::ReadState,
+    pub(crate) unread: BTreeSet<String>,
     pub(crate) list_generation: u64,
     pub(crate) list_refresh: Option<AbortHandle>,
     pub(crate) demo_ticker: Option<AbortHandle>,
@@ -275,6 +280,8 @@ impl Engine {
                 updates_timers: HashMap::new(),
                 drivers: HashMap::new(),
                 attention: Attention::default(),
+                read: core::read_state::ReadState::new(),
+                unread: BTreeSet::new(),
                 list_generation: 0,
                 list_refresh: None,
                 demo_ticker: None,
@@ -325,6 +332,7 @@ impl Engine {
                 self.link = Some(link);
                 self.sign_in = Some(sign_in);
                 self.set_phase(ConnectionPhase::Connected { server });
+                self.read_reset();
                 self.start_realtime();
                 self.refresh_list();
             }
@@ -355,10 +363,7 @@ impl Engine {
             Msg::Updates(input) => self.updates_input(input),
             Msg::RefreshList => self.refresh_list(),
             Msg::ListLoaded { generation, result } => self.list_loaded(generation, result),
-            Msg::View(view) => {
-                self.attention.view = view;
-                self.observe_attention();
-            }
+            Msg::View(view) => self.set_view(view),
             Msg::NotificationsAllowed(allowed) => self.attention.can_notify = allowed,
             Msg::AttentionDue => self.attention_due(),
             Msg::DemoTick => self.demo_tick(),
@@ -382,6 +387,7 @@ impl Engine {
                 terminal_id,
             } => self.terminal_removed(&session_id, &terminal_id),
             Msg::TerminalTick { session_id } => self.publish_terminals(&session_id),
+            Msg::Read(message) => self.read_message(message),
             Msg::Shutdown => {
                 self.stop_realtime();
                 let ids: Vec<String> = self.drivers.keys().cloned().collect();
@@ -471,6 +477,7 @@ impl Engine {
         }
         self.start_realtime();
         self.refresh_list();
+        self.mark_viewed(core::read_state::SeenReason::Viewing);
     }
 
     fn client_event(&mut self, event: ClientEvent) {
@@ -481,14 +488,17 @@ impl Engine {
                 }
             }
             ClientEvent::SessionsChanged { sessions } => {
+                // The list changes before the read state that depends on it.
                 self.emit(CoreEvent::SessionListChanged {
                     change: SessionListChange::Upsert {
-                        sessions: sessions.into_iter().map(Into::into).collect(),
+                        sessions: sessions.iter().cloned().map(Into::into).collect(),
                     },
                 });
+                self.read_observe(&sessions);
                 self.update_watch();
             }
             ClientEvent::SessionsRemoved { ids } => {
+                self.read_removed(&ids);
                 self.emit(CoreEvent::SessionListChanged {
                     change: SessionListChange::Remove { ids },
                 });
@@ -558,9 +568,10 @@ impl Engine {
             Ok(list) => {
                 self.emit(CoreEvent::SessionListChanged {
                     change: SessionListChange::Reset {
-                        sessions: list.into_iter().map(Into::into).collect(),
+                        sessions: list.iter().cloned().map(Into::into).collect(),
                     },
                 });
+                self.read_observe(&list);
                 self.emit(CoreEvent::SessionListLoaded);
                 self.update_watch();
             }
@@ -618,6 +629,7 @@ impl Engine {
         let Some(demo) = self.transports.demo.clone() else {
             return;
         };
+        demo.set_now(i64::try_from(self.host.unix_ms() / 1_000).unwrap_or(i64::MAX));
         let changed = demo.advance_replies();
         for id in &changed {
             self.request_hydration(id);
@@ -630,7 +642,7 @@ impl Engine {
         }
     }
 
-    fn observe_attention(&mut self) {
+    pub(crate) fn observe_attention(&mut self) {
         let view = ViewContext {
             active_session_id: self.attention.view.active_session_id.clone(),
             window_focused: self.attention.view.focused,
@@ -647,7 +659,17 @@ impl Engine {
             });
         }
         self.schedule_attention(now);
-        let badge = unread_badge_ids(&rows, &view, |_| false);
+        self.publish_badge();
+    }
+
+    /// The badge: sessions waiting for input or unread, not archived and not being viewed.
+    pub(crate) fn publish_badge(&mut self) {
+        let view = ViewContext {
+            active_session_id: self.attention.view.active_session_id.clone(),
+            window_focused: self.attention.view.focused,
+        };
+        let rows: Vec<SessionListItem> = self.attention.rows.values().cloned().collect();
+        let badge = unread_badge_ids(&rows, &view, |row| self.read.is_unread(&row.id));
         if badge != self.attention.badge {
             self.attention.badge.clone_from(&badge);
             self.emit(CoreEvent::BadgeChanged {

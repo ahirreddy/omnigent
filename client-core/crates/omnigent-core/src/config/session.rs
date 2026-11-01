@@ -191,6 +191,10 @@ pub struct SessionConfiguration {
     pub parent_id: Option<String>,
     /// Cost-control (smart routing) mode override.
     pub routing_mode: Option<String>,
+    /// The live approval mode's wire value (see [`super::approval`]); `None` when not reported.
+    pub approval_mode: Option<String>,
+    /// The workspace's git branch.
+    pub git_branch: Option<String>,
 }
 
 /// Shown when a session's host is offline and cannot be woken.
@@ -210,6 +214,25 @@ const MODEL_HARNESSES: [&str; 6] = [
 
 /// Claude's effort vocabulary (owned by the server's `reasoning_effort.py`).
 const CLAUDE_EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+
+/// Harnesses whose executor injects a message into the running turn
+/// (`supports_live_message_queue` in `omnigent/inner/*_executor.py`). Others fold it into the
+/// next turn.
+const STEERING_HARNESSES: [&str; 13] = [
+    "claude-native",
+    "codex-native",
+    "cursor-native",
+    "hermes-native",
+    "qwen-native",
+    "pi-native",
+    "devin-native",
+    "antigravity-native",
+    "kimi-native",
+    "kiro-native",
+    "goose-native",
+    "codex",
+    "pi",
+];
 
 impl SessionConfiguration {
     /// Why a message cannot run now, or `None` when it can.
@@ -293,6 +316,12 @@ impl SessionConfiguration {
     #[must_use]
     pub fn supports_models(&self) -> bool {
         MODEL_HARNESSES.contains(&canonical_harness(self.harness.as_deref()).as_str())
+    }
+
+    /// A message sent mid-turn steers the running turn instead of waiting for it to end.
+    #[must_use]
+    pub fn supports_steering(&self) -> bool {
+        STEERING_HARNESSES.contains(&canonical_harness(self.harness.as_deref()).as_str())
     }
 
     /// The wrapper forwards reasoning-effort changes.
@@ -399,6 +428,8 @@ impl SessionConfiguration {
         );
         put_opt(&mut object, "parentID", string(&self.parent_id));
         put_opt(&mut object, "routingMode", string(&self.routing_mode));
+        put_opt(&mut object, "approvalMode", string(&self.approval_mode));
+        put_opt(&mut object, "gitBranch", string(&self.git_branch));
         Value::Object(object)
     }
 
@@ -430,6 +461,8 @@ impl SessionConfiguration {
             host_resumable: opt_bool(object, "hostResumable")?,
             parent_id: opt_str(object, "parentID")?,
             routing_mode: opt_str(object, "routingMode")?,
+            approval_mode: opt_str(object, "approvalMode")?,
+            git_branch: opt_str(object, "gitBranch")?,
         })
     }
 }

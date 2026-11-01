@@ -128,6 +128,32 @@ pub struct AntigravityPermission {
     pub always_allow_pattern: Option<String>,
 }
 
+/// What happens to a file an edit approval would change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum EditKind {
+    /// Created.
+    Create,
+    /// Parts of it change.
+    Modify,
+    /// Deleted.
+    Delete,
+    /// Written whole: created, or replaced without its old content being known.
+    Write,
+}
+
+/// One file an edit approval would change. Never carries file contents.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct EditedFile {
+    /// The path as the agent reported it.
+    pub path: String,
+    /// What happens to it, when the request says.
+    pub kind: Option<EditKind>,
+    /// Lines added, when known.
+    pub lines_added: Option<u32>,
+    /// Lines removed, when known.
+    pub lines_removed: Option<u32>,
+}
+
 /// Permission choices the request advertises beyond approve and decline. A response that uses
 /// one the card does not offer is rejected.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -150,6 +176,9 @@ pub struct PermissionOptions {
     pub persist_modes: Vec<PersistMode>,
     /// Antigravity details.
     pub antigravity: Option<AntigravityPermission>,
+    /// The files the gated edit would change, in request order; empty when the request is not an
+    /// edit or does not say.
+    pub file_changes: Vec<EditedFile>,
 }
 
 /// A decision card. A pending card is never hidden.
@@ -163,8 +192,12 @@ pub struct DecisionCard {
     pub target_session_id: String,
     /// Headline.
     pub title: String,
-    /// Body text.
+    /// Body text: the message, the tool input and any other details, joined.
     pub detail: String,
+    /// The agent's or policy's message on its own, when sent.
+    pub message: Option<String>,
+    /// The gated tool call's input formatted for display, when the card shows it.
+    pub tool_input: Option<String>,
     /// What it asks for.
     pub kind: DecisionKind,
     /// Extra approval choices.
@@ -173,6 +206,8 @@ pub struct DecisionCard {
     pub phase: Option<String>,
     /// The policy name, when sent.
     pub policy_name: Option<String>,
+    /// A decline can carry feedback the agent receives (`DeclineWithFeedback`).
+    pub accepts_feedback: bool,
     /// The user answered locally and the server has not confirmed yet.
     pub answered: bool,
 }
@@ -246,11 +281,93 @@ pub enum DecisionResponse {
         /// The mode.
         mode: PersistMode,
     },
-    /// Decline a plan review with feedback. Must not be blank.
+    /// Decline with feedback for the agent, on a card that `accepts_feedback`. Must not be blank.
     DeclineWithFeedback {
         /// The feedback.
         feedback: String,
     },
+}
+
+/// The first problem with a form's answers, from [`validate_form`].
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FormProblem {
+    /// The key of the field it is about; `None` when it concerns no field (an unknown key).
+    pub field_key: Option<String>,
+    /// What is wrong, for display.
+    pub message: String,
+}
+
+/// Checks `values` against a form card's `fields` with the core's validator: the same check
+/// resolving the card runs, with the field the first problem is about. `None` when valid.
+#[uniffi::export]
+#[allow(
+    clippy::implicit_hasher,
+    reason = "UniFFI maps records to HashMap with the default hasher"
+)]
+pub fn validate_form(
+    fields: Vec<FormField>,
+    values: HashMap<String, ElicitationValue>,
+) -> Option<FormProblem> {
+    let form = core::DecisionForm {
+        fields: fields.into_iter().map(Into::into).collect(),
+    };
+    let values: BTreeMap<String, CoreValue> = values
+        .into_iter()
+        .map(|(key, value)| (key, value.into()))
+        .collect();
+    form.problem(&values).map(|problem| FormProblem {
+        field_key: problem.field_key,
+        message: problem.error.to_string(),
+    })
+}
+
+/// A count from the host. On 64-bit hosts every `u64` fits; a larger one saturates.
+fn size(value: u64) -> usize {
+    usize::try_from(value).unwrap_or(usize::MAX)
+}
+
+impl From<FormOption> for core::FormOption {
+    fn from(option: FormOption) -> Self {
+        Self {
+            value: option.value,
+            label: option.label,
+            detail: option.detail,
+        }
+    }
+}
+
+impl From<FieldKind> for core::FieldKind {
+    fn from(kind: FieldKind) -> Self {
+        match kind {
+            FieldKind::Text => Self::Text,
+            FieldKind::Number => Self::Number,
+            FieldKind::Integer => Self::Integer,
+            FieldKind::Boolean => Self::Boolean,
+            FieldKind::SingleChoice => Self::SingleChoice,
+            FieldKind::MultipleChoice => Self::MultipleChoice,
+        }
+    }
+}
+
+impl From<FormField> for core::FormField {
+    fn from(field: FormField) -> Self {
+        Self {
+            key: field.key,
+            title: field.title,
+            detail: field.detail,
+            kind: field.kind.into(),
+            required: field.required,
+            options: field.options.into_iter().map(Into::into).collect(),
+            allows_custom: field.allows_custom,
+            is_secret: field.is_secret,
+            minimum: field.minimum,
+            maximum: field.maximum,
+            min_length: field.min_length.map(size),
+            max_length: field.max_length.map(size),
+            min_items: field.min_items.map(size),
+            max_items: field.max_items.map(size),
+        }
+    }
 }
 
 impl From<core::FormOption> for FormOption {
@@ -340,6 +457,17 @@ impl From<PersistMode> for core::PersistMode {
     }
 }
 
+impl From<core::FileChangeKind> for EditKind {
+    fn from(kind: core::FileChangeKind) -> Self {
+        match kind {
+            core::FileChangeKind::Create => Self::Create,
+            core::FileChangeKind::Modify => Self::Modify,
+            core::FileChangeKind::Delete => Self::Delete,
+            core::FileChangeKind::Write => Self::Write,
+        }
+    }
+}
+
 impl From<core::PermissionOptions> for PermissionOptions {
     fn from(options: core::PermissionOptions) -> Self {
         Self {
@@ -362,6 +490,16 @@ impl From<core::PermissionOptions> for PermissionOptions {
                 action_description: agy.action_description,
                 always_allow_pattern: agy.always_allow_pattern,
             }),
+            file_changes: options
+                .file_changes
+                .into_iter()
+                .map(|change| EditedFile {
+                    path: change.path,
+                    kind: change.kind.map(Into::into),
+                    lines_added: change.lines_added,
+                    lines_removed: change.lines_removed,
+                })
+                .collect(),
         }
     }
 }
@@ -373,16 +511,20 @@ impl DecisionCard {
         session_id: &str,
     ) -> Self {
         let card = core::Decision::from_request(&decision.request, session_id);
+        let accepts_feedback = card.accepts_feedback();
         Self {
             id: card.id,
             carrying_session_id: card.carrying_session_id,
             target_session_id: card.target_session_id,
             title: card.title,
             detail: card.detail,
+            message: card.message,
+            tool_input: card.tool_input,
             kind: card.kind.into(),
             permissions: card.permissions.into(),
             phase: card.phase,
             policy_name: card.policy_name,
+            accepts_feedback,
             answered: decision.answered,
         }
     }
@@ -424,5 +566,50 @@ impl From<DecisionResponse> for core::DecisionResponse {
                 Self::DeclineWithFeedback(feedback)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_form_returns_the_field_key_with_the_problem() {
+        let mut title = core::FormField::new("title", "PR title", core::FieldKind::Text);
+        title.max_length = Some(5);
+        let pr = core::FormField::new("pr", "PR", core::FieldKind::Integer);
+        let fields: Vec<FormField> = vec![pr.into(), title.into()];
+        let problem = validate_form(
+            fields.clone(),
+            HashMap::from([
+                ("pr".to_owned(), ElicitationValue::Integer { value: 7 }),
+                (
+                    "title".to_owned(),
+                    ElicitationValue::Text {
+                        value: "Too long".to_owned(),
+                    },
+                ),
+            ]),
+        );
+        assert_eq!(
+            problem,
+            Some(FormProblem {
+                field_key: Some("title".to_owned()),
+                message: "PR title allows at most 5 characters.".to_owned(),
+            })
+        );
+        let valid = validate_form(
+            fields,
+            HashMap::from([
+                ("pr".to_owned(), ElicitationValue::Integer { value: 7 }),
+                (
+                    "title".to_owned(),
+                    ElicitationValue::Text {
+                        value: "Fix".to_owned(),
+                    },
+                ),
+            ]),
+        );
+        assert_eq!(valid, None);
     }
 }

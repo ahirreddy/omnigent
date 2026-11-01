@@ -33,6 +33,10 @@ pub struct SessionSummary {
     pub preview: String,
     /// List status.
     pub status: SessionListStatus,
+    /// Pending decisions the server reports (see `session_attention` for the ones the caller can
+    /// answer).
+    #[uniffi(default)]
+    pub pending_requests: u32,
     /// Below edit permission, or unknown permission.
     pub is_read_only: bool,
     /// Last activity, Unix seconds.
@@ -146,6 +150,7 @@ impl From<CoreSummary> for SessionSummary {
             title: summary.title,
             preview: summary.preview,
             status: summary.status.into(),
+            pending_requests: summary.pending_requests,
             is_read_only: summary.is_read_only,
             updated_at: summary.updated_at,
             workspace: summary.workspace,
@@ -164,6 +169,7 @@ impl From<&SessionSummary> for CoreSummary {
     fn from(summary: &SessionSummary) -> Self {
         Self {
             status: summary.status.into(),
+            pending_requests: summary.pending_requests,
             is_read_only: summary.is_read_only,
             updated_at: summary.updated_at,
             workspace: summary.workspace.clone(),

@@ -856,3 +856,49 @@ fn a_rotated_bearer_signs_later_requests_without_reconnecting() {
         Err(SessionError::NotConnected)
     );
 }
+
+#[test]
+fn declared_terminal_names_come_from_the_session_agent() {
+    let agent = "/v1/sessions/conv_a/agent";
+    for (body, expected) in [
+        (
+            r#"{"id":"agent_1","terminals":["zsh","bash","fish"]}"#,
+            Ok(Some(vec![
+                "zsh".to_owned(),
+                "bash".to_owned(),
+                "fish".to_owned(),
+            ])),
+        ),
+        (r#"{"id":"agent_1","terminals":[]}"#, Ok(Some(Vec::new()))),
+        // An older server that does not report them.
+        (r#"{"id":"agent_1"}"#, Ok(None)),
+        (
+            r#"{"id":"agent_1","terminals":["zsh",""]}"#,
+            Err(SessionError::MalformedResponse {
+                detail: format!("{agent}: `terminals` is not a list of terminal names"),
+            }),
+        ),
+    ] {
+        let transport = RouteTransport::local();
+        transport.ok(agent, body);
+        let core = connected(transport);
+        assert_eq!(
+            block_on(core.declared_terminal_names("conv_a")),
+            expected,
+            "{body}"
+        );
+    }
+    let transport = RouteTransport::local();
+    transport.respond(None, agent, None, Reply::json(404, "{}"));
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.declared_terminal_names("conv_a")),
+        Err(SessionError::SessionNotFound {
+            session_id: "conv_a".into()
+        })
+    );
+    assert!(matches!(
+        block_on(core.declared_terminal_names("a/b")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}

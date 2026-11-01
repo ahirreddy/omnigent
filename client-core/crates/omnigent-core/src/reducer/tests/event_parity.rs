@@ -257,6 +257,48 @@ fn resources_are_scoped_and_deleted_from_active_state() {
 }
 
 #[test]
+fn child_sections_classify_the_server_child_summary() {
+    let mut harness = Harness::new(SESSION);
+    let lines =
+        events("EventParity--ChildUpdatesMergeAndSupersessionKeepsSourceConversation.jsonl");
+    harness.send(lines[0].clone());
+    let summary = |harness: &Harness| {
+        harness
+            .reducer
+            .sections()
+            .iter()
+            .find(|section| section.id == "child-child-1")
+            .map(|section| (section.summary.clone(), section.session_id.clone()))
+    };
+    assert_eq!(
+        summary(&harness),
+        Some(("Starting".to_owned(), Some("child-1".to_owned())))
+    );
+    harness.send(json!({
+        "type": "session.child_session.updated",
+        "conversation_id": SESSION,
+        "child_session_id": "child-1",
+        "child": {"title": "researcher:auth", "busy": true, "pending_elicitations_count": 1,
+                  "task_summary": "Write the auth tests"},
+    }));
+    assert_eq!(
+        summary(&harness).map(|(text, _)| text).as_deref(),
+        Some("Needs you")
+    );
+    harness.send(json!({
+        "type": "session.child_session.updated",
+        "conversation_id": SESSION,
+        "child_session_id": "child-1",
+        "child": {"busy": false, "pending_elicitations_count": 0,
+                  "current_task_status": "completed"},
+    }));
+    assert_eq!(
+        summary(&harness).map(|(text, _)| text).as_deref(),
+        Some("Ready")
+    );
+}
+
+#[test]
 fn child_updates_merge_and_supersession_keeps_source_conversation() {
     let mut harness = Harness::new(SESSION);
     let lines =

@@ -303,14 +303,23 @@ fn fixture_decision(decision: &Value) -> Value {
             "required": ["choice"],
         })
     };
+    let mut params = json!({
+        "mode": "form",
+        "message": format!("{}\n\n{}", text("title"), text("detail")),
+        "requestedSchema": schema,
+    });
+    // A sample patch is gated like an SDK harness's `apply_patch` call.
+    if let (Some(changes), Value::Object(params)) = (decision.get("changes"), &mut params) {
+        params.insert(
+            "content_preview".into(),
+            json!(format!("apply_patch({})", json!({"changes": changes}))),
+        );
+        params.insert("phase".into(), json!("tool_call"));
+    }
     json!({
         "elicitation_id": text("id"),
         "method": "elicitation/create",
-        "params": {
-            "mode": "form",
-            "message": format!("{}\n\n{}", text("title"), text("detail")),
-            "requestedSchema": schema,
-        },
+        "params": params,
     })
 }
 
@@ -348,6 +357,8 @@ struct DemoState {
     replies: BTreeMap<String, ActiveReply>,
     next_id: u64,
     now: i64,
+    /// The viewer's read state per session (`last_seen`, `unread`), in memory like the server's.
+    reads: BTreeMap<String, (i64, bool)>,
 }
 
 /// Why a demo route failed: an HTTP status and a `detail`.
@@ -378,6 +389,7 @@ impl DemoTransport {
                 replies: BTreeMap::new(),
                 next_id,
                 now: DEFAULT_NOW,
+                reads: BTreeMap::new(),
             }),
         }
     }
@@ -519,8 +531,13 @@ impl DemoTransport {
             ("GET", ["v1", "sessions", id]) => state.snapshot(id),
             ("PATCH", ["v1", "sessions", id]) => state.patch(id, &body()?),
             ("GET", ["v1", "sessions", id, "items"]) => state.items(id, &query),
+            // The sample agents declare no terminals.
+            ("GET", ["v1", "sessions", id, "agent"]) => state
+                .find(id)
+                .map(|session| (200, json!({"id": session.snapshot.agent_id.value(), "object": "agent", "terminals": []}))),
             ("POST", ["v1", "sessions", id, "events"]) => state.event(id, &body()?),
             ("POST", ["v1", "sessions", id, "switch-agent"]) => state.switch_agent(id, &body()?),
+            ("PUT", ["v1", "sessions", id, "read-state"]) => state.read_state(id, &body()?),
             ("POST", ["v1", "sessions", id, "elicitations", decision, "resolve"]) => {
                 state.resolve(id, decision, &body()?)
             }
@@ -704,6 +721,15 @@ impl DemoState {
                         "pending_elicitations_count".into(),
                         json!(session.snapshot.pending_elicitations.len()),
                     );
+                    let read = self.reads.get(&session.snapshot.id);
+                    object.insert(
+                        "viewer_last_seen".into(),
+                        json!(read.map(|(last_seen, _)| last_seen)),
+                    );
+                    object.insert(
+                        "viewer_unread".into(),
+                        json!(read.is_some_and(|(_, unread)| *unread)),
+                    );
                 }
                 row
             })
@@ -720,6 +746,22 @@ impl DemoState {
                 "data": page,
             }),
         )
+    }
+
+    /// `PUT /v1/sessions/{id}/read-state`: stores `{last_seen, unread}` verbatim, as the server
+    /// does.
+    fn read_state(&mut self, id: &str, body: &Value) -> Routed {
+        self.find(id)?;
+        let last_seen = body
+            .get("last_seen")
+            .and_then(Value::as_i64)
+            .ok_or(Reject(422, "last_seen must be an integer"))?;
+        let unread = body
+            .get("unread")
+            .and_then(Value::as_bool)
+            .ok_or(Reject(422, "unread must be a boolean"))?;
+        self.reads.insert(id.to_owned(), (last_seen, unread));
+        Ok((204, Value::Null))
     }
 
     fn snapshot(&self, id: &str) -> Routed {

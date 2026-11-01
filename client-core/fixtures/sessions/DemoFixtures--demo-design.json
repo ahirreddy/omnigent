@@ -32,7 +32,24 @@
       "targetSessionID": "demo-design",
       "title": "Apply the sample design?",
       "detail": "Use the simpler session list and keep pending requests easy to find.",
-      "options": []
+      "options": [],
+      "changes": [
+        {
+          "path": "Omni/iOS/SessionRow.swift",
+          "kind": {
+            "type": "update",
+            "move_path": null
+          },
+          "diff": "@@ -8,4 +8,6 @@ struct SessionRow: View {\n   var body: some View {\n-    Text(session.title)\n+    VStack(alignment: .leading) {\n+      Text(session.title).font(.headline)\n+      Text(session.preview).foregroundStyle(.secondary)\n+    }\n   }\n"
+        },
+        {
+          "path": "Omni/iOS/AttentionSection.swift",
+          "kind": {
+            "type": "add"
+          },
+          "diff": "import SwiftUI\n\nstruct AttentionSection: View {\n  let sessions: [Session]\n\n  var body: some View {\n    Section(\"Needs you\") {\n      ForEach(sessions) { SessionRow(session: $0) }\n    }\n  }\n}\n"
+        }
+      ]
     }
   ]
 }

@@ -375,6 +375,13 @@ pub enum CoreEvent {
         /// Their ids.
         session_ids: Vec<String>,
     },
+    /// The sessions with activity the user has not seen (the attention model's Unread), from the
+    /// server's per-viewer read state with this device's marks as the fallback. Every unread
+    /// session, archived or not.
+    UnreadChanged {
+        /// Their ids.
+        session_ids: Vec<String>,
+    },
     /// A session's changed files were re-read after the server invalidated them
     /// (`session.changed_files.invalidated`). Workspace views showing changes should reload.
     ChangedFiles {

@@ -6,7 +6,8 @@
 
 use std::cmp::Ordering;
 
-use crate::client::sessions::{SessionSummary, SummaryStatus};
+use crate::client::sessions::SessionSummary;
+use crate::session_attention::{AttentionState, SessionAttention};
 
 /// Which sessions a list shows.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
@@ -14,9 +15,9 @@ pub enum SessionFilter {
     /// Every session that is not archived.
     #[default]
     All,
-    /// Running, not archived.
+    /// Working ([`AttentionState::Working`]), not archived.
     Running,
-    /// A decision is pending, archived or not.
+    /// Needs you ([`AttentionState::NeedsYou`]), archived or not.
     NeedsResponse,
     /// Archived.
     Archived,
@@ -37,7 +38,7 @@ impl SessionFilter {
         match self {
             Self::All => "All sessions",
             Self::Running => "Running",
-            Self::NeedsResponse => "Needs response",
+            Self::NeedsResponse => "Needs you",
             Self::Archived => "Archived",
         }
     }
@@ -45,8 +46,13 @@ impl SessionFilter {
     fn includes(self, session: &SessionSummary) -> bool {
         match self {
             Self::All => !session.is_archived,
-            Self::Running => !session.is_archived && session.status == SummaryStatus::Running,
-            Self::NeedsResponse => session.status == SummaryStatus::NeedsResponse,
+            Self::Running => {
+                !session.is_archived
+                    && SessionAttention::of(session, false).state == AttentionState::Working
+            }
+            Self::NeedsResponse => {
+                SessionAttention::of(session, false).state == AttentionState::NeedsYou
+            }
             Self::Archived => session.is_archived,
         }
     }
@@ -113,6 +119,7 @@ pub fn matching(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::sessions::SummaryStatus;
 
     fn session(id: &str, title: &str, preview: &str, updated_at: i64) -> SessionSummary {
         SessionSummary {
@@ -158,6 +165,7 @@ mod tests {
     fn archived_decisions_stay_in_attention_and_filters_are_exclusive() {
         let archived = SessionSummary {
             status: SummaryStatus::NeedsResponse,
+            pending_requests: 1,
             is_archived: true,
             ..session("archive", "Waiting", "", 0)
         };
@@ -182,10 +190,7 @@ mod tests {
             ids(&matching(&sessions, "", SessionFilter::Archived)),
             ["archive"]
         );
-        assert_eq!(
-            SessionFilter::ALL.map(SessionFilter::title)[2],
-            "Needs response"
-        );
+        assert_eq!(SessionFilter::ALL.map(SessionFilter::title)[2], "Needs you");
     }
 
     #[test]

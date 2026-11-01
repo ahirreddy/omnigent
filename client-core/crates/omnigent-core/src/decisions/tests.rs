@@ -373,6 +373,44 @@ fn unknown_response_field_is_rejected() {
     assert_eq!(form.validate(&values(json!({"name": "Omni"}))), Ok(()));
 }
 
+#[test]
+fn form_problem_names_the_field_by_key() {
+    let mut title = FormField::new("title", "PR title", FieldKind::Text);
+    title.max_length = Some(5);
+    // Titles overlap ("PR" is inside "PR title"), so only the key can attribute the problem.
+    let pr = FormField::new("pr", "PR", FieldKind::Integer);
+    let form = DecisionForm {
+        fields: vec![pr, title],
+    };
+    let problem = form
+        .problem(&values(json!({"pr": 7, "title": "Too long"})))
+        .expect("the title is too long");
+    assert_eq!(problem.field_key.as_deref(), Some("title"));
+    assert_eq!(
+        problem.error.to_string(),
+        "PR title allows at most 5 characters."
+    );
+
+    let missing = form.problem(&values(json!({"title": "Fix"}))).unwrap();
+    assert_eq!(missing.field_key.as_deref(), Some("pr"));
+    assert!(matches!(missing.error, AnswerError::Missing { .. }));
+
+    let unknown = form
+        .problem(&values(json!({"pr": 7, "title": "Fix", "extra": true})))
+        .unwrap();
+    assert_eq!(unknown.field_key, None);
+    assert!(matches!(unknown.error, AnswerError::UnknownField { .. }));
+
+    assert_eq!(
+        form.problem(&values(json!({"pr": 7, "title": "Fix"}))),
+        None
+    );
+    assert_eq!(
+        form.validate(&values(json!({"title": "Fix"}))),
+        Err(missing.error)
+    );
+}
+
 // --- EventParityTests, LiveConversationReducerTests, LiveEventReconciliationTests --------------
 
 #[test]
@@ -866,6 +904,48 @@ fn auto_mode_and_directory_scope_post_their_flags() {
         Err(DecisionError::NotOffered)
     );
     assert!(plan.result_for(&DecisionResponse::Decline).is_ok());
+}
+
+#[test]
+fn decline_feedback_is_offered_only_where_the_agent_receives_it() {
+    let hook = |policy: &str| {
+        params(&json!({
+            "phase": "pre_tool_use", "policy_name": policy,
+            "message": "Claude wants to call **Bash**"
+        }))
+    };
+    let feedback = DecisionResponse::DeclineWithFeedback("  Run the unit tests only  ".to_owned());
+    for policy in ["claude_native_permission", "devin_native_permission"] {
+        let card = hook(policy);
+        assert!(card.accepts_feedback(), "{policy}");
+        assert_eq!(
+            serde_json::to_value(card.result_for(&feedback).unwrap()).unwrap(),
+            json!({"action": "decline", "content": {"feedback": "Run the unit tests only"}}),
+            "{policy}"
+        );
+        assert_eq!(
+            card.result_for(&DecisionResponse::DeclineWithFeedback(" ".to_owned())),
+            Err(DecisionError::NotOffered)
+        );
+    }
+    // Plan reviews keep their feedback path.
+    assert!(params(&json!({"exit_plan_mode": {"plan": "Do it"}})).accepts_feedback());
+    // Bridges that drop the reason, other phases, and non-approvals are never offered it.
+    let codex = params(&json!({"command": "cargo test", "policy_name": "codex_native"}));
+    let kimi = hook("kimi_native_permission");
+    let other_phase = params(&json!({
+        "phase": "post_tool_use", "policy_name": "claude_native_permission"
+    }));
+    let choice = params(&json!({
+        "phase": "pre_tool_use", "policy_name": "claude_native_permission",
+        "requestedSchema": {"type": "object", "properties": {
+            "pick": {"type": "string", "enum": ["a", "b"]}
+        }}
+    }));
+    for card in [codex, kimi, other_phase, choice] {
+        assert!(!card.accepts_feedback(), "{card:?}");
+        assert_eq!(card.result_for(&feedback), Err(DecisionError::NotOffered));
+    }
 }
 
 #[test]
