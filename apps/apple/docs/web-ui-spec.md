@@ -1067,3 +1067,17 @@ These are the real structural or flow divergences where native may be better.
    has no theme key. Keep native device-local with the same keys and the web
    import/export file, or add a server-side shared preference so the theme
    follows the user across web and native? The second needs a server change.
+
+## Decisions (user, 2026-10-31)
+
+1. Approvals appear both inline in the transcript (as the web does) and pinned in the native
+   dock above the composer, so they can never scroll out of reach.
+2. New session on Mac is a web-style page in the main area (mascot, "What should we build?").
+   Start sends the first message immediately.
+3. Keep these native extras: multi-server windows with a server switcher; an Info tab in the
+   right panel alongside Files, Changes, Pull Requests and Agents; the confirmation before
+   approvals that widen permissions; and the one-click Running and Needs Response filters next
+   to the web's filter menu.
+4. Server settings (Harnesses, MCP, Git, Members, Policies, Sharing, Archived) are built
+   natively in the Mac Settings window, with a server picker.
+5. Theme preference stays per device, using the web's keys and values (no server change).
