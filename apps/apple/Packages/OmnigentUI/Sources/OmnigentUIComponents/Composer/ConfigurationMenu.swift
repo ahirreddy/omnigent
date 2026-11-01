@@ -80,11 +80,13 @@ struct ConfigurationMenu: View {
         }
       }
     } label: {
-      HStack(spacing: 5) {
+      HStack(spacing: Theme.Spacing.extraSmall) {
         HarnessGlyph(harness: configuration.harness, size: 15)
         Text(modelLabel)
-          .font(.callout.weight(.medium))
+          .font(Theme.Typography.label)
           .lineLimit(1)
+          .truncationMode(.middle)
+          .frame(maxWidth: isCompact ? Theme.Control.compactModelWidth : Theme.Control.modelWidth)
         if let effort = configuration.selectedEffort, !isCompact {
           Text(Self.effortLabel(effort))
             .font(.callout)
@@ -103,8 +105,7 @@ struct ConfigurationMenu: View {
           .foregroundStyle(.secondary)
           .accessibilityHidden(true)
       }
-      .padding(.horizontal, 6)
-      .padding(.vertical, 3)
+      .padding(.horizontal, Theme.Spacing.extraSmall)
       .contentShape(Rectangle())
       // One element: otherwise the glyph and the text each become a menu button.
       .accessibilityElement(children: .combine)
@@ -112,6 +113,7 @@ struct ConfigurationMenu: View {
     .menuStyle(.button)
     .buttonStyle(.plain)
     .menuIndicator(.hidden)
+    .composerChip()
     .fixedSize()
     .disabled(configuration.isApplying)
     .help("Model and effort: \(title) (Control-Shift-M)")

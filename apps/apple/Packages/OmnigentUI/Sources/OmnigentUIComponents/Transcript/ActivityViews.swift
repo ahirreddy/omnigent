@@ -63,7 +63,7 @@ struct ExpandableHeader<Accessory: View>: View {
   var body: some View {
     if isEnabled {
       Button {
-        withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { isExpanded.toggle() }
+        withAnimation(reduceMotion ? nil : Theme.Motion.disclosure) { isExpanded.toggle() }
       } label: {
         row
       }
@@ -80,16 +80,17 @@ struct ExpandableHeader<Accessory: View>: View {
   }
 
   private var row: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
+    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
       Image(systemName: systemImage)
         .foregroundStyle(tint)
-        .frame(width: 16)
+        .frame(width: Theme.Control.icon)
         .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 2) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
         Text(title)
-          .font(.callout.weight(.medium))
+          .font(Theme.Typography.label)
+          .foregroundStyle(.secondary)
           .lineLimit(2)
-        if let subtitle, !subtitle.isEmpty {
+        if isExpanded, let subtitle, !subtitle.isEmpty {
           Text(subtitle)
             .font(monospacedSubtitle ? Theme.codeFont : .caption)
             .foregroundStyle(.secondary)
@@ -107,8 +108,8 @@ struct ExpandableHeader<Accessory: View>: View {
           .accessibilityHidden(true)
       }
     }
-    .padding(.vertical, 6)
-    .padding(.horizontal, 8)
+    .padding(.vertical, Theme.Spacing.small)
+    .padding(.horizontal, Theme.Spacing.small)
     .contentShape(Rectangle())
   }
 }
@@ -147,9 +148,9 @@ struct DetailSectionsView: View {
   var maxSections = 24
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
       ForEach(sections.prefix(maxSections)) { section in
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
           HStack {
             Text(section.title)
               .font(.caption.weight(.semibold))

@@ -13,7 +13,6 @@ public struct TranscriptView: View {
   @State private var followsLatest = true
   @State private var isUserScrolling = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @Environment(\.layoutWidth) private var layoutWidth
 
   private static let bottomID = "transcript-bottom"
 
@@ -72,10 +71,8 @@ public struct TranscriptView: View {
           }
           Color.clear.frame(height: 1).id(Self.bottomID)
         }
-        .padding(.horizontal, layoutWidth == .compact ? 14 : Theme.Spacing.gutter)
-        .padding(.vertical, 16)
-        .frame(maxWidth: Theme.transcriptWidth, alignment: .leading)
-        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.extraLarge)
+        .readingColumn()
       }
       .environment(\.conversationActions, actions)
       .environment(
@@ -113,13 +110,13 @@ public struct TranscriptView: View {
             jumpToLatest(proxy)
           } label: {
             Label("Latest", systemImage: "arrow.down")
-              .font(.callout.weight(.medium))
-              .padding(.horizontal, 12)
-              .padding(.vertical, 6)
+              .font(Theme.Typography.label)
+              .padding(.horizontal, Theme.Spacing.medium)
+              .padding(.vertical, Theme.Spacing.small)
           }
           .buttonStyle(.plain)
           .glassEffect(.regular.interactive(), in: Capsule())
-          .padding(.bottom, 12)
+          .padding(.bottom, Theme.Spacing.medium)
           .transition(.opacity.combined(with: .move(edge: .bottom)))
           .accessibilityLabel("Jump to latest message")
           .accessibilityIdentifier("jump-to-latest")

@@ -21,6 +21,11 @@ nonisolated public struct ThemeColor: ShapeStyle, Hashable, Sendable {
     case prAmber
     case prPurple
     case userBubble
+    case surface
+    case border
+    case hover
+    case codeSurface
+    case onAccent
     case primary
     case secondary
     case fixed(Color)
@@ -68,6 +73,12 @@ nonisolated public struct ThemeColor: ShapeStyle, Hashable, Sendable {
   /// The system secondary color.
   public static let secondary = Self(role: .secondary)
 
+  static let surface = Self(role: .surface)
+  static let border = Self(role: .border)
+  static let hover = Self(role: .hover)
+  static let codeSurface = Self(role: .codeSurface)
+  static let onAccent = Self(role: .onAccent)
+
   /// A fixed system color that does not change with the theme.
   /// - Parameter color: The color.
   /// - Returns: The style.
@@ -86,8 +97,39 @@ nonisolated public struct ThemeColor: ShapeStyle, Hashable, Sendable {
   /// - Parameter environment: The environment.
   /// - Returns: The color.
   public func resolve(in environment: EnvironmentValues) -> Color {
-    let base = brand(environment) ?? status(environment.colorScheme == .dark) ?? fallback
+    let base =
+      surface(environment) ?? brand(environment)
+      ?? status(environment.colorScheme == .dark) ?? fallback
     return alpha == 1 ? base : base.opacity(alpha)
+  }
+
+  private func surface(_ environment: EnvironmentValues) -> Color? {
+    let dark = environment.colorScheme == .dark
+    let increased = environment.colorSchemeContrast == .increased
+    let palette = environment.omnigentTheme.palette(for: environment.colorScheme)
+    switch role {
+    case .surface:
+      let canvas = palette.canvas ?? (dark ? Color(white: 0.08) : .white)
+      return canvas.mix(with: dark ? .white : .black, by: dark ? 0.06 : 0.025)
+    case .border: return Color.primary.opacity(increased ? 0.5 : 0.14)
+    case .hover: return Color.primary.opacity(increased ? 0.12 : 0.05)
+    case .codeSurface:
+      return (environment.omnigentTheme.dark.canvas ?? Color(white: 0.08))
+        .mix(with: .black, by: 0.18)
+    case .onAccent:
+      let color = palette.accent.resolve(in: environment)
+      let luminance = Self.luminance(color)
+      return luminance > 0.179 ? .black : .white
+    default: return nil
+    }
+  }
+
+  private static func luminance(_ color: Color.Resolved) -> Double {
+    func linear(_ value: Float) -> Double {
+      let channel = Double(value)
+      return channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * linear(color.red) + 0.7152 * linear(color.green) + 0.0722 * linear(color.blue)
   }
 
   private func brand(_ environment: EnvironmentValues) -> Color? {

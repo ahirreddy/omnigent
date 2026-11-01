@@ -85,10 +85,10 @@ struct DecisionFormFields: View {
   @Environment(\.decisionIDPrefix) private var idPrefix
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.large) {
       ForEach(fields) { field in
-        VStack(alignment: .leading, spacing: 6) {
-          HStack(alignment: .firstTextBaseline, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+          HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
             Text(field.title).font(.callout.weight(.semibold))
             Text(field.required ? "Required" : "Optional")
               .font(.caption)
@@ -122,7 +122,7 @@ struct DecisionFormFields: View {
       .labelsHidden()
       .fixedSize()
     case .singleChoice, .multipleChoice:
-      VStack(alignment: .leading, spacing: 2) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
         ForEach(field.options) { option in
           OptionRow(
             option: option, isMultiple: field.kind == .multipleChoice,
@@ -134,7 +134,7 @@ struct DecisionFormFields: View {
         if field.allowsCustom {
           TextField("Other answer", text: customBinding(field), axis: .vertical)
             .textFieldStyle(.roundedBorder)
-            .padding(.top, 4)
+            .padding(.top, Theme.Spacing.extraSmall)
             .accessibilityLabel("Other answer for \(field.title)")
         }
       }
@@ -229,11 +229,11 @@ struct OptionRow: View {
 
   var body: some View {
     Button(action: action) {
-      HStack(alignment: .firstTextBaseline, spacing: 8) {
+      HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
         Image(systemName: symbol)
           .foregroundStyle(isSelected ? Theme.accent : ThemeColor.secondary)
           .accessibilityHidden(true)
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
           Text(option.label)
             .fixedSize(horizontal: false, vertical: true)
           if !option.detail.isEmpty {
@@ -245,8 +245,8 @@ struct OptionRow: View {
         }
         Spacer(minLength: 0)
       }
-      .padding(.vertical, 5)
-      .padding(.horizontal, 6)
+      .padding(.vertical, Theme.Spacing.extraSmall)
+      .padding(.horizontal, Theme.Spacing.small)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)

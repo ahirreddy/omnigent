@@ -35,7 +35,11 @@ struct MessageRowView: View, Equatable {
 
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.conversationActions) private var actions
+  @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var isHovered = false
+  @FocusState private var actionsFocused: Bool
+  @AccessibilityFocusState private var accessibilityFocused: Bool
 
   static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.row == rhs.row && lhs.decoration == rhs.decoration
@@ -49,48 +53,57 @@ struct MessageRowView: View, Equatable {
       }
     }
     .onHover { isHovered = $0 }
+    .animation(reduceMotion ? nil : Theme.Motion.feedback, value: showsActions)
     .contextMenu { MessageContextMenu(row: row, actions: actions) }
   }
 
   private var showsActions: Bool {
     #if os(macOS)
-      decoration.showsActions || isHovered
+      decoration.showsActions || isHovered || actionsFocused || accessibilityFocused
+        || voiceOverEnabled
     #else
       true
     #endif
   }
 
   private var userMessage: some View {
-    VStack(alignment: .trailing, spacing: 4) {
-      HStack(alignment: .top, spacing: 8) {
-        Spacer(minLength: layoutWidth == .compact ? 32 : 120)
-        VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .trailing, spacing: Theme.Spacing.extraSmall) {
+      HStack(alignment: .top, spacing: Theme.Spacing.small) {
+        Spacer(
+          minLength: layoutWidth == .compact ? Theme.Spacing.extraLarge : Theme.Spacing.section)
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
           if !row.text.isEmpty {
             MarkdownView(row.text, isStreaming: false)
+              .environment(\.markdownFillsWidth, false)
+              .fixedSize(horizontal: false, vertical: true)
           }
           AttachmentStrip(attachments: row.attachments)
           if let activity = row.activity {
             UnsupportedContentView(activity: activity, rowID: row.id)
           }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Theme.Spacing.large)
+        .padding(.vertical, Theme.Spacing.medium)
         .background(
           Theme.userBubble,
           in: RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous)
         )
         .overlay {
           RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous)
-            .strokeBorder(.separator.opacity(0.6), lineWidth: 0.5)
+            .strokeBorder(ThemeColor.border, lineWidth: 0.5)
         }
-        .frame(maxWidth: 640, alignment: .trailing)
+        .frame(maxWidth: Theme.userMessageWidth, alignment: .trailing)
+        .fixedSize(horizontal: false, vertical: true)
         if decoration.showsAvatar, let author = row.author {
           AuthorAvatar(name: author)
         }
       }
       if row.interrupted { InterruptedLabel(rowID: row.id) }
-      MessageActions(row: row, timestamp: decoration.timestamp, actions: actions)
-        .opacity(showsActions ? 1 : 0)
+      MessageActions(
+        row: row, timestamp: decoration.timestamp, actions: actions, focused: $actionsFocused
+      )
+      .accessibilityFocused($accessibilityFocused)
+      .opacity(showsActions ? 1 : 0)
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel(decoration.showsAvatar ? "\(row.author ?? "Someone") said" : "You said")
@@ -98,9 +111,9 @@ struct MessageRowView: View, Equatable {
   }
 
   private var assistantMessage: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       if row.text.isEmpty, row.isStreaming {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Spacing.small) {
           TypingIndicator()
           Text("Preparing a reply").font(.callout).foregroundStyle(.secondary)
         }
@@ -111,9 +124,19 @@ struct MessageRowView: View, Equatable {
       AttachmentStrip(attachments: row.attachments)
       if let activity = row.activity { UnsupportedContentView(activity: activity, rowID: row.id) }
       if row.interrupted { InterruptedLabel(rowID: row.id) }
+      if row.isStreaming, !row.text.isEmpty {
+        HStack(spacing: Theme.Spacing.small) {
+          LiveIndicator()
+          Text("Responding").font(Theme.Typography.section).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+      }
       if !row.isStreaming {
-        MessageActions(row: row, timestamp: decoration.timestamp, actions: actions)
-          .opacity(showsActions ? 1 : 0)
+        MessageActions(
+          row: row, timestamp: decoration.timestamp, actions: actions, focused: $actionsFocused
+        )
+        .accessibilityFocused($accessibilityFocused)
+        .opacity(showsActions ? 1 : 0)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -127,19 +150,27 @@ private struct MessageActions: View {
   let row: Row
   let timestamp: Date?
   let actions: ConversationActions
+  var focused: FocusState<Bool>.Binding
 
   var body: some View {
-    HStack(spacing: 10) {
+    HStack(spacing: Theme.Spacing.medium) {
       CopyButton(text: row.text, label: "Copy", identifier: "message-copy-\(row.id)")
+        .focused(focused)
       if row.role == .assistant, let fork = actions.forkFrom {
         Button("Fork from here", systemImage: "arrow.triangle.branch") { fork(row) }
           .labelStyle(.iconOnly)
+          .frame(minWidth: Theme.Control.target, minHeight: Theme.Control.target)
+          .hoverHighlight()
+          .focused(focused)
           .help("Fork from here")
           .accessibilityIdentifier("message-fork-\(row.id)")
       }
       if let url = actions.messageURL?(row) {
         Button("Copy link", systemImage: "link") { Pasteboard.copy(url.absoluteString) }
           .labelStyle(.iconOnly)
+          .frame(minWidth: Theme.Control.target, minHeight: Theme.Control.target)
+          .hoverHighlight()
+          .focused(focused)
           .help("Copy link")
           .accessibilityIdentifier("message-link-\(row.id)")
       }
@@ -197,7 +228,7 @@ private struct InterruptedLabel: View {
   let rowID: String
 
   var body: some View {
-    Label("Interrupted", systemImage: "xmark")
+    Label("Interrupted", systemImage: "stop.circle")
       .font(.caption)
       .foregroundStyle(.secondary)
       .accessibilityIdentifier("message-interrupted-\(rowID)")
@@ -231,7 +262,7 @@ struct AttachmentStrip: View {
 
   var body: some View {
     if !attachments.isEmpty {
-      FlowLayout(spacing: 6) {
+      FlowLayout(spacing: Theme.Spacing.small) {
         ForEach(attachments) { attachment in
           AttachmentChip(attachment: attachment, open: actions.openAttachment)
         }
@@ -248,7 +279,7 @@ private struct AttachmentChip: View {
     Button {
       open?(attachment)
     } label: {
-      HStack(spacing: 6) {
+      HStack(spacing: Theme.Spacing.small) {
         Image(systemName: symbol)
           .foregroundStyle(.secondary)
           .accessibilityHidden(true)
@@ -257,8 +288,8 @@ private struct AttachmentChip: View {
           Text(subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
         }
       }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
+      .padding(.horizontal, Theme.Spacing.medium)
+      .padding(.vertical, Theme.Spacing.small)
       .cardSurface(cornerRadius: Theme.Radius.medium)
     }
     .buttonStyle(.plain)
@@ -298,13 +329,13 @@ struct UnsupportedContentView: View {
   var body: some View {
     DisclosureGroup(isExpanded: $isExpanded) {
       DetailSectionsView(sections: activity.details, rowID: rowID)
-        .padding(.top, 6)
+        .padding(.top, Theme.Spacing.small)
     } label: {
       Label(activity.title, systemImage: "questionmark.square.dashed")
         .font(.callout)
         .foregroundStyle(.secondary)
     }
-    .padding(10)
+    .padding(Theme.Spacing.medium)
     .background {
       RoundedRectangle(cornerRadius: Theme.Radius.medium)
         .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
@@ -324,7 +355,8 @@ struct FlowLayout: Layout {
     var lineHeight: CGFloat = 0
     var maxX: CGFloat = 0
     for subview in subviews {
-      let size = subview.sizeThatFits(.unspecified)
+      let size = subview.sizeThatFits(
+        ProposedViewSize(width: width.isFinite ? width : nil, height: nil))
       if cursorX > 0, cursorX + size.width > width {
         cursorX = 0
         cursorY += lineHeight + spacing
@@ -344,7 +376,7 @@ struct FlowLayout: Layout {
     var cursorY = bounds.minY
     var lineHeight: CGFloat = 0
     for subview in subviews {
-      let size = subview.sizeThatFits(.unspecified)
+      let size = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
       if cursorX > bounds.minX, cursorX + size.width > bounds.maxX {
         cursorX = bounds.minX
         cursorY += lineHeight + spacing

@@ -72,7 +72,7 @@ public struct ComposerView: View {
 
   /// The composer.
   public var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       DeliveryBanner(
         delivery: state.delivery, acknowledge: actions.acknowledgeUncertainDelivery,
         dismiss: actions.dismissDeliveryError)
@@ -91,13 +91,13 @@ public struct ComposerView: View {
       if !completions.items.isEmpty {
         CompletionList(items: completions.items) { draft = completions.applying($0) }
       }
-      VStack(alignment: .leading, spacing: 6) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         if let reason = state.availability.reason {
           Label(reason, systemImage: "lock")
             .font(.caption)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.top, 4)
+            .padding(.horizontal, Theme.Spacing.small)
+            .padding(.top, Theme.Spacing.extraSmall)
             .accessibilityIdentifier("composer-unavailable")
         }
         if !state.attachments.isEmpty {
@@ -106,13 +106,11 @@ public struct ComposerView: View {
         editor
         toolbar
       }
-      .padding(8)
-      .composerSurface(isTargeted: isDropTargeted)
+      .padding(Theme.Spacing.medium)
+      .composerSurface(isTargeted: isDropTargeted, isFocused: isFocused)
     }
-    .padding(.horizontal, layoutWidth == .compact ? 10 : 16)
-    .padding(.vertical, 10)
-    .frame(minWidth: 0, maxWidth: Theme.transcriptWidth)
-    .frame(minWidth: 0, maxWidth: .infinity)
+    .padding(.vertical, Theme.Spacing.medium)
+    .readingColumn()
     .dropDestination(for: URL.self, isEnabled: canAttach) { urls, _ in
       add(urls.map { ComposerAttachmentInput.file(url: $0) })
     }
@@ -246,61 +244,81 @@ extension ComposerView {
   // MARK: Toolbar
 
   private var toolbar: some View {
-    HStack(spacing: 4) {
-      if state.acceptsAttachments, actions.addAttachments != nil {
-        AddMenu(
-          canAttach: canAttach, extras: actions.extras, chooseFiles: { isImporting = true },
-          choosePhotos: { isPickingPhotos = true },
-          paste: { providers in Task { await loadProviders(providers) } }
-        )
-        .tint(.secondary)
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: Theme.Spacing.extraSmall) {
+        leadingControls
+        Spacer(minLength: Theme.Spacing.small)
+        trailingControls
+        sendOrStop
       }
-      if let hosts = state.hosts {
-        HostChip(hosts: hosts, actions: actions.extras)
-          .tint(.secondary)
-      }
-      if let modes = state.approvalModes {
-        ApprovalModeChip(
-          modes: modes, select: actions.extras.selectApprovalMode,
-          isCompact: layoutWidth == .compact
-        )
-        .disabled(!isEditable)
-        .tint(.primary)
-      }
-      Spacer(minLength: 4)
-      if let configuration = state.configuration {
-        ConfigurationMenu(
-          configuration: configuration, actions: actions, isCompact: layoutWidth == .compact
-        )
-        .disabled(!isEditable)
-        .tint(.primary)
-      }
-      if let dictate = actions.extras.dictate {
-        Button("Dictate", systemImage: "mic", action: dictate)
-          .labelStyle(.iconOnly)
-          .buttonStyle(.borderless)
-          .foregroundStyle(.secondary)
-          .keyboardShortcut("v", modifiers: [.command, .option])
-          .help("Dictate (Option-Command-V)")
-          .disabled(!isEditable)
-          .accessibilityIdentifier("composer-mic")
-      }
-      if layoutWidth == .regular {
-        Button {
-          withAnimation(reduceMotion ? nil : .snappy) { isExpanded.toggle() }
-        } label: {
-          Label(
-            isExpanded ? "Collapse Editor" : "Expand Editor",
-            systemImage: isExpanded
-              ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+        FlowLayout(spacing: Theme.Spacing.extraSmall) { leadingControls }
+        HStack(spacing: Theme.Spacing.extraSmall) {
+          trailingControls
+          Spacer(minLength: Theme.Spacing.extraSmall)
+          sendOrStop
         }
+      }
+    }
+  }
+
+  @ViewBuilder private var leadingControls: some View {
+    if state.acceptsAttachments, actions.addAttachments != nil {
+      AddMenu(
+        canAttach: canAttach, extras: actions.extras, chooseFiles: { isImporting = true },
+        choosePhotos: { isPickingPhotos = true },
+        paste: { providers in Task { await loadProviders(providers) } }
+      )
+      .tint(.secondary)
+    }
+    if let hosts = state.hosts {
+      HostChip(hosts: hosts, actions: actions.extras)
+        .tint(.secondary)
+    }
+    if let modes = state.approvalModes {
+      ApprovalModeChip(
+        modes: modes, select: actions.extras.selectApprovalMode,
+        isCompact: layoutWidth == .compact
+      )
+      .disabled(!isEditable)
+      .tint(.primary)
+    }
+  }
+
+  @ViewBuilder private var trailingControls: some View {
+    if let configuration = state.configuration {
+      ConfigurationMenu(
+        configuration: configuration, actions: actions, isCompact: layoutWidth == .compact
+      )
+      .disabled(!isEditable)
+      .tint(.primary)
+    }
+    if let dictate = actions.extras.dictate {
+      Button("Dictate", systemImage: "mic", action: dictate)
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
-        .help(isExpanded ? "Collapse the editor" : "Expand the editor")
-        .accessibilityIdentifier("composer-expand")
+        .composerChip()
+        .keyboardShortcut("v", modifiers: [.command, .option])
+        .help("Dictate (Option-Command-V)")
+        .disabled(!isEditable)
+        .accessibilityIdentifier("composer-mic")
+    }
+    if layoutWidth == .regular {
+      Button {
+        withAnimation(reduceMotion ? nil : .snappy) { isExpanded.toggle() }
+      } label: {
+        Label(
+          isExpanded ? "Collapse Editor" : "Expand Editor",
+          systemImage: isExpanded
+            ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
       }
-      sendOrStop
+      .labelStyle(.iconOnly)
+      .buttonStyle(.borderless)
+      .foregroundStyle(.secondary)
+      .composerChip()
+      .help(isExpanded ? "Collapse the editor" : "Expand the editor")
+      .accessibilityIdentifier("composer-expand")
     }
   }
 
@@ -313,11 +331,11 @@ extension ComposerView {
           if state.isStopping {
             ProgressView().controlSize(.small)
           } else {
-            Image(systemName: "stop.fill").font(.system(size: 11, weight: .bold))
+            Image(systemName: "stop.fill").font(.caption.weight(.bold))
               .accessibilityHidden(true)
           }
         }
-        .frame(width: 28, height: 28)
+        .frame(width: Theme.Control.send, height: Theme.Control.send)
         .background(.primary.opacity(0.12), in: Circle())
         .contentShape(Circle())
       }
@@ -332,15 +350,15 @@ extension ComposerView {
       Button(action: send) {
         Group {
           if state.delivery == .sending {
-            ProgressView().controlSize(.small).tint(.white)
+            ProgressView().controlSize(.small).tint(ThemeColor.onAccent)
           } else {
-            Image(systemName: "arrow.up").font(.system(size: 14, weight: .bold))
+            Image(systemName: "arrow.up").font(.body.weight(.semibold))
               .accessibilityHidden(true)
           }
         }
-        .foregroundStyle(.white)
-        .frame(width: 28, height: 28)
-        .background(blocked == nil ? Theme.accent : ThemeColor.secondary.opacity(0.4), in: Circle())
+        .foregroundStyle(blocked == nil ? ThemeColor.onAccent : ThemeColor.secondary)
+        .frame(width: Theme.Control.send, height: Theme.Control.send)
+        .background(blocked == nil ? Theme.accent : ThemeColor.hover, in: Circle())
         .contentShape(Circle())
       }
       .buttonStyle(.plain)

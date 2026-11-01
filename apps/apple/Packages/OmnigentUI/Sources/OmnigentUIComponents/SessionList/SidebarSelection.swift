@@ -38,19 +38,25 @@ extension View {
     let isSelected: Bool
     @Environment(\.appearsActive) private var appearsActive
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
       if isSelected {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
+        RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
           .fill(fill)
-          .padding(.horizontal, 10)
+          .overlay {
+            if contrast == .increased {
+              RoundedRectangle(cornerRadius: Theme.Radius.small).strokeBorder(ThemeColor.border)
+            }
+          }
+          .padding(.horizontal, Theme.Spacing.medium)
           .padding(.vertical, 1)
       }
     }
 
     private var fill: ThemeColor {
       guard appearsActive else { return ThemeColor.primary.opacity(0.08) }
-      return Theme.accent.opacity(colorScheme == .dark ? 0.24 : 0.14)
+      return Theme.accent.opacity(colorScheme == .dark ? 0.14 : 0.08)
     }
   }
 

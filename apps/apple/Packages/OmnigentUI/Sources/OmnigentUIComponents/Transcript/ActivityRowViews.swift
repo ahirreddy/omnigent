@@ -47,9 +47,9 @@ private struct ReasoningRowView: View {
         MarkdownView(activity.detail("summary") ?? activity.summary, isStreaming: row.isStreaming)
           .font(.callout)
           .foregroundStyle(.secondary)
-          .padding(.leading, 32)
-          .padding(.trailing, 8)
-          .padding(.bottom, 8)
+          .padding(.leading, Theme.Spacing.section)
+          .padding(.trailing, Theme.Spacing.small)
+          .padding(.bottom, Theme.Spacing.small)
       }
     }
     .accessibilityElement(children: .contain)
@@ -84,15 +84,15 @@ private struct TerminalRowView: View {
           .accessibilityElement(children: .combine)
       }
       if isExpanded {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
           if let stdout, !stdout.isEmpty { terminalText(stdout, color: .primary) }
           if let stderr, !stderr.isEmpty { terminalText(stderr, color: .red) }
           Label("Recorded output. Nothing runs on this device.", systemImage: "info.circle")
             .font(.caption2)
             .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 10)
-        .padding(.bottom, 10)
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.bottom, Theme.Spacing.medium)
       }
     }
     .background(
@@ -110,7 +110,7 @@ private struct TerminalRowView: View {
   }
 
   private var terminalHeader: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: Theme.Spacing.small) {
       Image(systemName: "apple.terminal")
         .foregroundStyle(.green)
         .accessibilityHidden(true)
@@ -133,7 +133,7 @@ private struct TerminalRowView: View {
           .accessibilityHidden(true)
       }
     }
-    .padding(.horizontal, 10)
+    .padding(.horizontal, Theme.Spacing.medium)
     .padding(.vertical, 7)
     .contentShape(Rectangle())
   }
@@ -155,12 +155,12 @@ private struct ErrorRowView: View {
   @State private var isExpanded = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .firstTextBaseline, spacing: 8) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
         Image(systemName: "exclamationmark.octagon.fill")
           .foregroundStyle(Theme.failure)
           .accessibilityHidden(true)
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
           Text(activity.title).font(.callout.weight(.semibold))
           Text(activity.summary)
             .font(.callout)
@@ -173,12 +173,12 @@ private struct ErrorRowView: View {
       if !activity.details.isEmpty {
         DisclosureGroup("Details", isExpanded: $isExpanded) {
           DetailSectionsView(sections: activity.details, rowID: row.id)
-            .padding(.top, 6)
+            .padding(.top, Theme.Spacing.small)
         }
         .font(.caption)
       }
     }
-    .padding(12)
+    .padding(Theme.Spacing.medium)
     .cardSurface(
       cornerRadius: Theme.Radius.medium, tint: Theme.failure, stroke: Theme.failure.opacity(0.35)
     )
@@ -193,20 +193,20 @@ private struct RetryRowView: View {
   let activity: Activity
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
+    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
       Image(systemName: "arrow.clockwise")
         .foregroundStyle(Theme.warning)
         .symbolEffect(.rotate, isActive: row.isStreaming)
         .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(activity.title).font(.callout.weight(.medium))
+      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+        Text(activity.title).font(Theme.Typography.label)
         if !activity.summary.isEmpty {
           Text(activity.summary).font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       }
     }
-    .padding(.horizontal, 8)
+    .padding(.horizontal, Theme.Spacing.small)
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("retry-\(row.id)")
   }
@@ -218,14 +218,14 @@ private struct CompactionRowView: View {
   @State private var isExpanded = false
 
   var body: some View {
-    VStack(spacing: 6) {
+    VStack(spacing: Theme.Spacing.small) {
       Button {
         isExpanded.toggle()
       } label: {
-        HStack(spacing: 10) {
+        HStack(spacing: Theme.Spacing.medium) {
           line
           Label(activity.title, systemImage: "arrow.down.right.and.arrow.up.left")
-            .font(.caption.weight(.medium))
+            .font(Theme.Typography.section)
             .foregroundStyle(.secondary)
             .fixedSize()
           line
@@ -237,7 +237,7 @@ private struct CompactionRowView: View {
       .accessibilityIdentifier("compaction-toggle-\(row.id)")
       if isExpanded {
         DetailSectionsView(sections: activity.details, rowID: row.id)
-          .padding(10)
+          .padding(Theme.Spacing.medium)
           .cardSurface(cornerRadius: Theme.Radius.medium)
       }
     }
@@ -255,13 +255,13 @@ private struct SidechatRowView: View {
   let activity: Activity
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       Label("Side question", systemImage: "bubble.left.and.text.bubble.right")
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
       if let question = activity.detail("question") {
         Text(verbatim: question)
-          .font(.callout.weight(.medium))
+          .font(Theme.Typography.label)
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -271,7 +271,7 @@ private struct SidechatRowView: View {
         Text(activity.summary).font(.callout).foregroundStyle(.secondary)
       }
     }
-    .padding(12)
+    .padding(Theme.Spacing.medium)
     .overlay(alignment: .leading) {
       Rectangle().fill(Theme.accent.opacity(0.5)).frame(width: 3)
     }
@@ -299,8 +299,8 @@ private struct UnknownRowView: View {
       }
       if isExpanded {
         DetailSectionsView(sections: activity.details, rowID: row.id)
-          .padding(.horizontal, 12)
-          .padding(.bottom, 10)
+          .padding(.horizontal, Theme.Spacing.medium)
+          .padding(.bottom, Theme.Spacing.medium)
       }
     }
     .background {
@@ -336,7 +336,7 @@ private struct GenericActivityRowView: View {
         monospacedSubtitle: activity.kind == .command,
         isEnabled: !activity.details.isEmpty, identifier: "activity-toggle-\(row.id)"
       ) {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Spacing.small) {
           if let status = activity.status, !status.isEmpty, !activity.isFailure {
             Text(status.replacingOccurrences(of: "_", with: " ").capitalized)
               .font(.caption)
@@ -348,7 +348,7 @@ private struct GenericActivityRowView: View {
         }
       }
       if isExpanded {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
           if [.browser, .clientTask].contains(activity.kind) {
             Label(
               "Recorded activity only. Nothing runs on this device.", systemImage: "info.circle"
@@ -359,8 +359,8 @@ private struct GenericActivityRowView: View {
           DetailSectionsView(sections: activity.details, rowID: row.id)
           AttachmentStrip(attachments: row.attachments)
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 10)
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.bottom, Theme.Spacing.medium)
       }
     }
     .accessibilityElement(children: .contain)

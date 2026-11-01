@@ -4,12 +4,11 @@ struct EmptyTranscriptView: View {
   let state: ConversationViewState
 
   var body: some View {
-    VStack(spacing: 8) {
-      Image(systemName: "bubble.left.and.text.bubble.right")
-        .font(.largeTitle)
-        .foregroundStyle(.tertiary)
+    VStack(spacing: Theme.Spacing.small) {
+      OttoView()
+        .frame(width: Theme.Control.mascot, height: Theme.Control.mascot)
         .accessibilityHidden(true)
-      Text(title).font(.headline)
+      Text(title).font(Theme.Typography.title)
       Text(detail)
         .font(.callout)
         .foregroundStyle(.secondary)
@@ -37,11 +36,11 @@ struct SupersededBanner: View {
   @Environment(\.conversationActions) private var actions
 
   var body: some View {
-    HStack(alignment: .top, spacing: 10) {
+    HStack(alignment: .top, spacing: Theme.Spacing.medium) {
       Image(systemName: "arrow.turn.down.right")
         .foregroundStyle(Theme.accent)
         .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 4) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
         Text(section.title).font(.callout.weight(.semibold))
         Text(section.summary).font(.callout).foregroundStyle(.secondary)
       }
@@ -51,7 +50,7 @@ struct SupersededBanner: View {
           .accessibilityIdentifier("session-open-successor")
       }
     }
-    .padding(12)
+    .padding(Theme.Spacing.medium)
     .cardSurface(cornerRadius: Theme.Radius.medium, tint: Theme.accent)
   }
 }
@@ -68,11 +67,11 @@ struct ChildSessionsStrip: View {
 
   var body: some View {
     if !children.isEmpty {
-      VStack(alignment: .leading, spacing: 6) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         Text("Subagent sessions")
           .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
-        FlowLayout(spacing: 6) {
+        FlowLayout(spacing: Theme.Spacing.small) {
           ForEach(children) { child in
             ChildSessionLink(section: child, open: actions.openSession)
           }
@@ -91,7 +90,7 @@ struct ChildSessionLink: View {
     Button {
       if let id = section.sessionId { open?(id) }
     } label: {
-      HStack(spacing: 6) {
+      HStack(spacing: Theme.Spacing.small) {
         Image(systemName: "arrow.triangle.branch")
           .foregroundStyle(Theme.accent)
           .accessibilityHidden(true)
@@ -102,8 +101,8 @@ struct ChildSessionLink: View {
           .foregroundStyle(.tertiary)
           .accessibilityHidden(true)
       }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
+      .padding(.horizontal, Theme.Spacing.medium)
+      .padding(.vertical, Theme.Spacing.small)
       .cardSurface(cornerRadius: Theme.Radius.medium)
     }
     .buttonStyle(.plain)
@@ -119,10 +118,10 @@ struct FailureBanner: View {
 
   var body: some View {
     Label {
-      VStack(alignment: .leading, spacing: 6) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         Text("The last turn failed").font(.callout.weight(.semibold))
         Text(message).font(.callout).textSelection(.enabled)
-        HStack(spacing: 10) {
+        HStack(spacing: Theme.Spacing.medium) {
           if let resume {
             Button("Resume session", action: resume).buttonStyle(.bordered)
               .accessibilityIdentifier("turn-failure-resume")
@@ -133,7 +132,7 @@ struct FailureBanner: View {
     } icon: {
       Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning)
     }
-    .padding(12)
+    .padding(Theme.Spacing.medium)
     .frame(maxWidth: .infinity, alignment: .leading)
     .cardSurface(cornerRadius: Theme.Radius.medium, tint: Theme.warning)
     .accessibilityElement(children: .contain)
@@ -150,25 +149,29 @@ struct ErrorBanner: View {
   var identifier = "session-error"
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 10) {
-      Image(systemName: "exclamationmark.triangle.fill")
-        .foregroundStyle(Theme.failure)
-        .accessibilityHidden(true)
-      Text(message)
-        .font(.callout)
-        .textSelection(.enabled)
-      Spacer(minLength: 8)
-      CopyButton(text: message, label: "Copy error")
-      if let retry {
-        Button("Retry", action: retry)
-          .accessibilityIdentifier("\(identifier)-retry")
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      Label {
+        Text(message)
+          .font(.callout)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
+      } icon: {
+        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.failure)
       }
-      if let dismiss {
-        Button("Dismiss", action: dismiss).buttonStyle(.borderless)
-          .accessibilityIdentifier("\(identifier)-dismiss")
+      HStack(spacing: Theme.Spacing.medium) {
+        CopyButton(text: message, label: "Copy error")
+        if let retry {
+          Button("Retry", action: retry)
+            .accessibilityIdentifier("\(identifier)-retry")
+        }
+        if let dismiss {
+          Button("Dismiss", action: dismiss).buttonStyle(.borderless)
+            .accessibilityIdentifier("\(identifier)-dismiss")
+        }
       }
     }
-    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(Theme.Spacing.medium)
     .cardSurface(
       cornerRadius: Theme.Radius.medium, tint: Theme.failure, stroke: Theme.failure.opacity(0.3)
     )

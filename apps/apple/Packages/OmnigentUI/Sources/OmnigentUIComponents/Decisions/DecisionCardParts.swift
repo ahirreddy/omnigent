@@ -7,7 +7,7 @@ struct PermissionContextView: View {
 
   var body: some View {
     if let command = permissions.command {
-      VStack(alignment: .leading, spacing: 6) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         CodeBlockView(code: "$ \(command.command)", language: "command", maxLines: 8)
         if let cwd = command.cwd {
           LabeledContent("Directory") { Text(cwd).font(Theme.codeFont).textSelection(.enabled) }
@@ -20,7 +20,7 @@ struct PermissionContextView: View {
       }
     }
     if let agy = permissions.antigravity {
-      VStack(alignment: .leading, spacing: 6) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         if let action = agy.actionDescription {
           Text(action).font(.callout).textSelection(.enabled)
         }
@@ -35,13 +35,13 @@ struct PermissionContextView: View {
     if let plan = permissions.plan {
       BoundedScrollView(maxHeight: 320) {
         MarkdownView(plan)
-          .padding(12)
+          .padding(Theme.Spacing.medium)
       }
       .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
       .accessibilityLabel("Proposed plan")
     }
     if !permissions.permissionDirectories.isEmpty {
-      VStack(alignment: .leading, spacing: 2) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
         Text("Directories offered for this session").font(.caption).foregroundStyle(.secondary)
         ForEach(permissions.permissionDirectories, id: \.self) { directory in
           Text(directory).font(Theme.codeFont).textSelection(.enabled)
@@ -116,12 +116,12 @@ struct PlanReviewControls: View {
   @Environment(\.decisionIDPrefix) private var idPrefix
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
       ViewThatFits(in: .horizontal) {
-        HStack(spacing: 8) { planButtons }
-        VStack(alignment: .leading, spacing: 8) { planButtons }
+        HStack(spacing: Theme.Spacing.small) { planButtons }
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) { planButtons }
       }
-      HStack(alignment: .bottom, spacing: 8) {
+      HStack(alignment: .bottom, spacing: Theme.Spacing.small) {
         TextField("What should change about the plan? (optional)", text: $feedback, axis: .vertical)
           .lineLimit(1...4)
           .textFieldStyle(.roundedBorder)
@@ -182,13 +182,13 @@ struct DecisionFooter: View {
           .accessibilityIdentifier("\(idPrefix)decision-read-only-\(card.id)")
       }
     case .resolving:
-      HStack(spacing: 8) {
+      HStack(spacing: Theme.Spacing.small) {
         ProgressView().controlSize(.small)
         Text("Sending your response").font(.caption).foregroundStyle(.secondary)
       }
     case .answered(let summary):
       Label("\(summary). Waiting for the server to confirm.", systemImage: "checkmark.circle.fill")
-        .font(.caption.weight(.medium))
+        .font(Theme.Typography.section)
         .foregroundStyle(Theme.running)
         .accessibilityIdentifier("\(idPrefix)decision-status-\(card.id)")
     case .failed(let message):

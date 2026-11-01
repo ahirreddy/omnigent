@@ -7,7 +7,7 @@ struct DiffCountsView: View {
   let removed: Int
 
   var body: some View {
-    HStack(spacing: 4) {
+    HStack(spacing: Theme.Spacing.extraSmall) {
       if added > 0 { Text(verbatim: "+\(added)").foregroundStyle(.green) }
       if removed > 0 { Text(verbatim: "\u{2212}\(removed)").foregroundStyle(.red) }
     }
@@ -26,7 +26,7 @@ struct DiffView: View {
     VStack(alignment: .leading, spacing: 0) {
       HStack {
         Text(diff.files.isEmpty ? "Diff" : diff.files.joined(separator: ", "))
-          .font(.caption.weight(.medium))
+          .font(Theme.Typography.section)
           .lineLimit(1)
           .truncationMode(.middle)
         Spacer()
@@ -34,9 +34,9 @@ struct DiffView: View {
         CopyButton(
           text: diff.lines.map(\.text).joined(separator: "\n"), label: "Copy diff")
       }
-      .padding(.leading, 12)
-      .padding(.trailing, 6)
-      .padding(.vertical, 4)
+      .padding(.leading, Theme.Spacing.medium)
+      .padding(.trailing, Theme.Spacing.small)
+      .padding(.vertical, Theme.Spacing.extraSmall)
       Divider().opacity(0.6)
       ScrollView(.horizontal) {
         VStack(alignment: .leading, spacing: 0) {
@@ -44,17 +44,17 @@ struct DiffView: View {
             Text(verbatim: line.text.isEmpty ? " " : line.text)
               .font(Theme.codeFont)
               .foregroundStyle(foreground(line.kind))
-              .padding(.horizontal, 12)
+              .padding(.horizontal, Theme.Spacing.medium)
               .frame(maxWidth: .infinity, alignment: .leading)
               .background(background(line.kind))
           }
         }
         .textSelection(.enabled)
-        .padding(.vertical, 6)
+        .padding(.vertical, Theme.Spacing.small)
       }
       if diff.lines.count > maxLines {
         Text("\(diff.lines.count - maxLines) more lines")
-          .font(.caption).foregroundStyle(.secondary).padding(8)
+          .font(.caption).foregroundStyle(.secondary).padding(Theme.Spacing.small)
       }
     }
     .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
@@ -97,7 +97,6 @@ struct ToolGroupView: View, Equatable {
   var body: some View {
     if entries.count == 1, let entry = entries.first {
       ToolRowView(entry: entry)
-        .cardSurface(cornerRadius: Theme.Radius.medium)
     } else {
       let expanded = Binding(
         get: { expandedOverride ?? isRunning },
@@ -105,25 +104,24 @@ struct ToolGroupView: View, Equatable {
       VStack(alignment: .leading, spacing: 0) {
         ExpandableHeader(
           isExpanded: expanded, systemImage: "wrench.and.screwdriver",
-          title: groupTitle, subtitle: toolNames,
+          title: groupTitle,
           identifier: entries.first.map { "tool-group-toggle-\($0.id)" }
         ) {
-          HStack(spacing: 6) {
+          HStack(spacing: Theme.Spacing.small) {
             if failures > 0 { Pill(text: "\(failures) failed", tint: Theme.failure) }
             ActivityStatusView(isRunning: isRunning, isFailure: false)
           }
         }
         if expanded.wrappedValue {
-          Divider().padding(.leading, 32)
+          Divider().padding(.leading, Theme.Spacing.section)
           VStack(alignment: .leading, spacing: 0) {
             ForEach(entries) { entry in
               ToolRowView(entry: entry)
             }
           }
-          .padding(.leading, 16)
+          .padding(.leading, Theme.Spacing.large)
         }
       }
-      .cardSurface(cornerRadius: Theme.Radius.medium)
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier(entries.first.map { "tool-group-\($0.id)" } ?? "tool-group")
     }
@@ -135,15 +133,6 @@ struct ToolGroupView: View, Equatable {
       : ToolRunSummary.text(for: entries.map { $0.primary?.activity?.title ?? "" })
   }
 
-  private var toolNames: String {
-    var seen: [String] = []
-    for entry in entries {
-      let name = entry.primary?.activity?.title ?? "Tool"
-      if !seen.contains(name) { seen.append(name) }
-    }
-    let shown = seen.prefix(4).joined(separator: ", ")
-    return seen.count > 4 ? "\(shown), and \(seen.count - 4) more" : shown
-  }
 }
 
 /// One tool call with its result.
@@ -171,14 +160,14 @@ struct ToolRowView: View {
         subtitle: firstLine(entry.call?.activity?.summary ?? activity?.summary ?? ""),
         monospacedSubtitle: true, identifier: "tool-toggle-\(entry.id)"
       ) {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.Spacing.small) {
           if let diff { DiffCountsView(added: diff.added, removed: diff.removed) }
           ActivityStatusView(
             isRunning: entry.isRunning, isFailure: entry.isFailure, status: activity?.status)
         }
       }
       if isExpanded {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
           if let diff { DiffView(diff: diff) }
           if let call = entry.call?.activity {
             DetailSectionsView(
@@ -195,9 +184,9 @@ struct ToolRowView: View {
           AttachmentStrip(
             attachments: (entry.call?.attachments ?? []) + (entry.result?.attachments ?? []))
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 10)
-        .padding(.top, 2)
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.bottom, Theme.Spacing.medium)
+        .padding(.top, Theme.Spacing.tiny)
       }
     }
     .contextMenu {

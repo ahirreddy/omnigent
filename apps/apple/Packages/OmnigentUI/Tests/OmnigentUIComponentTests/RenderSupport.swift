@@ -35,7 +35,7 @@
 
     static func render(
       _ view: some View, width: CGFloat, height: CGFloat? = nil, scheme: ColorScheme,
-      layout: LayoutWidth
+      layout: LayoutWidth, increasedContrast: Bool = false
     ) throws -> Rendered {
       _ = NSApplication.shared
       let content =
@@ -49,7 +49,11 @@
         .frame(height: height)
         .background(scheme == .dark ? Color(white: 0.12) : Color(white: 0.985))
       let host = NSHostingView(rootView: content)
-      host.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+      let appearance: NSAppearance.Name =
+        increasedContrast
+        ? (scheme == .dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
+        : (scheme == .dark ? .darkAqua : .aqua)
+      host.appearance = NSAppearance(named: appearance)
       let fitting = host.fittingSize
       let size = CGSize(width: width, height: height ?? max(fitting.height, 40))
       let window = NSWindow(

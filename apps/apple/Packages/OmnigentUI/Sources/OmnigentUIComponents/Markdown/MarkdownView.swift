@@ -21,12 +21,18 @@ public struct MarkdownView: View {
     let blocks =
       isStreaming ? MarkdownParser.parse(text) : MarkdownCache.shared.blocks(for: text)
     MarkdownBlocksView(blocks: blocks)
+      .proseStyle()
       .tint(Theme.link)
   }
 }
 
+extension EnvironmentValues {
+  @Entry var markdownFillsWidth = true
+}
+
 struct MarkdownBlocksView: View {
   let blocks: [MarkdownBlock]
+  @Environment(\.markdownFillsWidth) private var fillsWidth
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.paragraph) {
@@ -34,12 +40,13 @@ struct MarkdownBlocksView: View {
         MarkdownBlockView(block: block)
       }
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
   }
 }
 
 private struct MarkdownBlockView: View {
   let block: MarkdownBlock
+  @Environment(\.markdownFillsWidth) private var fillsWidth
 
   var body: some View {
     switch block {
@@ -47,18 +54,18 @@ private struct MarkdownBlockView: View {
       Text(text)
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
     case .heading(let level, let text):
       Text(text)
         .font(headingFont(level))
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.top, level <= 2 ? 6 : 2)
+        .padding(.top, level <= 2 ? Theme.Spacing.small : Theme.Spacing.extraSmall)
         .accessibilityAddTraits(.isHeader)
     case .code(let language, let code):
       CodeBlockView(code: code, language: language)
     case .quote(let blocks):
-      HStack(alignment: .top, spacing: 10) {
+      HStack(alignment: .top, spacing: Theme.Spacing.medium) {
         RoundedRectangle(cornerRadius: 1.5)
           .fill(.tertiary)
           .frame(width: 3)
@@ -71,7 +78,7 @@ private struct MarkdownBlockView: View {
     case .table(let table):
       MarkdownTableView(table: table)
     case .rule:
-      Divider().padding(.vertical, 4)
+      Divider().padding(.vertical, Theme.Spacing.extraSmall)
     case .html(let raw):
       Text(verbatim: raw)
         .font(.callout.monospaced())
@@ -83,8 +90,8 @@ private struct MarkdownBlockView: View {
 
   private func headingFont(_ level: Int) -> Font {
     switch level {
-    case 1: .title2.weight(.semibold)
-    case 2: .title3.weight(.semibold)
+    case 1: .title.weight(.semibold)
+    case 2: Theme.Typography.title
     case 3: .headline
     default: .subheadline.weight(.semibold)
     }
@@ -97,9 +104,9 @@ private struct MarkdownListView: View {
   let items: [MarkdownListItem]
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
           marker(index: index, item: item)
             .frame(minWidth: ordered ? 22 : 12, alignment: .trailing)
           MarkdownBlocksView(blocks: item.blocks)
@@ -166,8 +173,8 @@ private struct MarkdownTableView: View {
       .textSelection(.enabled)
       .multilineTextAlignment(textAlignment(alignment))
       .frame(minWidth: 60, maxWidth: 360, alignment: frameAlignment(alignment))
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
+      .padding(.horizontal, Theme.Spacing.medium)
+      .padding(.vertical, Theme.Spacing.small)
       .gridColumnAlignment(horizontalAlignment(alignment))
   }
 
@@ -196,49 +203,71 @@ private struct MarkdownTableView: View {
   }
 }
 
-/// A fenced code block: a language label, a copy button, and horizontally scrolling,
-/// selectable monospaced text.
+/// Selectable code with a language header, wrap control and copy confirmation.
 struct CodeBlockView: View {
   let code: String
   let language: String?
-  /// Lines shown before the block scrolls vertically; `nil` shows every line.
   var maxLines: Int?
-  @ScaledMetric(relativeTo: .footnote) private var lineHeight: CGFloat = 15
+  @State private var wrapsLines = true
+  @ScaledMetric(relativeTo: .callout) private var lineHeight: CGFloat = 20
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      HStack(spacing: 6) {
-        Text(verbatim: language ?? "code")
-          .font(.caption.weight(.medium))
+      HStack(spacing: Theme.Spacing.small) {
+        Text(verbatim: language?.isEmpty == false ? (language ?? "Code") : "Code")
+          .font(Theme.Typography.section)
           .foregroundStyle(.secondary)
-        Spacer(minLength: 0)
-        CopyButton(text: code, label: "Copy code")
+          .lineLimit(1)
+        Spacer(minLength: Theme.Spacing.small)
+        Toggle(isOn: $wrapsLines) {
+          Image(systemName: "text.word.spacing")
+        }
+        .toggleStyle(.button)
+        .buttonStyle(.borderless)
+        .frame(minWidth: Theme.Control.target, minHeight: Theme.Control.target)
+        .foregroundStyle(.secondary)
+        .help(wrapsLines ? "Scroll long lines" : "Wrap long lines")
+        .accessibilityLabel("Wrap code lines")
+        CopyButton(text: code, label: "Copy code", showsLabel: true)
       }
-      .padding(.leading, 12)
-      .padding(.trailing, 6)
-      .padding(.vertical, 4)
-      Divider().opacity(0.6)
-      codeBody
+      .padding(.horizontal, Theme.Spacing.medium)
+      .padding(.vertical, Theme.Spacing.extraSmall)
+      .background(ThemeColor.hover)
+      Divider()
+      if let maxLines {
+        BoundedScrollView(maxHeight: lineHeight * CGFloat(maxLines) + Theme.Spacing.extraLarge) {
+          codeBody
+        }
+      } else {
+        codeBody
+      }
     }
-    .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+    .background(ThemeColor.codeSurface)
+    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.large))
     .overlay {
-      RoundedRectangle(cornerRadius: Theme.Radius.medium).strokeBorder(.separator.opacity(0.6))
+      RoundedRectangle(cornerRadius: Theme.Radius.large).strokeBorder(ThemeColor.border)
     }
+    .environment(\.colorScheme, .dark)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Code block\(language.map { ", \($0)" } ?? "")")
   }
 
   @ViewBuilder private var codeBody: some View {
-    let text = Text(verbatim: code)
-      .font(Theme.codeFont)
-      .textSelection(.enabled)
-      .fixedSize(horizontal: true, vertical: true)
-      .padding(12)
-    if let maxLines, Theme.lineCount(code) > maxLines {
-      ScrollView([.horizontal, .vertical]) { text }
-        .frame(height: lineHeight * CGFloat(maxLines) + 24)
+    if wrapsLines {
+      codeText.frame(maxWidth: .infinity, alignment: .leading)
     } else {
-      ScrollView(.horizontal) { text }
+      ScrollView(.horizontal) {
+        codeText.fixedSize(horizontal: true, vertical: true)
+      }
     }
+  }
+
+  private var codeText: some View {
+    Text(verbatim: code)
+      .font(Theme.codeFont)
+      .lineSpacing(Theme.Spacing.extraSmall)
+      .textSelection(.enabled)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(Theme.Spacing.large)
   }
 }

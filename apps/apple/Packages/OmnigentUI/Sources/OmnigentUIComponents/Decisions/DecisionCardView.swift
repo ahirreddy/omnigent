@@ -63,22 +63,22 @@ public struct DecisionCardView: View {
 
   /// The card.
   public var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
       header
       if !card.detail.isEmpty, card.permissions.plan == nil {
         Text(card.detail)
           .font(.callout)
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
-          .lineLimit(12)
+
       }
       PermissionContextView(permissions: card.permissions)
       if !isAnswered { controls }
       DecisionFooter(
         card: card, phase: phase, isReadOnly: isReadOnly || respond == nil)
     }
-    .padding(14)
-    .cardSurface(cornerRadius: Theme.Radius.large, stroke: accent.opacity(0.4))
+    .padding(Theme.Spacing.card)
+    .cardSurface(cornerRadius: Theme.Radius.large)
     .confirmationDialog(
       "Change approval behavior?",
       isPresented: Binding(
@@ -98,14 +98,14 @@ public struct DecisionCardView: View {
   }
 
   private var header: some View {
-    HStack(alignment: .center, spacing: 10) {
+    HStack(alignment: .center, spacing: Theme.Spacing.medium) {
       Image(systemName: headerSymbol)
         .font(.body.weight(.semibold))
         .foregroundStyle(iconTint)
         .frame(width: 28, height: 28)
-        .background(iconTint.opacity(0.15), in: Circle())
+        .background(iconTint.opacity(0.08), in: Circle())
         .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 2) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
         Text(displayTitle).font(.headline)
         if let policy = card.policyName ?? card.phase {
           Text(policy).font(.caption).foregroundStyle(.secondary)
@@ -137,7 +137,7 @@ public struct DecisionCardView: View {
         approvalControls
       }
     case .choice(_, let options):
-      VStack(alignment: .leading, spacing: 6) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         ForEach(Array(options.enumerated()), id: \.offset) { index, option in
           Button {
             send(.answer(value: option))
@@ -155,7 +155,7 @@ public struct DecisionCardView: View {
     case .form(let fields):
       formControls(fields)
     case .unsupported(let reason, let externalURL):
-      VStack(alignment: .leading, spacing: 8) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         Label(reason, systemImage: "info.circle")
           .font(.callout)
           .foregroundStyle(.secondary)
@@ -175,22 +175,25 @@ public struct DecisionCardView: View {
   }
 
   private var approvalControls: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
       ViewThatFits(in: .horizontal) {
-        HStack(spacing: 8) { primaryApprovalButtons }
-        VStack(alignment: .leading, spacing: 8) { primaryApprovalButtons }
+        HStack(spacing: Theme.Spacing.small) { primaryApprovalButtons }
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) { primaryApprovalButtons }
       }
       let extras = permissionResponses
       if !extras.isEmpty {
-        FlowLayout(spacing: 6) {
+        FlowLayout(spacing: Theme.Spacing.small) {
           ForEach(Array(extras.enumerated()), id: \.element.response) { index, extra in
             Button {
               pendingPermission = extra.response
             } label: {
               Label(extra.label, systemImage: extra.systemImage)
+                .font(Theme.Typography.section)
+                .fixedSize(horizontal: false, vertical: true)
             }
             .buttonStyle(.bordered)
-            .tint(.primary)
+            .controlSize(.small)
+            .tint(.secondary)
             .disabled(!canRespond)
             .accessibilityHint("Asks for confirmation; changes approval behavior")
             .accessibilityIdentifier("\(idPrefix)approval-permission-\(card.id)-\(index)")
@@ -229,7 +232,7 @@ public struct DecisionCardView: View {
   private func formControls(_ fields: [FormField]) -> some View {
     let values = draft.wrappedValue.values(for: fields)
     let problem = draft.wrappedValue.localProblem(for: fields) ?? validate?(values)
-    return VStack(alignment: .leading, spacing: 12) {
+    return VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
       DecisionFormFields(fields: fields, draft: draft, cardID: card.id)
         .disabled(!canRespond)
       if let problem {
@@ -238,7 +241,7 @@ public struct DecisionCardView: View {
           .foregroundStyle(.secondary)
           .accessibilityIdentifier("\(idPrefix)decision-form-validation-\(card.id)")
       }
-      HStack(spacing: 8) {
+      HStack(spacing: Theme.Spacing.small) {
         Button("Submit") { send(.form(values: values)) }
           .buttonStyle(.borderedProminent)
           .controlSize(.large)
@@ -291,11 +294,4 @@ extension DecisionCardView {
     }
   }
 
-  private var accent: ThemeColor {
-    switch phase {
-    case .answered: Theme.success
-    case .failed: Theme.failure
-    case .pending, .resolving: Theme.attention
-    }
-  }
 }

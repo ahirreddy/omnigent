@@ -42,8 +42,11 @@ public struct SidebarView: View {
       ForEach(SidebarSections.sections(state)) { section in
         sessionSection(section)
       }
+      emptyState
     }
     .listStyle(.sidebar)
+    .font(.callout)
+    .environment(\.defaultMinListRowHeight, Theme.Control.sidebarRow)
     // On the list itself: further out it would also land on the header's wordmark and server
     // switcher, overriding their own identifiers.
     .accessibilityIdentifier("sidebar")
@@ -52,7 +55,6 @@ public struct SidebarView: View {
     .searchable(text: $searchText, placement: .sidebar, prompt: "Search sessions")
     .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader(state: state, actions: actions) }
     .safeAreaInset(edge: .bottom, spacing: 0) { bottomBars }
-    .overlay { emptyState }
     #if os(macOS)
       .onDeleteCommand {
         guard let id = selection?.sessionID, let session = summary(id), session.canArchive,
@@ -102,6 +104,7 @@ public struct SidebarView: View {
 
   @ViewBuilder private var navigation: some View {
     Label("New session", systemImage: "plus.bubble")
+      .fontWeight(.medium)
       .tag(SidebarDestination.newSession)
       .sidebarSelection(selection == .newSession)
       .accessibilityIdentifier("sidebar-new-session")
@@ -147,6 +150,9 @@ public struct SidebarView: View {
     } header: {
       HStack {
         Text(section.title)
+          .font(Theme.Typography.section)
+          .foregroundStyle(.secondary)
+          .textCase(nil)
         Spacer()
         if section.showsDisplayMenu, let setDisplay = actions.setDisplay {
           DisplayMenu(options: state.display, set: setDisplay)
@@ -172,7 +178,8 @@ public struct SidebarView: View {
             state.display.show == .archived ? "No archived sessions" : "No sessions",
             systemImage: "bubble.left.and.bubble.right"
           )
-          .padding(.top, 180)
+          .font(.callout)
+          .listRowSeparator(.hidden)
         }
       }
     }
@@ -184,7 +191,7 @@ public struct SidebarView: View {
         UndoBar(banner: undo, actions: actions)
       }
       if case .failed(let message) = state.list.phase {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
           Image(systemName: "exclamationmark.triangle.fill")
             .foregroundStyle(Theme.failure)
             .accessibilityHidden(true)
@@ -195,7 +202,7 @@ public struct SidebarView: View {
               .accessibilityIdentifier("session-list-retry")
           }
         }
-        .padding(10)
+        .padding(Theme.Spacing.medium)
         .background(.bar)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session-list-error")

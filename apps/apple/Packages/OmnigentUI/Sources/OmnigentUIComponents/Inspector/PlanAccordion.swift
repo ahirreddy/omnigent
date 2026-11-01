@@ -23,7 +23,7 @@ public struct PlanAccordion: View {
       Button {
         withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { isExpanded.toggle() }
       } label: {
-        HStack(spacing: 10) {
+        HStack(spacing: Theme.Spacing.medium) {
           ProgressRing(fraction: todos.isEmpty ? 0 : Double(done) / Double(todos.count))
           VStack(alignment: .leading, spacing: 1) {
             Text("Plan \u{00B7} \(done) of \(todos.count) done")
@@ -42,8 +42,8 @@ public struct PlanAccordion: View {
             .rotationEffect(.degrees(isExpanded ? 180 : 0))
             .accessibilityHidden(true)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.vertical, Theme.Spacing.small)
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
@@ -53,18 +53,18 @@ public struct PlanAccordion: View {
       if isExpanded {
         Divider()
         BoundedScrollView(maxHeight: 240) {
-          VStack(alignment: .leading, spacing: 6) {
+          VStack(alignment: .leading, spacing: Theme.Spacing.small) {
             ForEach(todos) { todo in
               TodoRow(todo: todo)
             }
           }
-          .padding(12)
+          .padding(Theme.Spacing.medium)
         }
       }
     }
     .cardSurface(cornerRadius: Theme.Radius.large)
     .padding(.horizontal, layoutWidth == .compact ? 10 : 16)
-    .padding(.top, 8)
+    .padding(.top, Theme.Spacing.small)
     .frame(maxWidth: Theme.transcriptWidth)
     .frame(maxWidth: .infinity)
     .accessibilityElement(children: .contain)
@@ -76,7 +76,7 @@ struct TodoRow: View {
   let todo: SectionReading.Todo
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
+    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
       Group {
         switch todo.state {
         case .completed:

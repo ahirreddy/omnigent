@@ -13,6 +13,7 @@ public struct NewSessionPage: View {
 
   @State private var gaze: CGSize = .zero
   @Environment(\.layoutWidth) private var layoutWidth
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   /// Creates the page.
   /// - Parameters:
@@ -35,38 +36,46 @@ public struct NewSessionPage: View {
 
   /// The page.
   public var body: some View {
-    VStack(spacing: 0) {
-      if layoutWidth == .regular { Spacer(minLength: 40) }
-      VStack(spacing: 14) {
-        OttoView(gaze: gaze)
-          .frame(width: 56, height: 56)
-        Text(heading)
-          .font(.largeTitle.weight(.semibold))
-          .multilineTextAlignment(.center)
-          .accessibilityAddTraits(.isHeader)
+    GeometryReader { geometry in
+      ScrollView {
+        VStack(spacing: Theme.Spacing.extraLarge) {
+          VStack(spacing: Theme.Spacing.large) {
+            OttoView(gaze: gaze)
+              .frame(width: Theme.Control.mascot, height: Theme.Control.mascot)
+            Text(heading)
+              .font(layoutWidth == .compact ? Theme.Typography.title : .largeTitle.weight(.medium))
+              .multilineTextAlignment(.center)
+              .fixedSize(horizontal: false, vertical: true)
+              .accessibilityAddTraits(.isHeader)
+          }
+          .padding(.horizontal, Theme.Spacing.extraLarge)
+          ComposerView(draft: $draft, state: composer, actions: actions)
+          if let importSessions {
+            Button(
+              "Import your recent sessions", systemImage: "square.and.arrow.down",
+              action: importSessions
+            )
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("new-session-import")
+          }
+        }
+        .padding(.vertical, Theme.Spacing.section)
+        .frame(minHeight: geometry.size.height)
+        .onContinuousHover(coordinateSpace: .local) { phase in
+          guard !reduceMotion else { return }
+          switch phase {
+          case .active(let location):
+            gaze = CGSize(
+              width: (location.x / max(geometry.size.width, 1) - 0.5) * 2,
+              height: (location.y / max(geometry.size.height, 1) - 0.5) * 2)
+          case .ended: gaze = .zero
+          }
+        }
       }
-      .padding(.bottom, 12)
-      if layoutWidth == .compact { Spacer(minLength: 20) }
-      ComposerView(draft: $draft, state: composer, actions: actions)
-      if let importSessions {
-        Button(
-          "Import your recent sessions", systemImage: "square.and.arrow.down",
-          action: importSessions
-        )
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .padding(.top, 4)
-        .accessibilityIdentifier("new-session-import")
-      }
-      if layoutWidth == .regular { Spacer(minLength: 80) }
+      .scrollBounceBehavior(.basedOnSize)
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .themeCanvas()
-    .onContinuousHover(coordinateSpace: .local) { phase in
-      if case .active(let location) = phase {
-        gaze = CGSize(width: (location.x - 400) / 400, height: (location.y - 200) / 300)
-      }
-    }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("new-session-page")
     .navigationTitle("New session")

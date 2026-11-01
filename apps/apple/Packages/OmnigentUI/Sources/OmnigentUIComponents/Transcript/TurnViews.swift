@@ -22,13 +22,13 @@ struct WorkedFold: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       Button {
-        withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) {
+        withAnimation(reduceMotion ? nil : Theme.Motion.disclosure) {
           expandedOverride = !isExpanded
         }
       } label: {
-        HStack(spacing: 4) {
+        HStack(spacing: Theme.Spacing.extraSmall) {
           Text(title)
           Image(systemName: "chevron.right")
             .font(.caption2.weight(.semibold))
@@ -37,19 +37,22 @@ struct WorkedFold: View {
         }
         .font(.callout)
         .foregroundStyle(.secondary)
+        .padding(.vertical, Theme.Spacing.extraSmall)
+        .frame(minHeight: Theme.Control.target)
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+      .hoverHighlight()
       .accessibilityLabel(title)
       .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
       .accessibilityIdentifier("worked-fold-\(items.first?.id ?? "empty")")
       if isExpanded {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
           ForEach(items) { item in
             TranscriptItemView(item: item, decorations: decorations)
           }
         }
-        .padding(.leading, 12)
+        .padding(.leading, Theme.Spacing.medium)
         .overlay(alignment: .leading) {
           Rectangle().fill(.separator).frame(width: 1)
         }
@@ -69,14 +72,14 @@ struct WorkingIndicator: View {
   ]
 
   var body: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: Theme.Spacing.small) {
       OttoView(isWorking: !isBlocked).frame(width: 22, height: 22)
       Text(isBlocked ? "Waiting for your response to the request below." : Self.labels[labelIndex])
-        .font(.callout.monospaced())
+        .font(.callout)
         .foregroundStyle(.secondary)
         .contentTransition(.opacity)
     }
-    .task(id: isBlocked) {
+    .task(id: isBlocked || reduceMotion) {
       guard !isBlocked, !reduceMotion else { return }
       while !Task.isCancelled {
         do {
@@ -85,7 +88,9 @@ struct WorkingIndicator: View {
           // Cancelled: the indicator went away.
           return
         }
-        withAnimation { labelIndex = (labelIndex + 1) % Self.labels.count }
+        withAnimation(reduceMotion ? nil : Theme.Motion.feedback) {
+          labelIndex = (labelIndex + 1) % Self.labels.count
+        }
       }
     }
     .accessibilityElement(children: .combine)
@@ -103,18 +108,18 @@ struct PlanCard: View {
     let done = todos.count { $0.state == .completed }
     DisclosureGroup(isExpanded: $isExpanded) {
       BoundedScrollView(maxHeight: 150) {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
           ForEach(todos) { TodoRow(todo: $0) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 6)
+        .padding(.vertical, Theme.Spacing.small)
       }
     } label: {
       Label("Plan (\(done)/\(todos.count))", systemImage: "checklist")
-        .font(.callout.weight(.medium))
+        .font(Theme.Typography.label)
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
+    .padding(.horizontal, Theme.Spacing.medium)
+    .padding(.vertical, Theme.Spacing.small)
     .cardSurface(cornerRadius: Theme.Radius.large)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("plan-card")

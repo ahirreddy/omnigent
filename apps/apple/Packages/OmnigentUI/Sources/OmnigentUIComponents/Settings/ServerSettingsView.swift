@@ -35,7 +35,7 @@ public struct ServerSettingsView: View {
           }
         }
         .labelsHidden()
-        .padding(10)
+        .padding(Theme.Spacing.medium)
         .accessibilityIdentifier("server-settings-picker")
       }
       .navigationSplitViewColumnWidth(min: 180, ideal: 200)
@@ -67,7 +67,7 @@ public struct ServerSettingsView: View {
             isOn: Binding(
               get: { harness.isEnabled }, set: { actions.setHarnessEnabled?(harness, $0) })
           ) {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Spacing.small) {
               HarnessGlyph(harness: harness.harness, size: 18)
               VStack(alignment: .leading) {
                 Text(harness.name)
@@ -102,7 +102,7 @@ public struct ServerSettingsView: View {
             .fixedSize()
             .disabled(!state.isAdmin || actions.setMemberRole == nil)
           } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.Spacing.small) {
               AuthorAvatar(name: member.name)
               VStack(alignment: .leading) {
                 Text(member.name)

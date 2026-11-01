@@ -6,9 +6,9 @@ struct SidebarHeader: View {
   let actions: SidebarActions
 
   var body: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: Theme.Spacing.small) {
       Text("Omnigent")
-        .font(.title3.weight(.bold))
+        .font(.headline.weight(.semibold))
         .accessibilityAddTraits(.isHeader)
       Spacer(minLength: 4)
       if !state.servers.isEmpty || actions.addServer != nil {
@@ -33,29 +33,31 @@ struct SidebarHeader: View {
             Button("Server Settings\u{2026}", systemImage: "gearshape", action: settings)
           }
         } label: {
-          HStack(spacing: 4) {
+          HStack(spacing: Theme.Spacing.extraSmall) {
             Circle()
               .fill(
                 state.currentServer?.isConnected == false
-                  ? Color.secondary : StatusColors.success.light
+                  ? ThemeColor.secondary : Theme.success
               )
               .frame(width: 6, height: 6)
             Text(state.currentServer?.name ?? "Server")
               .font(.caption)
               .lineLimit(1)
+              .truncationMode(.middle)
+              .frame(maxWidth: Theme.Control.serverNameWidth)
           }
           .accessibilityElement(children: .combine)
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
-        .fixedSize()
+        .tint(.secondary)
         .help("Switch server")
         .accessibilityLabel("Server: \(state.currentServer?.name ?? "none")")
         .accessibilityIdentifier("server-switcher")
       }
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 8)
+    .padding(.horizontal, Theme.Spacing.large)
+    .padding(.vertical, Theme.Spacing.small)
   }
 }
 
@@ -75,11 +77,17 @@ struct QuickFilterRow: View {
           Text("\(count)")
             .font(.caption.monospacedDigit().weight(.semibold))
             .foregroundStyle(filter == .needsResponse ? Theme.brandAccent : Theme.secondary)
+            .padding(.horizontal, Theme.Spacing.small)
+            .padding(.vertical, Theme.Spacing.tiny)
+            .background(ThemeColor.hover, in: Capsule())
         }
       }
+      .frame(minHeight: Theme.Control.sidebarRow)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .sidebarSelection(isActive)
+    .hoverHighlight()
     .accessibilityAddTraits(isActive ? [.isSelected] : [])
     .accessibilityHint(isActive ? "Shows all sessions" : "Shows only these sessions")
     .accessibilityIdentifier("quick-filter-\(filter.rawValue)")
@@ -122,6 +130,7 @@ struct DisplayMenu: View {
     .menuStyle(.button)
     .buttonStyle(.borderless)
     .menuIndicator(.hidden)
+    .tint(.secondary)
     .fixedSize()
     .help("Filter and display")
     .accessibilityIdentifier("sidebar-display-menu")
@@ -145,7 +154,7 @@ struct UndoBar: View {
   let actions: SidebarActions
 
   var body: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: Theme.Spacing.small) {
       Text(banner.message).font(.callout)
       Spacer(minLength: 4)
       if case .archived = banner.kind, let viewArchived = actions.viewArchived {
@@ -167,10 +176,10 @@ struct UndoBar: View {
           .accessibilityIdentifier("undo-dismiss")
       }
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
+    .padding(.horizontal, Theme.Spacing.medium)
+    .padding(.vertical, Theme.Spacing.small)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
-    .padding(8)
+    .padding(Theme.Spacing.small)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("undo-banner")
   }

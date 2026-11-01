@@ -42,7 +42,7 @@ public struct ShareSheet: View {
           Toggle(
             isOn: Binding(get: { state.workspaceFiles }, set: { actions.setWorkspaceFiles?($0) })
           ) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
               Text("Workspace files")
               Text("Let people with view access browse this session's files")
                 .font(.caption)

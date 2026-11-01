@@ -292,6 +292,8 @@ extension View {
 }
 
 struct ThemeCanvas: View {
+  @Environment(\.colorSchemeContrast) private var contrast
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   @Environment(\.omnigentTheme) private var theme
   @Environment(\.colorScheme) private var colorScheme
 
@@ -303,7 +305,7 @@ struct ThemeCanvas: View {
       } else {
         Rectangle().fill(.background)
       }
-      if palette.canvasGlow, colorScheme == .dark {
+      if palette.canvasGlow, colorScheme == .dark, contrast != .increased, !reduceTransparency {
         // `omnigent-center-glow.svg`: white radial gradient at 50% / 46%, 26% to 0%.
         GeometryReader { proxy in
           RadialGradient(
@@ -318,13 +320,19 @@ struct ThemeCanvas: View {
 }
 
 struct ThemeSidebarTint: View {
+  @Environment(\.self) private var environment
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   @Environment(\.omnigentTheme) private var theme
   @Environment(\.colorScheme) private var colorScheme
 
   var body: some View {
     let palette = theme.palette(for: colorScheme)
     ZStack {
-      if let tint = palette.sidebarTint { tint }
+      if reduceTransparency {
+        palette.sidebarTint ?? palette.canvas ?? ThemeColor.surface.resolve(in: environment)
+      } else if let tint = palette.sidebarTint {
+        tint
+      }
       if let wash = palette.sidebarWash {
         LinearGradient(
           stops: [.init(color: .clear, location: 0.35), .init(color: wash, location: 1)],

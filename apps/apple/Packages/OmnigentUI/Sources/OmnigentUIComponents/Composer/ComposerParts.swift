@@ -14,9 +14,9 @@ struct DeliveryBanner: View {
     case .idle, .sending:
       EmptyView()
     case .uncertain(let message):
-      VStack(alignment: .leading, spacing: 8) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         Label {
-          VStack(alignment: .leading, spacing: 2) {
+          VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
             Text("Delivery uncertain").font(.callout.weight(.semibold))
             Text(message).font(.callout)
           }
@@ -24,11 +24,14 @@ struct DeliveryBanner: View {
           Image(systemName: "questionmark.circle.fill").foregroundStyle(Theme.warning)
         }
         if let acknowledge {
-          Button("I Checked the Conversation, Allow Another Send", action: acknowledge)
-            .accessibilityIdentifier("composer-acknowledge-uncertain")
+          Button(action: acknowledge) {
+            Text("I checked the conversation. Allow another send.")
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          .accessibilityIdentifier("composer-acknowledge-uncertain")
         }
       }
-      .padding(12)
+      .padding(Theme.Spacing.medium)
       .frame(maxWidth: .infinity, alignment: .leading)
       .cardSurface(
         cornerRadius: Theme.Radius.medium, tint: Theme.warning,
@@ -135,7 +138,9 @@ struct GrowingTextEditor: View {
   /// The text view's accessibility identifier. Set on the editor alone, so the measuring copy,
   /// the placeholder and the editor's scroll view never carry it.
   var identifier: String?
-  @ScaledMetric(relativeTo: .body) private var lineHeight: CGFloat = 17
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @ScaledMetric(relativeTo: .body) private var lineHeight: CGFloat = Theme.Typography
+    .editorLineHeight
 
   #if os(macOS)
     private let inset = EdgeInsets(top: 0, leading: 5, bottom: 0, trailing: 5)
@@ -153,20 +158,21 @@ struct GrowingTextEditor: View {
       maxHeight: lineHeight * CGFloat(maxLines) + verticalInsets
     ) {
       Text(verbatim: text.isEmpty ? " " : text + (text.hasSuffix("\n") ? " " : ""))
-        .font(.body)
+        .proseStyle()
         .padding(inset)
         .frame(maxWidth: .infinity, alignment: .leading)
         .hidden()
       TextEditor(text: $text)
-        .font(.body)
+        .proseStyle()
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier(identifier ?? "", isEnabled: identifier != nil)
     }
+    .animation(reduceMotion ? nil : Theme.Motion.feedback, value: Theme.lineCount(text))
     .overlay(alignment: .topLeading) {
       if text.isEmpty {
         Text(placeholder)
-          .font(.body)
-          .foregroundStyle(.tertiary)
+          .proseStyle()
+          .foregroundStyle(.secondary)
           .padding(inset)
           .allowsHitTesting(false)
           .accessibilityHidden(true)
@@ -181,13 +187,13 @@ struct DraftAttachmentStrip: View {
 
   var body: some View {
     ScrollView(.horizontal) {
-      HStack(spacing: 6) {
+      HStack(spacing: Theme.Spacing.small) {
         ForEach(attachments) { attachment in
           DraftAttachmentChip(attachment: attachment, remove: remove)
         }
       }
-      .padding(.horizontal, 2)
-      .padding(.vertical, 2)
+      .padding(.horizontal, Theme.Spacing.tiny)
+      .padding(.vertical, Theme.Spacing.tiny)
     }
     .scrollIndicators(.never)
   }
@@ -198,7 +204,7 @@ private struct DraftAttachmentChip: View {
   let remove: ((DraftAttachment) -> Void)?
 
   var body: some View {
-    HStack(spacing: 6) {
+    HStack(spacing: Theme.Spacing.small) {
       icon
       VStack(alignment: .leading, spacing: 0) {
         Text(attachment.title).font(.caption).lineLimit(1)
@@ -218,8 +224,8 @@ private struct DraftAttachmentChip: View {
         .accessibilityIdentifier("draft-attachment-remove-\(attachment.id)")
       }
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 5)
+    .padding(.horizontal, Theme.Spacing.small)
+    .padding(.vertical, Theme.Spacing.extraSmall)
     .cardSurface(
       cornerRadius: Theme.Radius.medium, tint: isFailed ? Theme.failure : nil,
       stroke: isFailed ? Theme.failure.opacity(0.4) : nil
@@ -266,30 +272,46 @@ private struct DraftAttachmentChip: View {
 
 private struct ComposerSurface: ViewModifier {
   let isTargeted: Bool
+  let isFocused: Bool
+  @Environment(\.colorSchemeContrast) private var contrast
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var isHovered = false
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
   func body(content: Content) -> some View {
-    let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+    let shape = RoundedRectangle(cornerRadius: Theme.Radius.composer, style: .continuous)
     content
       .background {
-        if reduceTransparency {
-          shape.fill(.background)
+        if reduceTransparency || contrast == .increased {
+          shape.fill(ThemeColor.surface)
         } else {
-          shape.fill(.regularMaterial)
+          ZStack {
+            shape.fill(.regularMaterial)
+            shape.fill(ThemeColor.surface.opacity(0.65))
+          }
         }
       }
       .overlay {
         shape.strokeBorder(
-          isTargeted ? Theme.accent : ThemeColor.secondary.opacity(0.25),
-          lineWidth: isTargeted ? 2 : 0.5)
+          isTargeted || isFocused ? Theme.accent : ThemeColor.border,
+          lineWidth: isTargeted || isFocused || contrast == .increased ? 1.5 : 0.5)
       }
-      .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+      .shadow(
+        color: .black.opacity(isFocused ? 0.1 : 0.06), radius: Theme.Spacing.large,
+        y: Theme.Spacing.extraSmall
+      )
+      .onHover { isHovered = $0 }
+      .overlay {
+        shape.strokeBorder(ThemeColor.border.opacity(isHovered && !isFocused ? 1 : 0), lineWidth: 1)
+          .allowsHitTesting(false)
+      }
+      .animation(reduceMotion ? nil : Theme.Motion.feedback, value: isFocused)
   }
 }
 
 extension View {
-  func composerSurface(isTargeted: Bool) -> some View {
-    modifier(ComposerSurface(isTargeted: isTargeted))
+  func composerSurface(isTargeted: Bool, isFocused: Bool) -> some View {
+    modifier(ComposerSurface(isTargeted: isTargeted, isFocused: isFocused))
   }
 }
 

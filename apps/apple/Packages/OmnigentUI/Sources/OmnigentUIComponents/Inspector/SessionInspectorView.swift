@@ -65,7 +65,7 @@ public struct SessionInspectorView: View {
       }
       if let settings {
         LabeledContent("Harness") {
-          HStack(spacing: 6) {
+          HStack(spacing: Theme.Spacing.small) {
             HarnessGlyph(harness: settings.harness, size: 16)
             Text(HarnessAppearance(harness: settings.harness).label)
           }
@@ -97,7 +97,7 @@ public struct SessionInspectorView: View {
         }
       }
       LabeledContent("Session ID") {
-        HStack(spacing: 4) {
+        HStack(spacing: Theme.Spacing.extraSmall) {
           Text(header.id).font(Theme.codeFont).lineLimit(1).truncationMode(.middle)
           CopyButton(text: header.id, label: "Copy session ID")
         }
@@ -109,7 +109,7 @@ public struct SessionInspectorView: View {
     let usage = SectionReading.usage(section)
     return Section("Usage") {
       if let fraction = usage.fraction {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
           ProgressView(value: fraction)
             .tint(fraction > 0.85 ? Theme.warning : Theme.accent)
           Text(
@@ -139,7 +139,7 @@ public struct SessionInspectorView: View {
           Text(section.summary).foregroundStyle(.secondary)
         }
         ForEach(files) { file in
-          HStack(spacing: 8) {
+          HStack(spacing: Theme.Spacing.small) {
             Text(file.letter)
               .font(.caption.monospaced().weight(.bold))
               .foregroundStyle(letterColor(file.letter))
@@ -268,7 +268,7 @@ private struct StatusDotLabelStyle: LabelStyle {
   let color: ThemeColor
 
   func makeBody(configuration: Configuration) -> some View {
-    HStack(spacing: 5) {
+    HStack(spacing: Theme.Spacing.extraSmall) {
       configuration.icon.font(.system(size: 7)).foregroundStyle(color)
       configuration.title
     }

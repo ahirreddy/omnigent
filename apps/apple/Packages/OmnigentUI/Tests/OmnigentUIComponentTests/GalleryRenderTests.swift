@@ -32,17 +32,41 @@
       Surface(name: "composer", regular: CGSize(width: 760, height: 0), compactHeight: nil) {
         AnyView(GalleryComposer().padding(20))
       },
+      Surface(name: "reading-column", regular: CGSize(width: 834, height: 0), compactHeight: nil) {
+        AnyView(
+          VStack(spacing: Theme.Spacing.row) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.row) {
+              MessageRowView(
+                row: Row(id: "short", role: .user, text: "Looks good."),
+                decoration: MessageDecoration())
+              MessageRowView(
+                row: Row(id: "answer", role: .assistant, text: PreviewData.assistantMarkdown),
+                decoration: MessageDecoration(showsActions: true))
+            }
+            .readingColumn()
+            ComposerView(
+              draft: .constant(""), state: PreviewData.idleSessionComposer,
+              actions: ComposerActions(send: {}))
+          }.padding(.vertical, Theme.Spacing.extraLarge).omnigentTheme(.omni).themeCanvas())
+      },
       Surface(name: "sessions", regular: CGSize(width: 300, height: 860), compactHeight: 844) {
         AnyView(GallerySessionList())
       },
       Surface(name: "new-session", regular: CGSize(width: 560, height: 760), compactHeight: 844) {
         AnyView(GalleryNewSession())
       },
+      Surface(name: "landing", regular: CGSize(width: 1_024, height: 768), compactHeight: 600) {
+        AnyView(
+          NewSessionPage(
+            draft: .constant(""), composer: PreviewData.startComposer,
+            actions: ComposerActions(send: {})))
+      },
       Surface(name: "inspector", regular: CGSize(width: 340, height: 1_560), compactHeight: nil) {
         AnyView(GalleryPageContent(page: .inspector))
       },
-      Surface(name: "inspector-terminals", regular: CGSize(width: 340, height: 600), compactHeight: nil)
-      {
+      Surface(
+        name: "inspector-terminals", regular: CGSize(width: 340, height: 600), compactHeight: nil
+      ) {
         AnyView(
           WorkspaceInspector(
             state: PreviewData.shellConversation, actions: ConversationActions(),
@@ -71,6 +95,51 @@
             actions: ServerSettingsActions()))
       },
     ]
+
+    @Test("long permission labels wrap within a compact column")
+    func wrappingLabels() throws {
+      var measured = CGSize.zero
+      let content = FlowLayout {
+        Text("Approve and allow all directories in this workspace for the rest of this session")
+          .font(.title)
+          .fixedSize(horizontal: false, vertical: true)
+          .onGeometryChange(for: CGSize.self) {
+            $0.size
+          } action: {
+            measured = $0
+          }
+        Text("Reject")
+      }
+      _ = try RenderSupport.render(content, width: 280, scheme: .light, layout: .compact)
+      #expect(measured.width <= 280)
+      #expect(measured.height > 40)
+    }
+
+    @Test("conversation surfaces support every theme and accessibility sizing")
+    func accessibleThemes() throws {
+      for theme in OmnigentTheme.builtIn + [CustomTheme.default.theme()] {
+        for scheme in [ColorScheme.light, .dark] {
+          let content = VStack(spacing: Theme.Spacing.extraLarge) {
+            MarkdownView(
+              "A readable reply.\n\n```swift\nlet message = \"A longer code line that wraps inside a compact conversation\"\n```"
+            )
+            .padding(.horizontal, Theme.Spacing.compactGutter)
+            DecisionCardView(card: PreviewData.codexCommand, respond: { _ in })
+              .padding(.horizontal, Theme.Spacing.compactGutter)
+            ComposerView(
+              draft: .constant("A draft with\nseveral lines"), state: PreviewData.sessionComposer,
+              actions: ComposerActions(send: {}))
+          }
+          .omnigentTheme(theme)
+          .environment(\.dynamicTypeSize, .accessibility3)
+          .themeCanvas()
+          let rendered = try RenderSupport.render(
+            content, width: 390, scheme: scheme, layout: .compact, increasedContrast: true)
+          #expect(RenderSupport.inkCoverage(rendered) > 0.01)
+          try RenderSupport.write(rendered, name: "ui-accessible-\(theme.id)-\(scheme)")
+        }
+      }
+    }
 
     @Test("renders in light and dark at Mac and compact widths", arguments: surfaces)
     func render(surface: Surface) throws {

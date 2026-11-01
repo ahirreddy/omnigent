@@ -6,23 +6,72 @@ import SwiftUI
 /// them.
 enum Theme {
   enum Spacing {
-    static let paragraph: CGFloat = 10
-    static let row: CGFloat = 18
-    static let card: CGFloat = 12
-    static let gutter: CGFloat = 20
+    static let tiny: CGFloat = 2
+    static let extraSmall: CGFloat = 4
+    static let small: CGFloat = 8
+    static let medium: CGFloat = 12
+    static let large: CGFloat = 16
+    static let extraLarge: CGFloat = 24
+    static let section: CGFloat = 32
+    static let paragraph = large
+    static let row = extraLarge
+    static let card = large
+    static let gutter = extraLarge
+    static let compactGutter = medium
   }
 
   enum Radius {
-    static let small: CGFloat = 6
+    static let small: CGFloat = 8
     static let medium: CGFloat = DesignTokens.radius
-    static let large: CGFloat = 12
-    static let bubble: CGFloat = 16
+    static let large: CGFloat = 16
+    static let bubble: CGFloat = 20
+    static let composer: CGFloat = 24
   }
 
   /// The readable column width of the transcript.
-  static let transcriptWidth: CGFloat = 780
+  static let transcriptWidth: CGFloat = 720
+  static let inboxWidth: CGFloat = 880
+  static let userMessageWidth: CGFloat = 560
 
-  static let codeFont = Font.system(.footnote, design: .monospaced)
+  enum Typography {
+    #if os(macOS)
+      static let proseSize: CGFloat = 15
+    #else
+      static let proseSize: CGFloat = 17
+    #endif
+    static let leading: CGFloat = 5
+    static let editorLineHeight = proseSize + leading
+    static let title = Font.title2.weight(.semibold)
+    static let label = Font.callout.weight(.medium)
+    static let section = Font.caption.weight(.medium)
+    static let code = Font.system(.callout, design: .monospaced)
+  }
+
+  enum Control {
+    #if os(macOS)
+      static let target: CGFloat = 28
+      static let send: CGFloat = 34
+      static let sidebarRow: CGFloat = 32
+    #else
+      static let target: CGFloat = 44
+      static let send: CGFloat = 44
+      static let sidebarRow: CGFloat = 44
+    #endif
+    static let compactModelWidth: CGFloat = 130
+    static let modelWidth: CGFloat = 220
+    static let serverNameWidth: CGFloat = 130
+    static let icon: CGFloat = 16
+    static let mascot: CGFloat = 44
+    static let dockHeight: CGFloat = 320
+    static let compactDockHeight: CGFloat = 240
+  }
+
+  enum Motion {
+    static let feedback = Animation.easeOut(duration: 0.16)
+    static let disclosure = Animation.easeInOut(duration: 0.2)
+  }
+
+  static let codeFont = Typography.code
 
   static var codeBackground: Color { Color.secondary.opacity(0.1) }
 
@@ -64,10 +113,10 @@ enum Theme {
   }
 }
 
-/// A rounded card surface: a material on platforms that render vibrancy, an opaque fill when
-/// Reduce Transparency is on.
+/// An opaque, theme-derived card with a semantic border and optional status wash.
 struct CardSurface: ViewModifier {
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+  @Environment(\.colorSchemeContrast) private var contrast
   var cornerRadius: CGFloat = Theme.Radius.large
   var tint: ThemeColor?
   var stroke: ThemeColor?
@@ -77,17 +126,15 @@ struct CardSurface: ViewModifier {
       .background {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         ZStack {
-          if reduceTransparency {
-            shape.fill(Color.secondary.opacity(0.12))
-          } else {
-            shape.fill(.background.secondary)
-          }
-          if let tint { shape.fill(tint.opacity(0.08)) }
+          shape.fill(ThemeColor.surface)
+          if let tint { shape.fill(tint.opacity(reduceTransparency ? 0.04 : 0.05)) }
         }
       }
       .overlay {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-          .strokeBorder(stroke ?? Theme.secondary.opacity(0.18), lineWidth: stroke == nil ? 0.5 : 1)
+          .strokeBorder(
+            contrast == .increased ? ThemeColor.border : (stroke ?? ThemeColor.border),
+            lineWidth: contrast == .increased ? 1.5 : 0.5)
       }
   }
 }
@@ -109,15 +156,18 @@ extension View {
 
 private struct HoverHighlight: ViewModifier {
   @State private var isHovered = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.isEnabled) private var isEnabled
   let cornerRadius: CGFloat
 
   func body(content: Content) -> some View {
     content
       .background(
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-          .fill(Color.primary.opacity(isHovered ? 0.05 : 0))
+          .fill(ThemeColor.hover.opacity(isHovered && isEnabled ? 1 : 0))
       )
       .onHover { isHovered = $0 }
+      .animation(reduceMotion ? nil : Theme.Motion.feedback, value: isHovered)
   }
 }
 
@@ -127,7 +177,9 @@ struct CopyButton: View {
   var label = "Copy"
   /// The button's accessibility identifier.
   var identifier: String?
+  var showsLabel = false
   @State private var copied = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     Button {
@@ -135,13 +187,14 @@ struct CopyButton: View {
       copied = true
     } label: {
       Label(copied ? "Copied" : label, systemImage: copied ? "checkmark" : "doc.on.doc")
-        .labelStyle(.iconOnly)
-        .contentTransition(.symbolEffect(.replace))
-        .frame(width: 22, height: 22)
+        .labelStyle(CopyLabelStyle(showsTitle: showsLabel))
+        .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+        .frame(minWidth: Theme.Control.target, minHeight: Theme.Control.target)
         .contentShape(Rectangle())
     }
     .buttonStyle(.borderless)
     .foregroundStyle(.secondary)
+    .hoverHighlight()
     .help(label)
     .accessibilityLabel(copied ? "Copied" : label)
     .accessibilityIdentifier(identifier ?? "", isEnabled: identifier != nil)
@@ -155,6 +208,18 @@ struct CopyButton: View {
       }
       copied = false
     }
+  }
+}
+
+private struct CopyLabelStyle: LabelStyle {
+  let showsTitle: Bool
+
+  func makeBody(configuration: Configuration) -> some View {
+    HStack(spacing: Theme.Spacing.extraSmall) {
+      configuration.icon
+      if showsTitle { configuration.title }
+    }
+    .font(Theme.Typography.section)
   }
 }
 

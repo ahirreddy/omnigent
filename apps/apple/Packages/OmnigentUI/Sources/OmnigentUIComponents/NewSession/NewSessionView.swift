@@ -135,7 +135,7 @@ public struct NewSessionView: View {
           Text("Loading hosts and agents").foregroundStyle(.secondary)
         }
       case .failed(let message):
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
           Label(message, systemImage: "exclamationmark.triangle.fill")
             .foregroundStyle(Theme.failure)
             .textSelection(.enabled)

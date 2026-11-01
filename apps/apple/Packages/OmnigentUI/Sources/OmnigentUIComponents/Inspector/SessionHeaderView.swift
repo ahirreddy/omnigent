@@ -21,14 +21,16 @@ public struct SessionHeaderView: View {
     let header = state.header
     let status = StatusPresentation.turn(header, pending: state.pendingDecisions.count)
     ViewThatFits(in: .horizontal) {
-      HStack(spacing: 10) { content(header: header, status: status, compact: false) }
-      VStack(alignment: .leading, spacing: 6) {
-        HStack(spacing: 8) { primary(header: header, status: status) }
-        HStack(spacing: 8) { secondary(header: header, compact: true) }
+      HStack(spacing: Theme.Spacing.medium) {
+        content(header: header, status: status, compact: false)
+      }
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+        HStack(spacing: Theme.Spacing.small) { primary(header: header, status: status) }
+        HStack(spacing: Theme.Spacing.small) { secondary(header: header, compact: true) }
       }
     }
     .padding(.horizontal, layoutWidth == .compact ? 14 : 18)
-    .padding(.vertical, 8)
+    .padding(.vertical, Theme.Spacing.small)
     .frame(maxWidth: .infinity, alignment: .leading)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("session-header")
@@ -46,10 +48,15 @@ public struct SessionHeaderView: View {
   @ViewBuilder
   private func primary(header: SessionHeader, status: StatusPresentation) -> some View {
     if showsTitle {
-      Text(header.title)
-        .font(.headline)
-        .lineLimit(1)
-        .accessibilityAddTraits(.isHeader)
+      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+        Text(header.title)
+          .font(.headline)
+          .lineLimit(1)
+          .accessibilityAddTraits(.isHeader)
+        if let project = state.projectName {
+          Text(project).font(Theme.Typography.section).foregroundStyle(.secondary)
+        }
+      }
     }
     Pill(text: status.label, systemImage: status.systemImage, tint: status.tint)
     if header.readOnly { Pill(text: "Read only", systemImage: "eye") }
@@ -59,7 +66,7 @@ public struct SessionHeaderView: View {
   @ViewBuilder
   private func secondary(header: SessionHeader, compact: Bool) -> some View {
     if let settings = header.settings {
-      HStack(spacing: 5) {
+      HStack(spacing: Theme.Spacing.extraSmall) {
         HarnessGlyph(harness: settings.harness, size: 16)
         Text(settings.modelLabel)
           .font(.caption)
@@ -84,7 +91,7 @@ struct UsageGauge: View {
   let fraction: Double
 
   var body: some View {
-    HStack(spacing: 5) {
+    HStack(spacing: Theme.Spacing.extraSmall) {
       ProgressRing(fraction: fraction, size: 14)
       Text(fraction.formatted(.percent.precision(.fractionLength(0))))
         .font(.caption.monospacedDigit())
@@ -114,7 +121,7 @@ struct ViewerStack: View {
             .font(.system(size: 8, weight: .bold, design: .rounded))
             .minimumScaleFactor(0.6)
             .lineLimit(1)
-            .padding(.horizontal, 3)
+            .padding(.horizontal, Theme.Spacing.extraSmall)
             .foregroundStyle(.white)
             .frame(width: 22, height: 22)
             .background(color(for: viewer.name).opacity(viewer.isIdle ? 0.45 : 1), in: Circle())
@@ -124,7 +131,7 @@ struct ViewerStack: View {
           Text("+\(viewers.count - 4)")
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
-            .padding(.leading, 10)
+            .padding(.leading, Theme.Spacing.medium)
         }
       }
       .help(viewers.map(\.name).joined(separator: ", "))

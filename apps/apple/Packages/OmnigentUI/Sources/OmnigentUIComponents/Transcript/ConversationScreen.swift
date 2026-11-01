@@ -132,7 +132,7 @@ public struct ConversationScreen<Terminal: View>: View {
     .environment(drafts)
     .inspector(isPresented: $showsInspector) {
       WorkspaceInspector(state: state, actions: actions, slots: extras.slots, tab: inspectorTab)
-        .inspectorColumnWidth(min: 240, ideal: 420, max: 600)
+        .inspectorColumnWidth(min: 260, ideal: 360, max: 600)
     }
     .navigationTitle(state.header.title)
     #if os(macOS)
@@ -174,7 +174,7 @@ public struct ConversationScreen<Terminal: View>: View {
           showsShare = true
         } label: {
           Label("Share", systemImage: "person.badge.plus")
-            .labelStyle(.titleAndIcon)
+            .labelStyle(HeaderShareLabelStyle(isCompact: layoutWidth == .compact))
         }
         .buttonStyle(.borderedProminent)
         .tint(Theme.accent)
@@ -295,5 +295,16 @@ struct ViewModePicker: View {
     .fixedSize()
     .help("Chat or Terminal (Option-Command-\\)")
     .accessibilityIdentifier("session-view-mode")
+  }
+}
+
+private struct HeaderShareLabelStyle: LabelStyle {
+  let isCompact: Bool
+
+  func makeBody(configuration: Configuration) -> some View {
+    HStack(spacing: Theme.Spacing.extraSmall) {
+      configuration.icon
+      if !isCompact { configuration.title }
+    }
   }
 }

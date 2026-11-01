@@ -8,6 +8,7 @@ public struct InboxView: View {
   @State private var filter: InboxFilter = .all
   @State private var expanded: Set<String> = []
   @State private var replies: [String: String] = [:]
+  @Environment(\.layoutWidth) private var layoutWidth
 
   /// Creates the Inbox.
   /// - Parameters:
@@ -49,7 +50,10 @@ public struct InboxView: View {
           description: Text(filter == .all ? "You\u{2019}re all caught up" : ""))
       }
     }
+    .listStyle(.plain)
     .scrollContentBackground(.hidden)
+    .frame(maxWidth: Theme.inboxWidth)
+    .frame(maxWidth: .infinity)
     .themeCanvas()
     .navigationTitle("Inbox")
     #if os(macOS)
@@ -57,14 +61,20 @@ public struct InboxView: View {
     #endif
     .toolbar {
       ToolbarItem(placement: .principal) {
-        Picker("Filter", selection: $filter) {
-          ForEach(InboxFilter.allCases) { Text($0.title).tag($0) }
+        ViewThatFits(in: .horizontal) {
+          filterPicker.pickerStyle(.segmented)
+          filterPicker.pickerStyle(.menu)
         }
-        .pickerStyle(.segmented)
-        .fixedSize()
-        .accessibilityIdentifier("inbox-filter")
+        .frame(maxWidth: layoutWidth == .compact ? 280 : 420)
       }
     }
+  }
+
+  private var filterPicker: some View {
+    Picker("Filter", selection: $filter) {
+      ForEach(InboxFilter.allCases) { Text($0.title).tag($0) }
+    }
+    .accessibilityIdentifier("inbox-filter")
   }
 
   private var emptyTitle: String {
@@ -177,7 +187,7 @@ public struct CanvasView: View {
     Button {
       open?(session.id)
     } label: {
-      VStack(alignment: .leading, spacing: 6) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         Text(session.title).font(.headline).lineLimit(2)
         Text(session.preview).font(.callout).foregroundStyle(.secondary).lineLimit(2)
         Spacer(minLength: 0)
@@ -187,7 +197,7 @@ public struct CanvasView: View {
           if session.status == .running { ProgressView().controlSize(.mini) }
         }
       }
-      .padding(12)
+      .padding(Theme.Spacing.medium)
       .frame(width: 280, height: 132, alignment: .topLeading)
       .cardSurface(cornerRadius: Theme.Radius.large)
     }
@@ -202,18 +212,19 @@ private struct InboxRow: View {
   let actions: InboxActions
   @Binding var isExpanded: Bool
   @Binding var reply: String
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       Button {
-        isExpanded.toggle()
+        withAnimation(reduceMotion ? nil : Theme.Motion.disclosure) { isExpanded.toggle() }
       } label: {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: Theme.Spacing.small) {
           Circle()
             .fill(item.isUnread ? Theme.brandAccent : ThemeColor.secondary.opacity(0))
             .frame(width: 7, height: 7)
-            .padding(.top, 6)
-          VStack(alignment: .leading, spacing: 2) {
+            .padding(.top, Theme.Spacing.small)
+          VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
             HStack {
               Text(item.kind.title)
                 .font(.caption.weight(.semibold))
@@ -223,7 +234,7 @@ private struct InboxRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
-            Text(item.sessionTitle).fontWeight(.medium).lineLimit(1)
+            Text(item.sessionTitle).font(Theme.Typography.label).lineLimit(2)
             Text(item.preview).font(.callout).foregroundStyle(.secondary).lineLimit(
               isExpanded ? nil : 2)
           }
@@ -265,7 +276,9 @@ private struct InboxRow: View {
         .buttonStyle(.borderless)
       }
     }
-    .padding(.vertical, 4)
+    .padding(.vertical, Theme.Spacing.medium)
+    .hoverHighlight()
+    .listRowBackground(Color.clear)
     .contextMenu {
       if let open = actions.open { Button("Open session") { open(item) } }
       if let markRead = actions.markRead, item.isUnread {

@@ -34,10 +34,11 @@ public struct AppShell<Detail: View>: View {
   public var body: some View {
     NavigationSplitView(columnVisibility: $columns) {
       SidebarView(state: sidebar, selection: $selection, searchText: $searchText, actions: actions)
-        .navigationSplitViewColumnWidth(min: 220, ideal: 300, max: 420)
+        .navigationSplitViewColumnWidth(min: 220, ideal: 272, max: 360)
     } detail: {
       NavigationStack {
         detail(selection)
+          .adaptiveLayoutWidth()
       }
     }
     .adaptiveLayoutWidth()

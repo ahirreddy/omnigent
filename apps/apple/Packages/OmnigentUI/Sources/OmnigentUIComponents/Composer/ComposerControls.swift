@@ -42,7 +42,7 @@ struct AddMenu: View {
     .buttonStyle(.borderless)
     .menuIndicator(.hidden)
     .labelStyle(.iconOnly)
-    .fixedSize()
+    .composerChip()
     .help("Add files, images and more")
     .accessibilityIdentifier("composer-add")
   }
@@ -69,7 +69,7 @@ struct HostChip: View {
         Button("Connect new host\u{2026}", systemImage: "plus", action: connect)
       }
     } label: {
-      HStack(spacing: 3) {
+      HStack(spacing: Theme.Spacing.extraSmall) {
         Image(systemName: selected?.kind == .cloud ? "cloud" : "laptopcomputer")
           .accessibilityHidden(true)
         Circle()
@@ -85,7 +85,7 @@ struct HostChip: View {
     .menuStyle(.button)
     .buttonStyle(.borderless)
     .menuIndicator(.hidden)
-    .fixedSize()
+    .composerChip()
     .disabled(hosts.isLocked || actions.selectHost == nil)
     .help("Host: \(selected?.name ?? "none")")
     .accessibilityLabel(
@@ -132,9 +132,9 @@ struct ApprovalModeChip: View {
         }
       }
     } label: {
-      HStack(spacing: 4) {
+      HStack(spacing: Theme.Spacing.extraSmall) {
         Image(systemName: "hand.raised").accessibilityHidden(true)
-        if !isCompact { Text(modes.selected?.label ?? "Mode") }
+        if !isCompact { Text(modes.selected?.label ?? "Mode").lineLimit(1) }
         Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
           .accessibilityHidden(true)
       }
@@ -144,7 +144,7 @@ struct ApprovalModeChip: View {
     .menuStyle(.button)
     .buttonStyle(.borderless)
     .menuIndicator(.hidden)
-    .fixedSize()
+    .composerChip()
     .disabled(select == nil)
     .help("\(modes.title) (Shift-Tab cycles)")
     .accessibilityLabel("\(modes.title), \(modes.selected?.label ?? "")")
@@ -158,7 +158,7 @@ struct ComposerTrayView: View {
   let actions: ComposerExtraActions
 
   var body: some View {
-    HStack(spacing: 10) {
+    HStack(spacing: Theme.Spacing.medium) {
       if let directory = tray.directory {
         Menu {
           if !tray.recentDirectories.isEmpty {
@@ -209,7 +209,7 @@ struct ComposerTrayView: View {
     .menuStyle(.button)
     .buttonStyle(.borderless)
     .menuIndicator(.visible)
-    .padding(.horizontal, 12)
+    .padding(.horizontal, Theme.Spacing.medium)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("composer-tray")
   }
@@ -221,9 +221,9 @@ struct QueueStrip: View {
   let actions: ComposerExtraActions
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
       ForEach(queue) { message in
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Spacing.small) {
           Image(systemName: "text.line.first.and.arrowtriangle.forward")
             .foregroundStyle(.secondary)
             .accessibilityHidden(true)
@@ -242,8 +242,8 @@ struct QueueStrip: View {
           }
         }
         .buttonStyle(.borderless)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.vertical, Theme.Spacing.small)
         .background(
           .quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: Theme.Radius.medium)
         )
@@ -340,7 +340,7 @@ struct CompletionList: View {
         Button {
           pick(item)
         } label: {
-          HStack(spacing: 8) {
+          HStack(spacing: Theme.Spacing.small) {
             Image(systemName: item.systemImage)
               .foregroundStyle(Theme.brandAccent)
               .frame(width: 16)
@@ -351,8 +351,8 @@ struct CompletionList: View {
             }
             Spacer(minLength: 0)
           }
-          .padding(.horizontal, 10)
-          .padding(.vertical, 5)
+          .padding(.horizontal, Theme.Spacing.medium)
+          .padding(.vertical, Theme.Spacing.extraSmall)
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -362,13 +362,13 @@ struct CompletionList: View {
       Text("Tab to complete, Esc to dismiss")
         .font(.caption2)
         .foregroundStyle(.tertiary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.vertical, Theme.Spacing.extraSmall)
     }
-    .padding(.vertical, 4)
+    .padding(.vertical, Theme.Spacing.extraSmall)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.large))
     .overlay { RoundedRectangle(cornerRadius: Theme.Radius.large).strokeBorder(.separator) }
-    .padding(.horizontal, 8)
+    .padding(.horizontal, Theme.Spacing.small)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("composer-completions")
   }

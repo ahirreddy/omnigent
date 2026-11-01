@@ -6,6 +6,48 @@ import Testing
 
 @Suite("Themes")
 struct ThemeTests {
+  @Test("send labels keep readable contrast with every palette and custom accent")
+  func accentLabelContrast() {
+    var custom = CustomTheme.default.theme()
+    custom.light.accent = .white
+    custom.dark.accent = .black
+    for theme in OmnigentTheme.builtIn + [custom] {
+      for scheme in [ColorScheme.light, .dark] {
+        var environment = EnvironmentValues()
+        environment.omnigentTheme = theme
+        environment.colorScheme = scheme
+        let accent = ThemeColor.accent.resolve(in: environment).resolve(in: environment)
+        let label = ThemeColor.onAccent.resolve(in: environment).resolve(in: environment)
+        let background = luminance(accent)
+        let foreground = luminance(label)
+        let ratio = (max(background, foreground) + 0.05) / (min(background, foreground) + 0.05)
+        #expect(ratio >= 4.5, "\(theme.id), \(scheme): send label contrast \(ratio)")
+      }
+    }
+  }
+
+  @Test("theme surfaces remain opaque in both appearances")
+  func accessibleSurfaces() {
+    for theme in OmnigentTheme.builtIn + [CustomTheme.default.theme()] {
+      for scheme in [ColorScheme.light, .dark] {
+        var environment = EnvironmentValues()
+        environment.omnigentTheme = theme
+        environment.colorScheme = scheme
+        #expect(ThemeColor.surface.resolve(in: environment).resolve(in: environment).opacity == 1)
+        #expect(
+          ThemeColor.codeSurface.resolve(in: environment).resolve(in: environment).opacity == 1)
+      }
+    }
+  }
+
+  private func luminance(_ color: Color.Resolved) -> Double {
+    let channels = [color.red, color.green, color.blue].map { channel -> Double in
+      let value = Double(channel)
+      return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+    }
+    return zip(channels, [0.2126, 0.7152, 0.0722]).reduce(0) { $0 + $1.0 * $1.1 }
+  }
+
   @Test("theme colors resolve from the environment's theme and color scheme")
   func resolution() {
     var environment = EnvironmentValues()

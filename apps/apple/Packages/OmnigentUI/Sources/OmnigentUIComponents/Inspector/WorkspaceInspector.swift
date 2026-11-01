@@ -110,17 +110,19 @@ public struct WorkspaceInspector: View {
       }
       .pickerStyle(.segmented)
       .labelsHidden()
-      .padding(8)
+      .padding(Theme.Spacing.small)
       .accessibilityIdentifier("inspector-tabs")
       Text(label(for: tab))
-        .font(.headline)
+        .font(Theme.Typography.label)
+        .accessibilityAddTraits(.isHeader)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.bottom, 6)
+        .padding(.horizontal, Theme.Spacing.large)
+        .padding(.bottom, Theme.Spacing.small)
       Divider()
       content
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+    .background(ThemeColor.surface)
     .environment(\.conversationActions, actions)
   }
 
@@ -179,7 +181,7 @@ private struct ChangedFilesFallback: View {
       ContentUnavailableView("No changes", systemImage: "plus.forwardslash.minus")
     } else {
       List(files) { file in
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.Spacing.small) {
           Text(file.letter)
             .font(.caption.monospaced().weight(.bold))
             .foregroundStyle(
@@ -190,7 +192,7 @@ private struct ChangedFilesFallback: View {
           Text(URL(filePath: file.path).lastPathComponent)
           Text(URL(filePath: file.path).deletingLastPathComponent().relativePath)
             .font(.caption)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
             .lineLimit(1)
             .truncationMode(.head)
         }
@@ -216,9 +218,9 @@ private struct PullRequestList: View {
         Button {
           if let url = URL(string: request.url) { open?(url) }
         } label: {
-          VStack(alignment: .leading, spacing: 3) {
+          VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
             Text(request.title).lineLimit(2)
-            HStack(spacing: 6) {
+            HStack(spacing: Theme.Spacing.small) {
               Label(request.status.title, systemImage: symbol(request.status))
                 .foregroundStyle(color(request.status))
               Text("\(request.repo) #\(request.number)").foregroundStyle(.secondary)

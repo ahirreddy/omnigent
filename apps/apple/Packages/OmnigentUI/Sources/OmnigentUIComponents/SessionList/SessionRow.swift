@@ -17,7 +17,7 @@ struct SessionRow: View {
   @State private var isHovered = false
 
   var body: some View {
-    HStack(alignment: .center, spacing: 6) {
+    HStack(alignment: .center, spacing: Theme.Spacing.small) {
       VStack(alignment: .leading, spacing: 1) {
         Text(session.title)
           .lineLimit(1)
@@ -31,7 +31,7 @@ struct SessionRow: View {
       }
       Spacer(minLength: 4)
       if isHovered, menu.canHoverPin {
-        HStack(spacing: 2) {
+        HStack(spacing: Theme.Spacing.tiny) {
           Button(
             session.isPinned ? "Unpin" : "Pin", systemImage: session.isPinned ? "pin.slash" : "pin"
           ) {
@@ -52,7 +52,9 @@ struct SessionRow: View {
         trailing
       }
     }
+    .frame(minHeight: Theme.Control.sidebarRow)
     .contentShape(Rectangle())
+    .hoverHighlight()
     .onHover { isHovered = $0 }
     .help(tooltip)
     .contextMenu { menu.items }
@@ -62,18 +64,18 @@ struct SessionRow: View {
   }
 
   @ViewBuilder private var trailing: some View {
-    HStack(spacing: 4) {
+    HStack(spacing: Theme.Spacing.extraSmall) {
       if info.isShared {
         Image(systemName: "person.2")
           .font(.caption2)
-          .foregroundStyle(.tertiary)
+          .foregroundStyle(.secondary)
           .accessibilityLabel("Shared")
       }
       if attention > 0 || session.status == .needsResponse {
         Text("Needs response")
           .font(.caption2.weight(.semibold))
           .foregroundStyle(Theme.brandAccent)
-          .padding(.horizontal, 6)
+          .padding(.horizontal, Theme.Spacing.small)
           .padding(.vertical, 1.5)
           .background(Theme.brandAccent.opacity(0.15), in: Capsule())
       } else if session.status == .running {

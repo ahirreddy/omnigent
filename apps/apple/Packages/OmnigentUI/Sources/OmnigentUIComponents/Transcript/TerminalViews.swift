@@ -13,7 +13,7 @@ struct TerminalPane<Content: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("session-terminal")
     case .startingUp(let stage):
-      VStack(spacing: 10) {
+      VStack(spacing: Theme.Spacing.medium) {
         ProgressView()
         Text(stage.map { "\($0)\u{2026}" } ?? "Starting up\u{2026}").font(.headline)
         Text("The terminal will connect automatically.").foregroundStyle(.secondary)
@@ -51,11 +51,11 @@ struct AgentInfoPopover: View {
   let info: AgentInfo
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
       Text(info.name).font(.headline)
       if !info.tools.isEmpty {
         Text("Tools").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-        FlowLayout(spacing: 4) {
+        FlowLayout(spacing: Theme.Spacing.extraSmall) {
           ForEach(info.tools, id: \.self) { Pill(text: $0, systemImage: "wrench.and.screwdriver") }
         }
       }
@@ -64,7 +64,7 @@ struct AgentInfoPopover: View {
         ForEach(info.policies, id: \.self) { Label($0, systemImage: "hand.raised").font(.callout) }
       }
     }
-    .padding(14)
+    .padding(Theme.Spacing.large)
     .frame(width: 300, alignment: .leading)
   }
 }
@@ -84,7 +84,7 @@ public struct TerminalPlaceholderView: View {
   public var body: some View {
     let name = HarnessAppearance(harness: harness).label
     ScrollView {
-      VStack(alignment: .leading, spacing: 2) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
         line(
           "\u{256D}\u{2500} \(name) \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", .cyan
         )
@@ -106,7 +106,7 @@ public struct TerminalPlaceholderView: View {
         line("")
         line("Terminal surface placeholder. The app supplies the real terminal view.", .gray)
       }
-      .padding(16)
+      .padding(Theme.Spacing.large)
       .frame(maxWidth: .infinity, alignment: .leading)
     }
     .background(Color(red: 0.08, green: 0.08, blue: 0.1))

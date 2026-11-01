@@ -39,15 +39,16 @@ public struct DecisionDock: View {
     if !cards.isEmpty {
       let current = min(index, cards.count - 1)
       let card = cards[current]
-      VStack(alignment: .leading, spacing: 8) {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         if cards.count > 1 {
-          HStack(spacing: 8) {
+          HStack(spacing: Theme.Spacing.small) {
             Label(headline(cards: cards), systemImage: "hand.raised.fill")
-              .font(.caption.weight(.semibold))
-              .foregroundStyle(Theme.attention)
+              .font(Theme.Typography.section)
+              .foregroundStyle(.secondary)
             Spacer()
             Button("Previous Request", systemImage: "chevron.left") { index = max(0, current - 1) }
               .labelStyle(.iconOnly)
+              .frame(minWidth: Theme.Control.target, minHeight: Theme.Control.target)
               .disabled(current == 0)
               .accessibilityIdentifier("decision-dock-previous")
             Text("\(current + 1) of \(cards.count)")
@@ -63,7 +64,10 @@ public struct DecisionDock: View {
           }
           .buttonStyle(.borderless)
         }
-        BoundedScrollView(maxHeight: layoutWidth == .compact ? 340 : 460) {
+        BoundedScrollView(
+          maxHeight: layoutWidth == .compact
+            ? Theme.Control.compactDockHeight : Theme.Control.dockHeight
+        ) {
           DecisionCardView(
             card: card, phase: state.phase(of: card), isReadOnly: state.header.readOnly,
             respond: actions.respond.map { respond in { respond(card, $0) } },
@@ -78,10 +82,8 @@ public struct DecisionDock: View {
         // `decision-dock` instead.
         .accessibilityIdentifier("decision-dock-scroll")
       }
-      .padding(.horizontal, layoutWidth == .compact ? 10 : 16)
-      .padding(.top, 8)
-      .frame(minWidth: 0, maxWidth: Theme.transcriptWidth)
-      .frame(minWidth: 0, maxWidth: .infinity)
+      .padding(.top, Theme.Spacing.small)
+      .readingColumn()
       .environment(
         \.openURL,
         OpenURLAction { url in
