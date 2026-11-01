@@ -1,0 +1,370 @@
+name: Apple release
+
+# Release builds of the native Apple apps (apps/apple). Runbook, versioning, rollback and the
+# required secrets: apps/apple/RELEASE.md.
+#
+#   mac-developer-id  OmnigentMac: archive, inside-out Developer ID signing, notarization,
+#                     stapled DMG + Sparkle update zip, and the extended appcast. The outputs
+#                     are workflow artifacts; publishing them to the update feed is a manual,
+#                     reviewed step (RELEASE.md, "Publish the Developer ID release").
+#   mac-app-store     OmnigentMacAppStore: archive, Chromium/Sparkle check, export, upload to
+#                     App Store Connect. No review submission.
+#   ios               Omnigent (iPhone, iPad): the `beta` (TestFlight) or `release` (App Store
+#                     Connect, no submission) lane.
+#
+# Triggers: an `apple-v<MAJOR.MINOR.PATCH>` tag runs every job (iOS goes to TestFlight); a manual
+# dispatch picks the jobs. The tag must equal Omnigent.marketingVersion in
+# apps/apple/Tuist/ProjectDescriptionHelpers/OmnigentSettings.swift, or the lanes fail.
+# Signing secrets live in the `apple-release` environment, so protect it with required reviewers.
+
+on:
+  push:
+    tags:
+      - "apple-v[0-9]*"
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Which apps to release"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - mac-developer-id
+          - mac-app-store
+          - ios
+      ios-lane:
+        description: "iOS lane: beta (TestFlight) or release (App Store Connect, no submission)"
+        required: true
+        default: beta
+        type: choice
+        options:
+          - beta
+          - release
+      developer-id-build-number:
+        description: "Developer ID build number override (first release only; default is the live appcast's latest + 1)"
+        required: false
+        default: ""
+        type: string
+      new-sparkle-feed:
+        description: "Start a new Sparkle appcast (first Developer ID release only)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  # One release per ref at a time; never cancel a run that may be mid-upload.
+  group: apple-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  BUNDLE_FROZEN: "true"
+  FASTLANE_SKIP_UPDATE_CHECK: "1"
+  FASTLANE_HIDE_CHANGELOG: "1"
+  # fastlane requires a UTF-8 locale.
+  LC_ALL: en_US.UTF-8
+  LANG: en_US.UTF-8
+
+jobs:
+  mac-developer-id:
+    name: Mac (Developer ID)
+    if: ${{ github.event_name == 'push' || inputs.targets == 'all' || inputs.targets == 'mac-developer-id' }}
+    # Xcode 27 ships on the `xcode-27` image (public preview), not macos-26; see client.yml.
+    runs-on: xcode-27
+    environment: apple-release
+    timeout-minutes: 150
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The project requires Xcode 27.2 (Tuist compatibleXcodeVersions).
+      - name: Select Xcode 27.2
+        run: |
+          app="$(find /Applications -maxdepth 1 -name 'Xcode_27.2*.app' | sort | head -1)"
+          if [ -z "$app" ]; then
+            echo "::error::Xcode 27.2 is not installed on this runner"
+            find /Applications -maxdepth 1 -name 'Xcode*.app'
+            exit 1
+          fi
+          sudo xcode-select -s "$app"
+          xcodebuild -version
+
+      - name: Install pinned Rust toolchain
+        working-directory: client-core
+        run: |
+          rustup toolchain install
+          rustc --version
+
+      - name: Set up mise
+        uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195  # v5.2.5
+        with:
+          working_directory: apps/apple
+
+      - name: Set up Ruby and the locked fastlane
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1
+        with:
+          ruby-version: '3.3'
+          working-directory: apps/apple
+          bundler-cache: true
+
+      # Universal CEF: the key covers both pinned archive checksums in fetch-cef.sh.
+      - name: Read pinned CEF version
+        id: cef
+        run: |
+          script=apps/apple/scripts/fetch-cef.sh
+          version="$(sed -n 's/^CEF_VERSION="\(.*\)"$/\1/p' "$script")"
+          arm64="$(sed -n 's/^ *macosarm64) echo "\([0-9a-f]\{64\}\)" ;;$/\1/p' "$script")"
+          x64="$(sed -n 's/^ *macosx64) echo "\([0-9a-f]\{64\}\)" ;;$/\1/p' "$script")"
+          if [ -z "$version" ] || [ -z "$arm64" ] || [ -z "$x64" ]; then
+            echo "::error::could not read CEF_VERSION or the sha256 pins from $script"
+            exit 1
+          fi
+          echo "key=cef-universal-${version}-${arm64}-${x64}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache CEF
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apps/apple/Vendor/cef/out
+          key: ${{ steps.cef.outputs.key }}
+
+      - name: Create the signing keychain
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_APPLICATION_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_P12_PASSWORD }}
+        run: |
+          keychain="$(bash apps/apple/scripts/release/ci-keychain.sh create | tail -1)"
+          bash apps/apple/scripts/release/ci-keychain.sh import \
+            APPLE_DEVELOPER_ID_APPLICATION_P12_BASE64 APPLE_DEVELOPER_ID_APPLICATION_P12_PASSWORD
+          echo "OMNIGENT_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Write the App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_KEY_P8_BASE64" ]; then
+            echo "::error::ASC_KEY_ID and ASC_KEY_P8_BASE64 must be set in the apple-release environment"
+            exit 1
+          fi
+          key_path="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          (umask 077 && printf '%s' "$ASC_KEY_P8_BASE64" | base64 -D > "$key_path")
+          echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Release OmnigentMac (Developer ID)
+        working-directory: apps/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          OMNIGENT_SPARKLE_DOWNLOAD_URL_PREFIX: ${{ vars.OMNIGENT_SPARKLE_DOWNLOAD_URL_PREFIX }}
+          OMNIGENT_BUILD_NUMBER: ${{ inputs.developer-id-build-number }}
+          OMNIGENT_SPARKLE_NEW_FEED: ${{ inputs.new-sparkle-feed && '1' || '' }}
+        run: bundle exec fastlane mac developer_id
+
+      - name: Upload the DMG, update zip and appcast
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: omnigent-mac-developer-id-${{ github.run_id }}
+          path: |
+            apps/apple/build/release/developer-id/dist/*.dmg
+            apps/apple/build/release/developer-id/dist/*.zip
+            apps/apple/build/release/developer-id/dist/appcast.xml
+            apps/apple/build/release/developer-id/Omnigent.xcarchive/dSYMs/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          bash apps/apple/scripts/release/ci-keychain.sh delete
+          rm -f "$RUNNER_TEMP"/AuthKey_*.p8
+
+  mac-app-store:
+    name: Mac (App Store)
+    if: ${{ github.event_name == 'push' || inputs.targets == 'all' || inputs.targets == 'mac-app-store' }}
+    runs-on: xcode-27
+    environment: apple-release
+    timeout-minutes: 90
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode 27.2
+        run: |
+          app="$(find /Applications -maxdepth 1 -name 'Xcode_27.2*.app' | sort | head -1)"
+          if [ -z "$app" ]; then
+            echo "::error::Xcode 27.2 is not installed on this runner"
+            find /Applications -maxdepth 1 -name 'Xcode*.app'
+            exit 1
+          fi
+          sudo xcode-select -s "$app"
+          xcodebuild -version
+
+      - name: Install pinned Rust toolchain
+        working-directory: client-core
+        run: |
+          rustup toolchain install
+          rustc --version
+
+      - name: Set up mise
+        uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195  # v5.2.5
+        with:
+          working_directory: apps/apple
+
+      - name: Set up Ruby and the locked fastlane
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1
+        with:
+          ruby-version: '3.3'
+          working-directory: apps/apple
+          bundler-cache: true
+
+      - name: Create the signing keychain
+        env:
+          APPLE_DISTRIBUTION_P12_BASE64: ${{ secrets.APPLE_DISTRIBUTION_P12_BASE64 }}
+          APPLE_DISTRIBUTION_P12_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_P12_PASSWORD }}
+          MAC_INSTALLER_DISTRIBUTION_P12_BASE64: ${{ secrets.MAC_INSTALLER_DISTRIBUTION_P12_BASE64 }}
+          MAC_INSTALLER_DISTRIBUTION_P12_PASSWORD: ${{ secrets.MAC_INSTALLER_DISTRIBUTION_P12_PASSWORD }}
+        run: |
+          bash apps/apple/scripts/release/ci-keychain.sh create
+          bash apps/apple/scripts/release/ci-keychain.sh import \
+            APPLE_DISTRIBUTION_P12_BASE64 APPLE_DISTRIBUTION_P12_PASSWORD
+          bash apps/apple/scripts/release/ci-keychain.sh import \
+            MAC_INSTALLER_DISTRIBUTION_P12_BASE64 MAC_INSTALLER_DISTRIBUTION_P12_PASSWORD
+
+      - name: Write the App Store Connect API key and provisioning profile
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          PROFILE_BASE64: ${{ secrets.MAC_APP_STORE_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_KEY_P8_BASE64" ] || [ -z "$PROFILE_BASE64" ]; then
+            echo "::error::ASC_KEY_ID, ASC_KEY_P8_BASE64 and MAC_APP_STORE_PROVISIONING_PROFILE_BASE64 must be set in the apple-release environment"
+            exit 1
+          fi
+          key_path="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          profile_path="$RUNNER_TEMP/OmnigentMacAppStore.provisionprofile"
+          (umask 077 && printf '%s' "$ASC_KEY_P8_BASE64" | base64 -D > "$key_path")
+          (umask 077 && printf '%s' "$PROFILE_BASE64" | base64 -D > "$profile_path")
+          echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+          echo "OMNIGENT_MAC_APP_STORE_PROFILE_PATH=$profile_path" >> "$GITHUB_ENV"
+
+      - name: Release OmnigentMacAppStore
+        working-directory: apps/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: bundle exec fastlane mac app_store
+
+      - name: Upload the App Store package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: omnigent-mac-app-store-${{ github.run_id }}
+          path: |
+            apps/apple/build/release/mac-app-store/export/
+            apps/apple/build/release/mac-app-store/OmnigentMacAppStore.xcarchive/dSYMs/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          bash apps/apple/scripts/release/ci-keychain.sh delete
+          rm -f "$RUNNER_TEMP"/AuthKey_*.p8 "$RUNNER_TEMP/OmnigentMacAppStore.provisionprofile"
+
+  ios:
+    name: iOS (${{ inputs.ios-lane || 'beta' }})
+    if: ${{ github.event_name == 'push' || inputs.targets == 'all' || inputs.targets == 'ios' }}
+    runs-on: xcode-27
+    environment: apple-release
+    timeout-minutes: 90
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode 27.2
+        run: |
+          app="$(find /Applications -maxdepth 1 -name 'Xcode_27.2*.app' | sort | head -1)"
+          if [ -z "$app" ]; then
+            echo "::error::Xcode 27.2 is not installed on this runner"
+            find /Applications -maxdepth 1 -name 'Xcode*.app'
+            exit 1
+          fi
+          sudo xcode-select -s "$app"
+          xcodebuild -version
+
+      - name: Install pinned Rust toolchain
+        working-directory: client-core
+        run: |
+          rustup toolchain install
+          rustc --version
+
+      - name: Set up mise
+        uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195  # v5.2.5
+        with:
+          working_directory: apps/apple
+
+      - name: Set up Ruby and the locked fastlane
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1
+        with:
+          ruby-version: '3.3'
+          working-directory: apps/apple
+          bundler-cache: true
+
+      - name: Create the signing keychain
+        env:
+          APPLE_DISTRIBUTION_P12_BASE64: ${{ secrets.APPLE_DISTRIBUTION_P12_BASE64 }}
+          APPLE_DISTRIBUTION_P12_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_P12_PASSWORD }}
+        run: |
+          bash apps/apple/scripts/release/ci-keychain.sh create
+          bash apps/apple/scripts/release/ci-keychain.sh import \
+            APPLE_DISTRIBUTION_P12_BASE64 APPLE_DISTRIBUTION_P12_PASSWORD
+
+      - name: Write the App Store Connect API key and provisioning profile
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          PROFILE_BASE64: ${{ secrets.IOS_APP_STORE_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_KEY_P8_BASE64" ] || [ -z "$PROFILE_BASE64" ]; then
+            echo "::error::ASC_KEY_ID, ASC_KEY_P8_BASE64 and IOS_APP_STORE_PROVISIONING_PROFILE_BASE64 must be set in the apple-release environment"
+            exit 1
+          fi
+          key_path="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          profile_path="$RUNNER_TEMP/OmnigentiOS.mobileprovision"
+          (umask 077 && printf '%s' "$ASC_KEY_P8_BASE64" | base64 -D > "$key_path")
+          (umask 077 && printf '%s' "$PROFILE_BASE64" | base64 -D > "$profile_path")
+          echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+          echo "OMNIGENT_IOS_APP_STORE_PROFILE_PATH=$profile_path" >> "$GITHUB_ENV"
+
+      - name: Release Omnigent (iOS)
+        working-directory: apps/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          IOS_LANE: ${{ inputs.ios-lane || 'beta' }}
+        run: bundle exec fastlane ios "$IOS_LANE"
+
+      - name: Upload the .ipa
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: omnigent-ios-${{ github.run_id }}
+          path: |
+            apps/apple/build/release/ios/export/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          bash apps/apple/scripts/release/ci-keychain.sh delete
+          rm -f "$RUNNER_TEMP"/AuthKey_*.p8 "$RUNNER_TEMP/OmnigentiOS.mobileprovision"

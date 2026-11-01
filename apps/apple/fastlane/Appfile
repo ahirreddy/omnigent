@@ -1,0 +1,6 @@
+# Apple Developer Portal team (Databricks, Inc.). Each lane passes its own app identifier:
+# ai.omnigent.mac (Developer ID), ai.omnigent.mac.appstore (Mac App Store), ai.omnigent.ios.
+team_id("8RMX4WU6F8")
+
+# App Store Connect team; only needed if the API key's account belongs to several teams.
+itc_team_id(ENV["ASC_TEAM_ID"]) if ENV["ASC_TEAM_ID"]

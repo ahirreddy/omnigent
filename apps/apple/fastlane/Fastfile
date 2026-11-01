@@ -1,0 +1,377 @@
+require "fileutils"
+require "net/http"
+require "shellwords"
+require "uri"
+require "rexml/document"
+
+# Release lanes for the native Apple apps. See apps/apple/RELEASE.md for the full runbook.
+#
+#   bundle exec fastlane mac developer_id   OmnigentMac: Developer ID, notarized DMG + Sparkle zip
+#   bundle exec fastlane mac app_store      OmnigentMacAppStore: upload to App Store Connect
+#   bundle exec fastlane ios beta           Omnigent (iPhone, iPad): upload to TestFlight
+#   bundle exec fastlane ios release        Omnigent: upload to App Store Connect (no submission)
+#
+# Nothing in the repo is modified. The marketing version comes from
+# Tuist/ProjectDescriptionHelpers/OmnigentSettings.swift, the build number is computed per upload,
+# and both are injected as xcodebuild overrides (MARKETING_VERSION, CURRENT_PROJECT_VERSION).
+
+APPLE_ROOT = File.expand_path("..", __dir__)
+RELEASE_SCRIPTS = File.join(APPLE_ROOT, "scripts/release")
+WORKSPACE = File.join(APPLE_ROOT, "Omnigent.xcworkspace")
+SETTINGS_FILE = File.join(APPLE_ROOT, "Tuist/ProjectDescriptionHelpers/OmnigentSettings.swift")
+BUILD_ROOT = File.join(APPLE_ROOT, "build/release")
+
+TEAM_ID = "8RMX4WU6F8"
+MAC_BUNDLE_ID = "ai.omnigent.mac"
+MAC_APP_STORE_BUNDLE_ID = "ai.omnigent.mac.appstore"
+IOS_BUNDLE_ID = "ai.omnigent.ios"
+DEVELOPER_ID_IDENTITY = "Developer ID Application: Databricks, Inc. (8RMX4WU6F8)"
+# Sparkle feed of the Developer ID edition; must match SUFeedURL in OmnigentMac's Info.plist.
+SPARKLE_FEED_URL = "https://omnigent.ai/_desktop/updates/native/mac/appcast.xml"
+# Release tags look like apple-v0.2.0 and must match Omnigent.marketingVersion.
+RELEASE_TAG_PREFIX = "apple-v"
+
+def omnigent_fetch_env(*names)
+  names.each do |name|
+    value = ENV[name]
+    return value unless value.to_s.strip.empty?
+  end
+
+  UI.user_error!("Set one of: #{names.join(", ")}")
+end
+
+def omnigent_truthy?(value)
+  %w[1 true yes].include?(value.to_s.strip.downcase)
+end
+
+# The one marketing version for every app. On a tag build, the tag must agree with it.
+def omnigent_marketing_version
+  source = File.read(SETTINGS_FILE)
+  match = source.match(/public static let marketingVersion = "(\d+\.\d+\.\d+)"/)
+  UI.user_error!("Could not read marketingVersion from #{SETTINGS_FILE}") unless match
+  version = match[1]
+
+  if ENV["GITHUB_REF_TYPE"] == "tag"
+    tag = ENV.fetch("GITHUB_REF_NAME")
+    expected = "#{RELEASE_TAG_PREFIX}#{version}"
+    UI.user_error!("Tag #{tag} does not match marketingVersion #{version}; expected #{expected}") unless tag == expected
+  end
+  version
+end
+
+def omnigent_run_script(name, *args)
+  sh("bash", File.join(RELEASE_SCRIPTS, name), *args)
+end
+
+# Universal Rust core (release) and the Tuist workspace, for the App Store and iOS lanes. The
+# Developer ID archive script does this itself, plus the universal CEF fetch.
+def omnigent_generate_workspace
+  sh("bash", File.join(APPLE_ROOT, "scripts/build-core.sh"), "release")
+  tuist = system("command -v mise >/dev/null 2>&1") ? %w[mise exec -- tuist] : %w[tuist]
+  Dir.chdir(APPLE_ROOT) do
+    sh(*tuist, "install")
+    sh(*tuist, "generate", "--no-open")
+  end
+end
+
+# xcodebuild arguments that let automatic signing fetch profiles with the App Store Connect key.
+def omnigent_provisioning_xcargs
+  [
+    "-allowProvisioningUpdates",
+    "-authenticationKeyPath", ENV.fetch("ASC_KEY_PATH"),
+    "-authenticationKeyID", ENV.fetch("ASC_KEY_ID"),
+    "-authenticationKeyIssuerID", ENV.fetch("ASC_ISSUER_ID"),
+  ]
+end
+
+def omnigent_version_xcargs(marketing_version, build_number)
+  ["MARKETING_VERSION=#{marketing_version}", "CURRENT_PROJECT_VERSION=#{build_number}"]
+end
+
+# Store signing. With OMNIGENT_<KIND>_PROFILE_PATH set (CI), the app target is switched to manual
+# signing with that App Store profile and the "Apple Distribution" identity from the imported
+# certificate; only the generated, untracked Omnigent.xcodeproj changes. Without it (a release
+# Mac with an Xcode account), automatic signing fetches profiles itself.
+# Returns gym export options.
+def omnigent_store_signing(target:, bundle_id:, profile_env:, installer: false)
+  profile_path = ENV[profile_env].to_s.strip
+  if profile_path.empty?
+    UI.message("#{profile_env} is not set; using automatic signing for #{target}")
+    return { method: "app-store", signingStyle: "automatic", teamID: TEAM_ID }
+  end
+
+  UI.user_error!("#{profile_env} points at a missing file: #{profile_path}") unless File.file?(profile_path)
+  install_provisioning_profile(path: profile_path)
+  profile_name = FastlaneCore::ProvisioningProfile.name(profile_path)
+  update_code_signing_settings(
+    path: File.join(APPLE_ROOT, "Omnigent.xcodeproj"),
+    use_automatic_signing: false,
+    targets: [target],
+    build_configurations: ["Release"],
+    team_id: TEAM_ID,
+    code_sign_identity: "Apple Distribution",
+    profile_name: profile_name
+  )
+  options = {
+    method: "app-store",
+    signingStyle: "manual",
+    teamID: TEAM_ID,
+    provisioningProfiles: { bundle_id => profile_name },
+  }
+  options[:installerSigningCertificate] = "3rd Party Mac Developer Installer" if installer
+  options
+end
+
+# Archives a store scheme into `output` with xcodebuild and returns the .xcarchive path.
+def omnigent_store_archive(scheme:, destination:, output:, marketing_version:, build_number:, manual:)
+  archive = File.join(output, "#{scheme}.xcarchive")
+  FileUtils.rm_rf(archive)
+  args = [
+    "xcodebuild", "archive",
+    "-workspace", WORKSPACE,
+    "-scheme", scheme,
+    "-configuration", "Release",
+    "-destination", destination,
+    "-archivePath", archive,
+    "-derivedDataPath", File.join(output, "DerivedData"),
+  ]
+  args += omnigent_provisioning_xcargs unless manual
+  args += omnigent_version_xcargs(marketing_version, build_number)
+  sh(*args)
+  archive
+end
+
+opt_out_usage
+default_platform(:mac)
+
+platform :mac do
+  desc "OmnigentMac (Developer ID): archive, sign inside-out, notarize, staple, DMG + Sparkle zip and appcast"
+  desc "Options: adhoc:true (ad-hoc signing dry run; no notarization or appcast), skip_prereqs:true,"
+  desc "archs:'arm64' (default universal). Build number: OMNIGENT_BUILD_NUMBER or the live appcast's latest + 1."
+  lane :developer_id do |options|
+    adhoc = omnigent_truthy?(options[:adhoc])
+    marketing_version = omnigent_marketing_version
+    build_number = developer_id_build_number(adhoc: adhoc)
+    output = File.join(BUILD_ROOT, "developer-id")
+    FileUtils.rm_rf(output)
+    FileUtils.mkdir_p(output)
+
+    archive_args = [
+      "--marketing-version", marketing_version,
+      "--build-number", build_number.to_s,
+      "--output", output,
+      "--archs", options[:archs] || "arm64 x86_64",
+    ]
+    archive_args << "--skip-prereqs" if omnigent_truthy?(options[:skip_prereqs])
+    archived_app = omnigent_run_script("archive-mac-developer-id.sh", *archive_args).lines.last.strip
+    UI.user_error!("Archive script did not report an app: #{archived_app}") unless File.directory?(archived_app)
+
+    # Sign a copy; the archive stays the unsigned build record (and holds the dSYMs).
+    app = File.join(output, "Omnigent.app")
+    sh("ditto", archived_app, app)
+    identity = adhoc ? "-" : ENV.fetch("OMNIGENT_DEVELOPER_ID_IDENTITY", DEVELOPER_ID_IDENTITY)
+    keychain_args = ENV["OMNIGENT_SIGNING_KEYCHAIN"].to_s.empty? ? [] : ["--keychain", ENV["OMNIGENT_SIGNING_KEYCHAIN"]]
+    omnigent_run_script("sign-mac-developer-id.sh", "--app", app, "--identity", identity, *keychain_args)
+    omnigent_run_script("verify-mac-developer-id.sh", "--app", app)
+
+    unless adhoc
+      load_asc_api_key
+      submission = File.join(output, "notarization", "Omnigent.zip")
+      FileUtils.mkdir_p(File.dirname(submission))
+      sh("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, submission)
+      omnigent_run_script("notarize.sh", "--file", submission, "--staple", app)
+      omnigent_run_script("verify-mac-developer-id.sh", "--app", app, "--notarized")
+    end
+
+    name = "Omnigent-#{marketing_version}-#{build_number}"
+    dist = File.join(output, "dist")
+    omnigent_run_script(
+      "package-mac-developer-id.sh",
+      "--app", app, "--output", dist, "--name", name, "--identity", identity, *keychain_args
+    )
+    dmg = File.join(dist, "#{name}.dmg")
+    zip = File.join(dist, "#{name}.zip")
+
+    if adhoc
+      UI.important("Ad-hoc dry run: skipped notarization, Gatekeeper assessment and the appcast")
+    else
+      omnigent_run_script("notarize.sh", "--file", dmg)
+      sh("spctl", "--assess", "--type", "open", "--context", "context:primary-signature", "--verbose=4", dmg)
+      developer_id_appcast(zip: zip, dist: dist)
+    end
+
+    UI.success("Developer ID #{marketing_version} (#{build_number}): #{dmg}, #{zip}")
+  end
+
+  desc "OmnigentMacAppStore: archive, check that no Chromium or Sparkle is inside, export, upload (no review submission)"
+  lane :app_store do |options|
+    marketing_version = omnigent_marketing_version
+    load_asc_api_key
+    build_number = latest_testflight_build_number(
+      app_identifier: MAC_APP_STORE_BUNDLE_ID, platform: "osx", initial_build_number: 0
+    ) + 1
+    omnigent_generate_workspace unless omnigent_truthy?(options[:skip_prereqs])
+
+    output = File.join(BUILD_ROOT, "mac-app-store")
+    FileUtils.mkdir_p(output)
+    export_options = omnigent_store_signing(
+      target: "OmnigentMacAppStore", bundle_id: MAC_APP_STORE_BUNDLE_ID,
+      profile_env: "OMNIGENT_MAC_APP_STORE_PROFILE_PATH", installer: true
+    )
+    archive = omnigent_store_archive(
+      scheme: "OmnigentMacAppStore", destination: "generic/platform=macOS", output: output,
+      marketing_version: marketing_version, build_number: build_number,
+      manual: export_options[:signingStyle] == "manual"
+    )
+    omnigent_run_script("check-mac-app-store.sh", "--app", File.join(archive, "Products/Applications/Omnigent.app"))
+
+    pkg = build_mac_app(
+      workspace: WORKSPACE,
+      scheme: "OmnigentMacAppStore",
+      configuration: "Release",
+      skip_build_archive: true,
+      archive_path: archive,
+      export_method: "app-store",
+      export_options: export_options,
+      export_xcargs: export_options[:signingStyle] == "manual" ? nil : omnigent_provisioning_xcargs.shelljoin,
+      output_directory: File.join(output, "export"),
+      output_name: "Omnigent"
+    )
+    upload_to_app_store(
+      app_identifier: MAC_APP_STORE_BUNDLE_ID,
+      platform: "osx",
+      pkg: pkg,
+      submit_for_review: false,
+      skip_metadata: true,
+      skip_screenshots: true,
+      run_precheck_before_submit: false,
+      precheck_include_in_app_purchases: false
+    )
+    UI.success("Uploaded OmnigentMacAppStore #{marketing_version} (#{build_number})")
+  end
+
+  desc "Next Developer ID build number: OMNIGENT_BUILD_NUMBER, or one past the live appcast's newest item"
+  private_lane :developer_id_build_number do |options|
+    override = ENV["OMNIGENT_BUILD_NUMBER"].to_s.strip
+    if !override.empty?
+      UI.user_error!("OMNIGENT_BUILD_NUMBER must be a positive integer, got #{override}") unless override.match?(/\A[1-9]\d*\z/)
+      override.to_i
+    elsif options[:adhoc]
+      # Dry runs never publish, so the checked-in build number is enough.
+      File.read(SETTINGS_FILE)[/public static let buildNumber = "(\d+)"/, 1].to_i
+    else
+      response = Net::HTTP.get_response(URI(SPARKLE_FEED_URL))
+      unless response.is_a?(Net::HTTPSuccess)
+        UI.user_error!("GET #{SPARKLE_FEED_URL} returned #{response.code}; for the first release set OMNIGENT_BUILD_NUMBER and OMNIGENT_SPARKLE_NEW_FEED=1")
+      end
+      document = REXML::Document.new(response.body)
+      versions = REXML::XPath.match(document, "//item/sparkle:version", "sparkle" => "http://www.andymatuschak.org/xml-namespaces/sparkle").map { |node| Integer(node.text, 10) }
+      UI.user_error!("#{SPARKLE_FEED_URL} has no items; set OMNIGENT_BUILD_NUMBER") if versions.empty?
+      versions.max + 1
+    end
+  end
+
+  desc "Extend the Sparkle appcast with the notarized update zip (EdDSA key from SPARKLE_ED_PRIVATE_KEY)"
+  private_lane :developer_id_appcast do |options|
+    omnigent_fetch_env("SPARKLE_ED_PRIVATE_KEY")
+    args = [
+      "--archive", options[:zip],
+      "--output-dir", options[:dist],
+      "--download-url-prefix", omnigent_fetch_env("OMNIGENT_SPARKLE_DOWNLOAD_URL_PREFIX"),
+    ]
+    args += omnigent_truthy?(ENV["OMNIGENT_SPARKLE_NEW_FEED"]) ? ["--new-feed"] : ["--existing-appcast", SPARKLE_FEED_URL]
+    notes = ENV["OMNIGENT_RELEASE_NOTES"].to_s
+    args += ["--release-notes", File.expand_path(notes)] unless notes.empty?
+    omnigent_run_script("generate-appcast.sh", *args)
+  end
+
+  desc "Load the App Store Connect API key from env vars into the session"
+  private_lane :load_asc_api_key do
+    omnigent_load_asc_api_key
+  end
+end
+
+platform :ios do
+  desc "Build Omnigent (iPhone, iPad) and upload it to TestFlight"
+  lane :beta do |options|
+    marketing_version = omnigent_marketing_version
+    load_asc_api_key
+    ipa = ios_build(marketing_version: marketing_version, build_number: ios_next_build_number,
+                    skip_prereqs: omnigent_truthy?(options[:skip_prereqs]))
+    upload_to_testflight(app_identifier: IOS_BUNDLE_ID, ipa: ipa, skip_waiting_for_build_processing: true)
+  end
+
+  desc "Build Omnigent and upload it to App Store Connect (no submission)"
+  lane :release do |options|
+    marketing_version = omnigent_marketing_version
+    load_asc_api_key
+    ipa = ios_build(marketing_version: marketing_version, build_number: ios_next_build_number,
+                    skip_prereqs: omnigent_truthy?(options[:skip_prereqs]))
+    upload_to_app_store(
+      app_identifier: IOS_BUNDLE_ID,
+      ipa: ipa,
+      submit_for_review: false,
+      skip_metadata: true,
+      skip_screenshots: true,
+      precheck_include_in_app_purchases: false
+    )
+  end
+
+  desc "Archive the Release configuration of Omnigent and export an App Store .ipa"
+  private_lane :ios_build do |options|
+    omnigent_generate_workspace unless options[:skip_prereqs]
+    output = File.join(BUILD_ROOT, "ios")
+    FileUtils.mkdir_p(output)
+    export_options = omnigent_store_signing(
+      target: "Omnigent", bundle_id: IOS_BUNDLE_ID, profile_env: "OMNIGENT_IOS_APP_STORE_PROFILE_PATH"
+    )
+    archive = omnigent_store_archive(
+      scheme: "Omnigent", destination: "generic/platform=iOS", output: output,
+      marketing_version: options[:marketing_version], build_number: options[:build_number],
+      manual: export_options[:signingStyle] == "manual"
+    )
+    build_app(
+      workspace: WORKSPACE,
+      scheme: "Omnigent",
+      configuration: "Release",
+      skip_build_archive: true,
+      archive_path: archive,
+      export_method: "app-store",
+      export_options: export_options,
+      export_xcargs: export_options[:signingStyle] == "manual" ? nil : omnigent_provisioning_xcargs.shelljoin,
+      output_directory: File.join(output, "export"),
+      output_name: "Omnigent"
+    )
+  end
+
+  desc "Next build number: one past the highest already on App Store Connect"
+  private_lane :ios_next_build_number do
+    # TestFlight sees every build (App Store builds pass through it too). The web shell in
+    # web/ios uploads to the same app record, so this also stays above its builds.
+    latest_testflight_build_number(app_identifier: IOS_BUNDLE_ID, platform: "ios", initial_build_number: 0) + 1
+  end
+
+  desc "Load the App Store Connect API key from env vars into the session"
+  private_lane :load_asc_api_key do
+    omnigent_load_asc_api_key
+  end
+end
+
+# Same variables as web/ios (ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH, or the APPLE_API_* aliases).
+# The resolved values are exported under the ASC_* names for notarize.sh and xcodebuild.
+def omnigent_load_asc_api_key
+  key_filepath = File.expand_path(omnigent_fetch_env("ASC_KEY_PATH", "APPLE_API_KEY"))
+  UI.user_error!("App Store Connect API key file not found: #{key_filepath}") unless File.file?(key_filepath)
+  key_id = omnigent_fetch_env("ASC_KEY_ID", "APPLE_API_KEY_ID")
+  issuer_id = omnigent_fetch_env("ASC_ISSUER_ID", "APPLE_API_ISSUER")
+  ENV["ASC_KEY_PATH"] = key_filepath
+  ENV["ASC_KEY_ID"] = key_id
+  ENV["ASC_ISSUER_ID"] = issuer_id
+
+  app_store_connect_api_key(
+    key_id: key_id,
+    issuer_id: issuer_id,
+    key_filepath: key_filepath,
+    in_house: false
+  )
+end

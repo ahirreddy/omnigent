@@ -1,0 +1,11 @@
+# Signing secrets; never commit
+AuthKey_*.p8
+.env
+
+# fastlane run output
+report.xml
+Preview.html
+test_output/
+
+# Auto-generated lane docs (regenerated on every fastlane run)
+README.md

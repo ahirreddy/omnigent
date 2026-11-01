@@ -1,0 +1,4 @@
+source "https://rubygems.org"
+
+# Pinned through Gemfile.lock, which matches web/ios/Gemfile.lock. Bump both together.
+gem "fastlane"
