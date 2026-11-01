@@ -8,6 +8,7 @@ let localPackages: [Package] = [
   .package(path: "Packages/OmnigentPlatform"),
   .package(path: "Packages/OmnigentTestSupport"),
   .package(path: "Packages/OmnigentCoreFFI"),
+  .package(path: "Packages/OmnigentBrowser"),
 ]
 
 let appDependencies: [TargetDependency] = [
@@ -22,6 +23,14 @@ let unitTestDependencies: [TargetDependency] = [
   .package(product: "OmnigentTestSupport"),
   .package(product: "OmnigentCoreFFI"),
 ]
+
+/// Chromium (CEF) helpers and embed step for the Mac app; see Packages/OmnigentBrowser/README.md.
+let macBrowser = BrowserTargets.Configuration(
+  appTargetName: "OmnigentMac",
+  appProductName: "Omnigent",
+  appBundleId: "ai.omnigent.mac",
+  deploymentTarget: Omnigent.deploymentVersion
+)
 
 let iOSApp = Target.target(
   name: "Omnigent",
@@ -76,14 +85,16 @@ let macApp = Target.target(
   sources: ["Apps/Omnigent-macOS/Sources/**"],
   resources: [Omnigent.appIcon],
   entitlements: .file(path: "Apps/Omnigent-macOS/OmnigentMac.entitlements"),
-  dependencies: appDependencies,
+  scripts: BrowserTargets.appScripts(macBrowser),
+  dependencies: appDependencies + [.package(product: "OmnigentBrowser")]
+    + BrowserTargets.appDependencies(macBrowser),
   settings: Omnigent.appSettings(
     releaseBundleId: "ai.omnigent.mac",
     displayName: "Omnigent",
-    extraBase: [
+    extraBase: BrowserTargets.appSettings.merging([
       "ENABLE_HARDENED_RUNTIME": "YES",
       "COMBINE_HIDPI_IMAGES": "YES",
-    ],
+    ]) { _, new in new },
     debug: [
       "CODE_SIGN_IDENTITY": "-"
     ]
@@ -146,7 +157,7 @@ let project = Project(
     uiTests(
       name: "OmnigentMacUITests", host: "OmnigentMac", destinations: [.mac],
       deployment: .macOS(Omnigent.deploymentVersion)),
-  ],
+  ] + BrowserTargets.helperTargets(macBrowser),
   schemes: [
     .scheme(
       name: "Omnigent",
