@@ -142,27 +142,34 @@ struct GalleryPageContent: View {
   }
 }
 
-/// Every transcript item laid out eagerly (the real ``TranscriptView`` is lazy).
+/// Every transcript item laid out eagerly with its folds open (the real ``TranscriptView`` is
+/// lazy and folds settled turns).
 struct GalleryTranscript: View {
-  var state = PreviewData.conversation
+  var state = PreviewData.shellConversation
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.row) {
-      SessionHeaderView(state: state)
-      ForEach(TranscriptView.entries(for: state.rows)) { entry in
-        switch entry.item {
-        case .message(let row): MessageRowView(row: row, showsAuthor: entry.showsAuthor)
-        case .tools(_, let entries): ToolGroupView(entries: entries)
-        case .activity(let row): ActivityRowView(row: row)
+      if let todos = state.section("todos") { PlanCard(section: todos) }
+      ForEach(TranscriptView.segments(for: state)) { segment in
+        switch segment {
+        case .item(let item):
+          TranscriptItemView(item: item, decorations: decorations(item))
+        case .worked(_, _, let items, _):
+          WorkedFold(items: items, isLive: true, duration: 106, decorations: [:])
         }
       }
       ChildSessionsStrip(sections: state.sections, currentSessionID: state.header.id)
+      WorkingIndicator(isBlocked: false)
       ErrorBanner(
         message: "Lost connection to the server. Reconnecting in 4 seconds.", dismiss: {}, retry: {}
       )
-      PlanAccordion(section: PreviewData.sections[3])
     }
     .environment(\.conversationActions, GalleryActions.conversation)
+  }
+
+  private func decorations(_ item: TranscriptItem) -> [String: MessageDecoration] {
+    guard case .message(let row) = item else { return [:] }
+    return [row.id: MessageDecoration(timestamp: state.timestamps[row.id], showsActions: true)]
   }
 }
 
@@ -222,33 +229,27 @@ private struct GallerySection<Content: View>: View {
 }
 
 struct GallerySessionList: View {
-  @State private var selection: String? = PreviewData.sessionID
+  @State private var selection: SidebarDestination? = .session(PreviewData.sessionID)
   @State private var search = ""
-  @State private var filter: SessionFilter = .all
+  @State private var sidebar = PreviewData.sidebar
 
   var body: some View {
     NavigationStack {
-      SessionListView(
-        state: {
-          var state = PreviewData.sessionList
-          state.filter = filter
-          return state
-        }(),
-        selection: $selection, searchText: $search,
-        actions: GalleryActions.sessionList(filter: $filter))
+      SidebarView(
+        state: sidebar, selection: $selection, searchText: $search,
+        actions: GalleryActions.sidebar { sidebar.display = $0 })
     }
   }
 }
 
 struct GalleryNewSession: View {
-  @State private var phase = 0
+  @State private var draft = ""
 
   var body: some View {
-    NewSessionView(
-      state: PreviewData.newSession,
-      actions: NewSessionActions(
-        unavailableReason: PreviewData.unavailableReason, create: { _, _, _ in }, cancel: {}),
-      initialSelection: CreationSelection(hostId: "host_mbp", agentId: "agent_codex"))
+    NavigationStack {
+      NewSessionPage(
+        draft: $draft, composer: PreviewData.startComposer, actions: GalleryActions.composer)
+    }
   }
 }
 
@@ -268,39 +269,42 @@ struct GalleryConversation: View {
 }
 
 struct GalleryAppLayout: View {
-  /// Lays the inspector out as a plain column (for offscreen rendering, where the system
+  /// Lays the right panel out as a plain column (for offscreen rendering, where the system
   /// inspector presentation does not draw).
   var inlineInspector = false
-  @State private var selection: String? = PreviewData.sessionID
+  @State private var selection: SidebarDestination? = .session(PreviewData.sessionID)
   @State private var search = ""
-  @State private var filter: SessionFilter = .all
-  @State private var draft = "Also cover the 401 path."
+  @State private var draft = ""
   @State private var showsInspector = true
+  @State private var tab: InspectorTab = .changes
   @Environment(\.layoutWidth) private var layoutWidth
 
   var body: some View {
     if layoutWidth == .compact {
-      GalleryConversation(state: PreviewData.conversation)
+      GalleryConversation(
+        state: PreviewData.shellConversation, composer: PreviewData.sessionComposer)
     } else {
       HStack(spacing: 0) {
-        SessionListView(
-          state: PreviewData.sessionList, selection: $selection, searchText: $search,
-          actions: GalleryActions.sessionList(filter: $filter)
+        SidebarView(
+          state: PreviewData.sidebar, selection: $selection, searchText: $search,
+          actions: GalleryActions.sidebar { _ in }
         )
-        .frame(width: 290)
+        .frame(width: 300)
         Divider()
         NavigationStack {
           ConversationScreen(
-            state: PreviewData.conversation, composer: PreviewData.composerRunning, draft: $draft,
+            state: PreviewData.shellConversation, composer: PreviewData.sessionComposer,
+            draft: $draft,
             showsInspector: inlineInspector ? .constant(false) : $showsInspector,
             actions: GalleryActions.conversation, composerActions: GalleryActions.composer)
         }
         if inlineInspector {
           Divider()
-          SessionInspectorView(
-            state: PreviewData.conversation, actions: GalleryActions.conversation
+          WorkspaceInspector(
+            state: PreviewData.shellConversation, actions: GalleryActions.conversation,
+            slots: WorkspaceSlots(), tab: $tab
           )
-          .frame(width: 300)
+          .frame(width: 340)
         }
       }
     }
@@ -317,6 +321,15 @@ enum GalleryActions {
     send: {}, interrupt: {}, addAttachments: { _ in }, removeAttachment: { _ in },
     selectModel: { _ in }, selectEffort: { _ in }, selectAgent: { _ in },
     acknowledgeUncertainDelivery: {}, dismissDeliveryError: {})
+
+  static func sidebar(setDisplay: @escaping @MainActor (SessionDisplayOptions) -> Void)
+    -> SidebarActions
+  {
+    SidebarActions(
+      sessions: sessionList(filter: .constant(.all)), setDisplay: setDisplay,
+      setQuickFilter: { _ in },
+      switchServer: { _ in }, addServer: {}, openServerSettings: {})
+  }
 
   static func sessionList(filter: Binding<SessionFilter>) -> SessionListActions {
     SessionListActions(

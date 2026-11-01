@@ -18,10 +18,10 @@ struct DeliveryBanner: View {
         Label {
           VStack(alignment: .leading, spacing: 2) {
             Text("Delivery uncertain").font(.callout.weight(.semibold))
-            Text(message).font(.callout).fixedSize(horizontal: false, vertical: true)
+            Text(message).font(.callout)
           }
         } icon: {
-          Image(systemName: "questionmark.circle.fill").foregroundStyle(Theme.attention)
+          Image(systemName: "questionmark.circle.fill").foregroundStyle(Theme.warning)
         }
         if let acknowledge {
           Button("I Checked the Conversation, Allow Another Send", action: acknowledge)
@@ -31,8 +31,8 @@ struct DeliveryBanner: View {
       .padding(12)
       .frame(maxWidth: .infinity, alignment: .leading)
       .cardSurface(
-        cornerRadius: Theme.Radius.medium, tint: Theme.attention,
-        stroke: Theme.attention.opacity(0.4)
+        cornerRadius: Theme.Radius.medium, tint: Theme.warning,
+        stroke: Theme.warning.opacity(0.4)
       )
       .accessibilityIdentifier("composer-uncertain")
     case .failed(let message):
@@ -139,45 +139,34 @@ struct GrowingTextEditor: View {
     private let inset = EdgeInsets(top: 8, leading: 5, bottom: 8, trailing: 5)
   #endif
 
-  @State private var measuredHeight: CGFloat = 0
-
   private var verticalInsets: CGFloat { inset.top + inset.bottom }
 
-  private var height: CGFloat {
-    let minimum = lineHeight * CGFloat(minLines) + verticalInsets
-    let maximum = lineHeight * CGFloat(maxLines) + verticalInsets
-    return min(max(measuredHeight, minimum), maximum)
-  }
-
   var body: some View {
-    TextEditor(text: $text)
-      .font(.body)
-      .scrollContentBackground(.hidden)
-      .frame(height: height)
-      .background(alignment: .topLeading) {
-        // The editor does not size to its text; a hidden copy measures it.
-        Text(verbatim: text.isEmpty ? " " : text + (text.hasSuffix("\n") ? " " : ""))
+    // The editor does not size to its text; a hidden copy measures it. A layout (not state)
+    // clamps the height, so there is no measure-and-update feedback loop.
+    EditorHeightLayout(
+      minHeight: lineHeight * CGFloat(minLines) + verticalInsets,
+      maxHeight: lineHeight * CGFloat(maxLines) + verticalInsets
+    ) {
+      Text(verbatim: text.isEmpty ? " " : text + (text.hasSuffix("\n") ? " " : ""))
+        .font(.body)
+        .padding(inset)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .hidden()
+      TextEditor(text: $text)
+        .font(.body)
+        .scrollContentBackground(.hidden)
+    }
+    .overlay(alignment: .topLeading) {
+      if text.isEmpty {
+        Text(placeholder)
           .font(.body)
+          .foregroundStyle(.tertiary)
           .padding(inset)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .fixedSize(horizontal: false, vertical: true)
-          .hidden()
-          .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.height
-          } action: { newHeight in
-            measuredHeight = newHeight
-          }
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
       }
-      .overlay(alignment: .topLeading) {
-        if text.isEmpty {
-          Text(placeholder)
-            .font(.body)
-            .foregroundStyle(.tertiary)
-            .padding(inset)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-        }
-      }
+    }
   }
 }
 
@@ -314,6 +303,28 @@ struct DropTargetTracking: ViewModifier {
       }
     } else {
       content
+    }
+  }
+}
+
+/// Sizes to its first subview's ideal height for the proposed width, clamped, and gives every
+/// subview that frame.
+struct EditorHeightLayout: Layout {
+  let minHeight: CGFloat
+  let maxHeight: CGFloat
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let width = proposal.width ?? 320
+    let measured =
+      subviews.first?.sizeThatFits(ProposedViewSize(width: width, height: nil)).height ?? minHeight
+    return CGSize(width: width, height: min(max(measured, minHeight), maxHeight))
+  }
+
+  func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+  ) {
+    for subview in subviews {
+      subview.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
     }
   }
 }

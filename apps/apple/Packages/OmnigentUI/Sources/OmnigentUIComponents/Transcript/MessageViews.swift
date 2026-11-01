@@ -18,36 +18,55 @@ nonisolated public enum LayoutWidth: Hashable, Sendable {
   case regular
 }
 
-/// A user or assistant message.
+/// How a message row is decorated: its timestamp, whether its actions stay visible, and the
+/// shared-session author avatar.
+nonisolated struct MessageDecoration: Hashable, Sendable {
+  var timestamp: Date?
+  var showsActions = false
+  var showsAvatar = false
+}
+
+/// A user or assistant message, as on the web: user messages in a neutral bubble on the right,
+/// assistant prose without a bubble or name. Copy, Fork from here (assistant), Copy link and the
+/// timestamp appear on hover (always on the last answer while idle) and in the context menu.
 struct MessageRowView: View, Equatable {
   let row: Row
-  let showsAuthor: Bool
+  let decoration: MessageDecoration
 
   @Environment(\.layoutWidth) private var layoutWidth
+  @Environment(\.conversationActions) private var actions
+  @State private var isHovered = false
 
   static func == (lhs: Self, rhs: Self) -> Bool {
-    lhs.row == rhs.row && lhs.showsAuthor == rhs.showsAuthor
+    lhs.row == rhs.row && lhs.decoration == rhs.decoration
   }
 
   var body: some View {
-    switch row.role {
-    case .user: userMessage
-    case .assistant, .tool: assistantMessage
+    Group {
+      switch row.role {
+      case .user: userMessage
+      case .assistant, .tool: assistantMessage
+      }
     }
+    .onHover { isHovered = $0 }
+    .contextMenu { MessageContextMenu(row: row, actions: actions) }
+  }
+
+  private var showsActions: Bool {
+    #if os(macOS)
+      decoration.showsActions || isHovered
+    #else
+      true
+    #endif
   }
 
   private var userMessage: some View {
-    HStack {
-      Spacer(minLength: layoutWidth == .compact ? 32 : 120)
-      VStack(alignment: .trailing, spacing: 6) {
-        if showsAuthor, let author = row.author, !author.isEmpty {
-          Text(author).font(.caption.weight(.medium)).foregroundStyle(.secondary)
-        }
+    VStack(alignment: .trailing, spacing: 4) {
+      HStack(alignment: .top, spacing: 8) {
+        Spacer(minLength: layoutWidth == .compact ? 32 : 120)
         VStack(alignment: .leading, spacing: 8) {
           if !row.text.isEmpty {
-            Text(verbatim: row.text)
-              .textSelection(.enabled)
-              .fixedSize(horizontal: false, vertical: true)
+            MarkdownView(row.text, isStreaming: false)
           }
           AttachmentStrip(attachments: row.attachments)
           if let activity = row.activity {
@@ -58,26 +77,28 @@ struct MessageRowView: View, Equatable {
         .padding(.vertical, 10)
         .background(
           Theme.userBubble,
-          in: RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous))
-        if row.interrupted { StoppedLabel(rowID: row.id) }
+          in: RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous)
+        )
+        .overlay {
+          RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous)
+            .strokeBorder(.separator.opacity(0.6), lineWidth: 0.5)
+        }
+        .frame(maxWidth: 640, alignment: .trailing)
+        if decoration.showsAvatar, let author = row.author {
+          AuthorAvatar(name: author)
+        }
       }
+      if row.interrupted { InterruptedLabel(rowID: row.id) }
+      MessageActions(row: row, timestamp: decoration.timestamp, actions: actions)
+        .opacity(showsActions ? 1 : 0)
     }
-    .contextMenu { MessageContextMenu(row: row) }
     .accessibilityElement(children: .contain)
-    .accessibilityLabel("You said")
+    .accessibilityLabel(decoration.showsAvatar ? "\(row.author ?? "Someone") said" : "You said")
     .accessibilityIdentifier("message-\(row.id)")
   }
 
   private var assistantMessage: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if showsAuthor {
-        HStack(spacing: 6) {
-          Text(row.agent ?? row.author ?? "Agent")
-            .font(.subheadline.weight(.semibold))
-          if row.isStreaming { LiveIndicator() }
-        }
-        .accessibilityElement(children: .combine)
-      }
+    VStack(alignment: .leading, spacing: 6) {
       if row.text.isEmpty, row.isStreaming {
         HStack(spacing: 8) {
           TypingIndicator()
@@ -89,38 +110,111 @@ struct MessageRowView: View, Equatable {
       }
       AttachmentStrip(attachments: row.attachments)
       if let activity = row.activity { UnsupportedContentView(activity: activity, rowID: row.id) }
-      if row.isStreaming, !showsAuthor, !row.text.isEmpty {
-        HStack(spacing: 6) {
-          LiveIndicator()
-          Text("Replying").font(.caption).foregroundStyle(.secondary)
-        }
+      if row.interrupted { InterruptedLabel(rowID: row.id) }
+      if !row.isStreaming {
+        MessageActions(row: row, timestamp: decoration.timestamp, actions: actions)
+          .opacity(showsActions ? 1 : 0)
       }
-      if row.interrupted { StoppedLabel(rowID: row.id) }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .contextMenu { MessageContextMenu(row: row) }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("message-\(row.id)")
   }
 }
 
-private struct StoppedLabel: View {
+/// Copy, Fork from here (assistant), Copy link, then the timestamp.
+private struct MessageActions: View {
+  let row: Row
+  let timestamp: Date?
+  let actions: ConversationActions
+
+  var body: some View {
+    HStack(spacing: 10) {
+      CopyButton(text: row.text, label: "Copy")
+      if row.role == .assistant, let fork = actions.forkFrom {
+        Button("Fork from here", systemImage: "arrow.triangle.branch") { fork(row) }
+          .labelStyle(.iconOnly)
+          .help("Fork from here")
+      }
+      if let url = actions.messageURL?(row) {
+        Button("Copy link", systemImage: "link") { Pasteboard.copy(url.absoluteString) }
+          .labelStyle(.iconOnly)
+          .help("Copy link")
+      }
+      if let timestamp {
+        Text(MessageTimestamp.format(timestamp, now: Date()))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .buttonStyle(.borderless)
+    .foregroundStyle(.secondary)
+    .font(.caption)
+  }
+}
+
+/// The web's message timestamps: `h:mm AM` today, `Mon D, h:mm` otherwise, plus the year when it
+/// differs.
+nonisolated enum MessageTimestamp {
+  static func format(_ date: Date, now: Date, calendar: Calendar = .current) -> String {
+    if calendar.isDate(date, inSameDayAs: now) {
+      return date.formatted(date: .omitted, time: .shortened)
+    }
+    let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
+    let day = date.formatted(.dateTime.month(.abbreviated).day())
+    let time = date.formatted(date: .omitted, time: .shortened)
+    let year = sameYear ? "" : ", \(calendar.component(.year, from: date))"
+    return "\(day), \(time)\(year)"
+  }
+}
+
+/// Initials in a hashed color, for shared sessions.
+struct AuthorAvatar: View {
+  let name: String
+
+  var body: some View {
+    let initials = name.split(whereSeparator: { " ._@".contains($0) }).prefix(2)
+      .compactMap(\.first).map(String.init).joined().uppercased()
+    Text(initials.isEmpty ? "?" : initials)
+      .font(.system(size: 10, weight: .bold, design: .rounded))
+      .foregroundStyle(.white)
+      .frame(width: 24, height: 24)
+      .background(color, in: Circle())
+      .help(name)
+      .accessibilityLabel(name)
+  }
+
+  private var color: Color {
+    let palette: [Color] = [.blue, .purple, .pink, .orange, .teal, .indigo, .green]
+    let hash = name.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
+    return palette[hash % palette.count]
+  }
+}
+
+private struct InterruptedLabel: View {
   let rowID: String
 
   var body: some View {
-    Label("Stopped", systemImage: "stop.circle")
+    Label("Interrupted", systemImage: "xmark")
       .font(.caption)
       .foregroundStyle(.secondary)
-      .accessibilityIdentifier("message-stopped-\(rowID)")
+      .accessibilityIdentifier("message-interrupted-\(rowID)")
   }
 }
 
 private struct MessageContextMenu: View {
   let row: Row
+  let actions: ConversationActions
 
   var body: some View {
-    Button("Copy Text", systemImage: "doc.on.doc") { Pasteboard.copy(row.text) }
+    Button("Copy", systemImage: "doc.on.doc") { Pasteboard.copy(row.text) }
       .disabled(row.text.isEmpty)
+    if row.role == .assistant, !row.isStreaming, let fork = actions.forkFrom {
+      Button("Fork from Here\u{2026}", systemImage: "arrow.triangle.branch") { fork(row) }
+    }
+    if let url = actions.messageURL?(row) {
+      Button("Copy Link", systemImage: "link") { Pasteboard.copy(url.absoluteString) }
+    }
     ShareLink(item: row.text) { Label("Share", systemImage: "square.and.arrow.up") }
       .disabled(row.text.isEmpty)
     Divider()
@@ -146,7 +240,7 @@ struct AttachmentStrip: View {
 
 private struct AttachmentChip: View {
   let attachment: Attachment
-  let open: ((Attachment) -> Void)?
+  let open: (@MainActor (Attachment) -> Void)?
 
   var body: some View {
     Button {

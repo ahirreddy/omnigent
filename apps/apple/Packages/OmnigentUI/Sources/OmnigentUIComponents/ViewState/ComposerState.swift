@@ -181,10 +181,26 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var attachments: [DraftAttachment]
   /// The host accepts attachments on this server.
   public var acceptsAttachments: Bool
-  /// The model and harness picker, when the harness reports one.
+  /// The harness, model and effort picker, when the harness reports one.
   public var configuration: ComposerConfiguration?
-  /// Placeholder text.
+  /// Placeholder text, in the web's words ("Send a message…").
   public var placeholder: String
+  /// The Host chip and its menu.
+  public var hosts: ComposerHosts?
+  /// The approval-mode (Permission) chip; ⇧Tab cycles it.
+  public var approvalModes: ApprovalModes?
+  /// The context tray above the card (directory, branch, PR, context use).
+  public var tray: ComposerTray?
+  /// Commands and skills for the `/` menu.
+  public var slashCommands: [SlashCommand]
+  /// Workspace paths for the `@` menu.
+  public var mentionCandidates: [String]
+  /// Queued and steering messages while the agent works.
+  public var queue: [QueuedMessage]
+  /// In a session, or starting a new one (Start session).
+  public var purpose: ComposerPurpose
+  /// The "Submit with ⌘ + Enter" setting: Return inserts a newline instead of sending.
+  public var submitWithCommandReturn: Bool
 
   /// Creates composer state.
   /// - Parameters:
@@ -196,11 +212,23 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   ///   - acceptsAttachments: Attachments are supported.
   ///   - configuration: Model picker.
   ///   - placeholder: Placeholder.
+  ///   - hosts: Host chip.
+  ///   - approvalModes: Permission chip.
+  ///   - tray: Context tray.
+  ///   - slashCommands: Slash commands.
+  ///   - mentionCandidates: Mention paths.
+  ///   - queue: Queued messages.
+  ///   - purpose: Session or start.
+  ///   - submitWithCommandReturn: Command-Return submits.
   public init(
     availability: ComposerAvailability = .available, delivery: DeliveryState = .idle,
     isRunning: Bool = false, isStopping: Bool = false, attachments: [DraftAttachment] = [],
     acceptsAttachments: Bool = true, configuration: ComposerConfiguration? = nil,
-    placeholder: String = "Message the agent"
+    placeholder: String = "Send a message\u{2026}", hosts: ComposerHosts? = nil,
+    approvalModes: ApprovalModes? = nil, tray: ComposerTray? = nil,
+    slashCommands: [SlashCommand] = [], mentionCandidates: [String] = [],
+    queue: [QueuedMessage] = [], purpose: ComposerPurpose = .session,
+    submitWithCommandReturn: Bool = false
   ) {
     self.availability = availability
     self.delivery = delivery
@@ -210,6 +238,14 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
     self.acceptsAttachments = acceptsAttachments
     self.configuration = configuration
     self.placeholder = placeholder
+    self.hosts = hosts
+    self.approvalModes = approvalModes
+    self.tray = tray
+    self.slashCommands = slashCommands
+    self.mentionCandidates = mentionCandidates
+    self.queue = queue
+    self.purpose = purpose
+    self.submitWithCommandReturn = submitWithCommandReturn
   }
 }
 
@@ -233,6 +269,8 @@ public struct ComposerActions {
   public var acknowledgeUncertainDelivery: (@MainActor () -> Void)?
   /// Dismiss a failed delivery message.
   public var dismissDeliveryError: (@MainActor () -> Void)?
+  /// Composer extras: host, approval mode, dictation, queue, Add menu.
+  public var extras: ComposerExtraActions
 
   /// Creates actions.
   /// - Parameters:
@@ -245,6 +283,7 @@ public struct ComposerActions {
   ///   - selectAgent: Switch harness.
   ///   - acknowledgeUncertainDelivery: Allow another send.
   ///   - dismissDeliveryError: Dismiss a failure.
+  ///   - extras: Host, mode, dictation, queue and Add menu actions.
   public init(
     send: @escaping @MainActor () -> Void, interrupt: (@MainActor () -> Void)? = nil,
     addAttachments: (@MainActor ([ComposerAttachmentInput]) -> Void)? = nil,
@@ -253,7 +292,8 @@ public struct ComposerActions {
     selectEffort: (@MainActor (String?) -> Void)? = nil,
     selectAgent: (@MainActor (String) -> Void)? = nil,
     acknowledgeUncertainDelivery: (@MainActor () -> Void)? = nil,
-    dismissDeliveryError: (@MainActor () -> Void)? = nil
+    dismissDeliveryError: (@MainActor () -> Void)? = nil,
+    extras: ComposerExtraActions = ComposerExtraActions()
   ) {
     self.send = send
     self.interrupt = interrupt
@@ -264,6 +304,7 @@ public struct ComposerActions {
     self.selectAgent = selectAgent
     self.acknowledgeUncertainDelivery = acknowledgeUncertainDelivery
     self.dismissDeliveryError = dismissDeliveryError
+    self.extras = extras
   }
 }
 

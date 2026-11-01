@@ -24,15 +24,21 @@ enum Theme {
 
   static let codeFont = Font.system(.footnote, design: .monospaced)
 
-  static var codeBackground: Color { Color.secondary.opacity(0.07) }
+  static var codeBackground: Color { Color.secondary.opacity(0.1) }
 
   // Brand colors come from the environment's `OmnigentTheme`; these resolve at render time.
   static let accent = ThemeColor.accent
+  static let brandAccent = ThemeColor.brandAccent
   static let userBubble = ThemeColor.userBubble
   static let running = ThemeColor.running
-  static let attention = ThemeColor.attention
+  /// "Needs response" and other things waiting on the user: the brand accent, as the web.
+  static let attention = ThemeColor.brandAccent
+  static let warning = ThemeColor.warning
+  static let success = ThemeColor.success
+  static let info = ThemeColor.info
   static let failure = ThemeColor.failure
-  static let unread = ThemeColor.unread
+  static let unread = ThemeColor.brandAccent
+  static let link = ThemeColor.link
   static let secondary = ThemeColor.secondary
 
   static func lineCount(_ text: String) -> Int {
@@ -62,8 +68,6 @@ enum Theme {
 /// Reduce Transparency is on.
 struct CardSurface: ViewModifier {
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-  @Environment(\.omnigentTheme) private var theme
-  @Environment(\.colorScheme) private var colorScheme
   var cornerRadius: CGFloat = Theme.Radius.large
   var tint: ThemeColor?
   var stroke: ThemeColor?
@@ -77,9 +81,6 @@ struct CardSurface: ViewModifier {
             shape.fill(Color.secondary.opacity(0.12))
           } else {
             shape.fill(.background.secondary)
-          }
-          if let surfaceTint = theme.palette(for: colorScheme).surfaceTint {
-            shape.fill(surfaceTint.opacity(0.06))
           }
           if let tint { shape.fill(tint.opacity(0.08)) }
         }

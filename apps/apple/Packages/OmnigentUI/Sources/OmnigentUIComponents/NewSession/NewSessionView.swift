@@ -305,7 +305,7 @@ private struct CreationStatusSection: View {
     case .uncertain(let message):
       Section {
         Label(message, systemImage: "questionmark.circle.fill")
-          .foregroundStyle(Theme.attention)
+          .foregroundStyle(Theme.warning)
           .accessibilityIdentifier("creation-uncertain")
         if let acknowledge {
           Button("I Checked Sessions, Allow Another", action: acknowledge)

@@ -21,6 +21,7 @@ public struct MarkdownView: View {
     let blocks =
       isStreaming ? MarkdownParser.parse(text) : MarkdownCache.shared.blocks(for: text)
     MarkdownBlocksView(blocks: blocks)
+      .tint(Theme.link)
   }
 }
 

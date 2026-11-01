@@ -7,7 +7,10 @@ public struct DecisionDock: View {
   private let actions: ConversationActions
 
   @State private var index = 0
-  @State private var drafts: [String: FormDraft] = [:]
+  @Environment(DecisionDrafts.self) private var sharedDrafts: DecisionDrafts?
+  @State private var localDrafts = DecisionDrafts()
+
+  private var drafts: DecisionDrafts { sharedDrafts ?? localDrafts }
   @Environment(\.layoutWidth) private var layoutWidth
 
   /// Creates the dock.
@@ -62,17 +65,15 @@ public struct DecisionDock: View {
             card: card, phase: state.phase(of: card), isReadOnly: state.header.readOnly,
             respond: actions.respond.map { respond in { respond(card, $0) } },
             validate: actions.validateForm.map { validate in { validate(card, $0) } },
-            draft: Binding(
-              get: { drafts[card.id, default: FormDraft()] },
-              set: { drafts[card.id] = $0 })
+            draft: drafts.binding(card.id)
           )
           .id(card.id)
         }
       }
       .padding(.horizontal, layoutWidth == .compact ? 10 : 16)
       .padding(.top, 8)
-      .frame(maxWidth: Theme.transcriptWidth)
-      .frame(maxWidth: .infinity)
+      .frame(minWidth: 0, maxWidth: Theme.transcriptWidth)
+      .frame(minWidth: 0, maxWidth: .infinity)
       .environment(
         \.openURL,
         OpenURLAction { url in
@@ -87,7 +88,7 @@ public struct DecisionDock: View {
       .accessibilityLabel("Pending requests")
       .accessibilityIdentifier("decision-dock")
       .onChange(of: cards.map(\.id)) { _, ids in
-        drafts = drafts.filter { ids.contains($0.key) }
+        drafts.drafts = drafts.drafts.filter { ids.contains($0.key) }
       }
     }
   }

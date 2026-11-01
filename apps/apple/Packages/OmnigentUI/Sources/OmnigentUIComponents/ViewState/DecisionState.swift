@@ -339,17 +339,17 @@ nonisolated public enum DecisionResponse: Hashable, Sendable {
   public var summary: String {
     switch self {
     case .approve: "Approved"
-    case .decline: "Declined"
+    case .decline: "Rejected"
     case .cancel: "Dismissed"
     case .answer(let value): "Answered: \(value)"
     case .form: "Answers submitted"
-    case .approveAllEdits: "Approved and allowed all edits"
-    case .approveAutoMode: "Approved and switched to auto mode"
-    case .approveDirectories: "Approved for the offered directories"
+    case .approveAllEdits: "Approved · all edits allowed"
+    case .approveAutoMode: "Approved · auto mode"
+    case .approveDirectories: "Approved for these directories"
     case .approveRemembering: "Approved and remembered"
     case .approveCommandPolicy: "Approved with the command policy"
     case .approvePersist(let mode):
-      mode == .always ? "Approved and always allowed" : "Approved for this session"
+      mode == .always ? "Always allowed" : "Approved for this session"
     case .declineWithFeedback: "Rejected with feedback"
     }
   }

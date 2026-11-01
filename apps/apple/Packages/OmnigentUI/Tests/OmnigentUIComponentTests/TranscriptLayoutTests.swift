@@ -62,16 +62,62 @@ struct TranscriptLayoutTests {
     #expect(shown.union(hidden) == Set(PreviewData.rows.map(\.id)))
   }
 
-  @Test("an assistant run shows its author once")
-  func authorRuns() {
+  @Test("a settled turn folds its tool work and keeps the final answer visible")
+  func workedFold() {
     let rows = [
       Row(id: "u", role: .user, text: "Hi"),
-      Row(id: "a1", role: .assistant, text: "One", agent: "Codex"),
-      Row(id: "a2", role: .assistant, text: "Two", agent: "Codex"),
-      Row(id: "a3", role: .assistant, text: "Three", agent: "Reviewer"),
+      Row(
+        id: "c1", role: .tool, activity: Activity(kind: .toolCall, title: "Bash"), callId: "a",
+        responseId: "r"),
+      Row(
+        id: "o1", role: .tool, activity: Activity(kind: .toolResult, title: "out"), callId: "a",
+        responseId: "r"),
+      Row(
+        id: "think", role: .tool, activity: Activity(kind: .reasoning, title: "Reasoning"),
+        responseId: "r"),
+      Row(
+        id: "err", role: .tool, activity: Activity(kind: .error, title: "Error", isFailure: true),
+        responseId: "r"),
+      Row(id: "a1", role: .assistant, text: "Done", responseId: "r"),
     ]
-    let flags = TranscriptView.entries(for: rows).map(\.showsAuthor)
-    #expect(flags == [true, true, false, true])
+    let segments = TurnLayout.segments(TranscriptLayout.items(for: rows), isRunning: false)
+    #expect(segments.map(\.id) == ["u", "worked:tools:c1", "err", "a1"])
+    guard case .worked(_, let response, let items, let live) = segments[1] else {
+      Issue.record("expected a Worked fold")
+      return
+    }
+    #expect(response == "r")
+    #expect(items.map(\.id) == ["tools:c1", "think"])
+    #expect(!live)
+  }
+
+  @Test("the live turn stays open and keeps the streaming answer outside")
+  func liveTurn() {
+    let rows = [
+      Row(id: "u", role: .user, text: "Hi"),
+      Row(id: "c1", role: .tool, activity: Activity(kind: .toolCall, title: "Read"), callId: "a"),
+      Row(id: "live", role: .assistant, text: "So far", isStreaming: true),
+    ]
+    let segments = TurnLayout.segments(TranscriptLayout.items(for: rows), isRunning: true)
+    guard case .worked(_, _, _, let live) = segments[1] else {
+      Issue.record("expected a Worked fold")
+      return
+    }
+    #expect(live)
+    #expect(segments.last?.id == "live")
+  }
+
+  @Test("durations and tool summaries read like the web")
+  func webStrings() {
+    #expect(TurnLayout.duration(8) == "8s")
+    #expect(TurnLayout.duration(106) == "1m 46s")
+    #expect(TurnLayout.duration(60) == "1m")
+    #expect(TurnLayout.duration(3_720) == "1h 2m")
+    #expect(ToolRunSummary.text(for: ["Bash", "shell", "shell"]) == "Ran 3 shell commands")
+    #expect(
+      ToolRunSummary.text(for: ["Bash", "Read", "Read"]) == "Ran 1 shell command, read 2 files")
+    #expect(ToolRunSummary.text(for: ["mcp__linear__create"]) == "Called 1 tool")
+    #expect(ToolRunSummary.text(for: ["Read", "custom"]) == "Read 1 file, called 1 other tool")
   }
 
   @Test("3,000 rows lay out quickly with unique, stable ids")
@@ -224,16 +270,57 @@ struct DecisionFormTests {
 
 @Suite("Session list and sections")
 struct SessionListTests {
-  @Test("groups pinned first, then by day, keeping the core's order")
-  func grouping() {
-    let groups = SessionGrouping.groups(PreviewData.sessions, now: PreviewData.now)
-    #expect(groups.first?.title == "Pinned")
-    #expect(groups.map(\.title).count == Set(groups.map(\.title)).count)
-    let flattened = groups.flatMap(\.sessions).map(\.id)
-    #expect(Set(flattened) == Set(PreviewData.sessions.map(\.id)))
-    let today = groups.first { $0.title == "Today" }?.sessions.map(\.id) ?? []
-    let expectedToday = PreviewData.sessions.map(\.id).filter(today.contains)
-    #expect(today == expectedToday)
+  @Test("default grouping is Pinned, Projects, Shared, Sessions")
+  func defaultSections() {
+    let sections = SidebarSections.sections(PreviewData.sidebar)
+    #expect(sections.map(\.title) == ["Pinned", "Projects", "Shared", "Sessions"])
+    let sessions = sections.last?.sessions.map(\.id) ?? []
+    #expect(!sessions.contains("sess_a2"))  // in a project
+    #expect(!sessions.contains("sess_a4"))  // shared
+    #expect(!sessions.contains("sess_p1"))  // pinned
+    #expect(sections.last?.showsDisplayMenu == true)
+  }
+
+  @Test("status grouping orders Needs response, Running, Error, Idle")
+  func statusSections() {
+    var state = PreviewData.sidebar
+    state.display.groupBy = .status
+    let titles = SidebarSections.sections(state).map(\.title)
+    #expect(titles == ["Needs response", "Running", "Error", "Idle"])
+  }
+
+  @Test("relative times use the web's short form")
+  func relativeTimes() {
+    let now = PreviewData.now
+    #expect(RelativeTime.short(now, now: now) == "now")
+    #expect(RelativeTime.short(now.addingTimeInterval(-300), now: now) == "5m")
+    #expect(RelativeTime.short(now.addingTimeInterval(-3 * 3_600), now: now) == "3h")
+    #expect(RelativeTime.short(now.addingTimeInterval(-2 * 86_400), now: now) == "2d")
+    #expect(RelativeTime.short(now.addingTimeInterval(-8 * 86_400), now: now) == "1w")
+    #expect(RelativeTime.short(now.addingTimeInterval(-60 * 86_400), now: now) == "2mo")
+    #expect(RelativeTime.short(now.addingTimeInterval(-400 * 86_400), now: now) == "1y")
+  }
+
+  @Test("completions offer slash commands and @ mentions")
+  func completions() {
+    let slash = ComposerCompletions(draft: "/re", commands: PreviewData.slashCommands, mentions: [])
+    #expect(slash.items.map(\.title) == ["/review"])
+    #expect(slash.applying(slash.items[0]) == "/review ")
+    let mention = ComposerCompletions(
+      draft: "look at @tests", commands: [], mentions: PreviewData.mentionPaths)
+    #expect(mention.items.count == 1)
+    #expect(mention.applying(mention.items[0]).hasPrefix("look at @client-core"))
+    #expect(
+      ComposerCompletions(draft: "hello", commands: PreviewData.slashCommands, mentions: []).items
+        .isEmpty)
+  }
+
+  @Test("Shift-Tab cycles approval modes and wraps")
+  func approvalModes() {
+    var modes = PreviewData.claudeModes
+    #expect(modes.next?.label == "Auto")
+    modes.selectedID = "plan"
+    #expect(modes.next?.label == "Manual")
   }
 
   @Test("reads todos, usage, changed files and viewers from the core's sections")

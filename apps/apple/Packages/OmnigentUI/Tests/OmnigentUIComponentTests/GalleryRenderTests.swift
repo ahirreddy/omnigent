@@ -44,6 +44,19 @@
       Surface(name: "markdown", regular: CGSize(width: 760, height: 0), compactHeight: nil) {
         AnyView(GalleryPageContent(page: .markdown).padding(20))
       },
+      Surface(name: "inbox", regular: CGSize(width: 760, height: 700), compactHeight: 844) {
+        AnyView(NavigationStack { InboxView(state: PreviewData.inbox, actions: InboxActions()) })
+      },
+      Surface(name: "themes", regular: CGSize(width: 1_000, height: 0), compactHeight: nil) {
+        AnyView(ThemeGalleryView().frame(height: 1_100))
+      },
+      Surface(name: "server-settings", regular: CGSize(width: 900, height: 560), compactHeight: 844)
+      {
+        AnyView(
+          ServerSettingsView(
+            state: PreviewData.serverSettings, selectedServer: .constant("dbx"),
+            actions: ServerSettingsActions()))
+      },
     ]
 
     @Test("renders in light and dark at Mac and compact widths", arguments: surfaces)

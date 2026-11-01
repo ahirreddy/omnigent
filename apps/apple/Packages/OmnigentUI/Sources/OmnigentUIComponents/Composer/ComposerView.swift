@@ -2,10 +2,12 @@ import PhotosUI
 public import SwiftUI
 import UniformTypeIdentifiers
 
-/// The message composer: a growing multi-line editor (Command-Return sends on Mac and with a
-/// hardware keyboard), attachments by drop, paste, photo picker or file importer, the model and
-/// reasoning picker, Stop while a turn runs, and the disabled and delivery states with their
-/// reasons.
+/// The composer, laid out like the web's: a context tray, the queue strip, then one card with
+/// a growing editor and an action row (Add, Host, Permission; model and effort, Mic, Send or
+/// Stop). Return sends and Shift- or Option-Return inserts a newline (or ⌘Return sends with the
+/// "Submit with ⌘ + Enter" setting); ⇧Tab cycles the approval mode; Esc stops; `/` and `@`
+/// open completions; Up recalls the previous prompt. Attachments by drop, paste, photo picker
+/// or file importer. Disabled and uncertain-delivery states show their reasons.
 public struct ComposerView: View {
   @Binding private var draft: String
   private let state: ComposerViewState
@@ -46,7 +48,7 @@ public struct ComposerView: View {
   private var sendBlockedReason: String? {
     if let reason = state.availability.reason { return reason }
     switch state.delivery {
-    case .sending: return "Sending"
+    case .sending: return state.purpose == .start ? "Starting session" : "Sending"
     case .uncertain: return "Check the conversation before sending again."
     case .idle, .failed: break
     }
@@ -58,26 +60,40 @@ public struct ComposerView: View {
       return "Waiting for attachments to upload."
     }
     if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, state.attachments.isEmpty {
-      return "Type a message."
+      return state.purpose == .start ? "Enter a message to get started" : "Type a message."
     }
     return nil
   }
 
+  private var completions: ComposerCompletions {
+    ComposerCompletions(
+      draft: draft, commands: state.slashCommands, mentions: state.mentionCandidates)
+  }
+
   /// The composer.
   public var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: 6) {
       DeliveryBanner(
         delivery: state.delivery, acknowledge: actions.acknowledgeUncertainDelivery,
         dismiss: actions.dismissDeliveryError)
       if let attachmentError {
         ErrorBanner(message: attachmentError, dismiss: { self.attachmentError = nil })
       }
+      if !state.queue.isEmpty {
+        QueueStrip(queue: state.queue, actions: actions.extras)
+      }
+      if let tray = state.tray {
+        ComposerTrayView(tray: tray, actions: actions.extras)
+          .tint(.secondary)
+      }
+      if !completions.items.isEmpty {
+        CompletionList(items: completions.items) { draft = completions.applying($0) }
+      }
       VStack(alignment: .leading, spacing: 6) {
         if let reason = state.availability.reason {
           Label(reason, systemImage: "lock")
             .font(.caption)
             .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 6)
             .padding(.top, 4)
             .accessibilityIdentifier("composer-unavailable")
@@ -93,8 +109,8 @@ public struct ComposerView: View {
     }
     .padding(.horizontal, layoutWidth == .compact ? 10 : 16)
     .padding(.vertical, 10)
-    .frame(maxWidth: Theme.transcriptWidth)
-    .frame(maxWidth: .infinity)
+    .frame(minWidth: 0, maxWidth: Theme.transcriptWidth)
+    .frame(minWidth: 0, maxWidth: .infinity)
     .dropDestination(for: URL.self, isEnabled: canAttach) { urls, _ in
       add(urls.map { ComposerAttachmentInput.file(url: $0) })
     }
@@ -134,117 +150,28 @@ public struct ComposerView: View {
 
   private var editor: some View {
     GrowingTextEditor(
-      text: $draft, placeholder: state.placeholder, minLines: isExpanded ? 10 : 1,
-      maxLines: isExpanded ? 28 : 10
+      text: $draft, placeholder: state.placeholder, minLines: isExpanded ? 10 : 2,
+      maxLines: isExpanded ? 28 : 8
     )
     .focused($isFocused)
     .disabled(!isEditable)
+    .onKeyPress(.return, phases: .down) { press in handleReturn(press) }
+    .onKeyPress(.tab, phases: .down) { press in handleTab(press) }
+    .onKeyPress(.escape, phases: .down) { _ in handleEscape() }
+    .onKeyPress(.upArrow, phases: .down) { _ in handleUpArrow() }
     .accessibilityLabel("Message")
-    .accessibilityHint(isEditable ? "Command-Return sends" : (state.availability.reason ?? ""))
+    .accessibilityHint(
+      isEditable
+        ? (state.submitWithCommandReturn ? "Command-Return sends" : "Return sends")
+        : (state.availability.reason ?? "")
+    )
     .accessibilityIdentifier("composer-input")
   }
 
-  // MARK: Toolbar
-
-  private var toolbar: some View {
-    HStack(spacing: 6) {
-      if state.acceptsAttachments, actions.addAttachments != nil {
-        attachMenu
-      }
-      if let configuration = state.configuration {
-        ConfigurationMenu(configuration: configuration, actions: actions)
-          .disabled(!isEditable)
-      }
-      Spacer(minLength: 4)
-      Button {
-        withAnimation(reduceMotion ? nil : .snappy) { isExpanded.toggle() }
-      } label: {
-        Label(
-          isExpanded ? "Collapse Editor" : "Expand Editor",
-          systemImage: isExpanded
-            ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-      }
-      .labelStyle(.iconOnly)
-      .buttonStyle(.borderless)
-      .foregroundStyle(.secondary)
-      .help(isExpanded ? "Collapse the editor" : "Expand the editor")
-      .accessibilityIdentifier("composer-expand")
-      sendOrStop
-    }
+  private func send() {
+    guard sendBlockedReason == nil else { return }
+    actions.send()
   }
-
-  private var attachMenu: some View {
-    Menu {
-      Button("Choose Files\u{2026}", systemImage: "doc") { isImporting = true }
-      Button("Photos\u{2026}", systemImage: "photo.on.rectangle") { isPickingPhotos = true }
-      PasteButton(supportedContentTypes: [.fileURL, .image]) { providers in
-        Task { await loadProviders(providers) }
-      }
-    } label: {
-      Label("Add Attachments", systemImage: "paperclip")
-    }
-    .menuStyle(.button)
-    .buttonStyle(.borderless)
-    .menuIndicator(.hidden)
-    .labelStyle(.iconOnly)
-    .fixedSize()
-    .disabled(!canAttach)
-    .help("Add files or photos")
-    .accessibilityIdentifier("composer-attach")
-  }
-
-  @ViewBuilder private var sendOrStop: some View {
-    if state.isRunning {
-      Button {
-        actions.interrupt?()
-      } label: {
-        Group {
-          if state.isStopping {
-            ProgressView().controlSize(.small)
-          } else {
-            Image(systemName: "stop.fill").font(.system(size: 12, weight: .bold))
-              .accessibilityHidden(true)
-          }
-        }
-        .frame(width: 28, height: 28)
-        .background(.primary.opacity(0.12), in: Circle())
-        .contentShape(Circle())
-      }
-      .buttonStyle(.plain)
-      .keyboardShortcut(".", modifiers: .command)
-      .disabled(actions.interrupt == nil || state.isStopping)
-      .help("Stop the agent (Command-Period)")
-      .accessibilityLabel("Stop")
-      .accessibilityIdentifier("composer-stop")
-    }
-    let blocked = sendBlockedReason
-    Button {
-      guard sendBlockedReason == nil else { return }
-      actions.send()
-    } label: {
-      Group {
-        if state.delivery == .sending {
-          ProgressView().controlSize(.small).tint(.white)
-        } else {
-          Image(systemName: "arrow.up").font(.system(size: 14, weight: .bold))
-            .accessibilityHidden(true)
-        }
-      }
-      .foregroundStyle(.white)
-      .frame(width: 28, height: 28)
-      .background(blocked == nil ? Theme.accent : ThemeColor.secondary.opacity(0.4), in: Circle())
-      .contentShape(Circle())
-    }
-    .buttonStyle(.plain)
-    .keyboardShortcut(.return, modifiers: .command)
-    .disabled(blocked != nil)
-    .help(blocked ?? "Send (Command-Return)")
-    .accessibilityLabel("Send")
-    .accessibilityValue(blocked ?? "")
-    .accessibilityIdentifier("composer-send")
-  }
-
-  // MARK: Delivery
 
   // MARK: Attachment loading
 
@@ -264,5 +191,164 @@ public struct ComposerView: View {
     let result = await AttachmentLoading.providers(providers)
     add(result.inputs)
     if !result.failures.isEmpty { attachmentError = result.failures.joined(separator: "\n") }
+  }
+}
+
+extension ComposerView {
+  private func handleReturn(_ press: KeyPress) -> KeyPress.Result {
+    if !completions.items.isEmpty, let first = completions.items.first {
+      draft = completions.applying(first)
+      return .handled
+    }
+    #if os(iOS)
+      // Touch keyboards always insert a newline, as on the web; hardware keyboards use ⌘Return.
+      if !press.modifiers.contains(.command) { return .ignored }
+    #endif
+    if press.modifiers.contains(.shift) || press.modifiers.contains(.option) { return .ignored }
+    if state.submitWithCommandReturn, !press.modifiers.contains(.command) { return .ignored }
+    send()
+    return .handled
+  }
+
+  private func handleTab(_ press: KeyPress) -> KeyPress.Result {
+    if press.modifiers.contains(.shift), let modes = state.approvalModes, let next = modes.next,
+      let select = actions.extras.selectApprovalMode
+    {
+      select(next)
+      return .handled
+    }
+    if !press.modifiers.contains(.shift), let first = completions.items.first {
+      draft = completions.applying(first)
+      return .handled
+    }
+    return .ignored
+  }
+
+  private func handleEscape() -> KeyPress.Result {
+    guard state.isRunning, let interrupt = actions.interrupt, !state.isStopping else {
+      return .ignored
+    }
+    interrupt()
+    return .handled
+  }
+
+  private func handleUpArrow() -> KeyPress.Result {
+    guard draft.isEmpty, let recall = actions.extras.recallPrevious, let previous = recall() else {
+      return .ignored
+    }
+    draft = previous
+    return .handled
+  }
+}
+
+extension ComposerView {
+  // MARK: Toolbar
+
+  private var toolbar: some View {
+    HStack(spacing: 4) {
+      if state.acceptsAttachments, actions.addAttachments != nil {
+        AddMenu(
+          canAttach: canAttach, extras: actions.extras, chooseFiles: { isImporting = true },
+          choosePhotos: { isPickingPhotos = true },
+          paste: { providers in Task { await loadProviders(providers) } }
+        )
+        .tint(.secondary)
+      }
+      if let hosts = state.hosts {
+        HostChip(hosts: hosts, actions: actions.extras)
+          .tint(.secondary)
+      }
+      if let modes = state.approvalModes {
+        ApprovalModeChip(
+          modes: modes, select: actions.extras.selectApprovalMode,
+          isCompact: layoutWidth == .compact
+        )
+        .disabled(!isEditable)
+        .tint(.primary)
+      }
+      Spacer(minLength: 4)
+      if let configuration = state.configuration {
+        ConfigurationMenu(
+          configuration: configuration, actions: actions, isCompact: layoutWidth == .compact
+        )
+        .disabled(!isEditable)
+        .tint(.primary)
+      }
+      if let dictate = actions.extras.dictate {
+        Button("Dictate", systemImage: "mic", action: dictate)
+          .labelStyle(.iconOnly)
+          .buttonStyle(.borderless)
+          .foregroundStyle(.secondary)
+          .keyboardShortcut("v", modifiers: [.command, .option])
+          .help("Dictate (Option-Command-V)")
+          .disabled(!isEditable)
+          .accessibilityIdentifier("composer-mic")
+      }
+      if layoutWidth == .regular {
+        Button {
+          withAnimation(reduceMotion ? nil : .snappy) { isExpanded.toggle() }
+        } label: {
+          Label(
+            isExpanded ? "Collapse Editor" : "Expand Editor",
+            systemImage: isExpanded
+              ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help(isExpanded ? "Collapse the editor" : "Expand the editor")
+        .accessibilityIdentifier("composer-expand")
+      }
+      sendOrStop
+    }
+  }
+
+  @ViewBuilder private var sendOrStop: some View {
+    if state.isRunning, draft.isEmpty {
+      Button {
+        actions.interrupt?()
+      } label: {
+        Group {
+          if state.isStopping {
+            ProgressView().controlSize(.small)
+          } else {
+            Image(systemName: "stop.fill").font(.system(size: 11, weight: .bold))
+              .accessibilityHidden(true)
+          }
+        }
+        .frame(width: 28, height: 28)
+        .background(.primary.opacity(0.12), in: Circle())
+        .contentShape(Circle())
+      }
+      .buttonStyle(.plain)
+      .keyboardShortcut(".", modifiers: .command)
+      .disabled(actions.interrupt == nil || state.isStopping)
+      .help("Interrupt (Esc)")
+      .accessibilityLabel("Interrupt")
+      .accessibilityIdentifier("composer-stop")
+    } else {
+      let blocked = sendBlockedReason
+      Button(action: send) {
+        Group {
+          if state.delivery == .sending {
+            ProgressView().controlSize(.small).tint(.white)
+          } else {
+            Image(systemName: "arrow.up").font(.system(size: 14, weight: .bold))
+              .accessibilityHidden(true)
+          }
+        }
+        .foregroundStyle(.white)
+        .frame(width: 28, height: 28)
+        .background(blocked == nil ? Theme.accent : ThemeColor.secondary.opacity(0.4), in: Circle())
+        .contentShape(Circle())
+      }
+      .buttonStyle(.plain)
+      .keyboardShortcut(.return, modifiers: .command)
+      .disabled(blocked != nil)
+      .help(blocked ?? (state.purpose == .start ? "Start session" : "Send"))
+      .accessibilityLabel(state.purpose == .start ? "Start session" : "Send")
+      .accessibilityValue(blocked ?? "")
+      .accessibilityIdentifier("composer-send")
+    }
   }
 }

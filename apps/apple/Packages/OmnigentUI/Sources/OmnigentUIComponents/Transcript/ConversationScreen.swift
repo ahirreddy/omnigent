@@ -1,3 +1,4 @@
+import OmnigentPlatform
 public import SwiftUI
 
 /// Whether a session shows its chat transcript or its harness's terminal (TUI).
@@ -8,43 +9,81 @@ nonisolated public enum SessionViewMode: String, Hashable, Sendable, CaseIterabl
   case terminal
 }
 
-/// A whole conversation: the status header, the transcript (or the harness's terminal), plan,
-/// pending decisions, composer and inspector, with the Conversation menu commands published for
-/// the key window.
-///
-/// Drop it into the detail column of a `NavigationSplitView`. On compact width the inspector
-/// becomes a sheet. Pending decisions stay docked in both modes.
+/// Optional pieces of the conversation screen the host supplies.
+public struct ConversationExtras {
+  /// Title-menu actions (Pin, Share, Fork, Rename, Mark as unread, Move, Archive, Delete).
+  public var sessionActions: SessionListActions
+  /// Files and Changes content for the right panel.
+  public var slots: WorkspaceSlots
+  /// The Share sheet's state and actions; `nil` hides Share.
+  public var share: (state: ShareViewState, actions: ShareActions)?
+  /// The Fork dialog's actions; the dialog shows while `fork` is non-`nil`.
+  public var forkActions: ForkActions?
+  /// Previous and next session commands from the host's list.
+  public var navigation: SessionCommandActions
+
+  /// Creates extras.
+  /// - Parameters:
+  ///   - sessionActions: Title-menu actions.
+  ///   - slots: Right-panel content.
+  ///   - share: Share sheet.
+  ///   - forkActions: Fork dialog actions.
+  ///   - navigation: Session navigation commands.
+  public init(
+    sessionActions: SessionListActions = SessionListActions(),
+    slots: WorkspaceSlots = WorkspaceSlots(),
+    share: (state: ShareViewState, actions: ShareActions)? = nil, forkActions: ForkActions? = nil,
+    navigation: SessionCommandActions = SessionCommandActions()
+  ) {
+    self.sessionActions = sessionActions
+    self.slots = slots
+    self.share = share
+    self.forkActions = forkActions
+    self.navigation = navigation
+  }
+}
+
+/// A whole conversation, laid out like the web's session page: the toolbar header (title menu,
+/// viewers, Info, Chat/Terminal, Share, right-panel toggle), the transcript or the harness's
+/// terminal on the theme canvas, pending decisions docked above the composer, and the right
+/// panel with Files, Changes, Pull Requests, Agents and Info.
 public struct ConversationScreen<Terminal: View>: View {
   private let state: ConversationViewState
   private let composer: ComposerViewState
   @Binding private var draft: String
   @Binding private var showsInspector: Bool
   @Binding private var mode: SessionViewMode
+  @Binding private var fork: ForkViewState?
   private let actions: ConversationActions
   private let composerActions: ComposerActions
-  private let sessionNavigation: SessionCommandActions
+  private let extras: ConversationExtras
   private let terminal: Terminal
 
   @State private var scrollRequest = 0
   @State private var focusRequest = 0
+  @State private var inspectorTab: InspectorTab = .files
+  @State private var showsShare = false
+  @State private var showsInfo = false
+  @State private var drafts = DecisionDrafts()
   @Environment(\.layoutWidth) private var layoutWidth
 
-  /// Creates the screen with a terminal mode.
+  /// Creates the screen.
   /// - Parameters:
-  ///   - state: The conversation; `terminalAvailable` enables the Terminal mode.
+  ///   - state: The conversation.
   ///   - composer: The composer state.
   ///   - draft: The draft text.
-  ///   - showsInspector: Whether the inspector shows.
+  ///   - showsInspector: Whether the right panel shows.
   ///   - mode: Chat or Terminal.
+  ///   - fork: The Fork dialog's state; non-`nil` shows it.
   ///   - actions: Conversation actions.
   ///   - composerActions: Composer actions.
-  ///   - sessionNavigation: Previous and next session commands from the host's list.
+  ///   - extras: Title menu, right-panel content, Share and navigation.
   ///   - terminal: The terminal surface the app supplies (for example the libghostty view).
   public init(
     state: ConversationViewState, composer: ComposerViewState, draft: Binding<String>,
     showsInspector: Binding<Bool>, mode: Binding<SessionViewMode>,
-    actions: ConversationActions, composerActions: ComposerActions,
-    sessionNavigation: SessionCommandActions = SessionCommandActions(),
+    fork: Binding<ForkViewState?> = .constant(nil), actions: ConversationActions,
+    composerActions: ComposerActions, extras: ConversationExtras = ConversationExtras(),
     @ViewBuilder terminal: () -> Terminal
   ) {
     self.state = state
@@ -52,34 +91,26 @@ public struct ConversationScreen<Terminal: View>: View {
     _draft = draft
     _showsInspector = showsInspector
     _mode = mode
+    _fork = fork
     self.actions = actions
     self.composerActions = composerActions
-    self.sessionNavigation = sessionNavigation
+    self.extras = extras
     self.terminal = terminal()
   }
 
+  private var showsTerminal: Bool { mode == .terminal && state.terminalAvailable }
+
   /// The screen.
   public var body: some View {
-    let showsTerminal = mode == .terminal && state.terminalAvailable
     Group {
       if showsTerminal {
-        terminal
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .accessibilityIdentifier("session-terminal")
+        TerminalPane(status: state.terminal, resume: actions.resume) { terminal }
       } else {
         TranscriptView(state: state, actions: actions, scrollToLatestRequest: scrollRequest)
       }
     }
-    .safeAreaInset(edge: .top, spacing: 0) {
-      SessionHeaderView(state: state, showsTitle: layoutWidth == .compact)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
-    }
     .safeAreaInset(edge: .bottom, spacing: 0) {
       VStack(spacing: 0) {
-        if !showsTerminal, let todos = state.section("todos"), !todos.details.isEmpty {
-          PlanAccordion(section: todos)
-        }
         DecisionDock(state: state, actions: actions)
         if !showsTerminal {
           ComposerView(
@@ -88,40 +119,111 @@ public struct ConversationScreen<Terminal: View>: View {
           Spacer().frame(height: 10)
         }
       }
-      .background(.bar)
-      .overlay(alignment: .top) { Divider() }
+      // Report no minimum width: wrapping banners would otherwise push their single-line
+      // ideal width into the split view's minimum and the detail would fail to lay out.
+      .frame(minWidth: 0, maxWidth: .infinity)
     }
+    .themeCanvas()
+    .environment(drafts)
     .inspector(isPresented: $showsInspector) {
-      SessionInspectorView(state: state, actions: actions)
-        .inspectorColumnWidth(min: 260, ideal: 300, max: 420)
+      WorkspaceInspector(state: state, actions: actions, slots: extras.slots, tab: $inspectorTab)
+        .inspectorColumnWidth(min: 240, ideal: 420, max: 600)
     }
     .navigationTitle(state.header.title)
     #if os(macOS)
-      .navigationSubtitle(state.header.settings?.modelLabel ?? "")
+      .navigationSubtitle(state.projectName ?? "")
     #endif
-    .toolbar {
-      if state.terminalAvailable || state.terminalStartingUp {
-        ToolbarItem(placement: .principal) {
-          ViewModePicker(
-            mode: $mode, terminalAvailable: state.terminalAvailable,
-            terminalStartingUp: state.terminalStartingUp)
-        }
+    .toolbarTitleMenu { titleMenu }
+    .toolbar { toolbarContent }
+    .sheet(isPresented: $showsShare) {
+      if let share = extras.share {
+        ShareSheet(state: share.state, actions: share.actions) { showsShare = false }
       }
-      ToolbarItem(placement: .primaryAction) {
-        Button {
-          showsInspector.toggle()
-        } label: {
-          Label("Inspector", systemImage: "sidebar.trailing")
-        }
-        .help(showsInspector ? "Hide the inspector" : "Show the inspector")
-        .accessibilityIdentifier("toggle-inspector")
+    }
+    .sheet(item: $fork) { fork in
+      if let forkActions = extras.forkActions {
+        ForkSheet(state: fork, actions: forkActions)
       }
     }
     .focusedSceneValue(\.sessionCommands, commands)
   }
 
+  @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
+    if state.terminalAvailable {
+      ToolbarItem(placement: .principal) {
+        ViewModePicker(mode: $mode, status: state.terminal)
+      }
+    }
+    ToolbarItemGroup(placement: .primaryAction) {
+      if let presence = state.section("presence"), layoutWidth == .regular {
+        ViewerStack(viewers: SectionReading.viewers(presence))
+      }
+      if let info = state.agentInfo, !(info.tools.isEmpty && info.policies.isEmpty) {
+        Button("Agent info", systemImage: "info.circle") { showsInfo.toggle() }
+          .popover(isPresented: $showsInfo) { AgentInfoPopover(info: info) }
+          .help("Agent info")
+      }
+      if extras.share != nil {
+        Button {
+          showsShare = true
+        } label: {
+          Label("Share", systemImage: "person.badge.plus")
+            .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(Theme.accent)
+        .disabled(state.shareUnavailableReason != nil)
+        .help(state.shareUnavailableReason ?? "Share this session")
+        .accessibilityIdentifier("header-share")
+      }
+      Button {
+        showsInspector.toggle()
+      } label: {
+        Label("Right panel", systemImage: "sidebar.trailing")
+      }
+      .keyboardShortcut("]", modifiers: [.command, .option])
+      .help(
+        showsInspector
+          ? "Hide the right panel (Option-Command-])" : "Show the right panel (Option-Command-])"
+      )
+      .accessibilityIdentifier("toggle-inspector")
+    }
+  }
+
+  @ViewBuilder private var titleMenu: some View {
+    if let summary = state.summary {
+      let session = extras.sessionActions
+      if let setPinned = session.setPinned, summary.canPin {
+        Button(
+          summary.isPinned ? "Unpin" : "Pin", systemImage: summary.isPinned ? "pin.slash" : "pin"
+        ) {
+          setPinned(summary, !summary.isPinned)
+        }
+      }
+      if extras.share != nil {
+        Button("Share", systemImage: "person.badge.plus") { showsShare = true }
+          .disabled(state.shareUnavailableReason != nil)
+      }
+      if let forkSession = session.fork {
+        Button("Fork", systemImage: "arrow.triangle.branch") { forkSession(summary) }
+      }
+      if let setUnread = session.setUnread {
+        Button("Mark as unread", systemImage: "envelope.badge") { setUnread(summary, true) }
+      }
+      if let setArchived = session.setArchived, summary.canArchive {
+        Button(summary.isArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
+          setArchived(summary, !summary.isArchived)
+        }
+      }
+      if let delete = session.delete {
+        Button("Delete", systemImage: "trash", role: .destructive) { delete(summary) }
+      }
+    }
+    Button("Copy Session ID", systemImage: "number") { Pasteboard.copy(state.header.id) }
+  }
+
   private var commands: SessionCommandActions {
-    let chat = mode == .chat || !state.terminalAvailable
+    let chat = !showsTerminal
     let canSend =
       chat && composer.availability == .available && composer.delivery == .idle
       && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -142,8 +244,8 @@ public struct ConversationScreen<Terminal: View>: View {
       interrupt: composer.isRunning ? composerActions.interrupt : nil,
       jumpToLatest: jump, focusComposer: focus,
       toggleInspector: { showsInspector.toggle() },
-      previousSession: sessionNavigation.previousSession,
-      nextSession: sessionNavigation.nextSession,
+      previousSession: extras.navigation.previousSession,
+      nextSession: extras.navigation.nextSession,
       toggleViewMode: toggleMode)
   }
 }
@@ -154,19 +256,18 @@ extension ConversationScreen where Terminal == EmptyView {
   ///   - state: The conversation.
   ///   - composer: The composer state.
   ///   - draft: The draft text.
-  ///   - showsInspector: Whether the inspector shows.
+  ///   - showsInspector: Whether the right panel shows.
   ///   - actions: Conversation actions.
   ///   - composerActions: Composer actions.
-  ///   - sessionNavigation: Previous and next session commands from the host's list.
+  ///   - extras: Title menu, right-panel content, Share and navigation.
   public init(
     state: ConversationViewState, composer: ComposerViewState, draft: Binding<String>,
     showsInspector: Binding<Bool>, actions: ConversationActions, composerActions: ComposerActions,
-    sessionNavigation: SessionCommandActions = SessionCommandActions()
+    extras: ConversationExtras = ConversationExtras()
   ) {
     self.init(
       state: state, composer: composer, draft: draft, showsInspector: showsInspector,
-      mode: .constant(.chat), actions: actions, composerActions: composerActions,
-      sessionNavigation: sessionNavigation
+      mode: .constant(.chat), actions: actions, composerActions: composerActions, extras: extras
     ) {
       EmptyView()
     }
@@ -176,75 +277,17 @@ extension ConversationScreen where Terminal == EmptyView {
 /// The Chat and Terminal segmented switch.
 struct ViewModePicker: View {
   @Binding var mode: SessionViewMode
-  let terminalAvailable: Bool
-  let terminalStartingUp: Bool
+  let status: TerminalStatus
 
   var body: some View {
     Picker("View", selection: $mode) {
       Label("Chat", systemImage: "bubble.left.and.text.bubble.right").tag(SessionViewMode.chat)
-      Label(terminalStartingUp ? "Starting Terminal" : "Terminal", systemImage: "apple.terminal")
-        .tag(SessionViewMode.terminal)
-        .selectionDisabled(!terminalAvailable)
+      Label("Terminal", systemImage: "apple.terminal").tag(SessionViewMode.terminal)
     }
     .pickerStyle(.segmented)
-    .labelStyle(.titleAndIcon)
+    .labelStyle(.iconOnly)
     .fixedSize()
-    .help(
-      terminalAvailable ? "Switch between chat and the harness terminal" : "Starting the terminal"
-    )
+    .help("Chat or Terminal (Option-Command-\\)")
     .accessibilityIdentifier("session-view-mode")
-  }
-}
-
-/// A stand-in terminal surface for previews and the playground until the app supplies the real
-/// one: a dark, monospaced TUI mock.
-public struct TerminalPlaceholderView: View {
-  private let harness: String?
-
-  /// Creates the placeholder.
-  /// - Parameter harness: The harness id, for the banner.
-  public init(harness: String?) {
-    self.harness = harness
-  }
-
-  /// The mock terminal.
-  public var body: some View {
-    let name = HarnessAppearance(harness: harness).label
-    ScrollView {
-      VStack(alignment: .leading, spacing: 2) {
-        line(
-          "\u{256D}\u{2500} \(name) \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}", .cyan
-        )
-        line("\u{2502} cwd: /workspace/omnigent", .gray)
-        line(
-          "\u{2570}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
-          .cyan)
-        line("")
-        line("> refactor the token refresh and add tests", .white)
-        line("")
-        line("\u{25CF} Read(client-core/crates/omnigent-core/src/auth/refresh.rs)", .green)
-        line("  \u{23BF} Read 182 lines", .gray)
-        line("\u{25CF} Bash(cargo test -p omnigent-core auth)", .green)
-        line("  \u{23BF} test result: FAILED. 41 passed; 1 failed", .red)
-        line("\u{25CF} Update(auth/refresh.rs)", .green)
-        line("  \u{23BF} +4 -3", .gray)
-        line("")
-        line("\u{2733} Re-running the expiry test\u{2026} (esc to interrupt)", .orange)
-        line("")
-        line("Terminal surface placeholder. The app supplies the real terminal view.", .gray)
-      }
-      .padding(16)
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .background(Color(red: 0.08, green: 0.08, blue: 0.1))
-    .environment(\.colorScheme, .dark)
-    .accessibilityLabel("Terminal placeholder for \(name)")
-  }
-
-  private func line(_ text: String, _ color: Color = .white) -> some View {
-    Text(verbatim: text)
-      .font(.system(.callout, design: .monospaced))
-      .foregroundStyle(color)
-      .textSelection(.enabled)
   }
 }

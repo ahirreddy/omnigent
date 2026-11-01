@@ -12,17 +12,7 @@ enum PreviewData {
 
   // MARK: Themes
 
-  /// A sample second theme that exercises the theme system until the web UI's named themes land.
-  static let sampleTheme = OmnigentTheme(
-    id: "sample-violet", name: "Sample Violet",
-    light: ThemePalette(
-      accent: Color(red: 0.45, green: 0.30, blue: 0.85), running: .teal,
-      surfaceTint: Color(red: 0.45, green: 0.30, blue: 0.85)),
-    dark: ThemePalette(
-      accent: Color(red: 0.62, green: 0.50, blue: 1.0), running: .mint,
-      surfaceTint: Color(red: 0.62, green: 0.50, blue: 1.0)))
-
-  static let themes = OmnigentTheme.builtIn + [sampleTheme]
+  static let themes = OmnigentTheme.builtIn + [CustomTheme.default.theme()]
 
   // MARK: Settings
 

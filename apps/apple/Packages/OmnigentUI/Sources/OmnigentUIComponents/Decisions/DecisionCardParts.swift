@@ -62,32 +62,32 @@ struct PermissionChoice {
     if permissions.allowAllEdits {
       choices.append(
         .init(
-          response: .approveAllEdits, label: "Approve and allow all edits",
+          response: .approveAllEdits, label: "Accept & allow all edits",
           systemImage: "pencil.and.list.clipboard"))
     }
     if permissions.allowAutoMode {
       choices.append(
         .init(
-          response: .approveAutoMode, label: "Approve and switch to auto mode", systemImage: "bolt")
+          response: .approveAutoMode, label: "Approve & switch to auto mode", systemImage: "bolt")
       )
     }
     if !permissions.permissionDirectories.isEmpty {
       choices.append(
         .init(
-          response: .approveDirectories, label: "Approve for these directories",
+          response: .approveDirectories, label: "Approve & allow directories for this session",
           systemImage: "folder.badge.plus"))
     }
     if let label = permissions.rememberLabel {
       choices.append(
         .init(
-          response: .approveRemembering, label: "Approve and don't ask again for \(label)",
+          response: .approveRemembering, label: "Approve & don't ask again for \(label)",
           systemImage: "checkmark.seal"))
     }
     if let policy = permissions.execPolicyAmendment, !policy.isEmpty {
       choices.append(
         .init(
           response: .approveCommandPolicy(policy: policy),
-          label: "Approve and allow \(policy.joined(separator: " "))", systemImage: "terminal"))
+          label: "Approve and remember", systemImage: "terminal"))
     }
     if permissions.offersPersist(.session) {
       choices.append(
@@ -98,7 +98,7 @@ struct PermissionChoice {
     if permissions.offersPersist(.always) {
       choices.append(
         .init(
-          response: .approvePersist(mode: .always), label: "Always approve", systemImage: "infinity"
+          response: .approvePersist(mode: .always), label: "Always allow", systemImage: "infinity"
         ))
     }
     return choices
@@ -121,36 +121,39 @@ struct PlanReviewControls: View {
         VStack(alignment: .leading, spacing: 8) { planButtons }
       }
       HStack(alignment: .bottom, spacing: 8) {
-        TextField("Feedback for a revised plan", text: $feedback, axis: .vertical)
+        TextField("What should change about the plan? (optional)", text: $feedback, axis: .vertical)
           .lineLimit(1...4)
           .textFieldStyle(.roundedBorder)
           .disabled(!canRespond)
           .accessibilityIdentifier("decision-plan-feedback-\(card.id)")
-        Button("Reject") { send(.declineWithFeedback(feedback: feedback)) }
-          .disabled(!canRespond || feedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          .accessibilityIdentifier("decision-plan-reject-\(card.id)")
+        Button("Reject plan") {
+          let text = feedback.trimmingCharacters(in: .whitespacesAndNewlines)
+          send(text.isEmpty ? .decline : .declineWithFeedback(feedback: text))
+        }
+        .disabled(!canRespond)
+        .accessibilityIdentifier("decision-plan-reject-\(card.id)")
       }
     }
   }
 
   @ViewBuilder private var planButtons: some View {
-    Button("Approve Plan") { send(.approve) }
+    Button("Yes, manually approve edits") { send(.approve) }
       .buttonStyle(.borderedProminent)
       .controlSize(.large)
       .disabled(!canRespond)
     if card.permissions.allowAllEdits {
-      Button("Approve and Allow Edits") { confirm(.approveAllEdits) }
+      Button("Accept & allow all edits") { confirm(.approveAllEdits) }
         .buttonStyle(.bordered)
         .controlSize(.large)
         .disabled(!canRespond)
     }
     if card.permissions.allowAutoMode {
-      Button("Approve in Auto Mode") { confirm(.approveAutoMode) }
+      Button("Yes, and use auto mode") { confirm(.approveAutoMode) }
         .buttonStyle(.bordered)
         .controlSize(.large)
         .disabled(!canRespond)
     }
-    Button("Decline") { send(.decline) }
+    Button("Reject") { send(.decline) }
       .buttonStyle(.bordered)
       .controlSize(.large)
       .disabled(!canRespond)

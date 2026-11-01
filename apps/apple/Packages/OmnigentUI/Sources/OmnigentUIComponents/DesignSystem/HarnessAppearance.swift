@@ -44,16 +44,16 @@ nonisolated public struct HarnessAppearance: Hashable, Sendable {
     let label: String
   }
 
-  /// The brand tint, or the primary color for monochrome marks.
-  public var tint: Color {
+  /// The brand tint (Claude's `#D97757`); `nil` for monochrome marks, as on the web.
+  public var tint: Color? {
     switch identifier {
-    case "claude", "claude-sdk": Color(red: 217 / 255, green: 119 / 255, blue: 87 / 255)
-    case "kiro": Color(red: 144 / 255, green: 70 / 255, blue: 1)
-    case "codex", "openai-agents": Color(red: 0.06, green: 0.64, blue: 0.5)
-    case "antigravity": Color(red: 0.26, green: 0.52, blue: 0.96)
-    default: Color.secondary
+    case "claude", "claude-sdk": Color(hex: 0xD97757)
+    default: nil
     }
   }
+
+  /// Codex and OpenAI Agents use the web's vertical gradient.
+  var usesCodexGradient: Bool { identifier == "codex" || identifier == "openai-agents" }
 
   /// A one- or two-letter monogram.
   public var monogram: String {
@@ -74,14 +74,26 @@ struct HarnessGlyph: View {
 
   var body: some View {
     let appearance = HarnessAppearance(harness: harness)
+    let shape = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
     Text(verbatim: appearance.monogram)
       .font(.system(size: size * 0.5, weight: .bold, design: .rounded))
-      .foregroundStyle(.white)
-      .frame(width: size, height: size)
-      .background(
-        appearance.identifier == "fallback" ? Color.gray : appearance.tint,
-        in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+      .foregroundStyle(
+        appearance.tint == nil && !appearance.usesCodexGradient
+          ? AnyShapeStyle(.primary) : AnyShapeStyle(.white)
       )
+      .frame(width: size, height: size)
+      .background {
+        if appearance.usesCodexGradient {
+          shape.fill(
+            LinearGradient(
+              colors: [Color(hex: 0xB1A7FF), Color(hex: 0x7A9DFF), Color(hex: 0x3941FF)],
+              startPoint: .top, endPoint: .bottom))
+        } else if let tint = appearance.tint {
+          shape.fill(tint)
+        } else {
+          shape.strokeBorder(.secondary.opacity(0.6), lineWidth: 1)
+        }
+      }
       .accessibilityElement()
       .accessibilityLabel(appearance.label)
       .accessibilityAddTraits(.isImage)

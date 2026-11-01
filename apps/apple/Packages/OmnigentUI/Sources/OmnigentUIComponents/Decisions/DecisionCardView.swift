@@ -77,7 +77,7 @@ public struct DecisionCardView: View {
         card: card, phase: phase, isReadOnly: isReadOnly || respond == nil)
     }
     .padding(14)
-    .cardSurface(cornerRadius: Theme.Radius.large, tint: accent, stroke: accent.opacity(0.45))
+    .cardSurface(cornerRadius: Theme.Radius.large, stroke: accent.opacity(0.4))
     .confirmationDialog(
       "Change approval behavior?",
       isPresented: Binding(
@@ -96,24 +96,16 @@ public struct DecisionCardView: View {
     .accessibilityIdentifier("decision-\(card.id)")
   }
 
-  private var accent: ThemeColor {
-    switch phase {
-    case .answered: Theme.running
-    case .failed: Theme.failure
-    case .pending, .resolving: Theme.attention
-    }
-  }
-
   private var header: some View {
     HStack(alignment: .center, spacing: 10) {
       Image(systemName: headerSymbol)
         .font(.body.weight(.semibold))
-        .foregroundStyle(.white)
+        .foregroundStyle(iconTint)
         .frame(width: 28, height: 28)
-        .background(accent, in: Circle())
+        .background(iconTint.opacity(0.15), in: Circle())
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 2) {
-        Text(card.title).font(.headline)
+        Text(displayTitle).font(.headline)
         if let policy = card.policyName ?? card.phase {
           Text(policy).font(.caption).foregroundStyle(.secondary)
         }
@@ -171,7 +163,7 @@ public struct DecisionCardView: View {
           Button {
             openURL(url)
           } label: {
-            Label("Open Confirmation Page", systemImage: "arrow.up.forward.app")
+            Label("Open approval page", systemImage: "arrow.up.forward.app")
           }
           .buttonStyle(.borderedProminent)
           Text(url.host() ?? address).font(.caption).foregroundStyle(.secondary)
@@ -196,6 +188,7 @@ public struct DecisionCardView: View {
               Label(extra.label, systemImage: extra.systemImage)
             }
             .buttonStyle(.bordered)
+            .tint(.primary)
             .disabled(!canRespond)
             .accessibilityHint("Asks for confirmation; changes approval behavior")
           }
@@ -217,9 +210,10 @@ public struct DecisionCardView: View {
     Button {
       send(.decline)
     } label: {
-      Text("Decline").frame(minWidth: 80)
+      Text("Reject").frame(minWidth: 80)
     }
     .buttonStyle(.bordered)
+    .tint(.primary)
     .controlSize(.large)
     .disabled(!canRespond)
     .accessibilityIdentifier("approval-decline-\(card.id)")
@@ -253,7 +247,7 @@ public struct DecisionCardView: View {
   }
 
   private var dismissButton: some View {
-    Button("Dismiss Without Answering") { send(.cancel) }
+    Button("Cancel") { send(.cancel) }
       .buttonStyle(.borderless)
       .font(.callout)
       .disabled(!canRespond)
@@ -263,5 +257,35 @@ public struct DecisionCardView: View {
     pendingPermission = nil
     guard canRespond, let respond else { return }
     respond(response)
+  }
+}
+
+extension DecisionCardView {
+  /// The web's card titles.
+  private var displayTitle: String {
+    if card.permissions.plan != nil { return "Plan review" }
+    if card.permissions.command != nil { return "Command approval" }
+    switch card.kind {
+    case .approval: return "Approval required"
+    case .choice: return "Choose an option"
+    case .form: return card.title == "Response requested" ? "Questions" : card.title
+    case .unsupported: return card.title
+    }
+  }
+
+  private var iconTint: ThemeColor {
+    switch phase {
+    case .answered: Theme.success
+    case .failed: Theme.failure
+    case .pending, .resolving: .approval
+    }
+  }
+
+  private var accent: ThemeColor {
+    switch phase {
+    case .answered: Theme.success
+    case .failed: Theme.failure
+    case .pending, .resolving: Theme.attention
+    }
   }
 }

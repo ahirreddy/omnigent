@@ -128,7 +128,9 @@ struct ToolGroupView: View, Equatable {
   }
 
   private var groupTitle: String {
-    isRunning ? "Working with \(entries.count) tools" : "Used \(entries.count) tools"
+    isRunning
+      ? "Working with \(entries.count) tools"
+      : ToolRunSummary.text(for: entries.map { $0.primary?.activity?.title ?? "" })
   }
 
   private var toolNames: String {

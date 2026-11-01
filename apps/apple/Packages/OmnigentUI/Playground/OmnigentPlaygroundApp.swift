@@ -1,4 +1,5 @@
 import OmnigentUIComponents
+import OmnigentWorkspaceUI
 import SwiftUI
 
 #if os(macOS)
@@ -24,18 +25,18 @@ struct OmnigentPlaygroundApp: App {
     let model = PlaygroundModel(
       scenario: environment["OMNIGENT_PLAYGROUND_SCENARIO"]
         .flatMap(PlaygroundScenario.init(rawValue:)) ?? .streaming)
-    if let theme = environment["OMNIGENT_PLAYGROUND_THEME"] { model.themeID = theme }
+    if let theme = environment["OMNIGENT_PLAYGROUND_THEME"] { model.preferences.paletteID = theme }
     if let appearance = environment["OMNIGENT_PLAYGROUND_APPEARANCE"]
       .flatMap(AppearancePreference.init(rawValue:))
     {
-      model.appearance = appearance
+      model.preferences.mode = appearance
     }
     return model
   }
 
   var body: some Scene {
     WindowGroup("Omnigent Playground") {
-      PlaygroundView(model: model)
+      PlaygroundView(model: model, slots: PlaygroundWorkspace.slots)
         .toolbar {
           ToolbarItem(placement: .navigation) {
             Picker("Scenario", selection: $model.scenario) {
@@ -48,10 +49,10 @@ struct OmnigentPlaygroundApp: App {
           }
           ToolbarItem(placement: .navigation) {
             Menu {
-              Picker("Theme", selection: $model.themeID) {
-                ForEach(PlaygroundModel.themes) { theme in Text(theme.name).tag(theme.id) }
+              Picker("Theme", selection: Bindable(model.preferences).paletteID) {
+                ForEach(model.preferences.themes) { theme in Text(theme.name).tag(theme.id) }
               }
-              Picker("Appearance", selection: $model.appearance) {
+              Picker("Appearance", selection: Bindable(model.preferences).mode) {
                 ForEach(AppearancePreference.allCases) { preference in
                   Text(preference.title).tag(preference)
                 }
@@ -74,11 +75,30 @@ struct OmnigentPlaygroundApp: App {
       OmnigentSessionCommands()
       CommandMenu("Scenario") {
         ForEach(Array(PlaygroundScenario.allCases.enumerated()), id: \.element) { index, scenario in
-          Button(scenario.title) { model.scenario = scenario }
-            .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+          if index < 9 {
+            Button(scenario.title) { model.scenario = scenario }
+              .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+          } else {
+            Button(scenario.title) { model.scenario = scenario }
+          }
         }
       }
     }
+  }
+}
+
+/// Real Files and Changes content from `OmnigentWorkspaceUI`, on its sample data source.
+enum PlaygroundWorkspace {
+  static let browser = WorkspaceBrowserModel(source: SampleWorkspaceDataSource())
+
+  static var slots: WorkspaceSlots {
+    WorkspaceSlots(
+      files: AnyView(
+        FileTreeView(model: browser.tree, source: browser.source, actions: .none)
+          .task { await WorkspaceGallery.prepare(browser.tree) }),
+      changes: AnyView(
+        ChangedFilesList(model: browser.changes, source: browser.source, actions: .none) { _ in }
+          .task { await browser.changes.reload() }))
   }
 }
 

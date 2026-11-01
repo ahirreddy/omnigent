@@ -110,7 +110,7 @@ public struct SessionInspectorView: View {
       if let fraction = usage.fraction {
         VStack(alignment: .leading, spacing: 4) {
           ProgressView(value: fraction)
-            .tint(fraction > 0.85 ? Theme.attention : Theme.accent)
+            .tint(fraction > 0.85 ? Theme.warning : Theme.accent)
           Text(
             "\(usage.contextTokens?.formatted() ?? "?") of \(usage.contextWindow?.formatted() ?? "?") context tokens"
           )

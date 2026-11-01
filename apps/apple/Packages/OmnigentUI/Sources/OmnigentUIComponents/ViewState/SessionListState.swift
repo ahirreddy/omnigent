@@ -108,9 +108,9 @@ nonisolated public enum SessionFilter: String, Hashable, Sendable, CaseIterable,
   /// The display title (the core's `SessionFilter::title`).
   public var title: String {
     switch self {
-    case .all: "All Sessions"
+    case .all: "All sessions"
     case .running: "Running"
-    case .needsResponse: "Needs Response"
+    case .needsResponse: "Needs response"
     case .archived: "Archived"
     }
   }
@@ -189,6 +189,18 @@ public struct SessionListActions {
   public var rename: (@MainActor (SessionSummary, String) -> Void)?
   /// Mark read or unread.
   public var setUnread: (@MainActor (SessionSummary, Bool) -> Void)?
+  /// Open the Share sheet.
+  public var share: (@MainActor (SessionSummary) -> Void)?
+  /// Fork (clone) the whole session.
+  public var fork: (@MainActor (SessionSummary) -> Void)?
+  /// Move to a project (`nil` removes it from its project).
+  public var moveToProject: (@MainActor (SessionSummary, SessionProject?) -> Void)?
+  /// Stop the running session.
+  public var stop: (@MainActor (SessionSummary) -> Void)?
+  /// Delete (after confirmation).
+  public var delete: (@MainActor (SessionSummary) -> Void)?
+  /// Leave a shared session (after confirmation).
+  public var leave: (@MainActor (SessionSummary) -> Void)?
   /// Open in a new window or tab.
   public var openInNewWindow: (@MainActor (SessionSummary) -> Void)?
   /// The session's shareable web link, for Copy Link.
@@ -205,6 +217,12 @@ public struct SessionListActions {
   ///   - setArchived: Archive or restore.
   ///   - rename: Rename.
   ///   - setUnread: Mark read or unread.
+  ///   - share: Share.
+  ///   - fork: Fork.
+  ///   - moveToProject: Move to a project.
+  ///   - stop: Stop.
+  ///   - delete: Delete.
+  ///   - leave: Leave.
   ///   - openInNewWindow: Open in a new window.
   ///   - webURL: Web link.
   ///   - newSession: New session.
@@ -215,6 +233,12 @@ public struct SessionListActions {
     setArchived: (@MainActor (SessionSummary, Bool) -> Void)? = nil,
     rename: (@MainActor (SessionSummary, String) -> Void)? = nil,
     setUnread: (@MainActor (SessionSummary, Bool) -> Void)? = nil,
+    share: (@MainActor (SessionSummary) -> Void)? = nil,
+    fork: (@MainActor (SessionSummary) -> Void)? = nil,
+    moveToProject: (@MainActor (SessionSummary, SessionProject?) -> Void)? = nil,
+    stop: (@MainActor (SessionSummary) -> Void)? = nil,
+    delete: (@MainActor (SessionSummary) -> Void)? = nil,
+    leave: (@MainActor (SessionSummary) -> Void)? = nil,
     openInNewWindow: (@MainActor (SessionSummary) -> Void)? = nil,
     webURL: (@MainActor (SessionSummary) -> URL?)? = nil,
     newSession: (@MainActor () -> Void)? = nil,
@@ -225,6 +249,12 @@ public struct SessionListActions {
     self.setArchived = setArchived
     self.rename = rename
     self.setUnread = setUnread
+    self.share = share
+    self.fork = fork
+    self.moveToProject = moveToProject
+    self.stop = stop
+    self.delete = delete
+    self.leave = leave
     self.openInNewWindow = openInNewWindow
     self.webURL = webURL
     self.newSession = newSession

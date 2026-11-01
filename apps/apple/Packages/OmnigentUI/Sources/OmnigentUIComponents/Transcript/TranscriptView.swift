@@ -34,35 +34,38 @@ public struct TranscriptView: View {
 
   /// The transcript.
   public var body: some View {
-    let entries = Self.entries(for: state.rows)
+    let segments = Self.segments(for: state)
+    let lastAnswerID = state.header.status == .running ? nil : Self.lastAnswerID(state.rows)
     ScrollViewReader { proxy in
       ScrollView {
         LazyVStack(alignment: .leading, spacing: Theme.Spacing.row) {
           historyHeader
+          if let todos = state.section("todos"), !todos.details.isEmpty {
+            PlanCard(section: todos)
+          }
           if let superseded = state.section("superseded"), let target = superseded.sessionId,
             target != state.header.id
           {
             SupersededBanner(section: superseded, target: target)
           }
-          if entries.isEmpty {
+          if segments.isEmpty {
             EmptyTranscriptView(state: state)
           }
-          ForEach(entries) { entry in
-            TranscriptItemView(item: entry.item, showsAuthor: entry.showsAuthor)
-              .equatable()
-              .id(entry.id)
+          ForEach(segments) { segment in
+            TurnSegmentView(
+              segment: segment, decorations: decorations(for: segment, lastAnswerID: lastAnswerID),
+              duration: duration(for: segment)
+            )
+            .equatable()
+            .id(segment.id)
           }
+          InlineDecisions(state: state, actions: actions)
           ChildSessionsStrip(sections: state.sections, currentSessionID: state.header.id)
           if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
-            HStack(spacing: 8) {
-              TypingIndicator()
-              Text("Working").font(.callout).foregroundStyle(.secondary)
-            }
-            .padding(.leading, 4)
-            .accessibilityIdentifier("transcript-working")
+            WorkingIndicator(isBlocked: !state.pendingDecisions.isEmpty)
           }
           if let failure = state.header.failureMessage, !hasErrorRow(matching: failure) {
-            FailureBanner(message: failure)
+            FailureBanner(message: failure, resume: actions.resume)
           }
           if let error = state.errorMessage {
             ErrorBanner(message: error, dismiss: actions.dismissError, retry: actions.retry)
@@ -130,14 +133,14 @@ public struct TranscriptView: View {
     if state.isLoadingHistory {
       HStack {
         Spacer()
-        ProgressView("Loading earlier messages").controlSize(.small)
+        ProgressView("Loading earlier messages\u{2026}").controlSize(.small)
         Spacer()
       }
       .accessibilityIdentifier("history-loading")
     } else if state.hasMoreHistory, let loadOlder = actions.loadOlder {
       HStack {
         Spacer()
-        Button("Load Earlier Messages", systemImage: "clock.arrow.circlepath", action: loadOlder)
+        Button("Load earlier messages", systemImage: "clock.arrow.circlepath", action: loadOlder)
           .buttonStyle(.borderless)
           .accessibilityIdentifier("load-older-messages")
         Spacer()
@@ -158,210 +161,74 @@ public struct TranscriptView: View {
     }
   }
 
-  struct Entry: Identifiable, Hashable {
-    let item: TranscriptItem
-    let showsAuthor: Bool
-    var id: String { item.id }
+  /// The transcript after turn folding.
+  static func segments(for state: ConversationViewState) -> [TurnSegment] {
+    TurnLayout.segments(
+      TranscriptLayout.items(for: state.rows), isRunning: state.header.status == .running)
   }
 
-  /// Items plus whether each assistant message starts a new speaker run.
-  static func entries(for rows: [Row]) -> [Entry] {
-    var previousSpeaker: String?
-    return TranscriptLayout.items(for: rows).map { item in
-      switch item {
-      case .message(let row):
-        let speaker = row.role == .user ? "user:\(row.author ?? "")" : "agent:\(row.agent ?? "")"
-        defer { previousSpeaker = speaker }
-        return Entry(item: item, showsAuthor: speaker != previousSpeaker)
-      case .tools, .activity:
-        return Entry(item: item, showsAuthor: false)
+  /// The last settled assistant answer, whose actions stay visible while idle.
+  static func lastAnswerID(_ rows: [Row]) -> String? {
+    rows.last { $0.role == .assistant && !$0.isStreaming && !$0.text.isEmpty }?.id
+  }
+
+  private func decorations(for segment: TurnSegment, lastAnswerID: String?) -> [String:
+    MessageDecoration]
+  {
+    var result: [String: MessageDecoration] = [:]
+    let items: [TranscriptItem] =
+      switch segment {
+      case .item(let item): [item]
+      case .worked(_, _, let items, _): items
       }
+    for item in items {
+      guard case .message(let row) = item else { continue }
+      let isOther =
+        state.isShared && row.role == .user && row.author != nil
+        && row.author != state.viewerName
+      result[row.id] = MessageDecoration(
+        timestamp: state.timestamps[row.id], showsActions: row.id == lastAnswerID,
+        showsAvatar: isOther)
+    }
+    return result
+  }
+
+  private func duration(for segment: TurnSegment) -> TimeInterval? {
+    guard case .worked(_, let responseID, _, _) = segment, let responseID else { return nil }
+    return state.turnDurations[responseID]
+  }
+}
+
+/// One folded segment: a plain item, or a Worked fold.
+private struct TurnSegmentView: View, Equatable {
+  let segment: TurnSegment
+  let decorations: [String: MessageDecoration]
+  let duration: TimeInterval?
+
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.segment == rhs.segment && lhs.decorations == rhs.decorations && lhs.duration == rhs.duration
+  }
+
+  var body: some View {
+    switch segment {
+    case .item(let item):
+      TranscriptItemView(item: item, decorations: decorations)
+    case .worked(_, _, let items, let isLive):
+      WorkedFold(items: items, isLive: isLive, duration: duration, decorations: decorations)
     }
   }
 }
 
-private struct TranscriptItemView: View, Equatable {
+struct TranscriptItemView: View {
   let item: TranscriptItem
-  let showsAuthor: Bool
-
-  static func == (lhs: Self, rhs: Self) -> Bool {
-    lhs.item == rhs.item && lhs.showsAuthor == rhs.showsAuthor
-  }
+  let decorations: [String: MessageDecoration]
 
   var body: some View {
     switch item {
-    case .message(let row): MessageRowView(row: row, showsAuthor: showsAuthor)
+    case .message(let row):
+      MessageRowView(row: row, decoration: decorations[row.id] ?? MessageDecoration())
     case .tools(_, let entries): ToolGroupView(entries: entries)
     case .activity(let row): ActivityRowView(row: row)
     }
-  }
-}
-
-private struct EmptyTranscriptView: View {
-  let state: ConversationViewState
-
-  var body: some View {
-    VStack(spacing: 8) {
-      Image(systemName: "bubble.left.and.text.bubble.right")
-        .font(.largeTitle)
-        .foregroundStyle(.tertiary)
-        .accessibilityHidden(true)
-      Text(title).font(.headline)
-      Text(detail)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .multilineTextAlignment(.center)
-    }
-    .frame(maxWidth: .infinity)
-    .padding(.vertical, 60)
-    .accessibilityElement(children: .combine)
-  }
-
-  private var title: String {
-    state.hasMoreHistory ? "No messages on this page" : "No messages yet"
-  }
-
-  private var detail: String {
-    if !state.lifecycleRows.isEmpty { return "Lifecycle details are in the inspector." }
-    if state.hasMoreHistory { return "Load earlier messages to continue." }
-    return "Send a message to start the conversation."
-  }
-}
-
-private struct SupersededBanner: View {
-  let section: EventSection
-  let target: String
-  @Environment(\.conversationActions) private var actions
-
-  var body: some View {
-    HStack(alignment: .top, spacing: 10) {
-      Image(systemName: "arrow.turn.down.right")
-        .foregroundStyle(Theme.accent)
-        .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 4) {
-        Text(section.title).font(.callout.weight(.semibold))
-        Text(section.summary).font(.callout).foregroundStyle(.secondary)
-      }
-      Spacer(minLength: 8)
-      if let open = actions.openSession {
-        Button("Open") { open(target) }
-          .accessibilityIdentifier("session-open-successor")
-      }
-    }
-    .padding(12)
-    .cardSurface(cornerRadius: Theme.Radius.medium, tint: Theme.accent)
-  }
-}
-
-/// Links to child (subagent) sessions the stream reported.
-struct ChildSessionsStrip: View {
-  let sections: [EventSection]
-  let currentSessionID: String
-  @Environment(\.conversationActions) private var actions
-
-  private var children: [EventSection] {
-    sections.filter { $0.id.hasPrefix("child-") && $0.sessionId != nil }
-  }
-
-  var body: some View {
-    if !children.isEmpty {
-      VStack(alignment: .leading, spacing: 6) {
-        Text("Subagent sessions")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
-        FlowLayout(spacing: 6) {
-          ForEach(children) { child in
-            ChildSessionLink(section: child, open: actions.openSession)
-          }
-        }
-      }
-      .accessibilityElement(children: .contain)
-    }
-  }
-}
-
-struct ChildSessionLink: View {
-  let section: EventSection
-  let open: ((String) -> Void)?
-
-  var body: some View {
-    Button {
-      if let id = section.sessionId { open?(id) }
-    } label: {
-      HStack(spacing: 6) {
-        Image(systemName: "arrow.triangle.branch")
-          .foregroundStyle(Theme.accent)
-          .accessibilityHidden(true)
-        Text(section.title).font(.callout).lineLimit(1)
-        Text(section.summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-        Image(systemName: "arrow.up.forward")
-          .font(.caption2)
-          .foregroundStyle(.tertiary)
-          .accessibilityHidden(true)
-      }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
-      .cardSurface(cornerRadius: Theme.Radius.medium)
-    }
-    .buttonStyle(.plain)
-    .disabled(open == nil)
-    .accessibilityLabel("Open subagent session \(section.title), \(section.summary)")
-    .accessibilityIdentifier("open-\(section.id)")
-  }
-}
-
-private struct FailureBanner: View {
-  let message: String
-
-  var body: some View {
-    Label {
-      VStack(alignment: .leading, spacing: 4) {
-        Text("The last turn failed").font(.callout.weight(.semibold))
-        Text(message).font(.callout).textSelection(.enabled)
-        Text(
-          "Check the server or provider connection before trying again. Your conversation is kept."
-        )
-        .font(.caption)
-        .foregroundStyle(.secondary)
-      }
-    } icon: {
-      Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.attention)
-    }
-    .padding(12)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .cardSurface(cornerRadius: Theme.Radius.medium, tint: Theme.attention)
-    .accessibilityIdentifier("turn-failure")
-  }
-}
-
-/// A session-level error with optional dismiss and retry.
-struct ErrorBanner: View {
-  let message: String
-  var dismiss: (@MainActor () -> Void)?
-  var retry: (@MainActor () -> Void)?
-
-  var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 10) {
-      Image(systemName: "exclamationmark.triangle.fill")
-        .foregroundStyle(Theme.failure)
-        .accessibilityHidden(true)
-      Text(message)
-        .font(.callout)
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
-      Spacer(minLength: 8)
-      CopyButton(text: message, label: "Copy error")
-      if let retry { Button("Retry", action: retry) }
-      if let dismiss {
-        Button("Dismiss", action: dismiss).buttonStyle(.borderless)
-      }
-    }
-    .padding(12)
-    .cardSurface(
-      cornerRadius: Theme.Radius.medium, tint: Theme.failure, stroke: Theme.failure.opacity(0.3)
-    )
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("Error: \(message)")
-    .accessibilityIdentifier("session-error")
   }
 }

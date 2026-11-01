@@ -193,7 +193,7 @@ private struct RetryRowView: View {
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Image(systemName: "arrow.clockwise")
-        .foregroundStyle(Theme.attention)
+        .foregroundStyle(Theme.warning)
         .symbolEffect(.rotate, isActive: row.isStreaming)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 2) {
@@ -316,7 +316,7 @@ private struct GenericActivityRowView: View {
   private var tint: ThemeColor {
     if activity.isFailure { return Theme.failure }
     switch activity.kind {
-    case .policy: return Theme.attention
+    case .policy: return Theme.warning
     case .routing: return .system(.purple)
     case .command: return Theme.accent
     default: return Theme.secondary

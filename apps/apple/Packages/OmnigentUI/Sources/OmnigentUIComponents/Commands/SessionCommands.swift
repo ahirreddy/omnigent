@@ -3,21 +3,21 @@ public import SwiftUI
 /// What the key window's conversation can do from the menu bar. Published by
 /// ``ConversationScreen`` with `focusedSceneValue`; a `nil` action disables its item.
 public struct SessionCommandActions {
-  /// Send the draft (Command-Return).
+  /// Send the draft (Return, or Command-Return).
   public var send: (@MainActor () -> Void)?
-  /// Stop the running turn (Command-Period).
+  /// Stop the running turn (Esc, or Command-Period).
   public var interrupt: (@MainActor () -> Void)?
   /// Scroll to the newest message (Command-Down Arrow).
   public var jumpToLatest: (@MainActor () -> Void)?
-  /// Focus the composer (Command-L).
+  /// Focus the composer (Control-Shift-L).
   public var focusComposer: (@MainActor () -> Void)?
-  /// Show or hide the inspector (Option-Command-I).
+  /// Show or hide the right panel (Option-Command-I).
   public var toggleInspector: (@MainActor () -> Void)?
-  /// Select the previous session in the list (Option-Command-Up Arrow).
+  /// Select the previous session (Command-[).
   public var previousSession: (@MainActor () -> Void)?
-  /// Select the next session in the list (Option-Command-Down Arrow).
+  /// Select the next session (Command-]).
   public var nextSession: (@MainActor () -> Void)?
-  /// Switch between chat and the harness terminal (Shift-Command-T).
+  /// Switch between chat and the harness terminal (Option-Command-\\).
   public var toggleViewMode: (@MainActor () -> Void)?
 
   /// Creates command actions.
@@ -72,23 +72,23 @@ public struct OmnigentSessionCommands: Commands {
         .disabled(actions?.interrupt == nil)
       Divider()
       Button("Focus Composer") { actions?.focusComposer?() }
-        .keyboardShortcut("l", modifiers: .command)
+        .keyboardShortcut("l", modifiers: [.control, .shift])
         .disabled(actions?.focusComposer == nil)
       Button("Jump to Latest") { actions?.jumpToLatest?() }
         .keyboardShortcut(.downArrow, modifiers: .command)
         .disabled(actions?.jumpToLatest == nil)
       Button("Toggle Chat and Terminal") { actions?.toggleViewMode?() }
-        .keyboardShortcut("t", modifiers: [.command, .shift])
+        .keyboardShortcut("\\", modifiers: [.command, .option])
         .disabled(actions?.toggleViewMode == nil)
-      Button("Show Inspector") { actions?.toggleInspector?() }
+      Button("Toggle Right Panel") { actions?.toggleInspector?() }
         .keyboardShortcut("i", modifiers: [.command, .option])
         .disabled(actions?.toggleInspector == nil)
       Divider()
       Button("Previous Session") { actions?.previousSession?() }
-        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+        .keyboardShortcut("[", modifiers: .command)
         .disabled(actions?.previousSession == nil)
       Button("Next Session") { actions?.nextSession?() }
-        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+        .keyboardShortcut("]", modifiers: .command)
         .disabled(actions?.nextSession == nil)
     }
   }
