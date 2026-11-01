@@ -2,9 +2,9 @@
 
 Synthesis of two independent reviews written on 2026-11-01, both based on the same screenshots of the
 current app:
-- [Claude](reviews/2026-11-01-claude-ux-review.md): it did the web research, with 40 competitors
+- [Claude](ux-research/2026-11-01-claude-ux-review.md): it did the web research, with 40 competitors
   cited.
-- [Astra / gpt-6-astra](reviews/2026-11-01-astra-ux-review.md): it wrote its review independently,
+- [Astra / gpt-6-astra](ux-research/2026-11-01-astra-ux-review.md): it wrote its review independently,
   then revised it against the verified competitor table only.
 
 ## Where both reviews agree
