@@ -1,0 +1,14 @@
+{
+  "body": {
+    "error": {
+      "code": "not_found",
+      "message": "Terminal 'terminal_shell_u-cap001' not found"
+    }
+  },
+  "request": {
+    "body": null,
+    "method": "DELETE",
+    "path": "/v1/sessions/8d103ea9a20f408ea9f15a1f200e5ef8/resources/terminals/terminal_shell_u-cap001"
+  },
+  "status": 404
+}

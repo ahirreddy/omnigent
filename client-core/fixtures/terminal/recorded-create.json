@@ -1,0 +1,26 @@
+{
+  "body": {
+    "environment": "env_terminal_shell_u-cap001",
+    "id": "terminal_shell_u-cap001",
+    "metadata": {
+      "running": true,
+      "session_key": "u-cap001",
+      "terminal_name": "shell",
+      "tmux_socket": "/tmp/omnigent-terminal-xwfo8ygx/tmux.sock",
+      "tmux_target": "main"
+    },
+    "name": "shell:u-cap001",
+    "object": "session.resource",
+    "session_id": "8d103ea9a20f408ea9f15a1f200e5ef8",
+    "type": "terminal"
+  },
+  "request": {
+    "body": {
+      "session_key": "u-cap001",
+      "terminal": "shell"
+    },
+    "method": "POST",
+    "path": "/v1/sessions/8d103ea9a20f408ea9f15a1f200e5ef8/resources/terminals"
+  },
+  "status": 200
+}

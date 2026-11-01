@@ -1,0 +1,17 @@
+{
+  "body": {
+    "error": {
+      "code": "invalid_input",
+      "message": "Terminal 'fish' is not declared by this agent. Terminals can only be created for agents whose spec declares them; this agent declares: ['shell', 'zsh']."
+    }
+  },
+  "request": {
+    "body": {
+      "session_key": "u-cap002",
+      "terminal": "fish"
+    },
+    "method": "POST",
+    "path": "/v1/sessions/8d103ea9a20f408ea9f15a1f200e5ef8/resources/terminals"
+  },
+  "status": 400
+}

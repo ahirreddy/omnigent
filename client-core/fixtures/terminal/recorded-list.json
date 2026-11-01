@@ -1,0 +1,48 @@
+{
+  "body": {
+    "data": [
+      {
+        "environment": "env_terminal_shell_u-cap001",
+        "id": "terminal_shell_u-cap001",
+        "metadata": {
+          "direct_attach_url": "ws://127.0.0.1:63027/v1/sessions/8d103ea9a20f408ea9f15a1f200e5ef8/resources/terminals/terminal_shell_u-cap001/attach?token=redacted-capture-token",
+          "running": true,
+          "session_key": "u-cap001",
+          "terminal_name": "shell",
+          "tmux_socket": "/tmp/omnigent-terminal-xwfo8ygx/tmux.sock",
+          "tmux_target": "main"
+        },
+        "name": "shell:u-cap001",
+        "object": "session.resource",
+        "session_id": "8d103ea9a20f408ea9f15a1f200e5ef8",
+        "type": "terminal"
+      },
+      {
+        "environment": "env_terminal_tui_main",
+        "id": "terminal_tui_main",
+        "metadata": {
+          "direct_attach_url": "ws://127.0.0.1:63027/v1/sessions/8d103ea9a20f408ea9f15a1f200e5ef8/resources/terminals/terminal_tui_main/attach?token=redacted-capture-token",
+          "running": true,
+          "session_key": "main",
+          "terminal_name": "tui",
+          "tmux_socket": "/tmp/omnigent-terminal-wzbsvkt1/tmux.sock",
+          "tmux_target": "main"
+        },
+        "name": "tui:main",
+        "object": "session.resource",
+        "session_id": "8d103ea9a20f408ea9f15a1f200e5ef8",
+        "type": "terminal"
+      }
+    ],
+    "first_id": "terminal_shell_u-cap001",
+    "has_more": false,
+    "last_id": "terminal_tui_main",
+    "object": "list"
+  },
+  "request": {
+    "body": null,
+    "method": "GET",
+    "path": "/v1/sessions/8d103ea9a20f408ea9f15a1f200e5ef8/resources/terminals?limit=1000&order=asc"
+  },
+  "status": 200
+}
