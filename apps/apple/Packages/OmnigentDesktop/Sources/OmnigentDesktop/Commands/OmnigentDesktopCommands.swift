@@ -11,6 +11,9 @@ public struct DesktopCommandActions {
   public var exportDiagnostics: (() -> Void)?
   /// Omnigent > Check for Updates...; hidden when `nil`. Bind to Sparkle's updater.
   public var checkForUpdates: (() -> Void)?
+  /// Adds the local server and host items to the Server menu; hidden when `nil` or when the
+  /// edition cannot spawn processes. Normally `desktop.localServer`.
+  public var localServer: LocalServerManager?
 
   /// Creates app actions.
   /// - Parameters:
@@ -18,16 +21,19 @@ public struct DesktopCommandActions {
   ///   - helpURL: Documentation URL.
   ///   - exportDiagnostics: Diagnostics export.
   ///   - checkForUpdates: Update check.
+  ///   - localServer: The local server manager for the Server menu.
   public init(
     defaultServerURL: @escaping () -> URL?,
     helpURL: URL? = nil,
     exportDiagnostics: (() -> Void)? = nil,
-    checkForUpdates: (() -> Void)? = nil
+    checkForUpdates: (() -> Void)? = nil,
+    localServer: LocalServerManager? = nil
   ) {
     self.defaultServerURL = defaultServerURL
     self.helpURL = helpURL
     self.exportDiagnostics = exportDiagnostics
     self.checkForUpdates = checkForUpdates
+    self.localServer = localServer
   }
 }
 
@@ -40,7 +46,8 @@ public struct DesktopCommandActions {
 /// - Edit: the standard Undo, Redo and pasteboard items, then Find.
 /// - View: Reconnect and zoom, then the standard toolbar, sidebar, inspector and full-screen
 ///   items.
-/// - Server: Change Server... and Sign Out of Server.
+/// - Server: Change Server... and Sign Out of Server, then (with `actions.localServer`) Start
+///   Server on This Mac, Stop Server, Start Host on This Mac..., Stop Host and Show Server Logs.
 /// - Window: the standard window list, tiling and tabs.
 /// - Help: Omnigent Help and Export Diagnostics....
 ///
@@ -109,6 +116,28 @@ public struct OmnigentDesktopCommands: Commands {
       .disabled(window?.changeServer == nil)
     Button("Sign Out of Server") { window?.signOut?() }
       .disabled(window?.signOut == nil)
+    if let manager = actions.localServer, manager.capability.isAvailable {
+      localServerItems(manager)
+    }
+  }
+
+  @ViewBuilder private func localServerItems(_ manager: LocalServerManager) -> some View {
+    let hostFallback = focused?.id.serverURL
+    Divider()
+    Button("Start Server on This Mac") { LocalServerActions.startServer(manager) }
+      .disabled(!manager.server.canStart)
+    Button("Stop Server") { LocalServerActions.stopServer(manager) }
+      .disabled(!manager.server.canStop)
+    Divider()
+    Button("Start Host on This Mac\u{2026}") {
+      LocalServerActions.startHost(manager, fallback: hostFallback)
+    }
+    .disabled(
+      !manager.host.canStart || (manager.server.endpoint == nil && hostFallback == nil))
+    Button("Stop Host") { LocalServerActions.stopHost(manager) }
+      .disabled(!manager.host.canStop)
+    Divider()
+    Button("Show Server Logs") { openWindow(id: LocalServerLogsWindow.id) }
   }
 
   @ViewBuilder private var viewItems: some View {

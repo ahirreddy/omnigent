@@ -1,7 +1,8 @@
 import AppKit
 public import SwiftUI
 
-/// The Settings window: General, Notifications and Advanced tabs. Use inside a `Settings` scene.
+/// The Settings window: General, Notifications, Local Server and Advanced tabs. Use inside a
+/// `Settings` scene.
 ///
 /// The package does not depend on the browser package, so the app supplies the General tab's
 /// browser section (typically `OmnigentBrowser.BrowserEngineSettingsView`, which lists only the
@@ -40,6 +41,10 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
       Tab("Notifications", systemImage: "bell.badge") {
         NotificationSettingsTab(
           preferences: desktop.preferences, notifications: desktop.notifications)
+      }
+      Tab("Local Server", systemImage: "server.rack") {
+        LocalServerSettingsTab(
+          manager: desktop.localServer, preferences: desktop.localServerPreferences)
       }
       Tab("Advanced", systemImage: "gearshape.2") {
         AdvancedSettingsTab(

@@ -2,7 +2,7 @@ import AppKit
 public import Foundation
 
 /// The desktop shell services, wired together: window registry, router, notifications, Dock
-/// badge, preferences and managed preferences.
+/// badge, preferences, managed preferences and the local server.
 ///
 /// The app owns one, normally through `OmnigentDesktopAppDelegate`, and binds the closures on
 /// `router` (known servers, remembering consented servers) to its connection store.
@@ -17,6 +17,16 @@ public final class DesktopController {
   public let notifications: DesktopNotificationCenter
   /// Organization-provided servers.
   public let managedPreferences: ManagedPreferences
+  /// Settings > Local Server and the menu bar extra toggle.
+  public let localServerPreferences: LocalServerPreferences
+  /// Runs `omnigent server` and `omnigent host` on this Mac. Inert when the build cannot spawn
+  /// processes (the App Store edition).
+  public let localServer: LocalServerManager
+  /// Asks whether to open a window on a local server the user just started. Defaults to
+  /// `LocalServerReadyAlert.confirm`.
+  public var confirmOpenLocalServer: (LocalServerEndpoint) async -> Bool = { endpoint in
+    await LocalServerReadyAlert.confirm(endpoint)
+  }
   private let relay: IssueRelay
 
   /// Receives every `DesktopIssue`. Defaults to standard error; bind to the app's logger.
@@ -27,13 +37,20 @@ public final class DesktopController {
 
   /// Creates and wires the services.
   /// - Parameters:
-  ///   - defaults: Store for `DesktopPreferences`.
+  ///   - defaults: Store for `DesktopPreferences` and `LocalServerPreferences`.
   ///   - managedDomains: Managed-preference domains in precedence order.
   ///   - acknowledger: CLI handshake for `desktop_ack` links.
+  ///   - localServerCapability: Whether this edition may spawn the CLI. Pass the edition's
+  ///     value; the default detects App Sandbox.
+  ///   - localServerDependencies: The local server's system access; tests and the example app
+  ///     pass isolated ones.
   public init(
     defaults: UserDefaults = .standard,
     managedDomains: [String] = ManagedPreferences.domains(for: .main),
-    acknowledger: any DeepLinkAcknowledging = LoopbackDeepLinkAcknowledger()
+    acknowledger: any DeepLinkAcknowledging = LoopbackDeepLinkAcknowledger(),
+    localServerCapability: LocalServerCapability = .detect(),
+    localServerDependencies: LocalServerManager.Dependencies = .live(
+      developmentCheckout: LocalServerManager.sourceCheckout)
   ) {
     let relay = IssueRelay()
     let report: DesktopIssueReporter = { relay.handler($0) }
@@ -56,6 +73,31 @@ public final class DesktopController {
     self.router = router
     self.notifications = notifications
     managedPreferences = ManagedPreferences(domains: managedDomains)
+    localServerPreferences = LocalServerPreferences(defaults: defaults)
+    localServer = LocalServerManager(
+      capability: localServerCapability, preferences: localServerPreferences,
+      dependencies: localServerDependencies)
+    localServer.reportIssue = { report(.localServer($0)) }
+    localServer.confirmHostMode = { await HostModeConfirmation.confirm(serverURL: $0) }
+    localServer.onServerReady = { [weak self] endpoint, trigger in
+      guard trigger == .user else { return }
+      Task { await self?.offerWindow(on: endpoint) }
+    }
+  }
+
+  /// After the user starts a local server, offers to open a window on it unless one is open.
+  /// - Parameter endpoint: The ready server.
+  func offerWindow(on endpoint: LocalServerEndpoint) async {
+    let origin: ServerOrigin
+    do {
+      origin = try ServerOrigin(url: endpoint.url)
+    } catch {
+      relay.handler(.invalidServerURL(endpoint.url, error))
+      return
+    }
+    guard !registry.activeOrigins.contains(origin) else { return }
+    guard await confirmOpenLocalServer(endpoint) else { return }
+    router.open(.home, onServer: endpoint.url)
   }
 
   /// Starts a monitor whose `triggers` stream yields on wake, unlock and session switch. Keep it

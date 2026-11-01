@@ -5,10 +5,12 @@ import SwiftUI
 // A runnable sanity check for the desktop shell: `swift run OmnigentDesktopExample`.
 // `--self-test` prints the menu bar, routes a deep link into a second window, prints the window
 // registry and quits. Notifications need an app bundle, so they report as unavailable here.
+// `--screenshots=<dir>` starts a real local server in an isolated directory, writes PNGs of the
+// Local Server settings, the Server Logs window and the menu bar extra, stops it and quits.
 
 @main
 struct OmnigentDesktopExampleApp: App {
-  @NSApplicationDelegateAdaptor(OmnigentDesktopAppDelegate.self) private var appDelegate
+  @NSApplicationDelegateAdaptor(ExampleAppDelegate.self) private var appDelegate
 
   var body: some Scene {
     let desktop = appDelegate.desktop
@@ -22,14 +24,35 @@ struct OmnigentDesktopExampleApp: App {
           defaultServerURL: { desktop.preferences.defaultServerURL },
           helpURL: URL(string: "https://github.com/omnigent-ai/omnigent"),
           exportDiagnostics: { print("export diagnostics") },
-          checkForUpdates: { print("check for updates") }))
+          checkForUpdates: { print("check for updates") },
+          localServer: desktop.localServer))
     }
+
+    LocalServerLogsWindow(manager: desktop.localServer)
+
+    OmnigentMenuBarExtra(desktop: desktop, sessions: ExampleSessions.source)
 
     Settings {
       OmnigentSettingsView(
         desktop: desktop, recentServers: ExampleWindow.knownServers,
         exportDiagnostics: { print("export diagnostics") })
     }
+  }
+}
+
+/// Uses an isolated controller for `--screenshots`, so the run never touches the user's
+/// settings or `~/.omnigent`.
+final class ExampleAppDelegate: OmnigentDesktopAppDelegate {
+  // Not `override`: the superclass's `init()` is a convenience initializer.
+  init() {
+    super.init(desktop: Screenshots.isolatedDesktop() ?? DesktopController())
+  }
+}
+
+/// Sample sessions for the menu bar extra until the stores provide real ones.
+enum ExampleSessions {
+  static let source = ExampleWindow.knownServers.first.map {
+    FakeMenuBarSessionSource.sample(serverURL: $0)
   }
 }
 
@@ -87,6 +110,7 @@ struct ExampleWindow: View {
       if id.serverURL != nil { isReady = true }
     }
     .task { await SelfTest.runIfRequested(desktop: desktop, openSettings: openSettings) }
+    .task { await Screenshots.runIfRequested(desktop: desktop) }
   }
 }
 
