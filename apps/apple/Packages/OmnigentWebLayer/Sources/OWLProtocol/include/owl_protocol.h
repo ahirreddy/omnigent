@@ -1,0 +1,275 @@
+// OWL wire schema: the single source of truth for messages between the Omnigent Web Layer
+// client (Swift, OmnigentWebLayer) and the web host (Omnigent Web Host.app). Both sides compile
+// against this header. See ../../../DESIGN.md, "IPC".
+//
+// Compatibility rules:
+// - Message kinds and field tags are never renumbered or reused.
+// - A minor version may add kinds and fields. Receivers skip unknown fields and report unknown
+//   kinds as errors (never silently).
+// - Anything else is a major version change; the handshake rejects a major mismatch.
+#pragma once
+
+#include <CoreFoundation/CFAvailability.h>
+#include <stdint.h>
+
+#define OWL_PROTOCOL_MAJOR 1
+#define OWL_PROTOCOL_MINOR 0
+
+/// Payload encoding: a sequence of fields, each an 8-byte header followed by `length` bytes.
+/// Integers and floats are little-endian. Strings are UTF-8 without a terminator.
+typedef CF_ENUM(uint8_t, OWLFieldType) {
+  OWLFieldTypeUInt64 = 1,
+  OWLFieldTypeInt64 = 2,
+  OWLFieldTypeDouble = 3,
+  OWLFieldTypeBool = 4,
+  OWLFieldTypeString = 5,
+  OWLFieldTypeBytes = 6,
+};
+
+/// Field header. `tag` is an OWLField value.
+typedef struct OWLFieldHeader {
+  uint16_t tag;
+  uint8_t type;
+  uint8_t reserved;
+  uint32_t length;
+} OWLFieldHeader;
+
+/// Field tags. One namespace for every message; each message lists the tags it uses below.
+typedef CF_ENUM(uint16_t, OWLField) {
+  OWLFieldProtocolMajor = 1,
+  OWLFieldProtocolMinor = 2,
+  OWLFieldToken = 3,
+  OWLFieldHostPID = 4,
+  OWLFieldCEFVersion = 5,
+  OWLFieldChromiumVersion = 6,
+  OWLFieldAccepted = 7,
+  OWLFieldReason = 8,
+  OWLFieldRootCachePath = 9,
+  OWLFieldLocale = 10,
+  OWLFieldRemoteDebuggingPort = 11,
+  OWLFieldUseMockKeychain = 12,
+  OWLFieldKeychainService = 13,
+  OWLFieldRenderMode = 14,
+  OWLFieldElapsedMilliseconds = 15,
+  OWLFieldErrorCode = 16,
+  OWLFieldMessage = 17,
+  OWLFieldProfileID = 18,
+  OWLFieldStorageKey = 19,
+  OWLFieldPersistent = 20,
+  OWLFieldURL = 21,
+  OWLFieldWidth = 22,
+  OWLFieldHeight = 23,
+  OWLFieldScale = 24,
+  OWLFieldVisible = 25,
+  OWLFieldFocused = 26,
+  OWLFieldZoomLevel = 27,
+  OWLFieldScript = 28,
+  OWLFieldSuccess = 29,
+  OWLFieldJSON = 30,
+  OWLFieldPNG = 31,
+  OWLFieldText = 32,
+  OWLFieldForward = 33,
+  OWLFieldMatchCase = 34,
+  OWLFieldFindNext = 35,
+  OWLFieldMethod = 36,
+  OWLFieldInputOrigin = 37,
+  OWLFieldMouseKind = 38,
+  OWLFieldX = 39,
+  OWLFieldY = 40,
+  OWLFieldButton = 41,
+  OWLFieldClickCount = 42,
+  OWLFieldModifiers = 43,
+  OWLFieldDeltaX = 44,
+  OWLFieldDeltaY = 45,
+  OWLFieldKeyKind = 46,
+  OWLFieldNativeKeyCode = 47,
+  OWLFieldCharacter = 48,
+  OWLFieldUnmodifiedCharacter = 49,
+  OWLFieldTitle = 50,
+  OWLFieldIsLoading = 51,
+  OWLFieldCanGoBack = 52,
+  OWLFieldCanGoForward = 53,
+  OWLFieldProgress = 54,
+  OWLFieldStatus = 55,
+  OWLFieldCursor = 56,
+  OWLFieldLayer = 57,
+  OWLFieldSequence = 58,
+  OWLFieldPixelWidth = 59,
+  OWLFieldPixelHeight = 60,
+  OWLFieldContextID = 61,
+  OWLFieldFeature = 62,
+  OWLFieldCount = 63,
+  OWLFieldActiveMatch = 64,
+  OWLFieldFinalUpdate = 65,
+  OWLFieldHostTimestampNanos = 66,
+  OWLFieldSurfaceIndex = 67,
+  OWLFieldScreenX = 68,
+  OWLFieldScreenY = 69,
+  OWLFieldDisableSandbox = 70,
+  OWLFieldHostBlitNanos = 71,
+  OWLFieldDroppedFrames = 72,
+  OWLFieldPresentedNanos = 73,
+};
+
+/// Message kinds. "C->H" is client to host, "H->C" host to client. `target` in the envelope is
+/// the profile or view ID the message addresses (0 for session messages). `request` pairs a
+/// request with its reply (0 when there is no reply).
+typedef CF_ENUM(uint16_t, OWLMessageKind) {
+  // Session.
+  OWLMessageKindHello = 1,           // H->C ProtocolMajor ProtocolMinor Token HostPID CEFVersion
+                                     //      ChromiumVersion; port: host receive right (send)
+  OWLMessageKindHelloAck = 2,        // C->H Accepted Reason? RootCachePath Locale?
+                                     //      RemoteDebuggingPort UseMockKeychain KeychainService?
+                                     //      RenderMode DisableSandbox
+  OWLMessageKindReady = 3,           // H->C ElapsedMilliseconds RenderMode
+  OWLMessageKindInitFailed = 4,      // H->C Reason
+  OWLMessageKindPing = 5,            // C->H (request)
+  OWLMessageKindPong = 6,            // H->C (reply)
+  OWLMessageKindShutdown = 7,        // C->H
+  OWLMessageKindHostError = 8,       // H->C ErrorCode Message (target: profile/view or 0)
+
+  // Profiles (target: profile ID).
+  OWLMessageKindProfileCreate = 20,  // C->H StorageKey Persistent
+  OWLMessageKindProfileDestroy = 21, // C->H
+
+  // Views (target: view ID).
+  OWLMessageKindViewCreate = 30,     // C->H ProfileID URL Width Height Scale Visible
+  OWLMessageKindViewClose = 31,      // C->H
+  OWLMessageKindViewResize = 32,     // C->H Width Height Scale ScreenX ScreenY
+  OWLMessageKindViewVisibility = 33, // C->H Visible
+  OWLMessageKindViewFocus = 34,      // C->H Focused
+  OWLMessageKindNavigate = 35,       // C->H URL
+  OWLMessageKindGoBack = 36,         // C->H
+  OWLMessageKindGoForward = 37,      // C->H
+  OWLMessageKindReload = 38,         // C->H
+  OWLMessageKindStop = 39,           // C->H
+  OWLMessageKindSetZoom = 40,        // C->H ZoomLevel
+  OWLMessageKindEvaluate = 41,       // C->H Script (request) -> EvaluateResult
+  OWLMessageKindSnapshot = 42,       // C->H (request) -> SnapshotResult
+  OWLMessageKindFind = 43,           // C->H Text Forward MatchCase FindNext
+  OWLMessageKindStopFind = 44,       // C->H
+  OWLMessageKindShowDevTools = 45,   // C->H
+  OWLMessageKindDevToolsMethod = 46, // C->H Method JSON (request) -> DevToolsResult
+  OWLMessageKindInputMouse = 50,     // C->H InputOrigin MouseKind X Y Button ClickCount
+                                     //      Modifiers DeltaX DeltaY
+  OWLMessageKindInputKey = 51,       // C->H InputOrigin KeyKind NativeKeyCode Modifiers
+                                     //      Character UnmodifiedCharacter
+  OWLMessageKindFrameAck = 53,       // C->H SurfaceIndex Sequence
+
+  // View events (target: view ID).
+  OWLMessageKindViewCreated = 60,    // H->C
+  OWLMessageKindURLChanged = 61,     // H->C URL
+  OWLMessageKindTitleChanged = 62,   // H->C Title
+  OWLMessageKindLoadingState = 63,   // H->C IsLoading CanGoBack CanGoForward
+  OWLMessageKindLoadProgress = 64,   // H->C Progress
+  OWLMessageKindLoadError = 65,      // H->C ErrorCode Text URL
+  OWLMessageKindRendererGone = 66,   // H->C Status ErrorCode Message
+  OWLMessageKindDownloadBlocked = 67,// H->C URL
+  OWLMessageKindViewClosed = 68,     // H->C
+  OWLMessageKindCursorChanged = 69,  // H->C Cursor
+  OWLMessageKindEvaluateResult = 70, // H->C Success JSON (reply)
+  OWLMessageKindSnapshotResult = 71, // H->C Success PNG? Message? (reply)
+  OWLMessageKindFindResult = 72,     // H->C Count ActiveMatch FinalUpdate
+  OWLMessageKindDevToolsResult = 73, // H->C Success JSON (reply)
+  OWLMessageKindFrame = 74,          // H->C Layer Sequence SurfaceIndex PixelWidth PixelHeight
+                                     //      Scale X Y Width Height HostTimestampNanos
+                                     //      HostBlitNanos DroppedFrames; port: IOSurface
+  OWLMessageKindPopupVisibility = 75,// H->C Visible
+  OWLMessageKindLayerContext = 77,   // H->C ContextID
+  OWLMessageKindKeyUnhandled = 78,   // H->C KeyKind NativeKeyCode Modifiers Character
+                                     //      UnmodifiedCharacter
+  OWLMessageKindFeatureBlocked = 79, // H->C Feature Message
+  OWLMessageKindPresented = 80,      // H->C Sequence HostTimestampNanos PresentedNanos
+                                     //      HostBlitNanos (remote-layer timing)
+};
+
+/// How the host delivers pixels. See DESIGN.md, "Rendering".
+typedef CF_ENUM(uint64_t, OWLRenderMode) {
+  /// The host draws into its own CAContext; the client embeds it with CALayerHost.
+  OWLRenderModeRemoteLayer = 1,
+  /// The host sends IOSurface Mach ports per frame; the client sets them as layer contents.
+  OWLRenderModeIOSurface = 2,
+};
+
+/// Values of OWLFieldLayer.
+typedef CF_ENUM(uint64_t, OWLLayer) {
+  OWLLayerPage = 0,
+  OWLLayerPopup = 1,
+};
+
+/// Values of OWLFieldInputOrigin. Agent input is never re-dispatched to the app and never reaches
+/// browser-level handlers. See DESIGN.md, "Agent input".
+typedef CF_ENUM(uint64_t, OWLInputOrigin) {
+  OWLInputOriginUser = 1,
+  OWLInputOriginAgent = 2,
+};
+
+/// Values of OWLFieldMouseKind.
+typedef CF_ENUM(uint64_t, OWLMouseKind) {
+  OWLMouseKindMove = 1,
+  OWLMouseKindDown = 2,
+  OWLMouseKindUp = 3,
+  OWLMouseKindWheel = 4,
+  OWLMouseKindLeave = 5,
+};
+
+/// Values of OWLFieldButton. Match cef_mouse_button_type_t.
+typedef CF_ENUM(uint64_t, OWLMouseButton) {
+  OWLMouseButtonLeft = 0,
+  OWLMouseButtonMiddle = 1,
+  OWLMouseButtonRight = 2,
+};
+
+/// Values of OWLFieldKeyKind. Match cef_key_event_type_t.
+typedef CF_ENUM(uint64_t, OWLKeyKind) {
+  OWLKeyKindRawKeyDown = 0,
+  OWLKeyKindKeyDown = 1,
+  OWLKeyKindKeyUp = 2,
+  OWLKeyKindChar = 3,
+};
+
+/// Bits of OWLFieldModifiers. Match cef_event_flags_t.
+typedef CF_OPTIONS(uint64_t, OWLModifiers) {
+  OWLModifierCapsLock = 1 << 0,
+  OWLModifierShift = 1 << 1,
+  OWLModifierControl = 1 << 2,
+  OWLModifierAlt = 1 << 3,
+  OWLModifierLeftMouse = 1 << 4,
+  OWLModifierMiddleMouse = 1 << 5,
+  OWLModifierRightMouse = 1 << 6,
+  OWLModifierCommand = 1 << 7,
+  OWLModifierNumLock = 1 << 8,
+  OWLModifierIsKeyPad = 1 << 9,
+  OWLModifierIsLeft = 1 << 10,
+  OWLModifierIsRight = 1 << 11,
+  OWLModifierAltGr = 1 << 12,
+  OWLModifierIsRepeat = 1 << 13,
+};
+
+/// Values of OWLFieldCursor. A subset of cef_cursor_type_t the client maps to NSCursor.
+typedef CF_ENUM(uint64_t, OWLCursor) {
+  OWLCursorPointer = 0,
+  OWLCursorCross = 1,
+  OWLCursorHand = 2,
+  OWLCursorIBeam = 3,
+  OWLCursorWait = 4,
+  OWLCursorHelp = 5,
+  OWLCursorResizeEastWest = 6,
+  OWLCursorResizeNorthSouth = 7,
+  OWLCursorNotAllowed = 8,
+  OWLCursorGrab = 9,
+  OWLCursorGrabbing = 10,
+  OWLCursorNone = 11,
+};
+
+/// Values of OWLFieldErrorCode in HostError.
+typedef CF_ENUM(uint64_t, OWLHostErrorCode) {
+  OWLHostErrorUnknownMessage = 1,
+  OWLHostErrorMalformedMessage = 2,
+  OWLHostErrorUnknownProfile = 3,
+  OWLHostErrorUnknownView = 4,
+  OWLHostErrorProfileCreateFailed = 5,
+  OWLHostErrorViewCreateFailed = 6,
+  OWLHostErrorRenderFailed = 7,
+  OWLHostErrorDevToolsFailed = 8,
+};

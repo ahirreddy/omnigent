@@ -43,38 +43,4 @@ struct ScriptValueTests {
       try BrowserScriptValue(foundationObject: NSObject())
     }
   }
-
-  @Test func devToolsEvaluateResults() throws {
-    #expect(
-      try ChromiumDevTools.evaluateResult(json: #"{"result":{"type":"number","value":2}}"#)
-        == .number(2))
-    #expect(
-      try ChromiumDevTools.evaluateResult(json: #"{"result":{"type":"undefined"}}"#)
-        == .undefined)
-    #expect(
-      try ChromiumDevTools.evaluateResult(
-        json: #"{"result":{"type":"object","subtype":"null","value":null}}"#) == .null)
-    let nan = try ChromiumDevTools.evaluateResult(
-      json: #"{"result":{"type":"number","unserializableValue":"NaN"}}"#)
-    guard case .number(let value) = nan else {
-      Issue.record("expected number")
-      return
-    }
-    #expect(value.isNaN)
-  }
-
-  @Test func devToolsExceptionsAreScriptFailures() {
-    let json = #"""
-      {"result":{"type":"object"},"exceptionDetails":{"text":"Uncaught",
-       "exception":{"description":"Error: boom"}}}
-      """#
-    #expect(throws: BrowserError.scriptFailed(message: "Error: boom")) {
-      try ChromiumDevTools.evaluateResult(json: json)
-    }
-  }
-
-  @Test func devToolsGarbageIsReported() {
-    #expect(throws: BrowserError.self) { try ChromiumDevTools.evaluateResult(json: "nope") }
-    #expect(throws: BrowserError.self) { try ChromiumDevTools.screenshotData(json: "{}") }
-  }
 }

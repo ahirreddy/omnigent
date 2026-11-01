@@ -9,6 +9,8 @@ let localPackages: [Package] = [
   .package(path: "Packages/OmnigentTestSupport"),
   .package(path: "Packages/OmnigentCoreFFI"),
   .package(path: "Packages/OmnigentBrowser"),
+  // The Chromium web layer client; only OmnigentBrowserChromium (Developer ID) uses it.
+  .package(path: "Packages/OmnigentWebLayer"),
   // macOS only, so it is a dependency of the Mac apps and not of `appDependencies`.
   .package(path: "Packages/OmnigentDesktop"),
 ]
@@ -26,7 +28,8 @@ let unitTestDependencies: [TargetDependency] = [
   .package(product: "OmnigentCoreFFI"),
 ]
 
-/// Chromium (CEF) helpers and embed step for the Mac app; see Packages/OmnigentBrowser/README.md.
+/// The out-of-process Chromium web host, its CEF helpers and the embed step for the Developer ID
+/// app; see Packages/OmnigentWebLayer/DESIGN.md.
 let macBrowser = BrowserTargets.Configuration(
   appTargetName: "OmnigentMac",
   appProductName: "Omnigent",
@@ -79,7 +82,8 @@ let macInfoPlistShared: [String: Plist.Value] = [
 ]
 
 /// Developer ID edition: distributed outside the Mac App Store, no App Sandbox, hardened runtime
-/// (Release), CEF embedded with its five helpers, Chromium as the default engine.
+/// (Release), Chromium as the default engine. Chromium runs out of process in
+/// `Contents/Helpers/Omnigent Web Host.app`, which carries CEF and its five helpers.
 let macApp = Target.target(
   name: "OmnigentMac",
   destinations: [.mac],
@@ -114,8 +118,9 @@ let macApp = Target.target(
   )
 )
 
-/// Mac App Store edition: App Sandbox, no CEF (it never links `OmnigentBrowserChromium`), the
-/// system engine only, and managed preferences from its own domain only.
+/// Mac App Store edition: App Sandbox, no Chromium (it never links `OmnigentBrowserChromium` or
+/// embeds the web host, and a build step fails if either appears), the system engine only, and
+/// managed preferences from its own domain only.
 let macAppStoreApp = Target.target(
   name: "OmnigentMacAppStore",
   destinations: [.mac],
@@ -130,6 +135,7 @@ let macAppStoreApp = Target.target(
   sources: ["Apps/Omnigent-macOS/Sources/**"],
   resources: [Omnigent.appIcon],
   entitlements: .file(path: "Apps/Omnigent-macOS/OmnigentMacAppStore.entitlements"),
+  scripts: BrowserTargets.appStoreGuardScripts(),
   dependencies: appDependencies + [
     .package(product: "OmnigentDesktop"),
     .package(product: "OmnigentBrowser"),

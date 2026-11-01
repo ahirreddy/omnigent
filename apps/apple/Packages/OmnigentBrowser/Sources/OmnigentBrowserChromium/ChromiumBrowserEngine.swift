@@ -1,15 +1,14 @@
-// Chromium (CEF) engine. A separate product from `OmnigentBrowser` so builds that must not
-// contain CEF (the Mac App Store edition, iOS) never link the bridge or libcef_dll_wrapper.
+// Chromium engine. A separate product from `OmnigentBrowser` so builds that must not contain
+// Chromium (the Mac App Store edition, iOS) never link it. Chromium itself runs out of process in
+// `Omnigent Web Host.app`; this file adapts the OmnigentWebLayer client to `BrowserEngine`.
 // Register it with `DefaultBrowserEngineProvider.withChromium()`.
 
 #if os(macOS)
   public import Foundation
   public import OmnigentBrowser
-  internal import AppKit
-  internal import OmnigentCEFBridge
+  public import OmnigentWebLayer
 
-  /// Starts Chromium for `DefaultBrowserEngineProvider`. The provider remembers a start failure,
-  /// because CEF cannot re-initialize in a process.
+  /// Starts Chromium for `DefaultBrowserEngineProvider`.
   public final class ChromiumEngineFactory: BrowserEngineFactory {
     /// Always `.chromium`.
     public let kind = BrowserEngineKind.chromium
@@ -46,331 +45,219 @@
 
   /// Start-up settings for the Chromium engine.
   nonisolated public struct ChromiumConfiguration: Hashable, Sendable {
-    /// Base name of the helper bundles in `Contents/Frameworks` (for example "Omnigent Helper").
-    public var helperName: String
-    /// App-private directory holding every persistent Chromium profile.
-    public var rootCacheURL: URL
-    /// Chrome remote debugging port; 0 disables it.
-    public var remoteDebuggingPort: Int
-    /// Disables Chromium's helper-process sandbox. Only for diagnosing sandbox failures.
-    public var disableSandbox: Bool
-    /// Uses Chromium's mock keychain so unsigned rebuilds do not trigger Keychain prompts.
-    public var useMockKeychain: Bool
-    /// Keychain service for Chromium's cookie-encryption key.
-    public var keychainServiceName: String?
+    /// The web host session settings.
+    public var session: SessionConfiguration
 
     /// Creates a configuration.
-    public init(
-      helperName: String,
-      rootCacheURL: URL,
-      remoteDebuggingPort: Int = 0,
-      disableSandbox: Bool = false,
-      useMockKeychain: Bool = false,
-      keychainServiceName: String? = nil
-    ) {
-      self.helperName = helperName
-      self.rootCacheURL = rootCacheURL
-      self.remoteDebuggingPort = remoteDebuggingPort
-      self.disableSandbox = disableSandbox
-      self.useMockKeychain = useMockKeychain
-      self.keychainServiceName = keychainServiceName
+    public init(session: SessionConfiguration) {
+      self.session = session
     }
 
-    /// Defaults derived from `bundle`: helper "<executable> Helper", profiles under
-    /// `Application Support/<bundle id>/Chromium`, and a bundle-specific Keychain service.
-    /// Debug builds use the mock keychain.
+    /// Defaults derived from `bundle`; see `SessionConfiguration.standard(bundle:)`.
     public static func standard(bundle: Bundle = .main) -> Self {
-      let executable = bundle.executableURL?.lastPathComponent ?? "Omnigent"
-      let bundleID = bundle.bundleIdentifier ?? "ai.omnigent.browser"
-      let support = URL.applicationSupportDirectory
-        .appending(path: bundleID, directoryHint: .isDirectory)
-        .appending(path: "Chromium", directoryHint: .isDirectory)
-      #if DEBUG
-        let mockKeychain = true
-      #else
-        let mockKeychain = false
-      #endif
-      return Self(
-        helperName: "\(executable) Helper",
-        rootCacheURL: support,
-        useMockKeychain: mockKeychain,
-        keychainServiceName: "\(bundleID) Browser Safe Storage")
-    }
-
-    @MainActor fileprivate var bridgeConfiguration: OMCEFConfiguration {
-      let configuration = OMCEFConfiguration(helperName: helperName, rootCacheURL: rootCacheURL)
-      configuration.remoteDebuggingPort = remoteDebuggingPort
-      configuration.disableSandbox = disableSandbox
-      configuration.useMockKeychain = useMockKeychain
-      configuration.keychainServiceName = keychainServiceName
-      return configuration
+      Self(session: .standard(bundle: bundle))
     }
   }
 
-  /// Chromium via CEF. One instance per process; CEF cannot restart after shutdown.
+  /// Chromium in the out-of-process web host. One engine owns one host `Session`; the host boots
+  /// asynchronously, so tabs show progress until it is ready, and a host crash or hang leaves
+  /// the app running with a recoverable error.
   public final class ChromiumBrowserEngine: BrowserEngine {
     /// Always `.chromium`.
     public let kind = BrowserEngineKind.chromium
+    /// The host session behind every tab.
+    public let session: Session
 
-    private init() {}
-
-    /// The CEF version compiled into this build, or nil when built without CEF.
-    public static var compiledVersion: String? {
-      OMCEFRuntime.isCompiledIn ? OMCEFRuntime.compiledVersion : nil
+    private init(session: Session) {
+      self.session = session
     }
 
-    /// Checks the build and app bundle without loading CEF.
+    /// The CEF version of the running host, once it is ready.
+    public var hostVersion: String? { session.hostInfo?.cefVersion }
+
+    /// Checks the app bundle without launching anything.
     public static func availability(configuration: ChromiumConfiguration)
       -> BrowserEngineAvailability
     {
-      do {
-        try OMCEFRuntime.validateBundle(with: configuration.bridgeConfiguration)
-        if let reason = appSandboxConflict(configuration) {
-          return .unavailable(.engineFailedToStart(.chromium, reason: reason))
-        }
-        return .available
-      } catch {
-        return .unavailable(.engineNotBundled(.chromium, reason: error.localizedDescription))
+      let host = configuration.session.hostAppURL
+      let executable = host.appending(
+        path: "Contents/MacOS/\(SessionConfiguration.hostAppName)", directoryHint: .notDirectory)
+      guard FileManager.default.isExecutableFile(atPath: executable.path) else {
+        return .unavailable(
+          .engineNotBundled(
+            .chromium, reason: "\(host.lastPathComponent) is not in the app bundle."))
       }
+      // The host inherits the app's sandbox, and stock CEF's helper sandbox cannot nest in it.
+      if ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil,
+        !configuration.session.disableSandbox
+      {
+        return .unavailable(
+          .engineFailedToStart(
+            .chromium,
+            reason: "The app runs inside App Sandbox, which stock CEF builds do not support."))
+      }
+      return .available
     }
 
-    /// Loads and initializes CEF. Must run on the main thread after `NSApp` exists.
-    /// - Throws: `.engineNotBundled` or `.engineFailedToStart`.
+    /// Starts the host and returns immediately; tabs created now appear once it is ready.
+    /// - Throws: `.engineNotBundled` or `.engineFailedToStart` when the host cannot be used.
     public static func start(configuration: ChromiumConfiguration) throws(BrowserError) -> Self {
       if case .unavailable(let error) = availability(configuration: configuration) {
         throw error
       }
-      do {
-        try OMCEFRuntime.start(with: configuration.bridgeConfiguration)
-      } catch {
-        throw .engineFailedToStart(.chromium, reason: error.localizedDescription)
-      }
-      return Self()
-    }
-
-    /// Closes all Chromium browsers and shuts CEF down. Also runs on app termination.
-    public static func shutdown() {
-      OMCEFRuntime.shutdown()
-    }
-
-    /// Stock CEF's helper sandbox cannot nest inside App Sandbox.
-    private static func appSandboxConflict(_ configuration: ChromiumConfiguration) -> String? {
-      guard ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil,
-        !configuration.disableSandbox
-      else {
-        return nil
-      }
-      return "The app runs inside App Sandbox, which stock CEF builds do not support."
+      let session = Session(configuration: configuration.session)
+      session.start()
+      return Self(session: session)
     }
 
     /// See `BrowserEngine.makeTab(profile:initialURL:)`.
     public func makeTab(profile: BrowserProfile, initialURL: URL?) throws(BrowserError)
       -> any BrowserTab
     {
-      let view: OMCEFBrowserView
-      do {
-        view = try OMCEFBrowserView(
-          profileKey: profile.storageKey,
-          persistent: profile.persistence == .persistent,
-          initialURL: initialURL?.absoluteString ?? "about:blank")
-      } catch {
-        throw .engineFailedToStart(.chromium, reason: error.localizedDescription)
-      }
-      return ChromiumBrowserTab(profile: profile, view: view, initialURL: initialURL)
+      let webProfile = session.profile(
+        identifier: profile.identifier,
+        persistence: profile.persistence == .persistent ? .persistent : .ephemeral)
+      return ChromiumBrowserTab(
+        profile: profile, webView: webProfile.makeWebView(initialURL: initialURL))
     }
   }
 
-  final class ChromiumBrowserTab: NSObject, BrowserTab {
+  /// A `BrowserTab` over one `WebView`.
+  final class ChromiumBrowserTab: BrowserTab {
     let engineKind = BrowserEngineKind.chromium
     let profile: BrowserProfile
     let state = BrowserTabState()
-    private let view: OMCEFBrowserView
-    private var pendingFind: CheckedContinuation<BrowserFindResult, Never>?
+    let webView: WebView
+    let platformView: BrowserPlatformView
 
-    var platformView: BrowserPlatformView { view }
-
-    init(profile: BrowserProfile, view: OMCEFBrowserView, initialURL: URL?) {
+    init(profile: BrowserProfile, webView: WebView) {
       self.profile = profile
-      self.view = view
-      super.init()
-      state.url = initialURL
-      state.isLoading = initialURL != nil
-      view.delegate = self
+      self.webView = webView
+      platformView = WebLayerView(webView: webView)
+      webView.onStateChange = { [weak self] in self?.syncState() }
+      syncState()
     }
 
-    func load(_ url: URL) {
-      guard !state.isClosed else { return }
-      state.lastError = nil
-      view.loadURL(url.absoluteString)
-    }
-
-    func goBack() {
-      guard !state.isClosed else { return }
-      view.goBack()
-    }
-
-    func goForward() {
-      guard !state.isClosed else { return }
-      view.goForward()
-    }
-
-    func reload() {
-      guard !state.isClosed else { return }
-      view.reload()
-    }
-
-    func stopLoading() {
-      guard !state.isClosed else { return }
-      view.stopLoading()
-    }
+    func load(_ url: URL) { webView.load(url) }
+    func goBack() { webView.goBack() }
+    func goForward() { webView.goForward() }
+    func reload() { webView.reload() }
+    func stopLoading() { webView.stopLoading() }
 
     func evaluateJavaScript(_ script: String) async throws(BrowserError) -> BrowserScriptValue {
-      let params: [String: Any] = [
-        "expression": script,
-        "returnByValue": true,
-        "awaitPromise": false,
-        "userGesture": true,
-      ]
-      let json = try await devTools("Runtime.evaluate", params: params)
-      return try ChromiumDevTools.evaluateResult(json: json)
+      do {
+        return Self.convert(try await webView.evaluateJavaScript(script))
+      } catch {
+        throw Self.convert(error)
+      }
     }
 
     func takeSnapshotPNG() async throws(BrowserError) -> Data {
-      let json = try await devTools("Page.captureScreenshot", params: ["format": "png"])
-      return try ChromiumDevTools.screenshotData(json: json)
+      do {
+        return try await webView.snapshotPNG()
+      } catch {
+        throw Self.convert(error)
+      }
     }
 
     func find(_ text: String, forward: Bool, caseSensitive: Bool) async throws(BrowserError)
       -> BrowserFindResult
     {
-      guard !state.isClosed else { throw .tabClosed }
-      guard view.hasBrowser else { throw .tabNotReady }
-      finishFind(BrowserFindResult(matchFound: false, matchCount: 0, activeMatch: nil))
-      return await withCheckedContinuation { continuation in
-        pendingFind = continuation
-        view.findText(text, forward: forward, matchCase: caseSensitive)
+      do {
+        let result = try await webView.find(text, forward: forward, caseSensitive: caseSensitive)
+        return BrowserFindResult(
+          matchFound: result.matchFound, matchCount: result.matchCount,
+          activeMatch: result.activeMatch)
+      } catch {
+        throw Self.convert(error)
       }
     }
 
-    private func finishFind(_ result: BrowserFindResult) {
-      pendingFind?.resume(returning: result)
-      pendingFind = nil
-    }
-
     func showDevTools() throws(BrowserError) {
-      guard !state.isClosed else { throw .tabClosed }
       do {
-        try view.showDevTools()
+        try webView.showDevTools()
       } catch {
-        throw .devToolsFailed(method: "ShowDevTools", message: error.localizedDescription)
+        throw Self.convert(error)
       }
     }
 
     func close() {
-      guard !state.isClosed else { return }
-      state.isClosed = true
-      finishFind(BrowserFindResult(matchFound: false, matchCount: 0, activeMatch: nil))
-      view.close()
+      webView.close()
+      syncState()
     }
 
-    private func devTools(_ method: String, params: [String: Any]) async throws(BrowserError)
-      -> String
-    {
-      guard !state.isClosed else { throw .tabClosed }
-      let data: Data
-      do {
-        data = try JSONSerialization.data(withJSONObject: params)
-      } catch {
-        throw .devToolsFailed(method: method, message: error.localizedDescription)
-      }
-      guard let paramsJSON = String(bytes: data, encoding: .utf8) else {
-        throw .devToolsFailed(method: method, message: "Parameters are not UTF-8.")
-      }
-      let result: Result<String, BrowserError> = await withCheckedContinuation { continuation in
-        view.executeDevToolsMethod(method, paramsJSON: paramsJSON) { json, error in
-          if let json {
-            continuation.resume(returning: .success(json))
-          } else {
-            continuation.resume(returning: .failure(Self.bridgeError(error, method: method)))
-          }
-        }
-      }
-      return try result.get()
+    private func syncState() {
+      state.url = webView.url
+      state.title = webView.title
+      state.isLoading = webView.isLoading
+      state.estimatedProgress = webView.estimatedProgress
+      state.canGoBack = webView.canGoBack
+      state.canGoForward = webView.canGoForward
+      state.lastError = webView.lastError.map(Self.convert)
+      state.isClosed = webView.status == .closed
     }
 
-    private static func bridgeError(_ error: (any Error)?, method: String) -> BrowserError {
-      guard let nsError = error as NSError? else {
-        return .devToolsFailed(method: method, message: "No result and no error from CEF.")
-      }
-      switch nsError.code {
-      case OMCEFError.Code.browserNotReady.rawValue: return .tabNotReady
-      case OMCEFError.Code.browserClosed.rawValue: return .tabClosed
-      default: return .devToolsFailed(method: method, message: nsError.localizedDescription)
+    static func convert(_ value: WebScriptValue) -> BrowserScriptValue {
+      switch value {
+      case .undefined: .undefined
+      case .null: .null
+      case .bool(let bool): .bool(bool)
+      case .number(let number): .number(number)
+      case .string(let string): .string(string)
+      case .array(let array): .array(array.map(convert))
+      case .object(let object): .object(object.mapValues(convert))
       }
     }
-  }
 
-  extension ChromiumBrowserTab: OMCEFBrowserViewDelegate {
-    func browserViewDidCreateBrowser(_ view: OMCEFBrowserView) {}
-
-    func browserView(_ view: OMCEFBrowserView, didChangeURL url: String) {
-      state.url = URL(string: url)
+    static func convert(_ error: WebLayerError) -> BrowserError {
+      engineError(error) ?? pageError(error)
     }
 
-    func browserView(_ view: OMCEFBrowserView, didChangeTitle title: String) {
-      state.title = title
-    }
-
-    func browserView(
-      _ view: OMCEFBrowserView, didChangeLoading isLoading: Bool, canGoBack: Bool,
-      canGoForward: Bool
-    ) {
-      if isLoading, !state.isLoading {
-        state.lastError = nil
+    /// Host and engine lifecycle failures; nil for page-level errors.
+    private static func engineError(_ error: WebLayerError) -> BrowserError? {
+      let reason = error.localizedDescription
+      switch error {
+      case .hostNotBundled:
+        return .engineNotBundled(.chromium, reason: reason)
+      case .launchFailed, .channelFailed, .handshakeFailed, .protocolMismatch,
+        .hostInitializationFailed, .hostTimedOut, .renderingUnavailable:
+        return .engineFailedToStart(.chromium, reason: reason)
+      case .hostExited, .hostUnresponsive:
+        return .engineStopped(.chromium, reason: reason)
+      case .hostError, .invalidArgument:
+        return .engineError(.chromium, message: reason)
+      case .notReady:
+        return .tabNotReady
+      case .viewClosed:
+        return .tabClosed
+      default:
+        return nil
       }
-      state.isLoading = isLoading
-      state.canGoBack = canGoBack
-      state.canGoForward = canGoForward
     }
 
-    func browserView(_ view: OMCEFBrowserView, didChangeProgress progress: Double) {
-      state.estimatedProgress = progress
-    }
-
-    func browserView(
-      _ view: OMCEFBrowserView, didFailLoadWithErrorCode code: Int, text: String, url: String
-    ) {
-      let failedURL = URL(string: url)
-      state.lastError =
-        code == ChromiumDevTools.netErrorAborted
-        ? .navigationCancelled(url: failedURL)
-        : .navigationFailed(url: failedURL, code: code, message: text)
-    }
-
-    func browserView(
-      _ view: OMCEFBrowserView, renderProcessTerminatedWithStatus status: Int, errorCode: Int,
-      message: String
-    ) {
-      state.lastError = .contentProcessTerminated(
-        reason: "Chromium renderer exited (status \(status), code \(errorCode)) \(message)")
-    }
-
-    func browserView(_ view: OMCEFBrowserView, didBlockDownloadOfURL url: String) {
-      state.lastError = .downloadsUnsupported(url: URL(string: url))
-    }
-
-    func browserView(
-      _ view: OMCEFBrowserView, didFindMatches count: Int, activeMatch: Int, finalUpdate: Bool
-    ) {
-      guard finalUpdate else { return }
-      finishFind(
-        BrowserFindResult(
-          matchFound: count > 0, matchCount: count, activeMatch: count > 0 ? activeMatch : nil))
-    }
-
-    func browserViewDidClose(_ view: OMCEFBrowserView) {
-      state.isClosed = true
-      state.isLoading = false
+    private static func pageError(_ error: WebLayerError) -> BrowserError {
+      switch error {
+      case .navigationFailed(let url, let code, let message):
+        .navigationFailed(url: url, code: code, message: message)
+      case .navigationCancelled(let url):
+        .navigationCancelled(url: url)
+      case .rendererTerminated(let message):
+        .contentProcessTerminated(reason: message)
+      case .scriptFailed(let message):
+        .scriptFailed(message: message)
+      case .unsupportedScriptResult(let type):
+        .unsupportedScriptResult(type)
+      case .devToolsFailed(let method, let message):
+        .devToolsFailed(method: method, message: message)
+      case .snapshotFailed(let message):
+        .snapshotFailed(message)
+      case .downloadBlocked(let url):
+        .downloadsUnsupported(url: url)
+      case .featureBlocked(let feature, let detail):
+        .featureUnsupported(feature: "\(feature) (\(detail))", engine: .chromium)
+      default:
+        .engineError(.chromium, message: error.localizedDescription)
+      }
     }
   }
 #endif

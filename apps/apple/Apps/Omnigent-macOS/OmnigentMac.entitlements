@@ -3,9 +3,10 @@
 <plist version="1.0">
 <dict>
 	<!--
-	Developer ID edition: no App Sandbox, because it embeds CEF and Chromium's helper sandbox
-	cannot nest inside it (see Packages/OmnigentBrowser/README.md). It ships with hardened
-	runtime and notarization instead. The network client key has no effect without the sandbox
+	Developer ID edition: no App Sandbox, because it launches the Chromium web host, which
+	inherits the app's sandbox, and Chromium's helper sandbox cannot nest inside App Sandbox
+	(see Packages/OmnigentWebLayer/DESIGN.md). It ships with hardened runtime and notarization
+	instead. The network client key has no effect without the sandbox
 	and is kept so the two editions declare the same network use.
 	-->
 	<key>com.apple.security.network.client</key>

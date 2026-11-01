@@ -1,7 +1,7 @@
 #!/bin/bash
-# Copies Chromium Embedded Framework and the helper apps into the app's Contents/Frameworks and
-# signs the framework. Runs as a post-build phase of the app target (see BrowserTargets.swift).
-# Usage: embed-cef.sh <cef-out-dir> <expected-cef-version> "<App> Helper"
+# Copies Chromium Embedded Framework and the helper apps into the web host's Contents/Frameworks and
+# signs the framework. Runs as a post-build phase of the host target (see BrowserTargets.swift).
+# Usage: embed-cef.sh <cef-out-dir> <expected-cef-version> "<Host> Helper"
 # CEF derives the variant names from the base helper name, so the suffixes are fixed.
 set -euo pipefail
 
@@ -20,7 +20,7 @@ for suffix in "" " (GPU)" " (Renderer)" " (Plugin)" " (Alerts)"; do
   helper="$helper_base$suffix"
   source="${BUILT_PRODUCTS_DIR}/$helper.app"
   if [[ ! -x "$source/Contents/MacOS/$helper" ]]; then
-    echo "error: helper $source was not built; the app target must depend on the helper targets." >&2
+    echo "error: helper $source was not built; the host target must depend on the helper targets." >&2
     exit 1
   fi
   rsync -a --delete "$source/" "$dest/$helper.app/"

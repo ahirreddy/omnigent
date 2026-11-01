@@ -128,7 +128,7 @@ final class ExampleModel {
     page.draw(in: pageRect)
     let engine =
       tab.engineKind == .chromium
-      ? "Chromium (CEF \(ChromiumBrowserEngine.compiledVersion ?? "?"))"
+      ? "Chromium (out-of-process web host)"
       : tab.engineKind.displayName
     let caption =
       "Engine: \(engine)   URL: \(tab.state.url?.absoluteString ?? "-")   Title: \(tab.state.title)"

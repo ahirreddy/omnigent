@@ -6,6 +6,8 @@ let browser = BrowserTargets.Configuration(
   appProductName: "BrowserExample",
   appBundleId: "ai.omnigent.browser-example",
   browserPackagePath: "..",
+  webHostPath: "../../../WebHost",
+  webLayerPackagePath: "../../OmnigentWebLayer",
   cefOutPath: "../../../Vendor/cef/out"
 )
 

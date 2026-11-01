@@ -7,8 +7,12 @@ nonisolated public enum BrowserError: Error, Hashable, Sendable {
   case engineUnsupported(BrowserEngineKind)
   /// The engine is supported but missing from this build or app bundle.
   case engineNotBundled(BrowserEngineKind, reason: String)
-  /// The engine is bundled but failed to start. Sticky for the process lifetime.
+  /// The engine is bundled but failed to start. The provider remembers it until relaunch.
   case engineFailedToStart(BrowserEngineKind, reason: String)
+  /// The engine's process stopped or hung while in use. Reloading the tab restarts it.
+  case engineStopped(BrowserEngineKind, reason: String)
+  /// The engine reported an error that has no more specific case.
+  case engineError(BrowserEngineKind, message: String)
   /// A string could not be turned into a loadable URL.
   case invalidURL(String)
   /// A main-frame navigation failed.
@@ -53,6 +57,10 @@ extension BrowserError: LocalizedError {
       "\(kind.displayName) is not included in this build. \(reason)"
     case .engineFailedToStart(let kind, let reason):
       "\(kind.displayName) failed to start. \(reason)"
+    case .engineStopped(let kind, let reason):
+      "\(kind.displayName) stopped. \(reason) Reload to restart it."
+    case .engineError(let kind, let message):
+      "\(kind.displayName) reported an error: \(message)"
     case .invalidURL(let text):
       "\"\(text)\" is not a valid URL."
     case .navigationFailed(let url, let code, let message):

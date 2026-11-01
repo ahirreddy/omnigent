@@ -72,12 +72,13 @@ compile-time difference is the `OMNIGENT_CHROMIUM` Swift condition, read in
 | Bundle id (Release / Debug) | `ai.omnigent.mac` / `ai.omnigent.mac.lab` | `ai.omnigent.mac.appstore` / `ai.omnigent.mac.appstore.lab` |
 | Distribution | Developer ID signing, hardened runtime, notarization, outside the Mac App Store | Mac App Store |
 | App Sandbox | off (`OmnigentMac.entitlements`) | on, plus `network.client` (`OmnigentMacAppStore.entitlements`) |
-| Browser engines | Chromium (CEF, the default) and System (WebKit) | System (WebKit) only |
-| CEF | embedded with its five helpers; links `OmnigentBrowserChromium` | never linked or embedded |
+| Browser engines | Chromium (the default, out of process) and System (WebKit) | System (WebKit) only |
+| Chromium | `Contents/Helpers/Omnigent Web Host.app` (CEF and its five helpers); links `OmnigentBrowserChromium` | never linked or embedded; a build phase fails if it appears |
 | Managed preferences | own domain, then `ai.omnigent.mac`, `ai.omnigent.desktop` | own domain only (`OmnigentManagedPreferencesOwnDomainOnly`) |
 | Schemes and tests | `OmnigentMac`: `OmnigentMacTests`, `OmnigentMacUITests` | `OmnigentMacAppStore`: `OmnigentMacAppStoreTests`, `OmnigentMacAppStoreUITests` |
 
-- Stock CEF cannot run inside App Sandbox (see `Packages/OmnigentBrowser/README.md`),
+- Chromium runs in a separate host process on the model of ChatGPT Atlas's OWL (see
+  `Packages/OmnigentWebLayer/DESIGN.md`). Stock CEF cannot run inside App Sandbox,
   so Chromium exists only in the Developer ID edition. `OmnigentBrowser` is
   engine-neutral and ships the system engine. `OmnigentBrowserChromium` registers
   Chromium with `DefaultBrowserEngineProvider.withChromium()`. Pickers list only
@@ -100,8 +101,8 @@ compile-time difference is the `OMNIGENT_CHROMIUM` Swift condition, read in
   (`apps/apple/scripts/fetch-cef.sh --arch universal`). Archive the `OmnigentMac`
   scheme (Release), export with the Developer ID method, then notarize and staple:
   `xcrun notarytool submit Omnigent.zip --wait`, then `xcrun stapler staple Omnigent.app`.
-  Every helper is signed with the app's Team ID; the per-helper hardened-runtime
-  entitlements are in `Tuist/ProjectDescriptionHelpers/BrowserTargets.swift`. Debug
+  The web host and every helper are signed with the app's Team ID; the per-helper
+  hardened-runtime entitlements are in `Tuist/ProjectDescriptionHelpers/BrowserTargets.swift`. Debug
   builds are ad-hoc signed, and Xcode turns hardened runtime off for them.
 - **Mac App Store (`OmnigentMacAppStore`).** Archive the `OmnigentMacAppStore` scheme
   and upload through Xcode Organizer or `xcrun altool`. No CEF fetch is needed for it.
@@ -113,8 +114,9 @@ compile-time difference is the `OMNIGENT_CHROMIUM` Swift condition, read in
 Set `OMNIGENT_CEF_ARCH` to override the arch, for example `universal` for Release. The
 script downloads the pinned CEF into the gitignored `Vendor/cef`, verifies its SHA-256
 and SHA-1, builds `libcef_dll_wrapper`, and stages `Vendor/cef/out`. It is idempotent.
-`OmnigentMac`'s build fails with a clear error when CEF is missing, stale, or lacks an
-architecture being built. `OmnigentMacAppStore` does not need CEF.
+Only the web host (`WebHost/`) compiles against it; the app never links CEF. `OmnigentMac`'s
+build fails with a clear error when CEF is missing, stale, or lacks an architecture being
+built. `OmnigentMacAppStore` does not need CEF.
 
 ### iPhone and iPad (later)
 
@@ -137,6 +139,7 @@ apps/apple/
   .mise.toml                           pinned tuist
   scripts/build-core.sh                cargo -> xcframework + Swift bindings
   scripts/fetch-cef.sh                 pinned CEF for the Developer ID Mac edition
+  WebHost/                             Omnigent Web Host.app: the out-of-process Chromium host
   Apps/Omnigent-macOS  Apps/Omnigent-iOS   app targets (OmnigentMac, OmnigentMacAppStore, Omnigent)
   Packages/                            local Swift packages (see Architecture)
   Tests/                               app UI tests

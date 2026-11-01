@@ -4,11 +4,11 @@ Embedded browser for the native Omnigent apps, with two engines:
 
 | Engine | `BrowserEngineKind` | Platforms | Default |
 |---|---|---|---|
-| Chromium via CEF | `.chromium` | macOS only | macOS, when bundled and startable |
-| The OS web view, currently WKWebView | `.system` ("System (WebKit)") | macOS, iOS, iPadOS | iOS and iPadOS, and macOS builds without CEF |
+| Chromium, out of process in `Omnigent Web Host.app` (CEF) | `.chromium` | macOS only | macOS, when the host is bundled |
+| The OS web view, currently WKWebView | `.system` ("System (WebKit)") | macOS, iOS, iPadOS | iOS and iPadOS, and macOS builds without the host |
 
 App Store rules restrict iOS and iPadOS to WebKit. On those platforms the package compiles without
-any CEF code.
+any Chromium code.
 
 ## Parity target
 
@@ -21,14 +21,14 @@ server's `browser.action_request` bridge (`omnigent/server/routes/sessions/route
 |---|---|---|
 | Navigate, back/forward/reload/stop | yes | yes, both engines |
 | Observable URL, title, loading, progress, can-go-back/forward | yes | `BrowserTabState`, both engines |
-| Per-server/per-conversation storage isolation | in-memory partition per conversation, scoped per window | `BrowserProfile`: persistent per server or ephemeral per id. WebKit uses `WKWebsiteDataStore(forIdentifier:)`; Chromium uses a `CefRequestContext` per profile under `root_cache_path` |
-| JS evaluation (agent snapshot/click/type scripts) | `executeJavaScript` | `evaluateJavaScript` (completion value, promises not awaited). Chromium uses CDP `Runtime.evaluate` in the browser process; WebKit uses `evaluateJavaScript` |
-| Screenshot (`browser_screenshot`) | `capturePage` | `takeSnapshotPNG`. Chromium uses CDP `Page.captureScreenshot`; WebKit uses `takeSnapshot` |
+| Per-server/per-conversation storage isolation | in-memory partition per conversation, scoped per window | `BrowserProfile`: persistent per server or ephemeral per id. WebKit uses `WKWebsiteDataStore(forIdentifier:)`; Chromium uses a web-layer `Profile` (one `CefRequestContext` in the host; ephemeral ones are in-memory) |
+| JS evaluation (agent snapshot/click/type scripts) | `executeJavaScript` | `evaluateJavaScript` (completion value, promises not awaited). Chromium uses CDP `Runtime.evaluate` in the host; WebKit uses `evaluateJavaScript` |
+| Screenshot (`browser_screenshot`) | `capturePage` | `takeSnapshotPNG`. Chromium composites the host's page and popup frames (open `<select>` menus included); WebKit uses `takeSnapshot` |
 | Find in page | `find_preload.js` | `find(_:forward:caseSensitive:)` |
-| DevTools | `openDevTools` | Chromium: `showDevTools()` opens a native DevTools window. WebKit: the view is inspectable from Safari's Develop menu; `showDevTools()` throws `featureUnsupported` |
+| DevTools | `openDevTools` | Chromium: `showDevTools()` opens CEF's DevTools window in the host process. WebKit: the view is inspectable from Safari's Develop menu; `showDevTools()` throws `featureUnsupported` |
 | Popups / `window.open` | `popupPolicy.js` | Open in the same tab |
 | Downloads | Electron default | Blocked and reported as `BrowserError.downloadsUnsupported` |
-| Agent actions (`browser.action_request`: navigate/snapshot/click/type/screenshot) | yes | Primitives exist; the relay and the action-script port are not wired yet |
+| Agent actions (`browser.action_request`: navigate/snapshot/click/type/screenshot) | yes | Primitives exist, plus renderer-direct agent input on Chromium (`WebContentRenderer.agent*`); the relay and the action-script port are not wired yet |
 | URL policy for agent navigation (localhost/proxy checks) | `browserUrlPolicy.js` | Not yet |
 | Design mode, Chrome cookie import, permission prompts | yes | Not yet |
 
@@ -41,99 +41,51 @@ server's `browser.action_request` bridge (`omnigent/server/routes/sessions/route
 - `BrowserController` owns the tab. If the preferred engine cannot provide one, the content
   becomes `.engineUnavailable(requested:error:)`. `BrowserView` then shows the error with a "Use
   System (WebKit)" button and a "Retry" button. The controller never switches engines on its own.
-- A CEF start failure is sticky for the process, because CEF cannot re-initialize. Every error is
-  a typed `BrowserError`.
+- Chromium starts asynchronously: the tab shows "Starting Chromium…" until the host is ready. A
+  host crash or hang becomes `BrowserError.engineStopped` and a Reload overlay; Reload restarts
+  the host. Every error is a typed `BrowserError`.
 
-## Chromium (CEF)
+## Chromium
 
-- Version: CEF `156.0.15+gcf671c0+chromium-156.0.8078.80`, the latest stable build on
-  2026-10-31. It uses the "minimal" distribution, which already has everything needed: the
-  framework, `libcef_dll`, and the headers.
-  - macosarm64 SHA-256: `a27f1d856e84047657ed2a14caf355fb04480c4fe1963f04249a8a3184af1c30`
-  - macosx64 SHA-256: `e2aedb3cb41cc293ff2db81245f3462c61c49e13ac137f628872889c8a36c702`
-  - The script pins both the SHA-256 and the SHA-1 and verifies them with `shasum`.
-- `apps/apple/scripts/fetch-cef.sh [--arch arm64|x86_64|universal]` does the following, and is
-  idempotent:
-  1. Downloads into the gitignored `apps/apple/Vendor/cef`.
-  2. Verifies both checksums and fails on any mismatch.
-  3. Builds `libcef_dll_wrapper.a` with CMake.
-  4. Stages `Vendor/cef/out`, converting the framework to the versioned macOS layout that Xcode's
-     product validation and `codesign` expect.
-- **C++ wrapper, not the C API.** The bridge is Objective-C++ against `libcef_dll_wrapper`.
-  - The C API needs hand-written ref counting for every struct, plus vtable-filling for every
-    handler. That is a large, error-prone surface.
-  - The wrapper is CEF's supported client API and is what cefclient and cefsimple use.
-  - The wrapper is built in Release (`NDEBUG`) and statically linked. The bridge defines
-    `NDEBUG` to match, so the base-header layouts agree.
-  - The bridge header (`OmnigentCEFBridge.h`) is plain Objective-C. Swift never sees C++.
-- **Loading.** The framework is never linked. The bridge `dlopen`s it with `cef_load_library`,
-  and each helper uses `CefScopedLibraryLoader`.
-- **Message pump.** CEF runs with `external_message_pump`. `OnScheduleMessagePumpWork` drives an
-  `NSTimer` in common run-loop modes, with a 1/30 s ceiling, following cefclient's
-  `MainMessageLoopExternalPump`.
-- **`CefAppProtocol`.** The SwiftUI App lifecycle ignores `NSPrincipalClass` and uses its own
-  `NSApplication` subclass. At start-up the bridge gives `NSApp` a dynamic subclass of whatever
-  class it has, the same isa-swizzle that KVO uses. The subclass adds `CefAppProtocol`, wraps
-  `sendEvent:` in `CefScopedSendingEvent`, and defers `terminate:` until every browser has
-  closed. AppKit-lifecycle apps can use `OMCEFApplication` instead.
-- **Embedding.** Browsers are Alloy-style children of an `NSView` (`OMCEFBrowserView`).
-  `DoClose` returns true and detaches CEF's view. Its deallocation completes the close, so the
-  host window is never sent `performClose:`.
-- **Helpers.** CEF needs five helper apps in `Contents/Frameworks`: `<App> Helper`, plus
-  `(GPU)`, `(Renderer)`, `(Plugin)` and `(Alerts)`. They all share `Helper/OmnigentCEFHelper.cc`,
-  which enables Chromium's seatbelt sandbox with `CefScopedSandboxContext`.
-  `apps/apple/Tuist/ProjectDescriptionHelpers/BrowserTargets.swift` defines the targets and the
-  embed step (`Scripts/embed-cef.sh`). `Scripts/check-cef.sh` fails the build when CEF is missing
-  or stale, or lacks an architecture being built.
+Chromium runs out of process, on the model of ChatGPT Atlas's OWL. The design, IPC, rendering
+paths, the spike data behind them, and the proofs are in
+[`../OmnigentWebLayer/DESIGN.md`](../OmnigentWebLayer/DESIGN.md).
+
+- `OmnigentBrowserChromium` adapts the `OmnigentWebLayer` client (`Session`, `Profile`,
+  `WebView`) to `BrowserEngine` and `BrowserTab`. It contains no CEF code and never loads CEF.
+- The host, `Contents/Helpers/Omnigent Web Host.app`, owns CEF
+  `156.0.15+gcf671c0+chromium-156.0.8078.80` (from `apps/apple/scripts/fetch-cef.sh`, pinned
+  and checksum-verified) and its five helpers. Sources are in `apps/apple/WebHost`; targets are
+  in `apps/apple/Tuist/ProjectDescriptionHelpers/BrowserTargets.swift`.
+- `ChromiumEngineFactory.availability()` checks that the host executable is bundled and that
+  the app is not running under App Sandbox. The host inherits the app's sandbox, and stock
+  CEF's helper sandbox cannot nest in it.
 
 ### App Sandbox and entitlements
 
-Stock CEF builds cannot run inside App Sandbox. Chromium's helper sandbox (seatbelt) cannot nest
-inside it, and the Mac App Store variant of Chromium is not distributed as a CEF binary. The
-Chromium engine checks for `APP_SANDBOX_CONTAINER_ID` and refuses to start under App Sandbox,
-with an explicit error.
-
-**Decision:** while it embeds CEF, the Mac app ships without App Sandbox. It uses Developer ID
-signing, hardened runtime and notarization, the same model as the Electron app
-(`web/electron/signing/entitlements.mac.plist`) and Chrome. Chromium's own sandbox stays on for
-helper processes. If a Mac App Store build is ever needed, it would be a separate flavor with
-only the system engine.
-
-Hardened-runtime entitlements, verified by running the Example fully hardened:
+The Developer ID edition ships without App Sandbox, with hardened runtime and notarization, like
+the Electron app and Chrome. Chromium's own sandbox stays on for the helper processes. The Mac App
+Store edition contains no Chromium.
 
 | Bundle | Entitlements |
 |---|---|
-| App (browser process) | none needed for CEF |
+| App | none needed for Chromium |
+| `Omnigent Web Host` (browser process) | none |
 | `Helper` | `cs.allow-jit` (CEF 156 runs Blink/V8 here; without it V8 cannot reserve its CodeRange) |
 | `Helper (Renderer)` | `cs.allow-jit` |
 | `Helper (GPU)` | `cs.allow-jit` |
 | `Helper (Plugin)` | `cs.allow-unsigned-executable-memory`, `cs.disable-library-validation` |
 | `Helper (Alerts)` | none |
 
-Xcode 27 turns hardened runtime off for ad-hoc "Sign to Run Locally" Debug builds. Ad-hoc
-signatures also have no Team ID, so library validation fails without
-`disable-library-validation`. A real hardened test therefore needs a Developer ID or Apple
-Development identity, which signs everything with one Team ID.
+Xcode 27 turns hardened runtime off for ad-hoc "Sign to Run Locally" Debug builds. A real
+hardened test needs a Developer ID or Apple Development identity.
 
 ### Size
 
-| Build | Framework on disk | Framework zipped | Helpers |
+| Build | Host bundle on disk | Zipped | Helpers |
 |---|---|---|---|
-| arm64 | 331 MB | about 148 MB | about 0.8 MB each |
-| universal | 581 MB | about 2x arm64 | about 0.8 MB each |
-
-Release builds should fetch with `--arch universal`; Debug builds use the host architecture.
-
-### Known issues
-
-- **Intermittent teardown watchdog on quit.** Sometimes Chromium's Mac teardown watchdog fires
-  inside `CefShutdown`. The process then exits with status 2 after the window has closed, and the
-  NetworkService helper may still be flushing cookies.
-  - Before the fixes, this happened in about 2 of 5 runs.
-  - Two fixes were applied: CEF references are released, and the pump is drained before shutdown.
-    Afterwards it was 2 of 10 runs, and 0 in 12 warm runs.
-  - Moving `CefShutdown` ahead of `terminate:` made it worse, so that change was reverted.
-  - Needs follow-up.
+| arm64 Debug | 331 MB (framework 326 MB) | about 141 MB for the whole example app | about 0.76 MB each |
+| universal | about 2x the framework | about 2x | about 0.76 MB each |
 
 ## Running the example
 
@@ -151,6 +103,9 @@ xcodebuild -workspace BrowserExample.xcworkspace -scheme BrowserExample build
 writes a PNG and quits. The page area comes from the engine's own snapshot, because
 out-of-process web content does not render through `cacheDisplay`.
 
+The web layer's own proof app, which covers rendering, input, popups, cookies, agent input,
+crash, hang and quit, is `Packages/OmnigentWebLayer/Example` (see its DESIGN.md).
+
 The Example's `Tuist/ProjectDescriptionHelpers/BrowserTargets.swift` is a symlink to the
 product's helper, so the sample builds exactly what the app uses.
 
@@ -164,10 +119,11 @@ product's helper, so the sample builds exactly what the app uses.
 - URL parsing
 - profile keys
 - script-value conversion
-- CDP result parsing
+- error and script-value mapping from the web layer
 - WebKit tab state, history and JS evaluation, using local file URLs
 - reporting of navigation failures
 
-The Chromium path is exercised by the Example app: it needs a bundled app with helpers, so it
-cannot run headless under `swift test`. In the test runner, the real provider reports Chromium
+The Chromium path is exercised by the example apps: it needs a bundled host, so it cannot run
+headless under `swift test`. `OmnigentWebLayer` has its own tests for the wire format, the Mach
+channel, input translation and session failure paths. In the test runner, the real provider reports Chromium
 as `engineNotBundled`, and that behavior is tested.

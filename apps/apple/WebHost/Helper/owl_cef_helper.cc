@@ -1,5 +1,5 @@
-// Entry point shared by every CEF helper bundle (GPU, Renderer, Plugin, Alerts and the base
-// helper). Built by the Tuist targets in BrowserTargets.swift, not by SwiftPM.
+// Entry point shared by the web host's CEF helper bundles: "Omnigent Web Host Helper" and its
+// (GPU), (Renderer), (Plugin) and (Alerts) variants, all in the host's Contents/Frameworks.
 #include <cstdio>
 
 #include "include/cef_app.h"
@@ -9,12 +9,12 @@
 int main(int argc, char* argv[]) {
   CefScopedSandboxContext sandbox_context;
   if (!sandbox_context.Initialize(argc, argv)) {
-    std::fprintf(stderr, "OmnigentCEFHelper: failed to initialize the Chromium sandbox\n");
+    std::fprintf(stderr, "owl-helper: failed to initialize the Chromium sandbox\n");
     return 1;
   }
   CefScopedLibraryLoader library_loader;
   if (!library_loader.LoadInHelper()) {
-    std::fprintf(stderr, "OmnigentCEFHelper: failed to load Chromium Embedded Framework\n");
+    std::fprintf(stderr, "owl-helper: failed to load Chromium Embedded Framework\n");
     return 1;
   }
   CefMainArgs main_args(argc, argv);

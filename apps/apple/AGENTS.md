@@ -31,7 +31,9 @@ Read `README.md` first. These rules cover `apps/apple/` and the Rust core in
   `OmnigentMac` (Developer ID, Chromium) and `OmnigentMacAppStore` (App Sandbox,
   WebKit only). Edition differences go through `AppEdition` and the
   `OMNIGENT_CHROMIUM` condition, never through copied files. Code that only the
-  App Store edition may not contain (CEF) stays behind `OmnigentBrowserChromium`.
+  App Store edition may not contain (Chromium) stays behind `OmnigentBrowserChromium`,
+  and CEF itself only in the out-of-process web host (`WebHost/`, see
+  `Packages/OmnigentWebLayer/DESIGN.md`). Never load CEF in the app process.
 - `OmnigentMac` is the primary edition. Keep iOS and iPad compiling, and
   keep platform differences in `#if os()` shims, not in forked views.
 
