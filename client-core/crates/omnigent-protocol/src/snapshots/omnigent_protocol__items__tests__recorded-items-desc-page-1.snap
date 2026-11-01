@@ -1,0 +1,41 @@
+---
+source: crates/omnigent-protocol/src/items_tests.rs
+expression: decoded
+---
+{
+  "data": [
+    {
+      "content": [
+        {
+          "text": "Second turn streams its answer in deltas.",
+          "type": "output_text"
+        }
+      ],
+      "created_at": 1793492391,
+      "id": "bcad26706c29487ba4c9fd884997094d",
+      "model": "fixture_agent",
+      "response_id": "resp_fbcd4d6f91a14300b3c9de39",
+      "role": "assistant",
+      "status": "completed",
+      "type": "message"
+    },
+    {
+      "content": [
+        {
+          "text": "Now stream a second answer.",
+          "type": "input_text"
+        }
+      ],
+      "created_at": 1793492391,
+      "id": "2869dc82b2e040cd938f39a5ad5bbc60",
+      "response_id": "turn_598e4442c2d349309146f2679933ad29",
+      "role": "user",
+      "status": "completed",
+      "type": "message",
+      "user_authored": true
+    }
+  ],
+  "first_id": "bcad26706c29487ba4c9fd884997094d",
+  "last_id": "2869dc82b2e040cd938f39a5ad5bbc60",
+  "has_more": true
+}

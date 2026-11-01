@@ -10,12 +10,16 @@ pub mod attachments;
 pub mod auth;
 mod client;
 pub mod config;
+pub mod decisions;
 pub mod deeplink;
 mod discovery;
 mod error;
 pub mod http;
 pub mod ledger;
+pub mod notifications;
 pub mod realtime;
+pub mod reconcile;
+pub mod reducer;
 pub mod server_url;
 pub mod sse;
 #[cfg(test)]

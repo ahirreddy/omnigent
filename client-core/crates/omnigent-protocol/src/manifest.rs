@@ -86,6 +86,72 @@ impl ManifestAuth {
     }
 }
 
+impl ManifestAuth {
+    /// Whether the server's native sign-in accepts `redirect_uri`: an OIDC server, and either a
+    /// listed private-use-scheme redirect or an RFC 8252 loopback redirect (which `"oidc"`
+    /// always promises).
+    #[must_use]
+    pub fn accepts_native_redirect(&self, redirect_uri: &str) -> bool {
+        self.mode == AuthMode::Oidc
+            && (self
+                .native_redirect_uris
+                .iter()
+                .any(|uri| uri == redirect_uri)
+                || is_loopback_redirect_uri(redirect_uri))
+    }
+
+    /// The session cookie to install when the server offers this app's native sign-in with a
+    /// listed `redirect_uri`; `None` keeps the legacy in-web-view flow. Port of
+    /// `ServerManifest.nativeSignInCookieName`.
+    #[must_use]
+    pub fn native_sign_in_cookie(&self, redirect_uri: &str, server_is_https: bool) -> Option<&str> {
+        if self.mode != AuthMode::Oidc
+            || !self
+                .native_redirect_uris
+                .iter()
+                .any(|uri| uri == redirect_uri)
+        {
+            return None;
+        }
+        self.trusted_session_cookie(server_is_https)
+    }
+}
+
+/// The redirect URI the iOS app registers (`NATIVE_APP_REDIRECT_URIS` in
+/// `omnigent/server/routes/auth.py`).
+pub const IOS_NATIVE_REDIRECT_URI: &str = "ai.omnigent.ios:/oauth/callback";
+
+/// Whether `raw` is an RFC 8252 loopback redirect the server accepts.
+///
+/// That is `http://127.0.0.1:<port>` or `http://[::1]:<port>` with an explicit non-zero port, an
+/// optional path, and no userinfo, query, fragment, backslash or whitespace. Mirrors
+/// `_is_loopback_redirect_uri` on the server.
+#[must_use]
+pub fn is_loopback_redirect_uri(raw: &str) -> bool {
+    if raw.is_empty() || raw.contains(['?', '#', '\\']) || raw.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let Some((scheme, rest)) = raw.split_once("://") else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case("http") {
+        return false;
+    }
+    let Some(after_host) = rest
+        .strip_prefix("127.0.0.1:")
+        .or_else(|| rest.strip_prefix("[::1]:"))
+    else {
+        return false;
+    };
+    let port = after_host.split('/').next().unwrap_or_default();
+    !port.is_empty()
+        && port.len() <= 5
+        && port.bytes().all(|byte| byte.is_ascii_digit())
+        && port
+            .parse::<u32>()
+            .is_ok_and(|port| (1..=65_535).contains(&port))
+}
+
 /// `auth.mode`. A mode this client does not know is kept verbatim, never mapped to a known one.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AuthMode {
@@ -370,6 +436,86 @@ mod tests {
             ..auth
         };
         assert_eq!(plain.trusted_session_cookie(false), Some("ap_session"));
+    }
+
+    const IOS: &str = IOS_NATIVE_REDIRECT_URI;
+
+    #[test]
+    fn manifest_native_sign_in_cookie_enabled_when_redirect_matches() {
+        let manifest = parse(
+            r#"{"manifest_version": 1, "auth": {"mode": "oidc", "session_cookie": "__Host-ap_session",
+                "native_redirect_uris": ["ai.omnigent.ios:/oauth/callback"]}}"#,
+        )
+        .unwrap();
+        let auth = manifest.auth.unwrap();
+        assert_eq!(
+            auth.native_sign_in_cookie(IOS, true),
+            Some("__Host-ap_session")
+        );
+        assert!(auth.accepts_native_redirect(IOS));
+    }
+
+    #[test]
+    fn manifest_native_sign_in_legacy_when_redirect_or_cookie_missing() {
+        for body in [
+            r#"{"manifest_version": 1, "auth": {"mode": "oidc", "session_cookie": "__Host-ap_session"}}"#,
+            r#"{"manifest_version": 1, "auth": {"mode": "oidc", "session_cookie": "__Host-ap_session",
+                "native_redirect_uris": ["http://127.0.0.1/callback", "omnigent:/oauth/callback"]}}"#,
+            r#"{"manifest_version": 1, "auth": {"mode": "oidc",
+                "native_redirect_uris": ["ai.omnigent.ios:/oauth/callback"]}}"#,
+        ] {
+            let auth = parse(body).unwrap().auth.unwrap();
+            assert_eq!(auth.native_sign_in_cookie(IOS, true), None, "{body}");
+        }
+    }
+
+    #[test]
+    fn manifest_native_sign_in_only_for_oidc_mode() {
+        for mode in ["accounts", "header", "custom", "none"] {
+            let body = format!(
+                r#"{{"manifest_version": 1, "auth": {{"mode": "{mode}", "session_cookie": "__Host-ap_session",
+                    "native_redirect_uris": ["ai.omnigent.ios:/oauth/callback"]}}}}"#
+            );
+            let auth = parse(&body).unwrap().auth.unwrap();
+            assert_eq!(auth.native_sign_in_cookie(IOS, true), None, "{mode}");
+            assert!(!auth.accepts_native_redirect(IOS), "{mode}");
+        }
+        assert_eq!(parse(r#"{"manifest_version": 1}"#).unwrap().auth, None);
+    }
+
+    #[test]
+    fn loopback_redirects_match_the_server_rule() {
+        for uri in [
+            "http://127.0.0.1:53682/callback",
+            "http://[::1]:8080/cb",
+            "http://127.0.0.1:1",
+            "HTTP://127.0.0.1:65535/x",
+        ] {
+            assert!(is_loopback_redirect_uri(uri), "{uri}");
+        }
+        for uri in [
+            "",
+            "http://127.0.0.1/callback",
+            "http://127.0.0.1:0/cb",
+            "http://127.0.0.1:65536/cb",
+            "http://localhost:8080/cb",
+            "https://127.0.0.1:8080/cb",
+            "http://user@127.0.0.1:8080/cb",
+            "http://127.0.0.1:8080/cb?x=1",
+            "http://127.0.0.1:8080/cb#f",
+            "http://127.0.0.1:8080/c b",
+            "http://127.0.0.1:80a/cb",
+            "ai.omnigent.ios:/oauth/callback",
+        ] {
+            assert!(!is_loopback_redirect_uri(uri), "{uri}");
+        }
+        let auth = ManifestAuth {
+            mode: AuthMode::Oidc,
+            session_cookie: None,
+            native_redirect_uris: vec![],
+        };
+        assert!(auth.accepts_native_redirect("http://127.0.0.1:53682/callback"));
+        assert!(!auth.accepts_native_redirect(IOS));
     }
 
     #[test]

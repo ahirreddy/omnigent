@@ -1,0 +1,177 @@
+---
+source: crates/omnigent-protocol/src/events_tests.rs
+expression: events
+---
+[
+  {
+    "type": "session.heartbeat"
+  },
+  {
+    "type": "session.changed_files.invalidated",
+    "environment_id": "default",
+    "session_id": "facbcc05b00f4321b98b1929d217abc5"
+  },
+  {
+    "type": "session.presence",
+    "conversation_id": "facbcc05b00f4321b98b1929d217abc5",
+    "viewers": []
+  },
+  {
+    "type": "session.input.consumed",
+    "data": {
+      "data": {
+        "agent": null,
+        "content": [
+          {
+            "text": "Run the command echo fixture-hello and tell me the result.",
+            "type": "input_text"
+          }
+        ],
+        "role": "user",
+        "stream_message_id": null,
+        "user_authored": true
+      },
+      "item_id": "045b5946e6fd4d06bd2c069cc197b83b",
+      "type": "message"
+    }
+  },
+  {
+    "type": "session.status",
+    "background_task_count": null,
+    "background_tasks": null,
+    "conversation_id": "facbcc05b00f4321b98b1929d217abc5",
+    "status": "running"
+  },
+  {
+    "type": "response.in_progress",
+    "response": {
+      "created_at": 1793492389,
+      "id": "resp_e8fb358f78a34e1e962751e7",
+      "model": "fixture_agent",
+      "output": [],
+      "status": "in_progress"
+    }
+  },
+  {
+    "type": "response.output_item.done",
+    "item": {
+      "arguments": "{\"command\": \"echo fixture-hello\"}",
+      "call_id": "call_fixture_shell_1",
+      "id": "fc_e7c5a6a2f2a1",
+      "model": "resp_e8fb358f78a34e1e962751e7",
+      "name": "sys_os_shell",
+      "status": "in_progress",
+      "type": "function_call"
+    }
+  },
+  {
+    "type": "session.changed_files.invalidated",
+    "environment_id": "default",
+    "session_id": "facbcc05b00f4321b98b1929d217abc5"
+  },
+  {
+    "type": "response.output_item.done",
+    "item": {
+      "arguments": "{\"command\": \"echo fixture-hello\"}",
+      "call_id": "call_fixture_shell_1",
+      "id": "fc_ffd79d11562a",
+      "model": "fixture_agent",
+      "name": "sys_os_shell",
+      "status": "completed",
+      "type": "function_call"
+    }
+  },
+  {
+    "type": "response.output_item.done",
+    "item": {
+      "call_id": "call_fixture_shell_1",
+      "id": "fco_9a23b560712f",
+      "output": "{\"stdout\": \"fixture-hello\\n\", \"stderr\": \"\", \"exit_code\": 0, \"timed_out\": false, \"shell\": \"/bin/bash\", \"cwd\": \"/workspace/tmp/omnigent-runner-os-envs/facbcc05b00f4321b98b1929d217abc5/workspace\"}",
+      "response_id": "resp_e8fb358f78a34e1e962751e7",
+      "status": "completed",
+      "type": "function_call_output"
+    }
+  },
+  {
+    "type": "response.output_text.delta",
+    "delta": "The "
+  },
+  {
+    "type": "response.output_text.delta",
+    "delta": "command "
+  },
+  {
+    "type": "response.output_text.delta",
+    "delta": "printed "
+  },
+  {
+    "type": "response.output_text.delta",
+    "delta": "fixture-hello."
+  },
+  {
+    "type": "response.output_item.done",
+    "item": {
+      "content": [
+        {
+          "text": "The command printed fixture-hello.",
+          "type": "output_text"
+        }
+      ],
+      "created_at": 1793492390,
+      "id": "fc970dc6e5674629bc7cf78f82f80cac",
+      "model": "fixture_agent",
+      "response_id": "resp_e8fb358f78a34e1e962751e7",
+      "role": "assistant",
+      "status": "completed",
+      "type": "message"
+    }
+  },
+  {
+    "type": "session.model",
+    "conversation_id": "facbcc05b00f4321b98b1929d217abc5",
+    "model": "mock-model"
+  },
+  {
+    "type": "session.usage",
+    "context_tokens": 15,
+    "context_window": 128000,
+    "conversation_id": "facbcc05b00f4321b98b1929d217abc5",
+    "total_cost_usd": 0.000009,
+    "usage_by_model": {
+      "mock-model": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 20,
+        "output_tokens": 10,
+        "total_cost_usd": 0.000009,
+        "total_tokens": 30
+      }
+    }
+  },
+  {
+    "type": "response.completed",
+    "response": {
+      "created_at": 1793492390,
+      "id": "resp_e8fb358f78a34e1e962751e7",
+      "model": "fixture_agent",
+      "output": [],
+      "status": "completed",
+      "usage": {
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "context_tokens": 15,
+        "input_tokens": 20,
+        "model": "mock-model",
+        "output_tokens": 10,
+        "total_tokens": 30
+      }
+    }
+  },
+  {
+    "type": "session.status",
+    "background_task_count": null,
+    "background_tasks": null,
+    "conversation_id": "facbcc05b00f4321b98b1929d217abc5",
+    "status": "idle"
+  }
+]

@@ -23,7 +23,9 @@ impl HttpHeader {
 }
 
 /// A request the core asks the host to send.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Debug` redacts the query string, credential headers and the body, which can carry tokens.
+#[derive(Clone, PartialEq, Eq)]
 pub struct HttpRequest {
     /// HTTP method, upper case.
     pub method: String,
@@ -36,7 +38,9 @@ pub struct HttpRequest {
 }
 
 /// The final response to an [`HttpRequest`], whatever its status.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Debug` redacts credential headers and the body, which can carry tokens.
+#[derive(Clone, PartialEq, Eq)]
 pub struct HttpResponse {
     /// HTTP status code.
     pub status: u16,
@@ -54,6 +58,73 @@ impl HttpResponse {
             .iter()
             .find(|header| header.name.eq_ignore_ascii_case(name))
             .map(|header| header.value.as_str())
+    }
+}
+
+const SENSITIVE_HEADERS: [&str; 5] = [
+    "authorization",
+    "cookie",
+    "set-cookie",
+    "proxy-authorization",
+    "x-omnigent-code-verifier",
+];
+
+struct RedactedHeaders<'a>(&'a [HttpHeader]);
+
+impl fmt::Debug for RedactedHeaders<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_list()
+            .entries(self.0.iter().map(|header| {
+                let sensitive = SENSITIVE_HEADERS
+                    .iter()
+                    .any(|name| header.name.eq_ignore_ascii_case(name));
+                let value = if sensitive {
+                    "<redacted>"
+                } else {
+                    header.value.as_str()
+                };
+                (header.name.as_str(), value)
+            }))
+            .finish()
+    }
+}
+
+struct RedactedBody(Option<usize>);
+
+impl fmt::Debug for RedactedBody {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(length) => write!(formatter, "<{length} bytes>"),
+            None => formatter.write_str("None"),
+        }
+    }
+}
+
+impl fmt::Debug for HttpRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let url = self.url.split_once('?').map_or_else(
+            || self.url.clone(),
+            |(path, _)| format!("{path}?<redacted>"),
+        );
+        formatter
+            .debug_struct("HttpRequest")
+            .field("method", &self.method)
+            .field("url", &url)
+            .field("headers", &RedactedHeaders(&self.headers))
+            .field("body", &RedactedBody(self.body.as_ref().map(Vec::len)))
+            .finish()
+    }
+}
+
+impl fmt::Debug for HttpResponse {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HttpResponse")
+            .field("status", &self.status)
+            .field("headers", &RedactedHeaders(&self.headers))
+            .field("body", &RedactedBody(Some(self.body.len())))
+            .finish()
     }
 }
 
@@ -109,4 +180,34 @@ pub trait HttpTransport {
         &self,
         request: HttpRequest,
     ) -> impl Future<Output = Result<HttpResponse, TransportError>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HttpHeader, HttpRequest, HttpResponse};
+
+    #[test]
+    fn debug_redacts_credentials_query_and_body() {
+        let request = HttpRequest {
+            method: "POST".to_owned(),
+            url: "https://example.test/oauth/token?code=secret-code".to_owned(),
+            headers: vec![
+                HttpHeader::new("Authorization", "Bearer secret-token"),
+                HttpHeader::new("Accept", "application/json"),
+            ],
+            body: Some(b"refresh_token=secret-refresh".to_vec()),
+        };
+        let rendered = format!("{request:?}");
+        assert!(!rendered.contains("secret"), "{rendered}");
+        assert!(rendered.contains("application/json"), "{rendered}");
+        assert!(rendered.contains("<28 bytes>"), "{rendered}");
+
+        let response = HttpResponse {
+            status: 200,
+            headers: vec![HttpHeader::new("Set-Cookie", "session=secret-cookie")],
+            body: b"{\"access_token\":\"secret-access\"}".to_vec(),
+        };
+        let rendered = format!("{response:?}");
+        assert!(!rendered.contains("secret"), "{rendered}");
+    }
 }

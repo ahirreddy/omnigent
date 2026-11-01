@@ -1,0 +1,37 @@
+---
+source: crates/omnigent-protocol/src/items_tests.rs
+expression: decoded
+---
+{
+  "data": [
+    {
+      "content": [
+        {
+          "text": "Run the command echo fixture-hello and tell me the result.",
+          "type": "input_text"
+        }
+      ],
+      "created_at": 1793492389,
+      "id": "045b5946e6fd4d06bd2c069cc197b83b",
+      "response_id": "turn_5c3ff496250f48dda13bc055d25df2f3",
+      "role": "user",
+      "status": "completed",
+      "type": "message",
+      "user_authored": true
+    },
+    {
+      "arguments": "{\"command\": \"echo fixture-hello\"}",
+      "call_id": "call_fixture_shell_1",
+      "created_at": 1793492390,
+      "id": "1925c34ba9774eccacfc49669d9e8ccb",
+      "model": "fixture_agent",
+      "name": "sys_os_shell",
+      "response_id": "resp_e8fb358f78a34e1e962751e7",
+      "status": "completed",
+      "type": "function_call"
+    }
+  ],
+  "first_id": "045b5946e6fd4d06bd2c069cc197b83b",
+  "last_id": "1925c34ba9774eccacfc49669d9e8ccb",
+  "has_more": true
+}

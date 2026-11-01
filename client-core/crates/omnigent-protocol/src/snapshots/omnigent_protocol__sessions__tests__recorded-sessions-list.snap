@@ -1,0 +1,82 @@
+---
+source: crates/omnigent-protocol/src/sessions_tests.rs
+expression: list
+---
+{
+  "data": [
+    {
+      "id": "1a96db016a85409ab884278d2ab31dfc",
+      "agent_id": "77662019565abb4927037682ae77d875",
+      "agent_name": "fixture_agent",
+      "harness": "openai-agents",
+      "status": "idle",
+      "created_at": 1793492389,
+      "updated_at": 1793492389,
+      "title": "fixture delete session",
+      "labels": {
+        "omnigent.client_surface": "cli"
+      },
+      "permission_level": 4,
+      "owner": "local",
+      "pending_elicitations_count": 0,
+      "archived": false,
+      "comments_count": 0,
+      "viewer_unread": false,
+      "pull_requests_synced": false
+    },
+    {
+      "id": "e4c1ef06c8b844a6bb414db5efe0df7e",
+      "agent_id": "77662019565abb4927037682ae77d875",
+      "agent_name": "fixture_agent",
+      "harness": "openai-agents",
+      "status": "idle",
+      "created_at": 1793492389,
+      "updated_at": 1793492389,
+      "title": "fixture idle session",
+      "labels": {
+        "omnigent.client_surface": "cli"
+      },
+      "permission_level": 4,
+      "owner": "local",
+      "pending_elicitations_count": 0,
+      "archived": false,
+      "comments_count": 0,
+      "viewer_unread": false,
+      "pull_requests_synced": false
+    },
+    {
+      "id": "facbcc05b00f4321b98b1929d217abc5",
+      "agent_id": "77662019565abb4927037682ae77d875",
+      "agent_name": "fixture_agent",
+      "harness": "openai-agents",
+      "status": "idle",
+      "created_at": 1793492388,
+      "updated_at": 1793492391,
+      "title": "fixture turn session",
+      "labels": {
+        "omnigent.client_surface": "cli",
+        "omnigent.last_context_tokens": "17",
+        "omnigent.last_context_window": "128000",
+        "omnigent.last_task_error_agent_name": "",
+        "omnigent.last_task_error_cause": "",
+        "omnigent.last_task_error_code": "",
+        "omnigent.last_task_error_item_id": "",
+        "omnigent.last_task_error_message": "",
+        "omnigent.last_task_error_remediation": "",
+        "omnigent.last_task_error_runner_id": "",
+        "omnigent.last_task_error_title": ""
+      },
+      "runner_id": "runner_token_placeholder",
+      "permission_level": 4,
+      "owner": "local",
+      "pending_elicitations_count": 0,
+      "archived": false,
+      "comments_count": 0,
+      "viewer_unread": false,
+      "pull_requests_synced": false
+    }
+  ],
+  "first_id": "1a96db016a85409ab884278d2ab31dfc",
+  "last_id": "facbcc05b00f4321b98b1929d217abc5",
+  "has_more": false
+}
