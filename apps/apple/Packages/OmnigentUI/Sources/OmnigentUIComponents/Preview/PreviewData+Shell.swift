@@ -32,7 +32,7 @@ extension PreviewData {
   ]
 
   static let sidebar = SidebarViewState(
-    list: sessionList, rowInfo: rowInfo, projects: projects, inboxCount: 3, servers: servers,
+    list: sessionList, rowInfo: rowInfo, projects: projects, inboxCount: 2, servers: servers,
     currentServerID: "dbx")
 
   // MARK: Session page
@@ -81,20 +81,9 @@ extension PreviewData {
       ComposerHost(id: "host_ci", name: "CI runner", kind: .machine, isOnline: false),
     ], selectedID: "host_mbp")
 
-  static let codexModes = ApprovalModes(
-    options: [
-      ApprovalModeOption(id: "ask", label: "Ask for approval"),
-      ApprovalModeOption(id: "auto", label: "Approve for me"),
-      ApprovalModeOption(id: "full", label: "Full Access"),
-    ], selectedID: "auto")
+  static let codexModes = ComposerSamples.codexModes()
 
-  static let claudeModes = ApprovalModes(
-    options: [
-      ApprovalModeOption(id: "default", label: "Manual"),
-      ApprovalModeOption(id: "auto", label: "Auto"),
-      ApprovalModeOption(id: "acceptEdits", label: "Accept edits"),
-      ApprovalModeOption(id: "plan", label: "Plan"),
-    ], selectedID: "default")
+  static let claudeModes = ComposerSamples.claudeModes()
 
   static let slashCommands = [
     SlashCommand(name: "review", description: "Review the current changes", isSkill: true),
@@ -119,7 +108,8 @@ extension PreviewData {
     state.slashCommands = slashCommands
     state.mentionCandidates = mentionPaths
     state.queue = [QueuedMessage(id: "q1", text: "Also update the changelog when you're done")]
-    state.placeholder = "Send a follow-up (queued) \u{2014} Esc to stop"
+    state.context = ComposerSamples.context
+    state.canSteer = true
     return state
   }
 
@@ -141,24 +131,24 @@ extension PreviewData {
         directory: "/Users/ahir/src/universe",
         recentDirectories: ["/Users/ahir/src/universe", "/Users/ahir/src/omnigent"],
         worktree: "No worktree", worktrees: ["auth-refresh", "release-2026.11"]),
-      slashCommands: slashCommands, purpose: .start)
+      slashCommands: slashCommands, purpose: .start, context: ComposerSamples.start.context)
   }
 
   // MARK: Inbox
 
+  // One request each for sess_a2 and sess_p1, the two sessions the sidebar counts.
   static var inbox: InboxViewState {
-    InboxViewState(
+    var state = InboxViewState(
       items: [
         InboxItem(
           id: "in1", kind: .approval, sessionId: "sess_a2",
           sessionTitle: "Fix flaky SSE reconnect test",
           preview: "Run the auth test suite.", date: now.addingTimeInterval(-600),
-          decision: codexCommand),
+          decision: request(codexCommand, in: "sess_a2")),
         InboxItem(
-          id: "in2", kind: .question, sessionId: sessionID,
-          sessionTitle: "Refactor token refresh and add tests",
+          id: "in2", kind: .question, sessionId: "sess_p1", sessionTitle: "Release checklist",
           preview: "Which branch should I push to?", date: now.addingTimeInterval(-5_400),
-          decision: choice),
+          decision: request(choice, in: "sess_p1")),
         InboxItem(
           id: "in3", kind: .comment, sessionId: "sess_a4",
           sessionTitle: "Design review: inspector layout",
@@ -169,6 +159,8 @@ extension PreviewData {
           preview: "Done. 24 tests ported.", date: now.addingTimeInterval(-300_000), isUnread: false
         ),
       ], now: now)
+    state.needsYouCount = 2
+    return state
   }
 
   // MARK: Share and fork

@@ -346,14 +346,14 @@ enum PreviewData {
         DetailSection(id: "github", title: "github", text: "ready"),
         DetailSection(id: "linear", title: "linear", text: "failed\nOAuth token expired"),
       ]),
-    EventSection(
-      id: "child-sess_c1", title: "Write auth tests", summary: "Running",
-      details: [DetailSection(id: "id", title: "Session ID", text: "sess_c1")], sessionId: "sess_c1"
-    ),
-    EventSection(
-      id: "child-sess_c2", title: "Review patch", summary: "Completed",
-      details: [DetailSection(id: "id", title: "Session ID", text: "sess_c2")], sessionId: "sess_c2"
-    ),
+    childSection(
+      "sess_c1", title: "Write auth tests", state: .running, agent: "tester",
+      goal: "Cover expiry and concurrent refresh in auth/tests.rs.",
+      activity: "Running cargo test -p omnigent-core auth", startedAgo: 260),
+    childSection(
+      "sess_c2", title: "Review patch", state: .ready, agent: "reviewer",
+      goal: "Review the refresh patch for races.",
+      activity: "No blocking issues. Two naming nits.", startedAgo: 900),
     EventSection(
       id: "files-default", title: "Changed files", summary: "3 files in default",
       details: [
@@ -377,21 +377,29 @@ enum PreviewData {
     _ id: String, title: String = "Approval requested", detail: String,
     kind: DecisionKind = .approval,
     permissions: PermissionOptions = PermissionOptions(), phase: String? = nil,
-    policyName: String? = nil, answered: Bool = false, mirrored: Bool = false
+    policyName: String? = nil, acceptsFeedback: Bool = false, answered: Bool = false,
+    mirrored: Bool = false
   ) -> DecisionCard {
     DecisionCard(
       id: id, carryingSessionId: sessionID, targetSessionId: mirrored ? "sess_c1" : sessionID,
       title: title, detail: detail, kind: kind, permissions: permissions, phase: phase,
-      policyName: policyName, answered: answered)
+      policyName: policyName, acceptsFeedback: acceptsFeedback, answered: answered)
   }
 
   static let approval = card(
     "elic_approve",
-    detail: "Codex wants to edit 3 files in client-core/crates/omnigent-core/src/auth.",
+    detail: "Claude wants to edit 3 files in client-core/crates/omnigent-core/src/auth.",
     permissions: PermissionOptions(
       allowAllEdits: true, permissionDirectories: ["/workspace/omnigent/client-core"],
-      rememberLabel: "Edit"),
-    policyName: "Edit files")
+      rememberLabel: "Edit",
+      files: [
+        DecisionFileChange(
+          path: "client-core/crates/omnigent-core/src/auth/refresh.rs", added: 42, removed: 7),
+        DecisionFileChange(
+          path: "client-core/crates/omnigent-core/src/auth/errors.rs", added: 9, removed: 2),
+        DecisionFileChange(path: "client-core/crates/omnigent-core/src/auth/tests.rs", added: 88),
+      ]),
+    policyName: "Edit files", acceptsFeedback: true)
 
   static let codexCommand = card(
     "elic_codex", detail: "Run the auth test suite.",
@@ -418,7 +426,8 @@ enum PreviewData {
         1. Share one refresh future across callers.
         2. Map an expired refresh token to `SessionExpired`.
         3. Add tests for **expiry** and **concurrency**.
-        """))
+        """),
+    acceptsFeedback: true)
 
   static let choice = card(
     "elic_choice", title: "Response requested", detail: "Which branch should I push to?",
@@ -578,17 +587,20 @@ enum PreviewData {
   static func summary(
     _ id: String, _ title: String, preview: String, status: SessionListStatus = .idle,
     hoursAgo: Double, agent: String = "Codex", workspace: String = "/workspace/omnigent",
-    pinned: Bool = false, archived: Bool = false, readOnly: Bool = false, failure: String? = nil
+    pinned: Bool = false, archived: Bool = false, readOnly: Bool = false, failure: String? = nil,
+    attention: SessionAttentionState? = nil
   ) -> SessionSummary {
     SessionSummary(
       id: id, title: title, preview: preview, status: status, isReadOnly: readOnly,
       updatedAt: Int64(now.timeIntervalSince1970 - hoursAgo * 3600), workspace: workspace,
-      agentName: agent, isPinned: pinned, isArchived: archived, failureMessage: failure)
+      agentName: agent, isPinned: pinned, isArchived: archived, failureMessage: failure,
+      attention: attention)
   }
 
   static let sessions: [SessionSummary] = [
     summary(
-      "sess_p1", "Release checklist", preview: "All checks green.", hoursAgo: 30, pinned: true),
+      "sess_p1", "Release checklist", preview: "Needs your response", status: .needsResponse,
+      hoursAgo: 1.5, pinned: true),
     summary(
       sessionID, "Refactor token refresh and add tests", preview: "Re-running the expiry test",
       status: .running, hoursAgo: 0.1),
@@ -603,7 +615,8 @@ enum PreviewData {
       agent: "Pi",
       readOnly: true),
     summary(
-      "sess_y1", "Port session query to Rust", preview: "Done. 24 tests ported.", hoursAgo: 27),
+      "sess_y1", "Port session query to Rust", preview: "Done. 24 tests ported.", hoursAgo: 27,
+      attention: .unread),
     summary(
       "sess_w1", "Investigate memory growth in the runner", preview: "Heap profile attached.",
       hoursAgo: 80, agent: "Antigravity", workspace: "/srv/runner"),
@@ -614,11 +627,63 @@ enum PreviewData {
     ),
   ]
 
+  // Attention, as the core would derive it from these sessions: sess_a2 and sess_p1 each need
+  // you for the one request the Inbox lists, the current session is working, sess_a3 failed and
+  // sess_y1 is unread. Every badge counts sessions needing you; request counts sit by a session.
   static let sessionList = SessionListViewState(
     sessions: sessions, filter: .all, unreadIds: ["sess_a2", "sess_y1"],
-    attentionCounts: ["sess_a2": 2],
-    filterCounts: [.all: 9, .running: 1, .needsResponse: 1, .archived: 4],
+    attentionCounts: ["sess_a2": 1, "sess_p1": 1],
+    filterCounts: [.all: 9, .running: 1, .needsResponse: 2, .archived: 4],
     now: now)
+
+  /// `card`, waiting in `session`.
+  static func request(_ card: DecisionCard, in session: String) -> DecisionCard {
+    var card = card
+    card.id = "\(session)_\(card.id)"
+    card.carryingSessionId = session
+    card.targetSessionId = session
+    return card
+  }
+
+  /// The current session's pending cards in the Pending Approvals scenario.
+  static var approvalRequests: [DecisionCard] { decisions.filter { !$0.answered } }
+
+  /// The sidebar for Pending Approvals: the current session waits on ``approvalRequests``.
+  static var approvalsSidebar: SidebarViewState { sidebar(waitingOn: approvalRequests.count) }
+
+  /// The sidebar while the current session waits on `requests` decisions: it leaves Running and
+  /// joins sess_a2 and sess_p1 in Needs you.
+  /// - Parameter requests: The current session's pending decisions.
+  /// - Returns: The sidebar.
+  static func sidebar(waitingOn requests: Int) -> SidebarViewState {
+    var state = sidebar
+    if let index = state.list.sessions.firstIndex(where: { $0.id == sessionID }) {
+      state.list.sessions[index].status = .needsResponse
+      state.list.sessions[index].attention = .needsYou
+      state.list.sessions[index].preview = "Needs your response"
+    }
+    state.list.attentionCounts[sessionID] = requests
+    state.list.filterCounts[.running] = 0
+    state.list.filterCounts[.needsResponse] = 3
+    state.inboxCount = 3
+    return state
+  }
+
+  /// The Inbox for Pending Approvals: the base items plus one per pending card of the current
+  /// session.
+  static var approvalsInbox: InboxViewState {
+    var state = inbox
+    let current = approvalRequests.enumerated().map { index, card in
+      InboxItem(
+        id: "approvals-\(card.id)", kind: card.kind == .approval ? .approval : .question,
+        sessionId: sessionID, sessionTitle: "Refactor token refresh and add tests",
+        preview: card.detail, date: now.addingTimeInterval(TimeInterval(-60 - index)),
+        decision: card)
+    }
+    state.items.insert(contentsOf: current, at: 0)
+    state.needsYouCount = 3
+    return state
+  }
 
   // MARK: New session
 
@@ -661,22 +726,25 @@ enum PreviewData {
     return nil
   }
 
-  /// A preview form validator standing in for the core's `DecisionForm::validate`.
-  static func validate(_ card: DecisionCard, _ values: [String: ElicitationValue]) -> String? {
+  /// A preview form validator standing in for the core's `validate_form`.
+  static func validate(_ card: DecisionCard, _ values: [String: ElicitationValue])
+    -> DecisionFormProblem?
+  {
     guard case .form(let fields) = card.kind else { return nil }
     for field in fields {
+      let problem = { DecisionFormProblem(message: $0, fieldKey: field.key) }
       switch values[field.key] {
       case .text(let text):
         if let max = field.maxLength, UInt64(text.count) > max {
-          return "\(field.title) can be at most \(max) characters."
+          return problem("\(field.title) can be at most \(max) characters.")
         }
       case .integer(let value):
         if let max = field.maximum, Double(value) > max {
-          return "\(field.title) can be at most \(Int(max))."
+          return problem("\(field.title) can be at most \(Int(max)).")
         }
       case .textList(let values):
         if let max = field.maxItems, UInt64(values.count) > max {
-          return "Choose at most \(max) \(field.title.lowercased())."
+          return problem("Choose at most \(max) \(field.title.lowercased()).")
         }
       default:
         continue

@@ -1,128 +1,166 @@
 public import SwiftUI
 
-/// The Inbox, as on the web: a filter (All, Unread, Awaiting response), groups by age, and rows
-/// that expand in place to answer an approval or reply. Swipe or the context menu marks read.
+/// A keyboard and touch triage list, with read state separate from pending requests.
 public struct InboxView: View {
   private let state: InboxViewState
   private let actions: InboxActions
-  @State private var filter: InboxFilter = .all
+  @State private var filter: InboxFilter = .awaiting
+  @State private var search = ""
+  @State private var selection: String?
   @State private var expanded: Set<String> = []
   @State private var replies: [String: String] = [:]
-  @Environment(\.layoutWidth) private var layoutWidth
+  @FocusState private var focus: Focus?
 
-  /// Creates the Inbox.
-  /// - Parameters:
-  ///   - state: Items.
-  ///   - actions: Host actions.
+  private enum Focus: Hashable { case list, search }
+
+  /// Creates the Inbox from adapter state and supported actions.
   public init(state: InboxViewState, actions: InboxActions) {
     self.state = state
     self.actions = actions
   }
 
   private var filtered: [InboxItem] {
-    state.items.filter { item in
-      switch filter {
-      case .all: true
-      case .unread: item.isUnread
-      case .awaiting: item.decision != nil
-      }
-    }
+    InboxTriage.items(state.items, filter: filter, search: search)
   }
 
-  /// The Inbox.
+  /// The triage list and its keyboard hints.
   public var body: some View {
-    let groups = InboxGrouping.groups(filtered, now: state.now ?? Date())
-    List {
-      ForEach(groups, id: \.title) { group in
-        Section(group.title) {
-          ForEach(group.items) { item in
-            row(item)
+    VStack(spacing: 0) {
+      header
+      ScrollViewReader { proxy in
+        List {
+          ForEach(InboxTriage.groups(filtered), id: \.title) { group in
+            Section(group.title) {
+              ForEach(group.items) { item in row(item).id(item.id) }
+            }
+          }
+        }
+        .accessibilityIdentifier("inbox")
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .focusable()
+        .focused($focus, equals: .list)
+        .onKeyPress(characters: CharacterSet(charactersIn: "jk/e")) { press in
+          guard focus == .list, press.modifiers.isEmpty else { return .ignored }
+          switch press.characters {
+          case "j": move(1)
+          case "k": move(-1)
+          case "/": focus = .search
+          case "e": performPrimary()
+          default: return .ignored
+          }
+          return .handled
+        }
+        .onKeyPress(.return, phases: .down) { press in
+          guard focus == .list, press.modifiers.isEmpty, let item = selected else {
+            return .ignored
+          }
+          actions.open?(item)
+          return .handled
+        }
+        .onKeyPress(.downArrow, phases: .down) { press in
+          guard focus == .list, press.modifiers.isEmpty else { return .ignored }
+          move(1)
+          return .handled
+        }
+        .onKeyPress(.upArrow, phases: .down) { press in
+          guard focus == .list, press.modifiers.isEmpty else { return .ignored }
+          move(-1)
+          return .handled
+        }
+        .onChange(of: selection) { _, id in
+          if let id { proxy.scrollTo(id) }
+        }
+        .overlay {
+          if filtered.isEmpty {
+            ContentUnavailableView(
+              search.isEmpty ? emptyTitle : "No matching items", systemImage: "tray",
+              description: Text("Unread updates and pending requests are tracked separately."))
           }
         }
       }
+      #if os(macOS)
+        Text(
+          "J / K  Move    Return  Open    E or \u{2318}Return  Approve    E  Mark read    /  Search"
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .padding(Theme.Spacing.small)
+        .accessibilityIdentifier("inbox-keyboard-hints")
+      #endif
     }
-    // On the list, not the screen: the toolbar's filter would otherwise take it too.
-    .accessibilityIdentifier("inbox")
-    .overlay {
-      if filtered.isEmpty {
-        ContentUnavailableView(
-          emptyTitle, systemImage: "tray",
-          description: Text(filter == .all ? "You\u{2019}re all caught up" : ""))
-      }
-    }
-    .listStyle(.plain)
-    .scrollContentBackground(.hidden)
     .frame(maxWidth: Theme.inboxWidth)
     .frame(maxWidth: .infinity)
     .themeCanvas()
     .navigationTitle("Inbox")
-    #if os(macOS)
-      .navigationSubtitle(state.items.isEmpty ? "" : "\(state.items.count) items")
-    #endif
-    .toolbar {
-      ToolbarItem(placement: .principal) {
-        ViewThatFits(in: .horizontal) {
-          filterPicker.pickerStyle(.segmented)
-          filterPicker.pickerStyle(.menu)
-        }
-        .frame(maxWidth: layoutWidth == .compact ? 280 : 420)
-      }
+    .onAppear { focus = .list }
+    .onChange(of: filtered, initial: true) { previous, current in
+      selection = InboxTriage.selection(selection, previous: previous, current: current)
+      if let selection { expanded.insert(selection) }
     }
   }
 
-  private var filterPicker: some View {
-    Picker("Filter", selection: $filter) {
-      ForEach(InboxFilter.allCases) { Text($0.title).tag($0) }
+  private var header: some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      HStack {
+        Picker("Filter", selection: $filter) {
+          ForEach(InboxFilter.allCases) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .tint(Theme.secondary)
+        .accessibilityIdentifier("inbox-filter")
+        // The shared attention model's session count, as the sidebar, Dock and menu bar show.
+        if let count = state.needsYouCount {
+          Text("\(count) \(count == 1 ? "needs" : "need") you").font(.caption).foregroundStyle(
+            Theme.brandAccent
+          )
+          .accessibilityIdentifier("inbox-needs-you-count")
+        }
+      }
+      TextField("Search Inbox", text: $search)
+        .textFieldStyle(.roundedBorder)
+        .focused($focus, equals: .search)
+        .onSubmit { focus = .list }
+        .accessibilityIdentifier("inbox-search")
     }
-    .accessibilityIdentifier("inbox-filter")
+    .padding(Theme.Spacing.medium)
   }
 
   private var emptyTitle: String {
     switch filter {
-    case .all: "Nothing waiting on you"
+    case .all: "You’re all caught up"
     case .unread: "Nothing unread"
-    case .awaiting: "No approvals waiting"
+    case .awaiting: "Nothing waiting on you"
+    }
+  }
+
+  private var selected: InboxItem? { filtered.first { $0.id == selection } }
+
+  private func move(_ offset: Int) {
+    selection = InboxTriage.move(selection, by: offset, in: filtered)
+    if let selection { expanded.insert(selection) }
+  }
+
+  private func performPrimary() {
+    guard let item = selected else { return }
+    if item.canApprove, let card = item.decision {
+      actions.respond?(card, .approve)
+    } else if !item.isUnresolved, item.isUnread {
+      actions.markRead?(item)
     }
   }
 
   private func row(_ item: InboxItem) -> some View {
     InboxRow(
-      item: item, now: state.now ?? Date(), actions: actions,
+      item: item, now: state.now, actions: actions,
+      isSelected: selection == item.id,
+      select: {
+        selection = item.id
+        focus = .list
+      },
       isExpanded: Binding(
         get: { expanded.contains(item.id) },
         set: { if $0 { expanded.insert(item.id) } else { expanded.remove(item.id) } }),
       reply: Binding(get: { replies[item.id, default: ""] }, set: { replies[item.id] = $0 }))
-  }
-}
-
-/// "Just now", "Earlier today", "Yesterday", "This week", "Older".
-nonisolated enum InboxGrouping {
-  struct Group {
-    let title: String
-    let items: [InboxItem]
-  }
-
-  static func groups(_ items: [InboxItem], now: Date, calendar: Calendar = .current) -> [Group] {
-    let titles = ["Just now", "Earlier today", "Yesterday", "This week", "Older"]
-    var buckets: [String: [InboxItem]] = [:]
-    for item in items {
-      let title: String
-      if now.timeIntervalSince(item.date) < 3_600 {
-        title = "Just now"
-      } else if calendar.isDate(item.date, inSameDayAs: now) {
-        title = "Earlier today"
-      } else if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
-        calendar.isDate(item.date, inSameDayAs: yesterday)
-      {
-        title = "Yesterday"
-      } else if now.timeIntervalSince(item.date) < 7 * 86_400 {
-        title = "This week"
-      } else {
-        title = "Older"
-      }
-      buckets[title, default: []].append(item)
-    }
-    return titles.compactMap { title in buckets[title].map { Group(title: title, items: $0) } }
   }
 }
 
@@ -203,96 +241,5 @@ public struct CanvasView: View {
     }
     .buttonStyle(.plain)
     .accessibilityIdentifier("canvas-card-\(session.id)")
-  }
-}
-
-private struct InboxRow: View {
-  let item: InboxItem
-  let now: Date
-  let actions: InboxActions
-  @Binding var isExpanded: Bool
-  @Binding var reply: String
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      Button {
-        withAnimation(reduceMotion ? nil : Theme.Motion.disclosure) { isExpanded.toggle() }
-      } label: {
-        HStack(alignment: .top, spacing: Theme.Spacing.small) {
-          Circle()
-            .fill(item.isUnread ? Theme.brandAccent : ThemeColor.secondary.opacity(0))
-            .frame(width: 7, height: 7)
-            .padding(.top, Theme.Spacing.small)
-          VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-            HStack {
-              Text(item.kind.title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(item.decision != nil ? Theme.brandAccent : Theme.secondary)
-              Spacer()
-              Text(RelativeTime.short(item.date, now: now))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-            Text(item.sessionTitle).font(Theme.Typography.label).lineLimit(2)
-            Text(item.preview).font(.callout).foregroundStyle(.secondary).lineLimit(
-              isExpanded ? nil : 2)
-          }
-        }
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-      .accessibilityIdentifier("inbox-toggle-\(item.id)")
-      if isExpanded {
-        if let decision = item.decision {
-          DecisionCardView(
-            card: decision, respond: actions.respond.map { respond in { respond(decision, $0) } }
-          )
-          .environment(\.decisionIDPrefix, "inbox-")
-        } else if let send = actions.reply {
-          HStack {
-            TextField("Reply\u{2026}", text: $reply)
-              .textFieldStyle(.roundedBorder)
-              .accessibilityIdentifier("inbox-reply-\(item.id)")
-            Button("Send") {
-              send(item, reply)
-              reply = ""
-            }
-            .disabled(reply.trimmingCharacters(in: .whitespaces).isEmpty)
-            .accessibilityIdentifier("inbox-send-\(item.id)")
-          }
-        }
-        HStack {
-          if let open = actions.open {
-            Button("Open session") { open(item) }
-              .accessibilityIdentifier("inbox-open-\(item.id)")
-          }
-          if let markRead = actions.markRead, item.isUnread {
-            Button("Mark as read") { markRead(item) }
-              .accessibilityIdentifier("inbox-mark-read-\(item.id)")
-          }
-        }
-        .buttonStyle(.borderless)
-      }
-    }
-    .padding(.vertical, Theme.Spacing.medium)
-    .hoverHighlight()
-    .listRowBackground(Color.clear)
-    .contextMenu {
-      if let open = actions.open { Button("Open session") { open(item) } }
-      if let markRead = actions.markRead, item.isUnread {
-        Button("Mark as read") { markRead(item) }
-      }
-    }
-    #if os(iOS)
-      .swipeActions {
-        if let markRead = actions.markRead, item.isUnread {
-          Button("Mark as Read", systemImage: "envelope.open") { markRead(item) }
-        }
-      }
-    #endif
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("inbox-\(item.id)")
   }
 }

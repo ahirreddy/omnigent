@@ -28,16 +28,18 @@ final class DemoDecisionUITests: XCTestCase {
     let window = app.windows.firstMatch
 
     open("demo-design", app: app, window: window)
-    let approve = app.buttons["dock-approval-approve-decision-design"]
-    XCTAssertTrue(approve.waitForExistence(timeout: 20), "the approval card did not show")
+    // The demo approval edits files, so the dock offers Review and the payload-first card in the
+    // transcript holds Approve.
     let inlineApprove = app.buttons["approval-approve-decision-design"]
-    XCTAssertTrue(inlineApprove.exists, "the approval is not inline in the transcript")
+    XCTAssertTrue(inlineApprove.waitForExistence(timeout: 20), "the approval card did not show")
+    let dockReview = app.buttons["dock-decision-open-decision-design"]
+    XCTAssertTrue(dockReview.exists, "the approval is not docked above the composer")
     save(window, "approval-pending")
-    // XCUITest cannot compute a hit point for the dock's SwiftUI scroll view, so click the
-    // button found by identifier at its center instead of asking XCUITest to scroll to it.
-    approve.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-    waitUntilGone(approve)
+    // XCUITest cannot compute a hit point inside SwiftUI scroll views, so click the button found
+    // by identifier at its center instead of asking XCUITest to scroll to it.
+    inlineApprove.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
     waitUntilGone(inlineApprove)
+    waitUntilGone(dockReview)
     save(window, "approval-answered")
 
     open("demo-question", app: app, window: window)

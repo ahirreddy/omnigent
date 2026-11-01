@@ -12,9 +12,11 @@ enum ComposerAdapter {
   ///   - store: The conversation.
   ///   - isStopping: An interrupt is in flight.
   ///   - dismissedError: A send failure the user dismissed; it stays hidden until a new one.
+  ///   - server: The connected server, for the execution context.
   /// - Returns: The state.
   static func state(
-    _ store: ConversationStore, isStopping: Bool, dismissedError: CoreError?
+    _ store: ConversationStore, isStopping: Bool, dismissedError: CoreError?,
+    server: OmnigentCoreFFI.ConnectedServer? = nil
   ) -> ComposerViewState {
     let composer = store.composer
     let settings = store.header?.settings
@@ -22,7 +24,101 @@ enum ComposerAdapter {
       availability: availability(store), delivery: delivery(composer, dismissed: dismissedError),
       isRunning: store.isRunning, isStopping: isStopping,
       attachments: composer.attachments.items.map(attachment),
-      configuration: settings.map(configuration))
+      configuration: composer.configuration == nil
+        ? settings.map(configuration) : configuration(composer),
+      approvalModes: composer.approvalModeMenu.map(approvalModes),
+      queue: composer.queue.items.map(queued),
+      context: context(store, server: server), canSteer: composer.supportsSteering)
+  }
+
+  /// The approval-mode chip from the core's menu: clear names, the harness's own names, risk.
+  static func approvalModes(_ menu: OmnigentCoreFFI.ApprovalModeMenu) -> ApprovalModes {
+    ApprovalModes(
+      title: "\(menu.harness) approvals",
+      options: menu.options.map { option in
+        ApprovalModeOption(
+          id: option.value, label: option.title, detail: option.description,
+          harnessLabel: option.harnessTitle, risk: risk(option.risk),
+          isSwitchable: option.switchable)
+      },
+      selectedID: menu.selected)
+  }
+
+  static func risk(_ risk: OmnigentCoreFFI.ApprovalRisk) -> OmnigentUIComponents.ApprovalRisk {
+    switch risk {
+    case .readOnly: .readOnly
+    case .ask: .ask
+    case .autoEdit: .autoEdit
+    case .autoApprove: .autoApprove
+    case .fullAccess: .fullAccess
+    }
+  }
+
+  static func queued(_ item: MessageQueue.Item) -> QueuedMessage {
+    let state: QueuedMessage.State =
+      switch item.state {
+      case .queued: .queued
+      case .sending: .sending
+      case .failed(let message): .failed(message: message)
+      }
+    return QueuedMessage(id: String(item.id), text: item.text, state: state)
+  }
+
+  /// Where the session runs: agent, host, workspace, server and sandbox, and why nothing can
+  /// run there now.
+  static func context(
+    _ store: ConversationStore, server: OmnigentCoreFFI.ConnectedServer?
+  ) -> ExecutionContext {
+    let composer = store.composer
+    let configuration = composer.configuration
+    let harness = configuration?.harness ?? store.header?.settings?.harness
+    let workspace = composer.workspace.flatMap { $0.hasPrefix("/") || $0.hasPrefix("~") ? $0 : nil }
+    let sandbox = store.sections.first { $0.id == "sandbox" }.map {
+      "Managed sandbox \u{00B7} \($0.summary)"
+    }
+    return ExecutionContext(
+      agent: composer.configurationLabels?.harness ?? HarnessAppearance(harness: harness).label,
+      harness: harness,
+      host: ExecutionContext.hostDisplayName(composer.configurationCatalog?.host?.name),
+      hostKind: sandbox == nil ? .machine : .cloud,
+      isHostOnline: configuration?.hostOnline ?? store.header?.settings?.hostOnline,
+      server: ExecutionContext.serverDisplayName(
+        name: server?.serverName, baseURL: server?.baseUrl),
+      directory: workspace, branch: configuration?.gitBranch, sandbox: sandbox,
+      unavailableReason: composer.executionUnavailableReason)
+  }
+
+  /// The composer's queue and approval-mode actions over the store. A queue change while no
+  /// turn runs drains it at once.
+  static func extras(
+    _ composer: ComposerStore, isRunning: @escaping @MainActor () -> Bool
+  ) -> ComposerExtraActions {
+    let drain: @MainActor () -> Void = {
+      Task { await composer.drainQueue(isRunning: isRunning()) }
+    }
+    return ComposerExtraActions(
+      selectApprovalMode: { mode in Task { await composer.selectApprovalMode(mode.id) } },
+      editQueued: { message, text in
+        guard let id = Int(message.id) else { return }
+        composer.editQueued(id, text: text)
+        drain()
+      },
+      sendQueuedNow: { message in
+        guard let id = Int(message.id) else { return }
+        Task { await composer.sendQueuedNow(id) }
+      },
+      removeQueued: { message in
+        guard let id = Int(message.id) else { return }
+        composer.removeQueued(id)
+        drain()
+      },
+      moveQueued: { offsets, destination in
+        composer.moveQueued(fromOffsets: offsets, toOffset: destination)
+      },
+      queueDraft: {
+        composer.queueDraft()
+        drain()
+      })
   }
 
   static func availability(_ store: ConversationStore) -> ComposerAvailability {
@@ -69,7 +165,7 @@ enum ComposerAdapter {
     ComposerConfiguration(
       harness: settings.harness, selectedAgentId: settings.agentId,
       modelOptions: settings.modelOptions.map(OmnigentUIComponents.ModelOption.init),
-      selectedModelId: settings.modelOverride.reportedID,
+      selectedModelId: settings.modelOverride.reportedID, baseModel: settings.baseModel,
       selectedEffort: settings.reasoningEffort.reportedID)
   }
 
@@ -87,12 +183,14 @@ enum ComposerAdapter {
     let harnesses = composer.harnessOptions.map { option in
       OmnigentUIComponents.HarnessChoice(
         id: option.choice.id, name: option.choice.title, harness: option.choice.harness,
-        builtin: option.choice.builtin)
+        builtin: option.choice.builtin,
+        unavailableReason: option.isCurrent ? nil : option.unavailableReason)
     }
     return ComposerConfiguration(
-      harness: current?.harness, harnessChoices: harnesses, selectedAgentId: current?.agentId,
+      harness: current?.harness, agentName: composer.configurationLabels?.harness,
+      harnessChoices: harnesses, selectedAgentId: current?.agentId,
       modelOptions: composer.supportsModelChoice ? models : [],
-      selectedModelId: current?.modelOverride,
+      selectedModelId: current?.modelOverride, baseModel: current?.baseModel,
       selectedEffort: composer.supportsEffortChoice ? current?.effort : nil,
       isApplying: composer.isApplyingConfiguration,
       errorMessage: composer.configurationError?.message)

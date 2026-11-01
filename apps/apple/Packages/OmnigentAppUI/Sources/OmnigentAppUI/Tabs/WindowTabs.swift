@@ -1,0 +1,282 @@
+public import Foundation
+import OmnigentCoreFFI
+import OmnigentStores
+import OmnigentTerminalStores
+import OmnigentUIComponents
+
+/// What a window gives its tabs: its id, where tabs are saved, the browser, and tear-off.
+public struct TabWindowContext {
+  /// The window's stable id (on the Mac, `ServerWindowID.instance`).
+  public var window: UUID
+  /// Saves and restores the window's tabs; `nil` keeps them in memory.
+  public var persistence: TabPersistence?
+  /// The browser for browser tabs; `nil` offers no Browser.
+  public var browser: (any BrowserTabHosting)?
+  /// Opens tabs in a new window on the same server; `nil` where the platform has no windows.
+  public var moveToNewWindow: (@MainActor ([AppTab]) -> Void)?
+  /// Tabs handed to this window by a tear-off; they replace any saved tabs.
+  public var adopting: [AppTab]
+
+  /// Creates a context.
+  /// - Parameters:
+  ///   - window: The window id.
+  ///   - persistence: Tab saving.
+  ///   - browser: The browser host.
+  ///   - moveToNewWindow: Tear-off.
+  ///   - adopting: Torn-off tabs for this window.
+  public init(
+    window: UUID = UUID(), persistence: TabPersistence? = nil,
+    browser: (any BrowserTabHosting)? = nil,
+    moveToNewWindow: (@MainActor ([AppTab]) -> Void)? = nil, adopting: [AppTab] = []
+  ) {
+    self.window = window
+    self.persistence = persistence
+    self.browser = browser
+    self.moveToNewWindow = moveToNewWindow
+    self.adopting = adopting
+  }
+}
+
+/// The tab strip, overview, new-tab page and menu commands of one connected window, over its
+/// ``TabStore``.
+struct WindowTabs {
+  let session: ServerSession
+  let context: TabWindowContext
+  /// Called when the overview should show (Show All Tabs).
+  let showAll: @MainActor () -> Void
+  /// Reports a failure to the window (a terminal that could not start).
+  let fail: @MainActor (String) -> Void
+
+  var store: TabStore { session.tabs }
+  var browser: (any BrowserTabHosting)? { context.browser }
+
+  /// The strip's state.
+  var state: TabsState {
+    TabAdapter.state(
+      store, session: session, browser: browser,
+      issue: context.persistence?.issue?.description)
+  }
+
+  /// The strip's actions.
+  var actions: TabActions {
+    let store = store
+    var actions = TabActions(
+      select: { store.select($0) },
+      close: { store.close($0) },
+      newTab: { store.open(.newTab) },
+      move: { store.move($0, to: $1) },
+      setPinned: { store.setPinned($0, $1) },
+      duplicate: { duplicate($0) },
+      closeOthers: { store.closeOthers($0) },
+      closeToRight: { store.closeToRight($0) })
+    if !store.closed.isEmpty {
+      actions.reopenClosed = { store.reopenClosed() }
+    }
+    if context.moveToNewWindow != nil {
+      actions.moveToNewWindow = { moveToNewWindow($0) }
+    }
+    return actions
+  }
+
+  /// The menu commands.
+  var commands: TabCommandActions {
+    let store = store
+    let selected = store.selected
+    var commands = TabCommandActions(
+      newTab: { store.open(.newTab) },
+      selectTab: { store.select(position: $0) },
+      showAllTabs: showAll,
+      count: store.tabs.count)
+    if let selected {
+      commands.closeTab = { store.close(selected.id) }
+      commands.togglePinned = { store.setPinned(selected.id, !selected.isPinned) }
+      if TabAdapter.item(selected, session: session, browser: nil).canDuplicate {
+        commands.duplicateTab = { duplicate(selected.id) }
+      }
+      if context.moveToNewWindow != nil {
+        commands.moveTabToNewWindow = { moveToNewWindow(selected.id) }
+      }
+    }
+    if !store.closed.isEmpty {
+      commands.reopenClosedTab = { store.reopenClosed() }
+    }
+    if store.tabs.count > 1 {
+      commands.selectNextTab = { store.selectNext() }
+      commands.selectPreviousTab = { store.selectPrevious() }
+    }
+    if browser != nil {
+      commands.openBrowser = { openBrowser() }
+    }
+    if let sessionID = selected?.content.sessionID {
+      commands.toggleTerminal = { toggleTerminal(sessionID) }
+    }
+    return commands
+  }
+
+  /// The new-tab page's state.
+  var newTabState: NewTabPageState {
+    let list = session.connection.sessionList
+    let recent = list.visible.sorted { $0.updatedAt > $1.updatedAt }.prefix(12).map {
+      OmnigentUIComponents.SessionSummary($0, attention: list.attention(of: $0.id))
+    }
+    var names: [String: [String]] = [:]
+    for summary in recent {
+      if case .names(let declared) = session.declaredTerminalNames(in: summary.id) {
+        names[summary.id] = declared
+      }
+    }
+    return NewTabPageState(
+      recentSessions: Array(recent), canOpenBrowser: browser != nil, terminalNames: names)
+  }
+
+  /// The new-tab page's actions; each replaces the tab `id` (or opens one when `nil`).
+  /// - Parameter id: The new-tab page's tab.
+  /// - Returns: The actions.
+  func newTabActions(replacing id: String?) -> NewTabPageActions {
+    let store = store
+    func show(_ content: AppTabContent, browserState: Data? = nil) {
+      if let id {
+        store.replace(id, with: content, browserState: browserState)
+      } else {
+        store.open(content, browserState: browserState)
+      }
+    }
+    var actions = NewTabPageActions(
+      newSession: { show(.newSession) },
+      openSession: { show(.chat(sessionID: $0)) })
+    actions.newTerminal = { sessionID, name in
+      Task { await newTerminal(in: sessionID, named: name, replacing: id) }
+    }
+    if let browser {
+      actions.openBrowser = {
+        let page = browser.makePage(url: session.connectedURL)
+        show(.browser(browserID: page.id), browserState: page.state)
+      }
+    }
+    return actions
+  }
+
+  /// Opens a browser tab at `url` (the server's web app by default).
+  /// - Parameter url: The page.
+  func openBrowser(url: URL? = nil) {
+    guard let browser else { return }
+    let page = browser.makePage(url: url ?? session.connectedURL)
+    store.navigate(to: .browser(browserID: page.id))
+    if let tab = store.selected { store.record(tab.id, title: nil, browserState: page.state) }
+  }
+
+  /// Opens a session's harness TUI in a tab.
+  /// - Parameter sessionID: The session.
+  func openHarness(_ sessionID: String) {
+    store.open(.harness(sessionID: sessionID))
+  }
+
+  /// Opens one of a session's terminals in a tab.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - terminalID: The terminal.
+  func openTerminal(_ sessionID: String, _ terminalID: String) {
+    store.open(.terminal(sessionID: sessionID, terminalID: terminalID))
+  }
+
+  /// Opens a side question in a tab.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - rowID: The transcript row.
+  ///   - title: The question, for the strip.
+  func openSideChat(_ sessionID: String, rowID: String, title: String?) {
+    store.open(.sideChat(sessionID: sessionID, rowID: rowID), title: title)
+  }
+
+  /// Control-`: from a session's chat to its terminal (the harness TUI, else its first shell),
+  /// and from a terminal back to the chat.
+  func toggleTerminal(_ sessionID: String) {
+    switch store.selected?.content {
+    case .terminal, .harness:
+      store.open(.chat(sessionID: sessionID))
+    default:
+      let terminals = session.terminalStores[sessionID]?.terminals
+      if case .ready = terminals?.harness {
+        openHarness(sessionID)
+      } else if let shell = terminals?.userShells.first {
+        openTerminal(sessionID, shell.terminal.id)
+      } else {
+        Task { await newTerminal(in: sessionID, named: nil, replacing: nil) }
+      }
+    }
+  }
+
+  /// Starts a terminal in a session and shows it in a tab: `name`, else the agent's only
+  /// declared terminal, else the conventional "Shell" while the declared names are unknown.
+  func newTerminal(in sessionID: String, named name: String?, replacing id: String?) async {
+    session.open(sessionID)
+    guard let terminals = session.terminalStores[sessionID]?.terminals else {
+      fail("The session's terminals are not available.")
+      return
+    }
+    await session.loadDeclaredTerminalNames([sessionID])
+    let choices = session.declaredTerminalNames(in: sessionID).choices
+    guard let chosen = name ?? choices.first else {
+      fail("This session's agent declares no terminals, so none can start here.")
+      return
+    }
+    guard let created = await terminals.create(chosen) else {
+      fail(terminals.lastError?.message ?? "The terminal could not start.")
+      return
+    }
+    let content = AppTabContent.terminal(sessionID: sessionID, terminalID: created.id)
+    if let id {
+      store.replace(id, with: content)
+    } else {
+      store.open(content)
+    }
+  }
+
+  private func duplicate(_ id: String) {
+    guard let tab = store.tab(id) else { return }
+    if case .browser(let pageID) = tab.content {
+      guard let browser else { return }
+      let page = browser.makePage(url: browser.status(of: pageID)?.url)
+      store.duplicate(id, browser: page)
+    } else {
+      store.duplicate(id)
+    }
+  }
+
+  private func moveToNewWindow(_ id: String) {
+    guard let move = context.moveToNewWindow, let tab = store.detach(id) else { return }
+    move([tab])
+  }
+}
+
+extension AppTabContent {
+  /// The page id of a browser tab.
+  var browserID: UUID? {
+    if case .browser(let id) = self { return id }
+    return nil
+  }
+}
+
+/// How a conversation opens its session's other tabs.
+struct ConversationTabRoutes {
+  /// The agent's TUI.
+  var openHarness: @MainActor () -> Void
+  /// A terminal by id.
+  var openTerminal: @MainActor (String) -> Void
+  /// A side question by transcript row id, with the question as its title.
+  var openSideChat: @MainActor (String, String?) -> Void
+  /// Another session's chat (a sub-agent or the parent), focused when already open, else
+  /// opened right after this tab.
+  var openSession: @MainActor (String) -> Void
+}
+
+extension WindowTabs {
+  /// The routes for `sessionID`'s conversation.
+  func routes(for sessionID: String) -> ConversationTabRoutes {
+    ConversationTabRoutes(
+      openHarness: { openHarness(sessionID) },
+      openTerminal: { openTerminal(sessionID, $0) },
+      openSideChat: { openSideChat(sessionID, rowID: $0, title: $1) },
+      openSession: { store.open(.chat(sessionID: $0)) })
+  }
+}

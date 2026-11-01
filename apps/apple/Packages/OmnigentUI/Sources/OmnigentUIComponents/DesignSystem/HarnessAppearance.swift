@@ -110,7 +110,7 @@ struct StatusPresentation: Hashable {
     status: SessionListStatus, isReadOnly: Bool, failure: String?, pending: Int = 0
   ) -> Self {
     if pending > 0 || status == .needsResponse {
-      return Self(label: "Needs response", systemImage: "hand.raised.fill", tint: Theme.attention)
+      return Self(label: "Needs you", systemImage: "hand.raised.fill", tint: Theme.attention)
     }
     if status == .running {
       return Self(label: "Running", systemImage: "circle.dotted.circle", tint: Theme.running)

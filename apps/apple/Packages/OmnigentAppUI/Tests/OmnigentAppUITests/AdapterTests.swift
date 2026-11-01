@@ -56,6 +56,74 @@ struct AdapterTests {
         == .form(values: ["n": .integer(value: 3)]))
   }
 
+  @Test("A card's feedback support and a reply reach the core unchanged")
+  func feedback() {
+    #expect(
+      OmnigentCoreFFI.DecisionResponse(.declineWithFeedback(feedback: "Only the auth tests"))
+        == .declineWithFeedback(feedback: "Only the auth tests"))
+    let card = OmnigentCoreFFI.DecisionCard(
+      id: "e1", carryingSessionId: "s", targetSessionId: "s", title: "Approval requested",
+      detail: "Claude wants to call **Bash**", message: "Claude wants to call **Bash**",
+      toolInput: nil, kind: .approval,
+      permissions: OmnigentCoreFFI.PermissionOptions(
+        allowAllEdits: false, allowAutoMode: false, permissionDirectories: [],
+        rememberLabel: nil, plan: nil, command: nil, execPolicyAmendment: nil, persistModes: [],
+        antigravity: nil, fileChanges: []),
+      phase: "pre_tool_use", policyName: "claude_native_permission", acceptsFeedback: true,
+      answered: false)
+    #expect(OmnigentUIComponents.DecisionCard(card).acceptsFeedback)
+    var codex = card
+    codex.acceptsFeedback = false
+    #expect(!OmnigentUIComponents.DecisionCard(codex).acceptsFeedback)
+  }
+
+  @Test("An edit approval's files, message and tool input reach the card")
+  func editedFiles() {
+    let card = OmnigentCoreFFI.DecisionCard(
+      id: "e2", carryingSessionId: "s", targetSessionId: "s", title: "Approval requested",
+      detail: "Claude wants to call **Edit**\n\nEdit({...})",
+      message: "Claude wants to call **Edit**", toolInput: "Edit({\n  \"file_path\": \"/a.rs\"\n})",
+      kind: .approval,
+      permissions: OmnigentCoreFFI.PermissionOptions(
+        allowAllEdits: true, allowAutoMode: false, permissionDirectories: [],
+        rememberLabel: nil, plan: nil, command: nil, execPolicyAmendment: nil, persistModes: [],
+        antigravity: nil,
+        fileChanges: [
+          EditedFile(path: "/a.rs", kind: .modify, linesAdded: 3, linesRemoved: 1),
+          EditedFile(path: "/new.rs", kind: .create, linesAdded: 12, linesRemoved: 0),
+          EditedFile(path: "/cut.rs", kind: nil, linesAdded: nil, linesRemoved: nil),
+        ]),
+      phase: "pre_tool_use", policyName: "claude_native_permission", acceptsFeedback: true,
+      answered: false)
+    let state = OmnigentUIComponents.DecisionCard(card)
+    #expect(
+      state.permissions.files == [
+        DecisionFileChange(path: "/a.rs", added: 3, removed: 1, kind: .modify),
+        DecisionFileChange(path: "/new.rs", added: 12, removed: 0, kind: .create),
+        DecisionFileChange(path: "/cut.rs"),
+      ])
+    #expect(state.message == "Claude wants to call **Edit**")
+    #expect(state.toolInput == card.toolInput)
+  }
+
+  @Test("The demo core's design approval lists the files its patch changes")
+  func demoEditedFiles() async throws {
+    let store = try await PreviewData.connectedDemoStore()
+    let conversation = try #require(store.conversation("demo-design"))
+    let deadline = ContinuousClock.now + .seconds(10)
+    while conversation.decisions.cards.isEmpty, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(50))
+    }
+    let card = OmnigentUIComponents.DecisionCard(try #require(conversation.decisions.cards.first))
+    #expect(
+      card.permissions.files == [
+        DecisionFileChange(path: "Omni/iOS/SessionRow.swift", added: 4, removed: 1, kind: .modify),
+        DecisionFileChange(
+          path: "Omni/iOS/AttentionSection.swift", added: 11, removed: 0, kind: .create),
+      ])
+    #expect(card.message?.hasPrefix("Apply the sample design?") == true)
+  }
+
   @Test("Session web URLs keep the server's mount path")
   func webURL() {
     let server = ConnectedServer(
@@ -68,8 +136,12 @@ struct AdapterTests {
 
   @Test("The picker's URL check adds the right scheme")
   func validator() {
-    #expect(ServerURLValidator.app.check("127.0.0.1:6767") == .valid(normalized: "http://127.0.0.1:6767"))
-    #expect(ServerURLValidator.app.check("omnigent.example.com/") == .valid(normalized: "https://omnigent.example.com"))
+    #expect(
+      ServerURLValidator.app.check("127.0.0.1:6767")
+        == .valid(normalized: "http://127.0.0.1:6767"))
+    #expect(
+      ServerURLValidator.app.check("omnigent.example.com/")
+        == .valid(normalized: "https://omnigent.example.com"))
     #expect(!ServerURLValidator.app.check("ftp://x").canConnect)
   }
 
@@ -82,8 +154,7 @@ struct AdapterTests {
     }
     let first = try #require(store.sessionList.visible.first)
     let sidebar = SidebarAdapter.state(
-      list: store.sessionList, notifications: store.notifications,
-      display: SessionDisplayOptions(), server: store.connectedServer)
+      list: store.sessionList, display: SessionDisplayOptions(), server: store.connectedServer)
     #expect(sidebar.list.sessions.map(\.id) == store.sessionList.visible.map(\.id))
     let conversation = try #require(store.conversation(first.id))
     while conversation.rows.isEmpty, ContinuousClock.now < deadline {

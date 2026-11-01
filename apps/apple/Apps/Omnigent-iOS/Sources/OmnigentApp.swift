@@ -14,6 +14,10 @@ struct OmnigentApp: App {
       IOSRootView()
         .omnigentTheme(theme.theme, appearance: theme.mode)
     }
+    .commands {
+      OmnigentSessionCommands()
+      OmnigentTabCommands()
+    }
   }
 }
 
@@ -23,14 +27,32 @@ struct IOSRootView: View {
   static let lastServerKey = "omnigent.lastServer"
   static let recentServersKey = "omnigent.recentServers"
 
+  /// Saves each scene's tabs; `nil` when Application Support is unavailable.
+  static let tabPersistence: TabPersistence? = {
+    do {
+      return try TabPersistence.applicationSupport(
+        bundleID: Bundle.main.bundleIdentifier ?? "ai.omnigent.ios")
+    } catch {
+      Logger(subsystem: "ai.omnigent.ios", category: "app").error(
+        "Tabs will not be saved: \(error.localizedDescription, privacy: .public)")
+      return nil
+    }
+  }()
+
   @State private var session: ServerSession?
   @State private var selection: SidebarDestination?
+  /// The scene's stable id, so iPad windows each restore their own tabs.
+  @SceneStorage("omnigent.tabs.window") private var windowID = ""
   @Environment(\.scenePhase) private var scenePhase
 
   var body: some View {
     Group {
       if let session {
-        ServerRootView(session: session, selection: $selection)
+        // Read state marks a session seen only while the scene is on screen.
+        ServerRootView(
+          session: session, selection: $selection, isWindowFocused: scenePhase == .active,
+          tabContext: TabWindowContext(
+            window: UUID(uuidString: windowID) ?? UUID(), persistence: Self.tabPersistence))
       } else {
         ProgressView()
       }
@@ -42,11 +64,14 @@ struct IOSRootView: View {
       if previous == .background, phase != .background, session?.isSignedIn == true {
         session?.connection.foreground()
       }
+      // iOS may end a backgrounded app without notice: save the tabs now.
+      if phase == .background { Self.tabPersistence?.flush() }
     }
   }
 
   private func start() async {
     guard session == nil else { return }
+    if UUID(uuidString: windowID) == nil { windowID = UUID().uuidString }
     let session: ServerSession
     if ProcessInfo.processInfo.arguments.contains("-OmnigentDemo") {
       do {

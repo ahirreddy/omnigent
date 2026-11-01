@@ -21,6 +21,7 @@ public struct ThemeSettingsView: View {
         ForEach(AppearancePreference.allCases) { Text($0.title).tag($0) }
       }
       .pickerStyle(.segmented)
+      .tint(Theme.secondary)
       .accessibilityIdentifier("settings.appearance")
       Picker("Terminal theme", selection: $preferences.terminal) {
         ForEach(TerminalThemePreference.allCases) { Text($0.title).tag($0) }

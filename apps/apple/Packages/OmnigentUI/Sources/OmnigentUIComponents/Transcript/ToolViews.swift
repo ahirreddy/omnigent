@@ -8,8 +8,10 @@ struct DiffCountsView: View {
 
   var body: some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
-      if added > 0 { Text(verbatim: "+\(added)").foregroundStyle(.green) }
-      if removed > 0 { Text(verbatim: "\u{2212}\(removed)").foregroundStyle(.red) }
+      if added > 0 { Text(verbatim: "+\(added)").foregroundStyle(ThemeColor.diffAdded) }
+      if removed > 0 {
+        Text(verbatim: "\u{2212}\(removed)").foregroundStyle(ThemeColor.diffRemoved)
+      }
     }
     .font(.caption.monospacedDigit().weight(.medium))
     .accessibilityElement()
@@ -21,6 +23,8 @@ struct DiffCountsView: View {
 struct DiffView: View {
   let diff: DiffSummary
   var maxLines = 400
+  /// Shows the folded lines; `nil` only names how many there are.
+  var showAll: (() -> Void)?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -53,8 +57,12 @@ struct DiffView: View {
         .padding(.vertical, Theme.Spacing.small)
       }
       if diff.lines.count > maxLines {
-        Text("\(diff.lines.count - maxLines) more lines")
-          .font(.caption).foregroundStyle(.secondary).padding(Theme.Spacing.small)
+        if let showAll {
+          ShowAllButton(hidden: diff.lines.count - maxLines, action: showAll)
+        } else {
+          Text("\(diff.lines.count - maxLines) more lines")
+            .font(.caption).foregroundStyle(.secondary).padding(Theme.Spacing.small)
+        }
       }
     }
     .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
@@ -63,20 +71,20 @@ struct DiffView: View {
     }
   }
 
-  private func foreground(_ kind: DiffLineKind) -> Color {
+  private func foreground(_ kind: DiffLineKind) -> ThemeColor {
     switch kind {
-    case .added: Color.green
-    case .removed: Color.red
-    case .header: Color.secondary
-    case .context: Color.primary
+    case .added: ThemeColor.diffAdded
+    case .removed: ThemeColor.diffRemoved
+    case .header: ThemeColor.secondary
+    case .context: ThemeColor.primary
     }
   }
 
-  private func background(_ kind: DiffLineKind) -> Color {
+  private func background(_ kind: DiffLineKind) -> ThemeColor {
     switch kind {
-    case .added: Color.green.opacity(0.1)
-    case .removed: Color.red.opacity(0.1)
-    case .header, .context: Color.clear
+    case .added: ThemeColor.diffAdded.opacity(0.1)
+    case .removed: ThemeColor.diffRemoved.opacity(0.1)
+    case .header, .context: ThemeColor.system(.clear)
     }
   }
 }

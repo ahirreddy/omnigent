@@ -96,6 +96,8 @@ nonisolated public struct HarnessChoice: Hashable, Sendable, Identifiable {
   public var harness: String?
   /// Built in.
   public var builtin: Bool?
+  /// Why it cannot be chosen now (the core's rule); shown, never hidden.
+  public var unavailableReason: String?
 
   /// Creates a harness choice.
   /// - Parameters:
@@ -103,67 +105,16 @@ nonisolated public struct HarnessChoice: Hashable, Sendable, Identifiable {
   ///   - name: Display name.
   ///   - harness: Harness id.
   ///   - builtin: Built in.
-  public init(id: String, name: String, harness: String? = nil, builtin: Bool? = nil) {
+  ///   - unavailableReason: Why it cannot be chosen.
+  public init(
+    id: String, name: String, harness: String? = nil, builtin: Bool? = nil,
+    unavailableReason: String? = nil
+  ) {
     self.id = id
     self.name = name
     self.harness = harness
     self.builtin = builtin
-  }
-}
-
-/// The model, harness and reasoning picker the composer shows.
-nonisolated public struct ComposerConfiguration: Hashable, Sendable {
-  /// The current harness, for its glyph and label.
-  public var harness: String?
-  /// Harnesses the session may switch to; empty hides the harness menu.
-  public var harnessChoices: [HarnessChoice]
-  /// The selected agent id among ``harnessChoices``.
-  public var selectedAgentId: String?
-  /// Picker rows. Hidden rows are not shown.
-  public var modelOptions: [ModelOption]
-  /// The selected model id; `nil` is the harness default.
-  public var selectedModelId: String?
-  /// The selected reasoning effort; `nil` is the model default.
-  public var selectedEffort: String?
-  /// The configuration is being applied.
-  public var isApplying: Bool
-  /// Why the model catalog could not load, if it failed.
-  public var errorMessage: String?
-
-  /// Creates a configuration.
-  /// - Parameters:
-  ///   - harness: Harness id.
-  ///   - harnessChoices: Switchable harnesses.
-  ///   - selectedAgentId: Selected agent.
-  ///   - modelOptions: Model rows.
-  ///   - selectedModelId: Selected model.
-  ///   - selectedEffort: Selected effort.
-  ///   - isApplying: Being applied.
-  ///   - errorMessage: Catalog error.
-  public init(
-    harness: String? = nil, harnessChoices: [HarnessChoice] = [], selectedAgentId: String? = nil,
-    modelOptions: [ModelOption] = [], selectedModelId: String? = nil,
-    selectedEffort: String? = nil, isApplying: Bool = false, errorMessage: String? = nil
-  ) {
-    self.harness = harness
-    self.harnessChoices = harnessChoices
-    self.selectedAgentId = selectedAgentId
-    self.modelOptions = modelOptions
-    self.selectedModelId = selectedModelId
-    self.selectedEffort = selectedEffort
-    self.isApplying = isApplying
-    self.errorMessage = errorMessage
-  }
-
-  /// The selected model row.
-  public var selectedModel: ModelOption? {
-    guard let selectedModelId else { return nil }
-    return modelOptions.first { $0.id == selectedModelId }
-  }
-
-  /// Efforts the selected (or default) model supports.
-  public var efforts: [String] {
-    (selectedModel ?? modelOptions.first(where: \.isDefault))?.supportedReasoningEfforts ?? []
+    self.unavailableReason = unavailableReason
   }
 }
 
@@ -201,6 +152,10 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var purpose: ComposerPurpose
   /// The "Submit with ⌘ + Enter" setting: Return inserts a newline instead of sending.
   public var submitWithCommandReturn: Bool
+  /// Agent, host, workspace and server, for the context row.
+  public var context: ExecutionContext?
+  /// A message sent mid-turn steers the running turn; otherwise it waits for the turn to end.
+  public var canSteer: Bool
 
   /// Creates composer state.
   /// - Parameters:
@@ -220,6 +175,8 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   ///   - queue: Queued messages.
   ///   - purpose: Session or start.
   ///   - submitWithCommandReturn: Command-Return submits.
+  ///   - context: Execution context.
+  ///   - canSteer: Mid-turn messages steer.
   public init(
     availability: ComposerAvailability = .available, delivery: DeliveryState = .idle,
     isRunning: Bool = false, isStopping: Bool = false, attachments: [DraftAttachment] = [],
@@ -228,7 +185,8 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
     approvalModes: ApprovalModes? = nil, tray: ComposerTray? = nil,
     slashCommands: [SlashCommand] = [], mentionCandidates: [String] = [],
     queue: [QueuedMessage] = [], purpose: ComposerPurpose = .session,
-    submitWithCommandReturn: Bool = false
+    submitWithCommandReturn: Bool = false, context: ExecutionContext? = nil,
+    canSteer: Bool = false
   ) {
     self.availability = availability
     self.delivery = delivery
@@ -246,6 +204,8 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
     self.queue = queue
     self.purpose = purpose
     self.submitWithCommandReturn = submitWithCommandReturn
+    self.context = context
+    self.canSteer = canSteer
   }
 }
 

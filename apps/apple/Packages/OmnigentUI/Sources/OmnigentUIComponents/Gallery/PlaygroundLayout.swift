@@ -20,6 +20,18 @@ public struct PlaygroundView: View {
   public var body: some View {
     Group {
       switch model.scenario {
+      case .decisions:
+        DecisionPlayground()
+      case .tabs:
+        TabsPlayground()
+      case .subagents:
+        SubagentPlayground()
+      case .phoneReading:
+        PhoneReadingPlayground()
+      case .inboxTriage:
+        NavigationStack { InboxTriagePlayground() }
+      case .composer:
+        NavigationStack { ComposerPlayground() }
       case .gallery:
         UIGalleryView()
       case .themes:
@@ -30,19 +42,26 @@ public struct PlaygroundView: View {
           actions: ServerSettingsActions())
       case .compact:
         compactLayout
-      case .streaming, .terminal, .approvals, .longTranscript, .newSession, .inbox, .empty, .errors:
+      case .streaming, .terminal, .approvals, .longTranscript, .newSession, .inbox, .empty, .errors,
+        .palette:
         shell
       }
     }
+    .commandPalette(
+      state: model.paletteState, actions: model.paletteActions,
+      initiallyPresented: model.scenario == .palette
+    )
     .omnigentTheme(model.preferences.theme, appearance: model.preferences.mode)
   }
 
   private var importSessions: @MainActor () -> Void { {} }
 
+  /// The app's shell with its titlebar tab strip, holding one tab for the shown destination.
   private var shell: some View {
     AppShell(
       sidebar: model.sidebar, selection: $model.selection, searchText: $model.search,
-      actions: model.sidebarActions
+      actions: model.sidebarActions,
+      tabs: (model.shellTabs, TabActions(newTab: { model.selection = .newSession }))
     ) { destination in
       detail(destination)
     }
@@ -86,6 +105,7 @@ public struct PlaygroundView: View {
       }
       .layoutWidth(.compact)
       .environment(\.horizontalSizeClass, .compact)
+      .environment(\.composerLayoutStyle, .touch)
       .frame(width: 390)
       .clipShape(RoundedRectangle(cornerRadius: 36, style: .continuous))
       .overlay {
@@ -96,6 +116,32 @@ public struct PlaygroundView: View {
       Spacer(minLength: 0)
     }
     .background(.background.secondary)
+  }
+}
+
+extension PlaygroundModel {
+  /// The shell's one tab: the shown session (its status line as the tooltip), the new-session
+  /// page, the Inbox or the Canvas.
+  var shellTabs: TabsState {
+    var tab: TabItemState
+    switch selection {
+    case .session:
+      let line = SessionStatusLine(conversation)
+      let status: TabStatus =
+        switch line.kind {
+        case .waiting: .needsYou
+        case .failed: .failed
+        case .running: .running
+        case .finished, .ready: .none
+        }
+      tab = TabItemState(
+        id: "shell", kind: .chat, title: conversation.header.title, status: status)
+      tab.statusDetail = line.text
+    case .inbox: tab = TabItemState(id: "shell", kind: .inbox, title: "Inbox")
+    case .canvas: tab = TabItemState(id: "shell", kind: .canvas, title: "Canvas")
+    case .newSession, nil: tab = TabItemState(id: "shell", kind: .newSession, title: "New Session")
+    }
+    return TabsState(tabs: [tab], selectedID: tab.id)
   }
 }
 
@@ -136,9 +182,9 @@ private struct ThemeSample: View {
         HStack {
           Text("Session").font(.caption)
           Spacer()
-          Circle().fill(Theme.brandAccent).frame(width: 6, height: 6)
+          Circle().fill(Theme.unread).frame(width: 6, height: 6)
         }
-        Text("Needs response")
+        Text("Needs you")
           .font(.caption2.weight(.semibold))
           .foregroundStyle(Theme.brandAccent)
           .padding(.horizontal, 5)
@@ -152,7 +198,8 @@ private struct ThemeSample: View {
         Text("Worked for 1m 46s").font(.caption).foregroundStyle(.secondary)
         Text("Links look like this.").font(.caption).foregroundStyle(Theme.link)
         HStack(spacing: 4) {
-          Button("Share") {}.buttonStyle(.borderedProminent).controlSize(.small)
+          Button("Share") {}.buttonStyle(.bordered).controlSize(.small)
+          Button("Send") {}.primaryActionStyle().controlSize(.small)
           Circle().fill(Theme.success).frame(width: 7, height: 7)
           Circle().fill(Theme.warning).frame(width: 7, height: 7)
           Circle().fill(Theme.failure).frame(width: 7, height: 7)

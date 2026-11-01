@@ -11,7 +11,8 @@ nonisolated extension OmnigentUIComponents.DecisionCard {
       targetSessionId: card.targetSessionId, title: card.title, detail: card.detail,
       kind: OmnigentUIComponents.DecisionKind(card.kind),
       permissions: OmnigentUIComponents.PermissionOptions(card.permissions), phase: card.phase,
-      policyName: card.policyName, answered: card.answered)
+      policyName: card.policyName, acceptsFeedback: card.acceptsFeedback, answered: card.answered,
+      message: card.message, toolInput: card.toolInput)
   }
 }
 
@@ -71,7 +72,29 @@ nonisolated extension OmnigentUIComponents.PermissionOptions {
       antigravity: options.antigravity.map {
         OmnigentUIComponents.AntigravityPermission(
           actionDescription: $0.actionDescription, alwaysAllowPattern: $0.alwaysAllowPattern)
-      })
+      },
+      files: options.fileChanges.map(DecisionFileChange.init))
+  }
+}
+
+nonisolated extension DecisionFileChange {
+  init(_ file: EditedFile) {
+    self.init(
+      path: file.path,
+      added: file.linesAdded.map(Int.init),
+      removed: file.linesRemoved.map(Int.init),
+      kind: file.kind.map(Kind.init))
+  }
+}
+
+nonisolated extension DecisionFileChange.Kind {
+  init(_ kind: EditKind) {
+    switch kind {
+    case .create: self = .create
+    case .modify: self = .modify
+    case .delete: self = .delete
+    case .write: self = .write
+    }
   }
 }
 
@@ -102,7 +125,8 @@ nonisolated extension OmnigentCoreFFI.DecisionResponse {
     case .decline: self = .decline
     case .cancel: self = .cancel
     case .answer(let value): self = .answer(value: value)
-    case .form(let values): self = .form(values: values.mapValues(OmnigentCoreFFI.ElicitationValue.init))
+    case .form(let values):
+      self = .form(values: values.mapValues(OmnigentCoreFFI.ElicitationValue.init))
     case .approveAllEdits: self = .approveAllEdits
     case .approveAutoMode: self = .approveAutoMode
     case .approveDirectories: self = .approveDirectories

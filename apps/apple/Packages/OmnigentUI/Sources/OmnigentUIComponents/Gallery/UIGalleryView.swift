@@ -158,7 +158,7 @@ struct GalleryTranscript: View {
           WorkedFold(items: items, isLive: true, duration: 106, decorations: [:])
         }
       }
-      ChildSessionsStrip(sections: state.sections, currentSessionID: state.header.id)
+      SubagentGroupView(state: state, actions: GalleryActions.conversation)
       WorkingIndicator(isBlocked: false)
       ErrorBanner(
         message: "Lost connection to the server. Reconnecting in 4 seconds.", dismiss: {}, retry: {}

@@ -44,14 +44,18 @@ struct AddMenu: View {
     .labelStyle(.iconOnly)
     .composerChip()
     .help("Add files, images and more")
+    .accessibilityLabel("Add")
+    .accessibilityHint("Attaches files or images, or starts a side chat, goal or plan")
     .accessibilityIdentifier("composer-add")
   }
 }
 
-/// The Host chip: the selected host with a status dot, and the web's menu sections.
+/// The Host chip: the selected host's symbol, its name where there is room, a status dot, and
+/// the web's menu sections.
 struct HostChip: View {
   let hosts: ComposerHosts
   let actions: ComposerExtraActions
+  var showsName = true
 
   var body: some View {
     let selected = hosts.selected
@@ -72,6 +76,15 @@ struct HostChip: View {
       HStack(spacing: Theme.Spacing.extraSmall) {
         Image(systemName: selected?.kind == .cloud ? "cloud" : "laptopcomputer")
           .accessibilityHidden(true)
+        // A locked host is named in the context row above; a choosable one names itself.
+        if showsName, !hosts.isLocked, let name = selected?.name {
+          Text(name)
+            .font(.callout)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(maxWidth: Theme.Control.serverNameWidth)
+            .fixedSize()
+        }
         Circle()
           .fill(selected?.isOnline == true ? Theme.success : ThemeColor.secondary.opacity(0))
           .overlay {
@@ -87,10 +100,14 @@ struct HostChip: View {
     .menuIndicator(.hidden)
     .composerChip()
     .disabled(hosts.isLocked || actions.selectHost == nil)
-    .help("Host: \(selected?.name ?? "none")")
+    .help(
+      "Host: \(selected?.name ?? "none"), \(selected?.isOnline == true ? "online" : "offline")"
+        + (hosts.isLocked ? ". The host can't change once the session starts" : "")
+    )
     .accessibilityLabel(
       "Host, \(selected?.name ?? "none"), \(selected?.isOnline == true ? "online" : "offline")"
     )
+    .accessibilityHint(hosts.isLocked ? "" : "Chooses the machine the session runs on")
     .accessibilityIdentifier("composer-host")
   }
 
@@ -110,56 +127,27 @@ struct HostChip: View {
   }
 }
 
-/// The Permission chip: `hand.raised` and the mode, a single-choice menu. ⇧Tab cycles it.
-struct ApprovalModeChip: View {
-  let modes: ApprovalModes
-  let select: (@MainActor (ApprovalModeOption) -> Void)?
-  var isCompact = false
-
-  var body: some View {
-    Menu {
-      Section(modes.title) {
-        ForEach(modes.options) { option in
-          Button {
-            select?(option)
-          } label: {
-            if option.id == modes.selectedID {
-              Label(option.label, systemImage: "checkmark")
-            } else {
-              Text(option.label)
-            }
-          }
-        }
-      }
-    } label: {
-      HStack(spacing: Theme.Spacing.extraSmall) {
-        Image(systemName: "hand.raised").accessibilityHidden(true)
-        if !isCompact { Text(modes.selected?.label ?? "Mode").lineLimit(1) }
-        Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
-          .accessibilityHidden(true)
-      }
-      .font(.callout)
-      .accessibilityElement(children: .combine)
-    }
-    .menuStyle(.button)
-    .buttonStyle(.borderless)
-    .menuIndicator(.hidden)
-    .composerChip()
-    .disabled(select == nil)
-    .help("\(modes.title) (Shift-Tab cycles)")
-    .accessibilityLabel("\(modes.title), \(modes.selected?.label ?? "")")
-    .accessibilityIdentifier("composer-approval-mode")
-  }
-}
-
-/// The context tray above the card: directory and worktree chips, branch, PR and context use.
+/// The context tray above the card: where the session runs (agent, host, workspace), the folder
+/// and worktree pickers on a new session, the pull request, and context use.
 struct ComposerTrayView: View {
   let tray: ComposerTray
+  let context: ExecutionContext?
   let actions: ComposerExtraActions
+  var showsContextDetails = false
+
+  private var canPickDirectory: Bool {
+    actions.selectDirectory != nil || actions.openFolder != nil
+  }
 
   var body: some View {
     HStack(spacing: Theme.Spacing.medium) {
-      if let directory = tray.directory {
+      if let context {
+        // A folder picker already names the workspace.
+        ExecutionContextRow(
+          context: context, includesWorkspace: !(canPickDirectory && tray.directory != nil),
+          isPresented: showsContextDetails)
+      }
+      if let directory = tray.directory, canPickDirectory || context == nil {
         Menu {
           if !tray.recentDirectories.isEmpty {
             Section("Recents") {
@@ -174,8 +162,10 @@ struct ComposerTrayView: View {
         } label: {
           Label(URL(filePath: directory).lastPathComponent, systemImage: "folder")
         }
-        .disabled(actions.selectDirectory == nil && actions.openFolder == nil)
+        .disabled(!canPickDirectory)
         .help(directory)
+        .accessibilityLabel("Folder, \(URL(filePath: directory).lastPathComponent)")
+        .accessibilityHint("Chooses the folder the session works in")
         .accessibilityIdentifier("composer-directory")
       }
       if let worktree = tray.worktree {
@@ -188,21 +178,39 @@ struct ComposerTrayView: View {
           Label(worktree, systemImage: "arrow.triangle.branch")
         }
         .disabled(actions.selectWorktree == nil)
+        .help("Worktree: \(worktree)")
+        .accessibilityLabel("Worktree, \(worktree)")
+        .accessibilityHint("Chooses whether the session works in a separate git worktree")
         .accessibilityIdentifier("composer-worktree")
       }
-      if let branch = tray.branch {
+      if let branch = tray.branch, context?.branch == nil {
         Label(branch, systemImage: "arrow.triangle.branch").foregroundStyle(.secondary)
+          .help("Branch: \(branch)")
+          .accessibilityLabel("Branch, \(branch)")
       }
       if let pullRequest = tray.pullRequest {
         Label(pullRequest, systemImage: "arrow.triangle.pull").foregroundStyle(.secondary)
+          .help("Pull request \(pullRequest)")
+          .accessibilityLabel("Pull request \(pullRequest)")
       }
       Spacer(minLength: 0)
       if let fraction = tray.contextFraction {
-        ProgressRing(fraction: fraction, size: 13)
-          .help("\(Int((fraction * 100).rounded()))% of the context window used")
-          .accessibilityElement()
-          .accessibilityLabel("Context used")
-          .accessibilityValue("\(Int((fraction * 100).rounded())) percent")
+        // A gauge with its number, so it never reads as a spinner and needs no hover.
+        HStack(spacing: Theme.Spacing.extraSmall) {
+          ProgressRing(fraction: fraction, size: 13, warnsNearFull: true)
+          Text("\(Int((fraction * 100).rounded()))% context")
+            .monospacedDigit()
+            .foregroundStyle(
+              fraction > 0.85 ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(.secondary)
+            )
+            .lineLimit(1)
+            .fixedSize()
+        }
+        .help("Context used: \(Int((fraction * 100).rounded()))% of the context window")
+        .accessibilityElement()
+        .accessibilityLabel("Context used")
+        .accessibilityValue("\(Int((fraction * 100).rounded())) percent")
+        .accessibilityIdentifier("composer-context-usage")
       }
     }
     .font(.caption)
@@ -212,68 +220,6 @@ struct ComposerTrayView: View {
     .padding(.horizontal, Theme.Spacing.medium)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("composer-tray")
-  }
-}
-
-/// Messages queued or steering while the agent works: edit, send now, reorder, remove.
-struct QueueStrip: View {
-  let queue: [QueuedMessage]
-  let actions: ComposerExtraActions
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-      ForEach(queue) { message in
-        HStack(spacing: Theme.Spacing.small) {
-          Image(systemName: "text.line.first.and.arrowtriangle.forward")
-            .foregroundStyle(.secondary)
-            .accessibilityHidden(true)
-          Text(message.text).lineLimit(1).font(.callout)
-          Spacer(minLength: 4)
-          stateLabel(message.state)
-          if let sendNow = actions.sendQueuedNow {
-            Button("Send now", systemImage: "arrow.up.circle") { sendNow(message) }
-              .labelStyle(.iconOnly)
-              .accessibilityIdentifier("queued-send-now-\(message.id)")
-          }
-          if let remove = actions.removeQueued {
-            Button("Remove", systemImage: "xmark.circle") { remove(message) }
-              .labelStyle(.iconOnly)
-              .accessibilityIdentifier("queued-remove-\(message.id)")
-          }
-        }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, Theme.Spacing.medium)
-        .padding(.vertical, Theme.Spacing.small)
-        .background(
-          .quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: Theme.Radius.medium)
-        )
-        .contextMenu {
-          if let sendNow = actions.sendQueuedNow { Button("Send now") { sendNow(message) } }
-          if let remove = actions.removeQueued {
-            Button("Remove", role: .destructive) { remove(message) }
-          }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("queued-\(message.id)")
-      }
-    }
-  }
-
-  @ViewBuilder
-  private func stateLabel(_ state: QueuedMessage.State) -> some View {
-    switch state {
-    case .queued:
-      Text("Queued").font(.caption).foregroundStyle(.secondary)
-    case .sending:
-      ProgressView().controlSize(.mini)
-    case .waitingForHost:
-      Text("Waiting for host").font(.caption).foregroundStyle(.secondary)
-    case .failed(let message):
-      Label("Send failed", systemImage: "exclamationmark.circle")
-        .font(.caption)
-        .foregroundStyle(Theme.failure)
-        .help(message)
-    }
   }
 }
 
@@ -342,7 +288,7 @@ struct CompletionList: View {
         } label: {
           HStack(spacing: Theme.Spacing.small) {
             Image(systemName: item.systemImage)
-              .foregroundStyle(Theme.brandAccent)
+              .foregroundStyle(.secondary)
               .frame(width: 16)
               .accessibilityHidden(true)
             Text(item.title).font(.callout.monospaced())

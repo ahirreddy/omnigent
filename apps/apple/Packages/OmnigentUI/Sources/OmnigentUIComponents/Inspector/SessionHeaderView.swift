@@ -1,7 +1,8 @@
 public import SwiftUI
 
 /// The session's status line: title (optional, since the Mac shows it in the window title),
-/// status, harness and model, context usage, viewers, and read-only or archived badges.
+/// the one status line (``SessionStatusLine``), harness and model, context usage, viewers, and
+/// read-only or archived badges.
 public struct SessionHeaderView: View {
   private let state: ConversationViewState
   private let showsTitle: Bool
@@ -19,7 +20,7 @@ public struct SessionHeaderView: View {
   /// The header.
   public var body: some View {
     let header = state.header
-    let status = StatusPresentation.turn(header, pending: state.pendingDecisions.count)
+    let status = SessionStatusLine(state)
     ViewThatFits(in: .horizontal) {
       HStack(spacing: Theme.Spacing.medium) {
         content(header: header, status: status, compact: false)
@@ -37,7 +38,7 @@ public struct SessionHeaderView: View {
   }
 
   @ViewBuilder
-  private func content(header: SessionHeader, status: StatusPresentation, compact: Bool)
+  private func content(header: SessionHeader, status: SessionStatusLine, compact: Bool)
     -> some View
   {
     primary(header: header, status: status)
@@ -46,7 +47,7 @@ public struct SessionHeaderView: View {
   }
 
   @ViewBuilder
-  private func primary(header: SessionHeader, status: StatusPresentation) -> some View {
+  private func primary(header: SessionHeader, status: SessionStatusLine) -> some View {
     if showsTitle {
       VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
         Text(header.title)
@@ -58,7 +59,8 @@ public struct SessionHeaderView: View {
         }
       }
     }
-    Pill(text: status.label, systemImage: status.systemImage, tint: status.tint)
+    Pill(text: status.text, systemImage: status.systemImage, tint: status.tint)
+      .accessibilityIdentifier("session-status-line")
     if header.readOnly { Pill(text: "Read only", systemImage: "eye") }
     if header.archived { Pill(text: "Archived", systemImage: "archivebox") }
   }
@@ -86,13 +88,36 @@ public struct SessionHeaderView: View {
   }
 }
 
+extension SessionStatusLine {
+  /// A glyph that never suggests progress while the session waits.
+  var systemImage: String {
+    switch kind {
+    case .waiting: "hand.raised.fill"
+    case .failed: "exclamationmark.triangle.fill"
+    case .running: "circle.dotted.circle"
+    case .finished: "checkmark.circle"
+    case .ready: "circle"
+    }
+  }
+
+  /// Pink only for "needs you".
+  var tint: ThemeColor {
+    switch kind {
+    case .waiting: Theme.attention
+    case .failed: Theme.failure
+    case .running: Theme.running
+    case .finished, .ready: Theme.secondary
+    }
+  }
+}
+
 struct UsageGauge: View {
   let usage: SectionReading.Usage
   let fraction: Double
 
   var body: some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
-      ProgressRing(fraction: fraction, size: 14)
+      ProgressRing(fraction: fraction, size: 14, warnsNearFull: true)
       Text(fraction.formatted(.percent.precision(.fractionLength(0))))
         .font(.caption.monospacedDigit())
         .foregroundStyle(.secondary)

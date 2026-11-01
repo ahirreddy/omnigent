@@ -45,7 +45,8 @@ nonisolated public struct AttentionSession: Identifiable, Hashable, Sendable {
 public protocol MenuBarSessionSource: AnyObject, Observable {
   /// Sessions that need the user, most urgent first.
   var sessionsNeedingAttention: [AttentionSession] { get }
-  /// Unread conversations across every connected server, shown next to the menu bar icon.
+  /// Sessions that need the user (pending decisions they can answer) across every connected
+  /// server, shown next to the menu bar icon. The same number as the Dock badge.
   var unreadCount: Int { get }
 }
 
@@ -83,6 +84,6 @@ public final class FakeMenuBarSessionSource: MenuBarSessionSource {
         AttentionSession(
           id: "conv_docs", title: "Draft the 0.9 release notes", serverURL: serverURL,
           reason: .unread(count: 3), updatedAt: now.addingTimeInterval(-3_600)),
-      ], unreadCount: 4)
+      ], unreadCount: 1)
   }
 }

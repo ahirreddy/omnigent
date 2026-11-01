@@ -281,12 +281,12 @@ struct SessionListTests {
     #expect(sections.last?.showsDisplayMenu == true)
   }
 
-  @Test("status grouping orders Needs response, Running, Error, Idle")
+  @Test("status grouping orders Needs you, Running, Error, Idle")
   func statusSections() {
     var state = PreviewData.sidebar
     state.display.groupBy = .status
     let titles = SidebarSections.sections(state).map(\.title)
-    #expect(titles == ["Needs response", "Running", "Error", "Idle"])
+    #expect(titles == ["Needs you", "Running", "Error", "Idle"])
   }
 
   @Test("relative times use the web's short form")
@@ -318,9 +318,9 @@ struct SessionListTests {
   @Test("Shift-Tab cycles approval modes and wraps")
   func approvalModes() {
     var modes = PreviewData.claudeModes
-    #expect(modes.next?.label == "Auto")
-    modes.selectedID = "plan"
-    #expect(modes.next?.label == "Manual")
+    #expect(modes.next?.label == "Auto-edit")
+    modes.selectedID = "auto"
+    #expect(modes.next?.label == "Ask first")
   }
 
   @Test("reads todos, usage, changed files and viewers from the core's sections")

@@ -1,3 +1,4 @@
+import AppKit
 import OSLog
 import OmnigentAppUI
 import OmnigentBrowser
@@ -33,13 +34,14 @@ struct OmnigentMacApp: App {
           helpURL: Self.helpURL, checkForUpdates: appDelegate.checkForUpdates,
           localServer: desktop.localServer))
       BrowserCommands()
+      // The focused browser tab's menu. Edit > Find and View > Zoom already route to the page.
+      BrowserTabCommands(includesFindAndZoom: false)
+      OmnigentTabCommands(closeWindow: { NSApp.keyWindow?.performClose(nil) })
       OmnigentSessionCommands()
       if DebugCommands.isEnabled {
         DebugCommands()
       }
     }
-
-    BrowserWindowScene(services: services)
 
     LocalServerLogsWindow(manager: desktop.localServer)
 
@@ -81,6 +83,13 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   override func applicationWillFinishLaunching(_ notification: Notification) {
     services.bind()
     super.applicationWillFinishLaunching(notification)
+  }
+
+  override func applicationShouldTerminate(_ sender: NSApplication)
+    -> NSApplication.TerminateReply
+  {
+    services.willTerminate()
+    return super.applicationShouldTerminate(sender)
   }
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
@@ -127,6 +136,7 @@ struct AppSettingsView: View {
     ) {
       BrowserEngineSettingsView(
         preferences: services.browserPreferences, provider: services.browserProvider)
+      BrowserSettingsView(environment: services.browser)
       Section("Downloads") {
         BrowserDownloadSettingsView(settings: BrowserPromptPresenter.shared.downloadSettings)
       }

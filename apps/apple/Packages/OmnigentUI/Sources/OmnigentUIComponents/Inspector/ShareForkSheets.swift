@@ -74,6 +74,8 @@ public struct ShareSheet: View {
                 Button("Remove", systemImage: "xmark.circle") { remove(grant) }
                   .labelStyle(.iconOnly)
                   .buttonStyle(.borderless)
+                  .help("Remove access")
+                  .accessibilityLabel("Remove access")
                   .accessibilityIdentifier("share-remove-\(grant.id)")
               }
             }
@@ -193,10 +195,11 @@ public struct ForkSheet: View {
                   Button(path) { directory = path }
                 }
               } label: {
-                Label("Recents", systemImage: "clock")
+                Label("Recent directories", systemImage: "clock")
               }
               .labelStyle(.iconOnly)
               .fixedSize()
+              .help("Recent directories")
               .accessibilityIdentifier("fork-recent-directories")
             }
           }
@@ -220,13 +223,13 @@ public struct ForkSheet: View {
           }
           if case .anotherDirectory = state.kind {
             Button("Continue") { actions.fork(agentID, directory, true) }
-              .buttonStyle(.borderedProminent)
+              .primaryActionStyle()
               .accessibilityIdentifier("fork-continue")
           } else {
             Button("Clone") { actions.fork(agentID, directory, false) }
               .accessibilityIdentifier("fork-clone")
             Button("Clone & start") { actions.fork(agentID, directory, true) }
-              .buttonStyle(.borderedProminent)
+              .primaryActionStyle()
               .accessibilityIdentifier("fork-clone-start")
           }
         }

@@ -38,7 +38,7 @@ struct SupersededBanner: View {
   var body: some View {
     HStack(alignment: .top, spacing: Theme.Spacing.medium) {
       Image(systemName: "arrow.turn.down.right")
-        .foregroundStyle(Theme.accent)
+        .foregroundStyle(.secondary)
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
         Text(section.title).font(.callout.weight(.semibold))
@@ -51,64 +51,7 @@ struct SupersededBanner: View {
       }
     }
     .padding(Theme.Spacing.medium)
-    .cardSurface(cornerRadius: Theme.Radius.medium, tint: Theme.accent)
-  }
-}
-
-/// Links to child (subagent) sessions the stream reported.
-struct ChildSessionsStrip: View {
-  let sections: [EventSection]
-  let currentSessionID: String
-  @Environment(\.conversationActions) private var actions
-
-  private var children: [EventSection] {
-    sections.filter { $0.id.hasPrefix("child-") && $0.sessionId != nil }
-  }
-
-  var body: some View {
-    if !children.isEmpty {
-      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-        Text("Subagent sessions")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.secondary)
-        FlowLayout(spacing: Theme.Spacing.small) {
-          ForEach(children) { child in
-            ChildSessionLink(section: child, open: actions.openSession)
-          }
-        }
-      }
-      .accessibilityElement(children: .contain)
-    }
-  }
-}
-
-struct ChildSessionLink: View {
-  let section: EventSection
-  let open: ((String) -> Void)?
-
-  var body: some View {
-    Button {
-      if let id = section.sessionId { open?(id) }
-    } label: {
-      HStack(spacing: Theme.Spacing.small) {
-        Image(systemName: "arrow.triangle.branch")
-          .foregroundStyle(Theme.accent)
-          .accessibilityHidden(true)
-        Text(section.title).font(.callout).lineLimit(1)
-        Text(section.summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-        Image(systemName: "arrow.up.forward")
-          .font(.caption2)
-          .foregroundStyle(.tertiary)
-          .accessibilityHidden(true)
-      }
-      .padding(.horizontal, Theme.Spacing.medium)
-      .padding(.vertical, Theme.Spacing.small)
-      .cardSurface(cornerRadius: Theme.Radius.medium)
-    }
-    .buttonStyle(.plain)
-    .disabled(open == nil)
-    .accessibilityLabel("Open subagent session \(section.title), \(section.summary)")
-    .accessibilityIdentifier("open-\(section.id)")
+    .cardSurface(cornerRadius: Theme.Radius.medium)
   }
 }
 

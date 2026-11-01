@@ -41,6 +41,41 @@ nonisolated public struct InboxItem: Hashable, Sendable, Identifiable {
   /// The decision to answer in place, for approvals and questions.
   public var decision: DecisionCard?
 
+  /// The agent responsible for this request.
+  public var agentName: String = ""
+  /// Server, host and workspace context supplied by the adapter.
+  public var executionContext: String = ""
+  /// Pinned items remain available after reading or resolving them.
+  public var isPinned = false
+  /// Request creation time, when the server supplies it.
+  public var waitingSince: Date?
+  /// Resolution progress and errors.
+  public var phase: DecisionPhase = .pending
+  /// Whether this account can respond.
+  public var isReadOnly = false
+
+  /// A pending request is independent of whether it has been read.
+  public var isUnresolved: Bool {
+    switch phase {
+    case .answered: return false
+    case .resolving, .failed: return true
+    case .pending: break
+    }
+    if let decision { return !decision.answered }
+    return kind == .approval || kind == .question
+  }
+
+  /// A binary approval that can be accepted without filling in a form.
+  public var canApprove: Bool {
+    guard !isReadOnly, isUnresolved, let decision, case .approval = decision.kind else {
+      return false
+    }
+    switch phase {
+    case .pending, .failed: return true
+    case .resolving, .answered: return false
+    }
+  }
+
   /// Creates an item.
   /// - Parameters:
   ///   - id: Id.
@@ -83,7 +118,7 @@ nonisolated public enum InboxFilter: String, Hashable, Sendable, CaseIterable, I
     switch self {
     case .all: "All"
     case .unread: "Unread"
-    case .awaiting: "Awaiting response"
+    case .awaiting: "Needs you"
     }
   }
 }
@@ -94,6 +129,9 @@ nonisolated public struct InboxViewState: Hashable, Sendable {
   public var items: [InboxItem]
   /// The reference "now" for grouping; `nil` uses the current date.
   public var now: Date?
+
+  /// The shared attention model's count; never inferred from loaded rows.
+  public var needsYouCount: Int?
 
   /// Creates Inbox state.
   /// - Parameters:

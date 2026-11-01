@@ -1,7 +1,7 @@
 public import SwiftUI
 
 /// The sidebar, structured like the web's: the wordmark with a server switcher, New session,
-/// Inbox and Canvas, the native quick filters (Running, Needs response), then Pinned, Projects,
+/// Inbox and Canvas, the native quick filters (Running, Needs you), then Pinned, Projects,
 /// Shared and Sessions with the web's filter and display menu. Native list selection, keyboard
 /// navigation, context menus, hover pin, swipe actions and Delete-to-archive.
 public struct SidebarView: View {
@@ -104,17 +104,20 @@ public struct SidebarView: View {
 
   @ViewBuilder private var navigation: some View {
     Label("New session", systemImage: "plus.bubble")
+      .neutralSidebarIcon()
       .fontWeight(.medium)
       .tag(SidebarDestination.newSession)
       .sidebarSelection(selection == .newSession)
       .accessibilityIdentifier("sidebar-new-session")
     Label("Inbox", systemImage: "tray")
+      .neutralSidebarIcon()
       .badge(state.inboxCount)
       .tag(SidebarDestination.inbox)
       .sidebarSelection(selection == .inbox)
       .accessibilityIdentifier("sidebar-inbox")
     if state.showsCanvas {
       Label("Canvas", systemImage: "square.grid.2x2")
+        .neutralSidebarIcon()
         .tag(SidebarDestination.canvas)
         .sidebarSelection(selection == .canvas)
         .accessibilityIdentifier("sidebar-canvas")
@@ -277,7 +280,7 @@ extension SidebarView {
           ) {
             setUnread(session, !isUnread)
           }
-          .tint(Theme.brandAccent)
+          .tint(Theme.unread)
         }
         if actions.sessions.setPinned != nil, session.canPin {
           Button(session.isPinned ? "Unpin" : "Pin", systemImage: "pin") { menu.togglePin() }

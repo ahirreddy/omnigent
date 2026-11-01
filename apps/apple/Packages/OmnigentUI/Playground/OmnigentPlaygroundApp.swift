@@ -7,8 +7,9 @@ import SwiftUI
   import AppKit
 #endif
 
-/// The component playground: the full Omnigent layout with sample data in a real window, with a
-/// scenario switcher in the toolbar and the Scenario menu (Command-1 through Command-7).
+/// The component playground: the full Omnigent layout with sample data in a real window, with the
+/// scenario, theme and appearance in the Playground menu (scenarios on Command-1 through
+/// Command-9).
 ///
 /// Run with `swift run OmnigentPlayground`. Set `OMNIGENT_PLAYGROUND_THEME=<id>` and
 /// `OMNIGENT_PLAYGROUND_APPEARANCE=light|dark` to start themed. Set `OMNIGENT_PLAYGROUND_SNAPSHOT=<file.png>` to write
@@ -33,7 +34,8 @@ struct OmnigentPlaygroundApp: App {
     {
       model.preferences.mode = appearance
     }
-    if let tab = environment["OMNIGENT_PLAYGROUND_INSPECTOR"].flatMap(InspectorTab.init(rawValue:)) {
+    if let tab = environment["OMNIGENT_PLAYGROUND_INSPECTOR"].flatMap(InspectorTab.init(rawValue:))
+    {
       model.inspectorTab = tab
       model.showsInspector = true
     }
@@ -43,32 +45,6 @@ struct OmnigentPlaygroundApp: App {
   var body: some Scene {
     WindowGroup("Omnigent Playground") {
       PlaygroundView(model: model, slots: PlaygroundWorkspace.slots)
-        .toolbar {
-          ToolbarItem(placement: .navigation) {
-            Picker("Scenario", selection: $model.scenario) {
-              ForEach(PlaygroundScenario.allCases) { scenario in
-                Label(scenario.title, systemImage: scenario.systemImage).tag(scenario)
-              }
-            }
-            .pickerStyle(.menu)
-            .help("Switch the sample scenario")
-          }
-          ToolbarItem(placement: .navigation) {
-            Menu {
-              Picker("Theme", selection: Bindable(model.preferences).paletteID) {
-                ForEach(model.preferences.themes) { theme in Text(theme.name).tag(theme.id) }
-              }
-              Picker("Appearance", selection: Bindable(model.preferences).mode) {
-                ForEach(AppearancePreference.allCases) { preference in
-                  Text(preference.title).tag(preference)
-                }
-              }
-            } label: {
-              Label("Theme", systemImage: "paintpalette")
-            }
-            .help("Theme and appearance")
-          }
-        }
         #if os(macOS)
           .frame(minWidth: 900, minHeight: 600)
           .task { await PlaygroundSnapshot.writeIfRequested() }
@@ -79,13 +55,26 @@ struct OmnigentPlaygroundApp: App {
     #endif
     .commands {
       OmnigentSessionCommands()
-      CommandMenu("Scenario") {
-        ForEach(Array(PlaygroundScenario.allCases.enumerated()), id: \.element) { index, scenario in
-          if index < 9 {
-            Button(scenario.title) { model.scenario = scenario }
-              .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
-          } else {
-            Button(scenario.title) { model.scenario = scenario }
+      // The playground's own controls live here, so the window's toolbar row matches the app.
+      CommandMenu("Playground") {
+        Section("Scenario") {
+          let scenarios = Array(PlaygroundScenario.allCases.enumerated())
+          ForEach(scenarios, id: \.element) { index, scenario in
+            if index < 9 {
+              Button(scenario.title) { model.scenario = scenario }
+                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+            } else {
+              Button(scenario.title) { model.scenario = scenario }
+            }
+          }
+        }
+        Divider()
+        Picker("Theme", selection: Bindable(model.preferences).paletteID) {
+          ForEach(model.preferences.themes) { theme in Text(theme.name).tag(theme.id) }
+        }
+        Picker("Appearance", selection: Bindable(model.preferences).mode) {
+          ForEach(AppearancePreference.allCases) { preference in
+            Text(preference.title).tag(preference)
           }
         }
       }

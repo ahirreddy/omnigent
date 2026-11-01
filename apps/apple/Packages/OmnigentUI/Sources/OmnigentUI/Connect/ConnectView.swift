@@ -33,7 +33,7 @@ public struct ConnectView: View {
         Button(action: connect) {
           Text("Connect").frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .primaryActionStyle()
         .keyboardShortcut(.defaultAction)
         .disabled(store.isLoading || serverURL.trimmingCharacters(in: .whitespaces).isEmpty)
         .accessibilityIdentifier("connect.button")

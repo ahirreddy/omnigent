@@ -2,17 +2,21 @@ import PhotosUI
 public import SwiftUI
 import UniformTypeIdentifiers
 
-/// The composer, laid out like the web's: a context tray, the queue strip, then one card with
-/// a growing editor and an action row (Add, Host, Permission; model and effort, Mic, Send or
-/// Stop). Return sends and Shift- or Option-Return inserts a newline (or ⌘Return sends with the
-/// "Submit with ⌘ + Enter" setting); ⇧Tab cycles the approval mode; Esc stops; `/` and `@`
-/// open completions; Up recalls the previous prompt. Attachments by drop, paste, photo picker
-/// or file importer. Disabled and uncertain-delivery states show their reasons.
+/// The composer, laid out like the web's: the queue strip, a context tray (where it runs), then
+/// one card with a growing editor and an action row (Add, Host, approval mode; agent, model and
+/// effort, Mic, Stop and Send). Return sends and Shift- or Option-Return inserts a newline (or
+/// ⌘Return sends with the "Submit with ⌘ + Enter" setting). While the agent works, Send says
+/// what it will do ("Send now · steer" or "Queued · after this turn"), ⌥⌘Return does the other,
+/// and Stop stays available. ⇧Tab cycles the approval mode with a brief HUD. Esc closes the
+/// completions first, then stops the turn; it only acts while the editor has focus. `/` and `@`
+/// open completions; Up recalls the previous prompt. Attachments by drop, paste, photo picker or
+/// file importer. Disabled and uncertain-delivery states show their reasons.
 public struct ComposerView: View {
   @Binding private var draft: String
   private let state: ComposerViewState
   private let actions: ComposerActions
   private let focusRequest: Int
+  private let showsContextDetails: Bool
 
   @State private var isExpanded = false
   @State private var isImporting = false
@@ -20,9 +24,13 @@ public struct ComposerView: View {
   @State private var photoItems: [PhotosPickerItem] = []
   @State private var isDropTargeted = false
   @State private var attachmentError: String?
+  @State private var modeHUD: ApprovalModeOption?
+  @State private var dismissedCompletionsDraft: String?
   @FocusState private var isFocused: Bool
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.commandReturnOwner) private var commandReturnOwner
+  @Environment(\.composerLayoutStyle) private var layout
 
   /// Creates the composer.
   /// - Parameters:
@@ -30,14 +38,16 @@ public struct ComposerView: View {
   ///   - state: What to render.
   ///   - actions: Host actions.
   ///   - focusRequest: Increment to focus the editor (for example from a menu command).
+  ///   - showsContextDetails: Open the execution-context details (playground captures).
   public init(
     draft: Binding<String>, state: ComposerViewState, actions: ComposerActions,
-    focusRequest: Int = 0
+    focusRequest: Int = 0, showsContextDetails: Bool = false
   ) {
     _draft = draft
     self.state = state
     self.actions = actions
     self.focusRequest = focusRequest
+    self.showsContextDetails = showsContextDetails
   }
 
   private var isEditable: Bool {
@@ -45,28 +55,46 @@ public struct ComposerView: View {
     return true
   }
 
-  private var sendBlockedReason: String? {
-    if let reason = state.availability.reason { return reason }
-    switch state.delivery {
-    case .sending: return state.purpose == .start ? "Starting session" : "Sending"
-    case .uncertain: return "Check the conversation before sending again."
-    case .idle, .failed: break
+  private var rules: ComposerSendRules {
+    ComposerSendRules(
+      state: state, draft: draft, canQueue: actions.extras.queueDraft != nil, layout: layout)
+  }
+
+  /// The touch bar at rest: one row until the user focuses it or there is something to send. A
+  /// new session stays open: the agent and model are chosen before the first send.
+  private var isCollapsed: Bool {
+    layout == .touch && state.purpose == .session && !isFocused && !isExpanded && draft.isEmpty
+      && state.attachments.isEmpty
+  }
+
+  /// The context tray: whenever the bar is open (always on the Mac and on a new session), or
+  /// when it warns that nothing can run there.
+  private var showsTray: Bool {
+    guard state.tray != nil || state.context != nil else { return false }
+    return !isCollapsed || state.context?.unavailableReason != nil
+  }
+
+  private var cardPadding: EdgeInsets {
+    switch layout {
+    case .card:
+      EdgeInsets(
+        top: Theme.Spacing.medium, leading: Theme.Spacing.medium, bottom: Theme.Spacing.medium,
+        trailing: Theme.Spacing.medium)
+    case .touch where isCollapsed:
+      EdgeInsets(
+        top: ComposerBarMetrics.collapsedVerticalPadding,
+        leading: ComposerBarMetrics.collapsedHorizontalPadding,
+        bottom: ComposerBarMetrics.collapsedVerticalPadding,
+        trailing: ComposerBarMetrics.collapsedHorizontalPadding)
+    case .touch: ComposerBarMetrics.openPadding
     }
-    if state.attachments.contains(where: { if case .failed = $0.state { true } else { false } }) {
-      return "Remove the attachments that failed."
-    }
-    if state.attachments.contains(where: { if case .uploading = $0.state { true } else { false } })
-    {
-      return "Waiting for attachments to upload."
-    }
-    if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, state.attachments.isEmpty {
-      return state.purpose == .start ? "Enter a message to get started" : "Type a message."
-    }
-    return nil
   }
 
   private var completions: ComposerCompletions {
-    ComposerCompletions(
+    guard draft != dismissedCompletionsDraft else {
+      return ComposerCompletions(draft: draft, commands: [], mentions: [])
+    }
+    return ComposerCompletions(
       draft: draft, commands: state.slashCommands, mentions: state.mentionCandidates)
   }
 
@@ -82,16 +110,21 @@ public struct ComposerView: View {
           identifier: "composer-attachment-error")
       }
       if !state.queue.isEmpty {
-        QueueStrip(queue: state.queue, actions: actions.extras)
+        QueueStrip(
+          queue: state.queue, isRunning: state.isRunning, canSteer: state.canSteer,
+          actions: actions.extras)
       }
-      if let tray = state.tray {
-        ComposerTrayView(tray: tray, actions: actions.extras)
-          .tint(.secondary)
+      if showsTray {
+        ComposerTrayView(
+          tray: state.tray ?? ComposerTray(), context: state.context, actions: actions.extras,
+          showsContextDetails: showsContextDetails
+        )
+        .tint(.secondary)
       }
       if !completions.items.isEmpty {
         CompletionList(items: completions.items) { draft = completions.applying($0) }
       }
-      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      VStack(alignment: .leading, spacing: isCollapsed ? 0 : Theme.Spacing.small) {
         if let reason = state.availability.reason {
           Label(reason, systemImage: "lock")
             .font(.caption)
@@ -103,13 +136,28 @@ public struct ComposerView: View {
         if !state.attachments.isEmpty {
           DraftAttachmentStrip(attachments: state.attachments, remove: actions.removeAttachment)
         }
-        editor
-        toolbar
+        // The editor keeps one place in the tree whether the bar is collapsed or open, so
+        // focusing it (which opens the bar) never recreates it.
+        HStack(alignment: .center, spacing: Theme.Spacing.tiny) {
+          if isCollapsed { collapsedLeading }
+          editor
+          if isCollapsed { collapsedTrailing }
+        }
+        if !isCollapsed { toolbar }
       }
-      .padding(Theme.Spacing.medium)
+      .padding(cardPadding)
       .composerSurface(isTargeted: isDropTargeted, isFocused: isFocused)
+      .overlay(alignment: .top) {
+        if let modeHUD {
+          ApprovalModeHUD(option: modeHUD)
+            .offset(y: -Theme.Spacing.extraLarge)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .allowsHitTesting(false)
+        }
+      }
+      .animation(reduceMotion ? nil : Theme.Motion.feedback, value: modeHUD)
     }
-    .padding(.vertical, Theme.Spacing.medium)
+    .padding(.vertical, layout == .touch ? ComposerBarMetrics.outerPadding : Theme.Spacing.medium)
     .readingColumn()
     .dropDestination(for: URL.self, isEnabled: canAttach) { urls, _ in
       add(urls.map { ComposerAttachmentInput.file(url: $0) })
@@ -137,7 +185,8 @@ public struct ComposerView: View {
         Task { await loadProviders(providers) }
       }
     #endif
-    .onChange(of: focusRequest) { _, _ in isFocused = true }
+    .readingPostureFocus($isFocused, focusRequest: focusRequest)
+    .task(id: modeHUD) { await clearHUD() }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("composer")
   }
@@ -150,8 +199,10 @@ public struct ComposerView: View {
 
   private var editor: some View {
     GrowingTextEditor(
-      text: $draft, placeholder: state.placeholder, minLines: isExpanded ? 10 : 2,
-      maxLines: isExpanded ? 28 : 8, identifier: "composer-input"
+      text: $draft, placeholder: rules.placeholder,
+      minLines: layout == .touch && !isExpanded ? 1 : (isExpanded ? 10 : 2),
+      maxLines: isExpanded ? 28 : (layout == .touch ? ComposerBarMetrics.maxLines : 8),
+      identifier: "composer-input"
     )
     .focused($isFocused)
     .disabled(!isEditable)
@@ -167,9 +218,15 @@ public struct ComposerView: View {
     )
   }
 
-  private func send() {
-    guard sendBlockedReason == nil else { return }
-    actions.send()
+  /// Sends now (idle or steering) or queues, as `intent` says.
+  private func perform(_ intent: ComposerSendIntent) {
+    guard rules.blockedReason(for: intent) == nil else { return }
+    dismissedCompletionsDraft = nil
+    if intent == .queue, let queueDraft = actions.extras.queueDraft {
+      queueDraft()
+    } else {
+      actions.send()
+    }
   }
 
   // MARK: Attachment loading
@@ -194,6 +251,8 @@ public struct ComposerView: View {
 }
 
 extension ComposerView {
+  // MARK: Keys (the editor's own; they act only while it has focus)
+
   private func handleReturn(_ press: KeyPress) -> KeyPress.Result {
     if !completions.items.isEmpty, let first = completions.items.first {
       draft = completions.applying(first)
@@ -203,9 +262,16 @@ extension ComposerView {
       // Touch keyboards always insert a newline, as on the web; hardware keyboards use ⌘Return.
       if !press.modifiers.contains(.command) { return .ignored }
     #endif
+    // A pending request's Approve owns Command-Return while there is nothing to send.
+    if press.modifiers == .command, commandReturnOwner == .approve { return .ignored }
+    if press.modifiers.contains(.command), press.modifiers.contains(.option) {
+      guard let alternative = rules.alternative else { return .ignored }
+      perform(alternative)
+      return .handled
+    }
     if press.modifiers.contains(.shift) || press.modifiers.contains(.option) { return .ignored }
     if state.submitWithCommandReturn, !press.modifiers.contains(.command) { return .ignored }
-    send()
+    perform(rules.intent)
     return .handled
   }
 
@@ -214,6 +280,10 @@ extension ComposerView {
       let select = actions.extras.selectApprovalMode
     {
       select(next)
+      modeHUD = next
+      AccessibilityNotification.Announcement(
+        "Approval mode \(next.label)\(next.detail.map { ", \($0)" } ?? "")"
+      ).post()
       return .handled
     }
     if !press.modifiers.contains(.shift), let first = completions.items.first {
@@ -223,7 +293,12 @@ extension ComposerView {
     return .ignored
   }
 
+  /// Esc closes the completions first; only then does it stop the turn.
   private func handleEscape() -> KeyPress.Result {
+    if !completions.items.isEmpty {
+      dismissedCompletionsDraft = draft
+      return .handled
+    }
     guard state.isRunning, let interrupt = actions.interrupt, !state.isStopping else {
       return .ignored
     }
@@ -238,136 +313,34 @@ extension ComposerView {
     draft = previous
     return .handled
   }
+
+  /// Hides the ⇧Tab HUD after a moment; a newer switch restarts the wait.
+  private func clearHUD() async {
+    guard modeHUD != nil else { return }
+    do {
+      try await Task.sleep(for: .seconds(1.6))
+    } catch {
+      // Cancelled by a newer switch, which shows its own HUD.
+      return
+    }
+    modeHUD = nil
+  }
 }
 
 extension ComposerView {
   // MARK: Toolbar
 
-  private var toolbar: some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(spacing: Theme.Spacing.extraSmall) {
-        leadingControls
-        Spacer(minLength: Theme.Spacing.small)
-        trailingControls
-        sendOrStop
-      }
-      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-        FlowLayout(spacing: Theme.Spacing.extraSmall) { leadingControls }
-        HStack(spacing: Theme.Spacing.extraSmall) {
-          trailingControls
-          Spacer(minLength: Theme.Spacing.extraSmall)
-          sendOrStop
-        }
-      }
-    }
+  /// The controls around the editor, for the open row and the collapsed bar.
+  private var parts: ComposerControlParts {
+    ComposerControlParts(
+      state: state, actions: actions, rules: rules,
+      hasDraft: !draft.isEmpty || !state.attachments.isEmpty, isEditable: isEditable,
+      canAttach: canAttach, layoutWidth: layoutWidth, layout: layout,
+      isImporting: $isImporting, isPickingPhotos: $isPickingPhotos, isExpanded: $isExpanded,
+      loadProviders: { providers in Task { await loadProviders(providers) } }, perform: perform)
   }
 
-  @ViewBuilder private var leadingControls: some View {
-    if state.acceptsAttachments, actions.addAttachments != nil {
-      AddMenu(
-        canAttach: canAttach, extras: actions.extras, chooseFiles: { isImporting = true },
-        choosePhotos: { isPickingPhotos = true },
-        paste: { providers in Task { await loadProviders(providers) } }
-      )
-      .tint(.secondary)
-    }
-    if let hosts = state.hosts {
-      HostChip(hosts: hosts, actions: actions.extras)
-        .tint(.secondary)
-    }
-    if let modes = state.approvalModes {
-      ApprovalModeChip(
-        modes: modes, select: actions.extras.selectApprovalMode,
-        isCompact: layoutWidth == .compact
-      )
-      .disabled(!isEditable)
-      .tint(.primary)
-    }
-  }
-
-  @ViewBuilder private var trailingControls: some View {
-    if let configuration = state.configuration {
-      ConfigurationMenu(
-        configuration: configuration, actions: actions, isCompact: layoutWidth == .compact
-      )
-      .disabled(!isEditable)
-      .tint(.primary)
-    }
-    if let dictate = actions.extras.dictate {
-      Button("Dictate", systemImage: "mic", action: dictate)
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .composerChip()
-        .keyboardShortcut("v", modifiers: [.command, .option])
-        .help("Dictate (Option-Command-V)")
-        .disabled(!isEditable)
-        .accessibilityIdentifier("composer-mic")
-    }
-    if layoutWidth == .regular {
-      Button {
-        withAnimation(reduceMotion ? nil : .snappy) { isExpanded.toggle() }
-      } label: {
-        Label(
-          isExpanded ? "Collapse Editor" : "Expand Editor",
-          systemImage: isExpanded
-            ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-      }
-      .labelStyle(.iconOnly)
-      .buttonStyle(.borderless)
-      .foregroundStyle(.secondary)
-      .composerChip()
-      .help(isExpanded ? "Collapse the editor" : "Expand the editor")
-      .accessibilityIdentifier("composer-expand")
-    }
-  }
-
-  @ViewBuilder private var sendOrStop: some View {
-    if state.isRunning, draft.isEmpty {
-      Button {
-        actions.interrupt?()
-      } label: {
-        Group {
-          if state.isStopping {
-            ProgressView().controlSize(.small)
-          } else {
-            Image(systemName: "stop.fill").font(.caption.weight(.bold))
-              .accessibilityHidden(true)
-          }
-        }
-        .frame(width: Theme.Control.send, height: Theme.Control.send)
-        .background(.primary.opacity(0.12), in: Circle())
-        .contentShape(Circle())
-      }
-      .buttonStyle(.plain)
-      .keyboardShortcut(".", modifiers: .command)
-      .disabled(actions.interrupt == nil || state.isStopping)
-      .help("Interrupt (Esc)")
-      .accessibilityLabel("Interrupt")
-      .accessibilityIdentifier("composer-stop")
-    } else {
-      let blocked = sendBlockedReason
-      Button(action: send) {
-        Group {
-          if state.delivery == .sending {
-            ProgressView().controlSize(.small).tint(ThemeColor.onAccent)
-          } else {
-            Image(systemName: "arrow.up").font(.body.weight(.semibold))
-              .accessibilityHidden(true)
-          }
-        }
-        .foregroundStyle(blocked == nil ? ThemeColor.onAccent : ThemeColor.secondary)
-        .frame(width: Theme.Control.send, height: Theme.Control.send)
-        .background(blocked == nil ? Theme.accent : ThemeColor.hover, in: Circle())
-        .contentShape(Circle())
-      }
-      .buttonStyle(.plain)
-      .keyboardShortcut(.return, modifiers: .command)
-      .disabled(blocked != nil)
-      .help(blocked ?? (state.purpose == .start ? "Start session" : "Send"))
-      .accessibilityLabel(state.purpose == .start ? "Start session" : "Send")
-      .accessibilityValue(blocked ?? "")
-      .accessibilityIdentifier("composer-send")
-    }
-  }
+  private var toolbar: some View { parts.toolbar }
+  private var collapsedLeading: some View { parts.collapsedLeading }
+  private var collapsedTrailing: some View { parts.collapsedTrailing }
 }

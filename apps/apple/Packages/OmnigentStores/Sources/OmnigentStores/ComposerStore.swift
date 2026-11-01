@@ -20,11 +20,11 @@ public final class ComposerStore {
   /// Staged attachments.
   public private(set) var attachments = AttachmentDraft(items: [], selectionError: nil)
   /// A send is in flight.
-  public private(set) var isSending = false
+  public internal(set) var isSending = false
   /// A send is in flight or its outcome is uncertain and unreviewed.
-  public private(set) var isBlocked = false
+  public internal(set) var isBlocked = false
   /// The last failure.
-  public private(set) var lastError: CoreError?
+  public internal(set) var lastError: CoreError?
   /// The session's harness, model and effort, once ``loadConfiguration()`` read them.
   public internal(set) var configuration: SessionConfiguration?
   /// Their display labels.
@@ -35,6 +35,10 @@ public final class ComposerStore {
   public internal(set) var isApplyingConfiguration = false
   /// The last configuration failure.
   public internal(set) var configurationError: CoreError?
+  /// Messages queued to send after the running turn.
+  public internal(set) var queue = MessageQueue()
+  /// The session's workspace path, from the last configuration read.
+  public internal(set) var workspace: String?
 
   let sessionID: String
   let core: ClientCore
@@ -129,13 +133,13 @@ public final class ComposerStore {
     refreshBlocked()
   }
 
-  private func setText(fromCore value: String) {
+  func setText(fromCore value: String) {
     applyingCoreText = true
     text = value
     applyingCoreText = false
   }
 
-  private func refreshAttachments() {
+  func refreshAttachments() {
     do {
       attachments = try core.attachmentDraft(sessionId: sessionID)
     } catch {
@@ -143,7 +147,7 @@ public final class ComposerStore {
     }
   }
 
-  private func refreshBlocked() {
+  func refreshBlocked() {
     do {
       isBlocked = try core.isSendBlocked(sessionId: sessionID)
     } catch {

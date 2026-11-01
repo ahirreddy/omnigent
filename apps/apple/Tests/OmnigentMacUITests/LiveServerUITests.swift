@@ -7,7 +7,7 @@ import XCTest
 /// `xcrun xcresulttool export attachments --path <bundle> --output-path <dir>` (the sandboxed
 /// test runner cannot write outside its container).
 ///
-/// Covers: connecting a window, New Window, the Settings engine picker, and the Browser window
+/// Covers: connecting a window, New Window, the Settings engine picker, and a browser tab
 /// loading the server with the default engine. `omnigent://` routing is checked by hand with
 /// `open -a <built app> omnigent://<host:port>/c/<id>`: `XCUIApplication.open(_:)` did not
 /// deliver the URL to `application(_:open:)` in local runs.
@@ -65,33 +65,27 @@ final class LiveServerUITests: XCTestCase {
     app.typeKey(.escape, modifierFlags: [])
     app.typeKey("w", modifierFlags: .command)
 
-    checkBrowserWindow(app, edition: edition, host: host, port: port, engine: defaultEngine)
+    checkBrowserTab(app, edition: edition, host: host, port: port)
   }
 
-  /// Option-Command-B opens the Browser window, which loads the server with the default engine.
+  /// Option-Command-B opens a browser tab in the server window, which loads the server.
   @MainActor
-  private func checkBrowserWindow(
-    _ app: XCUIApplication, edition: String, host: String, port: Int, engine defaultEngine: String
-  ) {
-    app.windows.firstMatch.click()
+  private func checkBrowserTab(_ app: XCUIApplication, edition: String, host: String, port: Int) {
+    let window = app.windows.firstMatch
+    window.click()
     app.typeKey("b", modifierFlags: [.command, .option])
-    let browser = app.windows.matching(
-      NSPredicate(format: "title BEGINSWITH %@", "Browser")
+    let tab = window.descendants(matching: .any).matching(
+      NSPredicate(format: "identifier BEGINSWITH 'tab-browser-'")
     ).firstMatch
-    XCTAssertTrue(browser.waitForExistence(timeout: 20), "Browser window did not open")
-    let address = browser.textFields["browser.address"]
+    XCTAssertTrue(tab.waitForExistence(timeout: 20), "no browser tab opened")
+    let address = window.descendants(matching: .any)["browser.omnibox"]
     XCTAssertTrue(address.waitForExistence(timeout: 20))
     let loaded = NSPredicate(format: "value CONTAINS %@", "\(host):\(port)")
     expectation(for: loaded, evaluatedWith: address)
     waitForExpectations(timeout: 30)
-    let engine = browser.descendants(matching: .any)["browser.enginePicker"]
-    XCTAssertTrue(engine.exists)
-    XCTAssertTrue(
-      [engine.label, engine.value as? String ?? "", engine.title].contains(defaultEngine),
-      "engine picker shows \(engine.label) / \(String(describing: engine.value))")
     // Give the page time to paint before the screenshot.
     Thread.sleep(forTimeInterval: 4)
-    save(browser, "\(edition)-browser")
+    save(window, "\(edition)-browser")
   }
 
   /// Attaches a screenshot of `element`. `screen` captures the screen (to include open menus)

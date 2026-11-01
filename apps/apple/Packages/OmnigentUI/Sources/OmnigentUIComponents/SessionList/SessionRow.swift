@@ -3,12 +3,15 @@ import OmnigentPlatform
 import SwiftUI
 
 /// One sidebar session row, as the web's: the title on one line, an optional details line, and
-/// on the right the state (Needs response > running > disconnected > error > unread), else a
-/// draft pencil, else the relative time. Hovering on Mac reveals pin and more buttons.
+/// on the right the session's attention (Needs you > Failed > Working > Unread, with a
+/// disconnected ring before Unread), else a draft pencil, else the relative time. Hovering on Mac
+/// reveals pin and more buttons; the same actions are in the context menu and are VoiceOver
+/// actions, so nothing needs hover.
 struct SessionRow: View {
   let session: SessionSummary
   let info: SessionRowInfo
   let isUnread: Bool
+  /// Pending decisions the user can answer, shown in the Needs you capsule when more than one.
   let attention: Int
   let details: Set<SessionRowDetail>
   let now: Date
@@ -37,6 +40,7 @@ struct SessionRow: View {
           ) {
             menu.togglePin()
           }
+          .help(session.isPinned ? "Unpin" : "Pin")
           Menu {
             menu.items
           } label: {
@@ -44,6 +48,7 @@ struct SessionRow: View {
           }
           .menuIndicator(.hidden)
           .fixedSize()
+          .help("More actions")
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
@@ -52,7 +57,7 @@ struct SessionRow: View {
         trailing
       }
     }
-    .frame(minHeight: Theme.Control.sidebarRow)
+    // Height comes from the list's `defaultMinListRowHeight`, the same for every sidebar row.
     .contentShape(Rectangle())
     .hoverHighlight()
     .onHover { isHovered = $0 }
@@ -60,6 +65,7 @@ struct SessionRow: View {
     .contextMenu { menu.items }
     .accessibilityElement(children: .combine)
     .accessibilityLabel(accessibilityLabel)
+    .accessibilityActions { menu.accessibilityItems }
     .accessibilityIdentifier("session-row-\(session.id)")
   }
 
@@ -71,37 +77,46 @@ struct SessionRow: View {
           .foregroundStyle(.secondary)
           .accessibilityLabel("Shared")
       }
-      if attention > 0 || session.status == .needsResponse {
-        Text("Needs response")
-          .font(.caption2.weight(.semibold))
-          .foregroundStyle(Theme.brandAccent)
-          .padding(.horizontal, Theme.Spacing.small)
-          .padding(.vertical, 1.5)
-          .background(Theme.brandAccent.opacity(0.15), in: Capsule())
-      } else if session.status == .running {
-        ProgressView().controlSize(.mini)
-          .accessibilityLabel("Running")
-      } else if info.isDisconnected {
-        Circle().strokeBorder(.secondary, lineWidth: 1.2).frame(width: 8, height: 8)
-          .accessibilityLabel("Disconnected")
-      } else if session.failureMessage != nil {
+      switch session.attention {
+      case .needsYou:
+        NeedsYouCapsule(requests: attention)
+      case .failed:
         Image(systemName: "exclamationmark.circle")
           .foregroundStyle(Theme.failure)
-          .accessibilityLabel("Error")
-      } else if isUnread {
-        Circle().fill(Theme.brandAccent).frame(width: 6, height: 6)
-          .accessibilityLabel("Unread")
-      } else if info.hasDraft {
-        Image(systemName: "pencil")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .accessibilityLabel("Draft")
-      } else if details.contains(.updated) {
-        Text(RelativeTime.short(session.updatedDate, now: now))
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .monospacedDigit()
+          .help(session.failureMessage.map { "Failed: \($0)" } ?? "Failed")
+          .accessibilityLabel("Failed")
+      case .working:
+        ProgressView().controlSize(.mini)
+          .help("Running")
+          .accessibilityLabel("Running")
+      case .unread, .idle:
+        quietTrailing
       }
+    }
+  }
+
+  @ViewBuilder private var quietTrailing: some View {
+    if info.isDisconnected {
+      Image(systemName: "bolt.horizontal.circle")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .help("Disconnected")
+        .accessibilityLabel("Disconnected")
+    } else if session.attention == .unread {
+      Circle().fill(Theme.unread).frame(width: 6, height: 6)
+        .help("Unread")
+        .accessibilityLabel("Unread")
+    } else if info.hasDraft {
+      Image(systemName: "pencil")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .help("Draft")
+        .accessibilityLabel("Draft")
+    } else if details.contains(.updated) {
+      Text(RelativeTime.short(session.updatedDate, now: now))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .monospacedDigit()
     }
   }
 
@@ -123,14 +138,39 @@ struct SessionRow: View {
 
   private var accessibilityLabel: String {
     var parts = [session.title]
-    if attention > 0 || session.status == .needsResponse { parts.append("Needs response") }
-    if session.status == .running { parts.append("Running") }
-    if session.failureMessage != nil { parts.append("Error") }
-    if isUnread { parts.append("Unread") }
+    switch session.attention {
+    case .needsYou:
+      parts.append(attention > 1 ? "Needs you, \(attention) requests" : "Needs you")
+    case .failed, .working, .unread: parts.append(session.attention.label)
+    case .idle: break
+    }
+    if info.isDisconnected { parts.append("Disconnected") }
     if session.isPinned { parts.append("Pinned") }
     if info.isShared { parts.append("Shared") }
     parts.append("updated \(RelativeTime.short(session.updatedDate, now: now)) ago")
     return parts.joined(separator: ", ")
+  }
+}
+
+/// The pink "Needs you" capsule, with the request count when there is more than one.
+struct NeedsYouCapsule: View {
+  let requests: Int
+
+  var body: some View {
+    HStack(spacing: Theme.Spacing.tiny) {
+      Text("Needs you")
+      if requests > 1 {
+        Text("\(requests)").monospacedDigit()
+      }
+    }
+    .font(.caption2.weight(.semibold))
+    .foregroundStyle(Theme.attention)
+    .padding(.horizontal, Theme.Spacing.small)
+    .padding(.vertical, 1.5)
+    .background(Theme.attention.opacity(0.15), in: Capsule())
+    .help(requests > 1 ? "\(requests) requests need your response" : "Needs your response")
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(requests > 1 ? "Needs you, \(requests) requests" : "Needs you")
   }
 }
 
@@ -178,6 +218,24 @@ struct SessionRowMenu {
     guard let setPinned = actions.setPinned, session.canPin else { return }
     if !session.isPinned, pinLimitReached { return }
     setPinned(session, !session.isPinned)
+  }
+
+  /// The most used row actions as VoiceOver actions; the rest stay in the context menu.
+  @ViewBuilder var accessibilityItems: some View {
+    if actions.setPinned != nil, session.canPin, session.isPinned || !pinLimitReached {
+      Button(session.isPinned ? "Unpin" : "Pin") { togglePin() }
+    }
+    if let setUnread = actions.setUnread {
+      Button(isUnread ? "Mark as read" : "Mark as unread") { setUnread(session, !isUnread) }
+    }
+    if let setArchived = actions.setArchived, session.canArchive {
+      Button(session.isArchived ? "Unarchive" : "Archive") {
+        setArchived(session, !session.isArchived)
+      }
+    }
+    if actions.rename != nil, session.canRename {
+      Button("Rename", action: rename)
+    }
   }
 
   @ViewBuilder var items: some View {

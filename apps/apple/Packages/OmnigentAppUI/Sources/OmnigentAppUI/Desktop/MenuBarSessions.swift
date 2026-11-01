@@ -6,8 +6,9 @@
   public import OmnigentStores
   public import SwiftUI
 
-  /// The menu bar extra's sessions, across every open server window: sessions waiting for a
-  /// decision, failed turns, and unread sessions from the core's badge.
+  /// The menu bar extra's sessions, across every open server window, from the shared attention
+  /// model (`SessionListStore.attention(of:)`): sessions that need the user, failed turns, and
+  /// unread sessions.
   @Observable
   public final class MenuBarSessions: MenuBarSessionSource {
     private struct Registration {
@@ -41,17 +42,21 @@
       var seen = Set<String>()
       var rows: [AttentionSession] = []
       for registration in windows.values {
-        let unread = Set(registration.connection.notifications?.badgeSessionIDs ?? [])
-        for summary in registration.connection.sessionList.sessionsByID.values {
+        let list = registration.connection.sessionList
+        for summary in list.sessionsByID.values {
           let key = "\(registration.serverURL.absoluteString)#\(summary.id)"
-          guard !seen.contains(key), let reason = Self.reason(summary, unread: unread) else {
+          // An archived session is listed only for a pending decision, as the totals count it.
+          guard !seen.contains(key), let reason = Self.reason(list.attention(of: summary.id)),
+            !summary.isArchived || reason == .awaitingInput
+          else {
             continue
           }
           seen.insert(key)
           rows.append(
             AttentionSession(
               id: summary.id, title: summary.title, serverURL: registration.serverURL,
-              reason: reason, updatedAt: Date(timeIntervalSince1970: TimeInterval(summary.updatedAt))))
+              reason: reason,
+              updatedAt: Date(timeIntervalSince1970: TimeInterval(summary.updatedAt))))
         }
       }
       return rows.sorted { lhs, rhs in
@@ -61,22 +66,24 @@
       }
     }
 
-    /// Unread sessions across servers.
+    /// Sessions that need the user across servers (each server's
+    /// `AttentionTotals.sessionsNeedingYou` once), the same number as the Dock badge.
     public var unreadCount: Int {
       var servers: [URL: Int] = [:]
       for registration in windows.values {
-        servers[registration.serverURL] = registration.connection.notifications?.badgeCount ?? 0
+        servers[registration.serverURL] = Int(
+          registration.connection.sessionList.attentionTotals.sessionsNeedingYou)
       }
       return servers.values.reduce(0, +)
     }
 
-    private static func reason(_ summary: SessionSummary, unread: Set<String>)
-      -> AttentionSession.Reason?
-    {
-      if summary.status == .needsResponse { return .awaitingInput }
-      if summary.failureMessage != nil { return .failed }
-      if unread.contains(summary.id) { return .unread(count: 1) }
-      return nil
+    private static func reason(_ attention: SessionAttention) -> AttentionSession.Reason? {
+      switch attention.state {
+      case .needsYou: .awaitingInput
+      case .failed: .failed
+      case .unread: .unread(count: 1)
+      case .working, .idle: nil
+      }
     }
 
     private static func rank(_ reason: AttentionSession.Reason) -> Int {

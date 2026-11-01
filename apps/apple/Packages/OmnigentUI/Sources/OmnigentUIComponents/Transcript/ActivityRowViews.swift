@@ -253,12 +253,25 @@ private struct CompactionRowView: View {
 private struct SidechatRowView: View {
   let row: Row
   let activity: Activity
+  @Environment(\.conversationActions) private var actions
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      Label("Side question", systemImage: "bubble.left.and.text.bubble.right")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
+      HStack {
+        Label("Side question", systemImage: "bubble.left.and.text.bubble.right")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+        Spacer(minLength: 0)
+        if let openSideChat = actions.openSideChat {
+          Button("Open in Tab", systemImage: "rectangle.portrait.and.arrow.right") {
+            openSideChat(row)
+          }
+          .labelStyle(.iconOnly)
+          .buttonStyle(.borderless)
+          .help("Open this side question in its own tab")
+          .accessibilityIdentifier("sidechat-open-tab-\(row.id)")
+        }
+      }
       if let question = activity.detail("question") {
         Text(verbatim: question)
           .font(Theme.Typography.label)
@@ -273,7 +286,7 @@ private struct SidechatRowView: View {
     }
     .padding(Theme.Spacing.medium)
     .overlay(alignment: .leading) {
-      Rectangle().fill(Theme.accent.opacity(0.5)).frame(width: 3)
+      Rectangle().fill(ThemeColor.border).frame(width: 3)
     }
     .cardSurface(cornerRadius: Theme.Radius.medium)
     .accessibilityElement(children: .contain)
@@ -323,7 +336,6 @@ private struct GenericActivityRowView: View {
     switch activity.kind {
     case .policy: return Theme.warning
     case .routing: return .system(.purple)
-    case .command: return Theme.accent
     default: return Theme.secondary
     }
   }

@@ -137,7 +137,9 @@ struct InlineDecisions: View {
   private var drafts: DecisionDrafts { sharedDrafts ?? localDrafts }
 
   var body: some View {
-    ForEach(state.decisions.filter { !$0.answered }) { card in
+    // A sub-agent's requests render in its group row instead.
+    let grouped = SubagentGroup(state: state)?.decisionIDs ?? []
+    ForEach(state.decisions.filter { !$0.answered && !grouped.contains($0.id) }) { card in
       DecisionCardView(
         card: card, phase: state.phase(of: card), isReadOnly: state.header.readOnly,
         respond: actions.respond.map { respond in { respond(card, $0) } },

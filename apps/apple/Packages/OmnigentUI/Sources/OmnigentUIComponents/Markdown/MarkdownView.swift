@@ -120,7 +120,7 @@ private struct MarkdownListView: View {
     if item.task != .none {
       let checked = item.task == .checked
       Image(systemName: checked ? "checkmark.square.fill" : "square")
-        .foregroundStyle(checked ? Theme.accent : ThemeColor.secondary)
+        .foregroundStyle(checked ? ThemeColor.primary : ThemeColor.secondary)
         .accessibilityLabel(checked ? "Done" : "Not done")
     } else if ordered {
       Text(verbatim: "\(start + index).")

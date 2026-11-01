@@ -55,6 +55,8 @@ extension ConnectionStore {
     case .credentialRotated(let expiresAt):
       credentialExpiresAtMs = expiresAt
       credentialRotations += 1
+    case .unreadChanged(let ids):
+      sessionList.unreadIDs = Set(ids)
     case .terminalsChanged(let id, let rows, let harness):
       terminals(id)?.apply(terminals: rows, harness: harness)
     case .browserActionRequested(let id, let actionID, let action, let args):

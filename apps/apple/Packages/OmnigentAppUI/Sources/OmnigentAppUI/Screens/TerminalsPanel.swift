@@ -36,22 +36,48 @@ enum TerminalAdapter {
   }
 }
 
-/// The right panel's Terminals tab: the session's terminals (create and close shells) above the
-/// selected terminal's surface. Surfaces live in the session's ``TerminalStore``, so switching
-/// tabs or closing the panel keeps their screens and scrollback.
+/// The right panel's Terminals tab: a launcher. Choosing a terminal (or the agent's TUI) opens
+/// it as a tab; New Terminal starts a shell and opens it. Surfaces live in the session's
+/// ``TerminalStore``, so a terminal keeps its screen and scrollback across tabs.
 struct TerminalsPanel: View {
   let store: TerminalStore
   let permissionLevel: Int64?
-  let hostID: String?
+  /// Opens a terminal in a tab.
+  let openTerminal: @MainActor (String) -> Void
+  /// Opens the agent's TUI in a tab; `nil` when the session has none.
+  let openHarness: (@MainActor () -> Void)?
+  /// The terminals the agent declares (`ServerSession.declaredTerminalNames(in:)`).
+  var declaredNames: DeclaredTerminals = .unknown
 
   @State private var selection: TerminalListItem.ID?
-  @State private var surface: TerminalSurfaceController?
 
   var body: some View {
     let terminals = store.terminals
     VStack(spacing: 0) {
+      if let openHarness {
+        Button(action: openHarness) {
+          Label("Agent Terminal", systemImage: TabKind.agentTerminal.systemImage)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .help("Open the agent's terminal in a tab")
+        .accessibilityIdentifier("terminals.open-harness")
+        Divider()
+      }
+      if declaredNames == .names([]) {
+        Label("This agent declares no terminals.", systemImage: "terminal")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 12)
+          .padding(.vertical, 8)
+          .accessibilityIdentifier("terminals.none-declared")
+      }
       TerminalListView(
-        items: terminals.rows.map(TerminalAdapter.item), shellChoices: ["Shell"],
+        items: terminals.rows.map(TerminalAdapter.item), shellChoices: declaredNames.choices,
         canEdit: terminalCanType(permissionLevel: permissionLevel) && !terminals.isBusy,
         errorMessage: terminals.lastError?.message ?? store.lastError.map(String.init(describing:)),
         selection: $selection,
@@ -59,29 +85,29 @@ struct TerminalsPanel: View {
         onClose: { id in Task { await delete(id) } }
       )
       .listStyle(.plain)
-      // The list takes the whole tab until a terminal is attached, then yields to its surface.
-      .frame(minHeight: 96, idealHeight: 160, maxHeight: surface == nil ? .infinity : 200)
-      if let surface {
-        Divider()
-        SessionTerminalView(controller: surface)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-      }
+      Text("Choose a terminal to open it as a tab.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(8)
     }
     .onAppear { terminals.refresh() }
     .onChange(of: selection) { _, id in
-      surface = id.flatMap {
-        store.controller(for: $0, permissionLevel: permissionLevel, hostID: hostID)
+      guard let id else { return }
+      selection = nil
+      if case .ready(let harness) = store.terminals.harness, harness.id == id, let openHarness {
+        openHarness()
+      } else {
+        openTerminal(id)
       }
     }
   }
 
   private func create(_ name: String) async {
-    if let created = await store.terminals.create(name) { selection = created.id }
+    if let created = await store.terminals.create(name) { openTerminal(created.id) }
   }
 
   private func delete(_ id: String) async {
     store.close(id)
-    if selection == id { selection = nil }
     await store.terminals.delete(id)
   }
 }

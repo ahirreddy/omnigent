@@ -246,8 +246,10 @@ public struct ConversationActions {
   public var openURL: (@MainActor (URL) -> Void)?
   /// Answer a decision card.
   public var respond: (@MainActor (DecisionCard, DecisionResponse) -> Void)?
-  /// Validates form answers with the core (`DecisionForm::validate`); returns a readable problem.
-  public var validateForm: (@MainActor (DecisionCard, [String: ElicitationValue]) -> String?)?
+  /// Validates form answers with the core (`validate_form`); returns the first problem and the
+  /// field it is about.
+  public var validateForm:
+    (@MainActor (DecisionCard, [String: ElicitationValue]) -> DecisionFormProblem?)?
   /// Clear ``ConversationViewState/errorMessage``.
   public var dismissError: (@MainActor () -> Void)?
   /// Retry loading after a failure.
@@ -260,6 +262,11 @@ public struct ConversationActions {
   public var resume: (@MainActor () -> Void)?
   /// Open the Share sheet.
   public var share: (@MainActor () -> Void)?
+  /// Open a side question (a `sidechat` row) in its own tab; `nil` hides Open in Tab.
+  public var openSideChat: (@MainActor (Row) -> Void)?
+  /// Open a sub-agent's transcript; `nil` falls back to ``openSession``. The one route for
+  /// children, so a host can send them somewhere else (a tab) without touching the views.
+  public var openChild: (@MainActor (String) -> Void)?
 
   /// Creates actions.
   /// - Parameters:
@@ -280,7 +287,8 @@ public struct ConversationActions {
     openAttachment: (@MainActor (Attachment) -> Void)? = nil,
     openURL: (@MainActor (URL) -> Void)? = nil,
     respond: (@MainActor (DecisionCard, DecisionResponse) -> Void)? = nil,
-    validateForm: (@MainActor (DecisionCard, [String: ElicitationValue]) -> String?)? = nil,
+    validateForm:
+      (@MainActor (DecisionCard, [String: ElicitationValue]) -> DecisionFormProblem?)? = nil,
     dismissError: (@MainActor () -> Void)? = nil, retry: (@MainActor () -> Void)? = nil,
     forkFrom: (@MainActor (Row) -> Void)? = nil, messageURL: (@MainActor (Row) -> URL?)? = nil,
     resume: (@MainActor () -> Void)? = nil, share: (@MainActor () -> Void)? = nil

@@ -198,6 +198,8 @@ nonisolated public struct PermissionOptions: Hashable, Sendable {
   public var persistModes: [PersistMode]
   /// Antigravity details.
   public var antigravity: AntigravityPermission?
+  /// The files an edit would change, when the core provides them.
+  public var files: [DecisionFileChange]
 
   /// Creates permission options.
   /// - Parameters:
@@ -210,11 +212,13 @@ nonisolated public struct PermissionOptions: Hashable, Sendable {
   ///   - execPolicyAmendment: Offered command policy.
   ///   - persistModes: Offered persistence modes.
   ///   - antigravity: Antigravity details.
+  ///   - files: Files an edit would change.
   public init(
     allowAllEdits: Bool = false, allowAutoMode: Bool = false,
     permissionDirectories: [String] = [], rememberLabel: String? = nil, plan: String? = nil,
     command: CommandApproval? = nil, execPolicyAmendment: [String]? = nil,
-    persistModes: [PersistMode] = [], antigravity: AntigravityPermission? = nil
+    persistModes: [PersistMode] = [], antigravity: AntigravityPermission? = nil,
+    files: [DecisionFileChange] = []
   ) {
     self.allowAllEdits = allowAllEdits
     self.allowAutoMode = allowAutoMode
@@ -225,6 +229,7 @@ nonisolated public struct PermissionOptions: Hashable, Sendable {
     self.execPolicyAmendment = execPolicyAmendment
     self.persistModes = persistModes
     self.antigravity = antigravity
+    self.files = files
   }
 
   /// Whether accepting with `mode` persistence was offered (Codex modes, or Antigravity's
@@ -248,6 +253,10 @@ nonisolated public struct DecisionCard: Hashable, Sendable, Identifiable {
   public var title: String
   /// Body text.
   public var detail: String
+  /// The agent's or policy's message on its own, when the core separates it from ``detail``.
+  public var message: String?
+  /// The gated tool call's input, formatted, when the core separates it from ``detail``.
+  public var toolInput: String?
   /// What it asks for.
   public var kind: DecisionKind
   /// Extra approval choices.
@@ -256,6 +265,8 @@ nonisolated public struct DecisionCard: Hashable, Sendable, Identifiable {
   public var phase: String?
   /// The policy name, when sent.
   public var policyName: String?
+  /// A decline can carry feedback the agent receives (``DecisionResponse/declineWithFeedback(feedback:)``).
+  public var acceptsFeedback: Bool
   /// The user answered locally and the server has not confirmed yet.
   public var answered: Bool
 
@@ -270,21 +281,28 @@ nonisolated public struct DecisionCard: Hashable, Sendable, Identifiable {
   ///   - permissions: Extra choices.
   ///   - phase: Policy phase.
   ///   - policyName: Policy name.
+  ///   - acceptsFeedback: A decline can carry feedback.
   ///   - answered: Answered locally.
+  ///   - message: The message on its own.
+  ///   - toolInput: The tool input on its own.
   public init(
     id: String, carryingSessionId: String, targetSessionId: String? = nil, title: String,
     detail: String, kind: DecisionKind, permissions: PermissionOptions = PermissionOptions(),
-    phase: String? = nil, policyName: String? = nil, answered: Bool = false
+    phase: String? = nil, policyName: String? = nil, acceptsFeedback: Bool = false,
+    answered: Bool = false, message: String? = nil, toolInput: String? = nil
   ) {
     self.id = id
     self.carryingSessionId = carryingSessionId
     self.targetSessionId = targetSessionId ?? carryingSessionId
     self.title = title
     self.detail = detail
+    self.message = message
+    self.toolInput = toolInput
     self.kind = kind
     self.permissions = permissions
     self.phase = phase
     self.policyName = policyName
+    self.acceptsFeedback = acceptsFeedback
     self.answered = answered
   }
 
@@ -332,7 +350,8 @@ nonisolated public enum DecisionResponse: Hashable, Sendable {
   case approveCommandPolicy(policy: [String])
   /// Accept with persistence.
   case approvePersist(mode: PersistMode)
-  /// Decline a plan review with feedback. Must not be blank.
+  /// Decline with feedback the agent receives, on a card that ``DecisionCard/acceptsFeedback``.
+  /// Must not be blank.
   case declineWithFeedback(feedback: String)
 
   /// A short past-tense description, for the answered state and VoiceOver.
@@ -350,7 +369,7 @@ nonisolated public enum DecisionResponse: Hashable, Sendable {
     case .approveCommandPolicy: "Approved with the command policy"
     case .approvePersist(let mode):
       mode == .always ? "Always allowed" : "Approved for this session"
-    case .declineWithFeedback: "Rejected with feedback"
+    case .declineWithFeedback: "Rejected · reply sent to the agent"
     }
   }
 

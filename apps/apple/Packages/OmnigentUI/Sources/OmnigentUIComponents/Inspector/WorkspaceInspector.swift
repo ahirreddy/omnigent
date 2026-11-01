@@ -31,6 +31,14 @@ nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, 
     }
   }
 
+  /// A one-word label for the tab picker when the panel is wide enough to show labels.
+  public var shortTitle: String {
+    switch self {
+    case .pullRequests: "PRs"
+    default: title
+    }
+  }
+
   /// The SF Symbol.
   public var systemImage: String {
     switch self {
@@ -100,16 +108,12 @@ public struct WorkspaceInspector: View {
   /// The panel.
   public var body: some View {
     VStack(spacing: 0) {
-      Picker("Panel", selection: $tab) {
-        ForEach(InspectorTab.allCases) { tab in
-          Label(label(for: tab), systemImage: tab.systemImage)
-            .labelStyle(.iconOnly)
-            .help(label(for: tab))
-            .tag(tab)
-        }
+      // Labelled tabs when they fit; otherwise symbols with tooltips. The selected tab's full
+      // name (with its count) is the heading below either way.
+      ViewThatFits(in: .horizontal) {
+        tabPicker(showsTitles: true)
+        tabPicker(showsTitles: false)
       }
-      .pickerStyle(.segmented)
-      .labelsHidden()
       .padding(Theme.Spacing.small)
       .accessibilityIdentifier("inspector-tabs")
       Text(label(for: tab))
@@ -124,6 +128,28 @@ public struct WorkspaceInspector: View {
     }
     .background(ThemeColor.surface)
     .environment(\.conversationActions, actions)
+  }
+
+  private func tabPicker(showsTitles: Bool) -> some View {
+    Picker("Right panel tab", selection: $tab) {
+      ForEach(InspectorTab.allCases) { tab in
+        Group {
+          if showsTitles {
+            Text(tab.shortTitle)
+          } else {
+            Label(label(for: tab), systemImage: tab.systemImage).labelStyle(.iconOnly)
+          }
+        }
+        .help(label(for: tab))
+        .accessibilityLabel(label(for: tab))
+        .tag(tab)
+      }
+    }
+    .pickerStyle(.segmented)
+    .tint(Theme.secondary)
+    .labelsHidden()
+    .accessibilityLabel("Right panel tab")
+    .accessibilityHint("Switches between files, changes, pull requests, agents, terminals and info")
   }
 
   private func label(for tab: InspectorTab) -> String {

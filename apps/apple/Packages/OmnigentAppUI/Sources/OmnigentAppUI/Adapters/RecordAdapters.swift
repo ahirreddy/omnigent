@@ -153,14 +153,33 @@ nonisolated extension OmnigentUIComponents.EventSection {
 }
 
 nonisolated extension OmnigentUIComponents.SessionSummary {
+  /// The summary with the core's attention for it (no read state).
   init(_ summary: OmnigentCoreFFI.SessionSummary) {
+    self.init(summary, attention: sessionAttention(session: summary, isUnread: false))
+  }
+
+  /// The summary with `attention` from the shared attention model.
+  init(_ summary: OmnigentCoreFFI.SessionSummary, attention: OmnigentCoreFFI.SessionAttention) {
     self.init(
       id: summary.id, title: summary.title, preview: summary.preview,
       status: OmnigentUIComponents.SessionListStatus(summary.status),
       isReadOnly: summary.isReadOnly, updatedAt: summary.updatedAt, workspace: summary.workspace,
       agentName: summary.agentName, isPinned: summary.isPinned, isArchived: summary.isArchived,
       permissionLevel: summary.permissionLevel, failureMessage: summary.failureMessage,
-      canRename: summary.canRename, canPin: summary.canPin, canArchive: summary.canArchive)
+      canRename: summary.canRename, canPin: summary.canPin, canArchive: summary.canArchive,
+      attention: OmnigentUIComponents.SessionAttentionState(attention.state))
+  }
+}
+
+nonisolated extension OmnigentUIComponents.SessionAttentionState {
+  init(_ state: OmnigentCoreFFI.AttentionState) {
+    switch state {
+    case .needsYou: self = .needsYou
+    case .failed: self = .failed
+    case .working: self = .working
+    case .unread: self = .unread
+    case .idle: self = .idle
+    }
   }
 }
 

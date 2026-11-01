@@ -47,6 +47,22 @@ extension ComposerStore {
     configuration.map { configurationSupportsModels(configuration: $0) } ?? false
   }
 
+  /// The session's approval modes and the current one; `nil` when its harness has no live
+  /// switch.
+  public var approvalModeMenu: ApprovalModeMenu? {
+    configuration.flatMap { OmnigentCoreFFI.approvalModeMenu(configuration: $0) }
+  }
+
+  /// Whether a message sent mid-turn steers the running turn.
+  public var supportsSteering: Bool {
+    configuration.map { configurationSupportsSteering(configuration: $0) } ?? false
+  }
+
+  /// Why nothing can run in this session now, or `nil` (the core's rule).
+  public var executionUnavailableReason: String? {
+    configuration.flatMap { OmnigentCoreFFI.executionUnavailableReason(configuration: $0) }
+  }
+
   /// Whether the wrapper forwards reasoning-effort changes.
   public var supportsEffortChoice: Bool {
     configuration.map { configurationSupportsEffort(configuration: $0) } ?? false
@@ -117,6 +133,28 @@ extension ComposerStore {
     }
   }
 
+  /// Switches the live approval mode to `value`, also while a turn runs. When the harness lands
+  /// on another mode, that mode is read back and ``configurationError`` says so.
+  /// - Parameter value: The mode's wire value.
+  public func selectApprovalMode(_ value: String) async {
+    isApplyingConfiguration = true
+    defer { isApplyingConfiguration = false }
+    do {
+      adopt(try await core.setApprovalMode(sessionId: sessionID, value: value))
+      configurationError = nil
+    } catch {
+      let failure = coreError(error)
+      do {
+        adopt(try await core.configurationSnapshot(sessionId: sessionID))
+        configurationError = failure
+      } catch {
+        configurationError = .InvalidState(
+          message:
+            "\(failure.message) The current mode could not be read: \(coreError(error).message)")
+      }
+    }
+  }
+
   /// Clears ``configurationError`` after the user has seen it.
   public func dismissConfigurationError() {
     configurationError = nil
@@ -136,6 +174,7 @@ extension ComposerStore {
 
   private func adopt(_ summary: SessionSummary) {
     configuration = summary.configuration
+    workspace = summary.workspace
     configurationLabels = summary.configuration.map {
       OmnigentCoreFFI.configurationLabels(configuration: $0)
     }

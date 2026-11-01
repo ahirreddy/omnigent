@@ -1,6 +1,7 @@
 import OSLog
 import OmnigentAppUI
 import OmnigentAuthUI
+import OmnigentBrowser
 import OmnigentCoreFFI
 import OmnigentDesktop
 import OmnigentStores
@@ -20,6 +21,8 @@ struct ServerWindowRoot: View {
   @State private var session: ServerSession?
   @State private var selection: SidebarDestination?
   @State private var showsCoreDebug = false
+  /// Tabs torn off from another window into this one.
+  @State private var adopting: [AppTab] = []
   @Environment(\.openWindow) private var openWindow
   @Environment(\.appearsActive) private var appearsActive
 
@@ -42,17 +45,12 @@ struct ServerWindowRoot: View {
     let notifications = session.connection.notifications
     return ServerRootView(
       session: session, selection: $selection, isWindowFocused: appearsActive,
-      openInNewWindow: { sessionID in openNewWindow(on: sessionID) }
+      openInNewWindow: { sessionID in openNewWindow(on: sessionID) },
+      tabContext: TabWindowContext(
+        window: id.instance, persistence: services.tabPersistence, browser: services.browserTabs,
+        moveToNewWindow: { tabs in moveToNewWindow(tabs) }, adopting: adopting)
     )
     .navigationTitle(title(session))
-    .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-        Button("Browser", systemImage: "globe", action: openBrowser)
-          .disabled(id.serverURL == nil)
-          .help("Open this server in the browser window (Option-Command-B)")
-          .accessibilityIdentifier("toolbar.browser")
-      }
-    }
     .sheet(isPresented: $showsCoreDebug) {
       CoreDebugView()
         .environment(session.connection)
@@ -73,8 +71,10 @@ struct ServerWindowRoot: View {
     .desktopAttention(session.connection, serverURL: id.serverURL, desktop: desktop)
     .menuBarSessions(
       session.connection, serverURL: isReady ? id.serverURL : nil, instance: id.instance,
-      in: services.menuBar)
+      in: services.menuBar
+    )
     .windowFrameAutosave()
+    .onDisappear { services.windowClosed(id.instance) }
     .task(id: id.serverURL) { await connectBoundServer(session, force: false) }
     .task { await reconnectOnSystemTriggers(session) }
   }
@@ -82,6 +82,7 @@ struct ServerWindowRoot: View {
   /// Creates the window's session once and binds its sign-in to the window.
   private func start() {
     guard session == nil else { return }
+    adopting = services.takeHandoff(for: id.instance)
     let session = services.makeServerSession()
     session.signIn.directory = services.serverDirectory()
     session.signIn.forgetServer = { [services] url in
@@ -98,7 +99,8 @@ struct ServerWindowRoot: View {
     }
     session.signIn.onSignedIn = { server in
       guard let url = URL(string: server.baseUrl) else {
-        services.logger.error("Signed in to an unparseable server URL: \(server.baseUrl, privacy: .public)")
+        services.logger.error(
+          "Signed in to an unparseable server URL: \(server.baseUrl, privacy: .public)")
         return
       }
       Task { await services.didConnect(to: url) }
@@ -106,12 +108,13 @@ struct ServerWindowRoot: View {
     self.session = session
   }
 
+  /// The server's display name ("This Mac" for a loopback server, never `127.0.0.1`).
   private func title(_ session: ServerSession) -> String {
     if let server = session.connection.connectedServer {
-      return server.serverName ?? URL(string: server.baseUrl)?.host(percentEncoded: false)
-        ?? "Omnigent"
+      return ExecutionContext.serverDisplayName(name: server.serverName, baseURL: server.baseUrl)
     }
-    return id.serverURL?.host(percentEncoded: false) ?? "Omnigent"
+    guard let url = id.serverURL else { return "Omnigent" }
+    return ExecutionContext.serverDisplayName(name: nil, baseURL: url.absoluteString)
   }
 
   private func actions(_ session: ServerSession) -> ServerWindowActions {
@@ -127,7 +130,26 @@ struct ServerWindowRoot: View {
         } : nil,
       signOut: session.connection.connectedServer?.mode == .localSingleUser || !session.isSignedIn
         ? nil : { signInActions.signOut() },
-      reconnect: bound ? { Task { await connectBoundServer(session, force: true) } } : nil)
+      reconnect: bound ? { Task { await connectBoundServer(session, force: true) } } : nil,
+      find: browserPage(session).map(Self.find), zoom: browserPage(session).map(Self.zoom))
+  }
+
+  /// The selected tab's page, when it is a browser tab: Edit > Find and View > Zoom act on it.
+  private func browserPage(_ session: ServerSession) -> BrowserTabModel? {
+    guard case .browser(let pageID) = session.tabs.selected?.content else { return nil }
+    return services.browserTabs.page(pageID)
+  }
+
+  private static func find(_ page: BrowserTabModel) -> ServerWindowActions.Find {
+    ServerWindowActions.Find(
+      show: { page.showFindBar() },
+      next: { Task { await page.findNext(forward: true) } },
+      previous: { Task { await page.findNext(forward: false) } })
+  }
+
+  private static func zoom(_ page: BrowserTabModel) -> ServerWindowActions.Zoom {
+    ServerWindowActions.Zoom(
+      reset: { page.resetZoom() }, zoomIn: { page.zoomIn() }, zoomOut: { page.zoomOut() })
   }
 
   private func apply(_ route: OmnigentDesktop.DeepLinkRoute) {
@@ -167,9 +189,11 @@ struct ServerWindowRoot: View {
     monitor.stop()
   }
 
-  private func openBrowser() {
-    guard let serverURL = id.serverURL else { return }
-    openWindow(id: BrowserWindow.id, value: serverURL)
+  /// Tear-off: a new window on this server that adopts `tabs`.
+  private func moveToNewWindow(_ tabs: [AppTab]) {
+    let window = ServerWindowID.newWindow(serverURL: id.serverURL)
+    services.handOff(tabs, to: window.instance)
+    openWindow(value: window)
   }
 
   private func openNewWindow(on sessionID: String) {

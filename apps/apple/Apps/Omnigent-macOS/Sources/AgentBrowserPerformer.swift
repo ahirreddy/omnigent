@@ -16,6 +16,9 @@ final class AgentBrowserPerformer: BrowserActionPerforming {
     self.controller = controller
   }
 
+  /// The agent browser, for read-only agent tabs.
+  var agentController: AgentBrowserController? { controller as? AgentBrowserController }
+
   /// The edition's performer, or `nil` where no engine runs agent actions.
   /// - Parameter provider: The edition's engines.
   /// - Returns: The performer.

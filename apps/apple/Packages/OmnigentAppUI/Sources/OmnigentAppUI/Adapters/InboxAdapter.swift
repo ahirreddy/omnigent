@@ -3,25 +3,23 @@ import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
 
-/// Builds the inbox from the session list and the badge: sessions waiting for an answer first,
-/// then unread sessions, newest first within each.
+/// Builds the inbox from the session list: sessions that need the user first, then unread
+/// sessions, newest first within each. The header count is the shared attention model's.
 enum InboxAdapter {
   /// The inbox's view state.
-  /// - Parameters:
-  ///   - list: The session list.
-  ///   - notifications: The badge, which marks unread sessions.
+  /// - Parameter list: The session list.
   /// - Returns: The state.
-  static func state(list: SessionListStore, notifications: NotificationsStore?) -> InboxViewState {
-    let unread = Set(notifications?.badgeSessionIDs ?? [])
+  static func state(list: SessionListStore) -> InboxViewState {
     let waiting = list.needsResponse
-    let waitingIDs = Set(waiting.map(\.id))
     let unreadSessions = list.sessionsByID.values
-      .filter { unread.contains($0.id) && !waitingIDs.contains($0.id) }
+      .filter { list.attention(of: $0.id).state == .unread }
       .sorted { $0.updatedAt > $1.updatedAt }
     let items =
-      waiting.map { item($0, kind: .approval, isUnread: unread.contains($0.id)) }
+      waiting.map { item($0, kind: .approval, isUnread: list.unreadIDs.contains($0.id)) }
       + unreadSessions.map { item($0, kind: .unread, isUnread: true) }
-    return InboxViewState(items: items)
+    var state = InboxViewState(items: items)
+    state.needsYouCount = Int(list.attentionTotals.sessionsNeedingYou)
+    return state
   }
 
   private static func item(

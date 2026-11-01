@@ -76,6 +76,8 @@ enum Theme {
   static var codeBackground: Color { Color.secondary.opacity(0.1) }
 
   // Brand colors come from the environment's `OmnigentTheme`; these resolve at render time.
+  // Emphasis discipline: the accent is for the one primary action on a screen and the brand
+  // accent for "needs you". Everything else is neutral or a labelled status color.
   static let accent = ThemeColor.accent
   static let brandAccent = ThemeColor.brandAccent
   static let userBubble = ThemeColor.userBubble
@@ -86,7 +88,12 @@ enum Theme {
   static let success = ThemeColor.success
   static let info = ThemeColor.info
   static let failure = ThemeColor.failure
-  static let unread = ThemeColor.brandAccent
+  /// Unread is not "needs you": a calm status blue, never the brand accent.
+  static let unread = ThemeColor.info
+  /// A selected row: the softened theme selection.
+  static let selection = ThemeColor.rowSelection
+  /// A focused field's border.
+  static let focus = ThemeColor.focus
   static let link = ThemeColor.link
   static let secondary = ThemeColor.secondary
 
@@ -146,6 +153,13 @@ extension View {
     -> some View
   {
     modifier(CardSurface(cornerRadius: cornerRadius, tint: tint, stroke: stroke))
+  }
+
+  /// A selected item's fill: the softened theme selection, in a rounded rectangle.
+  func selectionFill(_ isSelected: Bool, cornerRadius: CGFloat = Theme.Radius.small) -> some View {
+    background(
+      RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        .fill(isSelected ? AnyShapeStyle(Theme.selection) : AnyShapeStyle(.clear)))
   }
 
   /// A subtle hover highlight for pointer platforms.

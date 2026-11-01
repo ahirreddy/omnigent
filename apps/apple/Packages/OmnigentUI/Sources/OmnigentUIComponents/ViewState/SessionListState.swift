@@ -45,6 +45,8 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
   public var canPin: Bool
   /// Whether the caller may archive it.
   public var canArchive: Bool
+  /// Why it needs the user (the core's attention model). Defaults to what ``status`` implies.
+  public var attention: SessionAttentionState
 
   /// Creates a summary.
   /// - Parameters:
@@ -63,12 +65,13 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
   ///   - canRename: May rename.
   ///   - canPin: May pin.
   ///   - canArchive: May archive.
+  ///   - attention: Attention; `nil` derives it from `status` and `failureMessage`.
   public init(
     id: String, title: String, preview: String = "", status: SessionListStatus = .idle,
     isReadOnly: Bool = false, updatedAt: Int64 = 0, workspace: String = "",
     agentName: String = "", isPinned: Bool = false, isArchived: Bool = false,
     permissionLevel: Int64? = nil, failureMessage: String? = nil, canRename: Bool = true,
-    canPin: Bool = true, canArchive: Bool = true
+    canPin: Bool = true, canArchive: Bool = true, attention: SessionAttentionState? = nil
   ) {
     self.id = id
     self.title = title
@@ -85,6 +88,7 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
     self.canRename = canRename
     self.canPin = canPin
     self.canArchive = canArchive
+    self.attention = attention ?? SessionAttentionState(status: status, failure: failureMessage)
   }
 
   /// ``updatedAt`` as a date.
@@ -110,7 +114,7 @@ nonisolated public enum SessionFilter: String, Hashable, Sendable, CaseIterable,
     switch self {
     case .all: "All sessions"
     case .running: "Running"
-    case .needsResponse: "Needs response"
+    case .needsResponse: "Needs you"
     case .archived: "Archived"
     }
   }

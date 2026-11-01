@@ -221,6 +221,7 @@ private struct DraftAttachmentChip: View {
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
+        .help("Remove \(attachment.title)")
         .accessibilityIdentifier("draft-attachment-remove-\(attachment.id)")
       }
     }
@@ -293,7 +294,7 @@ private struct ComposerSurface: ViewModifier {
       }
       .overlay {
         shape.strokeBorder(
-          isTargeted || isFocused ? Theme.accent : ThemeColor.border,
+          isTargeted || isFocused ? Theme.focus : ThemeColor.border,
           lineWidth: isTargeted || isFocused || contrast == .increased ? 1.5 : 0.5)
       }
       .shadow(

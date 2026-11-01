@@ -45,9 +45,9 @@ struct OmnigentMenuBarLabel: View {
     let symbol =
       manager.server.endpoint == nil ? "circle.hexagongrid" : "circle.hexagongrid.fill"
     if unreadCount > 0 {
-      Label("Omnigent, \(unreadCount) unread", systemImage: symbol)
+      Label("Omnigent, \(unreadCount) need you", systemImage: symbol)
         .labelStyle(.titleAndIcon)
-        .accessibilityLabel("Omnigent, \(unreadCount) unread")
+        .accessibilityLabel("Omnigent, \(unreadCount) need you")
     } else {
       Image(systemName: symbol).accessibilityLabel("Omnigent")
     }
@@ -101,7 +101,7 @@ public struct OmnigentMenuBarContent: View {
       Text("Omnigent").font(.title3.weight(.semibold))
       Spacer()
       if let unread = sessions?.unreadCount, unread > 0 {
-        Text("\(unread) unread")
+        Text("\(unread) need you")
           .font(.caption.weight(.medium))
           .padding(.horizontal, 7)
           .padding(.vertical, 2)

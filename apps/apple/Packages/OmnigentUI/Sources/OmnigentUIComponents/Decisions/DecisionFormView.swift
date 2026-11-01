@@ -1,42 +1,59 @@
 import SwiftUI
 
-/// What the user has entered into a decision form so far. Kept per card id by the dock, so a
-/// half-filled form survives scrolling, paging and size-class changes.
+/// What the user has entered into a decision card so far: form answers and the "Tell the agent
+/// instead" reply. Kept per card id and shared by the inline card, the dock and the iPhone sheet,
+/// so a half-written answer survives scrolling, paging and size-class changes.
 struct FormDraft: Hashable {
   var text: [String: String] = [:]
   var selected: [String: [String]] = [:]
   var custom: [String: String] = [:]
   var booleans: [String: Bool] = [:]
+  /// The reply for "Tell the agent instead".
+  var feedback = ""
+  /// The reply field is open.
+  var isComposingFeedback = false
 
   /// A problem the UI itself can see: unparseable numbers and missing required answers.
   /// Constraint checks (lengths, ranges, item counts) are the core's validator.
   func localProblem(for fields: [FormField]) -> String? {
-    fields.lazy.compactMap(problem(for:)).first
+    fields.lazy.compactMap { problem(for: $0)?.message }.first
   }
 
-  private func problem(for field: FormField) -> String? {
+  /// The local problem with one field, shown under that field.
+  func problem(for field: FormField) -> FieldProblem? {
     switch field.kind {
     case .number, .integer:
       return numberProblem(for: field)
     case .text:
-      return field.required && text[field.key, default: ""].isEmpty ? "Enter \(field.title)." : nil
+      return field.required && text[field.key, default: ""].isEmpty
+        ? .missing("Enter \(field.title).") : nil
     case .boolean:
       return field.required && booleans[field.key] == nil
-        ? "Choose Yes or No for \(field.title)." : nil
+        ? .missing("Choose Yes or No for \(field.title).") : nil
     case .singleChoice, .multipleChoice:
       return field.required && value(for: field) == nil
-        ? "Choose an answer for \(field.title)." : nil
+        ? .missing("Choose an answer for \(field.title).") : nil
     }
   }
 
-  private func numberProblem(for field: FormField) -> String? {
+  private func numberProblem(for field: FormField) -> FieldProblem? {
     let raw = text[field.key, default: ""].trimmingCharacters(in: .whitespaces)
-    if raw.isEmpty { return field.required ? "Enter \(field.title)." : nil }
-    if field.kind == .integer, Int64(raw) == nil { return "\(field.title) must be a whole number." }
+    if raw.isEmpty { return field.required ? .missing("Enter \(field.title).") : nil }
+    if field.kind == .integer, Int64(raw) == nil {
+      return .invalid("\(field.title) must be a whole number.")
+    }
     if field.kind == .number, Double(raw).map(\.isFinite) != true {
-      return "\(field.title) must be a number."
+      return .invalid("\(field.title) must be a number.")
     }
     return nil
+  }
+
+  /// The field a keyless validator message is about (older validators), so it shows next to
+  /// that field: the field whose title the message names (the longest, when titles overlap).
+  /// `nil` keeps it with Submit.
+  nonisolated static func field(for message: String, in fields: [FormField]) -> FormField? {
+    fields.filter { !$0.title.isEmpty && message.localizedCaseInsensitiveContains($0.title) }
+      .max { $0.title.count < $1.title.count }
   }
 
   /// The typed answers. Fields left empty are omitted.
@@ -77,11 +94,24 @@ struct FormDraft: Hashable {
   }
 }
 
-/// The fields of a form decision, laid out as native controls.
+/// Why one field's answer can't be sent yet.
+struct FieldProblem: Hashable {
+  let message: String
+  /// The answer is there but wrong (an error), rather than still missing (a hint).
+  let isInvalid: Bool
+
+  static func missing(_ message: String) -> Self { Self(message: message, isInvalid: false) }
+  static func invalid(_ message: String) -> Self { Self(message: message, isInvalid: true) }
+}
+
+/// The fields of a form decision, laid out as native controls. Each field's problem shows right
+/// under it: the local one first, else the validator's when it names that field.
 struct DecisionFormFields: View {
   let fields: [FormField]
   @Binding var draft: FormDraft
   let cardID: String
+  /// The core validator's problem, attributed to a field by ``DecisionFormProblem/field(in:)``.
+  var validatorProblem: (key: String, message: String)?
   @Environment(\.decisionIDPrefix) private var idPrefix
 
   var body: some View {
@@ -101,11 +131,24 @@ struct DecisionFormFields: View {
               .fixedSize(horizontal: false, vertical: true)
           }
           control(for: field)
+          if let problem = problem(for: field) {
+            Label(problem.message, systemImage: "exclamationmark.circle")
+              .font(.caption)
+              .foregroundStyle(problem.isInvalid ? Theme.failure : Theme.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+              .accessibilityIdentifier("\(idPrefix)request-field-problem-\(cardID)-\(field.key)")
+          }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("\(idPrefix)request-field-\(cardID)-\(field.key)")
       }
     }
+  }
+
+  private func problem(for field: FormField) -> FieldProblem? {
+    if let local = draft.problem(for: field) { return local }
+    guard let validatorProblem, validatorProblem.key == field.key else { return nil }
+    return .invalid(validatorProblem.message)
   }
 
   @ViewBuilder
@@ -231,7 +274,7 @@ struct OptionRow: View {
     Button(action: action) {
       HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
         Image(systemName: symbol)
-          .foregroundStyle(isSelected ? Theme.accent : ThemeColor.secondary)
+          .foregroundStyle(isSelected ? ThemeColor.primary : ThemeColor.secondary)
           .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
           Text(option.label)

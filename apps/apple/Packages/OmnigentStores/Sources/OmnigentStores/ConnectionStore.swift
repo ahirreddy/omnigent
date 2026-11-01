@@ -80,7 +80,7 @@ public final class ConnectionStore {
   /// - Parameter core: The Rust client core.
   public init(core: ClientCore) {
     self.core = core
-    notifications = NotificationsStore(core: core)
+    notifications = NotificationsStore(core: core, list: sessionList)
     browserActions = BrowserActionStore(core: core)
     sessionList.core = core
     _ = core.subscribe(listener: relay)
@@ -303,6 +303,23 @@ public final class ConnectionStore {
   ///   - focused: Whether its window is focused.
   public func setView(sessionID: String?, focused: Bool) {
     core?.setView(activeSessionId: sessionID, windowFocused: focused)
+  }
+
+  /// Marks `sessionID` seen, as opening it does, for a session read somewhere other than its
+  /// open view (for example from a notification). ``setView(sessionID:focused:)`` already marks
+  /// the viewed session. A failure is recorded in ``issues``; the mark stays on this device.
+  /// - Parameter sessionID: The session.
+  /// - Returns: Whether the server accepted the mark (or nothing needed writing).
+  @discardableResult
+  public func markSeen(_ sessionID: String) async -> Bool {
+    guard let core else { return false }
+    do {
+      try await core.markSessionSeen(sessionId: sessionID)
+      return true
+    } catch {
+      record(scope: .session(sessionId: sessionID), coreError(error))
+      return false
+    }
   }
 
   /// The store of `sessionID`, opening the conversation (stream and history) on first use.

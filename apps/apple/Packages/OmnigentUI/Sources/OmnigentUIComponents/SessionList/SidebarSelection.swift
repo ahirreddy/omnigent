@@ -5,60 +5,78 @@ import SwiftUI
 #endif
 
 extension View {
-  /// Marks a selectable sidebar row. On macOS the source list draws its selection in the system
-  /// accent and ignores `.tint`, so the list's own highlight is turned off and the selected row
-  /// gets the theme accent behind it instead (the web's `--sidebar-active`, accent at 12%).
-  /// Selection itself stays the list's: arrow keys, type-select, VoiceOver's "selected" and the
-  /// Delete command work as before. Elsewhere the system selection already follows `.tint`.
+  /// Marks a selectable sidebar row. The system draws list selection in the saturated accent
+  /// (or a flat gray), so the selected row gets the softened theme selection behind it instead
+  /// (the web's `--sidebar-active`); on macOS the table's own highlight is also turned off.
+  /// Selection itself stays the list's: arrow keys, type-select, VoiceOver's "selected", swipe
+  /// actions and the Delete command work as before.
   /// - Parameter isSelected: Whether this row is the list's selection.
   /// - Returns: The row.
   func sidebarSelection(_ isSelected: Bool) -> some View {
-    #if os(macOS)
-      modifier(SidebarSelectionModifier(isSelected: isSelected))
+    modifier(SidebarSelectionModifier(isSelected: isSelected))
+  }
+
+  /// A sidebar row's icon in the text color. The iOS sidebar style tints icons with the system
+  /// accent; the Mac source list already draws them neutral (and dims them with the window).
+  /// - Returns: The row.
+  func neutralSidebarIcon() -> some View {
+    #if os(iOS)
+      foregroundStyle(ThemeColor.primary)
     #else
       self
     #endif
   }
 }
 
-#if os(macOS)
-  private struct SidebarSelectionModifier: ViewModifier {
-    let isSelected: Bool
+private struct SidebarSelectionModifier: ViewModifier {
+  let isSelected: Bool
 
-    func body(content: Content) -> some View {
-      content
+  func body(content: Content) -> some View {
+    content
+      #if os(macOS)
         .background { SystemSelectionHighlightRemover().accessibilityHidden(true) }
-        .listRowBackground(SidebarSelectionBackground(isSelected: isSelected))
-    }
+      #endif
+      .listRowBackground(SidebarSelectionBackground(isSelected: isSelected))
   }
+}
 
-  /// The selected row's fill: the theme accent while the window is active, a neutral fill while
-  /// it is not (as the system's own unemphasized selection).
-  private struct SidebarSelectionBackground: View {
-    let isSelected: Bool
+/// The selected row's fill: the softened theme selection while the window is active, a neutral
+/// fill while it is not (as the system's own unemphasized selection).
+struct SidebarSelectionBackground: View {
+  let isSelected: Bool
+  #if os(macOS)
     @Environment(\.appearsActive) private var appearsActive
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.colorSchemeContrast) private var contrast
+    private let cornerRadius = Theme.Radius.small
+    private let inset = Theme.Spacing.medium
+  #else
+    // The system's own sidebar selection shape: the full row, rounder.
+    private let appearsActive = true
+    private let cornerRadius = Theme.Radius.large
+    private let inset: CGFloat = 0
+  #endif
+  @Environment(\.colorSchemeContrast) private var contrast
 
-    var body: some View {
-      if isSelected {
-        RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-          .fill(fill)
-          .overlay {
-            if contrast == .increased {
-              RoundedRectangle(cornerRadius: Theme.Radius.small).strokeBorder(ThemeColor.border)
-            }
+  var body: some View {
+    if isSelected {
+      RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        .fill(fill)
+        .overlay {
+          if contrast == .increased {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+              .strokeBorder(ThemeColor.border)
           }
-          .padding(.horizontal, Theme.Spacing.medium)
-          .padding(.vertical, 1)
-      }
-    }
-
-    private var fill: ThemeColor {
-      guard appearsActive else { return ThemeColor.primary.opacity(0.08) }
-      return Theme.accent.opacity(colorScheme == .dark ? 0.14 : 0.08)
+        }
+        .padding(.horizontal, inset)
+        .padding(.vertical, 1)
     }
   }
+
+  private var fill: ThemeColor {
+    appearsActive ? Theme.selection : ThemeColor.primary.opacity(0.08)
+  }
+}
+
+#if os(macOS)
 
   /// Turns off the enclosing table's own selection highlight. It sits in a row, so the table is
   /// one of its ancestors; the style is set again whenever the row moves, since SwiftUI may

@@ -121,13 +121,17 @@ public enum Omnigent {
   /// browser's permission prompt. macOS refuses the device without them even after the user
   /// allows it in the page prompt.
   public static let webDeviceUsage: [String: Plist.Value] = [
-    "NSCameraUsageDescription": "Web pages you open in Omnigent can use the camera when you allow it.",
+    "NSCameraUsageDescription":
+      "Web pages you open in Omnigent can use the camera when you allow it.",
     "NSMicrophoneUsageDescription":
       "Web pages you open in Omnigent can use the microphone when you allow it.",
     "NSLocationUsageDescription":
       "Web pages you open in Omnigent can use your location when you allow it.",
     "NSLocationWhenInUseUsageDescription":
       "Web pages you open in Omnigent can use your location when you allow it.",
+    // Hybrid sign-in: a passkey on the user's phone, reached over Bluetooth.
+    "NSBluetoothAlwaysUsageDescription":
+      "Omnigent uses Bluetooth to sign in with a passkey on your phone.",
   ]
 
   /// The Databricks workspace OAuth client (public configuration, as in `web/ios`; see

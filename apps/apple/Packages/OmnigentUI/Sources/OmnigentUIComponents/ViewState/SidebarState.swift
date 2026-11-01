@@ -272,7 +272,7 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var showsCanvas: Bool
   /// The display menu choices.
   public var display: SessionDisplayOptions
-  /// A one-click quick filter (Running or Needs response), or `nil` for none.
+  /// A one-click quick filter (Running or Needs you), or `nil` for none.
   public var quickFilter: SessionFilter?
   /// Servers to switch between.
   public var servers: [ServerChoice]

@@ -20,6 +20,11 @@ public struct SessionCommandActions {
   /// Switch between chat and the harness terminal (Option-Command-\\).
   public var toggleViewMode: (@MainActor () -> Void)?
 
+  /// Open the Changes tab in the right panel.
+  public var openChanges: (@MainActor () -> Void)?
+  /// A pending request's Approve owns Command-Return, so Send Message shows no shortcut.
+  public var approveOwnsCommandReturn = false
+
   /// Creates command actions.
   /// - Parameters:
   ///   - send: Send.
@@ -30,12 +35,14 @@ public struct SessionCommandActions {
   ///   - previousSession: Previous session.
   ///   - nextSession: Next session.
   ///   - toggleViewMode: Switch chat and terminal.
+  ///   - openChanges: Open the Changes tab.
   public init(
     send: (@MainActor () -> Void)? = nil, interrupt: (@MainActor () -> Void)? = nil,
     jumpToLatest: (@MainActor () -> Void)? = nil, focusComposer: (@MainActor () -> Void)? = nil,
     toggleInspector: (@MainActor () -> Void)? = nil,
     previousSession: (@MainActor () -> Void)? = nil,
-    nextSession: (@MainActor () -> Void)? = nil, toggleViewMode: (@MainActor () -> Void)? = nil
+    nextSession: (@MainActor () -> Void)? = nil, toggleViewMode: (@MainActor () -> Void)? = nil,
+    openChanges: (@MainActor () -> Void)? = nil
   ) {
     self.send = send
     self.interrupt = interrupt
@@ -45,6 +52,7 @@ public struct SessionCommandActions {
     self.previousSession = previousSession
     self.nextSession = nextSession
     self.toggleViewMode = toggleViewMode
+    self.openChanges = openChanges
   }
 }
 
@@ -57,15 +65,27 @@ extension FocusedValues {
 /// inspector and session navigation. Add it with `.commands { OmnigentSessionCommands() }`.
 public struct OmnigentSessionCommands: Commands {
   @FocusedValue(\.sessionCommands) private var actions
+  @FocusedValue(\.paletteCommands) private var palette
 
   /// Creates the commands.
   public init() {}
 
   /// The menu.
   public var body: some Commands {
+    CommandMenu("Navigate") {
+      Button("Command Palette…") { palette?.openPalette() }
+        .keyboardShortcut("k", modifiers: .command)
+        .disabled(palette == nil)
+      Button("Keyboard Shortcuts…") { palette?.openShortcuts() }
+        .keyboardShortcut("/", modifiers: .command)
+        .disabled(palette == nil)
+    }
     CommandMenu("Conversation") {
       Button("Send Message") { actions?.send?() }
-        .keyboardShortcut(.return, modifiers: .command)
+        .keyboardShortcut(
+          actions?.approveOwnsCommandReturn == true
+            ? nil : KeyboardShortcut(.return, modifiers: .command)
+        )
         .disabled(actions?.send == nil)
       Button("Stop Agent") { actions?.interrupt?() }
         .keyboardShortcut(".", modifiers: .command)

@@ -15,12 +15,20 @@ public enum PlaygroundScenario: String, CaseIterable, Identifiable, Sendable {
   case terminal
   /// Several decisions waiting, inline and docked.
   case approvals
+  /// Approval cards v2, the decision dock compact and expanded, and the iPhone sheet.
+  case decisions
   /// A 3,000-row transcript.
   case longTranscript
   /// The new-session page ("What should we build?").
   case newSession
+  /// The composer's states: idle, running with a queue, approval modes, context, new session.
+  case composer
   /// The Inbox.
   case inbox
+  /// Consecutive resolutions, read state and pinned updates.
+  case inboxTriage
+  /// The command palette over a live sample conversation.
+  case palette
   /// No sessions yet.
   case empty
   /// A failed turn, a connection error, an offline sandbox and an uncertain send.
@@ -33,6 +41,14 @@ public enum PlaygroundScenario: String, CaseIterable, Identifiable, Sendable {
   case themes
   /// Every component on its own page.
   case gallery
+  /// The tab strip with every tab kind.
+  case tabs
+  /// A parent's live sub-agent group: a running child, a blocked one answerable from the
+  /// parent, a finished one, and the child's transcript with its route back.
+  case subagents
+  /// The iPhone reading posture: output streaming while scrolled up, Jump to latest, and drafts
+  /// kept per session.
+  case phoneReading
 
   /// The scenario itself.
   public var id: Self { self }
@@ -43,15 +59,22 @@ public enum PlaygroundScenario: String, CaseIterable, Identifiable, Sendable {
     case .streaming: "Streaming Turn"
     case .terminal: "Terminal Mode"
     case .approvals: "Pending Approvals"
+    case .decisions: "Decision Cards and Dock"
     case .longTranscript: "Long Transcript"
     case .newSession: "New Session"
+    case .composer: "Composer States"
     case .inbox: "Inbox"
+    case .inboxTriage: "Inbox Triage"
+    case .palette: "Command Palette"
     case .empty: "Empty"
     case .errors: "Errors"
     case .compact: "Compact Width"
     case .serverSettings: "Server Settings"
     case .themes: "Theme Gallery"
     case .gallery: "Component Gallery"
+    case .tabs: "Tabs"
+    case .subagents: "Sub-agents"
+    case .phoneReading: "Phone Reading"
     }
   }
 
@@ -61,15 +84,22 @@ public enum PlaygroundScenario: String, CaseIterable, Identifiable, Sendable {
     case .streaming: "ellipsis.bubble"
     case .terminal: "apple.terminal"
     case .approvals: "hand.raised"
+    case .decisions: "checklist"
     case .longTranscript: "text.line.first.and.arrowtriangle.forward"
     case .newSession: "plus.bubble"
+    case .composer: "text.cursor"
     case .inbox: "tray"
+    case .inboxTriage: "tray.full"
+    case .palette: "command"
     case .empty: "bubble.left"
     case .errors: "exclamationmark.triangle"
     case .compact: "iphone"
     case .serverSettings: "server.rack"
     case .themes: "paintpalette"
     case .gallery: "square.grid.2x2"
+    case .tabs: "square.on.square"
+    case .subagents: "arrow.triangle.branch"
+    case .phoneReading: "iphone.gen3"
     }
   }
 }
@@ -118,6 +148,7 @@ public final class PlaygroundModel {
 
   private func load(_ scenario: PlaygroundScenario) {
     sidebar = PreviewData.sidebar
+    inbox = PreviewData.inbox
     conversation = PreviewData.shellConversation
     composer = PreviewData.sessionComposer
     draft = ""
@@ -125,15 +156,20 @@ public final class PlaygroundModel {
     selection = .session(PreviewData.sessionID)
     showsInspector = false
     switch scenario {
-    case .streaming, .compact, .gallery, .themes, .serverSettings:
+    case .streaming, .compact, .gallery, .themes, .serverSettings, .palette, .inboxTriage, .tabs,
+      .decisions, .composer, .subagents, .phoneReading:
       conversation.decisions = []
     case .terminal:
       conversation.decisions = [PreviewData.codexCommand]
+      conversation.header.status = .needsResponse
+      sidebar = PreviewData.sidebar(waitingOn: 1)
       mode = .terminal
       showsInspector = true
     case .approvals:
       conversation.header.status = .needsResponse
-      conversation.decisions = PreviewData.decisions.filter { !$0.answered }
+      conversation.decisions = PreviewData.approvalRequests
+      sidebar = PreviewData.approvalsSidebar
+      inbox = PreviewData.approvalsInbox
       composer = PreviewData.idleSessionComposer
       composer.placeholder = "Respond to the pending request above to continue"
     case .longTranscript:

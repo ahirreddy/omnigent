@@ -62,7 +62,7 @@ public struct ServerWindowActions {
   public var changeServer: (() -> Void)?
   /// Sign out of this window's server. `nil` while signed out or for no-auth servers.
   public var signOut: (() -> Void)?
-  /// Reconnect streams now (Command-R).
+  /// Reconnect streams now (Option-Command-R).
   public var reconnect: (() -> Void)?
   /// Find in the transcript or browser pane.
   public var find: Find?

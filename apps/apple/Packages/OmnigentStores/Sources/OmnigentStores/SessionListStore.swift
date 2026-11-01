@@ -8,10 +8,26 @@ public import OmnigentCoreFFI
 /// decision is answered or a turn is stopped. Those two actions record the status they expect
 /// (``expect(_:for:)``) so the row changes at once; the session's next server row replaces the
 /// expectation, confirming or reverting it.
+///
+/// It is also the one source of attention (the core's `sessionAttention` and
+/// `attentionTotals`): every surface that says what needs the user reads ``attention(of:)`` and
+/// ``attentionTotals`` instead of counting rows itself, so their numbers agree.
 @Observable
 public final class SessionListStore {
   /// Every known session, by id, with any expected status applied.
   public private(set) var sessionsByID: [String: SessionSummary] = [:]
+  /// Each known session's attention (Needs you > Failed > Working > Unread > Idle), by id.
+  public private(set) var attentionByID: [String: SessionAttention] = [:]
+  /// Totals across every known session. `sessionsNeedingYou` is the badge number (sidebar Inbox
+  /// and Needs you, Dock, menu bar); `requests` is the pending decisions behind it.
+  public private(set) var attentionTotals = AttentionTotals(
+    sessionsNeedingYou: 0, requests: 0, working: 0, failed: 0, unread: 0)
+  /// Sessions with activity the user has not seen, as the core reports them (`unreadChanged`):
+  /// the server's per-viewer read state, with this device's marks as the fallback. Opening or
+  /// focusing a session (`ConnectionStore.setView`) marks it seen.
+  public var unreadIDs: Set<String> = [] {
+    didSet { recompute() }
+  }
   /// The sessions matching ``searchText`` and ``filter``: pinned first, then most recent.
   public private(set) var visible: [SessionSummary] = []
   /// Whether the first list read finished.
@@ -153,7 +169,22 @@ public final class SessionListStore {
     sessionsByID[sessionID]
   }
 
-  /// Sessions that wait for a decision, in display order.
+  /// The parent of a sub-agent session, when the server reported one.
+  /// - Parameter sessionID: The session.
+  /// - Returns: The parent's id, or `nil` for a top-level (or unknown) session.
+  public func parent(of sessionID: String) -> String? {
+    sessionsByID[sessionID]?.configuration?.parentId.flatMap { $0.isEmpty ? nil : $0 }
+  }
+
+  /// The attention of `sessionID`; Idle for a session the list does not know.
+  /// - Parameter sessionID: The session.
+  /// - Returns: Its state and the pending decisions the caller can answer.
+  public func attention(of sessionID: String) -> SessionAttention {
+    attentionByID[sessionID] ?? SessionAttention(state: .idle, requests: 0)
+  }
+
+  /// Sessions that need the user (``AttentionState/needsYou``), archived or not, in display
+  /// order. Its count is ``attentionTotals``' `sessionsNeedingYou`.
   public var needsResponse: [SessionSummary] {
     filterSessions(sessions: Array(sessionsByID.values), text: "", filter: .needsResponse)
   }
@@ -199,9 +230,15 @@ public final class SessionListStore {
     var sessions = serverSessions
     for (id, expectation) in expectations {
       sessions[id]?.status = expectation.status
+      // An answered decision clears its request now; the next server row confirms the count.
+      if expectation.status != .needsResponse { sessions[id]?.pendingRequests = 0 }
     }
     sessionsByID = sessions
-    visible = filterSessions(
-      sessions: Array(sessionsByID.values), text: searchText, filter: filter)
+    let all = Array(sessions.values)
+    visible = filterSessions(sessions: all, text: searchText, filter: filter)
+    attentionByID = sessions.mapValues {
+      sessionAttention(session: $0, isUnread: unreadIDs.contains($0.id))
+    }
+    attentionTotals = OmnigentCoreFFI.attentionTotals(sessions: all, unreadIds: Array(unreadIDs))
   }
 }

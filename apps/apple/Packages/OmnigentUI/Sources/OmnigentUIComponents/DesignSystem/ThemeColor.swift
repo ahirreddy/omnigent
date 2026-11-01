@@ -8,6 +8,8 @@ nonisolated public struct ThemeColor: ShapeStyle, Hashable, Sendable {
     case brandAccent
     case link
     case selection
+    case rowSelection
+    case focus
     case running
     case success
     case warning
@@ -34,14 +36,19 @@ nonisolated public struct ThemeColor: ShapeStyle, Hashable, Sendable {
   let role: Role
   var alpha: Double = 1
 
-  /// `--primary`.
+  /// `--primary`: the single primary action on a screen (Send, Approve, Submit), and nothing
+  /// else. Toolbar items, chips, links, selection and decoration use the other roles.
   public static let accent = Self(role: .accent)
-  /// `--brand-accent`: unread, "Needs response", the Inbox count.
+  /// `--brand-accent`: "needs you" only (the Needs you badge and count, pending requests).
   public static let brandAccent = Self(role: .brandAccent)
   /// `--link`.
   public static let link = Self(role: .link)
-  /// `--selection-background`.
+  /// `--selection-background`: the text selection highlight.
   public static let selection = Self(role: .selection)
+  /// A selected row or item: the theme's hue, softened (the web's `--sidebar-active`).
+  public static let rowSelection = Self(role: .rowSelection)
+  /// A focused or drop-targeted field's border: neutral, so focus never reads as an action.
+  public static let focus = Self(role: .focus)
   /// Running: muted, as the web's running spinner.
   public static let running = Self(role: .running)
   /// `--success`.
@@ -113,6 +120,10 @@ nonisolated public struct ThemeColor: ShapeStyle, Hashable, Sendable {
       return canvas.mix(with: dark ? .white : .black, by: dark ? 0.06 : 0.025)
     case .border: return Color.primary.opacity(increased ? 0.5 : 0.14)
     case .hover: return Color.primary.opacity(increased ? 0.12 : 0.05)
+    case .focus: return Color.primary.opacity(increased ? 0.6 : 0.3)
+    case .rowSelection:
+      let opacity = increased ? 0.24 : (dark ? 0.14 : 0.08)
+      return palette.accent.opacity(opacity)
     case .codeSurface:
       return (environment.omnigentTheme.dark.canvas ?? Color(white: 0.08))
         .mix(with: .black, by: 0.18)

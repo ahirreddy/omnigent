@@ -1,202 +1,336 @@
 import SwiftUI
 
-/// The context an approval card shows: the Codex command, Antigravity's action and pattern,
-/// the plan under review, and the offered directories.
-struct PermissionContextView: View {
-  let permissions: PermissionOptions
+/// What will actually happen, first: the command with its directory, the files with their line
+/// counts, the plan, Antigravity's action, or the request's own text.
+struct DecisionPayloadView: View {
+  let card: DecisionCard
+
+  private var permissions: PermissionOptions { card.permissions }
+  private var paragraphs: [String] { DecisionSummary.paragraphs(card.detail) }
 
   var body: some View {
-    if let command = permissions.command {
-      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-        CodeBlockView(code: "$ \(command.command)", language: "command", maxLines: 8)
-        if let cwd = command.cwd {
-          LabeledContent("Directory") { Text(cwd).font(Theme.codeFont).textSelection(.enabled) }
-            .font(.caption)
+    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+      if let plan = permissions.plan {
+        BoundedScrollView(maxHeight: 320) {
+          MarkdownView(plan)
+            .padding(Theme.Spacing.medium)
         }
-        if let reason = command.reason {
-          LabeledContent("Reason") { Text(reason).textSelection(.enabled) }
-            .font(.caption)
-        }
+        .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+        .accessibilityLabel("Proposed plan")
+      } else {
+        if let lede { InlineMarkdownText(lede).font(.callout) }
+        if let command = permissions.command { CommandPayload(command: command) }
+        if !permissions.files.isEmpty { FileChangeList(files: permissions.files) }
+        if let agy = permissions.antigravity { AntigravityPayload(permission: agy) }
+        if let preview { PreviewBlock(text: preview) }
       }
-    }
-    if let agy = permissions.antigravity {
-      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-        if let action = agy.actionDescription {
-          Text(action).font(.callout).textSelection(.enabled)
-        }
-        if let pattern = agy.alwaysAllowPattern {
-          LabeledContent("Always-allow pattern") {
-            Text(pattern).font(Theme.codeFont).textSelection(.enabled)
+      if !permissions.permissionDirectories.isEmpty {
+        VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+          Text("Directories offered for this session").font(.caption).foregroundStyle(.secondary)
+          ForEach(permissions.permissionDirectories, id: \.self) { directory in
+            Text(directory).font(Theme.codeFont).textSelection(.enabled)
           }
-          .font(.caption)
         }
       }
     }
-    if let plan = permissions.plan {
-      BoundedScrollView(maxHeight: 320) {
-        MarkdownView(plan)
-          .padding(Theme.Spacing.medium)
+  }
+
+  /// The request's message. Structured payloads show their own fields, so the core's joined
+  /// detail is reduced to the message the agent wrote, when it has one.
+  private var lede: String? {
+    if case .approval = card.kind, let message = card.message { return message }
+    guard let first = paragraphs.first else { return nil }
+    if let command = permissions.command { return first == command.command ? nil : first }
+    if let action = permissions.antigravity?.actionDescription {
+      return first == action ? nil : first
+    }
+    switch card.kind {
+    case .approval: return first
+    case .choice, .form, .unsupported: return card.detail
+    }
+  }
+
+  /// The rest of a plain approval's detail (for example the gated tool's input), monospaced.
+  private var preview: String? {
+    guard case .approval = card.kind, permissions.command == nil, permissions.antigravity == nil
+    else { return nil }
+    if card.message != nil || card.toolInput != nil { return card.toolInput }
+    let rest = paragraphs.dropFirst()
+    return rest.isEmpty ? nil : rest.joined(separator: "\n\n")
+  }
+}
+
+/// Inline Markdown (bold tool names, code spans) on one text run.
+struct InlineMarkdownText: View {
+  let markdown: String
+
+  init(_ markdown: String) { self.markdown = markdown }
+
+  var body: some View {
+    Text(attributed)
+      .textSelection(.enabled)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private var attributed: AttributedString {
+    do {
+      return try AttributedString(
+        markdown: markdown,
+        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+    } catch {
+      // Text that is not valid Markdown is shown exactly as the agent wrote it.
+      return AttributedString(markdown)
+    }
+  }
+}
+
+/// `$ command`, monospaced and selectable, with the working directory and reason below.
+struct CommandPayload: View {
+  let command: CommandApproval
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
+        Text(verbatim: "$ \(command.command)")
+          .font(Theme.codeFont)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        CopyButton(text: command.command, label: "Copy command")
       }
+      .padding(.leading, Theme.Spacing.medium)
+      .padding(.vertical, Theme.Spacing.extraSmall)
       .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
-      .accessibilityLabel("Proposed plan")
-    }
-    if !permissions.permissionDirectories.isEmpty {
-      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-        Text("Directories offered for this session").font(.caption).foregroundStyle(.secondary)
-        ForEach(permissions.permissionDirectories, id: \.self) { directory in
-          Text(directory).font(Theme.codeFont).textSelection(.enabled)
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel("Command: \(command.command)")
+      if let cwd = command.cwd {
+        Label {
+          Text(verbatim: cwd).font(Theme.codeFont).textSelection(.enabled)
+        } icon: {
+          Image(systemName: "folder")
         }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityLabel("In \(cwd)")
+      }
+      if let reason = command.reason {
+        Text(reason)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
 }
 
-/// An approval variant that changes standing permissions; each one is confirmed first.
-struct PermissionChoice {
-  let response: DecisionResponse
-  let label: String
-  let systemImage: String
+/// The files an edit would change: the path, what happens to it ("new file", "deleted",
+/// "rewritten") and "+N −M" when known, leaving zero counts out.
+struct FileChangeList: View {
+  let files: [DecisionFileChange]
 
-  static func choices(for permissions: PermissionOptions) -> [Self] {
-    var choices: [Self] = []
-    if permissions.allowAllEdits {
-      choices.append(
-        .init(
-          response: .approveAllEdits, label: "Accept & allow all edits",
-          systemImage: "pencil.and.list.clipboard"))
+  static func symbol(_ kind: DecisionFileChange.Kind?) -> String {
+    switch kind {
+    case .create: "doc.badge.plus"
+    case .delete: "trash"
+    case .modify, .write, nil: "doc.text"
     }
-    if permissions.allowAutoMode {
-      choices.append(
-        .init(
-          response: .approveAutoMode, label: "Approve & switch to auto mode", systemImage: "bolt")
-      )
+  }
+
+  static func kindLabel(_ kind: DecisionFileChange.Kind?) -> String? {
+    switch kind {
+    case .create: "new file"
+    case .delete: "deleted"
+    case .write: "rewritten"
+    case .modify, nil: nil
     }
-    if !permissions.permissionDirectories.isEmpty {
-      choices.append(
-        .init(
-          response: .approveDirectories, label: "Approve & allow directories for this session",
-          systemImage: "folder.badge.plus"))
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
+        if index > 0 { Divider() }
+        HStack(spacing: Theme.Spacing.small) {
+          Image(systemName: Self.symbol(file.kind))
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+          Text(verbatim: file.path)
+            .font(Theme.codeFont)
+            .lineLimit(1)
+            .truncationMode(.head)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          if let kind = Self.kindLabel(file.kind) {
+            Text(kind).foregroundStyle(.secondary)
+          }
+          if let added = file.shownAdded {
+            Text(verbatim: "+\(added)").foregroundStyle(ThemeColor.diffAdded)
+          }
+          if let removed = file.shownRemoved {
+            Text(verbatim: "\u{2212}\(removed)").foregroundStyle(ThemeColor.diffRemoved)
+          }
+        }
+        .font(.caption.monospacedDigit())
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.vertical, Theme.Spacing.small)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+          [
+            file.path, Self.kindLabel(file.kind), file.shownAdded.map { "\($0) lines added" },
+            file.shownRemoved.map { "\($0) removed" },
+          ]
+          .compactMap(\.self).joined(separator: ", "))
+      }
     }
-    if let label = permissions.rememberLabel {
-      choices.append(
-        .init(
-          response: .approveRemembering, label: "Approve & don't ask again for \(label)",
-          systemImage: "checkmark.seal"))
-    }
-    if let policy = permissions.execPolicyAmendment, !policy.isEmpty {
-      choices.append(
-        .init(
-          response: .approveCommandPolicy(policy: policy),
-          label: "Approve and remember", systemImage: "terminal"))
-    }
-    if permissions.offersPersist(.session) {
-      choices.append(
-        .init(
-          response: .approvePersist(mode: .session), label: "Approve for this session",
-          systemImage: "clock"))
-    }
-    if permissions.offersPersist(.always) {
-      choices.append(
-        .init(
-          response: .approvePersist(mode: .always), label: "Always allow", systemImage: "infinity"
-        ))
-    }
-    return choices
+    .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
   }
 }
 
-/// Plan review: approve (optionally changing the session's mode, confirmed first), decline, or
-/// reject with feedback for a revised plan.
-struct PlanReviewControls: View {
+/// Antigravity's action and the command prefix it offers to always allow.
+struct AntigravityPayload: View {
+  let permission: AntigravityPermission
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      if let action = permission.actionDescription {
+        Text(action).font(.callout).textSelection(.enabled)
+      }
+      if let pattern = permission.alwaysAllowPattern {
+        LabeledContent("Always-allow pattern") {
+          Text(verbatim: pattern).font(Theme.codeFont).textSelection(.enabled)
+        }
+        .font(.caption)
+      }
+    }
+  }
+}
+
+/// A plain approval's raw payload (for example `Edit({...})`), bounded and monospaced.
+/// Approve (the one pink button, with the Command-Return hint when it owns the shortcut), Reject,
+/// "Tell the agent instead", and "More approval options…" for the widening choices.
+struct ApprovalControls: View {
   let card: DecisionCard
+  let availability: DecisionAvailability
   let canRespond: Bool
-  let send: (DecisionResponse) -> Void
-  let confirm: (DecisionResponse) -> Void
-  @State private var feedback = ""
+  @Binding var draft: FormDraft
+  let act: (DecisionResponse) -> Void
   @Environment(\.decisionIDPrefix) private var idPrefix
+  @Environment(\.decisionShortcutCardID) private var shortcutCardID
+  @FocusState private var feedbackFocused: Bool
+
+  private var isPlan: Bool { card.permissions.plan != nil }
+  /// Plan cards keep the identifiers they had before v2.
+  private func id(_ approval: String, plan: String) -> String {
+    "\(idPrefix)\(isPlan ? "decision-plan-\(plan)" : "approval-\(approval)")-\(card.id)"
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
       ViewThatFits(in: .horizontal) {
-        HStack(spacing: Theme.Spacing.small) { planButtons }
-        VStack(alignment: .leading, spacing: Theme.Spacing.small) { planButtons }
-      }
-      HStack(alignment: .bottom, spacing: Theme.Spacing.small) {
-        TextField("What should change about the plan? (optional)", text: $feedback, axis: .vertical)
-          .lineLimit(1...4)
-          .textFieldStyle(.roundedBorder)
-          .disabled(!canRespond)
-          .accessibilityIdentifier("\(idPrefix)decision-plan-feedback-\(card.id)")
-        Button("Reject plan") {
-          let text = feedback.trimmingCharacters(in: .whitespacesAndNewlines)
-          send(text.isEmpty ? .decline : .declineWithFeedback(feedback: text))
+        HStack(spacing: Theme.Spacing.small) {
+          buttons
+          Spacer(minLength: 0)
+          moreMenu
         }
-        .disabled(!canRespond)
-        .accessibilityIdentifier("\(idPrefix)decision-plan-reject-\(card.id)")
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+          HStack(spacing: Theme.Spacing.small) { buttons }
+          moreMenu
+        }
       }
+      if draft.isComposingFeedback { feedbackComposer }
     }
   }
 
-  @ViewBuilder private var planButtons: some View {
-    Button("Yes, manually approve edits") { send(.approve) }
-      .buttonStyle(.borderedProminent)
-      .controlSize(.large)
-      .disabled(!canRespond)
-      .accessibilityIdentifier("\(idPrefix)decision-plan-approve-\(card.id)")
-    if card.permissions.allowAllEdits {
-      Button("Accept & allow all edits") { confirm(.approveAllEdits) }
-        .buttonStyle(.bordered)
-        .controlSize(.large)
-        .disabled(!canRespond)
-        .accessibilityIdentifier("\(idPrefix)decision-plan-allow-edits-\(card.id)")
+  @ViewBuilder private var buttons: some View {
+    if let title = availability.approveTitle {
+      ApproveButton(
+        title: title, cardID: card.id, isEnabled: canRespond,
+        ownsShortcut: shortcutCardID == card.id && !draft.isComposingFeedback,
+        identifier: id("approve", plan: "approve"),
+        isProminent: shortcutCardID == nil || shortcutCardID == card.id
+      ) { act(.approve) }
     }
-    if card.permissions.allowAutoMode {
-      Button("Yes, and use auto mode") { confirm(.approveAutoMode) }
-        .buttonStyle(.bordered)
-        .controlSize(.large)
-        .disabled(!canRespond)
-        .accessibilityIdentifier("\(idPrefix)decision-plan-auto-mode-\(card.id)")
-    }
-    Button("Reject") { send(.decline) }
+    if availability.canReject {
+      Button {
+        act(.decline)
+      } label: {
+        Text("Reject").frame(minWidth: 64)
+      }
       .buttonStyle(.bordered)
+      .tint(.primary)
       .controlSize(.large)
       .disabled(!canRespond)
-      .accessibilityIdentifier("\(idPrefix)decision-plan-decline-\(card.id)")
+      .accessibilityIdentifier(id("decline", plan: "decline"))
+    }
+    if availability.canTellAgent, !draft.isComposingFeedback {
+      Button("Tell the agent instead") {
+        draft.isComposingFeedback = true
+        feedbackFocused = true
+      }
+      .buttonStyle(.borderless)
+      .tint(.primary)
+      .controlSize(.large)
+      .disabled(!canRespond)
+      .accessibilityHint("Rejects this request and sends your reply to the agent")
+      .accessibilityIdentifier(id("tell-agent", plan: "tell-agent"))
+    }
   }
-}
 
-/// The card's status line: read-only, sending, answered or failed.
-struct DecisionFooter: View {
-  let card: DecisionCard
-  let phase: DecisionPhase
-  let isReadOnly: Bool
-  @Environment(\.decisionIDPrefix) private var idPrefix
-
-  var body: some View {
-    switch phase {
-    case .pending:
-      if isReadOnly {
-        Label("Read-only access cannot respond to this request.", systemImage: "eye")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .accessibilityIdentifier("\(idPrefix)decision-read-only-\(card.id)")
+  @ViewBuilder private var moreMenu: some View {
+    if !availability.widening.isEmpty {
+      Menu {
+        ForEach(Array(availability.widening.enumerated()), id: \.element) { index, choice in
+          Button {
+            act(choice.response)
+          } label: {
+            Label(choice.label, systemImage: choice.systemImage)
+          }
+          .accessibilityIdentifier("\(idPrefix)approval-permission-\(card.id)-\(index)")
+        }
+      } label: {
+        Text("More approval options\u{2026}")
       }
-    case .resolving:
+      .menuStyle(.button)
+      .buttonStyle(.borderless)
+      .tint(.secondary)
+      .fixedSize()
+      .disabled(!canRespond)
+      .accessibilityHint("Approves and changes approval behavior; asks for confirmation first")
+      .accessibilityIdentifier("\(idPrefix)approval-more-\(card.id)")
+    }
+  }
+
+  private var feedbackComposer: some View {
+    let response = DecisionAvailability.feedbackResponse(for: card, text: draft.feedback)
+    return VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      TextField(
+        isPlan ? "What should change about the plan?" : "What should the agent do instead?",
+        text: $draft.feedback, axis: .vertical
+      )
+      .lineLimit(1...5)
+      .textFieldStyle(.roundedBorder)
+      .focused($feedbackFocused)
+      .disabled(!canRespond)
+      .onSubmit {
+        if let response { act(response) }
+      }
+      .accessibilityIdentifier(id("feedback", plan: "feedback"))
       HStack(spacing: Theme.Spacing.small) {
-        ProgressView().controlSize(.small)
-        Text("Sending your response").font(.caption).foregroundStyle(.secondary)
+        Button("Reject and send") {
+          if let response { act(response) }
+        }
+        .buttonStyle(.bordered)
+        .tint(.primary)
+        .disabled(!canRespond || response == nil)
+        .accessibilityHint("Rejects this request and sends your reply to the agent")
+        .accessibilityIdentifier(id("feedback-send", plan: "reject"))
+        Button("Cancel") {
+          draft.isComposingFeedback = false
+          feedbackFocused = false
+        }
+        .buttonStyle(.borderless)
+        .tint(.secondary)
+        .accessibilityIdentifier(id("feedback-cancel", plan: "feedback-cancel"))
       }
-    case .answered(let summary):
-      Label("\(summary). Waiting for the server to confirm.", systemImage: "checkmark.circle.fill")
-        .font(Theme.Typography.section)
-        .foregroundStyle(Theme.running)
-        .accessibilityIdentifier("\(idPrefix)decision-status-\(card.id)")
-    case .failed(let message):
-      Label(message, systemImage: "exclamationmark.triangle.fill")
-        .font(.caption)
-        .foregroundStyle(Theme.failure)
-        .textSelection(.enabled)
-        .accessibilityIdentifier("\(idPrefix)decision-error-\(card.id)")
     }
   }
 }

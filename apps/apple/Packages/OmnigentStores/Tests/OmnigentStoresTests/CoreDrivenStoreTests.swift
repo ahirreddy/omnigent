@@ -203,6 +203,35 @@ struct CoreDrivenStoreTests {
     #expect(conversation.errors.isEmpty, "\(conversation.errors)")
   }
 
+  @Test(.timeLimit(.minutes(1))) func attentionAgreesEverywhereThroughTheDemoCore() async throws {
+    let store = try await PreviewData.connectedDemoStore()
+    let list = store.sessionList
+    try await waitUntil("the sample list") { list.isLoaded && list.sessionsByID.count == 3 }
+    #expect(list.attention(of: "demo-question") == SessionAttention(state: .needsYou, requests: 1))
+    #expect(list.attention(of: "demo-design") == SessionAttention(state: .needsYou, requests: 1))
+    #expect(list.attention(of: "demo-notes").state == .idle)
+    #expect(list.attentionTotals.sessionsNeedingYou == 2)
+    #expect(list.attentionTotals.requests == 2)
+    #expect(list.needsResponse.count == 2)
+    #expect(store.notifications?.badgeCount == 2)
+
+    // The open conversation's decision dock shows the same requests the row counts.
+    let conversation = try #require(store.conversation("demo-question"))
+    try await waitUntil("the pending decision") { !conversation.decisions.pending.isEmpty }
+    #expect(
+      UInt32(conversation.decisions.pending.count) == list.attention(of: "demo-question").requests)
+
+    let card = try #require(conversation.decisions.pending.first)
+    await conversation.decisions.resolve(card, with: .answer(value: "Sessions and chat"))
+    #expect(conversation.decisions.errors.isEmpty, "\(conversation.decisions.errors)")
+    try await waitUntil("the answered session to leave Needs you") {
+      list.attention(of: "demo-question").state != .needsYou
+    }
+    #expect(list.attentionTotals.sessionsNeedingYou == 1)
+    #expect(list.needsResponse.map(\.id) == ["demo-design"])
+    #expect(store.notifications?.badgeCount == 1)
+  }
+
   @Test func demoCoreBacksPreviews() async throws {
     let store = try await PreviewData.connectedDemoStore()
     try await waitUntil("the sample list") { !store.sessionList.visible.isEmpty }
@@ -251,12 +280,14 @@ struct RowOpTests {
 @MainActor
 struct SessionListStoreTests {
   private func summary(
-    _ id: String, updatedAt: Int64, pinned: Bool = false, status: SessionListStatus = .idle
+    _ id: String, updatedAt: Int64, pinned: Bool = false, status: SessionListStatus = .idle,
+    requests: UInt32 = 0, readOnly: Bool = false, archived: Bool = false, failure: String? = nil
   ) -> SessionSummary {
     SessionSummary(
-      id: id, title: id, preview: "", status: status, isReadOnly: false, updatedAt: updatedAt,
-      workspace: "", agentName: "", isPinned: pinned, isArchived: false, permissionLevel: 4,
-      failureMessage: nil, canRename: true, canPin: true, canArchive: true)
+      id: id, title: id, preview: "", status: requests > 0 ? .needsResponse : status,
+      pendingRequests: requests, isReadOnly: readOnly, updatedAt: updatedAt, workspace: "",
+      agentName: "", isPinned: pinned, isArchived: archived, permissionLevel: readOnly ? 1 : 4,
+      failureMessage: failure, canRename: true, canPin: true, canArchive: true)
   }
 
   @Test func ordersAndFiltersThroughTheCore() {
@@ -273,16 +304,21 @@ struct SessionListStoreTests {
 
   @Test func anExpectedStatusShowsUntilTheNextServerRow() throws {
     let store = SessionListStore()
-    store.apply(.reset(sessions: [summary("a", updatedAt: 1, status: .needsResponse)]))
+    store.apply(.reset(sessions: [summary("a", updatedAt: 1, requests: 2)]))
     #expect(store.needsResponse.map(\.id) == ["a"])
+    #expect(store.attention(of: "a") == SessionAttention(state: .needsYou, requests: 2))
 
     try #require(store.expect(.running, for: "a") != nil)
     #expect(store.session("a")?.status == .running)
     #expect(store.needsResponse.isEmpty)
+    // Answering never leaves a running spinner next to a stale request count, or the reverse.
+    #expect(store.attention(of: "a") == SessionAttention(state: .working, requests: 0))
+    #expect(store.attentionTotals.sessionsNeedingYou == 0)
 
     // The server's next row wins, whichever status it carries.
-    store.apply(.upsert(sessions: [summary("a", updatedAt: 2, status: .needsResponse)]))
+    store.apply(.upsert(sessions: [summary("a", updatedAt: 2, requests: 1)]))
     #expect(store.session("a")?.status == .needsResponse)
+    #expect(store.attention(of: "a").state == .needsYou)
   }
 
   @Test func aWithdrawnExpectationRevertsAndUnknownSessionsAreLeftAlone() throws {
@@ -311,5 +347,37 @@ struct SessionListStoreTests {
       try await Task.sleep(for: .milliseconds(10))
     }
     #expect(store.session("a")?.status == .running)
+  }
+
+  @Test func everyCountComesFromOneAttentionModel() {
+    let store = SessionListStore()
+    store.apply(
+      .reset(sessions: [
+        summary("current", updatedAt: 9, status: .running, requests: 7),
+        summary("other", updatedAt: 8, requests: 2),
+        summary("archived", updatedAt: 7, requests: 1, archived: true),
+        summary("shared", updatedAt: 6, requests: 3, readOnly: true),
+        summary("busy", updatedAt: 5, status: .running),
+        summary("failed", updatedAt: 4, failure: "Invalid API key"),
+        summary("seen", updatedAt: 3),
+        summary("fresh", updatedAt: 2),
+      ]))
+    store.unreadIDs = ["fresh", "other"]
+
+    #expect(store.attention(of: "current") == SessionAttention(state: .needsYou, requests: 7))
+    #expect(store.attention(of: "shared") == SessionAttention(state: .working, requests: 0))
+    #expect(store.attention(of: "failed").state == .failed)
+    #expect(store.attention(of: "busy").state == .working)
+    #expect(store.attention(of: "fresh").state == .unread)
+    #expect(store.attention(of: "seen").state == .idle)
+    #expect(store.attention(of: "unknown").state == .idle)
+    #expect(
+      store.attentionTotals
+        == AttentionTotals(sessionsNeedingYou: 3, requests: 10, working: 2, failed: 1, unread: 1))
+    // The quick filters list exactly the sessions the totals count.
+    let all = Array(store.sessionsByID.values)
+    #expect(store.needsResponse.map(\.id) == ["current", "other", "archived"])
+    #expect(
+      filterSessions(sessions: all, text: "", filter: .running).map(\.id) == ["shared", "busy"])
   }
 }

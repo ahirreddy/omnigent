@@ -8,17 +8,23 @@ public import SwiftUI
 /// The signed-in app for one server: the web's two-column shell (`AppShell`: sidebar and detail,
 /// with the session's right panel as the detail's inspector), collapsing to a stack on iPhone.
 ///
-/// Selecting a session opens its conversation, terminals and workspace in the core and closes
-/// the previous one; the core is told which session is visible for notifications and the badge.
+/// The detail shows the window's tabs (``TabStore``): selecting a session in the sidebar opens
+/// or focuses its chat tab, and terminals, side chats and browser pages open as tabs too. A
+/// session's conversation, terminals and workspace stay open while a built tab shows it; the core
+/// is told which session is visible for notifications and the badge.
 public struct ConnectedServerView: View {
   private let session: ServerSession
   @Binding private var selection: SidebarDestination?
   private let isWindowFocused: Bool
   private let opener: ExternalURLOpener
   private let openInNewWindow: (@MainActor (String) -> Void)?
+  private let tabContext: TabWindowContext
 
   @State private var display = SessionDisplayOptions()
   @State private var undo: SidebarUndo?
+  @State private var showsTabOverview = false
+  @State private var tabFailure: String?
+  @Environment(\.horizontalSizeClass) private var sizeClass
 
   /// Creates the view.
   /// - Parameters:
@@ -27,35 +33,50 @@ public struct ConnectedServerView: View {
   ///   - isWindowFocused: Whether the window is key, for notification suppression.
   ///   - opener: Opens pages in the system browser.
   ///   - openInNewWindow: Opens a session in a new window, where the platform has windows.
+  ///   - tabContext: Where the window's tabs are saved, the browser, and tear-off.
   public init(
     session: ServerSession, selection: Binding<SidebarDestination?>,
     isWindowFocused: Bool = true, opener: ExternalURLOpener = .system,
-    openInNewWindow: (@MainActor (String) -> Void)? = nil
+    openInNewWindow: (@MainActor (String) -> Void)? = nil,
+    tabContext: TabWindowContext = TabWindowContext()
   ) {
     self.session = session
     _selection = selection
     self.isWindowFocused = isWindowFocused
     self.opener = opener
     self.openInNewWindow = openInNewWindow
+    self.tabContext = tabContext
   }
 
   private var connection: ConnectionStore { session.connection }
 
+  /// The connected server’s sidebar and selected destination.
   public var body: some View {
+    let tabs = windowTabs
     AppShell(
       sidebar: sidebarState, selection: $selection, searchText: searchBinding,
-      actions: sidebarActions
-    ) { destination in
-      detail(destination)
+      actions: sidebarActions, tabs: (tabs.state, tabs.actions)
+    ) { _ in
+      tabDetail
         .safeAreaInset(edge: .top, spacing: 0) {
           ConnectionIssuesBanner(connection: connection)
         }
     }
+    .modifier(PaletteAdapter(session: session, selection: $selection))
     .toolbar { accountToolbar }
-    .onChange(of: selection, initial: true) { previous, current in
-      select(from: previous?.sessionID, to: current?.sessionID)
-    }
+    .focusedSceneValue(\.tabCommands, tabs.commands)
+    .modifier(TabRestoration(session: session, context: tabContext) { route(selection) })
+    .onChange(of: selection) { _, current in route(current) }
+    .onChange(of: session.tabs.selectedID, initial: true) { selectedTabChanged() }
     .onChange(of: isWindowFocused) { report() }
+    .sheet(isPresented: $showsTabOverview) {
+      TabOverviewSheet(state: tabs.state, actions: tabs.actions) { showsTabOverview = false }
+    }
+    .alert("Could Not Open the Tab", isPresented: tabFailurePresented) {
+      Button("OK") { tabFailure = nil }
+    } message: {
+      Text(tabFailure ?? "")
+    }
     .alert(
       "Could Not Update the Session", isPresented: editErrorPresented,
       actions: { Button("OK") { connection.sessionList.dismissEditError() } },
@@ -64,8 +85,7 @@ public struct ConnectedServerView: View {
 
   private var sidebarState: SidebarViewState {
     var state = SidebarAdapter.state(
-      list: connection.sessionList, notifications: connection.notifications,
-      display: display, server: connection.connectedServer)
+      list: connection.sessionList, display: display, server: connection.connectedServer)
     state.undo = undo?.banner
     return state
   }
@@ -99,19 +119,20 @@ public struct ConnectedServerView: View {
           changedFilesRevision: connection.changedFilesRevision,
           navigation: navigation(from: id), opener: opener,
           openSession: { selection = .session($0) },
-          retry: { connection.foreground() }
+          retry: { connection.foreground() },
+          server: connection.connectedServer,
+          tabRoutes: windowTabs.routes(for: id),
+          terminalNames: session.declaredTerminalNames(in: id),
+          sessionActions: sidebarActions.sessions
         )
         .id(id)
       } else {
         ProgressView("Opening the session\u{2026}")
       }
     case .newSession:
-      NewSessionContainer(connection: connection) { selection = .session($0) }
+      NewSessionContainer(connection: connection) { showCreated($0) }
     case .inbox:
-      InboxView(
-        state: InboxAdapter.state(
-          list: connection.sessionList, notifications: connection.notifications),
-        actions: InboxActions(open: { selection = .session($0.sessionId) }))
+      InboxTriageAdapter(connection: connection) { selection = .session($0) }
     case .canvas:
       CanvasView(
         sessions: connection.sessionList.visible.map(OmnigentUIComponents.SessionSummary.init),
@@ -176,8 +197,11 @@ public struct ConnectedServerView: View {
         for id in ids where succeeded {
           succeeded = await list.setArchived(id, archived)
         }
-        if archived, let current = selection?.sessionID, ids.contains(current) {
-          selection = nil
+        if archived {
+          session.tabs.closeAll { content in
+            guard case .chat(let id) = content else { return false }
+            return ids.contains(id)
+          }
         }
       }
       if succeeded, recordUndo { undo = SidebarUndo(change: change) }
@@ -192,22 +216,121 @@ public struct ConnectedServerView: View {
     let next = index + 1 < ids.endIndex ? ids[index + 1] : nil
     var actions = SessionCommandActions()
     if let previous {
-      actions.previousSession = { selection = .session(previous) }
+      actions.previousSession = { showInPlace(previous) }
     }
     if let next {
-      actions.nextSession = { selection = .session(next) }
+      actions.nextSession = { showInPlace(next) }
     }
     return actions
   }
 
-  private func select(from previous: String?, to current: String?) {
-    if let previous, previous != current { session.close(previous) }
-    if let current { session.open(current) }
+  private func report() {
+    connection.setView(sessionID: viewedSessionID, focused: isWindowFocused)
+  }
+}
+
+// MARK: Tabs
+
+extension ConnectedServerView {
+  private var windowTabs: WindowTabs {
+    WindowTabs(
+      session: session, context: tabContext, showAll: { showsTabOverview = true },
+      fail: { tabFailure = $0 })
+  }
+
+  private var tabFailurePresented: Binding<Bool> {
+    Binding(get: { tabFailure != nil }, set: { if !$0 { tabFailure = nil } })
+  }
+
+  /// The session whose chat is on screen, for notification suppression.
+  private var viewedSessionID: String? {
+    if case .chat(let id) = session.tabs.selected?.content { return id }
+    return nil
+  }
+
+  /// The selected tab's content: the sidebar destinations through ``detail(_:)``, the other
+  /// kinds through their tab views, and the new-tab page when no tab is open.
+  @ViewBuilder private var tabDetail: some View {
+    let tabs = session.tabs
+    let routes = windowTabs
+    if let tab = tabs.selected {
+      Group {
+        switch tab.content {
+        case .chat, .newSession, .inbox, .canvas:
+          detail(tab.content.destination)
+        case .newTab:
+          NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: tab.id))
+            .task(id: routes.newTabState.recentSessions.map(\.id)) {
+              await session.loadDeclaredTerminalNames(
+                routes.newTabState.recentSessions.map(\.id))
+            }
+        case .terminal(let sessionID, let terminalID):
+          TerminalTabView(
+            session: session, sessionID: sessionID, terminalID: terminalID,
+            showChat: { tabs.open(.chat(sessionID: sessionID)) })
+        case .harness(let sessionID):
+          HarnessTabView(
+            session: session, sessionID: sessionID,
+            showChat: { tabs.open(.chat(sessionID: sessionID)) })
+        case .sideChat(let sessionID, let rowID):
+          SideChatTabContainer(
+            session: session, sessionID: sessionID, rowID: rowID,
+            showChat: { tabs.open(.chat(sessionID: sessionID)) })
+        case .browser(let browserID):
+          BrowserTabContainer(
+            host: tabContext.browser, tab: tab, browserID: browserID,
+            changed: { tabs.contentChanged() })
+        case .agentBrowser(let sessionID):
+          AgentBrowserTabContainer(
+            host: tabContext.browser, sessionID: sessionID,
+            showChat: { tabs.open(.chat(sessionID: sessionID)) })
+        }
+      }
+      .id(tab.id)
+    } else {
+      NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: nil))
+    }
+  }
+
+  /// The sidebar row for a tab. Session terminals and side chats select their session only at
+  /// compact widths, where the selection is what keeps the detail on screen.
+  private func sidebarDestination(_ tab: AppTab?) -> SidebarDestination? {
+    guard let tab else { return nil }
+    if let destination = tab.content.destination { return destination }
+    guard sizeClass == .compact else { return nil }
+    return tab.content.sessionID.map(SidebarDestination.session) ?? .newSession
+  }
+
+  /// A sidebar choice (or a deep link) opens or focuses its tab.
+  private func route(_ destination: SidebarDestination?) {
+    guard let destination, destination != sidebarDestination(session.tabs.selected) else {
+      return
+    }
+    session.tabs.open(AppTabContent(destination))
+  }
+
+  private func selectedTabChanged() {
+    let mapped = sidebarDestination(session.tabs.selected)
+    if selection != mapped { selection = mapped }
     report()
   }
 
-  private func report() {
-    connection.setView(sessionID: selection?.sessionID, focused: isWindowFocused)
+  /// A session the new-session form created replaces the form's tab.
+  private func showCreated(_ sessionID: String) {
+    let tabs = session.tabs
+    if let selected = tabs.selected, selected.content == .newSession {
+      tabs.replace(selected.id, with: .chat(sessionID: sessionID))
+    } else {
+      tabs.open(.chat(sessionID: sessionID))
+    }
+  }
+
+  /// Previous and Next Session show the session in the current chat tab.
+  private func showInPlace(_ sessionID: String) {
+    session.tabs.navigate(to: .chat(sessionID: sessionID)) { content in
+      if case .chat = content { return true }
+      return false
+    }
   }
 }
 

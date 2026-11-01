@@ -5,6 +5,8 @@ struct SidebarHeader: View {
   let state: SidebarViewState
   let actions: SidebarActions
 
+  private var serverName: String { state.currentServer?.name ?? "none" }
+
   var body: some View {
     HStack(spacing: Theme.Spacing.small) {
       Text("Omnigent")
@@ -51,8 +53,12 @@ struct SidebarHeader: View {
         .menuStyle(.button)
         .buttonStyle(.borderless)
         .tint(.secondary)
-        .help("Switch server")
-        .accessibilityLabel("Server: \(state.currentServer?.name ?? "none")")
+        .help("Server: \(serverName). Switch server or open its settings")
+        .accessibilityLabel("Server: \(serverName)")
+        .accessibilityValue(
+          state.currentServer?.isConnected == false ? "Disconnected" : "Connected"
+        )
+        .accessibilityHint("Switches the server, connects another, or opens server settings")
         .accessibilityIdentifier("server-switcher")
       }
     }
@@ -71,24 +77,26 @@ struct QuickFilterRow: View {
     Button(action: action) {
       HStack {
         Label(filter.title, systemImage: filter.systemImage)
-          .foregroundStyle(isActive ? Theme.accent : ThemeColor.primary)
+          .foregroundStyle(ThemeColor.primary)
+          .fontWeight(isActive ? .semibold : .regular)
         Spacer()
         if let count, count > 0 {
           Text("\(count)")
             .font(.caption.monospacedDigit().weight(.semibold))
-            .foregroundStyle(filter == .needsResponse ? Theme.brandAccent : Theme.secondary)
+            .foregroundStyle(filter == .needsResponse ? Theme.attention : Theme.secondary)
             .padding(.horizontal, Theme.Spacing.small)
             .padding(.vertical, Theme.Spacing.tiny)
             .background(ThemeColor.hover, in: Capsule())
         }
       }
-      .frame(minHeight: Theme.Control.sidebarRow)
+      // Height comes from the list's `defaultMinListRowHeight`, as the navigation rows.
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .sidebarSelection(isActive)
     .hoverHighlight()
     .accessibilityAddTraits(isActive ? [.isSelected] : [])
+    .help(isActive ? "Show all sessions" : "Show only: \(filter.title)")
     .accessibilityHint(isActive ? "Shows all sessions" : "Shows only these sessions")
     .accessibilityIdentifier("quick-filter-\(filter.rawValue)")
   }
@@ -132,7 +140,9 @@ struct DisplayMenu: View {
     .menuIndicator(.hidden)
     .tint(.secondary)
     .fixedSize()
-    .help("Filter and display")
+    .help("Filter and display: what to show, grouping, sorting and row details")
+    .accessibilityLabel("Filter and display")
+    .accessibilityHint("Chooses which sessions show, how they are grouped and sorted")
     .accessibilityIdentifier("sidebar-display-menu")
   }
 
@@ -173,6 +183,7 @@ struct UndoBar: View {
           .labelStyle(.iconOnly)
           .buttonStyle(.borderless)
           .foregroundStyle(.secondary)
+          .help("Dismiss")
           .accessibilityIdentifier("undo-dismiss")
       }
     }

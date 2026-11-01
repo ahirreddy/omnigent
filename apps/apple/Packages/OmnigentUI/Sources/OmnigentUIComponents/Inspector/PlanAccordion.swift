@@ -49,6 +49,8 @@ public struct PlanAccordion: View {
       .buttonStyle(.plain)
       .accessibilityLabel("Plan, \(done) of \(todos.count) done")
       .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+      .accessibilityHint(isExpanded ? "Hides the plan steps" : "Shows the plan steps")
+      .help(isExpanded ? "Hide the plan" : "Show the plan")
       .accessibilityIdentifier("plan-accordion-toggle")
       if isExpanded {
         Divider()
@@ -82,7 +84,7 @@ struct TodoRow: View {
         case .completed:
           Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.running)
         case .inProgress:
-          Image(systemName: "circle.dotted.circle").foregroundStyle(Theme.accent)
+          Image(systemName: "circle.dotted.circle").foregroundStyle(.primary)
         case .pending:
           Image(systemName: "circle").foregroundStyle(.tertiary)
         }
@@ -108,9 +110,17 @@ struct TodoRow: View {
   }
 }
 
+/// A neutral progress gauge: never the accent, so it does not read as a spinner or an action.
 struct ProgressRing: View {
   let fraction: Double
   var size: CGFloat = 18
+  /// Amber above 85%, for a budget such as the context window.
+  var warnsNearFull = false
+
+  private var stroke: AnyShapeStyle {
+    if warnsNearFull, fraction > 0.85 { return AnyShapeStyle(Theme.warning) }
+    return fraction >= 1 ? AnyShapeStyle(Theme.running) : AnyShapeStyle(.secondary)
+  }
 
   var body: some View {
     ZStack {
@@ -118,7 +128,7 @@ struct ProgressRing: View {
       Circle()
         .trim(from: 0, to: fraction)
         .stroke(
-          fraction >= 1 ? Theme.running : Theme.accent,
+          stroke,
           style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
         )
         .rotationEffect(.degrees(-90))

@@ -66,7 +66,9 @@ public struct ConversationScreen<Terminal: View>: View {
   @State private var showsShare = false
   @State private var showsInfo = false
   @State private var drafts = DecisionDrafts()
+  @State private var approveCandidate: String?
   @Environment(\.layoutWidth) private var layoutWidth
+  @Environment(\.tabsInTitlebar) private var tabsInTitlebar
 
   /// Creates the screen.
   /// - Parameters:
@@ -111,7 +113,9 @@ public struct ConversationScreen<Terminal: View>: View {
       if showsTerminal {
         TerminalPane(status: state.terminal, resume: actions.resume) { terminal }
       } else {
+        // Inline and sub-agent cards leave Command-Return (and its emphasis) to the dock's card.
         TranscriptView(state: state, actions: actions, scrollToLatestRequest: scrollRequest)
+          .decisionApproveShortcut(approveCandidate)
       }
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -127,17 +131,20 @@ public struct ConversationScreen<Terminal: View>: View {
       // Report no minimum width: wrapping banners would otherwise push their single-line
       // ideal width into the split view's minimum and the detail would fail to lay out.
       .frame(minWidth: 0, maxWidth: .infinity)
+      // Transcript rows scroll under the dock and composer; never show or click through them.
+      .background { BottomBarBackdrop() }
     }
     .themeCanvas()
     .environment(drafts)
+    .environment(\.commandReturnOwner, commandReturnOwner)
+    .onPreferenceChange(ApproveShortcutCandidate.self) { approveCandidate = $0 }
     .inspector(isPresented: $showsInspector) {
       WorkspaceInspector(state: state, actions: actions, slots: extras.slots, tab: inspectorTab)
         .inspectorColumnWidth(min: 260, ideal: 360, max: 600)
     }
     .navigationTitle(state.header.title)
-    #if os(macOS)
-      .navigationSubtitle(state.projectName ?? "")
-    #endif
+    // The one status line ("Waiting for you · 2 requests"); the project shows in the sidebar.
+    .navigationSubtitle(SessionStatusLine(state).text)
     .toolbarTitleMenu { titleMenu }
     .toolbar { toolbarContent }
     .sheet(isPresented: $showsShare) {
@@ -154,7 +161,8 @@ public struct ConversationScreen<Terminal: View>: View {
   }
 
   @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
-    if state.terminalAvailable {
+    // With tabs in the titlebar, the agent's TUI is its own tab (Option-Command-\\ opens it).
+    if state.terminalAvailable, !tabsInTitlebar {
       ToolbarItem(placement: .principal) {
         ViewModePicker(mode: $mode, status: state.terminal)
       }
@@ -169,15 +177,19 @@ public struct ConversationScreen<Terminal: View>: View {
           .help("Agent info")
           .accessibilityIdentifier("header-agent-info")
       }
-      if extras.share != nil {
+      // The title menu's commands, Share among them, when the titlebar holds the tabs.
+      if tabsInTitlebar {
+        SessionActionsButton { titleMenu }
+      }
+      // At compact width Share lives in the title menu; the top corner is out of thumb reach.
+      if extras.share != nil, layoutWidth == .regular, !tabsInTitlebar {
         Button {
           showsShare = true
         } label: {
           Label("Share", systemImage: "person.badge.plus")
             .labelStyle(HeaderShareLabelStyle(isCompact: layoutWidth == .compact))
         }
-        .buttonStyle(.borderedProminent)
-        .tint(Theme.accent)
+        .buttonStyle(.bordered)
         .disabled(state.shareUnavailableReason != nil)
         .help(state.shareUnavailableReason ?? "Share this session")
         .accessibilityIdentifier("header-share")
@@ -209,6 +221,7 @@ public struct ConversationScreen<Terminal: View>: View {
       if extras.share != nil {
         Button("Share", systemImage: "person.badge.plus") { showsShare = true }
           .disabled(state.shareUnavailableReason != nil)
+          .accessibilityIdentifier(tabsInTitlebar ? "header-share" : "title-menu-share")
       }
       if let forkSession = session.fork {
         Button("Fork", systemImage: "arrow.triangle.branch") { forkSession(summary) }
@@ -228,12 +241,20 @@ public struct ConversationScreen<Terminal: View>: View {
     Button("Copy Session ID", systemImage: "number") { Pasteboard.copy(state.header.id) }
   }
 
-  private var commands: SessionCommandActions {
-    let chat = !showsTerminal
-    let canSend =
-      chat && composer.availability == .available && composer.delivery == .idle
+  private var canSendDraft: Bool {
+    !showsTerminal && composer.availability == .available && composer.delivery == .idle
       && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         || !composer.attachments.isEmpty)
+  }
+
+  /// Send while the draft can go, else the docked request's Approve.
+  private var commandReturnOwner: CommandReturnOwner {
+    .resolve(canSend: canSendDraft, approvableCardID: approveCandidate)
+  }
+
+  private var commands: SessionCommandActions {
+    let chat = !showsTerminal
+    let canSend = canSendDraft
     var jump: (@MainActor () -> Void)?
     var focus: (@MainActor () -> Void)?
     if chat {
@@ -245,14 +266,20 @@ public struct ConversationScreen<Terminal: View>: View {
       let binding = $mode
       toggleMode = { binding.wrappedValue = binding.wrappedValue == .chat ? .terminal : .chat }
     }
-    return SessionCommandActions(
+    var actions = SessionCommandActions(
       send: canSend ? composerActions.send : nil,
       interrupt: composer.isRunning ? composerActions.interrupt : nil,
       jumpToLatest: jump, focusComposer: focus,
       toggleInspector: { showsInspector.toggle() },
       previousSession: extras.navigation.previousSession,
       nextSession: extras.navigation.nextSession,
-      toggleViewMode: toggleMode)
+      toggleViewMode: toggleMode,
+      openChanges: {
+        inspectorTab.wrappedValue = .changes
+        showsInspector = true
+      })
+    actions.approveOwnsCommandReturn = commandReturnOwner == .approve
+    return actions
   }
 }
 
@@ -277,6 +304,27 @@ extension ConversationScreen where Terminal == EmptyView {
     ) {
       EmptyView()
     }
+  }
+}
+
+/// The session's actions (Pin, Share, Fork, Archive, Copy Session ID) in the toolbar, where the
+/// tabs replace the title and its menu. On the Mac a menu; on iPad a dialog, because a `Menu` in
+/// the navigation bar beside the tab strip keeps the bar relaying out (a busy loop on open).
+struct SessionActionsButton<Actions: View>: View {
+  @ViewBuilder let actions: () -> Actions
+  @State private var isPresented = false
+
+  var body: some View {
+    #if os(macOS)
+      Menu("Session", systemImage: "ellipsis.circle", content: actions)
+        .menuIndicator(.hidden)
+        .help("Session actions")
+        .accessibilityIdentifier("header-session-menu")
+    #else
+      Button("Session", systemImage: "ellipsis.circle") { isPresented = true }
+        .confirmationDialog("Session", isPresented: $isPresented, actions: actions)
+        .accessibilityIdentifier("header-session-menu")
+    #endif
   }
 }
 
@@ -306,5 +354,28 @@ private struct HeaderShareLabelStyle: LabelStyle {
       configuration.icon
       if !isCompact { configuration.title }
     }
+  }
+}
+
+/// The canvas behind the dock and composer, fading in over the transcript's last line.
+private struct BottomBarBackdrop: View {
+  @Environment(\.omnigentTheme) private var theme
+  @Environment(\.colorScheme) private var colorScheme
+
+  var body: some View {
+    Group {
+      if let canvas = theme.palette(for: colorScheme).canvas {
+        Rectangle().fill(canvas)
+      } else {
+        Rectangle().fill(.background)
+      }
+    }
+    .mask {
+      LinearGradient(
+        stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.08)],
+        startPoint: .top, endPoint: .bottom)
+    }
+    .ignoresSafeArea(edges: .bottom)
+    .accessibilityHidden(true)
   }
 }

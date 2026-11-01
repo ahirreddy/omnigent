@@ -3,35 +3,44 @@ import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
 
-/// Builds the sidebar's view state from the session list and the badge. Ordering, search and
-/// filtering stay the core's (`filterSessions`); the sidebar renders them as given.
+/// Builds the sidebar's view state from the session list. Ordering, search and filtering stay the
+/// core's (`filterSessions`); every attention glyph and count comes from the list's shared
+/// attention model (`SessionListStore.attention(of:)` and `attentionTotals`), so the row, the
+/// Running and Needs you counts and the Inbox badge agree with the Dock and menu bar.
 enum SidebarAdapter {
   /// The sidebar's view state.
   /// - Parameters:
   ///   - list: The session list.
-  ///   - notifications: The badge, which marks unread sessions.
   ///   - display: The user's display options.
   ///   - server: The connected server, offered in the server switcher.
   /// - Returns: The state.
   static func state(
-    list: SessionListStore, notifications: NotificationsStore?, display: SessionDisplayOptions,
-    server: ConnectedServer?
+    list: SessionListStore, display: SessionDisplayOptions, server: ConnectedServer?
   ) -> SidebarViewState {
     let all = Array(list.sessionsByID.values)
-    var counts: [OmnigentUIComponents.SessionFilter: Int] = [:]
-    for filter in OmnigentUIComponents.SessionFilter.allCases {
-      counts[filter] = filterSessions(
-        sessions: all, text: "", filter: OmnigentCoreFFI.SessionFilter(filter)
-      ).count
+    let totals = list.attentionTotals
+    var counts: [OmnigentUIComponents.SessionFilter: Int] = [
+      .running: Int(totals.working), .needsResponse: Int(totals.sessionsNeedingYou),
+    ]
+    for filter in [OmnigentUIComponents.SessionFilter.all, .archived] {
+      counts[filter] =
+        filterSessions(
+          sessions: all, text: "", filter: OmnigentCoreFFI.SessionFilter(filter)
+        ).count
+    }
+    let requests = list.attentionByID.compactMapValues { attention in
+      attention.state == .needsYou ? Int(attention.requests) : nil
     }
     let filter = OmnigentUIComponents.SessionFilter(list.filter)
     let listState = SessionListViewState(
-      sessions: list.visible.map(OmnigentUIComponents.SessionSummary.init), filter: filter,
-      unreadIds: Set(notifications?.badgeSessionIDs ?? []), filterCounts: counts,
+      sessions: list.visible.map {
+        OmnigentUIComponents.SessionSummary($0, attention: list.attention(of: $0.id))
+      },
+      filter: filter, unreadIds: list.unreadIDs, attentionCounts: requests, filterCounts: counts,
       phase: phase(list))
     let servers = server.map { [ServerChoice($0)] } ?? []
     return SidebarViewState(
-      list: listState, inboxCount: counts[.needsResponse] ?? 0, showsCanvas: false,
+      list: listState, inboxCount: Int(totals.sessionsNeedingYou), showsCanvas: false,
       display: display, quickFilter: filter == .all ? nil : filter, servers: servers,
       currentServerID: servers.first?.id)
   }
@@ -60,7 +69,7 @@ extension ServerChoice {
   init(_ server: ConnectedServer) {
     self.init(
       id: server.baseUrl,
-      name: server.serverName ?? URLComponents(string: server.baseUrl)?.host ?? server.baseUrl,
+      name: ExecutionContext.serverDisplayName(name: server.serverName, baseURL: server.baseUrl),
       url: server.baseUrl, isConnected: true)
   }
 }

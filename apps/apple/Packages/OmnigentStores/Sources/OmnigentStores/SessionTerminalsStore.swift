@@ -17,6 +17,13 @@ public final class SessionTerminalsStore {
   public private(set) var lastError: CoreError?
   /// A create or delete is in flight.
   public private(set) var isBusy = false
+  /// The terminal names the session's agent declares, in order: the only names ``create(_:)``
+  /// accepts (for a native harness, the host's shells with `$SHELL` first). Empty when the agent
+  /// declares none, and until ``knowsDeclaredTerminalNames``.
+  public private(set) var declaredTerminalNames: [String] = []
+  /// ``loadDeclaredTerminalNames()`` finished and the server reported the names. An older server
+  /// that does not report them leaves this `false`.
+  public private(set) var knowsDeclaredTerminalNames = false
 
   private let core: ClientCore
 
@@ -31,6 +38,18 @@ public final class SessionTerminalsStore {
   /// Re-reads the terminals; the result arrives through the core's events.
   public func refresh() {
     core.refreshTerminals(sessionId: sessionID)
+  }
+
+  /// Reads ``declaredTerminalNames`` from the session's agent. A failure is recorded in
+  /// ``lastError`` and leaves the previous names.
+  public func loadDeclaredTerminalNames() async {
+    do {
+      let names = try await core.declaredTerminalNames(sessionId: sessionID)
+      declaredTerminalNames = names ?? []
+      knowsDeclaredTerminalNames = names != nil
+    } catch {
+      lastError = coreError(error)
+    }
   }
 
   /// Launches a terminal (for example a host shell such as `zsh`).

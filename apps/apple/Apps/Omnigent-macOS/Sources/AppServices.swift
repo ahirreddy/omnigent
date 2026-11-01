@@ -30,6 +30,16 @@ final class AppServices {
   let keychain: KeychainModeSelection.Choice
   /// Runs claimed agent browser actions; `nil` in the App Store edition.
   let agentBrowser: AgentBrowserPerformer?
+  /// The browser's profiles, history, bookmarks and prompts.
+  let browser: BrowserEnvironment
+  /// Browser tabs across windows.
+  let browserTabs: BrowserTabHost
+  /// Saves and restores each window's tabs; `nil` when Application Support is unavailable.
+  let tabPersistence: TabPersistence?
+  /// Tabs torn off into a window that is still opening, by window instance.
+  @ObservationIgnored private var tabHandoff: [UUID: [AppTab]] = [:]
+  /// Set when the app starts quitting, so closing windows keep their saved tabs.
+  @ObservationIgnored private(set) var isTerminating = false
   /// Why automatic updates are off, when the updater could not start.
   var updaterIssue: String?
   @ObservationIgnored private var notificationAuthorizationRequested = false
@@ -47,6 +57,51 @@ final class AppServices {
     theme = ThemePreferences(defaults: defaults)
     keychain = KeychainModeSelection.current()
     agentBrowser = AgentBrowserPerformer.forEdition(provider: browserProvider)
+    browser = BrowserEnvironment.standard(
+      provider: browserProvider, preferences: browserPreferences)
+    browserTabs = BrowserTabHost(
+      environment: browser, agent: agentBrowser?.agentController, logger: logger)
+    do {
+      // UI tests pass `-OmnigentTabsDirectory <path>` to keep the user's saved tabs untouched.
+      if let directory = defaults.string(forKey: "OmnigentTabsDirectory") {
+        tabPersistence = TabPersistence(directory: URL(filePath: directory))
+      } else {
+        tabPersistence = try TabPersistence.applicationSupport(
+          bundleID: Bundle.main.bundleIdentifier ?? "ai.omnigent.mac")
+      }
+    } catch {
+      tabPersistence = nil
+      logger.error("Tabs will not be saved: \(error.localizedDescription, privacy: .public)")
+    }
+  }
+
+  /// The app is quitting: save every window's tabs now and keep them.
+  func willTerminate() {
+    isTerminating = true
+    tabPersistence?.flush()
+  }
+
+  /// Hands torn-off tabs to a window about to open.
+  /// - Parameters:
+  ///   - tabs: The tabs.
+  ///   - window: The new window's instance.
+  func handOff(_ tabs: [AppTab], to window: UUID) {
+    tabHandoff[window] = tabs
+  }
+
+  /// The torn-off tabs waiting for `window`, once.
+  /// - Parameter window: The window's instance.
+  /// - Returns: The tabs.
+  func takeHandoff(for window: UUID) -> [AppTab] {
+    tabHandoff.removeValue(forKey: window) ?? []
+  }
+
+  /// A server window closed: unless the app is quitting, its tabs and pages go with it.
+  /// - Parameter window: The window's instance.
+  func windowClosed(_ window: UUID) {
+    guard !isTerminating else { return }
+    tabPersistence?.windowClosed(window)
+    browserTabs.windowClosed(window)
   }
 
   /// Binds the shell to the app: issues go to the log, and deep links trust known servers.
@@ -129,17 +184,6 @@ final class AppServices {
   func didConnect(to serverURL: URL) async {
     recentServers.record(serverURL)
     await requestNotificationAuthorizationIfNeeded()
-  }
-
-  /// A browser controller for one server, isolated in that server's persistent profile.
-  /// - Parameter serverURL: The server; the browser opens its page.
-  /// - Returns: The controller.
-  /// - Throws: `ServerOriginError` when `serverURL` is not an http(s) server URL.
-  func makeBrowserController(serverURL: URL) throws(ServerOriginError) -> BrowserController {
-    let origin = try ServerOrigin(url: serverURL)
-    return BrowserController(
-      profile: .server(origin.serialized), preferences: browserPreferences,
-      provider: browserProvider, initialURL: serverURL)
   }
 
   private func requestNotificationAuthorizationIfNeeded() async {

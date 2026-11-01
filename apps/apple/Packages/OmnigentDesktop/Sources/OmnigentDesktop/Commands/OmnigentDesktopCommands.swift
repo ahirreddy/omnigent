@@ -142,8 +142,9 @@ public struct OmnigentDesktopCommands: Commands {
 
   @ViewBuilder private var viewItems: some View {
     let window = focused?.actions
+    // Command-R belongs to a browser tab's Reload Page.
     Button("Reconnect") { window?.reconnect?() }
-      .keyboardShortcut("r", modifiers: .command)
+      .keyboardShortcut("r", modifiers: [.command, .option])
       .disabled(window?.reconnect == nil)
     Divider()
     Button("Actual Size") { window?.zoom?.reset() }

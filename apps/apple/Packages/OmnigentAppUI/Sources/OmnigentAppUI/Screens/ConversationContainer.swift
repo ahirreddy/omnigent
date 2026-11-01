@@ -21,6 +21,14 @@ struct ConversationContainer: View {
   let opener: ExternalURLOpener
   let openSession: @MainActor (String) -> Void
   let retry: @MainActor () -> Void
+  /// The connected server, for the composer's execution context.
+  var server: OmnigentCoreFFI.ConnectedServer?
+  /// Opens the session's terminals and side chats as tabs.
+  var tabRoutes: ConversationTabRoutes?
+  /// The terminals the agent declares, for New Terminal.
+  var terminalNames: DeclaredTerminals = .unknown
+  /// The session menu's Pin, Archive and the other row actions, as in the sidebar.
+  var sessionActions = SessionListActions()
 
   @State private var showsInspector = false
   @State private var mode: SessionViewMode = .chat
@@ -34,9 +42,10 @@ struct ConversationContainer: View {
     ConversationScreen(
       state: state, composer: composerState,
       draft: Binding(get: { composer.text }, set: { composer.text = $0 }),
-      showsInspector: $showsInspector, mode: $mode, actions: actions,
+      showsInspector: $showsInspector, mode: modeBinding, actions: routed(actions),
       composerActions: composerActions,
-      extras: ConversationExtras(slots: workspaceSlots, navigation: navigation)
+      extras: ConversationExtras(
+        sessionActions: sessionActions, slots: workspaceSlots, navigation: navigation)
     ) {
       harnessTerminal
     }
@@ -48,8 +57,12 @@ struct ConversationContainer: View {
     .alert(
       "Something Went Wrong", isPresented: .constant(!failures.isEmpty),
       actions: { Button("OK") { failures = [] } },
-      message: { Text(failures.joined(separator: "\n")) })
+      message: { Text(failures.joined(separator: "\n")) }
+    )
     .task { await composer.loadConfiguration() }
+    .onChange(of: conversation.isRunning) { _, running in
+      Task { await composer.drainQueue(isRunning: running) }
+    }
     .onChange(of: terminals?.terminals.harness, initial: true) { attachHarness() }
     .onChange(of: changedFilesRevision) {
       guard let workspace else { return }
@@ -64,12 +77,8 @@ struct ConversationContainer: View {
   }
 
   private var composerState: ComposerViewState {
-    var state = ComposerAdapter.state(
-      conversation, isStopping: isStopping, dismissedError: dismissedSendError)
-    if conversation.composer.configuration != nil {
-      state.configuration = ComposerAdapter.configuration(conversation.composer)
-    }
-    return state
+    ComposerAdapter.state(
+      conversation, isStopping: isStopping, dismissedError: dismissedSendError, server: server)
   }
 
   /// Attaches the harness TUI once the core reports it ready. The store keeps the surface, so
@@ -100,11 +109,14 @@ struct ConversationContainer: View {
   /// Terminals tab over the session's terminal store.
   private var workspaceSlots: WorkspaceSlots {
     var slots = WorkspaceSlots()
-    if let terminals {
+    if let terminals, let tabRoutes {
+      var openHarness: (@MainActor () -> Void)?
+      if case .ready = terminals.terminals.harness { openHarness = tabRoutes.openHarness }
       slots.terminals = AnyView(
         TerminalsPanel(
           store: terminals, permissionLevel: conversation.header?.permissionLevel,
-          hostID: conversation.header?.settings?.hostId))
+          openTerminal: tabRoutes.openTerminal, openHarness: openHarness,
+          declaredNames: terminalNames))
     }
     guard let workspace else { return slots }
     slots.files = AnyView(WorkspacePanel(model: workspace))
@@ -115,6 +127,28 @@ struct ConversationContainer: View {
         Task { await workspace.open(.diff(path: file.path)) }
       })
     return slots
+  }
+
+  /// With tabs, choosing Terminal opens the agent's TUI in its own tab and this tab stays on
+  /// the chat.
+  private var modeBinding: Binding<SessionViewMode> {
+    guard let tabRoutes else { return $mode }
+    return Binding(
+      get: { .chat }, set: { if $0 == .terminal { tabRoutes.openHarness() } })
+  }
+
+  /// Side questions open in their own tab; sub-agents and the "Back to the parent session"
+  /// capsule open or focus their session's chat tab next to this one.
+  private func routed(_ actions: ConversationActions) -> ConversationActions {
+    var actions = actions
+    if let tabRoutes {
+      actions.openSideChat = { row in
+        tabRoutes.openSideChat(row.id, row.activity?.detail("question"))
+      }
+      actions.openChild = tabRoutes.openSession
+      actions.openSession = tabRoutes.openSession
+    }
+    return actions
   }
 
   private var documentPresented: Binding<Bool> {
@@ -185,14 +219,14 @@ struct ConversationContainer: View {
       dismissDeliveryError: {
         dismissedSendError = composer.lastError
         composer.dismissConfigurationError()
-      })
+      },
+      extras: ComposerAdapter.extras(composer) { conversation.isRunning })
   }
 
   /// Switches the harness when the core allows it; otherwise says why.
   private func switchHarness(to agentID: String) {
     let composer = conversation.composer
-    if let reason = composer.harnessOptions.first(where: { $0.id == agentID })?.unavailableReason
-    {
+    if let reason = composer.harnessOptions.first(where: { $0.id == agentID })?.unavailableReason {
       failures.append(reason)
       return
     }

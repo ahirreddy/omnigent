@@ -1,4 +1,5 @@
 import Foundation
+import OmnigentAppUI
 import OmnigentBrowser
 import OmnigentCoreFFI
 import OmnigentDesktop
@@ -91,22 +92,27 @@ struct EditionTests {
     #endif
   }
 
-  @Test func browserControllerUsesPerServerProfile() throws {
+  @Test func browserTabsKeepPagesUntilClosed() throws {
     let services = AppServices(desktop: DesktopController(), defaults: try isolatedDefaults())
+    let host = services.browserTabs
     let serverURL = try #require(URL(string: "http://127.0.0.1:6767/workspace"))
-    let controller = try services.makeBrowserController(serverURL: serverURL)
-    #expect(controller.profile == .server("http://127.0.0.1:6767"))
-    #expect(controller.profile.persistence == .persistent)
-    #expect(controller.requestedURL == serverURL)
-    #expect(controller.offeredEngines == services.browserProvider.offeredEngines)
+    let page = host.makePage(url: serverURL)
+    #expect(page.state != nil)
+    #expect(host.status(of: page.id) != nil)
+    let closed = try #require(try host.close(page.id))
+    let state = try JSONDecoder().decode(BrowserTabRestoreState.self, from: closed)
+    #expect(state.id == page.id)
+    #expect(host.status(of: page.id) == nil)
+    #expect(try host.close(page.id) == nil)
   }
 
-  @Test func browserControllerRejectsNonServerURLs() throws {
+  @Test func tornOffTabsAreHandedToTheNewWindowOnce() throws {
     let services = AppServices(desktop: DesktopController(), defaults: try isolatedDefaults())
-    let fileURL = URL(fileURLWithPath: "/tmp")
-    #expect(throws: ServerOriginError.self) {
-      try services.makeBrowserController(serverURL: fileURL)
-    }
+    let window = UUID()
+    let tab = AppTab(content: .chat(sessionID: "s1"))
+    services.handOff([tab], to: window)
+    #expect(services.takeHandoff(for: window) == [tab])
+    #expect(services.takeHandoff(for: window).isEmpty)
   }
 }
 

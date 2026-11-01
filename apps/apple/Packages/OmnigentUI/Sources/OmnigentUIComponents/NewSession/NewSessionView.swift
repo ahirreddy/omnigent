@@ -226,6 +226,8 @@ public struct NewSessionView: View {
       .labelStyle(.iconOnly)
       .menuIndicator(.hidden)
       .fixedSize()
+      .help("Choose a folder the host knows")
+      .accessibilityHint("Fills the directory with one of the host's folders")
       .accessibilityIdentifier("creation-workspace-choices")
     case .idle, .loaded, .failed:
       EmptyView()

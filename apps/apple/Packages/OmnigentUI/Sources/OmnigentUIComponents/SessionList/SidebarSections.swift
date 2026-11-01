@@ -59,18 +59,13 @@ nonisolated enum SidebarSections {
   private static func statusSections(_ sessions: [SessionSummary], state: SidebarViewState)
     -> [Section]
   {
-    let needs = sessions.filter {
-      $0.status == .needsResponse || (state.list.attentionCounts[$0.id] ?? 0) > 0
-    }
-    let running = sessions.filter { $0.status == .running && !needs.contains($0) }
-    let failed = sessions.filter {
-      $0.failureMessage != nil && !needs.contains($0) && !running.contains($0)
-    }
-    let idle = sessions.filter {
-      !needs.contains($0) && !running.contains($0) && !failed.contains($0)
-    }
+    // One section per attention state, so a session sits where its row glyph says.
+    let needs = sessions.filter { $0.attention == .needsYou }
+    let running = sessions.filter { $0.attention == .working }
+    let failed = sessions.filter { $0.attention == .failed }
+    let idle = sessions.filter { $0.attention == .unread || $0.attention == .idle }
     return withMenu([
-      Section(title: "Needs response", sessions: needs),
+      Section(title: "Needs you", sessions: needs),
       Section(title: "Running", sessions: running),
       Section(title: "Error", sessions: failed),
       Section(title: "Idle", sessions: idle),

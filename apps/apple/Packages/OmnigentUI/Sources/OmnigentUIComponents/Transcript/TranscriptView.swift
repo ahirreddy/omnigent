@@ -4,14 +4,14 @@ public import SwiftUI
 /// indicator. Rows are lazy and keyed by their stable ids, so thousands of rows scroll smoothly
 /// and only visible markdown is parsed.
 ///
-/// It follows the newest row until the user scrolls up, then offers a Latest button.
+/// It follows the newest row until the user scrolls up; from then on incoming output never moves
+/// the reading position and "Jump to latest" offers the way back (``TranscriptFollow``).
 public struct TranscriptView: View {
   private let state: ConversationViewState
   private let actions: ConversationActions
   private let scrollToLatestRequest: Int
 
-  @State private var followsLatest = true
-  @State private var isUserScrolling = false
+  @State private var follow = TranscriptFollow()
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private static let bottomID = "transcript-bottom"
@@ -59,7 +59,7 @@ public struct TranscriptView: View {
             .id(segment.id)
           }
           InlineDecisions(state: state, actions: actions)
-          ChildSessionsStrip(sections: state.sections, currentSessionID: state.header.id)
+          SubagentGroupView(state: state, actions: actions)
           if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
             WorkingIndicator(isBlocked: !state.pendingDecisions.isEmpty)
           }
@@ -73,6 +73,15 @@ public struct TranscriptView: View {
         }
         .padding(.vertical, Theme.Spacing.extraLarge)
         .readingColumn()
+      }
+      .safeAreaInset(edge: .top, spacing: 0) {
+        // A sub-agent's transcript keeps the way back to its parent in view.
+        if let parentID = state.header.settings?.parentId, parentID != state.header.id {
+          ParentSessionBanner(parentID: parentID, open: actions.openSession)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.Spacing.medium)
+            .padding(.top, Theme.Spacing.small)
+        }
       }
       .environment(\.conversationActions, actions)
       .environment(
@@ -88,38 +97,46 @@ public struct TranscriptView: View {
       .defaultScrollAnchor(.bottom, for: .initialOffset)
       .scrollDismissesKeyboard(.interactively)
       .onScrollPhaseChange { _, phase in
-        isUserScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+        let scrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+        if follow.scrollPhaseChanged(isUserScrolling: scrolling) {
+          proxy.scrollTo(Self.bottomID, anchor: .bottom)
+        }
       }
       .onScrollGeometryChange(for: Bool.self) { geometry in
-        geometry.visibleRect.maxY >= geometry.contentSize.height - 80
+        // The composer and dock inset the bottom; rows under them are not being read.
+        geometry.visibleRect.maxY - geometry.contentInsets.bottom
+          >= geometry.contentSize.height - 80
       } action: { _, isNearBottom in
-        if isUserScrolling || isNearBottom { followsLatest = isNearBottom }
+        follow.geometryChanged(isNearBottom: isNearBottom)
+      }
+      .onScrollGeometryChange(for: CGFloat.self) { geometry in
+        geometry.contentSize.height
+      } action: { previous, current in
+        if current > previous, follow.layoutGrew() {
+          proxy.scrollTo(Self.bottomID, anchor: .bottom)
+        }
       }
       .onChange(of: state.revision) { _, _ in
-        if followsLatest { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+        if follow.contentChanged() { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+      }
+      .onChange(of: Self.ownMessageID(state)) { previous, current in
+        // The reader's own new message takes them to the latest, wherever they were reading.
+        if current != nil, previous != nil, current != previous { jumpToLatest(proxy) }
       }
       .onChange(of: scrollToLatestRequest) { _, _ in jumpToLatest(proxy) }
       .task(id: state.header.id) {
+        follow.reset()
         // Lazy rows size themselves after the first layout; anchor once they have.
         await Task.yield()
         proxy.scrollTo(Self.bottomID, anchor: .bottom)
       }
       .overlay(alignment: .bottom) {
-        if !followsLatest {
-          Button {
+        if follow.showsJumpToLatest {
+          JumpToLatestPill(title: follow.jumpTitle, hasUnseenOutput: follow.hasUnseenOutput) {
             jumpToLatest(proxy)
-          } label: {
-            Label("Latest", systemImage: "arrow.down")
-              .font(Theme.Typography.label)
-              .padding(.horizontal, Theme.Spacing.medium)
-              .padding(.vertical, Theme.Spacing.small)
           }
-          .buttonStyle(.plain)
-          .glassEffect(.regular.interactive(), in: Capsule())
           .padding(.bottom, Theme.Spacing.medium)
           .transition(.opacity.combined(with: .move(edge: .bottom)))
-          .accessibilityLabel("Jump to latest message")
-          .accessibilityIdentifier("jump-to-latest")
         }
       }
     }
@@ -152,7 +169,7 @@ public struct TranscriptView: View {
   }
 
   private func jumpToLatest(_ proxy: ScrollViewProxy) {
-    followsLatest = true
+    follow.jumpToLatest()
     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
       proxy.scrollTo(Self.bottomID, anchor: .bottom)
     }
@@ -162,6 +179,14 @@ public struct TranscriptView: View {
   static func segments(for state: ConversationViewState) -> [TurnSegment] {
     TurnLayout.segments(
       TranscriptLayout.items(for: state.rows), isRunning: state.header.status == .running)
+  }
+
+  /// The viewer's newest message; it changes when they send one (older history loads earlier
+  /// rows and leaves it alone).
+  static func ownMessageID(_ state: ConversationViewState) -> String? {
+    state.rows.last {
+      $0.role == .user && ($0.author == nil || $0.author == state.viewerName)
+    }?.id
   }
 
   /// The last settled assistant answer, whose actions stay visible while idle.
@@ -193,6 +218,34 @@ public struct TranscriptView: View {
   private func duration(for segment: TurnSegment) -> TimeInterval? {
     guard case .worked(_, let responseID, _, _) = segment, let responseID else { return nil }
     return state.turnDurations[responseID]
+  }
+}
+
+/// "Jump to latest", with a dot when output arrived while the user was reading.
+private struct JumpToLatestPill: View {
+  let title: String
+  let hasUnseenOutput: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: Theme.Spacing.small) {
+        if hasUnseenOutput {
+          Circle().fill(Theme.running).frame(width: 6, height: 6).accessibilityHidden(true)
+        }
+        Label(title, systemImage: "arrow.down")
+      }
+      .font(Theme.Typography.label)
+      .padding(.horizontal, Theme.Spacing.medium)
+      .padding(.vertical, Theme.Spacing.small)
+      .frame(minHeight: Theme.Control.target)
+      .contentShape(Capsule())
+    }
+    .buttonStyle(.plain)
+    .glassEffect(.regular.interactive(), in: Capsule())
+    .accessibilityLabel("Jump to latest message")
+    .accessibilityValue(hasUnseenOutput ? "New output" : "")
+    .accessibilityIdentifier("jump-to-latest")
   }
 }
 

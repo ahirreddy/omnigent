@@ -10,6 +10,7 @@ public struct ServerRootView: View {
   @Binding private var selection: SidebarDestination?
   private let isWindowFocused: Bool
   private let openInNewWindow: (@MainActor (String) -> Void)?
+  private let tabContext: TabWindowContext
 
   /// Creates the root.
   /// - Parameters:
@@ -17,25 +18,32 @@ public struct ServerRootView: View {
   ///   - selection: What the connected app shows; kept by the host for deep links.
   ///   - isWindowFocused: Whether the window is key.
   ///   - openInNewWindow: Opens a session in a new window, where the platform has windows.
+  ///   - tabContext: Where the window's tabs are saved, the browser, and tear-off.
   public init(
     session: ServerSession, selection: Binding<SidebarDestination?>,
-    isWindowFocused: Bool = true, openInNewWindow: (@MainActor (String) -> Void)? = nil
+    isWindowFocused: Bool = true, openInNewWindow: (@MainActor (String) -> Void)? = nil,
+    tabContext: TabWindowContext = TabWindowContext()
   ) {
     self.session = session
     _selection = selection
     self.isWindowFocused = isWindowFocused
     self.openInNewWindow = openInNewWindow
+    self.tabContext = tabContext
   }
 
+  /// Sign-in until connected, then the connected app.
   public var body: some View {
     if session.isSignedIn {
       ConnectedServerView(
         session: session, selection: $selection, isWindowFocused: isWindowFocused,
-        openInNewWindow: openInNewWindow)
+        openInNewWindow: openInNewWindow, tabContext: tabContext)
     } else {
       AuthFlowView(
         state: session.signIn.state, actions: session.signIn.actions, validator: .app
       )
+      // The flow's one primary action stays the brand pink; system controls elsewhere use the
+      // system tint.
+      .tint(ThemeColor.accent)
       // A container, so the form's own identifiers (auth.username, auth.sign-in) survive.
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("auth.flow")

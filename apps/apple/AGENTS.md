@@ -86,6 +86,11 @@ just apple-build-appstore && just apple-test-appstore && just apple-lint
 Pre-commit runs swift-format (config: nearest `.swift-format`), `cargo fmt` and
 clippy.
 
+## Follow-ups
+
+Record deferred work in `docs/follow-ups.md` (browser, server, app and product items),
+and move items to its "Done" section when they land.
+
 ## Git
 
 Stage files explicitly by path (`git add path/to/file`). Never use `git add .`,

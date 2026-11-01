@@ -1,15 +1,17 @@
 public import SwiftUI
 
 /// The web's new-session page, in the detail column: Otto with tracking eyes, "What should we
-/// build?", and the composer in start mode with the context tray (directory and worktree), the
-/// Host and Permission chips and the model picker. Start creates the session and sends the first
-/// message immediately.
+/// build?", and the composer in start mode with the context tray (where it will run, the folder
+/// and worktree), the Host and approval-mode chips and the agent, model and effort picker. An
+/// unavailable destination shows in the context row before the first send. Start creates the
+/// session and sends the first message immediately.
 public struct NewSessionPage: View {
   @Binding private var draft: String
   private let composer: ComposerViewState
   private let actions: ComposerActions
   private let heading: String
   private let importSessions: (@MainActor () -> Void)?
+  private let showsContextDetails: Bool
 
   @State private var gaze: CGSize = .zero
   @Environment(\.layoutWidth) private var layoutWidth
@@ -22,16 +24,18 @@ public struct NewSessionPage: View {
   ///   - actions: Composer actions; `send` starts the session.
   ///   - heading: The heading; servers and projects can replace it.
   ///   - importSessions: "Import your recent sessions", shown when the list is empty.
+  ///   - showsContextDetails: Open the execution-context details (playground captures).
   public init(
     draft: Binding<String>, composer: ComposerViewState, actions: ComposerActions,
     heading: String = "What should we build?",
-    importSessions: (@MainActor () -> Void)? = nil
+    importSessions: (@MainActor () -> Void)? = nil, showsContextDetails: Bool = false
   ) {
     _draft = draft
     self.composer = composer
     self.actions = actions
     self.heading = heading
     self.importSessions = importSessions
+    self.showsContextDetails = showsContextDetails
   }
 
   /// The page.
@@ -49,7 +53,9 @@ public struct NewSessionPage: View {
               .accessibilityAddTraits(.isHeader)
           }
           .padding(.horizontal, Theme.Spacing.extraLarge)
-          ComposerView(draft: $draft, state: composer, actions: actions)
+          ComposerView(
+            draft: $draft, state: composer, actions: actions,
+            showsContextDetails: showsContextDetails)
           if let importSessions {
             Button(
               "Import your recent sessions", systemImage: "square.and.arrow.down",

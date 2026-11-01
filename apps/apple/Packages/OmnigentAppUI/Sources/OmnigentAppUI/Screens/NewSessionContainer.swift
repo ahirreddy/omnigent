@@ -78,13 +78,17 @@ struct NewSessionContainer: View {
     let catalog = creation.catalog.value
     let hosts = (catalog?.hosts ?? []).map { host in
       ComposerHost(
-        id: host.hostId, name: host.name, kind: host.sandboxProvider == nil ? .machine : .cloud,
-        isOnline: host.isAvailable)
+        id: host.hostId, name: ExecutionContext.hostDisplayName(host.name) ?? host.hostId,
+        kind: host.sandboxProvider == nil ? .machine : .cloud, isOnline: host.isAvailable)
     }
     let agents = (catalog?.agents ?? []).filter(\.supportsCreation).map { agent in
       OmnigentUIComponents.HarnessChoice(
-        id: agent.id, name: agent.name, harness: agent.harness, builtin: nil)
+        id: agent.id, name: agent.name, harness: agent.harness, builtin: nil,
+        unavailableReason: catalog.flatMap {
+          creationUnavailableReason(catalog: $0, agentId: agent.id, hostId: selection.hostId)
+        })
     }
+    let agent = catalog?.agents.first { $0.id == selection.agentId }
     let models = (creation.models.value ?? []).filter { $0.hidden != true }.map { choice in
       OmnigentUIComponents.ModelOption(
         id: choice.value, model: choice.model, displayName: choice.title,
@@ -95,14 +99,35 @@ struct NewSessionContainer: View {
     return ComposerViewState(
       availability: availability(creation), delivery: delivery(creation.phase),
       configuration: ComposerConfiguration(
-        harnessChoices: agents, selectedAgentId: selection.agentId, modelOptions: models,
-        selectedModelId: selection.model),
+        harness: agent?.harness, agentName: agent?.name, harnessChoices: agents,
+        selectedAgentId: selection.agentId, modelOptions: models, selectedModelId: selection.model),
       placeholder: "Describe what to build\u{2026}",
       hosts: ComposerHosts(hosts: hosts, selectedID: selection.hostId),
       tray: ComposerTray(
         directory: selection.workspace.isEmpty ? nil : selection.workspace,
         recentDirectories: (creation.workspaces.value ?? []).map(\.path)),
-      purpose: .start)
+      purpose: .start, context: context(catalog))
+  }
+
+  /// Where the session will run, and why it cannot, before the first send.
+  private func context(_ catalog: OmnigentCoreFFI.CreationCatalog?) -> ExecutionContext {
+    let host = catalog?.hosts.first { $0.hostId == selection.hostId }
+    let agent = catalog?.agents.first { $0.id == selection.agentId }
+    let server = connection.connectedServer
+    return ExecutionContext(
+      agent: agent?.name, harness: agent?.harness,
+      host: ExecutionContext.hostDisplayName(host?.name),
+      hostKind: host?.sandboxProvider == nil ? .machine : .cloud,
+      isHostOnline: host.map { $0.status == "online" },
+      server: ExecutionContext.serverDisplayName(
+        name: server?.serverName, baseURL: server?.baseUrl),
+      directory: selection.workspace.isEmpty ? nil : selection.workspace,
+      sandbox: host.map {
+        $0.sandboxProvider.map { "Managed sandbox \u{00B7} \($0)" } ?? "None (runs on the host)"
+      },
+      unavailableReason: catalog.flatMap {
+        creationUnavailableReason(catalog: $0, agentId: selection.agentId, hostId: selection.hostId)
+      })
   }
 
   private func availability(_ creation: CreationStore) -> ComposerAvailability {
@@ -139,7 +164,13 @@ struct NewSessionContainer: View {
         Task { await creation.create(selection, title: "", firstMessage: text) }
       },
       selectModel: { model in change(creation) { $0.model = model } },
-      selectAgent: { agentID in change(creation) { $0.agentId = agentID } },
+      // Models belong to the agent: a new agent starts on its own default.
+      selectAgent: { agentID in
+        change(creation) {
+          $0.agentId = agentID
+          $0.model = nil
+        }
+      },
       acknowledgeUncertainDelivery: { creation.acknowledgeUncertain() },
       dismissDeliveryError: {
         if case .created(let sessionID, .some) = creation.phase {
