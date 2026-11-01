@@ -97,6 +97,8 @@ const cases = [
   ["web/ios/App.swift", "mobile-app"],
   ["web/android/app/src/main/MainActivity.kt", "android-app"],
   ["web/electron/main.ts", "desktop-app"],
+  ["apps/apple/Apps/Omnigent-macOS/Sources/OmnigentMacApp.swift", "apple-native"],
+  ["client-core/crates/omnigent-core/src/lib.rs", "apple-native"],
   ["omnigent/server/api.py", "server"],
   ["omnigent/server/auth.py", "auth"],
 ];

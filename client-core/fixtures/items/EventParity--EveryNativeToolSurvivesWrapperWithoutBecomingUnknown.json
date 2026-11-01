@@ -1,0 +1,79 @@
+[
+  {
+    "id": "wrapper-web_search_call",
+    "type": "native_tool",
+    "response_id": "response",
+    "item": {
+      "type": "web_search_call",
+      "status": "completed",
+      "call_id": "call",
+      "fixture_detail": "Visible provider detail"
+    }
+  },
+  {
+    "id": "wrapper-file_search_call",
+    "type": "native_tool",
+    "response_id": "response",
+    "item": {
+      "type": "file_search_call",
+      "status": "completed",
+      "call_id": "call",
+      "fixture_detail": "Visible provider detail"
+    }
+  },
+  {
+    "id": "wrapper-code_interpreter_call",
+    "type": "native_tool",
+    "response_id": "response",
+    "item": {
+      "type": "code_interpreter_call",
+      "status": "completed",
+      "call_id": "call",
+      "fixture_detail": "Visible provider detail"
+    }
+  },
+  {
+    "id": "wrapper-computer_call",
+    "type": "native_tool",
+    "response_id": "response",
+    "item": {
+      "type": "computer_call",
+      "status": "completed",
+      "call_id": "call",
+      "fixture_detail": "Visible provider detail"
+    }
+  },
+  {
+    "id": "wrapper-image_generation_call",
+    "type": "native_tool",
+    "response_id": "response",
+    "item": {
+      "type": "image_generation_call",
+      "status": "completed",
+      "call_id": "call",
+      "fixture_detail": "Visible provider detail"
+    }
+  },
+  {
+    "id": "wrapper-mcp_call",
+    "type": "native_tool",
+    "response_id": "response",
+    "item": {
+      "type": "mcp_call",
+      "status": "completed",
+      "call_id": "call",
+      "fixture_detail": "Visible provider detail"
+    }
+  },
+  {
+    "id": "wrapper-mcp_list_tools",
+    "type": "native_tool",
+    "response_id": "response",
+    "item": {
+      "type": "mcp_list_tools",
+      "status": "completed",
+      "call_id": "call",
+      "fixture_detail": "Visible provider detail"
+    }
+  }
+]

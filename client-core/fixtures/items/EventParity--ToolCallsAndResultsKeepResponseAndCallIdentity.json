@@ -1,0 +1,22 @@
+[
+  {
+    "call_id": "shared-call",
+    "name": "fixture",
+    "arguments": "{}",
+    "output": "result",
+    "id": "item-function_call",
+    "type": "function_call",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "call_id": "shared-call",
+    "name": "fixture",
+    "arguments": "{}",
+    "output": "result",
+    "id": "item-function_call_output",
+    "type": "function_call_output",
+    "response_id": "fixture-response",
+    "status": "completed"
+  }
+]

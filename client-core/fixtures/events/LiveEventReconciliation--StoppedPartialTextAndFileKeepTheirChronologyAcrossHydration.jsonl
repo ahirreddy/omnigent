@@ -1,0 +1,4 @@
+{"type":"response.created","response":{"id":"r1"}}
+{"type":"response.output_text.delta","delta":"Partial answer"}
+{"type":"response.output_file.done","file_id":"file-1","filename":"report.txt"}
+{"type":"response.completed","response":{"id":"r1"}}

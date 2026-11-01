@@ -1,0 +1,1 @@
+{"request": {"method": "GET", "path": "/v1/sessions/conv_a"}, "status": 200, "response": {"id": "conv_a", "status": "idle", "created_at": 1, "permission_level": 4, "pending_elicitations": [{"elicitation_id": "form1", "params": {"requestedSchema": {"type": "object", "required": ["count"], "properties": {"count": {"type": "integer", "minimum": 1}}}}}]}}

@@ -1,0 +1,34 @@
+{
+  "id": "m1",
+  "type": "message",
+  "role": "user",
+  "response_id": "r1",
+  "content": [
+    {
+      "type": "input_text",
+      "text": "Inspect these"
+    },
+    {
+      "type": "input_image",
+      "file_id": "file1",
+      "filename": "diagram.png"
+    },
+    {
+      "type": "input_file",
+      "file_id": "file2",
+      "filename": "notes.pdf",
+      "mime_type": "application/pdf"
+    },
+    {
+      "type": "input_image",
+      "image_url": "data:image/png;base64,PRIVATE_BYTES"
+    },
+    {
+      "type": "input_audio",
+      "source": {
+        "data": "PRIVATE_AUDIO",
+        "media_type": "audio/wav"
+      }
+    }
+  ]
+}

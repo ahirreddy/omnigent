@@ -1,0 +1,16 @@
+{
+  "id": "m1",
+  "type": "message",
+  "role": "assistant",
+  "interrupted": true,
+  "content": [
+    {
+      "type": "output_text",
+      "text": "Partial response"
+    },
+    {
+      "type": "refusal",
+      "refusal": "I cannot provide that."
+    }
+  ]
+}

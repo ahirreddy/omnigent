@@ -1,0 +1,2 @@
+{"type":"session.input.consumed","data":{"item_id":"meta1","type":"message","data":{"role":"user","is_meta":true,"content":"Hidden context"}}}
+{"type":"response.output_item.done","item":{"id":"meta2","type":"message","role":"assistant","is_meta":true,"content":"Hidden context"}}

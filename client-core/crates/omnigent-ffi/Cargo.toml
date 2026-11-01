@@ -1,0 +1,24 @@
+[package]
+name = "omnigent-ffi"
+description = "UniFFI surface of the Omnigent client core (Swift, later Kotlin)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "omnigent_ffi"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[dependencies]
+omnigent-core.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+uniffi.workspace = true
+
+[dev-dependencies]
+futures.workspace = true
+
+[lints]
+workspace = true

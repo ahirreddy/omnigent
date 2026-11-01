@@ -1,0 +1,1 @@
+{"request": {"method": "POST", "path": "/v1/sessions/conv_a/events", "body": {"type": "message", "data": {"role": "user", "content": [{"type": "input_text", "text": " Exact draft\n"}]}}}, "status": 202, "response": {"queued": true, "item_id": "item1", "pending_id": "pending1"}}

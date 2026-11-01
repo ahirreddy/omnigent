@@ -1,0 +1,4 @@
+{"request": {"method": "POST", "path": "/v1/sessions/session_a/resources/files"}, "status": 403, "response": ""}
+{"request": {"method": "POST", "path": "/v1/sessions/session_a/resources/files"}, "status": 413, "response": ""}
+{"request": {"method": "POST", "path": "/v1/sessions/session_a/resources/files"}, "status": 415, "response": ""}
+{"request": {"method": "POST", "path": "/v1/sessions/session_a/resources/files"}, "status": 401, "response": ""}

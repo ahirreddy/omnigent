@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/sessions",
+    "query": {},
+    "body": {
+      "content_type": "multipart/form-data",
+      "parts": {
+        "metadata": {
+          "title": "fixture turn session"
+        },
+        "bundle": {
+          "filename": "agent.tar.gz",
+          "archive_members": {
+            "config.yaml": "spec_version: 1\nname: fixture_agent\nprompt: |\n  You are a deterministic fixture assistant. When the user asks you to run a\n  command, call sys_os_shell with the exact command requested, then reply briefly.\n\nexecutor:\n  model: gpt-4o-mini\n  config:\n    harness: openai-agents\n\nos_env:\n  type: caller_process\n  cwd: .\n  sandbox:\n    type: none\n"
+          }
+        }
+      }
+    }
+  },
+  "status": 201,
+  "response": {
+    "session_id": "facbcc05b00f4321b98b1929d217abc5",
+    "agent_id": "77662019565abb4927037682ae77d875",
+    "agent_name": "fixture_agent"
+  }
+}

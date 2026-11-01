@@ -1,0 +1,247 @@
+name: Client
+
+# Native Apple client: the Rust core (client-core/, built for Apple via UniFFI)
+# and the Tuist-generated macOS/iOS apps (apps/apple/). Runs on every non-draft
+# PR that touches either tree, and on push to main. Draft PRs are skipped;
+# `ready_for_review` refires when the draft is converted.
+#
+# The macOS desktop app is the primary target: `rust` and `apple-macos` must
+# pass. `apple-ios` (simulator build + test) is non-blocking for now.
+#
+# None of these jobs are in the generated merge-ready REQUIRED list
+# (.github/scripts/merge-ready/required.sh) yet.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "client-core/**"
+      - "apps/apple/**"
+      - ".github/workflows/client.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "client-core/**"
+      - "apps/apple/**"
+      - ".github/workflows/client.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  # PRs key by number (old runs cancel); push keys by SHA (each merge runs).
+  group: client-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # No web SPA build during `uv sync` (setup.py _build_web_ui); nothing here
+  # serves the bundle.
+  OMNIGENT_SKIP_WEB_UI: "true"
+
+jobs:
+  # Security precondition gate: these jobs build and run the PR's own code, so
+  # untrusted PRs are held until the scan passes (security-gate.yml). Trusted
+  # authors and non-PR events pass through.
+  gate:
+    uses: ./.github/workflows/security-gate.yml
+    permissions:
+      contents: read
+      pull-requests: read
+
+  rust:
+    name: Client core (Rust)
+    needs: gate
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: client-core
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # rustup (preinstalled on hosted runners) installs the channel, components
+      # and targets pinned in client-core/rust-toolchain.toml.
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+          cargo --version
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
+        with:
+          workspaces: client-core -> target
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --locked --workspace
+
+      # Type-check only: the platform-neutral crates must stay wasm32-clean for
+      # a future web/WASM build. There is no JS facade or wasm test yet.
+      - name: wasm32 check (core crates)
+        run: cargo check --locked -p omnigent-core -p omnigent-protocol --target wasm32-unknown-unknown
+
+  apple-macos:
+    name: Apple client (macOS)
+    needs: gate
+    if: ${{ !github.event.pull_request.draft }}
+    # Newest hosted macOS image.
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The project targets Xcode 27.2. If the runner image does not ship it
+      # yet, latest-stable selects the newest installed release; bump this to
+      # an explicit '27.2' once the image carries it.
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Install pinned Rust toolchain
+        working-directory: client-core
+        run: |
+          rustup toolchain install
+          rustc --version
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
+        with:
+          workspaces: client-core -> target
+
+      # Installs the tuist version pinned in apps/apple/.mise.toml.
+      - name: Set up mise
+        uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195  # v5.2.5
+        with:
+          working_directory: apps/apple
+
+      - name: Build Rust core xcframework and Swift bindings
+        run: bash apps/apple/scripts/build-core.sh debug
+
+      - name: Generate Xcode workspace
+        working-directory: apps/apple
+        run: |
+          mise exec -- tuist install
+          mise exec -- tuist generate --no-open
+
+      - name: Build macOS app
+        run: >-
+          xcodebuild build
+          -workspace apps/apple/Omnigent.xcworkspace
+          -scheme OmnigentMac
+          -destination 'platform=macOS'
+          -derivedDataPath apps/apple/build/DerivedData
+
+      - name: Test macOS app
+        run: >-
+          xcodebuild test
+          -workspace apps/apple/Omnigent.xcworkspace
+          -scheme OmnigentMac
+          -destination 'platform=macOS'
+          -derivedDataPath apps/apple/build/DerivedData
+
+      - name: Test Swift packages
+        run: |
+          shopt -s nullglob
+          for pkg in apps/apple/Packages/*/; do
+            if [ -d "$pkg/Tests" ]; then
+              echo "::group::swift test $pkg"
+              swift test --package-path "$pkg"
+              echo "::endgroup::"
+            fi
+          done
+
+      # apps/apple/Tools scripts run against this checkout's .venv (httpx etc.).
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version-file: ".python-version"
+
+      - name: Set up uv
+        uses: ./.github/actions/setup-uv
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync --locked --no-dev
+
+      - name: Test local-services and streaming tools
+        run: .venv/bin/python -m unittest discover -s apps/apple/Tools -p 'test_*.py'
+
+  apple-ios:
+    name: Apple client (iOS simulator)
+    needs: gate
+    if: ${{ !github.event.pull_request.draft }}
+    # Non-blocking while macOS is the primary target.
+    continue-on-error: true
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # See apple-macos: the project targets Xcode 27.2.
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90  # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Install pinned Rust toolchain
+        working-directory: client-core
+        run: |
+          rustup toolchain install
+          rustc --version
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
+        with:
+          workspaces: client-core -> target
+
+      - name: Set up mise
+        uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195  # v5.2.5
+        with:
+          working_directory: apps/apple
+
+      # The workspace also contains the macOS target, so build every slice.
+      - name: Build Rust core xcframework and Swift bindings
+        run: bash apps/apple/scripts/build-core.sh debug
+
+      - name: Generate Xcode workspace
+        working-directory: apps/apple
+        run: |
+          mise exec -- tuist install
+          mise exec -- tuist generate --no-open
+
+      - name: Build iOS app
+        run: >-
+          xcodebuild build
+          -workspace apps/apple/Omnigent.xcworkspace
+          -scheme Omnigent
+          -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+          -derivedDataPath apps/apple/build/DerivedData
+
+      - name: Test iOS app
+        run: >-
+          xcodebuild test
+          -workspace apps/apple/Omnigent.xcworkspace
+          -scheme Omnigent
+          -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+          -derivedDataPath apps/apple/build/DerivedData

@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/2.0/omnigent/v1/info"
+  },
+  "status": 200,
+  "response": {
+    "single_user": true,
+    "accounts_enabled": false
+  }
+}

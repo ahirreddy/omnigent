@@ -1,0 +1,5 @@
+{"type":"response.created","response":{"id":"response1"}}
+{"type":"response.output_text.delta","delta":"First"}
+{"type":"response.output_item.done","item":{"id":"item1","type":"message","role":"assistant","content":"First"}}
+{"type":"response.output_text.delta","delta":"Second"}
+{"type":"response.output_item.done","item":{"id":"item2","type":"message","role":"assistant","content":"Second"}}

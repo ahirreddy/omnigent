@@ -1,0 +1,24 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/conv_later"
+  },
+  "status": 200,
+  "response": {
+    "id": "conv_later",
+    "title": "Unloaded approval",
+    "status": "idle",
+    "created_at": 1,
+    "permission_level": 4,
+    "archived": true,
+    "pending_elicitations": [
+      {
+        "elicitation_id": "later_approval",
+        "params": {
+          "message": "Approve from the later page?",
+          "requestedSchema": {}
+        }
+      }
+    ]
+  }
+}

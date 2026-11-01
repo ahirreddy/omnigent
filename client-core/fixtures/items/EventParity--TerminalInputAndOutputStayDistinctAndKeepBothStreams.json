@@ -1,0 +1,19 @@
+[
+  {
+    "kind": "input",
+    "input": "echo fixture",
+    "id": "item-terminal_command",
+    "type": "terminal_command",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "kind": "output",
+    "stdout": "stdout fixture",
+    "stderr": "stderr fixture",
+    "id": "item-terminal_command",
+    "type": "terminal_command",
+    "response_id": "fixture-response",
+    "status": "completed"
+  }
+]

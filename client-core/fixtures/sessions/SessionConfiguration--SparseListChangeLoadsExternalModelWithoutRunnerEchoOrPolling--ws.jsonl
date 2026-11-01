@@ -1,0 +1,1 @@
+{"direction": "recv", "message": {"type": "changed", "items": [{"id": "conv_a", "agent_id": "clone", "status": "idle", "created_at": 1, "updated_at": 2, "permission_level": 4, "reasoning_effort": "high"}]}}

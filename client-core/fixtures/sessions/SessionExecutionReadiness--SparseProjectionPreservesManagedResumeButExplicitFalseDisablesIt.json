@@ -1,0 +1,23 @@
+{
+  "base_fields": {
+    "host_id": "managed",
+    "host_online": false,
+    "runner_online": false,
+    "host_resumable": true
+  },
+  "chain": true,
+  "cases": [
+    {
+      "label": "sparse runner update",
+      "fields": {
+        "runner_online": false
+      }
+    },
+    {
+      "label": "explicit host_resumable false",
+      "fields": {
+        "host_resumable": false
+      }
+    }
+  ]
+}

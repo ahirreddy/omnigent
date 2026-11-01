@@ -1,0 +1,6 @@
+{"request": {"method": "GET", "path": "/v1/sessions/fixture/resources/files/file/content"}, "status": 302, "response": "", "headers": {"Content-Type": "text/plain"}}
+{"request": {"method": "GET", "path": "/v1/sessions/fixture/resources/files/file/content"}, "status": 401, "response": "", "headers": {"Content-Type": "text/plain"}}
+{"request": {"method": "GET", "path": "/v1/sessions/fixture/resources/files/file/content"}, "status": 403, "response": "", "headers": {"Content-Type": "text/plain"}}
+{"request": {"method": "GET", "path": "/v1/sessions/fixture/resources/files/file/content"}, "status": 404, "response": "", "headers": {"Content-Type": "text/plain"}}
+{"request": {"method": "GET", "path": "/v1/sessions/fixture/resources/files/file/content"}, "status": 500, "response": "", "headers": {"Content-Type": "text/plain"}}
+{"request": {"method": "GET", "path": "/v1/sessions/fixture/resources/files/file/content"}, "status": 200, "response": "", "headers": {"Content-Type": "text/plain"}, "response_url": "https://example.invalid/file"}

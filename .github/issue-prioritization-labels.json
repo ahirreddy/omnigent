@@ -17,6 +17,7 @@
     {"name": "comp:db", "color": "0e8a16", "description": "Database, persistence, and migrations"},
     {"name": "comp:ios", "color": "1d76db", "description": "iOS app shell"},
     {"name": "comp:android", "color": "3ddc84", "description": "Android app shell"},
+    {"name": "comp:apple-native", "color": "a2a2a2", "description": "Native Apple client and Rust client core"},
     {"name": "comp:auth", "color": "0052cc", "description": "Authentication and credentials"}
   ]
 }

@@ -1,0 +1,12 @@
+{"type":"session.terminal_pending","conversation_id":"fixture-session","pending":true}
+{"type":"session.terminal_pending","conversation_id":"fixture-session","pending":false}
+{"type":"session.sandbox_status","conversation_id":"fixture-session","stage":"provisioning","error":null}
+{"type":"session.sandbox_status","conversation_id":"fixture-session","stage":"cloning","error":null}
+{"type":"session.sandbox_status","conversation_id":"fixture-session","stage":"starting","error":null}
+{"type":"session.sandbox_status","conversation_id":"fixture-session","stage":"connecting","error":null}
+{"type":"session.sandbox_status","conversation_id":"fixture-session","stage":"ready","error":null}
+{"type":"session.sandbox_status","conversation_id":"fixture-session","stage":"failed","error":"Fixture startup failed"}
+{"type":"session.mcp_startup","conversation_id":"fixture-session","servers":{"fixture":{"status":"starting"}}}
+{"type":"session.mcp_startup","conversation_id":"fixture-session","servers":{"fixture":{"status":"ready"}}}
+{"type":"session.mcp_startup","conversation_id":"fixture-session","servers":{"fixture":{"status":"failed"}}}
+{"type":"session.mcp_startup","conversation_id":"fixture-session","servers":{"fixture":{"status":"cancelled"}}}

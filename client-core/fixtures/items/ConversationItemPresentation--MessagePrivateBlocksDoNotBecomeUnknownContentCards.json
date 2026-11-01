@@ -1,0 +1,23 @@
+{
+  "id": "m1",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "PRIVATE"
+    },
+    {
+      "type": "redacted_thinking",
+      "data": "PRIVATE"
+    },
+    {
+      "type": "reasoning_text",
+      "text": "PRIVATE"
+    },
+    {
+      "type": "output_text",
+      "text": "Visible"
+    }
+  ]
+}

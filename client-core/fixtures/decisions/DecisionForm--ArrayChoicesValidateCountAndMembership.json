@@ -1,0 +1,26 @@
+{
+  "elicitation_id": "request",
+  "params": {
+    "requestedSchema": {
+      "type": "object",
+      "required": [
+        "tags"
+      ],
+      "properties": {
+        "tags": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "type": "string",
+            "enum": [
+              "One",
+              "Two",
+              "Three"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

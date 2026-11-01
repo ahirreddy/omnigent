@@ -1,0 +1,2 @@
+{"request": {"method": "GET", "path": "/v1/info"}, "status": 200, "response": {"single_user": false, "accounts_enabled": false}}
+{"request": {"method": "GET", "path": "/v1/info"}, "status": 200, "response": {"single_user": true, "accounts_enabled": true}}

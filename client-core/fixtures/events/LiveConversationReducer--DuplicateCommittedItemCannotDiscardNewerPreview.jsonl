@@ -1,0 +1,3 @@
+{"type":"response.output_text.delta","message_id":"new","index":0,"delta":"New streaming reply"}
+{"type":"response.output_item.done","item":{"id":"old","type":"message","role":"assistant","content":"Old reply"}}
+{"type":"response.output_text.delta","message_id":"new","index":1,"delta":" continues"}

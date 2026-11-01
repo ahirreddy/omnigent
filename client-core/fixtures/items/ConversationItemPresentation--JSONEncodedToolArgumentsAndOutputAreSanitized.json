@@ -1,0 +1,16 @@
+[
+  {
+    "id": "call1",
+    "type": "function_call",
+    "call_id": "c1",
+    "response_id": "r1",
+    "name": "request",
+    "arguments": "{\"query\":\"weather\",\"api_key\":\"PRIVATE_KEY\"}"
+  },
+  {
+    "id": "output1",
+    "type": "function_call_output",
+    "call_id": "c1",
+    "output": "{\"answer\":\"Clear skies\",\"refresh_token\":\"PRIVATE_TOKEN\"}"
+  }
+]

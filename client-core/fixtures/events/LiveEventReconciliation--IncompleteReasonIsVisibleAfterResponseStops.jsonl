@@ -1,0 +1,2 @@
+{"type":"response.created","response":{"id":"r1"}}
+{"type":"response.incomplete","response":{"id":"r1","incomplete_details":{"reason":"max_output_tokens"}}}

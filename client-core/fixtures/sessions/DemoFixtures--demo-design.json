@@ -1,0 +1,38 @@
+{
+  "revision": 1,
+  "session": {
+    "id": "demo-design",
+    "title": "Native mobile design",
+    "preview": "Review the proposed session screen.",
+    "status": "needsResponse",
+    "isReadOnly": false,
+    "updatedAt": 721692560.0,
+    "workspace": "Omni / iOS",
+    "agentName": "Omni",
+    "isPinned": true,
+    "isArchived": false
+  },
+  "messages": [
+    {
+      "id": "design-request",
+      "role": "user",
+      "text": "Help me make the mobile session screen easier to scan.",
+      "isStreaming": false
+    },
+    {
+      "id": "design-proposal",
+      "role": "assistant",
+      "text": "I suggest a short session list with the latest message and a clear status. Requests that need your response should also appear in Attention.\n\nThis sample is ready for your review. Approving it only changes this offline demo.",
+      "isStreaming": false
+    }
+  ],
+  "decisions": [
+    {
+      "id": "decision-design",
+      "targetSessionID": "demo-design",
+      "title": "Apply the sample design?",
+      "detail": "Use the simpler session list and keep pending requests easy to find.",
+      "options": []
+    }
+  ]
+}

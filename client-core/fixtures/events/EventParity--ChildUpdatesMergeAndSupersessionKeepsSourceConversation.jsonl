@@ -1,0 +1,4 @@
+{"type":"session.created","conversation_id":"fixture-session","child_session_id":"child-1","agent_id":"agent-1","parent_session_id":"fixture-session"}
+{"type":"session.child_session.updated","conversation_id":"fixture-session","child_session_id":"child-1","child":{"title":"Child task","status":"running"}}
+{"type":"session.child_session.updated","conversation_id":"fixture-session","child_session_id":"child-1","child":{"status":"idle","preview":"Child finished"}}
+{"type":"session.superseded","conversation_id":"fixture-session","target_conversation_id":"replacement-session"}

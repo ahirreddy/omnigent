@@ -1,0 +1,2 @@
+{"type":"response.output_item.done","item":{"id":"error_1","type":"error","data":{"source":"execution","code":"runner_failed_to_start","message":"Runner unavailable. See the host logs."}}}
+{"type":"response.output_item.done","item":{"id":"error_1","type":"error","data":{"source":"execution","code":"runner_failed_to_start","message":"Runner unavailable. See the host logs."}}}

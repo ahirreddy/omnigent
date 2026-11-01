@@ -1,0 +1,1 @@
+//! `omnigent://` deep link parsing.

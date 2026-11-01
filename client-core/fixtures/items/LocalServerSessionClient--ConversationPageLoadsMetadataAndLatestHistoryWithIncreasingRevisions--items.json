@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/conv_a/items"
+  },
+  "status": 200,
+  "response": {
+    "data": [
+      {
+        "id": "msg_1",
+        "type": "message",
+        "role": "assistant",
+        "content": "Ready"
+      }
+    ],
+    "last_id": "msg_1",
+    "has_more": true
+  }
+}

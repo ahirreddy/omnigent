@@ -1,0 +1,11 @@
+{"request": {"method": "POST", "path": "/v1/sessions"}, "error": "networkConnectionLost"}
+{"request": {"method": "POST", "path": "/v1/sessions"}, "error": "timedOut"}
+{"request": {"method": "POST", "path": "/v1/sessions"}, "error": "cancelled"}
+{"request": {"method": "POST", "path": "/v1/sessions"}, "status": 201, "response": {}}
+{"request": {"method": "POST", "path": "/v1/sessions"}, "status": 201, "response": "<html>proxy</html>"}
+{"request": {"method": "POST", "path": "/v1/sessions"}, "status": 500, "response": {}}
+{"request": {"method": "POST", "path": "/v1/sessions"}, "status": 409, "response": {}}
+{"request": {"method": "POST", "path": "/v1/sessions"}, "status": 404, "response": {}}
+{"request": {"method": "POST", "path": "/v1/sessions"}, "status": 403, "response": {}}
+{"request": {"method": "POST", "path": "/v1/sessions"}, "status": 302, "response": {}}
+{"request": {"method": "POST", "path": "/v1/sessions"}, "status": 201, "response": {"id": "../other"}}

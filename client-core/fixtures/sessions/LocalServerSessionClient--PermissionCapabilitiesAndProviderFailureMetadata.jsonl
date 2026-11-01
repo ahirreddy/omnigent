@@ -1,0 +1,2 @@
+{"request": {"method": "GET", "path": "/v1/sessions/conv_a"}, "status": 200, "response": {"id": "conv_a", "status": "failed", "created_at": 1, "permission_level": 2, "last_task_error": {"code": "codex_reauth_required", "message": "Sign in again"}}}
+{"request": {"method": "GET", "path": "/v1/sessions/conv_a/items"}, "status": 200, "response": {"data": [], "has_more": false}}

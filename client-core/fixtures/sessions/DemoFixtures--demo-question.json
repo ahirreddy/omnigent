@@ -1,0 +1,41 @@
+{
+  "revision": 1,
+  "session": {
+    "id": "demo-question",
+    "title": "Choose the first release",
+    "preview": "Which mobile workflow should come first?",
+    "status": "needsResponse",
+    "isReadOnly": false,
+    "updatedAt": 721689200.0,
+    "workspace": "Omni / Planning",
+    "agentName": "Omni",
+    "isPinned": false,
+    "isArchived": false
+  },
+  "messages": [
+    {
+      "id": "question-request",
+      "role": "user",
+      "text": "Let's keep the first mobile release focused.",
+      "isStreaming": false
+    },
+    {
+      "id": "question-context",
+      "role": "assistant",
+      "text": "Both options use native screens. Sessions and chat would emphasize reading and continuing work; approvals would emphasize quick decisions while away from your computer.",
+      "isStreaming": false
+    }
+  ],
+  "decisions": [
+    {
+      "id": "decision-question",
+      "targetSessionID": "demo-question",
+      "title": "What should we build first?",
+      "detail": "Choose one focus for this sample plan.",
+      "options": [
+        "Sessions and chat",
+        "Approvals first"
+      ]
+    }
+  ]
+}

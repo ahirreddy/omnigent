@@ -1,0 +1,6 @@
+{"type":"session.todos","conversation_id":"fixture-session","todos":[{"content":"Task","status":"in_progress","activeForm":"Working"}]}
+{"type":"session.todos","conversation_id":"fixture-session","todos":[]}
+{"type":"session.presence","conversation_id":"fixture-session","viewers":[{"user_id":"fixture-viewer","joined_at":"2026-10-19T00:00:00Z","idle":true}]}
+{"type":"session.presence","conversation_id":"fixture-session","viewers":[]}
+{"type":"session.mcp_startup","conversation_id":"fixture-session","servers":{"fixture":{"status":"starting"}}}
+{"type":"session.mcp_startup","conversation_id":"fixture-session","servers":{}}

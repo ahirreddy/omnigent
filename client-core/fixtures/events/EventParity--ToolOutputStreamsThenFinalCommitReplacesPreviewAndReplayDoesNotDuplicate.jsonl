@@ -1,0 +1,6 @@
+{"type":"response.created","response":{"id":"turn-1"}}
+{"type":"response.output_item.done","item":{"id":"call-1","type":"function_call","call_id":"tool-1","response_id":"turn-1","name":"fixture-tool","arguments":"{}"}}
+{"type":"response.function_call_output.delta","call_id":"tool-1","delta":"Partial "}
+{"type":"response.function_call_output.delta","call_id":"tool-1","delta":"output"}
+{"type":"response.output_item.done","item":{"id":"result-1","type":"function_call_output","call_id":"tool-1","response_id":"turn-1","output":"Partial output completed"}}
+{"type":"response.output_item.done","item":{"id":"result-1","type":"function_call_output","call_id":"tool-1","response_id":"turn-1","output":"Partial output completed"}}

@@ -1,0 +1,77 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/fixture/resources/files/file/content"
+  },
+  "response_text": "fixture",
+  "cases": [
+    {
+      "content_type": "application/pdf",
+      "expected_extension": "pdf"
+    },
+    {
+      "content_type": "text/plain; charset=utf-8",
+      "expected_extension": "txt"
+    },
+    {
+      "content_type": "application/json",
+      "expected_extension": "json"
+    },
+    {
+      "content_type": "text/markdown",
+      "expected_extension": "txt"
+    },
+    {
+      "content_type": "text/csv",
+      "expected_extension": "csv"
+    },
+    {
+      "content_type": "image/png",
+      "expected_extension": "png"
+    },
+    {
+      "content_type": "image/jpeg",
+      "expected_extension": "jpg"
+    },
+    {
+      "content_type": "image/gif",
+      "expected_extension": "gif"
+    },
+    {
+      "content_type": "image/webp",
+      "expected_extension": "webp"
+    },
+    {
+      "content_type": "image/heic",
+      "expected_extension": "heic"
+    },
+    {
+      "content_type": "image/tiff",
+      "expected_extension": "tiff"
+    },
+    {
+      "content_type": "audio/mpeg",
+      "expected_extension": "mp3"
+    },
+    {
+      "content_type": "audio/wav",
+      "expected_extension": "wav"
+    },
+    {
+      "content_type": "audio/x-wav",
+      "expected_extension": "wav"
+    },
+    {
+      "content_type": "audio/mp4",
+      "expected_extension": "m4a"
+    },
+    {
+      "content_type": "video/mp4",
+      "expected_extension": "mp4"
+    },
+    {
+      "content_type": "video/quicktime",
+      "expected_extension": "mov"
+    }
+  ]
+}

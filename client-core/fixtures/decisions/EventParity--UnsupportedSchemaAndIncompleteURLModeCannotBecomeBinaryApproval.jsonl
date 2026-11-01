@@ -1,0 +1,3 @@
+{"elicitation_id":"unsupported","params":{"message":"Array form","requestedSchema":{"type":"array","items":{"type":"string"}}}}
+{"elicitation_id":"unsupported","params":{"message":"Union form","requestedSchema":{"oneOf":[{"type":"string"},{"type":"number"}]}}}
+{"elicitation_id":"unsupported","params":{"message":"URL confirmation","mode":"url"}}

@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/sessions"
+  },
+  "status": 201,
+  "response": {
+    "id": "conv_created",
+    "status": "future-status"
+  }
+}

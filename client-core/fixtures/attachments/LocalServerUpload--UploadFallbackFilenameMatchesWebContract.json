@@ -1,0 +1,20 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/sessions/session_a/resources/files",
+    "body": {
+      "multipart": {
+        "part": {
+          "name": "file",
+          "filename": "actual.swift",
+          "content_type": "application/octet-stream",
+          "bytes_base64": ""
+        }
+      }
+    }
+  },
+  "status": 201,
+  "response": {
+    "id": "file_fallback"
+  }
+}

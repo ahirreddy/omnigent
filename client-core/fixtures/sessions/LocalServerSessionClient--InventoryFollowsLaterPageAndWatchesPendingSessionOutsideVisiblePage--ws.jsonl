@@ -1,0 +1,1 @@
+{"direction": "recv", "message": {"type": "changed", "items": [{"id": "conv_later", "status": "idle", "created_at": 1, "permission_level": 4, "archived": true, "pending_elicitations_count": 0}]}}

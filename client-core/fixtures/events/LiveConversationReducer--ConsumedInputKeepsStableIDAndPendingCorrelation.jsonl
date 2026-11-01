@@ -1,0 +1,2 @@
+{"type":"session.input.consumed","data":{"item_id":"user1","type":"message","data":{"role":"user","content":[{"type":"input_text","text":"Question"}]},"cleared_pending_id":"pending1"}}
+{"type":"session.input.consumed","data":{"item_id":"user1","type":"message","data":{"role":"user","content":[{"type":"input_text","text":"Question"}]},"cleared_pending_id":"pending1"}}

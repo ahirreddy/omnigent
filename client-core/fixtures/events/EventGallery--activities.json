@@ -1,0 +1,338 @@
+{
+  "revision": 1,
+  "session": {
+    "id": "gallery-activities",
+    "title": "Event gallery",
+    "preview": "Isolated native event test fixture",
+    "status": "idle",
+    "isReadOnly": false,
+    "updatedAt": 721692800.0,
+    "workspace": "Offline event gallery",
+    "agentName": "Omni",
+    "isPinned": false,
+    "isArchived": false
+  },
+  "messages": [
+    {
+      "id": "gallery-toolCall",
+      "role": "tool",
+      "text": "Search the local project for native views.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "toolCall",
+        "title": "Tool · search_project",
+        "summary": "Search the local project for native views.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "{\"query\":\"ConversationView\"}",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-toolResult",
+      "role": "tool",
+      "text": "Found 3 matching files.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "toolResult",
+        "title": "Tool result · search_project",
+        "summary": "Found 3 matching files.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "App/ConversationView.swift\nApp/NativeActivityViews.swift\nApp/RequestFormView.swift",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-nativeTool",
+      "role": "tool",
+      "text": "Read the event contract.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "nativeTool",
+        "title": "Native tool · Read",
+        "summary": "Read the event contract.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "Path: docs/event-contract.md\nStatus: completed",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-reasoning",
+      "role": "tool",
+      "text": "Provider-exposed summary: compare native event groups.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "reasoning",
+        "title": "Reasoning summary",
+        "summary": "Provider-exposed summary: compare native event groups.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "Only the summary supplied for display is shown. No hidden reasoning is requested.",
+            "isCode": false
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-compaction",
+      "role": "tool",
+      "text": "Earlier context was summarized.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "compaction",
+        "title": "Conversation compacted",
+        "summary": "Earlier context was summarized.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "Summary: the user requested a readable native event timeline.",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-command",
+      "role": "tool",
+      "text": "Review command received.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "command",
+        "title": "Command · /review",
+        "summary": "Review command received.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "Command: /review\nSkill: mobile-accessibility",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-routing",
+      "role": "tool",
+      "text": "Would have picked Sample Fast; no route was applied.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "routing",
+        "title": "Router recommendation",
+        "summary": "Would have picked Sample Fast; no route was applied.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "Mode: shadow\nRecommended: Sample Fast\nApplied: false",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-resource",
+      "role": "tool",
+      "text": "Resource released after validation.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "resource",
+        "title": "Resource · simulator",
+        "summary": "Resource released after validation.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "Resource ID: fixture-simulator\nState: released",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-file",
+      "role": "tool",
+      "text": "Created mobile-event-audit.md.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "file",
+        "title": "File saved",
+        "summary": "Created mobile-event-audit.md.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "Path: docs/mobile-event-audit.md",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-policy",
+      "role": "tool",
+      "text": "The server requested user confirmation.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "policy",
+        "title": "Policy decision",
+        "summary": "The server requested user confirmation.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "Decision: ask\nThis activity does not grant approval.",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-clientTask",
+      "role": "tool",
+      "text": "This task requires a capable web client.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "clientTask",
+        "title": "Client task requested",
+        "summary": "This task requires a capable web client.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "Task: browser interaction\nNative execution: unavailable",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-browser",
+      "role": "tool",
+      "text": "Recorded page navigation.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "browser",
+        "title": "Browser action",
+        "summary": "Recorded page navigation.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "URL: https://example.invalid\nNative execution: unavailable",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-retry",
+      "role": "tool",
+      "text": "The provider will retry after a transient error.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "retry",
+        "title": "Retry scheduled",
+        "summary": "The provider will retry after a transient error.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "Attempt: 2\nDelay: 3 seconds",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-error",
+      "role": "tool",
+      "text": "The previous attempt did not complete.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "error",
+        "title": "Provider error",
+        "summary": "The previous attempt did not complete.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "Code: fixture_transient_failure\nNo real provider was contacted.",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-terminal",
+      "role": "tool",
+      "text": "Build completed with one warning.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "terminal",
+        "title": "Terminal output",
+        "summary": "Build completed with one warning.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "stdout: BUILD SUCCEEDED\nstderr: fixture warning only\nExit code: 0",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    },
+    {
+      "id": "gallery-unknown",
+      "role": "tool",
+      "text": "New event details remain available for inspection.",
+      "isStreaming": false,
+      "activity": {
+        "kind": "unknown",
+        "title": "Unrecognized event · future.progress",
+        "summary": "New event details remain available for inspection.",
+        "details": [
+          {
+            "id": "details",
+            "title": "Details",
+            "text": "{\"type\":\"future.progress\",\"state\":\"recorded\",\"message\":\"Useful future event detail\"}",
+            "isCode": true
+          }
+        ],
+        "status": "Recorded"
+      }
+    }
+  ],
+  "decisions": []
+}

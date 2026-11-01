@@ -1,0 +1,32 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/conv_a/items"
+  },
+  "status": 200,
+  "response": {
+    "data": [
+      {
+        "id": "error_1",
+        "type": "error",
+        "response_id": "turn_1",
+        "source": "execution",
+        "code": "runner_failed_to_start",
+        "message": "The runner for this session is not available — it may have failed to start. See the host logs."
+      },
+      {
+        "id": "user_1",
+        "type": "message",
+        "response_id": "turn_1",
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "Hello"
+          }
+        ]
+      }
+    ],
+    "has_more": false
+  }
+}

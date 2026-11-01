@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/conv_a/items"
+  },
+  "status": 200,
+  "response": {
+    "data": [],
+    "has_more": false
+  },
+  "delay_ms": 200
+}

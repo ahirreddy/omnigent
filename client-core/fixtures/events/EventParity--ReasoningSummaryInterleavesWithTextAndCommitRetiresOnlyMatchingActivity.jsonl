@@ -1,0 +1,7 @@
+{"type":"response.created","response":{"id":"turn-1"}}
+{"type":"response.output_text.delta","delta":"Before reasoning"}
+{"type":"response.reasoning.started"}
+{"type":"response.reasoning_text.delta","delta":"PRIVATE_RAW_REASONING"}
+{"type":"response.reasoning_summary_text.delta","delta":"Visible summary"}
+{"type":"response.output_item.done","item":{"id":"reasoning-1","type":"reasoning","response_id":"turn-1","summary":[{"type":"summary_text","text":"Visible summary"}]}}
+{"type":"response.output_text.delta","delta":"After reasoning"}

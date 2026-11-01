@@ -1,0 +1,5 @@
+{"type":"response.created","response":{"id":"r1"}}
+{"type":"response.error","error":{"code":"failed","message":"Visible failure"}}
+{"type":"session.status","status":"failed","response_id":"r1","error":{"code":"failed","message":"Visible failure"}}
+{"type":"response.output_item.done","item":{"id":"error1","type":"error","response_id":"r1","code":"failed","message":"Visible failure"}}
+{"type":"response.error","error":{"code":"failed","message":"Visible failure"}}

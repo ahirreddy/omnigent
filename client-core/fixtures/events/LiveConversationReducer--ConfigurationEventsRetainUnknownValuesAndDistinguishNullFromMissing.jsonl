@@ -1,0 +1,7 @@
+{"type":"session.model"}
+{"type":"session.reasoning_effort","reasoning_effort":42}
+{"type":"session.model","conversation_id":"other","model":"wrong"}
+{"type":"session.model","model":"unknown-raw-model"}
+{"type":"session.reasoning_effort","reasoning_effort":"high"}
+{"type":"session.reasoning_effort","reasoning_effort":null}
+{"type":"session.model","model":null}

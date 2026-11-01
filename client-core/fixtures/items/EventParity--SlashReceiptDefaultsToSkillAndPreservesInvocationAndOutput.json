@@ -1,0 +1,25 @@
+[
+  {
+    "name": "/fixture:review",
+    "arguments": "two files",
+    "output": "Receipt output",
+    "id": "receipt",
+    "type": "slash_command"
+  },
+  {
+    "name": "/fixture:review",
+    "arguments": "two files",
+    "output": "Receipt output",
+    "id": "receipt",
+    "type": "slash_command",
+    "kind": "skill"
+  },
+  {
+    "name": "/fixture:review",
+    "arguments": "two files",
+    "output": "Receipt output",
+    "id": "receipt",
+    "type": "slash_command",
+    "kind": "command"
+  }
+]

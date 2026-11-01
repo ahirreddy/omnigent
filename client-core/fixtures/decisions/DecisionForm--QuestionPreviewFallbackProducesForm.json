@@ -1,0 +1,6 @@
+{
+  "elicitation_id": "request",
+  "params": {
+    "content_preview": "AskUserQuestion({\"questions\":[{\"question\":\"Continue?\",\"options\":[{\"label\":\"Yes\"}],\"multiSelect\":false}]})"
+  }
+}

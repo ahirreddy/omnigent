@@ -1,0 +1,3 @@
+[tools]
+tuist = "4.214.1"
+swiftlint = "0.65.1"

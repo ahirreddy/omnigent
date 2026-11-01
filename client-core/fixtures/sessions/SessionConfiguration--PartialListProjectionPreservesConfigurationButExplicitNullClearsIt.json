@@ -1,0 +1,57 @@
+{
+  "base_wire": {
+    "id": "conv_a",
+    "status": "idle",
+    "created_at": 1,
+    "permission_level": 4,
+    "harness": "codex-native",
+    "agent_id": "clone",
+    "labels": {
+      "omnigent.wrapper": "codex-native-ui"
+    },
+    "model_override": "sample-balanced",
+    "reasoning_effort": "high",
+    "host_id": "demo-host",
+    "host_online": true,
+    "runner_online": true,
+    "model_options": [
+      {
+        "id": "sample-balanced",
+        "isDefault": true,
+        "supportedReasoningEfforts": [
+          {
+            "reasoningEffort": "high"
+          },
+          {
+            "reasoningEffort": "low"
+          }
+        ]
+      },
+      {
+        "id": "sample-fast",
+        "supportedReasoningEfforts": [
+          {
+            "reasoningEffort": "low"
+          }
+        ]
+      }
+    ]
+  },
+  "chain": false,
+  "cases": [
+    {
+      "label": "partial list projection",
+      "fields": {}
+    },
+    {
+      "label": "explicit null reset",
+      "fields": {
+        "model_override": null,
+        "reasoning_effort": null,
+        "model_options": [],
+        "host_online": false,
+        "runner_online": null
+      }
+    }
+  ]
+}

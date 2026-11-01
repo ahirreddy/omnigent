@@ -1,0 +1,64 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/conv_a/items",
+    "query": {
+      "after": "cursor +&?",
+      "order": "desc",
+      "limit": "4"
+    }
+  },
+  "status": 200,
+  "response": {
+    "data": [
+      {
+        "id": "msg_z",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "Hello"
+          },
+          {
+            "type": "output_text",
+            "text": "World"
+          }
+        ]
+      },
+      {
+        "id": "msg_a",
+        "type": "message",
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "See picture"
+          },
+          {
+            "type": "input_image",
+            "image_url": "ignored"
+          }
+        ]
+      },
+      {
+        "id": "msg_a",
+        "type": "message",
+        "role": "user",
+        "content": "duplicate"
+      },
+      {
+        "id": "tool_1",
+        "type": "function_call",
+        "name": "read_file",
+        "arguments": "file.txt"
+      },
+      {
+        "id": "reason_1",
+        "type": "reasoning"
+      }
+    ],
+    "has_more": true,
+    "last_id": "reason_1"
+  }
+}

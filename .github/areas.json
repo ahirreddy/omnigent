@@ -137,6 +137,23 @@
       ]
     },
     {
+      "key": "apple-native",
+      "label": "comp:web-ui",
+      "priority_label": "comp:apple-native",
+      "weight": 1.0,
+      "weight_source": "editorial",
+      "definition": "The native Apple client (SwiftUI macOS/iOS/iPad apps in apps/apple) and its shared Rust client core (client-core) exposed to Swift via UniFFI: protocol models, streaming/reconciliation logic, transports and native UI.",
+      "paths": [
+        "apps/apple/",
+        "client-core/"
+      ],
+      "owners": [
+        "serena-ruan",
+        "fanzeyi",
+        "daniellok-db"
+      ]
+    },
+    {
       "key": "inner",
       "label": "comp:harnesses",
       "priority_label": "comp:harness-t2",

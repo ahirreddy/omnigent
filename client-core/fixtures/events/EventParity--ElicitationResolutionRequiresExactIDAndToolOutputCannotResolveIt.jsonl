@@ -1,0 +1,4 @@
+{"type":"response.elicitation_request","elicitation_id":"approval-1","params":{"target_session_id":"child-1","message":"Approve fixture?"}}
+{"type":"response.output_item.done","item":{"id":"tool-result","type":"function_call_output","call_id":"approval-1","output":"Completed"}}
+{"type":"response.elicitation_resolved","elicitation_id":"unrelated"}
+{"type":"response.elicitation_resolved","elicitation_id":"approval-1"}

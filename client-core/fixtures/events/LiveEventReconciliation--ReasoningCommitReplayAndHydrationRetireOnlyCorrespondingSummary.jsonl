@@ -1,0 +1,7 @@
+{"type":"response.created","response":{"id":"r1"}}
+{"type":"response.reasoning_summary_text.delta","item_id":"summary1","index":0,"delta":"First summary"}
+{"type":"response.output_item.done","item":{"id":"summary1","type":"reasoning","response_id":"r1","summary":[{"type":"summary_text","text":"First summary"}]}}
+{"type":"response.reasoning_summary_text.delta","item_id":"summary2","index":0,"delta":"Second summary"}
+{"type":"response.output_item.done","item":{"id":"summary1","type":"reasoning","response_id":"r1","summary":[{"type":"summary_text","text":"First summary"}]}}
+{"type":"response.reasoning_summary_text.delta","item_id":"summary1","index":1,"delta":"Late first summary"}
+{"type":"response.reasoning_summary_text.delta","item_id":"summary2","index":1,"delta":"Late second summary"}

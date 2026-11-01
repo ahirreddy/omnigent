@@ -1,0 +1,3 @@
+{"type":"session.usage","conversation_id":"fixture-session","context_tokens":100,"context_window":1000,"total_cost_usd":0.5,"usage_by_model":{"model-a":{"input_tokens":10,"output_tokens":20}}}
+{"type":"session.usage","conversation_id":"fixture-session","total_cost_usd":0,"usage_by_model":{}}
+{"type":"response.completed","response":{"id":"response","usage":{"input_tokens":400,"output_tokens":100,"total_tokens":500,"context_tokens":120}}}

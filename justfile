@@ -252,6 +252,137 @@ electron-mdm cmd="show" *args:
         defaults read "$domain" "$key" 2>/dev/null || echo "(unset)"
     done
 
+# --- Native Apple client (client-core Rust + apps/apple) ---
+# macOS (OmnigentMac) is the primary target; iOS/iPad recipes carry an -ios
+# suffix. See apps/apple/README.md.
+
+# iOS simulator for the apple-*-ios recipes (override per call or via env).
+APPLE_SIMULATOR := env("OMNIGENT_APPLE_SIMULATOR", "iPhone 17 Pro")
+APPLE_WORKSPACE := "apps/apple/Omnigent.xcworkspace"
+# Under the root .gitignore's `build/` rule.
+APPLE_DERIVED_DATA := "apps/apple/build/DerivedData"
+
+# Rust core: format check, clippy (warnings are errors), and the full test suite.
+[group('client')]
+core-test:
+    cd client-core && cargo fmt --all --check
+    cd client-core && cargo clippy --workspace --all-targets -- -D warnings
+    cd client-core && cargo test --workspace
+
+# Type-check the platform-neutral core crates for wasm32 (no JS facade yet).
+[group('client')]
+core-wasm-check:
+    cd client-core && cargo check -p omnigent-core -p omnigent-protocol --target wasm32-unknown-unknown
+
+# config: debug | release; flags: e.g. --sim-only.
+# Build the Rust xcframework and regenerate the Swift UniFFI bindings.
+[group('client')]
+apple-core config="debug" *flags:
+    bash apps/apple/scripts/build-core.sh {{ config }} {{ flags }}
+
+# Build the debug core, resolve Tuist dependencies, and generate the workspace.
+[group('client')]
+apple-generate:
+    bash apps/apple/scripts/build-core.sh debug
+    cd apps/apple && mise exec -- tuist install
+    cd apps/apple && mise exec -- tuist generate --no-open
+
+_ensure-apple:
+    test -d {{ APPLE_WORKSPACE }} || just apple-generate
+
+# Build the macOS desktop app (OmnigentMac).
+[group('client')]
+apple-build: _ensure-apple
+    xcodebuild build -workspace {{ APPLE_WORKSPACE }} -scheme OmnigentMac \
+        -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }}
+
+# Build the iOS/iPad app (Omnigent) for a simulator.
+[group('client')]
+apple-build-ios device=APPLE_SIMULATOR: _ensure-apple
+    xcodebuild build -workspace {{ APPLE_WORKSPACE }} -scheme Omnigent \
+        -destination 'platform=iOS Simulator,name={{ device }}' -derivedDataPath {{ APPLE_DERIVED_DATA }}
+
+# Runs `swift test` for every apps/apple/Packages/* that has a Tests dir.
+# Swift package tests, then the macOS app's tests.
+[group('client')]
+apple-test: _ensure-apple
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    for pkg in apps/apple/Packages/*/; do
+        if [ -d "$pkg/Tests" ]; then
+            echo "==> swift test --package-path $pkg"
+            swift test --package-path "$pkg"
+        fi
+    done
+    xcodebuild test -workspace {{ APPLE_WORKSPACE }} -scheme OmnigentMac \
+        -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }}
+
+# Test the iOS/iPad app (Omnigent) on a simulator.
+[group('client')]
+apple-test-ios device=APPLE_SIMULATOR: _ensure-apple
+    xcodebuild test -workspace {{ APPLE_WORKSPACE }} -scheme Omnigent \
+        -destination 'platform=iOS Simulator,name={{ device }}' -derivedDataPath {{ APPLE_DERIVED_DATA }}
+
+# Prints the built .app path for a scheme/destination (read from xcodebuild).
+_apple-app-path scheme destination:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    xcodebuild -showBuildSettings -json -workspace {{ APPLE_WORKSPACE }} -scheme {{ scheme }} \
+        -destination '{{ destination }}' -derivedDataPath {{ APPLE_DERIVED_DATA }} \
+        | python3 -c '
+    import json, sys
+    apps = [t["buildSettings"] for t in json.load(sys.stdin) if t["buildSettings"].get("WRAPPER_EXTENSION") == "app"]
+    if len(apps) != 1:
+        sys.exit(f"expected exactly one app target, found {len(apps)}")
+    s = apps[0]
+    print(s["TARGET_BUILD_DIR"] + "/" + s["WRAPPER_NAME"])
+    '
+
+# Build and launch the macOS desktop app.
+[group('client')]
+apple-run: apple-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    app="$(just _apple-app-path OmnigentMac 'platform=macOS')"
+    echo "Launching $app"
+    open -n "$app"
+
+alias apple-run-mac := apple-run
+
+# Build, install, and launch the iOS app on a simulator (booting it if needed).
+[group('client')]
+apple-run-ios device=APPLE_SIMULATOR: (apple-build-ios device)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    destination='platform=iOS Simulator,name={{ device }}'
+    app="$(just _apple-app-path Omnigent "$destination")"
+    bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")"
+    # bootstatus -b boots the device if needed and waits until it is usable.
+    xcrun simctl bootstatus "{{ device }}" -b
+    open -a Simulator
+    xcrun simctl install "{{ device }}" "$app"
+    xcrun simctl launch "{{ device }}" "$bundle_id"
+
+# Isolated local API + host LaunchAgents (install|start|status|stop|uninstall).
+[group('client')]
+[positional-arguments]
+apple-services *args:
+    bash apps/apple/Tools/local-services.sh "$@"
+
+# Seed the local API with stored test conversations (no model calls).
+[group('client')]
+apple-seed:
+    .venv/bin/python apps/apple/Tools/seed-local-fixtures.py
+
+# Fails unless SSE text arrives in several temporally separated chunks. Known
+# to fail today (single-chunk delivery); never weaken or fake it.
+# Strict real-model streaming gate (needs apple-services and a signed-in harness).
+[group('client')]
+apple-smoke-stream:
+    .venv/bin/python apps/apple/Tools/smoke-live-chat.py --create-session --send-test-prompt \
+        --require-incremental --evidence-dir "${TMPDIR:?TMPDIR is not set}/omni-streaming"
+
 # --- Lint ---
 
 [group('lint')]

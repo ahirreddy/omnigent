@@ -1,0 +1,2 @@
+{"request": {"method": "GET", "path": "/api/2.0/omnigent/v1/sessions/a"}, "status": 200, "response": {"id": "a", "status": "idle", "created_at": 1, "permission_level": 4}}
+{"request": {"method": "POST", "path": "/api/2.0/omnigent/v1/sessions/a/resources/files"}, "status": 201, "response": {"id": "file_a", "session_id": "a", "name": "example.txt"}}

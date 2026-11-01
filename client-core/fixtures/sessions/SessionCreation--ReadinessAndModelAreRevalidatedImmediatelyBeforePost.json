@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/hosts"
+  },
+  "status": 200,
+  "response": {
+    "hosts": [
+      {
+        "host_id": "host_a",
+        "name": "Mac",
+        "status": "offline",
+        "configured_harnesses": {
+          "codex-native": true
+        }
+      }
+    ]
+  }
+}

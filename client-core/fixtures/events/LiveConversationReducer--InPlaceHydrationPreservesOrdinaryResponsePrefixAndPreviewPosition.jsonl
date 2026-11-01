@@ -1,0 +1,4 @@
+{"type":"response.created","response":{"id":"response1"}}
+{"type":"response.output_text.delta","delta":"Hello"}
+{"type":"response.output_item.done","item":{"id":"tool","type":"function_call","name":"example","arguments":"{}"}}
+{"type":"response.output_text.delta","delta":" world"}

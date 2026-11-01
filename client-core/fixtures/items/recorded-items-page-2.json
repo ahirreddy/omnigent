@@ -1,0 +1,44 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/facbcc05b00f4321b98b1929d217abc5/items",
+    "query": {
+      "limit": 2,
+      "order": "asc",
+      "after": "1925c34ba9774eccacfc49669d9e8ccb"
+    }
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "data": [
+      {
+        "id": "be9a01ee49794c88b4d47ca91fab7ab3",
+        "response_id": "resp_e8fb358f78a34e1e962751e7",
+        "type": "function_call_output",
+        "status": "completed",
+        "created_at": 1793492390,
+        "call_id": "call_fixture_shell_1",
+        "output": "{\"stdout\": \"fixture-hello\\n\", \"stderr\": \"\", \"exit_code\": 0, \"timed_out\": false, \"shell\": \"/bin/bash\", \"cwd\": \"/workspace/tmp/omnigent-runner-os-envs/facbcc05b00f4321b98b1929d217abc5/workspace\"}"
+      },
+      {
+        "id": "fc970dc6e5674629bc7cf78f82f80cac",
+        "response_id": "resp_e8fb358f78a34e1e962751e7",
+        "type": "message",
+        "status": "completed",
+        "created_at": 1793492390,
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "The command printed fixture-hello."
+          }
+        ],
+        "model": "fixture_agent"
+      }
+    ],
+    "first_id": "be9a01ee49794c88b4d47ca91fab7ab3",
+    "last_id": "fc970dc6e5674629bc7cf78f82f80cac",
+    "has_more": true
+  }
+}

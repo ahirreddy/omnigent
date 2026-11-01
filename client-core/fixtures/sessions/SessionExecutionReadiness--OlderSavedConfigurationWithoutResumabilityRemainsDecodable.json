@@ -1,0 +1,12 @@
+{
+  "saved_configuration": {
+    "hostID": "mac",
+    "hostOnline": true,
+    "runnerOnline": false,
+    "models": []
+  },
+  "expect": {
+    "hostResumable": null,
+    "executionUnavailableReason": null
+  }
+}

@@ -1,0 +1,8 @@
+{"type":"session.status","status":"running","response_id":"native-turn"}
+{"type":"response.output_text.delta","message_id":"native","index":0,"delta":"Partial"}
+{"type":"session.interrupted","data":{"response_id":"native-turn"}}
+{"type":"response.output_text.delta","message_id":"native","index":1,"delta":" late"}
+{"type":"response.in_progress","response":{"id":"wrapper2"}}
+{"type":"response.completed","response":{"id":"wrapper2"}}
+{"type":"response.output_text.delta","message_id":"native","index":2,"delta":" still late"}
+{"type":"response.output_text.delta","message_id":"native2","index":0,"delta":"Next reply"}

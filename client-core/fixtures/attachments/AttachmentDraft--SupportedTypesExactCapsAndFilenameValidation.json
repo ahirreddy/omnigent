@@ -1,0 +1,58 @@
+{
+  "supportedTypes": [
+    {
+      "filename": "a.png",
+      "mediaType": "image/png",
+      "limitMiB": 5
+    },
+    {
+      "filename": "a.pdf",
+      "mediaType": "application/pdf",
+      "limitMiB": 20
+    },
+    {
+      "filename": "a.txt",
+      "mediaType": "text/plain",
+      "limitMiB": 10
+    },
+    {
+      "filename": "a.ts",
+      "mediaType": "video/mp2t",
+      "limitMiB": 10
+    },
+    {
+      "filename": "a.csv",
+      "mediaType": "application/vnd.ms-excel",
+      "limitMiB": 10
+    },
+    {
+      "filename": ".env",
+      "mediaType": "",
+      "limitMiB": 10
+    },
+    {
+      "filename": "a.ipynb",
+      "mediaType": "application/x-ipynb+json",
+      "limitMiB": 10
+    }
+  ],
+  "unsupportedNames": [
+    "a.zip",
+    "a.docx",
+    "a.xlsx",
+    "a.pptx",
+    "a.mp4",
+    "a.mp3",
+    "unknown"
+  ],
+  "invalidNames": [
+    "",
+    "../a.txt",
+    "a\r\n.txt",
+    "a\\b.txt"
+  ],
+  "invalidMediaType": {
+    "filename": "a.png",
+    "mediaType": "image/png\r\nBad: value"
+  }
+}

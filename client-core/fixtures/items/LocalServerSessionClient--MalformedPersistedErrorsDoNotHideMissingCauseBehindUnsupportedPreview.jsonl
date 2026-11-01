@@ -1,0 +1,4 @@
+{"request": {"method": "GET", "path": "/v1/sessions/conv_a/items"}, "status": 200, "response": {"data": [{"id": "error_1", "type": "error", "code": "runner_failed_to_start"}], "has_more": false}}
+{"request": {"method": "GET", "path": "/v1/sessions/conv_a/items"}, "status": 200, "response": {"data": [{"id": "error_1", "type": "error", "message": "Runner unavailable"}], "has_more": false}}
+{"request": {"method": "GET", "path": "/v1/sessions/conv_a/items"}, "status": 200, "response": {"data": [{"id": "error_1", "type": "error", "code": " ", "message": "Runner unavailable"}], "has_more": false}}
+{"request": {"method": "GET", "path": "/v1/sessions/conv_a/items"}, "status": 200, "response": {"data": [{"id": "error_1", "type": "error", "code": "runner_failed_to_start", "message": "\n"}], "has_more": false}}

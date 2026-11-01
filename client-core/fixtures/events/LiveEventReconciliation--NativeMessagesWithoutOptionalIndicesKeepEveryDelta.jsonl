@@ -1,0 +1,2 @@
+{"type":"response.output_text.delta","message_id":"m1","delta":"Hello"}
+{"type":"response.output_text.delta","message_id":"m1","delta":" world"}

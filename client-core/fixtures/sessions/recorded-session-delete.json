@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "DELETE",
+    "path": "/v1/sessions/1a96db016a85409ab884278d2ab31dfc",
+    "query": {}
+  },
+  "status": 200,
+  "response": {
+    "id": "1a96db016a85409ab884278d2ab31dfc",
+    "object": "conversation.deleted",
+    "deleted": true
+  }
+}

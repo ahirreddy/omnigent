@@ -1,0 +1,133 @@
+{
+  "cases": [
+    {
+      "label": "unbound offline runner",
+      "fields": {
+        "runner_online": false,
+        "host_online": null
+      },
+      "expect_available": false
+    },
+    {
+      "label": "unbound fixture with null liveness",
+      "fields": {
+        "harness": "codex-native",
+        "runner_id": null,
+        "runner_online": null,
+        "host_id": null
+      },
+      "expect_available": false
+    },
+    {
+      "label": "native fixture reported online by legacy liveness",
+      "fields": {
+        "harness": "codex-native",
+        "runner_id": null,
+        "runner_online": true,
+        "host_id": null
+      },
+      "expect_available": false
+    },
+    {
+      "label": "in-process executor needs no runner binding",
+      "fields": {
+        "harness": "openai-agents",
+        "runner_id": null,
+        "runner_online": true,
+        "host_id": null
+      },
+      "expect_available": true
+    },
+    {
+      "label": "bound runner with unknown liveness",
+      "fields": {
+        "runner_id": "runner1"
+      },
+      "expect_available": true
+    },
+    {
+      "label": "unbound online runner",
+      "fields": {
+        "runner_online": true
+      },
+      "expect_available": true
+    },
+    {
+      "label": "unknown legacy liveness",
+      "fields": {},
+      "expect_available": true
+    },
+    {
+      "label": "unknown runner",
+      "fields": {
+        "runner_online": null
+      },
+      "expect_available": true
+    },
+    {
+      "label": "online host relaunches without managed resume",
+      "fields": {
+        "host_id": "mac",
+        "host_online": true,
+        "runner_online": false,
+        "host_resumable": false
+      },
+      "expect_available": true
+    },
+    {
+      "label": "online host with missing resume capability",
+      "fields": {
+        "host_id": "mac",
+        "host_online": true,
+        "runner_online": false
+      },
+      "expect_available": true
+    },
+    {
+      "label": "managed host can wake",
+      "fields": {
+        "host_id": "managed",
+        "host_online": false,
+        "runner_online": false,
+        "host_resumable": true
+      },
+      "expect_available": true
+    },
+    {
+      "label": "offline host cannot wake",
+      "fields": {
+        "host_id": "mac",
+        "host_online": false,
+        "runner_online": false,
+        "host_resumable": false
+      },
+      "expect_available": false
+    },
+    {
+      "label": "host liveness not yet known",
+      "fields": {
+        "host_id": "mac",
+        "runner_online": false
+      },
+      "expect_available": true
+    },
+    {
+      "label": "online runner takes precedence",
+      "fields": {
+        "host_id": "mac",
+        "host_online": false,
+        "runner_online": true
+      },
+      "expect_available": true
+    },
+    {
+      "label": "resumability without a host cannot execute",
+      "fields": {
+        "runner_online": false,
+        "host_resumable": true
+      },
+      "expect_available": false
+    }
+  ],
+  "note": "fields are merged into the base wire {id,status,created_at,permission_level}"
+}

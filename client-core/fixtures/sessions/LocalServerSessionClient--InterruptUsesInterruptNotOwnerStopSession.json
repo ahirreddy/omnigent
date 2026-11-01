@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/sessions/conv_a/events",
+    "body": {
+      "type": "interrupt"
+    }
+  },
+  "status": 202,
+  "response": {
+    "queued": false
+  }
+}

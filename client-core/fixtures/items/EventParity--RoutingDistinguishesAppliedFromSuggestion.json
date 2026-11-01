@@ -1,0 +1,21 @@
+[
+  {
+    "model": "fixture-model",
+    "applied": true,
+    "rationale": "Applied rationale",
+    "id": "item-routing_decision",
+    "type": "routing_decision",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "model": "fixture-model",
+    "applied": false,
+    "rationale": "Suggested rationale",
+    "agent": "child-agent",
+    "id": "item-routing_decision",
+    "type": "routing_decision",
+    "response_id": "fixture-response",
+    "status": "completed"
+  }
+]

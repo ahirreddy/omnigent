@@ -1,0 +1,49 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/facbcc05b00f4321b98b1929d217abc5/items",
+    "query": {
+      "limit": 2,
+      "order": "desc"
+    }
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "data": [
+      {
+        "id": "bcad26706c29487ba4c9fd884997094d",
+        "response_id": "resp_fbcd4d6f91a14300b3c9de39",
+        "type": "message",
+        "status": "completed",
+        "created_at": 1793492391,
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "Second turn streams its answer in deltas."
+          }
+        ],
+        "model": "fixture_agent"
+      },
+      {
+        "id": "2869dc82b2e040cd938f39a5ad5bbc60",
+        "response_id": "turn_598e4442c2d349309146f2679933ad29",
+        "type": "message",
+        "status": "completed",
+        "created_at": 1793492391,
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "Now stream a second answer."
+          }
+        ],
+        "user_authored": true
+      }
+    ],
+    "first_id": "bcad26706c29487ba4c9fd884997094d",
+    "last_id": "2869dc82b2e040cd938f39a5ad5bbc60",
+    "has_more": true
+  }
+}

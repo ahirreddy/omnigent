@@ -1,0 +1,11 @@
+{
+  "type": "response.output_item.done",
+  "item": {
+    "id": "receipt",
+    "type": "resource_event",
+    "event_type": "session.resource.deleted",
+    "resource_type": "terminal",
+    "resource_id": "terminal-main",
+    "status": "completed"
+  }
+}

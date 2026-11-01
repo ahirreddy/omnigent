@@ -1,0 +1,29 @@
+{
+  "revision": 1,
+  "session": {
+    "id": "gallery-policy",
+    "title": "Command approval",
+    "preview": "Isolated native event test fixture",
+    "status": "needsResponse",
+    "isReadOnly": false,
+    "updatedAt": 721692800.0,
+    "workspace": "Offline event gallery",
+    "agentName": "Omni",
+    "isPinned": false,
+    "isArchived": false
+  },
+  "messages": [],
+  "decisions": [
+    {
+      "id": "gallery-policy-request",
+      "targetSessionID": "gallery-policy",
+      "title": "Approve command?",
+      "detail": "Command: swift test\nWorking directory: /fixture\nSuggested policy: swift test",
+      "options": [],
+      "execPolicyAmendment": [
+        "swift",
+        "test"
+      ]
+    }
+  ]
+}

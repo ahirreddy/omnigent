@@ -1,0 +1,4 @@
+{"type":"response.output_text.delta","message_id":"m1","index":0,"delta":"Hello"}
+{"type":"response.output_text.delta","message_id":"m1","index":0.5,"delta":"INVALID"}
+{"type":"response.output_text.delta","message_id":"m1","index":1,"delta":" world","final":true}
+{"type":"response.output_text.delta","message_id":"m1","index":2,"delta":"LATE"}

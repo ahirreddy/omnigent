@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/hosts/host_a/harnesses/codex-native/model-options"
+  },
+  "status": 200,
+  "response": {
+    "models": [
+      {
+        "id": "provider-model",
+        "hidden": true
+      }
+    ]
+  }
+}

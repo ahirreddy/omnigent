@@ -1,0 +1,14 @@
+{
+  "elicitation_id": "request",
+  "params": {
+    "requestedSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z]+$"
+        }
+      }
+    }
+  }
+}

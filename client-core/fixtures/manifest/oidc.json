@@ -1,0 +1,15 @@
+{
+  "manifest_version": 1,
+  "server_version": "0.18.0",
+  "min_desktop_version": null,
+  "ui": {"server_picker": "sidebar"},
+  "auth": {
+    "mode": "oidc",
+    "session_cookie": "__Host-ap_session",
+    "native_redirect_uris": [
+      "ai.omnigent.android:/oauth/callback",
+      "ai.omnigent.ios:/oauth/callback"
+    ]
+  },
+  "server_name": "Omnigent Dev"
+}

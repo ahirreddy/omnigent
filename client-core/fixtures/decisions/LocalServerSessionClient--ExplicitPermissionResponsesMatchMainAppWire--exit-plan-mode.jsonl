@@ -1,0 +1,2 @@
+{"request": {"method": "GET", "path": "/v1/sessions/conv_a"}, "status": 200, "response": {"id": "conv_a", "status": "idle", "created_at": 1, "permission_level": 4, "pending_elicitations": [{"elicitation_id": "permission1", "params": {"exit_plan_mode": {"plan": "Review this plan"}}}]}}
+{"request": {"method": "POST", "path": "/v1/sessions/conv_a/elicitations/permission1/resolve", "body": {"action": "decline", "content": {"feedback": "Use a smaller change"}}}, "status": 202, "response": {"queued": false}}

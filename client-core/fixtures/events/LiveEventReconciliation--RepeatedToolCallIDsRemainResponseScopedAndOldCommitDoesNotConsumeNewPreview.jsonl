@@ -1,0 +1,8 @@
+{"type":"response.created","response":{"id":"r1"}}
+{"type":"response.function_call_output.delta","call_id":"call","index":0,"delta":"Old"}
+{"type":"response.output_item.done","item":{"id":"old-result","type":"function_call_output","call_id":"call","response_id":"r1","output":"Old output"}}
+{"type":"response.created","response":{"id":"r2"}}
+{"type":"response.function_call_output.delta","call_id":"call","index":0,"delta":"New output"}
+{"type":"response.output_item.done","item":{"id":"old-result","type":"function_call_output","call_id":"call","response_id":"r1","output":"Old output"}}
+{"type":"response.output_item.done","item":{"id":"new-result","type":"function_call_output","call_id":"call","response_id":"r2","output":"New output complete"}}
+{"type":"response.function_call_output.delta","call_id":"call","index":1,"delta":"Late replay"}

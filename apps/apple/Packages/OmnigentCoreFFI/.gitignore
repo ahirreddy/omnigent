@@ -1,0 +1,4 @@
+/omnigent_ffiFFI.xcframework/
+/Sources/OmnigentCoreFFI/*.swift
+/.build/
+/.swiftpm/

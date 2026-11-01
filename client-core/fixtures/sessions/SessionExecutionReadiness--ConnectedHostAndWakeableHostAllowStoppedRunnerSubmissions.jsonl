@@ -1,0 +1,4 @@
+{"request": {"method": "GET", "path": "/v1/sessions/conv_a"}, "status": 200, "response": {"id": "conv_a", "status": "idle", "created_at": 1, "permission_level": 4, "host_id": "mac", "host_online": true, "runner_online": false, "host_resumable": false}}
+{"request": {"method": "POST", "path": "/v1/sessions/conv_a/events", "body": {"type": "message", "data": {"role": "user", "content": [{"type": "input_text", "text": "Wake this session"}]}}}, "status": 202, "response": {"queued": true}}
+{"request": {"method": "GET", "path": "/v1/sessions/conv_a"}, "status": 200, "response": {"id": "conv_a", "status": "idle", "created_at": 1, "permission_level": 4, "host_id": "mac", "host_online": false, "runner_online": false, "host_resumable": true}}
+{"request": {"method": "POST", "path": "/v1/sessions/conv_a/events", "body": {"type": "message", "data": {"role": "user", "content": [{"type": "input_text", "text": "Wake this session"}]}}}, "status": 202, "response": {"queued": true}}

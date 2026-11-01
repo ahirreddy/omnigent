@@ -1,0 +1,8 @@
+{"type":"response.created","response":{"id":"r1"}}
+{"type":"response.reasoning_summary_text.delta","delta":"Visible summary"}
+{"type":"response.function_call_output.delta","call_id":"call","delta":"Partial output"}
+{"type":"response.compaction.in_progress"}
+{"type":"session.status","status":"idle"}
+{"type":"response.reasoning_summary_text.delta","delta":"Late"}
+{"type":"response.function_call_output.delta","call_id":"call","delta":"Late"}
+{"type":"response.output_text.delta","delta":"Late"}

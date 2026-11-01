@@ -1,0 +1,25 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/conv_a/items"
+  },
+  "status": 200,
+  "response": {
+    "data": [
+      {
+        "id": "saved",
+        "type": "message",
+        "role": "assistant",
+        "content": "Hello"
+      },
+      {
+        "id": "question",
+        "type": "message",
+        "role": "user",
+        "content": "Question"
+      }
+    ],
+    "has_more": false
+  },
+  "delay_ms": 400
+}

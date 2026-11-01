@@ -1,0 +1,29 @@
+{
+  "revision": 1,
+  "session": {
+    "id": "demo-notes",
+    "title": "Project notes",
+    "preview": "A shared conversation you can read.",
+    "status": "idle",
+    "isReadOnly": true,
+    "updatedAt": 721606400.0,
+    "workspace": "Omni / Shared",
+    "agentName": "Omni",
+    "isPinned": false,
+    "isArchived": false
+  },
+  "messages": [
+    {
+      "id": "notes-request",
+      "role": "user",
+      "text": "Summarize the mobile prototype's boundaries.",
+      "isStreaming": false
+    },
+    {
+      "id": "notes-summary",
+      "role": "assistant",
+      "text": "The prototype has native session lists, conversations, and decisions. Its replies are simulated. Sessions and drafts are saved only on this device.\n\nThis shared session is read-only. Open another session or create one to try sending.",
+      "isStreaming": false
+    }
+  ]
+}

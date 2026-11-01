@@ -1,0 +1,189 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/facbcc05b00f4321b98b1929d217abc5",
+    "query": {}
+  },
+  "status": 200,
+  "response": {
+    "id": "facbcc05b00f4321b98b1929d217abc5",
+    "agent_id": "77662019565abb4927037682ae77d875",
+    "agent_name": "fixture_agent",
+    "status": "idle",
+    "background_task_count": null,
+    "background_tasks": null,
+    "created_at": 1793492388,
+    "updated_at": 1793492391,
+    "title": "fixture turn session",
+    "labels": {
+      "omnigent.client_surface": "cli",
+      "omnigent.last_context_tokens": "17",
+      "omnigent.last_context_window": "128000",
+      "omnigent.last_task_error_agent_name": "",
+      "omnigent.last_task_error_cause": "",
+      "omnigent.last_task_error_code": "",
+      "omnigent.last_task_error_item_id": "",
+      "omnigent.last_task_error_message": "",
+      "omnigent.last_task_error_remediation": "",
+      "omnigent.last_task_error_runner_id": "",
+      "omnigent.last_task_error_title": ""
+    },
+    "runner_id": "runner_token_placeholder",
+    "host_id": null,
+    "side_chat_settings_supported": false,
+    "runner_online": true,
+    "host_online": null,
+    "host_resumable": false,
+    "reasoning_effort": null,
+    "items": [
+      {
+        "id": "045b5946e6fd4d06bd2c069cc197b83b",
+        "type": "message",
+        "status": "completed",
+        "response_id": "turn_5c3ff496250f48dda13bc055d25df2f3",
+        "created_at": 1793492389,
+        "data": {
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Run the command echo fixture-hello and tell me the result."
+            }
+          ],
+          "model": null,
+          "user_authored": true,
+          "stream_message_id": null
+        },
+        "created_by": null
+      },
+      {
+        "id": "1925c34ba9774eccacfc49669d9e8ccb",
+        "type": "function_call",
+        "status": "completed",
+        "response_id": "resp_e8fb358f78a34e1e962751e7",
+        "created_at": 1793492390,
+        "data": {
+          "model": "fixture_agent",
+          "name": "sys_os_shell",
+          "arguments": "{\"command\": \"echo fixture-hello\"}",
+          "call_id": "call_fixture_shell_1"
+        },
+        "created_by": null
+      },
+      {
+        "id": "be9a01ee49794c88b4d47ca91fab7ab3",
+        "type": "function_call_output",
+        "status": "completed",
+        "response_id": "resp_e8fb358f78a34e1e962751e7",
+        "created_at": 1793492390,
+        "data": {
+          "call_id": "call_fixture_shell_1",
+          "output": "{\"stdout\": \"fixture-hello\\n\", \"stderr\": \"\", \"exit_code\": 0, \"timed_out\": false, \"shell\": \"/bin/bash\", \"cwd\": \"/workspace/tmp/omnigent-runner-os-envs/facbcc05b00f4321b98b1929d217abc5/workspace\"}"
+        },
+        "created_by": null
+      },
+      {
+        "id": "fc970dc6e5674629bc7cf78f82f80cac",
+        "type": "message",
+        "status": "completed",
+        "response_id": "resp_e8fb358f78a34e1e962751e7",
+        "created_at": 1793492390,
+        "data": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "The command printed fixture-hello."
+            }
+          ],
+          "model": "fixture_agent",
+          "stream_message_id": null
+        },
+        "created_by": null
+      },
+      {
+        "id": "2869dc82b2e040cd938f39a5ad5bbc60",
+        "type": "message",
+        "status": "completed",
+        "response_id": "turn_598e4442c2d349309146f2679933ad29",
+        "created_at": 1793492391,
+        "data": {
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Now stream a second answer."
+            }
+          ],
+          "model": null,
+          "user_authored": true,
+          "stream_message_id": null
+        },
+        "created_by": null
+      },
+      {
+        "id": "bcad26706c29487ba4c9fd884997094d",
+        "type": "message",
+        "status": "completed",
+        "response_id": "resp_fbcd4d6f91a14300b3c9de39",
+        "created_at": 1793492391,
+        "data": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Second turn streams its answer in deltas."
+            }
+          ],
+          "model": "fixture_agent",
+          "stream_message_id": null
+        },
+        "created_by": null
+      }
+    ],
+    "permission_level": 4,
+    "sub_agent_name": null,
+    "kind": "default",
+    "parent_session_id": null,
+    "root_conversation_id": "facbcc05b00f4321b98b1929d217abc5",
+    "llm_model": "gpt-4o-mini",
+    "harness": "openai-agents",
+    "model_override": null,
+    "cost_control_mode_override": null,
+    "subagent_routing_override": null,
+    "share_workspace_files": false,
+    "context_window": 128000,
+    "last_total_tokens": 17,
+    "total_cost_usd": 1.47e-05,
+    "usage_by_model": {
+      "gpt-4o-mini": {
+        "input_tokens": 30,
+        "output_tokens": 17,
+        "total_tokens": 47,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "total_cost_usd": 1.47e-05
+      }
+    },
+    "usage_included": true,
+    "native_usage_baseline": null,
+    "last_task_error": null,
+    "external_session_id": null,
+    "terminal_launch_args": null,
+    "pending_elicitations": [],
+    "pending_inputs": [],
+    "workspace": null,
+    "git_branch": null,
+    "archived": false,
+    "todos": [],
+    "model_options": [],
+    "inference_configured": false,
+    "inference_error": null,
+    "terminal_pending": false,
+    "sandbox_profile": null,
+    "sandbox_status": null,
+    "mcp_startup": null,
+    "active_response_id": null,
+    "project_id": null
+  }
+}

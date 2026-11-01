@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/sessions/session_a/resources/files",
+    "body": {
+      "multipart": {
+        "boundary_prefix": "NativeLab-",
+        "part": {
+          "name": "file",
+          "filename": "screen%22shot.png",
+          "content_type": "image/png",
+          "bytes_base64": "AAEC/w==",
+          "raw_filename": "screen\"shot.png"
+        }
+      }
+    }
+  },
+  "status": 201,
+  "response": {
+    "id": "file_exact",
+    "metadata": {
+      "filename": "server-name.png",
+      "bytes": 4
+    }
+  }
+}

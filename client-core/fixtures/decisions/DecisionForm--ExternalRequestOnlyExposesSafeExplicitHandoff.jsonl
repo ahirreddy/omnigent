@@ -1,0 +1,2 @@
+{"elicitation_id":"request","params":{"mode":"url","url":"https://example.invalid/confirm"}}
+{"elicitation_id":"request","params":{"mode":"url","url":"javascript:alert(1)"}}

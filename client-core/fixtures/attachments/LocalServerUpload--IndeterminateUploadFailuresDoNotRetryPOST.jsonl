@@ -1,0 +1,6 @@
+{"request": {"method": "POST", "path": "/v1/sessions/session_a/resources/files"}, "status": 500, "response": ""}
+{"request": {"method": "POST", "path": "/v1/sessions/session_a/resources/files"}, "status": 201, "response": "invalid"}
+{"request": {"method": "POST", "path": "/v1/sessions/session_a/resources/files"}, "status": 201, "response": {"id": "../wrong"}}
+{"request": {"method": "POST", "path": "/v1/sessions/session_a/resources/files"}, "error": "networkConnectionLost"}
+{"request": {"method": "POST", "path": "/v1/sessions/session_a/resources/files"}, "error": "cancelled"}
+{"request": {"method": "POST", "path": "/v1/sessions/session_a/resources/files"}, "status": 201, "response": {"id": "file"}, "response_url": "http://127.0.0.1:1/other"}

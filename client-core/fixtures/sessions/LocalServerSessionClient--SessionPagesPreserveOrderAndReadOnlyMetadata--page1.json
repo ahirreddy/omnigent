@@ -1,0 +1,47 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions",
+    "query": {
+      "after": "conv_before",
+      "limit": "2",
+      "order": "desc",
+      "sort_by": "updated_at",
+      "include_archived": "true"
+    }
+  },
+  "status": 200,
+  "response": {
+    "data": [
+      {
+        "id": "conv_new",
+        "status": "running",
+        "created_at": 10,
+        "updated_at": 30,
+        "title": "Newest",
+        "agent_name": "Omni",
+        "workspace": "/workspace",
+        "labels": {
+          "omnigent.pinned": "123"
+        },
+        "permission_level": 4
+      },
+      {
+        "id": "conv_old",
+        "status": "idle",
+        "created_at": 5,
+        "updated_at": 20,
+        "title": null,
+        "archived": true,
+        "pending_elicitations_count": 1
+      },
+      {
+        "id": "conv_old",
+        "status": "idle",
+        "created_at": 5
+      }
+    ],
+    "has_more": true,
+    "last_id": "conv_old"
+  }
+}

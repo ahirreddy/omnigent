@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/conv_a/resources/environments/default/changes"
+  },
+  "status": 200,
+  "response": {
+    "entries": [
+      {
+        "path": "Sources/App.swift",
+        "status": "modified"
+      }
+    ]
+  }
+}

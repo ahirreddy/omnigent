@@ -1,0 +1,6 @@
+{"type":"response.output_file.done","file_id":"file-1","filename":"fixture.txt","content_type":"text/plain"}
+{"type":"response.retry","source":"provider","attempt":2,"max_attempts":4,"delay_seconds":0.5,"error":{"code":"busy","message":"Fixture retry"}}
+{"type":"response.error","source":"provider","error":{"code":"fixture_failure","message":"Fixture failure"}}
+{"type":"response.client_task.cancel","task_id":"fixture-task","call_id":"fixture-call"}
+{"type":"browser.action_request","action_id":"fixture-browser","action":"navigate","args":{"url":"https://example.invalid/fixture"}}
+{"type":"response.policy_denied","phase":"input","reason":"Fixture policy denial"}

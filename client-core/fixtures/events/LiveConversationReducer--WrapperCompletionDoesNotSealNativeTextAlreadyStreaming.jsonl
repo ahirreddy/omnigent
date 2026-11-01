@@ -1,0 +1,5 @@
+{"type":"response.in_progress","response":{"id":"wrapper"}}
+{"type":"response.output_text.delta","message_id":"native","index":0,"delta":"Hello"}
+{"type":"response.completed","response":{"id":"wrapper","output":[]}}
+{"type":"response.output_text.delta","message_id":"native","index":1,"delta":" world"}
+{"type":"response.output_item.done","item":{"id":"saved","response_id":"native-turn","type":"message","role":"assistant","content":"Hello world"}}

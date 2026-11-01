@@ -1,0 +1,12 @@
+{
+  "manifest_version": 1,
+  "server_version": "0.18.0",
+  "min_desktop_version": "0.9.0",
+  "ui": {"server_picker": "sidebar"},
+  "auth": {
+    "mode": "accounts",
+    "session_cookie": "ap_session",
+    "native_redirect_uris": null
+  },
+  "server_name": null
+}

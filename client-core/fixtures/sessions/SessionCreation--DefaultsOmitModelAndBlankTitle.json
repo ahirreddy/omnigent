@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/sessions",
+    "body": {
+      "agent_id": "ag_codex",
+      "host_id": "host_a",
+      "host_type": "external",
+      "workspace": "/work/project",
+      "labels": {
+        "omnigent.ui": "terminal",
+        "omnigent.wrapper": "codex-native-ui"
+      }
+    }
+  },
+  "status": 201,
+  "response": {
+    "id": "conv_created",
+    "status": "idle",
+    "created_at": 1,
+    "agent_id": "ag_codex",
+    "host_id": "host_a",
+    "harness": "codex-native",
+    "permission_level": 4
+  }
+}

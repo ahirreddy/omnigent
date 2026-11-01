@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {
+      "label": "failed unbound session",
+      "fields": {
+        "status": "failed",
+        "runner_online": false
+      }
+    }
+  ]
+}

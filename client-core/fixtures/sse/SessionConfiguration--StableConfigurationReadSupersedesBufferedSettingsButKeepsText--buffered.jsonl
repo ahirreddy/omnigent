@@ -1,0 +1,2 @@
+{"id": null, "event": null, "data": {"type": "session.model", "model": "older-model"}}
+{"id": null, "event": null, "data": {"type": "response.output_text.delta", "delta": "Keep text"}}

@@ -1,0 +1,91 @@
+{
+  "session_id": "fixture",
+  "base_url": "http://127.0.0.1:6767",
+  "cases": [
+    {
+      "reference": "file_123-abc",
+      "expected_file_id": "file_123-abc"
+    },
+    {
+      "reference": "/v1/sessions/fixture/resources/files/file_123-abc/content",
+      "expected_file_id": "file_123-abc"
+    },
+    {
+      "reference": "http://127.0.0.1:6767/v1/sessions/fixture/resources/files/file_123-abc/content",
+      "expected_file_id": "file_123-abc"
+    },
+    {
+      "reference": "",
+      "expected_file_id": null
+    },
+    {
+      "reference": "file/name",
+      "expected_file_id": null
+    },
+    {
+      "reference": "../file",
+      "expected_file_id": null
+    },
+    {
+      "reference": "file name",
+      "expected_file_id": null
+    },
+    {
+      "reference": "data:image/png;base64,AAAA",
+      "expected_file_id": null
+    },
+    {
+      "reference": "file:///private/tmp/fixture.png",
+      "expected_file_id": null
+    },
+    {
+      "reference": "https://example.invalid/fixture.png",
+      "expected_file_id": null
+    },
+    {
+      "reference": "http://127.0.0.1:6768/v1/sessions/fixture/resources/files/file/content",
+      "expected_file_id": null
+    },
+    {
+      "reference": "http://localhost:6767/v1/sessions/fixture/resources/files/file/content",
+      "expected_file_id": null
+    },
+    {
+      "reference": "https://127.0.0.1:6767/v1/sessions/fixture/resources/files/file/content",
+      "expected_file_id": null
+    },
+    {
+      "reference": "http://127.0.0.1:6767/v1/sessions/other/resources/files/file/content",
+      "expected_file_id": null
+    },
+    {
+      "reference": "http://user:password@127.0.0.1:6767/v1/sessions/fixture/resources/files/file/content",
+      "expected_file_id": null
+    },
+    {
+      "reference": "/v1/sessions/fixture/resources/files/file/content?download=1",
+      "expected_file_id": null
+    },
+    {
+      "reference": "/v1/sessions/fixture/resources/files/file/content#fragment",
+      "expected_file_id": null
+    },
+    {
+      "reference": "/v1/sessions/fixture/resources/files/%2Fetc%2Fpasswd/content",
+      "expected_file_id": null
+    },
+    {
+      "reference": "/v1/sessions/fixture/resources/files/file/content/extra",
+      "expected_file_id": null
+    },
+    {
+      "reference": null,
+      "expected_file_id": null
+    },
+    {
+      "reference": "file",
+      "session_id": "../other",
+      "expected_file_id": null
+    }
+  ]
+}

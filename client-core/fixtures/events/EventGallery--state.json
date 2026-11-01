@@ -1,0 +1,79 @@
+{
+  "revision": 1,
+  "session": {
+    "id": "gallery-state",
+    "title": "Session state",
+    "preview": "Isolated native event test fixture",
+    "status": "idle",
+    "isReadOnly": false,
+    "updatedAt": 721692800.0,
+    "workspace": "Offline event gallery",
+    "agentName": "Omni",
+    "isPinned": false,
+    "isArchived": false
+  },
+  "messages": [
+    {
+      "id": "gallery-state-message",
+      "role": "assistant",
+      "text": "Open Session activity to inspect the latest usage, tasks, environment and collaborators.",
+      "isStreaming": false
+    }
+  ],
+  "decisions": [],
+  "eventState": {
+    "values": {
+      "context_window": 128000,
+      "total_cost_usd": 0.012,
+      "collaboration_mode": "plan",
+      "status": "idle",
+      "todos": [
+        {
+          "content": "Render native event cards",
+          "status": "completed"
+        },
+        {
+          "content": "Verify small-phone layouts",
+          "status": "in_progress",
+          "activeForm": "Verifying layouts"
+        }
+      ],
+      "mcp_startup": {
+        "fixture-docs": {
+          "status": "ready"
+        }
+      },
+      "sandbox_status": {
+        "stage": "ready"
+      },
+      "skills": [
+        {
+          "name": "mobile-accessibility",
+          "description": "Review phone layouts and readable controls."
+        }
+      ],
+      "viewers": [
+        {
+          "user_id": "Fixture reviewer",
+          "idle": false
+        }
+      ],
+      "children": {
+        "gallery-attachments": {
+          "title": "Attachment review",
+          "status": "completed"
+        }
+      },
+      "changed_files": {
+        "fixture-workspace": {
+          "files": [
+            {
+              "path": "App/NativeActivityViews.swift",
+              "status": "added"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

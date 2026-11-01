@@ -1,0 +1,12 @@
+{
+  "elicitation_id": "request",
+  "params": {
+    "ask_user_question": {
+      "questions": [
+        {
+          "question": "Missing options"
+        }
+      ]
+    }
+  }
+}

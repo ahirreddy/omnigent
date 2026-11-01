@@ -1,0 +1,2 @@
+{"type":"response.elicitation_request","elicitation_id":"ask1","params":{"target_session_id":"child1","message":"Choose","requestedSchema":{"type":"object","properties":{"answer":{"type":"string","enum":["Yes","No"]}}}}}
+{"type":"response.elicitation_resolved","elicitation_id":"ask1"}

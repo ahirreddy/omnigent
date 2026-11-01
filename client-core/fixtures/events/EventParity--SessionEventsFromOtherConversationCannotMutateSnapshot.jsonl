@@ -1,0 +1,17 @@
+{"type":"session.usage","context_tokens":100,"conversation_id":"other-session"}
+{"type":"session.todos","todos":[],"conversation_id":"other-session"}
+{"type":"session.presence","viewers":[],"conversation_id":"other-session"}
+{"type":"session.terminal_pending","pending":true,"conversation_id":"other-session"}
+{"type":"session.sandbox_status","stage":"failed","error":"Other failure","conversation_id":"other-session"}
+{"type":"session.mcp_startup","servers":{},"conversation_id":"other-session"}
+{"type":"session.collaboration_mode","mode":"plan","conversation_id":"other-session"}
+{"type":"session.created","child_session_id":"other-child","conversation_id":"other-session"}
+{"type":"session.superseded","target_conversation_id":"other-replacement","conversation_id":"other-session"}
+{"type":"session.child_session.updated","child_session_id":"other-child","child":{"status":"running"},"conversation_id":"other-session"}
+{"type":"session.status","status":"running","conversation_id":"other-session"}
+{"type":"session.skills","conversation_id":"other-session"}
+{"type":"session.model_options","conversation_id":"other-session"}
+{"type":"session.agent_changed","agent_id":"other-agent","agent_name":"Other","conversation_id":"other-session"}
+{"type":"session.resource.created","resource":{"id":"other-resource","type":"terminal","name":"Other","session_id":"other-session","metadata":{}}}
+{"type":"session.changed_files.invalidated","session_id":"other-session","environment_id":"other-environment"}
+{"type":"session.terminal.activity","session_id":"other-session","terminal_id":"other-terminal"}

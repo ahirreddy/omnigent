@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/hosts/host_a/filesystem"
+  },
+  "status": 200,
+  "response": {
+    "data": [
+      {
+        "name": "a",
+        "path": "/a",
+        "type": "directory"
+      }
+    ],
+    "has_more": true
+  }
+}

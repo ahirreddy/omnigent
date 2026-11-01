@@ -1,0 +1,2 @@
+{"request": {"method": "GET", "path": "/v1/sessions/conv_a"}, "status": 200, "response": {"id": "conv_a", "status": "idle", "created_at": 1, "permission_level": 4, "pending_elicitations": [{"elicitation_id": "ask1", "params": {"message": "Choose", "requestedSchema": {"properties": {"choice": {"type": "string", "enum": ["A", "B"]}}}}}]}}
+{"request": {"method": "POST", "path": "/v1/sessions/conv_a/elicitations/ask1/resolve", "body": {"action": "accept", "content": {"choice": "B"}}}, "status": 202, "response": {"queued": false}}

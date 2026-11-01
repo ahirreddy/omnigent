@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/2.0/omnigent/v1/sessions"
+  },
+  "status": 200,
+  "response": {
+    "data": [],
+    "has_more": false
+  },
+  "delay_ms": 200
+}

@@ -1,0 +1,5 @@
+{"type":"session.resource.created","resource":{"id":"terminal-1","type":"terminal","name":"Build terminal","session_id":"fixture-session","metadata":{"cwd":"/fixture"}}}
+{"type":"session.resource.created","resource":{"id":"terminal-1","type":"terminal","name":"Build terminal","session_id":"fixture-session","metadata":{"cwd":"/fixture"}}}
+{"type":"session.terminal.activity","session_id":"fixture-session","terminal_id":"terminal-1"}
+{"type":"session.resource.deleted","resource_id":"terminal-1","resource_type":"terminal","session_id":"other-session"}
+{"type":"session.resource.deleted","resource_id":"terminal-1","resource_type":"terminal","session_id":"fixture-session"}

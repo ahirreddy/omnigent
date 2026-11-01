@@ -1,0 +1,159 @@
+[
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "output_text",
+        "text": "Visible reply"
+      }
+    ],
+    "id": "item-message",
+    "type": "message",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "name": "lookup",
+    "arguments": "{\"query\":\"typed query\"}",
+    "call_id": "call",
+    "id": "item-function_call",
+    "type": "function_call",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "call_id": "call",
+    "output": "Visible tool result",
+    "id": "item-function_call_output",
+    "type": "function_call_output",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "code": "unavailable",
+    "source": "execution",
+    "message": "Visible failure",
+    "id": "item-error",
+    "type": "error",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "summary": [
+      {
+        "type": "summary_text",
+        "text": "Visible summary"
+      }
+    ],
+    "id": "item-reasoning",
+    "type": "reasoning",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "summary": "Visible compacted summary",
+    "token_count": 120,
+    "last_item_id": "anchor",
+    "id": "item-compaction",
+    "type": "compaction",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "name": "example:review",
+    "arguments": "current changes",
+    "output": "Reviewed changes",
+    "id": "item-slash_command",
+    "type": "slash_command",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "model": "fixture-model",
+    "applied": true,
+    "rationale": "Suitable for this task",
+    "id": "item-routing_decision",
+    "type": "routing_decision",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "kind": "input",
+    "input": "echo display-only",
+    "id": "item-terminal_command",
+    "type": "terminal_command",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "action": {
+      "type": "search",
+      "query": "fixture search"
+    },
+    "id": "item-web_search_call",
+    "type": "web_search_call",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "queries": [
+      "fixture document"
+    ],
+    "id": "item-file_search_call",
+    "type": "file_search_call",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "code": "print('display-only')",
+    "outputs": [
+      {
+        "type": "logs",
+        "logs": "display-only"
+      }
+    ],
+    "id": "item-code_interpreter_call",
+    "type": "code_interpreter_call",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "action": {
+      "type": "screenshot"
+    },
+    "id": "item-computer_call",
+    "type": "computer_call",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "revised_prompt": "A fixture landscape",
+    "result": "EMBEDDED_IMAGE_BYTES",
+    "id": "item-image_generation_call",
+    "type": "image_generation_call",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "name": "lookup",
+    "server_label": "fixture-server",
+    "arguments": "{\"query\":\"fixture MCP query\"}",
+    "output": "fixture MCP result",
+    "id": "item-mcp_call",
+    "type": "mcp_call",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "server_label": "fixture-discovery",
+    "tools": [
+      {
+        "name": "fixture_lookup"
+      }
+    ],
+    "id": "item-mcp_list_tools",
+    "type": "mcp_list_tools",
+    "response_id": "fixture-response",
+    "status": "completed"
+  }
+]

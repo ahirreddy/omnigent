@@ -1,0 +1,21 @@
+{
+  "session_id": "a",
+  "org_id": "123",
+  "server_root": "https://fixture.cloud.databricks.com:{port}/api/2.0/omnigent",
+  "accepted": [
+    "/v1/sessions/a/resources/files/f/content",
+    "v1/sessions/a/resources/files/f/content",
+    "https://fixture.cloud.databricks.com:{port}/api/2.0/omnigent/v1/sessions/a/resources/files/f/content",
+    "https://fixture.cloud.databricks.com:{port}/api/2.0/omnigent/v1/sessions/a/resources/files/f/content?o=123",
+    "/v1/sessions/a/resources/files/f/content?o=123"
+  ],
+  "expected_file_id": "f",
+  "rejected": [
+    "https://fixture.cloud.databricks.com:{port}/api/2.0/omnigent/v1/sessions/a/resources/files/f/content?o=456",
+    "/v1/sessions/a/resources/files/f/content?o=456",
+    "/v1/sessions/a/resources/files/f/content?o=123&o=123",
+    "/v1/sessions/a/resources/files/f/content?o=%31%32%33",
+    "/v1/sessions/a/resources/files/f/content?o=123&download=1",
+    "https://other.databricks.com/api/2.0/omnigent/v1/sessions/a/resources/files/f/content?o=123"
+  ]
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "u1",
+    "type": "message",
+    "role": "user",
+    "created_by": "person@example.test",
+    "content": "Question"
+  },
+  {
+    "id": "a1",
+    "type": "message",
+    "role": "assistant",
+    "model": "child-agent",
+    "content": "Answer"
+  }
+]

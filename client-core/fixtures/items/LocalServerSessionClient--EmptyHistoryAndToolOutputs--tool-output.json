@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/conv_a/items"
+  },
+  "status": 200,
+  "response": {
+    "data": [
+      {
+        "id": "out_1",
+        "type": "function_call_output",
+        "output": [
+          {
+            "type": "text",
+            "text": "Result"
+          }
+        ]
+      }
+    ],
+    "has_more": false
+  }
+}

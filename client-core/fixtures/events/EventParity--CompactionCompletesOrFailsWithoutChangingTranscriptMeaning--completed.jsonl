@@ -1,0 +1,2 @@
+{"type":"response.compaction.in_progress"}
+{"type":"response.compaction.completed","total_tokens":84,"error":"Compaction fixture failed"}

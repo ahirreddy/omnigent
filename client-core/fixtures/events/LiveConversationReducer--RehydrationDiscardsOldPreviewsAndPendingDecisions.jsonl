@@ -1,0 +1,2 @@
+{"type":"response.output_text.delta","message_id":"old","index":0,"delta":"stale"}
+{"type":"response.elicitation_request","elicitation_id":"ask1","params":{"message":"Approve?","requestedSchema":{}}}

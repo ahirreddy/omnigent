@@ -1,0 +1,4 @@
+{"elicitation_id":"request","params":{"requestedSchema":{"type":"array","items":{"type":"string"}}}}
+{"elicitation_id":"request","params":{"requestedSchema":{"oneOf":[{"type":"string"},{"type":"number"}]}}}
+{"elicitation_id":"request","params":{"mode":"url"}}
+{"elicitation_id":"request","params":{"requestedSchema":"not a schema"}}

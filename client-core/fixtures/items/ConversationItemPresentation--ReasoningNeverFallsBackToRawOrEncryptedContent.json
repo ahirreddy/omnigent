@@ -1,0 +1,33 @@
+[
+  {
+    "id": "r1",
+    "type": "reasoning",
+    "summary": [
+      {
+        "type": "summary_text",
+        "text": "Checked the available options."
+      },
+      {
+        "type": "reasoning_text",
+        "text": "HIDDEN_SUMMARY_BLOCK"
+      }
+    ],
+    "content": [
+      {
+        "type": "reasoning_text",
+        "text": "HIDDEN_REASONING"
+      }
+    ],
+    "encrypted_content": "ENCRYPTED_SECRET"
+  },
+  {
+    "id": "r2",
+    "type": "reasoning",
+    "content": [
+      {
+        "type": "text",
+        "text": "PRIVATE"
+      }
+    ]
+  }
+]

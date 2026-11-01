@@ -1,0 +1,3 @@
+{"request": {"method": "GET", "path": "/v1/me"}, "status": 200, "response": {"user_id": null}}
+{"request": {"method": "GET", "path": "/v1/me"}, "status": 200, "response": {}}
+{"request": {"method": "GET", "path": "/v1/me"}, "status": 200, "response": {"user_id": "someone-else"}}

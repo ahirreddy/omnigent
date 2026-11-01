@@ -1,0 +1,27 @@
+{
+  "revision": 1,
+  "session": {
+    "id": "gallery-external",
+    "title": "External confirmation",
+    "preview": "Isolated native event test fixture",
+    "status": "needsResponse",
+    "isReadOnly": false,
+    "updatedAt": 721692800.0,
+    "workspace": "Offline event gallery",
+    "agentName": "Omni",
+    "isPinned": false,
+    "isArchived": false
+  },
+  "messages": [],
+  "decisions": [
+    {
+      "id": "gallery-external-request",
+      "targetSessionID": "gallery-external",
+      "title": "Confirm in browser",
+      "detail": "No website opens until you choose the confirmation link.",
+      "options": [],
+      "unsupportedReason": "Complete this request on its confirmation page.",
+      "externalURL": "https://example.invalid/confirm"
+    }
+  ]
+}

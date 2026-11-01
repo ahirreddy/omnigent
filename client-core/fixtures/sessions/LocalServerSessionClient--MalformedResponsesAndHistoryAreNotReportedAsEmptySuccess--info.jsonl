@@ -1,0 +1,3 @@
+{"request": {"method": "GET", "path": "/v1/info"}, "status": 200, "response": "not json"}
+{"request": {"method": "GET", "path": "/v1/info"}, "status": 200, "response": {}}
+{"request": {"method": "GET", "path": "/v1/info"}, "status": 200, "response": {"single_user": "true", "accounts_enabled": false}}

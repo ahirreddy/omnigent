@@ -1,0 +1,4 @@
+{"type":"response.in_progress","response":{"id":"r1"}}
+{"type":"response.output_text.delta","delta":"Hello"}
+{"type":"response.completed","response":{"id":"r1"}}
+{"type":"response.output_text.delta","delta":" late"}

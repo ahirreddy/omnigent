@@ -1,0 +1,5 @@
+{"elicitation_id":"request","params":{"requestedSchema":{"type":"object","required":"name","properties":{"name":{"type":"string"}}}}}
+{"elicitation_id":"request","params":{"requestedSchema":{"type":"object","properties":{"name":{"type":"string","minLength":2.5}}}}}
+{"elicitation_id":"request","params":{"requestedSchema":{"type":"object","properties":{"name":{"type":"string","minLength":-1}}}}}
+{"elicitation_id":"request","params":{"requestedSchema":{"type":"object","properties":{"count":{"type":"number","minimum":"5"}}}}}
+{"elicitation_id":"request","params":{"requestedSchema":{"type":"object","properties":{"count":{"type":"number","minimum":5,"maximum":1}}}}}

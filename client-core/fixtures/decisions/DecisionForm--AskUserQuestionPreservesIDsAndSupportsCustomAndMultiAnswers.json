@@ -1,0 +1,32 @@
+{
+  "elicitation_id": "request",
+  "params": {
+    "ask_user_question": {
+      "questions": [
+        {
+          "id": "scope",
+          "question": "Which scope?",
+          "options": [
+            {
+              "label": "Native",
+              "description": "Phone UI"
+            }
+          ],
+          "multiSelect": false
+        },
+        {
+          "question": "What next?",
+          "options": [
+            {
+              "label": "Tests"
+            },
+            {
+              "label": "Docs"
+            }
+          ],
+          "multiSelect": true
+        }
+      ]
+    }
+  }
+}

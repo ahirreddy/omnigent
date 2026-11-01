@@ -1,0 +1,16 @@
+{
+  "elicitation_id": "ask1",
+  "params": {
+    "message": "Name and count",
+    "requestedSchema": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

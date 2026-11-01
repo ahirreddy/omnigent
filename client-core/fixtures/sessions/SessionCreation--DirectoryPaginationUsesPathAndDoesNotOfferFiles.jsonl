@@ -1,0 +1,2 @@
+{"request": {"method": "GET", "path": "/v1/hosts/host_a/filesystem"}, "status": 200, "response": {"data": [{"name": "alpha", "path": "/home/alpha", "type": "directory"}, {"name": "notes.txt", "path": "/home/notes.txt", "type": "file"}], "has_more": true}}
+{"request": {"method": "GET", "path": "/v1/hosts/host_a/filesystem", "query": {"after": "/home/notes.txt"}}, "status": 200, "response": {"data": [{"name": "project", "path": "/home/project", "type": "directory"}, {"name": "bad", "path": "relative", "type": "directory"}], "has_more": false}}

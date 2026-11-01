@@ -1,0 +1,72 @@
+{
+  "revision": 1,
+  "session": {
+    "id": "gallery-lifecycle",
+    "title": "Quiet lifecycle",
+    "preview": "Isolated native event test fixture",
+    "status": "idle",
+    "isReadOnly": false,
+    "updatedAt": 721692800.0,
+    "workspace": "Offline event gallery",
+    "agentName": "Omni",
+    "isPinned": false,
+    "isArchived": false,
+    "failureMessage": "The provider disconnected."
+  },
+  "messages": [
+    {
+      "id": "lifecycle-user",
+      "role": "user",
+      "text": "Check the build, then stop.",
+      "isStreaming": false
+    },
+    {
+      "id": "lifecycle-created",
+      "role": "tool",
+      "text": "Terminal created",
+      "isStreaming": false,
+      "activity": {
+        "kind": "resource",
+        "title": "Terminal created",
+        "summary": "Build terminal",
+        "details": [
+          {
+            "id": "id",
+            "title": "Resource ID",
+            "text": "fixture-terminal",
+            "isCode": false
+          }
+        ],
+        "status": "completed"
+      }
+    },
+    {
+      "id": "lifecycle-reply",
+      "role": "assistant",
+      "text": "The build check is complete.",
+      "isStreaming": false,
+      "interrupted": true
+    },
+    {
+      "id": "lifecycle-deleted",
+      "role": "tool",
+      "text": "Terminal deleted",
+      "isStreaming": false,
+      "activity": {
+        "kind": "resource",
+        "title": "Terminal deleted",
+        "summary": "Build terminal",
+        "details": [
+          {
+            "id": "id",
+            "title": "Resource ID",
+            "text": "fixture-terminal",
+            "isCode": false
+          }
+        ],
+        "status": "completed"
+      }
+    }
+  ],
+  "decisions": []
+}

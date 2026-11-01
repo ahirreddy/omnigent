@@ -1,0 +1,31 @@
+{
+  "base_fields": {
+    "host_id": "managed",
+    "host_online": false,
+    "runner_online": false,
+    "host_resumable": true
+  },
+  "chain": false,
+  "cases": [
+    {
+      "label": "explicit null clears resume",
+      "fields": {
+        "host_resumable": null
+      }
+    },
+    {
+      "label": "host change clears liveness",
+      "fields": {
+        "host_id": "other"
+      }
+    },
+    {
+      "label": "unbound clears resume",
+      "fields": {
+        "host_id": null,
+        "host_online": null,
+        "runner_online": false
+      }
+    }
+  ]
+}

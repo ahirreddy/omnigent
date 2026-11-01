@@ -1,0 +1,14 @@
+{"type":"response.in_progress","response":{"id":"wrapper1"}}
+{"type":"response.completed","response":{"id":"wrapper1","output":[]}}
+{"type":"session.status","status":"idle"}
+{"type":"response.output_text.delta","message_id":"native1","index":0,"delta":"Hello 1"}
+{"type":"response.output_text.delta","message_id":"native1","index":1,"delta":" world","final":true}
+{"type":"response.output_item.done","item":{"id":"saved1","response_id":"native-turn1","type":"message","role":"assistant","content":"Hello 1 world"}}
+{"type":"response.output_text.delta","message_id":"native1","index":2,"delta":"late"}
+{"type":"response.in_progress","response":{"id":"wrapper2"}}
+{"type":"response.completed","response":{"id":"wrapper2","output":[]}}
+{"type":"session.status","status":"idle"}
+{"type":"response.output_text.delta","message_id":"native2","index":0,"delta":"Hello 2"}
+{"type":"response.output_text.delta","message_id":"native2","index":1,"delta":" world","final":true}
+{"type":"response.output_item.done","item":{"id":"saved2","response_id":"native-turn2","type":"message","role":"assistant","content":"Hello 2 world"}}
+{"type":"response.output_text.delta","message_id":"native2","index":2,"delta":"late"}

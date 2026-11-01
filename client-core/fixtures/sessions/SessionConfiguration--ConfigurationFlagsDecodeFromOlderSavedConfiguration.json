@@ -1,0 +1,11 @@
+{
+  "source": "JSONEncoder output of SessionConfiguration.demo (DemoConfiguration.swift)",
+  "remove_keys": [
+    "modelReported",
+    "effortReported"
+  ],
+  "expect": {
+    "modelOverride": "sample-balanced",
+    "effortReported": null
+  }
+}

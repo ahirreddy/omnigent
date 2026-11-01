@@ -1,0 +1,25 @@
+[
+  {
+    "event_type": "session.resource.created",
+    "resource_type": "terminal",
+    "resource_id": "term-1",
+    "resource": {
+      "name": "Build terminal",
+      "id": "term-1",
+      "type": "terminal"
+    },
+    "id": "item-resource_event",
+    "type": "resource_event",
+    "response_id": "fixture-response",
+    "status": "completed"
+  },
+  {
+    "event_type": "session.resource.deleted",
+    "resource_type": "terminal",
+    "resource_id": "term-1",
+    "id": "item-resource_event",
+    "type": "resource_event",
+    "response_id": "fixture-response",
+    "status": "completed"
+  }
+]

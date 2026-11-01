@@ -1,0 +1,7 @@
+{
+  "manifest_version": 2,
+  "server_version": "1.0.0",
+  "auth": {"mode": "saml", "session_cookie": "ap_session", "native_redirect_uris": null},
+  "server_name": "Future Server",
+  "added_later": {"anything": true}
+}

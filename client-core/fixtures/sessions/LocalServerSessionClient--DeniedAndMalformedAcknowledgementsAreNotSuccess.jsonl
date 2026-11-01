@@ -1,0 +1,2 @@
+{"request": {"method": "POST", "path": "/v1/sessions/conv_a/events"}, "status": 202, "response": {"queued": false, "denied": true}}
+{"request": {"method": "POST", "path": "/v1/sessions/conv_a/events"}, "status": 202, "response": {}}

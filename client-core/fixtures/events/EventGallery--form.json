@@ -1,0 +1,47 @@
+{
+  "revision": 1,
+  "session": {
+    "id": "gallery-form",
+    "title": "Typed request",
+    "preview": "Isolated native event test fixture",
+    "status": "needsResponse",
+    "isReadOnly": false,
+    "updatedAt": 721692800.0,
+    "workspace": "Offline event gallery",
+    "agentName": "Omni",
+    "isPinned": false,
+    "isArchived": false
+  },
+  "messages": [],
+  "decisions": [
+    {
+      "id": "gallery-form-request",
+      "targetSessionID": "gallery-form",
+      "title": "Release preferences",
+      "detail": "These answers only update this isolated offline fixture.",
+      "options": [],
+      "form": {
+        "fields": [
+          {
+            "key": "name",
+            "title": "Release name",
+            "kind": "text",
+            "minLength": 2
+          },
+          {
+            "key": "count",
+            "title": "Number of reviewers",
+            "kind": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          {
+            "key": "notify",
+            "title": "Notify reviewers?",
+            "kind": "boolean"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{"type":"response.created","response":{"id":"r1"}}
+{"type":"response.elicitation_resolved","elicitation_id":"unrelated"}
+{"type":"response.elicitation_request","elicitation_id":"ask1","params":{"message":"Approve?"}}
+{"type":"response.elicitation_resolved","elicitation_id":"ask1"}
+{"type":"response.elicitation_request","elicitation_id":"ask1","params":{"message":"Approve?"}}

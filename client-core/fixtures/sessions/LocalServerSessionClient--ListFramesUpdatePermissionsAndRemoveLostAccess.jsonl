@@ -1,0 +1,2 @@
+{"direction": "recv", "message": {"type": "changed", "items": [{"id": "conv_a", "status": "running", "created_at": 1, "permission_level": 4}]}}
+{"direction": "recv", "message": {"type": "removed", "ids": ["conv_a"]}}

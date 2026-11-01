@@ -1,0 +1,2 @@
+{"direction": "recv", "message": {"type": "changed", "items": [{"id": "conv_a", "status": "idle", "created_at": 1, "permission_level": 4, "runner_online": false}]}}
+{"direction": "recv", "message": {"type": "changed", "items": [{"id": "conv_a", "status": "idle", "created_at": 1, "permission_level": 4, "host_id": "mac", "host_online": true, "runner_online": false, "host_resumable": false}]}}

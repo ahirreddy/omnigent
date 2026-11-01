@@ -1,0 +1,12 @@
+{
+  "denied_response": {
+    "status": 202,
+    "body": {
+      "queued": false,
+      "denied": true
+    }
+  },
+  "uncertain_error": "networkConnectionLost",
+  "file_content": "retained bytes",
+  "submitted_text": "keep text"
+}

@@ -1,0 +1,25 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/conv_a/items"
+  },
+  "status": 200,
+  "response": {
+    "data": [
+      {
+        "id": "meta_1",
+        "type": "message",
+        "role": "user",
+        "is_meta": true,
+        "content": [
+          {
+            "type": "input_text",
+            "text": "Hidden harness context"
+          }
+        ]
+      }
+    ],
+    "has_more": true,
+    "last_id": "meta_1"
+  }
+}

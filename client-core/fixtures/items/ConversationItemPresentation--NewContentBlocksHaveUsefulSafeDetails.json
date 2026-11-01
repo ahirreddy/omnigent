@@ -1,0 +1,17 @@
+{
+  "id": "m1",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "future_chart",
+      "caption": "Quarterly totals",
+      "values": [
+        1,
+        2,
+        3
+      ],
+      "secret": "PRIVATE"
+    }
+  ]
+}

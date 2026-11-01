@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/2.0/omnigent/v1/sessions",
+    "query": {
+      "after": "cursor",
+      "limit": "20"
+    }
+  },
+  "status": 200,
+  "response": {
+    "data": [],
+    "has_more": false
+  }
+}

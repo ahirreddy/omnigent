@@ -1,0 +1,6 @@
+{"type":"session.skills","conversation_id":"fixture-session","agent_id":"new-agent","agent_name":"New agent"}
+{"type":"session.model_options","conversation_id":"fixture-session","agent_id":"new-agent","agent_name":"New agent"}
+{"type":"session.agent_changed","conversation_id":"fixture-session","agent_id":"new-agent","agent_name":"New agent"}
+{"type":"session.collaboration_mode","conversation_id":"fixture-session","mode":"plan"}
+{"type":"session.changed_files.invalidated","session_id":"fixture-session","environment_id":"local"}
+{"type":"session.changed_files.invalidated","session_id":"fixture-session"}

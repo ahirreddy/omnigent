@@ -1,0 +1,24 @@
+{
+  "session_id": "a",
+  "mount": "/api/2.0/omnigent",
+  "server_root": "https://127.0.0.1:{port}",
+  "accepted": [
+    "/v1/sessions/a/resources/files/f/content",
+    "v1/sessions/a/resources/files/f/content",
+    "https://127.0.0.1:{port}/api/2.0/omnigent/v1/sessions/a/resources/files/f/content"
+  ],
+  "expected_file_id": "f",
+  "rejected": [
+    "https://other.invalid/api/2.0/omnigent/v1/sessions/a/resources/files/f/content",
+    "https://127.0.0.1:{port}/other/v1/sessions/a/resources/files/f/content",
+    "https://127.0.0.1:{port}/api/2.0/omnigent/v1/sessions/a/resources/files/f/content?token=example"
+  ],
+  "identity_cases": [
+    {
+      "user_id": null
+    },
+    {
+      "user_id": "bob"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{"type":"session.usage","conversation_id":"fixture-session","context_tokens":100,"context_window":1000,"total_cost_usd":0.5}
+{"type":"session.usage","conversation_id":"fixture-session","context_tokens":-1}
+{"type":"session.usage","conversation_id":"fixture-session","context_window":0}
+{"type":"session.usage","conversation_id":"fixture-session","total_cost_usd":-0.1}
+{"type":"session.usage","conversation_id":"fixture-session","context_tokens":"bad"}
+{"type":"session.usage","conversation_id":"fixture-session","context_window":null}

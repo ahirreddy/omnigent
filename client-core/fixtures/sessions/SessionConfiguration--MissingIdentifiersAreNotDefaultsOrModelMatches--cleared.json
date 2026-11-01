@@ -1,0 +1,10 @@
+{
+  "wire": {
+    "id": "conv_a",
+    "status": "idle",
+    "created_at": 1,
+    "permission_level": 4,
+    "model_override": null,
+    "reasoning_effort": null
+  }
+}

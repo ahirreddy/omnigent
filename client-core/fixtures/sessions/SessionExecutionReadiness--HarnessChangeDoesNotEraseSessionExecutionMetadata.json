@@ -1,0 +1,18 @@
+{
+  "base_fields": {
+    "harness": "codex-native",
+    "host_id": "managed",
+    "host_online": false,
+    "runner_online": false,
+    "host_resumable": true
+  },
+  "chain": false,
+  "cases": [
+    {
+      "label": "harness change",
+      "fields": {
+        "harness": "claude-native"
+      }
+    }
+  ]
+}

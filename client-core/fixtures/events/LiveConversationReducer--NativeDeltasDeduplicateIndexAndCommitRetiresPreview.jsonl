@@ -1,0 +1,5 @@
+{"type":"response.output_text.delta","message_id":"native1","index":0,"delta":"Hel"}
+{"type":"response.output_text.delta","message_id":"native1","index":0,"delta":"duplicate"}
+{"type":"response.output_text.delta","message_id":"native1","index":1,"delta":"lo"}
+{"type":"response.output_item.done","item":{"id":"persisted1","type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello"}]}}
+{"type":"response.output_text.delta","message_id":"native1","index":2,"delta":"late"}

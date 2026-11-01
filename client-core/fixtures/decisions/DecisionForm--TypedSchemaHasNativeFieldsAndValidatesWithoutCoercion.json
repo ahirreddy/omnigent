@@ -1,0 +1,27 @@
+{
+  "elicitation_id": "request",
+  "params": {
+    "requestedSchema": {
+      "type": "object",
+      "required": [
+        "name",
+        "count",
+        "ready"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 2
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "ready": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/me"
+  },
+  "status": 200,
+  "response": {
+    "user_id": "local",
+    "is_admin": true
+  }
+}

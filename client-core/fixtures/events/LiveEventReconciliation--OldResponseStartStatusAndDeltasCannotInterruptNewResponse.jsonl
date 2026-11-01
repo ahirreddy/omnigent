@@ -1,0 +1,10 @@
+{"type":"response.created","response":{"id":"old"}}
+{"type":"response.output_text.delta","delta":"Old partial"}
+{"type":"response.created","response":{"id":"new","previous_response_id":"old"}}
+{"type":"response.output_text.delta","response_id":"new","delta":"New partial"}
+{"type":"response.created","response":{"id":"old"}}
+{"type":"session.status","status":"idle","response_id":"old"}
+{"type":"session.status","status":"running","response_id":"old"}
+{"type":"response.output_text.delta","response_id":"old","delta":"Stale"}
+{"type":"response.reasoning_summary_text.delta","response_id":"old","delta":"Stale"}
+{"type":"response.output_item.done","item":{"id":"old-final","type":"message","role":"assistant","response_id":"old","content":"Old partial complete"}}

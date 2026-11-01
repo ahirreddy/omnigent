@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/.well-known/omnigent.json",
+    "query": {}
+  },
+  "status": 200,
+  "response": {
+    "manifest_version": 1,
+    "server_version": "0.21.0.dev0",
+    "min_desktop_version": null,
+    "ui": {
+      "server_picker": "sidebar"
+    },
+    "auth": {
+      "mode": "header",
+      "session_cookie": null,
+      "native_redirect_uris": null
+    },
+    "server_name": null
+  }
+}

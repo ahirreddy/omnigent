@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/fixture/resources/files/file/content"
+  },
+  "status": 200,
+  "response": "",
+  "headers": {
+    "Content-Type": "text/plain",
+    "Content-Length": "10485761"
+  }
+}

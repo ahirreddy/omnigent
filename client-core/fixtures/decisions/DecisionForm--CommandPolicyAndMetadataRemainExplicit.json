@@ -1,0 +1,12 @@
+{
+  "elicitation_id": "request",
+  "params": {
+    "command": "swift test",
+    "cwd": "/workspace",
+    "reason": "Verify the change",
+    "execpolicy_amendment": [
+      "swift",
+      "test"
+    ]
+  }
+}

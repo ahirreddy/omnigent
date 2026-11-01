@@ -1,0 +1,2 @@
+{"request": {"method": "GET", "path": "/v1/agents"}, "status": 200, "response": {"data": [{"id": "ag_first", "name": "First", "harness": "claude-native"}], "has_more": true, "last_id": "ag_first"}}
+{"request": {"method": "GET", "path": "/v1/agents", "query": {"after": "ag_first"}}, "status": 200, "response": {"data": [{"id": "ag_first", "name": "First", "harness": "claude-native"}, {"id": "ag_codex", "name": "Second", "harness": "codex-native"}], "has_more": false}}

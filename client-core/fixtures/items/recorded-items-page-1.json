@@ -1,0 +1,45 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/facbcc05b00f4321b98b1929d217abc5/items",
+    "query": {
+      "limit": 2,
+      "order": "asc"
+    }
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "data": [
+      {
+        "id": "045b5946e6fd4d06bd2c069cc197b83b",
+        "response_id": "turn_5c3ff496250f48dda13bc055d25df2f3",
+        "type": "message",
+        "status": "completed",
+        "created_at": 1793492389,
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "Run the command echo fixture-hello and tell me the result."
+          }
+        ],
+        "user_authored": true
+      },
+      {
+        "id": "1925c34ba9774eccacfc49669d9e8ccb",
+        "response_id": "resp_e8fb358f78a34e1e962751e7",
+        "type": "function_call",
+        "status": "completed",
+        "created_at": 1793492390,
+        "model": "fixture_agent",
+        "name": "sys_os_shell",
+        "arguments": "{\"command\": \"echo fixture-hello\"}",
+        "call_id": "call_fixture_shell_1"
+      }
+    ],
+    "first_id": "045b5946e6fd4d06bd2c069cc197b83b",
+    "last_id": "1925c34ba9774eccacfc49669d9e8ccb",
+    "has_more": true
+  }
+}

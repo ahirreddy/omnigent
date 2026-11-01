@@ -1,0 +1,16 @@
+{
+  "base_fields": {
+    "host_id": null,
+    "host_online": null,
+    "runner_id": null,
+    "runner_online": true,
+    "harness": "codex-native"
+  },
+  "cases": [
+    {
+      "label": "sparse projection without permission",
+      "fields": {},
+      "include_permission": false
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/info",
+    "query": {}
+  },
+  "status": 200,
+  "response": {
+    "accounts_enabled": false,
+    "single_user": true,
+    "login_url": null,
+    "needs_setup": false,
+    "databricks_features": false,
+    "managed_sandboxes_enabled": false,
+    "durable_initial_input": false,
+    "sandbox_provider": null,
+    "sandbox_providers": [],
+    "sandbox_provider_capabilities": {},
+    "enabled_connections": [],
+    "sharing_mode": "on",
+    "public_sharing_enabled": true,
+    "public_sharing_max_level": "read",
+    "server_version": "0.21.0.dev0",
+    "smart_routing_enabled": false,
+    "smart_routing_sources": {
+      "external": false,
+      "oss": false
+    },
+    "features": {
+      "codex_plan_at_launch": true,
+      "sandbox_profiles": false,
+      "session_orchestration": true,
+      "automations_v2": false,
+      "grid_sessions_display_ui": false,
+      "splittable_terminal_view_ui": false,
+      "usage_page": false,
+      "harness_install": false,
+      "canvas": false,
+      "arca_shutdown_warnings": false,
+      "import_review": false,
+      "custom_agents_settings_ui": false,
+      "sidebar_grouping_ui": false,
+      "workspace_content_search": false
+    },
+    "harness_install_enabled": false,
+    "installable_harnesses": [],
+    "automations_enabled": true,
+    "dictation_available": false,
+    "archive_worktree_cleanup": true,
+    "session_search_scope": true,
+    "scheduled_task_session_modes": true,
+    "request_managed_sandbox_host_id": true,
+    "session_fork_workspaces": true,
+    "agent_install": true,
+    "agent_detail": true,
+    "agent_config_edit": true,
+    "session_event_types": [
+      "approval",
+      "clear",
+      "compact",
+      "compaction",
+      "error",
+      "external_btw_dismiss",
+      "function_call",
+      "function_call_output",
+      "interrupt",
+      "mcp_elicitation",
+      "message",
+      "native_tool",
+      "reasoning",
+      "resource_event",
+      "retry_session",
+      "routing_decision",
+      "slash_command",
+      "stop_session",
+      "terminal_command"
+    ],
+    "session_pull_requests": true,
+    "filesystem_attachments": {
+      "extensions": [
+        ".db",
+        ".docx",
+        ".pptx",
+        ".sqlite",
+        ".sqlite3",
+        ".xlsx",
+        ".zip"
+      ],
+      "all_types": false
+    },
+    "scheduled_task_projects": true,
+    "branding": {
+      "app_name": null,
+      "heading": null,
+      "logos": {
+        "main": null,
+        "loading": null,
+        "favicon": null
+      },
+      "powered_by": true
+    },
+    "picker": {
+      "restrict_to_agent_names": [],
+      "default_agent_name": null
+    }
+  }
+}

@@ -1,0 +1,88 @@
+[
+  {
+    "role": "assistant",
+    "content": "Final reply",
+    "id": "commit-message",
+    "type": "message"
+  },
+  {
+    "name": "fixture",
+    "arguments": "{}",
+    "call_id": "call",
+    "id": "commit-function_call",
+    "type": "function_call"
+  },
+  {
+    "output": "Final result",
+    "call_id": "call",
+    "id": "commit-function_call_output",
+    "type": "function_call_output"
+  },
+  {
+    "code": "fixture_error",
+    "message": "Final failure",
+    "id": "commit-error",
+    "type": "error"
+  },
+  {
+    "summary": [
+      {
+        "type": "summary_text",
+        "text": "Final summary"
+      }
+    ],
+    "id": "commit-reasoning",
+    "type": "reasoning"
+  },
+  {
+    "summary": "Final compaction",
+    "id": "commit-compaction",
+    "type": "compaction"
+  },
+  {
+    "name": "fixture",
+    "arguments": "argument",
+    "id": "commit-slash_command",
+    "type": "slash_command"
+  },
+  {
+    "model": "fixture",
+    "applied": false,
+    "id": "commit-routing_decision",
+    "type": "routing_decision"
+  },
+  {
+    "kind": "output",
+    "stdout": "Final output",
+    "id": "commit-terminal_command",
+    "type": "terminal_command"
+  },
+  {
+    "id": "commit-web_search_call",
+    "type": "web_search_call"
+  },
+  {
+    "id": "commit-file_search_call",
+    "type": "file_search_call"
+  },
+  {
+    "id": "commit-code_interpreter_call",
+    "type": "code_interpreter_call"
+  },
+  {
+    "id": "commit-computer_call",
+    "type": "computer_call"
+  },
+  {
+    "id": "commit-image_generation_call",
+    "type": "image_generation_call"
+  },
+  {
+    "id": "commit-mcp_call",
+    "type": "mcp_call"
+  },
+  {
+    "id": "commit-mcp_list_tools",
+    "type": "mcp_list_tools"
+  }
+]

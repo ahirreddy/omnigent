@@ -1,0 +1,3 @@
+{"request": {"method": "GET", "path": "/v1/sessions", "query": {"after": "same"}}, "status": 200, "response": {"data": [], "has_more": true}}
+{"request": {"method": "GET", "path": "/v1/sessions", "query": {"after": "same"}}, "status": 200, "response": {"data": [], "has_more": true, "last_id": ""}}
+{"request": {"method": "GET", "path": "/v1/sessions", "query": {"after": "same"}}, "status": 200, "response": {"data": [], "has_more": true, "last_id": "same"}}

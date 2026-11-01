@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/sessions"
+  },
+  "status": 400,
+  "response": {
+    "error": {
+      "message": "workspace does not exist"
+    }
+  }
+}

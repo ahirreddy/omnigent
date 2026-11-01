@@ -1,0 +1,1 @@
+{"id": null, "event": null, "data": {"type": "session.input.consumed", "data": {"item_id": "next", "cleared_pending_id": "pending", "type": "message", "data": {"role": "user", "content": "Next question"}}}}
