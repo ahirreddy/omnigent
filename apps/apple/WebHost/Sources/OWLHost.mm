@@ -85,6 +85,21 @@ bool IsValidStorageKey(const std::string& key) {
   return true;
 }
 
+/// Lets the views' popup policy decide (OWLBrowserPopups.mm): Chrome's own popup blocker would
+/// otherwise drop gesture-less window.open before OnBeforePopup, without telling anyone. Only
+/// persistent contexts accept a default content setting; incognito (ephemeral) ones keep
+/// Chrome's blocker for opens without a user gesture.
+class PopupSettingHandler : public CefRequestContextHandler {
+ public:
+  void OnRequestContextInitialized(CefRefPtr<CefRequestContext> context) override {
+    context->SetContentSetting(CefString(), CefString(), CEF_CONTENT_SETTING_TYPE_POPUPS,
+                               CEF_CONTENT_SETTING_VALUE_ALLOW);
+  }
+
+ private:
+  IMPLEMENT_REFCOUNTING(PopupSettingHandler);
+};
+
 class HostApp : public CefApp, public CefBrowserProcessHandler {
  public:
   explicit HostApp(bool use_mock_keychain) : use_mock_keychain_(use_mock_keychain) {}
@@ -102,6 +117,9 @@ class HostApp : public CefApp, public CefBrowserProcessHandler {
       // exit. CEF helpers cannot run that type and crash. The host bundle is immutable inside
       // the signed app, so the clone is unnecessary.
       command_line->AppendSwitchWithValue("disable-features", "MacAppCodeSignClone");
+      // Without this, HTTP auth opens Chrome's own login dialog as a window in the host process
+      // instead of calling CefRequestHandler::GetAuthCredentials.
+      command_line->AppendSwitch("disable-chrome-login-prompt");
     }
   }
 
@@ -209,6 +227,7 @@ void Host::HandleHelloAck(const Decoder& fields) {
   const uint64_t mode = fields.U64(OWLFieldRenderMode).value_or(OWLRenderModeRemoteLayer);
   config_.render_mode =
       mode == OWLRenderModeIOSurface ? OWLRenderModeIOSurface : OWLRenderModeRemoteLayer;
+  config_.client_minor = fields.U64(OWLFieldProtocolMinor).value_or(0);
   ack_accepted_ = true;
 }
 
@@ -323,9 +342,10 @@ int Host::Run(int argc, char* argv[]) {
 void Host::OnContextInitialized() {
   context_ready_ = true;
   const uint64_t elapsed = (NowNanos() - start_nanos_) / 1000000;
-  Log("CEF %s ready in %llu ms (render mode %llu)", CEF_VERSION,
+  Log("CEF %s ready in %llu ms (render mode %llu, client protocol minor %llu)", CEF_VERSION,
       static_cast<unsigned long long>(elapsed),
-      static_cast<unsigned long long>(config_.render_mode));
+      static_cast<unsigned long long>(config_.render_mode),
+      static_cast<unsigned long long>(config_.client_minor));
   Send(OWLMessageKindReady, 0, 0,
        Encoder()
            .U64(OWLFieldElapsedMilliseconds, elapsed)
@@ -402,6 +422,26 @@ void Host::BeginShutdown(const char* reason) {
 void Host::OnBrowserClosed(uint64_t view_id) {
   Send(OWLMessageKindViewClosed, 0, view_id, Encoder());
   views_.erase(view_id);
+  if (shutting_down_ && views_.empty()) {
+    QuitLoop();
+  }
+}
+
+uint64_t Host::AllocateHostViewID() {
+  while (views_.count(next_host_view_id_) != 0) {
+    ++next_host_view_id_;
+  }
+  return next_host_view_id_++;
+}
+
+void Host::AdoptView(uint64_t view_id, CefRefPtr<BrowserClient> client) {
+  views_[view_id] = client;
+}
+
+void Host::AbandonView(uint64_t view_id) {
+  if (views_.erase(view_id) != 0) {
+    Send(OWLMessageKindViewClosed, 0, view_id, Encoder());
+  }
   if (shutting_down_ && views_.empty()) {
     QuitLoop();
   }
@@ -488,7 +528,11 @@ void Host::HandleProfileMessage(owl_message* message, const Decoder& fields) {
         settings.persist_session_cookies = true;
       }
       // An empty cache_path gives an isolated in-memory (off-the-record) context.
-      CefRefPtr<CefRequestContext> context = CefRequestContext::CreateContext(settings, nullptr);
+      CefRefPtr<CefRequestContextHandler> handler;
+      if (*persistent && config_.client_minor >= OWL_PROTOCOL_MINOR_PROMPTS) {
+        handler = new PopupSettingHandler();
+      }
+      CefRefPtr<CefRequestContext> context = CefRequestContext::CreateContext(settings, handler);
       if (!context) {
         ReportError(profile_id, OWLHostErrorProfileCreateFailed,
                     "CefRequestContext::CreateContext failed for profile " + *key + ".");
@@ -527,6 +571,7 @@ void Host::CreateView(uint64_t view_id, const Decoder& fields) {
   const bool visible = fields.Bool(OWLFieldVisible).value_or(true);
   const std::string url = fields.String(OWLFieldURL).value_or("about:blank");
   CefRefPtr<BrowserClient> client(new BrowserClient(view_id, width, height, scale, visible));
+  client->ApplyInitialPolicies(fields);
   std::string error;
   if (!client->StartPresenter(&error)) {
     ReportError(view_id, OWLHostErrorViewCreateFailed, error);
@@ -565,6 +610,10 @@ void Host::HandleViewMessage(owl_message* message, const Decoder& fields) {
   }
   // Hold a reference: Close() and other calls can erase the map entry.
   CefRefPtr<BrowserClient> view = found->second;
+  if (BrowserClient::IsBrowserUICommand(message->kind)) {
+    view->HandleBrowserUICommand(message->kind, fields);
+    return;
+  }
   switch (message->kind) {
     case OWLMessageKindViewClose:
       view->Close();

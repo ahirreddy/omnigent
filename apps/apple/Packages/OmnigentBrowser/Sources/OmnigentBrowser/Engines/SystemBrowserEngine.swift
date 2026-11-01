@@ -47,20 +47,39 @@ final class SystemBrowserTab: NSObject, BrowserTab {
   let engineKind = BrowserEngineKind.system
   let profile: BrowserProfile
   let state = BrowserTabState()
-  private let webView: WKWebView
+  let webView: WKWebView
   private var observations: [NSKeyValueObservation] = []
+  weak var delegate: (any BrowserTabDelegate)?
+  /// Hosts whose certificate error the user chose to proceed past, for this tab's session.
+  var certificateExceptions: Set<String> = []
+  /// Downloads in flight, retained until they finish.
+  var downloadTrackers: [ObjectIdentifier: SystemDownloadTracker] = [:]
+  private(set) lazy var agentInput: any BrowserAgentInput = SystemAgentInput(tab: self)
+
+  var popupPolicy = BrowserPopupPolicy.requireUserGesture {
+    didSet { applyPopupPolicy() }
+  }
+
+  /// Checked for every navigation in `decidePolicyFor navigationAction`, redirects included.
+  var urlPolicy: (any BrowserURLPolicy)?
 
   var platformView: BrowserPlatformView { webView }
 
-  init(profile: BrowserProfile, dataStore: WKWebsiteDataStore) {
-    self.profile = profile
+  convenience init(profile: BrowserProfile, dataStore: WKWebsiteDataStore) {
     let configuration = WKWebViewConfiguration()
     configuration.websiteDataStore = dataStore
     #if os(iOS)
       configuration.allowsInlineMediaPlayback = true
     #endif
+    self.init(profile: profile, configuration: configuration)
+  }
+
+  /// `configuration` must be the one WebKit passes for a popup, so the opener link holds.
+  init(profile: BrowserProfile, configuration: WKWebViewConfiguration) {
+    self.profile = profile
     webView = WKWebView(frame: .zero, configuration: configuration)
     super.init()
+    applyPopupPolicy()
     webView.navigationDelegate = self
     webView.uiDelegate = self
     webView.isInspectable = true
@@ -104,6 +123,10 @@ final class SystemBrowserTab: NSObject, BrowserTab {
 
   func load(_ url: URL) {
     guard !state.isClosed else { return }
+    if let urlPolicy, case .deny(let reason) = urlPolicy.evaluate(url) {
+      state.lastError = .navigationBlocked(url: url, reason: reason)
+      return
+    }
     state.lastError = nil
     if url.isFileURL {
       webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
@@ -199,6 +222,7 @@ final class SystemBrowserTab: NSObject, BrowserTab {
   func close() {
     guard !state.isClosed else { return }
     state.isClosed = true
+    withdrawPrompts(reason: "The tab was closed.")
     observations.removeAll()
     webView.stopLoading()
     webView.navigationDelegate = nil
@@ -206,73 +230,27 @@ final class SystemBrowserTab: NSObject, BrowserTab {
     webView.removeFromSuperview()
   }
 
-  fileprivate func report(_ error: any Error, url: URL?) {
+  func report(_ error: any Error, url: URL?) {
     let nsError = error as NSError
     if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled {
       state.lastError = .navigationCancelled(url: url)
       return
     }
-    if nsError.domain == WKErrorDomain,
-      nsError.code == Self.frameLoadInterruptedByPolicyChange,
-      case .downloadsUnsupported = state.lastError
-    {
-      return
+    if nsError.domain == WKErrorDomain, nsError.code == Self.frameLoadInterruptedByPolicyChange {
+      return  // The tab cancelled it on purpose (download or policy) and reported why.
     }
     state.lastError = .navigationFailed(
       url: url, code: nsError.code, message: nsError.localizedDescription)
   }
 
-  /// WebKitErrorFrameLoadInterruptedByPolicyChange: the navigation we cancelled after
-  /// reporting `downloadsUnsupported`.
-  private static let frameLoadInterruptedByPolicyChange = 102
-}
+  /// WebKitErrorFrameLoadInterruptedByPolicyChange: a navigation the tab turned into a download
+  /// or blocked by policy.
+  static let frameLoadInterruptedByPolicyChange = 102
 
-extension SystemBrowserTab: WKNavigationDelegate {
-  func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
-    state.lastError = nil
-  }
-
-  func webView(
-    _ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation?,
-    withError error: any Error
-  ) {
-    let failingURL = (error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL
-    report(error, url: failingURL ?? webView.url)
-  }
-
-  func webView(
-    _ webView: WKWebView, didFail navigation: WKNavigation?, withError error: any Error
-  ) {
-    report(error, url: webView.url)
-  }
-
-  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-    state.lastError = .contentProcessTerminated(reason: "WebKit web content process exited.")
-  }
-
-  func webView(
-    _ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
-    decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void
-  ) {
-    if navigationResponse.isForMainFrame, !navigationResponse.canShowMIMEType {
-      state.lastError = .downloadsUnsupported(url: navigationResponse.response.url)
-      decisionHandler(.cancel)
-      return
-    }
-    decisionHandler(.allow)
-  }
-}
-
-extension SystemBrowserTab: WKUIDelegate {
-  /// Popups open in the same tab for now.
-  func webView(
-    _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
-    for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures
-  ) -> WKWebView? {
-    if navigationAction.targetFrame == nil {
-      webView.load(navigationAction.request)
-    }
-    return nil
+  private func applyPopupPolicy() {
+    // WebKit's own blocker handles opens without a user gesture; such blocks are not reported
+    // because WebKit exposes no callback for them.
+    webView.configuration.preferences.javaScriptCanOpenWindowsAutomatically = popupPolicy == .allow
   }
 }
 

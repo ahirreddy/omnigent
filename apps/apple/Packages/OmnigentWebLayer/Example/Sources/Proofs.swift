@@ -1,6 +1,7 @@
 internal import AppKit
 internal import Darwin
 internal import Foundation
+internal import OmnigentBrowser
 internal import OmnigentWebLayer
 
 struct ProofFailure: Error, CustomStringConvertible {
@@ -23,11 +24,27 @@ final class Proofs {
     "keys": { $0.unhandledKeys }, "cookies": { $0.cookies }, "agent": { $0.agentInput },
     "crash": { $0.crashRecovery }, "hang": { $0.hangRecovery }, "spike": { $0.renderingSpike },
     "quit": { $0.waitForPage },
+    // Protocol 1.1 browser UI, through the shared OmnigentBrowser UI (`--engine` picks one).
+    "dialogs": { $0.dialogs }, "permissions": { $0.permissions }, "files": { $0.files },
+    "downloads": { $0.downloads }, "auth": { $0.authentication }, "certs": { $0.certificates },
+    "popups": { $0.popups }, "menu": { $0.contextMenu }, "ime": { $0.ime },
+    "drag": { $0.dragAndDrop },
+    "color": { $0.color }, "agent-actions": { $0.agentActions },
+  ]
+
+  /// The 1.1 proofs, in order.
+  static let browserUI = [
+    "dialogs", "permissions", "files", "downloads", "auth", "certs", "popups", "menu", "ime",
+    "drag", "color", "agent-actions",
   ]
 
   let model: ExampleModel
   var webView: WebView { model.webView }
   var outputDirectory: URL { model.options.output }
+  /// The engine the browser-UI proofs run on.
+  var engine: BrowserEngineKind { model.options.engine }
+  private(set) lazy var provider = HarnessProvider(session: model.session)
+  var server: ProofServer?
 
   init(model: ExampleModel) {
     self.model = model
@@ -45,7 +62,11 @@ final class Proofs {
     // Keep the window on screen: an occluded window is reported hidden and stops rendering.
     window?.level = .floating
     window?.makeKeyAndOrderFront(nil)
-    for name in names.flatMap({ $0 == "all" ? Self.all : [$0] }) {
+    defer { server?.stop() }
+    let expanded = names.flatMap { name in
+      name == "all" ? Self.all : name == "browser-ui" ? Self.browserUI : [name]
+    }
+    for name in expanded {
       Clock.log("== proof \(name)")
       do {
         guard let scenario = Self.scenarios[name] else {

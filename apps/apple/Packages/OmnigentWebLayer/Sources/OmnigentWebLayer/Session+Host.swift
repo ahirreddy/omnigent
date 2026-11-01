@@ -166,6 +166,8 @@ extension Session {
       outstandingPing = nil
     case .hostError:
       handleHostError(message)
+    case .popupCreated:
+      adoptPopup(message)
     case .none:
       let error = WebLayerError.channelFailed("Unknown message kind \(message.kindValue).")
       Logger.session.error("\(error.localizedDescription, privacy: .public)")
@@ -206,6 +208,7 @@ extension Session {
       return
     }
     helloDuration = ContinuousClock.now - launchStart
+    hostMinor = fields.u64(.protocolMinor) ?? 0
     helloInfo = HelloInfo(
       pid: process.pid, cefVersion: fields.string(.cefVersion) ?? "unknown",
       chromiumVersion: fields.string(.chromiumVersion) ?? "unknown",
@@ -235,9 +238,10 @@ extension Session {
     return nil
   }
 
-  private func helloAck() -> WireEncoder {
+  func helloAck() -> WireEncoder {
     var ack = WireEncoder()
       .bool(.accepted, true)
+      .u64(.protocolMinor, UInt64(OWL_PROTOCOL_MINOR))
       .string(.rootCachePath, configuration.rootCacheURL.path)
       .u64(.remoteDebuggingPort, UInt64(max(0, configuration.remoteDebuggingPort)))
       .bool(.useMockKeychain, configuration.useMockKeychain)
@@ -299,7 +303,10 @@ extension Session {
       message: message.fields.string(.message) ?? "No message.")
     Logger.session.error(
       "Host error for \(message.target): \(error.localizedDescription, privacy: .public)")
-    if let view = views[message.target] {
+    if message.fields.u64(.errorCode) == OWLHostErrorCode.unknownPrompt.rawValue {
+      // A reply crossed the host's withdrawal of the prompt; the view's state is fine.
+      lastProtocolError = error
+    } else if let view = views[message.target] {
       view.handleHostError(error, code: message.fields.u64(.errorCode) ?? 0)
     } else if let profile = profiles[message.target] {
       profile.lastError = error

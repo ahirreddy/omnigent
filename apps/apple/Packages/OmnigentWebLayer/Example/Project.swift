@@ -19,7 +19,10 @@ let app = Target.target(
   infoPlist: .extendingDefault(with: ["NSPrincipalClass": "NSApplication"]),
   sources: ["Sources/**"],
   scripts: BrowserTargets.appScripts(webHost),
-  dependencies: [.package(product: "OmnigentWebLayer")] + BrowserTargets.appDependencies(webHost),
+  dependencies: [
+    .package(product: "OmnigentWebLayer"), .package(product: "OmnigentBrowser"),
+    .package(product: "OmnigentBrowserChromium"),
+  ] + BrowserTargets.appDependencies(webHost),
   settings: .settings(
     base: BrowserTargets.appSettings.merging([
       "SWIFT_VERSION": "6.0",
@@ -42,7 +45,7 @@ let app = Target.target(
 
 let project = Project(
   name: "WebLayerExample",
-  packages: [.package(path: "..")],
+  packages: [.package(path: ".."), .package(path: "../../OmnigentBrowser")],
   settings: .settings(base: [
     "MACOSX_DEPLOYMENT_TARGET": "26.0",
     "ENABLE_USER_SCRIPT_SANDBOXING": "YES",

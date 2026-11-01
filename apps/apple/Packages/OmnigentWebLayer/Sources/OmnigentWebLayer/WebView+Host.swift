@@ -15,6 +15,8 @@ extension WebView {
     var fields = geometryFields()
       .u64(.profileID, profile.id)
       .bool(.visible, isVisible)
+      .u64(.popupPolicy, popupPolicy.wire.rawValue)
+    if let navigationRules { fields = fields.string(.rules, navigationRules.json) }
     if let target { fields = fields.string(.URL, target.absoluteString) }
     do {
       try session.post(.viewCreate, target: id, fields)
@@ -31,6 +33,7 @@ extension WebView {
     layerHost.reset()
     isLoading = false
     finishFind(FindResult(matchCount: 0, activeMatch: nil))
+    withdrawPrompts(reason: "The Chromium web host stopped.")
     if let error {
       status = .unavailable(error)
       lastError = error
@@ -58,7 +61,9 @@ extension WebView {
     if handleRendering(kind, message) {
       return
     }
-    if handleNavigation(kind, message.fields) || handlePageEvent(kind, message.fields) {
+    if handleNavigation(kind, message.fields) || handlePageEvent(kind, message.fields)
+      || handleBrowserUI(kind, message.fields)
+    {
       changed()
       return
     }
@@ -82,12 +87,7 @@ extension WebView {
     case .loadProgress:
       estimatedProgress = fields.double(.progress) ?? 0
     case .loadError:
-      let failedURL = fields.string(.URL).flatMap(URL.init(string:))
-      let code = Int(fields.i64(.errorCode) ?? 0)
-      lastError =
-        code == Self.netErrorAborted
-        ? .navigationCancelled(url: failedURL)
-        : .navigationFailed(url: failedURL, code: code, message: fields.string(.text) ?? "")
+      loadFailed(fields)
     case .viewClosed:
       if status != .closed {
         status = .closed
@@ -97,6 +97,18 @@ extension WebView {
       return false
     }
     return true
+  }
+
+  private func loadFailed(_ fields: WireDecoder) {
+    let failedURL = fields.string(.URL).flatMap(URL.init(string:))
+    let code = Int(fields.i64(.errorCode) ?? 0)
+    if code == Self.netErrorAborted, case .navigationBlocked = lastError {
+      return  // The rules aborted it; keep the reason rather than a plain cancellation.
+    }
+    lastError =
+      code == Self.netErrorAborted
+      ? .navigationCancelled(url: failedURL)
+      : .navigationFailed(url: failedURL, code: code, message: fields.string(.text) ?? "")
   }
 
   private func handlePageEvent(_ kind: OWLMessageKind, _ fields: WireDecoder) -> Bool {
@@ -159,6 +171,7 @@ extension WebView {
     sendIfLive(.viewVisibility, WireEncoder().bool(.visible, isVisible))
     if isFocused { sendIfLive(.viewFocus, WireEncoder().bool(.focused, true)) }
     if zoomLevel != 0 { sendIfLive(.setZoom, WireEncoder().double(.zoomLevel, zoomLevel)) }
+    sendPolicies()
     if navigationPendingCreation, let requestedURL {
       navigationPendingCreation = false
       send(.navigate, WireEncoder().string(.URL, requestedURL.absoluteString))

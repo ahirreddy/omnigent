@@ -49,6 +49,12 @@ nonisolated public enum WebLayerError: Error, Hashable, Sendable {
   case renderingUnavailable(String)
   /// A caller passed an invalid argument.
   case invalidArgument(String)
+  /// The view's navigation rules stopped a navigation (protocol 1.1).
+  case navigationBlocked(url: URL?, reason: String)
+  /// The popup policy stopped a window.open or target=_blank (protocol 1.1).
+  case popupBlocked(url: URL?, reason: String)
+  /// The prompt was already answered or withdrawn (protocol 1.1).
+  case promptFinished(String)
 
   /// Whether restarting the host can fix the error.
   public var isRecoverableByRestart: Bool {
@@ -117,6 +123,12 @@ extension WebLayerError: LocalizedError {
       "The page cannot be displayed: \(message)"
     case .invalidArgument(let message):
       "Invalid argument: \(message)"
+    case .navigationBlocked(let url, let reason):
+      "Navigation to \(url?.absoluteString ?? "the page") was blocked: \(reason)"
+    case .popupBlocked(let url, let reason):
+      "A popup for \(url?.absoluteString ?? "a page") was blocked: \(reason)"
+    case .promptFinished(let message):
+      "The request was already handled: \(message)"
     }
   }
 }

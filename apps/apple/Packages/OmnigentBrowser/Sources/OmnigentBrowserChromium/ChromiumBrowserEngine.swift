@@ -68,8 +68,12 @@
     /// The host session behind every tab.
     public let session: Session
 
+    /// Mirrors web-layer downloads into the engine-neutral records the tabs handed out.
+    private var downloads: [UInt32: BrowserDownload] = [:]
+
     private init(session: Session) {
       self.session = session
+      session.downloads.onChange = { [weak self] download in self?.downloadChanged(download) }
     }
 
     /// The CEF version of the running host, once it is ready.
@@ -110,6 +114,13 @@
       return Self(session: session)
     }
 
+    /// An engine over a session the caller already started, so the app and its browser tabs
+    /// share one web host.
+    public static func attach(to session: Session) -> Self {
+      session.start()
+      return Self(session: session)
+    }
+
     /// See `BrowserEngine.makeTab(profile:initialURL:)`.
     public func makeTab(profile: BrowserProfile, initialURL: URL?) throws(BrowserError)
       -> any BrowserTab
@@ -118,146 +129,29 @@
         identifier: profile.identifier,
         persistence: profile.persistence == .persistent ? .persistent : .ephemeral)
       return ChromiumBrowserTab(
-        profile: profile, webView: webProfile.makeWebView(initialURL: initialURL))
-    }
-  }
-
-  /// A `BrowserTab` over one `WebView`.
-  final class ChromiumBrowserTab: BrowserTab {
-    let engineKind = BrowserEngineKind.chromium
-    let profile: BrowserProfile
-    let state = BrowserTabState()
-    let webView: WebView
-    let platformView: BrowserPlatformView
-
-    init(profile: BrowserProfile, webView: WebView) {
-      self.profile = profile
-      self.webView = webView
-      platformView = WebLayerView(webView: webView)
-      webView.onStateChange = { [weak self] in self?.syncState() }
-      syncState()
+        profile: profile, webView: webProfile.makeWebView(initialURL: initialURL), engine: self)
     }
 
-    func load(_ url: URL) { webView.load(url) }
-    func goBack() { webView.goBack() }
-    func goForward() { webView.goForward() }
-    func reload() { webView.reload() }
-    func stopLoading() { webView.stopLoading() }
+    func track(_ download: BrowserDownload, as webDownload: WebDownload) {
+      downloads[webDownload.id] = download
+      downloadChanged(webDownload)
+    }
 
-    func evaluateJavaScript(_ script: String) async throws(BrowserError) -> BrowserScriptValue {
-      do {
-        return Self.convert(try await webView.evaluateJavaScript(script))
-      } catch {
-        throw Self.convert(error)
+    private func downloadChanged(_ webDownload: WebDownload) {
+      guard let download = downloads[webDownload.id] else { return }
+      download.receivedBytes = webDownload.receivedBytes
+      download.totalBytes = webDownload.totalBytes
+      switch webDownload.state {
+      case .inProgress: download.state = .inProgress
+      case .paused: download.state = .paused
+      case .complete: download.state = .complete
+      case .cancelled: download.state = .cancelled
+      case .interrupted: download.state = .failed("Chromium interrupted the download.")
       }
-    }
-
-    func takeSnapshotPNG() async throws(BrowserError) -> Data {
-      do {
-        return try await webView.snapshotPNG()
-      } catch {
-        throw Self.convert(error)
-      }
-    }
-
-    func find(_ text: String, forward: Bool, caseSensitive: Bool) async throws(BrowserError)
-      -> BrowserFindResult
-    {
-      do {
-        let result = try await webView.find(text, forward: forward, caseSensitive: caseSensitive)
-        return BrowserFindResult(
-          matchFound: result.matchFound, matchCount: result.matchCount,
-          activeMatch: result.activeMatch)
-      } catch {
-        throw Self.convert(error)
-      }
-    }
-
-    func showDevTools() throws(BrowserError) {
-      do {
-        try webView.showDevTools()
-      } catch {
-        throw Self.convert(error)
-      }
-    }
-
-    func close() {
-      webView.close()
-      syncState()
-    }
-
-    private func syncState() {
-      state.url = webView.url
-      state.title = webView.title
-      state.isLoading = webView.isLoading
-      state.estimatedProgress = webView.estimatedProgress
-      state.canGoBack = webView.canGoBack
-      state.canGoForward = webView.canGoForward
-      state.lastError = webView.lastError.map(Self.convert)
-      state.isClosed = webView.status == .closed
-    }
-
-    static func convert(_ value: WebScriptValue) -> BrowserScriptValue {
-      switch value {
-      case .undefined: .undefined
-      case .null: .null
-      case .bool(let bool): .bool(bool)
-      case .number(let number): .number(number)
-      case .string(let string): .string(string)
-      case .array(let array): .array(array.map(convert))
-      case .object(let object): .object(object.mapValues(convert))
-      }
-    }
-
-    static func convert(_ error: WebLayerError) -> BrowserError {
-      engineError(error) ?? pageError(error)
-    }
-
-    /// Host and engine lifecycle failures; nil for page-level errors.
-    private static func engineError(_ error: WebLayerError) -> BrowserError? {
-      let reason = error.localizedDescription
-      switch error {
-      case .hostNotBundled:
-        return .engineNotBundled(.chromium, reason: reason)
-      case .launchFailed, .channelFailed, .handshakeFailed, .protocolMismatch,
-        .hostInitializationFailed, .hostTimedOut, .renderingUnavailable:
-        return .engineFailedToStart(.chromium, reason: reason)
-      case .hostExited, .hostUnresponsive:
-        return .engineStopped(.chromium, reason: reason)
-      case .hostError, .invalidArgument:
-        return .engineError(.chromium, message: reason)
-      case .notReady:
-        return .tabNotReady
-      case .viewClosed:
-        return .tabClosed
-      default:
-        return nil
-      }
-    }
-
-    private static func pageError(_ error: WebLayerError) -> BrowserError {
-      switch error {
-      case .navigationFailed(let url, let code, let message):
-        .navigationFailed(url: url, code: code, message: message)
-      case .navigationCancelled(let url):
-        .navigationCancelled(url: url)
-      case .rendererTerminated(let message):
-        .contentProcessTerminated(reason: message)
-      case .scriptFailed(let message):
-        .scriptFailed(message: message)
-      case .unsupportedScriptResult(let type):
-        .unsupportedScriptResult(type)
-      case .devToolsFailed(let method, let message):
-        .devToolsFailed(method: method, message: message)
-      case .snapshotFailed(let message):
-        .snapshotFailed(message)
-      case .downloadBlocked(let url):
-        .downloadsUnsupported(url: url)
-      case .featureBlocked(let feature, let detail):
-        .featureUnsupported(feature: "\(feature) (\(detail))", engine: .chromium)
-      default:
-        .engineError(.chromium, message: error.localizedDescription)
+      if webDownload.state.isFinal {
+        downloads[webDownload.id] = nil
       }
     }
   }
+
 #endif

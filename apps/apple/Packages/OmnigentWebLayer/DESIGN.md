@@ -21,6 +21,7 @@ changing it; see "Path to a custom Chromium host".
 | CEF helper entry point | `apps/apple/WebHost/Helper/owl_cef_helper.cc` | C++ |
 | Build wiring | `apps/apple/Tuist/ProjectDescriptionHelpers/BrowserTargets.swift`, `WebHost/Scripts` | Tuist, bash |
 | Browser engine adapter | `Packages/OmnigentBrowser/Sources/OmnigentBrowserChromium` | Swift 6 |
+| Shared browser UI (both engines) and agent actions | `Packages/OmnigentBrowser/Sources/OmnigentBrowser/{UI,Agent}` | Swift 6 |
 | Proof app | `Example/` | Swift 6 |
 
 ## Process model
@@ -99,6 +100,13 @@ Embedding Mojo and using XPC were both rejected.
   - Kinds and tags are never renumbered. A minor version may add kinds and fields; receivers skip
     unknown fields and report unknown kinds. A major mismatch fails the handshake with
     `WebLayerError.protocolMismatch`.
+  - Minor versions are negotiated: Hello carries the host's `ProtocolMinor`, and since 1.1
+    `HelloAck` carries the client's. Each side uses a feature only when the peer's minor is at
+    least the one that introduced it (`OWL_PROTOCOL_MINOR_PROMPTS` for the browser UI below). A
+    1.1 host serving a 1.0 client keeps every 1.0 behavior, including blocking that UI; a 1.1
+    client talking to a 1.0 host never sends 1.1 messages (`Session.supportsBrowserUI`).
+  - Lists and nested values in 1.1 fields are UTF-8 JSON strings, documented field by field at
+    the top of `owl_protocol.h`.
 - **Back-pressure.** Receive queues use `MACH_PORT_QLIMIT_LARGE`. Sends time out after 100 ms
   (client) or 250 ms (host) instead of blocking, so a wedged peer can never freeze the other
   side's main thread.
@@ -118,6 +126,9 @@ port channel (`mojo::PlatformChannel` with Mach endpoints), so the process model
 | Navigate, Reload, SetZoom, Evaluate, Snapshot, Find, DevToolsMethod, view events | `owl.mojom.WebView` plus `owl.mojom.WebViewObserver` | `WebView` |
 | InputMouse / InputKey / KeyUnhandled | `owl.mojom.WebContentRenderer` (`blink.mojom.WidgetInputHandler`-style, `ForwardInputEvent(blink.mojom.Event) => (ack)`) | `WebContentRenderer` |
 | LayerContext / Frame / FrameAck / PopupVisibility | `owl.mojom.LayerHost` plus `LayerHostClient` (`OnCAContextChanged(id)`, popup widget contexts) | `LayerHost` |
+| 1.1 prompt requests and replies (JSDialog, PermissionRequest, FileChooser, DownloadRequest, AuthRequest, CertificateError, ContextMenu, ColorChooser, PromptCancelled) | `owl.mojom.WebViewUIClient` with one `=> (reply)` method per prompt; cancellation is the reply pipe closing | `WebViewUIDelegate`, `WebPrompt` |
+| 1.1 PopupCreated / PopupBlocked / SetPopupPolicy / SetNavigationRules / NavigationBlocked | `owl.mojom.WebView.SetPolicies(...)`, `WebViewUIClient.OnPopup(pending_remote<WebView>)` | `WebView`, `WebPopup` |
+| 1.1 Ime* / Drag* / StartDrag / DragCursor | `owl.mojom.WebContentRenderer` (`blink.mojom.FrameWidgetInputHandler`-style IME and drag methods) | `WebContentRenderer` |
 
 Only `HostChannel` and the `Wire*` types change: they become generated Swift bindings for the
 mojom files (Atlas generates its own). The public Swift API stays the same.
@@ -245,8 +256,39 @@ Modifiers map to `cef_event_flags_t`, including held mouse buttons, which CEF ne
 
 The `keys` proof shows Cmd+Shift+U reaching a menu item after the page declined it.
 
-Not yet implemented: IME composition (`NSTextInputClient` marked text), dead keys, and
-drag-and-drop between the app and the page.
+**IME and dead keys (1.1).** `WebSurfaceView` is an `NSTextInputClient`, on the model of
+Chromium's own Mac view and cefclient's off-screen text input client:
+
+1. A key-down without Command runs `inputContext.handleEvent`. The `NSTextInputClient` callbacks
+   it triggers are collected, not sent.
+2. No marked text before or after, and at most one inserted UTF-16 unit: the plain key events
+   above. More text: `ImeCommitText`. Marked text: `ImeSetComposition` (text, selection, optional
+   replacement range). Marked text that went away: `ImeFinishComposing` after `unmarkText`,
+   otherwise `ImeCancelComposition`.
+3. Callbacks outside a key-down (emoji palette, dictation) are sent at once.
+4. The host maps these to `CefBrowserHost::Ime*`. `OnImeCompositionRangeChanged` comes back as
+   `ImeCompositionChanged` with per-character rects, which `firstRect(forCharacterRange:)` uses
+   to place the candidate window; `OnTextSelectionChanged` backs `selectedRange`.
+
+The `ime` proof drives the client as an input method would (`setMarkedText` に, にほ, 日本, then
+`insertText` 日本語) and checks the page saw `compositionstart`, four `compositionupdate`s and
+`compositionend:日本語`.
+
+**Drag and drop (1.1).**
+
+- Into the page: `WebSurfaceView` accepts file URLs, URLs, text and HTML. `draggingEntered`,
+  `draggingUpdated`, `draggingExited` and `performDragOperation` become `DragEnter` (with
+  `DragData` JSON: text, html, url, file paths), `DragOver`, `DragLeave` and `DragDrop`, that is
+  `CefBrowserHost::DragTarget*`. The page's accepted operation comes back as `DragCursor` and is
+  what AppKit is told.
+- Out of the page: `CefRenderHandler::StartDragging` becomes `StartDrag` with the drag data, the
+  allowed operations and the drag image as PNG. A dragged virtual file (an image) is written to a
+  private temporary directory in the host and sent as a path. The client starts an
+  `NSDraggingSession` from the last mouse-down, and its end becomes `DragSourceEnded`
+  (`DragSourceEndedAt` plus `DragSourceSystemDragEnded`).
+- Drags started by agent input never leave the page (`StartDragging` returns false).
+- Synthesized drag events carry their mouse button in the modifiers even when the hardware state
+  says otherwise, which CEF needs to start a drag.
 
 ## Popups
 
@@ -259,13 +301,160 @@ drag-and-drop between the app and the page.
   Chromium for a frame with CDP `Page.captureScreenshot` instead (proved in the `agent` proof).
 - The `select` proof opens a `<select>`, captures the window and the snapshot (both show the open
   list), and picks an option with ArrowDown, ArrowDown, Return.
-- Native UI that CEF would open in the host process is blocked and reported as
-  `WebLayerError.featureBlocked` and `WebViewEvent.featureBlocked`, never shown:
-  - JavaScript `alert`, `confirm` and `prompt`;
-  - permission prompts and camera/microphone requests (denied);
-  - file choosers (cancelled);
-  - context menus (cleared).
-  These wait for projected views (see "Remaining work").
+- Native UI that CEF would open in the host process is never shown there. Since 1.1 it is
+  projected to the client as described in "Browser UI over the channel"; with a 1.0 client, or a
+  view without a `WebViewUIDelegate`, it is denied and reported as `WebLayerError.featureBlocked`
+  and `WebViewEvent.featureBlocked`.
+
+## Browser UI over the channel (protocol 1.1)
+
+Every piece of browser UI Chromium would draw in the host process is projected to the client
+instead. The host holds the CEF callback under a host-assigned `PromptID` and sends a request;
+the client answers by `PromptID`; the host runs the callback. Nothing opens a window in the host.
+
+| Feature | CEF hook in the host | Request (H->C) / reply (C->H) | Client UI (`OmnigentBrowser`, both engines) | WebKit equivalent |
+|---|---|---|---|---|
+| `alert`, `confirm`, `prompt`, `beforeunload` | `OnJSDialog`, `OnBeforeUnloadDialog`, `OnResetDialogState` | `JSDialog` / `DialogReply` | NSAlert sheet, text field for `prompt` | `runJavaScript*Panel` (no public `beforeunload`) |
+| Camera, microphone, geolocation, notifications, clipboard, MIDI | `OnRequestMediaAccessPermission`, `OnShowPermissionPrompt`, `OnDismissPermissionPrompt` | `PermissionRequest` / `PermissionReply` | NSAlert with "Remember for this site"; `BrowserPermissionStore` per profile and origin | `requestMediaCapturePermissionFor` |
+| `<input type=file>`, File System Access | `OnFileDialog` | `FileChooser` / `FileChooserReply` (paths) | NSOpenPanel or NSSavePanel sheet, types from `accept` | `runOpenPanelWith` |
+| Downloads | `CanDownload`, `OnBeforeDownload`, `OnDownloadUpdated` | `DownloadRequest` / `DownloadReply` (path), `DownloadUpdated`, `DownloadControl` | Folder setting and "ask where to save" (NSSavePanel); `BrowserDownloadsView` with progress, Cancel, Show in Finder | `WKDownload` with `WKDownloadDelegate` |
+| Context menus | `OnBeforeContextMenu` (removes Print and View Source), `RunContextMenu` | `ContextMenu` (menu model JSON) / `ContextMenuReply` (command ID) | Native NSMenu built from the host's model, plus "Open Link in New Tab" and "Copy Link" | WKWebView's own NSMenu |
+| HTTP and proxy auth | `GetAuthCredentials` (IO thread, posted to UI) | `AuthRequest` / `AuthReply` | NSAlert with user name, password and "Remember in Keychain" (off by default, hidden for ephemeral profiles) | `didReceive challenge` (Basic, Digest, NTLM) |
+| Certificate errors | `OnCertificateError` (no callback means not overridable) | `CertificateError` / `CertificateReply` | Interstitial over the page; "Proceed" only when overridable and `allowsCertificateOverrides` | `didReceive challenge` (server trust), per-tab exceptions |
+| `window.open`, `target=_blank`, modified clicks | `OnBeforePopup` (windowless popup with a new client), `OnOpenURLFromTab`, `OnBeforePopupAborted` | `PopupCreated` (targets the new view), `PopupBlocked`; `SetPopupPolicy` | `BrowserPopup` to the app (`onOpenPopup`), else a popup window; "Popup blocked" banner with Open | `createWebViewWith` on WebKit's configuration |
+| `<input type=color>` | Isolated-world script plus `Runtime.addBinding` (see below) | `ColorChooser` / `ColorReply` | NSColorPanel | WKWebView's own panel |
+| Navigation rules (agents) | `OnBeforeBrowse` (redirects and page-initiated loads included) | `SetNavigationRules`, `NavigationBlocked` | `BrowserURLPolicy` | `decidePolicyFor navigationAction` |
+
+Rules that apply to all of them:
+
+- **Withdrawal.** When the page navigates, the view closes or Chromium dismisses a prompt, the
+  host sends `PromptCancelled`; the client withdraws the prompt and its sheet. A reply that
+  crosses a withdrawal is answered with `HostError(UnknownPrompt)`, which the client records as a
+  protocol warning, not a view error.
+- **No silent drops.** Without a `WebViewUIDelegate` (web layer) or `BrowserTabDelegate`
+  (engine-neutral), each request is denied and reported (`featureBlocked`). Malformed JSON fields
+  are typed errors on the view.
+- **Agents.** Agent views get the agent controller as their delegate, which answers without UI.
+  The host also cancels context menus and drags started by agent input.
+- **Policies before the first load.** `ViewCreate` carries `PopupPolicy` and `Rules`, so the
+  initial navigation is covered; popups inherit both from their opener.
+- **Chrome's own UI is switched off.** The host passes `--disable-chrome-login-prompt`; without it
+  Chromium's Chrome-style login dialog opens as a window in the host (and closing it with the
+  view crashed the host). Persistent request contexts set the popup content setting to Allow, so
+  the view's popup policy, which sees the user gesture, decides (see "Remaining work" for
+  ephemeral contexts).
+- **Popups keep their opener.** `OnBeforePopup` returns a windowless `CefWindowInfo` and a fresh
+  `BrowserClient` under a host-allocated view ID (from 2^48 up, so it never collides with the
+  client's IDs). `PopupCreated` reaches the client before the new view's first message, and the
+  client adopts the view (`Session.adoptPopup`) into the opener's profile. After a host restart
+  the client re-creates it like any other view, without the opener.
+- **Color inputs.** CEF has no color-chooser handler. At view creation the host enables Runtime
+  and Page over DevTools, adds the binding `owlColorChooser` and a document script, both in the
+  isolated world `owl-browser-ui`, which page scripts cannot reach. The script cancels the click
+  that would open Chromium's panel and calls the binding; the host turns `Runtime.bindingCalled`
+  into `ColorChooser`, and on `ColorReply` (validated `#rrggbb`) sets the value and fires `input`
+  and `change` through `Runtime.evaluate` in that world's context.
+- **Downloads.** The client picks the path (settings or NSSavePanel, sanitized file name, never
+  overwriting); releasing CEF's callback without a path cancels. Progress for a download is
+  ignored until its destination is chosen.
+- **Permissions.** Decisions are stored per profile storage key and origin
+  (`scheme://host[:port]`): in `UserDefaults` for persistent profiles, in memory for ephemeral
+  ones. A request that includes an unmapped permission type (`OWLPermissionOther`) is denied.
+  `getUserMedia` is all or nothing, as CEF requires.
+- **Passwords.** Credentials cross the channel once per challenge and are never stored by the web
+  layer; WebKit gets them with `URLCredential.Persistence.none`. Only the explicit Keychain
+  opt-in stores them (`KeychainBrowserCredentialStore`, internet passwords tagged with the app's
+  description).
+
+### Proofs (`--proof browser-ui`)
+
+Run with `--render-mode remoteLayer`, `--render-mode ioSurface` and `--engine system`. All twelve
+pass on Chromium in both render modes; on WebKit the Chromium-only parts (beforeunload, camera
+prompt, gesture-less popup report, context menu, IME, drag, color) are skipped because WKWebView
+provides those natively, and the rest pass. Screenshots are `owl2-<proof>-<engine>.png` in the
+output directory.
+
+| Proof | What it shows |
+|---|---|
+| `dialogs` | alert, confirm (Cancel returns false) and prompt ("owl answer") as sheets; Chromium also beforeunload "Stay" |
+| `permissions` | camera denied and remembered (persisted for a persistent profile, memory only for an ephemeral one); a second request is answered without a sheet; notifications allowed |
+| `files` | NSOpenPanel sheet; the page reads the two chosen files' contents |
+| `downloads` | NSSavePanel when asking, straight to the folder otherwise; both 256 KiB files complete; the downloads list |
+| `auth` | credential sheet; the page is authorized; nothing stored without opt-in |
+| `certs` | interstitial for a self-signed server; proceeding loads it |
+| `popups` | a gesture-less `window.open` reported as blocked; a clicked one opens a sized window whose page has `window.opener` and posts back; `window.close()` closes it |
+| `menu` | NSMenu with app and host items; "Copy Link" and the host's "Copy" both work |
+| `ime` | marked text 日本 then commit 日本語, with composition events |
+| `drag` | text and a file dropped into the page; a page drag starts a native drag |
+| `color` | NSColorPanel opens in the client (none in the host); the input becomes #00ff00 |
+| `agent-actions` | see "Agent browser actions" |
+
+## Agent browser actions
+
+`AgentBrowserController` (`OmnigentBrowser/Agent`) runs the server's agent-driven browsing on
+either engine.
+
+**Contract.**
+
+- The server emits `browser.action_request` on the session stream (`omnigent/server/schemas.py`,
+  `BrowserActionRequestEvent`): `{type, action_id, action, args}`. `action` is the `browser_*`
+  tool name without the prefix.
+- A client that can act first claims it: `POST /v1/sessions/{id}/browser/action_claim/{action_id}`
+  returns `{claimed: true, claim_token}` to exactly one claimant (`{claimed: false}` otherwise).
+  Only the winner runs the action, then posts
+  `POST /v1/sessions/{id}/browser/action_result/{action_id}` with
+  `{result: <object>, claim_token}` (403 without the matching token). The server waits 2 s for a
+  claim and 30 s for the result; per-action timeouts in the controller default to 20 s so a
+  result always arrives first.
+- Requests are routed by the session whose stream delivered them, not the one on screen.
+- The `result` object is `{ok, error?, data?, data_url?}`, the same as the Electron relay
+  (`web/src/hooks/useBrowserAgentRelay.ts`):
+
+| Action | Arguments | Success result |
+|---|---|---|
+| `navigate` | `url` | `data: {final_url, title}` |
+| `snapshot` | none | `data: {snapshot_id, url, title, tree}`; `tree` lines are `- role "name" [ref=N]` |
+| `click` | `ref` + `snapshot_id`, or `selector` | `ok` |
+| `type` | `ref` + `snapshot_id`, or `selector`; `text` | `ok` |
+| `screenshot` | none | `data_url: "data:image/png;base64,..."`; on Chromium open `<select>` popups are composited |
+| `press` (client extension) | `key` (DOM name), `modifiers`, optional target | `ok` |
+| `scroll` (client extension) | `delta_x`, `delta_y`, optional target | `ok` |
+| `evaluate` (client extension) | `expression` | `data: {value}` |
+| `wait_for_load` (client extension) | `timeout_ms` | `data: {url, title}` |
+
+Argument checks match Electron's `buildBrowserActionScript` (unknown keys, positive integer
+`ref`, `selector` up to 4096 characters, `snapshot_id` up to 128, `text` up to 100000). Any
+failure is `{ok: false, error}`; prompts the page raised during an action are listed in
+`data.dialogs`. The server's tool list today has navigate, snapshot, click, type and screenshot;
+the extensions run only when a server sends them.
+
+**Execution.**
+
+- One agent page per conversation, in an ephemeral profile (`agent:<conversation>`) by default,
+  so agent cookies never mix with the user's. Pages a page opens join the conversation and become
+  its active page.
+- Input is renderer-direct on Chromium (`click` resolves the element's center by script, then
+  `agentClick`; `type` focuses and selects, then `agentInsertText`). WebKit has no public trusted
+  input, so its agent input dispatches DOM events from script (`isTrusted` is false). After input
+  the controller waits briefly and then for any load the input started.
+- **URL policy.** `BrowserURLPolicy` (default `BrowserURLRules`: http and https only, private,
+  link-local and loopback IP literals blocked) is checked before `navigate`, and its rules are
+  pushed into the engine before the first load: Chromium enforces them in `OnBeforeBrowse`, so
+  redirects and page-initiated navigations are covered; WebKit in
+  `decidePolicyFor navigationAction`. The Swift and C++ matchers implement the same rules
+  (`BrowserURLPolicy.swift`, `OWLNavigationRules.mm`).
+- **Off app chrome.** Agent pages are never in an app window (see "Agent input"), their prompts
+  never show UI, and their unhandled keys, context menus and drags never leave the page.
+- **Entry point for stores.** `AgentBrowserActing.perform(_:)` takes an `AgentBrowserActionRequest`
+  (`init(eventJSON:conversationID:)` decodes the raw event) and returns an
+  `AgentBrowserActionResult` whose `jsonData()` is the `result` body. Claiming and posting are the
+  caller's job.
+
+The `agent-actions` proof navigates to a local form, snapshots it, types into the textbox by
+ref, clicks Search by ref (the page sees the submission), clicks a button whose `alert` is
+auto-accepted and reported in `data.dialogs`, screenshots with an open `<select>`, is refused
+`http://169.254.169.254/` by the policy, is stopped by the host rules when a local redirect
+points at `http://10.11.12.13/`, and checks the agent page is in no app window.
 
 ## Profiles and ephemeral agent sessions
 
@@ -331,19 +520,26 @@ Atlas's rule is that agent input goes directly to the renderer, never through th
 browser layer. Within CEF:
 
 - `WebContentRenderer` exposes two separate paths. User input comes from `WebLayerView` NSEvents.
-  Agent input comes from `agentClick`, `agentMove`, `agentScroll`, `agentType` and `agentPress`,
-  and is tagged `OWLInputOriginAgent` on the wire.
+  Agent input comes from `agentClick`, `agentMove`, `agentScroll`, `agentType`, `agentPress` and
+  (1.1) `agentInsertText`, and is tagged `OWLInputOriginAgent` on the wire. `agentInsertText` is
+  an `ImeCommitText` flagged `AgentInput`: one `beforeinput`/`input` for the whole string, as an
+  input method commit produces.
 - Agent events go to `CefBrowserHost::Send{Mouse,Key}Event`, which lands in that page's
   `RenderWidgetHost` and then its renderer: the same entry point a content-API embedder uses.
   They never pass through:
   - the client's NSEvent path, app menus or responders: unhandled agent keys are dropped and never
     re-synthesized, so an agent cannot press Cmd+Q, Cmd+W or any app shortcut;
-  - browser-level UI: DevTools, dialogs, permission prompts, file choosers and context menus are
-    blocked for every origin, and agents have no API to open DevTools;
+  - browser-level UI: context menus and drags opened by an agent click are cancelled in the host
+    (it remembers the origin of the last mouse-down), agents have no API to open DevTools, and
+    every prompt an agent page raises goes to the agent's own `BrowserTabDelegate`
+    (`AgentBrowserController`), which answers it without UI;
   - other views: input is addressed to exactly one view ID.
 - Agent views can be off screen. Before the first agent event the host gives the page widget
   focus, so typing reaches the focused element. This affects the page only, not the app's key
-  window.
+  window. Hidden Chromium widgets drop input, so agent views set `WebView.rendersOffscreen`: they
+  report themselves visible to the host although no window shows them. Chromium agent pages are
+  in no window at all; WebKit agent pages sit in an off-screen, non-activating `NSPanel` that
+  ignores the mouse (WebKit needs a window to render).
 - In a custom host the same API would call `RenderWidgetHost::ForwardMouseEvent` and
   `ForwardKeyboardEvent` on the target `WebContents`' widget directly, which matches Atlas.
 
@@ -407,29 +603,38 @@ Universal Release builds roughly double the framework, as before.
   - `proc_pid_rusage` in the example.
 - The `OWLField` enum cases `.URL`, `.JSON`, `.PNG`, `.X` and `.Y` keep the importer's
   capitalisation.
+- 1.1: `OWLPermissionOther` is `1 << 30`, not `1 << 31`, so the enumerator stays in `int` range
+  in the host's C17 build.
+- 1.1: two `swiftlint:disable:next` lines, each for an SDK signature (WebKit's optional `[URL]`
+  completion handler, AppKit's `readObjects(forClasses: [NSURL.self])`, which resolves Finder's
+  file-reference URLs). The proof app marks two main-thread AppKit objects
+  `nonisolated(unsafe)` where AppKit hands them to `@Sendable` notification and timer closures.
 
 ## Remaining work
 
-These need **projected views**: host-side UI rendered as another `WebView`-like surface in the
-client, as Atlas does for its own browser UI.
-
-- **Downloads.** They are blocked and reported today. They need a `CefDownloadHandler` with
-  client-chosen paths and a progress model.
 - **Extensions.** Alloy-style CEF has limited extension support. Chrome-style runtime or a custom
   host is needed.
-- **Autofill and passwords.** Off-the-record and persistent profiles have no autofill UI. It needs
-  a projected autofill dropdown.
+- **Autofill and passwords.** There is no autofill UI. It needs a projected autofill dropdown
+  (another popup-widget-like surface) and a password store; HTTP auth credentials already use the
+  Keychain on opt-in.
 - **Bookmarks and history UI.** This is app-side data plus navigation APIs; no host work is
   needed beyond history queries.
-- **DevTools.** `showDevTools()` opens CEF's own DevTools window inside the host process. A
-  projected version would be a second `WebView` attached through `CefBrowserHost::ShowDevTools`
-  with an off-screen `CefWindowInfo`, or through the remote debugging protocol.
-- **Permission prompts, JavaScript dialogs, file choosers, context menus, `<input type=color>`
-  (NSColorPanel), HTTP auth, and certificate errors.** Each needs a projected view or a native
-  client sheet driven by a host callback with a reply.
-- **IME** (marked text) and drag and drop.
-- **`window.open`.** Popups currently navigate the same view; they need new `WebView`s handed to
-  the client.
+- **Projected DevTools.** `showDevTools()` still opens CEF's own DevTools window inside the host
+  process. A projected version would be a second `WebView` attached through
+  `CefBrowserHost::ShowDevTools` with an off-screen `CefWindowInfo`, or through the remote
+  debugging protocol.
+- **Popup blocking in ephemeral profiles.** Chromium's own popup blocker runs before
+  `OnBeforePopup`, and incognito contexts do not accept a default content setting, so in
+  ephemeral profiles gesture-less popups are dropped by Chromium without a `PopupBlocked` report
+  (persistent profiles report them). WebKit's own blocker never reports.
+- **Navigation rules and DNS.** Host rules check IP literals, not what names resolve to, so DNS
+  rebinding to a private address is not caught.
+- **Media capture.** Allowing camera, microphone or location needs the usage strings and
+  entitlements in the app's Info.plist (`BrowserTargets.swift`); without them macOS refuses
+  access after the user allowed it in the app.
+- **Download continuation.** Downloads are tied to the view that started them; closing that view
+  mid-download is not handled specially.
+- **beforeunload on WebKit** has no public API; the shared UI shows it for Chromium only.
 
 ## Path to a custom Chromium host
 

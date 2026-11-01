@@ -22,6 +22,8 @@ public final class BrowserController {
   /// Storage profile for every tab this controller creates.
   public let profile: BrowserProfile
   @ObservationIgnored private let provider: any BrowserEngineProvider
+  /// Answers the prompts, popups and downloads of this controller's tabs.
+  public let presenter: BrowserPromptPresenter
 
   /// Current content.
   public private(set) var content: Content = .idle
@@ -33,12 +35,46 @@ public final class BrowserController {
     profile: BrowserProfile,
     preferences: BrowserPreferences,
     provider: any BrowserEngineProvider,
-    initialURL: URL?
+    initialURL: URL?,
+    presenter: BrowserPromptPresenter = .shared
   ) {
     self.profile = profile
     self.preferences = preferences
     self.provider = provider
+    self.presenter = presenter
     requestedURL = initialURL
+  }
+
+  /// Wraps a tab that already exists, such as a popup a page opened.
+  public init(
+    adopting tab: any BrowserTab, preferences: BrowserPreferences,
+    provider: any BrowserEngineProvider, presenter: BrowserPromptPresenter = .shared
+  ) {
+    profile = tab.profile
+    self.preferences = preferences
+    self.provider = provider
+    self.presenter = presenter
+    requestedURL = tab.state.url
+    tab.delegate = presenter
+    content = .tab(tab)
+  }
+
+  /// Opens a popup the policy blocked, in a new tab without an opener.
+  public func openBlockedPopup(_ popup: BrowserBlockedPopup) {
+    guard let opener = tab, let url = popup.url else { return }
+    opener.state.dismissBlockedPopup()
+    do {
+      let engine = try provider.engine(for: opener.engineKind)
+      let newTab = try engine.makeTab(profile: profile, initialURL: url)
+      newTab.popupPolicy = opener.popupPolicy
+      presenter.tab(
+        opener,
+        didOpen: BrowserPopup(
+          tab: newTab, opener: opener, targetURL: url, disposition: .foregroundTab,
+          requestedSize: nil))
+    } catch {
+      opener.state.report(error)
+    }
   }
 
   /// The live tab, if any.
@@ -126,7 +162,9 @@ public final class BrowserController {
     }
     do {
       let engine = try provider.engine(for: kind)
-      content = .tab(try engine.makeTab(profile: profile, initialURL: requestedURL))
+      let newTab = try engine.makeTab(profile: profile, initialURL: requestedURL)
+      newTab.delegate = presenter
+      content = .tab(newTab)
     } catch {
       content = .engineUnavailable(requested: kind, error: error)
     }

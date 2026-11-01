@@ -26,11 +26,12 @@ server's `browser.action_request` bridge (`omnigent/server/routes/sessions/route
 | Screenshot (`browser_screenshot`) | `capturePage` | `takeSnapshotPNG`. Chromium composites the host's page and popup frames (open `<select>` menus included); WebKit uses `takeSnapshot` |
 | Find in page | `find_preload.js` | `find(_:forward:caseSensitive:)` |
 | DevTools | `openDevTools` | Chromium: `showDevTools()` opens CEF's DevTools window in the host process. WebKit: the view is inspectable from Safari's Develop menu; `showDevTools()` throws `featureUnsupported` |
-| Popups / `window.open` | `popupPolicy.js` | Open in the same tab |
-| Downloads | Electron default | Blocked and reported as `BrowserError.downloadsUnsupported` |
-| Agent actions (`browser.action_request`: navigate/snapshot/click/type/screenshot) | yes | Primitives exist, plus renderer-direct agent input on Chromium (`WebContentRenderer.agent*`); the relay and the action-script port are not wired yet |
-| URL policy for agent navigation (localhost/proxy checks) | `browserUrlPolicy.js` | Not yet |
-| Design mode, Chrome cookie import, permission prompts | yes | Not yet |
+| Popups / `window.open` | `popupPolicy.js` | New tab or window with the opener kept (`BrowserTabDelegate.tab(_:didOpen:)`, default: `BrowserPopupWindowController`); `BrowserPopupPolicy` (allow, require a user gesture, block) with a "Popup blocked" banner |
+| Downloads | Electron default | `BrowserDownloadCenter` list with progress, Cancel and Show in Finder; `BrowserDownloadSettings` folder and "ask where to save" (NSSavePanel) |
+| Agent actions (`browser.action_request`: navigate/snapshot/click/type/screenshot) | yes | `AgentBrowserController` (`AgentBrowserActing.perform`) runs them, plus press, scroll, evaluate and wait_for_load, in a per-conversation ephemeral profile; renderer-direct input on Chromium. Claiming and posting results is left to the stores |
+| URL policy for agent navigation (localhost/proxy checks) | `browserUrlPolicy.js` | `BrowserURLPolicy` / `BrowserURLRules` (schemes, allow and deny lists, private and loopback IP literals), enforced by the engine for every navigation including redirects |
+| JS dialogs, permission prompts, file choosers, HTTP auth, certificate errors, context menus, color inputs, IME, drag and drop | yes | Native UI shared by both engines (`BrowserPromptPresenter`, `BrowserView`); see `../OmnigentWebLayer/DESIGN.md`, "Browser UI over the channel" |
+| Design mode, Chrome cookie import | yes | Not yet |
 
 ## Engine selection and failure handling
 

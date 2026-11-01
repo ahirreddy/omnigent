@@ -46,12 +46,19 @@ public final class WebLayerView: NSView {
   }
 }
 
-/// The layer-hosting surface that receives input.
+/// The layer-hosting surface that receives input. IME composition is in
+/// `WebSurfaceView+TextInput.swift`, drag and drop in `WebSurfaceView+Drag.swift`.
 final class WebSurfaceView: NSView {
-  private let webView: WebView
+  let webView: WebView
   private var redispatching = false
   private var trackingArea: NSTrackingArea?
   private var windowObservers: [any NSObjectProtocol] = []
+  /// IME state between `setMarkedText`, `insertText` and the key-down that caused them.
+  var textInput = TextInputState()
+  /// The page-started drag in flight, if any.
+  var pageDrag: WebDragStart?
+  /// The most recent mouse-down, which a page-started drag needs to begin.
+  var lastMouseDown: NSEvent?
 
   init(webView: WebView) {
     self.webView = webView
@@ -60,6 +67,8 @@ final class WebSurfaceView: NSView {
     wantsLayer = true
     layer?.addSublayer(webView.layerHost.rootLayer)
     webView.renderer.onUnhandledKeyEvent = { [weak self] event in self?.redispatch(event) }
+    webView.onStartDrag = { [weak self] start in self?.beginPageDrag(start) }
+    registerForDraggedTypes(Self.acceptedDragTypes)
     observeCursor()
   }
 
@@ -156,6 +165,7 @@ final class WebSurfaceView: NSView {
 
   override func mouseDown(with event: NSEvent) {
     hostWindow?.makeFirstResponder(self)
+    lastMouseDown = event
     forwardMouse(event)
   }
 
@@ -184,7 +194,13 @@ final class WebSurfaceView: NSView {
       super.keyDown(with: event)
       return
     }
-    webView.renderer.forwardKeyEvent(event)
+    // Command chords never compose text; everything else goes through the input context so
+    // input methods and dead keys work (protocol 1.1 hosts).
+    guard webView.session.supportsBrowserUI, !event.modifierFlags.contains(.command) else {
+      webView.renderer.forwardKeyEvent(event)
+      return
+    }
+    keyDownThroughInputContext(event)
   }
 
   override func keyUp(with event: NSEvent) {
@@ -262,7 +278,7 @@ final class WebSurfaceView: NSView {
 extension NSView {
   /// `NSView.window` is `unowned(unsafe)`; AppKit keeps it valid while the view is in a window,
   /// and these views only read it on the main thread during their own callbacks.
-  fileprivate var hostWindow: NSWindow? { unsafe window }
+  var hostWindow: NSWindow? { unsafe window }
 }
 
 /// Start-up progress, or the error with a Reload button.

@@ -16,6 +16,8 @@ public final class Session {
   public internal(set) var state: SessionState = .idle
   /// The most recent non-fatal channel or protocol problem (unknown messages, rejected senders).
   public internal(set) var lastProtocolError: WebLayerError?
+  /// Every download any view in this session started.
+  public let downloads = WebDownloadList()
 
   @ObservationIgnored var process: HostProcess?
   @ObservationIgnored var channel: HostChannel?
@@ -26,6 +28,8 @@ public final class Session {
   @ObservationIgnored var spawnDuration = Duration.zero
   @ObservationIgnored var helloDuration: Duration?
   @ObservationIgnored var helloInfo: HelloInfo?
+  /// The host's protocol minor from Hello.
+  @ObservationIgnored var hostMinor: UInt64 = 0
   @ObservationIgnored var pendingFailure: WebLayerError?
   @ObservationIgnored var timers: [Timer] = []
   @ObservationIgnored var outstandingPing: (id: UInt64, sent: ContinuousClock.Instant)?
@@ -37,10 +41,13 @@ public final class Session {
   @ObservationIgnored var profiles: [UInt64: Profile] = [:]
   @ObservationIgnored var views: [UInt64: WebView] = [:]
   @ObservationIgnored var terminationObserver: (any NSObjectProtocol)?
+  /// Tests only: receives every message `post` would send, instead of the channel.
+  @ObservationIgnored var outgoingTap: ((OWLMessageKind, UInt64, WireDecoder) -> Void)?
 
   /// Creates a session. Nothing launches until `start()`.
   public init(configuration: SessionConfiguration) {
     self.configuration = configuration
+    downloads.session = self
     terminationObserver = NotificationCenter.default.addObserver(
       forName: NSApplication.willTerminateNotification, object: nil, queue: .main
     ) { [weak self] _ in
@@ -52,6 +59,12 @@ public final class Session {
   public var isReady: Bool {
     if case .ready = state { return true }
     return false
+  }
+
+  /// Whether the running host projects browser UI (prompts, downloads, popups, IME, drag and
+  /// drop): protocol 1.1 or later. Older hosts deny those requests themselves.
+  public var supportsBrowserUI: Bool {
+    isReady && hostMinor >= UInt64(OWL_PROTOCOL_MINOR_PROMPTS)
   }
 
   /// The running host, if any.
@@ -170,6 +183,10 @@ public final class Session {
   func post(
     _ kind: OWLMessageKind, target: UInt64, _ fields: WireEncoder = WireEncoder()
   ) throws(WebLayerError) {
+    if let outgoingTap {
+      outgoingTap(kind, target, try WireDecoder(fields.bytes))
+      return
+    }
     guard isReady, let channel else { throw .notReady }
     try channel.send(kind, target: target, fields)
   }

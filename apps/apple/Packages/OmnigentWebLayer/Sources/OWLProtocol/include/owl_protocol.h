@@ -13,7 +13,12 @@
 #include <stdint.h>
 
 #define OWL_PROTOCOL_MAJOR 1
-#define OWL_PROTOCOL_MINOR 0
+#define OWL_PROTOCOL_MINOR 1
+
+/// The first minor version with projected browser UI (prompts, downloads, popups, IME, drag and
+/// drop). Each side enables those features only when the peer advertises at least this minor;
+/// otherwise the host keeps blocking them as in 1.0.
+#define OWL_PROTOCOL_MINOR_PROMPTS 1
 
 /// Payload encoding: a sequence of fields, each an 8-byte header followed by `length` bytes.
 /// Integers and floats are little-endian. Strings are UTF-8 without a terminator.
@@ -109,7 +114,73 @@ typedef CF_ENUM(uint16_t, OWLField) {
   OWLFieldHostBlitNanos = 71,
   OWLFieldDroppedFrames = 72,
   OWLFieldPresentedNanos = 73,
+  // 1.1: projected browser UI. See DESIGN.md, "Browser UI over the channel".
+  OWLFieldPromptID = 74,
+  OWLFieldDialogKind = 75,
+  OWLFieldDefaultText = 76,
+  OWLFieldOrigin = 77,
+  OWLFieldIsReload = 78,
+  OWLFieldPermissions = 79,
+  OWLFieldPermissionResult = 80,
+  OWLFieldFileChooserMode = 81,
+  OWLFieldAcceptTypes = 82,
+  OWLFieldPaths = 83,
+  OWLFieldDownloadID = 84,
+  OWLFieldReceivedBytes = 85,
+  OWLFieldTotalBytes = 86,
+  OWLFieldDownloadState = 87,
+  OWLFieldSuggestedName = 88,
+  OWLFieldMimeType = 89,
+  OWLFieldPath = 90,
+  OWLFieldMenuItems = 91,
+  OWLFieldMenuParams = 92,
+  OWLFieldCommandID = 93,
+  OWLFieldHost = 94,
+  OWLFieldPort = 95,
+  OWLFieldRealm = 96,
+  OWLFieldScheme = 97,
+  OWLFieldIsProxy = 98,
+  OWLFieldUsername = 99,
+  OWLFieldPassword = 100,
+  OWLFieldCertSubject = 101,
+  OWLFieldCertIssuer = 102,
+  OWLFieldCertValidStart = 103,
+  OWLFieldCertValidExpiry = 104,
+  OWLFieldOverridable = 105,
+  OWLFieldOpenerID = 106,
+  OWLFieldDisposition = 107,
+  OWLFieldUserGesture = 108,
+  OWLFieldFrameName = 109,
+  OWLFieldPopupPolicy = 110,
+  OWLFieldRules = 111,
+  OWLFieldRangeStart = 112,
+  OWLFieldRangeEnd = 113,
+  OWLFieldReplaceStart = 114,
+  OWLFieldReplaceEnd = 115,
+  OWLFieldRects = 116,
+  OWLFieldKeepSelection = 117,
+  OWLFieldCursorPosition = 118,
+  OWLFieldDragOperations = 119,
+  OWLFieldDragData = 120,
+  OWLFieldImage = 121,
+  OWLFieldColor = 122,
+  OWLFieldDownloadCommand = 123,
+  OWLFieldAgentInput = 124,
 };
+
+/// Structured 1.1 fields are UTF-8 JSON strings, because the TLV encoding has no lists:
+/// - Paths: `["/abs/path", ...]`.
+/// - AcceptTypes: `[{"filter": "image/*", "extensions": ["png"], "description": ""}, ...]`.
+/// - MenuItems: `[{"id": 100, "label": "Copy", "kind": "command"|"check"|"radio"|"separator"|
+///   "submenu", "enabled": true, "checked": false, "items": [...]}, ...]`.
+/// - MenuParams: `{"x", "y", "linkURL", "sourceURL", "pageURL", "frameURL", "selectionText",
+///   "isEditable", "mediaType", "editFlags", "agent"}`.
+/// - Rules: `{"schemes": ["https"], "allow": ["example.com"], "deny": [".internal"],
+///   "blockPrivateAddresses": true, "allowLoopback": false}`. A host pattern matches that host and
+///   its subdomains; deny wins over allow; an empty allow list allows every other host.
+/// - Rects: `[[x, y, width, height], ...]` in view points, top-left origin.
+/// - DragData: `{"text", "html", "url", "urlTitle", "fileName", "paths": [...]}`, every key
+///   optional.
 
 /// Message kinds. "C->H" is client to host, "H->C" host to client. `target` in the envelope is
 /// the profile or view ID the message addresses (0 for session messages). `request` pairs a
@@ -120,7 +191,8 @@ typedef CF_ENUM(uint16_t, OWLMessageKind) {
                                      //      ChromiumVersion; port: host receive right (send)
   OWLMessageKindHelloAck = 2,        // C->H Accepted Reason? RootCachePath Locale?
                                      //      RemoteDebuggingPort UseMockKeychain KeychainService?
-                                     //      RenderMode DisableSandbox
+                                     //      RenderMode DisableSandbox ProtocolMinor (1.1; absent
+                                     //      means 0)
   OWLMessageKindReady = 3,           // H->C ElapsedMilliseconds RenderMode
   OWLMessageKindInitFailed = 4,      // H->C Reason
   OWLMessageKindPing = 5,            // C->H (request)
@@ -134,6 +206,8 @@ typedef CF_ENUM(uint16_t, OWLMessageKind) {
 
   // Views (target: view ID).
   OWLMessageKindViewCreate = 30,     // C->H ProfileID URL Width Height Scale Visible
+                                     //      PopupPolicy? Rules? (1.1, applied before the first
+                                     //      navigation)
   OWLMessageKindViewClose = 31,      // C->H
   OWLMessageKindViewResize = 32,     // C->H Width Height Scale ScreenX ScreenY
   OWLMessageKindViewVisibility = 33, // C->H Visible
@@ -181,6 +255,56 @@ typedef CF_ENUM(uint16_t, OWLMessageKind) {
   OWLMessageKindFeatureBlocked = 79, // H->C Feature Message
   OWLMessageKindPresented = 80,      // H->C Sequence HostTimestampNanos PresentedNanos
                                      //      HostBlitNanos (remote-layer timing)
+
+  // 1.1, client to host (target: view ID). Sent only to hosts that advertise
+  // OWL_PROTOCOL_MINOR_PROMPTS. Replies name the PromptID of the host request they answer.
+  OWLMessageKindSetPopupPolicy = 81,     // C->H PopupPolicy
+  OWLMessageKindSetNavigationRules = 82, // C->H Rules? (JSON OWL navigation rules; absent clears)
+  OWLMessageKindDialogReply = 83,        // C->H PromptID Accepted Text?
+  OWLMessageKindPermissionReply = 84,    // C->H PromptID PermissionResult Permissions
+  OWLMessageKindFileChooserReply = 85,   // C->H PromptID Accepted Paths?
+  OWLMessageKindDownloadReply = 86,      // C->H PromptID Accepted Path?
+  OWLMessageKindDownloadControl = 87,    // C->H DownloadID DownloadCommand
+  OWLMessageKindContextMenuReply = 88,   // C->H PromptID CommandID (-1 dismisses)
+  OWLMessageKindAuthReply = 89,          // C->H PromptID Accepted Username? Password?
+  OWLMessageKindCertificateReply = 90,   // C->H PromptID Accepted
+  OWLMessageKindImeSetComposition = 91,  // C->H Text RangeStart RangeEnd ReplaceStart? ReplaceEnd?
+  OWLMessageKindImeCommitText = 92,      // C->H Text ReplaceStart? ReplaceEnd? CursorPosition
+                                         //      AgentInput?
+  OWLMessageKindImeFinishComposing = 93, // C->H KeepSelection
+  OWLMessageKindImeCancelComposition = 94, // C->H
+  OWLMessageKindDragEnter = 95,          // C->H X Y Modifiers DragOperations DragData
+  OWLMessageKindDragOver = 96,           // C->H X Y Modifiers DragOperations
+  OWLMessageKindDragLeave = 97,          // C->H
+  OWLMessageKindDragDrop = 98,           // C->H X Y Modifiers
+  OWLMessageKindDragSourceEnded = 99,    // C->H X Y DragOperations
+  OWLMessageKindColorReply = 100,        // C->H PromptID Accepted Color?
+
+  // 1.1, host to client (target: view ID; PopupCreated targets the new view).
+  OWLMessageKindJSDialog = 110,          // H->C PromptID DialogKind Origin Message DefaultText?
+                                         //      IsReload?
+  OWLMessageKindPermissionRequest = 111, // H->C PromptID Origin Permissions
+  OWLMessageKindFileChooser = 112,       // H->C PromptID FileChooserMode Title? DefaultText?
+                                         //      AcceptTypes
+  OWLMessageKindDownloadRequest = 113,   // H->C PromptID DownloadID URL SuggestedName MimeType?
+                                         //      TotalBytes
+  OWLMessageKindDownloadUpdated = 114,   // H->C DownloadID URL ReceivedBytes TotalBytes
+                                         //      DownloadState Path?
+  OWLMessageKindContextMenu = 115,       // H->C PromptID X Y MenuItems MenuParams
+  OWLMessageKindAuthRequest = 116,       // H->C PromptID Origin Host Port Realm? Scheme? IsProxy
+  OWLMessageKindCertificateError = 117,  // H->C PromptID URL ErrorCode Message CertSubject?
+                                         //      CertIssuer? CertValidStart? CertValidExpiry?
+                                         //      Overridable
+  OWLMessageKindPromptCancelled = 118,   // H->C PromptID Reason
+  OWLMessageKindPopupCreated = 119,      // H->C OpenerID URL Disposition UserGesture FrameName?
+                                         //      Width? Height?
+  OWLMessageKindPopupBlocked = 120,      // H->C URL Disposition UserGesture Reason
+  OWLMessageKindNavigationBlocked = 121, // H->C URL Reason
+  OWLMessageKindImeCompositionChanged = 122, // H->C RangeStart RangeEnd Rects
+  OWLMessageKindStartDrag = 123,         // H->C DragOperations X Y DragData Image?
+  OWLMessageKindDragCursor = 124,        // H->C DragOperations
+  OWLMessageKindColorChooser = 125,      // H->C PromptID Color
+  OWLMessageKindTextSelectionChanged = 126, // H->C Text RangeStart RangeEnd
 };
 
 /// How the host delivers pixels. See DESIGN.md, "Rendering".
@@ -272,4 +396,90 @@ typedef CF_ENUM(uint64_t, OWLHostErrorCode) {
   OWLHostErrorViewCreateFailed = 6,
   OWLHostErrorRenderFailed = 7,
   OWLHostErrorDevToolsFailed = 8,
+  // 1.1.
+  OWLHostErrorUnknownPrompt = 9,
+  OWLHostErrorPopupFailed = 10,
+};
+
+// MARK: 1.1 value sets
+
+/// Values of OWLFieldDialogKind.
+typedef CF_ENUM(uint64_t, OWLDialogKind) {
+  OWLDialogKindAlert = 1,
+  OWLDialogKindConfirm = 2,
+  OWLDialogKindPrompt = 3,
+  OWLDialogKindBeforeUnload = 4,
+};
+
+/// Bits of OWLFieldPermissions. Engine-neutral; the host maps Chromium's request types onto them.
+typedef CF_OPTIONS(uint64_t, OWLPermission) {
+  OWLPermissionCamera = 1 << 0,
+  OWLPermissionMicrophone = 1 << 1,
+  OWLPermissionGeolocation = 1 << 2,
+  OWLPermissionNotifications = 1 << 3,
+  OWLPermissionClipboard = 1 << 4,
+  OWLPermissionScreenCapture = 1 << 5,
+  OWLPermissionMIDI = 1 << 6,
+  /// Any request type without its own bit. Clients deny it.
+  OWLPermissionOther = 1 << 30,
+};
+
+/// Values of OWLFieldPermissionResult.
+typedef CF_ENUM(uint64_t, OWLPermissionResult) {
+  OWLPermissionResultAllow = 1,
+  OWLPermissionResultDeny = 2,
+  OWLPermissionResultDismiss = 3,
+};
+
+/// Values of OWLFieldFileChooserMode. Match cef_file_dialog_mode_t.
+typedef CF_ENUM(uint64_t, OWLFileChooserMode) {
+  OWLFileChooserModeOpen = 0,
+  OWLFileChooserModeOpenMultiple = 1,
+  OWLFileChooserModeOpenFolder = 2,
+  OWLFileChooserModeSave = 3,
+};
+
+/// Values of OWLFieldDownloadState.
+typedef CF_ENUM(uint64_t, OWLDownloadState) {
+  OWLDownloadStateInProgress = 1,
+  OWLDownloadStateComplete = 2,
+  OWLDownloadStateCancelled = 3,
+  OWLDownloadStateInterrupted = 4,
+  OWLDownloadStatePaused = 5,
+};
+
+/// Values of OWLFieldDownloadCommand.
+typedef CF_ENUM(uint64_t, OWLDownloadCommand) {
+  OWLDownloadCommandCancel = 1,
+  OWLDownloadCommandPause = 2,
+  OWLDownloadCommandResume = 3,
+};
+
+/// Values of OWLFieldDisposition. Where a page asked a new browsing context to open.
+typedef CF_ENUM(uint64_t, OWLDisposition) {
+  OWLDispositionCurrentTab = 1,
+  OWLDispositionForegroundTab = 2,
+  OWLDispositionBackgroundTab = 3,
+  OWLDispositionPopup = 4,
+  OWLDispositionWindow = 5,
+};
+
+/// Values of OWLFieldPopupPolicy. The host applies it synchronously when a page opens a window.
+typedef CF_ENUM(uint64_t, OWLPopupPolicy) {
+  /// Every window.open and target=_blank opens a new view.
+  OWLPopupPolicyAllow = 1,
+  /// Only opens that follow a user gesture are allowed; others are reported as blocked. Default.
+  OWLPopupPolicyRequireGesture = 2,
+  /// Every open is reported as blocked.
+  OWLPopupPolicyBlock = 3,
+};
+
+/// Bits of OWLFieldDragOperations. Match cef_drag_operations_mask_t.
+typedef CF_OPTIONS(uint64_t, OWLDragOperation) {
+  OWLDragOperationCopy = 1,
+  OWLDragOperationLink = 2,
+  OWLDragOperationGeneric = 4,
+  OWLDragOperationPrivate = 8,
+  OWLDragOperationMove = 16,
+  OWLDragOperationDelete = 32,
 };

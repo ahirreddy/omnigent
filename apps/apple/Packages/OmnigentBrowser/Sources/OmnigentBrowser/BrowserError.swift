@@ -39,6 +39,18 @@ nonisolated public enum BrowserError: Error, Hashable, Sendable {
   case snapshotFailed(String)
   /// Find-in-page failed.
   case findFailed(String)
+  /// A URL policy or navigation rule stopped a navigation.
+  case navigationBlocked(url: URL?, reason: String)
+  /// The popup policy stopped a window the page opened.
+  case popupBlocked(url: URL?, reason: String)
+  /// The request is not allowed (an override the policy forbids, for example).
+  case notAllowed(String)
+  /// A download failed or could not be controlled.
+  case downloadFailed(String)
+  /// Storing or reading a credential failed (Keychain status in the message).
+  case credentialStoreFailed(String)
+  /// Agent input or an agent action failed.
+  case agentActionFailed(String)
 
   /// Whether the error only reflects a superseded or stopped navigation.
   public var isCancellation: Bool {
@@ -87,6 +99,18 @@ extension BrowserError: LocalizedError {
       "Could not capture the page: \(message)"
     case .findFailed(let message):
       "Find in page failed: \(message)"
+    case .navigationBlocked(let url, let reason):
+      "Navigation to \(url?.absoluteString ?? "the page") was blocked: \(reason)"
+    case .popupBlocked(let url, let reason):
+      "A popup for \(url?.absoluteString ?? "a page") was blocked: \(reason)"
+    case .notAllowed(let message):
+      "Not allowed: \(message)"
+    case .downloadFailed(let message):
+      "Download failed: \(message)"
+    case .credentialStoreFailed(let message):
+      "Saving or reading the password failed: \(message)"
+    case .agentActionFailed(let message):
+      "The browser action failed: \(message)"
     }
   }
 }

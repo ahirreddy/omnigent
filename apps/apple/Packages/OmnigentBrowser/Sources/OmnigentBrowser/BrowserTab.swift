@@ -33,9 +33,33 @@ public final class BrowserTabState {
   public package(set) var lastError: BrowserError?
   /// Whether the tab has been closed. A closed tab ignores further commands.
   public package(set) var isClosed = false
+  /// Prompts the page is waiting on, oldest first.
+  public package(set) var pendingPrompts: [BrowserPrompt] = []
+  /// The most recent window the popup policy stopped, for a "popup blocked" notice.
+  public package(set) var lastBlockedPopup: BrowserBlockedPopup?
 
   /// Creates empty state.
   public init() {}
+
+  /// Adds a prompt to the queue.
+  package func enqueue(_ prompt: BrowserPrompt) {
+    pendingPrompts.append(prompt)
+  }
+
+  /// Removes a finished or withdrawn prompt.
+  package func remove(_ prompt: BrowserPromptBase) {
+    pendingPrompts.removeAll { $0.base === prompt }
+  }
+
+  /// Clears the blocked-popup notice.
+  public func dismissBlockedPopup() {
+    lastBlockedPopup = nil
+  }
+
+  /// Records an error for the UI's banner.
+  package func report(_ error: BrowserError) {
+    lastError = error
+  }
 }
 
 /// Result of a find-in-page request.
@@ -88,4 +112,14 @@ public protocol BrowserTab: AnyObject {
   func showDevTools() throws(BrowserError)
   /// Tears down the engine view. Idempotent.
   func close()
+
+  /// Receives prompts, popups and downloads. Without one, prompts are denied and reported in
+  /// `state.lastError`. Engines hold it weakly.
+  var delegate: (any BrowserTabDelegate)? { get set }
+  /// Which page-opened windows are allowed.
+  var popupPolicy: BrowserPopupPolicy { get set }
+  /// Where the tab may navigate. Nil allows everything. Set before the first load to cover it.
+  var urlPolicy: (any BrowserURLPolicy)? { get set }
+  /// Input for agents, kept apart from user input.
+  var agentInput: any BrowserAgentInput { get }
 }

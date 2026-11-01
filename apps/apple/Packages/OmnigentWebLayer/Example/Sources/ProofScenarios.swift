@@ -141,7 +141,7 @@ extension Proofs {
   }
 
   func cookies() async throws {
-    let server = try CookieServer()
+    let server = try ProofServer()
     try await server.start()
     defer { server.stop() }
     let base = "http://127.0.0.1:\(server.port)"

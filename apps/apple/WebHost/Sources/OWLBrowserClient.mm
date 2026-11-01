@@ -49,20 +49,6 @@ OWLCursor CursorFor(cef_cursor_type_t type) {
   }
 }
 
-const char* DialogName(cef_jsdialog_type_t type) {
-  switch (type) {
-    case JSDIALOGTYPE_ALERT:
-      return "alert()";
-    case JSDIALOGTYPE_CONFIRM:
-      return "confirm()";
-    case JSDIALOGTYPE_PROMPT:
-      return "prompt()";
-    case JSDIALOGTYPE_NUM_VALUES:
-      break;
-  }
-  return "JavaScript dialog";
-}
-
 }  // namespace
 
 BrowserClient::BrowserClient(uint64_t view_id, double width, double height, double scale,
@@ -280,6 +266,10 @@ void BrowserClient::InputMouse(const Decoder& fields) {
     return;
   }
   FocusForAgent(static_cast<OWLInputOrigin>(*origin));
+  if (*kind == OWLMouseKindDown) {
+    // Browser UI a click opens (context menus, drags) is suppressed for agent clicks.
+    last_pointer_origin_ = static_cast<OWLInputOrigin>(*origin);
+  }
   CefMouseEvent event;
   event.x = static_cast<int>(*x);
   event.y = static_cast<int>(*y);
@@ -446,18 +436,6 @@ void BrowserClient::OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame
 
 // MARK: CefLifeSpanHandler
 
-bool BrowserClient::OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>, int,
-                                  const CefString& target_url, const CefString&,
-                                  WindowOpenDisposition, bool, const CefPopupFeatures&,
-                                  CefWindowInfo&, CefRefPtr<CefClient>&, CefBrowserSettings&,
-                                  CefRefPtr<CefDictionaryValue>&, bool*) {
-  // window.open and target=_blank open in the same view until projected popup views exist.
-  if (!target_url.empty()) {
-    browser->GetMainFrame()->LoadURL(target_url);
-  }
-  return true;
-}
-
 void BrowserClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
   browser_ = browser;
   devtools_registration_ = browser->GetHost()->AddDevToolsMessageObserver(this);
@@ -468,13 +446,20 @@ void BrowserClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
   if (!visible_) {
     browser->GetHost()->WasHidden(true);
   }
+  if (ClientHandlesPrompts()) {
+    InstallPageBridge();
+  }
   Emit(OWLMessageKindViewCreated, Encoder());
 }
 
 void BrowserClient::OnBeforeClose(CefRefPtr<CefBrowser>) {
   devtools_registration_ = nullptr;
   browser_ = nullptr;
+  CancelPendingPrompts("The view was closed.");
   for (const auto& entry : pending_devtools_) {
+    if (entry.second.request == 0) {
+      continue;  // Internal calls have no client waiting.
+    }
     Host::Get().Send(entry.second.reply, entry.second.request, view_id_,
                      Encoder()
                          .Bool(OWLFieldSuccess, false)
@@ -492,18 +477,6 @@ void BrowserClient::OnRenderProcessTerminated(CefRefPtr<CefBrowser>, Termination
                                        .I64(OWLFieldStatus, status)
                                        .I64(OWLFieldErrorCode, error_code)
                                        .String(OWLFieldMessage, error_string.ToString()));
-}
-
-// MARK: CefDownloadHandler
-
-bool BrowserClient::CanDownload(CefRefPtr<CefBrowser>, const CefString& url, const CefString&) {
-  Emit(OWLMessageKindDownloadBlocked, Encoder().String(OWLFieldURL, url.ToString()));
-  return false;
-}
-
-bool BrowserClient::OnBeforeDownload(CefRefPtr<CefBrowser>, CefRefPtr<CefDownloadItem>,
-                                     const CefString&, CefRefPtr<CefBeforeDownloadCallback>) {
-  return false;
 }
 
 // MARK: CefFindHandler
@@ -545,63 +518,6 @@ bool BrowserClient::OnKeyEvent(CefRefPtr<CefBrowser>, const CefKeyEvent& event, 
   return true;
 }
 
-// MARK: CefJSDialogHandler
-
-bool BrowserClient::OnJSDialog(CefRefPtr<CefBrowser>, const CefString& origin_url,
-                               JSDialogType dialog_type, const CefString& message_text,
-                               const CefString&, CefRefPtr<CefJSDialogCallback>,
-                               bool& suppress_message) {
-  suppress_message = true;
-  Blocked(DialogName(dialog_type), origin_url.ToString() + ": " + message_text.ToString());
-  return false;
-}
-
-bool BrowserClient::OnBeforeUnloadDialog(CefRefPtr<CefBrowser>, const CefString&, bool,
-                                         CefRefPtr<CefJSDialogCallback> callback) {
-  callback->Continue(true, CefString());
-  return true;
-}
-
-// MARK: CefDialogHandler
-
-bool BrowserClient::OnFileDialog(CefRefPtr<CefBrowser>, FileDialogMode, const CefString& title,
-                                 const CefString&, const std::vector<CefString>&,
-                                 const std::vector<CefString>&, const std::vector<CefString>&,
-                                 CefRefPtr<CefFileDialogCallback> callback) {
-  callback->Cancel();
-  Blocked("File chooser", title.ToString());
-  return true;
-}
-
-// MARK: CefPermissionHandler
-
-bool BrowserClient::OnRequestMediaAccessPermission(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>,
-                                                   const CefString& requesting_origin, uint32_t,
-                                                   CefRefPtr<CefMediaAccessCallback> callback) {
-  callback->Cancel();
-  Blocked("Camera and microphone access", requesting_origin.ToString());
-  return true;
-}
-
-bool BrowserClient::OnShowPermissionPrompt(CefRefPtr<CefBrowser>, uint64_t,
-                                           const CefString& requesting_origin,
-                                           uint32_t requested_permissions,
-                                           CefRefPtr<CefPermissionPromptCallback> callback) {
-  callback->Continue(CEF_PERMISSION_RESULT_DENY);
-  Blocked("Permission prompt", requesting_origin.ToString() + " requested permissions 0x" +
-                                   std::to_string(requested_permissions));
-  return true;
-}
-
-// MARK: CefContextMenuHandler
-
-void BrowserClient::OnBeforeContextMenu(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>,
-                                        CefRefPtr<CefContextMenuParams>,
-                                        CefRefPtr<CefMenuModel> model) {
-  // A native menu would open in the host process; context menus wait for projected views.
-  model->Clear();
-}
-
 void BrowserClient::ReplyWithScreenshot(uint64_t request, bool success, const std::string& json) {
   CefRefPtr<CefValue> parsed = success ? CefParseJSON(json, JSON_PARSER_RFC) : nullptr;
   CefRefPtr<CefBinaryValue> png;
@@ -633,6 +549,13 @@ void BrowserClient::OnDevToolsMethodResult(CefRefPtr<CefBrowser>, int message_id
   PendingDevTools pending = found->second;
   pending_devtools_.erase(found);
   std::string json(static_cast<const char*>(result), result_size);
+  if (pending.request == 0) {
+    // Internal call (page bridge set-up, color replies): only failures are reported.
+    if (!success) {
+      Host::Get().ReportError(view_id_, OWLHostErrorDevToolsFailed, "Internal DevTools call failed: " + json);
+    }
+    return;
+  }
   if (pending.reply == OWLMessageKindSnapshotResult) {
     ReplyWithScreenshot(pending.request, success, json);
     return;

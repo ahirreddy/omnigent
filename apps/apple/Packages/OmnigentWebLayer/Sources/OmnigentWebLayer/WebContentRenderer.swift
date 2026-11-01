@@ -59,7 +59,7 @@ public final class WebContentRenderer {
   /// sets this to dispatch them to the main menu and the responder chain.
   public var onUnhandledKeyEvent: ((NSEvent) -> Void)?
 
-  private weak var webView: WebView?
+  weak var webView: WebView?
   private var lastKeyDown: [UInt16: NSEvent] = [:]
 
   init(webView: WebView) {
@@ -117,7 +117,7 @@ public final class WebContentRenderer {
   ) throws(WebLayerError) {
     try agentMove(to: point, modifiers: modifiers)
     for kind in [OWLMouseKind.down, .up] {
-      try sendAgent(
+      try sendAgentMessage(
         .inputMouse,
         MouseInput(
           kind: kind, location: point, button: button.wire, clickCount: clickCount,
@@ -128,7 +128,7 @@ public final class WebContentRenderer {
 
   /// Moves the pointer to `point`.
   public func agentMove(to point: CGPoint, modifiers: AgentModifiers = []) throws(WebLayerError) {
-    try sendAgent(
+    try sendAgentMessage(
       .inputMouse,
       MouseInput(kind: .move, location: point, modifiers: modifiers.wire).encoded(
         origin: .agent))
@@ -138,7 +138,7 @@ public final class WebContentRenderer {
   public func agentScroll(at point: CGPoint, deltaX: Double, deltaY: Double)
     throws(WebLayerError)
   {
-    try sendAgent(
+    try sendAgentMessage(
       .inputMouse,
       MouseInput(kind: .wheel, location: point, deltaX: deltaX, deltaY: deltaY).encoded(
         origin: .agent))
@@ -154,11 +154,11 @@ public final class WebContentRenderer {
   /// Presses and releases one key.
   public func agentPress(_ key: AgentKey, modifiers: AgentModifiers = []) throws(WebLayerError) {
     for input in key.keyInputs(modifiers: modifiers.wire) {
-      try sendAgent(.inputKey, input.encoded(origin: .agent))
+      try sendAgentMessage(.inputKey, input.encoded(origin: .agent))
     }
   }
 
-  private func sendAgent(_ kind: OWLMessageKind, _ fields: WireEncoder) throws(WebLayerError) {
+  func sendAgentMessage(_ kind: OWLMessageKind, _ fields: WireEncoder) throws(WebLayerError) {
     guard let webView else { throw .viewClosed }
     switch webView.status {
     case .live:

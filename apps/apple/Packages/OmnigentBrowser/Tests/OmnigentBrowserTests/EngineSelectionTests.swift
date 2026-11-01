@@ -16,6 +16,10 @@ final class FakeTab: BrowserTab {
   let state = BrowserTabState()
   let platformView = BrowserPlatformView(frame: .zero)
   private(set) var loads: [URL] = []
+  weak var delegate: (any BrowserTabDelegate)?
+  var popupPolicy = BrowserPopupPolicy.requireUserGesture
+  var urlPolicy: (any BrowserURLPolicy)?
+  let agentInput: any BrowserAgentInput = RecordingAgentInput()
 
   init(kind: BrowserEngineKind, profile: BrowserProfile, initialURL: URL?) {
     engineKind = kind

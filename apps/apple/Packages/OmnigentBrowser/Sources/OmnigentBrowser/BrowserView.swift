@@ -33,6 +33,24 @@ public struct BrowserView: View {
     case .tab(let tab):
       BrowserTabContent(tab: tab)
         .id(ObjectIdentifier(tab))
+        .overlay {
+          if let prompt = controller.presenter.interstitial(for: tab) {
+            BrowserCertificateInterstitial(
+              prompt: prompt, allowsProceeding: controller.presenter.allowsCertificateOverrides
+            ) { proceed in
+              controller.presenter.resolveInterstitial(for: tab, proceed: proceed)
+            }
+          }
+        }
+        .overlay(alignment: .top) {
+          if let blocked = tab.state.lastBlockedPopup {
+            BrowserBlockedPopupBanner(blocked: blocked) {
+              controller.openBlockedPopup(blocked)
+            } dismiss: {
+              tab.state.dismissBlockedPopup()
+            }
+          }
+        }
         .overlay(alignment: .bottom) {
           if let error = tab.state.lastError, !error.isCancellation {
             BrowserErrorBanner(error: error)
@@ -69,6 +87,7 @@ struct BrowserToolbar: View {
           .autocorrectionDisabled()
           .onSubmit(submitAddress)
           .accessibilityIdentifier("browser.address")
+        BrowserDownloadsButton(presenter: controller.presenter)
         BrowserEnginePicker(controller: controller)
       }
       .labelStyle(.iconOnly)

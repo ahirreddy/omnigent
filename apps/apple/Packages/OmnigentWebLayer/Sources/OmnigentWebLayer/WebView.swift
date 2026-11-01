@@ -46,6 +46,27 @@ public final class WebView {
   public internal(set) var cursor = WebCursor.pointer
   /// Zoom level; 0 is 100%, each step is 20%.
   public internal(set) var zoomLevel: Double = 0
+  /// Prompts waiting for an answer, oldest first (protocol 1.1).
+  public internal(set) var pendingPrompts: [WebPrompt] = []
+  /// Which page-opened windows are allowed. Applied in the host before the first navigation.
+  public var popupPolicy = WebPopupPolicy.requireUserGesture {
+    didSet { sendPolicies() }
+  }
+  /// Rules every navigation in this view must pass, enforced in the host (redirects and
+  /// page-initiated navigations included). Popups inherit them. Nil allows everything.
+  public var navigationRules: WebNavigationRules? {
+    didSet { sendPolicies() }
+  }
+  /// The view that opened this one, for popups.
+  public internal(set) weak var opener: WebView?
+  /// Keeps the page rendering and taking input while no window shows it, for agent views that
+  /// are never on screen. Hidden Chromium widgets drop input, so such views report themselves
+  /// visible to the host regardless of where their hosting view is.
+  public var rendersOffscreen = false {
+    didSet {
+      if rendersOffscreen { setVisible(true) }
+    }
+  }
 
   /// Input forwarding for the user and for agents.
   @ObservationIgnored public private(set) lazy var renderer = WebContentRenderer(webView: self)
@@ -53,6 +74,17 @@ public final class WebView {
   @ObservationIgnored public let layerHost = LayerHost()
   /// Called for events that are not state, such as blocked features.
   @ObservationIgnored public var onEvent: ((WebViewEvent) -> Void)?
+  /// Receives dialogs, permission prompts, file choosers, downloads, popups and the rest of the
+  /// browser UI a page asks for. Without one, those requests are denied (protocol 1.0 behavior).
+  @ObservationIgnored public weak var uiDelegate: (any WebViewUIDelegate)?
+  /// IME: the composition's character rects in view points, as the host last reported them.
+  @ObservationIgnored public internal(set) var compositionCharacterRects: [CGRect] = []
+  /// The page's selected text, as the host last reported it.
+  @ObservationIgnored public internal(set) var selectedText = ""
+  /// The selection's range in the focused element, in UTF-16 units.
+  @ObservationIgnored public internal(set) var selectedRange = NSRange(location: 0, length: 0)
+  /// The operation the page accepts for the drag over it.
+  @ObservationIgnored public internal(set) var dragOperation: WebDragOperations = []
   /// Called after any observable property changes. Lets adapters mirror state without
   /// observation tracking.
   @ObservationIgnored public var onStateChange: (() -> Void)?
@@ -69,6 +101,8 @@ public final class WebView {
   @ObservationIgnored var createdAt = ContinuousClock.now
   @ObservationIgnored var sawFirstFrame = false
   @ObservationIgnored var pendingFind: CheckedContinuation<FindResult, Never>?
+  /// Set by `WebSurfaceView` to start a native drag the page began.
+  @ObservationIgnored var onStartDrag: ((WebDragStart) -> Void)?
 
   /// net::ERR_ABORTED, reported when a navigation is stopped or superseded.
   static let netErrorAborted = -3
@@ -196,6 +230,7 @@ public final class WebView {
     status = .closed
     isLoading = false
     finishFind(FindResult(matchCount: 0, activeMatch: nil))
+    withdrawPrompts(reason: "The view was closed.")
     layerHost.reset()
     if wasLive {
       do {
@@ -224,6 +259,7 @@ public final class WebView {
 
   /// Reports whether the view is on screen; hidden views stop rendering.
   public func setVisible(_ visible: Bool) {
+    let visible = visible || rendersOffscreen
     guard visible != isVisible else { return }
     isVisible = visible
     sendIfLive(.viewVisibility, WireEncoder().bool(.visible, visible))

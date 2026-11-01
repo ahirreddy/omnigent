@@ -22,6 +22,12 @@ nonisolated public enum WebViewEvent: Sendable, Hashable {
   case rendererTerminated(String)
   /// The first frame after creation was presented, this long after the view was created.
   case firstFramePresented(Duration)
+  /// The navigation rules stopped a navigation (protocol 1.1).
+  case navigationBlocked(url: URL?, reason: String)
+  /// The popup policy stopped a new window (protocol 1.1).
+  case popupBlocked(WebBlockedPopup)
+  /// The page started dragging content out (protocol 1.1).
+  case dragStarted(WebDragData)
 }
 
 /// Mouse cursor the page asks for.

@@ -1,5 +1,6 @@
 internal import AppKit
 internal import Foundation
+internal import OmnigentBrowser
 internal import OmnigentWebLayer
 internal import SwiftUI
 
@@ -10,6 +11,7 @@ internal import SwiftUI
 /// - `--render-mode remoteLayer|ioSurface`: rendering path (default remoteLayer).
 /// - `--proof <name>[,<name>...]`: runs proof scenarios, logs results and quits. See `Proofs`.
 /// - `--output <dir>`: where proofs write screenshots (default /private/tmp/claude-502).
+/// - `--engine chromium|system`: the engine for the browser-UI proofs (default chromium).
 @main
 struct WebLayerExampleApp: App {
   @State private var model = ExampleModel()
@@ -84,6 +86,7 @@ struct ExampleOptions {
   var proofs: [String] = []
   var output = URL(fileURLWithPath: "/private/tmp/claude-502", isDirectory: true)
   var keepOpen = false
+  var engine = BrowserEngineKind.chromium
 
   init(arguments: [String]) {
     var iterator = arguments.dropFirst().makeIterator()
@@ -94,6 +97,7 @@ struct ExampleOptions {
       case "--proof": proofs = (iterator.next() ?? "").split(separator: ",").map(String.init)
       case "--output": output = URL(fileURLWithPath: iterator.next() ?? ".", isDirectory: true)
       case "--keep-open": keepOpen = true
+      case "--engine": engine = iterator.next().flatMap(BrowserEngineKind.init) ?? .chromium
       default: break
       }
     }

@@ -129,7 +129,8 @@ nonisolated enum InputTranslator {
 
   /// Translates a mouse or scroll event. `location` is in the view's top-left coordinates.
   static func mouseInput(for event: NSEvent, location: CGPoint) -> MouseInput? {
-    let flags = modifiers(event.modifierFlags, pressedButtons: NSEvent.pressedMouseButtons)
+    let flags = modifiers(
+      event.modifierFlags, pressedButtons: NSEvent.pressedMouseButtons | impliedButtons(event))
     var input = MouseInput(kind: .move, location: location, modifiers: flags)
     switch event.type {
     case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .mouseEntered:
@@ -153,6 +154,17 @@ nonisolated enum InputTranslator {
       return nil
     }
     return input
+  }
+
+  /// The button a drag or press event implies, as a `pressedMouseButtons` bit. Synthesized events
+  /// (and events replayed after the hardware state changed) still carry their button.
+  static func impliedButtons(_ event: NSEvent) -> Int {
+    switch event.type {
+    case .leftMouseDown, .leftMouseDragged: 1
+    case .rightMouseDown, .rightMouseDragged: 2
+    case .otherMouseDown, .otherMouseDragged: 4
+    default: 0
+    }
   }
 
   private static func button(for event: NSEvent) -> OWLMouseButton {

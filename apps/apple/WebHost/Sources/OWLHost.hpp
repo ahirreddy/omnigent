@@ -33,6 +33,8 @@ struct SessionConfig {
   bool use_mock_keychain = false;
   bool disable_sandbox = false;
   OWLRenderMode render_mode = OWLRenderModeRemoteLayer;
+  /// The client's protocol minor from HelloAck; 0 for 1.0 clients.
+  uint64_t client_minor = 0;
 };
 
 class Host {
@@ -51,6 +53,14 @@ class Host {
 
   void OnContextInitialized();
   void OnBrowserClosed(uint64_t view_id);
+  /// A fresh ID for a view the host creates itself (popups). Host IDs start at 2^48 so they
+  /// never collide with the client's counter.
+  uint64_t AllocateHostViewID();
+  /// Registers a popup view created by CEF on the host's initiative.
+  void AdoptView(uint64_t view_id, CefRefPtr<BrowserClient> client);
+  /// Drops a popup view whose creation was aborted before OnAfterCreated.
+  void AbandonView(uint64_t view_id);
+  bool IsShuttingDown() const { return shutting_down_; }
   /// Closes every browser, then quits the CEF loop. A watchdog force-exits if that stalls.
   void BeginShutdown(const char* reason);
 
@@ -81,6 +91,7 @@ class Host {
   bool context_ready_ = false;
   bool shutting_down_ = false;
   bool quit_posted_ = false;
+  uint64_t next_host_view_id_ = uint64_t{1} << 48;
   std::map<uint64_t, CefRefPtr<CefRequestContext>> profiles_;
   std::map<uint64_t, CefRefPtr<BrowserClient>> views_;
 };
