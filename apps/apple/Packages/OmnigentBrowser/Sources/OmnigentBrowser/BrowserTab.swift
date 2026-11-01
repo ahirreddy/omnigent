@@ -13,25 +13,26 @@ public import Observation
   public typealias BrowserPlatformView = UIView
 #endif
 
-/// Observable navigation state of one tab. Engines write it; UI reads it.
+/// Observable navigation state of one tab. Engines write it (setters are `package` so engine
+/// targets in this package can); UI reads it.
 @Observable
 public final class BrowserTabState {
   /// Current main-frame URL.
-  public internal(set) var url: URL?
+  public package(set) var url: URL?
   /// Current document title, empty when unknown.
-  public internal(set) var title = ""
+  public package(set) var title = ""
   /// Whether a main-frame load is in flight.
-  public internal(set) var isLoading = false
+  public package(set) var isLoading = false
   /// Load progress in `0...1`.
-  public internal(set) var estimatedProgress: Double = 0
+  public package(set) var estimatedProgress: Double = 0
   /// Whether history has a previous entry.
-  public internal(set) var canGoBack = false
+  public package(set) var canGoBack = false
   /// Whether history has a next entry.
-  public internal(set) var canGoForward = false
+  public package(set) var canGoForward = false
   /// Most recent failure, cleared when a new navigation starts.
-  public internal(set) var lastError: BrowserError?
+  public package(set) var lastError: BrowserError?
   /// Whether the tab has been closed. A closed tab ignores further commands.
-  public internal(set) var isClosed = false
+  public package(set) var isClosed = false
 
   /// Creates empty state.
   public init() {}

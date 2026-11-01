@@ -18,7 +18,9 @@ let app = Target.target(
   infoPlist: .default,
   sources: ["Sources/**"],
   scripts: BrowserTargets.appScripts(browser),
-  dependencies: [.package(product: "OmnigentBrowser")] + BrowserTargets.appDependencies(browser),
+  dependencies: [
+    .package(product: "OmnigentBrowser"), .package(product: "OmnigentBrowserChromium"),
+  ] + BrowserTargets.appDependencies(browser),
   settings: .settings(
     base: BrowserTargets.appSettings.merging([
       "SWIFT_VERSION": "6.0",

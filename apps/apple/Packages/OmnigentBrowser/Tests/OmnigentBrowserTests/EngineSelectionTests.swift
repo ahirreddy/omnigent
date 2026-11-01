@@ -244,23 +244,80 @@ struct ControllerTests {
       try BrowserController.url(fromAddressText: "")
     }
   }
+}
 
-  #if os(macOS)
-    @Test func realProviderReportsChromiumNotBundledInTestRunner() {
-      let provider = DefaultBrowserEngineProvider(
-        chromiumConfiguration: ChromiumConfiguration(
-          helperName: "Missing Helper",
-          rootCacheURL: FileManager.default.temporaryDirectory.appending(path: "cef-test")))
+@MainActor
+final class FakeFactory: BrowserEngineFactory {
+  let kind: BrowserEngineKind
+  var startError: BrowserError?
+  private(set) var starts = 0
+
+  init(kind: BrowserEngineKind) { self.kind = kind }
+
+  func availability() -> BrowserEngineAvailability { .available }
+
+  func start() throws(BrowserError) -> any BrowserEngine {
+    starts += 1
+    if let startError { throw startError }
+    return FakeEngine(kind: kind)
+  }
+}
+
+@MainActor
+@Suite("Default provider")
+struct DefaultProviderTests {
+  @Test func withoutRegisteredEnginesOffersOnlySystem() throws {
+    let provider = DefaultBrowserEngineProvider()
+    #expect(provider.offeredEngines == [.system])
+    #expect(provider.availability(of: .system) == .available)
+    #if os(macOS)
       guard
-        case .unavailable(.engineNotBundled(.chromium, let reason)) =
-          provider.availability(of: .chromium)
+        case .unavailable(.engineNotBundled(.chromium, _)) = provider.availability(of: .chromium)
       else {
-        Issue.record("expected engineNotBundled")
+        Issue.record("expected engineNotBundled for an unregistered engine")
         return
       }
-      #expect(!reason.isEmpty)
-      #expect(throws: BrowserError.self) { try provider.engine(for: .chromium) }
-      #expect(provider.availability(of: .system) == .available)
+    #endif
+    #expect(throws: BrowserError.self) { try provider.engine(for: .chromium) }
+
+    let preferences = BrowserPreferences(defaults: try isolatedDefaults(), provider: provider)
+    #expect(preferences.defaultEngine == .system)
+    #expect(preferences.allowedEngines == [.system])
+  }
+
+  @Test func storedChoiceOutsideTheBuildIsIgnored() throws {
+    let defaults = try isolatedDefaults()
+    defaults.set("chromium", forKey: BrowserPreferences.engineDefaultsKey)
+    let preferences = BrowserPreferences(
+      defaults: defaults, provider: DefaultBrowserEngineProvider())
+    #expect(preferences.storedEngine == nil)
+    #expect(preferences.engine == .system)
+  }
+
+  #if os(macOS)
+    @Test func registeredEngineIsOfferedAndPreferred() throws {
+      let factory = FakeFactory(kind: .chromium)
+      let provider = DefaultBrowserEngineProvider(additionalEngines: [factory])
+      #expect(provider.offeredEngines == [.chromium, .system])
+      #expect(provider.availability(of: .chromium) == .available)
+      let preferences = BrowserPreferences(defaults: try isolatedDefaults(), provider: provider)
+      #expect(preferences.defaultEngine == .chromium)
+
+      let first = try provider.engine(for: .chromium)
+      let second = try provider.engine(for: .chromium)
+      #expect(first === second)
+      #expect(factory.starts == 1)
+    }
+
+    @Test func startFailureIsSticky() {
+      let factory = FakeFactory(kind: .chromium)
+      let failure = BrowserError.engineFailedToStart(.chromium, reason: "boom")
+      factory.startError = failure
+      let provider = DefaultBrowserEngineProvider(additionalEngines: [factory])
+      #expect(throws: failure) { try provider.engine(for: .chromium) }
+      #expect(throws: failure) { try provider.engine(for: .chromium) }
+      #expect(factory.starts == 1)
+      #expect(provider.availability(of: .chromium) == .unavailable(failure))
     }
   #endif
 }

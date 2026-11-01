@@ -1,50 +1,61 @@
-import OmnigentStores
-import OmnigentUI
+import OmnigentBrowser
+import OmnigentDesktop
 import SwiftUI
 
+/// The macOS app. Both editions (`OmnigentMac`, Developer ID; `OmnigentMacAppStore`) build these
+/// sources; `AppEdition` holds the only differences.
 @main
 struct OmnigentMacApp: App {
-  static let mainWindowID = "main"
+  /// Opened by Help > Omnigent Help.
+  static let helpURL = URL(string: "https://github.com/omnigent-ai/omnigent")
 
-  @State private var connection = ConnectionStore()
+  @NSApplicationDelegateAdaptor(OmnigentMacAppDelegate.self) private var appDelegate
 
   var body: some Scene {
-    WindowGroup("Omnigent", id: Self.mainWindowID) {
-      RootView()
-        .environment(connection)
-        .frame(minWidth: 760, minHeight: 480)
-    }
-    .defaultSize(width: 1180, height: 760)
-    .windowToolbarStyle(.unified)
+    let services = appDelegate.services
+    let desktop = services.desktop
+    ServerWindowScene(
+      defaultServerURL: { desktop.preferences.defaultServerURL },
+      content: { id in ServerWindowRoot(id: id, services: services) }
+    )
     .commands {
-      SidebarCommands()
-      ToolbarCommands()
-      OmnigentCommands(connection: connection)
+      OmnigentDesktopCommands(
+        actions: DesktopCommandActions(
+          defaultServerURL: { desktop.preferences.defaultServerURL },
+          helpURL: Self.helpURL))
+      BrowserCommands()
     }
 
+    BrowserWindowScene(services: services)
+
     Settings {
-      SettingsView()
+      AppSettingsView(services: services)
     }
   }
 }
 
-struct OmnigentCommands: Commands {
-  let connection: ConnectionStore
-  @Environment(\.openWindow) private var openWindow
+/// The desktop delegate, plus the app's own services bound before launch finishes so cold-start
+/// deep links and issues reach them.
+final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
+  /// App-wide services, created with the delegate's `DesktopController`.
+  private(set) lazy var services = AppServices(desktop: desktop)
 
-  var body: some Commands {
-    CommandGroup(replacing: .newItem) {
-      Button("New Window") {
-        openWindow(id: OmnigentMacApp.mainWindowID)
-      }
-      .keyboardShortcut("n", modifiers: .command)
-    }
-    CommandMenu("Server") {
-      Button("Reconnect") {
-        Task { await connection.discover(serverURL: OmnigentDefaults.serverURL) }
-      }
-      .keyboardShortcut("r", modifiers: .command)
-      .disabled(connection.isLoading)
+  override func applicationWillFinishLaunching(_ notification: Notification) {
+    services.bind()
+    super.applicationWillFinishLaunching(notification)
+  }
+}
+
+/// Settings: the desktop tabs, with this edition's browser engines on the General tab.
+struct AppSettingsView: View {
+  let services: AppServices
+
+  var body: some View {
+    OmnigentSettingsView(
+      desktop: services.desktop, recentServers: services.recentServers.urls
+    ) {
+      BrowserEngineSettingsView(
+        preferences: services.browserPreferences, provider: services.browserProvider)
     }
   }
 }

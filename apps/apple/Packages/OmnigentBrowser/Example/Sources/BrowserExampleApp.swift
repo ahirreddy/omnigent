@@ -1,6 +1,7 @@
 internal import AppKit
 internal import Foundation
 internal import OmnigentBrowser
+internal import OmnigentBrowserChromium
 internal import SwiftUI
 
 /// Sample host for the OmnigentBrowser engines.
@@ -22,7 +23,7 @@ struct BrowserExampleApp: App {
 
 @Observable
 final class ExampleModel {
-  let provider = DefaultBrowserEngineProvider()
+  let provider = DefaultBrowserEngineProvider.withChromium()
   let preferences: BrowserPreferences
   let controller: BrowserController
   private let screenshotPath: String?

@@ -261,6 +261,8 @@ APPLE_SIMULATOR := env("OMNIGENT_APPLE_SIMULATOR", "iPhone 17 Pro")
 APPLE_WORKSPACE := "apps/apple/Omnigent.xcworkspace"
 # Under the root .gitignore's `build/` rule.
 APPLE_DERIVED_DATA := "apps/apple/build/DerivedData"
+# CEF slice for Debug builds (the host arch); Release distribution uses `universal`.
+APPLE_CEF_ARCH := env("OMNIGENT_CEF_ARCH", if arch() == "aarch64" { "arm64" } else { "x86_64" })
 
 # Rust core: format check, clippy (warnings are errors), and the full test suite.
 [group('client')]
@@ -280,20 +282,27 @@ core-wasm-check:
 apple-core config="debug" *flags:
     bash apps/apple/scripts/build-core.sh {{ config }} {{ flags }}
 
-# Build the debug core, resolve Tuist dependencies, and generate the workspace.
+# Build the debug core, fetch the pinned CEF, resolve Tuist dependencies, and generate the workspace.
 [group('client')]
 apple-generate:
     bash apps/apple/scripts/build-core.sh debug
+    bash apps/apple/scripts/fetch-cef.sh --arch {{ APPLE_CEF_ARCH }}
     cd apps/apple && mise exec -- tuist install
     cd apps/apple && mise exec -- tuist generate --no-open
 
 _ensure-apple:
     test -d {{ APPLE_WORKSPACE }} || just apple-generate
 
-# Build the macOS desktop app (OmnigentMac).
+# Build the macOS desktop app, Developer ID edition (OmnigentMac, Chromium + WebKit).
 [group('client')]
 apple-build: _ensure-apple
     xcodebuild build -workspace {{ APPLE_WORKSPACE }} -scheme OmnigentMac \
+        -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }}
+
+# Build the Mac App Store edition (OmnigentMacAppStore: App Sandbox, WebKit only, no CEF).
+[group('client')]
+apple-build-appstore: _ensure-apple
+    xcodebuild build -workspace {{ APPLE_WORKSPACE }} -scheme OmnigentMacAppStore \
         -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }}
 
 # Build the iOS/iPad app (Omnigent) for a simulator.
@@ -303,7 +312,7 @@ apple-build-ios device=APPLE_SIMULATOR: _ensure-apple
         -destination 'platform=iOS Simulator,name={{ device }}' -derivedDataPath {{ APPLE_DERIVED_DATA }}
 
 # Runs `swift test` for every apps/apple/Packages/* that has a Tests dir.
-# Swift package tests, then the macOS app's tests.
+# Swift package tests, then the Developer ID macOS app's unit and UI tests.
 [group('client')]
 apple-test: _ensure-apple
     #!/usr/bin/env bash
@@ -317,6 +326,17 @@ apple-test: _ensure-apple
     done
     xcodebuild test -workspace {{ APPLE_WORKSPACE }} -scheme OmnigentMac \
         -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }}
+
+# Unit and UI tests of the Mac App Store edition.
+[group('client')]
+apple-test-appstore: _ensure-apple
+    xcodebuild test -workspace {{ APPLE_WORKSPACE }} -scheme OmnigentMacAppStore \
+        -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }}
+
+# Strict SwiftLint over apps/apple (config: apps/apple/.swiftlint.yml).
+[group('client')]
+apple-lint:
+    cd apps/apple && mise exec -- swiftlint lint --strict --config .swiftlint.yml
 
 # Test the iOS/iPad app (Omnigent) on a simulator.
 [group('client')]
@@ -349,6 +369,15 @@ apple-run: apple-build
     open -n "$app"
 
 alias apple-run-mac := apple-run
+
+# Build and launch the Mac App Store edition.
+[group('client')]
+apple-run-appstore: apple-build-appstore
+    #!/usr/bin/env bash
+    set -euo pipefail
+    app="$(just _apple-app-path OmnigentMacAppStore 'platform=macOS')"
+    echo "Launching $app"
+    open -n "$app"
 
 # Build, install, and launch the iOS app on a simulator (booting it if needed).
 [group('client')]

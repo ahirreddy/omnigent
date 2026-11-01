@@ -112,7 +112,7 @@ public struct BrowserEnginePicker: View {
   /// The view body.
   public var body: some View {
     Menu {
-      ForEach(BrowserEngineKind.supportedOnThisPlatform) { kind in
+      ForEach(controller.offeredEngines) { kind in
         Button {
           controller.switchEngine(to: kind)
         } label: {
@@ -146,17 +146,20 @@ public struct BrowserEngineSettingsView: View {
   public var body: some View {
     Section {
       Picker("Browser engine", selection: $preferences.engine) {
-        ForEach(BrowserEngineKind.supportedOnThisPlatform) { kind in
+        ForEach(provider.offeredEngines) { kind in
           Text(kind.displayName).tag(kind)
         }
       }
+      .accessibilityIdentifier("settings.browserEngine")
       if case .unavailable(let error) = provider.availability(of: preferences.engine) {
         Text(error.localizedDescription)
           .font(.caption)
           .foregroundStyle(.red)
       }
+    } header: {
+      Text("Browser")
     } footer: {
-      Text("Default: \(preferences.defaultEngine.displayName)")
+      Text("Default: \(preferences.defaultEngine.displayName). Open browser panes switch too.")
     }
   }
 }

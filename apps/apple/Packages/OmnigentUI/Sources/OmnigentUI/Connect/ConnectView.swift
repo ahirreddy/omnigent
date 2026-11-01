@@ -5,11 +5,14 @@ public import SwiftUI
 
 /// Server URL form that runs discovery and shows the server name, version and sign-in mode.
 ///
-/// It connects to the stored server URL as soon as it first appears.
+/// Without a ``ServerConnectAction`` in the environment it connects to the stored server URL as
+/// soon as it first appears. With one, the host decides when to connect.
 public struct ConnectView: View {
   @Environment(ConnectionStore.self) private var store
-  @AppStorage(OmnigentDefaults.serverURLKey) private var serverURL = OmnigentDefaults
+  @Environment(\.serverConnectAction) private var connectAction
+  @AppStorage(OmnigentDefaults.serverURLKey) private var lastServerURL = OmnigentDefaults
     .defaultServerURL
+  @State private var serverURL = ""
 
   /// Creates the form; it reads the ``ConnectionStore`` from the environment.
   public init() {}
@@ -43,8 +46,16 @@ public struct ConnectView: View {
     }
     .formStyle(.grouped)
     .navigationTitle("Connect")
+    .onChange(of: store.state.serverURL, initial: true) { _, current in
+      // Show the server this store is bound to; otherwise the last one used.
+      if let current {
+        serverURL = current
+      } else if serverURL.isEmpty {
+        serverURL = lastServerURL
+      }
+    }
     .task {
-      if store.state == .idle { connect() }
+      if connectAction == nil, store.state == .idle { connect() }
     }
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
@@ -97,7 +108,12 @@ public struct ConnectView: View {
   }
 
   private func connect() {
-    let url = serverURL
-    Task { await store.discover(serverURL: url) }
+    let url = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    lastServerURL = url
+    if let connectAction {
+      connectAction(url)
+    } else {
+      Task { await store.discover(serverURL: url) }
+    }
   }
 }

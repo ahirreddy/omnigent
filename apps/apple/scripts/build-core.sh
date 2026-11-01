@@ -6,7 +6,8 @@
 # Usage: build-core.sh [debug|release] [--sim-only|--all-slices]
 #   debug (default) builds the iOS simulator and host macOS slices only; pass --all-slices for
 #   device + universal macOS. release builds every slice unless --sim-only is given.
-# Set CARGO to use a different cargo binary or wrapper.
+# Set CARGO to use a different cargo binary or wrapper. CARGO_TARGET_DIR is honored, so a
+# separate target directory can avoid contending with other cargo runs.
 set -euo pipefail
 
 usage() {
@@ -38,7 +39,7 @@ core_dir="$repo_root/client-core"
 package_dir="$repo_root/apps/apple/Packages/OmnigentCoreFFI"
 sources_dir="$package_dir/Sources/OmnigentCoreFFI"
 xcframework="$package_dir/omnigent_ffiFFI.xcframework"
-target_dir="$core_dir/target"
+target_dir="${CARGO_TARGET_DIR:-$core_dir/target}"
 cargo="${CARGO:-cargo}"
 
 lib_name=libomnigent_ffi.a

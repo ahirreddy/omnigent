@@ -57,7 +57,8 @@ public struct ManagedPreferences {
   /// Whether one key in one domain is forced by a profile.
   public typealias ForcedReader = (_ key: String, _ domain: String) -> Bool
 
-  private let domains: [String]
+  /// Domains in precedence order.
+  public let domains: [String]
   private let readValue: ValueReader
   private let readForced: ForcedReader
 

@@ -16,6 +16,15 @@ public final class ConnectionStore {
     case connected(ServerDiscovery)
     /// Discovery of `serverURL` failed; `message` is suitable for display.
     case failed(serverURL: String, message: String)
+
+    /// The server URL being or last discovered, `nil` while idle.
+    public var serverURL: String? {
+      switch self {
+      case .idle: nil
+      case .loading(let serverURL), .failed(let serverURL, _): serverURL
+      case .connected(let discovery): discovery.baseUrl
+      }
+    }
   }
 
   /// The current discovery state.
@@ -46,6 +55,9 @@ public final class ConnectionStore {
     if case .loading = state { return true }
     return false
   }
+
+  /// Whether discovery succeeded and the server is usable.
+  public var isConnected: Bool { discovery != nil }
 
   /// The discovered server, when connected.
   public var discovery: ServerDiscovery? {

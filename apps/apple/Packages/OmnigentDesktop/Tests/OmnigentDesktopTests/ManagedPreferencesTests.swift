@@ -201,6 +201,17 @@ struct ManagedPreferencesTests {
       ManagedPreferences.domains(forBundleIdentifier: nil) == ManagedPreferences.defaultDomains)
   }
 
+  @Test("sandboxed builds read only their own domain")
+  func ownDomainOnly() {
+    #expect(
+      ManagedPreferences.domains(
+        forBundleIdentifier: "ai.omnigent.mac.appstore", ownDomainOnly: true) == [
+          "ai.omnigent.mac.appstore"
+        ])
+    #expect(ManagedPreferences.domains(forBundleIdentifier: nil, ownDomainOnly: true).isEmpty)
+    #expect(ManagedPreferences(domains: ["a", "b"]).domains == ["a", "b"])
+  }
+
   @Test("the default reader returns nothing for an unused domain")
   func realDefaults() throws {
     let preferences = ManagedPreferences(domains: ["ai.omnigent.tests.\(UUID().uuidString)"])

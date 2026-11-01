@@ -14,8 +14,13 @@ public struct RootView: View {
   // swiftlint:disable:next unused_declaration
   @State private var preferredCompactColumn: NavigationSplitViewColumn = .content
 
+  private let sessionID: String?
+
   /// Creates the root view; it reads the ``ConnectionStore`` from the environment.
-  public init() {}
+  /// - Parameter sessionID: The conversation to show, for example from an `omnigent://` link.
+  public init(sessionID: String? = nil) {
+    self.sessionID = sessionID
+  }
 
   /// The split view.
   public var body: some View {
@@ -41,11 +46,21 @@ public struct RootView: View {
       }
       .navigationSplitViewColumnWidth(min: 320, ideal: 400)
     } detail: {
-      ContentUnavailableView(
-        "No Session Selected",
-        systemImage: "bubble.left.and.text.bubble.right",
-        description: Text("Sessions appear here after you connect to a server.")
-      )
+      if let sessionID {
+        // Transcripts arrive with the session port; until then the routed session is named.
+        ContentUnavailableView(
+          "Session \(sessionID)",
+          systemImage: "bubble.left.and.text.bubble.right",
+          description: Text("Opened from a link. Transcripts are not available in this build yet.")
+        )
+        .accessibilityIdentifier("detail.session")
+      } else {
+        ContentUnavailableView(
+          "No Session Selected",
+          systemImage: "bubble.left.and.text.bubble.right",
+          description: Text("Sessions appear here after you connect to a server.")
+        )
+      }
     }
   }
 

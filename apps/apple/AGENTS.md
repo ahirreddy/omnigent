@@ -27,7 +27,12 @@ Read `README.md` first. These rules cover `apps/apple/` and the Rust core in
   `@preconcurrency import` is allowed only for generated UniFFI code.
 - Use `@Observable` and MainActor models. Don't use `ObservableObject` or
   `@Published` in new code.
-- macOS (`OmnigentMac`) is the primary target. Keep iOS and iPad compiling, and
+- macOS is the primary target, in two editions that share every source file:
+  `OmnigentMac` (Developer ID, Chromium) and `OmnigentMacAppStore` (App Sandbox,
+  WebKit only). Edition differences go through `AppEdition` and the
+  `OMNIGENT_CHROMIUM` condition, never through copied files. Code that only the
+  App Store edition may not contain (CEF) stays behind `OmnigentBrowserChromium`.
+- `OmnigentMac` is the primary edition. Keep iOS and iPad compiling, and
   keep platform differences in `#if os()` shims, not in forked views.
 
 ## Errors and unknown data
@@ -73,6 +78,7 @@ rule on the desktop shell.
 ```sh
 just core-test && just core-wasm-check
 just apple-generate && just apple-build && just apple-test
+just apple-build-appstore && just apple-test-appstore && just apple-lint
 ```
 
 Pre-commit runs swift-format (config: nearest `.swift-format`), `cargo fmt` and

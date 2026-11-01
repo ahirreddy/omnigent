@@ -1,12 +1,48 @@
-#if os(macOS)
-  public import Foundation
-  internal import AppKit
-  internal import OmnigentCEFBridge
-#else
-  internal import Foundation
-#endif
+// Chromium (CEF) engine. A separate product from `OmnigentBrowser` so builds that must not
+// contain CEF (the Mac App Store edition, iOS) never link the bridge or libcef_dll_wrapper.
+// Register it with `DefaultBrowserEngineProvider.withChromium()`.
 
 #if os(macOS)
+  public import Foundation
+  public import OmnigentBrowser
+  internal import AppKit
+  internal import OmnigentCEFBridge
+
+  /// Starts Chromium for `DefaultBrowserEngineProvider`. The provider remembers a start failure,
+  /// because CEF cannot re-initialize in a process.
+  public final class ChromiumEngineFactory: BrowserEngineFactory {
+    /// Always `.chromium`.
+    public let kind = BrowserEngineKind.chromium
+    private let configuration: ChromiumConfiguration
+
+    /// Creates a factory.
+    /// - Parameter configuration: Chromium start-up settings.
+    public init(configuration: ChromiumConfiguration = .standard()) {
+      self.configuration = configuration
+    }
+
+    /// See `BrowserEngineFactory.availability()`.
+    public func availability() -> BrowserEngineAvailability {
+      ChromiumBrowserEngine.availability(configuration: configuration)
+    }
+
+    /// See `BrowserEngineFactory.start()`.
+    public func start() throws(BrowserError) -> any BrowserEngine {
+      try ChromiumBrowserEngine.start(configuration: configuration)
+    }
+  }
+
+  extension DefaultBrowserEngineProvider {
+    /// A provider offering Chromium and the system engine.
+    /// - Parameter configuration: Chromium start-up settings.
+    /// - Returns: The provider.
+    public static func withChromium(configuration: ChromiumConfiguration = .standard())
+      -> DefaultBrowserEngineProvider
+    {
+      DefaultBrowserEngineProvider(
+        additionalEngines: [ChromiumEngineFactory(configuration: configuration)])
+    }
+  }
 
   /// Start-up settings for the Chromium engine.
   nonisolated public struct ChromiumConfiguration: Hashable, Sendable {
@@ -338,63 +374,3 @@
     }
   }
 #endif
-
-/// Parsers for Chrome DevTools Protocol results. Engine-independent so they are unit-testable.
-nonisolated enum ChromiumDevTools {
-  /// net::ERR_ABORTED, reported when a navigation is stopped or superseded.
-  static let netErrorAborted = -3
-
-  static func evaluateResult(json: String) throws(BrowserError) -> BrowserScriptValue {
-    let root = try object(json, method: "Runtime.evaluate")
-    if let details = root["exceptionDetails"] as? [String: Any] {
-      let exception = details["exception"] as? [String: Any]
-      let message =
-        exception?["description"] as? String ?? details["text"] as? String
-        ?? "Uncaught exception"
-      throw .scriptFailed(message: message)
-    }
-    guard let result = root["result"] as? [String: Any] else {
-      throw .devToolsFailed(method: "Runtime.evaluate", message: "Missing result: \(json)")
-    }
-    if let unserializable = result["unserializableValue"] as? String {
-      switch unserializable {
-      case "NaN": return .number(.nan)
-      case "Infinity": return .number(.infinity)
-      case "-Infinity": return .number(-.infinity)
-      case "-0": return .number(-0.0)
-      default: return .string(unserializable)
-      }
-    }
-    if result["type"] as? String == "undefined" {
-      return .undefined
-    }
-    guard result.keys.contains("value") else {
-      let type = result["className"] as? String ?? result["type"] as? String ?? "unknown"
-      throw .unsupportedScriptResult(type)
-    }
-    return try BrowserScriptValue(foundationObject: result["value"])
-  }
-
-  static func screenshotData(json: String) throws(BrowserError) -> Data {
-    let root = try object(json, method: "Page.captureScreenshot")
-    guard let base64 = root["data"] as? String, let data = Data(base64Encoded: base64) else {
-      throw .snapshotFailed("Page.captureScreenshot returned no image data.")
-    }
-    return data
-  }
-
-  private static func object(_ json: String, method: String) throws(BrowserError)
-    -> [String: Any]
-  {
-    let parsed: Any
-    do {
-      parsed = try JSONSerialization.jsonObject(with: Data(json.utf8))
-    } catch {
-      throw .devToolsFailed(method: method, message: "Invalid JSON: \(error.localizedDescription)")
-    }
-    guard let object = parsed as? [String: Any] else {
-      throw .devToolsFailed(method: method, message: "Expected a JSON object: \(json)")
-    }
-    return object
-  }
-}

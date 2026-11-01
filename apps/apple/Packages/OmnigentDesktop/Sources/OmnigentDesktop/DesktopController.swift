@@ -32,8 +32,7 @@ public final class DesktopController {
   ///   - acknowledger: CLI handshake for `desktop_ack` links.
   public init(
     defaults: UserDefaults = .standard,
-    managedDomains: [String] = ManagedPreferences.domains(
-      forBundleIdentifier: Bundle.main.bundleIdentifier),
+    managedDomains: [String] = ManagedPreferences.domains(for: .main),
     acknowledger: any DeepLinkAcknowledging = LoopbackDeepLinkAcknowledger()
   ) {
     let relay = IssueRelay()
@@ -68,19 +67,38 @@ public final class DesktopController {
 }
 
 extension ManagedPreferences {
+  /// Info.plist Boolean. When `true` the app reads only its own preference domain.
+  ///
+  /// Sandboxed builds (the Mac App Store edition) set it: reading another app's domain from App
+  /// Sandbox needs a `temporary-exception.shared-preference.read-only` entitlement, which App
+  /// Review may reject. MDM profiles for that edition target its own bundle identifier.
+  nonisolated public static let ownDomainOnlyInfoKey = "OmnigentManagedPreferencesOwnDomainOnly"
+
   /// The app's own domain first (so Debug `.lab` builds can be tested locally), then
   /// `defaultDomains`, without duplicates.
-  /// - Parameter bundleIdentifier: `Bundle.main.bundleIdentifier`.
+  /// - Parameters:
+  ///   - bundleIdentifier: `Bundle.main.bundleIdentifier`.
+  ///   - ownDomainOnly: Read only `bundleIdentifier`'s domain.
   /// - Returns: Domains in precedence order.
-  nonisolated public static func domains(forBundleIdentifier bundleIdentifier: String?)
-    -> [String]
-  {
+  nonisolated public static func domains(
+    forBundleIdentifier bundleIdentifier: String?, ownDomainOnly: Bool = false
+  ) -> [String] {
+    let own = [bundleIdentifier].compactMap(\.self)
+    if ownDomainOnly { return own }
     var domains: [String] = []
-    for domain in [bundleIdentifier].compactMap(\.self) + defaultDomains
-    where !domains.contains(domain) {
+    for domain in own + defaultDomains where !domains.contains(domain) {
       domains.append(domain)
     }
     return domains
+  }
+
+  /// Domains for an app bundle, honoring `ownDomainOnlyInfoKey`.
+  /// - Parameter bundle: Normally `.main`.
+  /// - Returns: Domains in precedence order.
+  nonisolated public static func domains(for bundle: Bundle) -> [String] {
+    domains(
+      forBundleIdentifier: bundle.bundleIdentifier,
+      ownDomainOnly: bundle.object(forInfoDictionaryKey: ownDomainOnlyInfoKey) as? Bool ?? false)
   }
 }
 

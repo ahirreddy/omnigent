@@ -6,7 +6,7 @@ public enum Omnigent {
   public static let developmentTeam = "8RMX4WU6F8"
   /// Minimum iOS and macOS version.
   public static let deploymentVersion = "26.0"
-  /// `CFBundleShortVersionString` for both apps.
+  /// `CFBundleShortVersionString` for every app.
   public static let marketingVersion = "0.1.0"
   /// `CFBundleVersion` for both apps.
   public static let buildNumber = "1"
@@ -105,9 +105,10 @@ public enum Omnigent {
   }
 
   /// Settings for unit and UI test bundles.
+  /// - Parameter extra: Additional settings, such as compilation conditions.
   /// - Returns: The target settings.
-  public static func testSettings() -> Settings {
-    .settings(base: ["CODE_SIGN_STYLE": "Automatic"])
+  public static func testSettings(extra: SettingsDictionary = [:]) -> Settings {
+    .settings(base: ["CODE_SIGN_STYLE": "Automatic"].merging(extra) { _, new in new })
   }
 
   /// Info.plist shared by both apps: deep-link scheme, local-network ATS exception and usage

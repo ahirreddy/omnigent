@@ -2,23 +2,31 @@ import AppKit
 public import SwiftUI
 
 /// The Settings window: General, Notifications and Advanced tabs. Use inside a `Settings` scene.
-public struct OmnigentSettingsView: View {
+///
+/// The package does not depend on the browser package, so the app supplies the General tab's
+/// browser section (typically `OmnigentBrowser.BrowserEngineSettingsView`, which lists only the
+/// engines its build offers).
+public struct OmnigentSettingsView<BrowserSettings: View>: View {
   private let desktop: DesktopController
   private let recentServers: [URL]
   private let exportDiagnostics: (() -> Void)?
+  private let browserSettings: BrowserSettings
 
   /// Creates the view.
   /// - Parameters:
   ///   - desktop: The shell services.
   ///   - recentServers: The user's recent servers, offered as the default server.
   ///   - exportDiagnostics: Shown on the Advanced tab when provided.
+  ///   - browserSettings: A `Section` for the General tab's browser settings.
   public init(
     desktop: DesktopController, recentServers: [URL] = [],
-    exportDiagnostics: (() -> Void)? = nil
+    exportDiagnostics: (() -> Void)? = nil,
+    @ViewBuilder browserSettings: () -> BrowserSettings
   ) {
     self.desktop = desktop
     self.recentServers = recentServers
     self.exportDiagnostics = exportDiagnostics
+    self.browserSettings = browserSettings()
   }
 
   /// The tabs.
@@ -27,7 +35,7 @@ public struct OmnigentSettingsView: View {
       Tab("General", systemImage: "gearshape") {
         GeneralSettingsTab(
           preferences: desktop.preferences, managed: desktop.managedPreferences,
-          recentServers: recentServers)
+          recentServers: recentServers, browserSettings: browserSettings)
       }
       Tab("Notifications", systemImage: "bell.badge") {
         NotificationSettingsTab(
@@ -44,10 +52,27 @@ public struct OmnigentSettingsView: View {
   }
 }
 
-struct GeneralSettingsTab: View {
+extension OmnigentSettingsView where BrowserSettings == EmptyView {
+  /// Creates the view without browser settings.
+  /// - Parameters:
+  ///   - desktop: The shell services.
+  ///   - recentServers: The user's recent servers, offered as the default server.
+  ///   - exportDiagnostics: Shown on the Advanced tab when provided.
+  public init(
+    desktop: DesktopController, recentServers: [URL] = [],
+    exportDiagnostics: (() -> Void)? = nil
+  ) {
+    self.init(
+      desktop: desktop, recentServers: recentServers, exportDiagnostics: exportDiagnostics
+    ) { EmptyView() }
+  }
+}
+
+struct GeneralSettingsTab<BrowserSettings: View>: View {
   @Bindable var preferences: DesktopPreferences
   let managed: ManagedPreferences
   let recentServers: [URL]
+  let browserSettings: BrowserSettings
   @State private var organizationServers: [ManagedServer] = []
   @State private var managedError: ManagedPreferencesError?
 
@@ -84,17 +109,7 @@ struct GeneralSettingsTab: View {
       } header: {
         Text("Servers")
       }
-      Section {
-        Picker("Browser engine", selection: $preferences.browserEngine) {
-          ForEach(BrowserEnginePreference.allCases, id: \.self) { engine in
-            Text(engine.displayName).tag(engine)
-          }
-        }
-      } header: {
-        Text("Browser")
-      } footer: {
-        Text("Applies to browser panes opened after the change.")
-      }
+      browserSettings
     }
     .formStyle(.grouped)
     .task { readManaged() }
@@ -257,7 +272,7 @@ struct AdvancedSettingsTab: View {
       } header: {
         Text("Managed by your organization")
       } footer: {
-        Text("Read from the ai.omnigent.mac and ai.omnigent.desktop preference domains.")
+        Text(domainsFootnote)
       }
       Section {
         Button("Reset Window Position") {
@@ -272,6 +287,14 @@ struct AdvancedSettingsTab: View {
     }
     .formStyle(.grouped)
     .task { read() }
+  }
+
+  private var domainsFootnote: String {
+    switch managed.domains.count {
+    case 0: "No managed preference domain is read."
+    case 1: "Read from the \(managed.domains[0]) preference domain."
+    default: "Read from the \(managed.domains.formatted(.list(type: .and))) preference domains."
+    }
   }
 
   private var internalFeaturesLabel: String {

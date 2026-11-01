@@ -11,6 +11,8 @@ struct ConnectionStoreTests {
     let store = ConnectionStore(
       transport: FakeHttpTransport(failingWith: .Other(message: "unused")))
     #expect(store.state == .idle)
+    #expect(!store.isConnected)
+    #expect(store.state.serverURL == nil)
   }
 
   @Test func discoverConnectsWithParsedManifest() async throws {
@@ -22,6 +24,8 @@ struct ConnectionStoreTests {
     await store.discover(serverURL: "http://127.0.0.1:6767")
 
     let discovery = try #require(store.discovery, "state: \(store.state)")
+    #expect(store.isConnected)
+    #expect(store.state.serverURL == discovery.baseUrl)
     #expect(discovery.serverName == "Local Omnigent")
     #expect(discovery.serverVersion == "0.42.0")
     #expect(discovery.authMode == AuthMode.none)

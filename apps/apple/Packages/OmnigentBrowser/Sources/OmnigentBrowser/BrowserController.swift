@@ -61,6 +61,9 @@ public final class BrowserController {
     provider.availability(of: kind)
   }
 
+  /// Engines this build offers, in display order.
+  public var offeredEngines: [BrowserEngineKind] { provider.offeredEngines }
+
   /// Creates a tab for the preferred engine if none matches it yet.
   public func activate() {
     let wanted = preferences.engine

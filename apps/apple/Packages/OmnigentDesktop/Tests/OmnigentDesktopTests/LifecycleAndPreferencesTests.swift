@@ -47,11 +47,10 @@ struct DesktopPreferencesTests {
     return defaults
   }
 
-  @Test("defaults: every notification on, sound off, WebKit, connect screen")
+  @Test("defaults: every notification on, sound off, connect screen")
   func defaults() throws {
     let preferences = DesktopPreferences(defaults: try freshDefaults())
     #expect(preferences.defaultServerURL == nil)
-    #expect(preferences.browserEngine == .webKit)
     #expect(preferences.notificationPreferences == NotificationPreferences())
     #expect(preferences.soundName == SystemSounds.defaultName)
   }
@@ -61,14 +60,12 @@ struct DesktopPreferencesTests {
     let defaults = try freshDefaults()
     let preferences = DesktopPreferences(defaults: defaults)
     preferences.defaultServerURL = try url("https://ws.example.com/ml/omnigents")
-    preferences.browserEngine = .chromium
     preferences.notifyRunnerOffline = false
     preferences.soundEnabled = true
     preferences.soundName = "Ping"
 
     let reloaded = DesktopPreferences(defaults: defaults)
     #expect(reloaded.defaultServerURL == (try url("https://ws.example.com/ml/omnigents")))
-    #expect(reloaded.browserEngine == .chromium)
     #expect(
       reloaded.notificationPreferences
         == NotificationPreferences(runnerOffline: false, soundEnabled: true))

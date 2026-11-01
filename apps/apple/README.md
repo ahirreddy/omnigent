@@ -43,19 +43,78 @@ alongside the existing WKWebView shell (`web/ios`) and the Electron app
 From the repository root:
 
 ```sh
-just apple-generate   # Rust core (debug) + bindings, tuist install, tuist generate
-just apple-run        # build and launch the macOS app (alias: apple-run-mac)
-just apple-test       # Swift package tests + OmnigentMac tests
-just core-test        # cargo fmt --check, clippy -D warnings, cargo test
-just core-wasm-check  # wasm32 type-check of the core crates
+just apple-generate         # Rust core (debug) + bindings, fetch-cef, tuist install, tuist generate
+just apple-run              # build and launch OmnigentMac (alias: apple-run-mac)
+just apple-test             # Swift package tests + OmnigentMac unit and UI tests
+just apple-run-appstore     # build and launch OmnigentMacAppStore
+just apple-test-appstore    # OmnigentMacAppStore unit and UI tests
+just apple-lint             # strict SwiftLint over the whole tree
+just core-test              # cargo fmt --check, clippy -D warnings, cargo test
+just core-wasm-check        # wasm32 type-check of the core crates
 ```
 
 After changing Rust, rebuild the core and bindings with `just apple-core` (or
-`just apple-core release`). `just apple-build` builds without launching. Re-run
-`just apple-generate` after changing `Project.swift` or the Tuist manifests.
+`just apple-core release`). `just apple-build` and `just apple-build-appstore` build
+without launching. Re-run `just apple-generate` after changing `Project.swift` or the
+Tuist manifests.
 
 Then open `apps/apple/Omnigent.xcworkspace` in Xcode if you prefer to build from
 there. There is no checked-in `.xcodeproj`; Tuist generates it.
+
+### Two macOS editions
+
+Both editions build the same sources (`Apps/Omnigent-macOS/Sources`). The only
+compile-time difference is the `OMNIGENT_CHROMIUM` Swift condition, read in
+`AppEdition.swift`.
+
+| | `OmnigentMac` (Developer ID) | `OmnigentMacAppStore` |
+|---|---|---|
+| Bundle id (Release / Debug) | `ai.omnigent.mac` / `ai.omnigent.mac.lab` | `ai.omnigent.mac.appstore` / `ai.omnigent.mac.appstore.lab` |
+| Distribution | Developer ID signing, hardened runtime, notarization, outside the Mac App Store | Mac App Store |
+| App Sandbox | off (`OmnigentMac.entitlements`) | on, plus `network.client` (`OmnigentMacAppStore.entitlements`) |
+| Browser engines | Chromium (CEF, the default) and System (WebKit) | System (WebKit) only |
+| CEF | embedded with its five helpers; links `OmnigentBrowserChromium` | never linked or embedded |
+| Managed preferences | own domain, then `ai.omnigent.mac`, `ai.omnigent.desktop` | own domain only (`OmnigentManagedPreferencesOwnDomainOnly`) |
+| Schemes and tests | `OmnigentMac`: `OmnigentMacTests`, `OmnigentMacUITests` | `OmnigentMacAppStore`: `OmnigentMacAppStoreTests`, `OmnigentMacAppStoreUITests` |
+
+- Stock CEF cannot run inside App Sandbox (see `Packages/OmnigentBrowser/README.md`),
+  so Chromium exists only in the Developer ID edition. `OmnigentBrowser` is
+  engine-neutral and ships the system engine. `OmnigentBrowserChromium` registers
+  Chromium with `DefaultBrowserEngineProvider.withChromium()`. Pickers list only
+  `offeredEngines`, and a stored Chromium choice is ignored where it is not offered.
+- The App Store edition reads managed preferences only from its own domain, so it
+  needs no `temporary-exception.shared-preference` entitlement, which App Review may
+  reject. MDM profiles for it target `ai.omnigent.mac.appstore`.
+- The tests are shared. `Tests/OmnigentMacTests` and `Tests/OmnigentMacUITests` run
+  against both hosts and branch on `OMNIGENT_CHROMIUM`. They cover the edition's
+  engines, sandbox state, managed-preference domains, and the Settings engine picker.
+- Debug builds of the App Store edition are named `OmnigentAppStore.app`, so both
+  editions can share one build directory. Release names it `Omnigent.app`, so build
+  the two editions' Release configurations in separate derived-data directories.
+- Both editions register the `omnigent://` scheme. With both installed,
+  LaunchServices picks one, so use `open -a <app> omnigent://...` to target one.
+
+### Distribution
+
+- **Developer ID (`OmnigentMac`).** Fetch a universal CEF first
+  (`apps/apple/scripts/fetch-cef.sh --arch universal`). Archive the `OmnigentMac`
+  scheme (Release), export with the Developer ID method, then notarize and staple:
+  `xcrun notarytool submit Omnigent.zip --wait`, then `xcrun stapler staple Omnigent.app`.
+  Every helper is signed with the app's Team ID; the per-helper hardened-runtime
+  entitlements are in `Tuist/ProjectDescriptionHelpers/BrowserTargets.swift`. Debug
+  builds are ad-hoc signed, and Xcode turns hardened runtime off for them.
+- **Mac App Store (`OmnigentMacAppStore`).** Archive the `OmnigentMacAppStore` scheme
+  and upload through Xcode Organizer or `xcrun altool`. No CEF fetch is needed for it.
+- Signing needs team `8RMX4WU6F8` identities, which these scripts do not provision.
+
+### CEF (`scripts/fetch-cef.sh`)
+
+`just apple-generate` runs `fetch-cef.sh --arch <host arch>` before `tuist generate`.
+Set `OMNIGENT_CEF_ARCH` to override the arch, for example `universal` for Release. The
+script downloads the pinned CEF into the gitignored `Vendor/cef`, verifies its SHA-256
+and SHA-1, builds `libcef_dll_wrapper`, and stages `Vendor/cef/out`. It is idempotent.
+`OmnigentMac`'s build fails with a clear error when CEF is missing, stale, or lacks an
+architecture being built. `OmnigentMacAppStore` does not need CEF.
 
 ### iPhone and iPad (later)
 
@@ -77,7 +136,8 @@ apps/apple/
   Tuist.swift  Project.swift  Tuist/   Tuist manifests and helpers
   .mise.toml                           pinned tuist
   scripts/build-core.sh                cargo -> xcframework + Swift bindings
-  Apps/Omnigent-macOS  Apps/Omnigent-iOS   app targets (OmnigentMac, Omnigent)
+  scripts/fetch-cef.sh                 pinned CEF for the Developer ID Mac edition
+  Apps/Omnigent-macOS  Apps/Omnigent-iOS   app targets (OmnigentMac, OmnigentMacAppStore, Omnigent)
   Packages/                            local Swift packages (see Architecture)
   Tests/                               app UI tests
   Tools/                               local API/host services, seeding, smoke tests
@@ -152,9 +212,12 @@ client-side framing is verified separately from this end-to-end gate.
 `apps/apple/**`:
 
 - Rust: fmt, clippy, tests and the wasm32 check, on Linux.
-- macOS app: core build, Tuist generate, build and test, Swift package tests, and
+- macOS app: strict SwiftLint, core build, fetch-cef (cached under `Vendor/cef`,
+  keyed by the pinned CEF version and checksum), Tuist generate, then build and test
+  of both `OmnigentMac` and `OmnigentMacAppStore`. Then the Swift package tests and
   the `Tools/` Python tests.
 - iOS simulator build and test, which is non-blocking for now.
 
-Pre-commit runs swift-format on `apps/apple` (excluding `Reference/`) and
-`cargo fmt`/clippy on `client-core`.
+Pre-commit runs swift-format and SwiftLint (`scripts/swiftlint.sh`, a no-op without
+swiftlint) on `apps/apple` (excluding `Reference/`), and `cargo fmt`/clippy on
+`client-core`.

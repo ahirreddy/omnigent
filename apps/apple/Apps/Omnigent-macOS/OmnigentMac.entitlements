@@ -2,8 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<!--
+	Developer ID edition: no App Sandbox, because it embeds CEF and Chromium's helper sandbox
+	cannot nest inside it (see Packages/OmnigentBrowser/README.md). It ships with hardened
+	runtime and notarization instead. The network client key has no effect without the sandbox
+	and is kept so the two editions declare the same network use.
+	-->
 	<key>com.apple.security.network.client</key>
 	<true/>
 </dict>

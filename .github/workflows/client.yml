@@ -6,7 +6,9 @@ name: Client
 # `ready_for_review` refires when the draft is converted.
 #
 # The macOS desktop app is the primary target: `rust` and `apple-macos` must
-# pass. `apple-ios` (simulator build + test) is non-blocking for now.
+# pass. `apple-macos` builds and tests both Mac editions: OmnigentMac
+# (Developer ID, embeds CEF) and OmnigentMacAppStore (App Sandbox, WebKit
+# only). `apple-ios` (simulator build + test) is non-blocking for now.
 #
 # None of these jobs are in the generated merge-ready REQUIRED list
 # (.github/scripts/merge-ready/required.sh) yet.
@@ -125,14 +127,45 @@ jobs:
         with:
           workspaces: client-core -> target
 
-      # Installs the tuist version pinned in apps/apple/.mise.toml.
+      # Installs the tuist and swiftlint versions pinned in apps/apple/.mise.toml.
       - name: Set up mise
         uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195  # v5.2.5
         with:
           working_directory: apps/apple
 
+      # Strict over the whole tree, packages included (config excludes
+      # Reference/, Tools/, Vendor/ and generated bindings).
+      - name: SwiftLint
+        working-directory: apps/apple
+        run: mise exec -- swiftlint lint --strict --config .swiftlint.yml
+
       - name: Build Rust core xcframework and Swift bindings
         run: bash apps/apple/scripts/build-core.sh debug
+
+      # The cache key is the CEF version and archive checksum pinned in
+      # fetch-cef.sh, so bumping either refetches. The runner is arm64.
+      - name: Read pinned CEF version
+        id: cef
+        run: |
+          script=apps/apple/scripts/fetch-cef.sh
+          version="$(sed -n 's/^CEF_VERSION="\(.*\)"$/\1/p' "$script")"
+          sha256="$(sed -n 's/^ *macosarm64) echo "\([0-9a-f]\{64\}\)" ;;$/\1/p' "$script")"
+          if [ -z "$version" ] || [ -z "$sha256" ]; then
+            echo "::error::could not read CEF_VERSION or the macosarm64 sha256 from $script"
+            exit 1
+          fi
+          echo "key=cef-arm64-${version}-${sha256}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache CEF
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apps/apple/Vendor/cef
+          key: ${{ steps.cef.outputs.key }}
+
+      # Verifies both checksums, builds libcef_dll_wrapper and stages
+      # Vendor/cef/out; a matching stamp from the cache short-circuits it.
+      - name: Fetch CEF
+        run: bash apps/apple/scripts/fetch-cef.sh --arch arm64
 
       - name: Generate Xcode workspace
         working-directory: apps/apple
@@ -140,7 +173,7 @@ jobs:
           mise exec -- tuist install
           mise exec -- tuist generate --no-open
 
-      - name: Build macOS app
+      - name: Build macOS app (Developer ID edition)
         run: >-
           xcodebuild build
           -workspace apps/apple/Omnigent.xcworkspace
@@ -148,11 +181,27 @@ jobs:
           -destination 'platform=macOS'
           -derivedDataPath apps/apple/build/DerivedData
 
-      - name: Test macOS app
+      - name: Test macOS app (Developer ID edition)
         run: >-
           xcodebuild test
           -workspace apps/apple/Omnigent.xcworkspace
           -scheme OmnigentMac
+          -destination 'platform=macOS'
+          -derivedDataPath apps/apple/build/DerivedData
+
+      - name: Build macOS app (Mac App Store edition)
+        run: >-
+          xcodebuild build
+          -workspace apps/apple/Omnigent.xcworkspace
+          -scheme OmnigentMacAppStore
+          -destination 'platform=macOS'
+          -derivedDataPath apps/apple/build/DerivedData
+
+      - name: Test macOS app (Mac App Store edition)
+        run: >-
+          xcodebuild test
+          -workspace apps/apple/Omnigent.xcworkspace
+          -scheme OmnigentMacAppStore
           -destination 'platform=macOS'
           -derivedDataPath apps/apple/build/DerivedData
 

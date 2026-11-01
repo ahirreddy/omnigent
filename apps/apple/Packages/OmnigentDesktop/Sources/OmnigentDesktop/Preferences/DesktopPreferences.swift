@@ -1,28 +1,12 @@
 public import Foundation
 public import Observation
 
-/// Which engine renders browser panes. A placeholder until OmnigentBrowser exposes its engines.
-nonisolated public enum BrowserEnginePreference: String, CaseIterable, Hashable, Sendable {
-  /// System WebKit.
-  case webKit
-  /// Embedded Chromium.
-  case chromium
-
-  /// Label for the Settings picker.
-  public var displayName: String {
-    switch self {
-    case .webKit: "WebKit"
-    case .chromium: "Chromium"
-    }
-  }
-}
-
-/// User-chosen desktop settings, persisted in `UserDefaults`.
+/// User-chosen desktop settings, persisted in `UserDefaults`. The browser engine is not here:
+/// `OmnigentBrowser.BrowserPreferences` owns it, and the app injects its picker into Settings.
 @Observable
 public final class DesktopPreferences {
   enum Key {
     static let defaultServerURL = "desktop.defaultServerURL"
-    static let browserEngine = "desktop.browserEngine"
     static let notifyTurnEnded = "desktop.notifications.turnEnded"
     static let notifyElicitations = "desktop.notifications.elicitations"
     static let notifyRunnerOffline = "desktop.notifications.runnerOffline"
@@ -35,10 +19,6 @@ public final class DesktopPreferences {
   /// The server new windows open on, or `nil` for the connect screen.
   public var defaultServerURL: URL? {
     didSet { defaults.set(defaultServerURL?.absoluteString, forKey: Key.defaultServerURL) }
-  }
-  /// The browser pane engine.
-  public var browserEngine: BrowserEnginePreference {
-    didSet { defaults.set(browserEngine.rawValue, forKey: Key.browserEngine) }
   }
   /// Notify when a turn finishes or fails.
   public var notifyTurnEnded: Bool {
@@ -66,8 +46,6 @@ public final class DesktopPreferences {
   public init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
     defaultServerURL = defaults.string(forKey: Key.defaultServerURL).flatMap(URL.init(string:))
-    browserEngine =
-      defaults.string(forKey: Key.browserEngine).flatMap(BrowserEnginePreference.init) ?? .webKit
     notifyTurnEnded = defaults.object(forKey: Key.notifyTurnEnded) as? Bool ?? true
     notifyElicitations = defaults.object(forKey: Key.notifyElicitations) as? Bool ?? true
     notifyRunnerOffline = defaults.object(forKey: Key.notifyRunnerOffline) as? Bool ?? true

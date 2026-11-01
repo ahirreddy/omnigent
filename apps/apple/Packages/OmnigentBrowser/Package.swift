@@ -47,13 +47,21 @@ let package = Package(
   name: "OmnigentBrowser",
   platforms: [.macOS("26.0"), .iOS("26.0")],
   products: [
-    .library(name: "OmnigentBrowser", targets: ["OmnigentBrowser"])
+    // Engine-neutral API and the system (WebKit) engine. Never links CEF.
+    .library(name: "OmnigentBrowser", targets: ["OmnigentBrowser"]),
+    // The Chromium engine (macOS). Only builds that ship CEF depend on it.
+    .library(name: "OmnigentBrowserChromium", targets: ["OmnigentBrowserChromium"]),
   ],
   targets: [
     .target(
       name: "OmnigentBrowser",
+      swiftSettings: swiftSettings
+    ),
+    .target(
+      name: "OmnigentBrowserChromium",
       dependencies: [
-        .target(name: "OmnigentCEFBridge", condition: .when(platforms: macOS))
+        "OmnigentBrowser",
+        .target(name: "OmnigentCEFBridge", condition: .when(platforms: macOS)),
       ],
       swiftSettings: swiftSettings
     ),
@@ -67,6 +75,11 @@ let package = Package(
     .testTarget(
       name: "OmnigentBrowserTests",
       dependencies: ["OmnigentBrowser"],
+      swiftSettings: strictSwift
+    ),
+    .testTarget(
+      name: "OmnigentBrowserChromiumTests",
+      dependencies: ["OmnigentBrowser", "OmnigentBrowserChromium"],
       swiftSettings: strictSwift
     ),
   ],

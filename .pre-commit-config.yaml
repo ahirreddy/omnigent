@@ -182,6 +182,17 @@ repos:
         files: ^apps/apple/(?!Reference/).*\.swift$
         exclude: ^apps/apple/(.*/)?(build|Derived|\.build|Generated)/
 
+      # SwiftLint (config: apps/apple/.swiftlint.yml, which also owns the
+      # include/exclude lists). Same paths as above; no-ops when neither mise
+      # nor swiftlint is installed (Ubuntu CI). CI runs it on the whole tree in
+      # client.yml. Paths are made relative to apps/apple for the config.
+      - id: apps-apple-swiftlint
+        name: apps/apple swiftlint
+        language: system
+        entry: apps/apple/scripts/swiftlint.sh
+        files: ^apps/apple/(?!Reference/).*\.swift$
+        exclude: ^apps/apple/(.*/)?(build|Derived|\.build|Generated)/
+
       # Rust client core (client-core). Skips cleanly only when cargo is absent;
       # with cargo present, rustup honors client-core/rust-toolchain.toml. The
       # workspace is checked as a whole, so filenames are not passed.
