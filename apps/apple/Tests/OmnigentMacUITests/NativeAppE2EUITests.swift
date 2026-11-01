@@ -138,7 +138,9 @@ final class NativeAppE2EUITests: XCTestCase {
     // A system prompt can take focus mid-test, so type again until the editor holds the text.
     for _ in 0..<3 where !String(describing: input.value ?? "").contains(text) {
       app.windows.firstMatch.click()
-      input.click()
+      // The identifier lands on the editor's enclosing scroll view, which XCUITest cannot compute
+      // a hit point for; clicking its center still targets the element found by identifier.
+      input.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
       app.typeKey("a", modifierFlags: .command)
       app.typeText(text)
     }

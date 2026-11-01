@@ -33,7 +33,9 @@ final class DemoDecisionUITests: XCTestCase {
     let inlineApprove = app.buttons["approval-approve-decision-design"]
     XCTAssertTrue(inlineApprove.exists, "the approval is not inline in the transcript")
     save(window, "approval-pending")
-    approve.click()
+    // XCUITest cannot compute a hit point for the dock's SwiftUI scroll view, so click the
+    // button found by identifier at its center instead of asking XCUITest to scroll to it.
+    approve.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
     waitUntilGone(approve)
     waitUntilGone(inlineApprove)
     save(window, "approval-answered")
@@ -42,7 +44,7 @@ final class DemoDecisionUITests: XCTestCase {
     let option = app.buttons["dock-decision-option-decision-question-0"]
     XCTAssertTrue(option.waitForExistence(timeout: 20), "the question card did not show")
     save(window, "question-pending")
-    option.click()
+    option.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
     waitUntilGone(option)
     waitUntilGone(app.buttons["decision-option-decision-question-0"])
     save(window, "question-answered")
