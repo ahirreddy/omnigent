@@ -4,6 +4,7 @@
 //! - [`settings`]: the user's saved server, recent servers and protocol grants.
 
 pub mod managed;
+pub mod session;
 pub mod settings;
 
 use url::Url;

@@ -10,8 +10,10 @@ pub mod attachments;
 pub mod auth;
 mod client;
 pub mod config;
+pub mod creation;
 pub mod decisions;
 pub mod deeplink;
+pub mod demo;
 mod discovery;
 mod error;
 pub mod http;
@@ -21,11 +23,16 @@ pub mod realtime;
 pub mod reconcile;
 pub mod reducer;
 pub mod server_url;
+pub mod session_query;
 pub mod sse;
 #[cfg(test)]
 pub(crate) mod testing;
+pub mod workspace_store;
 
-pub use client::{ClientCore, CoreConfig};
+pub use client::{
+    ClientCore, ClientEvent, ClientListener, CoreConfig, SessionError, SubscriptionId, configure,
+    create, databricks_session, events, items, sessions,
+};
 pub use discovery::{ServerDiscovery, discovery_from_response, manifest_request};
 pub use error::CoreError;
 pub use omnigent_protocol::AuthMode;
