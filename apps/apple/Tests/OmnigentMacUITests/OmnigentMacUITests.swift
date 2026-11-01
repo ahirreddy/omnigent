@@ -20,15 +20,15 @@ final class OmnigentMacUITests: XCTestCase {
     app.launch()
 
     XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
-    XCTAssertTrue(app.buttons["connect.button"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.textFields["connect.serverURL"].exists)
+    XCTAssertTrue(app.buttons["auth.connect"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.textFields["auth.server-url"].exists)
   }
 
   @MainActor
   func testNewWindowCommandOpensAWindow() {
     let app = XCUIApplication()
     app.launch()
-    XCTAssertTrue(app.buttons["connect.button"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["auth.connect"].waitForExistence(timeout: 10))
     let before = app.windows.count
 
     // File > New Window is Shift-Command-N; Command-N is New Session, as in the Electron app.
@@ -43,7 +43,7 @@ final class OmnigentMacUITests: XCTestCase {
   func testSettingsOffersTheEditionsBrowserEngines() {
     let app = XCUIApplication()
     app.launch()
-    XCTAssertTrue(app.buttons["connect.button"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["auth.connect"].waitForExistence(timeout: 10))
 
     app.typeKey(",", modifierFlags: .command)
     let picker = app.popUpButtons["settings.browserEngine"]

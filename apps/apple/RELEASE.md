@@ -250,11 +250,26 @@ Sparkle is wired in. Wiring it in takes three changes:
    ```
    Sparkle embeds as `Contents/Frameworks/Sparkle.framework`. `sign-mac-developer-id.sh`
    already signs its nested code.
+
+   These three changes are in place. `SUPublicEDKey` is an empty placeholder in `Project.swift`
+   (`sparkleInfoPlist`) until the release key pair exists, so no update can be verified. When
+   Sparkle reports a start or update failure, the app logs it and shows it under Settings >
+   General > Updates. Set the key to the base64 public key before the first Developer ID
+   release.
 3. **`OmnigentMacApp.swift`** (`OMNIGENT_CHROMIUM` builds only): create
    `SparkleUpdater(reportIssue:)` in the app delegate, call `try updater.start()` in
    `applicationDidFinishLaunching` and surface any thrown error, and pass
    `checkForUpdates: updater.checkForUpdates` to `DesktopCommandActions`. The item stays hidden
    in the App Store edition, where the closure is `nil`.
+
+### Keychain entitlement
+
+Both Mac editions' Release entitlements carry `keychain-access-groups` with the app's own
+application identifier (`$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)`), which the
+data-protection keychain needs for saved sign-ins. Release signing therefore needs a
+provisioning profile for the bundle id (Developer ID or Mac App Store). Ad-hoc Debug builds use
+the `*-Debug.entitlements` files without the group and store credentials in the login keychain
+instead (`KeychainModeSelection`); Release never falls back.
 
 ### Publish the Developer ID release
 

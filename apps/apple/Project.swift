@@ -2,7 +2,15 @@ import ProjectDescription
 import ProjectDescriptionHelpers
 
 let localPackages: [Package] = [
+  // The app assembly: store-to-view-state adapters, sign-in and the connected screens.
+  .package(path: "Packages/OmnigentAppUI"),
   .package(path: "Packages/OmnigentUI"),
+  .package(path: "Packages/OmnigentAuthUI"),
+  .package(path: "Packages/OmnigentWorkspaceUI"),
+  // libghostty terminals; GhosttyKit.xcframework comes from scripts/fetch-ghostty.sh.
+  .package(path: "Packages/OmnigentGhosttyKit"),
+  .package(path: "Packages/OmnigentTerminalUI"),
+  .package(path: "Packages/OmnigentTerminalStores"),
   .package(path: "Packages/OmnigentStores"),
   .package(path: "Packages/OmnigentServices"),
   .package(path: "Packages/OmnigentPlatform"),
@@ -11,12 +19,19 @@ let localPackages: [Package] = [
   .package(path: "Packages/OmnigentBrowser"),
   // The Chromium web layer client; only OmnigentBrowserChromium (Developer ID) uses it.
   .package(path: "Packages/OmnigentWebLayer"),
-  // macOS only, so it is a dependency of the Mac apps and not of `appDependencies`.
+  // macOS only, so it is a dependency of the Mac apps and not of `appDependencies`. Its
+  // `OmnigentDesktopUpdate` product (Sparkle) is linked by the Developer ID edition only.
   .package(path: "Packages/OmnigentDesktop"),
 ]
 
 let appDependencies: [TargetDependency] = [
+  .package(product: "OmnigentAppUI"),
   .package(product: "OmnigentUI"),
+  .package(product: "OmnigentUIComponents"),
+  .package(product: "OmnigentAuthUI"),
+  .package(product: "OmnigentWorkspaceUI"),
+  .package(product: "OmnigentTerminalUI"),
+  .package(product: "OmnigentTerminalStores"),
   .package(product: "OmnigentStores"),
   .package(product: "OmnigentServices"),
   .package(product: "OmnigentCoreFFI"),
@@ -63,11 +78,14 @@ let iOSApp = Target.target(
     "Apps/Omnigent-iOS/Resources/**",
     Omnigent.appIcon,
   ],
+  scripts: [Acknowledgements.script],
   dependencies: appDependencies,
   settings: Omnigent.appSettings(
     releaseBundleId: "ai.omnigent.ios",
     displayName: "Omnigent",
     extraBase: [
+      // libghostty's simulator slice is arm64 only.
+      "EXCLUDED_ARCHS[sdk=iphonesimulator*]": "x86_64",
       "TARGETED_DEVICE_FAMILY": "1,2",
       "SUPPORTS_MACCATALYST": "NO",
       "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
@@ -81,6 +99,15 @@ let macInfoPlistShared: [String: Plist.Value] = [
   "NSHumanReadableCopyright": "Copyright Omnigent contributors.",
 ]
 
+/// Sparkle's feed for the Developer ID edition (see RELEASE.md, "Auto-update"). `SUPublicEDKey`
+/// stays empty until the release EdDSA key exists; Sparkle then refuses to start, and the app
+/// reports it in Settings instead of updating unsigned.
+let sparkleInfoPlist: [String: Plist.Value] = [
+  "SUFeedURL": "https://omnigent.ai/_desktop/updates/native/mac/appcast.xml",
+  "SUPublicEDKey": "",
+  "SUEnableAutomaticChecks": true,
+]
+
 /// Developer ID edition: distributed outside the Mac App Store, no App Sandbox, hardened runtime
 /// (Release), Chromium as the default engine. Chromium runs out of process in
 /// `Contents/Helpers/Omnigent Web Host.app`, which carries CEF and its five helpers.
@@ -91,15 +118,16 @@ let macApp = Target.target(
   productName: "Omnigent",
   bundleId: "ai.omnigent.mac",
   deploymentTargets: .macOS(Omnigent.deploymentVersion),
-  infoPlist: Omnigent.infoPlist(extra: macInfoPlistShared),
+  infoPlist: Omnigent.infoPlist(extra: macInfoPlistShared.merging(sparkleInfoPlist) { _, new in new }),
   sources: ["Apps/Omnigent-macOS/Sources/**"],
   resources: [Omnigent.appIcon],
   entitlements: .file(path: "Apps/Omnigent-macOS/OmnigentMac.entitlements"),
-  scripts: BrowserTargets.appScripts(macBrowser),
+  scripts: BrowserTargets.appScripts(macBrowser) + [Acknowledgements.script],
   dependencies: appDependencies + [
     .package(product: "OmnigentDesktop"),
     .package(product: "OmnigentBrowser"),
     .package(product: "OmnigentBrowserChromium"),
+    .package(product: "OmnigentDesktopUpdate"),
   ] + BrowserTargets.appDependencies(macBrowser),
   settings: Omnigent.appSettings(
     releaseBundleId: "ai.omnigent.mac",
@@ -113,7 +141,9 @@ let macApp = Target.target(
       "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) OMNIGENT_CHROMIUM",
     ]) { _, new in new },
     debug: [
-      "CODE_SIGN_IDENTITY": "-"
+      "CODE_SIGN_IDENTITY": "-",
+      // Ad-hoc signing cannot carry keychain-access-groups; see the file's comment.
+      "CODE_SIGN_ENTITLEMENTS": "Apps/Omnigent-macOS/OmnigentMac-Debug.entitlements",
     ]
   )
 )
@@ -135,7 +165,7 @@ let macAppStoreApp = Target.target(
   sources: ["Apps/Omnigent-macOS/Sources/**"],
   resources: [Omnigent.appIcon],
   entitlements: .file(path: "Apps/Omnigent-macOS/OmnigentMacAppStore.entitlements"),
-  scripts: BrowserTargets.appStoreGuardScripts(),
+  scripts: [Acknowledgements.script] + BrowserTargets.appStoreGuardScripts(),
   dependencies: appDependencies + [
     .package(product: "OmnigentDesktop"),
     .package(product: "OmnigentBrowser"),
@@ -150,6 +180,7 @@ let macAppStoreApp = Target.target(
     ],
     debug: [
       "CODE_SIGN_IDENTITY": "-",
+      "CODE_SIGN_ENTITLEMENTS": "Apps/Omnigent-macOS/OmnigentMacAppStore-Debug.entitlements",
       "APP_DISPLAY_NAME": "Omnigent Lab (App Store)",
     ],
     // Debug keeps a distinct bundle name so both editions can share one build directory;

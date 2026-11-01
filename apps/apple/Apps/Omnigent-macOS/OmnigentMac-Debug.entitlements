@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	Debug builds are ad-hoc signed, and Xcode refuses keychain-access-groups without a
+	development certificate, so this file is the Release entitlements minus that group. Debug
+	stores credentials in the login keychain instead (KeychainModeSelection). Keep every other
+	key identical to OmnigentMac.entitlements.
+	-->
+	<!--
+	Developer ID edition: no App Sandbox, because it launches the Chromium web host, which
+	inherits the app's sandbox, and Chromium's helper sandbox cannot nest inside App Sandbox
+	(see Packages/OmnigentWebLayer/DESIGN.md). It ships with hardened runtime and notarization
+	instead. The network client key has no effect without the sandbox
+	and is kept so the two editions declare the same network use.
+	-->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Web pages may use the camera, microphone and location after the user allows it. -->
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.personal-information.location</key>
+	<true/>
+</dict>
+</plist>

@@ -6,7 +6,7 @@ final class OmnigentUITests: XCTestCase {
     let app = XCUIApplication()
     app.launch()
 
-    XCTAssertTrue(app.buttons["connect.button"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.textFields["connect.serverURL"].exists)
+    XCTAssertTrue(app.buttons["auth.connect"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.textFields["auth.server-url"].exists)
   }
 }

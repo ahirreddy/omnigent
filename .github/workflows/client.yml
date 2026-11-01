@@ -183,6 +183,23 @@ jobs:
       - name: Fetch CEF
         run: bash apps/apple/scripts/fetch-cef.sh --arch arm64
 
+      # libghostty (terminals) needs the Metal toolchain; the cache holds the verified source,
+      # Zig's package and build cache and the staged xcframework, keyed on the pinned script.
+      - name: Download the Metal toolchain
+        run: xcodebuild -downloadComponent MetalToolchain
+
+      - name: Cache libghostty
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            apps/apple/Vendor/ghostty/downloads
+            apps/apple/Vendor/ghostty/zig-cache
+            apps/apple/Vendor/ghostty/out
+          key: ghostty-${{ hashFiles('apps/apple/scripts/fetch-ghostty.sh') }}
+
+      - name: Fetch libghostty
+        run: bash apps/apple/scripts/fetch-ghostty.sh
+
       - name: Generate Xcode workspace
         working-directory: apps/apple
         run: |
@@ -295,6 +312,23 @@ jobs:
       # The workspace also contains the macOS target, so build every slice.
       - name: Build Rust core xcframework and Swift bindings
         run: bash apps/apple/scripts/build-core.sh debug
+
+      # libghostty (terminals) needs the Metal toolchain; the cache holds the verified source,
+      # Zig's package and build cache and the staged xcframework, keyed on the pinned script.
+      - name: Download the Metal toolchain
+        run: xcodebuild -downloadComponent MetalToolchain
+
+      - name: Cache libghostty
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            apps/apple/Vendor/ghostty/downloads
+            apps/apple/Vendor/ghostty/zig-cache
+            apps/apple/Vendor/ghostty/out
+          key: ghostty-${{ hashFiles('apps/apple/scripts/fetch-ghostty.sh') }}
+
+      - name: Fetch libghostty
+        run: bash apps/apple/scripts/fetch-ghostty.sh
 
       - name: Generate Xcode workspace
         working-directory: apps/apple

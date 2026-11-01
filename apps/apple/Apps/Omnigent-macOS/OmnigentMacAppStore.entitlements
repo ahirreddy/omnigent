@@ -10,5 +10,23 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- Web pages may use the camera, microphone and location after the user allows it. -->
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.personal-information.location</key>
+	<true/>
+	<!--
+	The data-protection keychain, where the core keeps sign-in credentials. Without this group
+	macOS answers errSecMissingEntitlement (-34018). The group is the app's own application
+	identifier, which every provisioning profile for the bundle allows. Release only: ad-hoc signed
+	Debug builds use OmnigentMacAppStore-Debug.entitlements and the login keychain
+	(KeychainModeSelection).
+	-->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	</array>
 </dict>
 </plist>

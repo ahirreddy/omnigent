@@ -1,10 +1,16 @@
 import Foundation
 import OSLog
+import Observation
+import OmnigentAppUI
+import OmnigentAuthUI
 import OmnigentBrowser
 import OmnigentDesktop
+import OmnigentStores
+import OmnigentUIComponents
 
 /// App-wide services shared by every window: the desktop shell, recent servers, the browser
-/// engines and the log.
+/// engines, appearance, the menu bar's sessions, the Keychain choice and the log.
+@Observable
 final class AppServices {
   /// The desktop shell services, owned by the app delegate.
   let desktop: DesktopController
@@ -16,7 +22,17 @@ final class AppServices {
   let browserProvider: DefaultBrowserEngineProvider
   /// The persisted engine choice, limited to `browserProvider.offeredEngines`.
   let browserPreferences: BrowserPreferences
-  private var notificationAuthorizationRequested = false
+  /// Light, dark or system, and the color theme, under the web's keys.
+  let theme: ThemePreferences
+  /// Sessions needing attention across windows, for the menu bar extra.
+  let menuBar = MenuBarSessions()
+  /// Which Keychain the cores store credentials in.
+  let keychain: KeychainModeSelection.Choice
+  /// Runs claimed agent browser actions; `nil` in the App Store edition.
+  let agentBrowser: AgentBrowserPerformer?
+  /// Why automatic updates are off, when the updater could not start.
+  var updaterIssue: String?
+  @ObservationIgnored private var notificationAuthorizationRequested = false
 
   /// Creates the services.
   /// - Parameters:
@@ -28,6 +44,9 @@ final class AppServices {
     recentServers = RecentServers(defaults: defaults)
     browserProvider = AppEdition.makeBrowserProvider()
     browserPreferences = BrowserPreferences(defaults: defaults, provider: browserProvider)
+    theme = ThemePreferences(defaults: defaults)
+    keychain = KeychainModeSelection.current()
+    agentBrowser = AgentBrowserPerformer.forEdition(provider: browserProvider)
   }
 
   /// Binds the shell to the app: issues go to the log, and deep links trust known servers.
@@ -37,6 +56,12 @@ final class AppServices {
     desktop.onIssue = { issue in Self.log(issue, to: logger) }
     desktop.router.knownServers = { [weak self] in self?.knownServers() ?? [] }
     desktop.router.rememberServer = { [weak self] url in self?.recentServers.record(url) }
+    if let reason = keychain.fallbackReason {
+      logger.notice("\(reason, privacy: .public)")
+    }
+    for error in theme.readErrors {
+      logger.error("\(error.description, privacy: .public)")
+    }
     for entry in recentServers.rejectedEntries {
       logger.error("Ignored a stored recent server that is not a URL: \(entry, privacy: .public)")
     }
@@ -59,6 +84,43 @@ final class AppServices {
         "Organization servers ignored: \(error.localizedSummary, privacy: .public)")
     }
     return servers
+  }
+
+  /// The servers the sign-in picker offers: the organization's, then recent ones.
+  /// - Returns: The directory.
+  func serverDirectory() -> ServerDirectory {
+    var managed: [ManagedServerEntry] = []
+    var forced = false
+    do {
+      let servers = try desktop.managedPreferences.servers()
+      forced = servers.serversAreForced
+      managed = servers.servers.map {
+        ManagedServerEntry(
+          url: $0.url.absoluteString, name: $0.name, origin: $0.origin.serialized,
+          authority: $0.origin.authority, displayName: $0.displayName)
+      }
+    } catch {
+      logger.error(
+        "Organization servers ignored: \(error.localizedSummary, privacy: .public)")
+    }
+    return ServerDirectory(
+      managed: managed, serversAreForced: forced,
+      recentServers: recentServers.urls.map(\.absoluteString))
+  }
+
+  /// A new window's server session over the live services.
+  /// - Returns: The session.
+  func makeServerSession() -> ServerSession {
+    if ProcessInfo.processInfo.arguments.contains("-OmnigentDemo") {
+      do {
+        return try ServerSession.demo()
+      } catch {
+        logger.error("The demo server did not load: \(String(describing: error), privacy: .public)")
+      }
+    }
+    let session = ServerSession.live(keychain: keychain)
+    session.connection.browserActions?.performer = agentBrowser
+    return session
   }
 
   /// Records a successful connection and, the first time, asks for notification permission:
@@ -102,7 +164,7 @@ final class AppServices {
     case .consentDeclined, .awaitingWindowOpener, .acknowledgmentDeclined:
       logger.notice("Desktop: \(message, privacy: .public)")
     case .deepLinkRejected, .acknowledgmentFailed, .invalidServerURL, .routingFailed,
-      .notificationFailed, .unrecognizedNotificationPayload:
+      .notificationFailed, .unrecognizedNotificationPayload, .localServer:
       logger.error("Desktop: \(message, privacy: .public)")
     }
   }

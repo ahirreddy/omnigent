@@ -141,8 +141,12 @@ public enum BrowserTargets {
         path: .relativeToRoot("\(webHostPath)/Scripts/check-no-chromium.sh"),
         arguments: [],
         name: "Check that Chromium is absent",
-        // Declared so the check also works with user script sandboxing on.
-        inputPaths: ["$(TARGET_BUILD_DIR)/$(WRAPPER_NAME)"],
+        // Declared so the check runs with user script sandboxing on: the script itself and the
+        // bundle it searches.
+        inputPaths: [
+          "$(SRCROOT)/\(webHostPath)/Scripts/check-no-chromium.sh",
+          "$(TARGET_BUILD_DIR)/$(WRAPPER_NAME)",
+        ],
         basedOnDependencyAnalysis: false
       )
     ]
@@ -193,6 +197,9 @@ public enum BrowserTargets {
         .glob(.relativeToRoot("\(host)/Sources/*.mm")),
         .glob(.relativeToRoot("\(protocolSources)/*.c")),
       ],
+      // Pages ask for the camera, microphone and location through our prompts; under hardened
+      // runtime the host also needs these entitlements, or macOS denies the device outright.
+      entitlements: .dictionary(hostEntitlements),
       scripts: [
         checkScript(configuration),
         .post(
@@ -285,7 +292,14 @@ public enum BrowserTargets {
     return settings
   }
 
-  private static let bundleInfoPlist: [String: Plist.Value] = [
+  /// Hardened-runtime device access for the host, which captures on behalf of web pages.
+  static let hostEntitlements: [String: Plist.Value] = [
+    "com.apple.security.device.camera": true,
+    "com.apple.security.device.audio-input": true,
+    "com.apple.security.personal-information.location": true,
+  ]
+
+  private static let bundleInfoPlist: [String: Plist.Value] = Omnigent.webDeviceUsage.merging([
     "CFBundleDevelopmentRegion": "en",
     "CFBundleDisplayName": "$(PRODUCT_NAME)",
     "CFBundleExecutable": "$(EXECUTABLE_NAME)",
@@ -300,5 +314,5 @@ public enum BrowserTargets {
     "LSMinimumSystemVersion": "$(MACOSX_DEPLOYMENT_TARGET)",
     "LSUIElement": "1",
     "NSSupportsAutomaticGraphicsSwitching": true,
-  ]
+  ]) { _, new in new }
 }

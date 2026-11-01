@@ -20,10 +20,23 @@ let package = Package(
   platforms: [.macOS("26.0")],
   products: [
     .library(name: "OmnigentDesktop", targets: ["OmnigentDesktop"]),
+    // Sparkle updates, for the Developer ID edition only: the App Store edition must never link
+    // Sparkle, so it is a separate product (see RELEASE.md, "Auto-update").
+    .library(name: "OmnigentDesktopUpdate", targets: ["OmnigentDesktopUpdate"]),
     .executable(name: "OmnigentDesktopExample", targets: ["OmnigentDesktopExample"]),
   ],
+  dependencies: [
+    // Keep equal to SPARKLE_VERSION in scripts/release/fetch-sparkle-tools.sh.
+    .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
+  ],
   targets: [
-    .target(name: "OmnigentDesktop", swiftSettings: mainActorSwiftSettings),
+    .target(name: "OmnigentDesktop", exclude: ["Update"], swiftSettings: mainActorSwiftSettings),
+    .target(
+      name: "OmnigentDesktopUpdate",
+      dependencies: [.product(name: "Sparkle", package: "Sparkle")],
+      path: "Sources/OmnigentDesktop/Update",
+      swiftSettings: mainActorSwiftSettings
+    ),
     .executableTarget(
       name: "OmnigentDesktopExample",
       dependencies: ["OmnigentDesktop"],

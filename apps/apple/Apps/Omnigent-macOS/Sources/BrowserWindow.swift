@@ -48,11 +48,26 @@ struct BrowserWindowRoot: View {
 
   @State private var controller: BrowserController?
   @State private var failure: String?
+  @State private var showsDownloads = false
 
   var body: some View {
     content
       .frame(minWidth: 640, minHeight: 420)
       .navigationTitle(title)
+      .toolbar {
+        ToolbarItem(placement: .primaryAction) {
+          Button("Downloads", systemImage: "arrow.down.circle") { showsDownloads.toggle() }
+            .help("Show downloads")
+            .accessibilityIdentifier("browser.toolbar.downloads")
+            .popover(isPresented: $showsDownloads) {
+              let presenter = controller?.presenter ?? .shared
+              BrowserDownloadsView(
+                center: presenter.downloadCenter, settings: presenter.downloadSettings
+              )
+              .frame(width: 380, height: 320)
+            }
+        }
+      }
       .task(id: serverURL) { open() }
       .onDisappear(perform: close)
   }

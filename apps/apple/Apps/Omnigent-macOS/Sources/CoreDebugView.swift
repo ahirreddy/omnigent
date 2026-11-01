@@ -3,8 +3,40 @@ import OmnigentCoreFFI
 import OmnigentStores
 import SwiftUI
 
+/// Shows or hides the key window's core inspector.
+struct CoreDebugToggle {
+  let toggle: () -> Void
+}
+
+extension FocusedValues {
+  /// The key server window's core inspector toggle.
+  @Entry var coreDebug: CoreDebugToggle?
+}
+
+/// Debug > Show Core Inspector (Option-Shift-Command-D). The menu exists in Debug builds, and in
+/// any build launched with `-OmnigentDebugMenu YES`.
+struct DebugCommands: Commands {
+  @FocusedValue(\.coreDebug) private var coreDebug
+
+  static var isEnabled: Bool {
+    #if DEBUG
+      true
+    #else
+      UserDefaults.standard.bool(forKey: "OmnigentDebugMenu")
+    #endif
+  }
+
+  var body: some Commands {
+    CommandMenu("Debug") {
+      Button("Show Core Inspector") { coreDebug?.toggle() }
+        .keyboardShortcut("d", modifiers: [.command, .option, .shift])
+        .disabled(coreDebug == nil)
+    }
+  }
+}
+
 /// A plain view of what the Rust core reports: the connection phase, the session list and the
-/// rows of the selected conversation. A stand-in until the transcript UI lands on the stores.
+/// rows of the selected conversation. A diagnostic, reachable only from the Debug menu.
 struct CoreDebugView: View {
   @Environment(ConnectionStore.self) private var store
   @State private var selection: String?

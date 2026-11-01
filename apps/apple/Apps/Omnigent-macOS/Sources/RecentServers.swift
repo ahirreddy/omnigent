@@ -44,3 +44,12 @@ final class RecentServers {
     defaults.set(urls.map(\.absoluteString), forKey: Self.defaultsKey)
   }
 }
+
+extension RecentServers {
+  /// Removes `url` from the list.
+  /// - Parameter url: The server, as listed.
+  func forget(_ url: URL) {
+    urls.removeAll { $0 == url }
+    defaults.set(urls.map(\.absoluteString), forKey: Self.defaultsKey)
+  }
+}

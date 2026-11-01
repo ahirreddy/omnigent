@@ -282,11 +282,12 @@ core-wasm-check:
 apple-core config="debug" *flags:
     bash apps/apple/scripts/build-core.sh {{ config }} {{ flags }}
 
-# Build the debug core, fetch the pinned CEF, resolve Tuist dependencies, and generate the workspace.
+# Build the debug core, fetch the pinned CEF and libghostty, resolve Tuist dependencies, and generate the workspace.
 [group('client')]
 apple-generate:
     bash apps/apple/scripts/build-core.sh debug
     bash apps/apple/scripts/fetch-cef.sh --arch {{ APPLE_CEF_ARCH }}
+    bash apps/apple/scripts/fetch-ghostty.sh
     cd apps/apple && mise exec -- tuist install
     cd apps/apple && mise exec -- tuist generate --no-open
 

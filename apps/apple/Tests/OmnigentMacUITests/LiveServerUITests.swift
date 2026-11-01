@@ -45,7 +45,7 @@ final class LiveServerUITests: XCTestCase {
     ]
     app.launch()
 
-    let serverName = app.descendants(matching: .any)["connect.serverVersion"]
+    let serverName = app.descendants(matching: .any)["sidebar"]
     XCTAssertTrue(serverName.waitForExistence(timeout: 20), "window did not connect to \(server)")
     save(app.windows.firstMatch, "\(edition)-connected")
 

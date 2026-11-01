@@ -87,6 +87,9 @@ public enum Omnigent {
         "APP_DISPLAY_NAME": .string(displayName),
         "CODE_SIGN_STYLE": "Automatic",
         "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+        // The public Databricks OAuth client (web/ios/docs/databricks-oauth.md).
+        "DATABRICKS_OAUTH_CLIENT_ID": "omnigent",
+        "DATABRICKS_OAUTH_REDIRECT_URL": "https://login.databricks.com/mobile-redirect",
       ].merging(extraBase) { _, new in new },
       configurations: [
         .debug(
@@ -111,8 +114,29 @@ public enum Omnigent {
     .settings(base: ["CODE_SIGN_STYLE": "Automatic"].merging(extra) { _, new in new })
   }
 
-  /// Info.plist shared by both apps: deep-link scheme, local-network ATS exception and usage
-  /// string.
+  /// Usage strings for web pages that ask for the camera, microphone or location through the
+  /// browser's permission prompt. macOS refuses the device without them even after the user
+  /// allows it in the page prompt.
+  public static let webDeviceUsage: [String: Plist.Value] = [
+    "NSCameraUsageDescription": "Web pages you open in Omnigent can use the camera when you allow it.",
+    "NSMicrophoneUsageDescription":
+      "Web pages you open in Omnigent can use the microphone when you allow it.",
+    "NSLocationUsageDescription":
+      "Web pages you open in Omnigent can use your location when you allow it.",
+    "NSLocationWhenInUseUsageDescription":
+      "Web pages you open in Omnigent can use your location when you allow it.",
+  ]
+
+  /// The Databricks workspace OAuth client (public configuration, as in `web/ios`; see
+  /// `web/ios/docs/databricks-oauth.md`). Override with `DATABRICKS_OAUTH_CLIENT_ID` and
+  /// `DATABRICKS_OAUTH_REDIRECT_URL` build settings.
+  public static let databricksOAuth: [String: Plist.Value] = [
+    "DatabricksOAuthClientID": "$(DATABRICKS_OAUTH_CLIENT_ID)",
+    "DatabricksOAuthRedirectURL": "$(DATABRICKS_OAUTH_REDIRECT_URL)",
+  ]
+
+  /// Info.plist shared by both apps: deep-link scheme, local-network ATS exception, usage
+  /// strings and the Databricks OAuth client.
   /// - Parameter extra: Platform-specific keys, which win over the shared ones.
   /// - Returns: The Info.plist definition.
   public static func infoPlist(extra: [String: Plist.Value]) -> InfoPlist {
@@ -132,7 +156,7 @@ public enum Omnigent {
       "NSLocalNetworkUsageDescription":
         "Omnigent connects to Omnigent servers running on your computer or local network.",
       "ITSAppUsesNonExemptEncryption": false,
-    ]
+    ].merging(webDeviceUsage) { _, new in new }.merging(databricksOAuth) { _, new in new }
     return .extendingDefault(with: shared.merging(extra) { _, new in new })
   }
 }

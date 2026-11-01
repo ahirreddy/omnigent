@@ -75,7 +75,9 @@ DOWNLOADS="$VENDOR/downloads"
 SRC_ROOT="$VENDOR/src"
 OUT="$VENDOR/out"
 SHORT="${GHOSTTY_COMMIT:0:12}"
-STAMP_CONTENT="$GHOSTTY_REPO@$GHOSTTY_COMMIT zig-$ZIG_VERSION $TARGET ReleaseFast no-sentry"
+# `headers:GhosttyKit` is the staged layout (see "Namespace the headers" below); changing the
+# layout changes the stamp, so an older staging is rebuilt.
+STAMP_CONTENT="$GHOSTTY_REPO@$GHOSTTY_COMMIT zig-$ZIG_VERSION $TARGET ReleaseFast no-sentry headers:GhosttyKit"
 
 if [[ $FORCE -eq 0 && -f "$OUT/GHOSTTY_VERSION" && "$(cat "$OUT/GHOSTTY_VERSION")" == "$STAMP_CONTENT" ]]; then
   echo "fetch-ghostty: GhosttyKit ($SHORT, $TARGET) already staged at $OUT"
@@ -165,6 +167,16 @@ STAGE="$VENDOR/out.staging"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
 cp -R "$BUILT" "$STAGE/GhosttyKit.xcframework"
+# Namespace the headers: Xcode copies every static xcframework's Headers into one
+# `$(BUILT_PRODUCTS_DIR)/include`, so two of them with a top-level module.modulemap (this one and
+# omnigent_ffiFFI's) collide ("Multiple commands produce .../include/module.modulemap"). Under
+# Headers/GhosttyKit/ the module map is found by module name and nothing collides.
+for slice in "${EXPECTED_SLICES[@]}"; do
+  headers="$STAGE/GhosttyKit.xcframework/$slice/Headers"
+  mkdir "$headers/GhosttyKit"
+  find "$headers" -maxdepth 1 -type f -exec mv {} "$headers/GhosttyKit/" \;
+  [[ -f "$headers/GhosttyKit/module.modulemap" ]] || die "no module map staged for $slice"
+done
 cp "$SRC/LICENSE" "$STAGE/LICENSE"
 echo "$STAMP_CONTENT" >"$STAGE/GHOSTTY_VERSION"
 

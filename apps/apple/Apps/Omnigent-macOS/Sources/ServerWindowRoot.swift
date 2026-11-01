@@ -1,132 +1,163 @@
 import OSLog
+import OmnigentAppUI
+import OmnigentAuthUI
 import OmnigentCoreFFI
 import OmnigentDesktop
 import OmnigentStores
-import OmnigentUI
+import OmnigentUIComponents
 import SwiftUI
 
-/// One server window: its own `ConnectionStore`, bound to the server in its `ServerWindowID`.
+/// One server window: its own ``ServerSession`` (a core-backed `ConnectionStore` and its
+/// sign-in), bound to the server in its `ServerWindowID`.
 ///
 /// The window is ready (deep links navigate in place, notifications are suppressed while it
-/// shows a session) only while its store is connected to exactly the server the window is bound
+/// shows a session) only while its core is signed in to exactly the server the window is bound
 /// to, so rebinding the window makes it not ready in the same update.
 struct ServerWindowRoot: View {
   @Binding var id: ServerWindowID
   let services: AppServices
 
-  @State private var store = ConnectionStore()
-  /// The server `store` last connected to on this window's behalf.
-  @State private var connectedURL: URL?
-  @State private var route: OmnigentDesktop.DeepLinkRoute = .home
-  @State private var showsCoreDebug = ProcessInfo.processInfo.arguments.contains(
-    "-OmnigentCoreDebug")
+  @State private var session: ServerSession?
+  @State private var selection: SidebarDestination?
+  @State private var showsCoreDebug = false
   @Environment(\.openWindow) private var openWindow
+  @Environment(\.appearsActive) private var appearsActive
 
   private var desktop: DesktopController { services.desktop }
 
-  private var isReady: Bool {
-    guard let serverURL = id.serverURL else { return false }
-    return store.isConnected && connectedURL == serverURL
-  }
-
-  private var viewedSessionID: String? {
-    guard isReady, case .conversation(let sessionID) = route else { return nil }
-    return sessionID
-  }
-
   var body: some View {
-    RootView(sessionID: viewedSessionID)
-      .environment(store)
-      .environment(\.serverConnectAction, ServerConnectAction { connect(typed: $0) })
-      .navigationTitle(title)
-      .inspector(isPresented: $showsCoreDebug) {
-        CoreDebugView()
-          .environment(store)
-          .inspectorColumnWidth(min: 480, ideal: 640, max: 1000)
+    Group {
+      if let session {
+        window(session)
+      } else {
+        ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
       }
-      .toolbar {
-        ToolbarItem(placement: .primaryAction) {
-          Button("Core", systemImage: "ladybug") { showsCoreDebug.toggle() }
-            .help("Show what the Rust core reports for this server")
-            .accessibilityIdentifier("toolbar.coreDebug")
-        }
-        ToolbarItem(placement: .primaryAction) {
-          Button("Browser", systemImage: "globe", action: openBrowser)
-            .disabled(id.serverURL == nil)
-            .help("Open this server in the browser window (Option-Command-B)")
-            .accessibilityIdentifier("toolbar.browser")
-        }
-      }
-      .serverWindow(
-        $id, desktop: desktop, isReady: isReady, viewedSessionID: viewedSessionID,
-        unreadCount: 0, actions: actions, onRoute: { route = $0 }
-      )
-      .windowFrameAutosave()
-      .task(id: id.serverURL) { await discoverBoundServer(force: false) }
-      .task { await reconnectOnSystemTriggers() }
+    }
+    .omnigentTheme(services.theme.theme, appearance: services.theme.mode)
+    .task { start() }
   }
 
-  private var title: String {
-    if let discovery = store.discovery, isReady {
-      return discovery.serverName ?? id.serverURL?.host(percentEncoded: false) ?? "Omnigent"
+  private func window(_ session: ServerSession) -> some View {
+    let isReady = Self.isReady(session, boundTo: id.serverURL)
+    let notifications = session.connection.notifications
+    return ServerRootView(
+      session: session, selection: $selection, isWindowFocused: appearsActive,
+      openInNewWindow: { sessionID in openNewWindow(on: sessionID) }
+    )
+    .navigationTitle(title(session))
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Button("Browser", systemImage: "globe", action: openBrowser)
+          .disabled(id.serverURL == nil)
+          .help("Open this server in the browser window (Option-Command-B)")
+          .accessibilityIdentifier("toolbar.browser")
+      }
+    }
+    .sheet(isPresented: $showsCoreDebug) {
+      CoreDebugView()
+        .environment(session.connection)
+        .frame(minWidth: 720, minHeight: 600)
+        .toolbar {
+          ToolbarItem(placement: .confirmationAction) {
+            Button("Done") { showsCoreDebug = false }
+          }
+        }
+    }
+    .focusedSceneValue(\.coreDebug, CoreDebugToggle { showsCoreDebug.toggle() })
+    .serverWindow(
+      $id, desktop: desktop, isReady: isReady,
+      viewedSessionID: isReady ? selection?.sessionID : nil,
+      unreadCount: isReady ? notifications?.badgeCount ?? 0 : 0,
+      actions: actions(session), onRoute: { route in apply(route) }
+    )
+    .desktopAttention(session.connection, serverURL: id.serverURL, desktop: desktop)
+    .menuBarSessions(
+      session.connection, serverURL: isReady ? id.serverURL : nil, instance: id.instance,
+      in: services.menuBar)
+    .windowFrameAutosave()
+    .task(id: id.serverURL) { await connectBoundServer(session, force: false) }
+    .task { await reconnectOnSystemTriggers(session) }
+  }
+
+  /// Creates the window's session once and binds its sign-in to the window.
+  private func start() {
+    guard session == nil else { return }
+    let session = services.makeServerSession()
+    session.signIn.directory = services.serverDirectory()
+    session.signIn.forgetServer = { [services] url in
+      if let url = URL(string: url) { services.recentServers.forget(url) }
+      session.signIn.directory = services.serverDirectory()
+    }
+    session.signIn.onServerChange = { url in
+      guard let url else {
+        selection = nil
+        id = id.rebound(to: nil)
+        return
+      }
+      if !Self.sameServer(id.serverURL, url) { id = id.rebound(to: url) }
+      if session.isSignedIn { Task { await services.didConnect(to: url) } }
+    }
+    self.session = session
+  }
+
+  private func title(_ session: ServerSession) -> String {
+    if let server = session.connection.connectedServer {
+      return server.serverName ?? URL(string: server.baseUrl)?.host(percentEncoded: false)
+        ?? "Omnigent"
     }
     return id.serverURL?.host(percentEncoded: false) ?? "Omnigent"
   }
 
-  private var actions: ServerWindowActions {
-    ServerWindowActions(
-      changeServer: id.serverURL == nil ? nil : { id = id.rebound(to: nil) },
-      reconnect: id.serverURL == nil ? nil : { Task { await discoverBoundServer(force: true) } })
+  private func actions(_ session: ServerSession) -> ServerWindowActions {
+    let bound = id.serverURL != nil
+    let signInActions = session.signIn.actions
+    return ServerWindowActions(
+      newSession: session.isSignedIn ? { selection = .newSession } : nil,
+      changeServer: bound
+        ? {
+          session.connection.disconnect()
+          selection = nil
+          id = id.rebound(to: nil)
+        } : nil,
+      signOut: session.connection.connectedServer?.mode == .localSingleUser || !session.isSignedIn
+        ? nil : { signInActions.signOut() },
+      reconnect: bound ? { Task { await connectBoundServer(session, force: true) } } : nil)
   }
 
-  /// Connect from the form: the core validates and normalizes what was typed, and on success
-  /// the window is rebound to the server the core resolved.
-  private func connect(typed text: String) {
-    Task {
-      await store.connect(serverURL: text)
-      guard let discovery = store.discovery else { return }
-      guard let serverURL = URL(string: discovery.baseUrl) else {
-        services.logger.error(
-          "The core returned a base URL Foundation rejects: \(discovery.baseUrl, privacy: .public)")
-        return
-      }
-      route = .home
-      connectedURL = serverURL
-      id = id.rebound(to: serverURL)
-      await services.didConnect(to: serverURL)
+  private func apply(_ route: OmnigentDesktop.DeepLinkRoute) {
+    switch route {
+    case .home: selection = nil
+    case .conversation(let sessionID): selection = .session(sessionID)
     }
   }
 
-  /// Discovers the window's server. Runs when the binding changes and on Reconnect.
-  private func discoverBoundServer(force: Bool) async {
-    guard let serverURL = id.serverURL else {
-      connectedURL = nil
-      route = .home
-      store.reset()
-      return
-    }
-    if !force, connectedURL == serverURL, store.isConnected { return }
-    connectedURL = nil
-    await store.connect(serverURL: serverURL.absoluteString)
+  /// Connects to the window's server when the binding changes, and on Reconnect.
+  private func connectBoundServer(_ session: ServerSession, force: Bool) async {
+    guard let serverURL = id.serverURL else { return }
+    if !force, Self.isConnecting(session, to: serverURL) { return }
+    await session.signIn.connectNow(serverURL.absoluteString)
     guard !Task.isCancelled, id.serverURL == serverURL else { return }
-    if store.isConnected {
-      connectedURL = serverURL
+    if session.isSignedIn {
       await services.didConnect(to: serverURL)
-    } else if let message = store.errorMessage {
+    } else if case .failed(_, let error) = session.connection.phase {
       services.logger.notice(
-        "Could not connect to \(serverURL.absoluteString, privacy: .public): \(message, privacy: .public)"
+        "Could not connect to \(serverURL.absoluteString, privacy: .public): \(error.message, privacy: .public)"
       )
     }
   }
 
-  /// Wake, unlock and session switches restart discovery, so a server that came back with the
+  /// Wake, unlock and session switches reopen the streams, so a server that came back with the
   /// VPN reconnects within seconds.
-  private func reconnectOnSystemTriggers() async {
+  private func reconnectOnSystemTriggers(_ session: ServerSession) async {
     let monitor = desktop.makeReconnectMonitor()
     for await trigger in monitor.triggers {
       guard id.serverURL != nil else { continue }
       services.logger.info("Reconnecting after \(String(describing: trigger), privacy: .public)")
-      await discoverBoundServer(force: true)
+      if session.isSignedIn {
+        session.connection.foreground()
+      } else {
+        await connectBoundServer(session, force: true)
+      }
     }
     monitor.stop()
   }
@@ -134,5 +165,41 @@ struct ServerWindowRoot: View {
   private func openBrowser() {
     guard let serverURL = id.serverURL else { return }
     openWindow(id: BrowserWindow.id, value: serverURL)
+  }
+
+  private func openNewWindow(on sessionID: String) {
+    guard let serverURL = id.serverURL else { return }
+    desktop.router.open(.conversation(sessionID: sessionID), onServer: serverURL)
+  }
+
+  /// Whether the core is signed in to the window's server.
+  static func isReady(_ session: ServerSession, boundTo serverURL: URL?) -> Bool {
+    guard let serverURL, let connected = session.connectedURL else { return false }
+    return sameServer(connected, serverURL)
+  }
+
+  /// Whether the core is already connected, connecting or signing in to `serverURL`.
+  static func isConnecting(_ session: ServerSession, to serverURL: URL) -> Bool {
+    let phaseURL: String? =
+      switch session.connection.phase {
+      case .disconnected, .failed: nil
+      case .discovering(let url): url
+      case .signInRequired(let url, _, _, _, _), .signingIn(let url),
+        .awaitingBrowserLogin(let url, _), .connecting(let url):
+        url
+      case .connected(let server): server.baseUrl
+      }
+    return sameServer(phaseURL.flatMap(URL.init(string:)), serverURL)
+  }
+
+  /// Two server URLs name the same server, ignoring case and a trailing slash.
+  static func sameServer(_ lhs: URL?, _ rhs: URL?) -> Bool {
+    func key(_ url: URL?) -> String? {
+      guard var text = url?.absoluteString.lowercased() else { return nil }
+      while text.hasSuffix("/") { text.removeLast() }
+      return text
+    }
+    guard let left = key(lhs) else { return false }
+    return left == key(rhs)
   }
 }

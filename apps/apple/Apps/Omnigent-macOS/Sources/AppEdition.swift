@@ -1,4 +1,5 @@
 import OmnigentBrowser
+import OmnigentDesktop
 
 #if OMNIGENT_CHROMIUM
   import OmnigentBrowserChromium
@@ -41,5 +42,16 @@ enum AppEdition: Sendable {
     #else
       DefaultBrowserEngineProvider()
     #endif
+  }
+}
+
+extension AppEdition {
+  /// Whether this edition may run the `omnigent` CLI as a local server: the Developer ID edition
+  /// can, the App Store edition runs in App Sandbox and cannot.
+  var localServerCapability: LocalServerCapability {
+    switch self {
+    case .developerID: .available
+    case .appStore: .unavailable(.appSandbox)
+    }
   }
 }

@@ -1,8 +1,33 @@
 import AppKit
 public import SwiftUI
 
-/// The Settings window: General, Notifications, Local Server and Advanced tabs. Use inside a
-/// `Settings` scene.
+/// A Settings tab the app adds from packages the desktop shell does not depend on (for
+/// example Appearance from the UI components, or Terminal from the terminal package).
+public struct SettingsTabItem: Identifiable {
+  /// The tab title, also its identity.
+  public let title: String
+  /// An SF Symbol.
+  public let systemImage: String
+  /// The tab's content, usually a `Form`.
+  public let content: AnyView
+
+  /// Creates a tab.
+  /// - Parameters:
+  ///   - title: The tab title.
+  ///   - systemImage: An SF Symbol.
+  ///   - content: The tab's content.
+  public init(_ title: String, systemImage: String, @ViewBuilder content: () -> some View) {
+    self.title = title
+    self.systemImage = systemImage
+    self.content = AnyView(content())
+  }
+
+  /// The title.
+  public var id: String { title }
+}
+
+/// The Settings window: General, Notifications, the app's extra tabs, Local Server and Advanced.
+/// Use inside a `Settings` scene.
 ///
 /// The package does not depend on the browser package, so the app supplies the General tab's
 /// browser section (typically `OmnigentBrowser.BrowserEngineSettingsView`, which lists only the
@@ -12,21 +37,24 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
   private let recentServers: [URL]
   private let exportDiagnostics: (() -> Void)?
   private let browserSettings: BrowserSettings
+  private let extraTabs: [SettingsTabItem]
 
   /// Creates the view.
   /// - Parameters:
   ///   - desktop: The shell services.
   ///   - recentServers: The user's recent servers, offered as the default server.
   ///   - exportDiagnostics: Shown on the Advanced tab when provided.
+  ///   - extraTabs: Tabs after Notifications, in order.
   ///   - browserSettings: A `Section` for the General tab's browser settings.
   public init(
     desktop: DesktopController, recentServers: [URL] = [],
-    exportDiagnostics: (() -> Void)? = nil,
+    exportDiagnostics: (() -> Void)? = nil, extraTabs: [SettingsTabItem] = [],
     @ViewBuilder browserSettings: () -> BrowserSettings
   ) {
     self.desktop = desktop
     self.recentServers = recentServers
     self.exportDiagnostics = exportDiagnostics
+    self.extraTabs = extraTabs
     self.browserSettings = browserSettings()
   }
 
@@ -41,6 +69,9 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
       Tab("Notifications", systemImage: "bell.badge") {
         NotificationSettingsTab(
           preferences: desktop.preferences, notifications: desktop.notifications)
+      }
+      ForEach(extraTabs) { item in
+        Tab(item.title, systemImage: item.systemImage) { item.content }
       }
       Tab("Local Server", systemImage: "server.rack") {
         LocalServerSettingsTab(
