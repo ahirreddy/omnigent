@@ -21,6 +21,50 @@ final class CannedTransport: HttpTransport {
   }
 }
 
+/// Host traits the discovery tests never reach. The protocol requirements are async, so the
+/// trivial witnesses are too.
+final class UnusedHost: EventStreamTransport, WebSocketTransport, Clock, Scheduler, SecureStore,
+  EntropySource
+{
+  func openStream(request: HttpRequest, sink: ByteSink) throws -> any StreamHandle {
+    throw TransportError.Other(message: "streams are not used here")
+  }
+
+  func openSocket(request: HttpRequest, sink: MessageSink) throws -> any WebSocketHandle {
+    throw TransportError.Other(message: "sockets are not used here")
+  }
+
+  func monotonicMs() -> UInt64 { 0 }
+
+  func unixTimeMs() -> UInt64 { 0 }
+
+  // swiftlint:disable:next async_without_await
+  func sleep(delayMs: UInt64) async {}
+
+  func spawn(task: CoreTask) {
+    Task { await task.run() }
+  }
+
+  // swiftlint:disable:next async_without_await
+  func get(key: SecureStoreKey) async throws -> Data? { nil }
+
+  // swiftlint:disable:next async_without_await
+  func set(key: SecureStoreKey, value: Data) async throws {}
+
+  // swiftlint:disable:next async_without_await
+  func delete(key: SecureStoreKey) async throws {}
+
+  func randomBytes(len: UInt32) throws -> Data { Data(repeating: 7, count: Int(len)) }
+}
+
+private func makeCore(_ transport: CannedTransport) throws -> ClientCore {
+  let host = UnusedHost()
+  return try ClientCore(
+    http: transport, streams: host, sockets: host, clock: host, scheduler: host,
+    secureStore: host, entropy: host,
+    config: HostConfig(urlPolicy: .development, oidcRedirect: .none))
+}
+
 private func jsonResponse(_ body: Data, status: UInt16 = 200) -> HttpResponse {
   HttpResponse(
     status: status,
@@ -38,7 +82,7 @@ private func fixture(_ name: String) throws -> Data {
 @Suite struct ClientCoreFFITests {
   @Test func discoversServerThroughSwiftTransport() async throws {
     let transport = CannedTransport(.success(jsonResponse(try fixture("oidc.json"))))
-    let core = ClientCore(transport: transport)
+    let core = try makeCore(transport)
 
     let discovery = try await core.discoverServer(serverUrl: "localhost:6767/omnigent")
 
@@ -63,14 +107,14 @@ private func fixture(_ name: String) throws -> Data {
 
   @Test func unknownAuthModeIsSurfaced() async throws {
     let transport = CannedTransport(.success(jsonResponse(try fixture("unknown-mode.json"))))
-    let discovery = try await ClientCore(transport: transport)
+    let discovery = try await makeCore(transport)
       .discoverServer(serverUrl: "https://omnigent.example.com")
     #expect(discovery.authMode == .unknown(value: "saml"))
   }
 
   @Test func notFoundIsBaselineWithoutAuthMode() async throws {
     let transport = CannedTransport(.success(jsonResponse(Data("{}".utf8), status: 404)))
-    let discovery = try await ClientCore(transport: transport)
+    let discovery = try await makeCore(transport)
       .discoverServer(serverUrl: "https://omnigent.example.com/")
     #expect(discovery.baseUrl == "https://omnigent.example.com")
     #expect(discovery.authMode == nil)
@@ -79,10 +123,10 @@ private func fixture(_ name: String) throws -> Data {
   @Test func thrownTransportErrorKeepsItsDetail() async throws {
     let transport = CannedTransport(
       .failure(.Offline(message: "The Internet connection appears to be offline.")))
-    let core = ClientCore(transport: transport)
+    let core = try makeCore(transport)
     await #expect(
       throws: CoreError.Transport(
-        message: "offline: The Internet connection appears to be offline.")
+        kind: .offline, message: "offline: The Internet connection appears to be offline.")
     ) {
       try await core.discoverServer(serverUrl: "https://omnigent.example.com")
     }
@@ -91,7 +135,7 @@ private func fixture(_ name: String) throws -> Data {
   @Test func serverErrorStatusIsThrown() async throws {
     let transport = CannedTransport(.success(jsonResponse(Data("boom".utf8), status: 503)))
     await #expect(throws: CoreError.HttpStatus(status: 503, body: "boom")) {
-      try await ClientCore(transport: transport)
+      try await makeCore(transport)
         .discoverServer(serverUrl: "https://omnigent.example.com")
     }
   }
@@ -99,7 +143,7 @@ private func fixture(_ name: String) throws -> Data {
   @Test func invalidURLNeverReachesTheTransport() async throws {
     let transport = CannedTransport(.success(jsonResponse(Data())))
     await #expect(throws: CoreError.InvalidUrl(message: "Server URL is empty.")) {
-      try await ClientCore(transport: transport).discoverServer(serverUrl: "  ")
+      try await makeCore(transport).discoverServer(serverUrl: "  ")
     }
     #expect(transport.requests.isEmpty)
   }

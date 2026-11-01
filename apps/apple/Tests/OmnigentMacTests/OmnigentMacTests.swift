@@ -32,7 +32,7 @@ struct AppConnectionTests {
     let discovery = try #require(store.discovery, "state: \(store.state)")
     #expect(store.isConnected)
     #expect(discovery.serverName == "Local Omnigent")
-    #expect(discovery.authMode == AuthMode.none)
+    #expect(discovery.authMode == .unauthenticated)
   }
 }
 

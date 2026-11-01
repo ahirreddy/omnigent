@@ -37,6 +37,7 @@ let package = Package(
       dependencies: [
         "OmnigentStores",
         .product(name: "OmnigentCoreFFI", package: "OmnigentCoreFFI"),
+        .product(name: "OmnigentServices", package: "OmnigentServices"),
         .product(name: "OmnigentTestSupport", package: "OmnigentTestSupport"),
       ],
       swiftSettings: mainActorSwiftSettings

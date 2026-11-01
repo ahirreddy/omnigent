@@ -28,7 +28,7 @@ struct ConnectionStoreTests {
     #expect(store.state.serverURL == discovery.baseUrl)
     #expect(discovery.serverName == "Local Omnigent")
     #expect(discovery.serverVersion == "0.42.0")
-    #expect(discovery.authMode == AuthMode.none)
+    #expect(discovery.authMode == .unauthenticated)
     #expect(transport.requests.map(\.url) == ["http://127.0.0.1:6767/.well-known/omnigent.json"])
     #expect(transport.requests.first?.method == "GET")
   }

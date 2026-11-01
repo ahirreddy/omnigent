@@ -16,7 +16,10 @@ let package = Package(
   name: "OmnigentServices",
   platforms: [.iOS("26.0"), .macOS("26.0")],
   products: [.library(name: "OmnigentServices", targets: ["OmnigentServices"])],
-  dependencies: [.package(path: "../OmnigentCoreFFI")],
+  dependencies: [
+    .package(path: "../OmnigentCoreFFI"),
+    .package(path: "../OmnigentTestSupport"),
+  ],
   targets: [
     .target(
       name: "OmnigentServices",
@@ -28,6 +31,7 @@ let package = Package(
       dependencies: [
         "OmnigentServices",
         .product(name: "OmnigentCoreFFI", package: "OmnigentCoreFFI"),
+        .product(name: "OmnigentTestSupport", package: "OmnigentTestSupport"),
       ],
       swiftSettings: strictSwiftSettings
     ),

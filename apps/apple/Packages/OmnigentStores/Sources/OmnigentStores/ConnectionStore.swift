@@ -1,9 +1,10 @@
-import Foundation
+public import Foundation
 public import Observation
 public import OmnigentCoreFFI
-import OmnigentServices
+public import OmnigentServices
 
-/// Connection to one Omnigent server, starting with discovery of its manifest.
+/// Connection to one Omnigent server: discovery, sign-in, and the root of the stores fed by the
+/// core's events (session list, open conversations, notifications). Errors are kept as state.
 @Observable
 public final class ConnectionStore {
   /// Where discovery stands.
@@ -28,26 +29,83 @@ public final class ConnectionStore {
   }
 
   /// The current discovery state.
-  public private(set) var state: State = .idle
+  public internal(set) var state: State = .idle
+  /// The connection and sign-in phase, as the core reports it.
+  public internal(set) var phase: ConnectionPhase = .disconnected
+  /// The session-updates socket's state.
+  public internal(set) var updatesLink: LinkState = .idle
+  /// Failures outside an open conversation, newest last.
+  public internal(set) var issues: [CoreIssue] = []
+  /// A browser-ticket sign-in waiting for approval.
+  public internal(set) var browserLogin: BrowserLoginInfo?
+  /// Bumped when the server's host inventory changes.
+  public internal(set) var hostsRevision = 0
+  /// Bumped when the server's project list changes.
+  public internal(set) var projectsRevision = 0
+  /// Update frame types this client did not know, newest last.
+  public internal(set) var unknownUpdates: [String] = []
+  /// Events applied so far.
+  public internal(set) var eventsApplied = 0
+  /// The session list.
+  public let sessionList = SessionListStore()
+  /// Notifications and the badge.
+  public let notifications: NotificationsStore?
+  /// Open conversations, by session id.
+  public private(set) var conversations: [String: ConversationStore] = [:]
 
-  private let core: ClientCore
+  /// The core, or `nil` when it could not start (see ``issues``).
+  public let core: ClientCore?
+  private let relay = CoreEventRelay()
+  private var pump: Task<Void, Never>?
   private var attempt = 0
+  private var nextIssueID = 0
 
-  /// Creates a store over an existing core.
+  /// Creates a store over an existing core and starts applying its events.
   /// - Parameter core: The Rust client core.
   public init(core: ClientCore) {
     self.core = core
+    notifications = NotificationsStore(core: core)
+    _ = core.subscribe(listener: relay)
+    startPump()
   }
 
-  /// Creates a store whose core sends requests through `transport`.
+  private init(startupError: CoreError) {
+    core = nil
+    notifications = nil
+    record(scope: .connection, startupError)
+    phase = .failed(serverUrl: "", error: startupError)
+  }
+
+  /// A store over the host's services.
+  /// - Parameters:
+  ///   - services: The host implementations.
+  ///   - config: The build's URL and sign-in policy.
+  public convenience init(services: HostServices = .live(), config: HostConfig = .app) {
+    self.init(http: services.http, services: services, config: config)
+  }
+
+  /// A store whose REST requests go through `transport`; everything else is live.
   /// - Parameter transport: The host HTTP transport.
   public convenience init(transport: any HttpTransport) {
-    self.init(core: ClientCore(transport: transport))
+    self.init(http: transport, services: .live(), config: .app)
   }
 
-  /// Creates a store backed by `URLSessionHttpTransport`.
-  public convenience init() {
-    self.init(transport: URLSessionHttpTransport())
+  private convenience init(http: any HttpTransport, services: HostServices, config: HostConfig) {
+    do {
+      let core = try ClientCore(
+        http: http, streams: services.eventStreams, sockets: services.webSockets,
+        clock: services.clock, scheduler: services.scheduler, secureStore: services.secureStore,
+        entropy: services.entropy, config: config)
+      self.init(core: core)
+    } catch {
+      self.init(startupError: coreError(error))
+    }
+  }
+
+  isolated deinit {
+    pump?.cancel()
+    relay.finish()
+    core?.shutdown()
   }
 
   /// Whether discovery is in flight.
@@ -58,6 +116,18 @@ public final class ConnectionStore {
 
   /// Whether discovery succeeded and the server is usable.
   public var isConnected: Bool { discovery != nil }
+
+  /// Whether the core is connected and signed in.
+  public var isSignedIn: Bool {
+    if case .connected = phase { return true }
+    return false
+  }
+
+  /// The server the core is connected to.
+  public var connectedServer: ConnectedServer? {
+    if case .connected(let server) = phase { return server }
+    return nil
+  }
 
   /// The discovered server, when connected.
   public var discovery: ServerDiscovery? {
@@ -81,6 +151,10 @@ public final class ConnectionStore {
     attempt += 1
     let current = attempt
     state = .loading(serverURL: trimmed)
+    guard let core else {
+      state = .failed(serverURL: trimmed, message: issues.last?.error.message ?? "No core")
+      return
+    }
     let next: State
     do {
       next = .connected(try await core.discoverServer(serverUrl: trimmed))
@@ -91,45 +165,161 @@ public final class ConnectionStore {
     state = next
   }
 
+  /// Discovers `serverURL`, then connects: a saved credential is used when there is one,
+  /// otherwise ``phase`` becomes `signInRequired` with the methods to offer.
+  /// - Parameters:
+  ///   - serverURL: The server URL as typed.
+  ///   - expectedUserID: The account to restore on an accounts server.
+  public func connect(serverURL: String, expectedUserID: String? = nil) async {
+    await discover(serverURL: serverURL)
+    guard let core, discovery != nil else { return }
+    do {
+      phase = try await core.connect(serverUrl: serverURL, expectedUserId: expectedUserID)
+    } catch {
+      record(scope: .connection, coreError(error))
+    }
+  }
+
+  /// Signs in with a username and password (accounts mode).
+  /// - Parameters:
+  ///   - username: The account name.
+  ///   - password: The password; it is not kept.
+  public func signIn(username: String, password: String) async {
+    guard let core else { return }
+    do {
+      _ = try await core.signInWithPassword(username: username, password: password)
+    } catch {
+      record(scope: .connection, coreError(error))
+    }
+  }
+
+  /// Starts a native OIDC sign-in redirecting to `redirectURI`.
+  /// - Parameter redirectURI: The registered scheme URI, or the loopback listener's URI.
+  /// - Returns: What to present, or `nil` after recording the failure.
+  public func beginBrowserSignIn(redirectURI: String) -> OidcChallenge? {
+    guard let core else { return nil }
+    do {
+      return try core.beginOidcSignIn(redirectUri: redirectURI)
+    } catch {
+      record(scope: .connection, coreError(error))
+      return nil
+    }
+  }
+
+  /// Finishes a native OIDC sign-in with the callback the sheet or listener received.
+  /// - Parameters:
+  ///   - challenge: The challenge from ``beginBrowserSignIn(redirectURI:)``.
+  ///   - callbackURL: The full callback URL.
+  public func completeBrowserSignIn(_ challenge: OidcChallenge, callbackURL: URL) async {
+    guard let core else { return }
+    do {
+      _ = try await core.completeOidcSignIn(
+        attemptId: challenge.attemptId, callbackUrl: callbackURL.absoluteString)
+    } catch {
+      record(scope: .connection, coreError(error))
+    }
+  }
+
+  /// Abandons a native OIDC sign-in (the user closed the sheet).
+  /// - Parameter challenge: The challenge.
+  public func cancelBrowserSignIn(_ challenge: OidcChallenge) {
+    core?.cancelOidcSignIn(attemptId: challenge.attemptId)
+  }
+
+  /// Starts the browser-ticket sign-in; ``browserLogin`` holds the page to open.
+  public func beginBrowserTicketSignIn() async {
+    guard let core else { return }
+    do {
+      browserLogin = try await core.beginBrowserLogin()
+    } catch {
+      record(scope: .connection, coreError(error))
+    }
+  }
+
+  /// Signs out and forgets the saved credential.
+  public func signOut() async {
+    guard let core else { return }
+    do {
+      try await core.signOut()
+    } catch {
+      record(scope: .connection, coreError(error))
+    }
+  }
+
+  /// Ends the connection and every stream.
+  public func disconnect() {
+    core?.disconnect()
+  }
+
   /// Returns to ``State/idle`` and drops any in-flight outcome.
   public func reset() {
     attempt += 1
     state = .idle
+    core?.disconnect()
   }
 
-  /// A user-facing description of a discovery failure.
+  /// Reloads the session list.
+  public func refreshSessions() {
+    core?.refreshSessions()
+  }
+
+  /// The app returned to the foreground: streams reopen and reconcile.
+  public func foreground() {
+    core?.foreground()
+  }
+
+  /// The session the user is looking at, for notifications and the badge.
+  /// - Parameters:
+  ///   - sessionID: The visible session.
+  ///   - focused: Whether its window is focused.
+  public func setView(sessionID: String?, focused: Bool) {
+    core?.setView(activeSessionId: sessionID, windowFocused: focused)
+  }
+
+  /// The store of `sessionID`, opening the conversation (stream and history) on first use.
+  /// - Parameter sessionID: The session.
+  /// - Returns: Its store, or `nil` when the core did not start.
+  public func conversation(_ sessionID: String) -> ConversationStore? {
+    if let existing = conversations[sessionID] { return existing }
+    guard let core else { return nil }
+    let store = ConversationStore(sessionID: sessionID, core: core)
+    conversations[sessionID] = store
+    core.openSession(sessionId: sessionID)
+    return store
+  }
+
+  /// Closes `sessionID`'s stream and drops its store.
+  /// - Parameter sessionID: The session.
+  public func closeConversation(_ sessionID: String) {
+    conversations[sessionID] = nil
+    core?.closeSession(sessionId: sessionID)
+  }
+
+  /// Clears ``issues`` after the user has seen them.
+  public func dismissIssues() {
+    issues = []
+  }
+
+  /// A user-facing description of a failure.
   /// - Parameter error: The error thrown by the core.
   /// - Returns: Text suitable for display.
   public static func describe(_ error: any Error) -> String {
-    guard let coreError = error as? CoreError else {
-      return String(describing: error)
-    }
-    switch coreError {
-    case .InvalidUrl(let message):
-      return "Invalid server URL: \(message)"
-    case .Transport(let message):
-      return "Could not reach the server: \(message)"
-    case .HttpStatus(let status, let body):
-      let snippet = body.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200)
-      return snippet.isEmpty
-        ? "Server responded with HTTP \(status)"
-        : "Server responded with HTTP \(status): \(snippet)"
-    case .Decode(let message):
-      return "Unexpected server response: \(message)"
+    coreError(error).message
+  }
+
+  private func startPump() {
+    let events = relay.events
+    pump = Task { [weak self] in
+      for await event in events {
+        guard let self else { return }
+        self.apply(event)
+      }
     }
   }
-}
 
-extension AuthMode {
-  /// A short user-facing name for the sign-in mode.
-  public var displayName: String {
-    switch self {
-    case .oidc: "OpenID Connect"
-    case .accounts: "Accounts"
-    case .header: "Header"
-    case .custom: "Custom"
-    case .none: "None"
-    case .unknown(let value): "Unknown (\(value))"
-    }
+  func record(scope: ErrorScope, _ error: CoreError) {
+    nextIssueID += 1
+    issues.append(CoreIssue(id: nextIssueID, scope: scope, error: error))
+    if issues.count > 50 { issues.removeFirst(issues.count - 50) }
   }
 }

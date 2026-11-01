@@ -715,8 +715,11 @@ dependencies = [
  "async-trait",
  "futures",
  "omnigent-core",
+ "omnigent-protocol",
+ "serde_json",
  "thiserror",
  "uniffi",
+ "url",
 ]
 
 [[package]]

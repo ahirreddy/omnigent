@@ -17,7 +17,9 @@ struct ServerWindowRoot: View {
   @State private var store = ConnectionStore()
   /// The server `store` last connected to on this window's behalf.
   @State private var connectedURL: URL?
-  @State private var route: DeepLinkRoute = .home
+  @State private var route: OmnigentDesktop.DeepLinkRoute = .home
+  @State private var showsCoreDebug = ProcessInfo.processInfo.arguments.contains(
+    "-OmnigentCoreDebug")
   @Environment(\.openWindow) private var openWindow
 
   private var desktop: DesktopController { services.desktop }
@@ -37,7 +39,17 @@ struct ServerWindowRoot: View {
       .environment(store)
       .environment(\.serverConnectAction, ServerConnectAction { connect(typed: $0) })
       .navigationTitle(title)
+      .inspector(isPresented: $showsCoreDebug) {
+        CoreDebugView()
+          .environment(store)
+          .inspectorColumnWidth(min: 480, ideal: 640, max: 1000)
+      }
       .toolbar {
+        ToolbarItem(placement: .primaryAction) {
+          Button("Core", systemImage: "ladybug") { showsCoreDebug.toggle() }
+            .help("Show what the Rust core reports for this server")
+            .accessibilityIdentifier("toolbar.coreDebug")
+        }
         ToolbarItem(placement: .primaryAction) {
           Button("Browser", systemImage: "globe", action: openBrowser)
             .disabled(id.serverURL == nil)
@@ -71,7 +83,7 @@ struct ServerWindowRoot: View {
   /// the window is rebound to the server the core resolved.
   private func connect(typed text: String) {
     Task {
-      await store.discover(serverURL: text)
+      await store.connect(serverURL: text)
       guard let discovery = store.discovery else { return }
       guard let serverURL = URL(string: discovery.baseUrl) else {
         services.logger.error(
@@ -95,7 +107,7 @@ struct ServerWindowRoot: View {
     }
     if !force, connectedURL == serverURL, store.isConnected { return }
     connectedURL = nil
-    await store.discover(serverURL: serverURL.absoluteString)
+    await store.connect(serverURL: serverURL.absoluteString)
     guard !Task.isCancelled, id.serverURL == serverURL else { return }
     if store.isConnected {
       connectedURL = serverURL
