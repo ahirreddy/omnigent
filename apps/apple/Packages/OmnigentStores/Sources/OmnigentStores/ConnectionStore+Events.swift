@@ -49,6 +49,21 @@ extension ConnectionStore {
 
   private func applyOtherEvent(_ event: CoreEvent) {
     switch event {
+    case .changedFiles(let id, let environment, let update):
+      workspaceStores[id]?.changedFilesInvalidated(environmentID: environment, update: update)
+      changedFilesRevision += 1
+    case .credentialRotated(let expiresAt):
+      credentialExpiresAtMs = expiresAt
+      credentialRotations += 1
+    case .terminalsChanged(let id, let rows, let harness):
+      terminals(id)?.apply(terminals: rows, harness: harness)
+    default:
+      applyServerEvent(event)
+    }
+  }
+
+  private func applyServerEvent(_ event: CoreEvent) {
+    switch event {
     case .notification(let notification):
       notifications?.notify(notification)
     case .badgeChanged(let ids):

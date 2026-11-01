@@ -31,6 +31,9 @@ pub(crate) struct SessionDriver {
     timers: HashMap<u64, AbortHandle>,
     live_attempt: Option<AttemptId>,
     revision: u64,
+    pub(crate) terminals: omnigent_core::terminal::TerminalInventory,
+    pub(crate) terminal_view: Option<crate::terminal_driver::TerminalView>,
+    pub(crate) terminal_tick: Option<AbortHandle>,
 }
 
 /// What a failed history read means for the stream.
@@ -72,6 +75,9 @@ impl Engine {
                     timers: HashMap::new(),
                     live_attempt: None,
                     revision: 0,
+                    terminals: omnigent_core::terminal::TerminalInventory::new(session_id),
+                    terminal_view: None,
+                    terminal_tick: None,
                 },
             );
         }
@@ -110,6 +116,9 @@ impl Engine {
         };
         for timer in driver.timers.values() {
             timer.abort();
+        }
+        if let Some(tick) = &driver.terminal_tick {
+            tick.abort();
         }
         for handle in driver.handles.values() {
             handle.cancel();
@@ -287,14 +296,20 @@ impl Engine {
             return;
         };
         let value = event.into_value();
-        if let Ok(Some(decoded)) = reducer::decode_event(value.clone(), session_id) {
+        let decoded = reducer::decode_event(value.clone(), session_id);
+        let sync = Arc::clone(&driver.sync);
+        if let Ok(Some(decoded)) = &decoded {
             // An undecodable event is reported by the sync below; this only stamps metadata.
-            self.sessions.record_stream_event(session_id, &decoded);
+            self.sessions.record_stream_event(session_id, decoded);
         }
-        match driver.sync.handle_event_raw(value) {
+        let applied = sync.handle_event_raw(value);
+        if let Ok(Some(decoded)) = &decoded {
+            self.terminal_event(session_id, decoded);
+        }
+        match applied {
             Ok(applied) => self.publish(session_id, applied),
             Err(SyncError::BufferOverflow { limit }) => {
-                driver.sync.close_stream_raw();
+                sync.close_stream_raw();
                 self.stream_input(
                     session_id,
                     StreamInput::HydrationFailed {
@@ -378,6 +393,7 @@ impl Engine {
                         });
                     }
                     self.publish(session_id, applied);
+                    self.terminals_after_hydration(session_id);
                     return;
                 }
                 Err(error) => {
@@ -457,7 +473,10 @@ impl Engine {
                 continue;
             };
             match driver.sync.handle_list_rows_raw(rows) {
-                Ok(applied) => self.publish(&id, applied),
+                Ok(applied) => {
+                    self.publish(&id, applied);
+                    self.publish_terminals(&id);
+                }
                 Err(error) => self.error(
                     ErrorScope::Session {
                         session_id: id.clone(),

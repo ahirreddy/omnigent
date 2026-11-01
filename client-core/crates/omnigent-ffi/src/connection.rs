@@ -42,6 +42,16 @@ pub enum OidcRedirect {
     None,
 }
 
+/// This build's public Databricks OAuth client (there is never a client secret).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DatabricksOAuthSettings {
+    /// The OAuth client id registered for the app.
+    pub client_id: String,
+    /// The exact HTTPS redirect registered with that client, for example
+    /// `https://login.databricks.com/mobile-redirect`.
+    pub redirect_url: String,
+}
+
 /// What the host build allows and supports.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct HostConfig {
@@ -49,6 +59,10 @@ pub struct HostConfig {
     pub url_policy: UrlPolicy,
     /// How native OIDC sign-in returns to the app.
     pub oidc_redirect: OidcRedirect,
+    /// The Databricks OAuth client, for servers in a Databricks workspace. Without it those
+    /// servers offer no sign-in method.
+    #[uniffi(default)]
+    pub databricks: Option<DatabricksOAuthSettings>,
 }
 
 const LOOPBACK_HOSTS: [&str; 4] = ["localhost", "127.0.0.1", "[::1]", "::1"];
@@ -90,6 +104,34 @@ pub(crate) struct Resolved {
     pub(crate) endpoint: ServerEndpoint,
     pub(crate) mode: AuthenticationMode,
     pub(crate) manifest_auth: Option<ManifestAuth>,
+    /// For a server inside a Databricks workspace: the workspace URL (origin plus `?o=`) its
+    /// credential is scoped to.
+    pub(crate) databricks_workspace: Option<Url>,
+}
+
+/// A discovery for a server inside a Databricks workspace. Its routes (the manifest and
+/// `/v1/info` included) answer only signed-in requests, so nothing is read before sign-in; the
+/// typed workspace or UI URL becomes the API root.
+fn databricks_discovery(url: &Url) -> core::ServerDiscovery {
+    core::ServerDiscovery {
+        base_url: server_url::display(&server_url::databricks_api_root(url)),
+        server_name: None,
+        server_version: None,
+        min_client_version: None,
+        auth_mode: None,
+        native_redirect_uris: Vec::new(),
+    }
+}
+
+/// The workspace URL a Databricks credential is scoped to: the endpoint's origin and its `o=`.
+fn databricks_workspace(endpoint: &ServerEndpoint) -> Result<Url, CoreError> {
+    let mut workspace = Url::parse(endpoint.origin()).map_err(|error| CoreError::InvalidUrl {
+        message: error.to_string(),
+    })?;
+    if let Some(org) = endpoint.databricks_org_id() {
+        workspace.set_query(Some(&format!("o={org}")));
+    }
+    Ok(workspace)
 }
 
 /// The manifest only.
@@ -99,6 +141,9 @@ pub(crate) async fn discover(
     policy: UrlPolicy,
 ) -> Result<(Url, core::ServerDiscovery), CoreError> {
     let url = normalize(raw, policy)?;
+    if server_url::is_databricks_workspace(&url) {
+        return Ok((url.clone(), databricks_discovery(&url)));
+    }
     let response = transport
         .send(core::manifest_request(&url))
         .await
@@ -113,8 +158,17 @@ pub(crate) async fn resolve(
     raw: &str,
     policy: UrlPolicy,
 ) -> Result<Resolved, CoreError> {
-    let (_, discovery) = discover(transport, raw, policy).await?;
+    let (url, discovery) = discover(transport, raw, policy).await?;
     let endpoint = ServerEndpoint::new(&discovery.base_url).map_err(CoreError::from)?;
+    if server_url::is_databricks_workspace(&url) {
+        return Ok(Resolved {
+            databricks_workspace: Some(databricks_workspace(&endpoint)?),
+            discovery,
+            endpoint,
+            mode: AuthenticationMode::Proxy,
+            manifest_auth: None,
+        });
+    }
     let manifest_auth = discovery.auth_mode.clone().map(|mode| ManifestAuth {
         mode,
         session_cookie: None,
@@ -131,11 +185,31 @@ pub(crate) async fn resolve(
         endpoint,
         mode: info.mode,
         manifest_auth,
+        databricks_workspace: None,
     })
 }
 
 /// The sign-in methods to offer, best first.
-pub(crate) fn sign_in_methods(resolved: &Resolved, redirect: &OidcRedirect) -> Vec<SignInMethod> {
+pub(crate) fn sign_in_methods(resolved: &Resolved, config: &HostConfig) -> Vec<SignInMethod> {
+    let redirect = &config.oidc_redirect;
+    if resolved.databricks_workspace.is_some() {
+        return config
+            .databricks
+            .as_ref()
+            .and_then(|settings| {
+                core::auth::databricks::OAuthConfiguration::new(
+                    &settings.client_id,
+                    &settings.redirect_url,
+                )
+                .ok()
+            })
+            .map(|configuration| SignInMethod::DatabricksWorkspace {
+                callback_host: configuration.callback_host().to_owned(),
+                callback_path: configuration.callback_path().to_owned(),
+            })
+            .into_iter()
+            .collect();
+    }
     match &resolved.mode {
         AuthenticationMode::Accounts => vec![SignInMethod::Password],
         AuthenticationMode::Oidc => {
@@ -199,5 +273,30 @@ mod tests {
             normalize("ftp://x", UrlPolicy::Development),
             Err(CoreError::InvalidUrl { .. })
         ));
+    }
+}
+
+#[cfg(test)]
+mod databricks_tests {
+    use super::*;
+
+    #[test]
+    fn databricks_workspaces_skip_unauthenticated_discovery() {
+        let url = normalize(
+            "https://dbc-1.cloud.databricks.com/?o=42",
+            UrlPolicy::Release,
+        )
+        .unwrap();
+        let discovery = databricks_discovery(&url);
+        assert_eq!(
+            discovery.base_url,
+            "https://dbc-1.cloud.databricks.com/api/2.0/omnigent?o=42"
+        );
+        let endpoint = ServerEndpoint::new(&discovery.base_url).unwrap();
+        assert_eq!(endpoint.databricks_org_id(), Some("42"));
+        assert_eq!(
+            databricks_workspace(&endpoint).unwrap().as_str(),
+            "https://dbc-1.cloud.databricks.com/?o=42"
+        );
     }
 }

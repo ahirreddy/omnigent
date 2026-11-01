@@ -25,9 +25,19 @@ public final class ComposerStore {
   public private(set) var isBlocked = false
   /// The last failure.
   public private(set) var lastError: CoreError?
+  /// The session's harness, model and effort, once ``loadConfiguration()`` read them.
+  public internal(set) var configuration: SessionConfiguration?
+  /// Their display labels.
+  public internal(set) var configurationLabels: ConfigurationLabels?
+  /// What the session may switch to, and the host's model preview.
+  public internal(set) var configurationCatalog: ConfigurationCatalog?
+  /// A configuration change is in flight.
+  public internal(set) var isApplyingConfiguration = false
+  /// The last configuration failure.
+  public internal(set) var configurationError: CoreError?
 
-  private let sessionID: String
-  private let core: ClientCore
+  let sessionID: String
+  let core: ClientCore
   private var applyingCoreText = false
 
   init(sessionID: String, core: ClientCore) {

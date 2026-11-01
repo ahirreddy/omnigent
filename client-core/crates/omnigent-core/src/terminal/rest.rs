@@ -54,6 +54,9 @@ pub enum TerminalError {
         /// What was wrong.
         detail: String,
     },
+    /// The client is not connected to a server; nothing was sent.
+    #[error("Connect to the server before using terminals.")]
+    NotConnected,
     /// HTTP 401: drop the connection and sign in again.
     #[error("not signed in: {reason}")]
     Unauthorized {
@@ -119,7 +122,7 @@ impl TerminalError {
     /// Whether the user must sign in again.
     #[must_use]
     pub const fn requires_sign_in(&self) -> bool {
-        matches!(self, Self::Unauthorized { .. })
+        matches!(self, Self::Unauthorized { .. } | Self::NotConnected)
     }
 }
 

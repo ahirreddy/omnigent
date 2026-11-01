@@ -33,6 +33,7 @@ pub mod items;
 pub(crate) mod json;
 mod requests;
 pub mod sessions;
+mod terminals;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -421,6 +422,26 @@ impl<T: HttpTransport> ClientCore<T> {
             }
         }
         self.dispatch();
+    }
+
+    /// Replaces the connection's bearer with a renewed one for the same identity (an OIDC or
+    /// Databricks token refresh), without a reconnect: cached sessions, metadata epochs and the
+    /// live session stay, and requests prepared from now on carry `bearer`.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::NotConnected`] while disconnected; [`SessionError::Auth`] with
+    /// [`HostedAuthError::UnsupportedAuthentication`](crate::auth::errors::HostedAuthError) for a
+    /// connection without a bearer, or [`HostedAuthError::Unauthorized`](crate::auth::errors::HostedAuthError)
+    /// for a bearer that cannot be sent.
+    pub fn rotate_bearer(&self, bearer: SecretString) -> Result<(), SessionError> {
+        let mut state = lock(&self.state);
+        let connection = state
+            .connection
+            .as_mut()
+            .filter(|connection| connection.is_connected())
+            .ok_or(SessionError::NotConnected)?;
+        connection.rotate_bearer(bearer).map_err(SessionError::Auth)
     }
 
     /// Whether the core is connected.

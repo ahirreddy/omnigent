@@ -123,6 +123,11 @@ pub(crate) enum Msg {
     },
     /// Stop every connection, then report `phase`.
     Disconnected { phase: ConnectionPhase },
+    /// The bearer was renewed in place: later stream and socket attempts use it.
+    BearerRotated {
+        bearer: SecretString,
+        expires_at_ms: Option<u64>,
+    },
     /// An event from the REST client.
     Client(ClientEvent),
     /// Start watching a session.
@@ -164,6 +169,33 @@ pub(crate) enum Msg {
     Foreground,
     /// Report an event.
     Emit(CoreEvent),
+    /// Read an open session's terminals.
+    RefreshTerminals { session_id: String },
+    /// A terminal list read the engine started finished.
+    TerminalsListed {
+        session_id: String,
+        result: Result<
+            Vec<omnigent_core::terminal::TerminalResource>,
+            omnigent_core::terminal::TerminalError,
+        >,
+    },
+    /// A caller's terminal list read finished.
+    TerminalsLoaded {
+        session_id: String,
+        terminals: Vec<omnigent_core::terminal::TerminalResource>,
+    },
+    /// A terminal was created.
+    TerminalUpserted {
+        session_id: String,
+        terminal: omnigent_core::terminal::TerminalResource,
+    },
+    /// A terminal was deleted.
+    TerminalRemoved {
+        session_id: String,
+        terminal_id: String,
+    },
+    /// An activity badge lapsed.
+    TerminalTick { session_id: String },
     /// Stop everything and end the engine.
     Shutdown,
 }
@@ -301,6 +333,15 @@ impl Engine {
                 self.link = None;
                 self.set_phase(phase);
             }
+            Msg::BearerRotated {
+                bearer,
+                expires_at_ms,
+            } => {
+                if let Some(link) = self.link.as_mut() {
+                    link.bearer = Some(bearer);
+                    self.emit(CoreEvent::CredentialRotated { expires_at_ms });
+                }
+            }
             Msg::Client(event) => self.client_event(event),
             Msg::Open(session_id) => self.open_session(&session_id),
             Msg::Close(session_id) => self.close_session(&session_id),
@@ -324,6 +365,23 @@ impl Engine {
             Msg::DemoKick => self.demo_kick(),
             Msg::Foreground => self.foreground(),
             Msg::Emit(event) => self.emit(event),
+            Msg::RefreshTerminals { session_id } => self.refresh_terminals(&session_id),
+            Msg::TerminalsListed { session_id, result } => {
+                self.terminals_listed(&session_id, result);
+            }
+            Msg::TerminalsLoaded {
+                session_id,
+                terminals,
+            } => self.terminals_loaded(&session_id, terminals),
+            Msg::TerminalUpserted {
+                session_id,
+                terminal,
+            } => self.terminal_upserted(&session_id, terminal),
+            Msg::TerminalRemoved {
+                session_id,
+                terminal_id,
+            } => self.terminal_removed(&session_id, &terminal_id),
+            Msg::TerminalTick { session_id } => self.publish_terminals(&session_id),
             Msg::Shutdown => {
                 self.stop_realtime();
                 let ids: Vec<String> = self.drivers.keys().cloned().collect();
@@ -446,9 +504,14 @@ impl Engine {
                 if let Some(driver) = self.drivers.get(&session_id) {
                     let applied = driver
                         .sync
-                        .set_changed_files_raw(&environment_id, update.into());
+                        .set_changed_files_raw(&environment_id, update.clone().into());
                     self.publish(&session_id, applied);
                 }
+                self.emit(CoreEvent::ChangedFiles {
+                    session_id,
+                    environment_id,
+                    update: update.into(),
+                });
             }
         }
     }

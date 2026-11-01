@@ -159,6 +159,37 @@ pub fn with_workspace_mount(url: &Url) -> Url {
     mounted
 }
 
+/// The Omnigent REST mount inside a Databricks workspace.
+pub const DATABRICKS_API_MOUNT: &str = "/api/2.0/omnigent";
+
+/// Whether `url` is an https URL on a Databricks workspace host, where sign-in is the
+/// workspace's own OAuth and the Omnigent routes need a bearer even for discovery.
+#[must_use]
+pub fn is_databricks_workspace(url: &Url) -> bool {
+    url.scheme() == "https"
+        && crate::auth::mode::ServerAuthentication::for_url(url)
+            == crate::auth::mode::ServerAuthentication::DatabricksWorkspace
+}
+
+/// The API root for a Databricks workspace URL typed as the workspace root or as the Omnigent UI
+/// ([`WORKSPACE_UI_PATH`]): its path becomes [`DATABRICKS_API_MOUNT`] and `?o=` is kept.
+///
+/// `url` unchanged for anything else: a non-workspace host, or a path that already names a
+/// mount. The fragment is dropped, since an API root never carries one.
+#[must_use]
+pub fn databricks_api_root(url: &Url) -> Url {
+    let mut root = url.clone();
+    root.set_fragment(None);
+    if !is_databricks_workspace(url) {
+        return root;
+    }
+    let path = mount_path(url);
+    if path.is_empty() || path == WORKSPACE_UI_PATH {
+        root.set_path(DATABRICKS_API_MOUNT);
+    }
+    root
+}
+
 fn default_scheme(trimmed: &str, allows_insecure_http: bool) -> &'static str {
     if !allows_insecure_http {
         return "https";
@@ -180,6 +211,38 @@ mod tests {
 
     fn normalized(raw: &str, allows_insecure_http: bool) -> String {
         display(&normalize(raw, allows_insecure_http).unwrap())
+    }
+
+    #[test]
+    fn databricks_workspace_roots_and_ui_urls_map_to_the_api_mount() {
+        let root = |raw: &str| databricks_api_root(&Url::parse(raw).unwrap()).to_string();
+        assert_eq!(
+            root("https://dbc-123.cloud.databricks.com/?o=42"),
+            "https://dbc-123.cloud.databricks.com/api/2.0/omnigent?o=42"
+        );
+        assert_eq!(
+            root("https://adb-1.azuredatabricks.net/omnigent/#c/abc"),
+            "https://adb-1.azuredatabricks.net/api/2.0/omnigent"
+        );
+        assert_eq!(
+            root("https://dbc-123.cloud.databricks.com/api/2.0/omnigent?o=42"),
+            "https://dbc-123.cloud.databricks.com/api/2.0/omnigent?o=42"
+        );
+        assert_eq!(
+            root("https://dbc-123.cloud.databricks.com/custom/mount"),
+            "https://dbc-123.cloud.databricks.com/custom/mount"
+        );
+        assert_eq!(root("https://example.com/"), "https://example.com/");
+        assert_eq!(
+            root("https://my-app.aws.databricksapps.com/"),
+            "https://my-app.aws.databricksapps.com/"
+        );
+        assert!(!is_databricks_workspace(
+            &Url::parse("http://dbc-123.cloud.databricks.com").unwrap()
+        ));
+        assert!(is_databricks_workspace(
+            &Url::parse("https://dbc-123.cloud.databricks.com").unwrap()
+        ));
     }
 
     #[test]

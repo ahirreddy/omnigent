@@ -4,10 +4,14 @@
 //! at most one matching preview; previews that history does not contain yet keep their
 //! chronological slot; a history read that finished with an older prefix of text still streaming
 //! never replaces the newer text.
+//!
+//! A preview's slot is found from the committed rows around it. The live stream commits tool calls
+//! and results under provider item ids that differ from the persisted ones, so a committed live row
+//! whose id history does not contain anchors at the history row of the same tool call instead.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use super::live::{LiveReducer, matches_text};
+use super::live::{LiveReducer, matches_text, same_tool_call};
 use super::ops::{ChangeSet, diff_rows};
 use super::state::{ConversationSnapshot, LIVE_PREFIX, Row, TurnStatus};
 
@@ -54,6 +58,7 @@ impl LiveReducer {
             anchors.insert(preview.id.clone(), message.id.clone());
             self.retire_preview(&preview);
         }
+        anchor_renamed_commits(&previous_rows, &authoritative.rows, &mut anchors);
         let mut event_state = self.snap.event_state.clone();
         event_state.merge(&authoritative.event_state);
         self.snap = authoritative;
@@ -115,6 +120,29 @@ impl LiveReducer {
             });
             inserted.insert(preview.id.clone());
             self.snap.rows.insert(at.min(self.snap.rows.len()), preview);
+        }
+    }
+}
+
+/// Maps each committed row of `previous` that `authoritative` holds under another id (the same
+/// tool call, persisted under a new item id) to that id, so previews next to it keep their slot.
+fn anchor_renamed_commits(
+    previous: &[Row],
+    authoritative: &[Row],
+    anchors: &mut BTreeMap<String, String>,
+) {
+    let present: HashSet<&str> = authoritative.iter().map(|row| row.id.as_str()).collect();
+    let mut claimed: HashSet<String> = anchors.values().cloned().collect();
+    for row in previous {
+        if row.is_ephemeral() || present.contains(row.id.as_str()) {
+            continue;
+        }
+        let renamed = authoritative.iter().find(|candidate| {
+            !claimed.contains(candidate.id.as_str()) && same_tool_call(row, candidate)
+        });
+        if let Some(renamed) = renamed {
+            claimed.insert(renamed.id.clone());
+            anchors.insert(row.id.clone(), renamed.id.clone());
         }
     }
 }

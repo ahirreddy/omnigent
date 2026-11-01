@@ -6,8 +6,8 @@ import Synchronization
 /// A local WebSocket server for tests, built on `NWProtocolWebSocket` so the handshake and
 /// framing are the platform's own.
 ///
-/// Text frames it receives are recorded and, when `echoPrefix` is set, echoed back with the
-/// prefix. Frames can be pushed to every connected client, and the server can send a close frame
+/// Text and binary frames it receives are recorded and, when `echoPrefix` is set, echoed back
+/// with the prefix (binary frames as binary, prefixed with the prefix's UTF-8 bytes). Frames can be pushed to every connected client, and the server can send a close frame
 /// with a chosen code and reason.
 public final class MockWebSocketServer: Sendable {
   /// The bound port on 127.0.0.1.
@@ -54,6 +54,11 @@ public final class MockWebSocketServer: Sendable {
     core.texts.withLock { $0 }
   }
 
+  /// Every binary frame received so far, in arrival order.
+  public var receivedBinaries: [Data] {
+    core.binaries.withLock { $0 }
+  }
+
   /// The close codes of every close frame the clients sent, in arrival order. A close frame
   /// without a code is recorded as 1005.
   public var receivedCloseCodes: [UInt16] {
@@ -93,6 +98,7 @@ private final class WebSocketConnectionCore: Sendable {
   let queue: DispatchQueue
   let connections = Mutex<[ConnectionBox]>([])
   let texts = Mutex<[String]>([])
+  let binaries = Mutex<[Data]>([])
   let closeCodes = Mutex<[UInt16]>([])
 
   init(echoPrefix: String?, queue: DispatchQueue) {
@@ -122,7 +128,14 @@ private final class WebSocketConnectionCore: Sendable {
         let text = String(decoding: frame.content, as: UTF8.self)
         texts.withLock { $0.append(text) }
         if let echoPrefix {
-          guard await echo(echoPrefix + text, on: box) else { return }
+          guard await echo(.text, Data((echoPrefix + text).utf8), on: box) else { return }
+        }
+      case .binary:
+        binaries.withLock { $0.append(frame.content) }
+        if let echoPrefix {
+          guard await echo(.binary, Data(echoPrefix.utf8) + frame.content, on: box) else {
+            return
+          }
         }
       case .close:
         closeCodes.withLock { $0.append(frame.closeCode ?? 1005) }
@@ -136,9 +149,11 @@ private final class WebSocketConnectionCore: Sendable {
   }
 
   /// Sends one echo frame. Returns false, after closing the connection, when the send fails.
-  private func echo(_ text: String, on box: ConnectionBox) async -> Bool {
+  private func echo(
+    _ opcode: NWProtocolWebSocket.Opcode, _ content: Data, on box: ConnectionBox
+  ) async -> Bool {
     do {
-      try await box.sendFrame(opcode: .text, content: Data(text.utf8))
+      try await box.sendFrame(opcode: opcode, content: content)
       return true
     } catch {
       Logger.mockWebSocket.debug("Mock WebSocket echo failed: \(String(describing: error))")

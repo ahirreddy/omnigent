@@ -91,3 +91,119 @@ fn recorded_live_turns_reconcile_with_history_without_duplicates() {
     assert!(!rows.iter().any(|row| row.is_streaming));
     assert!(!update.changes.is_empty());
 }
+
+/// The recorded session read part-way through turn 1: the user message, the persisted tool call
+/// and its output, but not the assistant message yet. The persisted tool rows have ids that
+/// differ from the ones the live stream committed them under.
+fn mid_turn_history() -> (SessionSnapshot, Vec<ConversationItem>) {
+    let mut envelope = fixture("items/recorded-session-snapshot-after-turn.json");
+    envelope["response"]["status"] = serde_json::json!("running");
+    let session = SessionSnapshot::from_value(envelope["response"].clone()).expect("snapshot");
+    let items = session.items.iter().take(3).cloned().collect();
+    (session, items)
+}
+
+/// The row ids of `rows` with each kind: `user`, `tool` (call or result) or `text` (assistant).
+fn kinds(rows: &[Row]) -> Vec<&'static str> {
+    use crate::reducer::{ActivityKind, RowRole};
+    rows.iter()
+        .map(|row| match (row.role, row.activity_kind()) {
+            (RowRole::User, _) => "user",
+            (_, Some(ActivityKind::ToolCall | ActivityKind::ToolResult)) => "tool",
+            (RowRole::Assistant, None) => "text",
+            _ => "other",
+        })
+        .collect()
+}
+
+/// Regression: a history read that lands mid-turn (after the tool call and its output were
+/// committed live, while the answer streams) must keep the streaming answer below the tool rows.
+/// The persisted tool rows carry new ids, so the preview's committed neighbours vanish from the
+/// merged rows; it used to fall back to the last surviving anchor (the user message) and jump
+/// above the tool call and result.
+#[test]
+fn mid_turn_hydration_keeps_streaming_answer_below_tool_rows() {
+    let events = sse_data("recorded-turn-text-tool-completion.jsonl");
+    let first_delta = events
+        .iter()
+        .position(|event| event["type"] == "response.output_text.delta")
+        .expect("a text delta");
+    let (session, items) = mid_turn_history();
+
+    // The read starts after the first delta and lands before the turn ends.
+    let mut sync = ConversationSync::new(SESSION);
+    let initial = sync.open_stream();
+    sync.finish_hydration(&initial, &session, &[])
+        .expect("initial hydration");
+    for event in events.iter().take(first_delta + 1) {
+        sync.handle_event(event.clone()).expect("event applies");
+    }
+    let before = kinds(&sync.published().expect("live").rows);
+    assert_eq!(before, ["user", "tool", "tool", "text"]);
+    let request = sync.request_hydration().expect("a read starts");
+    sync.handle_event(events[first_delta + 1].clone())
+        .expect("delta during the read");
+    sync.finish_hydration(&request, &session, &items)
+        .expect("mid-turn hydration");
+    let rows = &sync.published().expect("merged").rows;
+    assert_eq!(
+        kinds(rows),
+        ["user", "tool", "tool", "text"],
+        "{:?}",
+        ids(rows)
+    );
+    assert_eq!(
+        rows.last().map(|row| row.text.as_str()),
+        Some("The command ")
+    );
+
+    // The rest of the turn lands in place and the final commit retires the preview.
+    for event in events.iter().skip(first_delta + 2) {
+        sync.handle_event(event.clone()).expect("event applies");
+    }
+    let rows = &sync.published().expect("final").rows;
+    assert_eq!(
+        kinds(rows),
+        ["user", "tool", "tool", "text"],
+        "{:?}",
+        ids(rows)
+    );
+    assert!(!rows.iter().any(|row| row.is_streaming));
+}
+
+/// The same read, requested before the answer started: the deltas buffered meanwhile replay onto
+/// the history and the answer still lands below the tool rows.
+#[test]
+fn hydration_requested_before_the_answer_keeps_it_below_tool_rows() {
+    let events = sse_data("recorded-turn-text-tool-completion.jsonl");
+    let first_delta = events
+        .iter()
+        .position(|event| event["type"] == "response.output_text.delta")
+        .expect("a text delta");
+    let (session, items) = mid_turn_history();
+    let mut sync = ConversationSync::new(SESSION);
+    let initial = sync.open_stream();
+    sync.finish_hydration(&initial, &session, &[])
+        .expect("initial hydration");
+    for event in events.iter().take(first_delta) {
+        sync.handle_event(event.clone()).expect("event applies");
+    }
+    let request = sync.request_hydration().expect("a read starts");
+    for event in events.iter().skip(first_delta).take(2) {
+        sync.handle_event(event.clone())
+            .expect("delta during the read");
+    }
+    sync.finish_hydration(&request, &session, &items)
+        .expect("mid-turn hydration");
+    let rows = &sync.published().expect("merged").rows;
+    assert_eq!(
+        kinds(rows),
+        ["user", "tool", "tool", "text"],
+        "{:?}",
+        ids(rows)
+    );
+    assert_eq!(
+        rows.last().map(|row| row.text.as_str()),
+        Some("The command ")
+    );
+}

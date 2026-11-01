@@ -901,7 +901,7 @@ pub(super) fn is_native_preview(row: &Row) -> bool {
 /// The live stream commits a function call once in progress and again when completed, under
 /// provider item ids that differ from each other and from the persisted ids (see
 /// `sse/recorded-turn-text-tool-completion.jsonl`); the call id and response identify it.
-fn same_tool_call(earlier: &Row, committed: &Row) -> bool {
+pub(super) fn same_tool_call(earlier: &Row, committed: &Row) -> bool {
     let tool = |row: &Row| {
         matches!(
             row.activity_kind(),

@@ -25,8 +25,10 @@ pub mod reducer;
 pub mod server_url;
 pub mod session_query;
 pub mod sse;
+pub mod terminal;
 #[cfg(test)]
 pub(crate) mod testing;
+pub mod workspace;
 pub mod workspace_store;
 
 pub use client::{

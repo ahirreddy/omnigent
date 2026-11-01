@@ -25,6 +25,7 @@ use omnigent_core::demo::DemoTransport;
 use omnigent_core::http::HttpTransport as _;
 
 use crate::connection::{self, HostConfig, Resolved};
+use crate::databricks::DatabricksAuth;
 use crate::decisions::DecisionResponse;
 use crate::engine::{Bridge, Engine, Link, Listeners, Msg, SignInContext, Transports, View, lock};
 use crate::errors::CoreError;
@@ -203,33 +204,36 @@ impl From<core::attachments::AttachmentDraft> for AttachmentDraft {
 
 /// Sign-in work tied to the current connection; replaced by every connect.
 #[derive(Default)]
-struct AuthState {
-    generation: u64,
-    resolved: Option<Resolved>,
-    connected_user: Option<String>,
+pub(crate) struct AuthState {
+    pub(crate) generation: u64,
+    pub(crate) resolved: Option<Resolved>,
+    pub(crate) connected_user: Option<String>,
     attempts: HashMap<u64, OidcSignInAttempt>,
     next_attempt: u64,
-    renewal: Option<AbortHandle>,
+    pub(crate) renewal: Option<AbortHandle>,
 }
 
-struct Inner {
-    host: Host,
+pub(crate) struct Inner {
+    pub(crate) host: Host,
     config: HostConfig,
-    transport: CoreTransport,
+    pub(crate) transport: CoreTransport,
     store: Option<ForeignStore>,
     entropy: Option<ForeignEntropy>,
-    sessions: Arc<Sessions>,
+    pub(crate) sessions: Arc<Sessions>,
     listeners: Arc<Listeners>,
     tx: UnboundedSender<Msg>,
     oidc: Option<OidcCredentials<CoreTransport, ForeignStore>>,
+    pub(crate) databricks: Option<DatabricksAuth>,
+    /// The WebSocket transport, for terminal attaches; absent in the demo.
+    pub(crate) sockets: Option<Arc<dyn WebSocketTransport>>,
     demo: Option<Arc<DemoTransport>>,
-    auth: Mutex<AuthState>,
+    pub(crate) auth: Mutex<AuthState>,
 }
 
 /// The client core for one server connection. Safe to share across threads.
 #[derive(uniffi::Object)]
 pub struct ClientCore {
-    inner: Arc<Inner>,
+    pub(crate) inner: Arc<Inner>,
 }
 
 impl fmt::Debug for ClientCore {
@@ -253,15 +257,15 @@ fn demo_only_error() -> CoreError {
 }
 
 impl Inner {
-    fn post(&self, message: Msg) {
+    pub(crate) fn post(&self, message: Msg) {
         post(&self.tx, message);
     }
 
-    fn store(&self) -> Result<&ForeignStore, CoreError> {
+    pub(crate) fn store(&self) -> Result<&ForeignStore, CoreError> {
         self.store.as_ref().ok_or_else(demo_only_error)
     }
 
-    fn entropy(&self) -> Result<&ForeignEntropy, CoreError> {
+    pub(crate) fn entropy(&self) -> Result<&ForeignEntropy, CoreError> {
         self.entropy.as_ref().ok_or_else(demo_only_error)
     }
 
@@ -278,10 +282,15 @@ impl Inner {
         if let Some(renewal) = auth.renewal.take() {
             renewal.abort();
         }
-        auth.generation
+        let generation = auth.generation;
+        drop(auth);
+        if let Some(databricks) = &self.databricks {
+            databricks.reset_login();
+        }
+        generation
     }
 
-    fn check_generation(&self, generation: u64) -> Result<(), CoreError> {
+    pub(crate) fn check_generation(&self, generation: u64) -> Result<(), CoreError> {
         if lock(&self.auth).generation == generation {
             Ok(())
         } else {
@@ -289,7 +298,7 @@ impl Inner {
         }
     }
 
-    fn resolved(&self) -> Result<Resolved, CoreError> {
+    pub(crate) fn resolved(&self) -> Result<Resolved, CoreError> {
         lock(&self.auth)
             .resolved
             .clone()
@@ -301,11 +310,15 @@ impl Inner {
             base_url: resolved.endpoint.base_url().to_owned(),
             server_name: resolved.discovery.server_name.clone(),
             mode: resolved.mode.clone().into(),
-            methods: connection::sign_in_methods(resolved, &self.config.oidc_redirect),
+            methods: connection::sign_in_methods(resolved, &self.config),
         }
     }
 
-    fn sign_in_required(&self, resolved: &Resolved, reason: Option<CoreError>) -> ConnectionPhase {
+    pub(crate) fn sign_in_required(
+        &self,
+        resolved: &Resolved,
+        reason: Option<CoreError>,
+    ) -> ConnectionPhase {
         let context = self.sign_in_context(resolved);
         let phase = ConnectionPhase::SignInRequired {
             base_url: context.base_url,
@@ -318,7 +331,7 @@ impl Inner {
         phase
     }
 
-    fn fail(&self, server_url: &str, error: CoreError) -> CoreError {
+    pub(crate) fn fail(&self, server_url: &str, error: CoreError) -> CoreError {
         self.post(Msg::Phase(ConnectionPhase::Failed {
             server_url: server_url.to_owned(),
             error: error.clone(),
@@ -327,7 +340,7 @@ impl Inner {
     }
 
     /// Confirms identity with `bearer` and hands the connection to the engine.
-    async fn establish(
+    pub(crate) async fn establish(
         &self,
         generation: u64,
         resolved: &Resolved,
@@ -432,6 +445,10 @@ impl Inner {
                 self.connect_oidc(generation, &resolved, expected_user_id)
                     .await
             }
+            CoreMode::Proxy if resolved.databricks_workspace.is_some() => {
+                self.connect_databricks(generation, &resolved, expected_user_id)
+                    .await
+            }
             CoreMode::Proxy | CoreMode::Unsupported { .. } => Err(self.fail(
                 resolved.endpoint.base_url(),
                 HostedAuthError::UnsupportedAuthentication.into(),
@@ -484,6 +501,7 @@ impl Inner {
             endpoint,
             mode: CoreMode::LocalSingleUser,
             manifest_auth: None,
+            databricks_workspace: None,
         };
         lock(&self.auth).resolved = Some(resolved.clone());
         self.establish(generation, &resolved, None, None)
@@ -525,22 +543,16 @@ impl Inner {
         }
         match refreshed {
             Ok(session) => {
-                let user = lock(&self.auth).connected_user.clone();
-                self.post(Msg::Disconnected {
-                    phase: ConnectionPhase::Connecting {
-                        base_url: resolved.endpoint.base_url().to_owned(),
-                    },
-                });
-                let token = session.token.clone();
-                match self
-                    .establish(generation, &resolved, Some(token), user)
+                if self
+                    .rotate_credential(
+                        generation,
+                        &resolved,
+                        session.token.clone(),
+                        session.expires_at_ms,
+                    )
                     .await
                 {
-                    Ok(_) => self.schedule_renewal(generation, &resolved, &server, &session),
-                    Err(error) => self.post(Msg::Emit(CoreEvent::Error {
-                        scope: ErrorScope::Connection,
-                        error,
-                    })),
+                    self.schedule_renewal(generation, &resolved, &server, &session);
                 }
             }
             Err(error) => {
@@ -549,6 +561,60 @@ impl Inner {
                     phase: ConnectionPhase::Disconnected,
                 });
                 self.sign_in_required(&resolved, Some(error.into()));
+            }
+        }
+    }
+
+    /// Puts a renewed bearer for the same identity in place without a reconnect: the REST
+    /// client signs later requests with it, and the engine opens later stream and socket
+    /// attempts with it (live ones keep running). When the connection already ended (a `401`
+    /// raced the renewal), connects again with the new bearer instead. Returns whether the
+    /// credential is in use.
+    pub(crate) async fn rotate_credential(
+        &self,
+        generation: u64,
+        resolved: &Resolved,
+        bearer: SecretString,
+        expires_at_ms: Option<u64>,
+    ) -> bool {
+        if self.check_generation(generation).is_err() {
+            return false;
+        }
+        match self.sessions.rotate_bearer(bearer.clone()) {
+            Ok(()) => {
+                self.post(Msg::BearerRotated {
+                    bearer,
+                    expires_at_ms,
+                });
+                true
+            }
+            Err(SessionError::NotConnected) => {
+                let user = lock(&self.auth).connected_user.clone();
+                self.post(Msg::Disconnected {
+                    phase: ConnectionPhase::Connecting {
+                        base_url: resolved.endpoint.base_url().to_owned(),
+                    },
+                });
+                match self
+                    .establish(generation, resolved, Some(bearer), user)
+                    .await
+                {
+                    Ok(_) => true,
+                    Err(error) => {
+                        self.post(Msg::Emit(CoreEvent::Error {
+                            scope: ErrorScope::Connection,
+                            error,
+                        }));
+                        false
+                    }
+                }
+            }
+            Err(error) => {
+                self.post(Msg::Emit(CoreEvent::Error {
+                    scope: ErrorScope::Connection,
+                    error: error.into(),
+                }));
+                false
             }
         }
     }
@@ -674,6 +740,7 @@ impl ClientCore {
         let transport = CoreTransport::Foreign(ForeignHttp(http));
         let store = ForeignStore(secure_store);
         let oidc = OidcCredentials::new(transport.clone(), store.clone());
+        let databricks = config.databricks.as_ref().map(DatabricksAuth::new);
         Ok(Self::build(
             Host { clock, scheduler },
             config,
@@ -686,6 +753,7 @@ impl ClientCore {
             Some(store),
             Some(entropy),
             Some(oidc),
+            databricks,
             seed,
         ))
     }
@@ -710,6 +778,7 @@ impl ClientCore {
             HostConfig {
                 url_policy: connection::UrlPolicy::Development,
                 oidc_redirect: connection::OidcRedirect::None,
+                databricks: None,
             },
             CoreTransport::Demo(Arc::clone(&demo)),
             Transports {
@@ -717,6 +786,7 @@ impl ClientCore {
                 sockets: None,
                 demo: Some(demo),
             },
+            None,
             None,
             None,
             None,
@@ -1021,6 +1091,9 @@ impl ClientCore {
                 .map_err(CoreError::from),
                 None => Ok(()),
             },
+            CoreMode::Proxy if resolved.databricks_workspace.is_some() => {
+                inner.forget_databricks_grant(&resolved).await
+            }
             CoreMode::LocalSingleUser | CoreMode::Proxy | CoreMode::Unsupported { .. } => Ok(()),
         };
         inner.sign_in_required(&resolved, None);
@@ -1255,6 +1328,26 @@ impl ClientCore {
 }
 
 impl ClientCore {
+    /// The REST session client.
+    pub(crate) fn sessions(&self) -> &Sessions {
+        &self.inner.sessions
+    }
+
+    /// The host's wall-clock time, in ms since the Unix epoch.
+    pub(crate) fn unix_ms(&self) -> u64 {
+        self.inner.host.unix_ms()
+    }
+
+    /// Posts `message` to the engine.
+    pub(crate) fn post(&self, message: Msg) {
+        self.inner.post(message);
+    }
+
+    /// Whether this is the offline demo.
+    pub(crate) fn is_demo(&self) -> bool {
+        self.inner.demo.is_some()
+    }
+
     #[allow(clippy::too_many_arguments, reason = "internal assembly of every part")]
     fn build(
         host: Host,
@@ -1264,6 +1357,7 @@ impl ClientCore {
         store: Option<ForeignStore>,
         entropy: Option<ForeignEntropy>,
         oidc: Option<OidcCredentials<CoreTransport, ForeignStore>>,
+        databricks: Option<DatabricksAuth>,
         seed: u64,
     ) -> Arc<Self> {
         let sessions = Arc::new(Sessions::new(
@@ -1274,6 +1368,7 @@ impl ClientCore {
         ));
         let listeners = Arc::new(Listeners::default());
         let demo = transports.demo.clone();
+        let sockets = transports.sockets.clone();
         let (engine, rx) = Engine::new(
             host.clone(),
             transports,
@@ -1295,6 +1390,8 @@ impl ClientCore {
                 listeners,
                 tx,
                 oidc,
+                databricks,
+                sockets,
                 demo,
                 auth: Mutex::new(AuthState::default()),
             }),

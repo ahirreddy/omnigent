@@ -812,3 +812,47 @@ fn edits_trim_titles_pin_with_a_stamp_and_publish_the_acknowledgement() {
         .iter()
         .any(|event| matches!(event, ClientEvent::SessionsChanged { sessions } if sessions[0].title == "Renamed")));
 }
+
+#[test]
+fn a_rotated_bearer_signs_later_requests_without_reconnecting() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    transport.ok(
+        &format!("{MOUNT}/v1/sessions"),
+        r#"{"data":[],"has_more":false}"#,
+    );
+    let core = connected_hosted(transport);
+    core.set_live_session(Some("conv_a"));
+    let recorder = record(&core);
+    let before = core.transport().taken().len();
+    core.rotate_bearer(crate::auth::SecretString::new("renewed-token"))
+        .unwrap();
+    block_on(core.sessions()).unwrap();
+    let requests = core.transport().taken();
+    assert_eq!(
+        requests.len(),
+        before + 1,
+        "no identity re-confirmation: {:?}",
+        core.transport().lines()
+    );
+    assert_eq!(
+        header(&requests[before], "Authorization"),
+        Some("Bearer renewed-token")
+    );
+    assert!(core.is_connected());
+    assert_eq!(core.live_session().as_deref(), Some("conv_a"));
+    assert!(
+        !recorder
+            .take()
+            .iter()
+            .any(|event| matches!(event, ClientEvent::ConnectionChanged { .. }))
+    );
+    assert!(matches!(
+        core.rotate_bearer(crate::auth::SecretString::new("not a token")),
+        Err(SessionError::Auth(_))
+    ));
+    core.disconnect();
+    assert_eq!(
+        core.rotate_bearer(crate::auth::SecretString::new("later")),
+        Err(SessionError::NotConnected)
+    );
+}

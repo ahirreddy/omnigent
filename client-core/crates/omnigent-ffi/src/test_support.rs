@@ -44,16 +44,35 @@ pub(crate) fn json(status: u16, body: &str) -> HttpResponse {
     }
 }
 
-/// Answers by URL path; unknown paths are 404.
+/// Answers by method and URL path, then by path alone; unknown paths are 404.
 #[derive(Default)]
 pub(crate) struct FakeHttp {
     routes: Mutex<HashMap<String, HttpResponse>>,
+    method_routes: Mutex<HashMap<(String, String), HttpResponse>>,
     pub(crate) requests: Mutex<Vec<HttpRequest>>,
 }
 
 impl FakeHttp {
     pub(crate) fn route(&self, path: &str, response: HttpResponse) {
         lock(&self.routes).insert(path.to_owned(), response);
+    }
+
+    pub(crate) fn route_method(&self, method: &str, path: &str, response: HttpResponse) {
+        lock(&self.method_routes).insert((method.to_owned(), path.to_owned()), response);
+    }
+
+    /// Requests sent as `METHOD path`.
+    pub(crate) fn lines(&self) -> Vec<String> {
+        lock(&self.requests)
+            .iter()
+            .map(|request| {
+                format!(
+                    "{} {}",
+                    request.method,
+                    url::Url::parse(&request.url).unwrap().path()
+                )
+            })
+            .collect()
     }
 
     pub(crate) fn paths(&self) -> Vec<String> {
@@ -68,7 +87,11 @@ impl FakeHttp {
 impl HttpTransport for FakeHttp {
     async fn send(&self, request: HttpRequest) -> Result<HttpResponse, TransportError> {
         let path = url::Url::parse(&request.url).unwrap().path().to_owned();
+        let method = request.method.clone();
         lock(&self.requests).push(request);
+        if let Some(response) = lock(&self.method_routes).get(&(method, path.clone())) {
+            return Ok(response.clone());
+        }
         Ok(lock(&self.routes)
             .get(&path)
             .cloned()
@@ -136,6 +159,7 @@ impl EventStreamTransport for FakeStreams {
 #[derive(Default)]
 pub(crate) struct FakeSocket {
     pub(crate) sent: Mutex<Vec<String>>,
+    pub(crate) sent_binary: Mutex<Vec<Vec<u8>>>,
     pub(crate) closes: Mutex<Vec<u16>>,
 }
 
@@ -143,6 +167,11 @@ pub(crate) struct FakeSocket {
 impl WebSocketHandle for FakeSocket {
     async fn send_text(&self, text: String) -> Result<(), TransportError> {
         lock(&self.sent).push(text);
+        Ok(())
+    }
+
+    async fn send_binary(&self, bytes: Vec<u8>) -> Result<(), TransportError> {
+        lock(&self.sent_binary).push(bytes);
         Ok(())
     }
 
@@ -309,33 +338,43 @@ pub(crate) struct Harness {
     pub(crate) clock: Arc<ManualClock>,
     pub(crate) scheduler: Arc<TestScheduler>,
     pub(crate) events: Arc<Recorder>,
+    pub(crate) store: Arc<MemoryStore>,
     pool: LocalPool,
 }
 
 impl Harness {
     pub(crate) fn new(policy: UrlPolicy) -> Self {
+        Self::with_databricks(policy, None)
+    }
+
+    pub(crate) fn with_databricks(
+        policy: UrlPolicy,
+        databricks: Option<crate::connection::DatabricksOAuthSettings>,
+    ) -> Self {
         let http = Arc::new(FakeHttp::default());
         let streams = Arc::new(FakeStreams::default());
         let sockets = Arc::new(FakeSockets::default());
         let clock = Arc::new(ManualClock::default());
         let scheduler = Arc::new(TestScheduler::new(Arc::clone(&clock)));
+        let store = Arc::new(MemoryStore::default());
         let core = ClientCore::new(
             http.clone(),
             streams.clone(),
             sockets.clone(),
             clock.clone(),
             scheduler.clone(),
-            Arc::new(MemoryStore::default()),
+            store.clone(),
             Arc::new(FixedEntropy),
             HostConfig {
                 url_policy: policy,
                 oidc_redirect: OidcRedirect::Loopback {
                     path: "/oauth/callback".into(),
                 },
+                databricks,
             },
         )
         .unwrap();
-        Self::assemble(core, http, streams, sockets, clock, scheduler)
+        Self::assemble(core, http, streams, sockets, clock, scheduler, store)
     }
 
     pub(crate) fn demo() -> Self {
@@ -349,6 +388,7 @@ impl Harness {
             Arc::new(FakeSockets::default()),
             clock,
             scheduler,
+            Arc::new(MemoryStore::default()),
         )
     }
 
@@ -359,6 +399,7 @@ impl Harness {
         sockets: Arc<FakeSockets>,
         clock: Arc<ManualClock>,
         scheduler: Arc<TestScheduler>,
+        store: Arc<MemoryStore>,
     ) -> Self {
         let events = Arc::new(Recorder::default());
         core.subscribe(events.clone());
@@ -370,6 +411,7 @@ impl Harness {
             clock,
             scheduler,
             events,
+            store,
             pool: LocalPool::new(),
         };
         harness.pump();

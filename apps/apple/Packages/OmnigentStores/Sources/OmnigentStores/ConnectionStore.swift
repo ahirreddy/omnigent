@@ -42,6 +42,14 @@ public final class ConnectionStore {
   public internal(set) var hostsRevision = 0
   /// Bumped when the server's project list changes.
   public internal(set) var projectsRevision = 0
+  /// Bumped when an open session's changed files were re-read.
+  public internal(set) var changedFilesRevision = 0
+  /// Bumped when the bearer was renewed in place (no reconnect).
+  public internal(set) var credentialRotations = 0
+  /// When the current credential expires, in ms since the Unix epoch, after a renewal.
+  public internal(set) var credentialExpiresAtMs: UInt64?
+  /// A Databricks sign-in waiting for the sign-in sheet's callback.
+  public internal(set) var databricksChallenge: DatabricksChallenge?
   /// Update frame types this client did not know, newest last.
   public internal(set) var unknownUpdates: [String] = []
   /// Events applied so far.
@@ -52,6 +60,12 @@ public final class ConnectionStore {
   public let notifications: NotificationsStore?
   /// Open conversations, by session id.
   public private(set) var conversations: [String: ConversationStore] = [:]
+  /// Workspace stores of open sessions, by session id.
+  public internal(set) var workspaceStores: [String: WorkspaceStore] = [:]
+  /// Terminal lists of open sessions, by session id.
+  public internal(set) var terminalStores: [String: SessionTerminalsStore] = [:]
+  /// The new-session form, once created.
+  public internal(set) var creationStore: CreationStore?
 
   /// The core, or `nil` when it could not start (see ``issues``).
   public let core: ClientCore?
@@ -65,6 +79,7 @@ public final class ConnectionStore {
   public init(core: ClientCore) {
     self.core = core
     notifications = NotificationsStore(core: core)
+    sessionList.core = core
     _ = core.subscribe(listener: relay)
     startPump()
   }
@@ -292,6 +307,8 @@ public final class ConnectionStore {
   /// - Parameter sessionID: The session.
   public func closeConversation(_ sessionID: String) {
     conversations[sessionID] = nil
+    workspaceStores[sessionID] = nil
+    terminalStores[sessionID] = nil
     core?.closeSession(sessionId: sessionID)
   }
 

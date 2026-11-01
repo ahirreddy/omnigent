@@ -32,6 +32,8 @@
 )]
 
 pub mod config;
+pub mod configuration;
+pub mod creation;
 pub mod decisions;
 pub mod deeplink;
 pub mod errors;
@@ -40,15 +42,21 @@ pub mod host;
 pub mod http;
 pub mod sessions;
 pub mod sync;
+pub mod terminal;
 pub mod transcript;
+pub mod workspace;
 
 pub mod client;
 pub mod connection;
+mod databricks;
 mod engine;
 mod runtime;
 mod stream_driver;
+mod terminal_driver;
 mod updates_driver;
 
+#[cfg(test)]
+mod api_tests;
 #[cfg(test)]
 mod driver_tests;
 #[cfg(test)]

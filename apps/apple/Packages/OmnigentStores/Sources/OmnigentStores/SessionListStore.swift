@@ -21,9 +21,71 @@ public final class SessionListStore {
   }
   /// The last list failure, until the next successful load.
   public private(set) var lastError: CoreError?
+  /// The last rename, pin or archive failure, until the next edit.
+  public private(set) var editError: CoreError?
+  /// Sessions with an edit in flight.
+  public private(set) var editing: Set<String> = []
+
+  /// The core edits go through; set by the owning ``ConnectionStore``.
+  @ObservationIgnored var core: ClientCore?
 
   /// Creates an empty list.
   public init() {}
+
+  /// Renames `sessionID` (edit permission). The title is trimmed and must be 1 to 120
+  /// characters; the list updates from the core's acknowledgement.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - title: The new title.
+  /// - Returns: Whether the rename was saved; a failure is in ``editError``.
+  @discardableResult
+  public func rename(_ sessionID: String, to title: String) async -> Bool {
+    await edit(sessionID, .title(title: title))
+  }
+
+  /// Pins or unpins `sessionID` (view permission). A pin is stamped with the current time.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - pinned: Pin or unpin.
+  /// - Returns: Whether the change was saved; a failure is in ``editError``.
+  @discardableResult
+  public func setPinned(_ sessionID: String, _ pinned: Bool) async -> Bool {
+    await edit(sessionID, .pinned(pinned: pinned))
+  }
+
+  /// Archives or restores `sessionID` (owner permission).
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - archived: Archive or restore.
+  /// - Returns: Whether the change was saved; a failure is in ``editError``.
+  @discardableResult
+  public func setArchived(_ sessionID: String, _ archived: Bool) async -> Bool {
+    await edit(sessionID, .archived(archived: archived))
+  }
+
+  /// Clears ``editError`` after the user has seen it.
+  public func dismissEditError() {
+    editError = nil
+  }
+
+  private func edit(_ sessionID: String, _ change: SessionChange) async -> Bool {
+    guard let core else {
+      editError = .InvalidState(message: "Connect to a server before editing sessions.")
+      return false
+    }
+    editing.insert(sessionID)
+    defer { editing.remove(sessionID) }
+    do {
+      let updated = try await core.editSession(sessionId: sessionID, change: change)
+      sessionsByID[updated.id] = updated
+      recompute()
+      editError = nil
+      return true
+    } catch {
+      editError = coreError(error)
+      return false
+    }
+  }
 
   /// The summary of `sessionID`, if known.
   /// - Parameter sessionID: The session.

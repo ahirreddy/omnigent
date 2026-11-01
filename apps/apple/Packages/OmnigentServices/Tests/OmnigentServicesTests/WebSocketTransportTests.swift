@@ -37,6 +37,25 @@ import Testing
     #expect(events.filter { if case .ended = $0 { true } else { false } }.count == 1)
   }
 
+  @Test func binaryFramesTravelAsDataBothWays() async throws {
+    let server = try await MockWebSocketServer.start(echoPrefix: "echo:")
+    defer { server.stop() }
+    let sink = RecordingMessageSink()
+
+    let handle = try URLSessionWebSocketTransport().startSocket(
+      request: request(server.url), sink: sink)
+
+    #expect(await eventually { sink.snapshot.contains(.opened) })
+    let input = Data([0x6C, 0x73, 0x0D, 0x00, 0xFF])
+    try await handle.sendBinary(bytes: input)
+    #expect(
+      await eventually {
+        sink.snapshot.contains(.message(.binary(bytes: Data("echo:".utf8) + input)))
+      })
+    #expect(server.receivedBinaries == [input])
+    #expect(server.receivedTexts.isEmpty)
+  }
+
   /// A client close ends the socket with exactly one `ended` event. The close frame itself is not
   /// asserted at the server: URLSession can tear the TCP connection down right after the frame,
   /// and the server's receive may report end-of-stream before the frame is surfaced.

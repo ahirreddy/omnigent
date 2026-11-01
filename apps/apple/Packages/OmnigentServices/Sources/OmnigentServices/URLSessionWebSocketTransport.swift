@@ -83,6 +83,14 @@ private final class SocketHandleImpl: WebSocketHandle, Sendable {
     }
   }
 
+  func sendBinary(bytes: Data) async throws(TransportError) {
+    do {
+      try await task.send(.data(bytes))
+    } catch {
+      throw TransportErrorMapping.map(error)
+    }
+  }
+
   func close(code: UInt16, reason: String) {
     // URLSession only accepts the close codes in its CloseCode enum. Any other code cannot be
     // expressed, so the socket is cancelled without a close frame and the failure is logged.

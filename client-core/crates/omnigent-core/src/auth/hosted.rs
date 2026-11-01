@@ -211,6 +211,28 @@ impl HostedConnection {
         self.endpoint.websocket_url(path, query)
     }
 
+    /// Replaces the bearer with a renewed one for the same identity, without reconnecting: the
+    /// connection, its generation and its confirmed user id stay, and every request built from
+    /// now on carries `bearer`. Requests already sent keep the bearer they were built with.
+    ///
+    /// # Errors
+    ///
+    /// [`HostedAuthError::NotConnected`] unless connected; [`HostedAuthError::UnsupportedAuthentication`]
+    /// for a connection that never carried a bearer (a loopback single-user server);
+    /// [`HostedAuthError::Unauthorized`] for a bearer that cannot be sent. Nothing changes on
+    /// error.
+    pub fn rotate_bearer(&mut self, bearer: SecretString) -> Result<(), HostedAuthError> {
+        if !self.connected {
+            return Err(HostedAuthError::NotConnected);
+        }
+        if self.bearer.is_none() || self.endpoint.is_local_single_user() {
+            return Err(HostedAuthError::UnsupportedAuthentication);
+        }
+        validate_bearer(bearer.expose())?;
+        self.bearer = Some(bearer);
+        Ok(())
+    }
+
     /// The `Authorization` header value, when this connection carries a bearer.
     #[must_use]
     pub fn authorization(&self) -> Option<SecretString> {
@@ -444,6 +466,66 @@ mod tests {
             );
             assert_eq!(transport.take().len(), 2);
         }
+    }
+
+    #[test]
+    fn rotating_the_bearer_keeps_the_connection_and_signs_later_requests() {
+        let transport = ScriptedTransport::new();
+        for (status, body) in
+            envelopes("sessions/HostedServerAuthentication--_shared--hosted-configure.jsonl")
+                .into_iter()
+                .take(2)
+        {
+            transport.json(status, &body);
+        }
+        let mut connection = HostedConnection::new(hosted(), bearer(), None).unwrap();
+        assert_eq!(
+            connection.rotate_bearer(SecretString::new("renewed")),
+            Err(HostedAuthError::NotConnected)
+        );
+        block_on(connection.connect(&transport)).unwrap();
+        transport.take();
+        let generation = connection.generation();
+        assert_eq!(
+            connection.rotate_bearer(SecretString::new("bad token")),
+            Err(HostedAuthError::Unauthorized { reason: None })
+        );
+        connection
+            .rotate_bearer(SecretString::new("renewed"))
+            .unwrap();
+        assert!(connection.is_connected());
+        assert_eq!(connection.generation(), generation);
+        let request = connection
+            .request("GET", "/v1/sessions", &[], "application/json")
+            .unwrap();
+        assert!(
+            request
+                .headers
+                .iter()
+                .any(|header| header.name == "Authorization" && header.value == "Bearer renewed"),
+            "{:?}",
+            request.headers
+        );
+        assert_eq!(
+            connection
+                .authorization()
+                .map(|value| value.expose().to_owned()),
+            Some("Bearer renewed".to_owned())
+        );
+    }
+
+    #[test]
+    fn local_connections_have_no_bearer_to_rotate() {
+        let transport = ScriptedTransport::new();
+        transport.json(200, r#"{"single_user":true,"accounts_enabled":false}"#);
+        transport.json(200, r#"{"user_id":"local"}"#);
+        let endpoint = ServerEndpoint::new("http://127.0.0.1:6767").unwrap();
+        let mut connection = HostedConnection::new(endpoint, None, None).unwrap();
+        block_on(connection.connect(&transport)).unwrap();
+        assert_eq!(
+            connection.rotate_bearer(SecretString::new("token")),
+            Err(HostedAuthError::UnsupportedAuthentication)
+        );
     }
 
     #[test]

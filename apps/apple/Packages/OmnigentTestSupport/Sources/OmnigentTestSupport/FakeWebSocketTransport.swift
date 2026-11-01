@@ -1,4 +1,4 @@
-import Foundation
+public import Foundation
 public import OmnigentCoreFFI
 import Synchronization
 
@@ -74,6 +74,7 @@ public final class FakeWebSocketHandle: WebSocketHandle, Sendable {
 
   private struct State {
     var sent: [String] = []
+    var sentBinaries: [Data] = []
     var closes: [Close] = []
     var sendFailure: TransportError?
   }
@@ -86,6 +87,11 @@ public final class FakeWebSocketHandle: WebSocketHandle, Sendable {
   /// The text frames the core sent, in order.
   public var sentTexts: [String] {
     state.withLock { $0.sent }
+  }
+
+  /// The binary frames the core sent, in order.
+  public var sentBinaries: [Data] {
+    state.withLock { $0.sentBinaries }
   }
 
   /// The close calls the core made, in order.
@@ -107,6 +113,22 @@ public final class FakeWebSocketHandle: WebSocketHandle, Sendable {
         return failure
       }
       state.sent.append(text)
+      return nil
+    }
+    if let failure {
+      throw failure
+    }
+  }
+
+  /// Records the binary frame, or throws the configured send failure.
+  /// - Parameter bytes: The frame's bytes.
+  /// - Throws: The configured send failure, if any.
+  public func sendBinary(bytes: Data) throws(TransportError) {
+    let failure = state.withLock { state -> TransportError? in
+      if let failure = state.sendFailure {
+        return failure
+      }
+      state.sentBinaries.append(bytes)
       return nil
     }
     if let failure {

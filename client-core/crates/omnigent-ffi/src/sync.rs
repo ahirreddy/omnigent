@@ -271,6 +271,14 @@ impl ConversationSync {
         Ok(Applied::new(update, &self.session_id))
     }
 
+    /// Whether the runner reported that it is creating the session's terminal pane.
+    pub(crate) fn terminal_pending_raw(&self) -> bool {
+        lock(&self.inner)
+            .published()
+            .and_then(|snapshot| snapshot.event_state.terminal_pending)
+            .unwrap_or(false)
+    }
+
     pub(crate) fn set_changed_files_raw(
         &self,
         environment: &str,

@@ -126,6 +126,9 @@ pub trait MessageSink {
 pub trait WebSocketHandle {
     /// Sends one text frame. Resolves once the frame was handed to the network.
     fn send_text(&self, text: String) -> impl Future<Output = Result<(), TransportError>>;
+    /// Sends one binary frame (terminal input). Resolves once the frame was handed to the
+    /// network.
+    fn send_binary(&self, bytes: Vec<u8>) -> impl Future<Output = Result<(), TransportError>>;
     /// Starts the closing handshake with `code` and `reason`. Delivering a late callback after
     /// this is harmless.
     fn close(&self, code: u16, reason: String);

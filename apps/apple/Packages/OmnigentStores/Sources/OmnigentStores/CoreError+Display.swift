@@ -19,21 +19,33 @@ extension CoreError {
         : "Server responded with HTTP \(status): \(snippet)"
     case .Session(_, let message, _, _, _), .Auth(_, _, let message, _),
       .Oidc(_, _, let message), .Link(_, let message, _),
-      .ManagedConfig(let message, _, _), .SecureStore(let message, _):
+      .ManagedConfig(let message, _, _), .SecureStore(let message, _),
+      .Workspace(_, let message, _), .Terminal(_, let message, _):
       return message
+    case .Databricks(let kind, let message, _):
+      return message.isEmpty && kind == .cancelled ? "Sign-in was cancelled." : message
     }
   }
 
   /// Whether the user must sign in again.
   public var requiresSignIn: Bool {
     switch self {
-    case .Session(_, _, _, let requiresSignIn, _), .Link(_, _, let requiresSignIn):
+    case .Session(_, _, _, let requiresSignIn, _), .Link(_, _, let requiresSignIn),
+      .Workspace(_, _, let requiresSignIn), .Terminal(_, _, let requiresSignIn),
+      .Databricks(_, _, let requiresSignIn):
       return requiresSignIn
     case .Auth(_, let failure, _, _), .Oidc(_, let failure, _):
       return failure == .signInRequired || failure == .expired
     default:
       return false
     }
+  }
+
+  /// Whether this is a cancellation the user caused, which shows no message.
+  public var isCancellation: Bool {
+    if case .Databricks(.cancelled, _, _) = self { return true }
+    if case .Oidc(.cancelled, _, _) = self { return true }
+    return false
   }
 
   /// Whether a write may have landed; the user must review before sending again.

@@ -3,7 +3,13 @@
 //! (`omnigent_core::session_query`).
 
 use omnigent_core::session_query::{self, SessionFilter as CoreFilter};
-use omnigent_core::sessions::{SessionSummary as CoreSummary, SummaryStatus};
+use omnigent_core::sessions::{
+    SessionChange as CoreChange, SessionSummary as CoreSummary, SummaryStatus,
+};
+
+use crate::client::ClientCore;
+use crate::configuration::SessionConfiguration;
+use crate::errors::CoreError;
 
 /// The status a session list shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -49,6 +55,32 @@ pub struct SessionSummary {
     pub can_pin: bool,
     /// Whether the caller may archive it.
     pub can_archive: bool,
+    /// How the session runs, when a list row or snapshot reported it.
+    #[uniffi(default)]
+    pub configuration: Option<SessionConfiguration>,
+    /// Its harness TUI is the primary view (`omnigent.ui = terminal`).
+    #[uniffi(default)]
+    pub terminal_first: bool,
+}
+
+/// A change to a session's organisation (`PATCH /v1/sessions/{id}`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum SessionChange {
+    /// Rename; the title is trimmed and must be 1 to 120 characters (edit permission).
+    Title {
+        /// The new title.
+        title: String,
+    },
+    /// Pin or unpin (view permission). A pin is stamped with the host clock's time.
+    Pinned {
+        /// Pin or unpin.
+        pinned: bool,
+    },
+    /// Archive or restore (owner permission).
+    Archived {
+        /// Archive or restore.
+        archived: bool,
+    },
 }
 
 /// How the session list changed. Apply in order.
@@ -122,6 +154,8 @@ impl From<CoreSummary> for SessionSummary {
             is_archived: summary.is_archived,
             permission_level: summary.permission_level,
             failure_message: summary.failure_message,
+            configuration: summary.configuration.map(Into::into),
+            terminal_first: summary.terminal_first,
         }
     }
 }
@@ -138,6 +172,8 @@ impl From<&SessionSummary> for CoreSummary {
             is_archived: summary.is_archived,
             permission_level: summary.permission_level,
             failure_message: summary.failure_message.clone(),
+            configuration: summary.configuration.clone().map(Into::into),
+            terminal_first: summary.terminal_first,
             ..Self::new(
                 summary.id.clone(),
                 summary.title.clone(),
@@ -184,4 +220,35 @@ pub fn filter_sessions(
 #[uniffi::export]
 pub fn session_filter_title(filter: SessionFilter) -> String {
     CoreFilter::from(filter).title().to_owned()
+}
+
+#[uniffi::export]
+impl ClientCore {
+    /// Renames, pins or archives `session_id` after a fresh permission check. The updated
+    /// summary is returned and also published as a `SessionListChanged` upsert.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` and `InvalidTitle` before any write;
+    /// `ReadOnly` without the permission; `DeliveryUncertain` for an unreadable acknowledgement;
+    /// the read and write errors.
+    pub async fn edit_session(
+        &self,
+        session_id: String,
+        change: SessionChange,
+    ) -> Result<SessionSummary, CoreError> {
+        let change = match change {
+            SessionChange::Title { title } => CoreChange::Title(title),
+            SessionChange::Pinned { pinned } => CoreChange::Pinned {
+                pinned,
+                at_ms: self.unix_ms(),
+            },
+            SessionChange::Archived { archived } => CoreChange::Archived(archived),
+        };
+        self.sessions()
+            .edit_session(&session_id, change)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
 }

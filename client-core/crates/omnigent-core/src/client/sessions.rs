@@ -32,6 +32,10 @@ pub enum SummaryStatus {
 
 /// One session as the list shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent facts a list row shows; mirrored one to one as an FFI record"
+)]
 pub struct SessionSummary {
     /// Session id.
     pub id: String,
@@ -53,6 +57,8 @@ pub struct SessionSummary {
     pub is_pinned: bool,
     /// Archived.
     pub is_archived: bool,
+    /// Its harness TUI is the primary view (`omnigent.ui = terminal`): a Chat/Terminal switcher.
+    pub terminal_first: bool,
     /// The caller's permission level, when known.
     pub permission_level: Option<i64>,
     /// For a failed session: the last task error, or a generic message.
@@ -82,6 +88,7 @@ impl SessionSummary {
             agent_name: "Omni".to_owned(),
             is_pinned: false,
             is_archived: false,
+            terminal_first: false,
             permission_level: None,
             failure_message: None,
             configuration: None,
@@ -337,6 +344,11 @@ impl SessionProjection {
                 .and_then(|labels| labels.get("omnigent.pinned"))
                 .is_some_and(|stamp| !stamp.is_empty()),
             is_archived: self.archived.value().copied().unwrap_or(false),
+            terminal_first: match &self.labels {
+                Field::Absent => previous.is_some_and(|previous| previous.terminal_first),
+                Field::Null => false,
+                Field::Present(labels) => crate::terminal::is_terminal_first(labels),
+            },
             permission_level,
             failure_message: (self.status == SessionStatus::Failed).then(|| {
                 self.last_task_error_message.clone().unwrap_or_else(|| {

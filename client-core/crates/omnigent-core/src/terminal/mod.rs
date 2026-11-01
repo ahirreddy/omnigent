@@ -18,6 +18,10 @@
 //! - [`inventory`]: [`TerminalInventory`], the session's terminal list kept current from REST
 //!   snapshots and `session.resource.*` / `session.terminal.activity` stream events.
 //!
+//! [`ClientCore`](crate::ClientCore) sends the REST calls on its connection, and builds the
+//! attach upgrade with the connection's current bearer and org header
+//! (`list_terminals`, `create_terminal`, `delete_terminal`, `terminal_attach_request`).
+//!
 //! The renderer never sees the socket. It hands encoded input bytes and grid sizes to the
 //! machine and writes [`AttachOutput::Output`] bytes into its terminal emulator.
 

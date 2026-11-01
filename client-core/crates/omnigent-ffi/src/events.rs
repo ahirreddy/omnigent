@@ -65,6 +65,69 @@ pub enum SignInMethod {
     },
     /// The OIDC browser-ticket fallback: open a page, the core polls until it is approved.
     BrowserTicket,
+    /// Databricks workspace OAuth: present the authorize URL from
+    /// `begin_databricks_sign_in` in the sign-in sheet, intercepting the HTTPS callback at
+    /// `callback_host` and `callback_path`.
+    DatabricksWorkspace {
+        /// The HTTPS callback host the sheet intercepts.
+        callback_host: String,
+        /// The HTTPS callback path the sheet intercepts.
+        callback_path: String,
+    },
+}
+
+/// A Databricks workspace sign-in the host must present.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DatabricksChallenge {
+    /// Identifies the attempt in `complete_databricks_sign_in`.
+    pub attempt_id: u64,
+    /// The workspace's `/oidc/v1/authorize` URL to open.
+    pub authorize_url: String,
+    /// The HTTPS callback host the sheet intercepts.
+    pub callback_host: String,
+    /// The HTTPS callback path the sheet intercepts.
+    pub callback_path: String,
+}
+
+/// One changed file of a session environment, as the changed-files section lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct ChangedFileSummary {
+    /// Workspace-relative path.
+    pub path: String,
+    /// `modified`, `added`, `deleted`, ...
+    pub status: String,
+}
+
+/// The changed files of a session environment, or why they are unavailable.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum ChangedFilesUpdate {
+    /// The environment's changes.
+    Loaded {
+        /// The files.
+        files: Vec<ChangedFileSummary>,
+    },
+    /// The read failed.
+    Unavailable {
+        /// Why, for display.
+        message: String,
+    },
+}
+
+impl From<core::events::ChangedFilesUpdate> for ChangedFilesUpdate {
+    fn from(update: core::events::ChangedFilesUpdate) -> Self {
+        match update {
+            core::events::ChangedFilesUpdate::Loaded(files) => Self::Loaded {
+                files: files
+                    .into_iter()
+                    .map(|file| ChangedFileSummary {
+                        path: file.path,
+                        status: file.status,
+                    })
+                    .collect(),
+            },
+            core::events::ChangedFilesUpdate::Unavailable(message) => Self::Unavailable { message },
+        }
+    }
 }
 
 /// What a server needs before it can be used.
@@ -310,6 +373,33 @@ pub enum CoreEvent {
     BadgeChanged {
         /// Their ids.
         session_ids: Vec<String>,
+    },
+    /// A session's changed files were re-read after the server invalidated them
+    /// (`session.changed_files.invalidated`). Workspace views showing changes should reload.
+    ChangedFiles {
+        /// The session.
+        session_id: String,
+        /// The environment, for example `default`.
+        environment_id: String,
+        /// The files, or why they are unavailable.
+        update: ChangedFilesUpdate,
+    },
+    /// The connection's bearer was renewed in place; streams and the session list were not
+    /// interrupted.
+    CredentialRotated {
+        /// When the new credential expires, in ms since the Unix epoch, when known.
+        expires_at_ms: Option<u64>,
+    },
+    /// An open session's terminals changed (a list read, `session.resource.*`,
+    /// `session.terminal.activity`, or the runner's `terminal_pending`), or an activity badge
+    /// lapsed.
+    TerminalsChanged {
+        /// The session.
+        session_id: String,
+        /// Every terminal with its badge, oldest first.
+        terminals: Vec<crate::terminal::TerminalRow>,
+        /// What the session's Terminal view can show.
+        harness: crate::terminal::HarnessTerminal,
     },
     /// The server's host inventory changed.
     HostsChanged,

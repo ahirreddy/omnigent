@@ -3,6 +3,7 @@
 
 use omnigent_core as core;
 use omnigent_core::SessionError;
+use omnigent_core::auth::databricks::DatabricksError;
 use omnigent_core::auth::errors::{AuthFailure as CoreAuthFailure, HostedAuthError, OidcError};
 use omnigent_core::realtime::LinkError;
 
@@ -155,6 +156,48 @@ pub enum LinkErrorKind {
     HostContract,
 }
 
+/// `omnigent_core::auth::databricks::DatabricksError`'s variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+#[allow(
+    missing_docs,
+    reason = "each variant mirrors the DatabricksError variant of the same name"
+)]
+pub enum DatabricksErrorKind {
+    NotConfigured,
+    InvalidClientId,
+    InvalidRedirectUrl,
+    InvalidWorkspace,
+    RandomGenerationFailed,
+    InvalidCallback,
+    InvalidIssuer,
+    InvalidDiscovery,
+    AuthorizationDenied,
+    AuthorizationFailed,
+    LoginInProgress,
+    BrowserUnavailable,
+    AuthenticationFailed,
+    NetworkUnavailable,
+    TokenExchangeFailed,
+    InvalidRefreshGrant,
+    InvalidTokenResponse,
+    Storage,
+    InvalidCredentialData,
+    CredentialsChanged,
+    InvalidSessionResponse,
+    UnsafeRedirect,
+    WorkspaceChanged,
+    UnsafeCookie,
+    MissingCookie,
+    UnexpectedLanding,
+    Rejected,
+    PresentationUnavailable,
+    WorkspaceRequired,
+    ReauthenticationRequired,
+    RecoveryExhausted,
+    SignOutIncomplete,
+    Cancelled,
+}
+
 /// Every failure the core reports to the host, thrown by calls and carried by listener events.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
 pub enum CoreError {
@@ -304,6 +347,36 @@ pub enum CoreError {
         /// For display.
         message: String,
     },
+    /// A workspace file operation failed.
+    #[error("{message}")]
+    Workspace {
+        /// The failure kind.
+        kind: crate::workspace::WorkspaceErrorKind,
+        /// The core's text, with the server's reason when it gave one.
+        message: String,
+        /// The connection ended; sign in again.
+        requires_sign_in: bool,
+    },
+    /// A terminal REST call failed.
+    #[error("{message}")]
+    Terminal {
+        /// The failure kind.
+        kind: crate::terminal::TerminalErrorKind,
+        /// For display.
+        message: String,
+        /// The connection ended; sign in again.
+        requires_sign_in: bool,
+    },
+    /// A Databricks workspace sign-in, token or refresh failed.
+    #[error("{message}")]
+    Databricks {
+        /// The failure kind.
+        kind: DatabricksErrorKind,
+        /// For display. Empty for a cancellation, which shows no message.
+        message: String,
+        /// The saved grant is gone or changed; sign in again.
+        requires_sign_in: bool,
+    },
     /// A call the core cannot honour in its current state, for example an unknown sign-in
     /// attempt.
     #[error("{message}")]
@@ -327,6 +400,15 @@ impl CoreError {
                 requires_sign_in, ..
             }
             | Self::Link {
+                requires_sign_in, ..
+            }
+            | Self::Workspace {
+                requires_sign_in, ..
+            }
+            | Self::Terminal {
+                requires_sign_in, ..
+            }
+            | Self::Databricks {
                 requires_sign_in, ..
             } => *requires_sign_in,
             Self::Auth { failure, .. } | Self::Oidc { failure, .. } => {
@@ -623,6 +705,60 @@ impl From<core::auth::EntropyError> for CoreError {
     fn from(error: core::auth::EntropyError) -> Self {
         Self::Entropy {
             message: error.to_string(),
+        }
+    }
+}
+
+const fn databricks_kind(error: &DatabricksError) -> DatabricksErrorKind {
+    use DatabricksErrorKind as K;
+    match error {
+        DatabricksError::InvalidClientId => K::InvalidClientId,
+        DatabricksError::InvalidRedirectUrl => K::InvalidRedirectUrl,
+        DatabricksError::InvalidWorkspace => K::InvalidWorkspace,
+        DatabricksError::RandomGenerationFailed(_) => K::RandomGenerationFailed,
+        DatabricksError::InvalidCallback => K::InvalidCallback,
+        DatabricksError::InvalidIssuer => K::InvalidIssuer,
+        DatabricksError::InvalidDiscovery => K::InvalidDiscovery,
+        DatabricksError::AuthorizationDenied => K::AuthorizationDenied,
+        DatabricksError::AuthorizationFailed => K::AuthorizationFailed,
+        DatabricksError::LoginInProgress => K::LoginInProgress,
+        DatabricksError::BrowserUnavailable => K::BrowserUnavailable,
+        DatabricksError::AuthenticationFailed => K::AuthenticationFailed,
+        DatabricksError::NetworkUnavailable(_) => K::NetworkUnavailable,
+        DatabricksError::TokenExchangeFailed { .. } => K::TokenExchangeFailed,
+        DatabricksError::InvalidRefreshGrant => K::InvalidRefreshGrant,
+        DatabricksError::InvalidTokenResponse => K::InvalidTokenResponse,
+        DatabricksError::Storage(_) => K::Storage,
+        DatabricksError::InvalidCredentialData => K::InvalidCredentialData,
+        DatabricksError::CredentialsChanged => K::CredentialsChanged,
+        DatabricksError::InvalidSessionResponse => K::InvalidSessionResponse,
+        DatabricksError::UnsafeRedirect => K::UnsafeRedirect,
+        DatabricksError::WorkspaceChanged => K::WorkspaceChanged,
+        DatabricksError::UnsafeCookie => K::UnsafeCookie,
+        DatabricksError::MissingCookie => K::MissingCookie,
+        DatabricksError::UnexpectedLanding => K::UnexpectedLanding,
+        DatabricksError::Rejected { .. } => K::Rejected,
+        DatabricksError::PresentationUnavailable => K::PresentationUnavailable,
+        DatabricksError::WorkspaceRequired => K::WorkspaceRequired,
+        DatabricksError::ReauthenticationRequired => K::ReauthenticationRequired,
+        DatabricksError::RecoveryExhausted => K::RecoveryExhausted,
+        DatabricksError::SignOutIncomplete { .. } => K::SignOutIncomplete,
+        DatabricksError::Cancelled => K::Cancelled,
+    }
+}
+
+impl From<DatabricksError> for CoreError {
+    fn from(error: DatabricksError) -> Self {
+        Self::Databricks {
+            kind: databricks_kind(&error),
+            requires_sign_in: matches!(
+                error,
+                DatabricksError::InvalidRefreshGrant
+                    | DatabricksError::InvalidCredentialData
+                    | DatabricksError::CredentialsChanged
+                    | DatabricksError::ReauthenticationRequired
+            ),
+            message: error.user_message().unwrap_or_default(),
         }
     }
 }

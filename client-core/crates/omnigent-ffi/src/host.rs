@@ -102,6 +102,8 @@ pub trait WebSocketTransport: Send + Sync {
 pub trait WebSocketHandle: Send + Sync {
     /// Sends one text frame; resolves once it was handed to the network.
     async fn send_text(&self, text: String) -> Result<(), TransportError>;
+    /// Sends one binary frame (terminal input); resolves once it was handed to the network.
+    async fn send_binary(&self, bytes: Vec<u8>) -> Result<(), TransportError>;
     /// Starts the closing handshake. Late sink callbacks after this are harmless.
     fn close(&self, code: u16, reason: String);
 }
