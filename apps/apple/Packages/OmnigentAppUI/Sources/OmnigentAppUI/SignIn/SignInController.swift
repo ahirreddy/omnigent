@@ -148,13 +148,27 @@ public final class SignInController {
     method = .password
     Task {
       let before = store.issues.count
-      await store.signIn(username: credentials.username, password: credentials.password)
+      let server = await store.signIn(
+        username: credentials.username, password: credentials.password)
       method = nil
-      if case .connected(let server) = store.phase {
-        accounts.remember(server)
-      } else if store.issues.count > before, let issue = store.issues.last {
-        flowError = SignInError(issue.error)
-      }
+      signedIn(server, issuesBefore: before)
+    }
+  }
+
+  /// Finishes a sign-in: remembers the account so the next launch restores it, or shows the
+  /// failure the store recorded.
+  ///
+  /// The server comes from the sign-in's own result, not ``ConnectionStore/phase``: the core's
+  /// `connected` event can land after the call returns, and reading the phase then skipped
+  /// remembering the account, so the next launch asked for the password again.
+  /// - Parameters:
+  ///   - server: The server signed in to, or `nil` when the sign-in failed.
+  ///   - issuesBefore: The store's issue count before the sign-in started.
+  func signedIn(_ server: ConnectedServer?, issuesBefore: Int) {
+    if let server {
+      accounts.remember(server)
+    } else if store.issues.count > issuesBefore, let issue = store.issues.last {
+      flowError = SignInError(issue.error)
     }
   }
 

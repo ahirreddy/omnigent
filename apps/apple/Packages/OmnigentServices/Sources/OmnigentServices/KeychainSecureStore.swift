@@ -8,16 +8,27 @@ public enum KeychainStorageMode: Sendable, Equatable {
   /// mode on iOS. It needs the keychain entitlement, so unsigned command-line test binaries on
   /// macOS fail with `errSecMissingEntitlement`.
   case dataProtection
-  /// The legacy file-based keychain. Works for unsigned processes, so tests use it when the
-  /// data-protection keychain is unavailable to them.
-  case fileBased
+  /// The legacy file-based keychain. Works for unsigned processes, so tests and ad-hoc signed
+  /// Debug builds use it when the data-protection keychain is unavailable to them.
+  ///
+  /// macOS ties a file-based item to the code signature that created it. For an ad-hoc signed
+  /// binary that is its code directory hash, which changes on every build. Another build can
+  /// overwrite the item's data but cannot delete it (`errSecInvalidOwnerEdit`), and reading it
+  /// blocks on a modal prompt for the login keychain password. Nothing suppresses that prompt,
+  /// not even an `LAContext` with `interactionNotAllowed`. With `build` set, the item's service
+  /// carries that build's identity, so each build reads and replaces only its own items. A
+  /// rebuilt app starts signed out instead of hanging on the prompt.
+  /// - Parameter build: The identity of the running build, normally its code directory hash, or
+  ///   `nil` to share items across builds (tests that create and delete their own items).
+  case fileBased(build: String?)
 }
 
 /// `SecureStore` host implementation over generic-password Keychain items.
 ///
 /// Items are device-only (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) and never synchronize
 /// through iCloud. Each `SecureStoreKey.namespace` selects a Keychain service through
-/// `serviceName`, and `SecureStoreKey.account` is the item's account.
+/// `serviceName` (suffixed with the build in ``KeychainStorageMode/fileBased(build:)``), and
+/// `SecureStoreKey.account` is the item's account.
 public final class KeychainSecureStore: SecureStore, Sendable {
   private let mode: KeychainStorageMode
   private let serviceName: @Sendable (String) -> String
@@ -115,7 +126,7 @@ public final class KeychainSecureStore: SecureStore, Sendable {
   private func baseQuery(for key: SecureStoreKey) -> [String: Any] {
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: serviceName(key.namespace),
+      kSecAttrService as String: service(for: key.namespace),
       kSecAttrAccount as String: key.account,
       kSecAttrSynchronizable as String: false,
     ]
@@ -125,8 +136,20 @@ public final class KeychainSecureStore: SecureStore, Sendable {
     return query
   }
 
+  /// The Keychain service of `namespace` in this store's mode.
+  /// - Parameter namespace: The owning flow.
+  /// - Returns: The service name.
+  func service(for namespace: String) -> String {
+    switch mode {
+    case .dataProtection, .fileBased(build: nil):
+      serviceName(namespace)
+    case .fileBased(build: let build?):
+      "\(serviceName(namespace)).build-\(build)"
+    }
+  }
+
   private func describe(_ key: SecureStoreKey) -> String {
-    "\(serviceName(key.namespace)) account \(key.account)"
+    "\(service(for: key.namespace)) account \(key.account)"
   }
 
   /// Maps a failed Keychain status. A locked device is `Unavailable`, which the core treats as

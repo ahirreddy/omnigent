@@ -34,6 +34,7 @@ let package = Package(
     .package(path: "../OmnigentDesktop"),
     .package(path: "../OmnigentTerminalUI"),
     .package(path: "../OmnigentTerminalStores"),
+    .package(path: "../OmnigentTestSupport"),
   ],
   targets: [
     .target(
@@ -61,6 +62,8 @@ let package = Package(
         .product(name: "OmnigentCoreFFI", package: "OmnigentCoreFFI"),
         .product(name: "OmnigentUIComponents", package: "OmnigentUI"),
         .product(name: "OmnigentAuthUI", package: "OmnigentAuthUI"),
+        .product(name: "OmnigentServices", package: "OmnigentServices"),
+        .product(name: "OmnigentTestSupport", package: "OmnigentTestSupport"),
       ],
       swiftSettings: mainActorSwiftSettings
     ),

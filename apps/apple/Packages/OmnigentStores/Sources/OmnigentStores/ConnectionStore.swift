@@ -200,15 +200,20 @@ public final class ConnectionStore {
   }
 
   /// Signs in with a username and password (accounts mode).
+  ///
+  /// The returned server is the outcome: ``phase`` follows through the core's events, which can
+  /// arrive after this returns, so it may still read `signingIn` here.
   /// - Parameters:
   ///   - username: The account name.
   ///   - password: The password; it is not kept.
-  public func signIn(username: String, password: String) async {
-    guard let core else { return }
+  /// - Returns: The server signed in to, or `nil` after recording the failure.
+  public func signIn(username: String, password: String) async -> ConnectedServer? {
+    guard let core else { return nil }
     do {
-      _ = try await core.signInWithPassword(username: username, password: password)
+      return try await core.signInWithPassword(username: username, password: password)
     } catch {
       record(scope: .connection, coreError(error))
+      return nil
     }
   }
 
@@ -229,13 +234,18 @@ public final class ConnectionStore {
   /// - Parameters:
   ///   - challenge: The challenge from ``beginBrowserSignIn(redirectURI:)``.
   ///   - callbackURL: The full callback URL.
-  public func completeBrowserSignIn(_ challenge: OidcChallenge, callbackURL: URL) async {
-    guard let core else { return }
+  /// - Returns: The server signed in to, or `nil` after recording the failure. Like
+  ///   ``signIn(username:password:)``, it can return before ``phase`` reads `connected`.
+  public func completeBrowserSignIn(_ challenge: OidcChallenge, callbackURL: URL) async
+    -> ConnectedServer?
+  {
+    guard let core else { return nil }
     do {
-      _ = try await core.completeOidcSignIn(
+      return try await core.completeOidcSignIn(
         attemptId: challenge.attemptId, callbackUrl: callbackURL.absoluteString)
     } catch {
       record(scope: .connection, coreError(error))
+      return nil
     }
   }
 

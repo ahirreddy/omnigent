@@ -29,7 +29,7 @@ import Testing
   }
 
   @Test func fileBasedKeychainRoundTrips() throws {
-    try withTemporaryStore(mode: .fileBased, accounts: ["round-trip"]) { store in
+    try withTemporaryStore(mode: .fileBased(build: nil), accounts: ["round-trip"]) { store in
       let item = SecureStoreKey(namespace: "oidc", account: "round-trip")
       let initial = try store.get(key: item)
       #expect(initial == nil)
@@ -52,7 +52,7 @@ import Testing
   }
 
   @Test func itemsAreIsolatedByAccount() throws {
-    try withTemporaryStore(mode: .fileBased, accounts: ["a", "b"]) { store in
+    try withTemporaryStore(mode: .fileBased(build: nil), accounts: ["a", "b"]) { store in
       let first = SecureStoreKey(namespace: "oidc", account: "a")
       let second = SecureStoreKey(namespace: "oidc", account: "b")
       try store.set(key: first, value: Data("one".utf8))
@@ -62,6 +62,27 @@ import Testing
       let observed = try store.get(key: first)
       #expect(observed == Data("one".utf8))
     }
+  }
+
+  /// Items of one build never match another build's: macOS would block reading them on a
+  /// password prompt, and refuse to delete them.
+  @Test func fileBasedItemsAreScopedToTheBuild() throws {
+    let service = "ai.omnigent.tests.\(UUID().uuidString)"
+    let item = SecureStoreKey(namespace: "oidc", account: "scoped")
+    let first = KeychainSecureStore(mode: .fileBased(build: "aaaa"), serviceName: { _ in service })
+    let second = KeychainSecureStore(
+      mode: .fileBased(build: "bbbb"), serviceName: { _ in service })
+    #expect(first.service(for: "oidc") == "\(service).build-aaaa")
+    defer {
+      #expect(throws: Never.self) { try first.delete(key: item) }
+      #expect(throws: Never.self) { try second.delete(key: item) }
+    }
+    try first.set(key: item, value: Data("first".utf8))
+    let unseen = try second.get(key: item)
+    #expect(unseen == nil)
+    try second.set(key: item, value: Data("second".utf8))
+    let own = try first.get(key: item)
+    #expect(own == Data("first".utf8))
   }
 
   /// Unsigned test binaries lack the keychain entitlement, so the data-protection keychain

@@ -56,12 +56,8 @@ extension SignInController {
         url: url, callback: .https(host: challenge.callbackHost, path: challenge.callbackPath),
         anchorProvider: KeyWindowAnchorProvider())
       let completedBefore = store.issues.count
-      await store.completeDatabricksSignIn(challenge, callbackURL: callback)
-      if case .connected(let server) = store.phase {
-        accounts.remember(server)
-      } else if store.issues.count > completedBefore, let issue = store.issues.last {
-        flowError = SignInError(issue.error)
-      }
+      let server = await store.completeDatabricksSignIn(challenge, callbackURL: callback)
+      signedIn(server, issuesBefore: completedBefore)
     } catch {
       store.cancelDatabricksSignIn(challenge)
       switch error {
@@ -149,13 +145,9 @@ extension SignInController {
 
   private func complete(_ challenge: OidcChallenge, callbackURL: URL) async {
     let before = store.issues.count
-    await store.completeBrowserSignIn(challenge, callbackURL: callbackURL)
+    let server = await store.completeBrowserSignIn(challenge, callbackURL: callbackURL)
     self.challenge = nil
-    if case .connected(let server) = store.phase {
-      accounts.remember(server)
-    } else if store.issues.count > before, let issue = store.issues.last {
-      flowError = SignInError(issue.error)
-    }
+    signedIn(server, issuesBefore: before)
   }
 
   private func openInBrowser(_ address: String) async -> Bool {

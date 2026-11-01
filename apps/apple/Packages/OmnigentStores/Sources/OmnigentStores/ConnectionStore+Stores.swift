@@ -22,15 +22,20 @@ extension ConnectionStore {
   /// - Parameters:
   ///   - challenge: The challenge from ``beginDatabricksSignIn()``.
   ///   - callbackURL: The full callback URL.
-  public func completeDatabricksSignIn(_ challenge: DatabricksChallenge, callbackURL: URL) async {
-    guard let core else { return }
+  /// - Returns: The server signed in to, or `nil` after recording the failure or when the
+  ///   sign-in was cancelled. It can return before ``phase`` reads `connected`.
+  public func completeDatabricksSignIn(_ challenge: DatabricksChallenge, callbackURL: URL) async
+    -> ConnectedServer?
+  {
+    guard let core else { return nil }
     if databricksChallenge?.attemptId == challenge.attemptId { databricksChallenge = nil }
     do {
-      _ = try await core.completeDatabricksSignIn(
+      return try await core.completeDatabricksSignIn(
         attemptId: challenge.attemptId, callbackUrl: callbackURL.absoluteString)
     } catch {
       let error = coreError(error)
       if !error.isCancellation { record(scope: .connection, error) }
+      return nil
     }
   }
 
