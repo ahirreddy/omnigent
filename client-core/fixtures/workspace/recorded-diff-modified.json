@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/diff/src/main.rs"
+  },
+  "status": 200,
+  "response": {
+    "object": "session.environment.filesystem.file_diff",
+    "path": "src/main.rs",
+    "before": "fn main() {\n    // Fixture needle: entry point.\n    println!(\"fixture needle says hi\");\n}\n",
+    "after": "fn main() {\n    // Fixture needle: entry point.\n    println!(\"fixture needle says hi\");\n}\n\n// Modified during fixture recording.\n"
+  }
+}

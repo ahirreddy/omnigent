@@ -70,7 +70,7 @@ checklist rows give the exact parameters.
 | GET | `/v1/hosts` | none | `{hosts:[{host_id, name, status, sandbox_provider?, configured_harnesses:{harness: bool\|string}}]}` | creation |
 | GET | `/v1/hosts/{host_id}/filesystem` | `after` (path cursor) | `{data:[{name, path, type:"directory"\|"file"}], has_more}` | creation (workspace picker) |
 | GET | `/v1/hosts/{host_id}/harnesses/{harness}/model-options` | none | `{models:[{id, model?, hidden?, displayName?, isDefault?, supportedReasoningEfforts?:[{reasoningEffort}]}]}` | configuration |
-| GET | `/v1/sessions/{id}/resources/environments/{env}/changes` | none | `{entries:[{path, status}]}` | Fetched on `session.changed_files.invalidated`. |
+| GET | `/v1/sessions/{id}/resources/environments/{env}/changes` | none | `{object:"list", data:[{path, name, status, bytes, modified_at, lines_added, lines_removed}], has_more}` | Fetched on `session.changed_files.invalidated`. NativeLab fixtures use `entries`; the client accepts both. |
 | POST | `/v1/sessions/{id}/resources/files` | multipart part `file` (escape the filename) | 201 `{id, metadata:{filename, bytes}}` (older servers: `{id, name, session_id}`) | Uploads. The file id is then referenced by an `input_image`/`input_file` part. |
 | GET | `/v1/sessions/{id}/resources/files/{file_id}/content` | none | bytes with `Content-Type`/`Content-Length` | The client enforces a 10 MiB cap. |
 

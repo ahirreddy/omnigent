@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/diff/.gitignore"
+  },
+  "status": 404,
+  "response": {
+    "error": {
+      "code": "not_found",
+      "message": "Path '.gitignore' is not in the changed-files registry for this session"
+    }
+  }
+}

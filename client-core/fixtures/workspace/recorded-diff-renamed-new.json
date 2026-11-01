@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/diff/src/library.rs"
+  },
+  "status": 200,
+  "response": {
+    "object": "session.environment.filesystem.file_diff",
+    "path": "src/library.rs",
+    "before": null,
+    "after": "pub mod util;\n\n/// Fixture needle helper.\npub fn fixture_needle() -> &'static str {\n    \"needle\"\n}\n"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/content-search",
+    "query": {
+      "q": "fixture\\s+needle",
+      "case_sensitive": "false",
+      "regex": "true",
+      "include": "",
+      "exclude": "",
+      "limit": "500"
+    }
+  },
+  "status": 200,
+  "response": {
+    "matches": [
+      {
+        "path": "src/main.rs",
+        "line": 2,
+        "column": 8,
+        "text": "    // Fixture needle: entry point.",
+        "match_start": 7,
+        "match_end": 21
+      },
+      {
+        "path": "src/main.rs",
+        "line": 3,
+        "column": 15,
+        "text": "    println!(\"fixture needle says hi\");",
+        "match_start": 14,
+        "match_end": 28
+      },
+      {
+        "path": "src/lib.rs",
+        "line": 3,
+        "column": 5,
+        "text": "/// Fixture needle helper.",
+        "match_start": 4,
+        "match_end": 18
+      },
+      {
+        "path": "README.md",
+        "line": 3,
+        "column": 21,
+        "text": "This workspace is a fixture needle for the Rust client core tests.",
+        "match_start": 20,
+        "match_end": 34
+      },
+      {
+        "path": "README.md",
+        "line": 4,
+        "column": 10,
+        "text": "A second Fixture Needle line lives here too.",
+        "match_start": 9,
+        "match_end": 23
+      },
+      {
+        "path": "docs/café notes.md",
+        "line": 3,
+        "column": 14,
+        "text": "Un café à la fixture needle.",
+        "match_start": 13,
+        "match_end": 27
+      },
+      {
+        "path": "docs/café notes.md",
+        "line": 4,
+        "column": 4,
+        "text": "😀 fixture needle again.",
+        "match_start": 3,
+        "match_end": 17
+      }
+    ],
+    "truncated": false,
+    "warning": null
+  }
+}

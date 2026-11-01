@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/filesystem",
+    "query": {
+      "limit": "2",
+      "order": "asc",
+      "after": "assets"
+    }
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "base": "/workspace/fixture",
+    "data": [
+      {
+        "id": "build.log",
+        "object": "session.environment.filesystem.entry",
+        "name": "build.log",
+        "path": "build.log",
+        "type": "file",
+        "bytes": 21,
+        "modified_at": 1793502799
+      },
+      {
+        "id": "docs",
+        "object": "session.environment.filesystem.entry",
+        "name": "docs",
+        "path": "docs",
+        "type": "directory",
+        "bytes": null,
+        "modified_at": 1793502799
+      }
+    ],
+    "first_id": "build.log",
+    "last_id": "docs",
+    "has_more": true
+  }
+}

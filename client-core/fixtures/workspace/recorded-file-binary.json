@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/filesystem/assets/logo.png"
+  },
+  "status": 200,
+  "response": {
+    "object": "session.environment.filesystem.file_content",
+    "path": "assets/logo.png",
+    "content_type": "image/png",
+    "bytes": 165,
+    "truncated": false,
+    "encoding": "base64",
+    "content": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAbElEQVR4nA3JQQEAMAgDMZSgpEqqhOepQAlKqmjLN1VFFypcTLHFFSmqmm7UuJlmm2vSP0QLCYsRK05EP0wbGZsxa87EP4YeNHiYYYcbMj+WXrR4mWWXW7I/jj50+JhjjztyP0IHBYcJGy4kPLAsVIExyOP/AAAAAElFTkSuQmCC"
+  }
+}

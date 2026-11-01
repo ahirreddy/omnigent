@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/filesystem/docs/caf%C3%A9%20notes.md"
+  },
+  "status": 200,
+  "response": {
+    "object": "session.environment.filesystem.file_content",
+    "path": "docs/café notes.md",
+    "content_type": "text/markdown",
+    "bytes": 73,
+    "truncated": false,
+    "encoding": "utf-8",
+    "content": "# Café notes\n\nUn café à la fixture needle.\n😀 fixture needle again.\n"
+  }
+}

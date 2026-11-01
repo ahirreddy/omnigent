@@ -1,0 +1,30 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/filesystem",
+    "query": {
+      "limit": "2",
+      "order": "asc",
+      "after": "docs"
+    }
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "base": "/workspace/fixture",
+    "data": [
+      {
+        "id": "src",
+        "object": "session.environment.filesystem.entry",
+        "name": "src",
+        "path": "src",
+        "type": "directory",
+        "bytes": null,
+        "modified_at": 1793502799
+      }
+    ],
+    "first_id": "src",
+    "last_id": "src",
+    "has_more": false
+  }
+}

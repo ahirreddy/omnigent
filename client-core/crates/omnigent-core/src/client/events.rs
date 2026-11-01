@@ -108,9 +108,10 @@ fn message_body(text: &str, attachments: &[UploadedAttachment]) -> Value {
 fn changed_files(value: &Value) -> Result<Vec<ChangedFile>, String> {
     let entries = match value {
         Value::Array(entries) => entries,
-        Value::Object(object) => match object.get("entries") {
+        // The server answers `{object: "list", data: [...]}`; NativeLab fixtures use `entries`.
+        Value::Object(object) => match object.get("data").or_else(|| object.get("entries")) {
             Some(Value::Array(entries)) => entries,
-            _ => return Err("`entries` is not an array".to_owned()),
+            _ => return Err("`data` is not an array".to_owned()),
         },
         _ => return Err("changes is not an object".to_owned()),
     };
@@ -682,5 +683,33 @@ impl<T: HttpTransport> ClientCore<T> {
         changed_files(&value).map_err(|detail| SessionError::MalformedResponse {
             detail: format!("{path}: {detail}"),
         })
+    }
+}
+
+#[cfg(test)]
+mod changed_files_tests {
+    use super::{ChangedFile, changed_files};
+    use serde_json::Value;
+
+    #[test]
+    fn server_list_envelope_decodes() {
+        let recorded: Value = serde_json::from_str(include_str!(
+            "../../../../fixtures/workspace/recorded-changes.json"
+        ))
+        .unwrap();
+        let files = changed_files(&recorded["response"]).unwrap();
+        assert_eq!(
+            files.first(),
+            Some(&ChangedFile {
+                path: "src/new_file.rs".into(),
+                status: "created".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn missing_list_is_an_error() {
+        let error = changed_files(&serde_json::json!({"object": "list"})).unwrap_err();
+        assert!(error.contains("`data`"), "{error}");
     }
 }

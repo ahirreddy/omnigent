@@ -1,0 +1,47 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/filesystem/src",
+    "query": {
+      "limit": "1000",
+      "order": "asc"
+    }
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "base": "/workspace/fixture/src",
+    "data": [
+      {
+        "id": "src/lib.rs",
+        "object": "session.environment.filesystem.entry",
+        "name": "lib.rs",
+        "path": "src/lib.rs",
+        "type": "file",
+        "bytes": 99,
+        "modified_at": 1793502799
+      },
+      {
+        "id": "src/main.rs",
+        "object": "session.environment.filesystem.entry",
+        "name": "main.rs",
+        "path": "src/main.rs",
+        "type": "file",
+        "bytes": 90,
+        "modified_at": 1793502799
+      },
+      {
+        "id": "src/util",
+        "object": "session.environment.filesystem.entry",
+        "name": "util",
+        "path": "src/util",
+        "type": "directory",
+        "bytes": null,
+        "modified_at": 1793502799
+      }
+    ],
+    "first_id": "src/lib.rs",
+    "last_id": "src/util",
+    "has_more": false
+  }
+}

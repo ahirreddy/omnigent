@@ -1,0 +1,53 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/changes"
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "data": [
+      {
+        "object": "session.environment.filesystem.entry",
+        "path": "src/new_file.rs",
+        "name": "new_file.rs",
+        "status": "created",
+        "bytes": 38,
+        "modified_at": 1793503249,
+        "lines_added": null,
+        "lines_removed": null
+      },
+      {
+        "object": "session.environment.filesystem.entry",
+        "path": "src/main.rs",
+        "name": "main.rs",
+        "status": "modified",
+        "bytes": 129,
+        "modified_at": 1793503249,
+        "lines_added": 2,
+        "lines_removed": 0
+      },
+      {
+        "object": "session.environment.filesystem.entry",
+        "path": "src/library.rs",
+        "name": "library.rs",
+        "status": "modified",
+        "bytes": 99,
+        "modified_at": 1793502799,
+        "lines_added": 6,
+        "lines_removed": 0
+      },
+      {
+        "object": "session.environment.filesystem.entry",
+        "path": "src/util/mod.rs",
+        "name": "mod.rs",
+        "status": "deleted",
+        "bytes": null,
+        "modified_at": null,
+        "lines_added": 0,
+        "lines_removed": 3
+      }
+    ],
+    "has_more": false
+  }
+}

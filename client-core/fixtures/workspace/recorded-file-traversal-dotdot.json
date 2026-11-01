@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/filesystem/src/%2E%2E/%2E%2E/etc/passwd"
+  },
+  "status": 400,
+  "response": {
+    "error": {
+      "code": "invalid_input",
+      "message": "Parent path segments are not permitted"
+    }
+  }
+}

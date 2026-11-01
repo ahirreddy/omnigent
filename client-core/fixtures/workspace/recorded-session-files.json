@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/files",
+    "query": {
+      "limit": "20"
+    }
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "data": [
+      {
+        "id": "56089d9c5df645a1befb01b03c0ac9da",
+        "object": "session.resource",
+        "type": "file",
+        "session_id": "207c660071e248e198c634aec763bb75",
+        "name": "fixture-upload.txt",
+        "metadata": {
+          "filename": "fixture-upload.txt",
+          "bytes": 23,
+          "created_at": 1793503265,
+          "source_metadata": null
+        }
+      }
+    ],
+    "first_id": "56089d9c5df645a1befb01b03c0ac9da",
+    "last_id": "56089d9c5df645a1befb01b03c0ac9da",
+    "has_more": false
+  }
+}

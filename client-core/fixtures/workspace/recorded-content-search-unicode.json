@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/content-search",
+    "query": {
+      "q": "needle again",
+      "case_sensitive": "false",
+      "regex": "false",
+      "include": "",
+      "exclude": "",
+      "limit": "500"
+    }
+  },
+  "status": 200,
+  "response": {
+    "matches": [
+      {
+        "path": "docs/café notes.md",
+        "line": 4,
+        "column": 12,
+        "text": "😀 fixture needle again.",
+        "match_start": 11,
+        "match_end": 23
+      }
+    ],
+    "truncated": false,
+    "warning": null
+  }
+}

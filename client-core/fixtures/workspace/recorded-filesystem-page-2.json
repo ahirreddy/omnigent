@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/filesystem",
+    "query": {
+      "limit": "2",
+      "order": "asc",
+      "after": ".gitignore"
+    }
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "base": "/workspace/fixture",
+    "data": [
+      {
+        "id": "README.md",
+        "object": "session.environment.filesystem.entry",
+        "name": "README.md",
+        "path": "README.md",
+        "type": "file",
+        "bytes": 133,
+        "modified_at": 1793502799
+      },
+      {
+        "id": "assets",
+        "object": "session.environment.filesystem.entry",
+        "name": "assets",
+        "path": "assets",
+        "type": "directory",
+        "bytes": null,
+        "modified_at": 1793502799
+      }
+    ],
+    "first_id": "README.md",
+    "last_id": "assets",
+    "has_more": true
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/files",
+    "body": {
+      "content_type": "multipart/form-data",
+      "parts": {
+        "file": {
+          "filename": "fixture-upload.txt",
+          "content_type": "text/plain",
+          "text": "Uploaded fixture note.\n"
+        }
+      }
+    }
+  },
+  "status": 201,
+  "response": {
+    "id": "56089d9c5df645a1befb01b03c0ac9da",
+    "object": "session.resource",
+    "type": "file",
+    "session_id": "207c660071e248e198c634aec763bb75",
+    "name": "fixture-upload.txt",
+    "metadata": {
+      "filename": "fixture-upload.txt",
+      "bytes": 23,
+      "created_at": 1793503265,
+      "source_metadata": null
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments"
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "data": [
+      {
+        "id": "env_terminal_tui_main",
+        "object": "session.resource",
+        "type": "environment",
+        "session_id": "207c660071e248e198c634aec763bb75",
+        "name": "Environment for tui:main",
+        "metadata": {
+          "environment_type": "caller_process",
+          "role": "terminal",
+          "terminal_name": "tui",
+          "session_key": "main",
+          "root": "/workspace/fixture",
+          "sandbox_type": "none"
+        }
+      },
+      {
+        "id": "default",
+        "object": "session.resource",
+        "type": "environment",
+        "session_id": "207c660071e248e198c634aec763bb75",
+        "name": "Primary environment",
+        "metadata": {
+          "environment_type": "caller_process",
+          "role": "primary"
+        }
+      }
+    ],
+    "first_id": "env_terminal_tui_main",
+    "last_id": "default",
+    "has_more": false
+  }
+}

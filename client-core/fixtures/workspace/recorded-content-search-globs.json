@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/content-search",
+    "query": {
+      "q": "fixture needle",
+      "case_sensitive": "false",
+      "regex": "false",
+      "include": "src/**",
+      "exclude": "**/main.rs",
+      "limit": "500"
+    }
+  },
+  "status": 200,
+  "response": {
+    "matches": [
+      {
+        "path": "src/lib.rs",
+        "line": 3,
+        "column": 5,
+        "text": "/// Fixture needle helper.",
+        "match_start": 4,
+        "match_end": 18
+      }
+    ],
+    "truncated": false,
+    "warning": null
+  }
+}

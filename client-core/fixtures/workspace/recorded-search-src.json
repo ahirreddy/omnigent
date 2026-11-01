@@ -1,0 +1,28 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/search/src",
+    "query": {
+      "q": "lib",
+      "limit": "500"
+    }
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "base": "/workspace/fixture/src",
+    "data": [
+      {
+        "id": "lib.rs",
+        "object": "session.environment.filesystem.entry",
+        "name": "lib.rs",
+        "path": "lib.rs",
+        "type": "file",
+        "bytes": 99,
+        "modified_at": 1793502799
+      }
+    ],
+    "has_more": false,
+    "truncated": false
+  }
+}

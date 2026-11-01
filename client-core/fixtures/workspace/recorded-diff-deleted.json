@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/diff/src/util/mod.rs"
+  },
+  "status": 200,
+  "response": {
+    "object": "session.environment.filesystem.file_diff",
+    "path": "src/util/mod.rs",
+    "before": "pub fn helper() -> u32 {\n    42\n}\n",
+    "after": null
+  }
+}

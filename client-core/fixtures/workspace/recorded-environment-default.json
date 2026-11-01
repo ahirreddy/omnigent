@@ -1,0 +1,30 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default"
+  },
+  "status": 200,
+  "response": {
+    "id": "default",
+    "object": "session.resource",
+    "type": "environment",
+    "session_id": "207c660071e248e198c634aec763bb75",
+    "name": "Primary environment",
+    "metadata": {
+      "environment_type": "caller_process",
+      "role": "primary",
+      "root": "/workspace/fixture",
+      "home": "/home/fixture",
+      "reachable": {
+        "unconfined": true,
+        "roots": [
+          {
+            "path": "/workspace/fixture",
+            "access": "write",
+            "origin": "cwd"
+          }
+        ]
+      }
+    }
+  }
+}

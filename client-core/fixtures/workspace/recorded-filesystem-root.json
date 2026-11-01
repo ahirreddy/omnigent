@@ -1,0 +1,83 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/filesystem",
+    "query": {
+      "limit": "1000",
+      "order": "asc"
+    }
+  },
+  "status": 200,
+  "response": {
+    "object": "list",
+    "base": "/workspace/fixture",
+    "data": [
+      {
+        "id": ".git",
+        "object": "session.environment.filesystem.entry",
+        "name": ".git",
+        "path": ".git",
+        "type": "directory",
+        "bytes": null,
+        "modified_at": 1793503131
+      },
+      {
+        "id": ".gitignore",
+        "object": "session.environment.filesystem.entry",
+        "name": ".gitignore",
+        "path": ".gitignore",
+        "type": "file",
+        "bytes": 14,
+        "modified_at": 1793502799
+      },
+      {
+        "id": "README.md",
+        "object": "session.environment.filesystem.entry",
+        "name": "README.md",
+        "path": "README.md",
+        "type": "file",
+        "bytes": 133,
+        "modified_at": 1793502799
+      },
+      {
+        "id": "assets",
+        "object": "session.environment.filesystem.entry",
+        "name": "assets",
+        "path": "assets",
+        "type": "directory",
+        "bytes": null,
+        "modified_at": 1793502799
+      },
+      {
+        "id": "build.log",
+        "object": "session.environment.filesystem.entry",
+        "name": "build.log",
+        "path": "build.log",
+        "type": "file",
+        "bytes": 21,
+        "modified_at": 1793502799
+      },
+      {
+        "id": "docs",
+        "object": "session.environment.filesystem.entry",
+        "name": "docs",
+        "path": "docs",
+        "type": "directory",
+        "bytes": null,
+        "modified_at": 1793502799
+      },
+      {
+        "id": "src",
+        "object": "session.environment.filesystem.entry",
+        "name": "src",
+        "path": "src",
+        "type": "directory",
+        "bytes": null,
+        "modified_at": 1793502799
+      }
+    ],
+    "first_id": ".git",
+    "last_id": "src",
+    "has_more": false
+  }
+}

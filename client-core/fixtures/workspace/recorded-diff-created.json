@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/207c660071e248e198c634aec763bb75/resources/environments/default/diff/src/new_file.rs"
+  },
+  "status": 200,
+  "response": {
+    "object": "session.environment.filesystem.file_diff",
+    "path": "src/new_file.rs",
+    "before": null,
+    "after": "pub fn created() -> bool {\n    true\n}\n"
+  }
+}
