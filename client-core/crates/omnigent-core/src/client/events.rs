@@ -26,6 +26,7 @@ use crate::attachments::{
     UploadFile, UploadTarget, UploadUncertainty, UploadedAttachment,
 };
 use crate::auth::endpoint::DATABRICKS_ORG_HEADER;
+use crate::auth::hosted::HostedConnection;
 use crate::decisions::{Decision, DecisionError, DecisionResponse, ResolveRoute};
 use crate::http::{HttpHeader, HttpTransport, TransportError};
 use crate::ledger::{SubmissionOperation, SubmissionOutcome};
@@ -143,10 +144,12 @@ impl<T: HttpTransport> ClientCore<T> {
     fn upload_target(&self, session_id: &str) -> Result<(UploadTarget, bool), SessionError> {
         let state = lock(&self.state);
         let server = state.connected.as_ref().ok_or(SessionError::NotConnected)?;
+        // The confirmed connection decides, not the host: an accounts server on 127.0.0.1 has
+        // real users, and its uploads carry the signed-in account like any other server's.
         let local = state
             .connection
             .as_ref()
-            .is_some_and(|connection| connection.endpoint().is_local_single_user());
+            .is_some_and(HostedConnection::is_single_user);
         let server_url =
             Url::parse(&server.base_url).map_err(|error| SessionError::MalformedResponse {
                 detail: format!("connected base URL: {error}"),

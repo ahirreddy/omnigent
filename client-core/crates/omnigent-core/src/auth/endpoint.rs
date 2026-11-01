@@ -4,8 +4,10 @@
 //! any deployment mount (`https://host/api/2.0/omnigent`), not a web UI URL. Accepted roots are:
 //!
 //! - `https://` URLs with an optional mount path;
-//! - literal loopback `http://127.0.0.1[:port]` or `http://[::1][:port]` roots, which mean
-//!   explicit local single-user mode;
+//! - literal loopback `http://127.0.0.1[:port]` or `http://[::1][:port]` roots. These only
+//!   relax the TLS requirement for a server on this machine; they say nothing about how it signs
+//!   in. A loopback server may run accounts, OIDC or single-user mode, and the server's own
+//!   answer (`/v1/info` and the manifest, see [`super::mode::resolve_mode`]) decides which;
 //! - on a Databricks workspace host only, exactly one numeric `?o=<workspace-id>` selector, which
 //!   becomes the `X-Databricks-Org-Id` header and never a request query parameter.
 //!
@@ -30,7 +32,7 @@ pub struct ServerEndpoint {
     base_url: String,
     origin: String,
     mount: String,
-    is_local_single_user: bool,
+    loopback_http: bool,
     databricks_org_id: Option<String>,
 }
 
@@ -87,7 +89,7 @@ impl ServerEndpoint {
             base_url,
             origin,
             mount,
-            is_local_single_user: local,
+            loopback_http: local,
             databricks_org_id,
         })
     }
@@ -110,10 +112,15 @@ impl ServerEndpoint {
         &self.mount
     }
 
-    /// An explicit loopback single-user server: no credentials are ever sent.
+    /// A literal `http://` loopback root (`127.0.0.1` or `[::1]`, no mount).
+    ///
+    /// This is only about transport: it is the one shape allowed without TLS. It does not mean
+    /// single-user. Whether the server needs credentials comes from its auth mode
+    /// ([`super::mode::resolve_mode`]), and a connection records what it confirmed
+    /// ([`super::hosted::HostedConnection::is_single_user`]).
     #[must_use]
-    pub const fn is_local_single_user(&self) -> bool {
-        self.is_local_single_user
+    pub const fn is_loopback_http(&self) -> bool {
+        self.loopback_http
     }
 
     /// The Databricks workspace selected by `?o=`. Never inferred from the hostname.
@@ -144,7 +151,7 @@ impl ServerEndpoint {
         Ok(url.into())
     }
 
-    /// The WebSocket URL of `path`: `ws://` for local single-user, `wss://` otherwise.
+    /// The WebSocket URL of `path`: `ws://` for a loopback `http://` root, `wss://` otherwise.
     ///
     /// # Errors
     ///
@@ -183,10 +190,8 @@ impl ServerEndpoint {
     ///
     /// # Errors
     ///
-    /// [`HostedAuthError::InvalidBaseUrl`] (see [`ServerEndpoint::url`]),
-    /// [`HostedAuthError::Unauthorized`] for a bearer [`validate_bearer`] rejects, and
-    /// [`HostedAuthError::UnsupportedAuthentication`] for any bearer on a local single-user
-    /// server.
+    /// [`HostedAuthError::InvalidBaseUrl`] (see [`ServerEndpoint::url`]) and
+    /// [`HostedAuthError::Unauthorized`] for a bearer [`validate_bearer`] rejects.
     pub fn request_with(
         &self,
         method: &str,
@@ -202,9 +207,6 @@ impl ServerEndpoint {
         }
         if let Some(bearer) = bearer {
             validate_bearer(bearer.expose())?;
-            if self.is_local_single_user {
-                return Err(HostedAuthError::UnsupportedAuthentication);
-            }
             headers.push(HttpHeader::new(
                 "Authorization",
                 format!("Bearer {}", bearer.expose()),
@@ -328,7 +330,7 @@ mod tests {
             "http://[::1]:6767",
         ] {
             let endpoint = ServerEndpoint::new(address).unwrap();
-            assert!(endpoint.is_local_single_user(), "{address}");
+            assert!(endpoint.is_loopback_http(), "{address}");
         }
         assert_eq!(
             ServerEndpoint::new("http://127.0.0.1:6767/")
@@ -360,7 +362,7 @@ mod tests {
     fn endpoint_rejects_unsafe_ur_ls_and_canonicalizes_mount() {
         let endpoint = ServerEndpoint::new("https://EXAMPLE.invalid:443/api/2.0/").unwrap();
         assert_eq!(endpoint.base_url(), "https://example.invalid/api/2.0");
-        assert!(!endpoint.is_local_single_user());
+        assert!(!endpoint.is_loopback_http());
         for address in [
             "http://example.invalid/api",
             "https://user:pass@example.invalid/api",
@@ -385,15 +387,29 @@ mod tests {
                 "{token:?}"
             );
         }
+        // NativeLab refused any bearer on a loopback root because it treated every loopback
+        // server as single-user. An accounts or OIDC server on 127.0.0.1 needs its bearer, so the
+        // endpoint now carries it; the server's auth mode decides whether one is sent at all.
         let local = ServerEndpoint::new("http://127.0.0.1:6767").unwrap();
-        assert_eq!(
-            local.request(
+        let request = local
+            .request(
                 "/v1/me",
                 &[],
-                Some(&SecretString::new("fixture-token-not-a-real-credential"))
-            ),
-            Err(HostedAuthError::UnsupportedAuthentication)
+                Some(&SecretString::new("fixture-token-not-a-real-credential")),
+            )
+            .unwrap();
+        assert_eq!(request.url, "http://127.0.0.1:6767/v1/me");
+        assert_eq!(
+            header(&request, "Authorization"),
+            Some("Bearer fixture-token-not-a-real-credential")
         );
+        for token in ["", "a\r\nX-Forwarded-Email: bob"] {
+            assert_eq!(
+                local.request("/v1/me", &[], Some(&SecretString::new(token))),
+                Err(HostedAuthError::Unauthorized { reason: None }),
+                "{token:?}"
+            );
+        }
     }
 
     #[test]
@@ -437,7 +453,7 @@ mod tests {
             let endpoint = ServerEndpoint::new(&raw).unwrap();
             assert_eq!(endpoint.base_url(), format!("https://{host}{MOUNT}?o=123"));
             assert_eq!(endpoint.databricks_org_id(), Some("123"));
-            assert!(!endpoint.is_local_single_user());
+            assert!(!endpoint.is_loopback_http());
         }
         let unscoped = ServerEndpoint::new(&format!("https://acme.databricks.com{MOUNT}")).unwrap();
         assert_eq!(unscoped.databricks_org_id(), None, "never infer an org");

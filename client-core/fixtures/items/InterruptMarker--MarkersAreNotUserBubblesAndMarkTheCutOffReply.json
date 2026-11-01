@@ -1,0 +1,111 @@
+[
+  {
+    "id": "u1",
+    "type": "message",
+    "role": "user",
+    "response_id": "r1",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "Refactor the parser"
+      }
+    ]
+  },
+  {
+    "id": "a1",
+    "type": "message",
+    "role": "assistant",
+    "response_id": "r1",
+    "content": [
+      {
+        "type": "output_text",
+        "text": "Starting with the tokenizer"
+      }
+    ]
+  },
+  {
+    "id": "cancel1",
+    "type": "message",
+    "role": "user",
+    "response_id": "cancel_5f1c0e2a9b7d4e3f8a6b2c1d0e9f8a7b",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[System: interrupted]\nThe user interrupted and abandoned their previous request (the user message immediately before this one). Do not resume or act on that interrupted request unless the user asks for it again; treat the next user message as the current instruction. The preceding assistant message may be incomplete."
+      }
+    ]
+  },
+  {
+    "id": "u2",
+    "type": "message",
+    "role": "user",
+    "response_id": "r2",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "Fix the tests first"
+      }
+    ]
+  },
+  {
+    "id": "a2",
+    "type": "message",
+    "role": "assistant",
+    "response_id": "r2",
+    "content": [
+      {
+        "type": "output_text",
+        "text": "Running the suite"
+      }
+    ]
+  },
+  {
+    "id": "native1",
+    "type": "message",
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[Request interrupted by user for tool use]"
+      }
+    ]
+  },
+  {
+    "id": "mention",
+    "type": "message",
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "Why did I see [System: interrupted] earlier?"
+      }
+    ]
+  },
+  {
+    "id": "lookalike",
+    "type": "message",
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[Request interrupted by user?]"
+      }
+    ]
+  },
+  {
+    "id": "attached",
+    "type": "message",
+    "role": "user",
+    "content": [
+      {
+        "type": "input_text",
+        "text": "[System: interrupted]\nthis is my own note"
+      },
+      {
+        "type": "input_file",
+        "file_id": "file1",
+        "filename": "notes.txt"
+      }
+    ]
+  }
+]

@@ -33,6 +33,8 @@ pub mod ticket;
 pub mod workspace;
 
 #[cfg(test)]
+mod loopback_tests;
+#[cfg(test)]
 pub(crate) mod testing;
 
 /// A credential (token, password, verifier). `Debug` never prints the value, and there is no

@@ -351,11 +351,19 @@ fn unauthorized_clears_connection_and_mounted_notification_mutation_uses_bearer(
         unregister_request(&endpoint, Some(&bearer), "../install"),
         Err(PushError::InvalidIdentifier { .. })
     ));
+    // NativeLab refused a bearer for any loopback root, treating every loopback server as
+    // single-user. An accounts server on 127.0.0.1 authenticates device registration with its
+    // bearer like a hosted one, so the request now carries it.
     let local = ServerEndpoint::new("http://127.0.0.1:6767").unwrap();
-    assert!(matches!(
-        unregister_request(&local, Some(&bearer), "install_a"),
-        Err(PushError::Endpoint(_))
-    ));
+    let request = unregister_request(&local, Some(&bearer), "install_a").unwrap();
+    assert_eq!(
+        request.url,
+        "http://127.0.0.1:6767/v1/notifications/devices/install_a"
+    );
+    assert_eq!(
+        header(&request, "Authorization"),
+        Some(format!("Bearer {TOKEN}").as_str())
+    );
 }
 
 #[test]

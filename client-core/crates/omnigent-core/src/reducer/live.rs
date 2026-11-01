@@ -14,7 +14,7 @@ use omnigent_protocol::{ConversationItem, Field, ServerStreamEvent, SessionStatu
 use serde_json::Value;
 
 use super::ReducerError;
-use super::activity::project_item;
+use super::activity::{interrupted_reply, project_item};
 use super::ops::{ChangeSet, Journal};
 use super::presentation::{EventSection, sections};
 use super::state::{
@@ -558,7 +558,7 @@ impl LiveReducer {
             item.response_id.clone_from(&self.response_id);
         }
         let Some(row) = project_item(&item)? else {
-            return Ok(Effects::default());
+            return Ok(self.mark_interrupted_reply(&item));
         };
         self.commit(row);
         Ok(Effects {
@@ -875,6 +875,27 @@ impl LiveReducer {
             changed: true,
             reconcile: true,
             error: message,
+            ..Effects::default()
+        }
+    }
+
+    /// For an interrupt marker, marks the reply it cut off (see [`interrupted_reply`]); any
+    /// other hidden item changes nothing.
+    fn mark_interrupted_reply(&mut self, item: &ConversationItem) -> Effects {
+        if !item.is_interrupt_marker() {
+            return Effects::default();
+        }
+        let Some(at) = interrupted_reply(&self.snap.rows) else {
+            return Effects::default();
+        };
+        if self.snap.rows.get(at).is_some_and(|row| row.interrupted) {
+            return Effects::default();
+        }
+        if let Some(row) = self.row_mut(at) {
+            row.interrupted = true;
+        }
+        Effects {
+            changed: true,
             ..Effects::default()
         }
     }

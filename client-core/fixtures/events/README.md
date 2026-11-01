@@ -92,3 +92,7 @@ Swift string interpolation was resolved to the concrete values each test uses, a
 - `LiveEventReconciliation--SessionIdleSealsAllActivityAndLateDeltasCannotRestartSpinner.jsonl`: Activity rows (reasoning, tool output, compaction) are open; session idle seals them; three late deltas must not change rows. Expect no streaming rows, no in_progress activity, status idle.
 - `LiveEventReconciliation--StoppedPartialTextAndFileKeepTheirChronologyAcrossHydration.jsonl`: Partial text then a file then completion. Hydration with [user, newer] (and later [user, final, newer]) happens between events (not in file). Expect ids ['user','live:response:r1:0',<file>,'newer'], then the final assistant item replaces the preview in place; file keeps file-1 reference.
 - `LiveEventReconciliation--StreamingStructuredToolOutputDoesNotLeakPartialSecrets.jsonl`: Structured tool output split across two deltas; the partial JSON (with api_key) must not leak. Expect after line 1 the detail has no 'PRIVATE'; after line 2 detail contains 'Visible' and no 'PRIVATE'.
+
+## Hand-built from the server contract
+
+- `InterruptMarker--RunnerMarkerFromStreamMarksTheCutOffReply.jsonl`: a reply is committed, then the runner's `[System: interrupted]` marker arrives as `session.input.consumed` (how the server republishes it), then the next user message. Expect rows `u1`, `a1` (interrupted), `u2`; no row carries the marker text.

@@ -29,7 +29,7 @@ use serde_json::Value;
 use crate::reducer::{
     ChangeSet, ConversationSnapshot, Decision, Effects, LiveReducer, ProjectionError, ReducerError,
     ReportedValue, Row, SessionEventState, SessionHeader, SessionSettings, TurnStatus,
-    decode_event, diff_rows, project_item, sections,
+    decode_event, diff_rows, interrupted_reply, project_item, sections,
 };
 
 /// Browser action ids remembered for de-duplication across replays and reconnects.
@@ -381,8 +381,11 @@ pub fn event_state_from_snapshot(session: &SessionSnapshot) -> SessionEventState
     }
 }
 
-/// Rows for history items in chronological order, de-duplicated by item id: a repeated id keeps
-/// its first position and its latest content. Hidden context is skipped.
+/// Rows for history items in chronological order, de-duplicated by item id.
+///
+/// A repeated id keeps its first position and its latest content. Hidden context is skipped; an
+/// interrupt marker among it marks the reply it cut off as interrupted (see
+/// [`interrupted_reply`]).
 ///
 /// # Errors
 ///
@@ -392,6 +395,11 @@ pub fn history_rows(items: &[ConversationItem]) -> Result<Vec<Row>, ProjectionEr
     let mut positions: BTreeMap<String, usize> = BTreeMap::new();
     for item in items {
         let Some(row) = project_item(item)? else {
+            if item.is_interrupt_marker()
+                && let Some(reply) = interrupted_reply(&rows).and_then(|at| rows.get_mut(at))
+            {
+                reply.interrupted = true;
+            }
             continue;
         };
         if let Some(slot) = positions.get(&row.id).and_then(|at| rows.get_mut(*at)) {

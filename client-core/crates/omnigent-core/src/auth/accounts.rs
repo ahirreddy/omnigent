@@ -46,8 +46,10 @@ pub struct AccountLoginOptions {
 
 /// Discovers the server's mode and, only for accounts mode, signs in with a password.
 ///
-/// No secret is sent unless discovery says accounts mode: local single-user and Databricks-org
-/// endpoints fail before any request, and other modes fail after the unauthenticated discovery.
+/// No secret is sent unless discovery says accounts mode: Databricks-org endpoints fail before
+/// any request, and other modes (the single-user runtime included) fail after the
+/// unauthenticated discovery. A loopback root is not refused by itself: an accounts server on
+/// `127.0.0.1` signs in like any other.
 ///
 /// # Errors
 ///
@@ -66,7 +68,7 @@ pub async fn login<T: HttpTransport>(
     options: AccountLoginOptions,
     now_ms: u64,
 ) -> Result<AccountCredential, HostedAuthError> {
-    if endpoint.is_local_single_user() || endpoint.databricks_org_id().is_some() {
+    if endpoint.databricks_org_id().is_some() {
         return Err(HostedAuthError::UnsupportedAuthentication);
     }
     let info = info_request(endpoint)?;
@@ -240,8 +242,8 @@ impl AccountCredential {
 ///
 /// # Errors
 ///
-/// [`HostedAuthError::InvalidCredentialRecord`] for a local single-user endpoint, a blank user id
-/// or an already-expired credential; [`HostedAuthError::Unauthorized`] for an invalid token
+/// [`HostedAuthError::InvalidCredentialRecord`] for a blank user id or an already-expired
+/// credential; [`HostedAuthError::Unauthorized`] for an invalid token
 /// (nothing is written); [`HostedAuthError::Store`] when the host store fails.
 #[allow(
     clippy::future_not_send,
@@ -253,10 +255,7 @@ pub async fn save_credential<S: SecureStore>(
     credential: &AccountCredential,
     now_ms: u64,
 ) -> Result<ServerIdentityScope, HostedAuthError> {
-    if endpoint.is_local_single_user()
-        || credential.user_id.trim().is_empty()
-        || credential.expires_at_ms <= now_ms
-    {
+    if credential.user_id.trim().is_empty() || credential.expires_at_ms <= now_ms {
         return Err(HostedAuthError::InvalidCredentialRecord);
     }
     validate_bearer(credential.token.expose())?;

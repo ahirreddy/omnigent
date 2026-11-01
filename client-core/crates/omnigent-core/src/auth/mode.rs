@@ -131,7 +131,10 @@ fn malformed(detail: &impl ToString) -> HostedAuthError {
 /// How a native client signs in to a server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthenticationMode {
-    /// An explicit loopback single-user server: no credentials.
+    /// An explicit single-user server on a loopback `http://` root: no credentials.
+    ///
+    /// Only the server says so (`/v1/info.single_user` with no sign-in of its own). Loopback
+    /// alone never implies it: an accounts or OIDC server on `127.0.0.1` signs in normally.
     LocalSingleUser,
     /// Username/password accounts.
     Accounts,
@@ -177,10 +180,30 @@ pub fn mode_from_info(endpoint: &ServerEndpoint, info: &ServerInfo) -> Authentic
         AuthenticationMode::Accounts
     } else if info.login_url.as_deref() == Some("/auth/login") {
         AuthenticationMode::Oidc
-    } else if info.single_user && endpoint.is_local_single_user() && info.login_url.is_none() {
+    } else if is_local_single_user(endpoint, info) {
         AuthenticationMode::LocalSingleUser
     } else {
         AuthenticationMode::Proxy
+    }
+}
+
+/// Whether `info` describes the explicit single-user runtime on a loopback `http://` root: the
+/// server reports `single_user` and has no sign-in of its own (no accounts, no login URL).
+///
+/// This is the only single-user rule. Host locality is necessary (the server's marker means
+/// "this machine's own server") but never sufficient.
+#[must_use]
+pub fn is_local_single_user(endpoint: &ServerEndpoint, info: &ServerInfo) -> bool {
+    endpoint.is_loopback_http()
+        && endpoint.databricks_org_id().is_none()
+        && info.is_pure_single_user()
+}
+
+impl ServerInfo {
+    /// `single_user` with no accounts and no login URL: nothing to sign in to.
+    #[must_use]
+    pub const fn is_pure_single_user(&self) -> bool {
+        self.single_user && !self.accounts_enabled && self.login_url.is_none()
     }
 }
 
@@ -188,7 +211,9 @@ pub fn mode_from_info(endpoint: &ServerEndpoint, info: &ServerInfo) -> Authentic
 /// `/v1/info`.
 ///
 /// The server derives both from one helper, so the manifest wins; `/v1/info` still decides
-/// single-user (`none` on a loopback single-user server).
+/// single-user. The local runtime reports `none` or `header` there (identity comes from the
+/// single-user marker, not a proxy), so either is [`AuthenticationMode::LocalSingleUser`] when
+/// [`is_local_single_user`] holds. `accounts` and `oidc` sign in wherever the server runs.
 #[must_use]
 pub fn resolve_mode(
     endpoint: &ServerEndpoint,
@@ -204,7 +229,7 @@ pub fn resolve_mode(
     match &auth.mode {
         AuthMode::Oidc => AuthenticationMode::Oidc,
         AuthMode::Accounts => AuthenticationMode::Accounts,
-        AuthMode::None if info.single_user && endpoint.is_local_single_user() => {
+        AuthMode::None | AuthMode::Header if is_local_single_user(endpoint, info) => {
             AuthenticationMode::LocalSingleUser
         }
         AuthMode::Header | AuthMode::Custom | AuthMode::None => AuthenticationMode::Proxy,

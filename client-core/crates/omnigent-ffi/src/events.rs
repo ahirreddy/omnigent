@@ -133,7 +133,8 @@ impl From<core::events::ChangedFilesUpdate> for ChangedFilesUpdate {
 /// What a server needs before it can be used.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum AuthenticationMode {
-    /// Loopback single-user: no sign-in.
+    /// The single-user local runtime on a loopback root, as the server reports it: no sign-in.
+    /// A loopback server in accounts or OIDC mode reports that mode instead.
     LocalSingleUser,
     /// Built-in accounts.
     Accounts,

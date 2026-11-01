@@ -159,7 +159,7 @@ impl NotificationScope {
     /// user `local`, workspace `0`. `localhost` and look-alike hosts never qualify.
     #[must_use]
     pub fn is_loopback_development(&self) -> bool {
-        self.endpoint.is_local_single_user()
+        self.endpoint.is_loopback_http()
             && self.user_id == LOCAL_USER
             && self.workspace_id == DEFAULT_WORKSPACE
     }

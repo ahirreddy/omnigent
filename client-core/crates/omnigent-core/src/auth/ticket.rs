@@ -76,8 +76,8 @@ pub enum PollStatus {
 ///
 /// # Errors
 ///
-/// [`HostedAuthError::UnsupportedAuthentication`] for local single-user and Databricks-org
-/// endpoints (before any request) and for non-OIDC servers; [`HostedAuthError::Entropy`];
+/// [`HostedAuthError::UnsupportedAuthentication`] for Databricks-org endpoints (before any
+/// request) and for non-OIDC servers, the single-user runtime included; [`HostedAuthError::Entropy`];
 /// [`HostedAuthError::LoginUpgradeRequired`] for the legacy sentinel;
 /// [`HostedAuthError::RedirectNotAllowed`] for a ticket or login URL outside the contract; and
 /// the response and transport errors.
@@ -92,7 +92,7 @@ pub async fn begin_browser_login<T: HttpTransport>(
     now_ms: u64,
 ) -> Result<BrowserLogin, HostedAuthError> {
     // Standalone OIDC callbacks do not establish Databricks workspace routing.
-    if endpoint.is_local_single_user() || endpoint.databricks_org_id().is_some() {
+    if endpoint.databricks_org_id().is_some() {
         return Err(HostedAuthError::UnsupportedAuthentication);
     }
     let response = transport.send(info_request(endpoint)?).await?;

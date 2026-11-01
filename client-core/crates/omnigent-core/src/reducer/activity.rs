@@ -47,6 +47,19 @@ pub enum ProjectionError {
     },
 }
 
+/// The reply an interrupt marker refers to: the last message row, when it is the agent's.
+///
+/// An interrupt marker ([`ConversationItem::is_interrupt_marker`]) is hidden context, so the
+/// interrupt shows as [`Row::interrupted`] on the reply it cut off, as the web client's
+/// "Interrupted" indicator does. A turn interrupted before any reply text has nothing to mark.
+#[must_use]
+pub fn interrupted_reply(rows: &[Row]) -> Option<usize> {
+    let at = rows
+        .iter()
+        .rposition(|row| matches!(row.role, RowRole::User | RowRole::Assistant))?;
+    (rows.get(at)?.role == RowRole::Assistant).then_some(at)
+}
+
 /// The row for one persisted item, or `None` for hidden context.
 ///
 /// # Errors

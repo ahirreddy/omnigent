@@ -231,6 +231,18 @@ pub struct MessageData {
 const CONTINUED_SESSION_PREFIX: &str =
     "This session is being continued from a previous conversation";
 
+/// First line of the user-role marker the runner appends after an interrupted turn
+/// (`_CANCELLATION_MARKER_TEXT` in `omnigent/runner/session_history.py`). The model reads it; the
+/// person never typed it.
+const RUNNER_INTERRUPT_HEADER: &str = "[System: interrupted]";
+
+/// Claude Code's own interrupt records (Escape), mirrored into the transcript as user messages
+/// (`_CLAUDE_INTERRUPT_RECORD_RE` in `omnigent/server/routes/_sessions/helpers.py`).
+const NATIVE_INTERRUPT_RECORDS: [&str; 2] = [
+    "[Request interrupted by user]",
+    "[Request interrupted by user for tool use]",
+];
+
 impl MessageData {
     /// Text and refusal blocks joined with newlines.
     #[must_use]
@@ -246,9 +258,10 @@ impl MessageData {
         })
     }
 
-    /// True when the message is hidden harness context: `is_meta`, or a user message that is a
-    /// whole legacy continuation or task notification. Text that merely mentions the markers
-    /// stays visible.
+    /// True when the message is hidden harness context: `is_meta`, a user message that is a
+    /// whole legacy continuation or task notification, or an interrupt marker
+    /// ([`MessageData::is_interrupt_marker`]). Text that merely mentions the markers stays
+    /// visible.
     #[must_use]
     pub fn is_hidden_context(&self) -> bool {
         self.is_meta
@@ -258,6 +271,25 @@ impl MessageData {
                     .iter()
                     .filter_map(ContentPart::text)
                     .any(is_legacy_context))
+            || self.is_interrupt_marker()
+    }
+
+    /// True for the user-role record of an interrupt rather than something the person typed:
+    /// the runner's `[System: interrupted]` marker, or Claude Code's
+    /// `[Request interrupted by user]` (and `... for tool use`) record.
+    ///
+    /// Matches the web client's `parseSystemMessage`/`isSystemUserContent`: the joined text's
+    /// first line must be exactly one of those headers, and a message with attachments is
+    /// always the person's own. Clients show the interrupt on the reply it cut off, not as a
+    /// user bubble.
+    #[must_use]
+    pub fn is_interrupt_marker(&self) -> bool {
+        if self.role != MessageRole::User || self.attachments().next().is_some() {
+            return false;
+        }
+        let text: String = self.content.iter().filter_map(ContentPart::text).collect();
+        let first_line = text.split('\n').next().unwrap_or_default();
+        first_line == RUNNER_INTERRUPT_HEADER || NATIVE_INTERRUPT_RECORDS.contains(&first_line)
     }
 }
 
@@ -711,6 +743,12 @@ impl ConversationItem {
     #[must_use]
     pub fn is_hidden_context(&self) -> bool {
         matches!(&self.data, ItemData::Message(message) if message.is_hidden_context())
+    }
+
+    /// True for an interrupt marker message (see [`MessageData::is_interrupt_marker`]).
+    #[must_use]
+    pub fn is_interrupt_marker(&self) -> bool {
+        matches!(&self.data, ItemData::Message(message) if message.is_interrupt_marker())
     }
 
     /// The native tool kind, for a provider tool item.

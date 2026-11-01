@@ -1,0 +1,6 @@
+{"type":"session.input.consumed","data":{"item_id":"u1","type":"message","data":{"role":"user","content":[{"type":"input_text","text":"Refactor the parser"}]}}}
+{"type":"response.created","response":{"id":"r1"}}
+{"type":"response.output_text.delta","delta":"Starting with the tokenizer"}
+{"type":"response.output_item.done","item":{"id":"a1","type":"message","role":"assistant","content":[{"type":"output_text","text":"Starting with the tokenizer"}]}}
+{"type":"session.input.consumed","data":{"item_id":"cancel1","type":"message","data":{"role":"user","content":[{"type":"input_text","text":"[System: interrupted]\nThe user interrupted and abandoned their previous request (the user message immediately before this one). Do not resume or act on that interrupted request unless the user asks for it again; treat the next user message as the current instruction. The preceding assistant message may be incomplete."}]}}}
+{"type":"session.input.consumed","data":{"item_id":"u2","type":"message","data":{"role":"user","content":[{"type":"input_text","text":"Fix the tests first"}]}}}

@@ -3,9 +3,12 @@
 //!
 //! Port of the connect path of `NativeLab`'s `LocalServerSessionClient`:
 //!
-//! 1. `GET /v1/info`. A loopback endpoint must be a pure single-user server; a hosted endpoint
-//!    needs a bearer, and a single-user-only answer there is rejected (it would be mistaken for
-//!    bearer auth).
+//! 1. `GET /v1/info`. A connection without a bearer to a loopback `http://` root expects the
+//!    pure single-user runtime and fails closed on anything else. Every other connection needs a
+//!    bearer, and a single-user-only answer there is rejected (it would be mistaken for bearer
+//!    auth). Which of the two to open is the caller's choice from the server's auth mode
+//!    ([`super::mode::resolve_mode`]); loopback alone does not imply single-user, so an accounts
+//!    or OIDC server on `127.0.0.1` connects with its bearer like any other.
 //! 2. `GET /v1/me`. The `user_id` must be non-blank (`local` for single-user), equal to the
 //!    expected account when one is saved, and equal to the identity confirmed by an earlier
 //!    connect (reconnect pinning).
@@ -34,6 +37,8 @@ pub struct ConnectedServer {
     pub user_id: String,
     /// The account scope for per-account state.
     pub scope: ServerIdentityScope,
+    /// The connection is to the explicit single-user runtime, without credentials.
+    pub single_user: bool,
 }
 
 /// A connection to one server with fixed credentials.
@@ -44,6 +49,7 @@ pub struct HostedConnection {
     expected_user_id: Option<String>,
     confirmed_user_id: Option<String>,
     connected: bool,
+    single_user: bool,
     generation: u64,
 }
 
@@ -52,9 +58,8 @@ impl HostedConnection {
     ///
     /// # Errors
     ///
-    /// [`HostedAuthError::Unauthorized`] for an invalid bearer,
-    /// [`HostedAuthError::UnsupportedAuthentication`] for a bearer on a local single-user
-    /// endpoint, and [`HostedAuthError::IdentityUnavailable`] for a blank expected user id.
+    /// [`HostedAuthError::Unauthorized`] for an invalid bearer and
+    /// [`HostedAuthError::IdentityUnavailable`] for a blank expected user id.
     pub fn new(
         endpoint: ServerEndpoint,
         bearer: Option<SecretString>,
@@ -62,9 +67,6 @@ impl HostedConnection {
     ) -> Result<Self, HostedAuthError> {
         if let Some(bearer) = &bearer {
             validate_bearer(bearer.expose())?;
-            if endpoint.is_local_single_user() {
-                return Err(HostedAuthError::UnsupportedAuthentication);
-            }
         }
         if expected_user_id
             .as_deref()
@@ -78,6 +80,7 @@ impl HostedConnection {
             expected_user_id,
             confirmed_user_id: None,
             connected: false,
+            single_user: false,
             generation: 0,
         })
     }
@@ -92,6 +95,18 @@ impl HostedConnection {
     #[must_use]
     pub const fn is_connected(&self) -> bool {
         self.connected
+    }
+
+    /// Whether the connection is to the explicit single-user runtime: no bearer, a loopback
+    /// `http://` root, and a server that confirmed it is single-user. `false` until connected.
+    #[must_use]
+    pub const fn is_single_user(&self) -> bool {
+        self.connected && self.single_user
+    }
+
+    /// Whether this connection opens as single-user: no bearer to a loopback `http://` root.
+    const fn expects_single_user(&self) -> bool {
+        self.bearer.is_none() && self.endpoint.is_loopback_http()
     }
 
     /// Bumped by every connect and disconnect; results from an older generation are stale.
@@ -127,15 +142,16 @@ impl HostedConnection {
             .send(self.build_request("GET", "/v1/info", &[], "application/json")?)
             .await?;
         let info = ServerInfo::from_json(&self.checked(&info_response)?.body)?;
-        if self.endpoint.is_local_single_user() {
-            if !info.single_user || info.accounts_enabled || info.login_url.is_some() {
+        let single_user = self.expects_single_user();
+        if single_user {
+            if !info.is_pure_single_user() {
                 return Err(HostedAuthError::UnsupportedAuthentication);
             }
         } else {
             if self.bearer.is_none() {
                 return Err(HostedAuthError::Unauthorized { reason: None });
             }
-            if info.single_user && !info.accounts_enabled && info.login_url.is_none() {
+            if info.is_pure_single_user() {
                 return Err(HostedAuthError::UnsupportedAuthentication);
             }
         }
@@ -152,7 +168,7 @@ impl HostedConnection {
             .get("user_id")
             .and_then(Value::as_str)
             .filter(|id| !id.trim().is_empty())
-            .filter(|id| !self.endpoint.is_local_single_user() || *id == LOCAL_USER_ID)
+            .filter(|id| !single_user || *id == LOCAL_USER_ID)
             .ok_or(HostedAuthError::IdentityUnavailable)?
             .to_owned();
         if self
@@ -168,10 +184,12 @@ impl HostedConnection {
         }
         self.confirmed_user_id = Some(user_id.clone());
         self.connected = true;
+        self.single_user = single_user;
         Ok(ConnectedServer {
             base_url: self.endpoint.base_url().to_owned(),
             scope: self.endpoint.identity_scope(&user_id),
             user_id,
+            single_user,
         })
     }
 
@@ -218,14 +236,14 @@ impl HostedConnection {
     /// # Errors
     ///
     /// [`HostedAuthError::NotConnected`] unless connected; [`HostedAuthError::UnsupportedAuthentication`]
-    /// for a connection that never carried a bearer (a loopback single-user server);
+    /// for a connection that never carried a bearer (the single-user runtime);
     /// [`HostedAuthError::Unauthorized`] for a bearer that cannot be sent. Nothing changes on
     /// error.
     pub fn rotate_bearer(&mut self, bearer: SecretString) -> Result<(), HostedAuthError> {
         if !self.connected {
             return Err(HostedAuthError::NotConnected);
         }
-        if self.bearer.is_none() || self.endpoint.is_local_single_user() {
+        if self.bearer.is_none() {
             return Err(HostedAuthError::UnsupportedAuthentication);
         }
         validate_bearer(bearer.expose())?;

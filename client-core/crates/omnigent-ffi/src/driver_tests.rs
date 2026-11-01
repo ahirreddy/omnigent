@@ -427,6 +427,174 @@ fn accounts_servers_need_sign_in_then_connect_with_a_bearer() {
     assert!(!debug.contains("tok-123"), "{debug}");
 }
 
+/// `Authorization` of the last request to `suffix`.
+fn last_authorization(harness: &Harness, suffix: &str) -> Option<String> {
+    lock(&harness.http.requests)
+        .iter()
+        .rev()
+        .find(|request| request.url.ends_with(suffix))
+        .unwrap_or_else(|| panic!("no request to {suffix}"))
+        .headers
+        .iter()
+        .find(|header| header.name == "Authorization")
+        .map(|header| header.value.clone())
+}
+
+const LOOPBACK: &str = "http://127.0.0.1:6797";
+
+/// An accounts-mode server on a loopback root, as `omnigent server` with
+/// `OMNIGENT_AUTH_PROVIDER=accounts` on 127.0.0.1 answers.
+fn loopback_accounts_server() -> Harness {
+    let harness = Harness::new(UrlPolicy::Development);
+    harness.http.route(
+        "/.well-known/omnigent.json",
+        json(200, r#"{"manifest_version":1,"auth":{"mode":"accounts"}}"#),
+    );
+    harness.http.route(
+        "/v1/info",
+        json(
+            200,
+            r#"{"single_user":false,"accounts_enabled":true,"login_url":"/login"}"#,
+        ),
+    );
+    harness.http.route(
+        "/auth/login",
+        json(
+            200,
+            r#"{"token":"tok-loop","expires_in":3600,"user":{"id":"u1"}}"#,
+        ),
+    );
+    harness
+        .http
+        .route("/v1/me", json(200, r#"{"user_id":"u1"}"#));
+    harness.http.route(
+        "/v1/sessions",
+        json(200, r#"{"object":"list","data":[],"has_more":false}"#),
+    );
+    harness
+}
+
+#[test]
+fn loopback_accounts_servers_sign_in_restore_and_sign_out() {
+    let mut harness = loopback_accounts_server();
+
+    // Discovery says accounts, so a loopback root asks for a password like a hosted one.
+    let core = Arc::clone(&harness.core);
+    let phase = harness
+        .run(async move { core.connect(LOOPBACK.into(), None).await })
+        .unwrap();
+    let ConnectionPhase::SignInRequired { methods, mode, .. } = phase else {
+        panic!("{phase:?}");
+    };
+    assert_eq!(methods, vec![crate::events::SignInMethod::Password]);
+    assert_eq!(mode, crate::events::AuthenticationMode::Accounts);
+    assert!(
+        !harness.http.paths().iter().any(|path| path == "/v1/me"),
+        "no identity request before sign-in"
+    );
+
+    // Password sign-in saves the credential and connects with it.
+    let core = Arc::clone(&harness.core);
+    let server = harness
+        .run(async move { core.sign_in_with_password("ada".into(), "pw".into()).await })
+        .unwrap();
+    assert_eq!(server.user_id, "u1");
+    assert_eq!(server.account_id, format!("{LOOPBACK}\nu1"));
+    assert_eq!(server.mode, crate::events::AuthenticationMode::Accounts);
+    assert_eq!(
+        lock(&harness.store.items).len(),
+        1,
+        "the credential was saved"
+    );
+    assert_eq!(
+        last_authorization(&harness, "/v1/me").as_deref(),
+        Some("Bearer tok-loop")
+    );
+    assert!(harness.events.all().iter().any(|event| matches!(
+        event,
+        CoreEvent::ConnectionChanged {
+            phase: ConnectionPhase::Connected { .. }
+        }
+    )));
+
+    // Restore: a fresh connect for the saved account loads the credential, no password.
+    harness.core.disconnect();
+    let http = Arc::clone(&harness.http);
+    let logins = move || {
+        http.paths()
+            .iter()
+            .filter(|path| *path == "/auth/login")
+            .count()
+    };
+    let before = logins();
+    let core = Arc::clone(&harness.core);
+    let phase = harness
+        .run(async move { core.connect(LOOPBACK.into(), Some("u1".into())).await })
+        .unwrap();
+    let ConnectionPhase::Connected { server } = phase else {
+        panic!("{phase:?}");
+    };
+    assert_eq!(server.user_id, "u1");
+    assert_eq!(logins(), before, "restore never sends the password again");
+    assert_eq!(
+        last_authorization(&harness, "/v1/me").as_deref(),
+        Some("Bearer tok-loop")
+    );
+
+    // Sign out deletes the credential; the next restore has to ask again.
+    let core = Arc::clone(&harness.core);
+    harness.run(async move { core.sign_out().await }).unwrap();
+    assert_eq!(lock(&harness.store.items).len(), 0);
+    let core = Arc::clone(&harness.core);
+    let phase = harness
+        .run(async move { core.connect(LOOPBACK.into(), Some("u1".into())).await })
+        .unwrap();
+    assert!(
+        matches!(phase, ConnectionPhase::SignInRequired { reason: None, .. }),
+        "{phase:?}"
+    );
+}
+
+#[test]
+fn loopback_single_user_servers_connect_without_credentials() {
+    // The recorded local runtime reports manifest mode `header` plus `single_user`.
+    let harness = connected();
+    let connected = harness
+        .events
+        .all()
+        .into_iter()
+        .find_map(|event| match event {
+            CoreEvent::ConnectionChanged {
+                phase: ConnectionPhase::Connected { server },
+            } => Some(server),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(connected.user_id, "local");
+    assert_eq!(
+        connected.mode,
+        crate::events::AuthenticationMode::LocalSingleUser
+    );
+    assert_eq!(last_authorization(&harness, "/v1/info"), None);
+    assert_eq!(last_authorization(&harness, "/v1/me"), None);
+    assert_eq!(lock(&harness.store.items).len(), 0);
+    // A password never goes to it.
+    let mut harness = harness;
+    let core = Arc::clone(&harness.core);
+    let error = harness
+        .run(async move { core.sign_in_with_password("ada".into(), "pw".into()).await })
+        .unwrap_err();
+    assert!(matches!(error, CoreError::Auth { .. }), "{error:?}");
+    assert!(
+        !harness
+            .http
+            .paths()
+            .iter()
+            .any(|path| path == "/auth/login"),
+        "no password request"
+    );
+}
+
 #[test]
 fn closing_a_session_cancels_its_stream() {
     let mut harness = connected();
