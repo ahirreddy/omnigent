@@ -95,7 +95,13 @@ struct ServerWindowRoot: View {
         return
       }
       if !Self.sameServer(id.serverURL, url) { id = id.rebound(to: url) }
-      if session.isSignedIn { Task { await services.didConnect(to: url) } }
+    }
+    session.signIn.onSignedIn = { server in
+      guard let url = URL(string: server.baseUrl) else {
+        services.logger.error("Signed in to an unparseable server URL: \(server.baseUrl, privacy: .public)")
+        return
+      }
+      Task { await services.didConnect(to: url) }
     }
     self.session = session
   }
@@ -137,9 +143,8 @@ struct ServerWindowRoot: View {
     if !force, Self.isConnecting(session, to: serverURL) { return }
     await session.signIn.connectNow(serverURL.absoluteString)
     guard !Task.isCancelled, id.serverURL == serverURL else { return }
-    if session.isSignedIn {
-      await services.didConnect(to: serverURL)
-    } else if case .failed(_, let error) = session.connection.phase {
+    // A signed-in outcome reaches `didConnect` through `signIn.onSignedIn`.
+    if case .failed(_, let error) = session.connection.phase {
       services.logger.notice(
         "Could not connect to \(serverURL.absoluteString, privacy: .public): \(error.message, privacy: .public)"
       )

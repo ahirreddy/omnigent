@@ -78,6 +78,36 @@ struct SignInControllerTests {
     #expect(second.store.connectedServer?.userId == "u1")
     #expect(second.flowError == nil, "\(String(describing: second.flowError))")
   }
+
+  @Test(
+    "Signing in and restoring both report the signed-in server once, from the call's result",
+    .timeLimit(.minutes(1)))
+  func signedInIsReportedForSignInAndRestore() async throws {
+    let suite = "ai.omnigent.appui.tests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let secureStore = InMemorySecureStore()
+
+    let first = try launch(secureStore: secureStore, defaults: defaults)
+    var firstReports: [String] = []
+    first.onSignedIn = { firstReports.append($0.baseUrl) }
+    await first.connectNow(serverURL)
+    #expect(firstReports.isEmpty, "a sign-in-required connect reported a signed-in server")
+    try await waitUntil("the password form") {
+      if case .signInRequired = first.store.phase { return true }
+      return false
+    }
+    first.actions.submitCredentials(AccountCredentials(username: "ada", password: "pw"))
+    try await waitUntil("the sign-in report") { !firstReports.isEmpty }
+    #expect(firstReports.count == 1)
+
+    let second = try launch(secureStore: secureStore, defaults: defaults)
+    var secondReports: [String] = []
+    second.onSignedIn = { secondReports.append($0.baseUrl) }
+    await second.connectNow(serverURL)
+    // The restore is reported when connectNow returns, before the phase event may have landed.
+    #expect(secondReports.count == 1)
+  }
 }
 
 #if DEBUG && os(macOS)

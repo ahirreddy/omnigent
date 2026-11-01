@@ -1,7 +1,7 @@
 public import Foundation
 public import Observation
 public import OmnigentAuthUI
-import OmnigentCoreFFI
+public import OmnigentCoreFFI
 public import OmnigentStores
 import OmnigentServices
 
@@ -31,6 +31,9 @@ public final class SignInController {
   /// Called after a connect resolved the canonical server, and when the user leaves a server
   /// for the picker (`nil`).
   @ObservationIgnored public var onServerChange: @MainActor (URL?) -> Void = { _ in }
+  /// Called once a connect, restore or sign-in reaches a signed-in server, from that call's own
+  /// result rather than ``ConnectionStore/phase``, which the core's event can update later.
+  @ObservationIgnored public var onSignedIn: @MainActor (ConnectedServer) -> Void = { _ in }
 
   @ObservationIgnored let opener: ExternalURLOpener
   @ObservationIgnored let accounts: RememberedAccounts
@@ -134,6 +137,9 @@ public final class SignInController {
     case .connected(let server):
       baseUrl = server.baseUrl
       accounts.remember(server)
+      if let url = URL(string: baseUrl) { onServerChange(url) }
+      onSignedIn(server)
+      return
     case .signInRequired(let url, _, _, _, _):
       baseUrl = url
     default:
@@ -167,6 +173,7 @@ public final class SignInController {
   func signedIn(_ server: ConnectedServer?, issuesBefore: Int) {
     if let server {
       accounts.remember(server)
+      onSignedIn(server)
     } else if store.issues.count > issuesBefore, let issue = store.issues.last {
       flowError = SignInError(issue.error)
     }
