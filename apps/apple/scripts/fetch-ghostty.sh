@@ -77,7 +77,7 @@ OUT="$VENDOR/out"
 SHORT="${GHOSTTY_COMMIT:0:12}"
 # `headers:GhosttyKit` is the staged layout (see "Namespace the headers" below); changing the
 # layout changes the stamp, so an older staging is rebuilt.
-STAMP_CONTENT="$GHOSTTY_REPO@$GHOSTTY_COMMIT zig-$ZIG_VERSION $TARGET ReleaseFast no-sentry headers:GhosttyKit"
+STAMP_CONTENT="$GHOSTTY_REPO@$GHOSTTY_COMMIT zig-$ZIG_VERSION $TARGET ReleaseFast no-sentry headers:GhosttyKit memset-localized"
 
 if [[ $FORCE -eq 0 && -f "$OUT/GHOSTTY_VERSION" && "$(cat "$OUT/GHOSTTY_VERSION")" == "$STAMP_CONTENT" ]]; then
   echo "fetch-ghostty: GhosttyKit ($SHORT, $TARGET) already staged at $OUT"
@@ -167,6 +167,9 @@ STAGE="$VENDOR/out.staging"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
 cp -R "$BUILT" "$STAGE/GhosttyKit.xcframework"
+# libghostty's quirks_memset takes its fill as a byte and so mishandles C callers passing an int;
+# keep it private to libghostty so Swift and the Rust core in the same image bind libSystem's.
+bash "$SCRIPT_DIR/localize-ghostty-memset.sh" "$STAGE/GhosttyKit.xcframework"
 # Namespace the headers: Xcode copies every static xcframework's Headers into one
 # `$(BUILT_PRODUCTS_DIR)/include`, so two of them with a top-level module.modulemap (this one and
 # omnigent_ffiFFI's) collide ("Multiple commands produce .../include/module.modulemap"). Under
