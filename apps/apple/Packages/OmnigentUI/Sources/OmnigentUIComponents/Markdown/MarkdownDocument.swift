@@ -1,0 +1,239 @@
+import Foundation
+import Markdown
+import SwiftUI
+
+/// Column alignment of a markdown table.
+nonisolated enum MarkdownAlignment: Hashable, Sendable {
+  case leading
+  case center
+  case trailing
+}
+
+/// A GFM table, cells already rendered to inline text.
+nonisolated struct MarkdownTable: Hashable, Sendable {
+  var header: [AttributedString]
+  var rows: [[AttributedString]]
+  var alignments: [MarkdownAlignment]
+}
+
+/// A list item's task checkbox.
+nonisolated enum MarkdownTask: Hashable, Sendable {
+  case none
+  case checked
+  case unchecked
+}
+
+/// One list item: its blocks and an optional task checkbox.
+nonisolated struct MarkdownListItem: Hashable, Sendable {
+  var blocks: [MarkdownBlock]
+  var task: MarkdownTask
+}
+
+/// A block of rendered markdown. Built once per text and cached (``MarkdownCache``).
+nonisolated indirect enum MarkdownBlock: Hashable, Sendable {
+  case paragraph(AttributedString)
+  case heading(level: Int, text: AttributedString)
+  case code(language: String?, code: String)
+  case quote([Self])
+  case list(ordered: Bool, start: Int, items: [MarkdownListItem])
+  case table(MarkdownTable)
+  case rule
+  /// Raw HTML, shown as written and never interpreted.
+  case html(String)
+}
+
+/// Parses markdown (CommonMark plus GFM tables, strikethrough and task lists) with Apple's
+/// `swift-markdown` into ``MarkdownBlock``s.
+///
+/// Safety: links keep only `http`, `https` and `mailto` destinations; anything else renders as
+/// plain text. Images are never fetched; they render as their alt text, linked when the source
+/// is `http(s)`. Raw HTML is shown verbatim.
+nonisolated enum MarkdownParser {
+  static let allowedLinkSchemes: Set<String> = ["http", "https", "mailto"]
+
+  static func parse(_ text: String) -> [MarkdownBlock] {
+    let document = Document(parsing: text, options: [.disableSmartOpts])
+    return blocks(document.children)
+  }
+
+  static func safeURL(_ destination: String?) -> URL? {
+    guard let destination, let url = URL(string: destination),
+      let scheme = url.scheme?.lowercased(), allowedLinkSchemes.contains(scheme)
+    else { return nil }
+    if scheme != "mailto", url.host() == nil { return nil }
+    return url
+  }
+
+  private static func blocks(_ children: MarkupChildren) -> [MarkdownBlock] {
+    children.compactMap(block)
+  }
+
+  private static func block(_ markup: any Markup) -> MarkdownBlock? {
+    switch markup {
+    case let paragraph as Paragraph:
+      return .paragraph(inline(paragraph.children))
+    case let heading as Heading:
+      return .heading(level: heading.level, text: inline(heading.children))
+    case let code as CodeBlock:
+      let language = code.language?.trimmingCharacters(in: .whitespaces)
+      var body = code.code
+      if body.hasSuffix("\n") { body.removeLast() }
+      return .code(language: language?.isEmpty == true ? nil : language, code: body)
+    case is BlockQuote, is OrderedList, is UnorderedList, is Markdown.Table:
+      return container(markup)
+    case is ThematicBreak:
+      return .rule
+    case let html as HTMLBlock:
+      let raw = html.rawHTML.trimmingCharacters(in: .newlines)
+      return raw.isEmpty ? nil : .html(raw)
+    default:
+      // Any other block (for example a doc directive) keeps its plain text.
+      let text = markup.format().trimmingCharacters(in: .whitespacesAndNewlines)
+      return text.isEmpty ? nil : .paragraph(AttributedString(text))
+    }
+  }
+
+  private static func container(_ markup: any Markup) -> MarkdownBlock? {
+    switch markup {
+    case let quote as BlockQuote:
+      .quote(blocks(quote.children))
+    case let list as OrderedList:
+      .list(ordered: true, start: Int(list.startIndex), items: items(list.listItems))
+    case let list as UnorderedList:
+      .list(ordered: false, start: 1, items: items(list.listItems))
+    case let table as Markdown.Table:
+      .table(self.table(table))
+    default:
+      nil
+    }
+  }
+
+  private static func items(_ items: some Sequence<ListItem>) -> [MarkdownListItem] {
+    items.map { item in
+      let task: MarkdownTask =
+        switch item.checkbox {
+        case .checked: .checked
+        case .unchecked: .unchecked
+        case nil: .none
+        }
+      return MarkdownListItem(blocks: blocks(item.children), task: task)
+    }
+  }
+
+  private static func table(_ table: Markdown.Table) -> MarkdownTable {
+    let alignments = table.columnAlignments.map { alignment -> MarkdownAlignment in
+      switch alignment {
+      case .center: .center
+      case .right: .trailing
+      case .left, nil: .leading
+      }
+    }
+    let header: [AttributedString] = table.head.cells.map { inline($0.children) }
+    let rows: [[AttributedString]] = table.body.rows.map { row in
+      row.cells.map { inline($0.children) }
+    }
+    let width = max(header.count, rows.map(\.count).max() ?? 0)
+    func padded(_ cells: [AttributedString]) -> [AttributedString] {
+      cells + Array(repeating: AttributedString(), count: max(0, width - cells.count))
+    }
+    return MarkdownTable(
+      header: padded(header), rows: rows.map(padded),
+      alignments: alignments + Array(repeating: .leading, count: max(0, width - alignments.count))
+    )
+  }
+
+  private static func inline(_ children: MarkupChildren) -> AttributedString {
+    var result = AttributedString()
+    for child in children {
+      result.append(inline(child))
+    }
+    return result
+  }
+
+  private static func inline(_ markup: any Markup) -> AttributedString {
+    switch markup {
+    case let text as Markdown.Text:
+      return AttributedString(text.string)
+    case is SoftBreak:
+      return AttributedString(" ")
+    case is LineBreak:
+      return AttributedString("\n")
+    case let code as InlineCode:
+      var span = AttributedString(code.code)
+      span.inlinePresentationIntent = .code
+      span.backgroundColor = Color.secondary.opacity(0.14)
+      return span
+    case is Emphasis, is Strong, is Strikethrough:
+      return styled(markup)
+    case is Markdown.Link, is Markdown.Image:
+      return linked(markup)
+    case let html as InlineHTML:
+      return AttributedString(html.rawHTML)
+    default:
+      return AttributedString(markup.format())
+    }
+  }
+
+  private static func linked(_ markup: any Markup) -> AttributedString {
+    switch markup {
+    case let link as Markdown.Link:
+      var span = inline(link.children)
+      if span.characters.isEmpty { span = AttributedString(link.destination ?? "") }
+      if let url = safeURL(link.destination) { span.link = url }
+      return span
+    case let image as Markdown.Image:
+      let alt = String(inline(image.children).characters)
+      var span = AttributedString(alt.isEmpty ? "[Image]" : "[Image: \(alt)]")
+      if let url = safeURL(image.source) { span.link = url }
+      return span
+    default:
+      return AttributedString(markup.format())
+    }
+  }
+
+  private static func styled(_ markup: any Markup) -> AttributedString {
+    switch markup {
+    case let emphasis as Emphasis: adding(.emphasized, to: inline(emphasis.children))
+    case let strong as Strong: adding(.stronglyEmphasized, to: inline(strong.children))
+    case let strike as Strikethrough: adding(.strikethrough, to: inline(strike.children))
+    default: AttributedString(markup.format())
+    }
+  }
+
+  private static func adding(_ intent: InlinePresentationIntent, to text: AttributedString)
+    -> AttributedString
+  {
+    var text = text
+    for run in text.runs {
+      let existing = run.inlinePresentationIntent ?? []
+      text[run.range].inlinePresentationIntent = existing.union(intent)
+    }
+    return text
+  }
+}
+
+/// A bounded cache of parsed markdown, so scrolling a long transcript re-parses nothing.
+@MainActor
+final class MarkdownCache {
+  static let shared = MarkdownCache(limit: 512)
+
+  private let limit: Int
+  private var entries: [String: [MarkdownBlock]] = [:]
+  private var order: [String] = []
+
+  init(limit: Int) {
+    self.limit = limit
+  }
+
+  func blocks(for text: String) -> [MarkdownBlock] {
+    if let cached = entries[text] { return cached }
+    let parsed = MarkdownParser.parse(text)
+    entries[text] = parsed
+    order.append(text)
+    if order.count > limit {
+      let evicted = order.removeFirst()
+      entries[evicted] = nil
+    }
+    return parsed
+  }
+}

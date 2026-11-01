@@ -1,0 +1,142 @@
+import OmnigentUIComponents
+import SwiftUI
+
+#if os(macOS)
+  import AppKit
+#endif
+
+/// The component playground: the full Omnigent layout with sample data in a real window, with a
+/// scenario switcher in the toolbar and the Scenario menu (Command-1 through Command-7).
+///
+/// Run with `swift run OmnigentPlayground`. Set `OMNIGENT_PLAYGROUND_THEME=<id>` and
+/// `OMNIGENT_PLAYGROUND_APPEARANCE=light|dark` to start themed. Set `OMNIGENT_PLAYGROUND_SNAPSHOT=<file.png>` to write
+/// a screenshot of the window once it has drawn, and `OMNIGENT_PLAYGROUND_SCENARIO=<name>` to
+/// start in a scenario (for example `approvals`).
+@main
+struct OmnigentPlaygroundApp: App {
+  #if os(macOS)
+    @NSApplicationDelegateAdaptor(PlaygroundAppDelegate.self) private var appDelegate
+  #endif
+  @State private var model = Self.initialModel()
+
+  private static func initialModel() -> PlaygroundModel {
+    let environment = ProcessInfo.processInfo.environment
+    let model = PlaygroundModel(
+      scenario: environment["OMNIGENT_PLAYGROUND_SCENARIO"]
+        .flatMap(PlaygroundScenario.init(rawValue:)) ?? .streaming)
+    if let theme = environment["OMNIGENT_PLAYGROUND_THEME"] { model.themeID = theme }
+    if let appearance = environment["OMNIGENT_PLAYGROUND_APPEARANCE"]
+      .flatMap(AppearancePreference.init(rawValue:))
+    {
+      model.appearance = appearance
+    }
+    return model
+  }
+
+  var body: some Scene {
+    WindowGroup("Omnigent Playground") {
+      PlaygroundView(model: model)
+        .toolbar {
+          ToolbarItem(placement: .navigation) {
+            Picker("Scenario", selection: $model.scenario) {
+              ForEach(PlaygroundScenario.allCases) { scenario in
+                Label(scenario.title, systemImage: scenario.systemImage).tag(scenario)
+              }
+            }
+            .pickerStyle(.menu)
+            .help("Switch the sample scenario")
+          }
+          ToolbarItem(placement: .navigation) {
+            Menu {
+              Picker("Theme", selection: $model.themeID) {
+                ForEach(PlaygroundModel.themes) { theme in Text(theme.name).tag(theme.id) }
+              }
+              Picker("Appearance", selection: $model.appearance) {
+                ForEach(AppearancePreference.allCases) { preference in
+                  Text(preference.title).tag(preference)
+                }
+              }
+            } label: {
+              Label("Theme", systemImage: "paintpalette")
+            }
+            .help("Theme and appearance")
+          }
+        }
+        #if os(macOS)
+          .frame(minWidth: 900, minHeight: 600)
+          .task { await PlaygroundSnapshot.writeIfRequested() }
+        #endif
+    }
+    #if os(macOS)
+      .defaultSize(width: 1_440, height: 900)
+    #endif
+    .commands {
+      OmnigentSessionCommands()
+      CommandMenu("Scenario") {
+        ForEach(Array(PlaygroundScenario.allCases.enumerated()), id: \.element) { index, scenario in
+          Button(scenario.title) { model.scenario = scenario }
+            .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+        }
+      }
+    }
+  }
+}
+
+#if os(macOS)
+  /// A command-line executable has no bundle, so it must ask to be a regular, frontmost app.
+  final class PlaygroundAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+      NSApplication.shared.setActivationPolicy(.regular)
+      NSApplication.shared.activate()
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+      true
+    }
+  }
+
+  /// Writes the key window to `OMNIGENT_PLAYGROUND_SNAPSHOT` after it has drawn.
+  enum PlaygroundSnapshot {
+    enum SnapshotError: Error, CustomStringConvertible {
+      case noWindow
+      case captureFailed(status: Int32)
+
+      var description: String {
+        switch self {
+        case .noWindow: "The playground has no window to capture."
+        case .captureFailed(let status): "screencapture exited with status \(status)."
+        }
+      }
+    }
+
+    static func writeIfRequested() async {
+      guard let path = ProcessInfo.processInfo.environment["OMNIGENT_PLAYGROUND_SNAPSHOT"] else {
+        return
+      }
+      do {
+        try await Task.sleep(for: .seconds(2))
+        try write(to: URL(filePath: path))
+        print("Wrote \(path)")
+      } catch {
+        // Report and keep running: the playground itself is still usable.
+        FileHandle.standardError.write(Data("Snapshot failed: \(error)\n".utf8))
+      }
+    }
+
+    /// Captures the whole window, chrome and vibrancy included, with `screencapture`. Needs the
+    /// Screen Recording permission for the launching terminal.
+    private static func write(to url: URL) throws {
+      guard let window = NSApplication.shared.windows.first(where: \.isVisible) else {
+        throw SnapshotError.noWindow
+      }
+      let process = Process()
+      process.executableURL = URL(filePath: "/usr/sbin/screencapture")
+      process.arguments = ["-x", "-o", "-l", String(window.windowNumber), url.path]
+      try process.run()
+      process.waitUntilExit()
+      guard process.terminationStatus == 0 else {
+        throw SnapshotError.captureFailed(status: process.terminationStatus)
+      }
+    }
+  }
+#endif
