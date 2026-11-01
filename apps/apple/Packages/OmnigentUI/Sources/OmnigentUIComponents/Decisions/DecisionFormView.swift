@@ -82,6 +82,7 @@ struct DecisionFormFields: View {
   let fields: [FormField]
   @Binding var draft: FormDraft
   let cardID: String
+  @Environment(\.decisionIDPrefix) private var idPrefix
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -102,7 +103,7 @@ struct DecisionFormFields: View {
           control(for: field)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("request-field-\(cardID)-\(field.key)")
+        .accessibilityIdentifier("\(idPrefix)request-field-\(cardID)-\(field.key)")
       }
     }
   }

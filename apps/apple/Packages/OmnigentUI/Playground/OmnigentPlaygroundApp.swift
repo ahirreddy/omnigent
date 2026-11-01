@@ -1,3 +1,4 @@
+import OmnigentTerminalUI
 import OmnigentUIComponents
 import OmnigentWorkspaceUI
 import SwiftUI
@@ -12,7 +13,8 @@ import SwiftUI
 /// Run with `swift run OmnigentPlayground`. Set `OMNIGENT_PLAYGROUND_THEME=<id>` and
 /// `OMNIGENT_PLAYGROUND_APPEARANCE=light|dark` to start themed. Set `OMNIGENT_PLAYGROUND_SNAPSHOT=<file.png>` to write
 /// a screenshot of the window once it has drawn, and `OMNIGENT_PLAYGROUND_SCENARIO=<name>` to
-/// start in a scenario (for example `approvals`).
+/// start in a scenario (for example `approvals`). Set `OMNIGENT_PLAYGROUND_INSPECTOR=<tab>` (for
+/// example `terminals`) to open the right panel on that tab.
 @main
 struct OmnigentPlaygroundApp: App {
   #if os(macOS)
@@ -30,6 +32,10 @@ struct OmnigentPlaygroundApp: App {
       .flatMap(AppearancePreference.init(rawValue:))
     {
       model.preferences.mode = appearance
+    }
+    if let tab = environment["OMNIGENT_PLAYGROUND_INSPECTOR"].flatMap(InspectorTab.init(rawValue:)) {
+      model.inspectorTab = tab
+      model.showsInspector = true
     }
     return model
   }
@@ -87,7 +93,8 @@ struct OmnigentPlaygroundApp: App {
   }
 }
 
-/// Real Files and Changes content from `OmnigentWorkspaceUI`, on its sample data source.
+/// Real Files and Changes content from `OmnigentWorkspaceUI`, on its sample data source, and the
+/// real terminal list and surface from `OmnigentTerminalUI`, on local echo shells.
 enum PlaygroundWorkspace {
   static let browser = WorkspaceBrowserModel(source: SampleWorkspaceDataSource())
 
@@ -98,7 +105,57 @@ enum PlaygroundWorkspace {
           .task { await WorkspaceGallery.prepare(browser.tree) }),
       changes: AnyView(
         ChangedFilesList(model: browser.changes, source: browser.source, actions: .none) { _ in }
-          .task { await browser.changes.reload() }))
+          .task { await browser.changes.reload() }),
+      terminals: AnyView(PlaygroundTerminals()))
+  }
+}
+
+/// The Terminals tab as the app lays it out (the list above the attached surface), over sample
+/// rows and a local echo shell. Nothing here talks to a server.
+struct PlaygroundTerminals: View {
+  @State private var items = [
+    TerminalListItem(
+      id: "terminal_claude_main", title: "claude \u{00B7} main", status: .active,
+      isAgentTerminal: true),
+    TerminalListItem(
+      id: "terminal_zsh_u-4f2k9q", title: "zsh \u{00B7} u-4f2k9q", status: .idle,
+      isAgentTerminal: false),
+    TerminalListItem(
+      id: "terminal_bash_u-0c1d2e", title: "bash \u{00B7} u-0c1d2e", status: .exited,
+      isAgentTerminal: false),
+  ]
+  @State private var selection: TerminalListItem.ID? = "terminal_zsh_u-4f2k9q"
+
+  var body: some View {
+    VStack(spacing: 0) {
+      TerminalListView(
+        items: items, shellChoices: ["zsh", "bash"], canEdit: true, errorMessage: nil,
+        selection: $selection,
+        onCreate: { shell in
+          let item = TerminalListItem(
+            id: "terminal_\(shell)_\(items.count)", title: "\(shell) \u{00B7} new", status: .idle,
+            isAgentTerminal: false)
+          items.append(item)
+          selection = item.id
+        },
+        onClose: { id in
+          items.removeAll { $0.id == id }
+          if selection == id { selection = nil }
+        }
+      )
+      .listStyle(.plain)
+      .frame(minHeight: 96, idealHeight: 160, maxHeight: selection == nil ? .infinity : 200)
+      if let selection, let item = items.first(where: { $0.id == selection }) {
+        Divider()
+        SessionTerminalView(
+          connection: EchoTerminalConnection(
+            prompt: "\(item.title.split(separator: " ").first ?? "sh")$ ",
+            banner: "Attached to \(item.title)")
+        )
+        .id(selection)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+    }
   }
 }
 

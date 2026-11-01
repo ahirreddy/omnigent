@@ -8,7 +8,7 @@ import OmnigentWorkspaceUI
 import SwiftUI
 
 /// One open conversation on screen: `ConversationScreen` (header, transcript or the harness
-/// terminal, decision dock, composer, and the right panel with Files and Changes) over a
+/// terminal, decision dock, composer, and the right panel with Files, Changes and Terminals) over a
 /// ``ConversationStore``. Send, interrupt, decisions and the model, effort and harness menus go
 /// through the stores; everything they report, including failures, is rendered.
 struct ConversationContainer: View {
@@ -27,7 +27,6 @@ struct ConversationContainer: View {
   @State private var isStopping = false
   @State private var dismissedSendError: CoreError?
   @State private var failures: [String] = []
-  @State private var showsTerminals = false
   @State private var harnessSurface: TerminalSurfaceController?
 
   var body: some View {
@@ -40,23 +39,6 @@ struct ConversationContainer: View {
       extras: ConversationExtras(slots: workspaceSlots, navigation: navigation)
     ) {
       harnessTerminal
-    }
-    .toolbar {
-      if terminals != nil {
-        ToolbarItem(placement: .primaryAction) {
-          Button("Terminals", systemImage: "apple.terminal") { showsTerminals = true }
-            .help("Show this session's terminals")
-            .accessibilityIdentifier("toolbar.terminals")
-        }
-      }
-    }
-    .sheet(isPresented: $showsTerminals) {
-      if let terminals {
-        TerminalsSheet(
-          store: terminals, permissionLevel: conversation.header?.permissionLevel,
-          hostID: conversation.header?.settings?.hostId
-        ) { showsTerminals = false }
-      }
     }
     .sheet(isPresented: documentPresented) {
       if let workspace {
@@ -114,17 +96,25 @@ struct ConversationContainer: View {
     }
   }
 
-  /// The right panel's Files and Changes tabs, over the core's workspace reads.
+  /// The right panel's Files and Changes tabs, over the core's workspace reads, and its
+  /// Terminals tab over the session's terminal store.
   private var workspaceSlots: WorkspaceSlots {
-    guard let workspace else { return WorkspaceSlots() }
-    return WorkspaceSlots(
-      files: AnyView(WorkspacePanel(model: workspace)),
-      changes: AnyView(
-        ChangedFilesList(
-          model: workspace.changes, source: workspace.source, actions: .none
-        ) { file in
-          Task { await workspace.open(.diff(path: file.path)) }
-        }))
+    var slots = WorkspaceSlots()
+    if let terminals {
+      slots.terminals = AnyView(
+        TerminalsPanel(
+          store: terminals, permissionLevel: conversation.header?.permissionLevel,
+          hostID: conversation.header?.settings?.hostId))
+    }
+    guard let workspace else { return slots }
+    slots.files = AnyView(WorkspacePanel(model: workspace))
+    slots.changes = AnyView(
+      ChangedFilesList(
+        model: workspace.changes, source: workspace.source, actions: .none
+      ) { file in
+        Task { await workspace.open(.diff(path: file.path)) }
+      })
+    return slots
   }
 
   private var documentPresented: Binding<Bool> {

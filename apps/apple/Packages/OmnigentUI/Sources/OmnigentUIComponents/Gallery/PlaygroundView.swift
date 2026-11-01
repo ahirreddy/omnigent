@@ -93,7 +93,10 @@ public final class PlaygroundModel {
   var startComposer = PreviewData.startComposer
   var draft = ""
   var startDraft = ""
-  var showsInspector = false
+  /// Whether the right panel shows.
+  public var showsInspector = false
+  /// The right panel's tab.
+  public var inspectorTab: InspectorTab = .files
   var mode: SessionViewMode = .chat
   var fork: ForkViewState?
   var share = PreviewData.share

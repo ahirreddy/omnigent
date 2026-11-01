@@ -125,6 +125,8 @@ private struct HoverHighlight: ViewModifier {
 struct CopyButton: View {
   let text: String
   var label = "Copy"
+  /// The button's accessibility identifier.
+  var identifier: String?
   @State private var copied = false
 
   var body: some View {
@@ -142,6 +144,7 @@ struct CopyButton: View {
     .foregroundStyle(.secondary)
     .help(label)
     .accessibilityLabel(copied ? "Copied" : label)
+    .accessibilityIdentifier(identifier ?? "", isEnabled: identifier != nil)
     .task(id: copied) {
       guard copied else { return }
       do {

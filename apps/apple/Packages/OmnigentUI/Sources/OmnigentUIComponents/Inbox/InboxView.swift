@@ -40,6 +40,8 @@ public struct InboxView: View {
         }
       }
     }
+    // On the list, not the screen: the toolbar's filter would otherwise take it too.
+    .accessibilityIdentifier("inbox")
     .overlay {
       if filtered.isEmpty {
         ContentUnavailableView(
@@ -60,9 +62,9 @@ public struct InboxView: View {
         }
         .pickerStyle(.segmented)
         .fixedSize()
+        .accessibilityIdentifier("inbox-filter")
       }
     }
-    .accessibilityIdentifier("inbox")
   }
 
   private var emptyTitle: String {
@@ -156,6 +158,8 @@ public struct CanvasView: View {
         }
       }
     }
+    // On the board, not the screen: the toolbar's picker would otherwise take it too.
+    .accessibilityIdentifier("canvas")
     .themeCanvas()
     .navigationTitle("Canvas")
     .toolbar {
@@ -164,9 +168,9 @@ public struct CanvasView: View {
           Text("Main").tag("Main")
         }
         .fixedSize()
+        .accessibilityIdentifier("canvas-board")
       }
     }
-    .accessibilityIdentifier("canvas")
   }
 
   private func card(_ session: SessionSummary) -> some View {
@@ -188,6 +192,7 @@ public struct CanvasView: View {
       .cardSurface(cornerRadius: Theme.Radius.large)
     }
     .buttonStyle(.plain)
+    .accessibilityIdentifier("canvas-card-\(session.id)")
   }
 }
 
@@ -227,25 +232,34 @@ private struct InboxRow: View {
       }
       .buttonStyle(.plain)
       .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+      .accessibilityIdentifier("inbox-toggle-\(item.id)")
       if isExpanded {
         if let decision = item.decision {
           DecisionCardView(
-            card: decision, respond: actions.respond.map { respond in { respond(decision, $0) } })
+            card: decision, respond: actions.respond.map { respond in { respond(decision, $0) } }
+          )
+          .environment(\.decisionIDPrefix, "inbox-")
         } else if let send = actions.reply {
           HStack {
             TextField("Reply\u{2026}", text: $reply)
               .textFieldStyle(.roundedBorder)
+              .accessibilityIdentifier("inbox-reply-\(item.id)")
             Button("Send") {
               send(item, reply)
               reply = ""
             }
             .disabled(reply.trimmingCharacters(in: .whitespaces).isEmpty)
+            .accessibilityIdentifier("inbox-send-\(item.id)")
           }
         }
         HStack {
-          if let open = actions.open { Button("Open session") { open(item) } }
+          if let open = actions.open {
+            Button("Open session") { open(item) }
+              .accessibilityIdentifier("inbox-open-\(item.id)")
+          }
           if let markRead = actions.markRead, item.isUnread {
             Button("Mark as read") { markRead(item) }
+              .accessibilityIdentifier("inbox-mark-read-\(item.id)")
           }
         }
         .buttonStyle(.borderless)
@@ -265,6 +279,7 @@ private struct InboxRow: View {
         }
       }
     #endif
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("inbox-\(item.id)")
   }
 }

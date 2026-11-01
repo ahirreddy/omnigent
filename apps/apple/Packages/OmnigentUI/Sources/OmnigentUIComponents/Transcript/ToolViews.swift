@@ -105,7 +105,8 @@ struct ToolGroupView: View, Equatable {
       VStack(alignment: .leading, spacing: 0) {
         ExpandableHeader(
           isExpanded: expanded, systemImage: "wrench.and.screwdriver",
-          title: groupTitle, subtitle: toolNames
+          title: groupTitle, subtitle: toolNames,
+          identifier: entries.first.map { "tool-group-toggle-\($0.id)" }
         ) {
           HStack(spacing: 6) {
             if failures > 0 { Pill(text: "\(failures) failed", tint: Theme.failure) }
@@ -124,6 +125,7 @@ struct ToolGroupView: View, Equatable {
       }
       .cardSurface(cornerRadius: Theme.Radius.medium)
       .accessibilityElement(children: .contain)
+      .accessibilityIdentifier(entries.first.map { "tool-group-\($0.id)" } ?? "tool-group")
     }
   }
 
@@ -167,7 +169,7 @@ struct ToolRowView: View {
         tint: entry.isFailure ? Theme.failure : .secondary,
         title: activity?.title ?? "Tool",
         subtitle: firstLine(entry.call?.activity?.summary ?? activity?.summary ?? ""),
-        monospacedSubtitle: true
+        monospacedSubtitle: true, identifier: "tool-toggle-\(entry.id)"
       ) {
         HStack(spacing: 6) {
           if let diff { DiffCountsView(added: diff.added, removed: diff.removed) }

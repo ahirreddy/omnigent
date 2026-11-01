@@ -3,6 +3,9 @@ import XCTest
 /// Answers decisions end to end against the core's offline demo server (`-OmnigentDemo`): an
 /// approval and a single-choice question, through the decision dock, the store and the core's
 /// resolve route. No server or network is needed.
+///
+/// A pending card shows twice, inline in the transcript and pinned in the dock; the dock's copy
+/// carries `dock-`-prefixed identifiers, so each button is addressed on its own.
 final class DemoDecisionUITests: XCTestCase {
   override func setUp() {
     super.setUp()
@@ -25,43 +28,47 @@ final class DemoDecisionUITests: XCTestCase {
     let window = app.windows.firstMatch
 
     open("demo-design", app: app, window: window)
-    let approve = app.buttons["approval-approve-decision-design"].firstMatch
+    let approve = app.buttons["dock-approval-approve-decision-design"]
     XCTAssertTrue(approve.waitForExistence(timeout: 20), "the approval card did not show")
+    let inlineApprove = app.buttons["approval-approve-decision-design"]
+    XCTAssertTrue(inlineApprove.exists, "the approval is not inline in the transcript")
     save(window, "approval-pending")
-    // The dock's identifier also lands on its scroll view, so click the button's own frame.
-    approve.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-    expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: approve)
-    waitForExpectations(timeout: 20)
+    approve.click()
+    waitUntilGone(approve)
+    waitUntilGone(inlineApprove)
     save(window, "approval-answered")
 
     open("demo-question", app: app, window: window)
-    let option = app.buttons["decision-option-decision-question-0"].firstMatch
+    let option = app.buttons["dock-decision-option-decision-question-0"]
     XCTAssertTrue(option.waitForExistence(timeout: 20), "the question card did not show")
     save(window, "question-pending")
-    option.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-    expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: option)
-    waitForExpectations(timeout: 20)
+    option.click()
+    waitUntilGone(option)
+    waitUntilGone(app.buttons["decision-option-decision-question-0"])
     save(window, "question-answered")
   }
 
   @MainActor
+  private func waitUntilGone(_ element: XCUIElement) {
+    expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: element)
+    waitForExpectations(timeout: 20)
+  }
+
+  @MainActor
   private func open(_ sessionID: String, app: XCUIApplication, window: XCUIElement) {
-    // The row is a text or, when it has hover actions, a button; the list's scroll view may
-    // repeat the identifier.
-    let row = window.descendants(matching: .any).matching(
-      NSPredicate(
-        format: "identifier == %@ AND elementType != %d", "session-row-\(sessionID)",
-        XCUIElement.ElementType.scrollView.rawValue)
-    ).firstMatch
+    // The row is a text, or a button while the pointer is over it (its hover actions).
+    let row = window.descendants(matching: .any)["session-row-\(sessionID)"]
     XCTAssertTrue(
       row.waitForExistence(timeout: 30),
       "the demo session \(sessionID) is missing from\n\(app.debugDescription)")
-    let header = app.descendants(matching: .any)["session-header"]
-    for _ in 0..<5 {
+    let transcript = app.scrollViews["transcript-\(sessionID)"]
+    // The first launch can lose focus to a system prompt as the row is clicked; click again.
+    for _ in 0..<5 where !transcript.exists {
       window.click()
       row.click()
-      if header.waitForExistence(timeout: 4) { break }
+      _ = transcript.waitForExistence(timeout: 4)
     }
+    XCTAssertTrue(transcript.exists, "the session \(sessionID) did not open")
   }
 
   @MainActor

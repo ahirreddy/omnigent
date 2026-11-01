@@ -49,6 +49,7 @@ public struct PlanAccordion: View {
       .buttonStyle(.plain)
       .accessibilityLabel("Plan, \(done) of \(todos.count) done")
       .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+      .accessibilityIdentifier("plan-accordion-toggle")
       if isExpanded {
         Divider()
         BoundedScrollView(maxHeight: 240) {
@@ -66,6 +67,7 @@ public struct PlanAccordion: View {
     .padding(.top, 8)
     .frame(maxWidth: Theme.transcriptWidth)
     .frame(maxWidth: .infinity)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("plan-accordion")
   }
 }

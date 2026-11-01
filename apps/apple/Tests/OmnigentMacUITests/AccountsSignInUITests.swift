@@ -40,7 +40,8 @@ final class AccountsSignInUITests: XCTestCase {
     passwordField.click()
     passwordField.typeText(password)
     app.buttons["auth.sign-in"].click()
-    let sidebar = app.descendants(matching: .any)["sidebar"]
+    // The session list (an outline) carries `sidebar` once the connected window shows.
+    let sidebar = app.outlines["sidebar"]
     let signedIn = sidebar.waitForExistence(timeout: 30)
     save(window, "signed-in")
     XCTAssertTrue(signedIn, "did not sign in")

@@ -42,7 +42,7 @@ struct WorkedFold: View {
       .buttonStyle(.plain)
       .accessibilityLabel(title)
       .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-      .accessibilityIdentifier("worked-fold")
+      .accessibilityIdentifier("worked-fold-\(items.first?.id ?? "empty")")
       if isExpanded {
         VStack(alignment: .leading, spacing: 12) {
           ForEach(items) { item in
@@ -116,6 +116,7 @@ struct PlanCard: View {
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
     .cardSurface(cornerRadius: Theme.Radius.large)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("plan-card")
   }
 }

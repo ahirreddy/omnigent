@@ -56,6 +56,7 @@ public struct NewSessionPage: View {
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
         .padding(.top, 4)
+        .accessibilityIdentifier("new-session-import")
       }
       if layoutWidth == .regular { Spacer(minLength: 80) }
     }
@@ -66,7 +67,8 @@ public struct NewSessionPage: View {
         gaze = CGSize(width: (location.x - 400) / 400, height: (location.y - 200) / 300)
       }
     }
-    .navigationTitle("New session")
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("new-session-page")
+    .navigationTitle("New session")
   }
 }

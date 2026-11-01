@@ -250,9 +250,11 @@ struct RowOpTests {
 
 @MainActor
 struct SessionListStoreTests {
-  private func summary(_ id: String, updatedAt: Int64, pinned: Bool = false) -> SessionSummary {
+  private func summary(
+    _ id: String, updatedAt: Int64, pinned: Bool = false, status: SessionListStatus = .idle
+  ) -> SessionSummary {
     SessionSummary(
-      id: id, title: id, preview: "", status: .idle, isReadOnly: false, updatedAt: updatedAt,
+      id: id, title: id, preview: "", status: status, isReadOnly: false, updatedAt: updatedAt,
       workspace: "", agentName: "", isPinned: pinned, isArchived: false, permissionLevel: 4,
       failureMessage: nil, canRename: true, canPin: true, canArchive: true)
   }
@@ -267,5 +269,47 @@ struct SessionListStoreTests {
     #expect(store.visible.map(\.id) == ["pin", "old"])
     store.searchText = "ol"
     #expect(store.visible.map(\.id) == ["old"])
+  }
+
+  @Test func anExpectedStatusShowsUntilTheNextServerRow() throws {
+    let store = SessionListStore()
+    store.apply(.reset(sessions: [summary("a", updatedAt: 1, status: .needsResponse)]))
+    #expect(store.needsResponse.map(\.id) == ["a"])
+
+    try #require(store.expect(.running, for: "a") != nil)
+    #expect(store.session("a")?.status == .running)
+    #expect(store.needsResponse.isEmpty)
+
+    // The server's next row wins, whichever status it carries.
+    store.apply(.upsert(sessions: [summary("a", updatedAt: 2, status: .needsResponse)]))
+    #expect(store.session("a")?.status == .needsResponse)
+  }
+
+  @Test func aWithdrawnExpectationRevertsAndUnknownSessionsAreLeftAlone() throws {
+    let store = SessionListStore()
+    store.apply(.reset(sessions: [summary("a", updatedAt: 1, status: .running)]))
+    #expect(store.expect(.idle, for: "missing") == nil)
+    #expect(store.session("missing") == nil)
+
+    let first = try #require(store.expect(.idle, for: "a"))
+    let second = try #require(store.expect(.idle, for: "a"))
+    // An older token no longer owns the expectation.
+    store.withdrawExpectation(first, for: "a")
+    #expect(store.session("a")?.status == .idle)
+    store.withdrawExpectation(second, for: "a")
+    #expect(store.session("a")?.status == .running)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func anExpectationExpiresWithoutAServerRow() async throws {
+    let store = SessionListStore()
+    store.expectationLifetime = .milliseconds(20)
+    store.apply(.reset(sessions: [summary("a", updatedAt: 1, status: .running)]))
+    try #require(store.expect(.idle, for: "a") != nil)
+    #expect(store.session("a")?.status == .idle)
+    let deadline = ContinuousClock.now + .seconds(10)
+    while store.session("a")?.status != .running, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(store.session("a")?.status == .running)
   }
 }

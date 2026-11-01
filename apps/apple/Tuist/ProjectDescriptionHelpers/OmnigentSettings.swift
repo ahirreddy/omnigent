@@ -84,6 +84,9 @@ public enum Omnigent {
     .settings(
       base: [
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+        // The apps have no asset catalog with an AccentColor: the accent is the theme's, set
+        // with `.tint` at the root. Naming one only warns that it is missing.
+        "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "",
         "APP_DISPLAY_NAME": .string(displayName),
         "CODE_SIGN_STYLE": "Automatic",
         "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",

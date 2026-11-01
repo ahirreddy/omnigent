@@ -54,6 +54,7 @@ public struct ServerSettingsView: View {
       .navigationTitle(pane?.title ?? "Server Settings")
     }
     .frame(minWidth: 680, minHeight: 460)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("server-settings")
   }
 

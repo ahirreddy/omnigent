@@ -123,7 +123,10 @@ struct FailureBanner: View {
         Text("The last turn failed").font(.callout.weight(.semibold))
         Text(message).font(.callout).textSelection(.enabled)
         HStack(spacing: 10) {
-          if let resume { Button("Resume session", action: resume).buttonStyle(.bordered) }
+          if let resume {
+            Button("Resume session", action: resume).buttonStyle(.bordered)
+              .accessibilityIdentifier("turn-failure-resume")
+          }
           CopyButton(text: message, label: "Copy error")
         }
       }
@@ -133,6 +136,7 @@ struct FailureBanner: View {
     .padding(12)
     .frame(maxWidth: .infinity, alignment: .leading)
     .cardSurface(cornerRadius: Theme.Radius.medium, tint: Theme.warning)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("turn-failure")
   }
 }
@@ -142,6 +146,8 @@ struct ErrorBanner: View {
   let message: String
   var dismiss: (@MainActor () -> Void)?
   var retry: (@MainActor () -> Void)?
+  /// The banner's identifier; its buttons append `-retry` and `-dismiss`.
+  var identifier = "session-error"
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -153,9 +159,13 @@ struct ErrorBanner: View {
         .textSelection(.enabled)
       Spacer(minLength: 8)
       CopyButton(text: message, label: "Copy error")
-      if let retry { Button("Retry", action: retry) }
+      if let retry {
+        Button("Retry", action: retry)
+          .accessibilityIdentifier("\(identifier)-retry")
+      }
       if let dismiss {
         Button("Dismiss", action: dismiss).buttonStyle(.borderless)
+          .accessibilityIdentifier("\(identifier)-dismiss")
       }
     }
     .padding(12)
@@ -164,6 +174,6 @@ struct ErrorBanner: View {
     )
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Error: \(message)")
-    .accessibilityIdentifier("session-error")
+    .accessibilityIdentifier(identifier)
   }
 }

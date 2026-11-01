@@ -44,6 +44,9 @@ public struct SidebarView: View {
       }
     }
     .listStyle(.sidebar)
+    // On the list itself: further out it would also land on the header's wordmark and server
+    // switcher, overriding their own identifiers.
+    .accessibilityIdentifier("sidebar")
     .scrollContentBackground(.hidden)
     .themeSidebar()
     .searchable(text: $searchText, placement: .sidebar, prompt: "Search sessions")
@@ -95,20 +98,22 @@ public struct SidebarView: View {
     } message: { _ in
       Text("You lose access until someone shares it with you again.")
     }
-    .accessibilityIdentifier("sidebar")
   }
 
   @ViewBuilder private var navigation: some View {
     Label("New session", systemImage: "plus.bubble")
       .tag(SidebarDestination.newSession)
+      .sidebarSelection(selection == .newSession)
       .accessibilityIdentifier("sidebar-new-session")
     Label("Inbox", systemImage: "tray")
       .badge(state.inboxCount)
       .tag(SidebarDestination.inbox)
+      .sidebarSelection(selection == .inbox)
       .accessibilityIdentifier("sidebar-inbox")
     if state.showsCanvas {
       Label("Canvas", systemImage: "square.grid.2x2")
         .tag(SidebarDestination.canvas)
+        .sidebarSelection(selection == .canvas)
         .accessibilityIdentifier("sidebar-canvas")
     }
     if let setQuickFilter = actions.setQuickFilter {
@@ -187,6 +192,7 @@ public struct SidebarView: View {
           Spacer(minLength: 4)
           if let retry = actions.sessions.retry {
             Button("Retry", action: retry).controlSize(.small)
+              .accessibilityIdentifier("session-list-retry")
           }
         }
         .padding(10)
@@ -255,6 +261,7 @@ extension SidebarView {
       now: now, menu: menu
     )
     .tag(SidebarDestination.session(session.id))
+    .sidebarSelection(selection == .session(session.id))
     #if os(iOS)
       .swipeActions(edge: .leading) {
         if let setUnread = actions.sessions.setUnread {

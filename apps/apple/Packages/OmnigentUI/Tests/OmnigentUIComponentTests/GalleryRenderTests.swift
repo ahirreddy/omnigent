@@ -41,6 +41,19 @@
       Surface(name: "inspector", regular: CGSize(width: 340, height: 1_560), compactHeight: nil) {
         AnyView(GalleryPageContent(page: .inspector))
       },
+      Surface(name: "inspector-terminals", regular: CGSize(width: 340, height: 600), compactHeight: nil)
+      {
+        AnyView(
+          WorkspaceInspector(
+            state: PreviewData.shellConversation, actions: ConversationActions(),
+            slots: WorkspaceSlots(
+              terminals: AnyView(
+                List {
+                  Label("zsh \u{00B7} u-4f2k9q", systemImage: "terminal")
+                  Label("claude \u{00B7} main", systemImage: "sparkles.rectangle.stack")
+                })),
+            tab: .constant(.terminals)))
+      },
       Surface(name: "markdown", regular: CGSize(width: 760, height: 0), compactHeight: nil) {
         AnyView(GalleryPageContent(page: .markdown).padding(20))
       },

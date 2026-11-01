@@ -301,7 +301,9 @@ public final class ConnectionStore {
   public func conversation(_ sessionID: String) -> ConversationStore? {
     if let existing = conversations[sessionID] { return existing }
     guard let core else { return nil }
-    let store = ConversationStore(sessionID: sessionID, core: core)
+    let store = ConversationStore(
+      sessionID: sessionID, core: core,
+      listStatus: ListStatusExpectation(list: sessionList, sessionID: sessionID))
     conversations[sessionID] = store
     core.openSession(sessionId: sessionID)
     return store

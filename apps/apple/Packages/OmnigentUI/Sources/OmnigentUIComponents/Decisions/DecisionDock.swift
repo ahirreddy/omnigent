@@ -49,14 +49,17 @@ public struct DecisionDock: View {
             Button("Previous Request", systemImage: "chevron.left") { index = max(0, current - 1) }
               .labelStyle(.iconOnly)
               .disabled(current == 0)
+              .accessibilityIdentifier("decision-dock-previous")
             Text("\(current + 1) of \(cards.count)")
               .font(.caption.monospacedDigit())
               .foregroundStyle(.secondary)
+              .accessibilityIdentifier("decision-dock-position")
             Button("Next Request", systemImage: "chevron.right") {
               index = min(cards.count - 1, current + 1)
             }
             .labelStyle(.iconOnly)
             .disabled(current == cards.count - 1)
+            .accessibilityIdentifier("decision-dock-next")
           }
           .buttonStyle(.borderless)
         }
@@ -67,8 +70,13 @@ public struct DecisionDock: View {
             validate: actions.validateForm.map { validate in { validate(card, $0) } },
             draft: drafts.binding(card.id)
           )
+          // The same card also shows inline in the transcript; the dock's copy has its own ids.
+          .environment(\.decisionIDPrefix, "dock-")
           .id(card.id)
         }
+        // With a single card the dock is just this scroll view, which then carries
+        // `decision-dock` instead.
+        .accessibilityIdentifier("decision-dock-scroll")
       }
       .padding(.horizontal, layoutWidth == .compact ? 10 : 16)
       .padding(.top, 8)

@@ -73,11 +73,16 @@ public final class ConversationStore {
   public let composer: ComposerStore
 
   private let core: ClientCore
+  private let listStatus: ListStatusExpectation
 
-  init(sessionID: String, core: ClientCore) {
+  init(
+    sessionID: String, core: ClientCore,
+    listStatus: ListStatusExpectation = ListStatusExpectation()
+  ) {
     self.sessionID = sessionID
     self.core = core
-    decisions = DecisionStore(sessionID: sessionID, core: core)
+    self.listStatus = listStatus
+    decisions = DecisionStore(sessionID: sessionID, core: core, listStatus: listStatus)
     composer = ComposerStore(sessionID: sessionID, core: core)
   }
 
@@ -90,11 +95,14 @@ public final class ConversationStore {
   /// Whether a turn is running.
   public var isRunning: Bool { header?.status == .running }
 
-  /// Stops the active turn. A failure is kept in ``errors``.
+  /// Stops the active turn. The session list shows it idle at once (see
+  /// ``SessionListStore/expect(_:for:)``); a failure reverts that and is kept in ``errors``.
   public func interrupt() async {
+    let expectation = listStatus.expect(.idle)
     do {
       try await core.interrupt(sessionId: sessionID)
     } catch {
+      expectation.withdraw()
       record(coreError(error))
     }
   }

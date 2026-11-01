@@ -44,6 +44,7 @@ struct SidebarHeader: View {
               .font(.caption)
               .lineLimit(1)
           }
+          .accessibilityElement(children: .combine)
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
@@ -149,18 +150,21 @@ struct UndoBar: View {
       Spacer(minLength: 4)
       if case .archived = banner.kind, let viewArchived = actions.viewArchived {
         Button("View archived", action: viewArchived).buttonStyle(.borderless)
+          .accessibilityIdentifier("undo-view-archived")
       }
       if let undo = actions.undo {
         Button("Undo") { undo(banner) }
           .buttonStyle(.borderless)
           .fontWeight(.semibold)
           .keyboardShortcut("z", modifiers: .command)
+          .accessibilityIdentifier("undo-action")
       }
       if let dismiss = actions.dismissUndo {
         Button("Dismiss", systemImage: "xmark", action: dismiss)
           .labelStyle(.iconOnly)
           .buttonStyle(.borderless)
           .foregroundStyle(.secondary)
+          .accessibilityIdentifier("undo-dismiss")
       }
     }
     .padding(.horizontal, 12)

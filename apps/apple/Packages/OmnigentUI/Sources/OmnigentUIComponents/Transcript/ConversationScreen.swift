@@ -61,7 +61,8 @@ public struct ConversationScreen<Terminal: View>: View {
 
   @State private var scrollRequest = 0
   @State private var focusRequest = 0
-  @State private var inspectorTab: InspectorTab = .files
+  @State private var localInspectorTab: InspectorTab = .files
+  private let externalInspectorTab: Binding<InspectorTab>?
   @State private var showsShare = false
   @State private var showsInfo = false
   @State private var drafts = DecisionDrafts()
@@ -73,6 +74,7 @@ public struct ConversationScreen<Terminal: View>: View {
   ///   - composer: The composer state.
   ///   - draft: The draft text.
   ///   - showsInspector: Whether the right panel shows.
+  ///   - inspectorTab: The right panel's tab; `nil` keeps it in the screen (Files first).
   ///   - mode: Chat or Terminal.
   ///   - fork: The Fork dialog's state; non-`nil` shows it.
   ///   - actions: Conversation actions.
@@ -81,15 +83,16 @@ public struct ConversationScreen<Terminal: View>: View {
   ///   - terminal: The terminal surface the app supplies (for example the libghostty view).
   public init(
     state: ConversationViewState, composer: ComposerViewState, draft: Binding<String>,
-    showsInspector: Binding<Bool>, mode: Binding<SessionViewMode>,
-    fork: Binding<ForkViewState?> = .constant(nil), actions: ConversationActions,
-    composerActions: ComposerActions, extras: ConversationExtras = ConversationExtras(),
-    @ViewBuilder terminal: () -> Terminal
+    showsInspector: Binding<Bool>, inspectorTab: Binding<InspectorTab>? = nil,
+    mode: Binding<SessionViewMode>, fork: Binding<ForkViewState?> = .constant(nil),
+    actions: ConversationActions, composerActions: ComposerActions,
+    extras: ConversationExtras = ConversationExtras(), @ViewBuilder terminal: () -> Terminal
   ) {
     self.state = state
     self.composer = composer
     _draft = draft
     _showsInspector = showsInspector
+    externalInspectorTab = inspectorTab
     _mode = mode
     _fork = fork
     self.actions = actions
@@ -99,6 +102,8 @@ public struct ConversationScreen<Terminal: View>: View {
   }
 
   private var showsTerminal: Bool { mode == .terminal && state.terminalAvailable }
+
+  private var inspectorTab: Binding<InspectorTab> { externalInspectorTab ?? $localInspectorTab }
 
   /// The screen.
   public var body: some View {
@@ -126,7 +131,7 @@ public struct ConversationScreen<Terminal: View>: View {
     .themeCanvas()
     .environment(drafts)
     .inspector(isPresented: $showsInspector) {
-      WorkspaceInspector(state: state, actions: actions, slots: extras.slots, tab: $inspectorTab)
+      WorkspaceInspector(state: state, actions: actions, slots: extras.slots, tab: inspectorTab)
         .inspectorColumnWidth(min: 240, ideal: 420, max: 600)
     }
     .navigationTitle(state.header.title)
@@ -162,6 +167,7 @@ public struct ConversationScreen<Terminal: View>: View {
         Button("Agent info", systemImage: "info.circle") { showsInfo.toggle() }
           .popover(isPresented: $showsInfo) { AgentInfoPopover(info: info) }
           .help("Agent info")
+          .accessibilityIdentifier("header-agent-info")
       }
       if extras.share != nil {
         Button {

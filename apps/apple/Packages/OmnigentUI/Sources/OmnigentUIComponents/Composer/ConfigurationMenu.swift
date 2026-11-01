@@ -106,6 +106,8 @@ struct ConfigurationMenu: View {
       .padding(.horizontal, 6)
       .padding(.vertical, 3)
       .contentShape(Rectangle())
+      // One element: otherwise the glyph and the text each become a menu button.
+      .accessibilityElement(children: .combine)
     }
     .menuStyle(.button)
     .buttonStyle(.plain)

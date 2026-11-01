@@ -80,6 +80,7 @@ struct HostChip: View {
           .frame(width: 6, height: 6)
       }
       .foregroundStyle(.secondary)
+      .accessibilityElement(children: .combine)
     }
     .menuStyle(.button)
     .buttonStyle(.borderless)
@@ -138,6 +139,7 @@ struct ApprovalModeChip: View {
           .accessibilityHidden(true)
       }
       .font(.callout)
+      .accessibilityElement(children: .combine)
     }
     .menuStyle(.button)
     .buttonStyle(.borderless)
@@ -174,6 +176,7 @@ struct ComposerTrayView: View {
         }
         .disabled(actions.selectDirectory == nil && actions.openFolder == nil)
         .help(directory)
+        .accessibilityIdentifier("composer-directory")
       }
       if let worktree = tray.worktree {
         Menu {
@@ -185,6 +188,7 @@ struct ComposerTrayView: View {
           Label(worktree, systemImage: "arrow.triangle.branch")
         }
         .disabled(actions.selectWorktree == nil)
+        .accessibilityIdentifier("composer-worktree")
       }
       if let branch = tray.branch {
         Label(branch, systemImage: "arrow.triangle.branch").foregroundStyle(.secondary)
@@ -229,10 +233,12 @@ struct QueueStrip: View {
           if let sendNow = actions.sendQueuedNow {
             Button("Send now", systemImage: "arrow.up.circle") { sendNow(message) }
               .labelStyle(.iconOnly)
+              .accessibilityIdentifier("queued-send-now-\(message.id)")
           }
           if let remove = actions.removeQueued {
             Button("Remove", systemImage: "xmark.circle") { remove(message) }
               .labelStyle(.iconOnly)
+              .accessibilityIdentifier("queued-remove-\(message.id)")
           }
         }
         .buttonStyle(.borderless)
@@ -247,7 +253,7 @@ struct QueueStrip: View {
             Button("Remove", role: .destructive) { remove(message) }
           }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("queued-\(message.id)")
       }
     }
@@ -351,6 +357,7 @@ struct CompletionList: View {
         }
         .buttonStyle(.plain)
         .hoverHighlight()
+        .accessibilityIdentifier("composer-completion-\(item.id)")
       }
       Text("Tab to complete, Esc to dismiss")
         .font(.caption2)
@@ -362,6 +369,7 @@ struct CompletionList: View {
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.large))
     .overlay { RoundedRectangle(cornerRadius: Theme.Radius.large).strokeBorder(.separator) }
     .padding(.horizontal, 8)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("composer-completions")
   }
 }

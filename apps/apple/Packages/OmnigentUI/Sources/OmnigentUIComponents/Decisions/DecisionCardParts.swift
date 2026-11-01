@@ -113,6 +113,7 @@ struct PlanReviewControls: View {
   let send: (DecisionResponse) -> Void
   let confirm: (DecisionResponse) -> Void
   @State private var feedback = ""
+  @Environment(\.decisionIDPrefix) private var idPrefix
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -125,13 +126,13 @@ struct PlanReviewControls: View {
           .lineLimit(1...4)
           .textFieldStyle(.roundedBorder)
           .disabled(!canRespond)
-          .accessibilityIdentifier("decision-plan-feedback-\(card.id)")
+          .accessibilityIdentifier("\(idPrefix)decision-plan-feedback-\(card.id)")
         Button("Reject plan") {
           let text = feedback.trimmingCharacters(in: .whitespacesAndNewlines)
           send(text.isEmpty ? .decline : .declineWithFeedback(feedback: text))
         }
         .disabled(!canRespond)
-        .accessibilityIdentifier("decision-plan-reject-\(card.id)")
+        .accessibilityIdentifier("\(idPrefix)decision-plan-reject-\(card.id)")
       }
     }
   }
@@ -141,22 +142,26 @@ struct PlanReviewControls: View {
       .buttonStyle(.borderedProminent)
       .controlSize(.large)
       .disabled(!canRespond)
+      .accessibilityIdentifier("\(idPrefix)decision-plan-approve-\(card.id)")
     if card.permissions.allowAllEdits {
       Button("Accept & allow all edits") { confirm(.approveAllEdits) }
         .buttonStyle(.bordered)
         .controlSize(.large)
         .disabled(!canRespond)
+        .accessibilityIdentifier("\(idPrefix)decision-plan-allow-edits-\(card.id)")
     }
     if card.permissions.allowAutoMode {
       Button("Yes, and use auto mode") { confirm(.approveAutoMode) }
         .buttonStyle(.bordered)
         .controlSize(.large)
         .disabled(!canRespond)
+        .accessibilityIdentifier("\(idPrefix)decision-plan-auto-mode-\(card.id)")
     }
     Button("Reject") { send(.decline) }
       .buttonStyle(.bordered)
       .controlSize(.large)
       .disabled(!canRespond)
+      .accessibilityIdentifier("\(idPrefix)decision-plan-decline-\(card.id)")
   }
 }
 
@@ -165,6 +170,7 @@ struct DecisionFooter: View {
   let card: DecisionCard
   let phase: DecisionPhase
   let isReadOnly: Bool
+  @Environment(\.decisionIDPrefix) private var idPrefix
 
   var body: some View {
     switch phase {
@@ -173,7 +179,7 @@ struct DecisionFooter: View {
         Label("Read-only access cannot respond to this request.", systemImage: "eye")
           .font(.caption)
           .foregroundStyle(.secondary)
-          .accessibilityIdentifier("decision-read-only-\(card.id)")
+          .accessibilityIdentifier("\(idPrefix)decision-read-only-\(card.id)")
       }
     case .resolving:
       HStack(spacing: 8) {
@@ -184,13 +190,13 @@ struct DecisionFooter: View {
       Label("\(summary). Waiting for the server to confirm.", systemImage: "checkmark.circle.fill")
         .font(.caption.weight(.medium))
         .foregroundStyle(Theme.running)
-        .accessibilityIdentifier("decision-status-\(card.id)")
+        .accessibilityIdentifier("\(idPrefix)decision-status-\(card.id)")
     case .failed(let message):
       Label(message, systemImage: "exclamationmark.triangle.fill")
         .font(.caption)
         .foregroundStyle(Theme.failure)
         .textSelection(.enabled)
-        .accessibilityIdentifier("decision-error-\(card.id)")
+        .accessibilityIdentifier("\(idPrefix)decision-error-\(card.id)")
     }
   }
 }

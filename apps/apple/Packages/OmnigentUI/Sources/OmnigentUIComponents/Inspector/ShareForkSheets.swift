@@ -38,6 +38,7 @@ public struct ShareSheet: View {
             ForEach(state.generalAccessOptions, id: \.self) { Text($0).tag($0) }
           }
           .disabled(actions.setGeneralAccess == nil)
+          .accessibilityIdentifier("share-general-access")
           Toggle(
             isOn: Binding(get: { state.workspaceFiles }, set: { actions.setWorkspaceFiles?($0) })
           ) {
@@ -49,6 +50,7 @@ public struct ShareSheet: View {
             }
           }
           .disabled(actions.setWorkspaceFiles == nil)
+          .accessibilityIdentifier("share-workspace-files")
         }
         Section("People") {
           if state.grants.isEmpty {
@@ -67,10 +69,12 @@ public struct ShareSheet: View {
               }
               .labelsHidden()
               .fixedSize()
+              .accessibilityIdentifier("share-role-\(grant.id)")
               if let remove = actions.removeGrant {
                 Button("Remove", systemImage: "xmark.circle") { remove(grant) }
                   .labelStyle(.iconOnly)
                   .buttonStyle(.borderless)
+                  .accessibilityIdentifier("share-remove-\(grant.id)")
               }
             }
           }
@@ -78,13 +82,16 @@ public struct ShareSheet: View {
             TextField("Add people", text: $newPrincipal, prompt: Text("alice@example.com"))
               .textContentType(.emailAddress)
               .onSubmit(add)
+              .accessibilityIdentifier("share-add-principal")
             Picker("Role", selection: $newRole) {
               ForEach(ShareGrant.Role.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             .labelsHidden()
             .fixedSize()
+            .accessibilityIdentifier("share-add-role")
             Button("Add", action: add)
               .disabled(newPrincipal.trimmingCharacters(in: .whitespaces).isEmpty)
+              .accessibilityIdentifier("share-add")
           }
           .disabled(actions.addGrant == nil)
         }
@@ -101,6 +108,7 @@ public struct ShareSheet: View {
       .toolbar {
         ToolbarItem(placement: .confirmationAction) {
           Button("Done", action: done)
+            .accessibilityIdentifier("share-done")
         }
         ToolbarItemGroup(placement: .cancellationAction) {
           if let link = state.link {
@@ -108,6 +116,7 @@ public struct ShareSheet: View {
               Pasteboard.copy(link.absoluteString)
               copied = true
             }
+            .accessibilityIdentifier("share-copy-link")
             .task(id: copied) {
               guard copied else { return }
               do {
@@ -119,6 +128,7 @@ public struct ShareSheet: View {
               copied = false
             }
             ShareLink(item: link)
+              .accessibilityIdentifier("share-link")
           }
         }
       }
@@ -126,6 +136,7 @@ public struct ShareSheet: View {
     #if os(macOS)
       .frame(width: 520, height: 520)
     #endif
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("share-sheet")
   }
 
@@ -169,11 +180,13 @@ public struct ForkSheet: View {
             .tag(agent.id)
           }
         }
+        .accessibilityIdentifier("fork-agent")
         LabeledContent("Directory") {
           HStack {
             TextField("Directory", text: $directory)
               .labelsHidden()
               .font(Theme.codeFont)
+              .accessibilityIdentifier("fork-directory")
             if !state.recentDirectories.isEmpty {
               Menu {
                 ForEach(state.recentDirectories, id: \.self) { path in
@@ -184,6 +197,7 @@ public struct ForkSheet: View {
               }
               .labelStyle(.iconOnly)
               .fixedSize()
+              .accessibilityIdentifier("fork-recent-directories")
             }
           }
         }
@@ -198,6 +212,7 @@ public struct ForkSheet: View {
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button("Cancel", action: actions.cancel)
+            .accessibilityIdentifier("fork-cancel")
         }
         ToolbarItemGroup(placement: .confirmationAction) {
           if state.isForking {
@@ -206,10 +221,13 @@ public struct ForkSheet: View {
           if case .anotherDirectory = state.kind {
             Button("Continue") { actions.fork(agentID, directory, true) }
               .buttonStyle(.borderedProminent)
+              .accessibilityIdentifier("fork-continue")
           } else {
             Button("Clone") { actions.fork(agentID, directory, false) }
+              .accessibilityIdentifier("fork-clone")
             Button("Clone & start") { actions.fork(agentID, directory, true) }
               .buttonStyle(.borderedProminent)
+              .accessibilityIdentifier("fork-clone-start")
           }
         }
       }
@@ -217,6 +235,7 @@ public struct ForkSheet: View {
     #if os(macOS)
       .frame(width: 480, height: 260)
     #endif
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("fork-sheet")
   }
 }

@@ -1,4 +1,8 @@
 public import AppKit
+// `NSApplicationDelegate` names `CKShare.Metadata`. Without CloudKit imported here this module
+// records the type under CoreData, and every client that subclasses this delegate warns that
+// the reference is broken ("CKShareMetadata ... found only in CloudKit").
+import CloudKit
 
 /// App delegate for `@NSApplicationDelegateAdaptor`. Owns the `DesktopController`, installs the
 /// notification delegate before launch finishes, and receives `omnigent://` URLs.

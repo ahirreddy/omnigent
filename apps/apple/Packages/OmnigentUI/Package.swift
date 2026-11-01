@@ -29,8 +29,9 @@ let package = Package(
     .package(path: "../OmnigentStores"),
     .package(path: "../OmnigentPlatform"),
     .package(path: "../OmnigentCoreFFI"),
-    // The playground only: real Files and Changes content for the right panel.
+    // The playground only: real Files, Changes and Terminals content for the right panel.
     .package(path: "../OmnigentWorkspaceUI"),
+    .package(path: "../OmnigentTerminalUI"),
     // Markdown parsing (CommonMark + GFM tables) for the transcript renderer. Pinned exactly.
     .package(url: "https://github.com/swiftlang/swift-markdown.git", exact: "0.9.0"),
   ],
@@ -58,6 +59,7 @@ let package = Package(
       dependencies: [
         "OmnigentUIComponents",
         .product(name: "OmnigentWorkspaceUI", package: "OmnigentWorkspaceUI"),
+        .product(name: "OmnigentTerminalUI", package: "OmnigentTerminalUI"),
       ],
       path: "Playground",
       swiftSettings: mainActorSwiftSettings

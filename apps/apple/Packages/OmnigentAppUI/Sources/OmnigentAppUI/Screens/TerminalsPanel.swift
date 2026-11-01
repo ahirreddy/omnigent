@@ -36,20 +36,20 @@ enum TerminalAdapter {
   }
 }
 
-/// The session's terminals: the list (create and close shells) beside the selected terminal's
-/// surface. Surfaces live in the session's ``TerminalStore``, so closing the sheet keeps them.
-struct TerminalsSheet: View {
+/// The right panel's Terminals tab: the session's terminals (create and close shells) above the
+/// selected terminal's surface. Surfaces live in the session's ``TerminalStore``, so switching
+/// tabs or closing the panel keeps their screens and scrollback.
+struct TerminalsPanel: View {
   let store: TerminalStore
   let permissionLevel: Int64?
   let hostID: String?
-  let close: () -> Void
 
   @State private var selection: TerminalListItem.ID?
   @State private var surface: TerminalSurfaceController?
 
   var body: some View {
     let terminals = store.terminals
-    NavigationSplitView {
+    VStack(spacing: 0) {
       TerminalListView(
         items: terminals.rows.map(TerminalAdapter.item), shellChoices: ["Shell"],
         canEdit: terminalCanType(permissionLevel: permissionLevel) && !terminals.isBusy,
@@ -58,24 +58,15 @@ struct TerminalsSheet: View {
         onCreate: { name in Task { await create(name) } },
         onClose: { id in Task { await delete(id) } }
       )
-      .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
-    } detail: {
+      .listStyle(.plain)
+      // The list takes the whole tab until a terminal is attached, then yields to its surface.
+      .frame(minHeight: 96, idealHeight: 160, maxHeight: surface == nil ? .infinity : 200)
       if let surface {
+        Divider()
         SessionTerminalView(controller: surface)
-      } else {
-        ContentUnavailableView(
-          "No Terminal Selected", systemImage: "apple.terminal",
-          description: Text("Choose a terminal, or create a shell."))
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
-    .toolbar {
-      ToolbarItem(placement: .confirmationAction) {
-        Button("Done", action: close)
-      }
-    }
-    #if os(macOS)
-      .frame(minWidth: 820, minHeight: 540)
-    #endif
     .onAppear { terminals.refresh() }
     .onChange(of: selection) { _, id in
       surface = id.flatMap {

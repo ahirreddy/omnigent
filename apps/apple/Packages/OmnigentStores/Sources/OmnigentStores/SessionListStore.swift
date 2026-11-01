@@ -3,9 +3,14 @@ public import OmnigentCoreFFI
 
 /// The server's sessions, kept in step with the core's `SessionListChanged` events. Ordering and
 /// filtering are the core's (`filterSessions`).
+///
+/// The list's status comes from the server's session rows, which arrive a moment after a
+/// decision is answered or a turn is stopped. Those two actions record the status they expect
+/// (``expect(_:for:)``) so the row changes at once; the session's next server row replaces the
+/// expectation, confirming or reverting it.
 @Observable
 public final class SessionListStore {
-  /// Every known session, by id.
+  /// Every known session, by id, with any expected status applied.
   public private(set) var sessionsByID: [String: SessionSummary] = [:]
   /// The sessions matching ``searchText`` and ``filter``: pinned first, then most recent.
   public private(set) var visible: [SessionSummary] = []
@@ -28,6 +33,21 @@ public final class SessionListStore {
 
   /// The core edits go through; set by the owning ``ConnectionStore``.
   @ObservationIgnored var core: ClientCore?
+
+  /// The server's rows, as the core last reported them.
+  private var serverSessions: [String: SessionSummary] = [:]
+  /// Statuses expected after a local action, until the session's next server row.
+  private var expectations: [String: Expectation] = [:]
+  /// How long an expectation may stand without a server row, so a missed row cannot leave a
+  /// wrong status behind.
+  @ObservationIgnored var expectationLifetime: Duration = .seconds(30)
+
+  private struct Expectation {
+    let status: SessionListStatus
+    let token: UInt64
+  }
+
+  @ObservationIgnored private var nextToken: UInt64 = 0
 
   /// Creates an empty list.
   public init() {}
@@ -68,6 +88,44 @@ public final class SessionListStore {
     editError = nil
   }
 
+  /// Shows `sessionID` with `status` until its next server row arrives, which confirms or
+  /// reverts it (or ``expectationLifetime`` passes). For a session the list does not know, this
+  /// does nothing.
+  /// - Parameters:
+  ///   - status: The status the action leads to.
+  ///   - sessionID: The session.
+  /// - Returns: A token for ``withdrawExpectation(_:for:)``.
+  @discardableResult
+  public func expect(_ status: SessionListStatus, for sessionID: String) -> UInt64? {
+    guard serverSessions[sessionID] != nil else { return nil }
+    nextToken += 1
+    let token = nextToken
+    expectations[sessionID] = Expectation(status: status, token: token)
+    recompute()
+    let lifetime = expectationLifetime
+    Task { [weak self] in
+      do {
+        try await Task.sleep(for: lifetime)
+      } catch {
+        // Cancelled with the store; the expectation goes with it.
+        return
+      }
+      self?.withdrawExpectation(token, for: sessionID)
+    }
+    return token
+  }
+
+  /// Drops the expectation `token` of `sessionID` (its action failed, or it timed out), if it is
+  /// still the current one.
+  /// - Parameters:
+  ///   - token: From ``expect(_:for:)``.
+  ///   - sessionID: The session.
+  public func withdrawExpectation(_ token: UInt64, for sessionID: String) {
+    guard expectations[sessionID]?.token == token else { return }
+    expectations[sessionID] = nil
+    recompute()
+  }
+
   private func edit(_ sessionID: String, _ change: SessionChange) async -> Bool {
     guard let core else {
       editError = .InvalidState(message: "Connect to a server before editing sessions.")
@@ -77,7 +135,8 @@ public final class SessionListStore {
     defer { editing.remove(sessionID) }
     do {
       let updated = try await core.editSession(sessionId: sessionID, change: change)
-      sessionsByID[updated.id] = updated
+      serverSessions[updated.id] = updated
+      expectations[updated.id] = nil
       recompute()
       editError = nil
       return true
@@ -100,16 +159,21 @@ public final class SessionListStore {
   }
 
   func apply(_ change: SessionListChange) {
+    // Every server row settles its session's expectation.
     switch change {
     case .reset(let sessions):
-      sessionsByID = Dictionary(sessions.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+      serverSessions = Dictionary(
+        sessions.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+      expectations = [:]
     case .upsert(let sessions):
       for session in sessions {
-        sessionsByID[session.id] = session
+        serverSessions[session.id] = session
+        expectations[session.id] = nil
       }
     case .remove(let ids):
       for id in ids {
-        sessionsByID[id] = nil
+        serverSessions[id] = nil
+        expectations[id] = nil
       }
     }
     recompute()
@@ -125,12 +189,18 @@ public final class SessionListStore {
   }
 
   func clear() {
-    sessionsByID = [:]
+    serverSessions = [:]
+    expectations = [:]
     isLoaded = false
     recompute()
   }
 
   private func recompute() {
+    var sessions = serverSessions
+    for (id, expectation) in expectations {
+      sessions[id]?.status = expectation.status
+    }
+    sessionsByID = sessions
     visible = filterSessions(
       sessions: Array(sessionsByID.values), text: searchText, filter: filter)
   }

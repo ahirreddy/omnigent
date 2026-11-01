@@ -51,6 +51,7 @@ public struct SessionInspectorView: View {
     }
     .formStyle(.grouped)
     .environment(\.conversationActions, actions)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("session-inspector")
   }
 

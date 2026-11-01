@@ -139,8 +139,12 @@ public struct NewSessionView: View {
           Label(message, systemImage: "exclamationmark.triangle.fill")
             .foregroundStyle(Theme.failure)
             .textSelection(.enabled)
-          if let reload = actions.reload { Button("Try Again", action: reload) }
+          if let reload = actions.reload {
+            Button("Try Again", action: reload)
+              .accessibilityIdentifier("creation-catalog-retry")
+          }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("creation-catalog-error")
       case .loaded(let catalog):
         hostPicker(catalog)
@@ -309,6 +313,7 @@ private struct CreationStatusSection: View {
           .accessibilityIdentifier("creation-uncertain")
         if let acknowledge {
           Button("I Checked Sessions, Allow Another", action: acknowledge)
+            .accessibilityIdentifier("creation-acknowledge-uncertain")
         }
       }
     }

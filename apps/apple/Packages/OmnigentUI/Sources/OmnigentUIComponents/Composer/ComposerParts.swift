@@ -34,9 +34,10 @@ struct DeliveryBanner: View {
         cornerRadius: Theme.Radius.medium, tint: Theme.warning,
         stroke: Theme.warning.opacity(0.4)
       )
+      .accessibilityElement(children: .contain)
       .accessibilityIdentifier("composer-uncertain")
     case .failed(let message):
-      ErrorBanner(message: message, dismiss: dismiss)
+      ErrorBanner(message: message, dismiss: dismiss, identifier: "composer-delivery-error")
     }
   }
 }
@@ -131,6 +132,9 @@ struct GrowingTextEditor: View {
   let placeholder: String
   var minLines = 1
   var maxLines = 10
+  /// The text view's accessibility identifier. Set on the editor alone, so the measuring copy,
+  /// the placeholder and the editor's scroll view never carry it.
+  var identifier: String?
   @ScaledMetric(relativeTo: .body) private var lineHeight: CGFloat = 17
 
   #if os(macOS)
@@ -156,6 +160,7 @@ struct GrowingTextEditor: View {
       TextEditor(text: $text)
         .font(.body)
         .scrollContentBackground(.hidden)
+        .accessibilityIdentifier(identifier ?? "", isEnabled: identifier != nil)
     }
     .overlay(alignment: .topLeading) {
       if text.isEmpty {
@@ -210,6 +215,7 @@ private struct DraftAttachmentChip: View {
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
+        .accessibilityIdentifier("draft-attachment-remove-\(attachment.id)")
       }
     }
     .padding(.horizontal, 8)
@@ -218,7 +224,7 @@ private struct DraftAttachmentChip: View {
       cornerRadius: Theme.Radius.medium, tint: isFailed ? Theme.failure : nil,
       stroke: isFailed ? Theme.failure.opacity(0.4) : nil
     )
-    .accessibilityElement(children: .combine)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("draft-attachment-\(attachment.id)")
   }
 

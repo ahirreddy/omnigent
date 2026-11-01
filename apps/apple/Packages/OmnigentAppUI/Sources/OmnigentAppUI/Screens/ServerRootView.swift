@@ -34,8 +34,11 @@ public struct ServerRootView: View {
         openInNewWindow: openInNewWindow)
     } else {
       AuthFlowView(
-        state: session.signIn.state, actions: session.signIn.actions, validator: .app)
-        .accessibilityIdentifier("auth.flow")
+        state: session.signIn.state, actions: session.signIn.actions, validator: .app
+      )
+      // A container, so the form's own identifiers (auth.username, auth.sign-in) survive.
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("auth.flow")
     }
   }
 }

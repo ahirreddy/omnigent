@@ -67,8 +67,9 @@ public struct PlaygroundView: View {
   private var conversation: some View {
     ConversationScreen(
       state: model.conversation, composer: model.composer, draft: $model.draft,
-      showsInspector: $model.showsInspector, mode: $model.mode, fork: $model.fork,
-      actions: model.conversationActions, composerActions: model.composerActions,
+      showsInspector: $model.showsInspector, inspectorTab: $model.inspectorTab, mode: $model.mode,
+      fork: $model.fork, actions: model.conversationActions,
+      composerActions: model.composerActions,
       extras: ConversationExtras(
         sessionActions: model.sidebarActions.sessions, slots: slots,
         share: (model.share, model.shareActions), forkActions: model.forkActions)

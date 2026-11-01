@@ -39,7 +39,7 @@ private struct ReasoningRowView: View {
       ExpandableHeader(
         isExpanded: $isExpanded, systemImage: "brain",
         title: row.isStreaming ? "Thinking" : "Thought",
-        subtitle: isExpanded ? nil : activity.summary
+        subtitle: isExpanded ? nil : activity.summary, identifier: "reasoning-toggle-\(row.id)"
       ) {
         if row.isStreaming { LiveIndicator(color: .secondary) }
       }
@@ -52,6 +52,7 @@ private struct ReasoningRowView: View {
           .padding(.bottom, 8)
       }
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("reasoning-\(row.id)")
   }
 }
@@ -77,6 +78,7 @@ private struct TerminalRowView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(input.map { "Terminal command \($0)" } ?? "Terminal output")
         .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+        .accessibilityIdentifier("terminal-toggle-\(row.id)")
       } else {
         terminalHeader
           .accessibilityElement(children: .combine)
@@ -232,12 +234,14 @@ private struct CompactionRowView: View {
       }
       .buttonStyle(.plain)
       .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+      .accessibilityIdentifier("compaction-toggle-\(row.id)")
       if isExpanded {
         DetailSectionsView(sections: activity.details, rowID: row.id)
           .padding(10)
           .cardSurface(cornerRadius: Theme.Radius.medium)
       }
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("compaction-\(row.id)")
   }
 
@@ -289,7 +293,7 @@ private struct UnknownRowView: View {
         title: activity.title.isEmpty ? "Unsupported item" : activity.title,
         subtitle: activity.summary.isEmpty
           ? "This item type is not supported in the app yet." : activity.summary,
-        isEnabled: !activity.details.isEmpty
+        isEnabled: !activity.details.isEmpty, identifier: "unknown-toggle-\(row.id)"
       ) {
         Pill(text: "Unsupported")
       }
@@ -304,6 +308,7 @@ private struct UnknownRowView: View {
         .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         .foregroundStyle(.tertiary)
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("unknown-\(row.id)")
   }
 }
@@ -329,7 +334,7 @@ private struct GenericActivityRowView: View {
         isExpanded: $isExpanded, systemImage: activity.kind.systemImage, tint: tint,
         title: activity.title, subtitle: activity.summary,
         monospacedSubtitle: activity.kind == .command,
-        isEnabled: !activity.details.isEmpty
+        isEnabled: !activity.details.isEmpty, identifier: "activity-toggle-\(row.id)"
       ) {
         HStack(spacing: 6) {
           if let status = activity.status, !status.isEmpty, !activity.isFailure {

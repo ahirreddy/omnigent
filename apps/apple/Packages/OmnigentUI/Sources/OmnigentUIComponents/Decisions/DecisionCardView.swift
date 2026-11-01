@@ -14,6 +14,7 @@ public struct DecisionCardView: View {
 
   @State private var pendingPermission: DecisionResponse?
   @Environment(\.openURL) private var openURL
+  @Environment(\.decisionIDPrefix) private var idPrefix
 
   /// Creates a card.
   /// - Parameters:
@@ -93,7 +94,7 @@ public struct DecisionCardView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("\(card.title). \(card.detail)")
-    .accessibilityIdentifier("decision-\(card.id)")
+    .accessibilityIdentifier("\(idPrefix)decision-\(card.id)")
   }
 
   private var header: some View {
@@ -147,7 +148,7 @@ public struct DecisionCardView: View {
           .buttonStyle(.bordered)
           .controlSize(.large)
           .disabled(!canRespond)
-          .accessibilityIdentifier("decision-option-\(card.id)-\(index)")
+          .accessibilityIdentifier("\(idPrefix)decision-option-\(card.id)-\(index)")
         }
         dismissButton
       }
@@ -166,6 +167,7 @@ public struct DecisionCardView: View {
             Label("Open approval page", systemImage: "arrow.up.forward.app")
           }
           .buttonStyle(.borderedProminent)
+          .accessibilityIdentifier("\(idPrefix)decision-open-page-\(card.id)")
           Text(url.host() ?? address).font(.caption).foregroundStyle(.secondary)
         }
       }
@@ -181,7 +183,7 @@ public struct DecisionCardView: View {
       let extras = permissionResponses
       if !extras.isEmpty {
         FlowLayout(spacing: 6) {
-          ForEach(extras, id: \.response) { extra in
+          ForEach(Array(extras.enumerated()), id: \.element.response) { index, extra in
             Button {
               pendingPermission = extra.response
             } label: {
@@ -191,6 +193,7 @@ public struct DecisionCardView: View {
             .tint(.primary)
             .disabled(!canRespond)
             .accessibilityHint("Asks for confirmation; changes approval behavior")
+            .accessibilityIdentifier("\(idPrefix)approval-permission-\(card.id)-\(index)")
           }
         }
       }
@@ -206,7 +209,7 @@ public struct DecisionCardView: View {
     .buttonStyle(.borderedProminent)
     .controlSize(.large)
     .disabled(!canRespond)
-    .accessibilityIdentifier("approval-approve-\(card.id)")
+    .accessibilityIdentifier("\(idPrefix)approval-approve-\(card.id)")
     Button {
       send(.decline)
     } label: {
@@ -216,7 +219,7 @@ public struct DecisionCardView: View {
     .tint(.primary)
     .controlSize(.large)
     .disabled(!canRespond)
-    .accessibilityIdentifier("approval-decline-\(card.id)")
+    .accessibilityIdentifier("\(idPrefix)approval-decline-\(card.id)")
   }
 
   private var permissionResponses: [PermissionChoice] {
@@ -233,14 +236,14 @@ public struct DecisionCardView: View {
         Label(problem, systemImage: "exclamationmark.circle")
           .font(.caption)
           .foregroundStyle(.secondary)
-          .accessibilityIdentifier("decision-form-validation-\(card.id)")
+          .accessibilityIdentifier("\(idPrefix)decision-form-validation-\(card.id)")
       }
       HStack(spacing: 8) {
         Button("Submit") { send(.form(values: values)) }
           .buttonStyle(.borderedProminent)
           .controlSize(.large)
           .disabled(!canRespond || problem != nil)
-          .accessibilityIdentifier("decision-form-submit-\(card.id)")
+          .accessibilityIdentifier("\(idPrefix)decision-form-submit-\(card.id)")
         dismissButton
       }
     }
@@ -251,6 +254,7 @@ public struct DecisionCardView: View {
       .buttonStyle(.borderless)
       .font(.callout)
       .disabled(!canRespond)
+      .accessibilityIdentifier("\(idPrefix)decision-cancel-\(card.id)")
   }
 
   private func send(_ response: DecisionResponse) {
@@ -258,6 +262,12 @@ public struct DecisionCardView: View {
     guard canRespond, let respond else { return }
     respond(response)
   }
+}
+
+extension EnvironmentValues {
+  /// Prepended to every identifier inside a decision card, so the same card shown in two places
+  /// (inline in the transcript and pinned in the dock) has distinct identifiers in each.
+  @Entry var decisionIDPrefix = ""
 }
 
 extension DecisionCardView {

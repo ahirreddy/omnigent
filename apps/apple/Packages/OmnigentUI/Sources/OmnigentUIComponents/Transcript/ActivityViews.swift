@@ -55,6 +55,8 @@ struct ExpandableHeader<Accessory: View>: View {
   var subtitle: String?
   var monospacedSubtitle = false
   var isEnabled = true
+  /// The toggle's accessibility identifier.
+  var identifier: String?
   @ViewBuilder var accessory: Accessory
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -70,6 +72,7 @@ struct ExpandableHeader<Accessory: View>: View {
       .accessibilityLabel(title)
       .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
       .accessibilityHint("Shows details")
+      .accessibilityIdentifier(identifier ?? "", isEnabled: identifier != nil)
     } else {
       row
         .accessibilityElement(children: .combine)

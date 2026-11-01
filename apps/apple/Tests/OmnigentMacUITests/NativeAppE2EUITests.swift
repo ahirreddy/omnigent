@@ -35,24 +35,13 @@ final class NativeAppE2EUITests: XCTestCase {
     app.launch()
     let window = app.windows.firstMatch
 
-    // The row's text carries the identifier; the list's scroll view may repeat it.
-    // The row is a text or, when it has hover actions, a button; the list's scroll view may
-    // repeat the identifier.
-    let row = window.descendants(matching: .any).matching(
-      NSPredicate(
-        format: "identifier == %@ AND elementType != %d", "session-row-\(sessionID)",
-        XCUIElement.ElementType.scrollView.rawValue)
-    ).firstMatch
+    // The row is a text, or a button while the pointer is over it (its hover actions).
+    let row = window.descendants(matching: .any)["session-row-\(sessionID)"]
     XCTAssertTrue(row.waitForExistence(timeout: 30), "the session list did not show \(sessionID)")
     save(window, "connected")
     // The first connect asks for notification permission, which can take focus from the window
     // just as the row is clicked; click again until the conversation opens.
-    // The editor carries the identifier; its scroll view may repeat it.
-    let input = app.descendants(matching: .any).matching(
-      NSPredicate(
-        format: "identifier == 'composer-input' AND (elementType == %d OR elementType == %d)",
-        XCUIElement.ElementType.textView.rawValue, XCUIElement.ElementType.textField.rawValue)
-    ).firstMatch
+    let input = app.textViews["composer-input"]
     for _ in 0..<5 where !input.exists {
       window.click()
       row.click()
@@ -82,7 +71,7 @@ final class NativeAppE2EUITests: XCTestCase {
     send("Now take your time.", app: app, input: input)
     let slow = reply(app, tagged: "slow")
     save(window, "slow-streaming")
-    let stop = app.descendants(matching: .any)["composer-stop"]
+    let stop = app.buttons["composer-stop"]
     XCTAssertTrue(stop.waitForExistence(timeout: 10))
     stop.click()
     let rowID = slow.identifier.replacingOccurrences(of: "message-text-", with: "")
@@ -146,16 +135,15 @@ final class NativeAppE2EUITests: XCTestCase {
 
   @MainActor
   private func send(_ text: String, app: XCUIApplication, input: XCUIElement) {
-    // The placeholder sits over the empty editor, so click its frame rather than its hit point.
     // A system prompt can take focus mid-test, so type again until the editor holds the text.
     for _ in 0..<3 where !String(describing: input.value ?? "").contains(text) {
       app.windows.firstMatch.click()
-      input.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+      input.click()
       app.typeKey("a", modifierFlags: .command)
       app.typeText(text)
     }
     XCTAssertTrue(String(describing: input.value ?? "").contains(text), "the composer did not take \(text)")
-    let sendButton = app.descendants(matching: .any)["composer-send"]
+    let sendButton = app.buttons["composer-send"]
     XCTAssertTrue(sendButton.waitForExistence(timeout: 10))
     sendButton.click()
   }

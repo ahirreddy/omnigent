@@ -77,7 +77,9 @@ public struct ComposerView: View {
         delivery: state.delivery, acknowledge: actions.acknowledgeUncertainDelivery,
         dismiss: actions.dismissDeliveryError)
       if let attachmentError {
-        ErrorBanner(message: attachmentError, dismiss: { self.attachmentError = nil })
+        ErrorBanner(
+          message: attachmentError, dismiss: { self.attachmentError = nil },
+          identifier: "composer-attachment-error")
       }
       if !state.queue.isEmpty {
         QueueStrip(queue: state.queue, actions: actions.extras)
@@ -151,7 +153,7 @@ public struct ComposerView: View {
   private var editor: some View {
     GrowingTextEditor(
       text: $draft, placeholder: state.placeholder, minLines: isExpanded ? 10 : 2,
-      maxLines: isExpanded ? 28 : 8
+      maxLines: isExpanded ? 28 : 8, identifier: "composer-input"
     )
     .focused($isFocused)
     .disabled(!isEditable)
@@ -165,7 +167,6 @@ public struct ComposerView: View {
         ? (state.submitWithCommandReturn ? "Command-Return sends" : "Return sends")
         : (state.availability.reason ?? "")
     )
-    .accessibilityIdentifier("composer-input")
   }
 
   private func send() {

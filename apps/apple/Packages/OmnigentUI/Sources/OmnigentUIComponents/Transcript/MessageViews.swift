@@ -130,16 +130,18 @@ private struct MessageActions: View {
 
   var body: some View {
     HStack(spacing: 10) {
-      CopyButton(text: row.text, label: "Copy")
+      CopyButton(text: row.text, label: "Copy", identifier: "message-copy-\(row.id)")
       if row.role == .assistant, let fork = actions.forkFrom {
         Button("Fork from here", systemImage: "arrow.triangle.branch") { fork(row) }
           .labelStyle(.iconOnly)
           .help("Fork from here")
+          .accessibilityIdentifier("message-fork-\(row.id)")
       }
       if let url = actions.messageURL?(row) {
         Button("Copy link", systemImage: "link") { Pasteboard.copy(url.absoluteString) }
           .labelStyle(.iconOnly)
           .help("Copy link")
+          .accessibilityIdentifier("message-link-\(row.id)")
       }
       if let timestamp {
         Text(MessageTimestamp.format(timestamp, now: Date()))

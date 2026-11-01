@@ -1,7 +1,7 @@
 public import SwiftUI
 
-/// The right panel's tabs: the web's Files, Changes, Pull Requests and Agents, plus a native
-/// Info tab with the session facts.
+/// The right panel's tabs: the web's Files, Changes, Pull Requests and Agents, plus the session's
+/// terminals and a native Info tab with the session facts.
 nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, Identifiable {
   /// Files.
   case files
@@ -11,6 +11,8 @@ nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, 
   case pullRequests
   /// Agents (sub-agents).
   case agents
+  /// The session's terminals.
+  case terminals
   /// Session facts (native).
   case info
 
@@ -24,6 +26,7 @@ nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, 
     case .changes: "Changes"
     case .pullRequests: "Pull Requests"
     case .agents: "Agents"
+    case .terminals: "Terminals"
     case .info: "Info"
     }
   }
@@ -35,26 +38,32 @@ nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, 
     case .changes: "plus.forwardslash.minus"
     case .pullRequests: "arrow.triangle.pull"
     case .agents: "cpu"
+    case .terminals: "apple.terminal"
     case .info: "info.circle"
     }
   }
 }
 
-/// Content the app supplies for the Files and Changes tabs (for example `OmnigentWorkspaceUI`'s
-/// file tree and changed-files list). `nil` shows the built-in fallback.
+/// Content the app supplies for the Files, Changes and Terminals tabs (for example
+/// `OmnigentWorkspaceUI`'s file tree and changed-files list, and `OmnigentTerminalUI`'s terminal
+/// list with the attached surface). `nil` shows the built-in fallback.
 public struct WorkspaceSlots {
   /// The Files tab.
   public var files: AnyView?
   /// The Changes tab.
   public var changes: AnyView?
+  /// The Terminals tab.
+  public var terminals: AnyView?
 
   /// Creates slots.
   /// - Parameters:
   ///   - files: Files content.
   ///   - changes: Changes content.
-  public init(files: AnyView? = nil, changes: AnyView? = nil) {
+  ///   - terminals: Terminals content.
+  public init(files: AnyView? = nil, changes: AnyView? = nil, terminals: AnyView? = nil) {
     self.files = files
     self.changes = changes
+    self.terminals = terminals
   }
 }
 
@@ -146,6 +155,14 @@ public struct WorkspaceInspector: View {
       PullRequestList(pullRequests: state.pullRequests, open: actions.openURL)
     case .agents:
       AgentsList(children: children, open: actions.openSession)
+    case .terminals:
+      if let terminals = slots.terminals {
+        terminals
+      } else {
+        ContentUnavailableView(
+          "Terminals", systemImage: "apple.terminal",
+          description: Text("The session's terminals appear here when its host is connected."))
+      }
     case .info:
       SessionInspectorView(state: state, actions: actions)
     }
