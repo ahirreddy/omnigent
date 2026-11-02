@@ -73,6 +73,9 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] Confirm hardware H.264 decode on a physical iPhone/iPad (simulators have no hardware decoder;
   the renderer logs the VideoToolbox probe at launch).
 - [ ] Add a reconnect-after-unexpected-close case (with backoff) to the headless e2e gate.
+- [ ] Host: after Back, the remote tab stops repainting when many other tabs show the same site
+  (likely the back/forward cache restore; `Invalidate(PET_VIEW)` only runs at hello time in
+  `browser-host/src/host/tab.cc`). UI tests should also close the remote tabs they open.
 - [ ] M2 to M5 from the design doc: agent CDP and tab mapping, handoff and takeover, profiles,
   settings and hardware encoders.
 - [ ] **Share the CEF core between the OWL host and `browser-host/`.** M1 copied and adapted the
@@ -226,6 +229,14 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Folded Duo UI tests:** XCUITest can't navigate (the outer display is captured rotated and the
   back button isn't found); Duo is verified by screenshots only.
 - [ ] **Read-only sessions:** consider a "Fork to continue" action on the read-only composer row.
+- [ ] **Split view under the titlebar:** a split pane's transcript stops at the toolbar, so the Mac
+  draws its flat toolbar background over the panes instead of the soft scroll edge. Extending the
+  panes under the bar (`ignoresSafeArea` with `safeAreaPadding`, or an open-top clip) moved the
+  browser tab's chrome under the tab row, whose AppKit view ignores SwiftUI safe areas.
+- [ ] **Glass in render tests:** `cacheDisplay` draws neither Liquid Glass nor its content, so
+  offscreen renders flatten ``GlassSurface`` to a material (`flattensGlass`). System glass
+  (toolbar items, `.glass` buttons) still draws nothing there; the gallery's
+  `--gallery-capture window` shows the real thing.
 
 ## Product decisions
 

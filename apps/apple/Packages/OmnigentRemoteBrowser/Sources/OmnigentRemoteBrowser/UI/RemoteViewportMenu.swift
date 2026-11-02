@@ -1,67 +1,22 @@
 import OmnigentCoreFFI
 import SwiftUI
 
-/// The remote tab's viewport menu (design doc section 16.1): keep the agent's size, fit the
-/// window, a preset or custom size, or (on iPhone and iPad) the device's own mobile size.
+/// The remote tab's viewport menu on the Mac toolbar (design doc section 16.1): keep the agent's
+/// size, fit the window, or a preset or custom size.
 struct RemoteViewportMenu: View {
   let store: RemoteBrowserStore
   @State private var editingCustomSize = false
 
   var body: some View {
     Menu {
-      choice(.keep, systemImage: "aspectratio", id: "keep")
-      choice(.fitWindow, systemImage: "arrow.up.left.and.arrow.down.right", id: "fit")
-      Menu {
-        ForEach(RemoteViewportMode.presets, id: \.self) { size in
-          choice(.fixed(size), systemImage: nil, id: "preset.\(size.width)x\(size.height)")
-        }
-        Divider()
-        Button("Custom Size\u{2026}", systemImage: "pencil") { editingCustomSize = true }
-          .accessibilityIdentifier("remote-browser.viewport.custom")
-      } label: {
-        Label(fixedTitle, systemImage: "ruler")
-      }
-      .accessibilityIdentifier("remote-browser.viewport.fixed")
-      #if os(iOS)
-        Divider()
-        choice(.mobile(site: mobileSite), systemImage: "iphone", id: "mobile")
-        Toggle(
-          "Request Mobile Website",
-          isOn: Binding(get: { mobileSite }, set: { store.requestMobileWebsite($0) })
-        )
-        .disabled(!store.viewportMode.isMobile)
-        .accessibilityIdentifier("remote-browser.viewport.mobileSite")
-      #endif
-      if !store.canSendInput {
-        Divider()
-        Text("Applies while you are in control")
-      }
+      RemoteViewportMenuItems(store: store, editingCustomSize: $editingCustomSize)
     } label: {
       Label("Viewport: \(store.viewportMode.title)", systemImage: icon)
     }
     .menuIndicator(.hidden)
     .help("Remote viewport size")
     .accessibilityIdentifier("remote-browser.viewport")
-    .sheet(isPresented: $editingCustomSize) {
-      RemoteCustomSizeSheet(initial: customInitial) { store.viewportMode = .fixed($0) }
-    }
-  }
-
-  private var mobileSite: Bool {
-    if case .mobile(let site) = store.viewportMode { return site }
-    return false
-  }
-
-  private var fixedTitle: String {
-    if case .fixed(let size) = store.viewportMode { return "Set Remote Size (\(size.label))" }
-    return "Set Remote Size"
-  }
-
-  private var customInitial: RemoteViewportSize {
-    if case .fixed(let size) = store.viewportMode { return size }
-    let viewport = store.snapshot.viewport
-    return RemoteViewportSize(
-      width: Int(viewport?.width ?? 1280), height: Int(viewport?.height ?? 800))
+    .remoteCustomSizeSheet(store: store, isPresented: $editingCustomSize)
   }
 
   private var icon: String {
@@ -71,6 +26,42 @@ struct RemoteViewportMenu: View {
     case .fixed: "ruler"
     case .mobile: "iphone"
     }
+  }
+}
+
+/// The viewport choices, shared by the Mac toolbar's menu and the iOS page menu's Viewport
+/// submenu: keep, fit, a preset or custom size, and (on iPhone and iPad) the device's own mobile
+/// size.
+struct RemoteViewportMenuItems: View {
+  let store: RemoteBrowserStore
+  @Binding var editingCustomSize: Bool
+
+  var body: some View {
+    choice(.keep, systemImage: "aspectratio", id: "keep")
+    choice(.fitWindow, systemImage: "arrow.up.left.and.arrow.down.right", id: "fit")
+    Menu {
+      ForEach(RemoteViewportMode.presets, id: \.self) { size in
+        choice(.fixed(size), systemImage: nil, id: "preset.\(size.width)x\(size.height)")
+      }
+      Divider()
+      Button("Custom Size\u{2026}", systemImage: "pencil") { editingCustomSize = true }
+        .accessibilityIdentifier("remote-browser.viewport.custom")
+    } label: {
+      Label(fixedTitle, systemImage: "ruler")
+    }
+    .accessibilityIdentifier("remote-browser.viewport.fixed")
+    #if os(iOS)
+      choice(.mobile(site: store.viewportMode.requestsMobileSite), systemImage: "iphone", id: "mobile")
+    #endif
+    if !store.canSendInput {
+      Divider()
+      Text("Applies while you are in control")
+    }
+  }
+
+  private var fixedTitle: String {
+    if case .fixed(let size) = store.viewportMode { return "Set Remote Size (\(size.label))" }
+    return "Set Remote Size"
   }
 
   private func choice(_ mode: RemoteViewportMode, systemImage: String?, id: String) -> some View {
@@ -87,6 +78,45 @@ struct RemoteViewportMenu: View {
       }
     }
     .accessibilityIdentifier("remote-browser.viewport.\(id)")
+  }
+}
+
+#if os(iOS)
+  /// Safari's "Request Desktop Website" for Mobile Size: asks for mobile sites with a mobile
+  /// user agent, or back for desktop sites. Only Mobile Size has a mobile user agent to offer.
+  struct RemoteMobileSiteButton: View {
+    let store: RemoteBrowserStore
+
+    var body: some View {
+      let site = store.viewportMode.requestsMobileSite
+      Button {
+        store.requestMobileWebsite(!site)
+      } label: {
+        if site {
+          Label("Request Desktop Website", systemImage: "desktopcomputer")
+        } else {
+          Label("Request Mobile Website", systemImage: "iphone")
+        }
+      }
+      .disabled(!store.viewportMode.isMobile)
+      .accessibilityIdentifier("remote-browser.viewport.mobileSite")
+    }
+  }
+#endif
+
+extension View {
+  /// Presents the custom size form, applying the size it returns.
+  func remoteCustomSizeSheet(store: RemoteBrowserStore, isPresented: Binding<Bool>) -> some View {
+    sheet(isPresented: isPresented) {
+      RemoteCustomSizeSheet(initial: customSizeInitial(store)) { store.viewportMode = .fixed($0) }
+    }
+  }
+
+  private func customSizeInitial(_ store: RemoteBrowserStore) -> RemoteViewportSize {
+    if case .fixed(let size) = store.viewportMode { return size }
+    let viewport = store.snapshot.viewport
+    return RemoteViewportSize(
+      width: Int(viewport?.width ?? 1280), height: Int(viewport?.height ?? 800))
   }
 }
 

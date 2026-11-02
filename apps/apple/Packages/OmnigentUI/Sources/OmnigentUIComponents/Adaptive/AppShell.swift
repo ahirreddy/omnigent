@@ -125,86 +125,26 @@ enum TitlebarMetrics {
   static let minimumStrip: CGFloat = 220
 }
 
-/// Hides the toolbar's title when the selected tab shows it, and backs the toolbar row (the
-/// iPhone navigation bar too) with the canvas so scrolled text never shows through it.
+/// Hides the toolbar's title when the selected tab shows it. The bars are the system's: content
+/// scrolls under them with the soft scroll edge effect, and Liquid Glass backs their controls
+/// (solid under Reduce Transparency, bordered under Increase Contrast).
 private struct TitlelessToolbar: ViewModifier {
   let isActive: Bool
 
   func body(content: Content) -> some View {
     if isActive {
-      #if os(macOS)
-        backed(content.toolbar(removing: .title))
-      #else
-        backed(content.navigationBarTitleDisplayMode(.inline).toolbar(removing: .title))
-      #endif
+      edged(content.toolbar(removing: .title))
     } else {
-      backed(content)
+      edged(content)
     }
   }
 
-  private func backed(_ content: some View) -> some View {
+  private func edged(_ content: some View) -> some View {
     #if os(iOS)
       // Inline titles: the large-title band above a short transcript drew empty.
-      content.navigationBarTitleDisplayMode(.inline).modifier(NavigationBarCanvas())
+      content.navigationBarTitleDisplayMode(.inline)
     #else
-      content
-        .scrollEdgeEffectStyle(.hard, for: .top)
-        .overlayPreferenceValue(TitlebarCanvasKey.self) { TitlebarBackdrop(screenCanvas: $0) }
+      content.scrollEdgeEffectStyle(.soft, for: .top)
     #endif
-  }
-}
-
-#if os(iOS)
-  /// The navigation bar's own background on the canvas (the screen's, in CLI style), so
-  /// scrolled text never shows through it.
-  private struct NavigationBarCanvas: ViewModifier {
-    @State private var screenCanvas: Color?
-    @Environment(\.omnigentTheme) private var theme
-    @Environment(\.colorScheme) private var colorScheme
-
-    func body(content: Content) -> some View {
-      content
-        .onPreferenceChange(TitlebarCanvasKey.self) { screenCanvas = $0 }
-        .toolbarBackground(canvas, for: .navigationBar)
-        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
-    }
-
-    private var canvas: AnyShapeStyle {
-      if let color = screenCanvas ?? theme.palette(for: colorScheme).canvas {
-        return AnyShapeStyle(color)
-      }
-      return AnyShapeStyle(.background)
-    }
-  }
-#endif
-
-/// The theme's canvas behind the Mac toolbar row: the top safe area, which scroll views extend
-/// under.
-private struct TitlebarBackdrop: View {
-  /// The screen's own canvas (CLI style), instead of the theme's.
-  let screenCanvas: Color?
-  @Environment(\.omnigentTheme) private var theme
-  @Environment(\.colorScheme) private var colorScheme
-
-  var body: some View {
-    GeometryReader { proxy in
-      VStack(spacing: 0) {
-        canvas.frame(height: proxy.safeAreaInsets.top)
-        Spacer(minLength: 0)
-      }
-      .ignoresSafeArea(.container, edges: .top)
-    }
-    .allowsHitTesting(false)
-    .accessibilityHidden(true)
-  }
-
-  @ViewBuilder private var canvas: some View {
-    if let screenCanvas {
-      screenCanvas
-    } else if let color = theme.palette(for: colorScheme).canvas {
-      color
-    } else {
-      Rectangle().fill(.background)
-    }
   }
 }

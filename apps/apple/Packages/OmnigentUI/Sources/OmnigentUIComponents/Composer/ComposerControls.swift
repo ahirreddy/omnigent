@@ -139,7 +139,33 @@ struct ComposerTrayView: View {
     actions.selectDirectory != nil || actions.openFolder != nil
   }
 
+  /// Whether anything shows before the context gauge.
+  private var hasLeadingItems: Bool {
+    context != nil || (tray.directory != nil && (canPickDirectory || context == nil))
+      || tray.worktree != nil || (tray.branch != nil && context?.branch == nil)
+      || tray.pullRequest != nil
+  }
+
   var body: some View {
+    // The tray floats over the transcript, so its items sit on glass chips.
+    HStack(spacing: Theme.Spacing.medium) {
+      if hasLeadingItems {
+        leadingItems.trayChip()
+      }
+      Spacer(minLength: 0)
+      if let fraction = tray.contextFraction {
+        contextUsage(fraction).trayChip()
+      }
+    }
+    .font(.caption)
+    .menuStyle(.button)
+    .buttonStyle(.borderless)
+    .menuIndicator(.visible)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("composer-tray")
+  }
+
+  private var leadingItems: some View {
     HStack(spacing: Theme.Spacing.medium) {
       if let context {
         // A folder picker already names the workspace.
@@ -193,33 +219,35 @@ struct ComposerTrayView: View {
           .help("Pull request \(pullRequest)")
           .accessibilityLabel("Pull request \(pullRequest)")
       }
-      Spacer(minLength: 0)
-      if let fraction = tray.contextFraction {
-        // A gauge with its number, so it never reads as a spinner and needs no hover.
-        HStack(spacing: Theme.Spacing.extraSmall) {
-          ProgressRing(fraction: fraction, size: 13, warnsNearFull: true)
-          Text("\(Int((fraction * 100).rounded()))% context")
-            .monospacedDigit()
-            .foregroundStyle(
-              fraction > 0.85 ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(.secondary)
-            )
-            .lineLimit(1)
-            .fixedSize()
-        }
-        .help("Context used: \(Int((fraction * 100).rounded()))% of the context window")
-        .accessibilityElement()
-        .accessibilityLabel("Context used")
-        .accessibilityValue("\(Int((fraction * 100).rounded())) percent")
-        .accessibilityIdentifier("composer-context-usage")
-      }
     }
-    .font(.caption)
-    .menuStyle(.button)
-    .buttonStyle(.borderless)
-    .menuIndicator(.visible)
-    .padding(.horizontal, Theme.Spacing.medium)
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("composer-tray")
+  }
+
+  /// A gauge with its number, so it never reads as a spinner and needs no hover.
+  private func contextUsage(_ fraction: Double) -> some View {
+    HStack(spacing: Theme.Spacing.extraSmall) {
+      ProgressRing(fraction: fraction, size: 13, warnsNearFull: true)
+      Text("\(Int((fraction * 100).rounded()))% context")
+        .monospacedDigit()
+        .foregroundStyle(
+          fraction > 0.85 ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(.secondary)
+        )
+        .lineLimit(1)
+        .fixedSize()
+    }
+    .help("Context used: \(Int((fraction * 100).rounded()))% of the context window")
+    .accessibilityElement()
+    .accessibilityLabel("Context used")
+    .accessibilityValue("\(Int((fraction * 100).rounded())) percent")
+    .accessibilityIdentifier("composer-context-usage")
+  }
+}
+
+extension View {
+  /// A tray item group on a small glass capsule.
+  fileprivate func trayChip() -> some View {
+    padding(.horizontal, Theme.Spacing.small)
+      .padding(.vertical, Theme.Spacing.extraSmall)
+      .glassSurface(in: Capsule())
   }
 }
 
@@ -312,8 +340,7 @@ struct CompletionList: View {
         .padding(.vertical, Theme.Spacing.extraSmall)
     }
     .padding(.vertical, Theme.Spacing.extraSmall)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.large))
-    .overlay { RoundedRectangle(cornerRadius: Theme.Radius.large).strokeBorder(.separator) }
+    .glassSurface(in: RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous))
     .padding(.horizontal, Theme.Spacing.small)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("composer-completions")

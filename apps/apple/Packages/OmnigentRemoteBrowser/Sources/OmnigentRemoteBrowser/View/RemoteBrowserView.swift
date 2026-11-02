@@ -30,6 +30,7 @@ public final class RemoteBrowserView: RemotePlatformView {
   private var lastScroll: RemoteScrollMetrics?
   private var indicatorFade: Task<Void, Never>?
   private var lastViewport: RemoteViewport?
+  private var zoomResets = 0
   /// Local zoom and pan (design doc section 16.3); identity on macOS.
   var zoom = RemoteZoomState()
   /// The rubber-band displacement at the page's edges, view points.
@@ -150,7 +151,9 @@ public final class RemoteBrowserView: RemotePlatformView {
   /// The page title, and the zoom when zoomed, for VoiceOver (and UI tests).
   private func updateAccessibilityValue() {
     var value = store.navigation.title
-    if zoom.isZoomed { value += ", zoomed \(Int((zoom.scale * 100).rounded()))%" }
+    let percent = zoom.isZoomed ? Int((zoom.scale * 100).rounded()) : nil
+    if let percent { value += ", zoomed \(percent)%" }
+    if store.zoomPercent != percent { store.zoomPercent = percent }
     #if os(macOS)
       setAccessibilityValue(value)
     #else
@@ -211,9 +214,15 @@ public final class RemoteBrowserView: RemotePlatformView {
       _ = store.snapshot.textInput
       _ = store.viewportMode
       _ = store.still
+      _ = store.zoomResets
     } onChange: { [weak self] in
       Task { @MainActor in
         guard let self else { return }
+        if self.store.zoomResets != self.zoomResets {
+          self.zoomResets = self.store.zoomResets
+          self.zoom = RemoteZoomState()
+          self.relayout(animated: true)
+        }
         let scrolled = self.store.snapshot.scroll != self.lastScroll
         self.lastScroll = self.store.snapshot.scroll
         self.updateStill()

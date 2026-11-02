@@ -312,11 +312,13 @@ private struct CatalogNavigationBarModifier: ViewModifier {
 
   func body(content: Content) -> some View {
     #if os(macOS)
-      content.safeAreaInset(edge: .top, spacing: 0) {
+      // A bar, as the system's: content scrolls under it with the soft scroll edge effect.
+      content.safeAreaBar(edge: .top, spacing: 0) {
         if style == .touch {
           CatalogNavigationBar(title: title, isCompact: sizeClass == .compact)
         }
       }
+      .scrollEdgeEffectStyle(.soft, for: .top)
     #else
       content
     #endif
@@ -324,7 +326,7 @@ private struct CatalogNavigationBarModifier: ViewModifier {
 }
 
 /// A touch screen's inline navigation bar, drawn in place for Mac captures: the back or sidebar
-/// button, the title, and the screen's actions.
+/// button, the title, and the screen's actions, as glass circles over the content.
 struct CatalogNavigationBar: View {
   let title: String
   let isCompact: Bool
@@ -342,7 +344,6 @@ struct CatalogNavigationBar: View {
     }
     .padding(.horizontal, Theme.Spacing.large)
     .frame(height: 52)
-    .background { Color.clear.themeCanvas() }
     .accessibilityElement(children: .combine)
     .accessibilityLabel(title)
   }
@@ -351,8 +352,7 @@ struct CatalogNavigationBar: View {
     Image(systemName: symbol)
       .font(.system(size: 17, weight: .medium))
       .frame(width: 44, height: 44)
-      .background(.regularMaterial, in: Circle())
-      .overlay { Circle().strokeBorder(.separator, lineWidth: 0.5) }
+      .glassSurface(in: Circle())
       .accessibilityHidden(true)
   }
 }

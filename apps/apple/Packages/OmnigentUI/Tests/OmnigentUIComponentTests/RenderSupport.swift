@@ -44,6 +44,7 @@
         .environment(\.horizontalSizeClass, layout == .compact ? .compact : .regular)
         .environment(\.colorScheme, scheme)
         .environment(\.controlActiveState, .key)
+        .environment(\.flattensGlass, true)
         .frame(width: width)
         .fixedSize(horizontal: false, vertical: height == nil)
         .frame(height: height)

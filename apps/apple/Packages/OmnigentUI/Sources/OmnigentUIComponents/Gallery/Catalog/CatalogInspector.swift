@@ -80,6 +80,8 @@ struct CatalogInspector: View {
         .accessibilityIdentifier("gallery-dynamic-type")
         Toggle("Increase contrast", isOn: $settings.increaseContrast)
           .accessibilityIdentifier("gallery-contrast")
+        Toggle("Reduce transparency", isOn: $settings.reduceTransparency)
+          .accessibilityIdentifier("gallery-reduce-transparency")
         Toggle("Reduce motion", isOn: $settings.reduceMotion)
           .accessibilityIdentifier("gallery-reduce-motion")
         Toggle("Right to left", isOn: $settings.rightToLeft)
@@ -143,7 +145,8 @@ struct CatalogInspector: View {
       },
       componentScreen: settings.screen, framed: settings.showsFrame,
       preferences: settings.preferences, dynamicType: settings.dynamicType,
-      increaseContrast: settings.increaseContrast, reduceMotion: settings.reduceMotion,
+      increaseContrast: settings.increaseContrast,
+      reduceTransparency: settings.reduceTransparency, reduceMotion: settings.reduceMotion,
       rightToLeft: settings.rightToLeft)
     export = .running(done: 0, total: CatalogExporter.plan(job).count)
     Task {

@@ -22,10 +22,13 @@ struct CatalogExportJob {
   var preferences: ThemePreferences
   var dynamicType: DynamicTypeSize = .large
   var increaseContrast = false
+  var reduceTransparency = false
   var reduceMotion = false
   var rightToLeft = false
   /// How long each render settles before it is captured.
   var settleTime: Duration = .milliseconds(150)
+  /// Capture through the window server, so Liquid Glass and scroll edge effects draw (Mac).
+  var capturesWindow = false
 }
 
 /// One planned render.
@@ -105,8 +108,8 @@ enum CatalogExporter {
   {
     CatalogTraits(
       theme: job.preferences.theme, scheme: scheme, screen: screen, dynamicType: job.dynamicType,
-      increaseContrast: job.increaseContrast, reduceMotion: job.reduceMotion,
-      rightToLeft: job.rightToLeft)
+      increaseContrast: job.increaseContrast, reduceTransparency: job.reduceTransparency,
+      reduceMotion: job.reduceMotion, rightToLeft: job.rightToLeft)
   }
 
   /// Renders every planned item to `job.directory`, then writes the index and manifest.
@@ -125,7 +128,7 @@ enum CatalogExporter {
           traits: traits(job, scheme: item.scheme, screen: item.screen),
           layout: CatalogLayout(canvas: entry.canvas, screen: item.screen, framed: job.framed),
           name: item.fileName,
-          settleTime: job.settleTime)
+          settleTime: job.settleTime, capturesWindow: job.capturesWindow)
         let url = job.directory.appending(path: item.fileName)
         try data.write(to: url)
         images.append(url)
@@ -143,14 +146,18 @@ enum CatalogExporter {
 
   #if os(macOS)
     /// Draws a render through a real `NSHostingView` in a borderless window that is never
-    /// shown, so AppKit-backed controls draw as they do in the app.
+    /// shown, so AppKit-backed controls draw as they do in the app. With `capturesWindow` the
+    /// window server composites it (behind the desktop), so glass draws too.
     static func render(
       _ state: CatalogState, context: CatalogContext, traits: CatalogTraits,
-      layout: CatalogLayout, name: String, settleTime: Duration = .milliseconds(150)
+      layout: CatalogLayout, name: String, settleTime: Duration = .milliseconds(150),
+      capturesWindow: Bool = false
     ) async throws -> Data {
       _ = NSApplication.shared
       let host = NSHostingView(
-        rootView: AnyView(state.make(context).catalogRoot(traits, layout: layout)))
+        rootView: AnyView(
+          state.make(context).catalogRoot(traits, layout: layout)
+            .environment(\.flattensGlass, !capturesWindow)))
       host.sceneBridgingOptions = []
       host.appearance = CatalogAppearanceName.appearance(for: traits)
       let window = NSWindow(
@@ -159,6 +166,7 @@ enum CatalogExporter {
       window.isReleasedWhenClosed = false
       window.appearance = host.appearance
       window.contentView = host
+      if capturesWindow { CatalogWindowCapture.prepare(window) }
       resize(host, window: window, layout: layout)
       try await Task.sleep(for: settleTime)
       // Lazy content may change the fitting height once it has laid out.
@@ -166,6 +174,11 @@ enum CatalogExporter {
       try await Task.sleep(for: .milliseconds(20))
       host.layoutSubtreeIfNeeded()
       defer { window.orderOut(nil) }
+      if capturesWindow {
+        // Glass and scroll edge effects settle over a few frames once on screen.
+        try await Task.sleep(for: .milliseconds(300))
+        return try await CatalogWindowCapture.capture(window, name: name)
+      }
       guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
         throw CatalogExportError.bitmapUnavailable(name)
       }
@@ -188,10 +201,12 @@ enum CatalogExporter {
     }
   #else
     /// Draws a render through a `UIHostingController` placed off screen in the key window, so
-    /// UIKit-backed controls draw as they do in the app.
+    /// UIKit-backed controls draw as they do in the app. `drawHierarchy` draws glass, so
+    /// `capturesWindow` changes nothing here.
     static func render(
       _ state: CatalogState, context: CatalogContext, traits: CatalogTraits,
-      layout: CatalogLayout, name: String, settleTime: Duration = .milliseconds(150)
+      layout: CatalogLayout, name: String, settleTime: Duration = .milliseconds(150),
+      capturesWindow: Bool = false
     ) async throws -> Data {
       let window = UIApplication.shared.connectedScenes
         .compactMap { ($0 as? UIWindowScene)?.keyWindow }.first

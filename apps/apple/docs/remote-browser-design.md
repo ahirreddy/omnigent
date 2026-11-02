@@ -1315,6 +1315,34 @@ in `client-core/fixtures/remote_browser/messages/` (`*_v1_1.json` names, plus
   a keyboard proxy (`UIKeyInput`) that shows the software keyboard while a remote field has
   focus.
 
+### 16.10 iOS chrome
+
+The iPhone and iPad tab follows Safari on iOS 26 (`RemoteBrowserTouchLayout`); the Mac keeps
+the local browser's toolbar.
+
+- **iPhone.** The app's navigation bar is hidden for the tab. A floating Liquid Glass address
+  pill sits at the top (the page menu, the domain with a lock for HTTPS, reload or stop, and the
+  loading progress along its edge); tapping the domain opens the full address, selected, with
+  Clear, Cancel and Go. A floating toolbar at the bottom holds back, forward, share, Take Over or
+  Hand Back, and the app's tab overview. The page runs under the toolbar and the home
+  indicator. The page menu holds Sessions (the way back to the list), control, Copy Link, Reset
+  Zoom, the Viewport submenu (16.1), Request Mobile or Desktop Website, and the profile.
+- **iPad.** The app's tab strip stays; one bar under it holds back, forward, the pill, share and
+  control.
+- **Collapse on scroll** (iPhone, while this client holds control): the host's `scroll`
+  reports drive it, since the page is not a local scroll view (`RemoteChromeCollapse`). 24 CSS
+  px down past the first 44 collapses the pill to the domain and hides the toolbar; 24 px up, the
+  top of the page, a new page or a tap on the domain brings them back. A report whose viewport
+  height changed is a resize, not a scroll, so the bars' own resize never toggles them. In the
+  modes that follow the view, collapsing resizes the remote by the pill's height, as Safari's
+  bars change `innerHeight`.
+- **Theme colour.** The status bar area and the pill take the colour of the page's top edge,
+  sampled on the client from the displayed frame (`AVSampleBufferVideoRenderer`'s displayed pixel
+  buffer, 300 ms after video arrives) when most of the top rows share one colour
+  (`RemoteEdgeColor`). No protocol change.
+- **Handoff.** When the agent asks for the user, a slim banner above the toolbar says why, with
+  Take Over; the control button stays pink after it is dismissed.
+
 ## Sources
 
 - Reference conversation: https://chatgpt.com/share/6ae7abe0-24e8-8328-be92-1b4424cda23d

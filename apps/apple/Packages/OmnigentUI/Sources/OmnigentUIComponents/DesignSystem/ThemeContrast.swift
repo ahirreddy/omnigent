@@ -21,7 +21,8 @@ nonisolated enum ThemeContrast {
     let attention: SRGB
     /// How much of ``attention`` tints its capsule.
     let capsuleOpacity: Double
-    /// Secondary text, legible on the canvas, the sidebar and a selected row.
+    /// Secondary text, legible on the canvas, the sidebar, a selected row and the composer's
+    /// glass.
     let mutedText: SRGB
     /// How much of the accent tints a selected row.
     let rowSelectionOpacity: Double
@@ -95,6 +96,14 @@ nonisolated enum ThemeContrast {
     return opacity
   }
 
+  /// The composer's tinted glass, over the bare canvas and over dense transcript text.
+  static func glass(_ key: Key) -> [SRGB] {
+    let canvas = surfaces(key)[0]
+    return GlassStyle.contrastBackgrounds(
+      canvas: canvas, surface: surface(canvas, dark: key.dark),
+      foreground: key.dark ? .white : .black, increased: key.increased)
+  }
+
   /// The card surface over `canvas`, as ``ThemeColor/surface``.
   static func surface(_ canvas: SRGB, dark: Bool) -> SRGB {
     canvas.mixed(with: dark ? .white : .black, by: dark ? 0.06 : 0.025)
@@ -158,7 +167,7 @@ nonisolated enum ThemeContrast {
     let muted = SRGB(
       key.dark ? DesignTokens.darkMutedForeground : DesignTokens.lightMutedForeground)
     let selection = rowSelectionOpacity(key)
-    let backgrounds = surfaces(key) + selectedRows(key, opacity: selection)
+    let backgrounds = surfaces(key) + selectedRows(key, opacity: selection) + glass(key)
     let attention = attention(brand, key: key, minimum: minimum)
     return Roles(
       primaryFill: primary.fill, onPrimary: primary.label,

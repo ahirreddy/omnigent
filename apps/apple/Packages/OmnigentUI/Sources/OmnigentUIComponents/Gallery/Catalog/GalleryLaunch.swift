@@ -16,6 +16,10 @@ import SwiftUI
 /// - `--gallery-devices <ids>` (`OMNIGENT_GALLERY_DEVICES`): the devices pages export on, as
 ///   device ids with an optional `-landscape` or `-unfolded`; `mac,iPhone` by default.
 /// - `--gallery-appearances <light,dark>` (`OMNIGENT_GALLERY_APPEARANCES`).
+/// - `--gallery-accessibility <contrast,reduce-transparency,reduce-motion>`
+///   (`OMNIGENT_GALLERY_ACCESSIBILITY`): accessibility settings for every render.
+/// - `--gallery-capture <view|window>` (`OMNIGENT_GALLERY_CAPTURE`): `window` captures through the
+///   window server so Liquid Glass draws (Mac; needs Screen Recording permission).
 public struct GalleryLaunchOptions: Sendable, Equatable {
   /// Open the gallery.
   public var showsGallery = false
@@ -37,6 +41,13 @@ public struct GalleryLaunchOptions: Sendable, Equatable {
   public var devices = ["mac", "iPhone"]
   /// `light` and or `dark`.
   public var appearances = ["light", "dark"]
+  /// Accessibility settings for every render: `contrast`, `reduce-transparency`, `reduce-motion`.
+  public var accessibility: [String] = []
+  /// Capture through the window server, so Liquid Glass draws.
+  public var capturesWindow = false
+
+  /// The accepted ``accessibility`` values.
+  static let accessibilitySettings = ["contrast", "reduce-transparency", "reduce-motion"]
 
   /// A bad launch argument.
   public enum ParseError: Error, Equatable, CustomStringConvertible {
@@ -74,20 +85,23 @@ public struct GalleryLaunchOptions: Sendable, Equatable {
   /// Whether the process should export and quit.
   public var exports: Bool { exportDirectory != nil }
 
+  /// The environment variable for each option.
+  private static let environmentOptions: KeyValuePairs<String, String> = [
+    "OMNIGENT_GALLERY_ENTRY": "--gallery-entry", "OMNIGENT_GALLERY_STATE": "--gallery-state",
+    "OMNIGENT_GALLERY_DEVICE": "--gallery-device", "OMNIGENT_GALLERY_FRAMES": "--gallery-frames",
+    "OMNIGENT_GALLERY_EXPORT": "--export-gallery", "OMNIGENT_GALLERY_FILTER": "--gallery-filter",
+    "OMNIGENT_GALLERY_THEME": "--gallery-theme", "OMNIGENT_GALLERY_DEVICES": "--gallery-devices",
+    "OMNIGENT_GALLERY_APPEARANCES": "--gallery-appearances",
+    "OMNIGENT_GALLERY_ACCESSIBILITY": "--gallery-accessibility",
+    "OMNIGENT_GALLERY_CAPTURE": "--gallery-capture",
+  ]
+
+  /// Applies the environment as the equivalent arguments.
   private mutating func apply(environment: [String: String]) throws {
-    if let entry = environment["OMNIGENT_GALLERY_ENTRY"] { entryID = entry }
-    if let state = environment["OMNIGENT_GALLERY_STATE"] { stateID = state }
-    if let device = environment["OMNIGENT_GALLERY_DEVICE"] { self.device = device }
-    if let frames = environment["OMNIGENT_GALLERY_FRAMES"] { try setFrames(frames) }
-    if let directory = environment["OMNIGENT_GALLERY_EXPORT"] {
-      exportDirectory = URL(filePath: directory, directoryHint: .isDirectory)
+    let arguments = Self.environmentOptions.flatMap { variable, option in
+      environment[variable].map { [option, $0] } ?? []
     }
-    if let filter = environment["OMNIGENT_GALLERY_FILTER"] { filters = Self.list(filter) }
-    if let theme = environment["OMNIGENT_GALLERY_THEME"] { themeID = theme }
-    if let devices = environment["OMNIGENT_GALLERY_DEVICES"] { self.devices = Self.list(devices) }
-    if let appearances = environment["OMNIGENT_GALLERY_APPEARANCES"] {
-      self.appearances = Self.list(appearances)
-    }
+    try apply(arguments: arguments)
   }
 
   /// The options that take a value, and where each value goes.
@@ -101,6 +115,7 @@ public struct GalleryLaunchOptions: Sendable, Equatable {
     "--gallery-filter": { $0.filters = list($1) }, "--gallery-theme": { $0.themeID = $1 },
     "--gallery-devices": { $0.devices = list($1) },
     "--gallery-appearances": { $0.appearances = list($1) },
+    "--gallery-accessibility": { $0.accessibility = list($1) },
   ]
 
   private mutating func apply(arguments: [String]) throws {
@@ -111,6 +126,9 @@ public struct GalleryLaunchOptions: Sendable, Equatable {
       } else if argument == "--gallery-frames" {
         guard let value = remaining.popFirst() else { throw ParseError.missingValue(argument) }
         try setFrames(value)
+      } else if argument == "--gallery-capture" {
+        guard let value = remaining.popFirst() else { throw ParseError.missingValue(argument) }
+        try setCapture(value)
       } else if let set = Self.valueOptions[argument] {
         guard let value = remaining.popFirst() else { throw ParseError.missingValue(argument) }
         set(&self, value)
@@ -129,6 +147,16 @@ public struct GalleryLaunchOptions: Sendable, Equatable {
     }
   }
 
+  private mutating func setCapture(_ value: String) throws {
+    switch value {
+    case "view": capturesWindow = false
+    case "window": capturesWindow = true
+    default:
+      throw ParseError.invalidValue(
+        option: "--gallery-capture", value: value, expected: "view, window")
+    }
+  }
+
   private func validate() throws {
     let themes = OmnigentTheme.builtIn.map(\.id) + ["custom"]
     guard themes.contains(themeID) else {
@@ -139,6 +167,11 @@ public struct GalleryLaunchOptions: Sendable, Equatable {
       throw ParseError.invalidValue(
         option: "--gallery-devices", value: device,
         expected: CatalogScreen.all.map(\.id).joined(separator: ", "))
+    }
+    for setting in accessibility where !Self.accessibilitySettings.contains(setting) {
+      throw ParseError.invalidValue(
+        option: "--gallery-accessibility", value: setting,
+        expected: Self.accessibilitySettings.joined(separator: ", "))
     }
     for appearance in appearances where !["light", "dark"].contains(appearance) {
       throw ParseError.invalidValue(
@@ -176,7 +209,10 @@ public enum GallerySnapshotExport {
       entries: entries, directory: directory,
       schemes: options.appearances.map { $0 == "dark" ? ColorScheme.dark : .light },
       screens: options.devices.compactMap(CatalogScreen.init(id:)), framed: options.frames,
-      preferences: preferences)
+      preferences: preferences, increaseContrast: options.accessibility.contains("contrast"),
+      reduceTransparency: options.accessibility.contains("reduce-transparency"),
+      reduceMotion: options.accessibility.contains("reduce-motion"),
+      capturesWindow: options.capturesWindow)
     return try await CatalogExporter.run(job, progress: progress)
   }
 

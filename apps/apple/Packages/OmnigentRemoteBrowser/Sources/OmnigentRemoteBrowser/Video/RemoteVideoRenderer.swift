@@ -94,6 +94,13 @@ public final class RemoteVideoRenderer {
     }
   }
 
+  /// The colour along the top edge of the picture on screen, when it is uniform.
+  /// - Returns: The colour, or `nil` for a busy edge or no picture.
+  public func sampleTopEdge() -> RemoteEdgeColor? {
+    guard let buffer = layer.sampleBufferRenderer.displayedPixelBuffer() else { return nil }
+    return RemoteEdgeColor.sample(buffer)
+  }
+
   /// Drops the shown picture and waits for the next keyframe (for example after the tab was
   /// hidden), asking for one.
   public func reset() {

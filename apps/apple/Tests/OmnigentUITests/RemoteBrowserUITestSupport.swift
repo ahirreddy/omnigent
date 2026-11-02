@@ -43,12 +43,13 @@ struct RemoteBrowserUITestSupport {
 
   /// Launches the app against the live server with the remote browser on, in Keep Remote Size
   /// (the mode is saved per device, so an earlier test's choice would otherwise carry over).
+  /// The JSON is quoted as a plist string: the argument domain drops an unquoted `{...}`.
   /// - Returns: The app.
   func launch() -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments += [
       "-omnigent.lastServer", server, "-OmnigentRemoteBrowser", "YES",
-      "-remoteBrowser.viewportMode", #"{"keep":{}}"#,
+      "-remoteBrowser.viewportMode", #""{\"keep\":{}}""#,
     ]
     app.launch()
     return app
@@ -103,28 +104,70 @@ struct RemoteBrowserUITestSupport {
     overviewNew.tap()
   }
 
-  /// Types a URL into the remote tab's address field.
+  /// Types a URL into the remote tab's address field. On iOS the address pill shows the domain
+  /// until tapped, then the field opens with the address selected and a clear button.
   /// - Parameters:
   ///   - url: The URL.
   ///   - app: The app.
   func load(_ url: String, in app: XCUIApplication) {
     let address = app.textFields["remote-browser.address"]
+    if !address.exists {
+      let collapsed = app.buttons["remote-browser.addressBar.collapsed"]
+      if collapsed.exists { collapsed.tap() }
+      let pill = app.buttons["remote-browser.address"]
+      XCTAssertTrue(pill.waitForExistence(timeout: 10), "no address pill")
+      pill.tap()
+    }
     XCTAssertTrue(address.waitForExistence(timeout: 10), "no address field")
-    address.tap()
-    // The field shows the current page's URL: select it all so the typing replaces it.
-    let existing = (address.value as? String) ?? ""
-    if !existing.isEmpty, existing != address.placeholderValue {
-      address.press(forDuration: 1.0)
-      let item = app.menuItems["Select All"]
-      let button = app.buttons["Select All"]
-      let deadline = Date().addingTimeInterval(5)
-      while Date() < deadline, !item.exists, !button.exists {
-        Thread.sleep(forTimeInterval: 0.1)
+    let clear = app.buttons["remote-browser.address.clear"]
+    if clear.waitForExistence(timeout: 2) {
+      clear.tap()
+    } else {
+      address.tap()
+      // The field shows the current page's URL: select it all so the typing replaces it.
+      let existing = (address.value as? String) ?? ""
+      if !existing.isEmpty, existing != address.placeholderValue {
+        address.press(forDuration: 1.0)
+        let item = app.menuItems["Select All"]
+        let button = app.buttons["Select All"]
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline, !item.exists, !button.exists {
+          Thread.sleep(forTimeInterval: 0.1)
+        }
+        XCTAssertTrue(item.exists || button.exists, "no Select All for the address")
+        (item.exists ? item : button).tap()
       }
-      XCTAssertTrue(item.exists || button.exists, "no Select All for the address")
-      (item.exists ? item : button).tap()
     }
     address.typeText(url + "\n")
+  }
+
+  /// Picks a viewport mode from the page menu's Viewport submenu.
+  /// - Parameters:
+  ///   - mode: The item's identifier suffix: `keep`, `fit` or `mobile`.
+  ///   - app: The app.
+  ///   - menuOpen: Runs with the submenu open (a screenshot).
+  /// - Throws: What `menuOpen` throws.
+  func chooseViewport(
+    _ mode: String, in app: XCUIApplication, menuOpen: () throws -> Void = {}
+  ) rethrows {
+    let titles = ["keep": "Keep Remote Size", "fit": "Fit to Window", "mobile": "Mobile Size"]
+    let pageMenu = app.buttons["remote-browser.menu"].firstMatch
+    XCTAssertTrue(pageMenu.waitForExistence(timeout: 10), "no page menu")
+    pageMenu.tap()
+    // UIKit drops identifiers inside a submenu: match items by their titles there too.
+    let submenu = app.buttons.matching(
+      NSPredicate(format: "identifier == 'remote-browser.viewport' OR label BEGINSWITH 'Viewport'")
+    ).firstMatch
+    XCTAssertTrue(submenu.waitForExistence(timeout: 5), "no Viewport in the page menu")
+    submenu.tap()
+    let item = app.buttons.matching(
+      NSPredicate(
+        format: "identifier == %@ OR label == %@", "remote-browser.viewport.\(mode)",
+        titles[mode] ?? mode)
+    ).firstMatch
+    XCTAssertTrue(item.waitForExistence(timeout: 5), "no \(mode) item in the viewport menu")
+    try menuOpen()
+    item.tap()
   }
 
   /// The point of `surface` showing a CSS point of the remote viewport, letterboxed.

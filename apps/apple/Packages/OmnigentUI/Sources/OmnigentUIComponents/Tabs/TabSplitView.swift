@@ -321,7 +321,7 @@ private struct TabDropPreview: View {
               .font(.callout.weight(.medium))
               .padding(.horizontal, Theme.Spacing.medium)
               .padding(.vertical, Theme.Spacing.small)
-              .background(.regularMaterial, in: Capsule())
+              .glassSurface(in: Capsule())
           }
           .padding(Theme.Spacing.small)
           .frame(width: width)

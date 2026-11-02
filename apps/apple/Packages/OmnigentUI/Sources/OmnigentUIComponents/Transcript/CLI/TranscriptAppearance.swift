@@ -213,16 +213,6 @@ struct TranscriptColumn: ViewModifier {
   }
 }
 
-/// A screen's own canvas for the toolbar row behind its title (the iPhone navigation bar too),
-/// when it differs from the theme's: CLI style puts it on the terminal background.
-struct TitlebarCanvasKey: PreferenceKey {
-  static let defaultValue: Color? = nil
-
-  static func reduce(value: inout Color?, nextValue: () -> Color?) {
-    value = value ?? nextValue()
-  }
-}
-
 /// CLI layout metrics, in points.
 enum CLIMetrics {
   /// Horizontal padding at regular width.

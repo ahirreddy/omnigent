@@ -200,7 +200,7 @@ struct UndoBar: View {
     }
     .padding(.horizontal, Theme.Spacing.medium)
     .padding(.vertical, Theme.Spacing.small)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+    .glassSurface(in: RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous))
     .padding(Theme.Spacing.small)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("undo-banner")

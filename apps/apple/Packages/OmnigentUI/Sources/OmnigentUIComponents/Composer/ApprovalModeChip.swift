@@ -123,9 +123,7 @@ struct ApprovalModeHUD: View {
     }
     .padding(.horizontal, Theme.Spacing.medium)
     .padding(.vertical, Theme.Spacing.small)
-    .background(.regularMaterial, in: Capsule())
-    .overlay { Capsule().strokeBorder(ThemeColor.border, lineWidth: 0.5) }
-    .shadow(color: .black.opacity(0.12), radius: Theme.Spacing.medium, y: Theme.Spacing.tiny)
+    .glassSurface(in: Capsule())
     .accessibilityElement(children: .combine)
     .accessibilityIdentifier("composer-approval-mode-hud")
   }

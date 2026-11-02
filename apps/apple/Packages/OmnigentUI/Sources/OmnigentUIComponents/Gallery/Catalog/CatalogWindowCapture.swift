@@ -39,8 +39,8 @@
       while process.isRunning {
         try await Task.sleep(for: .milliseconds(20))
       }
-      let output = String(
-        decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+      let data = errors.fileHandleForReading.readDataToEndOfFile()
+      let output = String(bytes: data, encoding: .utf8) ?? "\(data.count) bytes of non-UTF-8 output"
       guard process.terminationStatus == 0 else {
         throw Failure.captureFailed(
           name: name, status: process.terminationStatus, output: output)

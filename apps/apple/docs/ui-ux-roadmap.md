@@ -270,6 +270,22 @@ remote browser viewport resize with take-over states (7).
 - **Reading column:** Astra suggests testing 640–680 pt against today's 720 pt; Claude and Fable
   keep 720.
 
+### Bars: glass decision
+
+Claude, Astra and Fable agreed (2026-11-02), with "be like a normal iOS app first":
+
+- **System bars.** The Mac titlebar row and the iOS navigation bar are the system's: no themed
+  backdrop, background visibility automatic, inline titles. Content scrolls under them with the
+  soft scroll edge effect; themes come through the content canvas and restrained accents.
+- **Bottom bar.** The dock and composer are a `safeAreaBar` with a soft bottom edge. The composer
+  card is Liquid Glass (`Glass.regular`, never `.clear` over transcripts, no nested glass); the
+  decision dock and detailed payloads stay opaque cards. The bar's gaps take clicks so nothing
+  clicks through.
+- **Fallbacks.** If dense text competes with the Mac tab labels, use `.hard` for the Mac top edge
+  before restoring a solid backdrop; `.hard` on iPhone only if the subtitle reads faint over code.
+- **Accessibility.** Custom glass goes solid under Reduce Transparency and gains a border and a
+  near-opaque tint under Increase Contrast; system bars handle both themselves.
+
 ---
 
 The sections below are from review 2 (2026-11-01).
