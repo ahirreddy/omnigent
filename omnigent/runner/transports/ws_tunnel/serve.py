@@ -1506,6 +1506,10 @@ async def _send_hello(
         CAP_FILESYSTEM_ATTACHMENT_DELIVERY,
         CAP_FILESYSTEM_ATTACHMENTS,
     )
+    from omnigent.runner.browser_host import remote_browser_hello_capabilities
+
+    # Probes the encoder once per process; keep the subprocess off the loop.
+    browser_capabilities = await asyncio.to_thread(remote_browser_hello_capabilities)
 
     await send_text(
         encode_frame(
@@ -1518,6 +1522,7 @@ async def _send_hello(
                     CAP_MCP_REGISTRY,
                     CAP_SIDE_CHAT_SETTINGS,
                     *([EVENT_INGEST_CAPABILITY] if event_dispatcher is not None else []),
+                    *browser_capabilities,
                 ],
                 telemetry_opt_out=_tel_opt_out,
                 direct_attach_port=direct_attach_port,

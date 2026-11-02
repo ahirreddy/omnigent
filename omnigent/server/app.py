@@ -117,6 +117,7 @@ from omnigent.server.performance_metrics import (
     set_request_user_agent_for_access_log,
 )
 from omnigent.server.preference_requests import DEFAULT_PREFERENCE_POLICY, PreferencePolicy
+from omnigent.server.routes.browser_attach import create_browser_attach_router
 from omnigent.server.routes.builtin_agents import create_builtin_agents_router
 from omnigent.server.routes.comments import create_comments_router
 from omnigent.server.routes.default_policies import create_default_policies_router
@@ -3881,6 +3882,15 @@ def create_app(
         ),
         prefix="/v1",
         tags=["terminals"],
+    )
+    app.include_router(
+        create_browser_attach_router(
+            auth_provider=auth_provider,
+            permission_store=permission_store,
+            conversation_store=conversation_store,
+        ),
+        prefix="/v1",
+        tags=["browsers"],
     )
     app.include_router(
         create_session_mcp_servers_router(

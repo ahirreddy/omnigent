@@ -71,6 +71,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Callable
 from typing import Final
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, WebSocketException
@@ -182,59 +183,18 @@ def create_terminal_attach_router(
             from urllib.parse import urlencode
 
             qs = urlencode({"read_only": "true" if read_only else "false"})
-            runner_path = (
-                f"/v1/sessions/{session_id}/resources/terminals/{terminal_id}/attach?{qs}"
+            await relay_websocket_to_runner(
+                websocket,
+                ws_factory,
+                f"/v1/sessions/{session_id}/resources/terminals/{terminal_id}/attach?{qs}",
+                span_name="terminal.attach",
+                span_attributes={
+                    "session.id": session_id,
+                    "terminal.id": terminal_id,
+                    "terminal.read_only": read_only,
+                    "terminal.mode": "runner-proxy",
+                },
             )
-            try:
-                runner_cm = ws_factory(runner_path)
-            except WrongReplicaWSError:
-                # Wrong-replica routing miss: the runner tunnel is bound but not
-                # on this replica (the key routed here, but the host homed its
-                # tunnel elsewhere). Signal 4400 so the client re-dials WITHOUT
-                # the key and reaches the replica that holds the tunnel — the WS
-                # analogue of the fetch path's keyless re-address on a 400.
-                await websocket.close(
-                    code=_WS_CLOSE_WRONG_REPLICA,
-                    reason="host on another replica; retry without slice key",
-                )
-                return
-            except Exception:  # noqa: BLE001
-                await websocket.close(
-                    code=_WS_CLOSE_INTERNAL_ERROR,
-                    reason="runner attach factory failed",
-                )
-                return
-            try:
-                from omnigent.runtime import telemetry
-
-                with telemetry.span(
-                    "terminal.attach",
-                    attributes={
-                        "session.id": session_id,
-                        "terminal.id": terminal_id,
-                        "terminal.read_only": read_only,
-                        "terminal.mode": "runner-proxy",
-                    },
-                ):
-                    async with runner_cm as runner_ws:
-                        await _shuttle_ws_frames(websocket, runner_ws)
-            except _RunnerWSClosed as closed:
-                code = (
-                    closed.code
-                    if closed.code and closed.code >= 1000
-                    else _WS_CLOSE_INTERNAL_ERROR
-                )
-                with contextlib.suppress(RuntimeError):
-                    await websocket.close(
-                        code=code,
-                        reason=closed.reason or "",
-                    )
-            except Exception:  # noqa: BLE001
-                with contextlib.suppress(RuntimeError):
-                    await websocket.close(
-                        code=_WS_CLOSE_INTERNAL_ERROR,
-                        reason="runner attach proxy failed",
-                    )
             return
 
         try:
@@ -363,6 +323,68 @@ async def _authorize_terminal_attach(
     return user_id
 
 
+async def relay_websocket_to_runner(
+    websocket: WebSocket,
+    ws_factory: Callable[[str], object],
+    runner_path: str,
+    *,
+    span_name: str,
+    span_attributes: dict[str, str | bool],
+    client_frame_filter: Callable[[str | bytes], bool] | None = None,
+) -> None:
+    """
+    Relay an accepted client WebSocket to a runner WS route over the tunnel.
+
+    Mirrors the runner's close code to the client. A wrong-replica miss
+    closes with 4400 so the client re-dials without its slice key; any other
+    factory or relay failure closes with 4500.
+
+    :param websocket: The accepted client-facing WebSocket.
+    :param ws_factory: The installed runner WS factory.
+    :param runner_path: Runner-side path plus query string.
+    :param span_name: Telemetry span, e.g. ``"terminal.attach"``.
+    :param span_attributes: Telemetry span attributes.
+    :param client_frame_filter: Optional predicate dropping client frames.
+    """
+    try:
+        runner_cm = ws_factory(runner_path)
+    except WrongReplicaWSError:
+        # The runner tunnel is bound but homed on another replica: signal 4400
+        # so the client re-dials WITHOUT the key and reaches the right one.
+        await websocket.close(
+            code=_WS_CLOSE_WRONG_REPLICA,
+            reason="host on another replica; retry without slice key",
+        )
+        return
+    except Exception:  # noqa: BLE001
+        await websocket.close(
+            code=_WS_CLOSE_INTERNAL_ERROR,
+            reason="runner attach factory failed",
+        )
+        return
+    try:
+        from omnigent.runtime import telemetry
+
+        with telemetry.span(span_name, attributes=span_attributes):
+            async with runner_cm as runner_ws:  # type: ignore[attr-defined]
+                await _shuttle_ws_frames(
+                    websocket, runner_ws, client_frame_filter=client_frame_filter
+                )
+    except _RunnerWSClosed as closed:
+        code = closed.code if closed.code and closed.code >= 1000 else _WS_CLOSE_INTERNAL_ERROR
+        with contextlib.suppress(RuntimeError):
+            await websocket.close(
+                code=code,
+                reason=closed.reason or "",
+            )
+    except Exception:  # noqa: BLE001
+        with contextlib.suppress(RuntimeError):
+            await websocket.close(
+                code=_WS_CLOSE_INTERNAL_ERROR,
+                reason="runner attach proxy failed",
+            )
+
+
 class _RunnerWSClosed(Exception):
     """Carries a runner-side close so the browser side mirrors it."""
 
@@ -372,7 +394,12 @@ class _RunnerWSClosed(Exception):
         self.reason = reason
 
 
-async def _shuttle_ws_frames(browser_ws: WebSocket, runner_ws: object) -> None:
+async def _shuttle_ws_frames(
+    browser_ws: WebSocket,
+    runner_ws: object,
+    *,
+    client_frame_filter: Callable[[str | bytes], bool] | None = None,
+) -> None:
     """
     Forward frames between *browser_ws* (FastAPI) and *runner_ws*
     (websockets client connection) until either side closes.
@@ -391,6 +418,8 @@ async def _shuttle_ws_frames(browser_ws: WebSocket, runner_ws: object) -> None:
 
     :param browser_ws: The browser-facing FastAPI WebSocket.
     :param runner_ws: The runner-facing websockets client.
+    :param client_frame_filter: Optional predicate; client frames it
+        rejects are dropped instead of forwarded (view-only attaches).
     """
     from websockets.exceptions import ConnectionClosed
 
@@ -403,10 +432,12 @@ async def _shuttle_ws_frames(browser_ws: WebSocket, runner_ws: object) -> None:
                     return
                 text = msg.get("text")
                 data = msg.get("bytes")
-                if text is not None:
-                    await runner_ws.send(text)  # type: ignore[attr-defined]
-                elif data is not None:
-                    await runner_ws.send(data)  # type: ignore[attr-defined]
+                payload = text if text is not None else data
+                if payload is None:
+                    continue
+                if client_frame_filter is not None and not client_frame_filter(payload):
+                    continue
+                await runner_ws.send(payload)  # type: ignore[attr-defined]
         except WebSocketDisconnect:
             return
         except ConnectionClosed:

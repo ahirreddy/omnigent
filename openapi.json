@@ -879,6 +879,48 @@
         "title": "BrowserActionRequestEvent",
         "type": "object"
       },
+      "BrowserTabUpdatedEvent": {
+        "description": "A remote browser tab's navigation, title, owner or attention state changed.\n\nDebounced to 250 ms by the runner so background tabs and other devices\nupdate their tab strip without attaching. Transient (SSE-only).",
+        "properties": {
+          "resource": {
+            "additionalProperties": true,
+            "description": "The tab's `session.resource` object (`type: \"browser\"`), the same shape `GET /resources/browsers` lists.",
+            "title": "Resource",
+            "type": "object"
+          },
+          "sequence_number": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sequence Number"
+          },
+          "session_id": {
+            "description": "Owning session/conversation id.",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "browser.tab.updated",
+            "description": "Always `\"browser.tab.updated\"`.",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "session_id",
+          "resource"
+        ],
+        "title": "BrowserTabUpdatedEvent",
+        "type": "object"
+      },
       "CancelledEvent": {
         "description": "Terminal event for a turn cancelled before completion.",
         "properties": {
@@ -6257,6 +6299,7 @@
         "discriminator": {
           "mapping": {
             "browser.action_request": "#/components/schemas/BrowserActionRequestEvent",
+            "browser.tab.updated": "#/components/schemas/BrowserTabUpdatedEvent",
             "response.cancelled": "#/components/schemas/CancelledEvent",
             "response.client_task.cancel": "#/components/schemas/ClientTaskCancelEvent",
             "response.compaction.completed": "#/components/schemas/CompactionCompletedEvent",
@@ -6390,6 +6433,9 @@
           },
           {
             "$ref": "#/components/schemas/SessionTerminalActivityEvent"
+          },
+          {
+            "$ref": "#/components/schemas/BrowserTabUpdatedEvent"
           },
           {
             "$ref": "#/components/schemas/OutputTextDeltaEvent"
@@ -8361,11 +8407,12 @@
             "type": "string"
           },
           "type": {
-            "description": "Resource kind, initially `\"environment\"`, `\"terminal\"`, or `\"file\"`.",
+            "description": "Resource kind: `\"environment\"`, `\"terminal\"`, `\"file\"` or `\"browser\"` (a remote agent browser tab).",
             "enum": [
               "environment",
               "terminal",
-              "file"
+              "file",
+              "browser"
             ],
             "title": "Type",
             "type": "string"
@@ -16681,6 +16728,232 @@
           }
         },
         "summary": "List Session Resources",
+        "tags": [
+          "session_resources"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/resources/browser_profiles": {
+      "get": {
+        "description": "List the browser profiles on the session's runner machine.\n\n**Returns:** `{\"object\": \"list\", \"data\": [{\"name\", \"running\", ...}], \"has_more\"}`.",
+        "operationId": "list_session_browser_profiles_v1_sessions__session_id__resources_browser_profiles_get",
+        "parameters": [
+          {
+            "description": "Session/conversation identifier.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Session Browser Profiles",
+        "tags": [
+          "session_resources"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/resources/browsers": {
+      "get": {
+        "description": "List the session's remote browser tabs.\n\nForwards `limit` / `after` / `order` to the runner, which reads\nthe tabs from its per-profile browser hosts without starting any.\n\n**Returns:** `PaginatedList` of `browser` resources.",
+        "operationId": "list_session_browsers_v1_sessions__session_id__resources_browsers_get",
+        "parameters": [
+          {
+            "description": "Session/conversation identifier.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Session Browsers",
+        "tags": [
+          "session_resources"
+        ]
+      },
+      "post": {
+        "description": "Open a remote browser tab on the session's runner machine.\n\nThe runner starts the profile's browser host on demand.\n\n**Returns:** The tab's `browser` resource.\n\n**Raises**\n\n- `OmnigentError` \u2014 400 for an invalid profile or URL.",
+        "operationId": "create_session_browser_v1_sessions__session_id__resources_browsers_post",
+        "parameters": [
+          {
+            "description": "Session/conversation identifier.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Session Browser",
+        "tags": [
+          "session_resources"
+        ]
+      }
+    },
+    "/v1/sessions/{session_id}/resources/browsers/{tab_id}": {
+      "delete": {
+        "description": "Close a remote browser tab.\n\n**Returns:** Deletion confirmation object.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 when the tab is already gone.",
+        "operationId": "delete_session_browser_v1_sessions__session_id__resources_browsers__tab_id__delete",
+        "parameters": [
+          {
+            "description": "Session/conversation identifier.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque tab id.",
+            "in": "path",
+            "name": "tab_id",
+            "required": true,
+            "schema": {
+              "title": "Tab Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Session Browser",
+        "tags": [
+          "session_resources"
+        ]
+      },
+      "get": {
+        "description": "Return one remote browser tab.\n\n**Returns:** The tab's `browser` resource.",
+        "operationId": "get_session_browser_v1_sessions__session_id__resources_browsers__tab_id__get",
+        "parameters": [
+          {
+            "description": "Session/conversation identifier.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque tab id, e.g. `\"btab_7f3a9c2e\"`.",
+            "in": "path",
+            "name": "tab_id",
+            "required": true,
+            "schema": {
+              "title": "Tab Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Browser",
         "tags": [
           "session_resources"
         ]

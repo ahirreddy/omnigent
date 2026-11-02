@@ -726,8 +726,8 @@ class SessionResourceObject(BaseModel):
     :param id: Opaque resource identifier, e.g. ``"default"`` or
         ``"terminal_bash_s1"``.
     :param object: Fixed resource type, always ``"session.resource"``.
-    :param type: Resource kind, initially ``"environment"``,
-        ``"terminal"``, or ``"file"``.
+    :param type: Resource kind: ``"environment"``, ``"terminal"``,
+        ``"file"`` or ``"browser"`` (a remote agent browser tab).
     :param session_id: Owning session/conversation id.
     :param name: Human-readable display name. Not required to be
         globally unique.
@@ -738,7 +738,7 @@ class SessionResourceObject(BaseModel):
 
     id: str
     object: Literal["session.resource"]
-    type: Literal["environment", "terminal", "file"]
+    type: Literal["environment", "terminal", "file", "browser"]
     session_id: str
     name: str
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -5041,6 +5041,24 @@ class SessionTerminalActivityEvent(_SSEEventBase):
     terminal_id: str
 
 
+class BrowserTabUpdatedEvent(_SSEEventBase):
+    """
+    A remote browser tab's navigation, title, owner or attention state changed.
+
+    Debounced to 250 ms by the runner so background tabs and other devices
+    update their tab strip without attaching. Transient (SSE-only).
+
+    :param type: Always ``"browser.tab.updated"``.
+    :param session_id: Owning session/conversation id.
+    :param resource: The tab's ``session.resource`` object (``type: "browser"``),
+        the same shape ``GET /resources/browsers`` lists.
+    """
+
+    type: Literal["browser.tab.updated"]
+    session_id: str
+    resource: dict[str, Any]
+
+
 class TurnStartedEvent(_SSEEventBase):
     """
     Emitted when the runner starts a new turn for a session.
@@ -5143,6 +5161,7 @@ ServerStreamEvent = Annotated[
     | SessionChildSessionUpdatedEvent
     | SessionChangedFilesInvalidatedEvent
     | SessionTerminalActivityEvent
+    | BrowserTabUpdatedEvent
     # ── Transient (SSE-only) — incremental token deltas ────────
     | OutputTextDeltaEvent
     | ToolOutputDeltaEvent

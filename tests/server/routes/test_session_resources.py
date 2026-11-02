@@ -2159,6 +2159,142 @@ async def test_delete_terminal_surfaces_runner_404(
     assert resp.json()["error"]["code"] == "not_found"
 
 
+# ── Remote browser tab endpoints ────────────────────────────────
+
+_BROWSER_SID = "79b22ebd2309e48fdeb450c65611d51b"
+_BROWSERS_PATH = f"/v1/sessions/{_BROWSER_SID}/resources/browsers"
+_REST_FIXTURES = (
+    Path(__file__).resolve().parents[3] / "client-core" / "fixtures" / "remote_browser" / "rest"
+)
+
+
+def _rest_fixture(name: str) -> dict[str, Any]:
+    return json.loads((_REST_FIXTURES / name).read_text(encoding="utf-8"))
+
+
+@pytest.mark.asyncio
+async def test_create_browser_tab_forwards_allowed_fields_and_publishes(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """POST forwards url/profile (never a caller-chosen created_by) and announces the tab."""
+    fixture = _rest_fixture("create.json")
+    tab = {**fixture["body"], "session_id": _BROWSER_SID}
+    fake_runner = _FakeRunnerClient(payload=tab)
+    set_runner_router(_FakeRunnerRouter(fake_runner))  # type: ignore[arg-type]
+    published: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        session_stream, "publish", lambda _conversation_id, event: published.append(event)
+    )
+    resp = await client.post(
+        _BROWSERS_PATH,
+        json={**fixture["request"]["body"], "created_by": "agent", "extra": True},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == tab
+    assert fake_runner.post_json_calls == [
+        (
+            _BROWSERS_PATH,
+            {"url": "https://github.com/login", "profile": "default", "created_by": "user"},
+        )
+    ]
+    assert {"type": "session.resource.created", "resource": tab} in published
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("fixture_name", "runner_status", "runner_body"),
+    [
+        ("create_unavailable.json", 503, None),
+        (
+            "create_bad_profile.json",
+            400,
+            {"error": {"code": "invalid_input", "message": "invalid profile name 'Bad Name'"}},
+        ),
+    ],
+)
+async def test_create_browser_tab_surfaces_runner_refusals(
+    client: httpx.AsyncClient,
+    fixture_name: str,
+    runner_status: int,
+    runner_body: dict[str, Any] | None,
+) -> None:
+    fixture = _rest_fixture(fixture_name)
+    body = runner_body if runner_body is not None else fixture["body"]
+    fake_runner = _FakeRunnerClient(responses={_BROWSERS_PATH: (runner_status, body)})
+    set_runner_router(_FakeRunnerRouter(fake_runner))  # type: ignore[arg-type]
+
+    resp = await client.post(_BROWSERS_PATH, json=fixture["request"]["body"])
+
+    assert resp.status_code == fixture["status"]
+    if runner_status == 503:
+        assert resp.json() == fixture["body"]
+    else:
+        assert resp.json()["error"]["code"] == "invalid_input"
+
+
+@pytest.mark.asyncio
+async def test_list_browser_tabs_forwards_only_pagination_params(
+    client: httpx.AsyncClient,
+) -> None:
+    fixture = _rest_fixture("list.json")
+    fake_runner = _FakeRunnerClient(payload=fixture["body"])
+    set_runner_router(_FakeRunnerRouter(fake_runner))  # type: ignore[arg-type]
+
+    resp = await client.get(f"{_BROWSERS_PATH}?limit=1000&order=asc&after=b&type=terminal")
+
+    assert resp.status_code == 200
+    assert resp.json() == fixture["body"]
+    assert fake_runner.get_params == [{"limit": "1000", "order": "asc", "after": "b"}]
+
+
+@pytest.mark.asyncio
+async def test_browser_profiles_proxy_to_runner(client: httpx.AsyncClient) -> None:
+    fixture = _rest_fixture("profiles.json")
+    fake_runner = _FakeRunnerClient(payload=fixture["body"])
+    set_runner_router(_FakeRunnerRouter(fake_runner))  # type: ignore[arg-type]
+
+    resp = await client.get(f"/v1/sessions/{_BROWSER_SID}/resources/browser_profiles")
+
+    assert resp.json() == fixture["body"]
+    assert fake_runner.calls == [
+        ("GET", f"/v1/sessions/{_BROWSER_SID}/resources/browser_profiles")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_delete_browser_tab_proxies_and_maps_missing_to_404(
+    client: httpx.AsyncClient,
+) -> None:
+    deleted = _rest_fixture("delete.json")
+    fake_runner = _FakeRunnerClient(
+        responses={
+            f"{_BROWSERS_PATH}/btab_7f3a9c2e": (200, deleted["body"]),
+            f"{_BROWSERS_PATH}/btab_missing": (
+                404,
+                {
+                    "error": {
+                        "code": "not_found",
+                        "message": "Browser tab 'btab_missing' not found",
+                    }
+                },
+            ),
+        }
+    )
+    set_runner_router(_FakeRunnerRouter(fake_runner))  # type: ignore[arg-type]
+
+    assert (await client.delete(f"{_BROWSERS_PATH}/btab_7f3a9c2e")).json() == deleted["body"]
+    missing = await client.delete(f"{_BROWSERS_PATH}/btab_missing")
+    assert missing.status_code == 404
+    unsafe = await client.delete(f"{_BROWSERS_PATH}/bad.id")
+    assert unsafe.status_code == 404
+    assert [call[1] for call in fake_runner.calls] == [
+        f"{_BROWSERS_PATH}/btab_7f3a9c2e",
+        f"{_BROWSERS_PATH}/btab_missing",
+    ]
+
+
 # ── Phase 1c: session-scoped file endpoint tests ────────────────
 
 

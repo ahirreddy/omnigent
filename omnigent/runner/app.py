@@ -102,6 +102,15 @@ from omnigent.runner.background_titles import (
     generate_background_title as run_background_title,
 )
 from omnigent.runner.background_titles.service import BACKGROUND_TITLE_MAX_PROMPT_CHARS
+from omnigent.runner.browser_host import (
+    BrowserCleanupError,
+    BrowserHostManager,
+    BrowserHostSettings,
+)
+from omnigent.runner.browser_routes import (
+    browser_cleanup_failed_response,
+    register_browser_routes,
+)
 from omnigent.runner.codex.goal import CodexGoalRunner
 from omnigent.runner.launch_failure import (
     TERMINAL_CLOSED_OUTSIDE_OMNIGENT,
@@ -1245,6 +1254,7 @@ def create_runner_app(
     auth_token: str | None = None,
     auth_token_factory: Callable[[], str | None] | None = None,
     native_pane_idle_timeout_s: float | None = None,
+    browser_host_manager: BrowserHostManager | None = None,
 ) -> FastAPI:
     """Build a fresh runner FastAPI app.
 
@@ -1282,6 +1292,8 @@ def create_runner_app(
         resolving host credentials again for every terminal launch.
     :param native_pane_idle_timeout_s: Resolved native-pane idle timeout. ``0``
         disables reaping; ``None`` uses the pane environment override or default.
+    :param browser_host_manager: Remote browser host manager; ``None`` builds
+        one from the environment (``OMNIGENT_REMOTE_BROWSER`` and friends).
     """
     import hmac
 
@@ -3605,6 +3617,12 @@ def create_runner_app(
             await process_manager.release(session_id)
 
         await resource_registry.cleanup_session(session_id)
+        # A browser host failure must not stop the teardown; report it at the end.
+        browser_cleanup_error: BrowserCleanupError | None = None
+        try:
+            await _close_session_browsers(session_id)
+        except BrowserCleanupError as exc:
+            browser_cleanup_error = exc
 
         await _delete_native_bridge_dirs(
             server_client=server_client,
@@ -3671,6 +3689,10 @@ def create_runner_app(
         for rid in stale_resp_ids:
             _resp_to_conv.pop(rid, None)
 
+        if browser_cleanup_error is not None:
+            return browser_cleanup_failed_response(
+                session_id, browser_cleanup_error, object_name="session.deleted"
+            )
         return JSONResponse(
             status_code=200,
             content={
@@ -7830,6 +7852,13 @@ def create_runner_app(
         )
         return skills
 
+    # Registered before the generic ``/resources/{resource_id}`` lookup below.
+    _close_session_browsers = register_browser_routes(
+        app,
+        manager=browser_host_manager or BrowserHostManager(BrowserHostSettings.from_env()),
+        publish_event=_publish_event,
+    )
+
     _resource_routes = register_resource_routes(
         app,
         _antigravity_terminal_ensure_locks=_antigravity_terminal_ensure_locks,
@@ -8137,10 +8166,19 @@ def create_runner_app(
         if process_manager is not None:
             await process_manager.release(session_id)
         await resource_registry.cleanup_session(session_id)
+        browser_cleanup_error: BrowserCleanupError | None = None
+        try:
+            await _close_session_browsers(session_id)
+        except BrowserCleanupError as exc:
+            browser_cleanup_error = exc
         await _delete_native_bridge_dirs(
             server_client=server_client,
             session_id=session_id,
         )
+        if browser_cleanup_error is not None:
+            return browser_cleanup_failed_response(
+                session_id, browser_cleanup_error, object_name="session.resources.cleaned"
+            )
         return JSONResponse(
             status_code=200,
             content={

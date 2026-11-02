@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 DEFAULT_ENVIRONMENT_ID = "default"
 
-ResourceType = Literal["environment", "terminal", "file"]
+ResourceType = Literal["environment", "terminal", "file", "browser"]
 
 _SAFE_RESOURCE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 

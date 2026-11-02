@@ -1347,6 +1347,65 @@ when the remote confirms the branch is absent. Detached HEADs, an unavailable
 workspace, or a failed remote check produce `null` values so clients can retain
 the original selection. Non-managed sessions return an empty repository list.
 
+### Remote Browser Tabs
+
+A remote browser tab is a Chromium tab running on the session's runner machine
+in a per-profile `omnigent-browser-host` process. Tabs are session resources
+with `type: "browser"`; the wire protocol is section 5 of
+[`apps/apple/docs/remote-browser-design.md`](../../apps/apple/docs/remote-browser-design.md),
+with fixtures in `client-core/fixtures/remote_browser/`.
+
+```
+GET    /v1/sessions/{session_id}/resources/browsers?limit=&after=&order=
+POST   /v1/sessions/{session_id}/resources/browsers          {"url"?, "profile"?}
+GET    /v1/sessions/{session_id}/resources/browsers/{tab_id}
+DELETE /v1/sessions/{session_id}/resources/browsers/{tab_id}
+GET    /v1/sessions/{session_id}/resources/browser_profiles
+WS     /v1/sessions/{session_id}/resources/browsers/{tab_id}/attach?mode=view|control&v=1
+```
+
+Tab resource:
+
+```json
+{"object": "session.resource", "id": "btab_7f3a9c2e", "type": "browser",
+ "session_id": "conv_abc123", "name": "Sign in to GitHub",
+ "metadata": {"url": "https://github.com/login", "title": "Sign in to GitHub",
+   "loading": false, "owner": "agent", "needs_attention": false,
+   "profile": "default", "created_by": "user", "can_go_back": true,
+   "can_go_forward": false}}
+```
+
+- **List** needs read access and returns a `PaginatedList` (`limit` 1-1000,
+  `after`, `order`). It never starts a browser host. The runner adds a
+  `browser_host` object (`{"status": "available" | "disabled" |
+  "not_installed" | "encoder_missing", "message"?}`).
+- **Create** needs edit access. `profile` defaults to `default` and matches
+  `[a-z0-9][a-z0-9_-]{0,31}`; `url` is `http(s)` or `about:blank`. The runner
+  starts the profile's host on demand. Errors: 400 for an invalid profile or
+  URL; 503 `{"error": {"code": "browser_unavailable", "message"}}` when the
+  host is not installed, the runner has no `x264` or ffmpeg with libx264, or the
+  host cannot start. Emits `session.resource.created`.
+- **Delete** needs edit access and returns `{"id", "object":
+  "session.resource.deleted", "deleted": true}`; 404 when the tab is already
+  gone. Emits `session.resource.deleted`. Deleting a session closes its tabs.
+- **Profiles** lists the runner machine's profiles: `{"object": "list",
+  "data": [{"name": "default", "default": true, "running": true}], "has_more":
+  false}`. Tab ids match `[A-Za-z0-9_-]{1,128}`; any other id is a 404.
+- **Attach** relays the tab's stream through the runner tunnel. `mode=view`
+  (the default) needs read access, and its input messages (`mouse`, `key`,
+  `ime`, `nav`, `resize`, `control`, `dialog_reply`, owner `settings`) are
+  dropped by the server, the runner and the host. `mode=control` needs owner
+  access, as for terminal write attach; a caller with only read or edit access
+  is refused with close 4403 after the upgrade, and a caller without read
+  access with 1008. Other closes: 4404 tab gone, 4426 protocol unsupported
+  (`v` below 1), 4400 wrong replica, 4500 relay failure, and any host close
+  code passed through. Text frames stay text and binary frames stay binary.
+- **Events.** `browser.tab.updated` (`{session_id, resource}`) is reserved for
+  tab-strip updates without an attach (planned).
+
+The relay forwards only the attach path. The host's DevTools (CDP) port is
+loopback-only on the runner machine and is never reachable through the server.
+
 ### Stream Session
 
 ```

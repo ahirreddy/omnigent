@@ -36,6 +36,7 @@ from omnigent.entities import (
     Conversation,
     StoredFile,
 )
+from omnigent.entities.remote_browser import is_valid_browser_tab_id
 from omnigent.entities.session_resources import session_resource_view_to_dict
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.native.native_coding_agents import (
@@ -1836,6 +1837,193 @@ def register_resources_routes(
             "session.resource.deleted",
             resource_id=terminal_id,
             resource_type="terminal",
+            conversation_store=conversation_store,
+        )
+        return payload
+
+    # ── Remote agent browser tabs ───────────────────────────────────
+
+    def _require_browser_tab_id(tab_id: str) -> None:
+        if not is_valid_browser_tab_id(tab_id):
+            raise OmnigentError(f"Browser tab {tab_id!r} not found", code=ErrorCode.NOT_FOUND)
+
+    @router.get(
+        "/sessions/{session_id}/resources/browsers",
+        response_model=None,
+    )
+    async def list_session_browsers(
+        request: Request,
+        session_id: str,
+    ) -> dict[str, Any]:
+        """
+        List the session's remote browser tabs.
+
+        Forwards ``limit`` / ``after`` / ``order`` to the runner, which reads
+        the tabs from its per-profile browser hosts without starting any.
+
+        :param request: The incoming request (auth and query params).
+        :param session_id: Session/conversation identifier.
+        :returns: ``PaginatedList`` of ``browser`` resources.
+        """
+        conv = await _validate_session(session_id, request, LEVEL_READ)
+        forwarded = {
+            key: value
+            for key, value in request.query_params.items()
+            if key in ("limit", "after", "order")
+        }
+        return await _proxy_get_to_runner(
+            session_id,
+            f"/v1/sessions/{session_id}/resources/browsers",
+            conv,
+            params=forwarded or None,
+            unsupported_endpoint_message=(
+                "This session's runner does not support remote browsers; update Omnigent there."
+            ),
+        )
+
+    @router.get(
+        "/sessions/{session_id}/resources/browser_profiles",
+        response_model=None,
+    )
+    async def list_session_browser_profiles(
+        request: Request,
+        session_id: str,
+    ) -> dict[str, Any]:
+        """
+        List the browser profiles on the session's runner machine.
+
+        :param request: The incoming request (auth).
+        :param session_id: Session/conversation identifier.
+        :returns: ``{"object": "list", "data": [{"name", "running", ...}], "has_more"}``.
+        """
+        conv = await _validate_session(session_id, request, LEVEL_READ)
+        return await _proxy_get_to_runner(
+            session_id, f"/v1/sessions/{session_id}/resources/browser_profiles", conv
+        )
+
+    @router.post(
+        "/sessions/{session_id}/resources/browsers",
+        response_model=None,
+        dependencies=[Depends(require_json_content_type)],
+    )
+    async def create_session_browser(
+        session_id: str,
+        request: Request,
+    ) -> Any:
+        """
+        Open a remote browser tab on the session's runner machine.
+
+        The runner starts the profile's browser host on demand.
+
+        :param session_id: Session/conversation identifier.
+        :param request: JSON body ``{"url"?, "profile"?}``.
+        :returns: The tab's ``browser`` resource.
+        :raises OmnigentError: 400 for an invalid profile or URL.
+        """
+        conv = await _validate_session(session_id, request, LEVEL_EDIT)
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise OmnigentError("request body must be an object", code=ErrorCode.INVALID_INPUT)
+        forwarded_body = {
+            key: body[key] for key in ("url", "profile", "width", "height", "dpr") if key in body
+        }
+        forwarded_body["created_by"] = "user"
+        _, conv = await ensure_runner_connected(
+            session_id=session_id,
+            conv=conv,
+            app_state=request.app.state,
+            conversation_store=conversation_store,
+            runner_router=runner_router or get_server_runner_router(),
+        )
+        status, payload = await _proxy_post_to_runner(
+            session_id,
+            f"/v1/sessions/{session_id}/resources/browsers",
+            forwarded_body,
+            conv,
+            # Covers starting the profile's host (30 s) plus creating the tab (30 s).
+            timeout=90.0,
+        )
+        if status == 503:
+            return JSONResponse(status_code=503, content=payload)
+        if status >= 400:
+            error = payload.get("error", {})
+            raise OmnigentError(
+                error.get("message", f"Browser tab create failed (runner returned HTTP {status})"),
+                code=error.get("code", ErrorCode.INTERNAL_ERROR),
+            )
+        _publish_and_persist_resource_event(
+            session_id,
+            "session.resource.created",
+            resource_id=payload.get("id", ""),
+            resource_type="browser",
+            conversation_store=conversation_store,
+            resource=payload,
+        )
+        return payload
+
+    @router.get(
+        "/sessions/{session_id}/resources/browsers/{tab_id}",
+        response_model=None,
+    )
+    async def get_session_browser(
+        request: Request,
+        session_id: str,
+        tab_id: str,
+    ) -> dict[str, Any]:
+        """
+        Return one remote browser tab.
+
+        :param request: The incoming request (auth).
+        :param session_id: Session/conversation identifier.
+        :param tab_id: Opaque tab id, e.g. ``"btab_7f3a9c2e"``.
+        :returns: The tab's ``browser`` resource.
+        """
+        conv = await _validate_session(session_id, request, LEVEL_READ)
+        _require_browser_tab_id(tab_id)
+        return await _proxy_get_to_runner(
+            session_id, f"/v1/sessions/{session_id}/resources/browsers/{tab_id}", conv
+        )
+
+    @router.delete(
+        "/sessions/{session_id}/resources/browsers/{tab_id}",
+        response_model=None,
+    )
+    async def delete_session_browser(
+        request: Request,
+        session_id: str,
+        tab_id: str,
+    ) -> Any:
+        """
+        Close a remote browser tab.
+
+        :param request: The incoming request (auth).
+        :param session_id: Session/conversation identifier.
+        :param tab_id: Opaque tab id.
+        :returns: Deletion confirmation object.
+        :raises OmnigentError: 404 when the tab is already gone.
+        """
+        conv = await _validate_session(session_id, request, LEVEL_EDIT)
+        _require_browser_tab_id(tab_id)
+        status, payload = await _proxy_delete_to_runner(
+            session_id,
+            f"/v1/sessions/{session_id}/resources/browsers/{tab_id}",
+            conv,
+        )
+        if status == 404:
+            error = payload.get("error", {})
+            raise OmnigentError(
+                error.get("message", "Browser tab not found"),
+                code=ErrorCode.NOT_FOUND,
+            )
+        if status == 503:
+            return JSONResponse(status_code=503, content=payload)
+        if status >= 400:
+            raise HTTPException(status_code=502, detail="runner browser tab delete failed")
+        _publish_and_persist_resource_event(
+            session_id,
+            "session.resource.deleted",
+            resource_id=tab_id,
+            resource_type="browser",
             conversation_store=conversation_store,
         )
         return payload
