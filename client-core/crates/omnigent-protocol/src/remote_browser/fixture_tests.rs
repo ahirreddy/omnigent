@@ -150,6 +150,74 @@ fn decoded_values_match_the_spec() {
 }
 
 #[test]
+fn v1_1_messages_decode_to_the_spec() {
+    let decode_host = |name: &str| {
+        HostMessage::decode(&json(&format!("messages/host_to_client/{name}.json")).to_string())
+            .unwrap()
+    };
+    let decode_client = |name: &str| {
+        ClientMessage::decode(&json(&format!("messages/client_to_host/{name}.json")).to_string())
+            .unwrap()
+    };
+    let HostMessage::Hello(hello) = decode_host("hello_v1_1") else {
+        panic!("hello");
+    };
+    for feature in [
+        features::VIEWPORT_SCOPE,
+        features::MOBILE_EMULATION,
+        features::EDIT,
+        features::SELECTION,
+        features::SCROLL_METRICS,
+        features::TOUCH,
+    ] {
+        assert!(
+            hello.features.iter().any(|known| known == feature),
+            "{feature}"
+        );
+    }
+    let HostMessage::Viewport(viewport) = decode_host("viewport_control_v1_1") else {
+        panic!("viewport");
+    };
+    assert_eq!(viewport.scope, Some(ViewportScope::Control));
+    assert_eq!(viewport.mobile, Some(MobileEmulation::Layout));
+    assert_eq!(viewport.agent.map(|agent| agent.w), Some(1280));
+    let HostMessage::Viewport(plain) = decode_host("viewport") else {
+        panic!("v1 viewport");
+    };
+    assert_eq!((plain.scope, plain.mobile, plain.agent), (None, None, None));
+    let HostMessage::Clipboard(clipboard) = decode_host("clipboard_v1_1") else {
+        panic!("clipboard");
+    };
+    assert_eq!(clipboard.op, EditOp::Copy);
+    assert!(clipboard.text.contains('\u{1F30D}') && clipboard.text.contains('\n'));
+    let HostMessage::Selection(selection) = decode_host("selection_v1_1") else {
+        panic!("selection");
+    };
+    assert!(!selection.collapsed && selection.length == 11 && selection.rect.is_some());
+    let HostMessage::Scroll(scroll) = decode_host("scroll_v1_1") else {
+        panic!("scroll");
+    };
+    assert!((scroll.y - 1240.5).abs() < f64::EPSILON);
+    let ClientMessage::Resize(resize) = decode_client("resize_mobile_v1_1") else {
+        panic!("resize");
+    };
+    assert_eq!(resize.mobile, Some(MobileEmulation::Layout));
+    assert!((resize.viewport.dpr - 3.0).abs() < f64::EPSILON);
+    let ClientMessage::Resize(v1) = decode_client("resize") else {
+        panic!("v1 resize");
+    };
+    assert_eq!((v1.scope, v1.mobile), (None, None));
+    let ClientMessage::Edit(paste) = decode_client("edit_paste_v1_1") else {
+        panic!("edit");
+    };
+    assert_eq!(paste.op, EditOp::Paste);
+    let ClientMessage::Touch(touch) = decode_client("touch_start_v1_1") else {
+        panic!("touch");
+    };
+    assert_eq!((touch.kind, touch.id), (TouchKind::Start, 1));
+}
+
+#[test]
 fn malformed_messages_are_errors_not_unknowns() {
     assert!(matches!(
         HostMessage::decode("not json"),

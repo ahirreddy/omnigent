@@ -25,7 +25,14 @@ namespace {
 
 constexpr size_t kStderrTailBytes = 4096;
 // A frame number no stream reaches; x264 parks its qpfile read position on this line.
-constexpr char kQpfileSentinel[] = "2000000000 P\n";
+constexpr char kQpfileSentinelLine[] = "2000000000 P\n";
+// Whitespace before every qpfile line, longer than any stdio buffer (st_blksize, 4 KiB on APFS
+// and ext4): x264 then re-reads the file after each seek instead of its buffered copy.
+constexpr size_t kQpfilePadBytes = 16 * 1024;
+
+std::string QpfileRecord(const std::string& line) {
+  return std::string(kQpfilePadBytes, ' ') + line;
+}
 
 bool WriteAll(int fd, const uint8_t* data, size_t size, std::string* error) {
   while (size > 0) {
@@ -272,7 +279,8 @@ bool SubprocessEncoder::SpawnLocked(std::string* error) {
       return false;
     }
     qpfile_sentinel_offset_ = 0;
-    if (!PwriteAll(qpfile_fd_, kQpfileSentinel, 0, error)) {
+    last_idr_request_.reset();
+    if (!PwriteAll(qpfile_fd_, QpfileRecord(kQpfileSentinelLine), 0, error)) {
       return false;
     }
   } else {
@@ -368,13 +376,20 @@ double SubprocessEncoder::ProcessCpuSeconds(pid_t pid) const {
   return seconds;
 }
 
+// x264 reads the qpfile with fscanf(" %99[^\n]\n"): the trailing `\n` skips whitespace and
+// peeks at the next line, so after a request line x264 has already buffered the sentinel that
+// follows it. A request for the very next frame is therefore read from the stale buffer and
+// missed; x264 then seeks back (discarding the buffer) and sees the following request. The
+// streamer asks again when a requested IDR does not come, so that IDR lands one frame later.
 bool SubprocessEncoder::RequestInStreamIdr(uint64_t frame_number, std::string* error) {
-  const std::string line = std::to_string(frame_number) + " I\n";
+  const std::string line = QpfileRecord(std::to_string(frame_number) + " I\n");
   // Overwrite the sentinel with the request and put the sentinel back after it.
-  if (!PwriteAll(qpfile_fd_, line + kQpfileSentinel, qpfile_sentinel_offset_, error)) {
+  if (!PwriteAll(qpfile_fd_, line + QpfileRecord(kQpfileSentinelLine), qpfile_sentinel_offset_,
+                 error)) {
     return false;
   }
   qpfile_sentinel_offset_ += static_cast<off_t>(line.size());
+  last_idr_request_ = frame_number;
   return true;
 }
 
@@ -391,6 +406,9 @@ bool SubprocessEncoder::Submit(const I420Frame& frame, uint64_t pts_us, bool key
       *error = "frame size does not match the encoder";
       return false;
     }
+    // Decided before this frame's own request updates `last_idr_request_`.
+    bool request_visible =
+        !in_stream_idr_ || !last_idr_request_ || *last_idr_request_ + 1 != next_frame_number_;
     if (keyframe && next_frame_number_ > 0) {
       if (in_stream_idr_) {
         if (!RequestInStreamIdr(next_frame_number_, error)) {
@@ -421,9 +439,11 @@ bool SubprocessEncoder::Submit(const I420Frame& frame, uint64_t pts_us, bool key
         if (!SpawnLocked(error)) {
           return false;
         }
+        request_visible = true;
       }
     }
-    pending_.push_back(Pending{next_frame_number_++, pts_us, MonotonicMicros(), keyframe});
+    pending_.push_back(
+        Pending{next_frame_number_++, pts_us, MonotonicMicros(), keyframe, request_visible});
     fd = stdin_fd_;
   }
   // The write blocks while the encoder works; the lock stays free for the reader.
@@ -501,7 +521,8 @@ void SubprocessEncoder::ReaderLoop(pid_t pid, int stdout_fd, int stderr_fd, uint
           encoded.pts_us = submitted.pts_us;
           encoded.submit_us = submitted.submit_us;
           encoded.keyframe_requested = submitted.keyframe;
-          requested_but_missing = submitted.keyframe && !unit.keyframe;
+          // A request x264 could not see is retried by the streamer, not a failure.
+          requested_but_missing = submitted.keyframe && !unit.keyframe && submitted.request_visible;
           if (requested_but_missing && in_stream_idr_) {
             in_stream_idr_ = false;  // The qpfile did not work; restart for later IDRs.
           }

@@ -24,12 +24,14 @@ nonisolated struct MessageDecoration: Hashable, Sendable {
   var timestamp: Date?
   var showsActions = false
   var showsAvatar = false
+  /// How long the turn this answer settles worked ("Worked for 3s"), as the CLI's footer.
+  var workedFor: TimeInterval?
 }
 
 /// A user or assistant message, as on the web: user messages in a neutral bubble on the right,
 /// assistant prose without a bubble or name. Copy, Fork chat from here (assistant), Copy link and
 /// the timestamp appear on hover or keyboard focus on Mac (always on the last answer while idle),
-/// under answers on touch, and always in the context menu and as VoiceOver actions.
+/// under the last answer on touch, and always in the context menu and as VoiceOver actions.
 struct MessageRowView: View, Equatable {
   let row: Row
   let decoration: MessageDecoration
@@ -49,10 +51,11 @@ struct MessageRowView: View, Equatable {
       case .assistant, .tool: assistantMessage
       }
     }
-    // On touch, answers keep their row as in ChatGPT; a user message's is a long press away.
+    // On touch only the latest answer keeps its row; the rest are a long press away, so no
+    // copy button outlives its scrolled-away message.
     .messageActionsHost(
       row: row, actions: actions, pinned: decoration.showsActions,
-      showsOnTouch: row.role != .user, focus: $actionsFocused)
+      showsOnTouch: decoration.showsActions, focus: $actionsFocused)
   }
 
   private var userMessage: some View {
@@ -89,7 +92,8 @@ struct MessageRowView: View, Equatable {
       }
       if row.interrupted { InterruptedLabel(rowID: row.id) }
       MessageActionRow(
-        row: row, actions: actions, timestamp: decoration.timestamp, focus: $actionsFocused)
+        row: row, actions: actions, timestamp: decoration.timestamp, focus: $actionsFocused,
+        overlaysGap: true)
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel(decoration.showsAvatar ? "\(row.author ?? "Someone") said" : "You said")
@@ -99,9 +103,10 @@ struct MessageRowView: View, Equatable {
   private var assistantMessage: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       if row.text.isEmpty, row.isStreaming {
-        HStack(spacing: Theme.Spacing.small) {
+        TurnStatusRow {
           TypingIndicator()
-          Text("Preparing a reply").font(.callout).foregroundStyle(.secondary)
+        } label: {
+          Text("Preparing a reply")
         }
       } else {
         MarkdownView(row.text, isStreaming: row.isStreaming)
@@ -112,15 +117,27 @@ struct MessageRowView: View, Equatable {
       if let activity = row.activity { UnsupportedContentView(activity: activity, rowID: row.id) }
       if row.interrupted { InterruptedLabel(rowID: row.id) }
       if row.isStreaming, !row.text.isEmpty {
-        HStack(spacing: Theme.Spacing.small) {
+        TurnStatusRow {
           LiveIndicator()
-          Text("Responding").font(Theme.Typography.section).foregroundStyle(.secondary)
+        } label: {
+          Text("Responding")
         }
-        .accessibilityElement(children: .combine)
       }
       if !row.isStreaming {
-        MessageActionRow(
-          row: row, actions: actions, timestamp: decoration.timestamp, focus: $actionsFocused)
+        if let workedFor = decoration.workedFor {
+          // The actions share the footer's line, at its trailing edge, so they add no height.
+          WorkedForLabel(duration: workedFor, finished: decoration.timestamp)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .trailing) {
+              MessageActionRow(
+                row: row, actions: actions, timestamp: decoration.timestamp,
+                focus: $actionsFocused)
+            }
+        } else {
+          MessageActionRow(
+            row: row, actions: actions, timestamp: decoration.timestamp, focus: $actionsFocused,
+            overlaysGap: true)
+        }
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -144,24 +161,45 @@ nonisolated enum MessageTimestamp {
   }
 }
 
-/// Initials in a hashed color, for shared sessions.
+/// Initials in a hashed color, for shared sessions and viewers. The initials are 11 pt bold, the
+/// iOS minimum; every color keeps white text above 5:1.
 struct AuthorAvatar: View {
   let name: String
+  /// Initials to show instead of ones derived from `name`.
+  var initials: String?
+  var size: CGFloat = 24
+  /// A viewer who has gone idle: grey instead of their color.
+  var isIdle = false
+
+  /// Darker than the system colors, which hold white text at 2.2:1 to 4.1:1.
+  static let palette: [UInt32] = [
+    0x2563C9, 0x7C3AED, 0xB8236A, 0xA8470F, 0x0F766E, 0x4F46E5, 0x2E7D32,
+  ]
+  static let idle: UInt32 = 0x5F6368
 
   var body: some View {
-    let initials = name.split(whereSeparator: { " ._@".contains($0) }).prefix(2)
-      .compactMap(\.first).map(String.init).joined().uppercased()
-    Text(initials.isEmpty ? "?" : initials)
-      .font(.system(size: 10, weight: .bold, design: .rounded))
-      .foregroundStyle(.white)
-      .frame(width: 24, height: 24)
-      .background(color, in: Circle())
-      .help(name)
-      .accessibilityLabel(name)
+    Text(
+      initials.map { $0.isEmpty ? "?" : String($0.prefix(2)).uppercased() } ?? Self.initials(name)
+    )
+    .font(.system(size: 11, weight: .bold, design: .rounded))
+    .minimumScaleFactor(0.8)
+    .lineLimit(1)
+    .foregroundStyle(.white)
+    .frame(width: size, height: size)
+    .background(Color(hex: isIdle ? Self.idle : Self.color(for: name)), in: Circle())
+    .help(name)
+    .accessibilityLabel(isIdle ? "\(name), idle" : name)
   }
 
-  private var color: Color {
-    let palette: [Color] = [.blue, .purple, .pink, .orange, .teal, .indigo, .green]
+  /// Up to two initials, or "?".
+  static func initials(_ text: String) -> String {
+    let letters = text.split(whereSeparator: { " ._@".contains($0) }).prefix(2)
+      .compactMap(\.first).map(String.init).joined().uppercased()
+    return letters.isEmpty ? "?" : letters
+  }
+
+  /// A stable color for a name.
+  static func color(for name: String) -> UInt32 {
     let hash = name.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
     return palette[hash % palette.count]
   }
@@ -171,10 +209,12 @@ private struct InterruptedLabel: View {
   let rowID: String
 
   var body: some View {
-    Label("Interrupted", systemImage: "stop.circle")
-      .font(.caption)
-      .foregroundStyle(.secondary)
-      .accessibilityIdentifier("message-interrupted-\(rowID)")
+    TurnStatusRow {
+      Image(systemName: "stop.circle").accessibilityHidden(true)
+    } label: {
+      Text("Interrupted")
+    }
+    .accessibilityIdentifier("message-interrupted-\(rowID)")
   }
 }
 
@@ -243,27 +283,52 @@ private struct AttachmentChip: View {
   }
 }
 
-/// A content part this client cannot render, shown through its safe display text.
+/// A content part this client cannot render: one quiet line in the message's flow, with its
+/// safe display text behind a disclosure when there is any.
 struct UnsupportedContentView: View {
   let activity: Activity
   let rowID: String
   @State private var isExpanded = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    DisclosureGroup(isExpanded: $isExpanded) {
-      DetailSectionsView(sections: activity.details, rowID: rowID)
-        .padding(.top, Theme.Spacing.small)
-    } label: {
-      Label(activity.title, systemImage: "questionmark.square.dashed")
-        .font(.callout)
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      Button {
+        withAnimation(reduceMotion ? nil : Theme.Motion.disclosure) { isExpanded.toggle() }
+      } label: {
+        HStack(spacing: Theme.Spacing.extraSmall) {
+          Image(systemName: "eye.slash").accessibilityHidden(true)
+          Text(Self.title(activity.title))
+          if hasDetails {
+            Image(systemName: "chevron.right")
+              .font(.caption2.weight(.semibold))
+              .rotationEffect(.degrees(isExpanded ? 90 : 0))
+              .accessibilityHidden(true)
+          }
+        }
+        .font(.footnote)
         .foregroundStyle(.secondary)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .disabled(!hasDetails)
+      .accessibilityValue(hasDetails ? (isExpanded ? "Expanded" : "Collapsed") : "")
+      .accessibilityIdentifier("unsupported-content-\(rowID)")
+      if isExpanded {
+        DetailSectionsView(sections: activity.details, rowID: rowID)
+      }
     }
-    .padding(Theme.Spacing.medium)
-    .background {
-      RoundedRectangle(cornerRadius: Theme.Radius.medium)
-        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-        .foregroundStyle(.tertiary)
+  }
+
+  private var hasDetails: Bool { !activity.details.isEmpty }
+
+  /// The core's generic title ("Message content") says nothing; say what happened instead.
+  static func title(_ raw: String) -> String {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty || trimmed.caseInsensitiveCompare("Message content") == .orderedSame {
+      return "Content this app can\u{2019}t show"
     }
+    return "\(trimmed) \u{00B7} not shown in this app"
   }
 }
 

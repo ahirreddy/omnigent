@@ -11,12 +11,14 @@
   /// each are counted. Soft tints such as the row selection stay far below the threshold.
   @Suite("Accent budget", .serialized)
   struct AccentBudgetTests {
-    /// Pure green for the accent, pure magenta for the brand accent.
+    /// Green for the accent, magenta for the brand accent, each already at the contrast the
+    /// theme's accessible roles need, so they render unchanged.
     static let probe: OmnigentTheme = {
       let light = ThemePalette(
-        accent: Color(hex: 0x00FF00), brandAccent: Color(hex: 0xFF00FF), link: Color(hex: 0x1967B5),
-        selection: Color(hex: 0x00FF00, alpha: 0.12), canvas: nil)
+        accent: Color(hex: 0x008000), brandAccent: Color(hex: 0xB000B0), link: Color(hex: 0x1967B5),
+        selection: Color(hex: 0x008000, alpha: 0.12), canvas: nil)
       var dark = light
+      dark.brandAccent = Color(hex: 0xFF55FF)
       dark.canvas = Color(hex: 0x0E0B19)
       return OmnigentTheme(id: "accent-probe", name: "Accent probe", light: light, dark: dark)
     }()
@@ -38,7 +40,8 @@
     }
 
     /// Connected areas of probe color: pixels are bucketed into cells and touching cells merge,
-    /// so a button or a word counts once.
+    /// so a button or a word counts once. Small text in the darker brand probe needs larger
+    /// cells to stay one area.
     static func regions(_ probe: Probe, in rendered: RenderSupport.Rendered, cell: Int = 12)
       -> Int
     {
@@ -181,7 +184,7 @@
       let rendered = try RenderSupport.render(
         GallerySessionList().omnigentTheme(Self.probe).themeCanvas(), width: 300, height: 860,
         scheme: .light, layout: .regular)
-      let brand = Self.regions(.brand, in: rendered)
+      let brand = Self.regions(.brand, in: rendered, cell: 20)
       #expect(brand >= min(needsYou.count, 1), "the Needs you signal should show")
       // The Needs you rows, plus the quick filter's count.
       #expect(brand <= needsYou.count + 1, "\(brand) brand-accent areas")
@@ -194,7 +197,7 @@
         let rendered = try RenderSupport.render(
           Self.inbox.omnigentTheme(Self.probe).themeCanvas(), width: 900, height: 700,
           scheme: scheme, layout: .regular)
-        let brand = Self.regions(.brand, in: rendered)
+        let brand = Self.regions(.brand, in: rendered, cell: 20)
         #expect(brand >= 1, "the Needs you signal should show")
         // Each request's "Needs you" label, plus the header's count.
         #expect(brand <= needsYou + 1, "\(scheme): \(brand) brand-accent areas")

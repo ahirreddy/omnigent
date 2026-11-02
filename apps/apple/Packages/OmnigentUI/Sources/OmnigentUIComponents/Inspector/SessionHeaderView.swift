@@ -142,15 +142,10 @@ struct ViewerStack: View {
     if !viewers.isEmpty {
       HStack(spacing: -6) {
         ForEach(viewers.prefix(4)) { viewer in
-          Text(viewer.initials.isEmpty ? "?" : viewer.initials)
-            .font(.system(size: 8, weight: .bold, design: .rounded))
-            .minimumScaleFactor(0.6)
-            .lineLimit(1)
-            .padding(.horizontal, Theme.Spacing.extraSmall)
-            .foregroundStyle(.white)
-            .frame(width: 22, height: 22)
-            .background(color(for: viewer.name).opacity(viewer.isIdle ? 0.45 : 1), in: Circle())
-            .overlay(Circle().strokeBorder(.background, lineWidth: 1.5))
+          AuthorAvatar(
+            name: viewer.name, initials: viewer.initials, size: 24, isIdle: viewer.isIdle
+          )
+          .overlay(Circle().strokeBorder(.background, lineWidth: 1.5))
         }
         if viewers.count > 4 {
           Text("+\(viewers.count - 4)")
@@ -164,11 +159,5 @@ struct ViewerStack: View {
       .accessibilityLabel(
         "\(viewers.count) viewers: \(viewers.map(\.name).joined(separator: ", "))")
     }
-  }
-
-  private func color(for name: String) -> Color {
-    let palette: [Color] = [.blue, .purple, .pink, .orange, .teal, .indigo, .green]
-    let hash = name.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
-    return palette[hash % palette.count]
   }
 }

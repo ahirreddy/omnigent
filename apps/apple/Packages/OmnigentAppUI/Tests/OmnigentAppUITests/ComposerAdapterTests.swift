@@ -69,4 +69,20 @@ struct ComposerAdapterTests {
     #expect(message.text == "later")
     #expect(message.state == .failed(message: "Refused"))
   }
+
+  @Test("A read-only session's composer is read-only; a loading one is only unavailable")
+  func readOnly() async throws {
+    let store = try await PreviewData.connectedDemoStore()
+    let notes = try #require(store.conversation("demo-notes"))
+    let question = try #require(store.conversation("demo-question"))
+    #expect(!ComposerAdapter.isReadOnly(question))
+    let deadline = ContinuousClock.now + .seconds(10)
+    while notes.header == nil || question.header == nil, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(50))
+    }
+    let readOnly = ComposerAdapter.state(notes, isStopping: false, dismissedError: nil)
+    #expect(readOnly.isReadOnly)
+    #expect(readOnly.availability.reason != nil)
+    #expect(!ComposerAdapter.state(question, isStopping: false, dismissedError: nil).isReadOnly)
+  }
 }

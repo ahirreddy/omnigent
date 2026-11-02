@@ -75,9 +75,20 @@ struct TabSplitTests {
       TabStrip.leadingSectionWidth(sections: strip, dividerX: nil, fraction: 0.5) == 500 - gap)
     #expect(
       TabStrip.leadingSectionWidth(sections: strip, dividerX: 120, fraction: 0.5)
-        == TabMetrics.minWidth, "each section keeps room for a tab")
+        == TabMetrics.sectionMinWidth, "each section keeps room for a tab")
     let narrow = CGRect(x: 0, y: 0, width: 200, height: 30)
-    #expect(TabStrip.leadingSectionWidth(sections: narrow, dividerX: 50, fraction: 0.5) == 100)
+    #expect(TabStrip.leadingSectionWidth(sections: narrow, dividerX: 50, fraction: 0.5) == 95)
+  }
+
+  @Test("A divider past the strip's end leaves the right section a readable width")
+  func portraitStrip() {
+    // iPad portrait: the strip stops short of the window's trailing toolbar, the divider does
+    // not, so aligning to it would leave the right section a sliver.
+    let strip = CGRect(x: 380, y: 0, width: 600, height: 34)
+    let leading = TabStrip.leadingSectionWidth(sections: strip, dividerX: 960, fraction: 0.5)
+    let trailing = strip.width - leading - (Theme.Spacing.extraSmall * 2 + 1)
+    #expect(trailing >= TabMetrics.sectionMinWidth)
+    #expect(trailing >= TabMetrics.minWidth, "the pane's one tab fits without scrolling")
   }
 
   @Test("Only text dragged from a tab drops into a pane")
@@ -113,5 +124,26 @@ struct TabSplitTests {
     #expect(state.tabs(in: .trailing).map(\.id) == ["b"])
     #expect(TabOverviewSheet.detail(right) == "Right pane \u{00B7} Docs")
     #expect(TabPane.leading.other == .trailing)
+  }
+
+  @Test("The overview's second line carries the tab's live state before its context")
+  func overviewState() {
+    let waiting = TabItemState(
+      id: "c", kind: .chat, title: "Fix", subtitle: "Codex \u{00B7} omnigent", status: .needsYou)
+    #expect(TabOverviewSheet.detail(waiting) == "Needs you \u{00B7} Codex \u{00B7} omnigent")
+    let idle = TabItemState(id: "t", kind: .terminal, title: "zsh")
+    #expect(TabOverviewSheet.detail(idle) == "Terminal")
+  }
+
+  @Test("Busy tabs are running, loading or printing")
+  func busy() {
+    let tabs = [
+      TabItemState(id: "r", kind: .chat, title: "R", status: .running),
+      TabItemState(id: "l", kind: .browser, title: "L", status: .loading),
+      TabItemState(id: "t", kind: .terminal, title: "T", status: .terminalActivity),
+      TabItemState(id: "n", kind: .chat, title: "N", status: .needsYou),
+      TabItemState(id: "u", kind: .chat, title: "U", status: .unread),
+    ]
+    #expect(TabsState(tabs: tabs).busyIDs == ["r", "l", "t"])
   }
 }

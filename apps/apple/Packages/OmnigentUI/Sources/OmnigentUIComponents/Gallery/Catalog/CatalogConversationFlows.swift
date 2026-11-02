@@ -78,9 +78,13 @@ enum ConversationFlowCatalog {
         Step("working", "The agent is working", note: "A normal running turn."),
         Step(
           "arrives", "A request arrives",
-          note: "The dock appears above the composer; the session moves to Needs you."
+          note:
+            "The card shows in the transcript; the dock names it in one line while it is on screen."
         ) { model in model.receive(card) },
-        Step("review", "Review", note: "Review (or Return) opens the whole request.") { model in
+        Step(
+          "review", "Review",
+          note: "Scrolled away, the dock answers it; Review (or Return) opens the whole request."
+        ) { model in
           model.isDockExpanded = true
         },
         Step(
@@ -219,6 +223,7 @@ struct DecisionFlowModel {
 /// the flow's drafts.
 private struct DecisionFlowScreen: View {
   @Binding var model: DecisionFlowModel
+  @State private var surfaces = DecisionSurfaces()
 
   var body: some View {
     NavigationStack {
@@ -229,12 +234,14 @@ private struct DecisionFlowScreen: View {
             ComposerView(
               draft: .constant(""), state: model.composer, actions: GalleryActions.composer)
           }
+          .decisionBottomBar(surfaces)
         }
         .themeCanvas()
         .navigationTitle(model.conversation.header.title)
     }
     .catalogNavigationBar(model.conversation.header.title)
     .environment(model.drafts)
+    .environment(surfaces)
     .environment(\.decisionDockStartsExpanded, model.isDockExpanded)
   }
 

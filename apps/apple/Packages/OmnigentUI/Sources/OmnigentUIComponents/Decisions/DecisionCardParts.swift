@@ -4,6 +4,7 @@ import SwiftUI
 /// counts, the plan, Antigravity's action, or the request's own text.
 struct DecisionPayloadView: View {
   let card: DecisionCard
+  @Environment(\.layoutWidth) private var layoutWidth
 
   private var permissions: PermissionOptions { card.permissions }
   private var paragraphs: [String] { DecisionSummary.paragraphs(card.detail) }
@@ -28,7 +29,7 @@ struct DecisionPayloadView: View {
         VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
           Text("Directories offered for this session").font(.caption).foregroundStyle(.secondary)
           ForEach(permissions.permissionDirectories, id: \.self) { directory in
-            Text(directory).font(Theme.codeFont).textSelection(.enabled)
+            Text(directory).font(DecisionCode.font(layoutWidth)).textSelection(.enabled)
           }
         }
       }
@@ -87,12 +88,14 @@ struct InlineMarkdownText: View {
 /// `$ command`, monospaced and selectable, with the working directory and reason below.
 struct CommandPayload: View {
   let command: CommandApproval
+  @Environment(\.layoutWidth) private var layoutWidth
 
   var body: some View {
+    let code = DecisionCode.font(layoutWidth)
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
         Text(verbatim: "$ \(command.command)")
-          .font(Theme.codeFont)
+          .font(code)
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -105,7 +108,7 @@ struct CommandPayload: View {
       .accessibilityLabel("Command: \(command.command)")
       if let cwd = command.cwd {
         Label {
-          Text(verbatim: cwd).font(Theme.codeFont).textSelection(.enabled)
+          Text(verbatim: cwd).font(code).textSelection(.enabled)
         } icon: {
           Image(systemName: "folder")
         }
@@ -124,10 +127,11 @@ struct CommandPayload: View {
   }
 }
 
-/// The files an edit would change: the path, what happens to it ("new file", "deleted",
-/// "rewritten") and "+N −M" when known, leaving zero counts out.
+/// The files an edit would change, basename first with the directory under it, what happens to
+/// it ("new file", "deleted", "rewritten") and "+N −M" when known, leaving zero counts out.
 struct FileChangeList: View {
   let files: [DecisionFileChange]
+  @Environment(\.layoutWidth) private var layoutWidth
 
   static func symbol(_ kind: DecisionFileChange.Kind?) -> String {
     switch kind {
@@ -150,15 +154,26 @@ struct FileChangeList: View {
     VStack(alignment: .leading, spacing: 0) {
       ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
         if index > 0 { Divider() }
-        HStack(spacing: Theme.Spacing.small) {
+        let path = DecisionPath(file.path)
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
           Image(systemName: Self.symbol(file.kind))
             .foregroundStyle(.secondary)
             .accessibilityHidden(true)
-          Text(verbatim: file.path)
-            .font(Theme.codeFont)
-            .lineLimit(1)
-            .truncationMode(.head)
-            .frame(maxWidth: .infinity, alignment: .leading)
+          VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+            Text(verbatim: path.name)
+              .font(DecisionCode.font(layoutWidth))
+              .foregroundStyle(.primary)
+              .lineLimit(1)
+              .truncationMode(.middle)
+            if let directory = path.directory {
+              Text(verbatim: directory)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.head)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .help(file.path)
           if let kind = Self.kindLabel(file.kind) {
             Text(kind).foregroundStyle(.secondary)
           }
@@ -188,6 +203,7 @@ struct FileChangeList: View {
 /// Antigravity's action and the command prefix it offers to always allow.
 struct AntigravityPayload: View {
   let permission: AntigravityPermission
+  @Environment(\.layoutWidth) private var layoutWidth
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
@@ -196,7 +212,7 @@ struct AntigravityPayload: View {
       }
       if let pattern = permission.alwaysAllowPattern {
         LabeledContent("Always-allow pattern") {
-          Text(verbatim: pattern).font(Theme.codeFont).textSelection(.enabled)
+          Text(verbatim: pattern).font(DecisionCode.font(layoutWidth)).textSelection(.enabled)
         }
         .font(.caption)
       }
@@ -215,6 +231,7 @@ struct ApprovalControls: View {
   let act: (DecisionResponse) -> Void
   @Environment(\.decisionIDPrefix) private var idPrefix
   @Environment(\.decisionShortcutCardID) private var shortcutCardID
+  @Environment(\.decisionShortcutIsLive) private var shortcutIsLive
   @FocusState private var feedbackFocused: Bool
 
   private var isPlan: Bool { card.permissions.plan != nil }
@@ -244,7 +261,7 @@ struct ApprovalControls: View {
     if let title = availability.approveTitle {
       ApproveButton(
         title: title, cardID: card.id, isEnabled: canRespond,
-        ownsShortcut: shortcutCardID == card.id && !draft.isComposingFeedback,
+        ownsShortcut: shortcutIsLive && shortcutCardID == card.id && !draft.isComposingFeedback,
         identifier: id("approve", plan: "approve"),
         isProminent: shortcutCardID == nil || shortcutCardID == card.id
       ) { act(.approve) }

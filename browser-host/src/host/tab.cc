@@ -152,6 +152,8 @@ Gate GateFor(protocol::ClientType type) {
     case protocol::ClientType::kNav:
     case protocol::ClientType::kResize:
     case protocol::ClientType::kDialogReply:
+    case protocol::ClientType::kEdit:
+    case protocol::ClientType::kTouch:
       return Gate::kHolder;
     case protocol::ClientType::kControl:
       return Gate::kControl;
@@ -168,7 +170,8 @@ Tab::Tab(BrowserHost* host, std::string id, std::string session_id, std::string 
       id_(std::move(id)),
       session_id_(std::move(session_id)),
       created_by_(std::move(created_by)),
-      viewport_(viewport) {
+      viewport_(viewport),
+      agent_viewport_(viewport) {
   const StreamConfig config = host_->stream_config();
   settings_.max_fps = static_cast<uint32_t>(config.fps_agent);
   sink_.Resize(static_cast<int>(std::lround(viewport_.w * viewport_.dpr)),
@@ -289,6 +292,7 @@ void Tab::Attach(uint64_t connection, const std::string& mode) {
   hello.viewport = viewport_;
   hello.control = ControlFor(connection);
   hello.settings = settings_;
+  hello.features = protocol::HostFeatures();
   Send(connection, protocol::HelloMessage(hello));
   UpdateFrameRate();
 }
@@ -300,6 +304,9 @@ void Tab::Detach(uint64_t connection) {
   }
   viewers_.erase(found);
   streamer_->RemoveViewer(connection);
+  if (viewport_holder_ == connection) {
+    viewport_holder_ = 0;  // Orphaned: the next take adopts it (section 16.2).
+  }
   if (holder_ == connection) {
     // The user keeps the tab for a grace period so a reconnect mid-login does not hand it back.
     holder_ = 0;
@@ -386,6 +393,7 @@ void Tab::OnClientMessage(uint64_t connection, const Json& json) {
     case protocol::ClientType::kMouse:
     case protocol::ClientType::kKey:
     case protocol::ClientType::kIme:
+    case protocol::ClientType::kTouch:
       if (!painted_) {
         if (pending_input_.size() >= kMaxPendingInput) {
           SendError(connection, "internal", "input dropped: the page has not painted yet", false);
@@ -394,13 +402,10 @@ void Tab::OnClientMessage(uint64_t connection, const Json& json) {
         pending_input_.push_back(message);
         return;
       }
-      if (message.type == protocol::ClientType::kMouse) {
-        InjectMouse(message);
-      } else if (message.type == protocol::ClientType::kKey) {
-        InjectKey(message);
-      } else {
-        InjectIme(message);
-      }
+      DispatchInput(message);
+      break;
+    case protocol::ClientType::kEdit:
+      HandleEdit(connection, message);
       break;
     case protocol::ClientType::kNav:
       HandleNav(connection, message);
@@ -427,9 +432,13 @@ void Tab::HandleHello(uint64_t connection, Viewer* viewer, const protocol::Clien
     return;
   }
   viewer->hello = true;
+  for (const std::string& feature : hello.features) {
+    viewer->wants_selection |= feature == protocol::kFeatureSelection;
+    viewer->wants_scroll |= feature == protocol::kFeatureScrollMetrics;
+  }
   // Setup order (section 5.3): control, viewport, nav, cursor, text_input, dialogs, then an IDR.
   Send(connection, protocol::ControlMessage(ControlFor(connection), std::nullopt));
-  Send(connection, protocol::ViewportMessage(viewport_));
+  Send(connection, protocol::ViewportMessage(CurrentViewport()));
   Send(connection, protocol::NavMessage(nav_));
   Send(connection, protocol::CursorMessage(cursor_));
   Send(connection, protocol::TextInputMessage(text_input_));
@@ -443,6 +452,7 @@ void Tab::HandleHello(uint64_t connection, Viewer* viewer, const protocol::Clien
   }
   streamer_->AddViewer(connection, hello.visible);
   UpdateFrameRate();
+  SendInitialReports(connection, *viewer);
 }
 
 void Tab::HandleSettings(uint64_t connection, Viewer* viewer,
@@ -510,6 +520,9 @@ void Tab::BroadcastControl(const std::string& reason) {
 }
 
 void Tab::SetOwner(const std::string& owner, uint64_t holder, const std::string& reason) {
+  if (owner == "agent" && viewport_scope_ == "control") {
+    RestoreAgentViewport();  // Hand-back restores the agent's size (section 16.2).
+  }
   owner_ = owner;
   holder_ = holder;
   ++grace_generation_;
@@ -521,6 +534,13 @@ void Tab::SetOwner(const std::string& owner, uint64_t holder, const std::string&
 void Tab::HandleControl(uint64_t connection, Viewer* viewer,
                         const protocol::ClientMessage& message) {
   if (message.op == "take") {
+    if (viewport_scope_ == "control") {
+      if (viewport_holder_ == 0) {
+        viewport_holder_ = connection;  // A reconnect adopts the orphaned viewport.
+      } else if (viewport_holder_ != connection) {
+        RestoreAgentViewport();
+      }
+    }
     SetOwner("user", connection, "take");
     if (browser_ && !focused_) {
       browser_->GetHost()->SetFocus(true);
@@ -598,13 +618,24 @@ void Tab::FlushPendingInput() {
   std::vector<protocol::ClientMessage> pending;
   pending.swap(pending_input_);
   for (const protocol::ClientMessage& message : pending) {
-    if (message.type == protocol::ClientType::kMouse) {
+    DispatchInput(message);
+  }
+}
+
+void Tab::DispatchInput(const protocol::ClientMessage& message) {
+  switch (message.type) {
+    case protocol::ClientType::kMouse:
       InjectMouse(message);
-    } else if (message.type == protocol::ClientType::kKey) {
+      break;
+    case protocol::ClientType::kKey:
       InjectKey(message);
-    } else {
+      break;
+    case protocol::ClientType::kTouch:
+      InjectTouch(message);
+      break;
+    default:
       InjectIme(message);
-    }
+      break;
   }
 }
 
@@ -711,18 +742,21 @@ void Tab::HandleResize(uint64_t connection, const protocol::ClientMessage& messa
     SendError(connection, "invalid_message", "resize bounds: w and h 200-3840, dpr 1-3", false);
     return;
   }
-  const bool dpr_changed = wanted.dpr != viewport_.dpr;
-  viewport_ = wanted;
-  sink_.Resize(static_cast<int>(std::lround(viewport_.w * viewport_.dpr)),
-               static_cast<int>(std::lround(viewport_.h * viewport_.dpr)));
-  streamer_->OnCanvasResized();
-  if (browser_) {
-    if (dpr_changed) {
-      browser_->GetHost()->NotifyScreenInfoChanged();
-    }
-    browser_->GetHost()->WasResized();
+  const std::string mobile = message.mobile.value_or("off");
+  // Emulation is always the holder's (section 16.6).
+  const std::string scope = mobile != "off" ? "control" : message.scope.value_or("tab");
+  if (scope == "tab") {
+    agent_viewport_ = wanted;
+    viewport_holder_ = 0;
+    SetViewport(wanted, "tab", "off");
+    return;
   }
-  Broadcast(protocol::ViewportMessage(viewport_));
+  if (wanted == agent_viewport_ && mobile == "off") {
+    RestoreAgentViewport();
+    return;
+  }
+  viewport_holder_ = connection;
+  SetViewport(wanted, "control", mobile);
 }
 
 void Tab::HandleDialogReply(uint64_t connection, const protocol::ClientMessage& message) {
@@ -924,6 +958,7 @@ void Tab::OnLoadingStateChange(CefRefPtr<CefBrowser>, bool is_loading, bool can_
   nav_.can_go_forward = can_go_forward;
   if (!is_loading) {
     nav_.progress = 1;
+    ScheduleScrollReport();
   }
   BroadcastNav();
 }
@@ -950,7 +985,7 @@ bool Tab::OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int popup_id
     return true;
   }
   // window.open and target=_blank become host tabs in the same session (section 6).
-  CefRefPtr<Tab> popup = host_->NewTab(session_id_, created_by_, viewport_);
+  CefRefPtr<Tab> popup = host_->NewTab(session_id_, created_by_, agent_viewport_);
   popup->nav_.url = target_url.ToString();
   popup->ExpectBrowser();
   ConfigureWindowless(&window_info, &settings);
@@ -977,7 +1012,7 @@ bool Tab::OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>,
   if (disposition == CEF_WOD_CURRENT_TAB || host_->shutting_down()) {
     return false;
   }
-  CefRefPtr<Tab> tab = host_->NewTab(session_id_, created_by_, viewport_);
+  CefRefPtr<Tab> tab = host_->NewTab(session_id_, created_by_, agent_viewport_);
   if (!tab->Create(target_url.ToString(), browser->GetHost()->GetRequestContext())) {
     Log("CreateBrowser failed for a new-tab link");
     tab->browser_requested_ = false;
@@ -1018,6 +1053,7 @@ bool Tab::DoClose(CefRefPtr<CefBrowser>) {
 void Tab::OnBeforeClose(CefRefPtr<CefBrowser>) {
   closing_ = true;
   devtools_registration_ = nullptr;
+  devtools_calls_.clear();  // Their viewers are closing below.
   browser_ = nullptr;
   streamer_->Shutdown();
   for (auto& [id, open] : dialogs_) {
@@ -1127,12 +1163,22 @@ bool Tab::OnFileDialog(CefRefPtr<CefBrowser>, FileDialogMode, const CefString& t
 
 void Tab::OnDevToolsMethodResult(CefRefPtr<CefBrowser>, int message_id, bool success,
                                  const void* result, size_t result_size) {
-  if (message_id != target_info_message_ || !target_id_.empty()) {
-    return;
-  }
   const std::string json(static_cast<const char*>(result), result_size);
   std::string error;
   std::optional<Json> parsed = Json::Parse(json, &error);
+  if (auto call = devtools_calls_.find(message_id); call != devtools_calls_.end()) {
+    DevToolsCallback done = std::move(call->second);
+    devtools_calls_.erase(call);
+    if (!parsed) {
+      done(false, Json("unreadable DevTools result: " + error));
+    } else {
+      done(success, *parsed);
+    }
+    return;
+  }
+  if (message_id != target_info_message_ || !target_id_.empty()) {
+    return;
+  }
   const Json* info = parsed ? parsed->Find("targetInfo") : nullptr;
   if (success && info != nullptr) {
     target_id_ = info->GetString("targetId").value_or("");

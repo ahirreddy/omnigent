@@ -156,6 +156,9 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var context: ExecutionContext?
   /// A message sent mid-turn steers the running turn; otherwise it waits for the turn to end.
   public var canSteer: Bool
+  /// Sending will not become possible here (read-only, archived or closed); the touch composer
+  /// shows the reason in place of the field.
+  public var isReadOnly = false
 
   /// Creates composer state.
   /// - Parameters:

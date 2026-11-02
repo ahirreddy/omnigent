@@ -36,8 +36,8 @@ enum ComposerBarMetrics {
   static let maxLines = 6
   /// Send and Stop: a 36 pt circle in a 44 pt hit area.
   static let sendCircle: CGFloat = 36
-  /// The open row's model and approval-mode names, so one row fits an iPhone.
-  static let modelWidth: CGFloat = 96
+  /// The open row's approval-mode name, so one row fits an iPhone; the model name takes the
+  /// row's free width.
   static let modeWidth: CGFloat = 96
 }
 

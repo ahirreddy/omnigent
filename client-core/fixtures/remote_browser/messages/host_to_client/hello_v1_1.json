@@ -1,0 +1,39 @@
+{
+  "type": "hello",
+  "protocol": 1,
+  "tab_id": "btab_7f3a9c2e",
+  "profile": "default",
+  "host_version": "0.2.0",
+  "mode": "control",
+  "codecs": [
+    "h264",
+    "jpeg"
+  ],
+  "viewport": {
+    "w": 1280,
+    "h": 800,
+    "dpr": 1
+  },
+  "control": {
+    "owner": "agent",
+    "holder": null
+  },
+  "settings": {
+    "max_fps": 15,
+    "quality": "medium",
+    "scale": 1,
+    "codec": "auto"
+  },
+  "window": {
+    "max_frames": 2,
+    "max_bytes": 524288
+  },
+  "features": [
+    "viewport_scope",
+    "mobile_emulation",
+    "edit",
+    "selection",
+    "scroll_metrics",
+    "touch"
+  ]
+}

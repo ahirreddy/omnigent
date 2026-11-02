@@ -14,7 +14,8 @@ struct GeometryTests {
   private let viewport = RemoteViewport(width: 1280, height: 800, dpr: 1)
 
   @Test func aWideViewLetterboxesLeftAndRight() throws {
-    let geometry = try #require(RemoteViewportGeometry(viewport: viewport, bounds: CGSize(width: 2000, height: 800)))
+    let geometry = try #require(
+      RemoteViewportGeometry(viewport: viewport, bounds: CGSize(width: 2000, height: 800)))
     #expect(geometry.scale == 1)
     #expect(geometry.contentRect == CGRect(x: 360, y: 0, width: 1280, height: 800))
     #expect(geometry.cssPoint(for: CGPoint(x: 360, y: 10)) == CGPoint(x: 0, y: 10))
@@ -23,7 +24,8 @@ struct GeometryTests {
   }
 
   @Test func aTallViewScalesDownAndLetterboxesTopAndBottom() throws {
-    let geometry = try #require(RemoteViewportGeometry(viewport: viewport, bounds: CGSize(width: 640, height: 1000)))
+    let geometry = try #require(
+      RemoteViewportGeometry(viewport: viewport, bounds: CGSize(width: 640, height: 1000)))
     #expect(geometry.scale == 0.5)
     #expect(geometry.contentRect == CGRect(x: 0, y: 300, width: 640, height: 400))
     #expect(geometry.cssPoint(for: CGPoint(x: 320, y: 500)) == CGPoint(x: 640, y: 400))
@@ -35,7 +37,8 @@ struct GeometryTests {
     let viewport = RemoteViewportGeometry.viewport(
       videoSize: CGSize(width: 2560, height: 1600), deviceScale: 2)
     #expect(viewport == RemoteViewport(width: 1280, height: 800, dpr: 2))
-    let geometry = try #require(RemoteViewportGeometry(viewport: viewport, bounds: CGSize(width: 1280, height: 800)))
+    let geometry = try #require(
+      RemoteViewportGeometry(viewport: viewport, bounds: CGSize(width: 1280, height: 800)))
     #expect(geometry.cssPoint(for: CGPoint(x: 1279, y: 799)) == CGPoint(x: 1279, y: 799))
   }
 }
@@ -165,6 +168,7 @@ struct InputMappingTests {
     #expect(RemoteBrowserCursor(keyword: "pointer", custom: nil).pageCursor == .hand)
     #expect(RemoteBrowserCursor(keyword: "text", custom: nil).pageCursor == .iBeam)
     #expect(RemoteBrowserCursor(keyword: "ew-resize", custom: nil).pageCursor == .resizeLeftRight)
-    #expect(RemoteBrowserCursor(keyword: "-webkit-future-cursor", custom: nil).pageCursor == .pointer)
+    #expect(
+      RemoteBrowserCursor(keyword: "-webkit-future-cursor", custom: nil).pageCursor == .pointer)
   }
 }

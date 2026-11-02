@@ -114,7 +114,8 @@ struct ExpandableHeader<Accessory: View>: View {
   }
 }
 
-/// Status glyph for tool and activity rows.
+/// Status glyph for tool and activity rows. A running row is still: the live turn has one
+/// working indicator, at its end.
 struct ActivityStatusView: View {
   let isRunning: Bool
   let isFailure: Bool
@@ -122,8 +123,8 @@ struct ActivityStatusView: View {
 
   var body: some View {
     if isRunning {
-      ProgressView()
-        .controlSize(.small)
+      Image(systemName: "circle.dotted")
+        .foregroundStyle(.secondary)
         .accessibilityLabel("Running")
     } else if isFailure {
       Image(systemName: "xmark.circle.fill")

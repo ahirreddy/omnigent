@@ -151,7 +151,8 @@ public struct ShareSheet: View {
 }
 
 /// The Fork dialog: "Clone session", "Fork from this response" or "Continue in another
-/// directory", with the agent and directory, then Clone, Clone & start, or Continue.
+/// directory", with the agent and directory. The buttons repeat the title's verb: Clone and
+/// Clone & start, Fork and Fork & start, or Continue.
 public struct ForkSheet: View {
   private let state: ForkViewState
   private let actions: ForkActions
@@ -190,7 +191,7 @@ public struct ForkSheet: View {
             .accessibilityIdentifier("fork-error")
         }
         if let reason = state.startUnavailableReason, state.kind != .anotherDirectory {
-          Text("Clone copies the conversation without starting it. \(reason)")
+          Text("\(state.verb) copies the conversation without starting it. \(reason)")
             .font(.caption)
             .foregroundStyle(.secondary)
             .accessibilityIdentifier("fork-start-unavailable")
@@ -214,15 +215,15 @@ public struct ForkSheet: View {
               .disabled(state.isForking)
               .accessibilityIdentifier("fork-continue")
           } else if !startsInDirectory {
-            Button("Clone") { actions.fork(agentID, directory, false) }
+            Button(state.verb) { actions.fork(agentID, directory, false) }
               .primaryActionStyle()
               .disabled(state.isForking)
               .accessibilityIdentifier("fork-clone")
           } else {
-            Button("Clone") { actions.fork(agentID, directory, false) }
+            Button(state.verb) { actions.fork(agentID, directory, false) }
               .disabled(state.isForking)
               .accessibilityIdentifier("fork-clone")
-            Button("Clone & start") { actions.fork(agentID, directory, true) }
+            Button("\(state.verb) & start") { actions.fork(agentID, directory, true) }
               .primaryActionStyle()
               .disabled(state.isForking)
               .accessibilityIdentifier("fork-clone-start")

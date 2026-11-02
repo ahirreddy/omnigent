@@ -11,9 +11,9 @@ struct ConfigurationMenu: View {
   var showsModel = true
   @Environment(\.composerLayoutStyle) private var layout
 
-  /// The touch bar keeps its controls on one row, so the model name is shorter there.
-  private var modelWidth: CGFloat {
-    if layout == .touch { return ComposerBarMetrics.modelWidth }
+  /// The card caps the model name; the touch bar lets it take the row's free width.
+  private var modelWidth: CGFloat? {
+    if layout == .touch { return nil }
     return isCompact ? Theme.Control.compactModelWidth : Theme.Control.modelWidth
   }
 
@@ -40,7 +40,8 @@ struct ConfigurationMenu: View {
     .buttonStyle(.plain)
     .menuIndicator(.hidden)
     .composerChip()
-    .fixedSize()
+    // On touch the model name gives way to the row's other controls.
+    .fixedSize(horizontal: layout != .touch, vertical: true)
     .disabled(configuration.isApplying)
     .help("Agent, model and effort: \(configuration.title) (Control-Shift-M)")
     .accessibilityLabel("Agent, model and effort, \(configuration.title)")
@@ -62,8 +63,9 @@ struct ConfigurationMenu: View {
           .font(Theme.Typography.label)
           .foregroundStyle(configuration.isModelInherited ? .secondary : .primary)
           .lineLimit(1)
-          .truncationMode(.middle)
+          .truncationMode(layout == .touch ? .tail : .middle)
           .frame(maxWidth: modelWidth)
+          .layoutPriority(-1)
       }
       if let effort = configuration.effortTitle, !isCompact {
         Text(effort)

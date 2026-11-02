@@ -111,6 +111,7 @@ final class AppServices {
     desktop.onIssue = { issue in Self.log(issue, to: logger) }
     desktop.router.knownServers = { [weak self] in self?.knownServers() ?? [] }
     desktop.router.rememberServer = { [weak self] url in self?.recentServers.record(url) }
+    DesktopSupervision.install(on: desktop)
     if let reason = keychain.fallbackReason {
       logger.notice("\(reason, privacy: .public)")
     }
@@ -139,6 +140,14 @@ final class AppServices {
         "Organization servers ignored: \(error.localizedSummary, privacy: .public)")
     }
     return servers
+  }
+
+  /// Servers for Settings › Phone's pairing code: those with a signed-in window, then recents.
+  /// - Returns: Server URLs, without repeats.
+  func pairingServers() -> [String] {
+    var seen: Set<String> = []
+    return (SupervisionConnections.shared.serverURLs + recentServers.urls.map(\.absoluteString))
+      .filter { seen.insert($0).inserted }
   }
 
   /// The servers the sign-in picker offers: the organization's, then recent ones.
@@ -208,7 +217,7 @@ final class AppServices {
     case .consentDeclined, .awaitingWindowOpener, .acknowledgmentDeclined:
       logger.notice("Desktop: \(message, privacy: .public)")
     case .deepLinkRejected, .acknowledgmentFailed, .invalidServerURL, .routingFailed,
-      .notificationFailed, .unrecognizedNotificationPayload, .localServer:
+      .notificationFailed, .unrecognizedNotificationPayload, .localServer, .supervision:
       logger.error("Desktop: \(message, privacy: .public)")
     }
   }

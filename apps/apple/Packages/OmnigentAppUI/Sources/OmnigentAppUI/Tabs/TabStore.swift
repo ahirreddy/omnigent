@@ -38,6 +38,11 @@ public final class TabStore {
   public internal(set) var materialized: Set<String> = []
   /// The split view, when the window has two panes.
   public internal(set) var split: Split?
+  /// Tabs whose work settled while they were out of view, as Warp's unread dot; showing a tab
+  /// clears it. Not saved: a restored window starts read.
+  public private(set) var unread: Set<String> = []
+  /// The tabs that were busy at the last ``noteBusy(_:)``.
+  @ObservationIgnored private var busy: Set<String> = []
 
   /// A split window: which tabs are in the right pane, the other pane's tab and the divider.
   public struct Split: Hashable, Sendable {
@@ -68,6 +73,11 @@ public final class TabStore {
 
   /// The selected tab.
   public var selected: AppTab? { tabs.first { $0.id == selectedID } }
+
+  /// The tabs on screen: the selected one and, when split, the other pane's.
+  public var visibleIDs: Set<String> {
+    Set([selectedID, split?.otherSelectedID].compactMap(\.self))
+  }
 
   /// The window's state to save.
   public var snapshot: TabWindowSnapshot {
@@ -263,6 +273,17 @@ public final class TabStore {
     changed()
   }
 
+  /// Records which tabs are busy (a turn running, a page loading, a terminal printing). A tab
+  /// out of view whose work stopped since the last call becomes unread.
+  /// - Parameter current: The busy tabs now.
+  public func noteBusy(_ current: Set<String>) {
+    let settled = busy.subtracting(current).subtracting(visibleIDs)
+    busy = current
+    let open = Set(tabs.map(\.id))
+    let newlyUnread = settled.intersection(open).subtracting(unread)
+    if !newlyUnread.isEmpty { unread.formUnion(newlyUnread) }
+  }
+
   /// Adds tabs that came from another window (a tear-off) and selects the first.
   /// - Parameter moved: The tabs, in order.
   public func adopt(_ moved: [AppTab]) {
@@ -353,6 +374,9 @@ public final class TabStore {
   }
 
   func changed() {
+    // Showing a tab reads it; a closed one has nothing left to read.
+    let read = unread.subtracting(visibleIDs).intersection(Set(tabs.map(\.id)))
+    if read != unread { unread = read }
     onChange?()
   }
 }

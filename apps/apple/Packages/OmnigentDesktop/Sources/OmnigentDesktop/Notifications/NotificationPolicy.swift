@@ -30,6 +30,8 @@ nonisolated public struct DesktopNotificationEvent: Hashable, Sendable {
   public var title: String
   /// Notification body.
   public var body: String
+  /// Action buttons for one request, when the notification can answer it.
+  public var actions: NotificationActions?
 
   /// Creates an event.
   /// - Parameters:
@@ -39,9 +41,10 @@ nonisolated public struct DesktopNotificationEvent: Hashable, Sendable {
   ///   - sessionID: The conversation, if any.
   ///   - title: Title text.
   ///   - body: Body text.
+  ///   - actions: Action buttons for one request.
   public init(
     kind: Kind, origin: ServerOrigin, serverURL: URL, sessionID: String?, title: String,
-    body: String
+    body: String, actions: NotificationActions? = nil
   ) {
     self.kind = kind
     self.origin = origin
@@ -49,6 +52,29 @@ nonisolated public struct DesktopNotificationEvent: Hashable, Sendable {
     self.sessionID = sessionID
     self.title = title
     self.body = body
+    self.actions = actions
+  }
+}
+
+/// A notification's action buttons, for one request.
+nonisolated public struct NotificationActions: Hashable, Sendable {
+  /// The registered category with the buttons.
+  public var categoryIdentifier: String
+  /// The request identifier: one notification per request, so a session's several requests
+  /// each show.
+  public var identifier: String
+  /// Routing identifiers handed back with the chosen action. Never shown.
+  public var context: [String: String]
+
+  /// Creates the actions.
+  /// - Parameters:
+  ///   - categoryIdentifier: The registered category.
+  ///   - identifier: The request identifier.
+  ///   - context: Routing identifiers handed back with the action.
+  public init(categoryIdentifier: String, identifier: String, context: [String: String]) {
+    self.categoryIdentifier = categoryIdentifier
+    self.identifier = identifier
+    self.context = context
   }
 }
 
@@ -132,6 +158,8 @@ nonisolated public struct NotificationDelivery: Hashable, Sendable {
   public var wantsSound: Bool
   /// Whether to bounce the Dock icon because the app is in the background.
   public var requestsAttention: Bool
+  /// The category with the request's action buttons, if any.
+  public var categoryIdentifier: String?
 }
 
 /// Why a notification was not posted.
@@ -185,14 +213,17 @@ nonisolated public enum NotificationPolicy {
         title: title,
         body: event.body,
         wantsSound: preferences.soundEnabled,
-        requestsAttention: !context.appIsActive))
+        requestsAttention: !context.appIsActive,
+        categoryIdentifier: event.actions?.categoryIdentifier))
   }
 
-  /// One identifier per conversation (or runner), so repeats replace rather than stack.
+  /// One identifier per conversation (or runner), so repeats replace rather than stack; an
+  /// actionable request has its own.
   /// - Parameter event: The event.
   /// - Returns: The request identifier.
   public static func identifier(for event: DesktopNotificationEvent) -> String {
-    switch event.kind {
+    if let actions = event.actions { return actions.identifier }
+    return switch event.kind {
     case .runnerOffline(let runnerID): "\(event.origin.serialized)/runner/\(runnerID)"
     case .turnFinished, .turnFailed, .elicitation:
       identifier(origin: event.origin, sessionID: event.sessionID ?? "")

@@ -29,6 +29,7 @@ mod test_support;
 pub use attach::{
     AttachConfig, AttachFailure, AttachInput, AttachOptions, AttachOutput, ClosedReason,
     ConnectionState, DropReason, InputKind, Notice, RemoteBrowserAttach, TimerKind, TimerToken,
+    ViewportRequest,
 };
 pub use codec::{
     AccessUnitAssembler, AvccUnit, CodecError, NalSplitter, ParameterSets, QueuePush, VideoDrop,

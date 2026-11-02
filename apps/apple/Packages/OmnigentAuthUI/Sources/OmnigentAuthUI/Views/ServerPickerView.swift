@@ -15,6 +15,9 @@ public struct ServerPickerView: View {
   @State private var serverUrl: String
   @State private var revealsValidation = false
   @FocusState private var urlFocused: Bool
+  #if os(iOS)
+    @State private var scansPairingCode = false
+  #endif
 
   /// Creates the picker.
   /// - Parameters:
@@ -52,9 +55,19 @@ public struct ServerPickerView: View {
         recentSection
       }
     } buttons: {
+      #if os(iOS)
+        AuthButton(title: "Scan Pairing Code", identifier: "auth.scan-pairing-code") {
+          scansPairingCode = true
+        }
+      #endif
       AuthButton(title: "Connect", kind: .primary, identifier: "auth.connect", action: connect)
         .disabled(!validator.check(serverUrl).canConnect)
     }
+    #if os(iOS)
+      .sheet(isPresented: $scansPairingCode) {
+        PairingScannerSheet(validator: validator, connect: actions.connect)
+      }
+    #endif
     .onChange(of: prefill) { _, newValue in serverUrl = newValue }
     .onChange(of: serverUrl) { _, _ in revealsValidation = false }
     .onChange(of: urlFocused) { _, focused in
@@ -209,8 +222,8 @@ private struct ServerRow: View {
               .font(.caption2.weight(.semibold))
               .padding(.horizontal, 6)
               .padding(.vertical, 2)
-              .background(.tint.opacity(0.14), in: Capsule())
-              .foregroundStyle(.tint)
+              .background(.quaternary, in: Capsule())
+              .foregroundStyle(.primary)
           }
         }
         .contentShape(Rectangle())

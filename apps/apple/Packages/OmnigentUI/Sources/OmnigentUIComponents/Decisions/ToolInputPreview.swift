@@ -104,19 +104,24 @@ nonisolated enum ToolInputPreview {
 }
 
 /// A gated tool's input on an approval card: its edits as a tinted diff, or its JSON with
-/// strings unescaped. Long input starts folded to a few lines, with Show all.
+/// strings unescaped. Long input starts folded to a few lines, with Show all. On a phone the
+/// code is 13 pt and wraps; the full-screen review unfolds it and can scroll lines instead.
 struct PreviewBlock: View {
   let text: String
   @State private var isExpanded = false
   @Environment(\.layoutWidth) private var layoutWidth
+  @Environment(\.decisionCodeLayout) private var codeLayout
 
-  private var foldedLines: Int { layoutWidth == .compact ? 6 : 12 }
+  private var foldedLines: Int { layoutWidth == .compact ? DecisionPayloadSize.compactLines : 12 }
+  private var showsAll: Bool { isExpanded || codeLayout.isFullScreen }
+  private var wraps: Bool { codeLayout.wraps(layoutWidth) }
 
   var body: some View {
     if let diff = ToolInputPreview.diff(in: text) {
       DiffView(
-        diff: diff, maxLines: isExpanded ? 400 : foldedLines,
-        showAll: isExpanded ? nil : { isExpanded = true })
+        diff: diff, maxLines: showsAll ? 400 : foldedLines,
+        showAll: showsAll ? nil : { isExpanded = true }, codeFont: DecisionCode.font(layoutWidth),
+        wrapsLines: wraps)
     } else {
       plain(ToolInputPreview.unescaped(text))
     }
@@ -124,14 +129,16 @@ struct PreviewBlock: View {
 
   private func plain(_ text: String) -> some View {
     let lines = text.components(separatedBy: "\n")
-    let isFolded = !isExpanded && lines.count > foldedLines
+    let isFolded = !showsAll && lines.count > foldedLines
+    let shown = isFolded ? lines.prefix(foldedLines).joined(separator: "\n") : text
     return VStack(alignment: .leading, spacing: 0) {
-      BoundedScrollView(maxHeight: isExpanded ? 480 : .infinity) {
-        Text(verbatim: isFolded ? lines.prefix(foldedLines).joined(separator: "\n") : text)
-          .font(Theme.codeFont)
-          .textSelection(.enabled)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(Theme.Spacing.medium)
+      BoundedScrollView(maxHeight: isExpanded && !codeLayout.isFullScreen ? 480 : .infinity) {
+        // Plain input always wrapped inline; only the review can switch it to scrolling.
+        if wraps || !codeLayout.isFullScreen {
+          code(shown).frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+          ScrollView(.horizontal) { code(shown).fixedSize(horizontal: true, vertical: false) }
+        }
       }
       if isFolded {
         ShowAllButton(hidden: lines.count - foldedLines) { isExpanded = true }
@@ -139,6 +146,38 @@ struct PreviewBlock: View {
     }
     .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
   }
+
+  private func code(_ text: String) -> some View {
+    Text(verbatim: text)
+      .font(DecisionCode.font(layoutWidth))
+      .textSelection(.enabled)
+      .padding(Theme.Spacing.medium)
+  }
+}
+
+/// How a payload diff lays out: wrapped on a phone and scrolling elsewhere, unless the
+/// full-screen review says otherwise.
+enum DecisionCodeLayout: Hashable {
+  /// Inline: wrap on a phone, scroll elsewhere.
+  case automatic
+  /// The full-screen review, wrapping or not.
+  case fullScreen(wraps: Bool)
+
+  var isFullScreen: Bool {
+    if case .fullScreen = self { return true }
+    return false
+  }
+
+  func wraps(_ width: LayoutWidth) -> Bool {
+    switch self {
+    case .automatic: width == .compact
+    case .fullScreen(let wraps): wraps
+    }
+  }
+}
+
+extension EnvironmentValues {
+  @Entry var decisionCodeLayout = DecisionCodeLayout.automatic
 }
 
 /// "Show all" under a folded preview, naming how many lines are hidden.

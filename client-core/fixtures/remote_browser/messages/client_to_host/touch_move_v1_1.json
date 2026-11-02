@@ -1,0 +1,8 @@
+{
+  "type": "touch",
+  "kind": "move",
+  "id": 1,
+  "x": 200,
+  "y": 300,
+  "modifiers": 0
+}

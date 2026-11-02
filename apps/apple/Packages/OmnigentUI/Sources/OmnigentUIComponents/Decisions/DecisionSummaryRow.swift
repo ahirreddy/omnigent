@@ -15,6 +15,7 @@ struct DecisionSummaryRow: View {
   let open: () -> Void
   @Environment(\.decisionIDPrefix) private var idPrefix
   @Environment(\.decisionShortcutCardID) private var shortcutCardID
+  @Environment(\.decisionShortcutIsLive) private var shortcutIsLive
   @Environment(\.layoutWidth) private var layoutWidth
 
   private var summary: DecisionSummary { DecisionSummary(card) }
@@ -99,7 +100,7 @@ struct DecisionSummaryRow: View {
           .accessibilityIdentifier("\(idPrefix)approval-decline-\(card.id)")
         ApproveButton(
           title: "Approve", cardID: card.id, isEnabled: canRespond,
-          ownsShortcut: shortcutCardID == card.id,
+          ownsShortcut: shortcutIsLive && shortcutCardID == card.id,
           identifier: "\(idPrefix)approval-approve-\(card.id)", controlSize: .regular,
           isProminent: shortcutCardID == nil || shortcutCardID == card.id
         ) { act(.approve) }
@@ -147,10 +148,11 @@ struct DecisionSummaryRow: View {
 /// The summary with its command or file name monospaced.
 struct SummaryText: View {
   let summary: DecisionSummary
+  @Environment(\.layoutWidth) private var layoutWidth
 
   var body: some View {
     if let code = summary.code {
-      Text("\(summary.lead) \(Text(verbatim: code).font(Theme.codeFont))")
+      Text("\(summary.lead) \(Text(verbatim: code).font(DecisionCode.font(layoutWidth)))")
         .font(Theme.Typography.label)
     } else {
       Text(summary.lead).font(Theme.Typography.label)

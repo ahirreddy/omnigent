@@ -34,14 +34,17 @@
 @end
 
 int main(int argc, char* argv[]) {
+  // Load CEF before AppKit starts any thread: creating NSApplication starts App Intents'
+  // process registration on a worker queue, and CEF's static initializers (its allocator shim)
+  // racing that thread crashed the host at launch. cefclient loads the framework first too.
+  CefScopedLibraryLoader library_loader;
+  if (!library_loader.LoadInMain()) {
+    fprintf(stderr, "omnigent-browser-host: cannot load Chromium Embedded Framework\n");
+    return 70;
+  }
   @autoreleasepool {
     [RBHostApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-    CefScopedLibraryLoader library_loader;
-    if (!library_loader.LoadInMain()) {
-      fprintf(stderr, "omnigent-browser-host: cannot load Chromium Embedded Framework\n");
-      return 70;
-    }
     return rb::BrowserHost::Get().Run(argc, argv);
   }
 }

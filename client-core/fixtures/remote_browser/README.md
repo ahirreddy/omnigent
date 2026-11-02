@@ -10,7 +10,10 @@ frame type in it has at least one example here. Rust consumers: `omnigent-protoc
 - `messages/host_to_client/*.json`, `messages/client_to_host/*.json`: one WebSocket text frame
   each (section 5.4). `hello_view_handoff.json` and `cursor_unknown.json` carry unknown fields,
   features and values that a receiver must accept; `unknown_type.json` is a message type a
-  receiver must ignore.
+  receiver must ignore. `*_v1_1.json` are the protocol v1.1 additions (design doc section 16):
+  `hello_v1_1` with every feature, a control-scoped mobile `viewport`, `clipboard`, `selection`
+  and `scroll` from the host; the client's `hello` asking for the reports, scoped and mobile
+  `resize`, `edit` and `touch`.
 - `runner_host/*.json`: the runner ⇄ host connection preambles, control requests and
   responses, and a `host.json` example (section 5.7).
 - `rest/*.json`: `{request: {method, path, body}, status, body}` for one REST call

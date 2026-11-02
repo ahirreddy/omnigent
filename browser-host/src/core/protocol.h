@@ -15,6 +15,18 @@ namespace rb::protocol {
 inline constexpr int kProtocolVersion = 1;
 inline constexpr uint32_t kWindowMaxFrames = 2;
 inline constexpr uint32_t kWindowMaxBytes = 512 * 1024;
+/// Largest `edit paste` text (protocol v1.1, design doc section 16.6).
+inline constexpr size_t kMaxPasteBytes = 512 * 1024;
+
+/// Protocol v1.1 feature strings (section 16.6).
+inline constexpr const char* kFeatureViewportScope = "viewport_scope";
+inline constexpr const char* kFeatureMobileEmulation = "mobile_emulation";
+inline constexpr const char* kFeatureEdit = "edit";
+inline constexpr const char* kFeatureSelection = "selection";
+inline constexpr const char* kFeatureScrollMetrics = "scroll_metrics";
+inline constexpr const char* kFeatureTouch = "touch";
+/// Every v1.1 feature this host implements, in its hello.
+std::vector<std::string> HostFeatures();
 
 /// Close codes (section 5.8).
 enum CloseCode : uint16_t {
@@ -56,6 +68,38 @@ struct Rect {
   double y = 0;
   double w = 0;
   double h = 0;
+  bool operator==(const Rect&) const = default;
+};
+
+/// The `viewport` message: the viewport plus, in v1.1, who owns it (section 16.2). `scope` is
+/// "tab" (the agent's) or "control" (the holder's); `mobile` is "off", "layout" or "site";
+/// `agent` is the agent's viewport while `scope` is "control".
+struct ViewportState {
+  Viewport viewport;
+  std::string scope = "tab";
+  std::string mobile = "off";
+  std::optional<Viewport> agent;
+  bool operator==(const ViewportState&) const = default;
+};
+
+/// `selection` (v1.1): the page's selection or caret.
+struct SelectionState {
+  bool editable = false;
+  bool collapsed = true;
+  uint32_t length = 0;
+  std::optional<Rect> rect;
+  bool operator==(const SelectionState&) const = default;
+};
+
+/// `scroll` (v1.1): the main frame's scroll offset and sizes in CSS px.
+struct ScrollMetrics {
+  double x = 0;
+  double y = 0;
+  double content_w = 0;
+  double content_h = 0;
+  double viewport_w = 0;
+  double viewport_h = 0;
+  bool operator==(const ScrollMetrics&) const = default;
 };
 
 struct Settings {
@@ -155,6 +199,11 @@ Json ControlMessage(const ControlState& state, const std::optional<std::string>&
 Json DialogMessage(const Dialog& dialog);
 Json DialogClosedMessage(const std::string& id);
 Json ViewportMessage(const Viewport& viewport);
+/// v1.1: the extra fields appear only when they differ from the v1 meaning (scope "tab").
+Json ViewportMessage(const ViewportState& state);
+Json ClipboardMessage(const std::string& op, const std::string& text);
+Json SelectionMessage(const SelectionState& selection);
+Json ScrollMessage(const ScrollMetrics& scroll);
 Json SettingsMessage(const Settings& settings);
 Json StatsMessage(const Stats& stats);
 Json PongMessage(const std::string& nonce);
@@ -164,6 +213,9 @@ Json TabClosedMessage(const std::string& reason);
 // Parsers for host -> client messages, used by tests and tools. Each returns false and sets
 // `error` when a required field is missing or has the wrong type.
 bool ParseViewport(const Json& json, Viewport* out, std::string* error);
+bool ParseViewportState(const Json& json, ViewportState* out, std::string* error);
+bool ParseSelection(const Json& json, SelectionState* out, std::string* error);
+bool ParseScroll(const Json& json, ScrollMetrics* out, std::string* error);
 bool ParseSettings(const Json& json, Settings* out, std::string* error);
 bool ParseControlState(const Json& json, ControlState* out, std::string* error);
 bool ParseHostHello(const Json& json, HostHello* out, std::string* error);
@@ -190,6 +242,8 @@ enum class ClientType {
   kDialogReply,
   kSettings,
   kPing,
+  kEdit,   // v1.1
+  kTouch,  // v1.1
   kUnknown,
 };
 
@@ -228,14 +282,20 @@ struct ClientMessage {
   std::string key;
   std::optional<std::string> text;
   bool repeat = false;
-  // ime, nav, control: `op`
+  // ime, nav, control, edit: `op`; edit paste: `text`
   std::string op;
   std::optional<Range> selection;
   std::optional<Range> replacement;
   // nav
   std::optional<std::string> url;
-  // resize
+  // resize; v1.1 adds `scope` and `mobile`
   Viewport viewport;
+  std::optional<std::string> scope;
+  std::optional<std::string> mobile;
+  // touch (v1.1): `kind`, `x`, `y`, `modifiers` as for mouse
+  int64_t touch_id = 0;
+  std::optional<double> radius;
+  std::optional<double> pressure;
   // dialog_reply
   std::string id;
   bool accept = false;

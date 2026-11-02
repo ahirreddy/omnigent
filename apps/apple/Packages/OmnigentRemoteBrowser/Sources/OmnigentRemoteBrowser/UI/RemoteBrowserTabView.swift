@@ -78,6 +78,7 @@ struct RemoteBrowserToolbar: View {
           .accessibilityIdentifier("remote-browser.reload")
       }
       RemoteAddressField(store: store)
+      RemoteViewportMenu(store: store)
       Label(store.profile, systemImage: "server.rack")
         .labelStyle(.titleAndIcon)
         .font(.caption)
@@ -213,11 +214,12 @@ struct RemoteBrowserStatusOverlay: View {
         VStack {
           Label(
             "Reconnecting (\(failures)): \(reason.remoteBrowserMessage)",
-            systemImage: "wifi.exclamationmark")
-            .font(.callout)
-            .padding(8)
-            .background(.regularMaterial, in: Capsule())
-            .padding(.top, 12)
+            systemImage: "wifi.exclamationmark"
+          )
+          .font(.callout)
+          .padding(8)
+          .background(.regularMaterial, in: Capsule())
+          .padding(.top, 12)
           Spacer()
         }
         .accessibilityIdentifier("remote-browser.reconnecting")
@@ -237,8 +239,10 @@ struct RemoteBrowserStatusOverlay: View {
     ContentUnavailableView {
       Label("This remote tab ended", systemImage: "globe.badge.chevron.backward")
     } description: {
-      Text(store.lastURL.isEmpty ? "The page is no longer open on the agent's machine." : store.lastURL)
-        .textSelection(.enabled)
+      Text(
+        store.lastURL.isEmpty ? "The page is no longer open on the agent's machine." : store.lastURL
+      )
+      .textSelection(.enabled)
     } actions: {
       if let reopen {
         Button("Reopen") { reopen(store.lastURL) }

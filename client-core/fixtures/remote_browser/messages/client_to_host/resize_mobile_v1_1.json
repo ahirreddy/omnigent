@@ -1,0 +1,8 @@
+{
+  "type": "resize",
+  "w": 390,
+  "h": 664,
+  "dpr": 3,
+  "scope": "control",
+  "mobile": "layout"
+}

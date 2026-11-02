@@ -143,13 +143,43 @@ private struct TitlelessToolbar: ViewModifier {
   }
 
   private func backed(_ content: some View) -> some View {
-    content
-      .scrollEdgeEffectStyle(.hard, for: .top)
-      .overlayPreferenceValue(TitlebarCanvasKey.self) { TitlebarBackdrop(screenCanvas: $0) }
+    #if os(iOS)
+      // Inline titles: the large-title band above a short transcript drew empty.
+      content.navigationBarTitleDisplayMode(.inline).modifier(NavigationBarCanvas())
+    #else
+      content
+        .scrollEdgeEffectStyle(.hard, for: .top)
+        .overlayPreferenceValue(TitlebarCanvasKey.self) { TitlebarBackdrop(screenCanvas: $0) }
+    #endif
   }
 }
 
-/// The theme's canvas behind the toolbar row: the top safe area, which scroll views extend under.
+#if os(iOS)
+  /// The navigation bar's own background on the canvas (the screen's, in CLI style), so
+  /// scrolled text never shows through it.
+  private struct NavigationBarCanvas: ViewModifier {
+    @State private var screenCanvas: Color?
+    @Environment(\.omnigentTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+      content
+        .onPreferenceChange(TitlebarCanvasKey.self) { screenCanvas = $0 }
+        .toolbarBackground(canvas, for: .navigationBar)
+        .toolbarBackgroundVisibility(.visible, for: .navigationBar)
+    }
+
+    private var canvas: AnyShapeStyle {
+      if let color = screenCanvas ?? theme.palette(for: colorScheme).canvas {
+        return AnyShapeStyle(color)
+      }
+      return AnyShapeStyle(.background)
+    }
+  }
+#endif
+
+/// The theme's canvas behind the Mac toolbar row: the top safe area, which scroll views extend
+/// under.
 private struct TitlebarBackdrop: View {
   /// The screen's own canvas (CLI style), instead of the theme's.
   let screenCanvas: Color?

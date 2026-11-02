@@ -28,6 +28,8 @@ public final class ServerSession {
   public private(set) var declaredTerminals: [String: [String]] = [:]
   /// Remote browser tabs; `nil` when this build has no remote browser connector.
   public let remoteBrowsers: RemoteBrowserTabs?
+  /// Runs on the core's offline demo server (``demo()``).
+  public private(set) var isDemo = false
 
   /// Wraps an existing store.
   /// - Parameters:
@@ -61,8 +63,13 @@ public final class ServerSession {
   /// - Returns: The session.
   /// - Throws: `CoreError` when the bundled sample does not load.
   public static func demo() throws -> ServerSession {
-    ServerSession(connection: try PreviewData.demoStore())
+    let session = ServerSession(connection: try PreviewData.demoStore())
+    session.isDemo = true
+    return session
   }
+
+  /// The demo server's address, which a demo window connects to when nothing else is bound.
+  public static let demoServerURL = PreviewData.demoServerURL
 
   /// Opens `sessionID`: its conversation (stream and history), terminal list and workspace.
   /// - Parameter sessionID: The session.

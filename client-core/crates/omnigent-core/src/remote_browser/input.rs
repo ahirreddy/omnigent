@@ -6,7 +6,8 @@
 //! made them and never loses a `down`, `up`, key or IME event.
 
 use omnigent_protocol::remote_browser::{
-    ImeEvent, ImeOp, KeyEvent, MouseEvent, MouseKind, NavCommand, NavOp, Viewport, modifiers,
+    EditCommand, EditOp, ImeEvent, ImeOp, KeyEvent, MAX_PASTE_BYTES, MouseEvent, MouseKind,
+    NavCommand, NavOp, TouchEvent, Viewport, modifiers,
 };
 
 /// Default coalescing interval, about one 60 Hz display frame.
@@ -57,6 +58,18 @@ pub enum InputError {
     BadUrl {
         /// The URL given.
         url: Option<String>,
+    },
+    /// `paste` without text, or with more than 512 KiB.
+    #[error("paste needs text of at most 512 KiB, not {bytes} bytes")]
+    BadPaste {
+        /// The text's UTF-8 length (0 when absent).
+        bytes: usize,
+    },
+    /// Touch pressure outside 0–1 or a negative radius.
+    #[error("touch {field} is out of range")]
+    BadTouch {
+        /// The field.
+        field: &'static str,
     },
     /// A viewport outside 200–3840 px or DPR 1–3.
     #[error("viewport {w}x{h} at DPR {dpr} is outside 200-3840 px and DPR 1-3")]
@@ -165,6 +178,47 @@ pub fn validate_nav(command: &NavCommand) -> Result<(), InputError> {
             url: command.url.clone(),
         })
     }
+}
+
+/// Checks an `edit` command (v1.1).
+///
+/// # Errors
+///
+/// [`InputError::BadPaste`] for a paste without text or with more than 512 KiB.
+pub fn validate_edit(command: &EditCommand) -> Result<(), InputError> {
+    if command.op != EditOp::Paste {
+        return Ok(());
+    }
+    let bytes = command.text.as_deref().map_or(0, str::len);
+    if command.text.is_some() && bytes <= MAX_PASTE_BYTES {
+        Ok(())
+    } else {
+        Err(InputError::BadPaste { bytes })
+    }
+}
+
+/// Checks a `touch` event (v1.1).
+///
+/// # Errors
+///
+/// [`InputError::NotFinite`], [`InputError::BadTouch`] or [`InputError::UnknownModifiers`].
+pub fn validate_touch(event: &TouchEvent) -> Result<(), InputError> {
+    finite(event.x, "x")?;
+    finite(event.y, "y")?;
+    known_modifiers(event.modifiers)?;
+    if event
+        .pressure
+        .is_some_and(|pressure| !(0.0..=1.0).contains(&pressure))
+    {
+        return Err(InputError::BadTouch { field: "pressure" });
+    }
+    if event
+        .radius
+        .is_some_and(|radius| !radius.is_finite() || radius < 0.0)
+    {
+        return Err(InputError::BadTouch { field: "radius" });
+    }
+    Ok(())
 }
 
 /// Checks a `resize` request.

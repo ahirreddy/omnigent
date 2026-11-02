@@ -130,7 +130,18 @@ public struct WorkspaceInspector: View {
     .environment(\.conversationActions, actions)
   }
 
+  @ViewBuilder
   private func tabPicker(showsTitles: Bool) -> some View {
+    #if os(macOS)
+      // The Mac's segmented control fills its selection with the system accent; this bar uses
+      // the neutral selected surface instead.
+      InspectorTabBar(tab: $tab, showsTitles: showsTitles, label: label(for:))
+    #else
+      systemTabPicker(showsTitles: showsTitles)
+    #endif
+  }
+
+  private func systemTabPicker(showsTitles: Bool) -> some View {
     Picker("Right panel tab", selection: $tab) {
       ForEach(InspectorTab.allCases) { tab in
         Group {
@@ -317,3 +328,59 @@ private struct AgentsList: View {
     }
   }
 }
+
+#if os(macOS)
+  /// The Mac inspector's tab bar: segmented like the system control, with a neutral selected
+  /// segment. Each tab is a button VoiceOver reports as selected or not.
+  private struct InspectorTabBar: View {
+    @Binding var tab: InspectorTab
+    let showsTitles: Bool
+    let label: (InspectorTab) -> String
+
+    var body: some View {
+      HStack(spacing: Theme.Spacing.tiny) {
+        ForEach(InspectorTab.allCases) { item in
+          let isSelected = item == tab
+          Button {
+            tab = item
+          } label: {
+            Group {
+              if showsTitles {
+                Text(item.shortTitle)
+              } else {
+                // The button carries the tab's label.
+                Image(systemName: item.systemImage).accessibilityHidden(true)
+              }
+            }
+            .font(.callout.weight(isSelected ? .semibold : .regular))
+            .foregroundStyle(isSelected ? ThemeColor.primary : ThemeColor.mutedText)
+            .padding(.horizontal, Theme.Spacing.small)
+            .frame(minHeight: Theme.Control.target - Theme.Spacing.extraSmall)
+            .frame(maxWidth: .infinity)
+            .background {
+              if isSelected {
+                RoundedRectangle(cornerRadius: Theme.Radius.small - 2, style: .continuous)
+                  .fill(ThemeColor.surface)
+                  .shadow(color: .black.opacity(0.12), radius: 1, y: 0.5)
+              }
+            }
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .help(label(item))
+          .accessibilityLabel(label(item))
+          .accessibilityAddTraits(isSelected ? .isSelected : [])
+        }
+      }
+      .padding(Theme.Spacing.tiny)
+      .background(
+        ThemeColor.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
+      )
+      .fixedSize(horizontal: showsTitles, vertical: false)
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel("Right panel tab")
+      .accessibilityHint(
+        "Switches between files, changes, pull requests, agents, terminals and info")
+    }
+  }
+#endif

@@ -71,6 +71,8 @@ public struct ConnectedServerView: View {
     .modifier(SessionTabsLifecycle(session: session))
     .onChange(of: selection) { _, current in route(current) }
     .onChange(of: session.tabs.selectedID, initial: true) { selectedTabChanged() }
+    // A background tab whose work settles gets the unread dot until it is shown.
+    .onChange(of: tabs.state.busyIDs, initial: true) { _, busy in session.tabs.noteBusy(busy) }
     .onChange(of: isWindowFocused) { report() }
     .sheet(isPresented: $showsTabOverview) {
       TabOverviewSheet(state: tabs.state, actions: tabs.actions) { showsTabOverview = false }

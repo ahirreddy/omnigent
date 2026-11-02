@@ -10,7 +10,8 @@ set(RB_HOST_SOURCES
   src/host/browser_host.cc
   src/host/host_app.cc
   src/host/log.cc
-  src/host/tab.cc)
+  src/host/tab.cc
+  src/host/tab_v11.cc)
 set(RB_HOST_OUT "${CMAKE_CURRENT_BINARY_DIR}/host")
 
 if(OS_LINUX)

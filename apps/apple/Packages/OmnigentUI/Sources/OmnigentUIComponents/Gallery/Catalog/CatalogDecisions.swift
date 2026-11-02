@@ -67,6 +67,10 @@ enum DecisionCatalog {
           sheet("list", "Request list", path: []),
           sheet("form", "Form request", path: [PreviewData.form.id]),
           sheet("command", "Command request", path: [PreviewData.codexCommand.id]),
+          CatalogState(
+            "review", "Full-screen review",
+            note: "A large payload on a phone: basename first, 13 pt code, Wrap lines."
+          ) { DecisionReviewSample() },
         ]),
       .component(
         .decisions, "summary-row", "Summary Row",
@@ -85,6 +89,7 @@ enum DecisionCatalog {
     CatalogSampleItem("approval", "File edits", PreviewData.approval),
     CatalogSampleItem("claude-tool", "Claude tool", PreviewData.claudeBash),
     CatalogSampleItem("single-edit", "Single edit", PreviewData.singleEdit),
+    CatalogSampleItem("long-edit", "Long edit", PreviewData.longEdit),
     CatalogSampleItem("antigravity", "Antigravity", PreviewData.antigravity),
     CatalogSampleItem("plan", "Plan review", PreviewData.planReview),
     CatalogSampleItem("choice", "Choice", PreviewData.choice),
@@ -172,6 +177,19 @@ private struct DockSample: View {
       ComposerView(draft: $draft, state: DecisionSamples.composer, actions: GalleryActions.composer)
     }
     .themeCanvas()
+  }
+}
+
+/// The phone's full-screen review of a long edit, with its own draft.
+private struct DecisionReviewSample: View {
+  @State private var draft = FormDraft()
+
+  var body: some View {
+    DecisionReviewScreen(
+      card: PreviewData.longEdit, phase: .pending, isReadOnly: false, context: "Claude Code",
+      respond: { _ in }, validate: nil, draft: $draft, close: {}
+    )
+    .layoutWidth(.compact)
   }
 }
 

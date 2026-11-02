@@ -232,7 +232,21 @@ bool OneOf(const std::string& value, std::initializer_list<const char*> options)
   return false;
 }
 
+Json RectJson(const Rect& rect) {
+  Json json = Json::MakeObject();
+  json.Set("x", rect.x);
+  json.Set("y", rect.y);
+  json.Set("w", rect.w);
+  json.Set("h", rect.h);
+  return json;
+}
+
 }  // namespace
+
+std::vector<std::string> HostFeatures() {
+  return {kFeatureViewportScope, kFeatureMobileEmulation, kFeatureEdit,
+          kFeatureSelection,     kFeatureScrollMetrics,   kFeatureTouch};
+}
 
 bool IsValidTabId(const std::string& id) {
   if (id.empty() || id.size() > 128) {
@@ -274,14 +288,7 @@ Json ToJson(const Viewport& value) {
   return json;
 }
 
-Json ToJson(const Rect& value) {
-  Json json = Json::MakeObject();
-  json.Set("x", value.x);
-  json.Set("y", value.y);
-  json.Set("w", value.w);
-  json.Set("h", value.h);
-  return json;
-}
+Json ToJson(const Rect& value) { return RectJson(value); }
 
 Json ToJson(const Settings& value) {
   Json json = Json::MakeObject();
@@ -399,6 +406,47 @@ Json ViewportMessage(const Viewport& viewport) {
   return json;
 }
 
+Json ViewportMessage(const ViewportState& state) {
+  Json json = ViewportMessage(state.viewport);
+  if (state.scope != "tab" || state.mobile != "off") {
+    json.Set("scope", state.scope);
+    json.Set("mobile", state.mobile);
+    if (state.agent) {
+      json.Set("agent", ToJson(*state.agent));
+    }
+  }
+  return json;
+}
+
+Json ClipboardMessage(const std::string& op, const std::string& text) {
+  Json json = Message("clipboard");
+  json.Set("op", op);
+  json.Set("text", text);
+  return json;
+}
+
+Json SelectionMessage(const SelectionState& selection) {
+  Json json = Message("selection");
+  json.Set("editable", selection.editable);
+  json.Set("collapsed", selection.collapsed);
+  json.Set("length", selection.length);
+  if (selection.rect) {
+    json.Set("rect", RectJson(*selection.rect));
+  }
+  return json;
+}
+
+Json ScrollMessage(const ScrollMetrics& scroll) {
+  Json json = Message("scroll");
+  json.Set("x", scroll.x);
+  json.Set("y", scroll.y);
+  json.Set("content_w", scroll.content_w);
+  json.Set("content_h", scroll.content_h);
+  json.Set("viewport_w", scroll.viewport_w);
+  json.Set("viewport_h", scroll.viewport_h);
+  return json;
+}
+
 Json SettingsMessage(const Settings& settings) {
   Json json = Message("settings");
   Merge(ToJson(settings), &json);
@@ -442,6 +490,43 @@ bool ParseViewport(const Json& json, Viewport* out, std::string* error) {
   out->w = static_cast<int>(fields.Integer("w"));
   out->h = static_cast<int>(fields.Integer("h"));
   out->dpr = fields.Number("dpr");
+  return fields.ok();
+}
+
+bool ParseViewportState(const Json& json, ViewportState* out, std::string* error) {
+  Fields fields(json, error);
+  fields.Require(ParseViewport(json, &out->viewport, error));
+  out->scope = fields.OptionalString("scope").value_or("tab");
+  out->mobile = fields.OptionalString("mobile").value_or("off");
+  if (const Json* agent = fields.OptionalObject("agent")) {
+    Viewport viewport;
+    fields.Require(ParseViewport(*agent, &viewport, error));
+    out->agent = viewport;
+  }
+  return fields.ok();
+}
+
+bool ParseSelection(const Json& json, SelectionState* out, std::string* error) {
+  Fields fields(json, error);
+  out->editable = fields.Bool("editable");
+  out->collapsed = fields.Bool("collapsed");
+  out->length = fields.Unsigned("length");
+  if (const Json* rect = fields.OptionalObject("rect")) {
+    Rect value;
+    fields.Require(ParseRect(*rect, &value, error));
+    out->rect = value;
+  }
+  return fields.ok();
+}
+
+bool ParseScroll(const Json& json, ScrollMetrics* out, std::string* error) {
+  Fields fields(json, error);
+  out->x = fields.Number("x");
+  out->y = fields.Number("y");
+  out->content_w = fields.Number("content_w");
+  out->content_h = fields.Number("content_h");
+  out->viewport_w = fields.Number("viewport_w");
+  out->viewport_h = fields.Number("viewport_h");
   return fields.ok();
 }
 
@@ -659,6 +744,49 @@ bool ParseClientMessage(const Json& json, ClientMessage* out, std::string* error
   } else if (type == "resize") {
     out->type = ClientType::kResize;
     fields.Require(ParseViewport(json, &out->viewport, error));
+    out->scope = fields.OptionalString("scope");
+    out->mobile = fields.OptionalString("mobile");
+    if (fields.ok() && out->scope && !OneOf(*out->scope, {"tab", "control"})) {
+      fields.Fail("scope", "must be tab or control");
+    }
+    if (fields.ok() && out->mobile && !OneOf(*out->mobile, {"off", "layout", "site"})) {
+      fields.Fail("mobile", "must be off, layout or site");
+    }
+  } else if (type == "edit") {
+    out->type = ClientType::kEdit;
+    out->op = fields.String("op");
+    out->text = fields.OptionalString("text");
+    if (fields.ok() &&
+        !OneOf(out->op, {"copy", "cut", "paste", "select_all", "undo", "redo", "delete"})) {
+      fields.Fail("op", "is not an edit operation");
+    }
+    if (fields.ok() && out->op == "paste" && !out->text) {
+      fields.Fail("text", "is required for paste");
+    }
+    if (fields.ok() && out->text && out->text->size() > kMaxPasteBytes) {
+      fields.Fail("text", "is longer than 512 KiB");
+    }
+  } else if (type == "touch") {
+    out->type = ClientType::kTouch;
+    out->kind = fields.String("kind");
+    out->touch_id = fields.Integer("id");
+    out->x = fields.Number("x");
+    out->y = fields.Number("y");
+    out->radius = fields.OptionalNumber("radius");
+    out->pressure = fields.OptionalNumber("pressure");
+    out->modifiers = static_cast<uint32_t>(fields.OptionalInteger("modifiers").value_or(0));
+    if (fields.ok() && !OneOf(out->kind, {"start", "move", "end", "cancel"})) {
+      fields.Fail("kind", "must be start, move, end or cancel");
+    }
+    if (fields.ok() && (out->touch_id < 0 || out->touch_id > 0x7FFFFFFF)) {
+      fields.Fail("id", "is out of range");
+    }
+    if (fields.ok() && out->pressure && (*out->pressure < 0 || *out->pressure > 1)) {
+      fields.Fail("pressure", "must be 0 to 1");
+    }
+    if (fields.ok() && out->radius && *out->radius < 0) {
+      fields.Fail("radius", "must not be negative");
+    }
   } else if (type == "control") {
     out->type = ClientType::kControl;
     out->op = fields.String("op");
@@ -768,6 +896,25 @@ Json ToJson(const ClientMessage& message) {
       break;
     case ClientType::kResize:
       Merge(ToJson(message.viewport), &json);
+      optional_string("scope", message.scope);
+      optional_string("mobile", message.mobile);
+      break;
+    case ClientType::kEdit:
+      json.Set("op", message.op);
+      optional_string("text", message.text);
+      break;
+    case ClientType::kTouch:
+      json.Set("kind", message.kind);
+      json.Set("id", message.touch_id);
+      json.Set("x", message.x);
+      json.Set("y", message.y);
+      if (message.radius) {
+        json.Set("radius", *message.radius);
+      }
+      if (message.pressure) {
+        json.Set("pressure", *message.pressure);
+      }
+      json.Set("modifiers", message.modifiers);
       break;
     case ClientType::kControl:
       json.Set("op", message.op);

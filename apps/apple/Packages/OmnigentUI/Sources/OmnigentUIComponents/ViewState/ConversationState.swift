@@ -30,6 +30,8 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
   public var timestamps: [String: Date]
   /// How long each assistant turn worked, by response id ("Worked for 2m").
   public var turnDurations: [String: TimeInterval]
+  /// When the running turn started, when it is known; the live turn shows "Working · 12s".
+  public var turnStartedAt: Date?
   /// The session as the sidebar lists it, for the title menu (pin, archive, unread).
   public var summary: SessionSummary?
   /// The project the session belongs to, shown under the title.
@@ -67,6 +69,7 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
   ///   - pullRequests: Pull requests.
   ///   - agentInfo: Agent tools and policies.
   ///   - shareUnavailableReason: Why Share is disabled.
+  ///   - turnStartedAt: When the running turn started.
   public init(
     revision: UInt64 = 0, header: SessionHeader, rows: [Row] = [],
     decisions: [DecisionCard] = [], decisionPhases: [String: DecisionPhase] = [:],
@@ -75,7 +78,8 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
     timestamps: [String: Date] = [:], turnDurations: [String: TimeInterval] = [:],
     summary: SessionSummary? = nil, projectName: String? = nil, isShared: Bool = false,
     viewerName: String? = nil, pullRequests: [PullRequestSummary] = [],
-    agentInfo: AgentInfo? = nil, shareUnavailableReason: String? = nil
+    agentInfo: AgentInfo? = nil, shareUnavailableReason: String? = nil,
+    turnStartedAt: Date? = nil
   ) {
     self.revision = revision
     self.header = header
@@ -97,6 +101,7 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
     self.pullRequests = pullRequests
     self.agentInfo = agentInfo
     self.shareUnavailableReason = shareUnavailableReason
+    self.turnStartedAt = turnStartedAt
   }
 
   /// The session has a terminal mode (any state but `.none`).

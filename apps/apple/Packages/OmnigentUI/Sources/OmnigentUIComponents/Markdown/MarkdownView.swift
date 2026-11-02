@@ -7,11 +7,12 @@ public struct MarkdownView: View {
   private let text: String
   private let isStreaming: Bool
   @Environment(\.markdownOutputRendering) private var rendering
+  @State private var memo = MarkdownRenderMemo()
 
   /// Creates the view.
   /// - Parameters:
   ///   - text: Markdown source.
-  ///   - isStreaming: The text is still growing; skips the parse cache.
+  ///   - isStreaming: The text is still growing: each update parses only its open block.
   public init(_ text: String, isStreaming: Bool = false) {
     self.text = text
     self.isStreaming = isStreaming
@@ -23,10 +24,8 @@ public struct MarkdownView: View {
     case .plain: CLISourceText(text: text, isStreaming: isStreaming)
     case .styled: CLIStyledMarkdown(text: text, isStreaming: isStreaming)
     case .rich:
-      let blocks =
-        isStreaming ? MarkdownParser.parse(text) : MarkdownCache.shared.blocks(for: text)
-      MarkdownBlocksView(blocks: blocks)
-        .proseStyle()
+      MarkdownBlocksView(blocks: memo.blocks(for: text, isStreaming: isStreaming))
+        .readingProseStyle()
         .tint(Theme.link)
     }
   }
@@ -41,9 +40,11 @@ struct MarkdownBlocksView: View {
   @Environment(\.markdownFillsWidth) private var fillsWidth
 
   var body: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.paragraph) {
-      ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
         MarkdownBlockView(block: block)
+          .padding(
+            .top, TypeRamp.spacing(above: block, after: index > 0 ? blocks[index - 1] : nil))
       }
     }
     .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
@@ -53,20 +54,22 @@ struct MarkdownBlocksView: View {
 private struct MarkdownBlockView: View {
   let block: MarkdownBlock
   @Environment(\.markdownFillsWidth) private var fillsWidth
+  @Environment(\.typeRamp) private var ramp
 
   var body: some View {
     switch block {
     case .paragraph(let text):
-      Text(text)
+      Text(ramp.sizingCode(in: text, size: ramp.code))
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
     case .heading(let level, let text):
-      Text(text)
-        .font(headingFont(level))
+      let size = ramp.heading(level)
+      Text(ramp.sizingCode(in: text, size: (size * TypeRamp.codeScale).rounded(.down)))
+        .font(.system(size: size, weight: .semibold))
+        .lineHeight(.exact(points: ramp.headingLineHeight(level)))
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.top, level <= 2 ? Theme.Spacing.small : Theme.Spacing.extraSmall)
         .accessibilityAddTraits(.isHeader)
     case .code(let language, let code):
       CodeBlockView(code: code, language: language)
@@ -87,19 +90,10 @@ private struct MarkdownBlockView: View {
       Divider().padding(.vertical, Theme.Spacing.extraSmall)
     case .html(let raw):
       Text(verbatim: raw)
-        .font(.callout.monospaced())
+        .font(.system(size: ramp.code, design: .monospaced))
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
-    }
-  }
-
-  private func headingFont(_ level: Int) -> Font {
-    switch level {
-    case 1: .title.weight(.semibold)
-    case 2: Theme.Typography.title
-    case 3: .headline
-    default: .subheadline.weight(.semibold)
     }
   }
 }
@@ -110,7 +104,7 @@ private struct MarkdownListView: View {
   let items: [MarkdownListItem]
 
   var body: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+    VStack(alignment: .leading, spacing: TypeRamp.listSpacing) {
       ForEach(Array(items.enumerated()), id: \.offset) { index, item in
         HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
           marker(index: index, item: item)
@@ -215,7 +209,7 @@ struct CodeBlockView: View {
   let language: String?
   var maxLines: Int?
   @State private var wrapsLines = true
-  @ScaledMetric(relativeTo: .callout) private var lineHeight: CGFloat = 20
+  @Environment(\.typeRamp) private var ramp
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -241,7 +235,9 @@ struct CodeBlockView: View {
       .background(ThemeColor.hover)
       Divider()
       if let maxLines {
-        BoundedScrollView(maxHeight: lineHeight * CGFloat(maxLines) + Theme.Spacing.extraLarge) {
+        BoundedScrollView(
+          maxHeight: ramp.codeLineHeight * CGFloat(maxLines) + Theme.Spacing.extraLarge
+        ) {
           codeBody
         }
       } else {
@@ -270,8 +266,8 @@ struct CodeBlockView: View {
 
   private var codeText: some View {
     Text(verbatim: code)
-      .font(Theme.codeFont)
-      .lineSpacing(Theme.Spacing.extraSmall)
+      .font(.system(size: ramp.code, design: .monospaced))
+      .lineHeight(.exact(points: ramp.codeLineHeight))
       .textSelection(.enabled)
       .fixedSize(horizontal: false, vertical: true)
       .padding(Theme.Spacing.large)

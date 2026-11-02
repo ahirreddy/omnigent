@@ -603,6 +603,30 @@ impl<T: HttpTransport> ClientCore<T> {
         Ok(())
     }
 
+    /// The decisions `session_id` is waiting on now, read fresh from the server (mirrored child
+    /// cards included), whether or not the session is open. Hosts use it to check that a request
+    /// shown outside the app, such as in a notification, is still current before acting on it.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request, and the read errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn pending_decisions(&self, session_id: &str) -> Result<Vec<Decision>, SessionError> {
+        let result = self.fetch_snapshot(session_id).await.map(|(decoded, _)| {
+            decoded
+                .snapshot
+                .pending_elicitations
+                .iter()
+                .map(|request| Decision::from_request(request, session_id))
+                .collect()
+        });
+        self.dispatch();
+        result
+    }
+
     /// Handles `session.changed_files.invalidated` for `session_id`: one session-scoped read of
     /// the environment's changes, published as [`ClientEvent::ChangedFiles`]. Nothing is read
     /// for a session that is not live. An invalidation that arrives while a read is in flight

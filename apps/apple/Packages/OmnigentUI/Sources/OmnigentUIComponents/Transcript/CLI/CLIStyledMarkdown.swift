@@ -7,11 +7,10 @@ struct CLIStyledMarkdown: View {
   let text: String
   var isStreaming = false
   @Environment(\.cliPalette) private var palette
+  @State private var memo = MarkdownRenderMemo()
 
   var body: some View {
-    let blocks =
-      isStreaming ? MarkdownParser.parse(text) : MarkdownCache.shared.blocks(for: text)
-    CLIBlocks(blocks: blocks, cursor: isStreaming)
+    CLIBlocks(blocks: memo.blocks(for: text, isStreaming: isStreaming), cursor: isStreaming)
       .foregroundStyle(palette.body.color)
       .cliFont()
       .textSelection(.enabled)

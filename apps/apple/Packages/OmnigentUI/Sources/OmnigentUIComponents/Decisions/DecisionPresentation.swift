@@ -221,7 +221,7 @@ struct DecisionSummary: Hashable {
     let files = permissions.files
     if files.count == 1, let file = files.first {
       return Self(
-        lead: "Edit", code: URL(filePath: file.path).lastPathComponent, secondary: counts(file),
+        lead: "Edit", code: DecisionPath(file.path).name, secondary: counts(file),
         answersInline: true)
     }
     if files.count > 1 { return Self(lead: "Edit \(files.count) files") }
@@ -272,16 +272,21 @@ extension EnvironmentValues {
   /// The one card whose Approve answers Command-Return. Set by the dock (or a host showing a
   /// single focused request) so the shortcut never applies to two buttons at once.
   @Entry var decisionShortcutCardID: String?
+  /// The shortcut card's Approve takes Command-Return here; `false` keeps only its emphasis
+  /// (the request is answered on another surface, or the draft owns Command-Return).
+  @Entry var decisionShortcutIsLive = true
   /// The dock opens expanded (the playground uses it to show both states).
   @Entry var decisionDockStartsExpanded = false
 }
 
 extension View {
   /// Lets the Approve button of the card with `cardID` answer Command-Return and show the hint.
-  /// - Parameter cardID: The card, or `nil` for none.
+  /// - Parameters:
+  ///   - cardID: The card, or `nil` for none.
+  ///   - isLive: `false` keeps the card's emphasis without the shortcut.
   /// - Returns: The view.
-  public func decisionApproveShortcut(_ cardID: String?) -> some View {
-    environment(\.decisionShortcutCardID, cardID)
+  public func decisionApproveShortcut(_ cardID: String?, isLive: Bool = true) -> some View {
+    environment(\.decisionShortcutCardID, cardID).environment(\.decisionShortcutIsLive, isLive)
   }
 }
 
@@ -290,4 +295,62 @@ extension DecisionFileChange {
   var shownAdded: Int? { added.flatMap { $0 == 0 ? nil : $0 } }
   /// Lines removed, when known and not zero.
   var shownRemoved: Int? { removed.flatMap { $0 == 0 ? nil : $0 } }
+}
+
+/// A file path read basename first: "SessionRow.swift" in "Omni/iOS".
+nonisolated struct DecisionPath: Hashable, Sendable {
+  /// The last component.
+  let name: String
+  /// Everything before it, or `nil` for a bare name.
+  let directory: String?
+
+  init(_ path: String) {
+    let trimmed = path.hasSuffix("/") ? String(path.dropLast()) : path
+    guard let slash = trimmed.lastIndex(of: "/") else {
+      name = trimmed
+      directory = nil
+      return
+    }
+    name = String(trimmed[trimmed.index(after: slash)...])
+    let parent = String(trimmed[..<slash])
+    directory = parent.isEmpty ? "/" : parent
+  }
+}
+
+/// Code in a decision payload: 13 pt monospaced on a phone, where the body-sized face clips a
+/// diff after about 25 characters; the theme's code face elsewhere.
+enum DecisionCode {
+  static func font(_ width: LayoutWidth) -> Font {
+    #if os(iOS)
+      if width == .compact { return .system(.footnote, design: .monospaced) }
+    #endif
+    return Theme.codeFont
+  }
+}
+
+/// How much a card carries, for offering the full-screen review on a phone.
+enum DecisionPayloadSize {
+  /// Lines of tool input or diff the inline card shows before folding.
+  static let compactLines = 6
+
+  /// A plan, more than three files, a long or multi-line command, or a tool input longer than
+  /// the inline card shows.
+  static func isLarge(_ card: DecisionCard) -> Bool {
+    let permissions = card.permissions
+    if permissions.plan != nil || permissions.files.count > 3 { return true }
+    if let command = permissions.command?.command {
+      return command.contains("\n") || command.count > 120
+    }
+    guard case .approval = card.kind, let input = card.toolInput ?? previewText(card) else {
+      return false
+    }
+    if let diff = ToolInputPreview.diff(in: input) { return diff.lines.count > compactLines }
+    return ToolInputPreview.unescaped(input).components(separatedBy: "\n").count > compactLines
+      || input.count > 400
+  }
+
+  private static func previewText(_ card: DecisionCard) -> String? {
+    let rest = DecisionSummary.paragraphs(card.detail).dropFirst()
+    return rest.isEmpty ? nil : rest.joined(separator: "\n\n")
+  }
 }

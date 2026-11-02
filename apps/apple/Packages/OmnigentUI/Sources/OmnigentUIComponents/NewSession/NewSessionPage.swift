@@ -1,8 +1,9 @@
 public import SwiftUI
 
 /// The web's new-session page, in the detail column: Otto with tracking eyes, "What should we
-/// build?", and the composer in start mode with the context tray (where it will run, the folder
-/// and worktree), the Host and approval-mode chips and the agent, model and effort picker. An
+/// work on?" (the empty conversation's heading too), and the composer in start mode with the
+/// context tray (where it will run, the folder and worktree), the Host and approval-mode chips
+/// and the agent, model and effort picker. On a phone the composer stays on the keyboard. An
 /// unavailable destination shows in the context row before the first send. Start creates the
 /// session and sends the first message immediately.
 public struct NewSessionPage: View {
@@ -16,6 +17,11 @@ public struct NewSessionPage: View {
   @State private var gaze: CGSize = .zero
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.composerLayoutStyle) private var composerLayout
+  @Environment(\.isActiveTabPane) private var isActivePane
+
+  /// A phone: the composer stays on the keyboard.
+  private var pinsComposer: Bool { layoutWidth == .compact && composerLayout == .touch }
 
   /// Creates the page.
   /// - Parameters:
@@ -27,7 +33,7 @@ public struct NewSessionPage: View {
   ///   - showsContextDetails: Open the execution-context details (playground captures).
   public init(
     draft: Binding<String>, composer: ComposerViewState, actions: ComposerActions,
-    heading: String = "What should we build?",
+    heading: String = "What should we work on?",
     importSessions: (@MainActor () -> Void)? = nil, showsContextDetails: Bool = false
   ) {
     _draft = draft
@@ -40,50 +46,83 @@ public struct NewSessionPage: View {
 
   /// The page.
   public var body: some View {
-    GeometryReader { geometry in
-      ScrollView {
-        VStack(spacing: Theme.Spacing.extraLarge) {
-          VStack(spacing: Theme.Spacing.large) {
-            OttoView(gaze: gaze)
-              .frame(width: Theme.Control.mascot, height: Theme.Control.mascot)
-            Text(heading)
-              .font(layoutWidth == .compact ? Theme.Typography.title : .largeTitle.weight(.medium))
-              .multilineTextAlignment(.center)
-              .fixedSize(horizontal: false, vertical: true)
-              .accessibilityAddTraits(.isHeader)
-          }
-          .padding(.horizontal, Theme.Spacing.extraLarge)
-          ComposerView(
-            draft: $draft, state: composer, actions: actions,
-            showsContextDetails: showsContextDetails)
-          if let importSessions {
-            Button(
-              "Import your recent sessions", systemImage: "square.and.arrow.down",
-              action: importSessions
-            )
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .accessibilityIdentifier("new-session-import")
-          }
+    Group {
+      // A phone keeps the composer on the keyboard, as ChatGPT does; Otto and the heading
+      // center in the space above it.
+      if pinsComposer {
+        GeometryReader { geometry in
+          ScrollView { hero(in: geometry.size).frame(minHeight: geometry.size.height) }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
         }
-        .padding(.vertical, Theme.Spacing.section)
-        .frame(minHeight: geometry.size.height)
-        .onContinuousHover(coordinateSpace: .local) { phase in
-          guard !reduceMotion else { return }
-          switch phase {
-          case .active(let location):
-            gaze = CGSize(
-              width: (location.x / max(geometry.size.width, 1) - 0.5) * 2,
-              height: (location.y / max(geometry.size.height, 1) - 0.5) * 2)
-          case .ended: gaze = .zero
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+          // About 10 pt from the keyboard with the composer's own padding.
+          composerView.padding(.bottom, Theme.Spacing.extraSmall)
+        }
+      } else {
+        GeometryReader { geometry in
+          ScrollView {
+            VStack(spacing: Theme.Spacing.extraLarge) {
+              hero(in: geometry.size)
+              composerView
+              importButton
+            }
+            .padding(.vertical, Theme.Spacing.section)
+            .frame(minHeight: geometry.size.height)
           }
+          .scrollBounceBehavior(.basedOnSize)
         }
       }
-      .scrollBounceBehavior(.basedOnSize)
     }
     .themeCanvas()
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("new-session-page")
     .navigationTitle("New session")
+  }
+
+  private var composerView: some View {
+    ComposerView(
+      draft: $draft, state: composer, actions: actions, showsContextDetails: showsContextDetails)
+  }
+
+  @ViewBuilder private var importButton: some View {
+    if let importSessions {
+      Button(
+        "Import your recent sessions", systemImage: "square.and.arrow.down",
+        action: importSessions
+      )
+      .buttonStyle(.borderless)
+      .foregroundStyle(.secondary)
+      .accessibilityIdentifier("new-session-import")
+    }
+  }
+
+  /// Otto with tracking eyes and the heading (and, on a phone, the import button).
+  private func hero(in size: CGSize) -> some View {
+    VStack(spacing: Theme.Spacing.large) {
+      // Once per window: a split's other pane keeps the space but not the mascot.
+      OttoView(gaze: gaze)
+        .frame(width: Theme.Control.mascot, height: Theme.Control.mascot)
+        .opacity(isActivePane ? 1 : 0)
+      Text(heading)
+        .font(layoutWidth == .compact ? Theme.Typography.title : .largeTitle.weight(.medium))
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityAddTraits(.isHeader)
+      if pinsComposer { importButton }
+    }
+    .padding(.horizontal, Theme.Spacing.extraLarge)
+    .padding(.vertical, pinsComposer ? Theme.Spacing.large : 0)
+    .frame(maxWidth: .infinity)
+    .onContinuousHover(coordinateSpace: .local) { phase in
+      guard !reduceMotion else { return }
+      switch phase {
+      case .active(let location):
+        gaze = CGSize(
+          width: (location.x / max(size.width, 1) - 0.5) * 2,
+          height: (location.y / max(size.height, 1) - 0.5) * 2)
+      case .ended: gaze = .zero
+      }
+    }
   }
 }

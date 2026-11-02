@@ -1,0 +1,10 @@
+{
+  "type": "touch",
+  "kind": "start",
+  "id": 1,
+  "x": 200,
+  "y": 400.5,
+  "radius": 11,
+  "pressure": 0.5,
+  "modifiers": 0
+}

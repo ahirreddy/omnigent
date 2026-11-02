@@ -28,13 +28,13 @@ nonisolated struct CLILineText {
   var plain: String { parts.map(\.text).joined() }
 }
 
-/// A `•` line: the marker in the gutter, the text on the column.
+/// A `•` line: the marker in the gutter, the text on the column. A live line's marker pulses.
 struct CLIBulletLine: View {
   let line: CLILineText
   var marker: SRGB?
   var isLive = false
   @Environment(\.cliPalette) private var palette
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  private let size = CLIFontSize()
 
   var body: some View {
     Text(line.attributed)
@@ -43,18 +43,31 @@ struct CLIBulletLine: View {
       .textSelection(.enabled)
       .fixedSize(horizontal: false, vertical: true)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .cliMarker(
-        Text(verbatim: "\u{2022}")
-          .foregroundStyle((marker ?? palette.bullet).color)
-          .phaseAnimator(isLive && !reduceMotion ? [1.0, 0.25] : [1.0]) { dot, opacity in
-            dot.opacity(opacity)
-          } animation: { _ in
-            .easeInOut(duration: 0.6)
-          }
-      )
+      .cliMarker(bullet)
       .accessibilityElement(children: .combine)
       .accessibilityLabel(line.plain)
   }
+
+  @ViewBuilder private var bullet: some View {
+    let color = (marker ?? palette.bullet).color
+    if isLive {
+      // The glyph sizes the gutter; Core Animation draws and pulses it.
+      Text(verbatim: CLIBullet.glyph)
+        .hidden()
+        .overlay {
+          LoopingIndicator(
+            shape: .glyph(CLIBullet.glyph, size: size.points),
+            motion: .fade(low: 0.25, duration: 0.6), color: .system(color))
+        }
+    } else {
+      Text(verbatim: CLIBullet.glyph).foregroundStyle(color)
+    }
+  }
+}
+
+/// The CLI's line marker.
+nonisolated enum CLIBullet {
+  static let glyph = "\u{2022}"
 }
 
 /// Raw detail text under a line: `└` then the text exactly as recorded.

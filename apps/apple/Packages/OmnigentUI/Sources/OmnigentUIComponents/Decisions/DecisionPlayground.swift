@@ -23,6 +23,17 @@ extension PreviewData {
       ]),
     acceptsFeedback: true)
 
+  /// A Claude edit deep in the tree with long lines: basename first, 13 pt wrapped code and the
+  /// full-screen review on a phone.
+  static let longEdit = card(
+    "elic_long_edit",
+    detail: #"""
+      Claude wants to call **Edit**
+
+      Edit({"file_path": "apps/apple/Packages/OmnigentUI/Sources/OmnigentUIComponents/SessionList/SessionRow.swift", "old_string": "      Text(session.title).font(.body).lineLimit(1)\n      ProgressView().controlSize(.mini)\n      Spacer()", "new_string": "      Text(session.title).font(Theme.Typography.label).lineLimit(1).truncationMode(.middle)\n      if session.status == .running { RunningDot(isAnimating: isWindowActive) }\n      Spacer(minLength: Theme.Spacing.small)\n      NeedsYouCapsule(count: session.pendingDecisions)"})
+      """#,
+    permissions: PermissionOptions(rememberLabel: "Edit"), acceptsFeedback: true)
+
   /// The requests the decision playground and the dock captures use, in arrival order.
   static let dockDecisions = [codexCommand, approval, claudeBash, choice, planReview, form]
 }
@@ -181,6 +192,11 @@ struct DecisionPlayground: View {
             showsInspector: .constant(false), actions: actions,
             composerActions: ComposerActions(send: {}))
         }
+      }
+      phoneFrame {
+        DecisionReviewScreen(
+          card: PreviewData.longEdit, phase: .pending, isReadOnly: false, context: "Claude Code",
+          respond: { _ in }, validate: nil, draft: drafts.binding("review"), close: {})
       }
       phoneFrame {
         // The sheet a substantial request opens, shown in place for review.

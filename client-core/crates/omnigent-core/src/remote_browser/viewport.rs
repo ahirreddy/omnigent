@@ -5,7 +5,7 @@
 
 use omnigent_protocol::remote_browser::Viewport;
 
-use super::input::{MAX_VIEWPORT_EDGE, MIN_VIEWPORT_EDGE};
+use super::input::{MAX_DPR, MAX_VIEWPORT_EDGE, MIN_DPR, MIN_VIEWPORT_EDGE};
 
 /// Where the video sits inside a local view, in the view's points.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -89,6 +89,23 @@ pub fn fit_to_window(view_width: f64, view_height: f64, sharp_text: bool) -> Opt
     })
 }
 
+/// The viewport "Mobile size" requests (design doc section 16.1).
+///
+/// The view in points as CSS px at the screen's scale, clamped to the protocol bounds: a view
+/// under 200 points, such as a landscape phone with the keyboard up, gets a slightly larger
+/// page, letterboxed.
+#[must_use]
+pub fn match_view(view_width: f64, view_height: f64, screen_scale: f64) -> Option<Viewport> {
+    if !screen_scale.is_finite() {
+        return None;
+    }
+    let viewport = fit_to_window(view_width, view_height, false)?;
+    Some(Viewport {
+        dpr: screen_scale.clamp(MIN_DPR, MAX_DPR),
+        ..viewport
+    })
+}
+
 /// Device pixels of the encoded video for `viewport` at encode `scale`.
 #[must_use]
 pub fn video_pixels(viewport: &Viewport, scale: f64) -> (f64, f64) {
@@ -134,5 +151,26 @@ mod tests {
         assert_eq!(fit_to_window(100.0, 9000.0, false).unwrap().h, 3840);
         assert!(fit_to_window(f64::NAN, 1.0, false).is_none());
         assert_eq!(video_pixels(&VIEWPORT, 0.5), (640.0, 400.0));
+    }
+
+    #[test]
+    fn match_view_uses_points_and_the_screen_scale() {
+        assert_eq!(
+            match_view(393.0, 659.6, 3.0),
+            Some(Viewport {
+                w: 393,
+                h: 660,
+                dpr: 3.0
+            })
+        );
+        let landscape_with_keyboard = match_view(852.0, 120.0, 3.0).unwrap();
+        assert_eq!(
+            (landscape_with_keyboard.w, landscape_with_keyboard.h),
+            (852, 200)
+        );
+        assert!((match_view(1180.0, 820.0, 4.0).unwrap().dpr - 3.0).abs() < f64::EPSILON);
+        assert!((match_view(1180.0, 820.0, 0.5).unwrap().dpr - 1.0).abs() < f64::EPSILON);
+        assert!(match_view(0.0, 820.0, 2.0).is_none());
+        assert!(match_view(390.0, 820.0, f64::NAN).is_none());
     }
 }

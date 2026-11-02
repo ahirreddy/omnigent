@@ -24,23 +24,29 @@ nonisolated enum SourceTinting {
 
   static func spans(in text: String) -> [Span] {
     guard !text.isEmpty else { return [] }
-    let lineStarts = lineStartOffsets(text)
-    let document = Document(parsing: text, options: [.disableSmartOpts])
+    return spans(in: MarkdownStream<Span>.topLevelBlocks(text), source: text[...], base: 0)
+  }
+
+  /// The spans of top-level blocks parsed from `source`, which starts at UTF-8 offset `base` of
+  /// the whole text (``MarkdownStream``).
+  static func spans(in blocks: [any Markup], source: Substring, base: Int) -> [Span] {
+    let lineStarts = lineStartOffsets(source)
+    let end = base + source.utf8.count
     var spans: [Span] = []
     func offset(_ location: SourceLocation) -> Int? {
       guard location.line >= 1, location.line <= lineStarts.count else { return nil }
-      return lineStarts[location.line - 1] + location.column - 1
+      return base + lineStarts[location.line - 1] + location.column - 1
     }
     func visit(_ markup: any Markup) {
       if let tint = tint(for: markup), let range = markup.range,
         let lower = offset(range.lowerBound), let upper = offset(range.upperBound),
         lower < upper
       {
-        spans.append(Span(range: lower..<min(upper, text.utf8.count), tint: tint))
+        spans.append(Span(range: lower..<min(upper, end), tint: tint))
       }
       for child in markup.children { visit(child) }
     }
-    visit(document)
+    blocks.forEach(visit)
     return spans
   }
 
@@ -56,7 +62,7 @@ nonisolated enum SourceTinting {
     }
   }
 
-  private static func lineStartOffsets(_ text: String) -> [Int] {
+  private static func lineStartOffsets(_ text: Substring) -> [Int] {
     var starts = [0]
     var offset = 0
     for byte in text.utf8 {
@@ -112,23 +118,43 @@ nonisolated enum SourceTinting {
 final class SourceTintCache {
   static let shared = SourceTintCache(limit: 512)
 
-  private let limit: Int
-  private var entries: [String: [SourceTinting.Span]] = [:]
-  private var order: [String] = []
+  private var entries: BoundedCache<String, [SourceTinting.Span]>
 
   init(limit: Int) {
-    self.limit = limit
+    entries = BoundedCache(limit: limit)
   }
 
   func spans(for text: String) -> [SourceTinting.Span] {
-    if let cached = entries[text] { return cached }
-    let spans = SourceTinting.spans(in: text)
-    entries[text] = spans
-    order.append(text)
-    if order.count > limit {
-      entries[order.removeFirst()] = nil
-    }
-    return spans
+    entries.value(for: text) { SourceTinting.spans(in: text) }
+  }
+}
+
+/// One view's tinted source: unchanged inputs return the same string, and a growing stream
+/// parses only its open block (``MarkdownStream``).
+@MainActor
+final class SourceTintMemo {
+  private struct Key: Equatable {
+    var text: String
+    var palette: CLIPalette
+    var cursor: Bool
+    var tintsMarkdown: Bool
+  }
+
+  private var key: Key?
+  private var attributed = AttributedString()
+  private var stream = MarkdownStream(convert: SourceTinting.spans)
+
+  func attributed(
+    _ text: String, palette: CLIPalette, isStreaming: Bool, tintsMarkdown: Bool
+  ) -> AttributedString {
+    let key = Key(text: text, palette: palette, cursor: isStreaming, tintsMarkdown: tintsMarkdown)
+    if key == self.key { return attributed }
+    let spans: [SourceTinting.Span] =
+      !tintsMarkdown
+      ? [] : isStreaming ? stream.elements(for: text) : SourceTintCache.shared.spans(for: text)
+    attributed = SourceTinting.attributed(text, spans: spans, palette: palette, cursor: isStreaming)
+    self.key = key
+    return attributed
   }
 }
 
@@ -151,19 +177,18 @@ struct CLISourceText: View {
   var tintsMarkdown = true
   var color: KeyPath<CLIPalette, SRGB> = \.body
   @Environment(\.cliPalette) private var palette
+  @State private var memo = SourceTintMemo()
 
   var body: some View {
-    let spans: [SourceTinting.Span] =
-      !tintsMarkdown
-      ? []
-      : isStreaming
-        ? SourceTinting.spans(in: text) : SourceTintCache.shared.spans(for: text)
-    Text(SourceTinting.attributed(text, spans: spans, palette: palette, cursor: isStreaming))
-      .foregroundStyle(palette[keyPath: color].color)
-      .cliFont()
-      .textSelection(.enabled)
-      .fixedSize(horizontal: false, vertical: true)
-      .frame(maxWidth: .infinity, alignment: .leading)
+    Text(
+      memo.attributed(
+        text, palette: palette, isStreaming: isStreaming, tintsMarkdown: tintsMarkdown)
+    )
+    .foregroundStyle(palette[keyPath: color].color)
+    .cliFont()
+    .textSelection(.enabled)
+    .fixedSize(horizontal: false, vertical: true)
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 

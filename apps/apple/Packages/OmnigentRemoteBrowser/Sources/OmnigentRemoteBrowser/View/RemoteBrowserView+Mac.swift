@@ -83,16 +83,31 @@
     }
 
     /// Editing chords go to the page while it has focus; other shortcuts stay with the app,
-    /// since the remote page cannot hand back keys it did not handle.
+    /// since the remote page cannot hand back keys it did not handle. With a v1.1 host they
+    /// become edit commands that use this Mac's pasteboard (a Linux page would read ⌘C as
+    /// Meta+C, and a macOS runner would copy to its own pasteboard).
     override public func performKeyEquivalent(with event: NSEvent) -> Bool {
       guard event.type == .keyDown, hostWindow?.firstResponder === self, store.canSendInput,
         event.modifierFlags.intersection([.command, .control, .option]) == .command,
         let key = event.charactersIgnoringModifiers?.lowercased(),
         Self.pageEditingKeys.contains(key)
       else { return super.performKeyEquivalent(with: event) }
-      forwardKeyEvent(event)
+      guard store.canEdit else {
+        forwardKeyEvent(event)
+        return true
+      }
+      switch key {
+      case "c": store.copy()
+      case "x": store.cut()
+      case "v": store.paste()
+      case "a": store.selectAll()
+      default: store.edit(event.modifierFlags.contains(.shift) ? .redo : .undo)
+      }
       return true
     }
+
+    /// The window's backing scale.
+    var hostWindowScale: Double { hostWindow.map { Double($0.backingScaleFactor) } ?? 1 }
 
     private static let pageEditingKeys: Set<String> = ["a", "c", "v", "x", "z"]
 
@@ -150,8 +165,7 @@
     }
 
     /// Sends marked text.
-    public func setComposition(_ text: String, selectedRange: NSRange, replacementRange: NSRange)
-    {
+    public func setComposition(_ text: String, selectedRange: NSRange, replacementRange: NSRange) {
       store.send(
         ImeInput(
           op: .setComposition, text: text, selection: ImeRange(selectedRange),

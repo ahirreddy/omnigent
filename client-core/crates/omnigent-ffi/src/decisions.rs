@@ -510,7 +510,14 @@ impl DecisionCard {
         decision: &omnigent_core::reducer::Decision,
         session_id: &str,
     ) -> Self {
-        let card = core::Decision::from_request(&decision.request, session_id);
+        Self::from_core(
+            core::Decision::from_request(&decision.request, session_id),
+            decision.answered,
+        )
+    }
+
+    /// The card for a core decision; `answered` when the user answered it locally.
+    pub(crate) fn from_core(card: core::Decision, answered: bool) -> Self {
         let accepts_feedback = card.accepts_feedback();
         Self {
             id: card.id,
@@ -525,7 +532,7 @@ impl DecisionCard {
             phase: card.phase,
             policy_name: card.policy_name,
             accepts_feedback,
-            answered: decision.answered,
+            answered,
         }
     }
 }

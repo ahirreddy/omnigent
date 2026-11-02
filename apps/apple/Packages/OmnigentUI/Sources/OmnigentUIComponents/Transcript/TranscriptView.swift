@@ -12,6 +12,8 @@ public struct TranscriptView: View {
   private let scrollToLatestRequest: Int
 
   @State private var follow = TranscriptFollow()
+  @State private var layout = TranscriptLayoutMemo()
+  @State private var environmentRelay = TranscriptEnvironmentRelay()
   @Environment(\.transcriptAppearance) private var appearance
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -34,8 +36,7 @@ public struct TranscriptView: View {
 
   /// The transcript.
   public var body: some View {
-    let segments = Self.segments(for: state)
-    let lastAnswerID = state.header.status == .running ? nil : Self.lastAnswerID(state.rows)
+    let actions = environmentRelay.publish(self.actions)
     ScrollViewReader { proxy in
       ScrollView {
         LazyVStack(
@@ -43,7 +44,8 @@ public struct TranscriptView: View {
         ) {
           if appearance.isCLI {
             CLITranscriptRows(
-              state: state, actions: actions, segments: segments, header: historyHeader)
+              state: state, actions: actions, blocks: layout.blocks(for: state),
+              header: historyHeader)
           } else {
             historyHeader
             if let todos = state.section("todos"), !todos.details.isEmpty {
@@ -54,22 +56,20 @@ public struct TranscriptView: View {
             {
               SupersededBanner(section: superseded, target: target)
             }
-            if segments.isEmpty {
+            let entries = layout.entries(for: state)
+            if entries.isEmpty {
               EmptyTranscriptView(state: state)
             }
-            ForEach(segments) { segment in
-              TurnSegmentView(
-                segment: segment,
-                decorations: decorations(for: segment, lastAnswerID: lastAnswerID),
-                duration: duration(for: segment)
-              )
-              .equatable()
-              .id(segment.id)
+            ForEach(entries) { entry in
+              TurnSegmentView(entry: entry)
+                .equatable()
+                .id(entry.id)
             }
             InlineDecisions(state: state, actions: actions)
             SubagentGroupView(state: state, actions: actions)
             if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
-              WorkingIndicator(isBlocked: !state.pendingDecisions.isEmpty)
+              WorkingIndicator(
+                isBlocked: !state.pendingDecisions.isEmpty, startedAt: TurnElapsed.start(in: state))
             }
             if let failure = state.header.failureMessage, !hasErrorRow(matching: failure) {
               FailureBanner(message: failure, resume: actions.resume)
@@ -94,16 +94,7 @@ public struct TranscriptView: View {
         }
       }
       .environment(\.conversationActions, actions)
-      .environment(
-        \.openURL,
-        OpenURLAction { url in
-          if let open = actions.openURL {
-            open(url)
-            return .handled
-          }
-          return .systemAction
-        }
-      )
+      .environment(\.openURL, environmentRelay.openURL)
       .defaultScrollAnchor(.bottom, for: .initialOffset)
       .scrollDismissesKeyboard(.interactively)
       .onScrollPhaseChange { _, phase in
@@ -119,6 +110,8 @@ public struct TranscriptView: View {
       } action: { _, isNearBottom in
         follow.geometryChanged(isNearBottom: isNearBottom)
       }
+      // The one scroll path while following: new output and late-sizing rows both grow the
+      // content. A revision only updates the follow state.
       .onScrollGeometryChange(for: CGFloat.self) { geometry in
         geometry.contentSize.height
       } action: { previous, current in
@@ -127,7 +120,7 @@ public struct TranscriptView: View {
         }
       }
       .onChange(of: state.revision) { _, _ in
-        if follow.contentChanged() { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+        _ = follow.contentChanged()
       }
       .onChange(of: Self.ownMessageID(state)) { previous, current in
         // The reader's own new message takes them to the latest, wherever they were reading.
@@ -205,32 +198,6 @@ public struct TranscriptView: View {
   static func lastAnswerID(_ rows: [Row]) -> String? {
     rows.last { $0.role == .assistant && !$0.isStreaming && !$0.text.isEmpty }?.id
   }
-
-  private func decorations(for segment: TurnSegment, lastAnswerID: String?) -> [String:
-    MessageDecoration]
-  {
-    var result: [String: MessageDecoration] = [:]
-    let items: [TranscriptItem] =
-      switch segment {
-      case .item(let item): [item]
-      case .worked(_, _, let items, _): items
-      }
-    for item in items {
-      guard case .message(let row) = item else { continue }
-      let isOther =
-        state.isShared && row.role == .user && row.author != nil
-        && row.author != state.viewerName
-      result[row.id] = MessageDecoration(
-        timestamp: state.timestamps[row.id], showsActions: row.id == lastAnswerID,
-        showsAvatar: isOther)
-    }
-    return result
-  }
-
-  private func duration(for segment: TurnSegment) -> TimeInterval? {
-    guard case .worked(_, let responseID, _, _) = segment, let responseID else { return nil }
-    return state.turnDurations[responseID]
-  }
 }
 
 /// "Jump to latest", with a dot when output arrived while the user was reading.
@@ -263,20 +230,15 @@ private struct JumpToLatestPill: View {
 
 /// One folded segment: a plain item, or a Worked fold.
 private struct TurnSegmentView: View, Equatable {
-  let segment: TurnSegment
-  let decorations: [String: MessageDecoration]
-  let duration: TimeInterval?
-
-  static func == (lhs: Self, rhs: Self) -> Bool {
-    lhs.segment == rhs.segment && lhs.decorations == rhs.decorations && lhs.duration == rhs.duration
-  }
+  let entry: SegmentEntry
 
   var body: some View {
-    switch segment {
+    switch entry.segment {
     case .item(let item):
-      TranscriptItemView(item: item, decorations: decorations)
+      TranscriptItemView(item: item, decorations: entry.decorations)
     case .worked(_, _, let items, let isLive):
-      WorkedFold(items: items, isLive: isLive, duration: duration, decorations: decorations)
+      WorkedFold(
+        items: items, isLive: isLive, duration: entry.duration, decorations: entry.decorations)
     }
   }
 }

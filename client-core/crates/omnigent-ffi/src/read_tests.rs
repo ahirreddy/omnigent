@@ -148,3 +148,45 @@ fn mark_session_seen_answers_for_a_session_read_elsewhere() {
         .run(async move { core.mark_session_seen("conv_unknown".into()).await })
         .unwrap();
 }
+
+#[test]
+fn pending_decisions_read_fresh_without_opening_and_drop_answered_requests() {
+    let mut harness = connected_demo();
+    let core = Arc::clone(&harness.core);
+    let pending = harness
+        .run(async move { core.pending_decisions("demo-design".into()).await })
+        .unwrap();
+    assert_eq!(
+        pending
+            .iter()
+            .map(|card| card.id.as_str())
+            .collect::<Vec<_>>(),
+        ["decision-design"]
+    );
+    assert!(matches!(
+        pending[0].kind,
+        crate::decisions::DecisionKind::Approval
+    ));
+    assert!(!pending[0].answered);
+
+    let core = Arc::clone(&harness.core);
+    harness
+        .run(async move {
+            core.resolve_decision(
+                "demo-design".into(),
+                "decision-design".into(),
+                DecisionResponse::Approve,
+            )
+            .await
+        })
+        .unwrap();
+    let core = Arc::clone(&harness.core);
+    let after = harness
+        .run(async move { core.pending_decisions("demo-design".into()).await })
+        .unwrap();
+    assert!(after.is_empty(), "{after:?}");
+
+    let core = Arc::clone(&harness.core);
+    let invalid = harness.run(async move { core.pending_decisions("../x".into()).await });
+    assert!(invalid.is_err());
+}

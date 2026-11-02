@@ -112,10 +112,17 @@ nonisolated public struct TranscriptAppearance: Hashable, Sendable {
     public static let defaultFontSize: Double = 15
   #endif
 
-  // The `Double` comes first so the one-byte enums leave no padding between fields: SwiftUI
+  /// The chat text size range, in points.
+  public static let chatFontSizes: ClosedRange<Double> = 12...24
+  /// The default chat text size, before Dynamic Type.
+  public static let defaultChatFontSize = Double(TypeRamp.defaultBody)
+
+  // The `Double`s come first so the one-byte enums leave no padding between fields: SwiftUI
   // compares plain-data environment values bytewise (see ``SRGB``).
   /// The CLI monospaced font size, in points.
   public var fontSize: Double
+  /// The chat prose size, in points; headings and code scale with it (``TypeRamp``).
+  public var chatFontSize: Double
   /// Chat or CLI.
   public var style: TranscriptStyle
   /// The column width.
@@ -129,14 +136,18 @@ nonisolated public struct TranscriptAppearance: Hashable, Sendable {
   ///   - contentWidth: Column width; the style's default when `nil`.
   ///   - outputRendering: Output rendering; the style's default when `nil`.
   ///   - fontSize: CLI font size.
+  ///   - chatFontSize: Chat text size.
   public init(
     style: TranscriptStyle = .chat, contentWidth: TranscriptContentWidth? = nil,
-    outputRendering: OutputRendering? = nil, fontSize: Double = Self.defaultFontSize
+    outputRendering: OutputRendering? = nil, fontSize: Double = Self.defaultFontSize,
+    chatFontSize: Double = Self.defaultChatFontSize
   ) {
     self.style = style
     self.contentWidth = contentWidth ?? .defaultValue(for: style)
     self.outputRendering = outputRendering ?? .defaultValue(for: style)
     self.fontSize = min(max(fontSize, Self.fontSizes.lowerBound), Self.fontSizes.upperBound)
+    self.chatFontSize = min(
+      max(chatFontSize, Self.chatFontSizes.lowerBound), Self.chatFontSizes.upperBound)
   }
 
   /// CLI style is on.

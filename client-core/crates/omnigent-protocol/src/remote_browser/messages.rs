@@ -249,6 +249,81 @@ wire_enum! {
     }
 }
 
+wire_enum! {
+    /// Whose viewport is applied (protocol v1.1, design doc section 16.2).
+    pub enum ViewportScope {
+        /// The tab's own (the agent's); the v1 meaning of every `resize`.
+        Tab = "tab",
+        /// The holder's, restored to the agent's when control returns to the agent.
+        Control = "control",
+    }
+}
+
+wire_enum! {
+    /// Mobile emulation (protocol v1.1).
+    pub enum MobileEmulation {
+        /// A desktop page.
+        Off = "off",
+        /// Mobile layout: the meta viewport, overlay scroll bars and touch support.
+        Layout = "layout",
+        /// Mobile layout and a mobile user agent.
+        Site = "site",
+    }
+}
+
+wire_enum! {
+    /// An edit command (protocol v1.1).
+    pub enum EditOp {
+        /// Copy the selection; the host answers with `clipboard`.
+        Copy = "copy",
+        /// Cut the selection; the host answers with `clipboard`.
+        Cut = "cut",
+        /// Insert `text` as a paste.
+        Paste = "paste",
+        /// Select everything in the focused field or page.
+        SelectAll = "select_all",
+        /// Undo.
+        Undo = "undo",
+        /// Redo.
+        Redo = "redo",
+        /// Delete the selection.
+        Delete = "delete",
+    }
+}
+
+wire_enum! {
+    /// A touch point's phase (protocol v1.1).
+    pub enum TouchKind {
+        /// The finger went down.
+        Start = "start",
+        /// The finger moved.
+        Move = "move",
+        /// The finger lifted.
+        End = "end",
+        /// The system cancelled the touch.
+        Cancel = "cancel",
+    }
+}
+
+/// Protocol v1.1 feature strings (design doc section 16.6).
+pub mod features {
+    /// `resize.scope` and the restore rules of section 16.2.
+    pub const VIEWPORT_SCOPE: &str = "viewport_scope";
+    /// `resize.mobile`.
+    pub const MOBILE_EMULATION: &str = "mobile_emulation";
+    /// `edit` and `clipboard`.
+    pub const EDIT: &str = "edit";
+    /// `selection` reports (also what a client lists to receive them).
+    pub const SELECTION: &str = "selection";
+    /// `scroll` reports (also what a client lists to receive them).
+    pub const SCROLL_METRICS: &str = "scroll_metrics";
+    /// `touch`.
+    pub const TOUCH: &str = "touch";
+}
+
+/// Largest `edit paste` text, in UTF-8 bytes.
+pub const MAX_PASTE_BYTES: usize = 512 * 1024;
+
 /// Modifier and button bits of the `modifiers` field. Defined by the protocol; the host maps
 /// them to CEF `EVENTFLAG_*`.
 pub mod modifiers {
@@ -296,6 +371,108 @@ pub struct Rect {
     pub w: f64,
     /// Height.
     pub h: f64,
+}
+
+/// `viewport` from the host: the viewport and, in v1.1, whose it is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewportUpdate {
+    /// The viewport.
+    #[serde(flatten)]
+    pub viewport: Viewport,
+    /// Whose viewport it is; absent means `tab`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<ViewportScope>,
+    /// Mobile emulation; absent means `off`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mobile: Option<MobileEmulation>,
+    /// The agent's viewport while `scope` is `control`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<Viewport>,
+}
+
+/// `resize` from the client.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResizeRequest {
+    /// The viewport wanted.
+    #[serde(flatten)]
+    pub viewport: Viewport,
+    /// v1.1: whose viewport this is; absent means `tab` (the v1 meaning).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<ViewportScope>,
+    /// v1.1: mobile emulation; anything but `off` forces `scope: control`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mobile: Option<MobileEmulation>,
+}
+
+/// `edit` (v1.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EditCommand {
+    /// The command.
+    pub op: EditOp,
+    /// The text to paste.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// `touch` (v1.1): one touch point.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TouchEvent {
+    /// Phase.
+    pub kind: TouchKind,
+    /// Stable per finger.
+    pub id: u32,
+    /// X in CSS px.
+    pub x: f64,
+    /// Y in CSS px.
+    pub y: f64,
+    /// Contact radius in CSS px.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radius: Option<f64>,
+    /// Pressure, 0–1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pressure: Option<f64>,
+    /// [`modifiers`] bits.
+    pub modifiers: u32,
+}
+
+/// `clipboard` (v1.1): the text a `copy` or `cut` took from the page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipboardText {
+    /// `copy` or `cut`.
+    pub op: EditOp,
+    /// The text.
+    pub text: String,
+}
+
+/// `selection` (v1.1): the page's selection or caret.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SelectionState {
+    /// The focus is an editable field.
+    pub editable: bool,
+    /// Nothing is selected (a caret, or no selection).
+    pub collapsed: bool,
+    /// Selected UTF-16 code units.
+    pub length: u32,
+    /// Where the selection (or the focused field) is, in viewport CSS px.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rect: Option<Rect>,
+}
+
+/// `scroll` (v1.1): the main frame's scroll offset and sizes, CSS px.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ScrollMetrics {
+    /// Horizontal offset.
+    pub x: f64,
+    /// Vertical offset.
+    pub y: f64,
+    /// Content width.
+    pub content_w: f64,
+    /// Content height.
+    pub content_h: f64,
+    /// Layout viewport width.
+    pub viewport_w: f64,
+    /// Layout viewport height.
+    pub viewport_h: f64,
 }
 
 /// A pending agent handoff (`browser_request_human`).
@@ -507,9 +684,15 @@ pub enum HostMessage {
         id: String,
     },
     /// `viewport`.
-    Viewport(Viewport),
+    Viewport(ViewportUpdate),
     /// `settings`.
     Settings(Settings),
+    /// `clipboard` (v1.1).
+    Clipboard(ClipboardText),
+    /// `selection` (v1.1).
+    Selection(SelectionState),
+    /// `scroll` (v1.1).
+    Scroll(ScrollMetrics),
     /// `stats`.
     Stats(Stats),
     /// `pong`.
@@ -695,7 +878,11 @@ pub enum ClientMessage {
     /// `nav`.
     Nav(NavCommand),
     /// `resize`.
-    Resize(Viewport),
+    Resize(ResizeRequest),
+    /// `edit` (v1.1).
+    Edit(EditCommand),
+    /// `touch` (v1.1).
+    Touch(TouchEvent),
     /// `control`.
     Control {
         /// Take or release.
@@ -834,6 +1021,9 @@ impl HostMessage {
             },
             "viewport" => Self::Viewport(body(kind, &map)?),
             "settings" => Self::Settings(body(kind, &map)?),
+            "clipboard" => Self::Clipboard(body(kind, &map)?),
+            "selection" => Self::Selection(body(kind, &map)?),
+            "scroll" => Self::Scroll(body(kind, &map)?),
             "stats" => Self::Stats(body(kind, &map)?),
             "pong" => Self::Pong {
                 nonce: field(kind, &map, "nonce")?,
@@ -867,6 +1057,9 @@ impl HostMessage {
             }
             Self::Viewport(viewport) => encode_with_type("viewport", to_value(viewport)?),
             Self::Settings(settings) => encode_with_type("settings", to_value(settings)?),
+            Self::Clipboard(clipboard) => encode_with_type("clipboard", to_value(clipboard)?),
+            Self::Selection(selection) => encode_with_type("selection", to_value(selection)?),
+            Self::Scroll(scroll) => encode_with_type("scroll", to_value(scroll)?),
             Self::Stats(stats) => encode_with_type("stats", to_value(stats)?),
             Self::Pong { nonce } => {
                 encode_with_type("pong", object(&[("nonce", Value::from(nonce.as_str()))]))
@@ -910,6 +1103,8 @@ impl ClientMessage {
             "ime" => Self::Ime(body(kind, &map)?),
             "nav" => Self::Nav(body(kind, &map)?),
             "resize" => Self::Resize(body(kind, &map)?),
+            "edit" => Self::Edit(body(kind, &map)?),
+            "touch" => Self::Touch(body(kind, &map)?),
             "control" => Self::Control {
                 op: field(kind, &map, "op")?,
             },
@@ -947,7 +1142,9 @@ impl ClientMessage {
             Self::Key(key) => encode_with_type("key", to_value(key)?),
             Self::Ime(ime) => encode_with_type("ime", to_value(ime)?),
             Self::Nav(nav) => encode_with_type("nav", to_value(nav)?),
-            Self::Resize(viewport) => encode_with_type("resize", to_value(viewport)?),
+            Self::Resize(resize) => encode_with_type("resize", to_value(resize)?),
+            Self::Edit(edit) => encode_with_type("edit", to_value(edit)?),
+            Self::Touch(touch) => encode_with_type("touch", to_value(touch)?),
             Self::Control { op } => encode_with_type("control", object(&[("op", to_value(op)?)])),
             Self::DialogReply(reply) => encode_with_type("dialog_reply", to_value(reply)?),
             Self::Settings(settings) => encode_with_type("settings", to_value(settings)?),

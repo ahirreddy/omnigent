@@ -61,21 +61,22 @@ let iOSApp = Target.target(
   product: .app,
   bundleId: "ai.omnigent.ios",
   deploymentTargets: .iOS(Omnigent.deploymentVersion),
-  infoPlist: Omnigent.infoPlist(extra: [
-    "UILaunchScreen": [:],
-    "UIApplicationSupportsIndirectInputEvents": true,
-    "UISupportedInterfaceOrientations": [
-      "UIInterfaceOrientationPortrait",
-      "UIInterfaceOrientationLandscapeLeft",
-      "UIInterfaceOrientationLandscapeRight",
-    ],
-    "UISupportedInterfaceOrientations~ipad": [
-      "UIInterfaceOrientationPortrait",
-      "UIInterfaceOrientationPortraitUpsideDown",
-      "UIInterfaceOrientationLandscapeLeft",
-      "UIInterfaceOrientationLandscapeRight",
-    ],
-  ]),
+  infoPlist: Omnigent.infoPlist(
+    extra: [
+      "UILaunchScreen": [:],
+      "UIApplicationSupportsIndirectInputEvents": true,
+      "UISupportedInterfaceOrientations": [
+        "UIInterfaceOrientationPortrait",
+        "UIInterfaceOrientationLandscapeLeft",
+        "UIInterfaceOrientationLandscapeRight",
+      ],
+      "UISupportedInterfaceOrientations~ipad": [
+        "UIInterfaceOrientationPortrait",
+        "UIInterfaceOrientationPortraitUpsideDown",
+        "UIInterfaceOrientationLandscapeLeft",
+        "UIInterfaceOrientationLandscapeRight",
+      ],
+    ].merging(Omnigent.phoneSupervisionInfoPlist) { _, new in new }),
   sources: ["Apps/Omnigent-iOS/Sources/**"],
   resources: [
     "Apps/Omnigent-iOS/Resources/**",
@@ -121,7 +122,8 @@ let macApp = Target.target(
   productName: "Omnigent",
   bundleId: "ai.omnigent.mac",
   deploymentTargets: .macOS(Omnigent.deploymentVersion),
-  infoPlist: Omnigent.infoPlist(extra: macInfoPlistShared.merging(sparkleInfoPlist) { _, new in new }),
+  infoPlist: Omnigent.infoPlist(
+    extra: macInfoPlistShared.merging(sparkleInfoPlist) { _, new in new }),
   sources: ["Apps/Omnigent-macOS/Sources/**"],
   resources: [Omnigent.appIcon],
   entitlements: .file(path: "Apps/Omnigent-macOS/OmnigentMac.entitlements"),

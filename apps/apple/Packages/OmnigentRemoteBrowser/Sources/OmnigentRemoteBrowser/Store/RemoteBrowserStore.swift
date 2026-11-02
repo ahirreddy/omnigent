@@ -1,7 +1,9 @@
+public import CoreGraphics
 import Foundation
 public import Observation
 public import OmnigentBrowser
 public import OmnigentCoreFFI
+import os
 
 /// One remote tab's live state over the core's driver: snapshots for the chrome, video straight
 /// to the attached renderer (never through observation), and input and navigation back to the
@@ -16,8 +18,24 @@ public final class RemoteBrowserStore {
   public private(set) var snapshot: RemoteBrowserSnapshot
   /// The latest JPEG still or thumbnail.
   public private(set) var still: StillImage?
-  /// The latest notice from the core, or a rejected input.
+  /// The latest notice the user can act on, shown for a few seconds. Diagnostics go to the
+  /// log only.
   public private(set) var notice: String?
+  /// How the remote viewport follows this view while this client holds control; saved per
+  /// device.
+  public var viewportMode: RemoteViewportMode {
+    didSet {
+      guard viewportMode != oldValue else { return }
+      do {
+        try RemoteViewportModeDefaults.save(viewportMode)
+      } catch {
+        Self.log.error("Could not save the viewport mode: \(error)")
+      }
+      applyViewport()
+    }
+  }
+  /// The local pasteboard for copy and paste.
+  @ObservationIgnored public var pasteboard: any RemotePasteboard = SystemPasteboard()
   /// Why the tab closed, once it did.
   public private(set) var closedReason: RemoteTabClosedReason?
   /// The URL the tab last showed, kept when it ends so it can be reopened.
@@ -32,6 +50,10 @@ public final class RemoteBrowserStore {
 
   @ObservationIgnored private var driver: (any RemoteBrowserDriverProtocol)?
   @ObservationIgnored private var events: Task<Void, Never>?
+  @ObservationIgnored private var viewSize = CGSize.zero
+  @ObservationIgnored private var screenScale = 1.0
+  @ObservationIgnored private var pendingViewport: Task<Void, Never>?
+  @ObservationIgnored private var noticeExpiry: Task<Void, Never>?
 
   /// Creates a store, not yet attached.
   /// - Parameters:
@@ -39,12 +61,12 @@ public final class RemoteBrowserStore {
   ///   - tabID: The tab.
   ///   - lastURL: The URL saved with the tab, shown until the host reports one.
   ///   - profile: The profile saved with the tab.
-  public init(sessionID: String, tabID: String, lastURL: String = "", profile: String = "default")
-  {
+  public init(sessionID: String, tabID: String, lastURL: String = "", profile: String = "default") {
     self.sessionID = sessionID
     self.tabID = tabID
     self.lastURL = lastURL
     snapshot = .initial(url: lastURL, profile: profile)
+    viewportMode = RemoteViewportModeDefaults.load()
   }
 
   /// The navigation state; until the host reports a URL (or after the tab ended), the last
@@ -90,8 +112,90 @@ public final class RemoteBrowserStore {
         self?.apply(event)
       }
     }
+    applyViewport()
     driver.start()
   }
+
+  /// The protocol v1.1 features the host offers (all off until it says).
+  public var capabilities: RemoteBrowserCapabilities { snapshot.capabilities }
+
+  /// Whether the remote viewport is this device's (Set Remote Size, Fit or Mobile Size) rather
+  /// than the agent's.
+  public var showsOwnViewport: Bool { snapshot.viewportScope == .control }
+
+  /// The remote view's size changed (layout, rotation, split view, the keyboard). Modes that
+  /// follow the view resize the remote after the size settles for 150 ms.
+  /// - Parameters:
+  ///   - size: The view's size, points.
+  ///   - scale: The screen's pixels per point.
+  public func viewChanged(size: CGSize, scale: Double) {
+    guard size != viewSize || scale != screenScale else { return }
+    viewSize = size
+    screenScale = scale
+    guard viewportMode.followsView else { return }
+    pendingViewport?.cancel()
+    pendingViewport = Task { [weak self] in
+      do {
+        try await Task.sleep(for: .milliseconds(150))
+      } catch {
+        return  // A newer size replaced this one.
+      }
+      self?.applyViewport()
+    }
+  }
+
+  /// Tells the core which viewport this client wants while it holds control.
+  private func applyViewport() {
+    guard let driver else { return }
+    // A mode that follows the view waits for its first layout.
+    if viewportMode.followsView, viewSize.width <= 0 || viewSize.height <= 0 { return }
+    let request = viewportMode.request(viewSize: viewSize, screenScale: screenScale)
+    report { try driver.setViewport(request: request) }
+  }
+
+  /// Turns "Request Mobile Website" on or off in Mobile Size, reloading so the server sees the
+  /// new user agent.
+  /// - Parameter site: Request mobile websites.
+  public func requestMobileWebsite(_ site: Bool) {
+    guard case .mobile(let current) = viewportMode, current != site else { return }
+    viewportMode = .mobile(site: site)
+    navigate(.reload)
+  }
+
+  // MARK: Edit
+
+  /// Copies the page's selection to the local pasteboard (the text arrives asynchronously).
+  public func copy() { edit(.copy) }
+
+  /// Cuts the page's selection to the local pasteboard.
+  public func cut() { edit(.cut) }
+
+  /// Pastes the local pasteboard's text into the page.
+  public func paste() {
+    guard let text = pasteboard.read(), !text.isEmpty else {
+      show("The pasteboard has no text to paste.")
+      return
+    }
+    edit(.paste, text: text)
+  }
+
+  /// Selects everything in the focused field or the page.
+  public func selectAll() { edit(.selectAll) }
+
+  /// Sends an edit command when this client holds control.
+  /// - Parameters:
+  ///   - command: The command.
+  ///   - text: The text, for paste.
+  public func edit(_ command: RemoteEditOp, text: String? = nil) {
+    guard canSendInput, let driver else { return }
+    report { try driver.edit(op: command, text: text) }
+  }
+
+  /// The fixture driver, when the store plays one (tests).
+  var fixtureDriver: FixtureRemoteBrowserDriver? { driver as? FixtureRemoteBrowserDriver }
+
+  /// Whether the edit commands are available: in control of a host that has them.
+  public var canEdit: Bool { canSendInput && capabilities.edit }
 
   /// Stops streaming for good.
   public func detach() {
@@ -122,6 +226,13 @@ public final class RemoteBrowserStore {
   public func send(_ input: ImeInput) {
     guard canSendInput, let driver else { return }
     report { try driver.ime(input: input) }
+  }
+
+  /// Sends a touch point when this client holds control.
+  /// - Parameter input: The touch.
+  public func send(_ input: TouchInput) {
+    guard canSendInput, let driver else { return }
+    report { try driver.touch(input: input) }
   }
 
   /// Loads what was typed in the address field: a URL, or a search.
@@ -174,9 +285,24 @@ public final class RemoteBrowserStore {
     do {
       try call()
     } catch let error as CoreError {
-      notice = error.remoteBrowserMessage
+      show(error.remoteBrowserMessage)
     } catch {
-      notice = String(describing: error)
+      show(String(describing: error))
+    }
+  }
+
+  /// Shows a notice for a few seconds.
+  private func show(_ message: String) {
+    Self.log.notice("\(message, privacy: .public)")
+    notice = message
+    noticeExpiry?.cancel()
+    noticeExpiry = Task { [weak self] in
+      do {
+        try await Task.sleep(for: .seconds(5))
+      } catch {
+        return  // A newer notice replaced it.
+      }
+      self?.notice = nil
     }
   }
 
@@ -193,8 +319,14 @@ public final class RemoteBrowserStore {
       self.still = still
     case .closed(let reason):
       closedReason = reason
-    case .notice(let message):
-      notice = message
+    case .notice(let notice):
+      if notice.userFacing {
+        show(notice.message)
+      } else {
+        Self.log.debug("remote browser: \(notice.message, privacy: .public)")
+      }
+    case .clipboard(_, let text):
+      pasteboard.write(text)
     }
   }
 
@@ -205,6 +337,8 @@ public final class RemoteBrowserStore {
     }
     driver?.requestKeyframe(reason: .flush)
   }
+
+  private static let log = Logger(subsystem: "ai.omnigent.remote-browser", category: "store")
 }
 
 extension CoreError {
@@ -221,7 +355,8 @@ nonisolated enum RemoteBrowserEvent: Sendable {
   case video(VideoFrame)
   case still(StillImage)
   case closed(RemoteTabClosedReason?)
-  case notice(String)
+  case notice(RemoteBrowserNotice)
+  case clipboard(RemoteEditOp, String)
 }
 
 /// The listener the core calls on its threads; it only enqueues.
@@ -236,5 +371,8 @@ nonisolated final class RemoteBrowserEventRelay: RemoteBrowserListener {
   func onVideo(frame: VideoFrame) { continuation.yield(.video(frame)) }
   func onStill(still: StillImage) { continuation.yield(.still(still)) }
   func onClosed(reason: RemoteTabClosedReason?) { continuation.yield(.closed(reason)) }
-  func onNotice(message: String) { continuation.yield(.notice(message)) }
+  func onNotice(notice: RemoteBrowserNotice) { continuation.yield(.notice(notice)) }
+  func onClipboard(op operation: RemoteEditOp, text: String) {
+    continuation.yield(.clipboard(operation, text))
+  }
 }

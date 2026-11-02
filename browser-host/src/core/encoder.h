@@ -11,6 +11,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -109,6 +110,8 @@ class SubprocessEncoder : public EncoderBackend {
     uint64_t pts_us;
     uint64_t submit_us;
     bool keyframe;
+    /// False when x264 cannot see this frame's IDR request (see RequestInStreamIdr).
+    bool request_visible;
   };
 
   bool SpawnLocked(std::string* error);
@@ -137,6 +140,8 @@ class SubprocessEncoder : public EncoderBackend {
   int qpfile_fd_ = -1;
   std::string qpfile_path_;
   off_t qpfile_sentinel_offset_ = 0;
+  /// The frame number of the last in-stream IDR request, if any.
+  std::optional<uint64_t> last_idr_request_;
   double finished_cpu_seconds_ = 0;
   bool stopping_ = false;
 };

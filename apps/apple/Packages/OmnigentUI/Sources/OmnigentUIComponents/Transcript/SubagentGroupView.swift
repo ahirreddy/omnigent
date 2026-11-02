@@ -107,6 +107,7 @@ struct SubagentGroupView: View {
           validate: actions.validateForm.map { validate in { validate(card, $0) } },
           draft: drafts.binding(card.id)
         )
+        .reportsInlineDecision(card.id, showsApprove: DecisionSummary(card).answersInline)
       }
     }
     .padding(.horizontal, Theme.Spacing.medium)

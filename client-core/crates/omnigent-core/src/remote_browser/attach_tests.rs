@@ -2,6 +2,8 @@ use omnigent_protocol::remote_browser::{
     ControlOp, KeyKind, MouseButton, NavOp, Quality, TextRange,
 };
 
+use super::super::input::InputError;
+
 use super::*;
 use crate::realtime::test_support::FixedJitter;
 use crate::remote_browser::test_support::{fixture_bytes, message_text};
@@ -681,4 +683,202 @@ fn visibility_and_keyframe_requests_go_out_only_when_attached() {
         notices(&resize)[..],
         [Notice::InvalidInput(InputError::BadViewport { .. })]
     ));
+}
+
+fn v1_1_holding_control() -> Harness {
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    harness.open();
+    harness.host("hello_v1_1");
+    harness.run(AttachInput::TakeControl);
+    harness.host("control_user_this");
+    harness
+}
+
+fn mobile_request() -> ViewportRequest {
+    ViewportRequest {
+        viewport: Viewport {
+            w: 390,
+            h: 664,
+            dpr: 3.0,
+        },
+        mobile: MobileEmulation::Layout,
+    }
+}
+
+fn resizes(outputs: &[AttachOutput]) -> Vec<ResizeRequest> {
+    sent(outputs)
+        .into_iter()
+        .filter_map(|message| match message {
+            ClientMessage::Resize(resize) => Some(resize),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_client_hello_asks_for_the_v1_1_reports() {
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    let opened = harness.open();
+    let [ClientMessage::Hello(hello)] = &sent(&opened)[..] else {
+        panic!("{opened:?}");
+    };
+    assert_eq!(hello.features, ["selection", "scroll_metrics"]);
+}
+
+#[test]
+fn the_wanted_viewport_is_sent_on_gaining_control_and_restored_with_none() {
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    harness.open();
+    harness.host("hello_v1_1");
+    // Not holding control: nothing goes out yet.
+    let early = harness.run(AttachInput::SetViewport(Some(mobile_request())));
+    assert_eq!(resizes(&early), []);
+    harness.run(AttachInput::TakeControl);
+    let gained = harness.host("control_user_this");
+    assert_eq!(
+        resizes(&gained),
+        [ResizeRequest {
+            viewport: mobile_request().viewport,
+            scope: Some(ViewportScope::Control),
+            mobile: Some(MobileEmulation::Layout),
+        }]
+    );
+    // Asking again while it is on its way, or once applied, sends nothing.
+    assert_eq!(
+        resizes(&harness.run(AttachInput::SetViewport(Some(mobile_request())))),
+        []
+    );
+    assert_eq!(resizes(&harness.host("viewport_control_v1_1")), []);
+    // Back to the agent's size: a control-scoped resize to the agent's viewport.
+    let restore = harness.run(AttachInput::SetViewport(None));
+    assert_eq!(
+        resizes(&restore),
+        [ResizeRequest {
+            viewport: Viewport {
+                w: 1280,
+                h: 800,
+                dpr: 1.0
+            },
+            scope: Some(ViewportScope::Control),
+            mobile: Some(MobileEmulation::Off),
+        }]
+    );
+    // Something else resized the tab while this client holds control: re-assert.
+    harness.run(AttachInput::SetViewport(Some(mobile_request())));
+    let reasserted = harness.host("viewport");
+    assert_eq!(resizes(&reasserted).len(), 1);
+    // Handing back: the host restores the agent's viewport before its control update, and
+    // the client must not fight it.
+    harness.run(AttachInput::ReleaseControl);
+    assert_eq!(resizes(&harness.host("viewport")), []);
+    harness.run(AttachInput::TakeControl);
+    harness.host("control_user_this");
+    // Invalid sizes are rejected locally.
+    let invalid = harness.run(AttachInput::SetViewport(Some(ViewportRequest {
+        viewport: Viewport {
+            w: 100,
+            h: 664,
+            dpr: 3.0,
+        },
+        mobile: MobileEmulation::Off,
+    })));
+    assert!(matches!(notices(&invalid)[..], [Notice::InvalidInput(_)]));
+}
+
+#[test]
+fn a_v1_host_gets_plain_resizes_and_its_viewport_back_before_release() {
+    let mut harness = Harness::holding_control();
+    let wanted = harness.run(AttachInput::SetViewport(Some(mobile_request())));
+    assert_eq!(resizes(&wanted), [plain_resize(mobile_request().viewport)]);
+    assert!(notices(&wanted).contains(&&Notice::InputDropped {
+        input: InputKind::MobileEmulation,
+        reason: DropReason::Unsupported,
+    }));
+    let applied = harness.recv(SocketMessage::Text(
+        r#"{"type":"viewport","w":390,"h":664,"dpr":3}"#.to_owned(),
+    ));
+    assert_eq!(resizes(&applied), [], "the host applied it");
+    let released = harness.run(AttachInput::ReleaseControl);
+    let messages = sent(&released);
+    assert_eq!(
+        messages,
+        [
+            ClientMessage::Resize(plain_resize(Viewport {
+                w: 1280,
+                h: 800,
+                dpr: 1.0
+            })),
+            ClientMessage::Control {
+                op: ControlOp::Release
+            },
+        ]
+    );
+}
+
+#[test]
+fn edit_and_touch_need_the_host_feature_and_control() {
+    let copy = EditCommand {
+        op: EditOp::Copy,
+        text: None,
+    };
+    let touch = TouchEvent {
+        kind: omnigent_protocol::remote_browser::TouchKind::Start,
+        id: 1,
+        x: 10.0,
+        y: 20.0,
+        radius: None,
+        pressure: None,
+        modifiers: 0,
+    };
+    let mut v1 = Harness::holding_control();
+    for (input, kind) in [
+        (AttachInput::Edit(copy.clone()), InputKind::Edit),
+        (AttachInput::Touch(touch.clone()), InputKind::Touch),
+    ] {
+        let outputs = v1.run(input);
+        assert_eq!(sent(&outputs), []);
+        assert_eq!(
+            notices(&outputs),
+            [&Notice::InputDropped {
+                input: kind,
+                reason: DropReason::Unsupported
+            }]
+        );
+    }
+    let mut harness = v1_1_holding_control();
+    assert_eq!(
+        sent(&harness.run(AttachInput::Edit(copy.clone()))),
+        [ClientMessage::Edit(copy)]
+    );
+    assert_eq!(
+        sent(&harness.run(AttachInput::Touch(touch.clone()))),
+        [ClientMessage::Touch(touch)]
+    );
+    let paste_without_text = harness.run(AttachInput::Edit(EditCommand {
+        op: EditOp::Paste,
+        text: None,
+    }));
+    assert!(matches!(
+        notices(&paste_without_text)[..],
+        [Notice::InvalidInput(InputError::BadPaste { bytes: 0 })]
+    ));
+    let clipboard = harness.host("clipboard_v1_1");
+    assert!(clipboard.iter().any(|output| matches!(
+        output,
+        AttachOutput::Clipboard { op: EditOp::Copy, text } if text.ends_with("second line")
+    )));
+    assert!(
+        harness
+            .host("selection_v1_1")
+            .contains(&AttachOutput::TabChanged)
+    );
+    assert!(
+        harness
+            .host("scroll_v1_1")
+            .contains(&AttachOutput::TabChanged)
+    );
+    assert!(harness.machine.tab().scroll.is_some());
 }

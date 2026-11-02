@@ -55,6 +55,88 @@ struct RemoteBrowserE2ETests {
     #expect(try await eventually(seconds: 20) { again.listener.closed != nil })
   }
 
+  /// Protocol v1.1 on the real host (design doc section 16): Mobile Size resizes the remote to
+  /// a phone viewport the page sees (CSS size, DPR, touch support) and the video follows; wheel
+  /// deltas scroll and come back as scroll reports; copy, select all and paste round-trip
+  /// through `on_clipboard` without the host's clipboard; hand-back restores the agent's size.
+  @Test func mobileViewportScrollAndClipboard() async throws {
+    let live = try #require(LiveHost.current)
+    let page = try #require(live.page(named: "mobile.html"))
+    let core = try Self.core()
+    defer { core.shutdown() }
+    let phase = try await core.connect(serverUrl: live.server, expectedUserId: nil)
+    guard case .connected = phase else { throw E2EError("not connected: \(phase)") }
+    let connector = CoreRemoteBrowserConnector(core: core)
+    let tab = try await connector.createTab(sessionID: live.sessionID, url: page, profile: nil)
+    let session = E2ESession(core: core, sessionID: live.sessionID, tabID: tab.id)
+    defer { session.driver.stop() }
+    #expect(try await eventually(seconds: 30) { session.titleHas("w=1280", "touch=0") })
+    let capabilities = try #require(session.listener.snapshot?.capabilities)
+    #expect(capabilities.viewportScope && capabilities.edit && capabilities.scrollMetrics)
+
+    let resized = try await checkMobileSize(session)
+    let scrollLatency = try await checkScrollReports(session)
+    try await checkClipboard(session)
+
+    // Hand-back gives the agent its size and a desktop page back.
+    session.driver.releaseControl()
+    #expect(try await eventually(seconds: 15) { session.titleHas("w=1280", "dpr=1", "touch=0") })
+    #expect(session.listener.snapshot?.viewportScope == .tab)
+    #expect(session.listener.userNotices.isEmpty, "\(session.listener.userNotices)")
+    session.driver.stop()
+    try await connector.closeTab(sessionID: live.sessionID, tabID: tab.id)
+    print(
+      "remote-browser-e2e v1.1: phone viewport \(resized.width)x\(resized.height);",
+      "wheel to scroll report \(scrollLatency)")
+  }
+
+  /// Mobile Size, asked for before control and applied on gaining it: the page sees a phone
+  /// (CSS size, DPR, touch) and the video is the phone's pixels.
+  private func checkMobileSize(_ session: E2ESession) async throws -> DecodedFrame {
+    let phone = try #require(remoteViewportMobile(viewWidth: 390, viewHeight: 664, screenScale: 3))
+    try session.driver.setViewport(request: RemoteViewportRequest(viewport: phone, mobile: .layout))
+    session.driver.takeControl()
+    #expect(
+      try await eventually(seconds: 15) { session.titleHas("w=390", "dpr=3", "touch=5") },
+      "the page saw \(session.title)")
+    let snapshot = try #require(session.listener.snapshot)
+    #expect(snapshot.viewportScope == .control && snapshot.mobile == .layout)
+    #expect(snapshot.agentViewport?.width == 1280)
+    let resized = try await session.frame(after: .now - .seconds(60), seconds: 10) {
+      $0.width == 390 * 3
+    }
+    #expect(resized.height == 664 * 3)
+    return resized
+  }
+
+  /// A wheel delta comes back as a scroll report in CSS px; returns how long that took.
+  private func checkScrollReports(_ session: E2ESession) async throws -> Duration {
+    #expect(try await eventually(seconds: 10) { (session.scrollY ?? -1) == 0 })
+    let start = ContinuousClock.now
+    try session.wheel(deltaY: 600)
+    #expect(try await eventually(seconds: 5) { session.scrollY == 600 })
+    let latency = ContinuousClock.now - start
+    try session.wheel(deltaY: -600)
+    #expect(try await eventually(seconds: 5) { session.scrollY == 0 })
+    return latency
+  }
+
+  /// Type, select all, copy (the text arrives through `on_clipboard`), then paste.
+  private func checkClipboard(_ session: E2ESession) async throws {
+    try session.click(x: 100, y: 40)
+    try session.type("hello", macKeyCodes: [4, 14, 37, 37, 31])
+    #expect(try await eventually(seconds: 10) { session.titleHas("value=hello") })
+    try session.driver.edit(op: .selectAll, text: nil)
+    #expect(try await eventually(seconds: 5) { session.listener.snapshot?.selection?.length == 5 })
+    try session.driver.edit(op: .copy, text: nil)
+    #expect(try await eventually(seconds: 5) { session.listener.clipboard.last?.1 == "hello" })
+    try session.driver.edit(op: .paste, text: "pasted \u{4E16}\u{1F30D}")
+    #expect(
+      try await eventually(seconds: 5) {
+        session.titleHas("pasted=1") && session.title.hasSuffix("value=pasted \u{4E16}\u{1F30D}")
+      }, "the page saw \(session.title)")
+  }
+
   /// Take gives this connection control without a keyframe; the page stays idle.
   private func checkControl(_ session: E2ESession) async throws {
     #expect(session.listener.snapshot?.control?.owner == .agent)
@@ -167,6 +249,21 @@ struct E2ESession {
 
   var title: String { listener.snapshot?.nav?.title ?? "" }
 
+  /// Whether the title has every space-separated part (the v1.1 page's state report).
+  func titleHas(_ parts: String...) -> Bool {
+    let words = Set(title.split(separator: " ").map(String.init))
+    return parts.allSatisfy(words.contains)
+  }
+
+  var scrollY: Double? { listener.snapshot?.scroll?.y }
+
+  /// One wheel event in the page's middle; positive `dy` scrolls down.
+  func wheel(deltaY: Double) throws {
+    try driver.mouse(
+      input: MouseInput(
+        kind: .wheel, x: 200, y: 400, button: nil, clicks: 0, modifiers: 0, dx: 0, dy: deltaY))
+  }
+
   var holdsControl: Bool {
     let control = listener.snapshot?.control
     return control?.owner == .user && control?.holder == .this
@@ -254,4 +351,9 @@ nonisolated struct LiveHost: Sendable {
     else { return nil }
     return Self(server: server, sessionID: sessionID, page: page)
   }()
+
+  /// Another fixture page beside the configured one.
+  func page(named name: String) -> String? {
+    URL(string: page)?.deletingLastPathComponent().appendingPathComponent(name).absoluteString
+  }
 }

@@ -19,6 +19,9 @@ void HostApp::OnBeforeCommandLineProcessing(const CefString& process_type,
   // An agent browser has no use for Chrome's component downloads (CRLSets excepted, which
   // Chromium fetches on its own schedule regardless).
   command_line->AppendSwitch("disable-component-update");
+  // Each wheel delta scrolls at once: touch clients run their own momentum (design doc 16.4),
+  // and a 150 ms smooth-scroll animation per delta would lag and stack on it.
+  command_line->AppendSwitch("disable-smooth-scrolling");
   if (!switches_.ozone_platform.empty()) {
     command_line->AppendSwitchWithValue("ozone-platform", switches_.ozone_platform);
   }

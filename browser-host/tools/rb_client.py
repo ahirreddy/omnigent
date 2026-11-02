@@ -157,7 +157,12 @@ class AttachClient:
     """One client-protocol connection to a tab. Acks every binary frame on receipt."""
 
     def __init__(
-        self, path: str, tab_id: str, mode: str = "control", visible: bool = True
+        self,
+        path: str,
+        tab_id: str,
+        mode: str = "control",
+        visible: bool = True,
+        features: list[str] | None = None,
     ) -> None:
         self.conn = FramedSocket(path)
         self.conn.send_json({"type": "attach", "protocol": 1, "tab_id": tab_id, "mode": mode})
@@ -169,7 +174,7 @@ class AttachClient:
                 "decoders": ["h264", "jpeg"],
                 "mode": mode,
                 "visible": visible,
-                "features": [],
+                "features": features or [],
             }
         )
         self.state = AttachState()

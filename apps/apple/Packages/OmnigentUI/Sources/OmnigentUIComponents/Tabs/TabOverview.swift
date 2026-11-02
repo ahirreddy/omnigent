@@ -40,6 +40,7 @@ struct TabOverviewMenu: View {
         .font(.system(size: 11, weight: .semibold))
         .frame(width: 22, height: 26)
         .contentShape(Rectangle())
+        .touchTarget(width: 22, height: 26)
     }
     .menuStyle(.button)
     .buttonStyle(.plain)
@@ -174,11 +175,12 @@ public struct TabOverviewSheet: View {
     .accessibilityIdentifier("tab-overview-row-\(tab.id)")
   }
 
-  /// The row's second line: the pane in a split window, then the subtitle or kind.
+  /// The row's second line: the pane in a split window, the live state ("Needs you",
+  /// "Running"), then the subtitle (the agent and project) or the kind.
   static func detail(_ tab: TabItemState) -> String {
-    let detail = tab.subtitle ?? tab.kind.label
-    guard let pane = tab.pane else { return detail }
-    return "\(pane.label) pane \u{00B7} \(detail)"
+    [tab.pane.map { "\($0.label) pane" }, tab.status.label, tab.subtitle ?? tab.kind.label]
+      .compactMap(\.self)
+      .joined(separator: " \u{00B7} ")
   }
 
   private func move(from source: IndexSet, to destination: Int) {

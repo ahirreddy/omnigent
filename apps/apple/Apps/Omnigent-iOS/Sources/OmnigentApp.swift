@@ -7,6 +7,7 @@ import SwiftUI
 
 @main
 struct OmnigentApp: App {
+  @UIApplicationDelegateAdaptor(PhoneAppDelegate.self) private var appDelegate
   @State private var theme = ThemePreferences()
 
   var body: some Scene {
@@ -96,6 +97,9 @@ struct IOSRootView: View {
       // iOS may end a backgrounded app without notice: save the tabs now.
       if phase == .background { Self.tabPersistence?.flush() }
     }
+    .phoneSupervision(
+      PhoneAppDelegate.supervision, session: session, selection: $selection,
+      scenePhase: scenePhase)
   }
 
   private func start() async {
@@ -136,8 +140,11 @@ struct IOSRootView: View {
       session.signIn.directory = ServerDirectory(recentServers: recents)
     }
     self.session = session
-    if let last = defaults.string(forKey: Self.lastServerKey) {
-      await session.signIn.connectNow(last)
+    // The demo always opens to its own sessions, whatever server the device last used.
+    if let server = session.isDemo
+      ? ServerSession.demoServerURL : defaults.string(forKey: Self.lastServerKey)
+    {
+      await session.signIn.connectNow(server)
     }
   }
 }

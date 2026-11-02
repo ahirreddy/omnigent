@@ -32,6 +32,18 @@ nonisolated public struct NotificationActivation: Hashable, Sendable {
   }
 }
 
+/// A notification action button the user chose.
+nonisolated public struct NotificationActionResponse: Hashable, Sendable {
+  /// The notification's server and session.
+  public var activation: NotificationActivation
+  /// The action's identifier.
+  public var actionIdentifier: String
+  /// Text typed into a text-input action.
+  public var text: String?
+  /// The routing identifiers the event's ``NotificationActions`` carried.
+  public var context: [String: String]
+}
+
 /// `UNUserNotificationCenter` wrapper: applies `NotificationPolicy`, presents banners while the
 /// app is frontmost (unlike Electron, where macOS hid them), plays the opt-in sound, bounces the
 /// Dock and turns taps into routes.
@@ -64,6 +76,8 @@ public final class DesktopNotificationCenter: NSObject {
   @ObservationIgnored public var soundNameProvider: () -> String
   /// Called when the user clicks a notification.
   @ObservationIgnored public var onActivate: (NotificationActivation) -> Void = { _ in }
+  /// Called when the user chooses an action button; returns when the action finished.
+  @ObservationIgnored public var onAction: (NotificationActionResponse) async -> Void = { _ in }
   @ObservationIgnored private var throttle = SoundThrottle()
   @ObservationIgnored private let reportIssue: DesktopIssueReporter
 
@@ -92,6 +106,15 @@ public final class DesktopNotificationCenter: NSObject {
   /// - Throws: `DesktopNotificationError.unavailable` outside an app bundle.
   public func installAsDelegate() throws(DesktopNotificationError) {
     try center().delegate = self
+  }
+
+  /// Registers the categories whose action buttons notifications may use.
+  /// - Parameter categories: The categories.
+  /// - Throws: `DesktopNotificationError.unavailable` outside an app bundle.
+  public func setCategories(_ categories: Set<UNNotificationCategory>)
+    throws(DesktopNotificationError)
+  {
+    try center().setNotificationCategories(categories)
   }
 
   /// Asks for alert, sound and badge permission. The badge is needed for the Dock count.
@@ -141,6 +164,7 @@ public final class DesktopNotificationCenter: NSObject {
     content.title = delivery.title
     content.body = delivery.body
     content.threadIdentifier = delivery.threadIdentifier
+    if let category = delivery.categoryIdentifier { content.categoryIdentifier = category }
     content.userInfo = [Self.payloadKey: Self.payload(for: event)]
     // Sound is played by the app so it can be chosen, opt-in and throttled per session.
     content.sound = nil
@@ -180,6 +204,7 @@ public final class DesktopNotificationCenter: NSObject {
       "version": 1, "serverURL": event.serverURL.absoluteString,
     ]
     if let sessionID = event.sessionID { payload["sessionID"] = sessionID }
+    if let actions = event.actions { payload["actionContext"] = actions.context }
     return payload
   }
 
@@ -216,6 +241,10 @@ public final class DesktopNotificationCenter: NSObject {
     return context.appIsActive && context.viewing == viewing ? [] : [.banner, .list]
   }
 
+  private func perform(_ action: NotificationActionResponse) async {
+    await onAction(action)
+  }
+
   private func activate(_ activation: NotificationActivation?, identifier: String) {
     guard let activation else {
       reportIssue(.unrecognizedNotificationPayload(identifier: identifier))
@@ -234,13 +263,29 @@ extension DesktopNotificationCenter: UNUserNotificationCenterDelegate {
     return await MainActor.run { presentationOptions(for: activation) }
   }
 
-  /// Routes a click on the notification body to its conversation.
+  /// Routes a click on the notification body to its conversation, and an action button to
+  /// ``onAction``.
   nonisolated public func userNotificationCenter(
     _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
   ) async {
-    guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
     let identifier = response.notification.request.identifier
-    let activation = Self.activation(from: response.notification.request.content.userInfo)
-    await MainActor.run { activate(activation, identifier: identifier) }
+    let userInfo = response.notification.request.content.userInfo
+    let activation = Self.activation(from: userInfo)
+    switch response.actionIdentifier {
+    case UNNotificationDefaultActionIdentifier:
+      await MainActor.run { activate(activation, identifier: identifier) }
+    case UNNotificationDismissActionIdentifier:
+      return
+    default:
+      let payload = userInfo[Self.payloadKey] as? [String: Any]
+      guard let activation, let context = payload?["actionContext"] as? [String: String] else {
+        await MainActor.run { activate(nil, identifier: identifier) }
+        return
+      }
+      let action = NotificationActionResponse(
+        activation: activation, actionIdentifier: response.actionIdentifier,
+        text: (response as? UNTextInputNotificationResponse)?.userText, context: context)
+      await perform(action)
+    }
   }
 }

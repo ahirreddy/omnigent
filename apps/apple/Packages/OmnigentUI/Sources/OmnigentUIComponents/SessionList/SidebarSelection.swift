@@ -17,11 +17,12 @@ extension View {
   }
 
   /// A sidebar row's icon in the text color. The iOS sidebar style tints icons with the system
-  /// accent; the Mac source list already draws them neutral (and dims them with the window).
+  /// accent, inside the label, so the tint itself is set; the Mac source list already draws them
+  /// neutral (and dims them with the window).
   /// - Returns: The row.
   func neutralSidebarIcon() -> some View {
     #if os(iOS)
-      foregroundStyle(ThemeColor.primary)
+      foregroundStyle(ThemeColor.primary).tint(ThemeColor.primary)
     #else
       self
     #endif
@@ -35,6 +36,12 @@ private struct SidebarSelectionModifier: ViewModifier {
 
   func body(content: Content) -> some View {
     content
+      #if os(iOS)
+        // A selected row in a focused list gets a prominent background and white labels; the
+        // softened fill behind it needs the standard label colors.
+        .foregroundStyle(.primary)
+        .environment(\.backgroundProminence, .standard)
+      #endif
       #if os(macOS)
         .background { SystemSelectionHighlightRemover().accessibilityHidden(true) }
         .onHover { isHovered = $0 }

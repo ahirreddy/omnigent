@@ -4,8 +4,8 @@ import XCTest
 /// approval and a single-choice question, through the decision dock, the store and the core's
 /// resolve route. No server or network is needed.
 ///
-/// A pending card shows twice, inline in the transcript and pinned in the dock; the dock's copy
-/// carries `dock-`-prefixed identifiers, so each button is addressed on its own.
+/// A pending card answers from one surface at a time: inline while it is on screen, with the
+/// dock reduced to its one-line summary, else from the dock (`dock-`-prefixed identifiers).
 final class DemoDecisionUITests: XCTestCase {
   override func setUp() {
     super.setUp()
@@ -28,27 +28,31 @@ final class DemoDecisionUITests: XCTestCase {
     let window = app.windows.firstMatch
 
     open("demo-design", app: app, window: window)
-    // The demo approval edits files, so the dock offers Review and the payload-first card in the
-    // transcript holds Approve.
+    // The payload-first card in the transcript holds Approve; while it is on screen the dock
+    // only names the request and offers no second Approve.
     let inlineApprove = app.buttons["approval-approve-decision-design"]
     XCTAssertTrue(inlineApprove.waitForExistence(timeout: 20), "the approval card did not show")
-    let dockReview = app.buttons["dock-decision-open-decision-design"]
-    XCTAssertTrue(dockReview.exists, "the approval is not docked above the composer")
+    let dockSummary = window.descendants(matching: .any)["decision-dock-summary"]
+    XCTAssertTrue(dockSummary.waitForExistence(timeout: 10), "the dock did not collapse")
+    XCTAssertFalse(
+      app.buttons["dock-decision-open-decision-design"].exists, "the dock repeats the request")
     save(window, "approval-pending")
     // XCUITest cannot compute a hit point inside SwiftUI scroll views, so click the button found
     // by identifier at its center instead of asking XCUITest to scroll to it.
     inlineApprove.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
     waitUntilGone(inlineApprove)
-    waitUntilGone(dockReview)
+    waitUntilGone(dockSummary)
     save(window, "approval-answered")
 
     open("demo-question", app: app, window: window)
-    let option = app.buttons["dock-decision-option-decision-question-0"]
+    let option = app.buttons["decision-option-decision-question-0"]
     XCTAssertTrue(option.waitForExistence(timeout: 20), "the question card did not show")
+    XCTAssertFalse(
+      app.buttons["dock-decision-option-decision-question-0"].exists,
+      "the dock repeats the question's answers")
     save(window, "question-pending")
     option.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
     waitUntilGone(option)
-    waitUntilGone(app.buttons["decision-option-decision-question-0"])
     save(window, "question-answered")
   }
 

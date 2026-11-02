@@ -28,7 +28,9 @@ enum ConversationAdapter {
       isLoadingHistory: !store.isHydrated && !store.isClosed,
       errorMessage: errorMessage(store),
       connectionStatus: connectionStatus(store),
-      summary: summary.map(OmnigentUIComponents.SessionSummary.init))
+      turnDurations: store.turnTimer.durations,
+      summary: summary.map(OmnigentUIComponents.SessionSummary.init),
+      turnStartedAt: store.turnTimer.startedAt)
   }
 
   /// The newest failure to show. Stream and transport failures describe a connection problem,

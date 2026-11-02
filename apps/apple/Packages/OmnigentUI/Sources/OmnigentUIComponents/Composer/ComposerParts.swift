@@ -14,33 +14,26 @@ struct DeliveryBanner: View {
     case .idle, .sending:
       EmptyView()
     case .uncertain(let message):
-      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-        Label {
-          VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-            Text("Delivery uncertain").font(.callout.weight(.semibold))
-            Text(message).font(.callout)
-          }
-        } icon: {
-          Image(systemName: "questionmark.circle.fill").foregroundStyle(Theme.warning)
+      // The banner grammar of ``StatusBanner``; sending stays blocked until acknowledged.
+      if let acknowledge {
+        StatusBanner(
+          kind: .uncertain, title: "Delivery uncertain", detail: message,
+          identifier: "composer-uncertain"
+        ) {
+          Button("Allow another send", action: acknowledge)
+            .buttonStyle(.bordered)
+            .help("You checked the conversation; the composer can send again.")
+            .accessibilityIdentifier("composer-acknowledge-uncertain")
         }
-        if let acknowledge {
-          Button(action: acknowledge) {
-            Text("I checked the conversation. Allow another send.")
-              .fixedSize(horizontal: false, vertical: true)
-          }
-          .accessibilityIdentifier("composer-acknowledge-uncertain")
-        }
+      } else {
+        StatusBanner(
+          kind: .uncertain, title: "Delivery uncertain", detail: message,
+          identifier: "composer-uncertain")
       }
-      .padding(Theme.Spacing.medium)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .cardSurface(
-        cornerRadius: Theme.Radius.medium, tint: Theme.warning,
-        stroke: Theme.warning.opacity(0.4)
-      )
-      .accessibilityElement(children: .contain)
-      .accessibilityIdentifier("composer-uncertain")
     case .failed(let message):
-      ErrorBanner(message: message, dismiss: dismiss, identifier: "composer-delivery-error")
+      ErrorBanner(
+        message: message, title: "Message not sent", dismiss: dismiss,
+        identifier: "composer-delivery-error")
     }
   }
 }

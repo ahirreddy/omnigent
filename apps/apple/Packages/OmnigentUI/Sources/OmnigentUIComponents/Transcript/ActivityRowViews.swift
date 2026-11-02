@@ -194,10 +194,14 @@ private struct RetryRowView: View {
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
-      Image(systemName: "arrow.clockwise")
-        .foregroundStyle(Theme.warning)
-        .symbolEffect(.rotate, isActive: row.isStreaming)
-        .accessibilityHidden(true)
+      // The system spinner animates in the render server; a symbol effect redraws every frame.
+      if row.isStreaming {
+        ProgressView().controlSize(.small).accessibilityHidden(true)
+      } else {
+        Image(systemName: "arrow.clockwise")
+          .foregroundStyle(Theme.warning)
+          .accessibilityHidden(true)
+      }
       VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
         Text(activity.title).font(Theme.Typography.label)
         if !activity.summary.isEmpty {

@@ -85,6 +85,14 @@ public struct CLIComposer: View {
 
   /// The composer.
   public var body: some View {
+    if layout == .touch, state.isReadOnly {
+      ReadOnlyComposerBar(reason: state.availability.reason, isCLI: true)
+    } else {
+      composer
+    }
+  }
+
+  private var composer: some View {
     VStack(alignment: .leading, spacing: 0) {
       VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         DeliveryBanner(

@@ -279,7 +279,8 @@ extension View {
       .preferredColorScheme(appearance.colorScheme)
   }
 
-  /// The single primary action on a screen: a prominent button in the theme accent.
+  /// The single primary action on a screen: a prominent button in the theme accent, which is
+  /// darkened where needed to keep its white label at WCAG AA.
   /// - Returns: The styled button.
   public func primaryActionStyle() -> some View {
     buttonStyle(.borderedProminent).tint(ThemeColor.accent)

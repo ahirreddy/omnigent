@@ -31,13 +31,17 @@ public struct AuthBannerView: View {
           .fixedSize(horizontal: false, vertical: true)
       } icon: {
         Image(systemName: "info.circle.fill")
-          .foregroundStyle(.blue)
+          .foregroundStyle(.secondary)
           .accessibilityHidden(true)
       }
       .font(.callout)
       .padding(12)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: AuthMetrics.radius))
+      // A notice is neutral: the host's tint is for the one primary action.
+      .background(.background.secondary, in: RoundedRectangle(cornerRadius: AuthMetrics.radius))
+      .overlay {
+        RoundedRectangle(cornerRadius: AuthMetrics.radius).strokeBorder(.separator, lineWidth: 0.5)
+      }
       .accessibilityElement(children: .combine)
       .accessibilityIdentifier("auth.notice")
     case .error(let error):

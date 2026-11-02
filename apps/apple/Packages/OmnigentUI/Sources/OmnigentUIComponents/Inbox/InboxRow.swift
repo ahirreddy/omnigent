@@ -72,7 +72,7 @@ struct InboxRow: View {
           Text(age(at: now ?? context.date)).font(.caption).foregroundStyle(.secondary)
         }
       }
-      Text(item.preview).font(Theme.Typography.label)
+      Text(headline).font(Theme.Typography.label)
         .fixedSize(horizontal: false, vertical: true)
       Text([item.sessionTitle, item.agentName].filter { !$0.isEmpty }.joined(separator: " · "))
         .font(.callout).foregroundStyle(.secondary)
@@ -81,6 +81,14 @@ struct InboxRow: View {
           .fixedSize(horizontal: false, vertical: true)
       }
     }
+  }
+
+  /// The preview, else the request's own title, so a row never has a blank headline.
+  private var headline: String {
+    let preview = item.preview.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !preview.isEmpty { return preview }
+    if let title = item.decision?.title, !title.isEmpty { return title }
+    return item.kind.title
   }
 
   /// The selected binary approval answers Command-Return (E does the same from the list).

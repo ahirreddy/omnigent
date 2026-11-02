@@ -215,7 +215,7 @@ enum NewSessionCatalog {
     [
       .component(
         .newSession, "page", "New Session Page",
-        summary: "\u{201C}What should we build?\u{201D} with the start composer and its tray.",
+        summary: "\u{201C}What should we work on?\u{201D} with the start composer and its tray.",
         systemImage: "plus.bubble", canvas: .fixed(width: 1_000, height: 720),
         keywords: ["start", "landing", "host", "directory"],
         states: [

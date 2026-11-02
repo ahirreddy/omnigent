@@ -17,9 +17,16 @@ enum TabMetrics {
     static let stripHeight: CGFloat = 44
   #endif
   static let pinnedWidth: CGFloat = 38
-  /// A background tab's narrowest: its icon and about eight characters. Below this the strip
-  /// scrolls.
-  static let minWidth: CGFloat = 112
+  /// A background tab's narrowest: its icon, a status mark and about fourteen characters. Below
+  /// this the strip scrolls.
+  static let minWidth: CGFloat = 140
+  /// A split strip section's narrowest, so the pane's tab keeps a readable title.
+  static let sectionMinWidth: CGFloat = 180
+  /// The close button's glyph frame: the Mac's 20 pt minimum. Touch extends its hit area to
+  /// ``touchTarget`` without changing the layout.
+  static let closeSize: CGFloat = 20
+  /// The smallest touch target (HIG).
+  static let touchTarget: CGFloat = 44
   static let maxWidth: CGFloat = 224
   /// The selected tab's width once the others shrink below it.
   static let selectedWidth: CGFloat = 200
@@ -53,19 +60,23 @@ struct TabItemView: View {
           .lineLimit(1)
           .truncationMode(.tail)
           .frame(maxWidth: .infinity, alignment: .leading)
-        // A background tab keeps its title readable with one trailing mark: Close while
-        // hovered, else its status, else the audio glyph.
-        if isSelected {
-          if tab.isPlayingAudio { audioMark }
-          TabStatusMark(status: tab.status)
-          if tab.isClosable { closeButton }
-        } else if isHovered, tab.isClosable {
-          closeButton
-        } else if tab.status != .none {
-          TabStatusMark(status: tab.status)
-        } else if tab.isPlayingAudio {
-          audioMark
+        // The title truncates first; the marks keep their own width after it. A background tab
+        // shows one trailing mark: Close while hovered, else its status, else the audio glyph.
+        HStack(spacing: Theme.Spacing.extraSmall) {
+          if isSelected {
+            if tab.isPlayingAudio { audioMark }
+            TabStatusMark(status: tab.status)
+            if tab.isClosable { closeButton }
+          } else if isHovered, tab.isClosable {
+            closeButton
+          } else if tab.status != .none {
+            TabStatusMark(status: tab.status)
+          } else if tab.isPlayingAudio {
+            audioMark
+          }
         }
+        .fixedSize()
+        .layoutPriority(1)
       }
     }
     .padding(.horizontal, tab.isPinned ? 0 : Theme.Spacing.small + 2)
@@ -105,13 +116,14 @@ struct TabItemView: View {
       actions.close(tab.id)
     } label: {
       Image(systemName: "xmark")
-        .font(.system(size: 9, weight: .bold))
-        .frame(width: 16, height: 16)
+        .font(.system(size: 10, weight: .bold))
+        .frame(width: TabMetrics.closeSize, height: TabMetrics.closeSize)
         .contentShape(Circle())
+        .touchTarget(width: TabMetrics.closeSize, height: TabMetrics.closeSize)
     }
     .buttonStyle(.plain)
     .foregroundStyle(.secondary)
-    .hoverHighlight(cornerRadius: 8)
+    .hoverHighlight(cornerRadius: TabMetrics.closeSize / 2)
     .help("Close tab (Command-W)")
     .accessibilityLabel("Close \(tab.displayTitle)")
     .accessibilityIdentifier("tab-close-\(tab.id)")
@@ -195,7 +207,8 @@ struct TabIcon: View {
 
   private var dotColor: ThemeColor? {
     switch tab.status {
-    case .needsYou, .unread: Theme.attention
+    case .needsYou: Theme.attention
+    case .unread: Theme.unread
     case .failed: Theme.failure
     case .running, .loading, .terminalActivity: Theme.running
     case .none, .exited: nil
@@ -215,7 +228,8 @@ struct TabStatusMark: View {
       Circle().fill(Theme.attention).frame(width: 7, height: 7)
         .accessibilityLabel("Needs you")
     case .unread:
-      Circle().fill(Theme.unread.opacity(0.6)).frame(width: 6, height: 6)
+      // Calm, not the pink "needs you": activity the user has not seen, cleared on focus.
+      Circle().fill(Theme.unread).frame(width: 7, height: 7)
         .accessibilityLabel("Unread")
     case .failed:
       Image(systemName: "exclamationmark.triangle.fill")
@@ -281,5 +295,37 @@ struct TabContextMenu: View {
     Button("Close Other Tabs") { actions.closeOthers(tab.id) }
     Button("Close Tabs to the Right") { actions.closeToRight(tab.id) }
       .disabled(!canCloseToRight)
+  }
+}
+
+extension View {
+  /// On touch, grows the hit area of a `width` by `height` view to 44 pt without moving
+  /// anything; the Mac keeps the view's own frame.
+  /// - Parameters:
+  ///   - width: The view's width.
+  ///   - height: The view's height.
+  /// - Returns: The view with the larger hit area.
+  func touchTarget(width: CGFloat, height: CGFloat) -> some View {
+    modifier(TouchTarget(width: width, height: height))
+  }
+}
+
+private struct TouchTarget: ViewModifier {
+  let width: CGFloat
+  let height: CGFloat
+
+  func body(content: Content) -> some View {
+    #if os(iOS)
+      let horizontal = max(0, (TabMetrics.touchTarget - width) / 2)
+      let vertical = max(0, (TabMetrics.touchTarget - height) / 2)
+      content
+        .padding(.horizontal, horizontal)
+        .padding(.vertical, vertical)
+        .contentShape(Rectangle())
+        .padding(.horizontal, -horizontal)
+        .padding(.vertical, -vertical)
+    #else
+      content
+    #endif
   }
 }

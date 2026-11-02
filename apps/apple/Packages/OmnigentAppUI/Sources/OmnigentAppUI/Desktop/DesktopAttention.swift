@@ -31,15 +31,22 @@
         title: notification.title ?? sessionTitle ?? "Omnigent", body: notification.body)
     }
 
-    /// Posts every pending notification of `notifications`.
+    /// Requests already posted with actions, so a later input request in the same session
+    /// does not alert again for the earlier ones.
+    @MainActor static var ledger = SupervisionLedger()
+
+    /// Posts every pending notification of `notifications`. An input request becomes one
+    /// actionable notification per request the session waits on, read fresh through `source`;
+    /// when that read fails it posts the plain notification instead.
     /// - Parameters:
     ///   - notifications: The store; its pending notifications are taken.
     ///   - list: Session titles.
     ///   - serverURL: The window's server.
     ///   - desktop: The shell.
+    ///   - source: The window's connection, for actionable requests.
     public static func deliverPending(
       _ notifications: NotificationsStore, list: SessionListStore, serverURL: URL,
-      desktop: DesktopController
+      desktop: DesktopController, source: (any SupervisionDecisionSource)? = nil
     ) async {
       for notification in notifications.take() {
         let event: DesktopNotificationEvent
@@ -51,11 +58,46 @@
           desktop.onIssue(.invalidServerURL(serverURL, error))
           continue
         }
-        do {
-          try await desktop.notifications.post(event)
-        } catch {
-          desktop.onIssue(.notificationFailed(error))
+        if notification.kind == .approval, let source, let sessionID = event.sessionID {
+          do {
+            let events = try await actionableEvents(
+              for: event, sessionID: sessionID,
+              sessionTitle: list.session(notification.sessionId)?.title, source: source)
+            for actionable in events { await post(actionable, desktop: desktop) }
+            continue
+          } catch {
+            // The plain notification still goes out; only its buttons are lost.
+            desktop.onIssue(.supervision("Requests of \(sessionID) not read: \(error.message)"))
+          }
         }
+        await post(event, desktop: desktop)
+      }
+    }
+
+    /// One event per request `sessionID` waits on that was not posted yet.
+    static func actionableEvents(
+      for event: DesktopNotificationEvent, sessionID: String, sessionTitle: String?,
+      source: any SupervisionDecisionSource
+    ) async throws(SupervisionError) -> [DesktopNotificationEvent] {
+      let contents = try await SupervisionNotifier.decisions(
+        in: sessionID, openSessionID: sessionID, sessionTitle: sessionTitle ?? event.title,
+        source: source, isEnabled: { _ in true })
+      return contents.filter { ledger.admit($0) }.map { content in
+        var actionable = event
+        actionable.title = content.title
+        actionable.body = content.body
+        actionable.actions = NotificationActions(
+          categoryIdentifier: content.category.rawValue, identifier: content.identifier,
+          context: content.payload.context)
+        return actionable
+      }
+    }
+
+    private static func post(_ event: DesktopNotificationEvent, desktop: DesktopController) async {
+      do {
+        try await desktop.notifications.post(event)
+      } catch {
+        desktop.onIssue(.notificationFailed(error))
       }
     }
   }
@@ -85,6 +127,9 @@
       let pending = connection.notifications?.pending.count ?? 0
       let authorization = desktop.notifications.authorization
       content
+        .onChange(of: connection.isSignedIn, initial: true) {
+          if connection.isSignedIn { SupervisionConnections.shared.register(connection) }
+        }
         .onChange(of: pending, initial: true) { deliver() }
         .onChange(of: authorization, initial: true) {
           let allowed = authorization == .authorized || authorization == .provisional
@@ -98,9 +143,10 @@
       else { return }
       let list = connection.sessionList
       let desktop = desktop
+      let connection = connection
       Task {
         await DesktopAttention.deliverPending(
-          notifications, list: list, serverURL: serverURL, desktop: desktop)
+          notifications, list: list, serverURL: serverURL, desktop: desktop, source: connection)
       }
     }
   }

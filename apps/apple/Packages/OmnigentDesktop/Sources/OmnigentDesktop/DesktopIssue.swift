@@ -22,6 +22,8 @@ nonisolated public enum DesktopIssue: Sendable {
   case notificationFailed(DesktopNotificationError)
   /// A notification tap carried a payload this version does not understand.
   case unrecognizedNotificationPayload(identifier: String)
+  /// A notification action or an actionable notification failed; the message is for logs.
+  case supervision(String)
   /// Starting, adopting or stopping the local server or host failed. The manager's state shows
   /// it too.
   case localServer(LocalServerError)

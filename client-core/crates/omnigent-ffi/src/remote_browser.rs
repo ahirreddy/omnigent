@@ -425,6 +425,171 @@ impl From<RemoteViewport> for wire::Viewport {
     }
 }
 
+/// Whose viewport is applied (protocol v1.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum RemoteViewportScope {
+    /// The tab's own, the agent's (also any value newer than this client).
+    Tab,
+    /// The controlling user's; the agent's comes back when control does.
+    Control,
+}
+
+/// Mobile emulation (protocol v1.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum RemoteMobileEmulation {
+    /// A desktop page (also any value newer than this client).
+    Off,
+    /// Mobile layout: the meta viewport, overlay scroll bars and touch support.
+    Layout,
+    /// Mobile layout and a mobile user agent ("Request Mobile Website").
+    Site,
+}
+
+impl From<RemoteMobileEmulation> for wire::MobileEmulation {
+    fn from(mobile: RemoteMobileEmulation) -> Self {
+        match mobile {
+            RemoteMobileEmulation::Off => Self::Off,
+            RemoteMobileEmulation::Layout => Self::Layout,
+            RemoteMobileEmulation::Site => Self::Site,
+        }
+    }
+}
+
+impl From<wire::MobileEmulation> for RemoteMobileEmulation {
+    fn from(mobile: wire::MobileEmulation) -> Self {
+        match mobile {
+            wire::MobileEmulation::Layout => Self::Layout,
+            wire::MobileEmulation::Site => Self::Site,
+            wire::MobileEmulation::Off | wire::MobileEmulation::Unknown { .. } => Self::Off,
+        }
+    }
+}
+
+/// The viewport this client wants while it holds control (protocol v1.1).
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct RemoteViewportRequest {
+    /// The viewport.
+    pub viewport: RemoteViewport,
+    /// Mobile emulation.
+    pub mobile: RemoteMobileEmulation,
+}
+
+/// The page's selection or caret (protocol v1.1).
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct RemoteSelection {
+    /// The focus is an editable field.
+    pub editable: bool,
+    /// Nothing is selected.
+    pub collapsed: bool,
+    /// Selected UTF-16 code units.
+    pub length: u32,
+    /// The selection (or focused field) in viewport CSS px.
+    pub rect: Option<RemoteRect>,
+}
+
+/// The main frame's scroll position and sizes in CSS px (protocol v1.1).
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct RemoteScrollMetrics {
+    /// Horizontal offset.
+    pub x: f64,
+    /// Vertical offset.
+    pub y: f64,
+    /// Content width.
+    pub content_width: f64,
+    /// Content height.
+    pub content_height: f64,
+    /// Layout viewport width.
+    pub viewport_width: f64,
+    /// Layout viewport height.
+    pub viewport_height: f64,
+}
+
+/// The protocol v1.1 features the host announced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Record)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "one flag per independent protocol feature"
+)]
+pub struct RemoteBrowserCapabilities {
+    /// Control-scoped viewports that the agent gets back.
+    pub viewport_scope: bool,
+    /// Mobile layout and user agent.
+    pub mobile_emulation: bool,
+    /// Copy, cut, paste and the other edit commands.
+    pub edit: bool,
+    /// Selection reports.
+    pub selection: bool,
+    /// Scroll reports.
+    pub scroll_metrics: bool,
+    /// Touch events.
+    pub touch: bool,
+}
+
+/// An edit command (protocol v1.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum RemoteEditOp {
+    /// Copy; the text arrives through `on_clipboard`.
+    Copy,
+    /// Cut; the text arrives through `on_clipboard`.
+    Cut,
+    /// Paste `text`.
+    Paste,
+    /// Select all.
+    SelectAll,
+    /// Undo.
+    Undo,
+    /// Redo.
+    Redo,
+    /// Delete the selection.
+    Delete,
+}
+
+impl From<RemoteEditOp> for wire::EditOp {
+    fn from(op: RemoteEditOp) -> Self {
+        match op {
+            RemoteEditOp::Copy => Self::Copy,
+            RemoteEditOp::Cut => Self::Cut,
+            RemoteEditOp::Paste => Self::Paste,
+            RemoteEditOp::SelectAll => Self::SelectAll,
+            RemoteEditOp::Undo => Self::Undo,
+            RemoteEditOp::Redo => Self::Redo,
+            RemoteEditOp::Delete => Self::Delete,
+        }
+    }
+}
+
+/// A touch point's phase (protocol v1.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum TouchKind {
+    /// Down.
+    Start,
+    /// Moved.
+    Move,
+    /// Up.
+    End,
+    /// Cancelled.
+    Cancel,
+}
+
+/// One touch point in viewport CSS px (protocol v1.1).
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct TouchInput {
+    /// Phase.
+    pub kind: TouchKind,
+    /// Stable per finger.
+    pub id: u32,
+    /// X.
+    pub x: f64,
+    /// Y.
+    pub y: f64,
+    /// Contact radius, CSS px.
+    pub radius: Option<f64>,
+    /// Pressure, 0–1.
+    pub pressure: Option<f64>,
+    /// Modifier bits.
+    pub modifiers: u32,
+}
+
 /// Encode quality.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum StreamQuality {
@@ -830,6 +995,18 @@ pub struct RemoteBrowserSnapshot {
     pub text_input: RemoteBrowserTextInput,
     /// The viewport.
     pub viewport: Option<RemoteViewport>,
+    /// Whose viewport is applied.
+    pub viewport_scope: RemoteViewportScope,
+    /// Mobile emulation.
+    pub mobile: RemoteMobileEmulation,
+    /// The agent's viewport while the controlling user's is applied.
+    pub agent_viewport: Option<RemoteViewport>,
+    /// The page's selection or caret, while reported.
+    pub selection: Option<RemoteSelection>,
+    /// The page's scroll metrics, while reported.
+    pub scroll: Option<RemoteScrollMetrics>,
+    /// The protocol v1.1 features the host announced.
+    pub capabilities: RemoteBrowserCapabilities,
     /// Effective settings.
     pub settings: Option<RemoteBrowserSettings>,
     /// The latest stats, while requested.
@@ -1102,6 +1279,16 @@ pub fn dom_code_for_hid_usage(usage: u32) -> Option<String> {
     core::keymap::dom_code_for_hid(usage).map(str::to_owned)
 }
 
+/// A notice from an attach.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct RemoteBrowserNotice {
+    /// Plain-language text when `user_facing`, else a diagnostic for the log.
+    pub message: String,
+    /// Something the user can act on (a page that failed to load, a read-only view, an
+    /// unsupported action); everything else belongs in the log only.
+    pub user_facing: bool,
+}
+
 /// Receives one attach's output on background threads. `on_state`, `on_still`, `on_closed`
 /// and `on_notice` arrive in order; `on_video` runs on its own task, in order among video
 /// frames. Implementations must return quickly and hop to their own executor.
@@ -1116,13 +1303,27 @@ pub trait RemoteBrowserListener: Send + Sync {
     /// The tab ended (after `on_state` reports `Closed`).
     fn on_closed(&self, reason: Option<RemoteTabClosedReason>);
     /// Something to show or log: unknown or malformed frames, host errors, dropped input.
-    fn on_notice(&self, message: String);
+    fn on_notice(&self, notice: RemoteBrowserNotice);
+    /// Text the page copied or cut, for the local pasteboard (protocol v1.1).
+    fn on_clipboard(&self, op: RemoteEditOp, text: String);
 }
 
 #[path = "remote_browser_driver.rs"]
 mod driver;
 
 pub use driver::RemoteBrowserDriver;
+
+/// The viewport "Mobile size" asks for: the view in points at the screen's scale (DPR 1–3),
+/// or `None` when the view is smaller than the protocol's 200 px minimum.
+#[must_use]
+#[uniffi::export]
+pub fn remote_viewport_mobile(
+    view_width: f64,
+    view_height: f64,
+    screen_scale: f64,
+) -> Option<RemoteViewport> {
+    core::viewport::match_view(view_width, view_height, screen_scale).map(Into::into)
+}
 
 #[uniffi::export]
 impl ClientCore {

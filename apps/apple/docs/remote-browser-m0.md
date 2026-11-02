@@ -147,7 +147,10 @@ that is the moment scrolling stops, for static the picture that stays on screen.
   frame and gives up at EOF, so the host keeps a sentinel line far in the future at the end and
   overwrites it with `<frame> I` to request an IDR. Verified by `EncoderX264...` in
   `rb_core_tests`: the requested frame comes back as an IDR with SPS and PPS. A missed request
-  would switch the backend to restarts.
+  would switch the backend to restarts. Update (protocol v1.1 work): a request on the frame
+  right after a forced IDR was always missed, because x264's `fscanf` had already buffered the
+  line after it. The host now pads each qpfile line with 16 KiB of spaces and re-requests that
+  one case on the next frame; `EncoderX264...` covers back-to-back requests.
 - **ffmpeg + libx264**: no runtime control, so the host restarts the encoder; the new process's
   first frame is the IDR, 35-45 ms on the VM.
 - x264 writes stdout through stdio and never flushes, so over a pipe frames sat in the buffer.

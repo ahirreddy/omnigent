@@ -2,7 +2,8 @@ public import SwiftUI
 
 /// Otto, the Omnigent mascot, drawn from the web's vector art. Otto's pupils can follow a gaze
 /// offset (the web's tracking eyes), and `isWorking` adds the gentle bob of the working
-/// indicator. Both are still under Reduce Motion.
+/// indicator, which Core Animation runs (``LoopingIndicator``). Both are still under Reduce
+/// Motion.
 public struct OttoView: View {
   private let gaze: CGSize
   private let isWorking: Bool
@@ -10,7 +11,7 @@ public struct OttoView: View {
 
   /// Creates the mascot.
   /// - Parameters:
-  ///   - gaze: Where Otto looks, each axis from -1 to 1.
+  ///   - gaze: Where Otto looks, each axis from -1 to 1; a working Otto looks ahead.
   ///   - isWorking: Bob gently, as the working indicator does.
   public init(gaze: CGSize = .zero, isWorking: Bool = false) {
     self.gaze = gaze
@@ -19,7 +20,21 @@ public struct OttoView: View {
 
   /// The mascot.
   public var body: some View {
-    let canvas = Canvas { context, size in
+    Group {
+      if isWorking {
+        LoopingIndicator(shape: .otto, motion: .bob(amplitude: 2, duration: 0.8))
+      } else {
+        canvas
+      }
+    }
+    .aspectRatio(1, contentMode: .fit)
+    .accessibilityElement()
+    .accessibilityLabel("Otto")
+    .accessibilityAddTraits(.isImage)
+  }
+
+  private var canvas: some View {
+    Canvas { context, size in
       let scale = min(size.width, size.height) / 1_024
       let origin = CGPoint(
         x: (size.width - 1_024 * scale) / 2, y: (size.height - 1_024 * scale) / 2)
@@ -35,18 +50,6 @@ public struct OttoView: View {
         }
         context.fill(OttoPaths.shared.path(index).applying(transform), with: .color(part.fill))
       }
-    }
-    .aspectRatio(1, contentMode: .fit)
-    .accessibilityLabel("Otto")
-    .accessibilityAddTraits(.isImage)
-    if isWorking, !reduceMotion {
-      canvas.phaseAnimator([0.0, -1.0]) { view, phase in
-        view.offset(y: phase * 2)
-      } animation: { _ in
-        .easeInOut(duration: 0.8)
-      }
-    } else {
-      canvas
     }
   }
 }

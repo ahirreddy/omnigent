@@ -31,8 +31,11 @@ public struct DecisionCardView: View {
   @State private var localDraft = FormDraft()
   @State private var pendingPermission: PermissionChoice?
   @State private var isExpanded = false
+  @State private var isReviewing = false
   @Environment(\.openURL) private var openURL
   @Environment(\.decisionIDPrefix) private var idPrefix
+  @Environment(\.layoutWidth) private var layoutWidth
+  @Environment(\.decisionCodeLayout) private var codeLayout
 
   /// Creates a card.
   /// - Parameters:
@@ -121,6 +124,11 @@ public struct DecisionCardView: View {
     .accessibilityElement(children: .contain)
     .accessibilityLabel("\(displayTitle). \(DecisionSummary(card).plain)")
     .accessibilityIdentifier("\(idPrefix)decision-\(card.id)")
+    #if os(iOS)
+      .fullScreenCover(isPresented: $isReviewing) { review }
+    #else
+      .sheet(isPresented: $isReviewing) { review.frame(minWidth: 480, minHeight: 560) }
+    #endif
   }
 
   private var fullCard: some View {
@@ -167,6 +175,16 @@ public struct DecisionCardView: View {
       }
       Spacer(minLength: Theme.Spacing.small)
       if card.isMirrored { Pill(text: "From a subagent", systemImage: "arrow.triangle.branch") }
+      if offersFullScreenReview {
+        Button("Review full screen", systemImage: "arrow.up.left.and.arrow.down.right") {
+          isReviewing = true
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.bordered)
+        .tint(.primary)
+        .help("Review full screen")
+        .accessibilityIdentifier("\(idPrefix)decision-review-full-\(card.id)")
+      }
       if style == .compact {
         Button("Collapse", systemImage: "chevron.up") { isExpanded = false }
           .labelStyle(.iconOnly)
@@ -230,6 +248,48 @@ public struct DecisionCardView: View {
     }
   }
 
+  /// Widening choices go through the confirmation; everything else is sent.
+  private func act(_ response: DecisionResponse) {
+    switch DecisionRoute(response) {
+    case .send(let response):
+      send(response)
+    case .confirm(let response):
+      pendingPermission =
+        PermissionChoice.choices(for: card).first { $0.response == response }
+        ?? PermissionChoice(
+          response: response, label: response.summary, systemImage: "exclamationmark.shield")
+    }
+  }
+
+  private func send(_ response: DecisionResponse) {
+    pendingPermission = nil
+    guard canRespond, let respond else { return }
+    if case .declineWithFeedback = response {
+      draft.wrappedValue.isComposingFeedback = false
+    }
+    respond(response)
+  }
+}
+
+extension DecisionCardView {
+  /// On a phone a large payload opens in a full-screen review with the same actions.
+  private var offersFullScreenReview: Bool {
+    layoutWidth == .compact && style == .full && !codeLayout.isFullScreen && !isAnswered
+      && DecisionPayloadSize.isLarge(card)
+  }
+
+  private var review: some View {
+    DecisionReviewScreen(
+      card: card, phase: phase, isReadOnly: isReadOnly, context: context,
+      respond: respond.map { respond in
+        { response in
+          isReviewing = false
+          respond(response)
+        }
+      },
+      validate: validate, draft: draft, close: { isReviewing = false })
+  }
+
   private func formControls(_ fields: [FormField]) -> some View {
     let values = draft.wrappedValue.values(for: fields)
     let local = draft.wrappedValue.localProblem(for: fields)
@@ -276,28 +336,6 @@ public struct DecisionCardView: View {
       .font(.callout)
       .disabled(!canRespond)
       .accessibilityIdentifier("\(idPrefix)decision-cancel-\(card.id)")
-  }
-
-  /// Widening choices go through the confirmation; everything else is sent.
-  private func act(_ response: DecisionResponse) {
-    switch DecisionRoute(response) {
-    case .send(let response):
-      send(response)
-    case .confirm(let response):
-      pendingPermission =
-        PermissionChoice.choices(for: card).first { $0.response == response }
-        ?? PermissionChoice(
-          response: response, label: response.summary, systemImage: "exclamationmark.shield")
-    }
-  }
-
-  private func send(_ response: DecisionResponse) {
-    pendingPermission = nil
-    guard canRespond, let respond else { return }
-    if case .declineWithFeedback = response {
-      draft.wrappedValue.isComposingFeedback = false
-    }
-    respond(response)
   }
 }
 

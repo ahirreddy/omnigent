@@ -234,6 +234,7 @@ extension ComposerSamples {
   static var readOnly: ComposerViewState {
     var state = idle
     state.availability = .unavailable(reason: "This session is shared with you as a viewer.")
+    state.isReadOnly = true
     return state
   }
 }

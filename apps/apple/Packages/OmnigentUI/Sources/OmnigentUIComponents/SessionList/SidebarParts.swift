@@ -5,6 +5,7 @@ struct SidebarHeader: View {
   let state: SidebarViewState
   let actions: SidebarActions
   @Environment(\.openAppearanceSettings) private var openAppearance
+  @Environment(\.openNotificationSettings) private var openNotificationSettings
 
   private var serverName: String { state.currentServer?.name ?? "none" }
 
@@ -38,6 +39,12 @@ struct SidebarHeader: View {
           if let openAppearance {
             Button("Appearance\u{2026}", systemImage: "paintpalette") { openAppearance() }
               .accessibilityIdentifier("sidebar-appearance")
+          }
+          if let openNotificationSettings {
+            Button("Notifications\u{2026}", systemImage: "bell.badge") {
+              openNotificationSettings()
+            }
+            .accessibilityIdentifier("sidebar-notifications")
           }
         } label: {
           HStack(spacing: Theme.Spacing.extraSmall) {

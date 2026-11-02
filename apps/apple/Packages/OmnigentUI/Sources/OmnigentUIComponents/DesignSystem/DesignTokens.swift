@@ -1,7 +1,7 @@
 public import SwiftUI
 
 /// Colors and metrics shared with the Omnigent web UI.
-public enum DesignTokens {
+nonisolated public enum DesignTokens {
   /// Corner radius for cards and controls.
   public static let radius: CGFloat = 8
 

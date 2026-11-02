@@ -63,9 +63,9 @@ struct CLIAgentLine: View {
     line.append(" ")
     line.append("`\(subject)`", palette.path)
     let output = entry.result?.activity?.detail("output") ?? ""
+    // Still while running: the turn's working line is its one live marker.
     return CLIBulletLine(
-      line: line, marker: entry.isFailure && phase == .finished ? palette.failure : nil,
-      isLive: phase == .started && entry.isRunning
+      line: line, marker: entry.isFailure && phase == .finished ? palette.failure : nil
     )
     .transcriptColumn()
     .cliActions(
@@ -124,7 +124,7 @@ struct CLIToolLine: View {
   var body: some View {
     let diff = diff
     VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-      CLIBulletLine(line: line(diff), marker: marker, isLive: entry.isRunning)
+      CLIBulletLine(line: line(diff), marker: marker)
       if isExpanded { expanded(diff) }
     }
     .transcriptColumn()

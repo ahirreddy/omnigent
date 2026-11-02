@@ -18,23 +18,27 @@ struct ComposerControlParts {
   let loadProviders: ([NSItemProvider]) -> Void
   let perform: (ComposerSendIntent) -> Void
 
-  var toolbar: some View {
+  @ViewBuilder var toolbar: some View {
+    if layout == .touch {
+      // Touch keeps one row: the model name takes the free width and truncates first.
+      HStack(spacing: Theme.Spacing.extraSmall) {
+        HStack(spacing: Theme.Spacing.extraSmall) { leading }.fixedSize()
+        Spacer(minLength: Theme.Spacing.small)
+        trailing
+        send
+      }
+    } else {
+      cardToolbar
+    }
+  }
+
+  private var cardToolbar: some View {
     ViewThatFits(in: .horizontal) {
       HStack(spacing: Theme.Spacing.extraSmall) {
         leading
         Spacer(minLength: Theme.Spacing.small)
         trailing
         send
-      }
-      // Touch keeps one row: the model name gives way before the row wraps.
-      if layout == .touch {
-        HStack(spacing: Theme.Spacing.extraSmall) {
-          leading
-          Spacer(minLength: Theme.Spacing.small)
-          configuration(showsModel: false)
-          editorButtons
-          send
-        }
       }
       VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         FlowLayout(spacing: Theme.Spacing.extraSmall) { leading }

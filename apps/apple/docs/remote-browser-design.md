@@ -626,6 +626,8 @@ browser and tab state live on the host, so a reconnect loses nothing.
 - A breaking change bumps the major. The host then serves N and N−1 for one release, choosing
   the highest major that is ≤ the client's `v`.
 - The binary header `version` changes only with a protocol major.
+- Protocol v1.1 (section 16) is a set of `features` on top of v1: viewport ownership, mobile
+  emulation, edit commands, selection and scroll reports, and touch input.
 
 ### 5.10 REST and resources
 
@@ -1112,6 +1114,206 @@ pick the default encoder.
     secret never stored on the remote)?
 11. **iOS push for handoffs.** Is APNs push in scope, or is macOS-only
     notification acceptable for now?
+
+## 16. iOS viewport modes and touch (protocol v1.1)
+
+Status: implemented 2026-11-01. Everything here is additive to v1 (section 5.9): `protocol` stays
+`1`, and each addition is negotiated through a `features` string. A v1 peer never receives a
+v1.1 message, and a v1.1 client degrades to v1 behaviour against a v1 host (16.7).
+
+### 16.1 Viewport modes
+
+The remote tab's toolbar has a viewport menu. The mode is a client preference, remembered per
+device, and it only acts while this client holds control.
+
+| Mode | Remote viewport | Local view |
+|---|---|---|
+| **Keep remote size** (default) | Unchanged: the agent's size (default 1280×800) | Letterboxed to fit; pinch zoom, pan, double-tap zoom |
+| **Fit to window** | The view's size in CSS px at DPR 1, desktop layout, following resizes. For wide Mac and iPad panes, where a 1280×800 page is a band in the middle | Fills the view; zoom as Keep |
+| **Set remote size** | A preset (1280×800, 1440×900, 1920×1080, 1024×768, 390×844) or a custom W×H, at DPR 1 or 2 | Same as Keep |
+| **Mobile size** (iPhone and iPad) | Exactly the view: CSS px = view points, DPR = screen scale. Follows rotation, size classes, split view and the keyboard (debounced 150 ms) | Fills the view; pinch zoom (no double-tap delay) |
+
+**Mobile size and mobile site.** Mobile size turns on mobile *layout* by default: Chromium's
+`Emulation.setDeviceMetricsOverride {mobile: true}` (the meta viewport, overlay scroll bars,
+text autosizing) and `Emulation.setTouchEmulationEnabled` (`pointer: coarse`,
+`maxTouchPoints`), so responsive sites lay out as they do on a phone. The mobile **user agent**
+is a separate toggle, "Request Mobile Website", off by default, because it changes what servers
+send: some redirect to an `m.` host, and that page stays with the agent after hand-back.
+Turning it on reloads the page; turning mobile size on or off never reloads (that would lose
+form state mid-handoff). The user agent is Chrome for Android at the host's Chromium major,
+which is honest about the engine.
+
+### 16.2 Who owns the remote size
+
+- The **agent's viewport** is the tab's own: set at `tabs.create`, by a v1 `resize`, or by a
+  `resize` with `scope: "tab"`. Agent tools, screenshots and coordinates assume it.
+- A **user viewport** is a `resize` with `scope: "control"`. It belongs to the connection that
+  holds control and lasts while it does. The host keeps the agent's viewport beside it.
+- **Hand-back restores the agent's size** (and turns emulation off). Release, the end of the
+  grace period, and a `take` by another connection all restore it. The agent re-inspects the
+  page after a handoff anyway, but a page re-laid out at 390 px (mobile menus, hidden columns,
+  a different DOM) would break its plan and its coordinates; the desktop layout is what agents
+  handle best. While the holder is gone during the grace period, the user viewport stays, so a
+  reconnect mid-login does not reflow the page.
+- A client that wants the agent's size back while it still holds control sends a
+  `scope: "control"` resize equal to the agent's viewport with emulation off; the host then
+  drops the user viewport.
+- **Several viewers.** The viewport is per tab (one renderer), so every viewer sees the holder's
+  viewport, letterboxed into its own view. A Mac watching an iPhone that holds control sees a
+  phone-shaped page, marked by `viewport.scope: "control"` and `viewport.mobile`. When the Mac
+  takes control, the host restores the agent's viewport and the Mac then applies its own mode.
+
+### 16.3 Zoom and pan
+
+- Zoom is a client-side transform of the video layer: the fit rectangle scaled by z (1–5×)
+  about the pinch centroid, then offset by the pan. Input maps through the same transform (view
+  point to unzoomed point to CSS px), so a tap lands on the pixel under the finger at any zoom.
+  `RemoteZoomState` holds the math and has unit tests.
+- One-finger pan moves the zoomed view first; what the view cannot absorb at its edge scrolls
+  the page (scroll chaining, as Safari does between the visual and layout viewports). Two
+  fingers always scroll the page. Pinch beyond the limits rubber-bands and snaps back.
+- Double-tap zooms to 2.5× at the tap, or back to fit. It is off in Mobile size, as Safari turns
+  it off for `width=device-width` pages, so taps there have no double-tap delay.
+- **Crispness.** The video is encoded at the viewport's DPR, so 2.5× zoom of a DPR 1 stream is
+  soft. Asking the host for a higher DPR or a region stream while zoomed is not cheap: Chromium's
+  software raster is two thirds of the host's CPU (section 4.3), and it renders the whole
+  viewport at the DPR whatever is encoded. DPR 2 doubles the scroll cost (720p scroll 27% → about
+  51% of a core on the VM). So zooming never changes the stream; Set remote size offers DPR 2
+  ("sharp text") as an explicit choice.
+
+### 16.4 Scrolling
+
+Two ways to scroll a remote page from touch, both implemented on the host and measured with
+`browser-host/tools/scroll_bench.py`: the same flick (a 300 CSS px drag in 100 ms, 3000 px/s)
+on a 10,000 px page at 1280×800 with the 30 fps cap, a fresh tab per trial, median of 5. Linux
+is the VM (headless Ozone, ffmpeg + libx264); Mac is an M1 Max with the x264 CLI.
+
+| | Wheel deltas with local momentum | CEF touch events (`SendTouchEvent`) |
+|---|---|---|
+| How | The client runs `UIScrollView`'s deceleration (rate 0.998/ms) and sends a wheel delta every display frame; Rust coalesces to 16 ms | Touch start, moves and end go to Chromium, whose gesture detector scrolls and flings |
+| Host CPU while the page moves (process tree, % of a core) | Linux 28% (0.85 CPU-s over 3.0 s); Mac 29% (0.93 over 3.2 s) | Linux 34% (0.50 over 1.4 s); Mac 51% (0.07 over 0.14 s) |
+| First input to the first scroll report / first video frame | Linux 4 / 14 ms; Mac 2 / 12 ms | Linux 23 / 33 ms; Mac 19 / 24 ms |
+| Distance and duration | 1766 px over 3.0 s on both: the drag plus `UIScrollView` momentum | Linux 1995 px over 1.4 s (Chromium's fling); Mac 296 px over 0.14 s: a macOS host never flings a touch scroll, with or without mobile emulation |
+| After it | Normal | On a macOS host the tab then ignores wheel events (the touch gesture never ends), so the two cannot be mixed |
+| Momentum curve | iOS, computed locally | Chromium's Android fling, from host-side velocity |
+| Network jitter | Changes only when deltas arrive | Skews the fling: CEF stamps touches on arrival, so jitter becomes velocity error |
+| Rubber-band | Local, from the host's scroll reports | None on desktop Chromium |
+| Page touch handlers (carousels, maps) | Not invoked | Invoked |
+
+**Decision: wheel deltas with local momentum.** It costs less per second of motion, its first
+frame comes about 20 ms sooner, it behaves the same on Linux and macOS hosts (touch does not
+fling on macOS), and it gives the iOS deceleration curve the user asked for instead of
+Chromium's shorter Android fling, local rubber-banding at the page's edges, and a fling that
+network jitter cannot distort.
+Touch stays in the protocol (`touch` feature) for a later "touch events" toggle for pages that
+need real touches; the Apple client does not use it in v1.1. The host adds
+`--disable-smooth-scrolling`, so each delta scrolls at once instead of starting a 150 ms
+animation that would stack on the client's own momentum.
+
+Gestures, all modes: tap clicks; one finger scrolls (with chaining when zoomed); two fingers
+scroll; momentum continues after release with `UIScrollView`'s rate; at the top or bottom of
+the page (from `scroll` reports) the video rubber-bands locally and springs back; a two-finger
+tap right-clicks. In Keep and Set remote size, a one-finger drag that starts on the page's
+right or bottom edge (the classic scroll bar's 16 CSS px, at least 22 points) is a mouse drag,
+so the scroll bar thumb can be grabbed and dragged; long press and drag is a mouse drag anywhere.
+Mobile size has overlay scroll bars, so the client draws an iOS scroll indicator from the
+`scroll` reports, and dragging it scrubs the page.
+
+### 16.5 Copy and paste
+
+- **Never the remote OS clipboard.** CEF's `CefFrame::Copy()`/`Paste()` use the system
+  clipboard: on a macOS runner that is the user's real pasteboard, and on Linux it would be
+  shared by every tab. The host instead reads and writes text through the page:
+  - `copy` and `cut` run a script in the main world that takes the selection (the focused
+    field's `selectionStart`..`selectionEnd`, else `getSelection()`), dispatches a synthetic
+    `copy` event so pages that rewrite copied text still can, and returns the text; `cut` then
+    deletes it with `execCommand('delete')`. Password fields return nothing. When the
+    selection is inside an iframe, the host falls back to the text of CEF's
+    `OnTextSelectionChanged`.
+  - `paste` dispatches a synthetic `paste` event carrying the text; if the page does not cancel
+    it, `execCommand('insertText')` inserts it (undoable, fires `input`), and if that fails,
+    CDP `Input.insertText`.
+  - `select_all`, `undo`, `redo` and `delete` use the focused frame's `CefFrame` editing
+    commands, which do not touch the clipboard.
+- The host answers `copy` and `cut` with `clipboard {op, text}` to the requesting connection
+  only; the client writes it to `UIPasteboard`. Paste reads `UIPasteboard` only when the user
+  picks Paste (no paste prompt).
+- **Long press** selects the word under the finger (a double click at the point), and dragging
+  after it extends the selection by word (Chromium's double-click drag). The edit menu
+  (`UIEditMenuInteraction`) then appears at the selection rectangle from the host's
+  `selection` report (16.6), or at the finger before the report arrives: Cut, Copy, Paste and
+  Select All, filtered by whether the focus is editable and whether anything is selected.
+  Hardware ⌘C, ⌘X, ⌘V, ⌘A, ⌘Z go to the same edit commands instead of being sent as keys (a
+  Linux page would see Meta+C, and a macOS runner would copy to its own pasteboard).
+
+### 16.6 Protocol additions
+
+Features in the host's `hello`: `viewport_scope`, `mobile_emulation`, `edit`, `selection`,
+`scroll_metrics`, `touch`. Features in the client's `hello`: `selection` and `scroll_metrics`
+(the reports it wants). The host sends `selection` and `scroll` only to connections that asked,
+and a client sends a v1.1 message only when the host announced its feature.
+
+Client → host:
+
+| `type` | Fields | Gate | Feature |
+|---|---|---|---|
+| `resize` | v1 fields, plus `scope?: "tab" \| "control"` (absent: `tab`, the v1 meaning) and `mobile?: "off" \| "layout" \| "site"` (absent: `off`; anything else forces `scope: control`) | holder | `viewport_scope`, `mobile_emulation` |
+| `edit` | `op` (`copy`, `cut`, `paste`, `select_all`, `undo`, `redo`, `delete`), `text?` (required for `paste`, at most 512 KiB UTF-8) | holder | `edit` |
+| `touch` | `kind` (`start`, `move`, `end`, `cancel`), `id` (u32, stable per finger), `x`, `y`, `radius?`, `pressure?` (0–1), `modifiers` | holder | `touch` |
+
+Host → client:
+
+| `type` | Fields | When |
+|---|---|---|
+| `viewport` | v1 fields, plus `scope: "tab" \| "control"`, `mobile: "off" \| "layout" \| "site"`, and `agent?: viewport` (the agent's viewport while `scope` is `control`) | As in v1; v1 clients ignore the extra fields |
+| `clipboard` | `op` (`copy`, `cut`), `text` | Reply to `edit copy` or `edit cut`, to that connection only |
+| `selection` | `editable: bool`, `collapsed: bool`, `length` (UTF-16 units), `rect?: rect` | When the selection or caret changes (at most every 100 ms, trailing), to connections with `selection` |
+| `scroll` | `x`, `y` (the main frame's scroll offset), `content_w`, `content_h`, `viewport_w`, `viewport_h` (layout viewport), all CSS px | After setup and on scroll, load and resize (at most every 33 ms, trailing), to connections with `scroll_metrics` |
+
+Rules: a `resize` equal to the current viewport (same size, DPR, scope and emulation) changes
+nothing and sends no IDR. `edit` with nothing selected answers `clipboard` with empty text. A
+refused or malformed v1.1 message gets the v1 `error` codes. Fixtures for every new message are
+in `client-core/fixtures/remote_browser/messages/` (`*_v1_1.json` names, plus
+`hello_v1_1.json`).
+
+### 16.7 Negotiation and fallbacks
+
+- v1 client, v1.1 host: the client's `hello` lists no features, so it gets no `selection` or
+  `scroll`; its `resize` is tab-scoped exactly as before. The extra `viewport` fields are
+  ignored.
+- v1.1 client, v1 host: the host's `hello` lists no features. Rust then sends a user viewport as
+  a plain `resize` and remembers the agent's viewport, restoring it itself before `release`
+  (only a client that disconnects without releasing leaves its size behind). Mobile emulation,
+  `edit`, `touch` and the reports are unavailable; Rust reports the call as unsupported and the
+  client hides those menu items.
+
+### 16.8 Notices and keyframes
+
+- Notices carry `user_facing`. Only actionable ones reach the UI, in plain words, for five
+  seconds: a page that failed to load, a view-only tab, an unsupported action, an old host.
+  Internal host errors, unknown or malformed frames and video drops go to the log.
+- x264 reads its qpfile with `fscanf(" %99[^\n]\n")`, whose trailing whitespace directive
+  buffers the start of the next line, and closes the file at EOF. So the host pads every line
+  with 16 KiB of leading spaces (each seek then leaves stdio's buffer and re-reads the file),
+  and a keyframe asked for on the frame right after a forced IDR, which x264 cannot see, is
+  asked for again on the next frame instead of switching the encoder to restarts.
+- The macOS host loads the CEF framework before creating `NSApplication`. AppKit starts App
+  Intents' process registration on a worker queue, and CEF's static initializers racing it
+  crashed the host at launch (`EXC_BREAKPOINT`); `tools/soak_test.py` launches the host
+  repeatedly and fails on any new crash report.
+
+### 16.9 Client architecture
+
+- **Rust core** owns the wire models, the negotiation, and the viewport request: the client
+  states the viewport it wants (`set_viewport`), and the attach machine sends it when this
+  connection gains control, re-sends it after a reconnect, drops duplicates, and restores the
+  agent's viewport for a v1 host. Snapshots carry the viewport scope and emulation, the scroll
+  metrics, the selection and the host's v1.1 capabilities; `on_clipboard` delivers copied text.
+- **Swift** (`OmnigentRemoteBrowser`): `RemoteViewportMode` (the menu's model and persistence),
+  `RemoteZoomState` and `RemoteScrollPhysics` (pure math, unit-tested), the iOS touch
+  controller (gestures above, momentum on a `CADisplayLink`), the edit menu and pasteboard, and
+  a keyboard proxy (`UIKeyInput`) that shows the software keyboard while a remote field has
+  focus.
 
 ## Sources
 

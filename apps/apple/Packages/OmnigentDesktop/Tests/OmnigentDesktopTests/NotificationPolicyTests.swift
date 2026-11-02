@@ -142,6 +142,34 @@ struct NotificationPolicyTests {
     #expect(plays == [true, false, true, true])
   }
 
+  @Test("an actionable request has its own identifier, category and routing context")
+  @MainActor
+  func actionable() throws {
+    var request = event(.elicitation)
+    request.actions = NotificationActions(
+      categoryIdentifier: "omnigent.approval", identifier: "https://w/d/elic_1",
+      context: ["decision_id": "elic_1"])
+    let actionable = try #require(
+      delivery(
+        NotificationPolicy.decide(
+          request, context: context(active: false), preferences: NotificationPreferences())))
+    #expect(actionable.identifier == "https://w/d/elic_1")
+    #expect(actionable.categoryIdentifier == "omnigent.approval")
+    let payload = DesktopNotificationCenter.payload(for: request)
+    #expect(payload["actionContext"] as? [String: String] == ["decision_id": "elic_1"])
+    #expect(
+      NotificationPolicy.decide(
+        request, context: context(active: false),
+        preferences: NotificationPreferences(elicitations: false)) == .suppress(.disabledByUser))
+    #expect(
+      try #require(
+        delivery(
+          NotificationPolicy.decide(
+            event(), context: context(active: false), preferences: NotificationPreferences()))
+      )
+      .categoryIdentifier == nil)
+  }
+
   @Test("notification payloads round-trip to routes")
   @MainActor
   func payloadRoundTrip() throws {

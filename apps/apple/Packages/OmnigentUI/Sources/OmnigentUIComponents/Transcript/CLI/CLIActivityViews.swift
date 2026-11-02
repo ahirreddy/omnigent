@@ -217,26 +217,40 @@ struct CLIFooterLine: View {
   }
 }
 
-/// The live turn's working line, or the blocked state, as the CLI shows it.
+/// The live turn's working line, or the blocked state, as the CLI shows it:
+/// "• Working (12s · esc to interrupt)".
 struct CLIWorkingLine: View {
   let isBlocked: Bool
+  /// When the turn started; `nil` leaves the time out.
+  var startedAt: Date?
   @Environment(\.cliPalette) private var palette
   @Environment(\.composerLayoutStyle) private var layout
 
   var body: some View {
+    ElapsedTimeline(start: isBlocked ? nil : startedAt) { now in
+      CLIBulletLine(
+        line: line(now: now), marker: isBlocked ? palette.needsYou : palette.marker,
+        isLive: !isBlocked)
+    }
+    .transcriptColumn()
+    .accessibilityIdentifier("transcript-working")
+  }
+
+  private func line(now: Date) -> CLILineText {
     var line = CLILineText()
     if isBlocked {
       line.append("Waiting for your response to the request below.", palette.needsYou)
-    } else {
-      line.append("Working", bold: true)
-      // Touch has no Esc; Stop sits in the composer.
-      if layout == .card { line.append(" (esc to interrupt)", palette.dim) }
+      return line
     }
-    return CLIBulletLine(
-      line: line, marker: isBlocked ? palette.needsYou : palette.marker, isLive: !isBlocked
-    )
-    .transcriptColumn()
-    .accessibilityIdentifier("transcript-working")
+    line.append("Working", bold: true)
+    // Touch has no Esc; Stop sits in the composer.
+    let hint = layout == .card ? "esc to interrupt" : nil
+    let detail = [startedAt.map { TurnElapsed.elapsed(since: $0, now: now) }, hint]
+      .compactMap(\.self)
+    if !detail.isEmpty {
+      line.append(" (\(detail.joined(separator: " \u{00B7} ")))", palette.dim)
+    }
+    return line
   }
 }
 

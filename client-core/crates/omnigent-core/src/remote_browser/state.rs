@@ -2,8 +2,9 @@
 //! stats and open dialogs, kept current from host messages.
 
 use omnigent_protocol::remote_browser::{
-    AttachMode, ControlState, CursorUpdate, DialogOpened, Holder, HostHello, HostMessage, NavState,
-    Owner, Settings, Stats, TabClosedReason, TextInputMode, TextInputUpdate, Viewport,
+    AttachMode, ControlState, CursorUpdate, DialogOpened, Holder, HostHello, HostMessage,
+    MobileEmulation, NavState, Owner, ScrollMetrics, SelectionState, Settings, Stats,
+    TabClosedReason, TextInputMode, TextInputUpdate, Viewport, ViewportScope,
 };
 
 /// What the client shows for one remote tab.
@@ -27,6 +28,16 @@ pub struct TabState {
     pub text_input: TextInputUpdate,
     /// The viewport.
     pub viewport: Option<Viewport>,
+    /// Whose viewport is applied (v1.1; `Tab` before the host says otherwise).
+    pub viewport_scope: ViewportScope,
+    /// Mobile emulation (v1.1).
+    pub mobile: MobileEmulation,
+    /// The agent's viewport while a control-scoped one is applied (v1.1).
+    pub agent_viewport: Option<Viewport>,
+    /// The page's selection or caret, while reported (v1.1).
+    pub selection: Option<SelectionState>,
+    /// The main frame's scroll metrics, while reported (v1.1).
+    pub scroll: Option<ScrollMetrics>,
     /// Effective settings.
     pub settings: Option<Settings>,
     /// The latest stats, while requested.
@@ -55,6 +66,11 @@ impl Default for TabState {
                 caret_rect: None,
             },
             viewport: None,
+            viewport_scope: ViewportScope::Tab,
+            mobile: MobileEmulation::Off,
+            agent_viewport: None,
+            selection: None,
+            scroll: None,
             settings: None,
             stats: None,
             dialogs: Vec::new(),
@@ -71,6 +87,12 @@ impl TabState {
         self.mode = Some(hello.mode.clone());
         self.features.clone_from(&hello.features);
         self.viewport = Some(hello.viewport);
+        // The `viewport` message right after setup carries the v1.1 fields.
+        self.viewport_scope = ViewportScope::Tab;
+        self.mobile = MobileEmulation::Off;
+        self.agent_viewport = None;
+        self.selection = None;
+        self.scroll = None;
         self.control = Some(hello.control.clone());
         self.settings = Some(hello.settings.clone());
         // Dialogs are re-sent after setup on every connection.
@@ -91,13 +113,30 @@ impl TabState {
                 self.dialogs.push(dialog.clone());
             }
             HostMessage::DialogClosed { id } => self.dialogs.retain(|open| &open.id != id),
-            HostMessage::Viewport(viewport) => self.viewport = Some(*viewport),
+            HostMessage::Viewport(update) => {
+                self.viewport = Some(update.viewport);
+                self.viewport_scope = update.scope.clone().unwrap_or(ViewportScope::Tab);
+                self.mobile = update.mobile.clone().unwrap_or(MobileEmulation::Off);
+                self.agent_viewport = update.agent;
+            }
+            HostMessage::Selection(selection) => self.selection = Some(*selection),
+            HostMessage::Scroll(scroll) => self.scroll = Some(*scroll),
             HostMessage::Settings(settings) => self.settings = Some(settings.clone()),
             HostMessage::Stats(stats) => self.stats = Some(stats.clone()),
             HostMessage::TabClosed { reason } => self.closed = Some(reason.clone()),
-            HostMessage::Pong { .. } | HostMessage::Error(_) | HostMessage::Unknown { .. } => {}
+            HostMessage::Pong { .. }
+            | HostMessage::Error(_)
+            | HostMessage::Clipboard(_)
+            | HostMessage::Unknown { .. } => {}
         }
         *self != before
+    }
+
+    /// Whether the host announced a protocol v1.1 feature
+    /// ([`omnigent_protocol::remote_browser::features`]).
+    #[must_use]
+    pub fn has_feature(&self, feature: &str) -> bool {
+        self.features.iter().any(|known| known == feature)
     }
 
     /// Whether this connection holds the user's control.
@@ -237,6 +276,27 @@ mod tests {
         assert_eq!(state.dialogs[0].id, "dlg_2");
         assert!(state.apply(&host("viewport")));
         assert_eq!(state.viewport.unwrap().w, 1440);
+        assert!(state.apply(&host("viewport_control_v1_1")));
+        assert_eq!(state.viewport_scope, ViewportScope::Control);
+        assert_eq!(state.mobile, MobileEmulation::Layout);
+        assert_eq!(state.agent_viewport.unwrap().w, 1280);
+        assert!(
+            state.apply(&host("viewport")),
+            "a v1 viewport resets the v1.1 fields"
+        );
+        assert_eq!(state.viewport_scope, ViewportScope::Tab);
+        assert!(state.agent_viewport.is_none());
+        assert!(state.apply(&host("selection_v1_1")));
+        assert_eq!(state.selection.unwrap().length, 11);
+        assert!(state.apply(&host("scroll_v1_1")));
+        assert!(state.scroll.is_some());
+        assert!(
+            !state.apply(&host("clipboard_v1_1")),
+            "clipboard is an event, not state"
+        );
+        assert!(!state.has_feature("edit"));
+        assert!(state.apply(&host("hello_v1_1")));
+        assert!(state.has_feature("edit") && state.scroll.is_none());
         assert!(state.apply(&host("settings")));
         assert!(state.apply(&host("stats")));
         state.reset_connection();

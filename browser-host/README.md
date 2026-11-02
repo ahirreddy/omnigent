@@ -100,6 +100,11 @@ runner contract: `tabs.stats {tab_id}` (frames encoded, encoder CPU, host proces
 RSS) and, with `--record-dir`, `tabs.record {tab_id, name, max_frames}` and
 `tabs.record_stop {tab_id}`.
 
+Protocol v1.1 (design doc section 16) adds control-scoped viewports with mobile emulation
+(restored to the agent's size on hand-back), `edit` commands that never use the OS clipboard,
+`touch`, and `selection` and `scroll` reports for clients that ask. `tools/v11_test.py` checks
+them end to end; `tools/scroll_bench.py` compares wheel and touch scrolling.
+
 Host behaviour worth knowing:
 
 - `tabs.create` answers once the tab's CDP `targetId` is known (milliseconds), or after 2 s with

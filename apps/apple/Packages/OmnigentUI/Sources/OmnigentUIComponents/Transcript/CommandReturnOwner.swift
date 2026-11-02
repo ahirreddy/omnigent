@@ -4,13 +4,13 @@ public import SwiftUI
 /// only the owner shows the hint.
 ///
 /// A draft that can be sent keeps Command-Return on Send, so typing a reply while a request
-/// waits never approves it by accident. With nothing to send, the docked request's Approve takes
-/// it. ``ConversationScreen`` arbitrates; outside it (a lone dock or composer) the environment
+/// waits never approves it by accident. With nothing to send, the request's Approve takes it on
+/// whichever surface answers that request (inline or docked). ``ConversationScreen`` arbitrates; outside it (a lone dock or composer) the environment
 /// value is `nil` and each keeps its own shortcut.
 nonisolated public enum CommandReturnOwner: Hashable, Sendable {
   /// The composer's Send (and the Conversation menu's Send Message).
   case send
-  /// The docked request's Approve.
+  /// A request's Approve, inline or docked.
   case approve
 
   /// The owner.
@@ -29,12 +29,14 @@ extension EnvironmentValues {
   @Entry public var commandReturnOwner: CommandReturnOwner?
 }
 
-/// The dock's candidate for Command-Return (its ``DecisionDockModel/shortcutCardID``), reported
-/// up to the screen that arbitrates.
+/// The dock's candidate for Command-Return (its ``DecisionDockModel/shortcutTarget``), inline or
+/// docked, reported up to the screen that arbitrates.
 struct ApproveShortcutCandidate: PreferenceKey {
-  static let defaultValue: String? = nil
+  static let defaultValue: DecisionShortcutTarget? = nil
 
-  static func reduce(value: inout String?, nextValue: () -> String?) {
+  static func reduce(
+    value: inout DecisionShortcutTarget?, nextValue: () -> DecisionShortcutTarget?
+  ) {
     value = value ?? nextValue()
   }
 }

@@ -16,8 +16,10 @@ use crate::host::{SocketEnd, SocketMessage};
 use crate::remote_browser::{
     ControlHolder, KeyInput, KeyKind, MouseButton, MouseInput, MouseKind,
     RemoteBrowserClosedReason, RemoteBrowserConnection, RemoteBrowserErrorKind,
-    RemoteBrowserListener, RemoteBrowserMode, RemoteBrowserSnapshot, RemoteTabClosedReason,
-    RemoteViewport, StillImage, VideoFrame,
+    RemoteBrowserListener, RemoteBrowserMode, RemoteBrowserNotice, RemoteBrowserSnapshot,
+    RemoteEditOp, RemoteMobileEmulation, RemoteTabClosedReason, RemoteViewport,
+    RemoteViewportRequest, RemoteViewportScope, StillImage, TouchInput, TouchKind, VideoFrame,
+    remote_viewport_mobile,
 };
 use crate::test_support::{Harness, json};
 
@@ -64,6 +66,8 @@ struct Recorder {
     stills: Mutex<Vec<StillImage>>,
     closed: Mutex<Vec<Option<RemoteTabClosedReason>>>,
     notices: Mutex<Vec<String>>,
+    user_notices: Mutex<Vec<String>>,
+    clipboard: Mutex<Vec<(RemoteEditOp, String)>>,
 }
 
 impl RemoteBrowserListener for Recorder {
@@ -79,8 +83,14 @@ impl RemoteBrowserListener for Recorder {
     fn on_closed(&self, reason: Option<RemoteTabClosedReason>) {
         lock(&self.closed).push(reason);
     }
-    fn on_notice(&self, message: String) {
-        lock(&self.notices).push(message);
+    fn on_notice(&self, notice: RemoteBrowserNotice) {
+        lock(&self.notices).push(notice.message.clone());
+        if notice.user_facing {
+            lock(&self.user_notices).push(notice.message);
+        }
+    }
+    fn on_clipboard(&self, op: RemoteEditOp, text: String) {
+        lock(&self.clipboard).push((op, text));
     }
 }
 
@@ -297,4 +307,109 @@ fn rest_calls_decode_tabs_and_typed_errors() {
             ..
         }
     ));
+}
+
+#[test]
+fn a_v1_1_attach_sizes_the_viewport_edits_and_reports_scroll_and_selection() {
+    let mut harness = connected();
+    let recorder = Arc::new(Recorder::default());
+    let driver = harness.core.remote_browser_attach(
+        "conv_a".into(),
+        "btab_7f3a9c2e".into(),
+        RemoteBrowserMode::Control,
+        None,
+        recorder.clone(),
+    );
+    let phone = remote_viewport_mobile(390.0, 664.0, 3.0).unwrap();
+    driver
+        .set_viewport(Some(RemoteViewportRequest {
+            viewport: phone,
+            mobile: RemoteMobileEmulation::Layout,
+        }))
+        .unwrap();
+    assert!(
+        driver
+            .set_viewport(Some(RemoteViewportRequest {
+                viewport: RemoteViewport {
+                    width: 10,
+                    height: 10,
+                    dpr: 1.0
+                },
+                mobile: RemoteMobileEmulation::Off,
+            }))
+            .is_err()
+    );
+    assert!(driver.edit(RemoteEditOp::Paste, None).is_err());
+    driver.start();
+    harness.pump();
+    let (_, sink, socket) = harness.sockets.last();
+    sink.opened();
+    harness.pump();
+    assert!(lock(&socket.sent)[0].contains(r#""features":["selection","scroll_metrics"]"#));
+    sink.message(message("hello_v1_1"));
+    harness.pump();
+    let capabilities = recorder.last().capabilities;
+    assert!(capabilities.edit && capabilities.viewport_scope && capabilities.touch);
+    driver.take_control();
+    harness.pump();
+    sink.message(message("control_user_this"));
+    harness.pump();
+    let resize = lock(&socket.sent)
+        .iter()
+        .find(|frame| frame.contains(r#""type":"resize""#))
+        .cloned()
+        .expect("the wanted viewport goes out on gaining control");
+    assert!(resize.contains(r#""scope":"control""#) && resize.contains(r#""mobile":"layout""#));
+    sink.message(message("viewport_control_v1_1"));
+    sink.message(message("scroll_v1_1"));
+    sink.message(message("selection_v1_1"));
+    harness.pump();
+    let snapshot = recorder.last();
+    assert_eq!(snapshot.viewport_scope, RemoteViewportScope::Control);
+    assert_eq!(snapshot.mobile, RemoteMobileEmulation::Layout);
+    assert_eq!(snapshot.agent_viewport.unwrap().width, 1280);
+    assert!((snapshot.scroll.unwrap().y - 1240.5).abs() < f64::EPSILON);
+    assert_eq!(snapshot.selection.unwrap().length, 11);
+
+    driver.edit(RemoteEditOp::Copy, None).unwrap();
+    driver
+        .touch(TouchInput {
+            kind: TouchKind::Start,
+            id: 1,
+            x: 10.0,
+            y: 10.0,
+            radius: None,
+            pressure: Some(0.5),
+            modifiers: 0,
+        })
+        .unwrap();
+    harness.pump();
+    let sent = lock(&socket.sent).clone();
+    assert!(sent.iter().any(|frame| frame.contains(r#""type":"edit""#)));
+    assert!(sent.iter().any(|frame| frame.contains(r#""type":"touch""#)));
+    sink.message(message("clipboard_v1_1"));
+    harness.pump();
+    let clipboard = lock(&recorder.clipboard).clone();
+    assert_eq!(clipboard.len(), 1);
+    assert_eq!(clipboard[0].0, RemoteEditOp::Copy);
+    assert!(clipboard[0].1.starts_with("hello "));
+    // Internal host errors stay in the log; actionable ones reach the user in plain words.
+    sink.message(SocketMessage::Text {
+        text: r#"{"type":"error","code":"internal","message":"encoder: x264 ignored a qpfile IDR request","fatal":false}"#.into(),
+    });
+    sink.message(SocketMessage::Text {
+        text: r#"{"type":"error","code":"unsupported","message":"file uploads are not supported yet","fatal":false}"#.into(),
+    });
+    harness.pump();
+    assert_eq!(
+        lock(&recorder.user_notices).clone(),
+        ["File uploads are not supported yet."]
+    );
+    assert!(
+        lock(&recorder.notices)
+            .iter()
+            .any(|notice| notice.contains("qpfile"))
+    );
+    driver.stop();
+    harness.pump();
 }

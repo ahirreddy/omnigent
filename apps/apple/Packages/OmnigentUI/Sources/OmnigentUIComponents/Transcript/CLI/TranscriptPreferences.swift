@@ -2,13 +2,16 @@ public import Foundation
 public import Observation
 
 /// Device-local transcript preferences, stored in `UserDefaults` beside the theme keys: the
-/// style, and per style the content width and output rendering, plus the CLI font size.
+/// style, and per style the content width and output rendering, plus the CLI font size and the
+/// chat text size.
 @Observable
 public final class TranscriptPreferences {
   /// `omnigent:transcript-style`: `chat` or `cli`.
   public static let styleKey = "omnigent:transcript-style"
   /// `omnigent:cli-font-size`: points.
   public static let fontSizeKey = "omnigent:cli-font-size"
+  /// `omnigent:chat-font-size`: points.
+  public static let chatFontSizeKey = "omnigent:chat-font-size"
 
   /// The content width key for `style`.
   /// - Parameter style: A transcript style.
@@ -31,6 +34,10 @@ public final class TranscriptPreferences {
   /// The CLI font size, in points; ``appearance(style:)`` clamps it to the supported range.
   public var fontSize: Double {
     didSet { defaults.set(fontSize, forKey: Self.fontSizeKey) }
+  }
+  /// The chat text size, in points; ``appearance(style:)`` clamps it to the supported range.
+  public var chatFontSize: Double {
+    didSet { defaults.set(chatFontSize, forKey: Self.chatFontSizeKey) }
   }
   /// Problems found reading stored values, for Settings to show.
   public private(set) var readErrors: [ThemePreferences.ReadError] = []
@@ -61,16 +68,20 @@ public final class TranscriptPreferences {
     }
     self.widths = widths
     self.renderings = renderings
-    if let stored = defaults.object(forKey: Self.fontSizeKey) {
-      if let size = stored as? Double, TranscriptAppearance.fontSizes.contains(size) {
-        fontSize = size
-      } else {
-        fontSize = TranscriptAppearance.defaultFontSize
-        errors.append(.malformed(key: Self.fontSizeKey))
+    func readSize(_ key: String, in range: ClosedRange<Double>, default value: Double) -> Double {
+      guard let stored = defaults.object(forKey: key) else { return value }
+      guard let size = stored as? Double, range.contains(size) else {
+        errors.append(.malformed(key: key))
+        return value
       }
-    } else {
-      fontSize = TranscriptAppearance.defaultFontSize
+      return size
     }
+    fontSize = readSize(
+      Self.fontSizeKey, in: TranscriptAppearance.fontSizes,
+      default: TranscriptAppearance.defaultFontSize)
+    chatFontSize = readSize(
+      Self.chatFontSizeKey, in: TranscriptAppearance.chatFontSizes,
+      default: TranscriptAppearance.defaultChatFontSize)
     readErrors = errors
   }
 
@@ -125,6 +136,7 @@ public final class TranscriptPreferences {
     let style = override ?? style
     return TranscriptAppearance(
       style: style, contentWidth: contentWidth(for: style),
-      outputRendering: outputRendering(for: style), fontSize: fontSize)
+      outputRendering: outputRendering(for: style), fontSize: fontSize,
+      chatFontSize: chatFontSize)
   }
 }

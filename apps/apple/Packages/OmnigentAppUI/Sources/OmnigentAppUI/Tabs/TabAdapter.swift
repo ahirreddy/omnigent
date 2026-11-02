@@ -25,6 +25,7 @@ enum TabAdapter {
         var entry = item(
           $0, session: session, browser: browser, isSelected: $0.id == tabs.selectedID)
         entry.pane = tabs.pane(of: $0.id)
+        entry.status = status(entry.status, isUnread: tabs.unread.contains($0.id))
         return entry
       },
       selectedID: tabs.selectedID,
@@ -119,7 +120,7 @@ enum TabAdapter {
     switch tab.content {
     case .chat:
       item.title = summary?.title ?? tab.title ?? "Session"
-      item.subtitle = summary?.agentName
+      item.subtitle = summary.flatMap(context)
       item.status = attention
       item.isReadOnly = summary?.isReadOnly ?? false
       item.link = SidebarAdapter.webURL(server: connection.connectedServer, sessionID: id)
@@ -130,7 +131,7 @@ enum TabAdapter {
       }
     case .harness:
       item.title = summary.map { "\($0.title) (agent)" } ?? tab.title ?? "Agent Terminal"
-      item.subtitle = summary?.agentName
+      item.subtitle = summary.flatMap(context)
       item.status = attention
       item.canDuplicate = false
     case .sideChat(_, let rowID):
@@ -174,6 +175,41 @@ enum TabAdapter {
     guard var host = url?.host(percentEncoded: false), !host.isEmpty else { return "Browser" }
     if host.hasPrefix("www.") { host.removeFirst(4) }
     return host
+  }
+
+  /// A session tab's context line: the agent's display name and the project folder, for
+  /// example `Claude Code · omnigent`; never the raw agent id.
+  static func context(_ summary: OmnigentCoreFFI.SessionSummary) -> String? {
+    let parts = [
+      agentDisplayName(summary.agentName),
+      URL(filePath: summary.workspace).lastPathComponent,
+    ]
+    let shown = parts.filter { !$0.isEmpty && $0 != "/" }
+    return shown.isEmpty ? nil : shown.joined(separator: " \u{00B7} ")
+  }
+
+  /// A readable agent name: a known harness's label ("codex-native" is "Codex"), else the name
+  /// with its separators as spaces ("tabs_fixture_agent" is "Tabs fixture agent").
+  static func agentDisplayName(_ raw: String) -> String {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return "" }
+    let harness = HarnessAppearance(harness: trimmed)
+    if harness.identifier != "fallback" { return harness.label }
+    // A name that already reads as words keeps its own capitals.
+    guard trimmed.contains(where: { $0 == "_" || $0 == "-" }), !trimmed.contains(" ") else {
+      return trimmed
+    }
+    let words = trimmed.split(whereSeparator: { $0 == "_" || $0 == "-" }).joined(separator: " ")
+    return words.prefix(1).uppercased() + words.dropFirst()
+  }
+
+  /// A tab's status with the window's unread mark: it shows when nothing more urgent does.
+  static func status(_ status: TabStatus, isUnread: Bool) -> TabStatus {
+    guard isUnread else { return status }
+    return switch status {
+    case .none, .exited: .unread
+    default: status
+    }
   }
 
   static func status(_ state: OmnigentCoreFFI.AttentionState, known: Bool) -> TabStatus {

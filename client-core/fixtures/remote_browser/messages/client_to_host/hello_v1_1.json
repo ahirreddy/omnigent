@@ -1,0 +1,15 @@
+{
+  "type": "hello",
+  "protocol": 1,
+  "client": "omnigent-native/0.2 iOS",
+  "decoders": [
+    "h264",
+    "jpeg"
+  ],
+  "mode": "control",
+  "visible": true,
+  "features": [
+    "selection",
+    "scroll_metrics"
+  ]
+}

@@ -19,20 +19,27 @@ struct DiffCountsView: View {
   }
 }
 
-/// A unified diff with tinted added and removed lines.
+/// A unified diff with tinted added and removed lines, its files named basename first.
 struct DiffView: View {
   let diff: DiffSummary
   var maxLines = 400
   /// Shows the folded lines; `nil` only names how many there are.
   var showAll: (() -> Void)?
+  var codeFont = Theme.codeFont
+  /// Long lines wrap instead of scrolling sideways (phones).
+  var wrapsLines = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack {
-        Text(diff.files.isEmpty ? "Diff" : diff.files.joined(separator: ", "))
-          .font(Theme.Typography.section)
-          .lineLimit(1)
-          .truncationMode(.middle)
+        Text(
+          diff.files.isEmpty
+            ? "Diff" : diff.files.map { DecisionPath($0).name }.joined(separator: ", ")
+        )
+        .font(Theme.Typography.section)
+        .lineLimit(1)
+        .truncationMode(.middle)
+        .help(diff.files.joined(separator: "\n"))
         Spacer()
         DiffCountsView(added: diff.added, removed: diff.removed)
         CopyButton(
@@ -42,19 +49,10 @@ struct DiffView: View {
       .padding(.trailing, Theme.Spacing.small)
       .padding(.vertical, Theme.Spacing.extraSmall)
       Divider().opacity(0.6)
-      ScrollView(.horizontal) {
-        VStack(alignment: .leading, spacing: 0) {
-          ForEach(Array(diff.lines.prefix(maxLines).enumerated()), id: \.offset) { _, line in
-            Text(verbatim: line.text.isEmpty ? " " : line.text)
-              .font(Theme.codeFont)
-              .foregroundStyle(foreground(line.kind))
-              .padding(.horizontal, Theme.Spacing.medium)
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .background(background(line.kind))
-          }
-        }
-        .textSelection(.enabled)
-        .padding(.vertical, Theme.Spacing.small)
+      if wrapsLines {
+        lines
+      } else {
+        ScrollView(.horizontal) { lines }
       }
       if diff.lines.count > maxLines {
         if let showAll {
@@ -69,6 +67,21 @@ struct DiffView: View {
     .overlay {
       RoundedRectangle(cornerRadius: Theme.Radius.medium).strokeBorder(.separator.opacity(0.6))
     }
+  }
+
+  private var lines: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(Array(diff.lines.prefix(maxLines).enumerated()), id: \.offset) { _, line in
+        Text(verbatim: line.text.isEmpty ? " " : line.text)
+          .font(codeFont)
+          .foregroundStyle(foreground(line.kind))
+          .padding(.horizontal, Theme.Spacing.medium)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(background(line.kind))
+      }
+    }
+    .textSelection(.enabled)
+    .padding(.vertical, Theme.Spacing.small)
   }
 
   private func foreground(_ kind: DiffLineKind) -> ThemeColor {
@@ -115,8 +128,10 @@ struct ToolGroupView: View, Equatable {
           title: groupTitle,
           identifier: entries.first.map { "tool-group-toggle-\($0.id)" }
         ) {
-          HStack(spacing: Theme.Spacing.small) {
-            if failures > 0 { Pill(text: "\(failures) failed", tint: Theme.failure) }
+          // One status per row: running, else the failures, else done.
+          if !isRunning, failures > 0 {
+            Pill(text: "\(failures) failed", tint: Theme.failure)
+          } else {
             ActivityStatusView(isRunning: isRunning, isFailure: false)
           }
         }

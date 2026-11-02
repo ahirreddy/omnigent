@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// The web's per-turn fold: "Worked for 2m" (or "Worked"), closed in settled history; the live
-/// turn reads "Working…" and stays open. The content sits behind a hairline guide.
+/// The per-turn fold of tool work, titled by its size ("4 steps"): closed in settled history,
+/// open while live. How long the turn worked shows once, under its answer ("Worked for 2m"), and
+/// the live turn's time in the working indicator ("Working · 12s"), so the fold never repeats
+/// either; its tooltip still names the duration. The content sits behind a hairline guide.
 struct WorkedFold: View {
   let items: [TranscriptItem]
   let isLive: Bool
@@ -16,9 +18,16 @@ struct WorkedFold: View {
   private var isExpanded: Bool { expandedOverride ?? isLive }
 
   private var title: String {
-    if isLive { return "Working\u{2026}" }
-    if let duration { return "Worked for \(TurnLayout.duration(duration))" }
-    return "Worked"
+    Self.title(items: items)
+  }
+
+  /// "4 steps": each tool call and each other item is one.
+  static func title(items: [TranscriptItem]) -> String {
+    let count = items.reduce(0) { total, item in
+      if case .tools(_, let entries) = item { return total + max(entries.count, 1) }
+      return total + 1
+    }
+    return count == 1 ? "1 step" : "\(count) steps"
   }
 
   var body: some View {
@@ -43,6 +52,7 @@ struct WorkedFold: View {
       }
       .buttonStyle(.plain)
       .hoverHighlight()
+      .help(duration.map(TurnElapsed.worked) ?? "")
       .accessibilityLabel(title)
       .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
       .accessibilityIdentifier("worked-fold-\(items.first?.id ?? "empty")")
@@ -61,39 +71,33 @@ struct WorkedFold: View {
   }
 }
 
-/// The working indicator: Otto bobbing with a rotating label, or the blocked-state text.
+/// The live turn's one working line: typing dots and "Working · 12s", or the blocked-state text.
+/// Otto stays in empty states; a mascot is not a spinner.
 struct WorkingIndicator: View {
   let isBlocked: Bool
-  @State private var labelIndex = 0
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-  private static let labels = [
-    "Working\u{2026}", "Cooking\u{2026}", "Crunching\u{2026}", "Thinking\u{2026}",
-  ]
+  /// When the turn started; `nil` shows "Working" without a time.
+  var startedAt: Date?
 
   var body: some View {
-    HStack(spacing: Theme.Spacing.small) {
-      OttoView(isWorking: !isBlocked).frame(width: 22, height: 22)
-      Text(isBlocked ? "Waiting for your response to the request below." : Self.labels[labelIndex])
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .contentTransition(.opacity)
-    }
-    .task(id: isBlocked || reduceMotion) {
-      guard !isBlocked, !reduceMotion else { return }
-      while !Task.isCancelled {
-        do {
-          try await Task.sleep(for: .seconds(5))
-        } catch {
-          // Cancelled: the indicator went away.
-          return
+    Group {
+      if isBlocked {
+        TurnStatusRow {
+          Image(systemName: "hand.raised.fill").foregroundStyle(Theme.attention)
+            .accessibilityHidden(true)
+        } label: {
+          Text("Waiting for your response to the request below.")
         }
-        withAnimation(reduceMotion ? nil : Theme.Motion.feedback) {
-          labelIndex = (labelIndex + 1) % Self.labels.count
+      } else {
+        TurnStatusRow {
+          TypingIndicator()
+        } label: {
+          ElapsedTimeline(start: startedAt) { now in
+            Text(TurnElapsed.label(since: startedAt, now: now)).monospacedDigit()
+          }
         }
       }
     }
-    .accessibilityElement(children: .combine)
+    .frame(minHeight: Theme.Control.target)
     .accessibilityIdentifier("transcript-working")
   }
 }
@@ -126,8 +130,9 @@ struct PlanCard: View {
   }
 }
 
-/// Pending decisions inline at the pending point of the transcript (they also stay docked above
-/// the composer). Drafts are shared with the dock.
+/// Pending decisions inline at the pending point of the transcript. While a card is on screen
+/// it is the request's one answering surface and the dock only names it. Drafts are shared with
+/// the dock.
 struct InlineDecisions: View {
   let state: ConversationViewState
   let actions: ConversationActions
@@ -146,6 +151,7 @@ struct InlineDecisions: View {
         validate: actions.validateForm.map { validate in { validate(card, $0) } },
         draft: drafts.binding(card.id)
       )
+      .reportsInlineDecision(card.id, showsApprove: true)
       .id("inline-\(card.id)")
     }
   }

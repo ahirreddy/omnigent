@@ -6,6 +6,22 @@ enum DiffIDs {
   static func hunk(_ index: Int) -> String { "hunk-\(index)" }
 }
 
+/// The unified diff's line-number gutter: old and new columns, or on a phone-width pane one
+/// narrower column (the new number, else the old), which leaves about 60 pt more for code.
+enum DiffGutter {
+  /// Widths under this get the single column.
+  static let compactBelow: CGFloat = 520
+  static let width: CGFloat = 44
+  static let compactWidth: CGFloat = 32
+
+  static func isCompact(_ width: CGFloat) -> Bool { width > 0 && width < compactBelow }
+
+  /// The numbers shown for `line`: both columns, or the single one.
+  static func numbers(_ line: DiffLine, compact: Bool) -> [UInt64?] {
+    compact ? [line.newNumber ?? line.oldNumber] : [line.oldNumber, line.newNumber]
+  }
+}
+
 struct HunkHeaderRow: View {
   let header: String
   let isCurrent: Bool
@@ -54,7 +70,7 @@ struct UnifiedDiffBody: View {
             HunkHeaderRow(header: text, isCurrent: current == index)
               .id(DiffIDs.hunk(index))
           case .line(let line):
-            UnifiedLineRow(line: line)
+            UnifiedLineRow(line: line, compactGutter: DiffGutter.isCompact(width))
           }
         }
       }
@@ -67,13 +83,15 @@ struct UnifiedDiffBody: View {
 
 private struct UnifiedLineRow: View {
   let line: DiffLine
+  let compactGutter: Bool
 
   @Environment(\.colorScheme) private var scheme
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 0) {
-      gutter(line.oldNumber)
-      gutter(line.newNumber)
+      ForEach(Array(DiffGutter.numbers(line, compact: compactGutter).enumerated()), id: \.offset) {
+        gutter($0.element)
+      }
       Text(marker)
         .font(WorkspaceTheme.code)
         .foregroundStyle(markerColor)
@@ -100,7 +118,9 @@ private struct UnifiedLineRow: View {
     Text(number.map(String.init) ?? "")
       .font(WorkspaceTheme.gutter)
       .foregroundStyle(.tertiary)
-      .frame(width: 44, alignment: .trailing)
+      .frame(
+        width: compactGutter ? DiffGutter.compactWidth : DiffGutter.width, alignment: .trailing
+      )
       .padding(.trailing, 4)
       .background(WorkspaceTheme.gutterBackground(scheme))
       .accessibilityHidden(true)

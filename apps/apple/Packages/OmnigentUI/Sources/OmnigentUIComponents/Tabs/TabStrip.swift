@@ -50,6 +50,7 @@ public struct TabStrip: View {
           .font(.system(size: 13, weight: .medium))
           .frame(width: 26, height: 26)
           .contentShape(Rectangle())
+          .touchTarget(width: 26, height: 26)
       }
       .buttonStyle(.plain)
       .foregroundStyle(.secondary)
@@ -137,8 +138,9 @@ public struct TabStrip: View {
     let gaps = TabMetrics.spacing * CGFloat(count - 1)
     let even = clamp(((available - gaps) / CGFloat(count)).rounded(.down))
     guard includesSelected, count > 1, even < TabMetrics.selectedWidth else { return (even, even) }
-    // The others never go below the minimum: past that the strip scrolls.
-    let selected = TabMetrics.selectedWidth
+    // The others never go below the minimum: past that the strip scrolls. The selected tab
+    // never outgrows a narrow section, so its title stays in view.
+    let selected = min(TabMetrics.selectedWidth, max(TabMetrics.minWidth, available))
     let other = clamp(((available - gaps - selected) / CGFloat(count - 1)).rounded(.down))
     return (selected, other)
   }
@@ -148,7 +150,9 @@ public struct TabStrip: View {
   }
 
   /// The left section's width: up to the panes' divider when it is under the strip, so each
-  /// tab sits over its pane, else the left pane's share.
+  /// tab sits over its pane, else the left pane's share. Either section keeps at least
+  /// ``TabMetrics/sectionMinWidth`` (where the strip is narrower than the panes, as in iPad
+  /// portrait, the right section would otherwise clip its tab's title).
   /// - Parameters:
   ///   - sections: Both sections' frame, global.
   ///   - dividerX: The panes' divider, global.
@@ -157,12 +161,15 @@ public struct TabStrip: View {
   static func leadingSectionWidth(sections: CGRect, dividerX: CGFloat?, fraction: Double)
     -> CGFloat
   {
-    let minimum = TabMetrics.minWidth
-    guard sections.width > minimum * 2 else { return max(0, sections.width / 2) }
+    // The divider between the sections and the spacing either side of it.
+    let gap = Theme.Spacing.extraSmall * 2 + 1
+    let room = sections.width - gap
+    let minimum = TabMetrics.sectionMinWidth
+    guard room > minimum * 2 else { return max(0, room / 2).rounded(.down) }
     let wanted =
       dividerX.map { $0 - sections.minX - Theme.Spacing.extraSmall }
       ?? sections.width * fraction - Theme.Spacing.extraSmall
-    return min(max(wanted, minimum), sections.width - minimum).rounded(.down)
+    return min(max(wanted, minimum), room - minimum).rounded(.down)
   }
 
   /// Whether a dragged tab may swap with its neighbour: a session's tabs never pass the primary

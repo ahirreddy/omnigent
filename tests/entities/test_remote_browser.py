@@ -20,6 +20,7 @@ _CLIENT_MESSAGES = sorted((_FIXTURES / "messages" / "client_to_host").glob("*.js
 _VIEW_ALLOWED = {
     "ack.json",
     "hello.json",
+    "hello_v1_1.json",
     "keyframe_request.json",
     "ping.json",
     "settings_stats.json",

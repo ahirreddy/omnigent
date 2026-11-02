@@ -14,9 +14,11 @@ use omnigent_protocol::remote_browser as wire;
 
 use super::{
     ImeInput, ImeOp, ImeRange, KeyInput, KeyKind, KeyframeReason, MouseButton, MouseInput,
-    MouseKind, NavOp, RemoteBrowserCursor, RemoteBrowserListener, RemoteBrowserSettingsUpdate,
-    RemoteBrowserSnapshot, RemoteCursorImage, RemoteViewport, StillImage, StillKind, invalid_input,
-    mode_of,
+    MouseKind, NavOp, RemoteBrowserCapabilities, RemoteBrowserCursor, RemoteBrowserListener,
+    RemoteBrowserNotice, RemoteBrowserSettingsUpdate, RemoteBrowserSnapshot, RemoteCursorImage,
+    RemoteEditOp, RemoteRect, RemoteScrollMetrics, RemoteSelection, RemoteViewport,
+    RemoteViewportRequest, RemoteViewportScope, StillImage, StillKind, TouchInput, TouchKind,
+    invalid_input, mode_of,
 };
 use crate::errors::CoreError;
 use crate::host::{MessageSink, SocketEvent, WebSocketHandle, WebSocketTransport};
@@ -124,7 +126,10 @@ impl Loop {
         let (snapshot, cursor_error) = snapshot(&self.machine);
         self.listener.on_state(snapshot);
         if let Some(error) = cursor_error {
-            self.listener.on_notice(error);
+            self.listener.on_notice(RemoteBrowserNotice {
+                message: error,
+                user_facing: false,
+            });
         }
     }
 
@@ -178,6 +183,15 @@ impl Loop {
                     pts_us,
                     jpeg,
                 });
+            }
+            O::Clipboard { op, text } => {
+                self.flush_state();
+                let op = if op == wire::EditOp::Cut {
+                    RemoteEditOp::Cut
+                } else {
+                    RemoteEditOp::Copy
+                };
+                self.listener.on_clipboard(op, text);
             }
             O::TabEnded { reason } => {
                 self.flush_state();
@@ -295,6 +309,40 @@ fn snapshot(
         cursor: RemoteBrowserCursor { keyword, custom },
         text_input: tab.text_input.clone().into(),
         viewport: tab.viewport.map(Into::into),
+        viewport_scope: if tab.viewport_scope == wire::ViewportScope::Control {
+            RemoteViewportScope::Control
+        } else {
+            RemoteViewportScope::Tab
+        },
+        mobile: tab.mobile.clone().into(),
+        agent_viewport: tab.agent_viewport.map(Into::into),
+        selection: tab.selection.map(|selection| RemoteSelection {
+            editable: selection.editable,
+            collapsed: selection.collapsed,
+            length: selection.length,
+            rect: selection.rect.map(|rect| RemoteRect {
+                x: rect.x,
+                y: rect.y,
+                width: rect.w,
+                height: rect.h,
+            }),
+        }),
+        scroll: tab.scroll.map(|scroll| RemoteScrollMetrics {
+            x: scroll.x,
+            y: scroll.y,
+            content_width: scroll.content_w,
+            content_height: scroll.content_h,
+            viewport_width: scroll.viewport_w,
+            viewport_height: scroll.viewport_h,
+        }),
+        capabilities: RemoteBrowserCapabilities {
+            viewport_scope: tab.has_feature(wire::features::VIEWPORT_SCOPE),
+            mobile_emulation: tab.has_feature(wire::features::MOBILE_EMULATION),
+            edit: tab.has_feature(wire::features::EDIT),
+            selection: tab.has_feature(wire::features::SELECTION),
+            scroll_metrics: tab.has_feature(wire::features::SCROLL_METRICS),
+            touch: tab.has_feature(wire::features::TOUCH),
+        },
         settings: tab.settings.clone().map(Into::into),
         stats: tab.stats.clone().map(Into::into),
         dialogs: tab.dialogs.iter().cloned().map(Into::into).collect(),
@@ -313,13 +361,62 @@ const fn input_name(input: core::InputKind) -> &'static str {
         core::InputKind::Control => "control request",
         core::InputKind::Settings => "settings change",
         core::InputKind::Still => "still request",
+        core::InputKind::Edit => "edit command",
+        core::InputKind::Touch => "touch input",
+        core::InputKind::MobileEmulation => "mobile emulation",
     }
 }
 
-/// A notice as display text.
-fn describe(notice: &core::Notice) -> String {
+/// The plain-language text of a notice the user can act on; `None` for diagnostics.
+fn user_message(notice: &core::Notice) -> Option<String> {
     use core::Notice as N;
     match notice {
+        N::HostError(error) => match error.code.as_str() {
+            "navigation_failed" => Some(format!("The page could not be loaded: {}", error.message)),
+            "unsupported" => Some(sentence(&error.message)),
+            "control_not_permitted" => Some("This browser tab is view-only.".to_owned()),
+            "not_in_control" => Some("Take over to control the page.".to_owned()),
+            _ => None,
+        },
+        N::InputDropped { reason, input } => match reason {
+            core::DropReason::ReadOnly => Some("This browser tab is view-only.".to_owned()),
+            core::DropReason::NotInControl => Some(format!(
+                "{} not sent: take control first",
+                input_name(*input)
+            )),
+            core::DropReason::Unsupported => Some(format!(
+                "The agent's browser is too old for {}; update it on the agent's machine.",
+                input_name(*input)
+            )),
+            core::DropReason::NotAttached => None,
+        },
+        _ => None,
+    }
+}
+
+/// `text` with a capital first letter and a final period.
+fn sentence(text: &str) -> String {
+    let mut chars = text.chars();
+    let mut out: String = chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default();
+    if !out.ends_with('.') {
+        out.push('.');
+    }
+    out
+}
+
+/// A notice as display or log text.
+fn describe(notice: &core::Notice) -> RemoteBrowserNotice {
+    use core::Notice as N;
+    if let Some(message) = user_message(notice) {
+        return RemoteBrowserNotice {
+            message,
+            user_facing: true,
+        };
+    }
+    let message = match notice {
         N::UnknownMessage { message_type } => {
             format!("ignored an unknown browser message {message_type:?}")
         }
@@ -338,10 +435,15 @@ fn describe(notice: &core::Notice) -> String {
                 core::DropReason::NotAttached => "the browser is not connected",
                 core::DropReason::ReadOnly => "this view is read-only",
                 core::DropReason::NotInControl => "take control first",
+                core::DropReason::Unsupported => "the browser host is too old for it",
             };
             format!("{} not sent: {why}", input_name(*input))
         }
         N::InvalidInput(error) => format!("invalid browser input: {error}"),
+    };
+    RemoteBrowserNotice {
+        message,
+        user_facing: false,
     }
 }
 
@@ -545,6 +647,68 @@ impl RemoteBrowserDriver {
         let viewport: wire::Viewport = viewport.into();
         core::input::validate_viewport(&viewport).map_err(|error| invalid_input(&error))?;
         self.send(core::AttachInput::Resize(viewport));
+        Ok(())
+    }
+
+    /// The viewport this client wants while it holds control (protocol v1.1), or `None` for
+    /// the agent's. Applied whenever this attach holds control, and re-applied after a
+    /// reconnect; a v1 host gets a plain resize that is undone before hand-back.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::RemoteBrowser`] (`InvalidInput`) outside 200–3840 px or DPR 1–3.
+    pub fn set_viewport(&self, request: Option<RemoteViewportRequest>) -> Result<(), CoreError> {
+        let request = request.map(|request| core::ViewportRequest {
+            viewport: request.viewport.into(),
+            mobile: request.mobile.into(),
+        });
+        if let Some(request) = &request {
+            core::input::validate_viewport(&request.viewport)
+                .map_err(|error| invalid_input(&error))?;
+        }
+        self.send(core::AttachInput::SetViewport(request));
+        Ok(())
+    }
+
+    /// An edit command (needs control and a v1.1 host). Copy and cut answer through
+    /// `on_clipboard`; the remote machine's clipboard is never used.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::RemoteBrowser`] (`InvalidInput`) for a paste without text or over 512 KiB.
+    pub fn edit(&self, op: RemoteEditOp, text: Option<String>) -> Result<(), CoreError> {
+        let command = wire::EditCommand {
+            op: op.into(),
+            text,
+        };
+        core::input::validate_edit(&command).map_err(|error| invalid_input(&error))?;
+        self.send(core::AttachInput::Edit(command));
+        Ok(())
+    }
+
+    /// One touch point (needs control and a v1.1 host).
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::RemoteBrowser`] (`InvalidInput`) for a non-finite point, pressure outside
+    /// 0–1, a negative radius or undefined modifier bits.
+    pub fn touch(&self, input: TouchInput) -> Result<(), CoreError> {
+        let event = wire::TouchEvent {
+            kind: match input.kind {
+                TouchKind::Start => wire::TouchKind::Start,
+                TouchKind::Move => wire::TouchKind::Move,
+                TouchKind::End => wire::TouchKind::End,
+                TouchKind::Cancel => wire::TouchKind::Cancel,
+            },
+            id: input.id,
+            x: input.x,
+            y: input.y,
+            radius: input.radius,
+            pressure: input.pressure,
+            modifiers: input.modifiers,
+        };
+        core::input::validate_touch(&event).map_err(|error| invalid_input(&error))?;
+        self.send(core::AttachInput::Touch(event));
         Ok(())
     }
 

@@ -34,11 +34,9 @@ enum Theme {
   static let userMessageWidth: CGFloat = 560
 
   enum Typography {
-    #if os(macOS)
-      static let proseSize: CGFloat = 15
-    #else
-      static let proseSize: CGFloat = 17
-    #endif
+    /// Body prose; the transcript's sizes derive from it (``TypeRamp``).
+    static let proseSize = TypeRamp.defaultBody
+    /// The composer's extra leading; the transcript uses ``TypeRamp`` line heights.
     static let leading: CGFloat = 5
     static let editorLineHeight = proseSize + leading
     static let title = Font.title2.weight(.semibold)
@@ -79,11 +77,12 @@ enum Theme {
   // Emphasis discipline: the accent is for the one primary action on a screen and the brand
   // accent for "needs you". Everything else is neutral or a labelled status color.
   static let accent = ThemeColor.accent
-  static let brandAccent = ThemeColor.brandAccent
+  /// "Needs you": the brand accent, kept legible on every surface (``ThemeColor/attention``).
+  static let brandAccent = ThemeColor.attention
   static let userBubble = ThemeColor.userBubble
   static let running = ThemeColor.running
   /// "Needs response" and other things waiting on the user: the brand accent, as the web.
-  static let attention = ThemeColor.brandAccent
+  static let attention = ThemeColor.attention
   static let warning = ThemeColor.warning
   static let success = ThemeColor.success
   static let info = ThemeColor.info
@@ -96,6 +95,8 @@ enum Theme {
   static let focus = ThemeColor.focus
   static let link = ThemeColor.link
   static let secondary = ThemeColor.secondary
+  /// Secondary text that keeps WCAG AA on sidebars and selected rows.
+  static let mutedText = ThemeColor.mutedText
 
   static func lineCount(_ text: String) -> Int {
     text.reduce(into: 1) { count, character in
@@ -262,39 +263,26 @@ struct Pill: View {
 
 /// A pulsing dot that marks live, streaming content. Static under Reduce Motion.
 struct LiveIndicator: View {
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var color: ThemeColor = Theme.running
 
   var body: some View {
-    Circle()
-      .fill(color)
-      .frame(width: 7, height: 7)
-      .phaseAnimator(reduceMotion ? [1.0] : [1.0, 0.3]) { dot, opacity in
-        dot.opacity(opacity)
-      } animation: { _ in
-        .easeInOut(duration: 0.7)
-      }
-      .accessibilityLabel("Live")
+    LoopingIndicator(
+      shape: .dot(diameter: 7), motion: .fade(low: 0.3, duration: 0.7), color: color
+    )
+    .frame(width: 7, height: 7)
+    .accessibilityElement()
+    .accessibilityLabel("Live")
   }
 }
 
 /// Three animated dots shown while the agent is working and nothing is streaming yet.
 struct TypingIndicator: View {
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
   var body: some View {
-    HStack(spacing: 4) {
-      ForEach(0..<3, id: \.self) { index in
-        Circle()
-          .fill(.secondary)
-          .frame(width: 6, height: 6)
-          .phaseAnimator(reduceMotion ? [1.0] : [0.25, 1.0]) { dot, opacity in
-            dot.opacity(opacity)
-          } animation: { _ in
-            .easeInOut(duration: 0.5).delay(Double(index) * 0.15)
-          }
-      }
-    }
+    LoopingIndicator(
+      shape: .dots(count: 3, diameter: 6, spacing: 4),
+      motion: .fade(low: 0.25, duration: 0.5, stagger: 0.15)
+    )
+    .frame(width: 26, height: 6)
     .accessibilityElement()
     .accessibilityLabel("The agent is working")
   }

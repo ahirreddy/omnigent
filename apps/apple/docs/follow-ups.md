@@ -119,10 +119,22 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   `resource_cleanup_failed` 500 (for example a browser host that failed to close tabs) is not
   surfaced (`omnigent/server/routes/sessions/routes_events.py`, around line 3835).
 
+- [ ] **APNs push for phone supervision.** Device registration, the outbox and delivery for
+  input requests and turn ends, with the identifier-only payload and the security model in
+  [phone-supervision.md](phone-supervision.md) ("Server half"). Start from the NativeLab
+  prototype (`mobile_notifications.py`, `mobile_apns.py`); move its outbox to the server
+  database before running more than one process. Then register from the apps
+  (`omnigent_core::notifications::push`) and add a Notification Service Extension for titles.
+- [ ] **Device-link pairing tokens:** short-lived, single-use tokens in the pairing code for
+  accounts and OIDC servers (phone-supervision.md, "Pairing tokens (v2)").
+
 ## Apps
 
 - [ ] **Read state:** persist this device's read marks across relaunches; today they are kept in
   memory only.
+- [ ] **Phone supervision on a physical iPhone:** approve from the Lock Screen end to end (Face
+  ID, background launch, the saved sign-in), and check that `BGAppRefreshTask` runs. The
+  Simulator can't verify either; see [phone-supervision.md](phone-supervision.md).
 - [ ] **Sub-agents:** a child session can appear both in the parent's mirrored count and in its own
   list row, which may double-count "needs you".
 - [ ] **Sub-agents:** a running child's elapsed time uses the wall clock.
@@ -195,6 +207,25 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Flaky test:** `OmnigentTerminalUITests.ConfigAndInputTests.configParses` intermittently
   segfaults in `ghostty_config_new` (null dereference), likely a race in libghostty's global
   initialization when Swift Testing runs suites in parallel; serialize the suite or initialize once.
+
+- [ ] **Error copy:** runner failures still surface raw text ("the session's runner is unavailable
+  (HTTP 503)…"); map them to plain-language banners with a retry.
+- [ ] **Tabs (Mac):** no hover card for tabs (only the close button and a title tooltip).
+- [ ] **Gallery:** the iPad split page renders poorly in the gallery canvas.
+
+- [ ] **Contrast:** under dark Increase Contrast the needs-you text goes nearly white in Dracula,
+  Gruvbox and Nord; a lighter capsule fill would keep the hue. Selected-row text under dark
+  Increase Contrast is 6.8-6.9:1 in Catppuccin and Nord (AA, not the 7:1 target).
+- [ ] **System blue left:** the iPad keyboard-focus ring on the selected row, the inspector Agents
+  list glyphs, and `BrowserSignInViews` alternative sign-in links.
+- [ ] **Type:** move row metadata ("2y", server status) to `Theme.mutedText`; put the CLI's
+  `CLIMetrics` gaps on the 4 pt grid.
+
+- [ ] **iOS large titles** don't draw anywhere (the conversation band was replaced with inline titles;
+  the sidebar's "Omnigent" band is still empty); possibly AppShell's nested NavigationStack.
+- [ ] **Folded Duo UI tests:** XCUITest can't navigate (the outer display is captured rotated and the
+  back button isn't found); Duo is verified by screenshots only.
+- [ ] **Read-only sessions:** consider a "Fork to continue" action on the read-only composer row.
 
 ## Product decisions
 

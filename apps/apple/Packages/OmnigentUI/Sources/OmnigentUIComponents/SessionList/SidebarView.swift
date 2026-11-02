@@ -154,7 +154,7 @@ public struct SidebarView: View {
       HStack {
         Text(section.title)
           .font(Theme.Typography.section)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(Theme.mutedText)
           .textCase(nil)
         Spacer()
         if section.showsDisplayMenu, let setDisplay = actions.setDisplay {

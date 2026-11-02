@@ -20,7 +20,7 @@ enum ComposerAdapter {
   ) -> ComposerViewState {
     let composer = store.composer
     let settings = store.header?.settings
-    return ComposerViewState(
+    var state = ComposerViewState(
       availability: availability(store), delivery: delivery(composer, dismissed: dismissedError),
       isRunning: store.isRunning, isStopping: isStopping,
       attachments: composer.attachments.items.map(attachment),
@@ -29,6 +29,14 @@ enum ComposerAdapter {
       approvalModes: composer.approvalModeMenu.map(approvalModes),
       queue: composer.queue.items.map(queued),
       context: context(store, server: server), canSteer: composer.supportsSteering)
+    state.isReadOnly = isReadOnly(store)
+    return state
+  }
+
+  /// Whether the session can never take a message from this viewer (read-only, archived or
+  /// closed), unlike a session still loading.
+  static func isReadOnly(_ store: ConversationStore) -> Bool {
+    store.isClosed || store.header.map { $0.readOnly || $0.archived } ?? false
   }
 
   /// The approval-mode chip from the core's menu: clear names, the harness's own names, risk.

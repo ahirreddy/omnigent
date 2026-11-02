@@ -66,7 +66,8 @@ public struct ConversationScreen<Terminal: View>: View {
   @State private var showsShare = false
   @State private var showsInfo = false
   @State private var drafts = DecisionDrafts()
-  @State private var approveCandidate: String?
+  @State private var approveCandidate: DecisionShortcutTarget?
+  @State private var decisionSurfaces = DecisionSurfaces()
   @State private var commandRelay = FocusedActionsRelay<SessionCommandActions>()
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.transcriptTitleMenu) private var transcriptTitleMenu
@@ -120,9 +121,9 @@ public struct ConversationScreen<Terminal: View>: View {
       if showsTerminal {
         TerminalPane(status: state.terminal, resume: actions.resume) { terminal }
       } else {
-        // Inline and sub-agent cards leave Command-Return (and its emphasis) to the dock's card.
+        // A request answers inline while its card is on screen, else in the dock.
         TranscriptView(state: state, actions: actions, scrollToLatestRequest: scrollRequest)
-          .decisionApproveShortcut(approveCandidate)
+          .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
       }
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -138,12 +139,13 @@ public struct ConversationScreen<Terminal: View>: View {
       // Report no minimum width: wrapping banners would otherwise push their single-line
       // ideal width into the split view's minimum and the detail would fail to lay out.
       .frame(minWidth: 0, maxWidth: .infinity)
+      .decisionBottomBar(decisionSurfaces)
       // Transcript rows scroll under the dock and composer; never show or click through them.
       .background { BottomBarBackdrop() }
     }
     .themeCanvas()
     .cliPalette()
-    .environment(drafts)
+    .environment(drafts).environment(decisionSurfaces)
     .environment(\.commandReturnOwner, commandReturnOwner)
     .onPreferenceChange(ApproveShortcutCandidate.self) { approveCandidate = $0 }
     .inspector(isPresented: $showsInspector) {
@@ -264,9 +266,9 @@ public struct ConversationScreen<Terminal: View>: View {
         || !composer.attachments.isEmpty)
   }
 
-  /// Send while the draft can go, else the docked request's Approve.
+  /// Send while the draft can go, else the active request's Approve.
   private var commandReturnOwner: CommandReturnOwner {
-    .resolve(canSend: canSendDraft, approvableCardID: approveCandidate)
+    .resolve(canSend: canSendDraft, approvableCardID: approveCandidate?.cardID)
   }
 
   private var commands: SessionCommandActions {

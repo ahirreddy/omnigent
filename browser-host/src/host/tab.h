@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/frame_sink.h"
@@ -89,6 +90,9 @@ class Tab : public CefClient,
                const void* buffer, int width, int height) override;
   void OnImeCompositionRangeChanged(CefRefPtr<CefBrowser> browser, const CefRange& selected_range,
                                     const RectList& character_bounds) override;
+  void OnScrollOffsetChanged(CefRefPtr<CefBrowser> browser, double x, double y) override;
+  void OnTextSelectionChanged(CefRefPtr<CefBrowser> browser, const CefString& selected_text,
+                              const CefRange& selected_range) override;
   void OnVirtualKeyboardRequested(CefRefPtr<CefBrowser> browser, TextInputMode input_mode) override;
 
   // CefDisplayHandler
@@ -157,8 +161,20 @@ class Tab : public CefClient,
     std::string mode;  // view | control
     bool hello = false;
     bool stats = false;
+    // Protocol v1.1 reports this connection asked for in its hello.
+    bool wants_selection = false;
+    bool wants_scroll = false;
     std::map<std::string, uint64_t> last_refusal_us;
   };
+  /// Rate limit for a report that needs an asynchronous DevTools round trip: at most one per
+  /// interval and one in flight; a change while one is in flight runs another after it.
+  struct ReportThrottle {
+    uint64_t last_us = 0;
+    bool scheduled = false;
+    bool in_flight = false;
+    bool dirty = false;
+  };
+  using DevToolsCallback = std::function<void(bool ok, const Json& result)>;
   struct OpenDialog {
     protocol::Dialog dialog;
     CefRefPtr<CefJSDialogCallback> callback;
@@ -182,6 +198,33 @@ class Tab : public CefClient,
   void HandleNav(uint64_t connection, const protocol::ClientMessage& message);
   void HandleResize(uint64_t connection, const protocol::ClientMessage& message);
   void HandleDialogReply(uint64_t connection, const protocol::ClientMessage& message);
+  void DispatchInput(const protocol::ClientMessage& message);
+
+  // Protocol v1.1 (design doc section 16), in tab_v11.cc.
+  void InjectTouch(const protocol::ClientMessage& message);
+  void HandleEdit(uint64_t connection, const protocol::ClientMessage& message);
+  void FinishCopy(uint64_t connection, const std::string& op, bool ok, const Json& result);
+  /// Applies a viewport, its scope and emulation; a no-op when nothing changes.
+  void SetViewport(const protocol::Viewport& viewport, const std::string& scope,
+                   const std::string& mobile);
+  /// Drops the holder's viewport and emulation and returns to the agent's viewport.
+  void RestoreAgentViewport();
+  protocol::ViewportState CurrentViewport() const;
+  void ApplyEmulation(const std::string& mobile);
+  /// Sends a DevTools method on this tab's own session; `done` gets the result or the error.
+  void CallDevTools(const std::string& method, Json params, DevToolsCallback done);
+  /// Evaluates `expression` in the main frame and passes `done` its value (by value).
+  void Evaluate(const std::string& expression, DevToolsCallback done);
+  DevToolsCallback ReportFailure(const std::string& what);
+  bool AnyViewer(bool Viewer::* wants) const;
+  void ScheduleReport(ReportThrottle* throttle, uint64_t interval_us, void (Tab::*send)());
+  void SendSelectionReport();
+  void SendScrollReport();
+  void FinishReport(ReportThrottle* throttle, uint64_t interval_us, void (Tab::*send)());
+  void ScheduleSelectionReport();
+  void ScheduleScrollReport();
+  /// Sends the cached reports a v1.1 viewer asked for after its setup messages.
+  void SendInitialReports(uint64_t connection, const Viewer& viewer);
   protocol::ControlState ControlFor(uint64_t connection) const;
   void BroadcastControl(const std::string& reason);
   void SetOwner(const std::string& owner, uint64_t holder, const std::string& reason);
@@ -195,6 +238,22 @@ class Tab : public CefClient,
   const std::string session_id_;
   const std::string created_by_;
   protocol::Viewport viewport_;
+  // The agent's viewport (section 16.2); `viewport_` differs while scope is "control".
+  protocol::Viewport agent_viewport_;
+  std::string viewport_scope_ = "tab";
+  std::string mobile_ = "off";
+  /// The connection whose control-scoped viewport is applied; 0 while it is orphaned (its
+  /// holder left during the grace period) or scope is "tab".
+  uint64_t viewport_holder_ = 0;
+  int next_devtools_id_ = 100;
+  std::map<int, DevToolsCallback> devtools_calls_;
+  std::string selected_text_;
+  std::optional<protocol::SelectionState> selection_;
+  std::optional<protocol::ScrollMetrics> scroll_;
+  /// The latest root scroll offset from CEF, in device pixels.
+  std::optional<std::pair<double, double>> scroll_offset_;
+  ReportThrottle selection_throttle_;
+  ReportThrottle scroll_throttle_;
   CefRefPtr<CefBrowser> browser_;
   CefRefPtr<CefRegistration> devtools_registration_;
   std::string target_id_;

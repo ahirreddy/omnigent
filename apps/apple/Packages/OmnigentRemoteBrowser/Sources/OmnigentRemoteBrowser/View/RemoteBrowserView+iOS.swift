@@ -2,73 +2,103 @@
   import OmnigentCoreFFI
   public import UIKit
 
-  /// iOS input for M1: tap to click, long press to right-click, pan (or trackpad scroll) to
-  /// scroll, pointer hover to move, and hardware-keyboard keys. The on-screen keyboard and
-  /// marked text come later.
+  /// iOS input: touch gestures (`RemoteTouchController`), pointer hover, the software keyboard
+  /// (`RemoteKeyboardProxy`) while a remote field has focus, hardware keys, and the edit
+  /// actions (Copy, Cut, Paste, Select All from the edit menu or ⌘ shortcuts), which use this
+  /// device's pasteboard.
   extension RemoteBrowserView {
     func installGestures() {
-      let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
-      let press = UILongPressGestureRecognizer(target: self, action: #selector(handlePress(_:)))
-      let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-      pan.allowedScrollTypesMask = .all
-      pan.maximumNumberOfTouches = 2
-      let hover = UIHoverGestureRecognizer(target: self, action: #selector(handleHover(_:)))
-      for recognizer in [tap, press, pan, hover] as [UIGestureRecognizer] {
-        addGestureRecognizer(recognizer)
-      }
+      touchInput = RemoteTouchController(view: self)
+      keyboardProxy.owner = self
+      keyboardProxy.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+      addSubview(keyboardProxy)
     }
 
     override public var canBecomeFirstResponder: Bool { true }
 
     func cursorChanged() {}
 
-    private func css(_ recognizer: UIGestureRecognizer) -> CGPoint? {
-      geometry?.cssPoint(for: recognizer.location(in: self))
+    // MARK: Software keyboard
+
+    /// Shows the keyboard when the page focuses an editable field right after the user tapped
+    /// it, and hides it when the field loses focus.
+    func textInputChanged() {
+      let mode = store.snapshot.textInput.mode
+      guard mode != .none, store.canSendInput else {
+        hideKeyboardIfStillUnfocused()
+        return
+      }
+      keyboardHide?.cancel()
+      keyboardHide = nil
+      if keyboardProxy.configure(for: mode), keyboardProxy.isFirstResponder {
+        keyboardProxy.reloadInputViews()
+      }
+      // Focus that returns soon after an automatic hide (a resize can blur and refocus the
+      // field) brings the keyboard back too.
+      let recent = [lastTapAt, keyboardHiddenAt].compactMap { $0 }
+        .contains { ContinuousClock.now - $0 < .seconds(2) }
+      if recent, !keyboardProxy.isFirstResponder {
+        keyboardProxy.becomeFirstResponder()
+      }
     }
 
-    private func mouse(
-      _ kind: MouseKind, _ point: CGPoint, button: MouseButton? = nil, deltaX: Double = 0,
-      deltaY: Double = 0
-    ) -> MouseInput {
-      // The button is held from down until up.
-      let held = kind == .down ? button.map(RemoteInputMapping.buttonBit) ?? [] : []
-      return MouseInput(
-        kind: kind, x: point.x, y: point.y, button: button, clicks: button == nil ? 0 : 1,
-        modifiers: held.rawValue, dx: deltaX, dy: deltaY)
+    /// Hides the keyboard once the page's field has stayed unfocused for 400 ms: in Mobile
+    /// Size the keyboard resizes the remote, and Chromium briefly reports no focus meanwhile.
+    private func hideKeyboardIfStillUnfocused() {
+      guard keyboardProxy.isFirstResponder, keyboardHide == nil else { return }
+      keyboardHide = Task { [weak self] in
+        do {
+          try await Task.sleep(for: .milliseconds(400))
+        } catch {
+          return  // The field was focused again.
+        }
+        guard let self else { return }
+        self.keyboardHide = nil
+        guard self.store.snapshot.textInput.mode == .none, self.keyboardProxy.isFirstResponder
+        else { return }
+        self.keyboardHiddenAt = .now
+        self.becomeFirstResponder()
+      }
     }
 
-    private func click(at point: CGPoint, button: MouseButton) {
-      store.send(mouse(.move, point))
-      store.send(mouse(.down, point, button: button))
-      store.send(mouse(.up, point, button: button))
+    /// Types software-keyboard text: Return and Tab as keys, everything else committed as text.
+    func typeText(_ text: String) {
+      var pending = ""
+      func flush() {
+        guard !pending.isEmpty else { return }
+        store.send(ImeInput(op: .commit, text: pending, selection: nil, replacement: nil))
+        pending = ""
+      }
+      for character in text {
+        switch character {
+        case "\n", "\r":
+          flush()
+          pressNamedKey("Enter", hidUsage: 0x28, text: "\r")
+        case "\t":
+          flush()
+          pressNamedKey("Tab", hidUsage: 0x2B)
+        default:
+          pending.append(character)
+        }
+      }
+      flush()
     }
 
-    @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
-      becomeFirstResponder()
-      guard let point = css(recognizer) else { return }
-      click(at: point, button: .left)
-    }
-
-    @objc private func handlePress(_ recognizer: UILongPressGestureRecognizer) {
-      guard recognizer.state == .began, let point = css(recognizer) else { return }
-      click(at: point, button: .right)
-    }
-
-    @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
-      guard recognizer.state == .changed, let geometry, let point = css(recognizer) else { return }
-      let translation = recognizer.translation(in: self)
-      recognizer.setTranslation(.zero, in: self)
-      // Natural scrolling: dragging up scrolls the content down (positive DOM deltaY).
-      store.send(
-        mouse(
-          .wheel, point, deltaX: -geometry.cssLength(translation.x),
-          deltaY: -geometry.cssLength(translation.y)))
-    }
-
-    @objc private func handleHover(_ recognizer: UIHoverGestureRecognizer) {
-      guard let point = geometry?.cssPoint(for: recognizer.location(in: self), clamped: true)
-      else { return }
-      store.send(mouse(recognizer.state == .ended ? .leave : .move, point))
+    /// A key down, its character when it types one, and a key up.
+    func pressNamedKey(_ name: String, hidUsage: UInt32, text: String? = nil) {
+      let base = KeyInput(
+        kind: .rawKeyDown, macKeyCode: nil, hidUsage: hidUsage, code: nil, key: name, text: nil,
+        modifiers: 0, repeat: false)
+      store.send(base)
+      if let text {
+        var typed = base
+        typed.kind = .char
+        typed.text = text
+        store.send(typed)
+      }
+      var release = base
+      release.kind = .keyUp
+      store.send(release)
     }
 
     // MARK: Hardware keyboard
@@ -87,11 +117,18 @@
       }
     }
 
-    private func sendKeys(_ presses: Set<UIPress>, down: Bool) -> Bool {
+    /// Sends hardware keys to the page; ⌘ editing chords are left to the edit actions when
+    /// the host has them. Returns whether the presses were handled.
+    func sendKeys(_ presses: Set<UIPress>, down: Bool) -> Bool {
       guard store.canSendInput else { return false }
       var handled = false
       for press in presses {
         guard let key = press.key else { continue }
+        if store.canEdit, key.modifierFlags.contains(.command),
+          Self.editChords.contains(key.charactersIgnoringModifiers.lowercased())
+        {
+          continue
+        }
         handled = true
         let usage = UInt32(key.keyCode.rawValue)
         let modifiers = Self.modifiers(key.modifierFlags)
@@ -115,6 +152,8 @@
       return handled
     }
 
+    private static let editChords: Set<String> = ["a", "c", "v", "x", "z"]
+
     private static func modifiers(_ flags: UIKeyModifierFlags) -> RemoteModifiers {
       var result: RemoteModifiers = []
       if flags.contains(.shift) { result.insert(.shift) }
@@ -123,6 +162,54 @@
       if flags.contains(.command) { result.insert(.meta) }
       if flags.contains(.alphaShift) { result.insert(.capsLock) }
       return result
+    }
+
+    // MARK: Edit actions
+
+    // swiftlint:disable:next discouraged_optional_collection
+    override public var keyCommands: [UIKeyCommand]? {  // UIKit's signature.
+      guard store.canEdit else { return [] }
+      return [
+        UIKeyCommand(
+          title: "Undo", action: #selector(remoteUndo), input: "z", modifierFlags: .command),
+        UIKeyCommand(
+          title: "Redo", action: #selector(remoteRedo), input: "z",
+          modifierFlags: [.command, .shift]),
+      ]
+    }
+
+    @objc private func remoteUndo() { store.edit(.undo) }
+    @objc private func remoteRedo() { store.edit(.redo) }
+
+    override public func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+      guard store.canEdit else { return super.canPerformAction(action, withSender: sender) }
+      let selection = store.snapshot.selection
+      let editable = selection?.editable ?? (store.snapshot.textInput.mode != .none)
+      let selected = selection.map { !$0.collapsed } ?? true
+      switch action {
+      case #selector(copy(_:)): return selected
+      case #selector(cut(_:)): return selected && editable
+      case #selector(paste(_:)): return editable && UIPasteboard.general.hasStrings
+      case #selector(selectAll(_:)): return true
+      default: return super.canPerformAction(action, withSender: sender)
+      }
+    }
+
+    override public func copy(_ sender: Any?) { store.copy() }
+    override public func cut(_ sender: Any?) { store.cut() }
+    override public func paste(_ sender: Any?) { store.paste() }
+
+    override public func selectAll(_ sender: Any?) {
+      store.selectAll()
+      // Offer Copy (and Cut) for what is now selected.
+      Task { [weak self] in
+        do {
+          try await Task.sleep(for: .milliseconds(250))
+        } catch {
+          return
+        }
+        self?.touchInput?.presentEditMenu()
+      }
     }
   }
 #endif

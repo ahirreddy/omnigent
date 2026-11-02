@@ -6,6 +6,9 @@ nonisolated public struct ThemeColor: ShapeStyle, Hashable, Sendable {
   enum Role: Hashable, Sendable {
     case accent
     case brandAccent
+    case attention
+    case attentionFill
+    case mutedText
     case link
     case selection
     case rowSelection
@@ -37,10 +40,21 @@ nonisolated public struct ThemeColor: ShapeStyle, Hashable, Sendable {
   var alpha: Double = 1
 
   /// `--primary`: the single primary action on a screen (Send, Approve, Submit), and nothing
-  /// else. Toolbar items, chips, links, selection and decoration use the other roles.
+  /// else. Toolbar items, chips, links, selection and decoration use the other roles. Darkened
+  /// where needed so its label (``onAccent``) reads at WCAG AA, or AAA under Increase Contrast.
   public static let accent = Self(role: .accent)
-  /// `--brand-accent`: "needs you" only (the Needs you badge and count, pending requests).
+  /// `--brand-accent` exactly as the palette defines it, for swatches. Draw "needs you" with
+  /// ``attention``.
   public static let brandAccent = Self(role: .brandAccent)
+  /// "Needs you" text and glyphs: the brand accent, with its lightness moved until it reads at
+  /// WCAG AA (AAA under Increase Contrast) on the canvas, the sidebar, a selected row and its
+  /// own 15% capsule.
+  public static let attention = Self(role: .attention)
+  /// The "needs you" capsule's tint behind ``attention`` text, laid over ``surface``.
+  public static let attentionFill = Self(role: .attentionFill)
+  /// Secondary text (section headers, metadata) that reads at WCAG AA on the canvas, the
+  /// sidebar and a selected row, where the system's secondary label can fall below it.
+  public static let mutedText = Self(role: .mutedText)
   /// `--link`.
   public static let link = Self(role: .link)
   /// `--selection-background`: the text selection highlight.
@@ -122,32 +136,25 @@ nonisolated public struct ThemeColor: ShapeStyle, Hashable, Sendable {
     case .hover: return Color.primary.opacity(increased ? 0.12 : 0.05)
     case .focus: return Color.primary.opacity(increased ? 0.6 : 0.3)
     case .rowSelection:
-      let opacity = increased ? 0.24 : (dark ? 0.14 : 0.08)
-      return palette.accent.opacity(opacity)
+      return palette.accent.opacity(ThemeContrast.roles(in: environment).rowSelectionOpacity)
     case .codeSurface:
       return (environment.omnigentTheme.dark.canvas ?? Color(white: 0.08))
         .mix(with: .black, by: 0.18)
-    case .onAccent:
-      let color = palette.accent.resolve(in: environment)
-      let luminance = Self.luminance(color)
-      return luminance > 0.179 ? .black : .white
+    case .onAccent: return ThemeContrast.roles(in: environment).onPrimary.color
+    case .mutedText: return ThemeContrast.roles(in: environment).mutedText.color
     default: return nil
     }
-  }
-
-  private static func luminance(_ color: Color.Resolved) -> Double {
-    func linear(_ value: Float) -> Double {
-      let channel = Double(value)
-      return channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
-    }
-    return 0.2126 * linear(color.red) + 0.7152 * linear(color.green) + 0.0722 * linear(color.blue)
   }
 
   private func brand(_ environment: EnvironmentValues) -> Color? {
     let palette = environment.omnigentTheme.palette(for: environment.colorScheme)
     switch role {
-    case .accent: return palette.accent
+    case .accent: return ThemeContrast.roles(in: environment).primaryFill.color
     case .brandAccent: return palette.brandAccent
+    case .attention: return ThemeContrast.roles(in: environment).attention.color
+    case .attentionFill:
+      let roles = ThemeContrast.roles(in: environment)
+      return roles.attention.color.opacity(roles.capsuleOpacity)
     case .link: return palette.link
     case .selection: return palette.selection
     case .userBubble: return Color.primary.opacity(environment.colorScheme == .dark ? 0.1 : 0.06)

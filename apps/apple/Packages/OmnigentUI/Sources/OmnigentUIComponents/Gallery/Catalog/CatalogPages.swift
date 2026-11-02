@@ -27,7 +27,7 @@ enum PageCatalog {
         live: { context in AnyView(CatalogScenarioPage(.streaming, context: context)) }),
       .page(
         .newSession, "new-session", "New Session",
-        summary: "\u{201C}What should we build?\u{201D}, in the shell with the session list.",
+        summary: "\u{201C}What should we work on?\u{201D}, in the shell with the session list.",
         systemImage: "plus.bubble", keywords: ["start", "first run", "empty"],
         states: [
           scenario("ready", "Ready", .newSession),

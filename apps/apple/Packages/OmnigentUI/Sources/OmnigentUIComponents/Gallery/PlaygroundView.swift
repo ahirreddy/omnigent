@@ -19,7 +19,7 @@ public enum PlaygroundScenario: String, CaseIterable, Identifiable, Sendable {
   case decisions
   /// A 3,000-row transcript.
   case longTranscript
-  /// The new-session page ("What should we build?").
+  /// The new-session page ("What should we work on?").
   case newSession
   /// The composer's states: idle, running with a queue, approval modes, context, new session.
   case composer

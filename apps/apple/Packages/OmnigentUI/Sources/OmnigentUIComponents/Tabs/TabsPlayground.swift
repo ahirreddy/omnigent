@@ -105,7 +105,8 @@ final class TabsPlaygroundModel {
     TabItemState(
       id: "zsh", kind: .terminal, title: "zsh \u{2014} client-core", subtitle: "Refactor",
       status: .terminalActivity, canDuplicate: false),
-    TabItemState(id: "side", kind: .sideChat, title: "Why does the refresh test flake?"),
+    TabItemState(
+      id: "side", kind: .sideChat, title: "Why does the refresh test flake?", status: .unread),
     TabItemState(
       id: "docs", kind: .browser, title: "Omnigent Docs", status: .loading, isPlayingAudio: true,
       link: URL(string: "https://omnigent.ai/docs")),

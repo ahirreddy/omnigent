@@ -1,7 +1,7 @@
 public import SwiftUI
 
 /// Settings > Appearance > Transcript: Style (Chat or CLI), Output rendering and Content width
-/// for that style, and the CLI font size.
+/// for that style, and the CLI font size or the chat text size.
 public struct TranscriptSettingsSection: View {
   @Bindable private var preferences: TranscriptPreferences
 
@@ -34,6 +34,13 @@ public struct TranscriptSettingsSection: View {
             in: TranscriptAppearance.fontSizes, step: 1)
         }
         .accessibilityIdentifier("settings.cli-font-size")
+      } else {
+        LabeledContent("Text size") {
+          Stepper(
+            "\(Int(preferences.chatFontSize)) pt", value: $preferences.chatFontSize,
+            in: TranscriptAppearance.chatFontSizes, step: 1)
+        }
+        .accessibilityIdentifier("settings.chat-font-size")
       }
     } header: {
       Text("Transcript")
@@ -129,7 +136,8 @@ private struct TranscriptAppearanceHost: ViewModifier {
     store.storage = $windowStyle
     let controls = TranscriptWindowControls(
       style: appearance.style, preferences: preferences, window: store)
-    return content
+    return
+      content
       .transcriptAppearance(appearance)
       .environment(\.transcriptWindow, controls)
       .focusedSceneValue(\.transcriptWindow, controls)
@@ -249,7 +257,8 @@ private struct AppearanceSettingsHost: ViewModifier {
 
   func body(content: Content) -> some View {
     presenter.open = open
-    return content
+    return
+      content
       .transcriptAppearance(from: preferences.transcript)
       .environment(\.openAppearanceSettings, OpenAppearanceSettingsAction(presenter: presenter))
       .sheet(isPresented: $isPresented) {

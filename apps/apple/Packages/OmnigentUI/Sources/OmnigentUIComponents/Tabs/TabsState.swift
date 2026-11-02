@@ -93,6 +93,15 @@ nonisolated public enum TabStatus: Hashable, Sendable {
     case .exited: "Exited"
     }
   }
+
+  /// Work is in progress: a turn runs, a page loads or a terminal prints. A tab whose work
+  /// settles while it is out of view becomes unread.
+  public var isBusy: Bool {
+    switch self {
+    case .running, .loading, .terminalActivity: true
+    case .none, .needsYou, .failed, .unread, .exited: false
+    }
+  }
 }
 
 /// One tab in the strip.
@@ -211,6 +220,8 @@ nonisolated public struct TabsState: Hashable, Sendable {
   public var unpinned: [TabItemState] { tabs.filter { !$0.isPinned } }
   /// The selected tab.
   public var selected: TabItemState? { tabs.first { $0.id == selectedID } }
+  /// Tabs whose work is in progress (``TabStatus/isBusy``).
+  public var busyIDs: Set<String> { Set(tabs.filter(\.status.isBusy).map(\.id)) }
 
   /// The tabs of one pane, in order; every tab when the window is not split.
   /// - Parameter pane: The pane.
@@ -293,8 +304,12 @@ nonisolated public struct TabSplitState: Hashable, Sendable {
 nonisolated enum TabSplitMetrics {
   /// The divider's visible width.
   static let divider: CGFloat = 1
-  /// The divider's draggable width.
-  static let handle: CGFloat = 9
+  /// The divider's draggable width: a 44 pt target on touch.
+  #if os(macOS)
+    static let handle: CGFloat = 9
+  #else
+    static let handle: CGFloat = 44
+  #endif
 }
 
 extension EnvironmentValues {

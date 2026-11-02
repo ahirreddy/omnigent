@@ -92,9 +92,20 @@ bool RoundTripHostMessage(const Json& message, Json* rebuilt, std::string* error
   } else if (type == "dialog_closed") {
     *rebuilt = protocol::DialogClosedMessage(message.GetString("id").value_or(""));
   } else if (type == "viewport") {
-    protocol::Viewport viewport;
-    if (!protocol::ParseViewport(message, &viewport, error)) return false;
+    protocol::ViewportState viewport;
+    if (!protocol::ParseViewportState(message, &viewport, error)) return false;
     *rebuilt = protocol::ViewportMessage(viewport);
+  } else if (type == "clipboard") {
+    *rebuilt = protocol::ClipboardMessage(message.GetString("op").value_or(""),
+                                          message.GetString("text").value_or(""));
+  } else if (type == "selection") {
+    protocol::SelectionState selection;
+    if (!protocol::ParseSelection(message, &selection, error)) return false;
+    *rebuilt = protocol::SelectionMessage(selection);
+  } else if (type == "scroll") {
+    protocol::ScrollMetrics scroll;
+    if (!protocol::ParseScroll(message, &scroll, error)) return false;
+    *rebuilt = protocol::ScrollMessage(scroll);
   } else if (type == "settings") {
     protocol::Settings settings;
     if (!protocol::ParseSettings(message, &settings, error)) return false;
@@ -171,6 +182,33 @@ TEST(FixturesClientMessagesMapToHostInputs) {
   CHECK(LoadJson("messages/client_to_host/mouse_wheel.json", &message, &error));
   CHECK(protocol::ParseClientMessage(message, &parsed, &error));
   CHECK_EQ(*parsed.dy, 120.0);
+  // v1.1: resize scope and emulation, edit and touch.
+  CHECK(LoadJson("messages/client_to_host/resize_mobile_v1_1.json", &message, &error));
+  CHECK(protocol::ParseClientMessage(message, &parsed, &error));
+  CHECK_EQ(*parsed.scope, std::string("control"));
+  CHECK_EQ(*parsed.mobile, std::string("layout"));
+  CHECK_EQ(parsed.viewport.dpr, 3.0);
+  CHECK(LoadJson("messages/client_to_host/edit_paste_v1_1.json", &message, &error));
+  CHECK(protocol::ParseClientMessage(message, &parsed, &error));
+  CHECK(parsed.type == protocol::ClientType::kEdit);
+  CHECK_EQ(*parsed.text, std::string("pasted \u4e16\U0001F30D"));
+  CHECK(LoadJson("messages/client_to_host/touch_start_v1_1.json", &message, &error));
+  CHECK(protocol::ParseClientMessage(message, &parsed, &error));
+  CHECK_EQ(parsed.touch_id, static_cast<int64_t>(1));
+  CHECK_EQ(*parsed.pressure, 0.5);
+  for (const char* bad : {R"({"type":"edit","op":"paste"})", R"({"type":"edit","op":"print"})",
+                          R"({"type":"resize","w":400,"h":400,"dpr":1,"scope":"agent"})",
+                          R"({"type":"touch","kind":"start","id":-1,"x":1,"y":1})",
+                          R"({"type":"touch","kind":"tap","id":1,"x":1,"y":1})"}) {
+    Json invalid_v11 = *Json::Parse(bad, &error);
+    CHECK_MSG(!protocol::ParseClientMessage(invalid_v11, &parsed, &error), bad);
+  }
+  const std::string long_text(protocol::kMaxPasteBytes + 1, 'a');
+  Json long_paste = Json::MakeObject();
+  long_paste.Set("type", "edit");
+  long_paste.Set("op", "paste");
+  long_paste.Set("text", long_text);
+  CHECK(!protocol::ParseClientMessage(long_paste, &parsed, &error));
   // A down without a button is rejected.
   Json invalid = *Json::Parse(R"({"type":"mouse","kind":"down","x":1,"y":1})", &error);
   CHECK(!protocol::ParseClientMessage(invalid, &parsed, &error));

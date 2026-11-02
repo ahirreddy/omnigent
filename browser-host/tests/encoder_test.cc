@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <mutex>
+#include <set>
 
 #include "core/encoder.h"
 #include "core/h264.h"
@@ -32,6 +33,11 @@ void Pattern(rb::I420Frame* frame, int seed) {
   }
 }
 
+// IDRs requested back to back, after gaps, and repeatedly, as viewers attach, tabs become
+// visible and the viewport changes.
+const std::set<size_t> kRequestedKeyframes = {3, 5, 6, 11, 12, 13, 19, 23};
+constexpr int kFrames = 26;
+
 void RunEncoder(const rb::EncoderInfo& info) {
   rb::SubprocessEncoder encoder(info, RB_SHIM_LIBRARY, "/tmp");
   Collector collector;
@@ -56,19 +62,29 @@ void RunEncoder(const rb::EncoderInfo& info) {
             error);
   rb::I420Frame frame;
   frame.Resize(320, 240);
-  for (int index = 0; index < 8; ++index) {
+  for (int index = 0; index < kFrames; ++index) {
     Pattern(&frame, index);
-    CHECK_MSG(encoder.Submit(frame, 1000 + index, index == 5, &error), error);
+    const bool keyframe = kRequestedKeyframes.count(static_cast<size_t>(index)) != 0;
+    CHECK_MSG(encoder.Submit(frame, 1000 + index, keyframe, &error), error);
     // One frame out per frame in: the pipe has no buffering delay.
     CHECK_MSG(collector.WaitFor(static_cast<size_t>(index) + 1),
               std::string(info.path) + " did not produce frame " + std::to_string(index));
   }
   encoder.Stop();
   std::lock_guard<std::mutex> lock(collector.mutex);
-  CHECK_EQ(collector.frames.size(), 8u);
+  CHECK_EQ(collector.frames.size(), static_cast<size_t>(kFrames));
+  // x264 cannot see a request for the frame right after a forced IDR (encoder.cc); the
+  // streamer asks again, so here that frame is a P-frame and the next request lands.
+  const bool in_stream = encoder.keyframe_mode() == "in_stream";
+  CHECK_MSG(in_stream == (info.kind == rb::EncoderKind::kX264),
+            "x264 keeps in-stream IDRs: " + encoder.keyframe_mode());
+  bool previous_key = true;
   for (size_t index = 0; index < collector.frames.size(); ++index) {
     const rb::EncodedFrame& encoded = collector.frames[index];
-    const bool expect_key = index == 0 || index == 5;
+    const bool requested = kRequestedKeyframes.count(index) != 0;
+    const bool expect_key = index == 0 || (requested && !(in_stream && previous_key && index > 0 &&
+                                                          kRequestedKeyframes.count(index - 1)));
+    previous_key = encoded.keyframe;
     CHECK_MSG(encoded.keyframe == expect_key, info.path + " frame " + std::to_string(index));
     CHECK_EQ(encoded.pts_us, 1000u + index);
     if (expect_key) {

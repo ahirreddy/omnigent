@@ -92,7 +92,8 @@ extension TurnSegment {
 struct CLITranscriptRows<Header: View>: View {
   let state: ConversationViewState
   let actions: ConversationActions
-  let segments: [TurnSegment]
+  /// The folded blocks, from ``TranscriptLayoutMemo``.
+  let blocks: [CLIBlockEntry]
   let header: Header
 
   var body: some View {
@@ -105,21 +106,19 @@ struct CLITranscriptRows<Header: View>: View {
     {
       SupersededBanner(section: superseded, target: target).transcriptColumn()
     }
-    if segments.isEmpty {
+    if blocks.isEmpty {
       EmptyTranscriptView(state: state).transcriptColumn()
     }
-    let blocks = CLILayout.blocks(
-      segments, durations: state.turnDurations, timestamps: state.timestamps,
-      isRunning: state.header.status == .running)
-    ForEach(blocks) { block in
-      CLIBlockView(block: block, decorations: decorations(for: block))
+    ForEach(blocks) { entry in
+      CLIBlockView(block: entry.block, decorations: entry.decorations)
         .equatable()
-        .id(block.id)
+        .id(entry.id)
     }
     InlineDecisions(state: state, actions: actions).transcriptColumn()
     CLISubagentLines(state: state, actions: actions)
     if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
-      CLIWorkingLine(isBlocked: !state.pendingDecisions.isEmpty)
+      CLIWorkingLine(
+        isBlocked: !state.pendingDecisions.isEmpty, startedAt: TurnElapsed.start(in: state))
     }
     if let failure = state.header.failureMessage, !hasErrorRow(matching: failure) {
       FailureBanner(message: failure, resume: actions.resume).transcriptColumn()
@@ -134,20 +133,6 @@ struct CLITranscriptRows<Header: View>: View {
     state.rows.suffix(20).contains {
       $0.activity?.isFailure == true && $0.activity?.summary == failure
     }
-  }
-
-  /// Timestamps for the hover action row and the shared-session author.
-  private func decorations(for block: CLIBlock) -> [String: MessageDecoration] {
-    guard case .segment(let segment) = block else { return [:] }
-    var result: [String: MessageDecoration] = [:]
-    for item in segment.items {
-      guard case .message(let row) = item else { continue }
-      let isOther =
-        state.isShared && row.role == .user && row.author != nil && row.author != state.viewerName
-      result[row.id] = MessageDecoration(
-        timestamp: state.timestamps[row.id], showsActions: false, showsAvatar: isOther)
-    }
-    return result
   }
 }
 

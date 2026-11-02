@@ -100,6 +100,14 @@ public struct ComposerView: View {
 
   /// The composer.
   public var body: some View {
+    if layout == .touch, state.isReadOnly {
+      ReadOnlyComposerBar(reason: state.availability.reason)
+    } else {
+      composer
+    }
+  }
+
+  private var composer: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       DeliveryBanner(
         delivery: state.delivery, acknowledge: actions.acknowledgeUncertainDelivery,

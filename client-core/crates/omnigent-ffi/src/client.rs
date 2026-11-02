@@ -26,7 +26,7 @@ use omnigent_core::http::HttpTransport as _;
 
 use crate::connection::{self, HostConfig, Resolved};
 use crate::databricks::DatabricksAuth;
-use crate::decisions::DecisionResponse;
+use crate::decisions::{DecisionCard, DecisionResponse};
 use crate::engine::{Bridge, Engine, Link, Listeners, Msg, SignInContext, Transports, View, lock};
 use crate::errors::CoreError;
 use crate::events::{
@@ -1213,6 +1213,29 @@ impl ClientCore {
             .resolve_decision(&session_id, &decision_id, &response.into())
             .await
             .map_err(CoreError::from)
+    }
+
+    /// The decisions `session_id` is waiting on now, read fresh from the server whether or not
+    /// the session is open. Check a request shown outside the app (a notification) against it
+    /// before acting; [`Self::resolve_decision`] re-checks again before it writes.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`].
+    pub async fn pending_decisions(
+        &self,
+        session_id: String,
+    ) -> Result<Vec<DecisionCard>, CoreError> {
+        let decisions = self
+            .inner
+            .sessions
+            .pending_decisions(&session_id)
+            .await
+            .map_err(CoreError::from)?;
+        Ok(decisions
+            .into_iter()
+            .map(|decision| DecisionCard::from_core(decision, false))
+            .collect())
     }
 
     /// The composer text the core tracks for `session_id`.

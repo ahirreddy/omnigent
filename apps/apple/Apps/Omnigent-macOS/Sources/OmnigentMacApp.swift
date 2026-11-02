@@ -1,6 +1,7 @@
 import AppKit
 import OSLog
 import OmnigentAppUI
+import OmnigentAuthUI
 import OmnigentBrowser
 import OmnigentDesktop
 import OmnigentTerminalUI
@@ -23,14 +24,18 @@ struct OmnigentMacApp: App {
   var body: some Scene {
     let services = appDelegate.services
     let desktop = services.desktop
+    // The demo's windows open on its offline server, whatever the default server is.
+    let defaultServerURL = {
+      OmnigentMacAppDelegate.demoServerURL ?? desktop.preferences.defaultServerURL
+    }
     ServerWindowScene(
-      defaultServerURL: { desktop.preferences.defaultServerURL },
+      defaultServerURL: defaultServerURL,
       content: { id in ServerWindowRoot(id: id, services: services) }
     )
     .commands {
       OmnigentDesktopCommands(
         actions: DesktopCommandActions(
-          defaultServerURL: { desktop.preferences.defaultServerURL },
+          defaultServerURL: defaultServerURL,
           helpURL: Self.helpURL, checkForUpdates: appDelegate.checkForUpdates,
           localServer: desktop.localServer))
       BrowserCommands()
@@ -58,6 +63,11 @@ struct OmnigentMacApp: App {
 /// The desktop delegate, plus the app's own services bound before launch finishes so cold-start
 /// deep links and issues reach them.
 final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
+  /// Launched with `-OmnigentDemo`: the core's offline demo server instead of a real one.
+  static let isDemo = ProcessInfo.processInfo.arguments.contains("-OmnigentDemo")
+  /// The demo server's URL in a demo launch.
+  static let demoServerURL = isDemo ? URL(string: ServerSession.demoServerURL) : nil
+
   /// App-wide services, created with the delegate's `DesktopController`.
   private(set) lazy var services = AppServices(desktop: desktop)
 
@@ -82,6 +92,11 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   }
 
   override func applicationWillFinishLaunching(_ notification: Notification) {
+    if Self.isDemo {
+      // The demo starts with one window on its sessions, never the windows an earlier (perhaps
+      // killed) run left for restoration.
+      UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
+    }
     services.bind()
     super.applicationWillFinishLaunching(notification)
   }
@@ -133,6 +148,9 @@ struct AppSettingsView: View {
           Form { ThemeSettingsView(preferences: services.theme) }.formStyle(.grouped)
         },
         SettingsTabItem("Terminal", systemImage: "apple.terminal") { TerminalSettingsView() },
+        SettingsTabItem("Phone", systemImage: "iphone") {
+          PairingSettingsView(servers: services.pairingServers())
+        },
       ]
     ) {
       BrowserEngineSettingsView(

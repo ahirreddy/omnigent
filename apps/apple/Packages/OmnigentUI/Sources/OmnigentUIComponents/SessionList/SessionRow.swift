@@ -166,7 +166,9 @@ struct NeedsYouCapsule: View {
     .foregroundStyle(Theme.attention)
     .padding(.horizontal, Theme.Spacing.small)
     .padding(.vertical, 1.5)
-    .background(Theme.attention.opacity(0.15), in: Capsule())
+    // An opaque base, so a selected row's tint never lowers the text's contrast.
+    .background(ThemeColor.attentionFill, in: Capsule())
+    .background(ThemeColor.surface, in: Capsule())
     .help(requests > 1 ? "\(requests) requests need your response" : "Needs your response")
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(requests > 1 ? "Needs you, \(requests) requests" : "Needs you")

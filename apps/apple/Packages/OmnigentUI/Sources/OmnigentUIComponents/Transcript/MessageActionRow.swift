@@ -62,22 +62,54 @@ struct MessageActionItem: Identifiable {
 
 /// A message's action buttons (Copy, Fork chat from here, Copy link) and its timestamp. While a
 /// ``View/messageActionsHost(row:actions:pinned:showsOnTouch:focus:)`` hides them, it renders no
-/// controls; on Mac it keeps the space they take, so revealing them never moves the transcript.
+/// controls. With `overlaysGap` on Mac it takes no space at all: the controls hang into the gap
+/// below the message at its trailing edge, so a hidden row leaves no blank lane and revealing it
+/// moves nothing. An answer with a "Worked for" footer overlays the row on that line instead.
 struct MessageActionRow: View {
   let row: Row
   let actions: ConversationActions
   var timestamp: Date?
   /// The host's focus, so moving focus from the message into a button keeps the row shown.
   var focus: FocusState<Bool>.Binding
+  /// Hang the controls into the transcript's row gap below the message (Mac chat style); off,
+  /// the row sizes to its controls (the CLI's floating cluster, touch).
+  var overlaysGap = false
 
   @Environment(\.messageActionsRevealed) private var revealed
 
+  /// How far the controls rise into the message's spacing above the row (4 pt under a bubble,
+  /// 8 under an answer), so they start at the message's edge and fit the 24 pt row gap.
+  private var gapLift: CGFloat {
+    row.role == .user ? Theme.Spacing.extraSmall : Theme.Spacing.small
+  }
+
   var body: some View {
+    #if os(macOS)
+      if overlaysGap {
+        Color.clear
+          .frame(height: 0)
+          .overlay(alignment: .topTrailing) {
+            if revealed {
+              controls
+                .contentShape(Rectangle())
+                .offset(y: -gapLift)
+                .transition(.opacity)
+            }
+          }
+      } else {
+        sizedBody
+      }
+    #else
+      sizedBody
+    #endif
+  }
+
+  @ViewBuilder private var sizedBody: some View {
     if revealed {
       controls.transition(.opacity)
     } else {
       #if os(macOS)
-        // Hover reveals the row in place; touch has nothing to reveal, so it keeps no gap.
+        // Hover reveals the cluster in place; touch has nothing to reveal, so it keeps no gap.
         Color.clear
           .frame(width: Theme.Control.target, height: Theme.Control.target)
           .accessibilityHidden(true)

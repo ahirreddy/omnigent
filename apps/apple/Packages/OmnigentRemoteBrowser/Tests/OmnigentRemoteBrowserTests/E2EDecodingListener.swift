@@ -52,6 +52,8 @@ nonisolated final class E2EDecodingListener: RemoteBrowserListener {
     var hardware: HardwareDecodeReport?
     var errors: [String] = []
     var notices: [String] = []
+    var userNotices: [String] = []
+    var clipboard: [(RemoteEditOp, String)] = []
     var closed: RemoteTabClosedReason??
   }
 
@@ -64,6 +66,8 @@ nonisolated final class E2EDecodingListener: RemoteBrowserListener {
   var hardware: HardwareDecodeReport? { received.withLock { $0.hardware } }
   var errors: [String] { received.withLock { $0.errors } }
   var notices: [String] { received.withLock { $0.notices } }
+  var userNotices: [String] { received.withLock { $0.userNotices } }
+  var clipboard: [(RemoteEditOp, String)] { received.withLock { $0.clipboard } }
   var closed: RemoteTabClosedReason?? { received.withLock { $0.closed } }
 
   func onState(snapshot: RemoteBrowserSnapshot) {
@@ -88,8 +92,15 @@ nonisolated final class E2EDecodingListener: RemoteBrowserListener {
     received.withLock { $0.closed = .some(reason) }
   }
 
-  func onNotice(message: String) {
-    received.withLock { $0.notices.append(message) }
+  func onNotice(notice: RemoteBrowserNotice) {
+    received.withLock {
+      $0.notices.append(notice.message)
+      if notice.userFacing { $0.userNotices.append(notice.message) }
+    }
+  }
+
+  func onClipboard(op operation: RemoteEditOp, text: String) {
+    received.withLock { $0.clipboard.append((operation, text)) }
   }
 
   private func decode(_ frame: VideoFrame, with state: inout Decoder) throws -> DecodedFrame {

@@ -35,6 +35,9 @@ public final class FixtureRemoteBrowserDriver: RemoteBrowserDriverProtocol {
     snapshot.control = RemoteBrowserControl(
       owner: control ? .user : .agent, holder: control ? .this : .nobody, userId: nil,
       handoff: nil)
+    snapshot.capabilities = RemoteBrowserCapabilities(
+      viewportScope: true, mobileEmulation: true, edit: true, selection: true,
+      scrollMetrics: true, touch: true)
     state = Mutex(State(snapshot: snapshot, tabExists: tabExists))
     self.latency = latency
     self.listener = listener
@@ -93,13 +96,16 @@ public final class FixtureRemoteBrowserDriver: RemoteBrowserDriverProtocol {
   public nonisolated func requestStill(kind: StillKind) {
     guard let url = Bundle.module.url(forResource: "thumbnail_320x200", withExtension: "jpg") else {
       listener.onNotice(
-        message: FixtureStreamError.missingResource("thumbnail_320x200.jpg").description)
+        notice: RemoteBrowserNotice(
+          message: FixtureStreamError.missingResource("thumbnail_320x200.jpg").description,
+          userFacing: false))
       return
     }
     do {
       listener.onStill(still: StillImage(kind: kind, ptsUs: 0, jpeg: try Data(contentsOf: url)))
     } catch {
-      listener.onNotice(message: String(describing: error))
+      listener.onNotice(
+        notice: RemoteBrowserNotice(message: String(describing: error), userFacing: false))
     }
   }
 
@@ -137,11 +143,51 @@ public final class FixtureRemoteBrowserDriver: RemoteBrowserDriverProtocol {
       return state.snapshot
     }
     listener.onState(snapshot: snapshot)
-    if let streamError { listener.onNotice(message: streamError.description) }
+    if let streamError {
+      listener.onNotice(
+        notice: RemoteBrowserNotice(message: streamError.description, userFacing: false))
+    }
   }
 
+  /// Records the size; the fixture viewport is fixed.
   public nonisolated func resize(viewport: RemoteViewport) throws {
     log("resize \(viewport.width)x\(viewport.height)")
+  }
+
+  /// Records the wanted viewport and reports it applied, as a v1.1 host does.
+  public nonisolated func setViewport(request: RemoteViewportRequest?) throws {
+    let snapshot = state.withLock { state in
+      let agent = state.snapshot.agentViewport ?? state.snapshot.viewport
+      if let request {
+        state.inputLog.append(
+          "viewport \(request.viewport.width)x\(request.viewport.height) \(request.mobile)")
+        state.snapshot.viewport = request.viewport
+        state.snapshot.viewportScope = .control
+        state.snapshot.mobile = request.mobile
+        state.snapshot.agentViewport = agent
+      } else {
+        state.inputLog.append("viewport agent")
+        state.snapshot.viewport = agent
+        state.snapshot.viewportScope = .tab
+        state.snapshot.mobile = .off
+        state.snapshot.agentViewport = nil
+      }
+      return state.snapshot
+    }
+    listener.onState(snapshot: snapshot)
+  }
+
+  /// Records the command; copy and cut answer with a fixed selection.
+  public nonisolated func edit(op command: RemoteEditOp, text: String?) throws {
+    log("edit \(command)\(text.map { " \($0)" } ?? "")")
+    if command == .copy || command == .cut {
+      listener.onClipboard(op: command, text: "fixture selection")
+    }
+  }
+
+  /// Records the touch.
+  public nonisolated func touch(input: TouchInput) throws {
+    log("touch \(input.kind) \(Int(input.x)),\(Int(input.y))")
   }
 
   /// Gives this client control.
@@ -285,8 +331,6 @@ extension FixtureRemoteBrowserDriver {
       return error
     }
   }
-
-  /// Records the size; the fixture viewport is fixed.
 
   /// One frame interval: advances loading progress and picks the next frame while visible.
   private nonisolated static func tick(_ state: inout State)

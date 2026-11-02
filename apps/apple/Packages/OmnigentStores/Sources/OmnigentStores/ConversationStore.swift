@@ -67,6 +67,9 @@ public final class ConversationStore {
   public private(set) var isClosed = false
   /// The session the conversation continues in, when superseded.
   public private(set) var supersededBy: String?
+  /// When the running turn started and how long finished turns worked, for the turns this
+  /// store saw start.
+  public private(set) var turnTimer = TurnTimer()
   /// Decision cards.
   public let decisions: DecisionStore
   /// The composer.
@@ -121,6 +124,7 @@ public final class ConversationStore {
     self.header = header
     self.sections = sections
     decisions.replace(cards)
+    timeTurn(observed: false)
   }
 
   func apply(revision: UInt64, change: TranscriptChange) {
@@ -135,6 +139,21 @@ public final class ConversationStore {
     if let header = change.header { self.header = header }
     if let sections = change.sections { self.sections = sections }
     self.revision = revision
+    timeTurn(observed: true)
+  }
+
+  private func timeTurn(observed: Bool) {
+    let running = isRunning
+    var timer = turnTimer
+    timer.update(isRunning: running, observed: observed, responseIDs: latestTurnResponseIDs())
+    if timer != turnTimer { turnTimer = timer }
+  }
+
+  /// The response ids of the rows after the last user message.
+  private func latestTurnResponseIDs() -> [String] {
+    let start = rows.lastIndex { $0.role == .user }.map { $0 + 1 } ?? rows.startIndex
+    var seen = Set<String>()
+    return rows[start...].compactMap(\.responseId).filter { seen.insert($0).inserted }
   }
 
   func linkChanged(_ state: LinkState) {

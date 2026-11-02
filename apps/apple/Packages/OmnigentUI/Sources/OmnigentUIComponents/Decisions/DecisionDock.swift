@@ -1,7 +1,9 @@
 public import SwiftUI
 
 /// Pending and just-answered decision cards, docked above the composer so they can never be
-/// scrolled out of view. The cards also stay inline in the transcript.
+/// scrolled out of view. The cards also stay inline in the transcript; while a card is on screen
+/// there, the dock leaves it to the card and names it in one line ("1 request needs you · Answer
+/// it above"), so a request never offers its actions twice.
 ///
 /// Compact (the default): one line per request with the agent or session; simple approvals and
 /// short questions are answered right there, anything substantial shows "Review". Expanded: a
@@ -20,6 +22,7 @@ public struct DecisionDock: View {
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.decisionDockStartsExpanded) private var startsExpanded
   @Environment(\.commandReturnOwner) private var commandReturnOwner
+  @Environment(DecisionSurfaces.self) private var surfaces: DecisionSurfaces?
 
   private var drafts: DecisionDrafts { sharedDrafts ?? localDrafts }
 
@@ -47,22 +50,26 @@ public struct DecisionDock: View {
       case .expanded: true
       }
     return DecisionDockModel(
-      state: state, selectedID: selectedID, isExpanded: isExpanded, layoutWidth: layoutWidth)
+      state: state, selectedID: selectedID, isExpanded: isExpanded, layoutWidth: layoutWidth,
+      inline: surfaces?.visibility ?? InlineDecisionVisibility())
   }
 
   /// The dock; empty when there are no cards.
   public var body: some View {
     let model = model
     if !model.cards.isEmpty {
+      let target = model.shortcutTarget
       Group {
-        if model.isExpanded {
+        if model.dockCards.isEmpty {
+          summary(model)
+        } else if model.isExpanded {
           expanded(model)
         } else {
           compact(model)
         }
       }
-      .decisionApproveShortcut(commandReturnOwner == .send ? nil : model.shortcutCardID)
-      .preference(key: ApproveShortcutCandidate.self, value: model.shortcutCardID)
+      .decisionApproveShortcut(target, on: .dock, owner: commandReturnOwner)
+      .preference(key: ApproveShortcutCandidate.self, value: target)
       .padding(.top, Theme.Spacing.small)
       .readingColumn()
       .environment(\.openURL, openURLAction)
@@ -82,13 +89,37 @@ public struct DecisionDock: View {
     }
   }
 
+  // MARK: Summary
+
+  /// Every pending request is on screen inline: the dock only names them.
+  private func summary(_ model: DecisionDockModel) -> some View {
+    HStack(spacing: Theme.Spacing.small) {
+      Image(systemName: "arrow.up")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(Theme.brandAccent)
+        .accessibilityHidden(true)
+      Text(
+        "\(model.headline) \u{00B7} \(model.aboveCount == 1 ? "Answer it above" : "Answer them above")"
+      )
+      .font(Theme.Typography.section)
+      .foregroundStyle(.secondary)
+      .lineLimit(1)
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, Theme.Spacing.medium)
+    .padding(.vertical, Theme.Spacing.small)
+    .cardSurface(cornerRadius: Theme.Radius.large)
+    .accessibilityElement(children: .combine)
+    .accessibilityIdentifier("decision-dock-summary")
+  }
+
   // MARK: Compact
 
   private func compact(_ model: DecisionDockModel) -> some View {
     VStack(alignment: .leading, spacing: 0) {
-      if model.cards.count > 1 {
+      if model.dockCards.count > 1 || model.aboveCount > 0 {
         HStack(spacing: Theme.Spacing.small) {
-          Text(model.headline)
+          Text(model.dockHeadline)
             .font(Theme.Typography.section)
             .foregroundStyle(.secondary)
             .accessibilityIdentifier("decision-dock-headline")
@@ -104,7 +135,8 @@ public struct DecisionDock: View {
           .padding(.horizontal, Theme.Spacing.small)
           .padding(.vertical, Theme.Spacing.extraSmall)
       }
-      if model.hiddenCount > 0 {
+      // On a phone the header's Show all already opens the rest.
+      if model.hiddenCount > 0, layoutWidth != .compact {
         Divider()
         Button("Show \(model.hiddenCount) more") { open(nil, model: model) }
           .buttonStyle(.borderless)
@@ -139,7 +171,7 @@ public struct DecisionDock: View {
   private func expanded(_ model: DecisionDockModel) -> some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       HStack(spacing: Theme.Spacing.small) {
-        Text(model.headline)
+        Text(model.dockHeadline)
           .font(Theme.Typography.section)
           .foregroundStyle(.secondary)
           .accessibilityIdentifier("decision-dock-headline")
@@ -156,7 +188,7 @@ public struct DecisionDock: View {
         .accessibilityIdentifier("decision-dock-collapse")
       }
       .padding(.horizontal, Theme.Spacing.extraSmall)
-      if model.cards.count > 1 { requestList(model) }
+      if model.dockCards.count > 1 { requestList(model) }
       if let card = model.selected {
         BoundedScrollView(
           maxHeight: layoutWidth == .compact
@@ -182,7 +214,7 @@ public struct DecisionDock: View {
   private func requestList(_ model: DecisionDockModel) -> some View {
     BoundedScrollView(maxHeight: 156) {
       VStack(spacing: Theme.Spacing.tiny) {
-        ForEach(model.cards) { card in
+        ForEach(model.dockCards) { card in
           row(card, model: model, showsActions: false)
             .padding(.vertical, Theme.Spacing.tiny)
         }
@@ -238,65 +270,6 @@ public struct DecisionDock: View {
       }
       return .systemAction
     }
-  }
-}
-
-/// The dock's choices, kept out of the view so they can be tested.
-struct DecisionDockModel {
-  /// Rows shown before "Show N more".
-  static let compactLimit = 3
-
-  let state: ConversationViewState
-  let selectedID: String?
-  let isExpanded: Bool
-  let layoutWidth: LayoutWidth
-
-  /// Unanswered first, so a pending card is always on top.
-  var cards: [DecisionCard] {
-    state.decisions.filter { !$0.answered } + state.decisions.filter(\.answered)
-  }
-
-  var compactCards: [DecisionCard] { Array(cards.prefix(Self.compactLimit)) }
-
-  var hiddenCount: Int { max(0, cards.count - Self.compactLimit) }
-
-  /// The selected card, else the first pending one.
-  var selected: DecisionCard? {
-    cards.first { $0.id == selectedID } ?? cards.first
-  }
-
-  var headline: String {
-    let pending = state.pendingDecisions.count
-    let noun = pending == 1 ? "request needs" : "requests need"
-    if pending == cards.count { return "\(pending) \(noun) you" }
-    return "\(pending) of \(cards.count) \(noun) you"
-  }
-
-  /// The agent, or "Subagent" for a card mirrored from a child session.
-  func context(for card: DecisionCard) -> String? {
-    if let child = SubagentGroup.context(for: card, in: state) { return child }
-    return state.header.settings.map { HarnessAppearance(harness: $0.harness).label }
-  }
-
-  func canRespond(_ card: DecisionCard, hasResponder: Bool) -> Bool {
-    guard hasResponder, !state.header.readOnly else { return false }
-    switch state.phase(of: card) {
-    case .pending, .failed: return true
-    case .resolving, .answered: return false
-    }
-  }
-
-  /// The one Approve that answers Command-Return: the selected approval when expanded, else the
-  /// first pending approval whose row shows Approve. Plan reviews never take it.
-  var shortcutCardID: String? {
-    let isPlainApproval = { (card: DecisionCard) -> Bool in
-      guard case .approval = card.kind, card.permissions.plan == nil else { return false }
-      return canRespond(card, hasResponder: true)
-    }
-    if isExpanded {
-      return selected.flatMap { isPlainApproval($0) ? $0.id : nil }
-    }
-    return compactCards.first { isPlainApproval($0) && DecisionSummary($0).answersInline }?.id
   }
 }
 

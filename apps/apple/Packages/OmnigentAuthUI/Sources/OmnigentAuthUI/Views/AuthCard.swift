@@ -40,9 +40,10 @@ struct AuthCard<Content: View, Buttons: View>: View {
             .controlSize(.large)
             .accessibilityLabel(title)
         } else {
+          // Neutral: the host's tint is for the one primary action.
           Image(systemName: systemImage)
             .font(.system(size: 30, weight: .regular))
-            .foregroundStyle(.tint)
+            .foregroundStyle(.secondary)
             .symbolRenderingMode(.hierarchical)
             .accessibilityHidden(true)
         }

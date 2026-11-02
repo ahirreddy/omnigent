@@ -1,0 +1,13 @@
+{
+  "type": "viewport",
+  "w": 390,
+  "h": 664,
+  "dpr": 3,
+  "scope": "control",
+  "mobile": "layout",
+  "agent": {
+    "w": 1280,
+    "h": 800,
+    "dpr": 1
+  }
+}

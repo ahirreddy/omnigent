@@ -14,7 +14,9 @@ enum SignInCatalog {
         states: AuthSamples.all.map { sample in
           CatalogState(sample.id, sample.title) {
             AuthFlowView(
-              state: sample.state, actions: .inert, validator: .preview, presentation: .sheet)
+              state: sample.state, actions: .inert, validator: .preview, presentation: .sheet
+            )
+            .tint(ThemeColor.accent)
           }
         }),
       .component(
@@ -37,6 +39,7 @@ enum SignInCatalog {
           .map { sample in
             CatalogState(sample.id, sample.title) {
               AuthFlowView(state: sample.state, actions: .inert, validator: .preview)
+                .tint(ThemeColor.accent)
             }
           }),
       .flow(
@@ -129,7 +132,9 @@ private struct SignInFlowScreen: View {
           },
           startBrowserSignIn: { _ in }, cancel: { model.auth.phase = .disconnected },
           signOut: { model.isSignedIn = false }, retry: {}, forgetServer: { _ in }),
-        validator: .preview)
+        validator: .preview
+      )
+      .tint(ThemeColor.accent)
     }
   }
 }

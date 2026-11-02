@@ -70,7 +70,18 @@ enum TranscriptCatalog {
             CatalogStack {
               WorkedFold(
                 items: TranscriptSamples.tools, isLive: true, duration: 12, decorations: [:])
-              WorkingIndicator(isBlocked: false)
+              WorkingIndicator(isBlocked: false, startedAt: Date().addingTimeInterval(-12))
+            }
+          },
+          CatalogState("answered", "Settled answer") {
+            CatalogStack {
+              WorkedFold(
+                items: TranscriptSamples.tools, isLive: false, duration: 106, decorations: [:])
+              MessageRowView(
+                row: Row(
+                  id: "answer", role: .assistant, text: "Fixed: the refresh now coalesces.",
+                  responseId: "resp_1"),
+                decoration: MessageDecoration(timestamp: Date(), workedFor: 106))
             }
           },
           CatalogState("blocked", "Waiting on you") {

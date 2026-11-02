@@ -162,14 +162,42 @@ private struct TypeSheet: View {
 
   var body: some View {
     CatalogStack {
-      Text("What should we build?").font(Theme.Typography.title)
+      Text("What should we work on?").font(Theme.Typography.title)
       Text("Section label").font(Theme.Typography.section).foregroundStyle(.secondary)
-      Text(text).proseStyle().readingColumn()
-      Text("let cache = TokenCache(ttl: .minutes(5))").font(Theme.Typography.code)
-        .padding(Theme.Spacing.small)
-        .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Theme.Radius.small))
+      TypeRampTable().readingProseStyle()
+      MarkdownView(text).readingColumn()
     }
     .themeCanvas()
+  }
+}
+
+/// The reading ramp itself: each role at its size, with its size and line height.
+private struct TypeRampTable: View {
+  @Environment(\.typeRamp) private var ramp
+
+  var body: some View {
+    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: Theme.Spacing.large) {
+      ForEach(1...4, id: \.self) { level in
+        row(
+          "Heading \(level)", size: ramp.heading(level), lineHeight: ramp.headingLineHeight(level),
+          font: .system(size: ramp.heading(level), weight: .semibold))
+      }
+      row(
+        "Body", size: ramp.body, lineHeight: ramp.bodyLineHeight, font: .system(size: ramp.body))
+      row(
+        "Code", size: ramp.code, lineHeight: ramp.codeLineHeight,
+        font: .system(size: ramp.code, design: .monospaced))
+    }
+  }
+
+  private func row(_ name: String, size: CGFloat, lineHeight: CGFloat, font: Font) -> some View {
+    GridRow {
+      Text(name).font(font)
+      Text(verbatim: "\(size.formatted()) / \(lineHeight.formatted()) pt")
+        .font(Theme.Typography.section)
+        .foregroundStyle(Theme.mutedText)
+        .monospacedDigit()
+    }
   }
 }
 

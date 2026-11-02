@@ -16,8 +16,11 @@ private struct ReadingPostureFocus: ViewModifier {
   let isFocused: FocusState<Bool>.Binding
   let focusRequest: Int
   /// UIKit makes the editor first responder again when a screen left with the keyboard up
-  /// reappears; that restoration is refused for a moment after appearing.
+  /// reappears; that restoration is refused for a moment after appearing. A touch on the
+  /// composer ends the moment, so a deliberate first tap still focuses.
   @State private var refusesRestoredFocusUntil = Date.distantPast
+  /// When focus was last refused, in case the tap that caused it is reported after the refusal.
+  @State private var refusedAt = Date.distantPast
 
   func body(content: Content) -> some View {
     content
@@ -31,8 +34,16 @@ private struct ReadingPostureFocus: ViewModifier {
           isFocused.wrappedValue = false
         }
         .onChange(of: isFocused.wrappedValue) { _, focused in
-          if focused, Date.now < refusesRestoredFocusUntil { isFocused.wrappedValue = false }
+          if focused, Date.now < refusesRestoredFocusUntil {
+            refusedAt = .now
+            isFocused.wrappedValue = false
+          }
         }
+        .simultaneousGesture(
+          TapGesture().onEnded {
+            refusesRestoredFocusUntil = .distantPast
+            if Date.now.timeIntervalSince(refusedAt) < 0.3 { isFocused.wrappedValue = true }
+          })
       #endif
   }
 }

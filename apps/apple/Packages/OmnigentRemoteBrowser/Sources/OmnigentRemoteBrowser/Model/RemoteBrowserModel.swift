@@ -54,9 +54,14 @@ extension RemoteBrowserSnapshot {
       nav: RemoteBrowserNav(
         url: url, title: "", loading: false, progress: 1, canGoBack: false,
         canGoForward: false, faviconUrl: nil),
-      control: nil, wantsControl: false, cursor: RemoteBrowserCursor(keyword: "default", custom: nil),
-      textInput: RemoteBrowserTextInput(mode: .none, caret: nil), viewport: nil, settings: nil,
-      stats: nil, dialogs: [])
+      control: nil, wantsControl: false,
+      cursor: RemoteBrowserCursor(keyword: "default", custom: nil),
+      textInput: RemoteBrowserTextInput(mode: .none, caret: nil), viewport: nil,
+      viewportScope: .tab, mobile: .off, agentViewport: nil, selection: nil, scroll: nil,
+      capabilities: RemoteBrowserCapabilities(
+        viewportScope: false, mobileEmulation: false, edit: false, selection: false,
+        scrollMetrics: false, touch: false),
+      settings: nil, stats: nil, dialogs: [])
   }
 
   /// Whether the remote tab is gone.

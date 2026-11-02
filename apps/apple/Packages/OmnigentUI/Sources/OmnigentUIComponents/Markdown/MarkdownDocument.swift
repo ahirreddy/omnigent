@@ -68,7 +68,12 @@ nonisolated enum MarkdownParser {
     children.compactMap(block)
   }
 
-  private static func block(_ markup: any Markup) -> MarkdownBlock? {
+  /// Top-level blocks as ``MarkdownStream`` parses them.
+  static func blocks(_ markup: [any Markup], source _: Substring, base _: Int) -> [MarkdownBlock] {
+    markup.compactMap(block)
+  }
+
+  static func block(_ markup: any Markup) -> MarkdownBlock? {
     switch markup {
     case let paragraph as Paragraph:
       return .paragraph(inline(paragraph.children))
@@ -213,27 +218,65 @@ nonisolated enum MarkdownParser {
 }
 
 /// A bounded cache of parsed markdown, so scrolling a long transcript re-parses nothing.
+/// A view asks it once per text (``MarkdownRenderMemo``); the oldest entry goes first.
 @MainActor
 final class MarkdownCache {
   static let shared = MarkdownCache(limit: 512)
 
-  private let limit: Int
-  private var entries: [String: [MarkdownBlock]] = [:]
-  private var order: [String] = []
+  private var entries: BoundedCache<String, [MarkdownBlock]>
 
   init(limit: Int) {
-    self.limit = limit
+    entries = BoundedCache(limit: limit)
   }
 
   func blocks(for text: String) -> [MarkdownBlock] {
-    if let cached = entries[text] { return cached }
-    let parsed = MarkdownParser.parse(text)
-    entries[text] = parsed
-    order.append(text)
-    if order.count > limit {
-      let evicted = order.removeFirst()
-      entries[evicted] = nil
+    entries.value(for: text) { MarkdownParser.parse(text) }
+  }
+}
+
+/// A dictionary that forgets its oldest entries past `limit`, in amortized constant time.
+nonisolated struct BoundedCache<Key: Hashable, Value> {
+  private let limit: Int
+  private var entries: [Key: Value] = [:]
+  private var order: [Key] = []
+  private var head = 0
+
+  init(limit: Int) {
+    self.limit = max(limit, 1)
+  }
+
+  var count: Int { entries.count }
+
+  mutating func value(for key: Key, make: () -> Value) -> Value {
+    if let cached = entries[key] { return cached }
+    let value = make()
+    entries[key] = value
+    order.append(key)
+    if order.count - head > limit {
+      entries[order[head]] = nil
+      head += 1
+      if head >= limit {
+        order.removeFirst(head)
+        head = 0
+      }
     }
-    return parsed
+    return value
+  }
+}
+
+/// One view's parse of its text: the same text returns the same blocks without hashing it, a
+/// growing stream parses only its open block (``MarkdownStream``), and settled text comes from
+/// ``MarkdownCache``.
+@MainActor
+final class MarkdownRenderMemo {
+  private var text: String?
+  private var blocks: [MarkdownBlock] = []
+  private var stream = MarkdownStream(convert: MarkdownParser.blocks)
+
+  func blocks(for text: String, isStreaming: Bool) -> [MarkdownBlock] {
+    if text == self.text { return blocks }
+    blocks = isStreaming ? stream.elements(for: text) : MarkdownCache.shared.blocks(for: text)
+    self.text = text
+    return blocks
   }
 }

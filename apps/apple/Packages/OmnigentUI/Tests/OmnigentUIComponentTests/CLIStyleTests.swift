@@ -129,7 +129,7 @@ struct CLIStyleTests {
     // differ and re-rendered their readers in a loop.
     #expect(MemoryLayout<SRGB>.size == 4 * MemoryLayout<Double>.size)
     #expect(MemoryLayout<CLIPalette>.size.isMultiple(of: MemoryLayout<SRGB>.size))
-    #expect(MemoryLayout<TranscriptAppearance>.size == MemoryLayout<Double>.size + 3)
+    #expect(MemoryLayout<TranscriptAppearance>.size == 2 * MemoryLayout<Double>.size + 3)
     // The default is one stored value, not a palette derived again on every read.
     #expect(EnvironmentValues().cliPalette == CLIPalette.fallback)
   }

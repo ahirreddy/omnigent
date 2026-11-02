@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>v11</title>
+<style>
+  body { margin: 0; font: 16px sans-serif; }
+  #field { display: block; margin: 20px; width: 300px; height: 40px; font-size: 18px; }
+  .row { height: 50px; border-bottom: 1px solid #ccc; padding-left: 20px; line-height: 50px; }
+</style></head>
+<body>
+<input id="field" placeholder="type here">
+<p id="text">Remote browser selection text</p>
+<div id="rows"></div>
+<script>
+  // The title reports layout and input state so host tests can check it without pixels.
+  const rows = document.getElementById('rows');
+  for (let i = 1; i <= 200; i++) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.textContent = 'Row ' + i;
+    rows.appendChild(row);
+  }
+  const field = document.getElementById('field');
+  let pasted = 0;
+  field.addEventListener('paste', () => { pasted += 1; });
+  let touches = 0;
+  document.addEventListener('touchstart', () => { touches += 1; report(); }, {passive: true});
+  function report() {
+    document.title = 'w=' + innerWidth + ' h=' + innerHeight + ' dpr=' + devicePixelRatio +
+        ' touch=' + navigator.maxTouchPoints + ' mobile=' + /Mobile/.test(navigator.userAgent) +
+        ' touches=' + touches + ' sy=' + Math.round(scrollY) + ' pasted=' + pasted + ' value=' + field.value;
+  }
+  field.addEventListener('input', report);
+  addEventListener('resize', report);
+  setInterval(report, 250);
+  report();
+</script>
+</body></html>

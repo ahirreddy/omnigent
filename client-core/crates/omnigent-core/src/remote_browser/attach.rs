@@ -19,21 +19,27 @@
 //! - **Control.** Holder-gated input is sent only while this connection holds control, and is
 //!   otherwise reported as [`DropReason::NotInControl`]. The user's wish to control survives a
 //!   reconnect: during the host's grace period the machine sends `take` again.
+//! - **Viewport (v1.1).** The client states the viewport it wants with
+//!   [`AttachInput::SetViewport`]; the machine sends it (scoped to this connection's control)
+//!   whenever this connection holds control and the host's viewport differs, and restores the
+//!   agent's viewport for `None`. A v1 host gets plain `resize`s, and the machine restores the
+//!   agent's viewport itself before `release` (design doc section 16.7).
 //! - **Close codes** follow section 5.8: transport-shaped codes and 1013 reconnect with the
 //!   terminal backoff, 4404 ends the tab, 4400 redials once without the slice key, and the rest
 //!   fail or close.
 
 use omnigent_protocol::remote_browser::{
-    AttachMode, ClientHello, ClientMessage, ControlOp, ControlReason, DialogReply, HeaderError,
-    Holder, HostError, HostMessage, ImeEvent, KeyEvent, KeyframeReason, MediaKind, MessageError,
-    MouseEvent, MouseKind, NavCommand, Owner, PROTOCOL_VERSION, SettingsUpdate, StillKind,
-    TabClosedReason, Viewport, decode_frame,
+    AttachMode, ClientHello, ClientMessage, ControlOp, ControlReason, DialogReply, EditCommand,
+    EditOp, HeaderError, Holder, HostError, HostMessage, ImeEvent, KeyEvent, KeyframeReason,
+    MediaKind, MessageError, MobileEmulation, MouseEvent, MouseKind, NavCommand, Owner,
+    PROTOCOL_VERSION, ResizeRequest, SettingsUpdate, StillKind, TabClosedReason, TouchEvent,
+    Viewport, ViewportScope, decode_frame, features,
 };
 
 use super::codec::{VideoDrop, VideoFrame, VideoOutcome, VideoTrack};
 use super::input::{
-    DEFAULT_INTERVAL_MS, InputCoalescer, InputError, validate_ime, validate_key, validate_mouse,
-    validate_nav, validate_viewport,
+    DEFAULT_INTERVAL_MS, InputCoalescer, InputError, validate_edit, validate_ime, validate_key,
+    validate_mouse, validate_nav, validate_touch, validate_viewport,
 };
 use super::state::TabState;
 use crate::http::TransportError;
@@ -270,6 +276,12 @@ pub enum InputKind {
     Settings,
     /// A still request.
     Still,
+    /// An edit command (v1.1).
+    Edit,
+    /// A touch event (v1.1).
+    Touch,
+    /// Mobile emulation (v1.1).
+    MobileEmulation,
 }
 
 /// Why input was not sent.
@@ -281,6 +293,17 @@ pub enum DropReason {
     ReadOnly,
     /// Another connection, or the agent, holds control.
     NotInControl,
+    /// The host does not announce the protocol v1.1 feature this needs.
+    Unsupported,
+}
+
+/// The viewport the client wants while it holds control (v1.1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ViewportRequest {
+    /// The viewport.
+    pub viewport: Viewport,
+    /// Mobile emulation.
+    pub mobile: MobileEmulation,
 }
 
 /// Something worth showing or logging that does not change the connection.
@@ -347,8 +370,14 @@ pub enum AttachInput {
     Ime(ImeEvent),
     /// Navigation.
     Nav(NavCommand),
-    /// "Fit to window".
+    /// "Fit to window": a v1, tab-scoped resize.
     Resize(Viewport),
+    /// The viewport this client wants while it holds control; `None` is the agent's (v1.1).
+    SetViewport(Option<ViewportRequest>),
+    /// An edit command (v1.1).
+    Edit(EditCommand),
+    /// A touch point (v1.1).
+    Touch(TouchEvent),
     /// Answer a JS dialog.
     DialogReply(DialogReply),
     /// Take control.
@@ -453,6 +482,13 @@ pub enum AttachOutput {
         /// The JPEG.
         jpeg: Vec<u8>,
     },
+    /// Text the page copied or cut (v1.1), for the local pasteboard.
+    Clipboard {
+        /// `Copy` or `Cut`.
+        op: EditOp,
+        /// The text.
+        text: String,
+    },
     /// The tab ended (4404). Sent once, after `ConnectionChanged` to `Closed`.
     TabEnded {
         /// What `tab_closed` said, when it came first.
@@ -504,6 +540,12 @@ pub struct RemoteBrowserAttach<J> {
     visible: bool,
     wants_control: bool,
     stats_wanted: bool,
+    desired_viewport: Option<ViewportRequest>,
+    /// The last viewport `resize` sent on this connection, until the host answers.
+    sent_viewport: Option<ResizeRequest>,
+    /// v1 host: the agent's viewport, restored before `release`.
+    restore_viewport: Option<Viewport>,
+    mobile_unsupported_reported: bool,
 }
 
 impl<J: JitterSource> RemoteBrowserAttach<J> {
@@ -530,6 +572,10 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
             visible: true,
             wants_control: false,
             stats_wanted: false,
+            desired_viewport: None,
+            sent_viewport: None,
+            restore_viewport: None,
+            mobile_unsupported_reported: false,
         }
     }
 
@@ -578,7 +624,20 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
             | AttachInput::Ime(_)
             | AttachInput::Nav(_)
             | AttachInput::Resize(_)
-            | AttachInput::DialogReply(_)) => self.discrete_input(now_ms, input, &mut out),
+            | AttachInput::DialogReply(_)
+            | AttachInput::Edit(_)
+            | AttachInput::Touch(_)) => self.discrete_input(now_ms, input, &mut out),
+            AttachInput::SetViewport(request) => {
+                if let Some(Err(error)) = request
+                    .as_ref()
+                    .map(|request| validate_viewport(&request.viewport))
+                {
+                    out.push(AttachOutput::Notice(Notice::InvalidInput(error)));
+                } else {
+                    self.desired_viewport = request;
+                    self.sync_viewport(now_ms, &mut out);
+                }
+            }
             AttachInput::TakeControl => self.take_control(&mut out),
             AttachInput::ReleaseControl => self.release_control(now_ms, &mut out),
             AttachInput::UpdateSettings(update) => self.update_settings(update, &mut out),
@@ -792,8 +851,32 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
             AttachInput::Resize(viewport) => (
                 InputKind::Resize,
                 validate_viewport(&viewport),
-                ClientMessage::Resize(viewport),
+                ClientMessage::Resize(ResizeRequest {
+                    viewport,
+                    scope: None,
+                    mobile: None,
+                }),
             ),
+            AttachInput::Edit(command) => {
+                if !self.feature_or_drop(features::EDIT, InputKind::Edit, out) {
+                    return;
+                }
+                (
+                    InputKind::Edit,
+                    validate_edit(&command),
+                    ClientMessage::Edit(command),
+                )
+            }
+            AttachInput::Touch(event) => {
+                if !self.feature_or_drop(features::TOUCH, InputKind::Touch, out) {
+                    return;
+                }
+                (
+                    InputKind::Touch,
+                    validate_touch(&event),
+                    ClientMessage::Touch(event),
+                )
+            }
             AttachInput::DialogReply(reply) => (
                 InputKind::DialogReply,
                 Ok(()),
@@ -811,6 +894,91 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
                 send(attempt, &message, out);
             }
             Err(reason) => out.push(dropped(kind, reason)),
+        }
+    }
+
+    /// Whether the attached host announced `feature`; otherwise reports the input as dropped.
+    fn feature_or_drop(
+        &self,
+        feature: &str,
+        input: InputKind,
+        out: &mut Vec<AttachOutput>,
+    ) -> bool {
+        let attached = self.attempt.as_ref().is_some_and(|attempt| attempt.hello);
+        if attached && !self.tab.has_feature(feature) {
+            out.push(dropped(input, DropReason::Unsupported));
+            return false;
+        }
+        true
+    }
+
+    /// Sends the `resize` that makes the host's viewport the one this client wants, when this
+    /// connection holds control and it differs (design doc section 16.2).
+    fn sync_viewport(&mut self, now_ms: u64, out: &mut Vec<AttachOutput>) {
+        // After a release the host restores the agent's viewport before its `control` update
+        // arrives; that is not a change to undo.
+        if !self.wants_control {
+            return;
+        }
+        let Ok(attempt) = self.gate(true) else {
+            return;
+        };
+        let scoped = self.tab.has_feature(features::VIEWPORT_SCOPE);
+        let current = self.tab.viewport;
+        let desired = self.desired_viewport.clone();
+        let request = match (&desired, scoped) {
+            (Some(wanted), true) => {
+                let mobile = if self.tab.has_feature(features::MOBILE_EMULATION) {
+                    wanted.mobile.clone()
+                } else {
+                    self.report_mobile_unsupported(&wanted.mobile, out);
+                    MobileEmulation::Off
+                };
+                let applied = current == Some(wanted.viewport)
+                    && self.tab.viewport_scope == ViewportScope::Control
+                    && self.tab.mobile == mobile;
+                (!applied).then(|| ResizeRequest {
+                    viewport: wanted.viewport,
+                    scope: Some(ViewportScope::Control),
+                    mobile: (mobile != MobileEmulation::Off).then_some(mobile),
+                })
+            }
+            (Some(wanted), false) => {
+                self.report_mobile_unsupported(&wanted.mobile, out);
+                if self.restore_viewport.is_none() {
+                    self.restore_viewport = current;
+                }
+                (current != Some(wanted.viewport)).then(|| plain_resize(wanted.viewport))
+            }
+            (None, true) => (self.tab.viewport_scope == ViewportScope::Control)
+                .then_some(self.tab.agent_viewport)
+                .flatten()
+                .map(|agent| ResizeRequest {
+                    viewport: agent,
+                    scope: Some(ViewportScope::Control),
+                    mobile: Some(MobileEmulation::Off),
+                }),
+            (None, false) => self
+                .restore_viewport
+                .take()
+                .filter(|agent| current != Some(*agent))
+                .map(plain_resize),
+        };
+        let Some(request) = request else {
+            return;
+        };
+        if self.sent_viewport.as_ref() == Some(&request) {
+            return; // Already on its way.
+        }
+        self.flush_input(now_ms, attempt, out);
+        send(attempt, &ClientMessage::Resize(request.clone()), out);
+        self.sent_viewport = Some(request);
+    }
+
+    fn report_mobile_unsupported(&mut self, mobile: &MobileEmulation, out: &mut Vec<AttachOutput>) {
+        if *mobile != MobileEmulation::Off && !self.mobile_unsupported_reported {
+            self.mobile_unsupported_reported = true;
+            out.push(dropped(InputKind::MobileEmulation, DropReason::Unsupported));
         }
     }
 
@@ -841,6 +1009,12 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
         self.wants_control = false;
         if let Ok(attempt) = self.gate(true) {
             self.flush_input(now_ms, attempt, out);
+            // A v1 host keeps any size; give the agent its own back before handing over.
+            if let Some(agent) = self.restore_viewport.take()
+                && self.tab.viewport != Some(agent)
+            {
+                send(attempt, &ClientMessage::Resize(plain_resize(agent)), out);
+            }
             send(
                 attempt,
                 &ClientMessage::Control {
@@ -891,13 +1065,18 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
         self.video.reset();
         self.coalescer.reset();
         self.tab.reset_connection();
+        self.sent_viewport = None;
         let hello = ClientMessage::Hello(ClientHello {
             protocol: PROTOCOL_VERSION,
             client: self.config.client_name.clone(),
             decoders: vec!["h264".to_owned(), "jpeg".to_owned()],
             mode: self.options.mode.clone(),
             visible: self.visible,
-            features: Vec::new(),
+            // The v1.1 reports this client shows (design doc section 16.6).
+            features: vec![
+                features::SELECTION.to_owned(),
+                features::SCROLL_METRICS.to_owned(),
+            ],
         });
         send(id, &hello, out);
         self.watchdog_timer =
@@ -920,7 +1099,7 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
         let id = attempt.id;
         match message {
             SocketMessage::Text(text) => match HostMessage::decode(&text) {
-                Ok(message) => self.host_message(id, message, out),
+                Ok(message) => self.host_message(now_ms, id, message, out),
                 Err(error) => out.push(AttachOutput::Notice(Notice::MalformedMessage(error))),
             },
             SocketMessage::Binary(bytes) => self.binary(id, &bytes, out),
@@ -929,6 +1108,7 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
 
     fn host_message(
         &mut self,
+        now_ms: u64,
         attempt: AttemptId,
         message: HostMessage,
         out: &mut Vec<AttachOutput>,
@@ -952,6 +1132,15 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
         }
         match message {
             HostMessage::Hello(hello) => self.on_hello(attempt, hello.mode, out),
+            HostMessage::Clipboard(clipboard) => out.push(AttachOutput::Clipboard {
+                op: clipboard.op,
+                text: clipboard.text,
+            }),
+            HostMessage::Viewport(_) => {
+                // The host answered; re-assert the wanted viewport if something else changed it.
+                self.sent_viewport = None;
+                self.sync_viewport(now_ms, out);
+            }
             HostMessage::Control(update) => {
                 let lost = update.state.holder == Some(Holder::Other)
                     || (update.state.owner == Owner::Agent
@@ -966,8 +1155,11 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
                 if lost {
                     self.wants_control = false;
                 }
-                if !self.tab.holds_control() {
+                if self.tab.holds_control() {
+                    self.sync_viewport(now_ms, out);
+                } else {
                     self.coalescer.reset();
+                    self.sent_viewport = None;
                 }
             }
             _ => {}
@@ -1282,6 +1474,15 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
             self.state = state.clone();
             out.push(AttachOutput::ConnectionChanged { state });
         }
+    }
+}
+
+/// A v1 (tab-scoped) `resize`.
+const fn plain_resize(viewport: Viewport) -> ResizeRequest {
+    ResizeRequest {
+        viewport,
+        scope: None,
+        mobile: None,
     }
 }
 

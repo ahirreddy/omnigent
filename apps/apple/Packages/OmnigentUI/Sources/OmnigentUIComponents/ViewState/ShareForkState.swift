@@ -174,6 +174,15 @@ nonisolated public struct ForkViewState: Hashable, Sendable, Identifiable {
     case .anotherDirectory: "Continue in another directory"
     }
   }
+
+  /// The confirm button's verb, matching the title: "Clone", "Fork" or "Continue".
+  public var verb: String {
+    switch kind {
+    case .session: "Clone"
+    case .fromMessage: "Fork"
+    case .anotherDirectory: "Continue"
+    }
+  }
 }
 
 /// Fork actions.
