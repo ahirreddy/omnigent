@@ -1,5 +1,6 @@
 public import AppKit
 internal import OWLProtocol
+internal import OmnigentInput
 
 /// What a drag carries between the app and the page (protocol 1.1).
 nonisolated public struct WebDragData: Sendable, Hashable, Codable {

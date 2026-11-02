@@ -42,9 +42,9 @@ struct TabStoreTests {
   @Test("Closing selects the tab to the right, else the left; Reopen restores it in place")
   func closeAndReopen() throws {
     let store = TabStore()
-    let tabA = store.open(.chat(sessionID: "a"), placement: .end)
-    let tabB = store.open(.chat(sessionID: "b"), placement: .end)
-    let tabC = store.open(.chat(sessionID: "c"), placement: .end)
+    let tabA = store.open(.sideChat(sessionID: "a", rowID: "r"), placement: .end)
+    let tabB = store.open(.sideChat(sessionID: "b", rowID: "r"), placement: .end)
+    let tabC = store.open(.sideChat(sessionID: "c", rowID: "r"), placement: .end)
     store.select(tabB.id)
     store.close(tabB.id)
     #expect(store.selectedID == tabC.id)
@@ -64,9 +64,9 @@ struct TabStoreTests {
   @Test("Pinned tabs stay first, and moves stay within their group")
   func pinAndReorder() {
     let store = TabStore()
-    let tabA = store.open(.chat(sessionID: "a"), placement: .end)
-    let tabB = store.open(.chat(sessionID: "b"), placement: .end)
-    let tabC = store.open(.chat(sessionID: "c"), placement: .end)
+    let tabA = store.open(.sideChat(sessionID: "a", rowID: "r"), placement: .end)
+    let tabB = store.open(.sideChat(sessionID: "b", rowID: "r"), placement: .end)
+    let tabC = store.open(.sideChat(sessionID: "c", rowID: "r"), placement: .end)
     store.setPinned(tabC.id, true)
     #expect(store.tabs.map(\.id) == [tabC.id, tabA.id, tabB.id])
     store.move(tabA.id, to: 0)
@@ -103,12 +103,13 @@ struct TabStoreTests {
   @Test("Duplicate copies the tab next to it; Close Tabs to the Right keeps the left side")
   func duplicateAndCloseRight() throws {
     let store = TabStore()
-    let tabA = store.open(.chat(sessionID: "a"), placement: .end)
-    store.open(.chat(sessionID: "b"), placement: .end)
+    let tabA = store.open(.sideChat(sessionID: "a", rowID: "r"), placement: .end)
+    store.open(.sideChat(sessionID: "b", rowID: "r"), placement: .end)
     let copy = try #require(store.duplicate(tabA.id))
     #expect(
       store.tabs.map(\.content) == [
-        .chat(sessionID: "a"), .chat(sessionID: "a"), .chat(sessionID: "b"),
+        .sideChat(sessionID: "a", rowID: "r"), .sideChat(sessionID: "a", rowID: "r"),
+        .sideChat(sessionID: "b", rowID: "r"),
       ])
     #expect(store.selectedID == copy.id)
     store.closeToRight(tabA.id)
@@ -178,7 +179,7 @@ struct TabStoreTests {
     let store = TabStore()
     var changes = 0
     store.onChange = { changes += 1 }
-    let tabA = store.open(.chat(sessionID: "a"))
+    let tabA = store.open(.sideChat(sessionID: "a", rowID: "r"))
     store.open(.chat(sessionID: "b"))
     store.setPinned(tabA.id, true)
     store.close(tabA.id)

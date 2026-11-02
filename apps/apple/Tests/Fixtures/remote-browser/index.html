@@ -1,0 +1,38 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>RB test page</title>
+<style>
+  html, body { margin: 0; font: 18px -apple-system, Helvetica, sans-serif; background: #f6f6f6; }
+  #field { position: absolute; left: 40px; top: 40px; width: 560px; height: 60px; box-sizing: border-box; font-size: 24px; padding: 8px; }
+  #button { position: absolute; left: 640px; top: 40px; width: 140px; height: 60px; font-size: 20px; }
+  #status { position: absolute; left: 40px; top: 120px; font-size: 22px; }
+  #link { position: absolute; left: 40px; top: 190px; font-size: 24px; }
+  #flash { position: absolute; left: 900px; top: 40px; width: 300px; height: 300px; background: #2a6; }
+  #scroller { position: absolute; left: 40px; top: 260px; width: 760px; height: 480px; overflow: auto; border: 1px solid #999; background: white; }
+  .row { height: 40px; border-bottom: 1px solid #ddd; padding-left: 8px; line-height: 40px; }
+</style></head>
+<body>
+<input id="field" placeholder="type here">
+<button id="button">Submit</button>
+<div id="status">no clicks yet</div>
+<a id="link" href="second.html">Go to the second page</a>
+<div id="flash"></div>
+<div id="scroller"></div>
+<script>
+  const scroller = document.getElementById('scroller');
+  for (let i = 1; i <= 100; i++) { const r = document.createElement('div'); r.className = 'row'; r.textContent = 'Row ' + i; scroller.appendChild(r); }
+  // The title reports page state, so tests can check it without reading pixels.
+  const field = document.getElementById('field');
+  let clicks = 0;
+  field.addEventListener('input', () => { document.title = 'RB test page | typed:' + field.value; });
+  document.getElementById('button').addEventListener('click', () => {
+    clicks += 1;
+    document.getElementById('status').textContent = 'clicked ' + clicks + ' time(s); field = "' + field.value + '"';
+    document.title = 'RB test page | clicked:' + clicks;
+  });
+  let toggled = false;
+  document.getElementById('flash').addEventListener('mousedown', () => {
+    toggled = !toggled;
+    document.getElementById('flash').style.background = toggled ? '#c33' : '#2a6';
+  });
+</script>
+</body></html>

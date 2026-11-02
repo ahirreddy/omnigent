@@ -59,7 +59,6 @@ struct SessionRow: View {
     }
     // Height comes from the list's `defaultMinListRowHeight`, the same for every sidebar row.
     .contentShape(Rectangle())
-    .hoverHighlight()
     .onHover { isHovered = $0 }
     .help(tooltip)
     .contextMenu { menu.items }

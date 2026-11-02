@@ -1,5 +1,6 @@
 import Foundation
 import OmnigentCoreFFI
+import OmnigentRemoteBrowser
 import OmnigentStores
 import OmnigentTerminalStores
 import OmnigentTerminalUI
@@ -21,11 +22,14 @@ enum TabAdapter {
   ) -> TabsState {
     TabsState(
       tabs: tabs.tabs.map {
-        item($0, session: session, browser: browser, isSelected: $0.id == tabs.selectedID)
+        var entry = item(
+          $0, session: session, browser: browser, isSelected: $0.id == tabs.selectedID)
+        entry.pane = tabs.pane(of: $0.id)
+        return entry
       },
       selectedID: tabs.selectedID,
       recentlyClosed: tabs.closed.reversed().map { item($0, session: session, browser: nil) },
-      issue: issue)
+      issue: issue, split: tabs.splitState)
   }
 
   /// One tab.
@@ -56,6 +60,8 @@ enum TabAdapter {
       item.subtitle = session.connection.sessionList.session(sessionID)?.title
       item.status = row.map(terminalStatus) ?? .none
       item.canDuplicate = false
+    case .remoteBrowser(let sessionID, let tabID):
+      remoteItem(&item, tab: tab, session: session, sessionID: sessionID, tabID: tabID)
     case .browser(let browserID):
       if let status = browser?.status(of: browserID) {
         item.title = pageTitle(status.title, url: status.url)
@@ -68,7 +74,37 @@ enum TabAdapter {
         item.title = tab.title ?? "Browser"
       }
     }
+    // A session's tabs follow its primary chat, which only leaves with the session.
+    item.groupID = tab.content.sessionID
+    item.leadsGroup = tab.content.isPrimaryChat
+    item.isClosable = !item.leadsGroup
+    if item.leadsGroup { item.canDuplicate = false }
     return item
+  }
+
+  /// A remote browser tab: its page title and loading state from its live store.
+  private static func remoteItem(
+    _ item: inout TabItemState, tab: AppTab, session: ServerSession, sessionID: String,
+    tabID: String
+  ) {
+    item.subtitle = session.connection.sessionList.session(sessionID)?.title
+    item.canDuplicate = false
+    guard let store = session.remoteBrowsers?.existingStore(sessionID: sessionID, tabID: tabID)
+    else {
+      item.title = tab.title ?? "Remote Browser"
+      return
+    }
+    let navigation = store.navigation
+    let url = URL(string: navigation.url)
+    item.title = pageTitle(navigation.title, url: url)
+    item.link = url
+    if store.isEnded {
+      item.status = .exited
+    } else if case .failed = store.snapshot.connection {
+      item.status = .failed
+    } else if navigation.loading {
+      item.status = .loading
+    }
   }
 
   /// Chat, agent terminal, agent browser and side chat tabs: titled from their session.
@@ -122,7 +158,7 @@ enum TabAdapter {
   ) -> String? {
     switch tab.content {
     case .newTab, .newSession, .inbox, .canvas, .agentBrowser: nil
-    case .chat, .terminal, .harness, .sideChat, .browser:
+    case .chat, .terminal, .harness, .sideChat, .browser, .remoteBrowser:
       item(tab, session: session, browser: browser).title
     }
   }

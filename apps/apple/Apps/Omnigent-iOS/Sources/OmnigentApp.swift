@@ -11,14 +11,43 @@ struct OmnigentApp: App {
 
   var body: some Scene {
     WindowGroup {
-      IOSRootView()
-        .omnigentTheme(theme.theme, appearance: theme.mode)
+      #if DEBUG
+        if let gallery = Self.gallery {
+          // Debug builds launched with -OmnigentGallery show the component gallery instead.
+          GalleryCatalogView(options: gallery)
+        } else {
+          IOSRootView()
+            .appearanceSettings(theme)
+            .omnigentTheme(theme.theme, appearance: theme.mode)
+        }
+      #else
+        IOSRootView()
+          .appearanceSettings(theme)
+          .omnigentTheme(theme.theme, appearance: theme.mode)
+      #endif
     }
     .commands {
       OmnigentSessionCommands()
       OmnigentTabCommands()
     }
   }
+
+  #if DEBUG
+    /// The gallery's launch options when `-OmnigentGallery` asked for it; a bad option is logged
+    /// and the app starts normally.
+    private static let gallery: GalleryLaunchOptions? = {
+      do {
+        let options = try GalleryLaunchOptions(
+          arguments: ProcessInfo.processInfo.arguments,
+          environment: ProcessInfo.processInfo.environment)
+        return options.showsGallery ? options : nil
+      } catch {
+        Logger(subsystem: "ai.omnigent.ios", category: "gallery").error(
+          "Gallery launch options: \(String(describing: error), privacy: .public)")
+        return nil
+      }
+    }()
+  #endif
 }
 
 /// The iPhone and iPad root: the same assembly as the Mac windows, as one scene. The split view

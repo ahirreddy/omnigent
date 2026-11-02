@@ -29,9 +29,13 @@ let package = Package(
     .package(path: "../OmnigentStores"),
     .package(path: "../OmnigentPlatform"),
     .package(path: "../OmnigentCoreFFI"),
+    // Sign-in screens for the gallery's sign-in pages and flow; it has no dependencies.
+    .package(path: "../OmnigentAuthUI"),
     // The playground only: real Files, Changes and Terminals content for the right panel.
     .package(path: "../OmnigentWorkspaceUI"),
     .package(path: "../OmnigentTerminalUI"),
+    // The playground only: a remote browser tab playing the recorded fixture.
+    .package(path: "../OmnigentRemoteBrowser"),
     // Markdown parsing (CommonMark + GFM tables) for the transcript renderer. Pinned exactly.
     .package(url: "https://github.com/swiftlang/swift-markdown.git", exact: "0.9.0"),
   ],
@@ -50,6 +54,7 @@ let package = Package(
       name: "OmnigentUIComponents",
       dependencies: [
         .product(name: "OmnigentPlatform", package: "OmnigentPlatform"),
+        .product(name: "OmnigentAuthUI", package: "OmnigentAuthUI"),
         .product(name: "Markdown", package: "swift-markdown"),
       ],
       swiftSettings: mainActorSwiftSettings
@@ -60,13 +65,16 @@ let package = Package(
         "OmnigentUIComponents",
         .product(name: "OmnigentWorkspaceUI", package: "OmnigentWorkspaceUI"),
         .product(name: "OmnigentTerminalUI", package: "OmnigentTerminalUI"),
+        .product(name: "OmnigentRemoteBrowser", package: "OmnigentRemoteBrowser"),
       ],
       path: "Playground",
       swiftSettings: mainActorSwiftSettings
     ),
     .testTarget(
       name: "OmnigentUIComponentTests",
-      dependencies: ["OmnigentUIComponents"],
+      dependencies: [
+        "OmnigentUIComponents", .product(name: "OmnigentAuthUI", package: "OmnigentAuthUI"),
+      ],
       swiftSettings: mainActorSwiftSettings
     ),
   ],

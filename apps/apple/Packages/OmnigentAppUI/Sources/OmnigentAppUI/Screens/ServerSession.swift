@@ -1,6 +1,7 @@
 public import Foundation
 public import Observation
 import OmnigentCoreFFI
+public import OmnigentRemoteBrowser
 import OmnigentServices
 public import OmnigentStores
 public import OmnigentTerminalStores
@@ -25,14 +26,23 @@ public final class ServerSession {
   public private(set) var openSessionIDs: Set<String> = []
   /// The terminal names each session's agent declares, once read.
   public private(set) var declaredTerminals: [String: [String]] = [:]
+  /// Remote browser tabs; `nil` when this build has no remote browser connector.
+  public let remoteBrowsers: RemoteBrowserTabs?
 
   /// Wraps an existing store.
   /// - Parameters:
   ///   - connection: The store.
   ///   - opener: Opens pages in the system browser.
-  public init(connection: ConnectionStore, opener: ExternalURLOpener = .system) {
+  ///   - remoteBrowser: The remote browser connector; by default the one
+  ///     ``RemoteBrowserAvailability`` turns on for this connection, if any.
+  public init(
+    connection: ConnectionStore, opener: ExternalURLOpener = .system,
+    remoteBrowser: (any RemoteBrowserConnecting)? = nil
+  ) {
     self.connection = connection
     signIn = SignInController(store: connection, opener: opener)
+    remoteBrowsers = (remoteBrowser ?? RemoteBrowserAvailability.connector(core: connection.core))
+      .map { RemoteBrowserTabs(connector: $0) }
   }
 
   /// A session over the live host services, with this build's Keychain (see

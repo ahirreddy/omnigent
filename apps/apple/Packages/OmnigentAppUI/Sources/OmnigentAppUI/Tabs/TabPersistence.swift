@@ -264,7 +264,7 @@ nonisolated struct TabWindowRecord: Codable, Sendable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case window, launch, savedAt, selectedID, tabs, closed
+    case window, launch, savedAt, selectedID, tabs, closed, split
   }
 
   init(from decoder: any Decoder) throws {
@@ -274,11 +274,12 @@ nonisolated struct TabWindowRecord: Codable, Sendable {
     savedAt = try container.decode(Date.self, forKey: .savedAt)
     let tabs = try container.decode([LenientTab].self, forKey: .tabs)
     let closed = try container.decodeIfPresent([LenientTab].self, forKey: .closed) ?? []
+    let split = try container.decodeIfPresent(LenientSplit.self, forKey: .split)
     snapshot = TabWindowSnapshot(
       tabs: tabs.compactMap(\.tab),
       selectedID: try container.decodeIfPresent(String.self, forKey: .selectedID),
-      closed: closed.compactMap(\.tab))
-    skipped = (tabs + closed).compactMap(\.problem)
+      closed: closed.compactMap(\.tab), split: split?.split)
+    skipped = (tabs + closed).compactMap(\.problem) + [split?.problem].compactMap { $0 }
   }
 
   func encode(to encoder: any Encoder) throws {
@@ -289,6 +290,35 @@ nonisolated struct TabWindowRecord: Codable, Sendable {
     try container.encode(snapshot.tabs, forKey: .tabs)
     try container.encodeIfPresent(snapshot.selectedID, forKey: .selectedID)
     try container.encode(snapshot.closed, forKey: .closed)
+    try container.encodeIfPresent(snapshot.split, forKey: .split)
+  }
+}
+
+/// A split view that decodes to `nil` with the reason when it is from a newer layout version or
+/// malformed, so the window still restores its tabs, in one pane.
+nonisolated struct LenientSplit: Decodable {
+  let split: TabSplitSnapshot?
+  let problem: String?
+
+  private enum CodingKeys: String, CodingKey {
+    case version
+  }
+
+  init(from decoder: any Decoder) throws {
+    do {
+      let version = try decoder.container(keyedBy: CodingKeys.self)
+        .decode(Int.self, forKey: .version)
+      guard version <= TabSplitSnapshot.version else {
+        split = nil
+        problem = "the split view is from a newer version of the app"
+        return
+      }
+      split = try TabSplitSnapshot(from: decoder)
+      problem = nil
+    } catch {
+      split = nil
+      problem = "the split view could not be read (\(error))"
+    }
   }
 }
 

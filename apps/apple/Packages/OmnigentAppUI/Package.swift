@@ -35,6 +35,7 @@ let package = Package(
     .package(path: "../OmnigentTerminalUI"),
     .package(path: "../OmnigentTerminalStores"),
     .package(path: "../OmnigentTestSupport"),
+    .package(path: "../OmnigentRemoteBrowser"),
   ],
   targets: [
     .target(
@@ -48,6 +49,7 @@ let package = Package(
         .product(name: "OmnigentWorkspaceUI", package: "OmnigentWorkspaceUI"),
         .product(name: "OmnigentTerminalUI", package: "OmnigentTerminalUI"),
         .product(name: "OmnigentTerminalStores", package: "OmnigentTerminalStores"),
+        .product(name: "OmnigentRemoteBrowser", package: "OmnigentRemoteBrowser"),
         .product(
           name: "OmnigentDesktop", package: "OmnigentDesktop",
           condition: .when(platforms: [.macOS])),
@@ -64,6 +66,7 @@ let package = Package(
         .product(name: "OmnigentAuthUI", package: "OmnigentAuthUI"),
         .product(name: "OmnigentServices", package: "OmnigentServices"),
         .product(name: "OmnigentTestSupport", package: "OmnigentTestSupport"),
+        .product(name: "OmnigentRemoteBrowser", package: "OmnigentRemoteBrowser"),
       ],
       swiftSettings: mainActorSwiftSettings
     ),

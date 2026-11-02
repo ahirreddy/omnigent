@@ -1,6 +1,7 @@
 import Foundation
 import OmnigentAuthUI
 import OmnigentCoreFFI
+import OmnigentRemoteBrowser
 import OmnigentStores
 public import OmnigentUIComponents
 public import SwiftUI
@@ -24,6 +25,7 @@ public struct ConnectedServerView: View {
   @State private var undo: SidebarUndo?
   @State private var showsTabOverview = false
   @State private var tabFailure: String?
+  @State private var tabCommandRelay = FocusedActionsRelay<TabCommandActions>()
   @Environment(\.horizontalSizeClass) private var sizeClass
 
   /// Creates the view.
@@ -64,8 +66,9 @@ public struct ConnectedServerView: View {
     }
     .modifier(PaletteAdapter(session: session, selection: $selection))
     .toolbar { accountToolbar }
-    .focusedSceneValue(\.tabCommands, tabs.commands)
+    .focusedSceneValue(\.tabCommands, tabCommandRelay.publish(tabs.commands))
     .modifier(TabRestoration(session: session, context: tabContext) { route(selection) })
+    .modifier(SessionTabsLifecycle(session: session))
     .onChange(of: selection) { _, current in route(current) }
     .onChange(of: session.tabs.selectedID, initial: true) { selectedTabChanged() }
     .onChange(of: isWindowFocused) { report() }
@@ -123,7 +126,8 @@ public struct ConnectedServerView: View {
           server: connection.connectedServer,
           tabRoutes: windowTabs.routes(for: id),
           terminalNames: session.declaredTerminalNames(in: id),
-          sessionActions: sidebarActions.sessions
+          sessionActions: sidebarActions.sessions,
+          makeForkStore: { connection.makeForkStore() }
         )
         .id(id)
       } else {
@@ -198,10 +202,8 @@ public struct ConnectedServerView: View {
           succeeded = await list.setArchived(id, archived)
         }
         if archived {
-          session.tabs.closeAll { content in
-            guard case .chat(let id) = content else { return false }
-            return ids.contains(id)
-          }
+          // An archived session's tabs leave with it, its primary chat among them.
+          session.tabs.removeSessions(Set(ids))
         }
       }
       if succeeded, recordUndo { undo = SidebarUndo(change: change) }
@@ -235,7 +237,7 @@ extension ConnectedServerView {
   private var windowTabs: WindowTabs {
     WindowTabs(
       session: session, context: tabContext, showAll: { showsTabOverview = true },
-      fail: { tabFailure = $0 })
+      fail: { tabFailure = $0 }, supportsSplit: sizeClass != .compact)
   }
 
   private var tabFailurePresented: Binding<Bool> {
@@ -248,48 +250,77 @@ extension ConnectedServerView {
     return nil
   }
 
-  /// The selected tab's content: the sidebar destinations through ``detail(_:)``, the other
-  /// kinds through their tab views, and the new-tab page when no tab is open.
+  /// The selected tab's content, or each pane's in a split window, and the new-tab page when no
+  /// tab is open.
   @ViewBuilder private var tabDetail: some View {
     let tabs = session.tabs
     let routes = windowTabs
-    if let tab = tabs.selected {
-      Group {
-        switch tab.content {
-        case .chat, .newSession, .inbox, .canvas:
-          detail(tab.content.destination)
-        case .newTab:
-          NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: tab.id))
-            .task(id: routes.newTabState.recentSessions.map(\.id)) {
-              await session.loadDeclaredTerminalNames(
-                routes.newTabState.recentSessions.map(\.id))
-            }
-        case .terminal(let sessionID, let terminalID):
-          TerminalTabView(
-            session: session, sessionID: sessionID, terminalID: terminalID,
-            showChat: { tabs.open(.chat(sessionID: sessionID)) })
-        case .harness(let sessionID):
-          HarnessTabView(
-            session: session, sessionID: sessionID,
-            showChat: { tabs.open(.chat(sessionID: sessionID)) })
-        case .sideChat(let sessionID, let rowID):
-          SideChatTabContainer(
-            session: session, sessionID: sessionID, rowID: rowID,
-            showChat: { tabs.open(.chat(sessionID: sessionID)) })
-        case .browser(let browserID):
-          BrowserTabContainer(
-            host: tabContext.browser, tab: tab, browserID: browserID,
-            changed: { tabs.contentChanged() })
-        case .agentBrowser(let sessionID):
-          AgentBrowserTabContainer(
-            host: tabContext.browser, sessionID: sessionID,
-            showChat: { tabs.open(.chat(sessionID: sessionID)) })
+    if tabs.selected != nil {
+      TabSplitView(split: tabs.splitState, actions: routes.actions) { pane in
+        if let tab = paneTab(pane) {
+          tabContent(tab, routes: routes)
         }
       }
-      .id(tab.id)
     } else {
       NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: nil))
     }
+  }
+
+  /// The tab a pane shows: the selected tab when the window is not split.
+  private func paneTab(_ pane: TabPane) -> AppTab? {
+    let tabs = session.tabs
+    guard let split = tabs.splitState else { return tabs.selected }
+    return split.activeID(pane).flatMap(tabs.tab)
+  }
+
+  /// A tab's content: the sidebar destinations through ``detail(_:)``, the other kinds through
+  /// their tab views.
+  private func tabContent(_ tab: AppTab, routes: WindowTabs) -> some View {
+    let tabs = session.tabs
+    return Group {
+      switch tab.content {
+      case .chat, .newSession, .inbox, .canvas:
+        detail(tab.content.destination)
+      case .newTab:
+        NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: tab.id))
+          .task(id: routes.newTabState.recentSessions.map(\.id)) {
+            let recent = routes.newTabState.recentSessions.map(\.id)
+            async let profiles: Void = session.loadRemoteBrowserProfiles(recent.first)
+            await session.loadDeclaredTerminalNames(recent)
+            await profiles
+          }
+      case .terminal(let sessionID, let terminalID):
+        TerminalTabView(
+          session: session, sessionID: sessionID, terminalID: terminalID,
+          showChat: { tabs.open(.chat(sessionID: sessionID)) })
+      case .harness(let sessionID):
+        HarnessTabView(
+          session: session, sessionID: sessionID,
+          showChat: { tabs.open(.chat(sessionID: sessionID)) })
+      case .sideChat(let sessionID, let rowID):
+        SideChatTabContainer(
+          session: session, sessionID: sessionID, rowID: rowID,
+          showChat: { tabs.open(.chat(sessionID: sessionID)) })
+      case .browser(let browserID):
+        BrowserTabContainer(
+          host: tabContext.browser, tab: tab, browserID: browserID,
+          changed: { tabs.contentChanged() })
+      case .agentBrowser(let sessionID):
+        AgentBrowserTabContainer(
+          host: tabContext.browser, sessionID: sessionID,
+          showChat: { tabs.open(.chat(sessionID: sessionID)) })
+      case .remoteBrowser(let sessionID, let tabID):
+        RemoteBrowserTabContainer(
+          session: session, tab: tab, sessionID: sessionID, tabID: tabID,
+          reopen: { url, record in
+            Task {
+              await routes.openRemoteBrowser(
+                in: sessionID, profile: record.profile, url: url, replacing: tab.id)
+            }
+          })
+      }
+    }
+    .id(tab.id)
   }
 
   /// The sidebar row for a tab. Session terminals and side chats select their session only at
@@ -325,7 +356,8 @@ extension ConnectedServerView {
     }
   }
 
-  /// Previous and Next Session show the session in the current chat tab.
+  /// Previous and Next Session show the session in the current tab when it may be replaced; a
+  /// primary chat never is, so the session's own chat opens or is focused.
   private func showInPlace(_ sessionID: String) {
     session.tabs.navigate(to: .chat(sessionID: sessionID)) { content in
       if case .chat = content { return true }

@@ -24,6 +24,9 @@ struct TabOverviewMenu: View {
           Button("Reopen Closed Tab", systemImage: "arrow.uturn.backward", action: reopen)
         }
       }
+      if actions.newRemoteBrowser != nil {
+        Section { NewTabMenu(actions: actions) }
+      }
       if !state.recentlyClosed.isEmpty {
         Section("Recently Closed") {
           ForEach(state.recentlyClosed.prefix(8)) { tab in
@@ -139,7 +142,7 @@ public struct TabOverviewSheet: View {
         TabIcon(tab: tab, isSelected: tab.id == state.selectedID)
         VStack(alignment: .leading, spacing: 2) {
           Text(tab.displayTitle).lineLimit(1)
-          Text(tab.subtitle ?? tab.kind.label)
+          Text(Self.detail(tab))
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
@@ -159,13 +162,23 @@ public struct TabOverviewSheet: View {
     }
     .buttonStyle(.plain)
     .swipeActions {
-      Button("Close", systemImage: "xmark", role: .destructive) { actions.close(tab.id) }
+      if tab.isClosable {
+        Button("Close", systemImage: "xmark", role: .destructive) { actions.close(tab.id) }
+      }
     }
     .contextMenu {
       TabContextMenu(
-        tab: tab, actions: actions, canCloseToRight: state.unpinned.last?.id != tab.id)
+        tab: tab, actions: actions, canCloseToRight: state.unpinned.last?.id != tab.id,
+        isSplit: state.split != nil)
     }
     .accessibilityIdentifier("tab-overview-row-\(tab.id)")
+  }
+
+  /// The row's second line: the pane in a split window, then the subtitle or kind.
+  static func detail(_ tab: TabItemState) -> String {
+    let detail = tab.subtitle ?? tab.kind.label
+    guard let pane = tab.pane else { return detail }
+    return "\(pane.label) pane \u{00B7} \(detail)"
   }
 
   private func move(from source: IndexSet, to destination: Int) {

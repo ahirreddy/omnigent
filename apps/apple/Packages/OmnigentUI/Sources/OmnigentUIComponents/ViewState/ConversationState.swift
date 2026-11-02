@@ -254,7 +254,7 @@ public struct ConversationActions {
   public var dismissError: (@MainActor () -> Void)?
   /// Retry loading after a failure.
   public var retry: (@MainActor () -> Void)?
-  /// Fork from an assistant message ("Fork from here").
+  /// Fork the conversation after a settled assistant message ("Fork chat from here").
   public var forkFrom: (@MainActor (Row) -> Void)?
   /// A message's deep link (`?message=<id>`), for Copy Link.
   public var messageURL: (@MainActor (Row) -> URL?)?

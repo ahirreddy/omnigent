@@ -45,6 +45,7 @@ private struct PalettePresentation: ViewModifier {
   @State private var focusedCommands = FocusedSessionCommandsBox()
   @State private var capturedCommands = SessionCommandActions()
   @State private var pendingTarget: PaletteTarget?
+  @State private var paletteRelay = FocusedActionsRelay<PaletteCommandActions>()
 
   func body(content: Content) -> some View {
     content
@@ -53,7 +54,8 @@ private struct PalettePresentation: ViewModifier {
       .background { FocusedSessionCommandsReader(box: focusedCommands) }
       .focusedSceneValue(
         \.paletteCommands,
-        PaletteCommandActions(openPalette: open, openShortcuts: { showsShortcuts = true })
+        paletteRelay.publish(
+          PaletteCommandActions(openPalette: open, openShortcuts: { showsShortcuts = true }))
       )
       .sheet(isPresented: $showsPalette, onDismiss: executePending) {
         CommandPalette(state: state, commands: entries) { target in

@@ -10,19 +10,23 @@ nonisolated public struct NewTabPageState: Hashable, Sendable {
   /// not known yet and offers the default shell; an empty list explains that the agent declares
   /// none.
   public var terminalNames: [String: [String]]
+  /// The remote browser profiles on the agent's machine; empty offers the default profile.
+  public var remoteBrowserProfiles: [String]
 
   /// Creates the state.
   /// - Parameters:
   ///   - recentSessions: Recent sessions, most recent first.
   ///   - canOpenBrowser: Browser tabs are available.
   ///   - terminalNames: Declared terminals by session id.
+  ///   - remoteBrowserProfiles: Remote browser profiles.
   public init(
     recentSessions: [SessionSummary] = [], canOpenBrowser: Bool = false,
-    terminalNames: [String: [String]] = [:]
+    terminalNames: [String: [String]] = [:], remoteBrowserProfiles: [String] = []
   ) {
     self.recentSessions = recentSessions
     self.canOpenBrowser = canOpenBrowser
     self.terminalNames = terminalNames
+    self.remoteBrowserProfiles = remoteBrowserProfiles
   }
 }
 
@@ -37,6 +41,8 @@ public struct NewTabPageActions {
   public var openBrowser: (@MainActor () -> Void)?
   /// Open a session's conversation.
   public var openSession: @MainActor (String) -> Void
+  /// Open a remote browser tab for a session in a profile; `nil` hides it.
+  public var openRemoteBrowser: (@MainActor (String, String) -> Void)?
 
   /// Creates the actions.
   /// - Parameters:
@@ -123,6 +129,33 @@ public struct NewTabPage: View {
         launcher(
           "Browser", detail: "Open this server's web app", systemImage: "globe",
           identifier: "newtab-browser", action: openBrowser)
+      }
+      if let openRemoteBrowser = actions.openRemoteBrowser {
+        Menu {
+          if state.recentSessions.isEmpty {
+            Text("Open a session first")
+          }
+          ForEach(state.recentSessions.prefix(12)) { session in
+            Menu(session.title) {
+              let profiles =
+                state.remoteBrowserProfiles.isEmpty ? ["default"] : state.remoteBrowserProfiles
+              ForEach(profiles, id: \.self) { profile in
+                Button(profile) { openRemoteBrowser(session.id, profile) }
+                  .accessibilityIdentifier("newtab-remote-browser-\(session.id)-\(profile)")
+              }
+            }
+            .accessibilityIdentifier("newtab-remote-browser-\(session.id)")
+          }
+        } label: {
+          LauncherLabel(
+            title: "Remote Browser", detail: "A browser on the agent's machine",
+            systemImage: TabKind.remoteBrowser.systemImage)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .disabled(state.recentSessions.isEmpty)
+        .accessibilityIdentifier("newtab-remote-browser")
       }
     }
   }
@@ -222,5 +255,25 @@ private struct LauncherLabel: View {
     .cardSurface(cornerRadius: Theme.Radius.medium)
     .hoverHighlight(cornerRadius: Theme.Radius.medium)
     .contentShape(Rectangle())
+  }
+}
+
+/// The + button's menu: New Tab, and a remote browser tab in a chosen profile.
+struct NewTabMenu: View {
+  let actions: TabActions
+
+  var body: some View {
+    Button("New Tab", systemImage: "plus", action: actions.newTab)
+    if let newRemoteBrowser = actions.newRemoteBrowser {
+      Menu("New Remote Browser Tab", systemImage: TabKind.remoteBrowser.systemImage) {
+        if actions.remoteBrowserProfiles.isEmpty {
+          Button("Default Profile") { newRemoteBrowser("default") }
+        }
+        ForEach(actions.remoteBrowserProfiles, id: \.self) { profile in
+          Button(profile) { newRemoteBrowser(profile) }
+        }
+      }
+      .accessibilityIdentifier("tab-new-remote-browser")
+    }
   }
 }

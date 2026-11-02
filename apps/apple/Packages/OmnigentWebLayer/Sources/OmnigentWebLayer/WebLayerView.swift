@@ -1,4 +1,5 @@
 public import AppKit
+internal import OmnigentInput
 public import SwiftUI
 
 /// Embeds a `WebView`: shows its layers, forwards user input through its renderer, reports
@@ -54,7 +55,7 @@ final class WebSurfaceView: NSView {
   private var trackingArea: NSTrackingArea?
   private var windowObservers: [any NSObjectProtocol] = []
   /// IME state between `setMarkedText`, `insertText` and the key-down that caused them.
-  var textInput = TextInputState()
+  let textComposer = TextInputComposer()
   /// The page-started drag in flight, if any.
   var pageDrag: WebDragStart?
   /// The most recent mouse-down, which a page-started drag needs to begin.
@@ -66,6 +67,7 @@ final class WebSurfaceView: NSView {
     layer = CALayer()
     wantsLayer = true
     layer?.addSublayer(webView.layerHost.rootLayer)
+    textComposer.sink = self
     webView.renderer.onUnhandledKeyEvent = { [weak self] event in self?.redispatch(event) }
     webView.onStartDrag = { [weak self] start in self?.beginPageDrag(start) }
     registerForDraggedTypes(Self.acceptedDragTypes)
@@ -200,7 +202,7 @@ final class WebSurfaceView: NSView {
       webView.renderer.forwardKeyEvent(event)
       return
     }
-    keyDownThroughInputContext(event)
+    textComposer.keyDown(event, context: inputContext)
   }
 
   override func keyUp(with event: NSEvent) {

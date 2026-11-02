@@ -110,6 +110,9 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   a harness supports.
 - [ ] **Pending-input queue:** stop treating the runner's interrupt marker as consuming a queued
   message.
+- [ ] **Runner restart:** after a server restart the newly bound runner resumes a stopped turn with
+  no new user message (one extra model call), and the stopped reply's partial text is never
+  saved to item history.
 - [ ] **CLI:** remove the pidfile on SIGTERM.
 - [ ] **Session delete:** the server's `DELETE /v1/sessions/{sid}` ignores the runner's response
   status (only transport errors are caught, then it deletes server-side anyway), so a runner
@@ -128,6 +131,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **iPhone:** transcript content shows briefly under the dock and composer while the layout
   settles.
 - [ ] **Tabs:** drag-to-reorder on iPad.
+- [ ] **Split view:** in iPad portrait the right pane's tab-strip section is narrow and clips titles.
+- [ ] **Split view on the unfolded Duo:** the hinge layout applies only when both sides of the
+  crease are at least 320 pt in the detail column; with the sidebar shown it probably falls back
+  to the fraction layout. Verify on hardware.
 - [ ] **Test data:** remove the two "Tabs fixture" sessions from the integration server's
   database.
 - [ ] **Share:** the session Share control isn't wired in the real app yet; there's no share store
@@ -148,6 +155,16 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **CLI style:** fold the non-message hover host (`cliActions`) into the shared
   `messageActionsHost` once it takes arbitrary actions.
 - [ ] **CLI style:** Styled renders fenced code without syntax highlighting.
+- [ ] **CLI style on iOS:** the request review sheet opened from the dock keeps the system sheet
+  background instead of the terminal canvas.
+- [ ] **CLI style on iOS:** the unfolded iPhone Duo is untested; the Xcode 27.2 simulator has no
+  unfold control (the inner display stays off).
+- [ ] **iOS navigation bar:** scrolled to the top, a conversation's large title is not drawn (chat
+  and CLI on iPhone), which leaves an empty band under the bar buttons. Suspect
+  `TitlebarBackdrop`, which fills the top safe area.
+- [ ] **Gallery device frames:** conversation pages put the touch composer over the home
+  indicator, but on the simulators it sits above the bottom safe area (iPhone 17 Pro, folded
+  Duo). The gallery's bottom inset does not reach the page's own `safeAreaInset`.
 
 - [ ] **Gallery:** page and flow toolbars leak into the gallery window's toolbar; captures draw
   modals and the tab strip in place (Open in Window shows the real chrome).
@@ -165,6 +182,19 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Split view:** the other pane's Inbox, New Session and browser views still publish their
   toolbar items and focused values (only conversations and terminals defer to the focused pane);
   notification suppression covers only the focused pane's chat.
+
+- [ ] **iPhone Duo unfolded:** the Xcode 27.2 simulator can't unfold, so the unfolded posture
+  (safe areas, size classes, the `.division` region, camera position, `ArrangementView`'s axis)
+  is unverified; check on hardware or a later Xcode. Folded was measured: 466x678 pt, an 84 pt
+  trailing status column, and `ArrangementView` stacking vertically 50/50.
+- [ ] **Gallery:** status-bar SF Symbols (Wi-Fi, battery) don't render in exports.
+
+- [ ] **Fork:** the Mac fork sheet has extra empty space below its content; take iPhone/iPad fork
+  screenshots once the iOS re-render loop is fixed.
+
+- [ ] **Flaky test:** `OmnigentTerminalUITests.ConfigAndInputTests.configParses` intermittently
+  segfaults in `ghostty_config_new` (null dereference), likely a race in libghostty's global
+  initialization when Swift Testing runs suites in parallel; serialize the suite or initialize once.
 
 ## Product decisions
 

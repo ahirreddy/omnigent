@@ -67,8 +67,12 @@ public struct ConversationScreen<Terminal: View>: View {
   @State private var showsInfo = false
   @State private var drafts = DecisionDrafts()
   @State private var approveCandidate: String?
+  @State private var commandRelay = FocusedActionsRelay<SessionCommandActions>()
   @Environment(\.layoutWidth) private var layoutWidth
+  @Environment(\.transcriptTitleMenu) private var transcriptTitleMenu
   @Environment(\.tabsInTitlebar) private var tabsInTitlebar
+  @Environment(\.isActiveTabPane) private var isActivePane
+  @Environment(\.offersTerminalView) private var offersTerminalView
 
   /// Creates the screen.
   /// - Parameters:
@@ -103,7 +107,10 @@ public struct ConversationScreen<Terminal: View>: View {
     self.terminal = terminal()
   }
 
-  private var showsTerminal: Bool { mode == .terminal && state.terminalAvailable }
+  private var showsTerminal: Bool { mode == .terminal && offersTerminal }
+
+  /// Only a session's primary chat has the terminal view; side chats and other tabs do not.
+  private var offersTerminal: Bool { state.terminalAvailable && offersTerminalView }
 
   private var inspectorTab: Binding<InspectorTab> { externalInspectorTab ?? $localInspectorTab }
 
@@ -122,7 +129,7 @@ public struct ConversationScreen<Terminal: View>: View {
       VStack(spacing: 0) {
         DecisionDock(state: state, actions: actions)
         if !showsTerminal {
-          ComposerView(
+          TranscriptComposer(
             draft: $draft, state: composer, actions: composerActions, focusRequest: focusRequest)
         } else if !state.decisions.isEmpty {
           Spacer().frame(height: 10)
@@ -135,6 +142,7 @@ public struct ConversationScreen<Terminal: View>: View {
       .background { BottomBarBackdrop() }
     }
     .themeCanvas()
+    .cliPalette()
     .environment(drafts)
     .environment(\.commandReturnOwner, commandReturnOwner)
     .onPreferenceChange(ApproveShortcutCandidate.self) { approveCandidate = $0 }
@@ -152,17 +160,25 @@ public struct ConversationScreen<Terminal: View>: View {
         ShareSheet(state: share.state, actions: share.actions) { showsShare = false }
       }
     }
-    .sheet(item: $fork) { fork in
-      if let forkActions = extras.forkActions {
+    .sheet(item: ForkSheetID.binding($fork)) { _ in
+      if let fork, let forkActions = extras.forkActions {
         ForkSheet(state: fork, actions: forkActions)
       }
     }
-    .focusedSceneValue(\.sessionCommands, commands)
+    // In a split window only the focused pane's conversation drives the menus.
+    .focusedSceneValue(\.sessionCommands, commandRelay.publish(isActivePane ? commands : nil))
   }
 
   @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
+    // A split window's other pane leaves the toolbar to the focused one.
+    if isActivePane {
+      paneToolbar
+    }
+  }
+
+  @ToolbarContentBuilder private var paneToolbar: some ToolbarContent {
     // With tabs in the titlebar, the agent's TUI is its own tab (Option-Command-\\ opens it).
-    if state.terminalAvailable, !tabsInTitlebar {
+    if offersTerminal, !tabsInTitlebar {
       ToolbarItem(placement: .principal) {
         ViewModePicker(mode: $mode, status: state.terminal)
       }
@@ -238,6 +254,7 @@ public struct ConversationScreen<Terminal: View>: View {
         Button("Delete", systemImage: "trash", role: .destructive) { delete(summary) }
       }
     }
+    transcriptTitleMenuItems(transcriptTitleMenu)
     Button("Copy Session ID", systemImage: "number") { Pasteboard.copy(state.header.id) }
   }
 
@@ -262,7 +279,7 @@ public struct ConversationScreen<Terminal: View>: View {
       focus = { focusRequest += 1 }
     }
     var toggleMode: (@MainActor () -> Void)?
-    if state.terminalAvailable {
+    if offersTerminal {
       let binding = $mode
       toggleMode = { binding.wrappedValue = binding.wrappedValue == .chat ? .terminal : .chat }
     }

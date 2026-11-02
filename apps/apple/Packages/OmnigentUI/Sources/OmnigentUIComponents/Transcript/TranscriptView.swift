@@ -12,6 +12,7 @@ public struct TranscriptView: View {
   private let scrollToLatestRequest: Int
 
   @State private var follow = TranscriptFollow()
+  @Environment(\.transcriptAppearance) private var appearance
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private static let bottomID = "transcript-bottom"
@@ -37,42 +38,51 @@ public struct TranscriptView: View {
     let lastAnswerID = state.header.status == .running ? nil : Self.lastAnswerID(state.rows)
     ScrollViewReader { proxy in
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: Theme.Spacing.row) {
-          historyHeader
-          if let todos = state.section("todos"), !todos.details.isEmpty {
-            PlanCard(section: todos)
-          }
-          if let superseded = state.section("superseded"), let target = superseded.sessionId,
-            target != state.header.id
-          {
-            SupersededBanner(section: superseded, target: target)
-          }
-          if segments.isEmpty {
-            EmptyTranscriptView(state: state)
-          }
-          ForEach(segments) { segment in
-            TurnSegmentView(
-              segment: segment, decorations: decorations(for: segment, lastAnswerID: lastAnswerID),
-              duration: duration(for: segment)
-            )
-            .equatable()
-            .id(segment.id)
-          }
-          InlineDecisions(state: state, actions: actions)
-          SubagentGroupView(state: state, actions: actions)
-          if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
-            WorkingIndicator(isBlocked: !state.pendingDecisions.isEmpty)
-          }
-          if let failure = state.header.failureMessage, !hasErrorRow(matching: failure) {
-            FailureBanner(message: failure, resume: actions.resume)
-          }
-          if let error = state.errorMessage {
-            ErrorBanner(message: error, dismiss: actions.dismissError, retry: actions.retry)
+        LazyVStack(
+          alignment: .leading, spacing: appearance.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row
+        ) {
+          if appearance.isCLI {
+            CLITranscriptRows(
+              state: state, actions: actions, segments: segments, header: historyHeader)
+          } else {
+            historyHeader
+            if let todos = state.section("todos"), !todos.details.isEmpty {
+              PlanCard(section: todos)
+            }
+            if let superseded = state.section("superseded"), let target = superseded.sessionId,
+              target != state.header.id
+            {
+              SupersededBanner(section: superseded, target: target)
+            }
+            if segments.isEmpty {
+              EmptyTranscriptView(state: state)
+            }
+            ForEach(segments) { segment in
+              TurnSegmentView(
+                segment: segment,
+                decorations: decorations(for: segment, lastAnswerID: lastAnswerID),
+                duration: duration(for: segment)
+              )
+              .equatable()
+              .id(segment.id)
+            }
+            InlineDecisions(state: state, actions: actions)
+            SubagentGroupView(state: state, actions: actions)
+            if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
+              WorkingIndicator(isBlocked: !state.pendingDecisions.isEmpty)
+            }
+            if let failure = state.header.failureMessage, !hasErrorRow(matching: failure) {
+              FailureBanner(message: failure, resume: actions.resume)
+            }
+            if let error = state.errorMessage {
+              ErrorBanner(message: error, dismiss: actions.dismissError, retry: actions.retry)
+            }
           }
           Color.clear.frame(height: 1).id(Self.bottomID)
         }
         .padding(.vertical, Theme.Spacing.extraLarge)
-        .readingColumn()
+        // CLI rows set their own column, so user bands reach the edges.
+        .transcriptStackColumn()
       }
       .safeAreaInset(edge: .top, spacing: 0) {
         // A sub-agent's transcript keeps the way back to its parent in view.
@@ -140,6 +150,8 @@ public struct TranscriptView: View {
         }
       }
     }
+    .background { if appearance.isCLI { CLICanvas() } }
+    .cliPalette()
     .accessibilityIdentifier("transcript-\(state.header.id)")
   }
 

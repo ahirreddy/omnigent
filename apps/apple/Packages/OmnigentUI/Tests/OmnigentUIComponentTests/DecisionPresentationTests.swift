@@ -136,6 +136,22 @@ struct DecisionPresentationTests {
     #expect(DecisionSummary(PreviewData.choice).answersInline)
     #expect(!DecisionSummary(PreviewData.form).answersInline)
 
+    let options = DecisionKind.choice(answerKey: "choice", options: ["Chat", "Approvals"])
+    let withContext = DecisionSummary(
+      PreviewData.card(
+        "q", detail: "What should we build first?\n\nChoose one **focus**.", kind: options))
+    #expect(withContext.plain == "What should we build first?")
+    #expect(withContext.secondary == "Choose one focus.")
+    #expect(withContext.answersInline)
+    let long = String(repeating: "context ", count: 20)
+    let longContext = DecisionSummary(
+      PreviewData.card("q", detail: "Which?\n\n\(long)", kind: options))
+    #expect(longContext.secondary == nil)
+    #expect(!longContext.answersInline, "the context is only visible on the full card")
+    let threeParagraphs = DecisionSummary(
+      PreviewData.card("q", detail: "Which?\n\nOne.\n\nTwo.", kind: options))
+    #expect(!threeParagraphs.answersInline)
+
     let named = PreviewData.card(
       "d", title: "Apply the sample design?",
       detail: "Use the simpler session list and keep pending requests easy to find.")

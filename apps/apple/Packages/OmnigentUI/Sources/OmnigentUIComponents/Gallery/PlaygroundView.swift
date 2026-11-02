@@ -43,12 +43,17 @@ public enum PlaygroundScenario: String, CaseIterable, Identifiable, Sendable {
   case gallery
   /// The tab strip with every tab kind.
   case tabs
+  /// Two panes side by side: a chat and a browser page.
+  case tabSplit
   /// A parent's live sub-agent group: a running child, a blocked one answerable from the
   /// parent, a finished one, and the child's transcript with its route back.
   case subagents
   /// The iPhone reading posture: output streaming while scrolled up, Jump to latest, and drafts
   /// kept per session.
   case phoneReading
+  /// The CLI transcript style: the Codex CLI reference conversations, with the style, output
+  /// rendering, width and font size switchable.
+  case cliStyle
 
   /// The scenario itself.
   public var id: Self { self }
@@ -73,8 +78,10 @@ public enum PlaygroundScenario: String, CaseIterable, Identifiable, Sendable {
     case .themes: "Theme Gallery"
     case .gallery: "Component Gallery"
     case .tabs: "Tabs"
+    case .tabSplit: "Tab Split View"
     case .subagents: "Sub-agents"
     case .phoneReading: "Phone Reading"
+    case .cliStyle: "CLI Style"
     }
   }
 
@@ -98,8 +105,10 @@ public enum PlaygroundScenario: String, CaseIterable, Identifiable, Sendable {
     case .themes: "paintpalette"
     case .gallery: "square.grid.2x2"
     case .tabs: "square.on.square"
+    case .tabSplit: "rectangle.split.2x1"
     case .subagents: "arrow.triangle.branch"
     case .phoneReading: "iphone.gen3"
+    case .cliStyle: "apple.terminal.on.rectangle"
     }
   }
 }
@@ -157,7 +166,7 @@ public final class PlaygroundModel {
     showsInspector = false
     switch scenario {
     case .streaming, .compact, .gallery, .themes, .serverSettings, .palette, .inboxTriage, .tabs,
-      .decisions, .composer, .subagents, .phoneReading:
+      .tabSplit, .decisions, .composer, .subagents, .phoneReading, .cliStyle:
       conversation.decisions = []
     case .terminal:
       conversation.decisions = [PreviewData.codexCommand]

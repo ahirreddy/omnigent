@@ -175,6 +175,8 @@ public final class ThemePreferences {
   }
   /// Problems found reading stored values, for Settings to show.
   public private(set) var readErrors: [ReadError] = []
+  /// The transcript style, width, output rendering and CLI font size, in the same store.
+  public let transcript: TranscriptPreferences
 
   private let defaults: UserDefaults
 
@@ -182,6 +184,7 @@ public final class ThemePreferences {
   /// - Parameter defaults: The store; `standard` by default.
   public init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
+    transcript = TranscriptPreferences(defaults: defaults)
     var errors: [ReadError] = []
     let storedMode = defaults.string(forKey: Self.modeKey)
     mode = storedMode.flatMap(AppearancePreference.init(rawValue:)) ?? .system

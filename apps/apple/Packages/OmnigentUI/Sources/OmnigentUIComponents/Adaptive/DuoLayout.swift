@@ -94,6 +94,16 @@ extension EnvironmentValues {
   }
 
   @available(iOS 27.1, *)
+  extension GeometryProxy {
+    /// An unfolded fold's hinge when it divides the view side by side, in local coordinates.
+    /// - Returns: The hinge's frame, or `nil` when there is none or it runs across the view.
+    nonisolated public func sideBySideHinge() -> CGRect? {
+      reservedRegions(kind: .division)
+        .first { $0.isActive && $0.frame.height > $0.frame.width }?.frame
+    }
+  }
+
+  @available(iOS 27.1, *)
   private struct HingeAvoidingModifier: ViewModifier {
     func body(content: Content) -> some View {
       GeometryReader { proxy in

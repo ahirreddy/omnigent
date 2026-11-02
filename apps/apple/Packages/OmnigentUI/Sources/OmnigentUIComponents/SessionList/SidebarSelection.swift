@@ -30,20 +30,27 @@ extension View {
 
 private struct SidebarSelectionModifier: ViewModifier {
   let isSelected: Bool
+  @State private var isHovered = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   func body(content: Content) -> some View {
     content
       #if os(macOS)
         .background { SystemSelectionHighlightRemover().accessibilityHidden(true) }
+        .onHover { isHovered = $0 }
       #endif
-      .listRowBackground(SidebarSelectionBackground(isSelected: isSelected))
+      .listRowBackground(
+        SidebarSelectionBackground(isSelected: isSelected, isHovered: isHovered)
+          .animation(reduceMotion ? nil : Theme.Motion.feedback, value: isHovered))
   }
 }
 
 /// The selected row's fill: the softened theme selection while the window is active, a neutral
-/// fill while it is not (as the system's own unemphasized selection).
+/// fill while it is not (as the system's own unemphasized selection). Hover uses the same shape
+/// and layers over the selection, so a hovered selected row reads as both.
 struct SidebarSelectionBackground: View {
   let isSelected: Bool
+  var isHovered = false
   #if os(macOS)
     @Environment(\.appearsActive) private var appearsActive
     private let cornerRadius = Theme.Radius.small
@@ -57,13 +64,14 @@ struct SidebarSelectionBackground: View {
   @Environment(\.colorSchemeContrast) private var contrast
 
   var body: some View {
-    if isSelected {
-      RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        .fill(fill)
+    if isSelected || isHovered {
+      let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+      shape
+        .fill(isSelected ? AnyShapeStyle(fill) : AnyShapeStyle(.clear))
+        .overlay { shape.fill(ThemeColor.hover.opacity(isHovered ? 1 : 0)) }
         .overlay {
-          if contrast == .increased {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-              .strokeBorder(ThemeColor.border)
+          if isSelected, contrast == .increased {
+            shape.strokeBorder(ThemeColor.border)
           }
         }
         .padding(.horizontal, inset)

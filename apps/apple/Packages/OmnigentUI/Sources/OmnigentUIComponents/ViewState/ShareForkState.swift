@@ -136,6 +136,8 @@ nonisolated public struct ForkViewState: Hashable, Sendable, Identifiable {
   public var isForking: Bool
   /// The last attempt failed.
   public var errorMessage: String?
+  /// Why "Clone & start" is unavailable (for example the host is offline); `nil` allows it.
+  public var startUnavailableReason: String?
 
   /// Creates fork state.
   /// - Parameters:
@@ -147,9 +149,11 @@ nonisolated public struct ForkViewState: Hashable, Sendable, Identifiable {
   ///   - recentDirectories: Recents.
   ///   - isForking: In flight.
   ///   - errorMessage: Error.
+  ///   - startUnavailableReason: Why "Clone & start" is unavailable.
   public init(
     id: String, kind: Kind, agents: [CreationAgent], agentID: String, directory: String,
-    recentDirectories: [String] = [], isForking: Bool = false, errorMessage: String? = nil
+    recentDirectories: [String] = [], isForking: Bool = false, errorMessage: String? = nil,
+    startUnavailableReason: String? = nil
   ) {
     self.id = id
     self.kind = kind
@@ -159,6 +163,7 @@ nonisolated public struct ForkViewState: Hashable, Sendable, Identifiable {
     self.recentDirectories = recentDirectories
     self.isForking = isForking
     self.errorMessage = errorMessage
+    self.startUnavailableReason = startUnavailableReason
   }
 
   /// The web's dialog title.

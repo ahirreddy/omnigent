@@ -6,6 +6,7 @@ public import SwiftUI
 public struct MarkdownView: View {
   private let text: String
   private let isStreaming: Bool
+  @Environment(\.markdownOutputRendering) private var rendering
 
   /// Creates the view.
   /// - Parameters:
@@ -16,13 +17,18 @@ public struct MarkdownView: View {
     self.isStreaming = isStreaming
   }
 
-  /// The rendered blocks.
+  /// The rendered blocks, or agent output in its Plain or Styled rendering.
   public var body: some View {
-    let blocks =
-      isStreaming ? MarkdownParser.parse(text) : MarkdownCache.shared.blocks(for: text)
-    MarkdownBlocksView(blocks: blocks)
-      .proseStyle()
-      .tint(Theme.link)
+    switch rendering {
+    case .plain: CLISourceText(text: text, isStreaming: isStreaming)
+    case .styled: CLIStyledMarkdown(text: text, isStreaming: isStreaming)
+    case .rich:
+      let blocks =
+        isStreaming ? MarkdownParser.parse(text) : MarkdownCache.shared.blocks(for: text)
+      MarkdownBlocksView(blocks: blocks)
+        .proseStyle()
+        .tint(Theme.link)
+    }
   }
 }
 

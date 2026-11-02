@@ -27,13 +27,18 @@ enum TabMetrics {
 }
 
 /// One tab: icon, title, status and a close button on hover (always on the selected tab).
-/// Pinned tabs show the icon only.
+/// Pinned tabs show the icon only. A tab that cannot close (a session's primary chat) has no
+/// close button. In a split window the other pane's tab shows a lighter selection.
 struct TabItemView: View {
   let tab: TabItemState
   let isSelected: Bool
   let width: CGFloat
   let actions: TabActions
   let canCloseToRight: Bool
+  /// The tab is shown in the split window's other pane, the one without focus.
+  var isVisibleInOtherPane = false
+  /// The window is split, for the context menu's pane items.
+  var isSplit = false
 
   @State private var isHovered = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -43,7 +48,7 @@ struct TabItemView: View {
       TabIcon(tab: tab, isSelected: isSelected)
       if !tab.isPinned {
         Text(tab.displayTitle)
-          .font(.callout.weight(isSelected ? .medium : .regular))
+          .font(.callout.weight(isSelected || isVisibleInOtherPane ? .medium : .regular))
           .foregroundStyle(isSelected ? .primary : .secondary)
           .lineLimit(1)
           .truncationMode(.tail)
@@ -53,8 +58,8 @@ struct TabItemView: View {
         if isSelected {
           if tab.isPlayingAudio { audioMark }
           TabStatusMark(status: tab.status)
-          closeButton
-        } else if isHovered {
+          if tab.isClosable { closeButton }
+        } else if isHovered, tab.isClosable {
           closeButton
         } else if tab.status != .none {
           TabStatusMark(status: tab.status)
@@ -71,7 +76,10 @@ struct TabItemView: View {
     .animation(reduceMotion ? nil : Theme.Motion.feedback, value: isHovered)
     .onTapGesture { actions.select(tab.id) }
     .accessibilityAddTraits(.isButton)
-    .contextMenu { TabContextMenu(tab: tab, actions: actions, canCloseToRight: canCloseToRight) }
+    .contextMenu {
+      TabContextMenu(
+        tab: tab, actions: actions, canCloseToRight: canCloseToRight, isSplit: isSplit)
+    }
     .help(help)
     .accessibilityElement(children: .contain)
     .accessibilityLabel(tab.displayTitle)
@@ -79,6 +87,10 @@ struct TabItemView: View {
     .accessibilityAddTraits(isSelected ? .isSelected : [])
     .accessibilityAction { actions.select(tab.id) }
     .accessibilityIdentifier("tab-\(tab.kind.rawValue)-\(tab.id)")
+    #if os(iOS)
+      // iPad: drag a tab onto either half of the content to show it in that pane.
+      .draggable(TabDropPayload.text(for: tab.id))
+    #endif
   }
 
   private var audioMark: some View {
@@ -109,8 +121,13 @@ struct TabItemView: View {
     let shape = RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
     if isSelected {
       shape.fill(ThemeColor.surface)
+        .overlay { shape.fill(ThemeColor.hover.opacity(isHovered ? 1 : 0)) }
         .overlay { shape.strokeBorder(ThemeColor.border, lineWidth: 0.5) }
         .shadow(color: .black.opacity(0.06), radius: 1, y: 0.5)
+    } else if isVisibleInOtherPane {
+      shape.fill(ThemeColor.surface.opacity(0.5))
+        .overlay { shape.fill(ThemeColor.hover.opacity(isHovered ? 1 : 0)) }
+        .overlay { shape.strokeBorder(ThemeColor.border.opacity(0.6), lineWidth: 0.5) }
     } else {
       shape.fill(ThemeColor.hover.opacity(isHovered ? 1 : 0))
     }
@@ -125,6 +142,8 @@ struct TabItemView: View {
 
   private var accessibilityValue: String {
     var parts = [tab.kind.label]
+    if let pane = tab.pane { parts.append("\(pane.label) pane") }
+    if isVisibleInOtherPane { parts.append("Shown") }
     if let status = tab.status.label { parts.append(status) }
     if tab.isPinned { parts.append("Pinned") }
     if tab.isReadOnly { parts.append("Read only") }
@@ -217,11 +236,13 @@ struct TabStatusMark: View {
   }
 }
 
-/// Pin, Duplicate, Move to New Window, Copy Link and the Close commands.
+/// Pin, Duplicate, Move to New Window, the split view, Copy Link and the Close commands. A tab
+/// that cannot close keeps the items, disabled, as menus do on the Mac.
 struct TabContextMenu: View {
   let tab: TabItemState
   let actions: TabActions
   let canCloseToRight: Bool
+  var isSplit = false
 
   var body: some View {
     Button(tab.isPinned ? "Unpin Tab" : "Pin Tab", systemImage: tab.isPinned ? "pin.slash" : "pin")
@@ -235,12 +256,28 @@ struct TabContextMenu: View {
       Button("Move Tab to New Window", systemImage: "macwindow.badge.plus") {
         moveToNewWindow(tab.id)
       }
+      .disabled(!tab.isClosable)
+    }
+    if let showInPane = actions.showInPane {
+      if isSplit {
+        let target = (tab.pane ?? .leading).other
+        Button("Move to \(target.label) Pane", systemImage: "rectangle.split.2x1") {
+          showInPane(tab.id, target)
+        }
+        .accessibilityIdentifier("tab-menu-other-pane")
+      } else {
+        Button("Open in Split View", systemImage: "rectangle.split.2x1") {
+          showInPane(tab.id, .trailing)
+        }
+        .accessibilityIdentifier("tab-menu-split")
+      }
     }
     if let link = tab.link {
       Button("Copy Link", systemImage: "link") { Pasteboard.copy(link.absoluteString) }
     }
     Divider()
     Button("Close Tab", systemImage: "xmark") { actions.close(tab.id) }
+      .disabled(!tab.isClosable)
     Button("Close Other Tabs") { actions.closeOthers(tab.id) }
     Button("Close Tabs to the Right") { actions.closeToRight(tab.id) }
       .disabled(!canCloseToRight)

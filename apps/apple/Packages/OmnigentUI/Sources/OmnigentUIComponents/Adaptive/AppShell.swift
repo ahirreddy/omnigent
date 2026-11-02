@@ -19,6 +19,8 @@ public struct AppShell<Detail: View>: View {
 
   @State private var columns: NavigationSplitViewVisibility = .all
   @State private var detailWidth: CGFloat = 0
+  /// A tab dragged from the strip onto the content, for the split view's drop targets.
+  @State private var tabDrag = TabDragTracker()
   @Environment(\.horizontalSizeClass) private var sizeClass
 
   /// Creates the shell.
@@ -48,7 +50,7 @@ public struct AppShell<Detail: View>: View {
   public var body: some View {
     NavigationSplitView(columnVisibility: $columns) {
       SidebarView(state: sidebar, selection: $selection, searchText: $searchText, actions: actions)
-        .navigationSplitViewColumnWidth(min: 220, ideal: 272, max: 360)
+        .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
     } detail: {
       NavigationStack {
         detail(selection)
@@ -57,6 +59,7 @@ public struct AppShell<Detail: View>: View {
           .toolbar { tabsToolbar }
           .modifier(TitlelessToolbar(isActive: showsStrip))
       }
+      .environment(tabDrag)
       .onGeometryChange(for: CGFloat.self) {
         $0.size.width
       } action: {
@@ -142,12 +145,14 @@ private struct TitlelessToolbar: ViewModifier {
   private func backed(_ content: some View) -> some View {
     content
       .scrollEdgeEffectStyle(.hard, for: .top)
-      .overlay { TitlebarBackdrop() }
+      .overlayPreferenceValue(TitlebarCanvasKey.self) { TitlebarBackdrop(screenCanvas: $0) }
   }
 }
 
 /// The theme's canvas behind the toolbar row: the top safe area, which scroll views extend under.
 private struct TitlebarBackdrop: View {
+  /// The screen's own canvas (CLI style), instead of the theme's.
+  let screenCanvas: Color?
   @Environment(\.omnigentTheme) private var theme
   @Environment(\.colorScheme) private var colorScheme
 
@@ -164,7 +169,9 @@ private struct TitlebarBackdrop: View {
   }
 
   @ViewBuilder private var canvas: some View {
-    if let color = theme.palette(for: colorScheme).canvas {
+    if let screenCanvas {
+      screenCanvas
+    } else if let color = theme.palette(for: colorScheme).canvas {
       color
     } else {
       Rectangle().fill(.background)

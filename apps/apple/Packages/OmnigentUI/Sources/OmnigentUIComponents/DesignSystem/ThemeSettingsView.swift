@@ -1,8 +1,8 @@
 public import SwiftUI
 
-/// Settings > Appearance, as on the web: Mode (System, Light, Dark), Terminal theme, and Color
-/// theme (the presets plus Custom with Accent, Background tint, Contrast and Translucent
-/// sidebars). Editing a color on a preset turns it into Custom based on that preset. Values are
+/// Settings > Appearance, as on the web: Mode (System, Light, Dark), Terminal theme, Transcript
+/// (style, output rendering, width, CLI font size), and Color theme (the presets plus Custom
+/// with Accent, Background tint, Contrast and Translucent sidebars). Editing a color on a preset turns it into Custom based on that preset. Values are
 /// stored under the web's keys by ``ThemePreferences``.
 public struct ThemeSettingsView: View {
   @Bindable private var preferences: ThemePreferences
@@ -28,6 +28,7 @@ public struct ThemeSettingsView: View {
       }
       .accessibilityIdentifier("settings.terminal-theme")
     }
+    TranscriptSettingsSection(preferences: preferences.transcript)
     Section {
       Picker("Theme palette", selection: $preferences.paletteID) {
         ForEach(preferences.themes) { theme in

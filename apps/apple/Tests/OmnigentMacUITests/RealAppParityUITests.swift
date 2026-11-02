@@ -64,6 +64,9 @@ final class RealAppParityUITests: XCTestCase {
     XCTAssertTrue(switcher.waitForExistence(timeout: 10))
     XCTAssertFalse(switcher.label.contains("127.0.0.1"), "switcher: \(switcher.label)")
 
+    // With one tab the strip has empty space; with three the tabs fill it, up to New Tab.
+    checkEmptySpaceDrags(window: window)
+
     // A terminal tab (Control-`) and a browser tab (Option-Command-B), then back to the chat.
     app.typeKey("`", modifierFlags: .control)
     XCTAssertTrue(
@@ -90,13 +93,42 @@ final class RealAppParityUITests: XCTestCase {
       "strip \(strip.frame) and toolbar \(inspector.frame) are on different rows")
     XCTAssertLessThan(strip.frame.minY - window.frame.minY, 40, "the strip is below the titlebar")
 
-    try checkDragging(window: window, strip: strip, chat: chat)
+    checkTabDragReorders(window: window, chat: chat)
   }
 
-  /// A tab drag moves the tab, not the window; a drag on the strip's empty space moves the
-  /// window.
+  /// A drag on the strip's empty space, between the last tab and New Tab, moves the window.
   @MainActor
-  private func checkDragging(window: XCUIElement, strip: XCUIElement, chat: XCUIElement) throws {
+  private func checkEmptySpaceDrags(window: XCUIElement) {
+    let strip = window.descendants(matching: .any)["tab-strip"]
+    let lastTab = tab(["chat"], in: window)
+    let newTab = window.descendants(matching: .any)["tab-new"]
+    XCTAssertTrue(strip.waitForExistence(timeout: 10) && lastTab.exists && newTab.exists)
+    let gap = newTab.frame.minX - lastTab.frame.maxX
+    XCTAssertGreaterThan(gap, 40, "no empty strip space: \(lastTab.frame), \(newTab.frame)")
+    let drag = { (offset: CGVector) in
+      let empty = strip.coordinate(withNormalizedOffset: .zero).withOffset(
+        CGVector(
+          dx: (lastTab.frame.maxX + newTab.frame.minX) / 2 - strip.frame.minX,
+          dy: strip.frame.height / 2))
+      empty.press(forDuration: 0.3, thenDragTo: empty.withOffset(offset))
+      Thread.sleep(forTimeInterval: 1)
+    }
+    let home = window.frame.origin
+    let requested = CGVector(dx: -60, dy: 40)
+    drag(requested)
+    let moved = CGVector(dx: window.frame.minX - home.x, dy: window.frame.minY - home.y)
+    XCTAssertNotEqual(window.frame.origin, home, "the strip's empty space did not drag")
+    // Put the window back, or its saved frame walks under the Dock run after run. The first
+    // points of a drag only start it, so the way back is as long as the requested drag.
+    let length = hypot(moved.dx, moved.dy)
+    guard length > 0 else { return }
+    let scale = -hypot(requested.dx, requested.dy) / length
+    drag(CGVector(dx: moved.dx * scale, dy: moved.dy * scale))
+  }
+
+  /// A tab drag moves the tab, not the window.
+  @MainActor
+  private func checkTabDragReorders(window: XCUIElement, chat: XCUIElement) {
     let before = window.frame
     let kinds = tabKinds(window)
     let start = chat.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
@@ -105,13 +137,6 @@ final class RealAppParityUITests: XCTestCase {
     Thread.sleep(forTimeInterval: 1)
     XCTAssertEqual(window.frame.origin, before.origin, "dragging a tab moved the window")
     XCTAssertNotEqual(tabKinds(window), kinds, "dragging the chat tab did not reorder it")
-
-    // Empty strip space: left of New Tab and the overview menu.
-    let empty = strip.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5))
-      .withOffset(CGVector(dx: -90, dy: 0))
-    empty.press(forDuration: 0.3, thenDragTo: empty.withOffset(CGVector(dx: -60, dy: 40)))
-    Thread.sleep(forTimeInterval: 1)
-    XCTAssertNotEqual(window.frame.origin, before.origin, "the strip's empty space did not drag")
   }
 
   @MainActor

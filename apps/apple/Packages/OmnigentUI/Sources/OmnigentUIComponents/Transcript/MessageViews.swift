@@ -27,19 +27,16 @@ nonisolated struct MessageDecoration: Hashable, Sendable {
 }
 
 /// A user or assistant message, as on the web: user messages in a neutral bubble on the right,
-/// assistant prose without a bubble or name. Copy, Fork from here (assistant), Copy link and the
-/// timestamp appear on hover (always on the last answer while idle) and in the context menu.
+/// assistant prose without a bubble or name. Copy, Fork chat from here (assistant), Copy link and
+/// the timestamp appear on hover or keyboard focus on Mac (always on the last answer while idle),
+/// under answers on touch, and always in the context menu and as VoiceOver actions.
 struct MessageRowView: View, Equatable {
   let row: Row
   let decoration: MessageDecoration
 
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.conversationActions) private var actions
-  @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var isHovered = false
   @FocusState private var actionsFocused: Bool
-  @AccessibilityFocusState private var accessibilityFocused: Bool
 
   static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.row == rhs.row && lhs.decoration == rhs.decoration
@@ -52,18 +49,10 @@ struct MessageRowView: View, Equatable {
       case .assistant, .tool: assistantMessage
       }
     }
-    .onHover { isHovered = $0 }
-    .animation(reduceMotion ? nil : Theme.Motion.feedback, value: showsActions)
-    .contextMenu { MessageContextMenu(row: row, actions: actions) }
-  }
-
-  private var showsActions: Bool {
-    #if os(macOS)
-      decoration.showsActions || isHovered || actionsFocused || accessibilityFocused
-        || voiceOverEnabled
-    #else
-      true
-    #endif
+    // On touch, answers keep their row as in ChatGPT; a user message's is a long press away.
+    .messageActionsHost(
+      row: row, actions: actions, pinned: decoration.showsActions,
+      showsOnTouch: row.role != .user, focus: $actionsFocused)
   }
 
   private var userMessage: some View {
@@ -99,11 +88,8 @@ struct MessageRowView: View, Equatable {
         }
       }
       if row.interrupted { InterruptedLabel(rowID: row.id) }
-      MessageActions(
-        row: row, timestamp: decoration.timestamp, actions: actions, focused: $actionsFocused
-      )
-      .accessibilityFocused($accessibilityFocused)
-      .opacity(showsActions ? 1 : 0)
+      MessageActionRow(
+        row: row, actions: actions, timestamp: decoration.timestamp, focus: $actionsFocused)
     }
     .accessibilityElement(children: .contain)
     .accessibilityLabel(decoration.showsAvatar ? "\(row.author ?? "Someone") said" : "You said")
@@ -119,6 +105,7 @@ struct MessageRowView: View, Equatable {
         }
       } else {
         MarkdownView(row.text, isStreaming: row.isStreaming)
+          .agentOutputRendering()
           .accessibilityIdentifier("message-text-\(row.id)")
       }
       AttachmentStrip(attachments: row.attachments)
@@ -132,57 +119,13 @@ struct MessageRowView: View, Equatable {
         .accessibilityElement(children: .combine)
       }
       if !row.isStreaming {
-        MessageActions(
-          row: row, timestamp: decoration.timestamp, actions: actions, focused: $actionsFocused
-        )
-        .accessibilityFocused($accessibilityFocused)
-        .opacity(showsActions ? 1 : 0)
+        MessageActionRow(
+          row: row, actions: actions, timestamp: decoration.timestamp, focus: $actionsFocused)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("message-\(row.id)")
-  }
-}
-
-/// Copy, Fork from here (assistant), Copy link, then the timestamp.
-private struct MessageActions: View {
-  let row: Row
-  let timestamp: Date?
-  let actions: ConversationActions
-  var focused: FocusState<Bool>.Binding
-
-  var body: some View {
-    HStack(spacing: Theme.Spacing.medium) {
-      CopyButton(text: row.text, label: "Copy", identifier: "message-copy-\(row.id)")
-        .focused(focused)
-      if row.role == .assistant, let fork = actions.forkFrom {
-        Button("Fork from here", systemImage: "arrow.triangle.branch") { fork(row) }
-          .labelStyle(.iconOnly)
-          .frame(minWidth: Theme.Control.target, minHeight: Theme.Control.target)
-          .hoverHighlight()
-          .focused(focused)
-          .help("Fork from here")
-          .accessibilityIdentifier("message-fork-\(row.id)")
-      }
-      if let url = actions.messageURL?(row) {
-        Button("Copy link", systemImage: "link") { Pasteboard.copy(url.absoluteString) }
-          .labelStyle(.iconOnly)
-          .frame(minWidth: Theme.Control.target, minHeight: Theme.Control.target)
-          .hoverHighlight()
-          .focused(focused)
-          .help("Copy link")
-          .accessibilityIdentifier("message-link-\(row.id)")
-      }
-      if let timestamp {
-        Text(MessageTimestamp.format(timestamp, now: Date()))
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-    }
-    .buttonStyle(.borderless)
-    .foregroundStyle(.secondary)
-    .font(.caption)
   }
 }
 
@@ -232,26 +175,6 @@ private struct InterruptedLabel: View {
       .font(.caption)
       .foregroundStyle(.secondary)
       .accessibilityIdentifier("message-interrupted-\(rowID)")
-  }
-}
-
-private struct MessageContextMenu: View {
-  let row: Row
-  let actions: ConversationActions
-
-  var body: some View {
-    Button("Copy", systemImage: "doc.on.doc") { Pasteboard.copy(row.text) }
-      .disabled(row.text.isEmpty)
-    if row.role == .assistant, !row.isStreaming, let fork = actions.forkFrom {
-      Button("Fork from Here\u{2026}", systemImage: "arrow.triangle.branch") { fork(row) }
-    }
-    if let url = actions.messageURL?(row) {
-      Button("Copy Link", systemImage: "link") { Pasteboard.copy(url.absoluteString) }
-    }
-    ShareLink(item: row.text) { Label("Share", systemImage: "square.and.arrow.up") }
-      .disabled(row.text.isEmpty)
-    Divider()
-    Button("Copy Message ID", systemImage: "number") { Pasteboard.copy(row.id) }
   }
 }
 

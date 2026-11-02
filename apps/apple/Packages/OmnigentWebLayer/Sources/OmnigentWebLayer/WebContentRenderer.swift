@@ -1,5 +1,6 @@
 public import AppKit
 internal import OWLProtocol
+internal import OmnigentInput
 internal import os
 
 /// Mouse buttons for agent input.
@@ -11,7 +12,7 @@ nonisolated public enum AgentMouseButton: Sendable, Hashable {
   /// Secondary button.
   case right
 
-  var wire: OWLMouseButton {
+  var wire: PointerButton {
     switch self {
     case .left: .left
     case .middle: .middle
@@ -36,8 +37,8 @@ nonisolated public struct AgentModifiers: OptionSet, Sendable, Hashable {
   /// Command.
   public static let command = Self(rawValue: 1 << 3)
 
-  var wire: OWLModifiers {
-    var result: OWLModifiers = []
+  var wire: InputModifiers {
+    var result: InputModifiers = []
     if contains(.shift) { result.insert(.shift) }
     if contains(.control) { result.insert(.control) }
     if contains(.option) { result.insert(.alt) }
@@ -70,7 +71,7 @@ public final class WebContentRenderer {
 
   /// Forwards a mouse, drag or scroll event. `location` is in the view's top-left coordinates.
   public func forwardMouseEvent(_ event: NSEvent, location: CGPoint) {
-    guard let input = InputTranslator.mouseInput(for: event, location: location) else { return }
+    guard let input = InputTranslator.pointerInput(for: event, location: location) else { return }
     webView?.sendIfLive(.inputMouse, input.encoded(origin: .user))
   }
 
@@ -93,7 +94,7 @@ public final class WebContentRenderer {
     guard
       let event = InputTranslator.unhandledKeyEvent(
         UnhandledKey(
-          keyCode: keyCode, modifiers: OWLModifiers(rawValue: fields.u64(.modifiers) ?? 0),
+          keyCode: keyCode, modifiers: InputModifiers(rawValue: fields.u64(.modifiers) ?? 0),
           character: UInt16(truncatingIfNeeded: fields.u64(.character) ?? 0),
           unmodifiedCharacter: UInt16(truncatingIfNeeded: fields.u64(.unmodifiedCharacter) ?? 0)),
         template: template, windowNumber: template?.windowNumber ?? 0)
@@ -116,10 +117,10 @@ public final class WebContentRenderer {
     modifiers: AgentModifiers = []
   ) throws(WebLayerError) {
     try agentMove(to: point, modifiers: modifiers)
-    for kind in [OWLMouseKind.down, .up] {
+    for kind in [PointerEventKind.press, .release] {
       try sendAgentMessage(
         .inputMouse,
-        MouseInput(
+        PointerInput(
           kind: kind, location: point, button: button.wire, clickCount: clickCount,
           modifiers: modifiers.wire
         ).encoded(origin: .agent))
@@ -130,7 +131,7 @@ public final class WebContentRenderer {
   public func agentMove(to point: CGPoint, modifiers: AgentModifiers = []) throws(WebLayerError) {
     try sendAgentMessage(
       .inputMouse,
-      MouseInput(kind: .move, location: point, modifiers: modifiers.wire).encoded(
+      PointerInput(kind: .move, location: point, modifiers: modifiers.wire).encoded(
         origin: .agent))
   }
 
@@ -140,7 +141,7 @@ public final class WebContentRenderer {
   {
     try sendAgentMessage(
       .inputMouse,
-      MouseInput(kind: .wheel, location: point, deltaX: deltaX, deltaY: deltaY).encoded(
+      PointerInput(kind: .wheel, location: point, deltaX: deltaX, deltaY: deltaY).encoded(
         origin: .agent))
   }
 

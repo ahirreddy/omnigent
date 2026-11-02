@@ -1,35 +1,57 @@
 public import Foundation
 public import Observation
+public import OmnigentUIComponents
 
 /// One window's tabs, like a browser's: open or focus, close and reopen, pin, duplicate,
-/// reorder, select by position or cycle, and tear off into another window.
+/// reorder, select by position or cycle, tear off into another window, and split into two panes.
 ///
-/// Pinned tabs always come first. A tab's content is built the first time it is selected
-/// (``materialized``), so a restored window costs nothing until its tabs are shown. Every change
-/// calls ``onChange`` so the window can save.
+/// Tabs are per window and span sessions. A session's primary chat (``AppTabContent/chat``)
+/// cannot be closed, torn off, replaced or duplicated: it leaves the window only with its
+/// session (``removeSessions(_:)``, when the session is archived or deleted) or with the window.
+/// It is selected and moved like any other tab, but it stays first among its session's tabs in
+/// the same pane and pin group, and moving it carries them along.
+///
+/// Pinned tabs always come first. In a split window each pane has its own tabs (the left pane's
+/// first in ``tabs``) and its own selected tab; ``selectedID`` is the focused pane's. A tab's
+/// content is built the first time it is shown (``materialized``), so a restored window costs
+/// nothing until its tabs are shown. Every change calls ``onChange`` so the window can save.
 @Observable
 public final class TabStore {
   /// Where a new tab goes.
   public enum Placement: Sendable {
     /// Right after the selected tab (after the pinned tabs when a pinned tab is selected).
     case afterSelected
-    /// At the end of the strip.
+    /// At the end of the strip (of the focused pane, when split).
     case end
   }
 
   /// How many closed tabs Reopen Closed Tab remembers.
   public static let closedLimit = 25
 
-  /// Tabs in strip order, pinned first.
-  public private(set) var tabs: [AppTab]
-  /// The selected tab.
-  public private(set) var selectedID: String?
+  /// Tabs in strip order: per pane (left first), pinned first.
+  public internal(set) var tabs: [AppTab]
+  /// The selected tab: the focused pane's, when split.
+  public internal(set) var selectedID: String?
   /// Closed tabs, oldest first.
-  public private(set) var closed: [AppTab]
-  /// Tabs whose content has been built: selected at least once since launch or restore.
-  public private(set) var materialized: Set<String> = []
+  public internal(set) var closed: [AppTab]
+  /// Tabs whose content has been built: shown at least once since launch or restore.
+  public internal(set) var materialized: Set<String> = []
+  /// The split view, when the window has two panes.
+  public internal(set) var split: Split?
 
-  /// Called after every change to the tabs, the selection or the closed stack.
+  /// A split window: which tabs are in the right pane, the other pane's tab and the divider.
+  public struct Split: Hashable, Sendable {
+    /// The right pane's tabs; every other tab is in the left pane.
+    public var trailing: Set<String>
+    /// The focused pane, whose tab is ``TabStore/selectedID``.
+    public var focused: TabPane
+    /// The tab the other pane shows.
+    public var otherSelectedID: String?
+    /// The left pane's share of the width.
+    public var fraction: Double
+  }
+
+  /// Called after every change to the tabs, the selection, the split or the closed stack.
   @ObservationIgnored public var onChange: (@MainActor () -> Void)?
   /// Called with each tab that leaves the window (closed or replaced, not torn off), so its live
   /// content (a browser page) can be released. Returns the tab to remember for Reopen Closed
@@ -39,11 +61,9 @@ public final class TabStore {
   /// Creates a store.
   /// - Parameter snapshot: Restored tabs; nothing is built until selected.
   public init(_ snapshot: TabWindowSnapshot = TabWindowSnapshot()) {
-    tabs = Self.ordered(snapshot.tabs)
-    closed = Array(snapshot.closed.suffix(Self.closedLimit))
-    selectedID = snapshot.tabs.contains { $0.id == snapshot.selectedID } ? snapshot.selectedID : nil
-    if selectedID == nil { selectedID = tabs.first?.id }
-    if let selectedID { materialized.insert(selectedID) }
+    tabs = []
+    closed = []
+    load(snapshot)
   }
 
   /// The selected tab.
@@ -51,7 +71,22 @@ public final class TabStore {
 
   /// The window's state to save.
   public var snapshot: TabWindowSnapshot {
-    TabWindowSnapshot(tabs: tabs, selectedID: selectedID, closed: closed)
+    TabWindowSnapshot(
+      tabs: tabs, selectedID: selectedID, closed: closed,
+      split: split.map {
+        TabSplitSnapshot(
+          trailingIDs: tabs.map(\.id).filter($0.trailing.contains), focused: $0.focused,
+          otherSelectedID: $0.otherSelectedID, fraction: $0.fraction)
+      })
+  }
+
+  /// The split view's state for the strip and the panes.
+  public var splitState: TabSplitState? {
+    guard let split else { return nil }
+    let leading = split.focused == .leading ? selectedID : split.otherSelectedID
+    let trailing = split.focused == .trailing ? selectedID : split.otherSelectedID
+    return TabSplitState(
+      leadingID: leading, trailingID: trailing, focused: split.focused, fraction: split.fraction)
   }
 
   /// Sessions that a built tab needs open (their conversation, terminals and workspace).
@@ -66,23 +101,70 @@ public final class TabStore {
     tabs.first { $0.id == id }
   }
 
+  /// Whether a tab can be closed, torn off or replaced: every tab but a session's primary chat.
+  /// - Parameter id: The tab.
+  /// - Returns: `false` for a primary chat or a tab that is not open.
+  public func canClose(_ id: String) -> Bool {
+    guard let tab = tab(id) else { return false }
+    return !tab.content.isPrimaryChat
+  }
+
+  /// The pane showing a tab, when the window is split.
+  /// - Parameter id: The tab.
+  /// - Returns: Its pane, or `nil` when the window is not split.
+  public func pane(of id: String) -> TabPane? {
+    guard let split else { return nil }
+    return split.trailing.contains(id) ? .trailing : .leading
+  }
+
   /// Replaces every tab with a restored window, for example once the window learns its server.
   /// - Parameter snapshot: The restored tabs.
   public func restore(_ snapshot: TabWindowSnapshot) {
     let previous = tabs
-    tabs = Self.ordered(snapshot.tabs)
-    closed = Array(snapshot.closed.suffix(Self.closedLimit))
-    selectedID =
-      tabs.contains { $0.id == snapshot.selectedID } ? snapshot.selectedID : tabs.first?.id
-    materialized = selectedID.map { [$0] } ?? []
+    load(snapshot)
     for tab in previous where !tabs.contains(where: { $0.id == tab.id }) { _ = retire(tab) }
     changed()
+  }
+
+  private func load(_ snapshot: TabWindowSnapshot) {
+    var seen = Set<String>()
+    let unique = snapshot.tabs.filter { seen.insert($0.id).inserted }
+    // A primary chat is never reopened: it leaves only with its session.
+    closed = Array(snapshot.closed.filter { !$0.content.isPrimaryChat }.suffix(Self.closedLimit))
+    split = nil
+    tabs = unique
+    if let saved = snapshot.split {
+      let trailing = Set(saved.trailingIDs).intersection(seen)
+      // A split whose pane lost every tab (it did not decode) restores as one pane.
+      if !trailing.isEmpty, trailing.count < unique.count {
+        split = Split(
+          trailing: trailing, focused: saved.focused, otherSelectedID: saved.otherSelectedID,
+          fraction: TabSplitState.clamp(saved.fraction))
+      }
+    }
+    tabs = arranged(unique)
+    selectedID = seen.contains(snapshot.selectedID ?? "") ? snapshot.selectedID : nil
+    materialized = []
+    if let split {
+      // The selection must be in the focused pane and the other tab in the other one.
+      if selectedID.flatMap(pane(of:)) != split.focused {
+        selectedID = firstID(in: split.focused)
+      }
+      if let other = split.otherSelectedID, pane(of: other) == split.focused.other {
+        self.split?.otherSelectedID = other
+      } else {
+        self.split?.otherSelectedID = firstID(in: split.focused.other)
+      }
+      if let other = self.split?.otherSelectedID { materialized.insert(other) }
+    }
+    if selectedID == nil { selectedID = tabs.first?.id }
+    if let selectedID { materialized.insert(selectedID) }
   }
 
   // MARK: Opening
 
   /// Opens `content`, or focuses the tab already showing it when the content is one per
-  /// window (a session's chat, a terminal).
+  /// window (a session's chat, a terminal). A new tab opens in the focused pane.
   /// - Parameters:
   ///   - content: What to show.
   ///   - placement: Where a new tab goes.
@@ -110,7 +192,8 @@ public final class TabStore {
   }
 
   /// Shows `content` in the selected tab when it is the new-tab page or `replaceable` allows its
-  /// kind, focuses an existing tab for one-per-window content, and otherwise opens a tab.
+  /// kind, focuses an existing tab for one-per-window content, and otherwise opens a tab. A
+  /// primary chat is never replaced, so another session's chat opens beside it.
   /// - Parameters:
   ///   - content: What to show.
   ///   - replaceable: Whether the selected tab's content may be replaced.
@@ -127,6 +210,7 @@ public final class TabStore {
 
   /// Changes what a tab shows, keeping its place and pinning. A one-per-window content that is
   /// already open elsewhere is focused instead, and this tab closes when it was a new-tab page.
+  /// A primary chat keeps its content: `content` opens in a tab of its own instead.
   /// - Parameters:
   ///   - id: The tab.
   ///   - content: The new content.
@@ -138,6 +222,9 @@ public final class TabStore {
     _ id: String, with content: AppTabContent, title: String? = nil, browserState: Data? = nil
   ) -> AppTab? {
     guard let index = tabs.firstIndex(where: { $0.id == id }) else { return nil }
+    if tabs[index].content.isPrimaryChat, tabs[index].content != content {
+      return open(content, title: title, browserState: browserState)
+    }
     if content.focusesExisting,
       let existing = tabs.first(where: { $0.content == content && $0.id != id })
     {
@@ -151,8 +238,9 @@ public final class TabStore {
     tabs[index].browserState = browserState
     if old.content != content { _ = retire(old) }
     materialized.insert(id)
+    tabs = arranged(tabs)
     changed()
-    return tabs[index]
+    return tab(id)
   }
 
   /// Updates a tab's cached title or browser state (for the strip and the next restore).
@@ -186,11 +274,18 @@ public final class TabStore {
 
   // MARK: Selecting
 
-  /// Selects a tab and builds its content.
+  /// Selects a tab, focusing its pane in a split window, and builds its content.
   /// - Parameter id: The tab.
   public func select(_ id: String) {
     guard tabs.contains(where: { $0.id == id }) else { return }
     materialized.insert(id)
+    if let split, let pane = pane(of: id), pane != split.focused {
+      self.split?.otherSelectedID = selectedID
+      self.split?.focused = pane
+      selectedID = id
+      changed()
+      return
+    }
     guard selectedID != id else { return }
     selectedID = id
     changed()
@@ -218,136 +313,31 @@ public final class TabStore {
     select(tabs[next].id)
   }
 
-  // MARK: Closing
-
-  /// Closes a tab, remembering it for Reopen Closed Tab. The tab to its right is selected, or
-  /// the one to its left when it was last.
-  /// - Parameter id: The tab.
-  public func close(_ id: String) {
-    guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-    remove(at: index, remember: tabs[index].content != .newTab)
-  }
-
-  /// Closes every unpinned tab except `id`.
-  /// - Parameter id: The tab to keep.
-  public func closeOthers(_ id: String) {
-    for tab in tabs where tab.id != id && !tab.isPinned { close(tab.id) }
-    select(id)
-  }
-
-  /// Closes the unpinned tabs to the right of `id`.
-  /// - Parameter id: The tab.
-  public func closeToRight(_ id: String) {
-    guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-    for tab in tabs[(index + 1)...] where !tab.isPinned { close(tab.id) }
-  }
-
-  /// Closes every tab whose content matches, for example a deleted terminal.
-  /// - Parameter matches: Which contents to close.
-  public func closeAll(where matches: (AppTabContent) -> Bool) {
-    for tab in tabs where matches(tab.content) { close(tab.id) }
-  }
-
-  /// Reopens the most recently closed tab where it was, selected.
-  /// - Returns: The tab, or `nil` when nothing was closed.
-  @discardableResult
-  public func reopenClosed() -> AppTab? {
-    guard let tab = closed.popLast() else { return nil }
-    if tab.content.focusesExisting, let existing = tabs.first(where: { $0.content == tab.content })
-    {
-      select(existing.id)
-      return existing
-    }
-    insert(tab, placement: .afterSelected)
-    select(tab.id)
-    return tab
-  }
-
-  /// Removes a tab without remembering it, for a tear-off; the other window adopts it.
-  /// - Parameter id: The tab.
-  /// - Returns: The tab, or `nil` when it is not open.
-  public func detach(_ id: String) -> AppTab? {
-    guard let index = tabs.firstIndex(where: { $0.id == id }) else { return nil }
-    let tab = tabs[index]
-    remove(at: index, remember: false, retiring: false)
-    return tab
-  }
-
-  // MARK: Arranging
-
-  /// Pins or unpins a tab. Pinning moves it to the end of the pinned tabs; unpinning to the
-  /// start of the others.
-  /// - Parameters:
-  ///   - id: The tab.
-  ///   - pinned: Pinned.
-  public func setPinned(_ id: String, _ pinned: Bool) {
-    guard let index = tabs.firstIndex(where: { $0.id == id }), tabs[index].isPinned != pinned
-    else { return }
-    var tab = tabs.remove(at: index)
-    tab.isPinned = pinned
-    let pinnedCount = tabs.count { $0.isPinned }
-    tabs.insert(tab, at: pinnedCount)
-    changed()
-  }
-
-  /// Moves a tab to `index` in the strip (its final position), kept within its group: pinned
-  /// tabs stay before the others.
-  /// - Parameters:
-  ///   - id: The tab.
-  ///   - index: The final position.
-  public func move(_ id: String, to index: Int) {
-    guard let from = tabs.firstIndex(where: { $0.id == id }) else { return }
-    let tab = tabs.remove(at: from)
-    let pinnedCount = tabs.count { $0.isPinned }
-    let range = tab.isPinned ? 0...pinnedCount : pinnedCount...tabs.count
-    let target = min(max(index, range.lowerBound), range.upperBound)
-    tabs.insert(tab, at: target)
-    if target != from { changed() }
-  }
-
-  /// Opens a copy of a tab right after it.
-  /// - Parameters:
-  ///   - id: The tab.
-  ///   - browser: For a browser tab, the new page's id and state from the browser host.
-  /// - Returns: The copy.
-  @discardableResult
-  public func duplicate(_ id: String, browser: (id: UUID, state: Data?)? = nil) -> AppTab? {
-    guard let index = tabs.firstIndex(where: { $0.id == id }) else { return nil }
-    let original = tabs[index]
-    var content = original.content
-    var state = original.browserState
-    if case .browser = content {
-      guard let browser else { return nil }
-      content = .browser(browserID: browser.id)
-      state = browser.state
-    }
-    let copy = AppTab(
-      content: content, isPinned: original.isPinned, title: original.title, browserState: state)
-    tabs.insert(copy, at: index + 1)
-    select(copy.id)
-    return copy
-  }
-
   // MARK: Internals
 
-  private func insert(_ tab: AppTab, placement: Placement) {
-    let pinnedCount = tabs.count { $0.isPinned }
+  func insert(_ tab: AppTab, placement: Placement) {
+    if split?.focused == .trailing { split?.trailing.insert(tab.id) }
+    let bounds = segment(of: tab, in: tabs)
     var index: Int
     switch placement {
     case .end:
-      index = tabs.count
+      index = bounds.upperBound
     case .afterSelected:
-      index = (tabs.firstIndex { $0.id == selectedID }).map { $0 + 1 } ?? tabs.count
+      index = (tabs.firstIndex { $0.id == selectedID }).map { $0 + 1 } ?? bounds.upperBound
     }
-    index = tab.isPinned ? min(index, pinnedCount) : max(index, pinnedCount)
-    tabs.insert(tab, at: index)
+    tabs.insert(tab, at: min(max(index, bounds.lowerBound), bounds.upperBound))
+    tabs = arranged(tabs)
   }
 
-  private func remove(at index: Int, remember: Bool, retiring: Bool = true) {
+  func remove(
+    at index: Int, remember: Bool, retiring: Bool = true, notify: Bool = true
+  ) {
     var tab = tabs.remove(at: index)
     if retiring { tab = retire(tab) }
     materialized.remove(tab.id)
-    if selectedID == tab.id {
+    if let split {
+      leaveSplit(tab.id, at: index, split: split)
+    } else if selectedID == tab.id {
       selectedID = tabs.indices.contains(index) ? tabs[index].id : tabs.last?.id
       if let selectedID { materialized.insert(selectedID) }
     }
@@ -355,20 +345,14 @@ public final class TabStore {
       closed.append(tab)
       if closed.count > Self.closedLimit { closed.removeFirst() }
     }
-    changed()
+    if notify { changed() }
   }
 
-  private func retire(_ tab: AppTab) -> AppTab {
+  func retire(_ tab: AppTab) -> AppTab {
     willClose?(tab) ?? tab
   }
 
-  private func changed() {
+  func changed() {
     onChange?()
-  }
-
-  private static func ordered(_ tabs: [AppTab]) -> [AppTab] {
-    var seen = Set<String>()
-    let unique = tabs.filter { seen.insert($0.id).inserted }
-    return unique.filter(\.isPinned) + unique.filter { !$0.isPinned }
   }
 }

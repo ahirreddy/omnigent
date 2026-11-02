@@ -22,6 +22,10 @@ let package = Package(
     // The OWL client: Session, Profile, WebView, WebContentRenderer, LayerHost.
     .library(name: "OmnigentWebLayer", targets: ["OmnigentWebLayer"])
   ],
+  dependencies: [
+    // NSEvent translation and IME composition, shared with the remote browser.
+    .package(path: "../OmnigentInput")
+  ],
   targets: [
     // The wire schema and Mach transport, shared with the host (apps/apple/WebHost), which
     // compiles these same files.
@@ -31,13 +35,16 @@ let package = Package(
     ),
     .target(
       name: "OmnigentWebLayer",
-      dependencies: ["OWLProtocol"],
+      dependencies: ["OWLProtocol", .product(name: "OmnigentInput", package: "OmnigentInput")],
       swiftSettings: mainActorSwiftSettings,
       linkerSettings: [.linkedLibrary("bsm")]
     ),
     .testTarget(
       name: "OmnigentWebLayerTests",
-      dependencies: ["OmnigentWebLayer", "OWLProtocol"],
+      dependencies: [
+        "OmnigentWebLayer", "OWLProtocol",
+        .product(name: "OmnigentInput", package: "OmnigentInput"),
+      ],
       swiftSettings: mainActorSwiftSettings
     ),
   ],

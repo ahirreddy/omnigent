@@ -29,6 +29,16 @@ public struct TabCommandActions {
   public var toggleTerminal: (@MainActor () -> Void)?
   /// How many tabs are open, for enabling Command-1 through 9.
   public var count: Int
+  /// Whether the window can split; the split items are hidden when it cannot (compact widths).
+  public var supportsSplit = false
+  /// Whether the window is split, for the toggle's title.
+  public var isSplit = false
+  /// Show or hide the split view (Command-\\).
+  public var toggleSplit: (@MainActor () -> Void)?
+  /// Focus a pane (Option-Command-Left and Right Arrow); `nil` when the window is not split.
+  public var focusPane: (@MainActor (TabPane) -> Void)?
+  /// Move the selected tab to the other pane, splitting the window when it is not.
+  public var moveTabToOtherPane: (@MainActor () -> Void)?
 
   /// Creates the actions.
   /// - Parameters:
@@ -77,11 +87,13 @@ extension FocusedValues {
   @Entry public var tabCommands: TabCommandActions?
 }
 
-/// File > New Tab and Close Tab, and a Tab menu (reopen, next and previous, Command-1 through 9,
-/// pin, duplicate, move to a new window, show all). Add with `.commands { OmnigentTabCommands() }`.
+/// File > New Tab and Close Tab, a Tab menu (reopen, next and previous, Command-1 through 9,
+/// pin, duplicate, move to a new window or the other pane, show all), and View > Split View with
+/// pane focus. Add with `.commands { OmnigentTabCommands() }`.
 ///
 /// Close Tab replaces File > Close (Command-W); without a tab it closes the window through
-/// `closeWindow`, which is also File > Close Window (Shift-Command-W).
+/// `closeWindow`, which is also File > Close Window (Shift-Command-W). A tab that cannot close (a
+/// session's primary chat) disables Close Tab rather than closing the window.
 public struct OmnigentTabCommands: Commands {
   @FocusedValue(\.tabCommands) private var actions
   private let closeWindow: (@MainActor () -> Void)?
@@ -104,7 +116,7 @@ public struct OmnigentTabCommands: Commands {
         if let close = actions?.closeTab { close() } else { closeWindow?() }
       }
       .keyboardShortcut("w", modifiers: .command)
-      .disabled(actions?.closeTab == nil && closeWindow == nil)
+      .disabled(actions?.closeTab == nil && (closeWindow == nil || (actions?.count ?? 0) > 0))
       if let closeWindow {
         Button("Close Window", action: closeWindow)
           .keyboardShortcut("w", modifiers: [.command, .shift])
@@ -142,6 +154,29 @@ public struct OmnigentTabCommands: Commands {
         .disabled(actions?.duplicateTab == nil)
       Button("Move Tab to New Window") { actions?.moveTabToNewWindow?() }
         .disabled(actions?.moveTabToNewWindow == nil)
+      if actions?.supportsSplit == true {
+        Button("Move Tab to Other Pane") { actions?.moveTabToOtherPane?() }
+          .disabled(actions?.moveTabToOtherPane == nil)
+      }
     }
+    CommandGroup(after: .sidebar) {
+      if actions?.supportsSplit == true {
+        splitItems
+      }
+    }
+  }
+
+  @ViewBuilder private var splitItems: some View {
+    Button(actions?.isSplit == true ? "Hide Split View" : "Show Split View") {
+      actions?.toggleSplit?()
+    }
+    .keyboardShortcut("\\", modifiers: .command)
+    .disabled(actions?.toggleSplit == nil)
+    Button("Focus Left Pane") { actions?.focusPane?(.leading) }
+      .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+      .disabled(actions?.focusPane == nil)
+    Button("Focus Right Pane") { actions?.focusPane?(.trailing) }
+      .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+      .disabled(actions?.focusPane == nil)
   }
 }

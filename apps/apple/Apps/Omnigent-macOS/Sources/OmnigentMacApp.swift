@@ -38,6 +38,7 @@ struct OmnigentMacApp: App {
       BrowserTabCommands(includesFindAndZoom: false)
       OmnigentTabCommands(closeWindow: { NSApp.keyWindow?.performClose(nil) })
       OmnigentSessionCommands()
+      TranscriptCommands()
       if DebugCommands.isEnabled {
         DebugCommands()
       }

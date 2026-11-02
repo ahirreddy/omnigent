@@ -6,6 +6,9 @@ import XCTest
 /// the transcript, stopping a turn, and (when `OMNIGENT_E2E_RECONNECT` is set) surviving a server
 /// restart without duplicate rows.
 ///
+/// Each message carries a per-run token (`<tag>-step1` to `-step3`) that the mock can route its
+/// replies by.
+///
 /// Skipped unless the runner gets `OMNIGENT_E2E_SERVER_URL` and `OMNIGENT_E2E_SESSION_ID` (pass
 /// them with the `TEST_RUNNER_` prefix to `xcodebuild test`). Screenshots are attached to the
 /// result bundle; export them with `xcrun xcresulttool export attachments`.
@@ -51,7 +54,7 @@ final class NativeAppE2EUITests: XCTestCase {
     waitForComposer(app, timeout: 30)
     save(window, "opened")
 
-    send("Say hello, please.", app: app, input: input)
+    send("Say hello, please. \(step(1))", app: app, input: input)
     reply(app, tagged: "hello")
     save(window, "streaming")
     waitForTurnEnd(app)
@@ -68,11 +71,14 @@ final class NativeAppE2EUITests: XCTestCase {
   /// does not run to its end.
   @MainActor
   private func checkInterrupt(_ app: XCUIApplication, window: XCUIElement, input: XCUIElement) {
-    send("Now take your time.", app: app, input: input)
+    send("Now take your time. \(step(2))", app: app, input: input)
     let slow = reply(app, tagged: "slow")
     save(window, "slow-streaming")
     let stop = app.buttons["composer-stop"]
     XCTAssertTrue(stop.waitForExistence(timeout: 10))
+    // A click goes to whatever window is on top at that point; bring the app back first in case
+    // another app took the foreground.
+    app.activate()
     stop.click()
     let rowID = slow.identifier.replacingOccurrences(of: "message-text-", with: "")
     let interrupted = app.descendants(matching: .any)["message-interrupted-\(rowID)"]
@@ -99,7 +105,7 @@ final class NativeAppE2EUITests: XCTestCase {
     waitForExpectations(timeout: 180)
     save(window, "reconnected")
 
-    send("Are you still there?", app: app, input: input)
+    send("Are you still there? \(step(3))", app: app, input: input)
     reply(app, tagged: "third")
     waitForTurnEnd(app)
     save(window, "after-reconnect")
@@ -111,7 +117,8 @@ final class NativeAppE2EUITests: XCTestCase {
       let marker = "[\(tag)-\(name)]"
       let copies = app.descendants(matching: .any).matching(
         NSPredicate(
-          format: "identifier BEGINSWITH 'message-text-' AND (label CONTAINS %@ OR value CONTAINS %@)",
+          format:
+            "identifier BEGINSWITH 'message-text-' AND (label CONTAINS %@ OR value CONTAINS %@)",
           marker, marker))
       XCTAssertLessThanOrEqual(copies.count, 1, "\(marker) appears \(copies.count) times")
     }
@@ -137,6 +144,7 @@ final class NativeAppE2EUITests: XCTestCase {
   private func send(_ text: String, app: XCUIApplication, input: XCUIElement) {
     // A system prompt can take focus mid-test, so type again until the editor holds the text.
     for _ in 0..<3 where !String(describing: input.value ?? "").contains(text) {
+      app.activate()
       app.windows.firstMatch.click()
       // The identifier lands on the editor's enclosing scroll view, which XCUITest cannot compute
       // a hit point for; clicking its center still targets the element found by identifier.
@@ -144,9 +152,11 @@ final class NativeAppE2EUITests: XCTestCase {
       app.typeKey("a", modifierFlags: .command)
       app.typeText(text)
     }
-    XCTAssertTrue(String(describing: input.value ?? "").contains(text), "the composer did not take \(text)")
+    XCTAssertTrue(
+      String(describing: input.value ?? "").contains(text), "the composer did not take \(text)")
     let sendButton = app.buttons["composer-send"]
     XCTAssertTrue(sendButton.waitForExistence(timeout: 10))
+    app.activate()
     sendButton.click()
   }
 
@@ -157,7 +167,8 @@ final class NativeAppE2EUITests: XCTestCase {
     let marker = "[\(tag)-\(name)]"
     let reply = app.descendants(matching: .any).matching(
       NSPredicate(
-        format: "identifier BEGINSWITH 'message-text-' AND (label CONTAINS %@ OR value CONTAINS %@)",
+        format:
+          "identifier BEGINSWITH 'message-text-' AND (label CONTAINS %@ OR value CONTAINS %@)",
         marker, marker)
     ).firstMatch
     XCTAssertTrue(reply.waitForExistence(timeout: 60), "no reply \(marker)")
@@ -166,6 +177,13 @@ final class NativeAppE2EUITests: XCTestCase {
 
   private var tag: String {
     ProcessInfo.processInfo.environment["OMNIGENT_E2E_TAG"] ?? "run"
+  }
+
+  /// This run's token for message `number`, `<tag>-step<number>`. A mock that routes replies by
+  /// these tokens answers each message from its own queue, so an extra model call (a restarted
+  /// runner resuming the stopped turn) cannot take the reply queued for the next message.
+  private func step(_ number: Int) -> String {
+    "\(tag)-step\(number)"
   }
 
   @MainActor
@@ -177,6 +195,8 @@ final class NativeAppE2EUITests: XCTestCase {
 
   @MainActor
   private func save(_ element: XCUIElement, _ name: String) {
+    // Another app activating can switch Spaces and leave the window off screen.
+    XCUIApplication().activate()
     let attachment = XCTAttachment(screenshot: element.screenshot())
     attachment.name = "e2e-\(name)"
     attachment.lifetime = .keepAlways

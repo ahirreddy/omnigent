@@ -15,6 +15,7 @@ struct TerminalTabView: View {
   let showChat: @MainActor () -> Void
 
   @State private var surface: TerminalSurfaceController?
+  @Environment(\.isActiveTabPane) private var isActivePane
 
   private var store: TerminalStore? { session.terminalStores[sessionID] }
   private var header: OmnigentCoreFFI.SessionHeader? {
@@ -41,13 +42,15 @@ struct TerminalTabView: View {
     .navigationTitle(row?.terminal.displayLabel ?? "Terminal")
     .navigationSubtitle(sessionTitle)
     .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-        Button("Show Chat", systemImage: TabKind.chat.systemImage, action: showChat)
-          .help("Show this session's chat")
-          .accessibilityIdentifier("terminal-tab-chat")
+      if isActivePane {
+        ToolbarItem(placement: .primaryAction) {
+          Button("Show Chat", systemImage: TabKind.chat.systemImage, action: showChat)
+            .help("Show this session's chat")
+            .accessibilityIdentifier("terminal-tab-chat")
+        }
       }
     }
-    .focusedSceneValue(\.sessionCommands, SessionCommandActions(toggleViewMode: showChat))
+    // A shell is not the session's terminal view, so Option-Command-\\ stays with the chat.
     .onAppear { store?.terminals.refresh() }
     .onChange(of: header?.permissionLevel, initial: true) { attach() }
     .onChange(of: store == nil) { attach() }
@@ -76,6 +79,8 @@ struct HarnessTabView: View {
   let showChat: @MainActor () -> Void
 
   @State private var surface: TerminalSurfaceController?
+  @State private var commandRelay = FocusedActionsRelay<SessionCommandActions>()
+  @Environment(\.isActiveTabPane) private var isActivePane
 
   private var store: TerminalStore? { session.terminalStores[sessionID] }
   private var conversation: ConversationStore? { session.connection.conversations[sessionID] }
@@ -98,13 +103,19 @@ struct HarnessTabView: View {
     .navigationTitle(conversation?.header?.title ?? "Agent Terminal")
     .navigationSubtitle("Agent terminal")
     .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-        Button("Show Chat", systemImage: TabKind.chat.systemImage, action: showChat)
-          .help("Show this session's chat (Option-Command-\\)")
-          .accessibilityIdentifier("harness-tab-chat")
+      if isActivePane {
+        ToolbarItem(placement: .primaryAction) {
+          Button("Show Chat", systemImage: TabKind.chat.systemImage, action: showChat)
+            .help("Show this session's chat (Option-Command-\\)")
+            .accessibilityIdentifier("harness-tab-chat")
+        }
       }
     }
-    .focusedSceneValue(\.sessionCommands, SessionCommandActions(toggleViewMode: showChat))
+    // The primary chat's terminal view: Option-Command-\\ goes back to the chat.
+    .focusedSceneValue(
+      \.sessionCommands,
+      commandRelay.publish(isActivePane ? SessionCommandActions(toggleViewMode: showChat) : nil)
+    )
     .onChange(of: store?.terminals.harness, initial: true) { attach() }
     .onChange(of: conversation?.header?.permissionLevel) { attach() }
     .accessibilityIdentifier("harness-tab")

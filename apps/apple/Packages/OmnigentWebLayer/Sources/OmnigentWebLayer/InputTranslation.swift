@@ -1,17 +1,8 @@
 internal import AppKit
 internal import OWLProtocol
+internal import OmnigentInput
 
-/// A mouse event in view coordinates (points, top-left origin), ready for the renderer.
-nonisolated struct MouseInput: Equatable, Sendable {
-  var kind: OWLMouseKind
-  /// View coordinates in points, top-left origin.
-  var location: CGPoint
-  var button: OWLMouseButton = .left
-  var clickCount = 1
-  var modifiers: OWLModifiers = []
-  var deltaX: Double = 0
-  var deltaY: Double = 0
-
+extension PointerInput {
   func encoded(origin: OWLInputOrigin) -> WireEncoder {
     WireEncoder()
       .u64(.inputOrigin, origin.rawValue)
@@ -26,14 +17,7 @@ nonisolated struct MouseInput: Equatable, Sendable {
   }
 }
 
-/// A key event as CEF expects it on macOS: the native key code plus UTF-16 characters.
-nonisolated struct KeyInput: Equatable, Sendable {
-  var kind: OWLKeyKind
-  var nativeKeyCode: UInt16
-  var modifiers: OWLModifiers = []
-  var character: UInt16 = 0
-  var unmodifiedCharacter: UInt16 = 0
-
+extension NativeKeyInput {
   func encoded(origin: OWLInputOrigin) -> WireEncoder {
     WireEncoder()
       .u64(.inputOrigin, origin.rawValue)
@@ -45,136 +29,8 @@ nonisolated struct KeyInput: Equatable, Sendable {
   }
 }
 
-/// NSEvent to CEF input translation, done in the client as OWL does (the host never sees
-/// NSEvents). Pure functions so they are unit-testable.
-nonisolated enum InputTranslator {
-  /// Lines scrolled by a non-precise wheel tick, in points.
-  static let lineScrollPoints = 40.0
-
-  static func modifiers(_ flags: NSEvent.ModifierFlags, pressedButtons: Int = 0) -> OWLModifiers {
-    var result: OWLModifiers = []
-    if flags.contains(.capsLock) { result.insert(.capsLock) }
-    if flags.contains(.shift) { result.insert(.shift) }
-    if flags.contains(.control) { result.insert(.control) }
-    if flags.contains(.option) { result.insert(.alt) }
-    if flags.contains(.command) { result.insert(.command) }
-    if flags.contains(.numericPad) { result.insert(.isKeyPad) }
-    if pressedButtons & 1 != 0 { result.insert(.leftMouse) }
-    if pressedButtons & 2 != 0 { result.insert(.rightMouse) }
-    if pressedButtons & 4 != 0 { result.insert(.middleMouse) }
-    return result
-  }
-
-  /// Translates keyDown, keyUp and flagsChanged. A keyDown becomes a RawKeyDown plus one Char per
-  /// inserted UTF-16 unit, as Chromium's own Mac view does; Command chords insert no text.
-  static func keyInputs(for event: NSEvent) -> [KeyInput] {
-    var flags = modifiers(event.modifierFlags)
-    switch event.type {
-    case .keyDown:
-      if event.isARepeat { flags.insert(.isRepeat) }
-      let characters = Array((event.characters ?? "").utf16)
-      let unmodified = Array((event.charactersIgnoringModifiers ?? "").utf16)
-      var inputs = [
-        KeyInput(
-          kind: .rawKeyDown, nativeKeyCode: event.keyCode, modifiers: flags,
-          character: characters.first ?? 0, unmodifiedCharacter: unmodified.first ?? 0)
-      ]
-      if !event.modifierFlags.contains(.command) {
-        for unit in characters where insertsText(unit) {
-          inputs.append(
-            KeyInput(
-              kind: .char, nativeKeyCode: event.keyCode, modifiers: flags, character: unit,
-              unmodifiedCharacter: unmodified.first ?? unit))
-        }
-      }
-      return inputs
-    case .keyUp:
-      let characters = Array((event.characters ?? "").utf16)
-      let unmodified = Array((event.charactersIgnoringModifiers ?? "").utf16)
-      return [
-        KeyInput(
-          kind: .keyUp, nativeKeyCode: event.keyCode, modifiers: flags,
-          character: characters.first ?? 0, unmodifiedCharacter: unmodified.first ?? 0)
-      ]
-    case .flagsChanged:
-      guard let flag = modifierFlag(forKeyCode: event.keyCode) else { return [] }
-      let pressed = event.modifierFlags.contains(flag)
-      return [
-        KeyInput(
-          kind: pressed ? .rawKeyDown : .keyUp, nativeKeyCode: event.keyCode, modifiers: flags)
-      ]
-    default:
-      return []
-    }
-  }
-
-  /// Whether a UTF-16 unit from a keyDown should be inserted as text. Excludes AppKit's
-  /// function-key range and control characters other than Return.
-  static func insertsText(_ unit: UInt16) -> Bool {
-    if (0xF700...0xF8FF).contains(unit) { return false }
-    if unit == 0x0D { return true }
-    return unit >= 0x20 && unit != 0x7F
-  }
-
-  static func modifierFlag(forKeyCode keyCode: UInt16) -> NSEvent.ModifierFlags? {
-    switch keyCode {
-    case 56, 60: .shift
-    case 59, 62: .control
-    case 58, 61: .option
-    case 55, 54: .command
-    case 57: .capsLock
-    default: nil
-    }
-  }
-
-  /// Translates a mouse or scroll event. `location` is in the view's top-left coordinates.
-  static func mouseInput(for event: NSEvent, location: CGPoint) -> MouseInput? {
-    let flags = modifiers(
-      event.modifierFlags, pressedButtons: NSEvent.pressedMouseButtons | impliedButtons(event))
-    var input = MouseInput(kind: .move, location: location, modifiers: flags)
-    switch event.type {
-    case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .mouseEntered:
-      input.kind = .move
-    case .mouseExited:
-      input.kind = .leave
-    case .leftMouseDown, .rightMouseDown, .otherMouseDown:
-      input.kind = .down
-      input.button = button(for: event)
-      input.clickCount = max(1, event.clickCount)
-    case .leftMouseUp, .rightMouseUp, .otherMouseUp:
-      input.kind = .up
-      input.button = button(for: event)
-      input.clickCount = max(1, event.clickCount)
-    case .scrollWheel:
-      input.kind = .wheel
-      let factor = event.hasPreciseScrollingDeltas ? 1 : lineScrollPoints
-      input.deltaX = event.scrollingDeltaX * factor
-      input.deltaY = event.scrollingDeltaY * factor
-    default:
-      return nil
-    }
-    return input
-  }
-
-  /// The button a drag or press event implies, as a `pressedMouseButtons` bit. Synthesized events
-  /// (and events replayed after the hardware state changed) still carry their button.
-  static func impliedButtons(_ event: NSEvent) -> Int {
-    switch event.type {
-    case .leftMouseDown, .leftMouseDragged: 1
-    case .rightMouseDown, .rightMouseDragged: 2
-    case .otherMouseDown, .otherMouseDragged: 4
-    default: 0
-    }
-  }
-
-  private static func button(for event: NSEvent) -> OWLMouseButton {
-    switch event.type {
-    case .rightMouseDown, .rightMouseUp: .right
-    case .otherMouseDown, .otherMouseUp: .middle
-    default: .left
-    }
-  }
-
+/// The NSEvent translation itself is shared with the remote browser in `OmnigentInput`.
+extension InputTranslator {
   /// Rebuilds an NSEvent for a key the page did not handle, so the app's menus and responders
   /// see it. `template` supplies the characters when available.
   static func unhandledKeyEvent(_ key: UnhandledKey, template: NSEvent?, windowNumber: Int)
@@ -206,7 +62,7 @@ nonisolated enum InputTranslator {
 /// A key the page did not handle, as the host reports it.
 nonisolated struct UnhandledKey: Equatable, Sendable {
   var keyCode: UInt16
-  var modifiers: OWLModifiers
+  var modifiers: InputModifiers
   var character: UInt16
   var unmodifiedCharacter: UInt16
 }
@@ -294,21 +150,21 @@ nonisolated public enum AgentKey: Sendable, Hashable {
   }
 
   /// The key events for one press: RawKeyDown, Char when it inserts text, KeyUp.
-  func keyInputs(modifiers: OWLModifiers) -> [KeyInput] {
+  func keyInputs(modifiers: InputModifiers) -> [NativeKeyInput] {
     let unit = characterUnit
     var inputs = [
-      KeyInput(
+      NativeKeyInput(
         kind: .rawKeyDown, nativeKeyCode: nativeKeyCode, modifiers: modifiers, character: unit,
         unmodifiedCharacter: unit)
     ]
     if !modifiers.contains(.command), InputTranslator.insertsText(unit) {
       inputs.append(
-        KeyInput(
+        NativeKeyInput(
           kind: .char, nativeKeyCode: nativeKeyCode, modifiers: modifiers, character: unit,
           unmodifiedCharacter: unit))
     }
     inputs.append(
-      KeyInput(
+      NativeKeyInput(
         kind: .keyUp, nativeKeyCode: nativeKeyCode, modifiers: modifiers, character: unit,
         unmodifiedCharacter: unit))
     return inputs

@@ -193,10 +193,16 @@ struct DecisionSummary: Hashable {
     case .approval:
       self = Self.approval(card, paragraphs: paragraphs, lede: lede)
     case .choice(_, let options):
+      // A question with one short line of context ("Choose one focus.") shows it as the second
+      // line, so the row still holds the whole request.
+      let context = paragraphs.count == 2 ? paragraphs[1] : nil
+      let shown = context.map { !$0.contains("\n") && $0.count <= Self.inlineLimit } ?? true
       let fits =
-        paragraphs.count <= 1 && options.count <= Self.inlineOptions.count
+        paragraphs.count <= 2 && shown && options.count <= Self.inlineOptions.count
         && options.allSatisfy { $0.count <= Self.inlineOptions.length }
-      self.init(lead: lede ?? "Choose an option", answersInline: fits)
+      self.init(
+        lead: lede ?? "Choose an option", secondary: shown ? context.map(Self.plainText) : nil,
+        answersInline: fits)
     case .form:
       self.init(lead: Self.isGeneric(card.title) ? (lede ?? "Questions") : card.title)
     case .unsupported:

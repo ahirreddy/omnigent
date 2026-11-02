@@ -4,14 +4,19 @@ public import SwiftUI
 /// The playground's "tabs" scenario: the shell with a strip of every tab kind (a pinned chat
 /// that needs you, a running chat, the agent's terminal, a shell with activity, a side chat, a
 /// loading browser page with audio, an agent's browser and the new-tab page), all working on
-/// sample data.
+/// sample data. The chats are their sessions' primary chats, so they have no close button, and
+/// any tab opens in a split view from its context menu, View > Show Split View or a drag.
 public struct TabsPlayground: View {
-  @State private var model = TabsPlaygroundModel()
+  @State private var model: TabsPlaygroundModel
   @State private var selection: SidebarDestination?
   @State private var search = ""
+  @Environment(\.remoteBrowserPreview) private var remoteBrowser
 
   /// Creates the scenario.
-  public init() {}
+  /// - Parameter split: Start with the chat and the docs page side by side.
+  public init(split: Bool = false) {
+    _model = State(initialValue: TabsPlaygroundModel(split: split))
+  }
 
   /// The scenario.
   public var body: some View {
@@ -29,45 +34,61 @@ public struct TabsPlayground: View {
   }
 
   @ViewBuilder private var content: some View {
-    if let tab = model.state.selected {
-      Group {
-        switch tab.kind {
-        case .chat:
-          ConversationScreen(
-            state: PreviewData.shellConversation, composer: PreviewData.sessionComposer,
-            draft: .constant(""), showsInspector: .constant(false),
-            actions: ConversationActions(), composerActions: ComposerActions(send: {}))
-        case .terminal, .agentTerminal:
-          SampleTerminal(title: tab.title, isAgent: tab.kind == .agentTerminal)
-        case .sideChat:
-          SideChatTabView(
-            state: SideChatTabState(
-              phase: .loaded(
-                question: "Why does the refresh test flake on CI?",
-                answer: """
-                  The test waits on a fixed 50 ms timer, but the CI runners are slower. \
-                  Waiting for the refresh event instead removes the race.
-                  """),
-              sessionTitle: "Refactor token refresh and add tests"),
-            openConversation: { model.openChat(PreviewData.sessionID) })
-        case .browser, .agentBrowser:
-          SamplePage(tab: tab)
-        case .newTab, .newSession, .inbox, .canvas:
-          NewTabPage(
-            state: NewTabPageState(
-              recentSessions: Array(PreviewData.sessions.prefix(5)), canOpenBrowser: true,
-              terminalNames: TabsPlaygroundModel.terminalNames),
-            actions: NewTabPageActions(
-              newSession: {},
-              newTerminal: { _, name in model.replaceSelected(.terminal, name ?? "zsh") },
-              openBrowser: { model.replaceSelected(.browser, "Omnigent") },
-              openSession: { model.openChat($0) }))
-        }
+    if model.state.selected != nil {
+      TabSplitView(split: model.split, actions: model.actions) { pane in
+        if let tab = model.tab(in: pane) { tabContent(tab) }
       }
-      .id(tab.id)
     } else {
       NewTabPage(state: NewTabPageState(), actions: NewTabPageActions())
     }
+  }
+
+  private func tabContent(_ tab: TabItemState) -> some View {
+    Group {
+      switch tab.kind {
+      case .chat:
+        ConversationScreen(
+          state: PreviewData.shellConversation, composer: PreviewData.sessionComposer,
+          draft: .constant(""), showsInspector: .constant(false),
+          actions: ConversationActions(), composerActions: ComposerActions(send: {}))
+      case .terminal, .agentTerminal:
+        SampleTerminal(title: tab.title, isAgent: tab.kind == .agentTerminal)
+      case .sideChat:
+        SideChatTabView(
+          state: SideChatTabState(
+            phase: .loaded(
+              question: "Why does the refresh test flake on CI?",
+              answer: """
+                The test waits on a fixed 50 ms timer, but the CI runners are slower. \
+                Waiting for the refresh event instead removes the race.
+                """),
+            sessionTitle: "Refactor token refresh and add tests"),
+          openConversation: { model.openChat(PreviewData.sessionID) })
+      case .browser, .agentBrowser:
+        SamplePage(tab: tab)
+      case .remoteBrowser:
+        if let remoteBrowser { remoteBrowser } else { SamplePage(tab: tab) }
+      case .newTab, .newSession, .inbox, .canvas:
+        NewTabPage(
+          state: NewTabPageState(
+            recentSessions: Array(PreviewData.sessions.prefix(5)), canOpenBrowser: true,
+            terminalNames: TabsPlaygroundModel.terminalNames),
+          actions: newTabActions)
+      }
+    }
+    .id(tab.id)
+  }
+}
+
+extension TabsPlayground {
+  fileprivate var newTabActions: NewTabPageActions {
+    var actions = NewTabPageActions(
+      newSession: {},
+      newTerminal: { _, name in model.replaceSelected(.terminal, name ?? "zsh") },
+      openBrowser: { model.replaceSelected(.browser, "Omnigent") },
+      openSession: { model.openChat($0) })
+    actions.openRemoteBrowser = { _, _ in model.replaceSelected(.remoteBrowser, "example.com") }
+    return actions
   }
 }
 
@@ -91,9 +112,37 @@ final class TabsPlaygroundModel {
     TabItemState(
       id: "agent-web", kind: .agentBrowser, title: "Agent Browser", subtitle: "Fix flaky SSE",
       isReadOnly: true, canDuplicate: false),
+    TabItemState(
+      id: "remote-web", kind: .remoteBrowser, title: "example.com", subtitle: "Fix flaky SSE",
+      canDuplicate: false),
     TabItemState(id: "new", kind: .newTab, title: "New Tab", canDuplicate: false),
   ]
-  var selectedID: String? = "chat"
+  /// `OMNIGENT_PLAYGROUND_TAB=<id>` starts on another tab (for example `remote-web`).
+  var selectedID: String? = ProcessInfo.processInfo.environment["OMNIGENT_PLAYGROUND_TAB"] ?? "chat"
+  /// The split view, when the scenario shows two panes.
+  var split: TabSplitState?
+
+  /// The sample tabs, the docs page beside the chat when `split`.
+  init(split: Bool = false) {
+    tabs = tabs.map(Self.grouped)
+    if split { show("docs", in: .trailing) }
+    if split { focus(.leading) }
+  }
+
+  /// The chats lead their sessions' tabs and cannot close.
+  private static func grouped(_ tab: TabItemState) -> TabItemState {
+    var tab = tab
+    switch tab.id {
+    case "pinned": tab.groupID = "release"
+    case "chat", "agent", "zsh", "side", "agent-web", "remote-web":
+      tab.groupID = PreviewData.sessionID
+    default: break
+    }
+    tab.leadsGroup = tab.kind == .chat
+    tab.isClosable = !tab.leadsGroup
+    if tab.leadsGroup { tab.canDuplicate = false }
+    return tab
+  }
 
   /// Declared terminals: two for the first session, none for the second; the rest unknown.
   static var terminalNames: [String: [String]] {
@@ -114,7 +163,8 @@ final class TabsPlaygroundModel {
   var closed: [TabItemState] = []
 
   var state: TabsState {
-    TabsState(tabs: tabs, selectedID: selectedID, recentlyClosed: closed.reversed())
+    TabsState(
+      tabs: tabs, selectedID: selectedID, recentlyClosed: closed.reversed(), split: split)
   }
 
   var actions: TabActions {
@@ -123,23 +173,29 @@ final class TabsPlaygroundModel {
       duplicate: duplicate, closeOthers: closeOthers, closeToRight: closeToRight)
     if !closed.isEmpty { actions.reopenClosed = reopen }
     actions.moveToNewWindow = close
+    addSplit(to: &actions)
     return actions
   }
 
   var commands: TabCommandActions {
     var commands = TabCommandActions(newTab: newTab, selectTab: select(position:))
-    if let selectedID {
+    if let selectedID, tabs.first(where: { $0.id == selectedID })?.isClosable == true {
       commands.closeTab = { self.close(selectedID) }
     }
     if !closed.isEmpty { commands.reopenClosedTab = reopen }
     commands.selectNextTab = { self.cycle(1) }
     commands.selectPreviousTab = { self.cycle(-1) }
     commands.count = tabs.count
+    addSplit(to: &commands)
     return commands
   }
 
   func select(_ id: String) {
+    if let split, let pane = tabs.first(where: { $0.id == id })?.pane, pane != split.focused {
+      focus(pane)
+    }
     selectedID = id
+    syncSplit()
   }
 
   func select(position: Int) {
@@ -183,17 +239,21 @@ final class TabsPlaygroundModel {
   }
 
   private func add(_ tab: TabItemState) {
+    var tab = tab
+    tab.pane = split?.focused
     let index = (tabs.firstIndex { $0.id == selectedID }).map { $0 + 1 } ?? tabs.count
     tabs.insert(tab, at: max(index, tabs.count { $0.isPinned }))
     selectedID = tab.id
+    syncSplit()
   }
 
   func close(_ id: String) {
-    guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-    closed.append(tabs.remove(at: index))
-    if selectedID == id {
-      selectedID = tabs.indices.contains(index) ? tabs[index].id : tabs.last?.id
+    guard let index = tabs.firstIndex(where: { $0.id == id }), tabs[index].isClosable else {
+      return
     }
+    let pane = tabs[index].pane
+    closed.append(tabs.remove(at: index))
+    leave(id, pane: pane, at: index)
   }
 
   func reopen() {

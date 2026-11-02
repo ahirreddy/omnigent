@@ -17,6 +17,8 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
   case browser
   /// The page an agent is driving, read-only.
   case agentBrowser
+  /// A browser running on the agent's machine, streamed as video.
+  case remoteBrowser
   /// The new-session form.
   case newSession
   /// The Inbox.
@@ -34,6 +36,7 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
     case .sideChat: "bubble.left.and.bubble.right"
     case .browser: "globe"
     case .agentBrowser: "globe.badge.chevron.backward"
+    case .remoteBrowser: "network"
     case .newSession: "square.and.pencil"
     case .inbox: "tray"
     case .canvas: "square.grid.2x2"
@@ -50,6 +53,7 @@ nonisolated public enum TabKind: String, Hashable, Sendable, CaseIterable {
     case .sideChat: "Side chat"
     case .browser: "Browser"
     case .agentBrowser: "Agent browser"
+    case .remoteBrowser: "Remote browser"
     case .newSession: "New session"
     case .inbox: "Inbox"
     case .canvas: "Canvas"
@@ -120,6 +124,15 @@ nonisolated public struct TabItemState: Identifiable, Hashable, Sendable {
   /// The session's status line for the tooltip, for example `Waiting for you · 2 requests`
   /// (``SessionStatusLine``); `nil` uses the status's own label.
   public var statusDetail: String?
+  /// Whether the tab can be closed, torn off or replaced. A session's primary chat cannot: it
+  /// leaves only with its session.
+  public var isClosable = true
+  /// The tabs that belong together (a session's); the group's leader stays first among them.
+  public var groupID: String?
+  /// The tab leads its group (a session's primary chat).
+  public var leadsGroup = false
+  /// The pane showing the tab while the window is split; `nil` when it is not.
+  public var pane: TabPane?
 
   /// Creates a tab.
   /// - Parameters:
@@ -171,6 +184,8 @@ nonisolated public struct TabsState: Hashable, Sendable {
   public var recentlyClosed: [TabItemState]
   /// Why the tabs could not be saved or restored, shown in the strip.
   public var issue: String?
+  /// The two panes, when the window is split; ``selectedID`` is the focused pane's tab.
+  public var split: TabSplitState?
 
   /// Creates the state.
   /// - Parameters:
@@ -178,14 +193,16 @@ nonisolated public struct TabsState: Hashable, Sendable {
   ///   - selectedID: Selected tab.
   ///   - recentlyClosed: Closed tabs, most recent first.
   ///   - issue: A save or restore problem.
+  ///   - split: The panes, when split.
   public init(
     tabs: [TabItemState] = [], selectedID: String? = nil,
-    recentlyClosed: [TabItemState] = [], issue: String? = nil
+    recentlyClosed: [TabItemState] = [], issue: String? = nil, split: TabSplitState? = nil
   ) {
     self.tabs = tabs
     self.selectedID = selectedID
     self.recentlyClosed = recentlyClosed
     self.issue = issue
+    self.split = split
   }
 
   /// Pinned tabs, in order.
@@ -194,6 +211,99 @@ nonisolated public struct TabsState: Hashable, Sendable {
   public var unpinned: [TabItemState] { tabs.filter { !$0.isPinned } }
   /// The selected tab.
   public var selected: TabItemState? { tabs.first { $0.id == selectedID } }
+
+  /// The tabs of one pane, in order; every tab when the window is not split.
+  /// - Parameter pane: The pane.
+  /// - Returns: Its tabs.
+  public func tabs(in pane: TabPane) -> [TabItemState] {
+    guard split != nil else { return tabs }
+    return tabs.filter { ($0.pane ?? .leading) == pane }
+  }
+}
+
+/// One of a split window's two panes.
+nonisolated public enum TabPane: String, Hashable, Sendable, Codable, CaseIterable {
+  /// The left pane (the window's only pane when it is not split).
+  case leading
+  /// The right pane.
+  case trailing
+
+  /// The other pane.
+  public var other: Self { self == .leading ? .trailing : .leading }
+
+  /// "Left" or "Right", for menus and accessibility.
+  public var label: String { self == .leading ? "Left" : "Right" }
+}
+
+/// A split window: each pane's tab, which pane has focus, and the left pane's share of the width.
+nonisolated public struct TabSplitState: Hashable, Sendable {
+  /// The narrowest a pane may get; narrower windows show only the focused pane.
+  public static let minimumPaneWidth: CGFloat = 320
+  /// The left pane's share is kept within this range.
+  public static let fractionRange: ClosedRange<Double> = 0.2...0.8
+
+  /// The tab the left pane shows.
+  public var leadingID: String?
+  /// The tab the right pane shows.
+  public var trailingID: String?
+  /// The pane with keyboard focus; the menus act on its tab.
+  public var focused: TabPane
+  /// The left pane's share of the width.
+  public var fraction: Double
+
+  /// Creates the state.
+  /// - Parameters:
+  ///   - leadingID: The left pane's tab.
+  ///   - trailingID: The right pane's tab.
+  ///   - focused: The focused pane.
+  ///   - fraction: The left pane's share.
+  public init(
+    leadingID: String?, trailingID: String?, focused: TabPane = .leading, fraction: Double = 0.5
+  ) {
+    self.leadingID = leadingID
+    self.trailingID = trailingID
+    self.focused = focused
+    self.fraction = Self.clamp(fraction)
+  }
+
+  /// The tab a pane shows.
+  /// - Parameter pane: The pane.
+  /// - Returns: Its tab id.
+  public func activeID(_ pane: TabPane) -> String? {
+    pane == .leading ? leadingID : trailingID
+  }
+
+  /// A share kept within ``fractionRange``.
+  /// - Parameter fraction: The requested share.
+  /// - Returns: The share to use.
+  public static func clamp(_ fraction: Double) -> Double {
+    guard fraction.isFinite else { return 0.5 }
+    return min(fractionRange.upperBound, max(fractionRange.lowerBound, fraction))
+  }
+
+  /// Whether `width` points fit both panes at their minimum.
+  /// - Parameter width: The content width.
+  /// - Returns: `true` when both panes fit.
+  public static func fits(width: CGFloat) -> Bool {
+    width >= minimumPaneWidth * 2 + TabSplitMetrics.divider
+  }
+}
+
+/// Split view sizes.
+nonisolated enum TabSplitMetrics {
+  /// The divider's visible width.
+  static let divider: CGFloat = 1
+  /// The divider's draggable width.
+  static let handle: CGFloat = 9
+}
+
+extension EnvironmentValues {
+  /// The view is in the focused pane of a split window (or the only pane), so it publishes its
+  /// menu commands. The other pane's views stay quiet.
+  @Entry public var isActiveTabPane = true
+  /// The tab offers its session's terminal view (the Chat/Terminal mode and Option-Command-\\):
+  /// only a session's primary chat does.
+  @Entry public var offersTerminalView = true
 }
 
 /// What the tab strip, the overview and the commands can do. The host owns the model; every
@@ -219,6 +329,19 @@ public struct TabActions {
   public var reopenClosed: (@MainActor () -> Void)?
   /// Tear a tab off into a new window; `nil` where the platform has no windows.
   public var moveToNewWindow: (@MainActor (String) -> Void)?
+  /// Show a tab in a pane, splitting the window when it is not; `nil` where the window cannot
+  /// split (compact widths).
+  public var showInPane: (@MainActor (String, TabPane) -> Void)?
+  /// Focus a pane of a split window.
+  public var focusPane: (@MainActor (TabPane) -> Void)?
+  /// Set the left pane's share of the width.
+  public var setSplitFraction: (@MainActor (Double) -> Void)?
+  /// Go back to one pane.
+  public var closeSplit: (@MainActor () -> Void)?
+  /// Open a remote browser tab in a profile (the + button's menu); `nil` hides it.
+  public var newRemoteBrowser: (@MainActor (String) -> Void)?
+  /// The remote browser profiles the + button's menu offers.
+  public var remoteBrowserProfiles: [String] = []
 
   /// Creates the actions.
   /// - Parameters:

@@ -29,6 +29,8 @@ struct ConversationContainer: View {
   var terminalNames: DeclaredTerminals = .unknown
   /// The session menu's Pin, Archive and the other row actions, as in the sidebar.
   var sessionActions = SessionListActions()
+  /// Creates the fork sheet's store; `nil` hides Fork.
+  var makeForkStore: (@MainActor () -> ForkStore?)?
 
   @State private var showsInspector = false
   @State private var mode: SessionViewMode = .chat
@@ -36,16 +38,18 @@ struct ConversationContainer: View {
   @State private var dismissedSendError: CoreError?
   @State private var failures: [String] = []
   @State private var harnessSurface: TerminalSurfaceController?
+  @State private var forkFlow = ForkFlow()
 
   var body: some View {
     let composer = conversation.composer
     ConversationScreen(
       state: state, composer: composerState,
       draft: Binding(get: { composer.text }, set: { composer.text = $0 }),
-      showsInspector: $showsInspector, mode: modeBinding, actions: routed(actions),
-      composerActions: composerActions,
+      showsInspector: $showsInspector, mode: modeBinding, fork: forkSheet,
+      actions: routed(forkable(actions)), composerActions: composerActions,
       extras: ConversationExtras(
-        sessionActions: sessionActions, slots: workspaceSlots, navigation: navigation)
+        sessionActions: forkable(sessionActions), slots: workspaceSlots,
+        forkActions: forkActions, navigation: navigation)
     ) {
       harnessTerminal
     }
@@ -149,6 +153,64 @@ struct ConversationContainer: View {
       actions.openSession = tabRoutes.openSession
     }
     return actions
+  }
+
+  /// The session's forkable summary, when this app can fork it.
+  private var forkSource: OmnigentCoreFFI.SessionSummary? {
+    guard makeForkStore != nil, let summary, forkUnavailableReason(source: summary) == nil else {
+      return nil
+    }
+    return summary
+  }
+
+  /// "Fork chat from here" on settled assistant messages.
+  private func forkable(_ actions: ConversationActions) -> ConversationActions {
+    var actions = actions
+    if let source = forkSource {
+      actions.forkFrom = { row in
+        guard let responseID = ForkAdapter.forkPoint(row) else { return }
+        beginFork(
+          ForkContext(source: source, upToResponseID: responseID, kind: .fromMessage(rowID: row.id))
+        )
+      }
+    }
+    return actions
+  }
+
+  /// The session menu's Fork copies the whole session.
+  private func forkable(_ actions: SessionListActions) -> SessionListActions {
+    var actions = actions
+    if let source = forkSource {
+      actions.fork = { _ in
+        beginFork(ForkContext(source: source, upToResponseID: nil, kind: .session))
+      }
+    }
+    return actions
+  }
+
+  private func beginFork(_ context: ForkContext) {
+    guard let makeForkStore else { return }
+    Task { await forkFlow.begin(context, makeStore: makeForkStore) }
+  }
+
+  private var forkSheet: Binding<ForkViewState?> {
+    let flow = forkFlow
+    return Binding(get: { flow.viewState }, set: { if $0 == nil { flow.cancel() } })
+  }
+
+  /// The fork opens as a chat tab next to this one, focused.
+  private var forkActions: ForkActions {
+    let flow = forkFlow
+    let open = tabRoutes?.openSession ?? openSession
+    return ForkActions(
+      fork: { agentID, directory, start in
+        Task {
+          await flow.fork(
+            agentID: agentID, directory: directory, start: start, open: open,
+            report: { failures.append($0) })
+        }
+      },
+      cancel: { flow.cancel() })
   }
 
   private var documentPresented: Binding<Bool> {

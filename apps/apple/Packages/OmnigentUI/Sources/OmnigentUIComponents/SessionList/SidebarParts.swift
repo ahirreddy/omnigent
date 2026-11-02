@@ -4,6 +4,7 @@ import SwiftUI
 struct SidebarHeader: View {
   let state: SidebarViewState
   let actions: SidebarActions
+  @Environment(\.openAppearanceSettings) private var openAppearance
 
   private var serverName: String { state.currentServer?.name ?? "none" }
 
@@ -33,6 +34,10 @@ struct SidebarHeader: View {
           }
           if let settings = actions.openServerSettings {
             Button("Server Settings\u{2026}", systemImage: "gearshape", action: settings)
+          }
+          if let openAppearance {
+            Button("Appearance\u{2026}", systemImage: "paintpalette") { openAppearance() }
+              .accessibilityIdentifier("sidebar-appearance")
           }
         } label: {
           HStack(spacing: Theme.Spacing.extraSmall) {
@@ -94,7 +99,6 @@ struct QuickFilterRow: View {
     }
     .buttonStyle(.plain)
     .sidebarSelection(isActive)
-    .hoverHighlight()
     .accessibilityAddTraits(isActive ? [.isSelected] : [])
     .help(isActive ? "Show all sessions" : "Show only: \(filter.title)")
     .accessibilityHint(isActive ? "Shows all sessions" : "Shows only these sessions")

@@ -295,8 +295,8 @@ enum PreviewData {
         ]), author: "Ahir"),
     Row(
       id: "item_a2", role: .assistant,
-      text: "Stopping here as asked. The expiry test still fails because", interrupted: true,
-      agent: "Codex"),
+      text: "Stopping here as asked. The expiry test still fails because", responseId: "resp_2",
+      interrupted: true, agent: "Codex"),
     activity(
       "item_res", .resource, title: "Terminal attached", summary: "terminal_1", isActivityOnly: true
     ),

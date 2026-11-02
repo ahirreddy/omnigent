@@ -23,12 +23,14 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   case browser(browserID: UUID)
   /// The page an agent drives for a session, read-only.
   case agentBrowser(sessionID: String)
+  /// A browser on the agent's machine, streamed as video; `tabID` is the host's tab.
+  case remoteBrowser(sessionID: String, tabID: String)
 
   /// The session the tab belongs to.
   public var sessionID: String? {
     switch self {
     case .chat(let id), .harness(let id), .agentBrowser(let id): id
-    case .terminal(let id, _), .sideChat(let id, _): id
+    case .terminal(let id, _), .sideChat(let id, _), .remoteBrowser(let id, _): id
     case .newTab, .newSession, .inbox, .canvas, .browser: nil
     }
   }
@@ -46,6 +48,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .sideChat: .sideChat
     case .browser: .browser
     case .agentBrowser: .agentBrowser
+    case .remoteBrowser: .remoteBrowser
     }
   }
 
@@ -54,7 +57,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   public var focusesExisting: Bool {
     switch self {
     case .newTab, .newSession, .browser: false
-    case .inbox, .canvas, .chat, .terminal, .harness, .sideChat, .agentBrowser: true
+    case .inbox, .canvas, .chat, .terminal, .harness, .sideChat, .agentBrowser, .remoteBrowser:
+      true
     }
   }
 
@@ -65,7 +69,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .newSession: .newSession
     case .inbox: .inbox
     case .canvas: .canvas
-    case .newTab, .terminal, .harness, .sideChat, .browser, .agentBrowser: nil
+    case .newTab, .terminal, .harness, .sideChat, .browser, .agentBrowser, .remoteBrowser: nil
     }
   }
 
@@ -92,7 +96,8 @@ nonisolated public struct AppTab: Hashable, Sendable, Codable, Identifiable {
   public var isPinned: Bool
   /// The last title shown, for the strip before the content is built.
   public var title: String?
-  /// The browser host's opaque restore state for browser tabs.
+  /// The browser host's opaque restore state for browser tabs; a remote browser tab's
+  /// `RemoteBrowserTabRecord` (last URL and profile).
   public var browserState: Data?
 
   /// Creates a tab.
@@ -114,23 +119,31 @@ nonisolated public struct AppTab: Hashable, Sendable, Codable, Identifiable {
   }
 }
 
-/// A window's tabs as they are saved: order, pinning, selection and the closed-tab stack.
+/// A window's tabs as they are saved: order, pinning, selection, the closed-tab stack and the
+/// split view.
 nonisolated public struct TabWindowSnapshot: Hashable, Sendable, Codable {
   /// Tabs in strip order, pinned first.
   public var tabs: [AppTab]
-  /// The selected tab.
+  /// The selected tab (the focused pane's, when split).
   public var selectedID: String?
   /// Closed tabs, oldest first; Reopen Closed Tab takes the last.
   public var closed: [AppTab]
+  /// The split view, when the window has two panes.
+  public var split: TabSplitSnapshot?
 
   /// Creates a snapshot.
   /// - Parameters:
   ///   - tabs: Tabs.
   ///   - selectedID: Selected tab.
   ///   - closed: Closed tabs.
-  public init(tabs: [AppTab] = [], selectedID: String? = nil, closed: [AppTab] = []) {
+  ///   - split: The split view.
+  public init(
+    tabs: [AppTab] = [], selectedID: String? = nil, closed: [AppTab] = [],
+    split: TabSplitSnapshot? = nil
+  ) {
     self.tabs = tabs
     self.selectedID = selectedID
     self.closed = closed
+    self.split = split
   }
 }

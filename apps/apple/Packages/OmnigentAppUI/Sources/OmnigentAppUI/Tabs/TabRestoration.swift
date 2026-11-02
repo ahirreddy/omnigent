@@ -1,5 +1,6 @@
 import Foundation
 import OmnigentCoreFFI
+import OmnigentRemoteBrowser
 import OmnigentStores
 import SwiftUI
 
@@ -30,7 +31,11 @@ struct TabRestoration: ViewModifier {
     let tabs = session.tabs
     let browser = context.browser
     let window = context.window
-    tabs.willClose = { tab in Self.closePage(of: tab, in: browser, persistence: context.persistence)
+    let remoteBrowsers = session.remoteBrowsers
+    tabs.willClose = { tab in
+      Self.closeRemoteTab(
+        Self.closePage(of: tab, in: browser, persistence: context.persistence),
+        in: remoteBrowsers, persistence: context.persistence)
     }
     browser?.attach(window: window, tabs: tabs)
     if let persistence = context.persistence {
@@ -71,9 +76,44 @@ struct TabRestoration: ViewModifier {
       if case .browser(let id) = tab.content, let state = try browser?.snapshot(of: id) {
         tab.browserState = state
       }
+      if case .remoteBrowser(let sessionID, let tabID) = tab.content,
+        let store = session.remoteBrowsers?.existingStore(sessionID: sessionID, tabID: tabID)
+      {
+        tab.browserState = try RemoteBrowserTabRecord(
+          url: store.lastURL, profile: store.profile
+        ).encoded()
+      }
       return tab
     }
     return snapshot
+  }
+
+  /// Closes the remote tab behind a closing remote browser tab, keeping its last URL so Reopen
+  /// Closed Tab can offer to open it again.
+  static func closeRemoteTab(
+    _ tab: AppTab, in remoteBrowsers: RemoteBrowserTabs?, persistence: TabPersistence?
+  ) -> AppTab {
+    guard case .remoteBrowser(let sessionID, let tabID) = tab.content, let remoteBrowsers else {
+      return tab
+    }
+    var tab = tab
+    if let store = remoteBrowsers.existingStore(sessionID: sessionID, tabID: tabID) {
+      do {
+        tab.browserState = try RemoteBrowserTabRecord(
+          url: store.lastURL, profile: store.profile
+        ).encoded()
+      } catch {
+        persistence?.reportIssue("A closed remote tab's address could not be kept: \(error)")
+      }
+    }
+    Task {
+      do {
+        try await remoteBrowsers.close(sessionID: sessionID, tabID: tabID)
+      } catch {
+        persistence?.reportIssue("The remote browser tab could not be closed: \(error)")
+      }
+    }
+    return tab
   }
 
   /// Closes a closing browser tab's page and keeps its final state for Reopen Closed Tab.

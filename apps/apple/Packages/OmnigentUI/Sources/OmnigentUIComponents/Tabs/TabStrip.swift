@@ -12,19 +12,23 @@ public import SwiftUI
 /// its empty space drags the window and a double-click there zooms it, like the titlebar. As a
 /// bar of its own it sits above the content.
 ///
-/// On the Mac, drag a tab sideways to reorder it and drag it down out of the strip to move it
-/// to a new window.
+/// A split window's strip has a section per pane, sized like the panes below it, so each tab
+/// sits over the pane that shows it.
+///
+/// On the Mac, drag a tab sideways to reorder it, into the other section to move it to that
+/// pane, onto either edge of the content to show it in that pane, and down into the middle of
+/// the content to move it to a new window.
 public struct TabStrip: View {
   private let state: TabsState
   private let actions: TabActions
   private let isInTitlebar: Bool
 
-  @State private var available: CGFloat = 0
-  /// Which ends of the scrolling tabs have tabs out of view, for the fade.
-  @State private var overflow = TabOverflow()
   @State private var drag: TabDrag?
   @State private var showsOverview = false
+  @State private var sectionsFrame = CGRect.zero
+  @State private var sectionFrames: [TabPane: CGRect] = [:]
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(TabDragTracker.self) private var tracker: TabDragTracker?
 
   /// Creates the strip.
   /// - Parameters:
@@ -40,16 +44,7 @@ public struct TabStrip: View {
   /// The strip.
   public var body: some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
-      let pinned = state.pinned
-      if !pinned.isEmpty {
-        HStack(spacing: TabMetrics.spacing) {
-          ForEach(pinned) { tab in
-            item(tab, width: TabMetrics.pinnedWidth, group: pinned) { _ in TabMetrics.pinnedWidth }
-          }
-        }
-        Divider().frame(height: TabMetrics.height - 12)
-      }
-      unpinnedTabs
+      sections
       Button(action: actions.newTab) {
         Image(systemName: "plus")
           .font(.system(size: 13, weight: .medium))
@@ -62,6 +57,7 @@ public struct TabStrip: View {
       .help("New tab (Command-T)")
       .accessibilityLabel("New tab")
       .accessibilityIdentifier("tab-new")
+      .contextMenu { NewTabMenu(actions: actions) }
       TabOverviewMenu(state: state, actions: actions) { showsOverview = true }
       if let issue = state.issue {
         Image(systemName: "exclamationmark.triangle")
@@ -84,65 +80,46 @@ public struct TabStrip: View {
     .accessibilityIdentifier("tab-strip")
   }
 
-  private var unpinnedTabs: some View {
-    let unpinned = state.unpinned
-    let widths = Self.widths(
-      available: available, count: unpinned.count,
-      includesSelected: unpinned.contains { $0.id == state.selectedID })
-    let width: (TabItemState) -> CGFloat = { tab in
-      tab.id == state.selectedID ? widths.selected : widths.other
-    }
-    return ScrollViewReader { proxy in
-      ScrollView(.horizontal) {
-        HStack(spacing: TabMetrics.spacing) {
-          ForEach(unpinned) { tab in
-            item(tab, width: width(tab), group: unpinned, widthOf: width).id(tab.id)
-          }
-        }
-        .frame(minWidth: available, alignment: .leading)
-        .background { emptyStrip }
+  /// One section, or one per pane sized like the panes, with a divider between them.
+  @ViewBuilder private var sections: some View {
+    if let split = state.split {
+      let leading = Self.leadingSectionWidth(
+        sections: sectionsFrame, dividerX: tracker?.dividerX, fraction: split.fraction)
+      HStack(spacing: Theme.Spacing.extraSmall) {
+        section(.leading, split: split).frame(width: leading)
+        Divider().frame(height: TabMetrics.height - 8)
+          .accessibilityHidden(true)
+        section(.trailing, split: split)
       }
-      .scrollIndicators(.never)
-      .onScrollGeometryChange(for: TabOverflow.self) { geometry in
-        TabOverflow(
-          leading: geometry.contentOffset.x > 1,
-          trailing: geometry.contentOffset.x + geometry.containerSize.width
-            < geometry.contentSize.width - 1)
-      } action: { _, edges in
-        overflow = edges
+      .frame(maxWidth: .infinity)
+      .onGeometryChange(for: CGRect.self) {
+        $0.frame(in: .global)
+      } action: {
+        sectionsFrame = $0
       }
-      .mask { TabOverflowFade(overflow: overflow) }
-      .onChange(of: state.selectedID, initial: true) { _, id in
-        guard let id, unpinned.contains(where: { $0.id == id }) else { return }
-        withAnimation(reduceMotion ? nil : Theme.Motion.feedback) { proxy.scrollTo(id) }
-      }
+    } else {
+      section(nil, split: nil)
     }
-    .frame(maxWidth: .infinity)
-    .onGeometryChange(for: CGFloat.self) {
-      $0.size.width
-    } action: {
-      available = $0
-    }
-    .padding(.trailing, Theme.Spacing.extraSmall)
   }
 
-  /// The strip's empty space. In the titlebar it behaves like the titlebar: it drags the window
-  /// and a double-click zooms it. In a bar of its own a double-click opens a new tab.
-  @ViewBuilder private var emptyStrip: some View {
-    let space = Color.clear.contentShape(Rectangle())
-    #if os(macOS)
-      if isInTitlebar {
-        space
-          .onTapGesture(count: 2) { TitlebarDoubleClick.perform() }
-          .gesture(WindowDragGesture())
-          .allowsWindowActivationEvents(true)
-          .accessibilityHidden(true)
-      } else {
-        space.onTapGesture(count: 2) { actions.newTab() }
-      }
-    #else
-      space.onTapGesture(count: 2) { actions.newTab() }
-    #endif
+  private func section(_ pane: TabPane?, split: TabSplitState?) -> some View {
+    let tabs = pane.map { state.tabs(in: $0) } ?? state.tabs
+    let active = pane.flatMap { split?.activeID($0) } ?? state.selectedID
+    let isFocused = pane == nil || split?.focused == pane
+    return TabStripSection(
+      tabs: tabs, activeID: active, isFocused: isFocused, isSplit: split != nil,
+      isInTitlebar: isInTitlebar, actions: actions, drag: drag
+    ) { tab, group, widthOf in
+      reorderGesture(tab, group: group, widthOf: widthOf)
+    }
+    .onGeometryChange(for: CGRect.self) {
+      $0.frame(in: .global)
+    } action: { frame in
+      if let pane { sectionFrames[pane] = frame }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(pane.map { "\($0.label) pane tabs" } ?? "Tabs")
+    .accessibilityIdentifier(pane.map { "tab-section-\($0.rawValue)" } ?? "tab-section")
   }
 
   /// Widths for `count` unpinned tabs in `available` points: equal shares between the minimum
@@ -170,61 +147,103 @@ public struct TabStrip: View {
     min(TabMetrics.maxWidth, max(TabMetrics.minWidth, width))
   }
 
-  private func item(
-    _ tab: TabItemState, width: CGFloat, group: [TabItemState],
-    widthOf: @escaping (TabItemState) -> CGFloat
-  ) -> some View {
-    let dragged = drag?.id == tab.id ? drag : nil
-    let isLast = state.unpinned.last?.id == tab.id
-    return TabItemView(
-      tab: tab, isSelected: tab.id == state.selectedID, width: width, actions: actions,
-      canCloseToRight: !tab.isPinned && !isLast
-    )
-    .offset(x: dragged?.offset ?? 0, y: dragged?.isTearing == true ? dragged?.lift ?? 0 : 0)
-    .opacity(dragged?.isTearing == true ? 0.75 : 1)
-    .shadow(color: .black.opacity(dragged == nil ? 0 : 0.18), radius: 6, y: 2)
-    .zIndex(dragged == nil ? 0 : 1)
+  /// The left section's width: up to the panes' divider when it is under the strip, so each
+  /// tab sits over its pane, else the left pane's share.
+  /// - Parameters:
+  ///   - sections: Both sections' frame, global.
+  ///   - dividerX: The panes' divider, global.
+  ///   - fraction: The left pane's share.
+  /// - Returns: The width.
+  static func leadingSectionWidth(sections: CGRect, dividerX: CGFloat?, fraction: Double)
+    -> CGFloat
+  {
+    let minimum = TabMetrics.minWidth
+    guard sections.width > minimum * 2 else { return max(0, sections.width / 2) }
+    let wanted =
+      dividerX.map { $0 - sections.minX - Theme.Spacing.extraSmall }
+      ?? sections.width * fraction - Theme.Spacing.extraSmall
+    return min(max(wanted, minimum), sections.width - minimum).rounded(.down)
+  }
+
+  /// Whether a dragged tab may swap with its neighbour: a session's tabs never pass the primary
+  /// chat that leads them.
+  /// - Parameters:
+  ///   - tab: The dragged tab.
+  ///   - neighbour: The tab it would pass.
+  ///   - forward: The drag is toward the end of the strip.
+  /// - Returns: Whether the swap is allowed.
+  static func canSwap(_ tab: TabItemState, with neighbour: TabItemState, forward: Bool) -> Bool {
+    guard !forward, neighbour.leadsGroup, !tab.leadsGroup, let group = tab.groupID else {
+      return true
+    }
+    return neighbour.groupID != group
+  }
+
+  private func reorderGesture(
+    _ tab: TabItemState, group: [TabItemState], widthOf: @escaping (TabItemState) -> CGFloat
+  ) -> some Gesture {
     #if os(macOS)
-      .gesture(reorderGesture(tab, group: group, widthOf: widthOf))
+      DragGesture(minimumDistance: 5, coordinateSpace: .global)
+        .onChanged { value in dragChanged(value, tab: tab, group: group, widthOf: widthOf) }
+        .onEnded { value in dragEnded(value, tab: tab) }
+    #else
+      // iPad tabs scroll with a swipe; reordering is in the overview.
+      DragGesture(minimumDistance: .infinity)
     #endif
   }
 
-  #if os(macOS)
-    /// Live reorder: the tab swaps with a neighbour once it is dragged past half that
-    /// neighbour's width. Released well below the strip, it moves to a new window.
-    private func reorderGesture(
-      _ tab: TabItemState, group: [TabItemState], widthOf: @escaping (TabItemState) -> CGFloat
-    ) -> some Gesture {
-      DragGesture(minimumDistance: 5, coordinateSpace: .global)
-        .onChanged { value in
-          var current = drag ?? TabDrag(id: tab.id)
-          let delta = value.translation.width - current.shift
-          if let index = group.firstIndex(where: { $0.id == tab.id }) {
-            if index + 1 < group.count,
-              case let step = widthOf(group[index + 1]) + TabMetrics.spacing, delta > step / 2
-            {
-              move(tab.id, besides: group[index + 1].id)
-              current.shift += step
-            } else if index > 0,
-              case let step = widthOf(group[index - 1]) + TabMetrics.spacing, delta < -step / 2
-            {
-              move(tab.id, besides: group[index - 1].id)
-              current.shift -= step
-            }
-          }
-          current.offset = value.translation.width - current.shift
-          current.lift = value.translation.height
-          current.isTearing =
-            actions.moveToNewWindow != nil && value.translation.height > TabDrag.tearDistance
-          drag = current
-        }
-        .onEnded { _ in
-          let tearing = drag?.isTearing == true
-          withAnimation(reduceMotion ? nil : Theme.Motion.feedback) { drag = nil }
-          if tearing { actions.moveToNewWindow?(tab.id) }
-        }
+  /// Live reorder: the tab swaps with a neighbour once it is dragged past half that
+  /// neighbour's width. Below the strip it previews the content's drop targets.
+  private func dragChanged(
+    _ value: DragGesture.Value, tab: TabItemState, group: [TabItemState],
+    widthOf: (TabItemState) -> CGFloat
+  ) {
+    var current = drag ?? TabDrag(id: tab.id)
+    let delta = value.translation.width - current.shift
+    let below = value.translation.height > TabDrag.tearDistance
+    if !below, let index = group.firstIndex(where: { $0.id == tab.id }) {
+      if index + 1 < group.count, Self.canSwap(tab, with: group[index + 1], forward: true),
+        case let step = widthOf(group[index + 1]) + TabMetrics.spacing, delta > step / 2
+      {
+        move(tab.id, besides: group[index + 1].id)
+        current.shift += step
+      } else if index > 0, Self.canSwap(tab, with: group[index - 1], forward: false),
+        case let step = widthOf(group[index - 1]) + TabMetrics.spacing, delta < -step / 2
+      {
+        move(tab.id, besides: group[index - 1].id)
+        current.shift -= step
+      }
     }
-  #endif
+    current.offset = value.translation.width - current.shift
+    current.lift = value.translation.height
+    tracker?.update(id: tab.id, pane: tab.pane, location: below ? value.location : nil)
+    let dropsInPane = actions.showInPane != nil && tracker?.target != nil
+    current.isTearing =
+      actions.moveToNewWindow != nil && tab.isClosable && below && !dropsInPane
+    drag = current
+  }
+
+  /// A release onto a content edge shows the tab in that pane, onto the other section moves it
+  /// there, and well below the strip elsewhere moves it to a new window.
+  private func dragEnded(_ value: DragGesture.Value, tab: TabItemState) {
+    let tearing = drag?.isTearing == true
+    let target = tracker?.target
+    tracker?.end()
+    withAnimation(reduceMotion ? nil : Theme.Motion.feedback) { drag = nil }
+    if let showInPane = actions.showInPane {
+      if let target {
+        showInPane(tab.id, target)
+        return
+      }
+      if state.split != nil, let pane = tab.pane,
+        sectionFrames[pane.other]?.contains(value.location) == true
+      {
+        showInPane(tab.id, pane.other)
+        return
+      }
+    }
+    if tearing { actions.moveToNewWindow?(tab.id) }
+  }
 
   private func move(_ id: String, besides neighbour: String) {
     guard let target = state.tabs.firstIndex(where: { $0.id == neighbour }) else { return }
@@ -267,7 +286,7 @@ struct TabOverflow: Equatable {
 
 /// A mask that fades the scrolling tabs at an end with tabs out of view, so a clipped tab never
 /// meets New Tab with a hard edge.
-private struct TabOverflowFade: View {
+struct TabOverflowFade: View {
   static let width: CGFloat = 28
   let overflow: TabOverflow
 

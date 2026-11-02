@@ -24,16 +24,20 @@ public struct PlaygroundView: View {
         DecisionPlayground()
       case .tabs:
         TabsPlayground()
+      case .tabSplit:
+        TabsPlayground(split: true)
       case .subagents:
         SubagentPlayground()
       case .phoneReading:
         PhoneReadingPlayground()
+      case .cliStyle:
+        NavigationStack { CLIPlayground() }
       case .inboxTriage:
         NavigationStack { InboxTriagePlayground() }
       case .composer:
         NavigationStack { ComposerPlayground() }
       case .gallery:
-        UIGalleryView()
+        GalleryCatalogView()
       case .themes:
         ThemeGalleryView()
       case .serverSettings:
@@ -51,6 +55,7 @@ public struct PlaygroundView: View {
       state: model.paletteState, actions: model.paletteActions,
       initiallyPresented: model.scenario == .palette
     )
+    .transcriptAppearance(model.preferences.transcript.appearance())
     .omnigentTheme(model.preferences.theme, appearance: model.preferences.mode)
   }
 

@@ -36,6 +36,7 @@ struct ServerWindowRoot: View {
         ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
+    .appearanceSettings(services.theme)
     .omnigentTheme(services.theme.theme, appearance: services.theme.mode)
     .task { start() }
   }

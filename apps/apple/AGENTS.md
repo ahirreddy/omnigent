@@ -34,6 +34,10 @@ Read `README.md` first. These rules cover `apps/apple/` and the Rust core in
   App Store edition may not contain (Chromium) stays behind `OmnigentBrowserChromium`,
   and CEF itself only in the out-of-process web host (`WebHost/`, see
   `Packages/OmnigentWebLayer/DESIGN.md`). Never load CEF in the app process.
+- Chromium is only for browser tabs (user and agent browsing). Anything that renders
+  content inline outside a browser tab (HTML, SVG, rich previews, artifacts) uses
+  WebKit with a non-persistent `WKWebsiteDataStore`: that rendering is stateless,
+  and WebKit costs far less memory and CPU. Markdown stays native SwiftUI.
 - `OmnigentMac` is the primary edition. Keep iOS and iPad compiling, and
   keep platform differences in `#if os()` shims, not in forked views.
 

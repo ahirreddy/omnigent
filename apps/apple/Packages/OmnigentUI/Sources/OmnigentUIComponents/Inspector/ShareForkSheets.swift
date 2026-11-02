@@ -174,39 +174,26 @@ public struct ForkSheet: View {
     NavigationStack {
       Form {
         Picker("Agent", selection: $agentID) {
+          // Menu pickers on macOS show text labels only; the harness reads from the name.
           ForEach(state.agents) { agent in
-            HStack {
-              HarnessGlyph(harness: agent.harness, size: 16)
-              Text(agent.name)
-            }
-            .tag(agent.id)
+            Text(agent.name).tag(agent.id)
           }
         }
         .accessibilityIdentifier("fork-agent")
-        LabeledContent("Directory") {
-          HStack {
-            TextField("Directory", text: $directory)
-              .labelsHidden()
-              .font(Theme.codeFont)
-              .accessibilityIdentifier("fork-directory")
-            if !state.recentDirectories.isEmpty {
-              Menu {
-                ForEach(state.recentDirectories, id: \.self) { path in
-                  Button(path) { directory = path }
-                }
-              } label: {
-                Label("Recent directories", systemImage: "clock")
-              }
-              .labelStyle(.iconOnly)
-              .fixedSize()
-              .help("Recent directories")
-              .accessibilityIdentifier("fork-recent-directories")
-            }
-          }
+        // The directory is where "Clone & start" runs, so it shows only when that can.
+        if startsInDirectory {
+          directoryField
         }
         if let error = state.errorMessage {
           Label(error, systemImage: "exclamationmark.triangle.fill")
             .foregroundStyle(Theme.failure)
+            .accessibilityIdentifier("fork-error")
+        }
+        if let reason = state.startUnavailableReason, state.kind != .anotherDirectory {
+          Text("Clone copies the conversation without starting it. \(reason)")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("fork-start-unavailable")
         }
       }
       .formStyle(.grouped)
@@ -224,21 +211,72 @@ public struct ForkSheet: View {
           if case .anotherDirectory = state.kind {
             Button("Continue") { actions.fork(agentID, directory, true) }
               .primaryActionStyle()
+              .disabled(state.isForking)
               .accessibilityIdentifier("fork-continue")
+          } else if !startsInDirectory {
+            Button("Clone") { actions.fork(agentID, directory, false) }
+              .primaryActionStyle()
+              .disabled(state.isForking)
+              .accessibilityIdentifier("fork-clone")
           } else {
             Button("Clone") { actions.fork(agentID, directory, false) }
+              .disabled(state.isForking)
               .accessibilityIdentifier("fork-clone")
             Button("Clone & start") { actions.fork(agentID, directory, true) }
               .primaryActionStyle()
+              .disabled(state.isForking)
               .accessibilityIdentifier("fork-clone-start")
           }
         }
       }
     }
     #if os(macOS)
-      .frame(width: 480, height: 260)
+      .frame(width: 480, height: startsInDirectory ? 280 : 210)
     #endif
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("fork-sheet")
+  }
+
+  /// Continue always runs in the directory; a fork can when its start is available.
+  private var startsInDirectory: Bool {
+    if case .anotherDirectory = state.kind { return true }
+    return state.startUnavailableReason == nil
+  }
+
+  private var directoryField: some View {
+    LabeledContent("Directory") {
+      HStack {
+        TextField("Directory", text: $directory)
+          .labelsHidden()
+          .font(Theme.codeFont)
+          .accessibilityIdentifier("fork-directory")
+        if !state.recentDirectories.isEmpty {
+          Menu {
+            ForEach(state.recentDirectories, id: \.self) { path in
+              Button(path) { directory = path }
+            }
+          } label: {
+            Label("Recent directories", systemImage: "clock")
+          }
+          .labelStyle(.iconOnly)
+          .fixedSize()
+          .help("Recent directories")
+          .accessibilityIdentifier("fork-recent-directories")
+        }
+      }
+    }
+  }
+}
+
+/// The Fork sheet's presentation key: the dialog's id alone, so its state updates in place.
+/// Keying the sheet on the whole state made iOS re-render the conversation without end.
+struct ForkSheetID: Identifiable, Hashable {
+  let id: String
+
+  /// The key for `fork`; clearing it closes the dialog.
+  static func binding(_ fork: Binding<ForkViewState?>) -> Binding<Self?> {
+    Binding(
+      get: { fork.wrappedValue.map { Self(id: $0.id) } },
+      set: { if $0 == nil { fork.wrappedValue = nil } })
   }
 }

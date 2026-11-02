@@ -17,6 +17,9 @@ let localPackages: [Package] = [
   .package(path: "Packages/OmnigentTestSupport"),
   .package(path: "Packages/OmnigentCoreFFI"),
   .package(path: "Packages/OmnigentBrowser"),
+  // Remote agent browser tabs (video from the agent's machine) and the shared native input.
+  .package(path: "Packages/OmnigentRemoteBrowser"),
+  .package(path: "Packages/OmnigentInput"),
   // The Chromium web layer client; only OmnigentBrowserChromium (Developer ID) uses it.
   .package(path: "Packages/OmnigentWebLayer"),
   // macOS only, so it is a dependency of the Mac apps and not of `appDependencies`. Its
