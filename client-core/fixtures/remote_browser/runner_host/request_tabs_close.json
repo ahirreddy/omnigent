@@ -1,0 +1,8 @@
+{
+  "type": "request",
+  "id": "r5",
+  "op": "tabs.close",
+  "args": {
+    "tab_id": "btab_7f3a9c2e"
+  }
+}

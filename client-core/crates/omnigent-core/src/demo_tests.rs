@@ -48,7 +48,7 @@ fn send(
     session_id: &str,
     text: &str,
 ) -> Result<(), SessionError> {
-    core.set_live_session(Some(session_id));
+    core.set_live_session(session_id, true);
     block_on(core.send_message(session_id, text)).map(|_| ())
 }
 
@@ -427,7 +427,7 @@ fn demo_upgrade_and_new_sessions_publish_reported_configuration() {
         .items;
     let mut edit = ConfigurationEdit::new(demo_configuration());
     edit.select_model(Some("sample-fast".into()));
-    core.set_live_session(Some(&created.session_id));
+    core.set_live_session(&created.session_id, true);
     let configured = block_on(core.apply_configuration(&edit, &created.session_id)).unwrap();
     assert_eq!(
         configured.configuration.unwrap().model_override.as_deref(),
@@ -479,7 +479,7 @@ fn demo_harness_switch_and_catalog_routes() {
     let models = block_on(core.creation_models("demo-codex", DEMO_HOST_ID)).unwrap();
     assert_eq!(models.len(), 2);
     let created = create(&core, "Switch");
-    core.set_live_session(Some(&created));
+    core.set_live_session(&created, true);
     let switched =
         block_on(core.switch_harness("demo-claude", &demo_configuration(), &created)).unwrap();
     let configuration = switched.configuration.unwrap();

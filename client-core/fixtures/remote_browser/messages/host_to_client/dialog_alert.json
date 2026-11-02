@@ -1,0 +1,6 @@
+{
+  "type": "dialog",
+  "id": "dlg_2",
+  "kind": "alert",
+  "message": "Saved."
+}

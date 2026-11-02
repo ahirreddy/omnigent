@@ -118,7 +118,7 @@ fn send_requires_hydrated_live_stream_and_does_not_retry_uncertain_post() {
     );
     assert_eq!(core.transport().writes(), []);
     assert_eq!(core.is_send_blocked("conv_a"), Ok(false));
-    core.set_live_session(Some("conv_a"));
+    core.set_live_session("conv_a", true);
     assert!(matches!(
         block_on(core.send_message("conv_a", "Hello")),
         Err(SessionError::DeliveryUncertain { .. })
@@ -821,7 +821,7 @@ fn a_rotated_bearer_signs_later_requests_without_reconnecting() {
         r#"{"data":[],"has_more":false}"#,
     );
     let core = connected_hosted(transport);
-    core.set_live_session(Some("conv_a"));
+    core.set_live_session("conv_a", true);
     let recorder = record(&core);
     let before = core.transport().taken().len();
     core.rotate_bearer(crate::auth::SecretString::new("renewed-token"))
@@ -839,7 +839,7 @@ fn a_rotated_bearer_signs_later_requests_without_reconnecting() {
         Some("Bearer renewed-token")
     );
     assert!(core.is_connected());
-    assert_eq!(core.live_session().as_deref(), Some("conv_a"));
+    assert!(core.is_live_session("conv_a"));
     assert!(
         !recorder
             .take()

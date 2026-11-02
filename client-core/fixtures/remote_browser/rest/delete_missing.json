@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "DELETE",
+    "path": "/v1/sessions/conv_a/resources/browsers/btab_missing",
+    "body": null
+  },
+  "status": 404,
+  "body": {
+    "detail": "browser tab not found"
+  }
+}

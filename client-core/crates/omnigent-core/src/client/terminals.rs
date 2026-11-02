@@ -19,33 +19,30 @@ use crate::terminal::{
 const CREDENTIAL_HEADERS: [&str; 2] = ["Authorization", DATABRICKS_ORG_HEADER];
 
 impl<T: HttpTransport> ClientCore<T> {
-    /// Builds a terminal request for `session_id` with the connection's credentials, and the
-    /// connection epoch it belongs to.
-    fn terminal_request(
+    /// Builds a request against the connected server's root URL with the connection's
+    /// credential headers, and the connection epoch it belongs to. Shared by the terminal and
+    /// remote browser calls.
+    pub(super) fn credentialed_request<E>(
         &self,
-        session_id: &str,
-        build: impl FnOnce(&TerminalEndpoint) -> Result<HttpRequest, TerminalError>,
-    ) -> Result<(HttpRequest, u64), TerminalError> {
+        build: impl FnOnce(Url) -> Result<HttpRequest, E>,
+        not_connected: E,
+        invalid: impl Fn(String) -> E,
+    ) -> Result<(HttpRequest, u64), E> {
         let state = lock(&self.state);
-        let connection = state
+        let Some(connection) = state
             .connection
             .as_ref()
             .filter(|connection| connection.is_connected())
-            .ok_or(TerminalError::NotConnected)?;
+        else {
+            return Err(not_connected);
+        };
         let server = connection.endpoint();
-        let root =
-            Url::parse(&format!("{}{}", server.origin(), server.mount())).map_err(|error| {
-                TerminalError::InvalidRequest {
-                    detail: format!("the server URL cannot be parsed: {error}"),
-                }
-            })?;
-        let endpoint = TerminalEndpoint::new(root, session_id)?;
-        let mut request = build(&endpoint)?;
+        let root = Url::parse(&format!("{}{}", server.origin(), server.mount()))
+            .map_err(|error| invalid(format!("the server URL cannot be parsed: {error}")))?;
+        let mut request = build(root)?;
         let credentials = connection
             .request("GET", "/v1/info", &[], "application/json")
-            .map_err(|error| TerminalError::InvalidRequest {
-                detail: error.to_string(),
-            })?;
+            .map_err(|error| invalid(error.to_string()))?;
         request.headers.extend(
             credentials
                 .headers
@@ -53,6 +50,26 @@ impl<T: HttpTransport> ClientCore<T> {
                 .filter(|header| CREDENTIAL_HEADERS.contains(&header.name.as_str())),
         );
         Ok((request, state.epoch))
+    }
+
+    /// Whether a result that arrived for `epoch` still belongs to the live connection.
+    pub(super) fn is_current_epoch(&self, epoch: u64) -> bool {
+        let state = lock(&self.state);
+        state.epoch == epoch && state.is_connected()
+    }
+
+    /// Builds a terminal request for `session_id` with the connection's credentials, and the
+    /// connection epoch it belongs to.
+    fn terminal_request(
+        &self,
+        session_id: &str,
+        build: impl FnOnce(&TerminalEndpoint) -> Result<HttpRequest, TerminalError>,
+    ) -> Result<(HttpRequest, u64), TerminalError> {
+        self.credentialed_request(
+            |root| build(&TerminalEndpoint::new(root, session_id)?),
+            TerminalError::NotConnected,
+            |detail| TerminalError::InvalidRequest { detail },
+        )
     }
 
     /// Sends a prepared terminal request; a result from an ended connection is discarded.
@@ -66,11 +83,8 @@ impl<T: HttpTransport> ClientCore<T> {
         decode: impl FnOnce(Result<HttpResponse, TransportError>) -> Result<R, TerminalError>,
     ) -> Result<R, TerminalError> {
         let result = self.transport().send(request).await;
-        {
-            let state = lock(&self.state);
-            if state.epoch != epoch || !state.is_connected() {
-                return Err(TerminalError::NotConnected);
-            }
+        if !self.is_current_epoch(epoch) {
+            return Err(TerminalError::NotConnected);
         }
         let decoded = decode(result);
         if matches!(decoded, Err(TerminalError::Unauthorized { .. })) {

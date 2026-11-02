@@ -23,6 +23,7 @@ pub mod read_state;
 pub mod realtime;
 pub mod reconcile;
 pub mod reducer;
+pub mod remote_browser;
 pub mod server_url;
 pub mod session_attention;
 pub mod session_query;
@@ -35,7 +36,7 @@ pub mod workspace_store;
 
 pub use client::{
     ClientCore, ClientEvent, ClientListener, CoreConfig, SessionError, SubscriptionId, browser,
-    configure, create, databricks_session, events, items, sessions,
+    configure, create, databricks_session, events, fork, items, sessions,
 };
 pub use discovery::{ServerDiscovery, discovery_from_response, manifest_request};
 pub use error::CoreError;

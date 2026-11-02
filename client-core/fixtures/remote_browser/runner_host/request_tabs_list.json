@@ -1,0 +1,8 @@
+{
+  "type": "request",
+  "id": "r2",
+  "op": "tabs.list",
+  "args": {
+    "session_id": "conv_a"
+  }
+}

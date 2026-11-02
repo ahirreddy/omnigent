@@ -1,0 +1,9 @@
+{
+  "type": "ime",
+  "op": "set_composition",
+  "text": "にほん",
+  "selection": {
+    "start": 3,
+    "end": 3
+  }
+}

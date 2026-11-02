@@ -1,0 +1,41 @@
+{
+  "type": "hello",
+  "protocol": 1,
+  "tab_id": "btab_7f3a9c2e",
+  "profile": "work",
+  "host_version": "0.1.0",
+  "mode": "view",
+  "codecs": [
+    "h264",
+    "jpeg"
+  ],
+  "viewport": {
+    "w": 1440,
+    "h": 900,
+    "dpr": 2
+  },
+  "control": {
+    "owner": "agent",
+    "holder": null,
+    "handoff": {
+      "id": "elicit_42",
+      "reason": "Please log in to github.com"
+    }
+  },
+  "settings": {
+    "max_fps": 30,
+    "quality": "high",
+    "scale": 0.5,
+    "codec": "h264"
+  },
+  "window": {
+    "max_frames": 2,
+    "max_bytes": 524288
+  },
+  "features": [
+    "future_feature"
+  ],
+  "future_field": {
+    "ignored": true
+  }
+}

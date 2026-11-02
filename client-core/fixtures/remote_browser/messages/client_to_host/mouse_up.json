@@ -1,0 +1,9 @@
+{
+  "type": "mouse",
+  "kind": "up",
+  "x": 640,
+  "y": 400,
+  "button": "left",
+  "clicks": 1,
+  "modifiers": 0
+}

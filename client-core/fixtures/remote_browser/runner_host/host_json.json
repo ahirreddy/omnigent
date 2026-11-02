@@ -1,0 +1,12 @@
+{
+  "pid": 41234,
+  "socket": "/home/agent/.omnigent/browser/profiles/default/host.sock",
+  "cdp_port": 9333,
+  "version": "0.1.0",
+  "profile": "default",
+  "started_at": "2026-11-01T22:00:00Z",
+  "encoder": {
+    "path": "/usr/bin/x264",
+    "kind": "x264"
+  }
+}

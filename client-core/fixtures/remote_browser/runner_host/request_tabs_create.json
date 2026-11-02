@@ -1,0 +1,13 @@
+{
+  "type": "request",
+  "id": "r3",
+  "op": "tabs.create",
+  "args": {
+    "session_id": "conv_a",
+    "url": "https://github.com/login",
+    "created_by": "user",
+    "width": 1280,
+    "height": 800,
+    "dpr": 1
+  }
+}

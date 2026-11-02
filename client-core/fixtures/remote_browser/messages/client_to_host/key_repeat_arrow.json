@@ -1,0 +1,8 @@
+{
+  "type": "key",
+  "kind": "rawkeydown",
+  "code": "ArrowLeft",
+  "key": "ArrowLeft",
+  "modifiers": 1,
+  "repeat": true
+}

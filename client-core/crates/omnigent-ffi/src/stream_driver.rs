@@ -124,9 +124,7 @@ impl Engine {
             handle.cancel();
         }
         driver.sync.stop_raw();
-        if self.sessions.live_session().as_deref() == Some(session_id) {
-            self.sessions.set_live_session(None);
-        }
+        self.sessions.set_live_session(session_id, false);
     }
 
     pub(crate) fn stream_input(&mut self, session_id: &str, input: StreamInput) {
@@ -267,9 +265,7 @@ impl Engine {
                 driver.live_attempt = None;
                 driver.sync.close_stream_raw();
             }
-            if self.sessions.live_session().as_deref() == Some(session_id) {
-                self.sessions.set_live_session(None);
-            }
+            self.sessions.set_live_session(session_id, false);
         }
         let sign_in = match &state {
             ConnectionState::Failed { error } if error.requires_sign_in() => {
@@ -387,7 +383,7 @@ impl Engine {
                 Ok(applied) => {
                     let current = attempt.is_none() || driver.live_attempt == attempt;
                     if current {
-                        self.sessions.set_live_session(Some(session_id));
+                        self.sessions.set_live_session(session_id, true);
                         self.emit(CoreEvent::SessionHydrated {
                             session_id: session_id.to_owned(),
                         });
@@ -414,9 +410,7 @@ impl Engine {
             }
         };
         let current = driver.sync.hydration_failed_raw(request);
-        if self.sessions.live_session().as_deref() == Some(session_id) {
-            self.sessions.set_live_session(None);
-        }
+        self.sessions.set_live_session(session_id, false);
         if let (true, Some(attempt)) = (current, attempt) {
             self.stream_input(
                 session_id,

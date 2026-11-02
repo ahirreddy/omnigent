@@ -1,0 +1,6 @@
+{
+  "type": "error",
+  "code": "internal",
+  "message": "encoder exited",
+  "fatal": true
+}

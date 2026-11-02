@@ -1,0 +1,12 @@
+{
+  "type": "hello",
+  "protocol": 1,
+  "client": "omnigent-apple/0.1 macOS",
+  "decoders": [
+    "h264",
+    "jpeg"
+  ],
+  "mode": "control",
+  "visible": true,
+  "features": []
+}

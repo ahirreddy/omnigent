@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/sessions/conv_a/resources/browsers",
+    "body": {
+      "profile": "Bad Name"
+    }
+  },
+  "status": 400,
+  "body": {
+    "detail": "invalid profile name 'Bad Name'"
+  }
+}

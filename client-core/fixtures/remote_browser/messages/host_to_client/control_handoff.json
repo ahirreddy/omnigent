@@ -1,0 +1,10 @@
+{
+  "type": "control",
+  "owner": "agent",
+  "holder": null,
+  "reason": "handoff",
+  "handoff": {
+    "id": "elicit_42",
+    "reason": "Please log in to github.com"
+  }
+}

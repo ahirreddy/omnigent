@@ -1,0 +1,8 @@
+{
+  "type": "request",
+  "id": "r7",
+  "op": "tabs.close_session",
+  "args": {
+    "session_id": "conv_a"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "type": "ime",
+  "op": "commit",
+  "text": "日本",
+  "replacement": {
+    "start": 0,
+    "end": 3
+  }
+}

@@ -1,0 +1,175 @@
+{
+  "frames": [
+    {
+      "file": "h264_idr.bin",
+      "valid": true,
+      "header": {
+        "magic": 16978,
+        "version": 1,
+        "kind": 1,
+        "flags": 3,
+        "keyframe": true,
+        "new_stream": true,
+        "header_len": 24,
+        "seq": 1,
+        "stream_id": 7,
+        "pts_us": 1000000
+      },
+      "payload": {
+        "file": "h264/testsrc_1280x800.annexb",
+        "frame_index": 0
+      },
+      "payload_length": 13960
+    },
+    {
+      "file": "h264_delta.bin",
+      "valid": true,
+      "header": {
+        "magic": 16978,
+        "version": 1,
+        "kind": 1,
+        "flags": 0,
+        "keyframe": false,
+        "new_stream": false,
+        "header_len": 24,
+        "seq": 2,
+        "stream_id": 7,
+        "pts_us": 1066667
+      },
+      "payload": {
+        "file": "h264/testsrc_1280x800.annexb",
+        "frame_index": 1
+      },
+      "payload_length": 1918
+    },
+    {
+      "file": "h264_format_change_idr.bin",
+      "valid": true,
+      "header": {
+        "magic": 16978,
+        "version": 1,
+        "kind": 1,
+        "flags": 3,
+        "keyframe": true,
+        "new_stream": true,
+        "header_len": 24,
+        "seq": 3,
+        "stream_id": 8,
+        "pts_us": 1133333
+      },
+      "payload": {
+        "file": "h264/testsrc_640x400.annexb",
+        "frame_index": 0
+      },
+      "payload_length": 7018,
+      "note": "A new stream with different SPS/PPS (640x400): a format change."
+    },
+    {
+      "file": "jpeg_still.bin",
+      "valid": true,
+      "header": {
+        "magic": 16978,
+        "version": 1,
+        "kind": 2,
+        "flags": 0,
+        "keyframe": false,
+        "new_stream": false,
+        "header_len": 24,
+        "seq": 4,
+        "stream_id": 0,
+        "pts_us": 1200000
+      },
+      "payload": {
+        "file": "jpeg/still_1280x800.jpg"
+      },
+      "payload_length": 20175
+    },
+    {
+      "file": "jpeg_thumbnail.bin",
+      "valid": true,
+      "header": {
+        "magic": 16978,
+        "version": 1,
+        "kind": 3,
+        "flags": 0,
+        "keyframe": false,
+        "new_stream": false,
+        "header_len": 24,
+        "seq": 5,
+        "stream_id": 0,
+        "pts_us": 1266667
+      },
+      "payload": {
+        "file": "jpeg/thumbnail_320x200.jpg"
+      },
+      "payload_length": 4488
+    },
+    {
+      "file": "extended_header.bin",
+      "valid": true,
+      "header": {
+        "magic": 16978,
+        "version": 1,
+        "kind": 1,
+        "flags": 0,
+        "keyframe": false,
+        "new_stream": false,
+        "header_len": 32,
+        "seq": 6,
+        "stream_id": 8,
+        "pts_us": 1200000
+      },
+      "payload": {
+        "file": "h264/testsrc_640x400.annexb",
+        "frame_index": 1
+      },
+      "payload_length": 537,
+      "note": "header_len 32: a receiver skips the 8 extra (zero) header bytes."
+    },
+    {
+      "file": "unknown_kind.bin",
+      "valid": true,
+      "header": {
+        "magic": 16978,
+        "version": 1,
+        "kind": 200,
+        "flags": 0,
+        "keyframe": false,
+        "new_stream": false,
+        "header_len": 24,
+        "seq": 7,
+        "stream_id": 0,
+        "pts_us": 1266667
+      },
+      "payload": {
+        "inline_utf8": "future payload"
+      },
+      "payload_length": 14,
+      "note": "Unknown kind: ack seq 7, then ignore."
+    },
+    {
+      "file": "invalid_bad_magic.bin",
+      "valid": false,
+      "error": "bad_magic",
+      "note": "Magic bytes 42 52 (swapped). Drop and report."
+    },
+    {
+      "file": "invalid_truncated.bin",
+      "valid": false,
+      "error": "truncated",
+      "note": "First 10 bytes of h264_idr.bin. Drop and report."
+    },
+    {
+      "file": "invalid_header_len.bin",
+      "valid": false,
+      "error": "bad_header_len",
+      "note": "header_len 16 (< 24). Drop and report; seq 9 is still readable."
+    },
+    {
+      "file": "invalid_version.bin",
+      "valid": false,
+      "error": "unsupported_version",
+      "note": "Header version 2. Drop and report."
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "type": "request",
+  "id": "r4",
+  "op": "tabs.navigate",
+  "args": {
+    "tab_id": "btab_7f3a9c2e",
+    "url": "https://example.com/"
+  }
+}

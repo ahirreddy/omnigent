@@ -53,9 +53,7 @@ impl<T: HttpTransport> ClientCore<T> {
         if result.is_err() {
             sync.hydration_failed(request);
             let mut state = lock(&self.state);
-            if state.live_session.as_deref() == Some(request.session_id.as_str()) {
-                state.live_session = None;
-            }
+            state.live_sessions.remove(&request.session_id);
         }
         self.dispatch();
         result
@@ -74,7 +72,9 @@ impl<T: HttpTransport> ClientCore<T> {
             .conversation(&request.session_id, DEFAULT_PAGE_LIMIT)
             .await?;
         let update = sync.finish_hydration(request, &page.snapshot, &page.items)?;
-        lock(&self.state).live_session = Some(request.session_id.clone());
+        lock(&self.state)
+            .live_sessions
+            .insert(request.session_id.clone());
         Ok(update)
     }
 
@@ -139,9 +139,9 @@ mod tests {
         let core = connected(transport());
         let mut sync = ConversationSync::new("conv_a");
         let request = sync.open_stream();
-        assert_eq!(core.live_session(), None);
+        assert!(!core.is_live_session("conv_a"));
         block_on(core.hydrate(&mut sync, &request)).unwrap();
-        assert_eq!(core.live_session().as_deref(), Some("conv_a"));
+        assert!(core.is_live_session("conv_a"));
         assert!(sync.reducer().is_some());
         let update = block_on(core.refresh_changed_files(&mut sync, "default")).unwrap();
         assert!(update.revision > 0);
@@ -179,7 +179,7 @@ mod tests {
             block_on(core.hydrate(&mut sync, &request)),
             Err(SessionError::Transport(_))
         ));
-        assert_eq!(core.live_session(), None);
+        assert!(!core.is_live_session("conv_a"));
         // The failed read is no longer current; a stale finish changes nothing.
         assert!(!sync.hydration_failed(&request));
     }

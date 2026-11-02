@@ -1,0 +1,8 @@
+{
+  "type": "response",
+  "id": "r7",
+  "ok": true,
+  "result": {
+    "closed": 2
+  }
+}

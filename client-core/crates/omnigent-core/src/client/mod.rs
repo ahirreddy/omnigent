@@ -16,7 +16,8 @@
 //!
 //! The operations are grouped by file: [`sessions`] (list, inventory, organisation), [`items`]
 //! (history and conversation pages), [`events`] (send, interrupt, resolve, changed files,
-//! uploads), [`create`] (catalog and creation) and [`configure`] (model, effort and harness).
+//! uploads), [`create`] (catalog and creation), [`fork`] (fork and start) and [`configure`]
+//! (model, effort and harness).
 
 #![allow(
     clippy::significant_drop_tightening,
@@ -29,9 +30,11 @@ pub mod create;
 pub mod databricks_session;
 mod error;
 pub mod events;
+pub mod fork;
 mod hydration;
 pub mod items;
 pub(crate) mod json;
+mod remote_browsers;
 mod requests;
 pub mod sessions;
 mod terminals;
@@ -131,8 +134,8 @@ struct State {
     metadata_revision: u64,
     /// Conversation-page revision counter.
     revision: u64,
-    /// The session whose stream is open and hydrated.
-    live_session: Option<String>,
+    /// Sessions whose stream is open and hydrated; a window's tabs keep several open.
+    live_sessions: BTreeSet<String>,
     configuration_mutations: BTreeSet<String>,
     changed_files: BTreeMap<(String, String), ChangedFilesFetch>,
     ledger: SubmissionLedger,
@@ -157,7 +160,7 @@ impl State {
         self.metadata_epochs.clear();
         self.configuration_mutations.clear();
         self.changed_files.clear();
-        self.live_session = None;
+        self.live_sessions.clear();
     }
 
     fn is_connected(&self) -> bool {
@@ -465,16 +468,26 @@ impl<T: HttpTransport> ClientCore<T> {
         lock(&self.state).summaries.values().cloned().collect()
     }
 
-    /// Marks `session_id` as the session whose live stream is open and hydrated (or none). The
-    /// stream driver calls this after `Ready` and a successful snapshot; message sends and
-    /// configuration changes require it.
-    pub fn set_live_session(&self, session_id: Option<&str>) {
-        lock(&self.state).live_session = session_id.map(str::to_owned);
+    /// Marks whether `session_id`'s live stream is open and hydrated. The stream driver marks it
+    /// after `Ready` and a successful snapshot, and unmarks it when the stream stops; message
+    /// sends and configuration changes require it.
+    pub fn set_live_session(&self, session_id: &str, live: bool) {
+        let mut state = lock(&self.state);
+        if live {
+            state.live_sessions.insert(session_id.to_owned());
+        } else {
+            state.live_sessions.remove(session_id);
+        }
     }
 
-    /// The session whose live stream is open and hydrated.
-    pub fn live_session(&self) -> Option<String> {
-        lock(&self.state).live_session.clone()
+    /// Unmarks every session, for example when every stream stops.
+    pub fn clear_live_sessions(&self) {
+        lock(&self.state).live_sessions.clear();
+    }
+
+    /// Whether `session_id`'s live stream is open and hydrated.
+    pub fn is_live_session(&self, session_id: &str) -> bool {
+        lock(&self.state).live_sessions.contains(session_id)
     }
 }
 
@@ -493,6 +506,10 @@ mod create_tests;
 #[cfg(test)]
 #[path = "configure_tests.rs"]
 mod configure_tests;
+
+#[cfg(test)]
+#[path = "fork_tests.rs"]
+mod fork_tests;
 
 #[cfg(test)]
 pub(crate) mod test_support;

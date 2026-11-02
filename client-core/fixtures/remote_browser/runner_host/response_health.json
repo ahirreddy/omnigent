@@ -1,0 +1,11 @@
+{
+  "type": "response",
+  "id": "r1",
+  "ok": true,
+  "result": {
+    "version": "0.1.0",
+    "profile": "default",
+    "cdp_port": 9333,
+    "tabs": 1
+  }
+}

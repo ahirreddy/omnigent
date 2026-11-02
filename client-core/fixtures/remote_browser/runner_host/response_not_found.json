@@ -1,0 +1,9 @@
+{
+  "type": "response",
+  "id": "r6",
+  "ok": false,
+  "error": {
+    "code": "not_found",
+    "message": "no tab btab_missing"
+  }
+}

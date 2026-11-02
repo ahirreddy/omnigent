@@ -1,0 +1,28 @@
+{
+  "frames": [
+    {
+      "file": "text_attach.bin",
+      "kind": 1,
+      "payload_length": 72,
+      "note": "Text frame: the attach preamble (payload is its compact JSON)."
+    },
+    {
+      "file": "binary_delta.bin",
+      "kind": 2,
+      "payload_length": 1942,
+      "note": "Binary frame: payload is binary_frames/h264_delta.bin."
+    },
+    {
+      "file": "close_4404.bin",
+      "kind": 3,
+      "payload_length": 12,
+      "note": "Close frame: code 4404, reason 'tab closed'."
+    },
+    {
+      "file": "close_no_reason.bin",
+      "kind": 3,
+      "payload_length": 2,
+      "note": "Close frame: code 1000, empty reason."
+    }
+  ]
+}

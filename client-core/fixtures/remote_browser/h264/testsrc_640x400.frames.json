@@ -1,0 +1,141 @@
+{
+  "file": "testsrc_640x400.annexb",
+  "width": 640,
+  "height": 400,
+  "profile": "constrained_baseline",
+  "sps_hex": "6742c016da0280cec0440000030004000003007a3c58ba80",
+  "pps_hex": "68ce0672",
+  "frames": [
+    {
+      "index": 0,
+      "offset": 0,
+      "length": 7018,
+      "keyframe": true,
+      "pts_us": 1000000,
+      "nal_types": [
+        9,
+        7,
+        8,
+        6,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ]
+    },
+    {
+      "index": 1,
+      "offset": 7018,
+      "length": 537,
+      "keyframe": false,
+      "pts_us": 1066667,
+      "nal_types": [
+        9,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "index": 2,
+      "offset": 7555,
+      "length": 934,
+      "keyframe": false,
+      "pts_us": 1133333,
+      "nal_types": [
+        9,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "index": 3,
+      "offset": 8489,
+      "length": 1539,
+      "keyframe": false,
+      "pts_us": 1200000,
+      "nal_types": [
+        9,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "index": 4,
+      "offset": 10028,
+      "length": 1774,
+      "keyframe": false,
+      "pts_us": 1266667,
+      "nal_types": [
+        9,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "index": 5,
+      "offset": 11802,
+      "length": 1218,
+      "keyframe": false,
+      "pts_us": 1333333,
+      "nal_types": [
+        9,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "index": 6,
+      "offset": 13020,
+      "length": 682,
+      "keyframe": false,
+      "pts_us": 1400000,
+      "nal_types": [
+        9,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "index": 7,
+      "offset": 13702,
+      "length": 745,
+      "keyframe": false,
+      "pts_us": 1466667,
+      "nal_types": [
+        9,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "type": "response",
+  "id": "r9",
+  "ok": false,
+  "error": {
+    "code": "unavailable",
+    "message": "the encoder is not installed"
+  }
+}

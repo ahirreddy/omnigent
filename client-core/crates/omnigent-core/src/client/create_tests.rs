@@ -323,7 +323,7 @@ fn create_success_then_send_failure_never_creates_a_second_session() {
         None,
         Reply::json(202, r#"{"queued":true,"item_id":"item_1"}"#),
     );
-    core.set_live_session(Some("conv_created"));
+    core.set_live_session("conv_created", true);
     let sent = block_on(core.send_message("conv_created", "First")).unwrap();
     assert_eq!(sent.submission.item_id.as_deref(), Some("item_1"));
     assert_eq!(

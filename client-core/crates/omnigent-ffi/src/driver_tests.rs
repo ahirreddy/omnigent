@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use crate::connection::UrlPolicy;
+use crate::decisions::DecisionResponse;
 use crate::engine::lock;
 use crate::errors::CoreError;
 use crate::events::{ConnectionPhase, CoreEvent, ErrorScope, LinkState};
@@ -630,4 +631,50 @@ fn the_demo_connects_offline_and_lists_samples() {
     harness.core.open_session(id.clone());
     harness.pump();
     assert_ne!(rows_from(&harness.events.all(), &id).len(), 0);
+}
+
+/// A window's tabs keep several sessions open: answering a request in one that was not opened
+/// last still updates its cards, and it can still send.
+#[test]
+fn every_open_demo_session_stays_live() {
+    let mut harness = Harness::demo();
+    let core = Arc::clone(&harness.core);
+    harness
+        .run(async move { core.connect(String::new(), None).await })
+        .unwrap();
+    harness.core.open_session("demo-question".into());
+    harness.core.open_session("demo-design".into());
+    harness.pump();
+    harness.events.take();
+
+    let core = Arc::clone(&harness.core);
+    harness
+        .run(async move {
+            core.resolve_decision(
+                "demo-question".into(),
+                "decision-question".into(),
+                DecisionResponse::Answer {
+                    value: "Approvals first".into(),
+                },
+            )
+            .await
+        })
+        .unwrap();
+    harness.pump();
+    let events = harness.events.take();
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CoreEvent::DecisionsChanged { session_id, decisions }
+                if session_id == "demo-question" && decisions.is_empty()
+        )),
+        "{events:?}"
+    );
+    let core = Arc::clone(&harness.core);
+    harness
+        .run(async move {
+            core.send_message("demo-question".into(), "Go on".into())
+                .await
+        })
+        .unwrap();
 }

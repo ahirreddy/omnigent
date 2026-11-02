@@ -14,6 +14,7 @@ pub mod items;
 pub mod manifest;
 pub mod native_tools;
 pub mod page;
+pub mod remote_browser;
 pub mod sessions;
 #[cfg(test)]
 #[allow(clippy::redundant_pub_crate, reason = "shared by sibling test modules")]

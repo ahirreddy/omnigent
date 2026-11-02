@@ -1,0 +1,8 @@
+{
+  "type": "key",
+  "kind": "keyup",
+  "code": "KeyA",
+  "key": "a",
+  "modifiers": 0,
+  "repeat": false
+}

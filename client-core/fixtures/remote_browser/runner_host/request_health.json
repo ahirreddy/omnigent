@@ -1,0 +1,6 @@
+{
+  "type": "request",
+  "id": "r1",
+  "op": "health",
+  "args": {}
+}

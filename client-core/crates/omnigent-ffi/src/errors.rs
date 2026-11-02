@@ -368,6 +368,16 @@ pub enum CoreError {
         /// The connection ended; sign in again.
         requires_sign_in: bool,
     },
+    /// A remote browser REST call or input failed.
+    #[error("{message}")]
+    RemoteBrowser {
+        /// The failure kind.
+        kind: crate::remote_browser::RemoteBrowserErrorKind,
+        /// For display.
+        message: String,
+        /// The connection ended; sign in again.
+        requires_sign_in: bool,
+    },
     /// A Databricks workspace sign-in, token or refresh failed.
     #[error("{message}")]
     Databricks {
@@ -407,6 +417,9 @@ impl CoreError {
                 requires_sign_in, ..
             }
             | Self::Terminal {
+                requires_sign_in, ..
+            }
+            | Self::RemoteBrowser {
                 requires_sign_in, ..
             }
             | Self::Databricks {

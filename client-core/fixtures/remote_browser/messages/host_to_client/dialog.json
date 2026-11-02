@@ -1,0 +1,8 @@
+{
+  "type": "dialog",
+  "id": "dlg_1",
+  "kind": "prompt",
+  "message": "Your name?",
+  "default_text": "Ada",
+  "origin": "https://example.com"
+}

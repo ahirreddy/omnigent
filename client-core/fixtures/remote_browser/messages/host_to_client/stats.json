@@ -1,0 +1,10 @@
+{
+  "type": "stats",
+  "fps": 14.8,
+  "kbps": 812.5,
+  "encode_ms_p50": 4.2,
+  "encode_ms_p95": 9.7,
+  "in_flight_frames": 1,
+  "in_flight_bytes": 18234,
+  "host_cpu": 0.12
+}

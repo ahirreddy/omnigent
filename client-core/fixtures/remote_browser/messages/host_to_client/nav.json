@@ -1,0 +1,10 @@
+{
+  "type": "nav",
+  "url": "https://github.com/login",
+  "title": "Sign in to GitHub",
+  "loading": true,
+  "progress": 0.35,
+  "can_go_back": true,
+  "can_go_forward": false,
+  "favicon_url": "https://github.com/favicon.ico"
+}

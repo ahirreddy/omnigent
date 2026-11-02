@@ -1,0 +1,53 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/sessions/conv_a/resources/browsers?limit=1000&order=asc",
+    "body": null
+  },
+  "status": 200,
+  "body": {
+    "object": "list",
+    "data": [
+      {
+        "object": "session.resource",
+        "id": "btab_7f3a9c2e",
+        "type": "browser",
+        "session_id": "conv_a",
+        "name": "Sign in to GitHub",
+        "metadata": {
+          "url": "https://github.com/login",
+          "title": "Sign in to GitHub",
+          "loading": false,
+          "owner": "agent",
+          "needs_attention": true,
+          "profile": "default",
+          "created_by": "agent",
+          "can_go_back": true,
+          "can_go_forward": false,
+          "thumbnail_url": null
+        }
+      },
+      {
+        "object": "session.resource",
+        "id": "btab_00aa11bb",
+        "type": "browser",
+        "session_id": "conv_a",
+        "name": "",
+        "metadata": {
+          "url": "about:blank",
+          "title": "",
+          "loading": false,
+          "owner": "user",
+          "needs_attention": false,
+          "profile": "work",
+          "created_by": "user",
+          "can_go_back": false,
+          "can_go_forward": false
+        }
+      }
+    ],
+    "first_id": "btab_7f3a9c2e",
+    "last_id": "btab_00aa11bb",
+    "has_more": false
+  }
+}

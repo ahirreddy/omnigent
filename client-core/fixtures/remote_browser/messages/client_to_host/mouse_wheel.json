@@ -1,0 +1,9 @@
+{
+  "type": "mouse",
+  "kind": "wheel",
+  "x": 640,
+  "y": 400,
+  "modifiers": 0,
+  "dx": 0,
+  "dy": 120
+}

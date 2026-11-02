@@ -1,0 +1,6 @@
+{
+  "type": "error",
+  "code": "not_in_control",
+  "message": "the agent controls this tab",
+  "fatal": false
+}

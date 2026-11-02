@@ -1,0 +1,10 @@
+{
+  "type": "cursor",
+  "cursor": "custom",
+  "custom": {
+    "png_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    "hotspot_x": 0,
+    "hotspot_y": 0,
+    "scale": 1
+  }
+}

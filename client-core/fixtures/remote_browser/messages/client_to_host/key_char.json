@@ -1,0 +1,9 @@
+{
+  "type": "key",
+  "kind": "char",
+  "code": "KeyA",
+  "key": "a",
+  "text": "a",
+  "modifiers": 0,
+  "repeat": false
+}

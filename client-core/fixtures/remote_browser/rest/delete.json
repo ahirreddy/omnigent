@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "DELETE",
+    "path": "/v1/sessions/conv_a/resources/browsers/btab_7f3a9c2e",
+    "body": null
+  },
+  "status": 200,
+  "body": {
+    "id": "btab_7f3a9c2e",
+    "object": "session.resource.deleted",
+    "deleted": true
+  }
+}

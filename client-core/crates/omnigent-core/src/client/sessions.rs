@@ -1006,17 +1006,17 @@ impl<T: HttpTransport> ClientCore<T> {
             .map_err(malformed("session row"))?;
         let mut state = lock(&self.state);
         let mut changed = Vec::new();
-        let mut hydrate = None;
+        let mut hydrate = Vec::new();
         for projection in &projections {
             let summary = projection
                 .summary(state.summaries.get(&projection.id))
                 .map_err(malformed("session row"))?;
             let summary = state.record_summary(summary);
             state.cache_summary(&summary);
-            if state.live_session.as_deref() == Some(projection.id.as_str())
+            if state.live_sessions.contains(&projection.id)
                 && !projection.has_configuration_identity()
             {
-                hydrate = Some(projection.id.clone());
+                hydrate.push(projection.id.clone());
             }
             changed.push(summary);
         }
@@ -1024,7 +1024,7 @@ impl<T: HttpTransport> ClientCore<T> {
             sessions: changed.clone(),
         });
         state.events.push(ClientEvent::InventoryInvalidated);
-        if let Some(session_id) = hydrate {
+        for session_id in hydrate {
             state
                 .events
                 .push(ClientEvent::HydrationRequested { session_id });
@@ -1041,13 +1041,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 state.bump_metadata_epoch(id);
                 state.summaries.remove(id);
             }
-            if state
-                .live_session
-                .as_ref()
-                .is_some_and(|live| ids.contains(live))
-            {
-                state.live_session = None;
-            }
+            state.live_sessions.retain(|live| !ids.contains(live));
             state
                 .events
                 .push(ClientEvent::SessionsRemoved { ids: ids.to_vec() });
@@ -1080,7 +1074,7 @@ impl State {
     /// re-hydrated.
     pub(super) fn request_rehydration(&mut self, session_id: &str) {
         self.events.push(ClientEvent::InventoryInvalidated);
-        if self.live_session.as_deref() == Some(session_id) {
+        if self.live_sessions.contains(session_id) {
             self.events.push(ClientEvent::HydrationRequested {
                 session_id: session_id.to_owned(),
             });

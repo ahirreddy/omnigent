@@ -230,7 +230,7 @@ impl<T: HttpTransport> ClientCore<T> {
         if summary.status != SummaryStatus::Idle {
             return Err(SessionError::Busy);
         }
-        if lock(&self.state).live_session.as_deref() != Some(summary.id.as_str()) {
+        if !lock(&self.state).live_sessions.contains(&summary.id) {
             return Err(SessionError::StreamNotReady);
         }
         let online = summary.configuration.as_ref().is_some_and(|configuration| {
@@ -552,7 +552,7 @@ impl<T: HttpTransport> ClientCore<T> {
         if summary.is_archived {
             return Err(SessionError::Archived);
         }
-        if lock(&self.state).live_session.as_deref() != Some(session_id) {
+        if !lock(&self.state).live_sessions.contains(session_id) {
             return Err(SessionError::StreamNotReady);
         }
         let configuration = summary

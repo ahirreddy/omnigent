@@ -343,7 +343,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 reason: reason.to_owned(),
             });
         }
-        if require_live_stream && lock(&self.state).live_session.as_deref() != Some(session_id) {
+        if require_live_stream && !lock(&self.state).live_sessions.contains(session_id) {
             return Err(SessionError::StreamNotReady);
         }
         Ok(())
@@ -624,7 +624,7 @@ impl<T: HttpTransport> ClientCore<T> {
         let key = (session_id.to_owned(), environment_id.to_owned());
         let connection_epoch = {
             let mut state = lock(&self.state);
-            if state.live_session.as_deref() != Some(session_id) {
+            if !state.live_sessions.contains(session_id) {
                 return;
             }
             let fetch = state.changed_files.entry(key.clone()).or_default();
@@ -647,8 +647,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 }
             };
             let mut state = lock(&self.state);
-            if state.epoch != connection_epoch || state.live_session.as_deref() != Some(session_id)
-            {
+            if state.epoch != connection_epoch || !state.live_sessions.contains(session_id) {
                 state.changed_files.remove(&key);
                 return;
             }

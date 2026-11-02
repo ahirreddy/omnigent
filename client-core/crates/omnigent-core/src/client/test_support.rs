@@ -513,7 +513,7 @@ pub(crate) fn connected_hosted(transport: RouteTransport) -> ClientCore<RouteTra
 /// A connected core with `conv_a` live, as `primeStreamForTesting` set it up.
 pub(crate) fn live(transport: RouteTransport) -> ClientCore<RouteTransport> {
     let core = connected(transport);
-    core.set_live_session(Some("conv_a"));
+    core.set_live_session("conv_a", true);
     core
 }
 

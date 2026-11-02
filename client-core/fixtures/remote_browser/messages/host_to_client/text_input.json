@@ -1,0 +1,10 @@
+{
+  "type": "text_input",
+  "mode": "email",
+  "caret_rect": {
+    "x": 412,
+    "y": 310.5,
+    "w": 1,
+    "h": 18
+  }
+}

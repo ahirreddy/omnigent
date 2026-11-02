@@ -468,7 +468,7 @@ impl Engine {
                 driver.sync.close_stream();
             }
         }
-        self.sessions.set_live_session(None);
+        self.sessions.clear_live_sessions();
     }
 
     fn foreground(&mut self) {

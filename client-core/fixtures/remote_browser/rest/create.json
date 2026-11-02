@@ -1,0 +1,30 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/sessions/conv_a/resources/browsers",
+    "body": {
+      "url": "https://github.com/login",
+      "profile": "default"
+    }
+  },
+  "status": 200,
+  "body": {
+    "object": "session.resource",
+    "id": "btab_7f3a9c2e",
+    "type": "browser",
+    "session_id": "conv_a",
+    "name": "Sign in to GitHub",
+    "metadata": {
+      "url": "https://github.com/login",
+      "title": "Sign in to GitHub",
+      "loading": true,
+      "owner": "agent",
+      "needs_attention": false,
+      "profile": "default",
+      "created_by": "user",
+      "can_go_back": false,
+      "can_go_forward": false,
+      "thumbnail_url": null
+    }
+  }
+}

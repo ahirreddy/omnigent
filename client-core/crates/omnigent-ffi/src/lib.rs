@@ -41,8 +41,10 @@ pub mod decisions;
 pub mod deeplink;
 pub mod errors;
 pub mod events;
+pub mod fork;
 pub mod host;
 pub mod http;
+pub mod remote_browser;
 pub mod sessions;
 pub mod sync;
 pub mod terminal;
@@ -65,6 +67,8 @@ mod api_tests;
 mod driver_tests;
 #[cfg(test)]
 mod read_tests;
+#[cfg(test)]
+mod remote_browser_tests;
 #[cfg(test)]
 mod test_support;
 

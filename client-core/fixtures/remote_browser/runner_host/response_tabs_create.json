@@ -1,0 +1,19 @@
+{
+  "type": "response",
+  "id": "r3",
+  "ok": true,
+  "result": {
+    "id": "btab_7f3a9c2e",
+    "session_id": "conv_a",
+    "url": "https://github.com/login",
+    "title": "Sign in to GitHub",
+    "loading": true,
+    "owner": "agent",
+    "needs_attention": false,
+    "profile": "default",
+    "created_by": "user",
+    "target_id": "7D1E5A0C9B2F4E8A",
+    "can_go_back": false,
+    "can_go_forward": false
+  }
+}
