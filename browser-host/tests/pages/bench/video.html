@@ -1,0 +1,7 @@
+<!doctype html><html><head><meta charset="utf-8"><title>bench-video</title><style>
+body{margin:0;background:#111;color:#eee;font:15px sans-serif}
+video{display:block;margin:20px auto;width:960px;height:540px}p{text-align:center}
+</style></head><body><video id="video" src="video.webm" autoplay muted loop playsinline></video>
+<p>A 960x540 VP9 video element playing on a page.</p>
+<script>document.getElementById("video").addEventListener("playing", () => { document.title = "bench-video-playing"; });</script>
+</body></html>

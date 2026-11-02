@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"><title>bench-login</title><style>
+body{margin:0;font:15px -apple-system,"DejaVu Sans",Arial,sans-serif;background:#f6f8fa;color:#1f2328}
+form{width:340px;margin:120px auto;padding:24px;background:#fff;border:1px solid #d0d7de;border-radius:8px}
+h1{font-size:24px;font-weight:300;text-align:center}label{display:block;margin:12px 0 6px;font-weight:600}
+input{width:100%;box-sizing:border-box;padding:8px;font-size:15px;border:1px solid #d0d7de;border-radius:6px}
+button{width:100%;margin-top:18px;padding:10px;font-size:15px;color:#fff;background:#1f883d;border:0;border-radius:6px}
+#done{display:none;text-align:center;margin-top:160px;font-size:28px}
+</style></head><body>
+<form id="form"><h1>Sign in to Example</h1>
+<label for="user">Username or email address</label><input id="user" autocomplete="off">
+<label for="pass">Password</label><input id="pass" type="password">
+<button id="submit" type="submit">Sign in</button></form>
+<div id="done">Welcome back</div>
+<script>
+document.getElementById("form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  document.getElementById("form").style.display = "none";
+  document.getElementById("done").style.display = "block";
+  document.title = "bench-login-done";
+});
+</script></body></html>
