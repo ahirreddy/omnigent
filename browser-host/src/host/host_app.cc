@@ -25,10 +25,13 @@ void HostApp::OnBeforeCommandLineProcessing(const CefString& process_type,
   if (!switches_.ozone_platform.empty()) {
     command_line->AppendSwitchWithValue("ozone-platform", switches_.ozone_platform);
   }
+  // Windowless mode can restore a back/forward-cached page without painting it, leaving the
+  // old page (or a blank one) on screen after Back.
 #if defined(__APPLE__)
   command_line->AppendSwitch("use-mock-keychain");
-  command_line->AppendSwitchWithValue("disable-features", "MacAppCodeSignClone");
+  command_line->AppendSwitchWithValue("disable-features", "BackForwardCache,MacAppCodeSignClone");
 #else
+  command_line->AppendSwitchWithValue("disable-features", "BackForwardCache");
   // Headless machines have no keyring; Chromium would otherwise block on one.
   command_line->AppendSwitchWithValue("password-store", "basic");
 #endif

@@ -180,6 +180,8 @@ rest of the host. The stdout shim is our own code, preloaded into the encoder pr
   decodes with ffmpeg to the expected pixels, tab close sends 4404, clean shutdown).
 - `tools/shutdown_test.py --host <binary>`: SIGTERM leaves no child process and no `host.json`.
 - `tools/click_test.py --host <binary> --runs 20`: clicks right after load land every time.
+- `tools/back_test.py --host <binary> --leftover 25`: Back repaints the first page even with
+  many other tabs open on the same site (macOS; decodes JPEG frames with `sips`).
 - `tools/idle_cpu.py --host <binary>`: host CPU with open tabs and nobody (or one idle viewer)
   watching.
 - `tools/cdp_spike.py --host <binary> --node-modules DIR`: Playwright `connectOverCDP` against
