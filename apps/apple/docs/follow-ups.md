@@ -61,6 +61,45 @@ Apple process" and "Recommendation and plan" (phase 1b).
   - clearing site data is coarse
   - Chrome Enterprise device-trust checks can never pass outside Google Chrome
 
+## Remote browser
+
+Details: [remote-browser-design.md](remote-browser-design.md).
+
+- [ ] Diff the core's macOS keycode and USB-HID to DOM `code` tables line by line against
+  Chromium's (`ui/events/keycodes/dom/dom_code_data.inc`); HID 0x32 maps to `Backslash` per the
+  W3C spec, Chromium may use `IntlHash`.
+- [ ] Host: x264 sometimes ignores a qpfile IDR request ("switching to encoder restarts"); the
+  restart fallback works, but find out why the in-stream IDR path is skipped.
+- [ ] Confirm hardware H.264 decode on a physical iPhone/iPad (simulators have no hardware decoder;
+  the renderer logs the VideoToolbox probe at launch).
+- [ ] Add a reconnect-after-unexpected-close case (with backoff) to the headless e2e gate.
+- [ ] M2 to M5 from the design doc: agent CDP and tab mapping, handoff and takeover, profiles,
+  settings and hardware encoders.
+- [ ] **Share the CEF core between the OWL host and `browser-host/`.** M1 copied and adapted the
+  portable parts of `WebHost/Sources` (popups, JS dialogs, IME, cursor mapping) instead of
+  extracting them, to leave the Mac host untouched. Extract them into `browser-host/core` with
+  both hosts building it.
+- [ ] **Agent-created tabs over CDP (M2).** Playwright `newPage()` fails and raw
+  `Target.createTarget` makes a non-windowless browser that never paints
+  ([remote-browser-m0.md](remote-browser-m0.md)). Add `browser_tabs open`, or a CDP proxy that
+  turns `Target.createTarget` into a host tab.
+- [ ] **macOS host: `CefShutdown` stalls** while Chromium releases a Keychain handle (seen when
+  launched from an agent shell). The host bounds it to 5 s and kills its helpers; find the cause.
+- [ ] **Re-run the M0 render and live bench on a 2-4 vCPU cloud VM** before fixing the CPU
+  budget and the Linux display default (headless Ozone vs Xvfb).
+- [ ] **Package the host** (G1): link libjpeg-turbo statically, CI builds for linux x86_64 and
+  arm64 and macOS arm64, `omnigent browser install`.
+- [ ] **Gate remote browser tabs on the server.** The apps offer them only behind the
+  `OmnigentRemoteBrowser` user default (or `OmnigentRemoteBrowserFixture` for the fixture host)
+  because nothing advertises them yet; gate on a `/v1/info` or runner field once one exists.
+- [ ] **iOS remote tab input (E3):** on-screen keyboard driven by `text_input`, marked text, and
+  pinch to zoom the video. M1 has taps, long press, pan or trackpad scroll and hardware keys.
+- [ ] **macOS IME caret:** place the candidate window at the host's `text_input.caret` instead of
+  the page's bottom-left.
+- [ ] **Video off the main thread:** frames hop to the main actor before
+  `AVSampleBufferDisplayLayer` enqueue; move enqueue to a dedicated queue if main-thread stalls
+  show up in frame age.
+
 ## Server (upstream omnigent)
 
 - [ ] **Edit approvals:** send the full tool input, or a structured list of file changes, for edit
@@ -72,6 +111,10 @@ Apple process" and "Recommendation and plan" (phase 1b).
 - [ ] **Pending-input queue:** stop treating the runner's interrupt marker as consuming a queued
   message.
 - [ ] **CLI:** remove the pidfile on SIGTERM.
+- [ ] **Session delete:** the server's `DELETE /v1/sessions/{sid}` ignores the runner's response
+  status (only transport errors are caught, then it deletes server-side anyway), so a runner
+  `resource_cleanup_failed` 500 (for example a browser host that failed to close tabs) is not
+  surfaced (`omnigent/server/routes/sessions/routes_events.py`, around line 3835).
 
 ## Apps
 
@@ -100,6 +143,28 @@ Apple process" and "Recommendation and plan" (phase 1b).
 - [ ] **Mac sidebar:** with the window inactive, the Running and Needs you rows don't dim like the
   other rows (`QuickFilterRow` forces the primary color).
 - [ ] **iOS sidebar:** the swipe actions still use system orange (Pin) and indigo (Archive).
+- [ ] **CLI style:** the CLI composer has no host chip, and its status-line model menu duplicates
+  `ConfigurationMenu`'s pickers (no agent switch).
+- [ ] **CLI style:** fold the non-message hover host (`cliActions`) into the shared
+  `messageActionsHost` once it takes arbitrary actions.
+- [ ] **CLI style:** Styled renders fenced code without syntax highlighting.
+
+- [ ] **Gallery:** page and flow toolbars leak into the gallery window's toolbar; captures draw
+  modals and the tab strip in place (Open in Window shows the real chrome).
+- [ ] **Gallery:** add `initial…` parameters so it can preset server settings panes, Inbox
+  selection and the palette query (they live in private view state).
+- [ ] **Gallery:** export takes about 1 s per image (blur and shadow rasterization); render at 1x
+  or in parallel. Tests' `RenderSupport` could reuse `CatalogExporter.render`.
+- [ ] **UI review from the gallery:** sign-in screens use system blue instead of the Omnigent theme;
+  "Tell the agent instead" with a shared draft opens in both the inline card and the dock.
+
+- [ ] **Tabs: primary chats accumulate.** Tabs span sessions per window and a session's primary
+  chat cannot be closed, so every session opened from the sidebar stays in the strip until it is
+  archived or deleted. Decide between per-session tab scoping, a preview tab, or a "Close
+  Session in This Window" command.
+- [ ] **Split view:** the other pane's Inbox, New Session and browser views still publish their
+  toolbar items and focused values (only conversations and terminals defer to the focused pane);
+  notification suppression covers only the focused pane's chat.
 
 ## Product decisions
 
