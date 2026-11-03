@@ -351,6 +351,26 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
+    /// Creates a session for `agent_id` on a new sandbox the server provisions, cloning
+    /// `workspaces` (`<url>[#<branch>]` repositories; empty for an empty sandbox). Returns once
+    /// the session exists; its host binds when the sandbox registers. Never retried.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::create_session`].
+    pub async fn create_sandbox_session(
+        &self,
+        agent_id: String,
+        title: String,
+        workspaces: Vec<String>,
+    ) -> Result<CreationReceipt, CoreError> {
+        self.sessions()
+            .create_sandbox_session(&agent_id, &title, &workspaces)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
     /// Creates a session, then sends `text` to it. Once the session exists this returns `Ok`: a
     /// failed first message is [`FirstMessage::Failed`], to be retried with `send_message` to the
     /// new session, never by creating again.

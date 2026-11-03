@@ -213,6 +213,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Error copy:** runner failures still surface raw text ("the session's runner is unavailable
   (HTTP 503)…"); map them to plain-language banners with a retry.
 - [ ] **Tabs (Mac):** no hover card for tabs (only the close button and a title tooltip).
+- [ ] **New session on a sandbox:** the core and `CreationStore.createInSandbox` can create a
+  session on a new managed sandbox (`host_type: "managed"`), verified live against
+  isaac.databricks.com, but the New Session sheet only offers existing hosts. Add the sandbox
+  choice (provider, repositories) as the web's New Chat dialog has.
 - [ ] **Tests (Mac):** run the two remaining Mac UI tests (launch smoke, titlebar drags) in a
   macOS VM so they never take the developer's mouse and keyboard: Tart
   (`ghcr.io/cirruslabs/macos-tahoe-xcode:27.2`, 70.8 GB compressed) with the tests built on the

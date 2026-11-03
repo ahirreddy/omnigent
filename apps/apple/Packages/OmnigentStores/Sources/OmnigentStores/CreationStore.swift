@@ -145,6 +145,28 @@ public final class CreationStore {
     }
   }
 
+  /// Creates a session for `agentID` on a new sandbox the server provisions, cloning
+  /// `workspaces` (`<url>[#<branch>]` repositories; empty for an empty sandbox). Like
+  /// ``create(_:title:firstMessage:)`` it is never retried; the sandbox registers after the
+  /// session exists.
+  /// - Parameters:
+  ///   - agentID: The agent.
+  ///   - title: The session name; may be empty.
+  ///   - workspaces: Repositories to clone.
+  public func createInSandbox(agentID: String, title: String, workspaces: [String]) async {
+    guard canCreate else { return }
+    phase = .creating
+    do {
+      let receipt = try await core.createSandboxSession(
+        agentId: agentID, title: title, workspaces: workspaces)
+      pendingFirstMessage = nil
+      phase = .created(sessionID: receipt.sessionId, firstMessageError: nil)
+    } catch {
+      let error = coreError(error)
+      phase = error.isDeliveryUncertain ? .uncertain(error) : .failed(error)
+    }
+  }
+
   /// Sends the first message again to the session that was created. Never creates another.
   public func retryFirstMessage() async {
     guard case .created(let sessionID, .some) = phase, let text = pendingFirstMessage else {

@@ -363,3 +363,44 @@ fn create_and_send_reports_the_first_message() {
     };
     assert_eq!(sent.submission.item_id.as_deref(), Some("item_1"));
 }
+
+#[test]
+fn a_sandbox_session_posts_the_managed_contract_without_a_host() {
+    let core = connected(stub());
+    let receipt = block_on(core.create_sandbox_session(
+        "ag_codex",
+        " Scratch ",
+        &["https://github.com/example/repo#main".to_owned()],
+    ))
+    .unwrap();
+    assert_eq!(receipt.session_id, "conv_created");
+    let writes = core.transport().writes();
+    assert_eq!(writes.len(), 1);
+    let body = body_json(&writes[0]);
+    assert_eq!(body["agent_id"], "ag_codex");
+    assert_eq!(body["host_type"], "managed");
+    assert_eq!(
+        body["workspaces"],
+        json!(["https://github.com/example/repo#main"])
+    );
+    assert_eq!(body["title"], "Scratch");
+    assert!(
+        body.get("host_id").is_none(),
+        "the server mints the sandbox host: {body}"
+    );
+    assert!(body.get("workspace").is_none(), "{body}");
+
+    let unknown = block_on(core.create_sandbox_session("ag_missing", "", &[]));
+    assert!(
+        matches!(
+            unknown,
+            Err(SessionError::Creation(CreationError::Unavailable(_)))
+        ),
+        "{unknown:?}"
+    );
+    assert_eq!(
+        posts(core.transport()),
+        1,
+        "nothing posted for an unknown agent"
+    );
+}

@@ -28,6 +28,7 @@ use crate::config::session::ModelChoice;
 use crate::creation::{
     CreationAgent, CreationCatalog, CreationError, CreationHost, CreationReceipt,
     CreationSelection, CreationWorkspace, MAX_TITLE_CHARS, creation_body, creation_rejection,
+    sandbox_creation_body,
 };
 use crate::http::HttpTransport;
 
@@ -448,7 +449,57 @@ impl<T: HttpTransport> ClientCore<T> {
         };
         catalog.validate(selection, &models)?;
         let body = creation_body(selection, name, &agent);
-        let prepared = self.prepare("POST", "/v1/sessions", &[], Some(&body))?;
+        self.submit_creation(&body).await
+    }
+
+    /// Creates a session for `agent_id` on a new sandbox the server provisions (`host_type:
+    /// "managed"`), cloning `workspaces` (`<url>[#<branch>]` repositories; empty for an empty
+    /// sandbox). The call returns once the session row exists; its host binds when the sandbox
+    /// registers, and until then requests route by the host it requested. Sends no message.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::create_session`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn create_sandbox_session(
+        &self,
+        agent_id: &str,
+        title: &str,
+        workspaces: &[String],
+    ) -> Result<CreationReceipt, SessionError> {
+        let result = async {
+            validate_identifier(agent_id)?;
+            let name = title.trim();
+            if name.chars().count() > MAX_TITLE_CHARS {
+                return Err(CreationError::Unavailable(
+                    "Use a session name of 120 characters or fewer.".into(),
+                )
+                .into());
+            }
+            let catalog = self.catalog().await?;
+            let agent = catalog
+                .agent(agent_id)
+                .ok_or_else(|| CreationError::Unavailable("Choose a registered agent.".into()))?
+                .clone();
+            let body = sandbox_creation_body(agent_id, name, workspaces, &agent);
+            self.submit_creation(&body).await
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Sends a `POST /v1/sessions` body and reads the receipt. Never retried: an unclear outcome
+    /// is [`CreationError::Uncertain`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn submit_creation(&self, body: &Value) -> Result<CreationReceipt, SessionError> {
+        let prepared = self.prepare("POST", "/v1/sessions", &[], Some(body))?;
         let result = self.transport.send(prepared.request).await;
         let mut state = lock(&self.state);
         let response = result.map_err(|_| CreationError::Uncertain)?;

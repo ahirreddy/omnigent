@@ -355,6 +355,34 @@ pub(crate) fn creation_body(
     Value::Object(body)
 }
 
+/// The `POST /v1/sessions` body for a session on a new sandbox the server provisions: the agent,
+/// `host_type: "managed"` and the repositories to clone (`[]` for an empty sandbox). The server
+/// mints the sandbox host's id.
+pub(crate) fn sandbox_creation_body(
+    agent_id: &str,
+    title: &str,
+    workspaces: &[String],
+    agent: &CreationAgent,
+) -> Value {
+    let mut body = Map::new();
+    body.insert("agent_id".into(), Value::String(agent_id.to_owned()));
+    body.insert("host_type".into(), Value::String("managed".into()));
+    body.insert(
+        "workspaces".into(),
+        Value::Array(workspaces.iter().cloned().map(Value::String).collect()),
+    );
+    if !title.is_empty() {
+        body.insert("title".into(), Value::String(title.to_owned()));
+    }
+    if let Some(wrapper) = agent.wrapper() {
+        let mut labels = Map::new();
+        labels.insert("omnigent.ui".into(), Value::String("terminal".into()));
+        labels.insert("omnigent.wrapper".into(), Value::String(wrapper));
+        body.insert("labels".into(), Value::Object(labels));
+    }
+    Value::Object(body)
+}
+
 /// The server's explanation for a rejected creation: `error.message`, `detail`, or the joined
 /// `detail[].msg` of a validation error, at most 1000 characters.
 pub(crate) fn creation_rejection(body: &[u8], status: u16) -> String {

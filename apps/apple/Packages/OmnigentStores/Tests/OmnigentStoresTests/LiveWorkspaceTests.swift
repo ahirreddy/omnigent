@@ -64,6 +64,156 @@ struct LiveWorkspaceTests {
   }
 }
 
+extension LiveWorkspaceTests {
+  /// Prints the hosts and agents a new session could use (read-only), to choose where a scratch
+  /// session runs.
+  @Test func catalog() async throws {
+    let live = try #require(LiveWorkspace.current)
+    let connection = try await live.connected()
+    let creation = try #require(connection.creation())
+    await creation.loadCatalog()
+    guard let catalog = creation.catalog.value else {
+      throw LiveWorkspaceError("the catalog did not load: \(creation.catalog)")
+    }
+    for host in catalog.hosts {
+      print(
+        "live-catalog host \(host.hostId) \"\(host.name)\" \(host.status) "
+          + "\(host.sandboxProvider ?? "-")")
+    }
+    for agent in catalog.agents {
+      print("live-catalog agent \(agent.id) \"\(agent.name)\" \(agent.harness ?? "-")")
+    }
+  }
+}
+
+extension LiveWorkspaceTests {
+  /// Writes, so it runs only with `OMNIGENT_LIVE_SCRATCH_AGENT` (an agent name, for example
+  /// `codex-native-ui`): creates a session on a new sandbox, waits for its runner, sends a
+  /// message and watches the reply stream to its end, then stops a long reply part way. The
+  /// session is left in place, titled as a test, for inspection or deletion.
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["OMNIGENT_LIVE_SCRATCH_AGENT"] != nil))
+  func sandboxSessionSendsStreamsAndStops() async throws {
+    let live = try #require(LiveWorkspace.current)
+    let agentName = try #require(ProcessInfo.processInfo.environment["OMNIGENT_LIVE_SCRATCH_AGENT"])
+    let connection = try await live.connected()
+    let started = ContinuousClock.now
+    // `OMNIGENT_LIVE_SCRATCH_SESSION_ID` reuses a scratch session instead of a new sandbox.
+    let sessionID =
+      if let existing = ProcessInfo.processInfo.environment["OMNIGENT_LIVE_SCRATCH_SESSION_ID"] {
+        existing
+      } else {
+        try await createOnSandbox(agentName: agentName, connection: connection)
+      }
+    let conversation = try #require(connection.conversation(sessionID))
+    defer { connection.closeConversation(sessionID) }
+    #expect(try await eventually(seconds: 120) { conversation.isHydrated }, "history did not load")
+    try await waitUntilSendable(conversation)
+    print("live-scratch: runner online after \(ContinuousClock.now - started)")
+
+    // A reply streams in and the turn ends.
+    try await send("Reply with exactly the word pong and nothing else.", to: conversation)
+    let replied = try await eventually(seconds: 300) {
+      !conversation.isRunning
+        && conversation.transcriptRows.contains {
+          $0.role == .assistant && $0.text.lowercased().contains("pong")
+        }
+    }
+    #expect(
+      replied,
+      "no pong; rows \(conversation.transcriptRows.map { "\($0.role): \($0.text.prefix(80))" })")
+    print("live-scratch: replied after \(ContinuousClock.now - started)")
+
+    try await checkStop(conversation)
+    #expect(conversation.errors.isEmpty, "conversation: \(conversation.errors)")
+    print(
+      "live-scratch: stopped after \(ContinuousClock.now - started); "
+        + "\(conversation.transcriptRows.count) rows")
+  }
+
+  /// Creates the scratch session on a new sandbox and returns its id.
+  private func createOnSandbox(agentName: String, connection: ConnectionStore) async throws
+    -> String
+  {
+    let creation = try #require(connection.creation())
+    await creation.loadCatalog()
+    let agent = try #require(
+      creation.catalog.value?.agents.first { $0.name == agentName }, "no agent \(agentName)")
+    await creation.createInSandbox(
+      agentID: agent.id, title: "Omnigent native client test (safe to delete)", workspaces: [])
+    guard case .created(let sessionID, nil) = creation.phase else {
+      throw LiveWorkspaceError("the sandbox session was not created: \(creation.phase)")
+    }
+    print("live-scratch: created \(sessionID) on a new sandbox")
+    return sessionID
+  }
+
+  /// Waits up to 15 minutes for the sandbox to bind and its runner to come up: until the
+  /// composer, like the app's, reads the session's configuration with no reason it cannot run.
+  private func waitUntilSendable(_ conversation: ConversationStore) async throws {
+    let deadline = ContinuousClock.now + .seconds(900)
+    while ContinuousClock.now < deadline {
+      await conversation.composer.loadConfiguration()
+      if conversation.composer.configuration != nil,
+        conversation.composer.executionUnavailableReason == nil
+      {
+        return
+      }
+      try await Task.sleep(for: .seconds(5))
+    }
+    throw LiveWorkspaceError(
+      "the session never became sendable: "
+        + "\(conversation.composer.executionUnavailableReason ?? "no configuration"), "
+        + "\(String(describing: conversation.composer.configurationError))")
+  }
+
+  /// Stop ends a turn that would otherwise run for two minutes, and its final answer never
+  /// comes (a fast model streams a long text reply faster than a Stop can land).
+  private func checkStop(_ conversation: ConversationStore) async throws {
+    let rowsBefore = conversation.transcriptRows.count
+    try await send(
+      "Run the shell command `sleep 120`, then reply with the single word finished.",
+      to: conversation)
+    #expect(
+      try await eventually(seconds: 120) { conversation.isRunning }, "the turn did not start")
+    try await Task.sleep(for: .seconds(8))
+    let stoppedAt = ContinuousClock.now
+    await conversation.interrupt()
+    #expect(
+      try await eventually(seconds: 60) { !conversation.isRunning }, "the turn did not stop")
+    print("live-scratch: the turn ended \(ContinuousClock.now - stoppedAt) after Stop")
+    try await Task.sleep(for: .seconds(5))
+    let answered = conversation.transcriptRows.dropFirst(rowsBefore).contains {
+      $0.role == .assistant && $0.text.lowercased().contains("finished")
+    }
+    #expect(!answered, "the turn ran to its end after Stop")
+  }
+
+  private func send(_ text: String, to conversation: ConversationStore) async throws {
+    conversation.composer.text = text
+    await conversation.composer.send()
+    if let error = conversation.composer.lastError {
+      throw LiveWorkspaceError("sending failed: \(error)")
+    }
+  }
+}
+
+extension LiveWorkspace {
+  /// A store signed in with the saved grant.
+  @MainActor
+  func connected() async throws -> ConnectionStore {
+    let connection = ConnectionStore(
+      services: .live(credentialDirectory: credentials),
+      config: .app(
+        databricks: DatabricksOAuthSettings(clientId: "omnigent", redirectUrl: "http://localhost")))
+    await connection.connect(serverURL: url)
+    guard connection.isSignedIn else {
+      throw LiveWorkspaceError(
+        "not signed in (\(connection.phase)); sign in once in the Debug Mac app first")
+    }
+    return connection
+  }
+}
+
 /// The live server, credentials and session from the environment.
 nonisolated struct LiveWorkspace: Sendable {
   let url: String
@@ -86,13 +236,13 @@ struct LiveWorkspaceError: Error, CustomStringConvertible {
   init(_ description: String) { self.description = description }
 }
 
-/// Polls `condition` until it holds or `seconds` pass.
+/// Polls `condition` every half second until it holds or `seconds` pass.
 @MainActor
 private func eventually(seconds: Int, _ condition: () -> Bool) async throws -> Bool {
   let deadline = ContinuousClock.now + .seconds(seconds)
   while ContinuousClock.now < deadline {
     if condition() { return true }
-    try await Task.sleep(for: .milliseconds(100))
+    try await Task.sleep(for: .milliseconds(500))
   }
   return condition()
 }
