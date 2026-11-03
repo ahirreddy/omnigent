@@ -292,10 +292,15 @@ struct TabPersistenceTests {
     store.onChange = { writer.scheduleSave(server: server) }
     store.open(.chat(sessionID: "a"))
     store.open(.chat(sessionID: "b"))
-    try await Task.sleep(for: .milliseconds(200))
-    let reader = TabPersistence(directory: folder)
-    let saved = try #require(reader.claim(window: window, server: server))
-    #expect(saved.tabs.map(\.content) == [.chat(sessionID: "a"), .chat(sessionID: "b")])
+    // Poll rather than sleep a fixed time: a busy or throttled machine delays the save.
+    let deadline = ContinuousClock.now + .seconds(10)
+    var saved = TabPersistence(directory: folder).claim(window: window, server: server)
+    while saved == nil, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(50))
+      saved = TabPersistence(directory: folder).claim(window: window, server: server)
+    }
+    let found = try #require(saved, "the debounced save never landed")
+    #expect(found.tabs.map(\.content) == [.chat(sessionID: "a"), .chat(sessionID: "b")])
   }
 
   @Test("A tab of an unknown kind is skipped and reported; the rest restore")

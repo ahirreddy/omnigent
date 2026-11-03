@@ -37,9 +37,7 @@ struct QueueStrip: View {
         }
         .padding(.horizontal, Theme.Spacing.medium)
         .padding(.vertical, Theme.Spacing.small)
-        .background(
-          .quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: Theme.Radius.medium)
-        )
+        .cardSurface(cornerRadius: Theme.Radius.medium)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("queued-\(message.id)")
       }

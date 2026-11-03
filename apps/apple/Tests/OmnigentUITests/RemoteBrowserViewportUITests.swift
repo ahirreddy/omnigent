@@ -53,7 +53,17 @@ final class RemoteBrowserViewportUITests: XCTestCase {
       try support.color(atView: boxSpot, in: surface), .green, "the pinch did not zoom")
     try shot("zoomed")
 
+    // On iPad the synthesized pinch centres left of the surface's middle, which leaves the box at
+    // the right edge: one finger pans the zoomed page left by a quarter (slowly, no momentum).
     let size = surface.frame.size
+    let origin = surface.coordinate(withNormalizedOffset: .zero)
+    origin.withOffset(CGVector(dx: size.width * 0.6, dy: size.height * 0.5)).press(
+      forDuration: 0.05,
+      thenDragTo: origin.withOffset(CGVector(dx: size.width * 0.35, dy: size.height * 0.5)),
+      withVelocity: .slow, thenHoldForDuration: 0.3)
+    XCTAssertTrue(
+      ((surface.value as? String) ?? "").contains("zoomed"), "the pan undid the zoom")
+
     let candidates = stride(from: 0.55, through: 0.98, by: 0.06).flatMap { across in
       stride(from: 0.02, through: 0.6, by: 0.06).map { down in
         CGPoint(x: size.width * across, y: size.height * down)
@@ -139,7 +149,7 @@ final class RemoteBrowserViewportUITests: XCTestCase {
 
   // MARK: Steps
 
-  /// Launches, opens a remote tab, takes over and picks a viewport mode from the menu.
+  /// Launches, opens a remote tab, takes over and picks a viewport mode from the page menu.
   @MainActor
   private func openControlledTab(_ support: RemoteBrowserUITestSupport, mode: String) throws -> (
     XCUIApplication, XCUIElement
@@ -153,13 +163,7 @@ final class RemoteBrowserViewportUITests: XCTestCase {
     XCTAssertTrue(
       app.buttons["remote-browser.handBack"].waitForExistence(timeout: 10),
       "Take Over did not give control")
-    let menu = app.buttons["remote-browser.viewport"].firstMatch
-    XCTAssertTrue(menu.waitForExistence(timeout: 10), "no viewport menu")
-    menu.tap()
-    let item = app.buttons["remote-browser.viewport.\(mode)"].firstMatch
-    XCTAssertTrue(item.waitForExistence(timeout: 5), "no \(mode) item in the viewport menu")
-    try shot("menu")
-    item.tap()
+    try support.chooseViewport(mode, in: app) { try shot("menu") }
     return (app, surface)
   }
 

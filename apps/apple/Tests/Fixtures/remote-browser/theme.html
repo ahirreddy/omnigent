@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#d4ff4f">
+<title>RB theme page</title>
+<style>
+  body { margin: 0; font: 17px Georgia, serif; background: #f2e8da; color: #3d362e; }
+  header { background: #d4ff4f; padding: 18px 20px; font: bold 24px Georgia, serif; }
+  article { padding: 4px 20px; }
+  h1 { font-size: 34px; margin: 20px 0 12px; }
+</style></head>
+<body>
+<header>The Remote Page</header>
+<article>
+<h1>A page with a theme colour</h1>
+<p>The address bar and the status bar area take the colour of the page's top edge, as Safari
+tints its bars from a page's theme colour.</p>
+<p>Scroll down to collapse the bars; scroll back up to bring them back.</p>
+<div id="filler"></div>
+</article>
+<script>
+  const filler = document.getElementById('filler');
+  for (let i = 1; i <= 60; i++) {
+    const p = document.createElement('p');
+    p.textContent = 'Paragraph ' + i + ' of the remote page.';
+    filler.appendChild(p);
+  }
+</script>
+</body></html>

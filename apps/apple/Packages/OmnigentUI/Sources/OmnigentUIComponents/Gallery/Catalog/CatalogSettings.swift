@@ -35,6 +35,7 @@ struct CatalogTraits: Hashable {
   var screen: CatalogScreen
   var dynamicType: DynamicTypeSize = .large
   var increaseContrast = false
+  var reduceTransparency = false
   var reduceMotion = false
   var rightToLeft = false
 
@@ -43,6 +44,7 @@ struct CatalogTraits: Hashable {
     var parts = [theme.id, scheme == .dark ? "dark" : "light"]
     if dynamicType != .large { parts.append("type-\(Self.name(dynamicType))") }
     if increaseContrast { parts.append("contrast") }
+    if reduceTransparency { parts.append("reduced-transparency") }
     if reduceMotion { parts.append("reduced-motion") }
     if rightToLeft { parts.append("rtl") }
     return parts.joined(separator: "-")
@@ -70,6 +72,7 @@ extension View {
       .environment(\.dynamicTypeSize, traits.dynamicType)
       // The public keys are read-only; these are the settable ones previews use.
       .environment(\._colorSchemeContrast, traits.increaseContrast ? .increased : .standard)
+      .environment(\._accessibilityReduceTransparency, traits.reduceTransparency)
       .environment(\._accessibilityReduceMotion, traits.reduceMotion)
       .environment(\.layoutDirection, traits.rightToLeft ? .rightToLeft : .leftToRight)
       .environment(\.layoutWidth, traits.screen.layoutWidth)
@@ -92,6 +95,7 @@ final class CatalogSettings {
   var showsFrame = true
   var dynamicType: DynamicTypeSize = .large
   var increaseContrast = false
+  var reduceTransparency = false
   var reduceMotion = false
   var rightToLeft = false
   /// Scale whole pages down to fit the window instead of scrolling at actual size.
@@ -126,7 +130,8 @@ final class CatalogSettings {
   func traits(_ scheme: ColorScheme, screen: CatalogScreen) -> CatalogTraits {
     CatalogTraits(
       theme: preferences.theme, scheme: scheme, screen: screen, dynamicType: dynamicType,
-      increaseContrast: increaseContrast, reduceMotion: reduceMotion, rightToLeft: rightToLeft)
+      increaseContrast: increaseContrast, reduceTransparency: reduceTransparency,
+      reduceMotion: reduceMotion, rightToLeft: rightToLeft)
   }
 
   /// The screen a canvas uses: the chosen device when the entry supports it, else the entry's

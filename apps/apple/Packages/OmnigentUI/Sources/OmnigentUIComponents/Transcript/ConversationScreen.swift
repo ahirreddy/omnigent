@@ -126,7 +126,9 @@ public struct ConversationScreen<Terminal: View>: View {
           .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
       }
     }
-    .safeAreaInset(edge: .bottom, spacing: 0) {
+    // A bar, so the transcript blurs and fades under the dock and composer (the scroll edge
+    // effect) and its bottom clearance follows them, the keyboard included.
+    .safeAreaBar(edge: .bottom, spacing: 0) {
       VStack(spacing: 0) {
         DecisionDock(state: state, actions: actions)
         if !showsTerminal {
@@ -140,9 +142,10 @@ public struct ConversationScreen<Terminal: View>: View {
       // ideal width into the split view's minimum and the detail would fail to lay out.
       .frame(minWidth: 0, maxWidth: .infinity)
       .decisionBottomBar(decisionSurfaces)
-      // Transcript rows scroll under the dock and composer; never show or click through them.
-      .background { BottomBarBackdrop() }
+      // Clicks and taps in the bar's gaps stop here instead of reaching the rows beneath.
+      .background { BarHitShield() }
     }
+    .scrollEdgeEffectStyle(.soft, for: .bottom)
     .themeCanvas()
     .cliPalette()
     .environment(drafts).environment(decisionSurfaces)
@@ -376,25 +379,12 @@ private struct HeaderShareLabelStyle: LabelStyle {
   }
 }
 
-/// The canvas behind the dock and composer, fading in over the transcript's last line.
-private struct BottomBarBackdrop: View {
-  @Environment(\.omnigentTheme) private var theme
-  @Environment(\.colorScheme) private var colorScheme
-
+/// An invisible backing for the bottom bar that takes the hits its gaps would pass to the
+/// transcript beneath; the bar's own controls sit above it and keep theirs.
+private struct BarHitShield: View {
   var body: some View {
-    Group {
-      if let canvas = theme.palette(for: colorScheme).canvas {
-        Rectangle().fill(canvas)
-      } else {
-        Rectangle().fill(.background)
-      }
-    }
-    .mask {
-      LinearGradient(
-        stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.08)],
-        startPoint: .top, endPoint: .bottom)
-    }
-    .ignoresSafeArea(edges: .bottom)
-    .accessibilityHidden(true)
+    Color.clear
+      .contentShape(Rectangle())
+      .accessibilityHidden(true)
   }
 }

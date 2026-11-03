@@ -94,6 +94,12 @@ nonisolated public enum RemoteViewportMode: Hashable, Sendable, Codable {
     return false
   }
 
+  /// Whether Mobile Size also asks for mobile websites (a mobile user agent).
+  public var requestsMobileSite: Bool {
+    if case .mobile(let site) = self { return site }
+    return false
+  }
+
   /// Double-tap zooms in the desktop modes; mobile pages fit the view, so taps there have no
   /// double-tap delay (as Safari does for `width=device-width` pages).
   public var allowsDoubleTapZoom: Bool { !isMobile }
@@ -115,7 +121,8 @@ nonisolated public enum RemoteViewportMode: Hashable, Sendable, Codable {
 
 /// Reads and writes the per-device viewport mode.
 nonisolated public enum RemoteViewportModeDefaults {
-  /// The defaults key; UI tests set it with `-remoteBrowser.viewportMode '<json>'`.
+  /// The defaults key; UI tests set it with `-remoteBrowser.viewportMode '"<json>"'` (quoted
+  /// as a plist string, since the argument domain drops an unquoted `{...}`).
   public static let key = "remoteBrowser.viewportMode"
 
   /// The saved mode, or `keep`.

@@ -275,6 +275,25 @@ struct GalleryLaunchTests {
     }
   }
 
+  @Test("accessibility settings and window capture reach the export and its file names")
+  func accessibilityAndCapture() throws {
+    let options = try GalleryLaunchOptions(
+      arguments: ["app", "--gallery-accessibility", "contrast,reduce-transparency"],
+      environment: ["OMNIGENT_GALLERY_CAPTURE": "window"])
+    #expect(options.accessibility == ["contrast", "reduce-transparency"])
+    #expect(options.capturesWindow)
+    #expect(throws: GalleryLaunchOptions.ParseError.self) {
+      try GalleryLaunchOptions(arguments: ["app", "--gallery-capture", "screen"], environment: [:])
+    }
+    #expect(throws: GalleryLaunchOptions.ParseError.self) {
+      try GalleryLaunchOptions(
+        arguments: ["app", "--gallery-accessibility", "dim"], environment: [:])
+    }
+    var traits = CatalogTraits(theme: .omni, scheme: .light, screen: CatalogScreen(.mac))
+    traits.reduceTransparency = true
+    #expect(traits.fileSuffix == "omni-light-reduced-transparency")
+  }
+
   @Test("the plan names every render uniquely, on the devices each entry supports")
   func plan() {
     let job = CatalogExportJob(

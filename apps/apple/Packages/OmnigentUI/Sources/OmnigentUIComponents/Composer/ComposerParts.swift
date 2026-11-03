@@ -264,36 +264,21 @@ private struct DraftAttachmentChip: View {
   }
 }
 
+/// The composer card: Liquid Glass over the transcript (``GlassSurface`` makes it solid under
+/// Reduce Transparency and bordered under Increase Contrast), with a focus and drop ring.
 private struct ComposerSurface: ViewModifier {
   let isTargeted: Bool
   let isFocused: Bool
-  @Environment(\.colorSchemeContrast) private var contrast
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var isHovered = false
-  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
   func body(content: Content) -> some View {
     let shape = RoundedRectangle(cornerRadius: Theme.Radius.composer, style: .continuous)
     content
-      .background {
-        if reduceTransparency || contrast == .increased {
-          shape.fill(ThemeColor.surface)
-        } else {
-          ZStack {
-            shape.fill(.regularMaterial)
-            shape.fill(ThemeColor.surface.opacity(0.65))
-          }
-        }
-      }
+      .glassSurface(in: shape)
       .overlay {
-        shape.strokeBorder(
-          isTargeted || isFocused ? Theme.focus : ThemeColor.border,
-          lineWidth: isTargeted || isFocused || contrast == .increased ? 1.5 : 0.5)
+        if isTargeted || isFocused { shape.strokeBorder(Theme.focus, lineWidth: 1.5) }
       }
-      .shadow(
-        color: .black.opacity(isFocused ? 0.1 : 0.06), radius: Theme.Spacing.large,
-        y: Theme.Spacing.extraSmall
-      )
       .onHover { isHovered = $0 }
       .overlay {
         shape.strokeBorder(ThemeColor.border.opacity(isHovered && !isFocused ? 1 : 0), lineWidth: 1)

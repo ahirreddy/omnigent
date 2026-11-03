@@ -84,7 +84,7 @@ public struct TranscriptView: View {
         // CLI rows set their own column, so user bands reach the edges.
         .transcriptStackColumn()
       }
-      .safeAreaInset(edge: .top, spacing: 0) {
+      .safeAreaBar(edge: .top, spacing: 0) {
         // A sub-agent's transcript keeps the way back to its parent in view.
         if let parentID = state.header.settings?.parentId, parentID != state.header.id {
           ParentSessionBanner(parentID: parentID, open: actions.openSession)
@@ -221,7 +221,8 @@ private struct JumpToLatestPill: View {
       .contentShape(Capsule())
     }
     .buttonStyle(.plain)
-    .glassEffect(.regular.interactive(), in: Capsule())
+    .glassSurface(in: Capsule(), isInteractive: true)
+    .glassTransition()
     .accessibilityLabel("Jump to latest message")
     .accessibilityValue(hasUnseenOutput ? "New output" : "")
     .accessibilityIdentifier("jump-to-latest")

@@ -315,7 +315,7 @@ extension EnvironmentValues {
 
 extension View {
   /// Derives the CLI colors from the theme, scheme and contrast, once per screen. In CLI style,
-  /// native cards, the dock, the canvas and the toolbar row sit on the CLI canvas.
+  /// native cards, the dock and the canvas sit on the CLI canvas.
   func cliPalette() -> some View { modifier(CLIPaletteProvider()) }
 }
 
@@ -332,7 +332,6 @@ private struct CLIPaletteProvider: ViewModifier {
         theme: theme, dark: dark, increasedContrast: contrast == .increased)
       content
         .environment(\.cliPalette, palette)
-        .preference(key: TitlebarCanvasKey.self, value: palette.canvas.color)
         .environment(
           \.omnigentTheme, CLIPaletteCache.canvasTheme(theme, palette: palette, dark: dark))
     } else {

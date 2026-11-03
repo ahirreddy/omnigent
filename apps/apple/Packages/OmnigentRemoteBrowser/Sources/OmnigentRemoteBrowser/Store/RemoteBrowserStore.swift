@@ -42,6 +42,13 @@ public final class RemoteBrowserStore {
   public private(set) var lastURL: String
   /// Search engine for address-field text that is not a URL.
   public var searchEngine = BrowserSearchEngine.google
+  /// The local zoom in percent while the page is magnified (iOS), as the view reports it.
+  public internal(set) var zoomPercent: Int?
+  /// Counts ``resetZoom()`` requests; the view zooms back out when it changes.
+  var zoomResets = 0
+  /// The colour along the page's top edge when it is uniform, sampled from the video (iOS), for
+  /// tinting the bars as Safari does with a page's theme colour.
+  public internal(set) var edgeColor: RemoteEdgeColor?
 
   /// Receives video; the view's renderer while it is on screen.
   @ObservationIgnored public weak var renderer: RemoteVideoRenderer? {
@@ -54,6 +61,7 @@ public final class RemoteBrowserStore {
   @ObservationIgnored private var screenScale = 1.0
   @ObservationIgnored private var pendingViewport: Task<Void, Never>?
   @ObservationIgnored private var noticeExpiry: Task<Void, Never>?
+  @ObservationIgnored var edgeSample: Task<Void, Never>?
 
   /// Creates a store, not yet attached.
   /// - Parameters:
@@ -315,6 +323,7 @@ public final class RemoteBrowserStore {
       if let url = snapshot.nav?.url, !url.isEmpty { lastURL = url }
     case .video(let frame):
       renderer?.enqueue(frame)
+      scheduleEdgeSample()
     case .still(let still):
       self.still = still
     case .closed(let reason):

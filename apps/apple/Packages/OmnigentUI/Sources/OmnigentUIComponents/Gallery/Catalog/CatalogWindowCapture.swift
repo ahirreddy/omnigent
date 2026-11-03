@@ -28,7 +28,8 @@
     static func capture(_ window: NSWindow, name: String) async throws -> Data {
       let file = FileManager.default.temporaryDirectory
         .appending(path: "omnigent-gallery-\(UUID().uuidString).png")
-      defer { try? FileManager.default.removeItem(at: file) }  // A temporary file; nothing to report.
+      // A temporary file; nothing to report if removing it fails.
+      defer { try? FileManager.default.removeItem(at: file) }
       let process = Process()
       process.executableURL = URL(filePath: "/usr/sbin/screencapture")
       process.arguments = ["-x", "-o", "-l", "\(window.windowNumber)", file.path]
@@ -39,8 +40,8 @@
       while process.isRunning {
         try await Task.sleep(for: .milliseconds(20))
       }
-      let output = String(
-        decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+      let data = errors.fileHandleForReading.readDataToEndOfFile()
+      let output = String(bytes: data, encoding: .utf8) ?? "\(data.count) bytes of non-UTF-8 output"
       guard process.terminationStatus == 0 else {
         throw Failure.captureFailed(
           name: name, status: process.terminationStatus, output: output)

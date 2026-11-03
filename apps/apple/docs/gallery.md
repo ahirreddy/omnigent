@@ -57,7 +57,8 @@ the global controls:
   Island take an 84 pt column on the right. Unfolded, shell pages show the session list at
   its usual width beside the destination, as the app's split view does; content runs
   across the crease, which the display draws through.
-- Text size (every Dynamic Type size), Increase contrast, Reduce motion and Right to left
+- Text size (every Dynamic Type size), Increase contrast, Reduce transparency, Reduce motion and
+  Right to left
 - **Show every component state**: all states stacked, or one at a time with a picker
 
 On the Mac each canvas is its own hosting view, so light, dark and increased contrast
@@ -96,9 +97,22 @@ swift run OmnigentPlayground --export-gallery /tmp/omnigent-gallery \
 open /tmp/omnigent-gallery/index.html
 ```
 
+`--gallery-accessibility contrast,reduce-transparency,reduce-motion` renders under those
+settings. `--gallery-capture window` captures each render through the window server (the window
+sits behind the desktop, out of sight), so Liquid Glass and scroll edge effects draw; it needs
+Screen Recording permission for the terminal. Without it, `cacheDisplay` draws neither glass nor
+what sits in it, so `GlassSurface` is flattened to a material.
+
+```sh
+swift run OmnigentPlayground --export-gallery /tmp/glass --gallery-filter pages.transcript \
+  --gallery-devices mac,iPhone,iPadPro13 --gallery-capture window \
+  --gallery-accessibility reduce-transparency
+```
+
 The same options work as environment variables (`OMNIGENT_GALLERY_EXPORT`,
 `OMNIGENT_GALLERY_FILTER`, `OMNIGENT_GALLERY_THEME`, `OMNIGENT_GALLERY_DEVICES`,
-`OMNIGENT_GALLERY_FRAMES`, `OMNIGENT_GALLERY_APPEARANCES`). A filter term matches an
+`OMNIGENT_GALLERY_FRAMES`, `OMNIGENT_GALLERY_APPEARANCES`, `OMNIGENT_GALLERY_ACCESSIBILITY`,
+`OMNIGENT_GALLERY_CAPTURE`). A filter term matches an
 entry id or title. A device id is `mac`, `iPhone`, `iPhoneSE`, `iPadPro13`, `iPadPro11`,
 `iPadSplitThird`, `iPadSplitHalf`, `iPadSplitTwoThirds` or `duo`, with `-landscape` for
 iPhones and iPads or `-unfolded` for the fold. Pages render on each listed device they

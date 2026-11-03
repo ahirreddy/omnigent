@@ -50,6 +50,10 @@ struct RemoteBrowserTabContainer: View {
   let tabID: String
   /// Opens a new remote tab at a URL in place of this one.
   let reopen: @MainActor (String, RemoteBrowserTabRecord) -> Void
+  /// Shows the session list, from the tab's page menu where it hides the navigation bar.
+  let showSessions: @MainActor () -> Void
+  /// The tab overview button for the tab's own toolbar (iPhone).
+  let tabsButton: @MainActor () -> TabSwitcherButton
 
   @State private var store: RemoteBrowserStore?
 
@@ -64,9 +68,10 @@ struct RemoteBrowserTabContainer: View {
           "Remote Browser Unavailable", systemImage: TabKind.remoteBrowser.systemImage,
           description: Text("Remote browser tabs are turned off in this build."))
       } else if let store {
-        RemoteBrowserTabView(store: store) { url in
-          reopen(url, RemoteBrowserTabRecord(url: url, profile: store.profile))
-        }
+        RemoteBrowserTabView(
+          store: store,
+          reopen: { url in reopen(url, RemoteBrowserTabRecord(url: url, profile: store.profile)) },
+          showSessions: showSessions, tabsButton: tabsButton)
       } else {
         ProgressView("Opening the remote browser\u{2026}")
           .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -319,7 +319,11 @@ extension ConnectedServerView {
               await routes.openRemoteBrowser(
                 in: sessionID, profile: record.profile, url: url, replacing: tab.id)
             }
-          })
+          },
+          // On iPhone the remote tab hides the navigation bar (Safari's layout), so it offers
+          // the session list and the tab overview itself.
+          showSessions: { selection = nil },
+          tabsButton: { TabSwitcherButton(state: routes.state, actions: routes.actions) })
       }
     }
     .id(tab.id)
