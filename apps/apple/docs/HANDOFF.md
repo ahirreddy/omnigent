@@ -32,7 +32,12 @@ another machine.
    (`RemoteBrowserViewE2ETests`); the rest is covered by package and core tests, plus the new
    `ForkFlowTests`. Hosting tests, the app opens no windows and never becomes active. The Mac UI
    target keeps only the launch smoke and `WindowChromeUITests` (titlebar drags, on the offline
-   demo). Rules in `AGENTS.md` ("Mac tests without UI automation"). Not yet built or run.
+   demo). Rules in `AGENTS.md` ("Mac tests without UI automation").
+
+Verified on 2026-11-03: both editions' hosted tests (14 each, live streaming included), the
+remote browser package tests with a live host (50), the OmnigentAppUI tests (68), both Mac UI
+tests on both editions, and on iPhone 17 Pro and iPad Pro 11 the four remote browser and two
+glass UI tests. The Mac suite takes about 80 s without UI automation (it took 16 minutes).
 
 ## How to build and verify on a fresh machine
 

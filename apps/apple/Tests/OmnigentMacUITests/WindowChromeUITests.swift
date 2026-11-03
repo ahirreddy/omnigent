@@ -24,17 +24,17 @@ final class WindowChromeUITests: XCTestCase {
       path: "omnigent-chrome-uitest-\(UUID().uuidString)", directoryHint: .isDirectory)
     let app = XCUIApplication()
     app.launchArguments = [
-      "-OmnigentDemo", "-ApplePersistenceIgnoreState", "YES", "-OmnigentTabsDirectory", tabs.path,
+      "-OmnigentDemo", "YES", "-desktop.defaultServerURL", "http://127.0.0.1:6767",
+      "-ApplePersistenceIgnoreState", "YES", "-OmnigentTabsDirectory", tabs.path,
     ]
     app.launch()
     defer { app.terminate() }
     let window = app.windows.firstMatch
 
     // A demo session's chat tab, from the sidebar.
-    let row = window.descendants(matching: .any).matching(
-      NSPredicate(format: "identifier BEGINSWITH 'session-row-'")
-    ).firstMatch
-    XCTAssertTrue(row.waitForExistence(timeout: 30), "the demo listed no sessions")
+    let row = window.descendants(matching: .any)["session-row-demo-design"]
+    XCTAssertTrue(
+      row.waitForExistence(timeout: 30), "no demo session in\n\(app.debugDescription)")
     let input = app.textViews["composer-input"]
     for _ in 0..<5 where !input.exists {
       row.click()
