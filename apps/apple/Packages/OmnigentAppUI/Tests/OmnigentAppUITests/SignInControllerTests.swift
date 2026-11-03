@@ -200,12 +200,11 @@ struct SignInControllerTests {
 #if DEBUG && os(macOS)
   @Suite("Debug keychain fallback")
   struct KeychainModeSelectionTests {
-    @Test("The running build's identity is its code directory hash")
-    func buildIdentity() throws {
-      let identity = try KeychainModeSelection.buildIdentity().get()
-      #expect(identity.count == 40, "\(identity)")
-      #expect(identity.allSatisfy { $0.isHexDigit })
-      #expect(identity == identity.lowercased())
+    @Test("Debug credentials live in the app's Application Support, outside the Keychain")
+    func debugCredentialDirectory() {
+      let directory = KeychainModeSelection.debugCredentialDirectory()
+      #expect(directory.lastPathComponent == "DebugCredentials")
+      #expect(directory.path.hasPrefix(URL.applicationSupportDirectory.path))
     }
   }
 #endif

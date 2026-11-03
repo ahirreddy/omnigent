@@ -50,8 +50,7 @@ public final class URLSessionHttpTransport: HttpTransport, Sendable {
     guard let status = UInt16(exactly: http.statusCode) else {
       throw .Other(message: "HTTP status \(http.statusCode) from \(request.url) is out of range")
     }
-    logRefusedRequest(
-      method: request.method, url: urlRequest.url, status: http.statusCode, body: data)
+    logRefusedRequest(urlRequest, status: http.statusCode, body: data)
     return HttpResponse(status: status, headers: Self.headers(from: http), body: data)
   }
 

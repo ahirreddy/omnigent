@@ -54,7 +54,8 @@ public final class ServerSession {
   public static func live(keychain: KeychainModeSelection.Choice) -> ServerSession {
     ServerSession(
       connection: ConnectionStore(
-        services: .live(keychainMode: keychain.mode),
+        services: .live(
+          keychainMode: keychain.mode, credentialDirectory: keychain.credentialDirectory),
         config: .app(databricks: DatabricksOAuthSettings.bundled())))
   }
 

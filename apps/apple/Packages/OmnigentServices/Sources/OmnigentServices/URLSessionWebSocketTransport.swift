@@ -170,7 +170,7 @@ private final class SocketDelegate: NSObject, URLSessionWebSocketDelegate, URLSe
     queue.addOperation { [self] in
       let opened = state.withLock { $0.opened }
       if !opened, let response, response.statusCode != 101 {
-        logRefusedRequest(method: "GET", url: response.url, status: response.statusCode)
+        logRefusedRequest(task.originalRequest, status: response.statusCode)
         end(
           .handshakeRejected(status: UInt16(truncatingIfNeeded: response.statusCode)),
           session: session)
