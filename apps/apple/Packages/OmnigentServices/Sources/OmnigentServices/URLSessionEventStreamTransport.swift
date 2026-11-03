@@ -123,6 +123,7 @@ private final class StreamDelegate: NSObject, URLSessionDataDelegate, Sendable {
         session: session)
       return
     }
+    logRefusedRequest(method: "GET", url: http.url, status: http.statusCode)
     completionHandler(.allow)
     sink.response(status: status, headers: URLSessionHttpTransport.headers(from: http))
   }

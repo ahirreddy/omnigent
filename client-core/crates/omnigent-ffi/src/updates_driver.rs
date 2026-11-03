@@ -141,11 +141,17 @@ impl Engine {
             return;
         };
         let path = "/v1/sessions/updates";
+        // On a host-sharded server the socket carries the modal host as its routing key.
+        let slice_key = self.sessions.modal_slice_key();
+        let query: Vec<(&str, &str)> = slice_key
+            .as_deref()
+            .map(|key| vec![(omnigent_core::SLICE_KEY_QUERY, key)])
+            .unwrap_or_default();
         let request = link
             .endpoint
             .request_with("GET", path, &[], "application/json", link.bearer.as_ref())
             .and_then(|mut request| {
-                request.url = link.endpoint.websocket_url(path, &[])?;
+                request.url = link.endpoint.websocket_url(path, &query)?;
                 Ok(request)
             });
         let request = match request {

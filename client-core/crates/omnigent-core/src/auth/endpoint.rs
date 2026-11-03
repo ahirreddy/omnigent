@@ -123,6 +123,15 @@ impl ServerEndpoint {
         self.loopback_http
     }
 
+    /// Whether this is a Databricks workspace, whose replicas are sharded by host: requests for a
+    /// session or host carry the routing key (see `client::SLICE_KEY_HEADER`).
+    #[must_use]
+    pub fn routes_by_host(&self) -> bool {
+        self.origin.strip_prefix("https://").is_some_and(|host| {
+            is_databricks_workspace_host(host.split(':').next().unwrap_or(host))
+        })
+    }
+
     /// The Databricks workspace selected by `?o=`. Never inferred from the hostname.
     #[must_use]
     pub fn databricks_org_id(&self) -> Option<&str> {

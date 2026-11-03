@@ -36,6 +36,7 @@ pub mod items;
 pub(crate) mod json;
 mod remote_browsers;
 mod requests;
+mod routing;
 pub mod sessions;
 mod terminals;
 
@@ -44,6 +45,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub use error::SessionError;
 use events::ChangedFilesUpdate;
+pub use routing::{SLICE_KEY_HEADER, SLICE_KEY_QUERY};
 use sessions::SessionSummary;
 
 use crate::attachments::AttachmentDraftStore;
@@ -142,6 +144,8 @@ struct State {
     drafts: AttachmentDraftStore,
     composer: BTreeMap<(String, String), String>,
     events: Vec<ClientEvent>,
+    /// Where sessions run, for replica routing on host-sharded servers.
+    routing: routing::ReplicaRouting,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -161,6 +165,14 @@ impl State {
         self.configuration_mutations.clear();
         self.changed_files.clear();
         self.live_sessions.clear();
+        self.routing = routing::ReplicaRouting::default();
+    }
+
+    /// Whether the connected server shards replicas by host (a Databricks workspace).
+    fn routes_by_host(&self) -> bool {
+        self.connection
+            .as_ref()
+            .is_some_and(|connection| connection.endpoint().routes_by_host())
     }
 
     fn is_connected(&self) -> bool {
@@ -510,6 +522,10 @@ mod configure_tests;
 #[cfg(test)]
 #[path = "fork_tests.rs"]
 mod fork_tests;
+
+#[cfg(test)]
+#[path = "routing_tests.rs"]
+mod routing_tests;
 
 #[cfg(test)]
 pub(crate) mod test_support;

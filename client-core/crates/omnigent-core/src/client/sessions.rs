@@ -215,6 +215,27 @@ pub(crate) struct SessionProjection {
 }
 
 impl SessionProjection {
+    /// Records the session's host and routing parent for replica routing.
+    pub(crate) fn record_routing(&self, routing: &mut super::routing::ReplicaRouting) {
+        fn reported(field: &Field<String>) -> super::routing::Reported<'_> {
+            match field {
+                Field::Absent => super::routing::Reported::Unsaid,
+                Field::Null => super::routing::Reported::Cleared,
+                Field::Present(value) => super::routing::Reported::Value(value),
+            }
+        }
+        let labels = match &self.labels {
+            Field::Present(labels) => Some(labels),
+            Field::Absent | Field::Null => None,
+        };
+        routing.record(
+            &self.id,
+            reported(&self.host_id),
+            reported(&self.parent_id),
+            labels,
+        );
+    }
+
     /// A `GET /v1/sessions` or `/v1/sessions/updates` row. It has no snapshot-only fields, so
     /// applying it never clears them.
     pub(crate) fn from_list_item(row: &SessionListItem) -> Self {
@@ -605,6 +626,7 @@ impl State {
         let summary = projection
             .summary(self.summaries.get(&projection.id))
             .map_err(|detail| SessionError::MalformedResponse { detail })?;
+        projection.record_routing(&mut self.routing);
         let summary = self.record_summary(summary);
         self.cache_summary(&summary);
         Ok(summary)
@@ -749,6 +771,7 @@ impl<T: HttpTransport> ClientCore<T> {
             let epoch = epochs.get(&row.id).copied().unwrap_or(0);
             sessions.push(state.accept_projection(&projection, epoch)?);
         }
+        state.routing.resolve_modal();
         Ok((sessions, next))
     }
 

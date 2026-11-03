@@ -11,7 +11,8 @@
 //!   ends the connection; 403 and other 4xx definitely did not deliver.
 //!
 //! Requests carry `Accept: application/json`, the Databricks org header when the endpoint has
-//! one, and the bearer when the connection has one; never a cookie.
+//! one, the replica routing key on a host-sharded server (see [`super::routing`]), and the bearer
+//! when the connection has one; never a cookie. A `wrong_replica` refusal is re-addressed once.
 
 #![allow(
     clippy::redundant_pub_crate,
@@ -20,6 +21,8 @@
 
 use serde_json::Value;
 
+use super::routing::{self, Addressing, SLICE_KEY_HEADER};
+use super::sessions::decode_snapshot;
 use super::{ClientCore, SessionError, lock};
 use crate::attachments::policy::is_identifier;
 use crate::auth::mode::error_text;
@@ -33,6 +36,8 @@ pub(crate) const MAX_PAGE_LIMIT: u32 = 1000;
 pub(crate) struct Prepared {
     pub(crate) request: HttpRequest,
     pub(crate) epoch: u64,
+    /// How it was addressed, on a host-sharded server.
+    pub(crate) addressing: Option<Addressing>,
 }
 
 /// `value` is usable as one path segment.
@@ -112,6 +117,19 @@ impl<T: HttpTransport> ClientCore<T> {
             .map(|(name, value)| (*name, value.as_str()))
             .collect();
         let mut request = connection.request(method, path, &pairs, "application/json")?;
+        let addressing = state
+            .routes_by_host()
+            .then(|| state.routing.address(method, path, query, body));
+        if let Some(Addressing {
+            host: Some(host),
+            keyed: true,
+            ..
+        }) = &addressing
+        {
+            request
+                .headers
+                .push(HttpHeader::new(SLICE_KEY_HEADER, host.as_str()));
+        }
         if let Some(body) = body {
             request
                 .headers
@@ -125,7 +143,127 @@ impl<T: HttpTransport> ClientCore<T> {
         Ok(Prepared {
             request,
             epoch: state.epoch,
+            addressing,
         })
+    }
+
+    /// Sends `prepared`, re-addressing a `wrong_replica` refusal once: a keyed request without
+    /// its key (remembering the host as keyless when that works), or a session request whose host
+    /// was unknown with the host its snapshot names.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn send_routed(
+        &self,
+        request: HttpRequest,
+        addressing: Option<Addressing>,
+    ) -> Result<HttpResponse, TransportError> {
+        let Some(addressing) = addressing else {
+            return self.transport.send(request).await;
+        };
+        let response = self.transport.send(request.clone()).await?;
+        if !routing::is_wrong_replica(response.status, &response.body) {
+            return Ok(response);
+        }
+        if addressing.keyed {
+            let mut keyless = request;
+            keyless
+                .headers
+                .retain(|header| !header.name.eq_ignore_ascii_case(SLICE_KEY_HEADER));
+            let retried = self.transport.send(keyless).await?;
+            if (200..300).contains(&retried.status)
+                && let Some(host) = &addressing.host
+            {
+                lock(&self.state).routing.mark_keyless(host);
+            }
+            return Ok(retried);
+        }
+        if let Some(host) = &addressing.host {
+            // Sent keyless because the host was demoted, yet still the wrong replica: key it
+            // again from the next request.
+            lock(&self.state).routing.clear_keyless(host);
+            return Ok(response);
+        }
+        let Some(session) = &addressing.unresolved_session else {
+            return Ok(response);
+        };
+        let Some(host) = self.learn_session_host(session).await else {
+            return Ok(response);
+        };
+        let mut keyed = request;
+        keyed
+            .headers
+            .push(HttpHeader::new(SLICE_KEY_HEADER, host.as_str()));
+        self.transport.send(keyed).await
+    }
+
+    /// The routing key to send on an event stream or WebSocket for `path` (a `GET`), on a
+    /// host-sharded server; `None` elsewhere, or when the request should go keyless.
+    pub fn slice_key(&self, path: &str) -> Option<String> {
+        let state = lock(&self.state);
+        if !state.routes_by_host() {
+            return None;
+        }
+        let addressing = state.routing.address("GET", path, &[], None);
+        addressing.keyed.then_some(addressing.host).flatten()
+    }
+
+    /// The modal host for routes with no host of their own (the session updates socket), once
+    /// the first session list froze it, on a host-sharded server.
+    pub fn modal_slice_key(&self) -> Option<String> {
+        let state = lock(&self.state);
+        if !state.routes_by_host() {
+            return None;
+        }
+        state.routing.modal().map(str::to_owned)
+    }
+
+    /// An event stream on `path` was refused with HTTP 400 (the wrong replica; a stream's body is
+    /// not read). The next attempt flips: keyless after a keyed refusal, keyed again after a
+    /// keyless one for a demoted host.
+    pub fn stream_refused(&self, path: &str, keyed: bool) {
+        let mut state = lock(&self.state);
+        if !state.routes_by_host() {
+            return;
+        }
+        let Some(host) = state.routing.address("GET", path, &[], None).host else {
+            return;
+        };
+        if keyed {
+            state.routing.mark_keyless(&host);
+        } else {
+            state.routing.clear_keyless(&host);
+        }
+    }
+
+    /// Reads the session's snapshot (served by any replica) to learn its routing host.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn learn_session_host(&self, session_id: &str) -> Option<String> {
+        let path = format!("/v1/sessions/{session_id}");
+        let request = {
+            let state = lock(&self.state);
+            let connection = state.connection.as_ref()?;
+            connection
+                .request(
+                    "GET",
+                    &path,
+                    &[("include_items", "false")],
+                    "application/json",
+                )
+                .ok()?
+        };
+        let response = self.transport.send(request).await.ok()?;
+        if !(200..300).contains(&response.status) {
+            return None;
+        }
+        let decoded = decode_snapshot(&response.body).ok()?;
+        let mut state = lock(&self.state);
+        decoded.projection.record_routing(&mut state.routing);
+        state.routing.session_host(session_id).map(str::to_owned)
     }
 
     /// Sends a read and applies the read status policy. A result from an older connection is
@@ -135,7 +273,9 @@ impl<T: HttpTransport> ClientCore<T> {
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     pub(crate) async fn read(&self, prepared: Prepared) -> Result<HttpResponse, SessionError> {
-        let result = self.transport.send(prepared.request).await;
+        let result = self
+            .send_routed(prepared.request, prepared.addressing)
+            .await;
         let mut state = lock(&self.state);
         if state.epoch != prepared.epoch || !state.is_connected() {
             return Err(SessionError::NotConnected);
@@ -178,7 +318,10 @@ impl<T: HttpTransport> ClientCore<T> {
     )]
     pub(crate) async fn write(&self, prepared: Prepared) -> Result<HttpResponse, SessionError> {
         let path = prepared.request.url.clone();
-        let result = self.transport.send(prepared.request).await;
+        // A `wrong_replica` refusal did not deliver, so re-addressing it cannot duplicate a write.
+        let result = self
+            .send_routed(prepared.request, prepared.addressing)
+            .await;
         let mut state = lock(&self.state);
         let uncertain = |detail: String| SessionError::DeliveryUncertain { detail };
         let response = result.map_err(|error| uncertain(error.to_string()))?;

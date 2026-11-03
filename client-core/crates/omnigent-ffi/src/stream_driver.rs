@@ -34,6 +34,8 @@ pub(crate) struct SessionDriver {
     pub(crate) terminals: omnigent_core::terminal::TerminalInventory,
     pub(crate) terminal_view: Option<crate::terminal_driver::TerminalView>,
     pub(crate) terminal_tick: Option<AbortHandle>,
+    /// Whether the open stream attempt carried the replica routing key.
+    stream_keyed: bool,
 }
 
 /// What a failed history read means for the stream.
@@ -78,6 +80,7 @@ impl Engine {
                     terminals: omnigent_core::terminal::TerminalInventory::new(session_id),
                     terminal_view: None,
                     terminal_tick: None,
+                    stream_keyed: false,
                 },
             );
         }
@@ -129,6 +132,17 @@ impl Engine {
 
     pub(crate) fn stream_input(&mut self, session_id: &str, input: StreamInput) {
         let now = self.host.now_ms();
+        // A stream refused with 400 reached the wrong replica: re-address the next attempt.
+        if let StreamInput::Response { head, .. } = &input
+            && head.status == 400
+        {
+            let keyed = self
+                .drivers
+                .get(session_id)
+                .is_some_and(|driver| driver.stream_keyed);
+            self.sessions
+                .stream_refused(&format!("/v1/sessions/{session_id}/stream"), keyed);
+        }
         let Some(machine) = self
             .drivers
             .get_mut(session_id)
@@ -197,14 +211,27 @@ impl Engine {
         else {
             return;
         };
+        let path = format!("/v1/sessions/{session_id}/stream");
+        let slice_key = self.sessions.slice_key(&path);
+        if let Some(driver) = self.drivers.get_mut(session_id) {
+            driver.stream_keyed = slice_key.is_some();
+        }
         let request = match link.endpoint.request_with(
             "GET",
-            &format!("/v1/sessions/{session_id}/stream"),
+            &path,
             &[],
             "text/event-stream",
             link.bearer.as_ref(),
         ) {
-            Ok(request) => request,
+            Ok(mut request) => {
+                if let Some(key) = slice_key {
+                    request.headers.push(core::http::HttpHeader::new(
+                        omnigent_core::SLICE_KEY_HEADER,
+                        key,
+                    ));
+                }
+                request
+            }
             Err(error) => {
                 self.error(
                     ErrorScope::Session {
