@@ -38,6 +38,7 @@ playground can't show. Every polish pass ends with this check, in the apps thems
    sign-in flow. No accent-tinted toolbar items.
 8. **Theme.** The theme applies at the window root: sidebar, canvas, sheets and popovers all
    follow it, including after a change in Settings without relaunching.
-9. **UI tests.** Run `NativeAppE2EUITests` (with reconnect), `DemoDecisionUITests`,
-   `TabRestoreUITests`, `RealAppParityUITests` and `AccountsSignInUITests`. Attach the real-app
+9. **Tests.** Run both editions' hosted tests with a live server (`LiveServerStreamingTests`),
+   the remote browser package tests with a live host (`RemoteBrowserViewE2ETests`), and, on an
+   idle machine, the Mac UI target (launch smoke, `WindowChromeUITests`). Attach the real-app
    screenshots (Mac light and dark, iPad, iPhone) to the change.

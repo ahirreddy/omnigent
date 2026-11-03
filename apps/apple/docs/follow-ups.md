@@ -73,6 +73,8 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] Confirm hardware H.264 decode on a physical iPhone/iPad (simulators have no hardware decoder;
   the renderer logs the VideoToolbox probe at launch).
 - [ ] Add a reconnect-after-unexpected-close case (with backoff) to the headless e2e gate.
+- [ ] Remote browser UI tests should close the remote tabs they open, so runs don't pile up tabs
+  on the shared host.
 - [ ] M2 to M5 from the design doc: agent CDP and tab mapping, handoff and takeover, profiles,
   settings and hardware encoders.
 - [ ] **Share the CEF core between the OWL host and `browser-host/`.** M1 copied and adapted the
@@ -211,6 +213,14 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Error copy:** runner failures still surface raw text ("the session's runner is unavailable
   (HTTP 503)…"); map them to plain-language banners with a retry.
 - [ ] **Tabs (Mac):** no hover card for tabs (only the close button and a title tooltip).
+- [ ] **Tests (Mac):** run the two remaining Mac UI tests (launch smoke, titlebar drags) in a
+  macOS VM so they never take the developer's mouse and keyboard: Tart
+  (`ghcr.io/cirruslabs/macos-tahoe-xcode:27.2`, 70.8 GB compressed) with the tests built on the
+  host and run there with `test-without-building`. Deferred; Tart 2.41.1 is installed locally.
+- [ ] **Tests (Mac):** with the Mac UI tests trimmed to what needs real input, two things have no
+  automated check: message actions (Copy, Fork) appearing only on hover, and the pane-focus
+  shortcuts (Option-Command-Arrow). Cover them with a render test that forces the hover state and
+  a test of the command table.
 - [ ] **Gallery:** the iPad split page renders poorly in the gallery canvas.
 
 - [ ] **Contrast:** under dark Increase Contrast the needs-you text goes nearly white in Dracula,
@@ -226,6 +236,14 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Folded Duo UI tests:** XCUITest can't navigate (the outer display is captured rotated and the
   back button isn't found); Duo is verified by screenshots only.
 - [ ] **Read-only sessions:** consider a "Fork to continue" action on the read-only composer row.
+- [ ] **Split view under the titlebar:** a split pane's transcript stops at the toolbar, so the Mac
+  draws its flat toolbar background over the panes instead of the soft scroll edge. Extending the
+  panes under the bar (`ignoresSafeArea` with `safeAreaPadding`, or an open-top clip) moved the
+  browser tab's chrome under the tab row, whose AppKit view ignores SwiftUI safe areas.
+- [ ] **Glass in render tests:** `cacheDisplay` draws neither Liquid Glass nor its content, so
+  offscreen renders flatten ``GlassSurface`` to a material (`flattensGlass`). System glass
+  (toolbar items, `.glass` buttons) still draws nothing there; the gallery's
+  `--gallery-capture window` shows the real thing.
 
 ## Product decisions
 
@@ -235,3 +253,8 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] Reusing the iOS bundle ID requires a version above 0.3.2.
 
 ## Done
+
+- [x] Host: after Back, the remote tab kept showing the old page (or a blank one) when many other
+  tabs showed the same site. Windowless Chromium restored the page from the back/forward cache
+  without painting it. The host now disables `BackForwardCache`; `browser-host/tools/back_test.py`
+  covers it (25 leftover tabs: 3/5 stale before, 10/10 correct after). 2026-11-02.

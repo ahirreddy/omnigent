@@ -48,6 +48,8 @@ struct OmnigentMacApp: App {
         DebugCommands()
       }
     }
+    // Hosting unit tests, the app opens no window of its own (see `isTestHost`).
+    .defaultLaunchBehavior(OmnigentMacAppDelegate.isTestHost ? .suppressed : .automatic)
 
     LocalServerLogsWindow(manager: desktop.localServer)
 
@@ -67,6 +69,14 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   static let isDemo = ProcessInfo.processInfo.arguments.contains("-OmnigentDemo")
   /// The demo server's URL in a demo launch.
   static let demoServerURL = isDemo ? URL(string: ServerSession.demoServerURL) : nil
+  /// Launched by `xcodebuild` to host the unit tests (`OmnigentMacTests`), which load into
+  /// this process. The app then stays in the background with no windows, so test runs do not
+  /// take focus from whatever the user is doing.
+  static let isTestHost: Bool = {
+    let environment = ProcessInfo.processInfo.environment
+    let keys = ["XCTestConfigurationFilePath", "XCTestBundlePath", "XCTestSessionIdentifier"]
+    return keys.contains { environment[$0] != nil } && NSClassFromString("XCTestCase") != nil
+  }()
 
   /// App-wide services, created with the delegate's `DesktopController`.
   private(set) lazy var services = AppServices(desktop: desktop)
@@ -92,6 +102,11 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   }
 
   override func applicationWillFinishLaunching(_ notification: Notification) {
+    if Self.isTestHost {
+      // No Dock icon, no menu bar, never the active app; no windows restored from a real run.
+      NSApp.setActivationPolicy(.prohibited)
+      UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
+    }
     if Self.isDemo {
       // The demo starts with one window on its sessions, never the windows an earlier (perhaps
       // killed) run left for restoration.

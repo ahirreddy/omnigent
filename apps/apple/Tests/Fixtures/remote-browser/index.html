@@ -29,6 +29,7 @@
     document.getElementById('status').textContent = 'clicked ' + clicks + ' time(s); field = "' + field.value + '"';
     document.title = 'RB test page | clicked:' + clicks;
   });
+  scroller.addEventListener('scroll', () => { document.title = 'RB test page | scrolled:' + Math.round(scroller.scrollTop); });
   let toggled = false;
   document.getElementById('flash').addEventListener('mousedown', () => {
     toggled = !toggled;

@@ -214,7 +214,7 @@ struct RemoteBrowserE2ETests {
     #expect(later.allSatisfy { $0.box.isRed == wasRed }, "a click reached the page after Hand Back")
   }
 
-  private static func core() throws -> ClientCore {
+  static func core() throws -> ClientCore {
     try ClientCore(
       http: URLSessionHttpTransport(), streams: URLSessionEventStreamTransport(),
       sockets: URLSessionWebSocketTransport(), clock: SystemClock(), scheduler: TaskScheduler(),

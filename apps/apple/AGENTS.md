@@ -90,6 +90,23 @@ just apple-build-appstore && just apple-test-appstore && just apple-lint
 Pre-commit runs swift-format (config: nearest `.swift-format`), `cargo fmt` and
 clippy.
 
+## Mac tests without UI automation
+
+XCUITest drives the real mouse and keyboard through the accessibility API, about a second per
+action, and takes over the machine. Test the Mac app without it:
+- Behaviour (stores, adapters, layout, persistence, decisions) in the packages.
+- AppKit input in package tests: put the view in a window that is never shown and send it
+  `NSEvent`s (`RemoteBrowserViewE2ETests`). The pointer and keyboard are untouched.
+- What needs the app process (its sandbox, entitlements, real transports) in the hosted tests
+  (`Tests/OmnigentMacTests`, run inside each edition's app; `LiveServerStreamingTests`). Hosting
+  tests, the app opens no windows and never becomes active (`OmnigentMacAppDelegate.isTestHost`).
+- `Tests/OmnigentMacUITests` keeps only the launch smoke and the titlebar drags, which need the
+  window server. Run them on an idle machine or before a release, not on every change.
+
+When a UI test is unavoidable: build once and run every test in one `test-without-building`;
+paste long text instead of `typeText`; wait for state (`waitForExistence`,
+`waitForNonExistence`), not time.
+
 ## Follow-ups
 
 Record deferred work in `docs/follow-ups.md` (browser, server, app and product items),

@@ -7,34 +7,32 @@ another machine.
 
 - `apple-native-scaffold`: verified work. Each commit passed the Rust gate, the Swift package
   tests, strict SwiftLint and swift-format, and the OmnigentMac, OmnigentMacAppStore and iOS
-  builds. The newest feature commit is `be2db3f30` (Review 3 top 10, phone supervision, remote
-  browser iOS viewport modes).
-- `apple-native-scaffold-wip`: the latest snapshot of work that was in progress when the session
-  paused (see "In flight"). It builds per the agents' reports but was not verified as a whole.
+  builds. The latest work is the Liquid Glass pass, the Safari-style remote browser chrome on
+  iPhone, the remote browser UI test fixes and the host's Back repaint fix.
+- `apple-native-scaffold-wip`: an older snapshot of that work in progress; superseded.
 
-## In flight (on the wip branch only)
+## Recently landed
 
-1. **Liquid Glass pass (done, not yet merged).** System glass bars and soft scroll edges replace
-   `TitlebarBackdrop`, `NavigationBarCanvas` and `BottomBarBackdrop`; `DesignSystem/Glass.swift`;
-   glass composer; contrast roles extended for glass; `GlassBarsUITests` (Mac) and
-   `GlassBarsPhoneUITests` (iOS). Decision recorded in `ui-ux-roadmap.md` ("Bars: glass
-   decision"). Known gap: Mac split view panes show a flat toolbar instead of the soft edge.
-2. **Safari-style remote browser chrome on iPhone (done, not yet merged).** Glass address pill at
-   the top, floating toolbar at the bottom, collapse on scroll, page-colour tint, page menu with
+1. **Liquid Glass pass.** System glass bars and soft scroll edges replace `TitlebarBackdrop`,
+   `NavigationBarCanvas` and `BottomBarBackdrop`; `DesignSystem/Glass.swift`; glass composer;
+   contrast roles extended for glass; `GlassContrastTests` and `GlassBarsPhoneUITests` (iOS).
+   Decision recorded in `ui-ux-roadmap.md` ("Bars: glass decision"). Known gap: Mac split view
+   panes show a flat toolbar instead of the soft edge.
+2. **Safari-style remote browser chrome on iPhone.** Glass address pill at the top, floating
+   toolbar at the bottom, collapse on scroll, page-colour tint, page menu with
    Sessions/Viewport/control. `RemoteBrowserChromeUITests`. See `remote-browser-design.md` 16.10.
-3. **Remote browser UI test fixes (done, not yet merged).** Not regressions from Review 3:
-   - The touch test reused a persisted viewport mode because `-remoteBrowser.viewportMode
-     {"keep":{}}` is not a valid plist value; `RemoteBrowserUITestSupport` now quotes it.
-   - iPad Pro 11 pinch lands off-centre; the pinch test now pans after zooming.
-   - The Mac `RemoteBrowserUITests` line 105 failure is a host bug (no repaint after Back when
-     many leftover tabs show the same site); it passes on a fresh host. Logged in follow-ups.
-   With these, all four remote-browser iOS tests pass on iPad Pro 11 and iPhone 17 Pro. Not yet
-   run on the final tree: the Mac remote-browser test against a fresh host, and the
-   OmnigentRemoteBrowser package tests.
-
-To finish: check out the wip branch, run the full verification below, re-run the three
-remote-browser UI tests (Mac included), then squash the wip work into reviewed commits on
-`apple-native-scaffold`.
+3. **Remote browser fixes.** `RemoteBrowserUITestSupport` quotes the `-remoteBrowser.viewportMode`
+   launch argument (it was not a valid plist value, so a persisted mode leaked in); the iPad pinch
+   test pans after zooming; the host disables Chromium's back/forward cache, which in windowless
+   mode restored pages without painting them (the old page stayed on screen after Back).
+   `browser-host/tools/back_test.py` covers it.
+4. **Mac tests without UI automation.** The streaming e2e is a hosted test
+   (`LiveServerStreamingTests`, inside each edition's app, so the App Store sandbox is covered);
+   remote browser input is a package test that sends AppKit events to a hidden window
+   (`RemoteBrowserViewE2ETests`); the rest is covered by package and core tests, plus the new
+   `ForkFlowTests`. Hosting tests, the app opens no windows and never becomes active. The Mac UI
+   target keeps only the launch smoke and `WindowChromeUITests` (titlebar drags, on the offline
+   demo). Rules in `AGENTS.md` ("Mac tests without UI automation"). Not yet built or run.
 
 ## How to build and verify on a fresh machine
 

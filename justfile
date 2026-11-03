@@ -313,7 +313,7 @@ apple-build-ios device=APPLE_SIMULATOR: _ensure-apple
         -destination 'platform=iOS Simulator,name={{ device }}' -derivedDataPath {{ APPLE_DERIVED_DATA }}
 
 # Runs `swift test` for every apps/apple/Packages/* that has a Tests dir.
-# Swift package tests, then the Developer ID macOS app's unit and UI tests.
+# Swift package tests, then the Developer ID app's hosted tests (UI tests: apple-test-ui).
 [group('client')]
 apple-test: _ensure-apple
     #!/usr/bin/env bash
@@ -326,13 +326,26 @@ apple-test: _ensure-apple
         fi
     done
     xcodebuild test -workspace {{ APPLE_WORKSPACE }} -scheme OmnigentMac \
-        -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }}
+        -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }} \
+        -skip-testing:OmnigentMacUITests
 
-# Unit and UI tests of the Mac App Store edition.
+# Hosted tests of the Mac App Store edition (inside its sandboxed app).
 [group('client')]
 apple-test-appstore: _ensure-apple
     xcodebuild test -workspace {{ APPLE_WORKSPACE }} -scheme OmnigentMacAppStore \
-        -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }}
+        -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }} \
+        -skip-testing:OmnigentMacAppStoreUITests
+
+# Both Mac editions' UI tests; they take the real mouse and keyboard, so run on an idle Mac.
+[group('client')]
+apple-test-ui: _ensure-apple
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for pair in OmnigentMac:OmnigentMacUITests OmnigentMacAppStore:OmnigentMacAppStoreUITests; do
+        xcodebuild test -workspace {{ APPLE_WORKSPACE }} -scheme "${pair%%:*}" \
+            -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }} \
+            -only-testing:"${pair##*:}"
+    done
 
 # Strict SwiftLint over apps/apple (config: apps/apple/.swiftlint.yml).
 [group('client')]

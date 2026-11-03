@@ -45,9 +45,10 @@ From the repository root:
 ```sh
 just apple-generate         # Rust core (debug) + bindings, fetch-cef, tuist install, tuist generate
 just apple-run              # build and launch OmnigentMac (alias: apple-run-mac)
-just apple-test             # Swift package tests + OmnigentMac unit and UI tests
+just apple-test             # Swift package tests + OmnigentMac hosted tests
 just apple-run-appstore     # build and launch OmnigentMacAppStore
-just apple-test-appstore    # OmnigentMacAppStore unit and UI tests
+just apple-test-appstore    # OmnigentMacAppStore hosted tests
+just apple-test-ui          # both editions' UI tests (take the mouse; idle machine only)
 just apple-lint             # strict SwiftLint over the whole tree
 just core-test              # cargo fmt --check, clippy -D warnings, cargo test
 just core-wasm-check        # wasm32 type-check of the core crates
