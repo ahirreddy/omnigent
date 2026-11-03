@@ -35,6 +35,27 @@
       #expect(callback.absoluteString == "\(redirect.absoluteString)?code=abc123&state=xyz")
     }
 
+    /// Databricks registers `http://localhost`; the browser resolves it to this listener.
+    @Test func localhostRedirectsOnTheRootPath() async throws {
+      let listener = LoopbackRedirectListener()
+      let redirect = try await listener.start(path: "/", host: "localhost")
+      #expect(redirect.absoluteString.hasPrefix("http://localhost:"))
+      #expect(redirect.path == "/")
+
+      let waiter = Task { try await listener.waitForCallback() }
+      let (status, _) = try await get(url("\(redirect.absoluteString)?code=abc&state=xyz"))
+      #expect(status == 200)
+      let callback = try await waiter.value
+      #expect(callback.absoluteString == "\(redirect.absoluteString)?code=abc&state=xyz")
+    }
+
+    @Test func otherHostsAreRefused() async throws {
+      let listener = LoopbackRedirectListener()
+      await #expect(throws: LoopbackRedirectError.self) {
+        try await listener.start(path: "/", host: "example.com")
+      }
+    }
+
     @Test func otherPathsAreNotFoundAndDoNotCompleteTheWait() async throws {
       let listener = LoopbackRedirectListener()
       let redirect = try await listener.start(path: "/oauth/callback")

@@ -65,13 +65,19 @@ pub enum SignInMethod {
     },
     /// The OIDC browser-ticket fallback: open a page, the core polls until it is approved.
     BrowserTicket,
-    /// Databricks workspace OAuth: present the authorize URL from
-    /// `begin_databricks_sign_in` in the sign-in sheet, intercepting the HTTPS callback at
-    /// `callback_host` and `callback_path`.
+    /// Databricks workspace OAuth. With `loopback`, bind an ephemeral port on the loopback
+    /// interface, pass it to `begin_databricks_sign_in`, open the authorize URL in the system
+    /// browser and hand the request to `http://localhost:<port>/` to
+    /// `complete_databricks_sign_in`. Otherwise present the authorize URL in the sign-in sheet,
+    /// intercepting the HTTPS callback at `callback_host` and `callback_path`.
     DatabricksWorkspace {
-        /// The HTTPS callback host the sheet intercepts.
+        /// The workspace's host, for the sign-in screen.
+        workspace_host: String,
+        /// Whether the redirect is the loopback one (desktop) rather than an HTTPS callback.
+        loopback: bool,
+        /// The callback host (`localhost` for loopback).
         callback_host: String,
-        /// The HTTPS callback path the sheet intercepts.
+        /// The callback path (`/` for loopback).
         callback_path: String,
     },
 }

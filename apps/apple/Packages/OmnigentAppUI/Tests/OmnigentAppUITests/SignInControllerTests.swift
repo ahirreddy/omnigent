@@ -110,6 +110,93 @@ struct SignInControllerTests {
   }
 }
 
+#if os(macOS)
+  /// A Databricks workspace serving Omnigent at its API mount, with its OAuth endpoints.
+  nonisolated private let workspaceRoutes: [String: HttpResponse] = [
+    "/oidc/.well-known/openid-configuration": .json(
+      #"{"issuer":"https://dbc-1.cloud.databricks.com/oidc","#
+        + #""token_endpoint":"https://dbc-1.cloud.databricks.com/oidc/v1/token"}"#),
+    "/oidc/v1/token": .json(
+      #"{"access_token":"access-1","refresh_token":"refresh-1","token_type":"Bearer","#
+        + #""expires_in":3600}"#),
+    "/api/2.0/omnigent/v1/info": .json(#"{"single_user":false,"accounts_enabled":false}"#),
+    "/api/2.0/omnigent/v1/me": .json(#"{"user_id":"ada"}"#),
+    "/api/2.0/omnigent/v1/sessions": .json(#"{"object":"list","data":[],"has_more":false}"#),
+  ]
+
+  /// The system browser, faked: records the page it was asked to open and, like a browser
+  /// after the user signs in, requests the redirect with a code and the page's state.
+  @MainActor
+  private final class FakeBrowser {
+    private(set) var opened: [URL] = []
+    private(set) var redirectError: (any Error)?
+
+    func open(_ url: URL) -> Bool {
+      opened.append(url)
+      let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+      guard let redirect = items.first(where: { $0.name == "redirect_uri" })?.value,
+        let state = items.first(where: { $0.name == "state" })?.value,
+        let callback = URL(string: "\(redirect)/?code=abc&state=\(state)")
+      else { return false }
+      Task {
+        do {
+          let session = URLSession(configuration: .ephemeral)
+          defer { session.finishTasksAndInvalidate() }
+          _ = try await session.data(from: callback)
+        } catch {
+          redirectError = error
+        }
+      }
+      return true
+    }
+  }
+
+  @Suite("Databricks sign-in on the Mac")
+  struct DatabricksLoopbackSignInTests {
+    @Test(
+      "The published client's localhost redirect is received on a loopback port",
+      .timeLimit(.minutes(1)))
+    func loopbackSignIn() async throws {
+      let suite = "ai.omnigent.appui.tests.\(UUID().uuidString)"
+      let defaults = try #require(UserDefaults(suiteName: suite))
+      defer { defaults.removePersistentDomain(forName: suite) }
+      let core = try ClientCore(
+        http: FakeHttpTransport(routes: workspaceRoutes), streams: FakeEventStreamTransport(),
+        sockets: FakeWebSocketTransport(), clock: SystemClock(), scheduler: TaskScheduler(),
+        secureStore: InMemorySecureStore(), entropy: FixedEntropySource(),
+        config: HostConfig(
+          urlPolicy: .development, oidcRedirect: .none,
+          databricks: DatabricksOAuthSettings(clientId: "omnigent", redirectUrl: "http://localhost")
+        ))
+      let browser = FakeBrowser()
+      let controller = SignInController(
+        store: ConnectionStore(core: core), opener: ExternalURLOpener { browser.open($0) },
+        defaults: defaults)
+
+      await controller.connectNow("https://dbc-1.cloud.databricks.com/?o=42")
+      try await waitUntil("the workspace sign-in") {
+        if case .signInRequired = controller.store.phase { return true }
+        return false
+      }
+      controller.actions.startBrowserSignIn(
+        .databricksWorkspace(workspaceHost: "dbc-1.cloud.databricks.com"))
+      try await waitUntil("the sign-in to finish") {
+        controller.store.isSignedIn && controller.method == nil
+      }
+
+      #expect(controller.flowError == nil, "\(String(describing: controller.flowError))")
+      #expect(browser.redirectError == nil, "\(String(describing: browser.redirectError))")
+      #expect(controller.store.connectedServer?.userId == "ada")
+      let opened = try #require(browser.opened.first)
+      #expect(
+        opened.host() == "dbc-1.cloud.databricks.com" && opened.path() == "/oidc/v1/authorize")
+      let redirect = URLComponents(url: opened, resolvingAgainstBaseURL: false)?.queryItems?
+        .first { $0.name == "redirect_uri" }?.value
+      #expect(redirect?.hasPrefix("http://localhost:") == true, "\(redirect ?? "none")")
+    }
+  }
+#endif
+
 #if DEBUG && os(macOS)
   @Suite("Debug keychain fallback")
   struct KeychainModeSelectionTests {

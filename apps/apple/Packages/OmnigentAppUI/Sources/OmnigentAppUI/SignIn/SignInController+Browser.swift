@@ -4,9 +4,9 @@ import OmnigentCoreFFI
 import OmnigentServices
 import OmnigentStores
 
-// The platform half of each browser sign-in: the loopback listener and system browser (macOS),
-// the sign-in sheet for a registered scheme or a Databricks HTTPS callback, and the
-// browser-ticket page. The core runs the protocol; failures become the screen's banner.
+// The platform half of each browser sign-in: the loopback listener and system browser (macOS,
+// OIDC and Databricks), the sign-in sheet for a registered scheme or a Databricks HTTPS callback,
+// and the browser-ticket page. The core runs the protocol; failures become the screen's banner.
 extension SignInController {
   func startBrowserSignIn(_ option: SignInOption) {
     stopBrowserSignIn()
@@ -35,8 +35,15 @@ extension SignInController {
     }
   }
 
-  /// Databricks workspace OAuth: the sign-in sheet intercepts the HTTPS callback the core names.
+  /// Databricks workspace OAuth: a loopback listener and the system browser when the core's
+  /// method says so (macOS), else the sign-in sheet intercepting the HTTPS callback it names.
   private func databricksSignIn() async {
+    #if os(macOS)
+      if databricksUsesLoopback {
+        await databricksLoopbackSignIn()
+        return
+      }
+    #endif
     let before = store.issues.count
     guard let challenge = store.beginDatabricksSignIn() else {
       if store.issues.count > before, let issue = store.issues.last {
@@ -66,6 +73,58 @@ extension SignInController {
       }
     }
   }
+
+  /// Whether the core offers Databricks sign-in through the loopback redirect.
+  private var databricksUsesLoopback: Bool {
+    guard case .signInRequired(_, _, _, let methods, _) = store.phase else { return false }
+    return methods.contains { method in
+      if case .databricksWorkspace(_, let loopback, _, _) = method { loopback } else { false }
+    }
+  }
+
+  #if os(macOS)
+    /// Databricks through the system browser: the published client's `http://localhost`
+    /// redirect, received on an ephemeral port (RFC 8252).
+    private func databricksLoopbackSignIn() async {
+      let listener = LoopbackRedirectListener()
+      self.listener = listener
+      let redirect: URL
+      do {
+        redirect = try await listener.start(path: "/", host: "localhost")
+      } catch {
+        flowError = Self.listenerError(error)
+        return
+      }
+      guard let port = redirect.port.flatMap({ UInt16(exactly: $0) }) else {
+        listener.cancel()
+        flowError = SignInError(
+          category: .oidc, message: "The sign-in listener has no port: \(redirect.absoluteString)")
+        return
+      }
+      let before = store.issues.count
+      guard let challenge = store.beginDatabricksSignIn(loopbackPort: port) else {
+        listener.cancel()
+        if store.issues.count > before, let issue = store.issues.last {
+          flowError = SignInError(issue.error)
+        }
+        return
+      }
+      guard await openInBrowser(challenge.authorizeUrl) else {
+        store.cancelDatabricksSignIn(challenge)
+        listener.cancel()
+        return
+      }
+      do {
+        let callback = try await listener.waitForCallback()
+        let completedBefore = store.issues.count
+        let server = await store.completeDatabricksSignIn(challenge, callbackURL: callback)
+        signedIn(server, issuesBefore: completedBefore)
+      } catch {
+        store.cancelDatabricksSignIn(challenge)
+        if error != .cancelled { flowError = Self.listenerError(error) }
+      }
+    }
+  #endif
 
   private func loopbackSignIn(path: String) async {
     #if os(macOS)
@@ -102,7 +161,8 @@ extension SignInController {
     guard let url = URL(string: challenge.authorizeUrl) else {
       store.cancelBrowserSignIn(challenge)
       flowError = SignInError(
-        category: .oidc, message: "The server's sign-in page is not a URL: \(challenge.authorizeUrl)")
+        category: .oidc,
+        message: "The server's sign-in page is not a URL: \(challenge.authorizeUrl)")
       return
     }
     do {
@@ -178,7 +238,8 @@ extension SignInController {
         switch error {
         case .failed(let message): message
         case .cancelled: "The sign-in was cancelled."
-        case .alreadyStarted, .notStarted, .alreadyWaiting: "The sign-in listener is busy (\(error))."
+        case .alreadyStarted, .notStarted, .alreadyWaiting:
+          "The sign-in listener is busy (\(error))."
         }
       return SignInError(
         category: .oidc, message: "Could not receive the browser sign-in: \(detail)")

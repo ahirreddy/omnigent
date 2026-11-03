@@ -137,14 +137,16 @@ let macApp = Target.target(
   settings: Omnigent.appSettings(
     releaseBundleId: "ai.omnigent.mac",
     displayName: "Omnigent",
-    extraBase: BrowserTargets.appSettings.merging([
-      "ENABLE_HARDENED_RUNTIME": "YES",
-      "COMBINE_HIDPI_IMAGES": "YES",
-      // Distinct per edition: both write their module to the shared products directory for
-      // `@testable import`.
-      "PRODUCT_MODULE_NAME": "OmnigentMac",
-      "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) OMNIGENT_CHROMIUM",
-    ]) { _, new in new },
+    extraBase: BrowserTargets.appSettings.merging(
+      [
+        "ENABLE_HARDENED_RUNTIME": "YES",
+        "COMBINE_HIDPI_IMAGES": "YES",
+        // Distinct per edition: both write their module to the shared products directory for
+        // `@testable import`.
+        "PRODUCT_MODULE_NAME": "OmnigentMac",
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) OMNIGENT_CHROMIUM",
+      ].merging(Omnigent.desktopDatabricksRedirect) { _, new in new }
+    ) { _, new in new },
     debug: [
       "CODE_SIGN_IDENTITY": "-",
       // Ad-hoc signing cannot carry keychain-access-groups; see the file's comment.
@@ -182,7 +184,7 @@ let macAppStoreApp = Target.target(
       "ENABLE_HARDENED_RUNTIME": "YES",
       "COMBINE_HIDPI_IMAGES": "YES",
       "PRODUCT_MODULE_NAME": "OmnigentMacAppStore",
-    ],
+    ].merging(Omnigent.desktopDatabricksRedirect) { _, new in new },
     debug: [
       "CODE_SIGN_IDENTITY": "-",
       "CODE_SIGN_ENTITLEMENTS": "Apps/Omnigent-macOS/OmnigentMacAppStore-Debug.entitlements",

@@ -192,7 +192,7 @@ pub(crate) async fn resolve(
 /// The sign-in methods to offer, best first.
 pub(crate) fn sign_in_methods(resolved: &Resolved, config: &HostConfig) -> Vec<SignInMethod> {
     let redirect = &config.oidc_redirect;
-    if resolved.databricks_workspace.is_some() {
+    if let Some(workspace) = &resolved.databricks_workspace {
         return config
             .databricks
             .as_ref()
@@ -204,6 +204,8 @@ pub(crate) fn sign_in_methods(resolved: &Resolved, config: &HostConfig) -> Vec<S
                 .ok()
             })
             .map(|configuration| SignInMethod::DatabricksWorkspace {
+                workspace_host: workspace.host_str().unwrap_or_default().to_owned(),
+                loopback: configuration.is_loopback(),
                 callback_host: configuration.callback_host().to_owned(),
                 callback_path: configuration.callback_path().to_owned(),
             })

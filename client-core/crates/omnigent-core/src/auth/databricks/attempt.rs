@@ -70,6 +70,10 @@ impl OAuthAttempt {
         configuration: &OAuthConfiguration,
         entropy: &dyn EntropySource,
     ) -> Result<Self, DatabricksError> {
+        // A loopback client must be bound to its listener's port first.
+        if !configuration.is_usable() {
+            return Err(DatabricksError::InvalidRedirectUrl);
+        }
         let scope = CredentialScope::new(workspace_url, configuration)?;
         let state = pkce::random_value(entropy).map_err(DatabricksError::RandomGenerationFailed)?;
         let verifier =

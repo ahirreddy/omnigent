@@ -53,8 +53,8 @@ nonisolated extension SignInOption {
     case .browser(let redirectUri): self = .browser(redirectUri: redirectUri)
     case .loopbackBrowser(let path): self = .loopbackBrowser(path: path)
     case .browserTicket: self = .browserTicket
-    case .databricksWorkspace(let callbackHost, _):
-      self = .databricksWorkspace(workspaceHost: callbackHost)
+    case .databricksWorkspace(let workspaceHost, _, _, _):
+      self = .databricksWorkspace(workspaceHost: workspaceHost)
     }
   }
 }

@@ -6,3 +6,5 @@ Derived/
 .swiftpm/
 Tuist/.build/
 build/
+# SwiftPM's pins from running `swift` commands at this root, which has no package.
+/.package.resolved

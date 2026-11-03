@@ -551,6 +551,8 @@ fn databricks_workspaces_sign_in_natively_and_rotate_the_token_in_place() {
     assert_eq!(
         methods,
         vec![SignInMethod::DatabricksWorkspace {
+            workspace_host: WORKSPACE_HOST.trim_start_matches("https://").into(),
+            loopback: false,
             callback_host: "login.databricks.com".into(),
             callback_path: "/mobile-redirect".into(),
         }]
@@ -561,7 +563,7 @@ fn databricks_workspaces_sign_in_natively_and_rotate_the_token_in_place() {
         harness.http.lines()
     );
 
-    let challenge = harness.core.begin_databricks_sign_in().unwrap();
+    let challenge = harness.core.begin_databricks_sign_in(None).unwrap();
     let authorize = url::Url::parse(&challenge.authorize_url).unwrap();
     assert_eq!(authorize.path(), "/oidc/v1/authorize");
     let state = authorize
@@ -647,6 +649,111 @@ fn databricks_workspaces_sign_in_natively_and_rotate_the_token_in_place() {
     assert!(lock(&harness.store.items).is_empty());
 }
 
+/// The desktop client: the published `omnigent` client's loopback redirect, bound per attempt
+/// to the host listener's port (RFC 8252; Databricks matches `http://localhost` ignoring it).
+#[test]
+fn databricks_loopback_sign_in_binds_the_listeners_port() {
+    let mut harness = Harness::with_databricks(
+        UrlPolicy::Release,
+        Some(DatabricksOAuthSettings {
+            client_id: "omnigent".into(),
+            redirect_url: "http://localhost".into(),
+        }),
+    );
+    route_databricks(&harness, "access-1", 3_600);
+    let core = Arc::clone(&harness.core);
+    let phase = harness
+        .run(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await })
+        .unwrap();
+    let ConnectionPhase::SignInRequired { methods, .. } = phase else {
+        panic!("{phase:?}");
+    };
+    assert_eq!(
+        methods,
+        vec![SignInMethod::DatabricksWorkspace {
+            workspace_host: "dbc-1.cloud.databricks.com".into(),
+            loopback: true,
+            callback_host: "localhost".into(),
+            callback_path: "/".into(),
+        }]
+    );
+    assert!(
+        matches!(
+            harness.core.begin_databricks_sign_in(None),
+            Err(CoreError::InvalidState { .. })
+        ),
+        "a loopback client needs its port"
+    );
+
+    let challenge = harness.core.begin_databricks_sign_in(Some(49_152)).unwrap();
+    let authorize = url::Url::parse(&challenge.authorize_url).unwrap();
+    let query: std::collections::HashMap<_, _> = authorize.query_pairs().into_owned().collect();
+    assert_eq!(query["client_id"], "omnigent");
+    assert_eq!(query["redirect_uri"], "http://localhost:49152");
+    let state = query["state"].clone();
+
+    // Another port's callback is refused; this one's completes, exchanging with the same URI.
+    let callback = format!("http://localhost:49152/?code=abc&state={state}");
+    let core = Arc::clone(&harness.core);
+    let attempt = challenge.attempt_id;
+    let server = harness
+        .run(async move { core.complete_databricks_sign_in(attempt, callback).await })
+        .unwrap();
+    assert_eq!(server.user_id, "ada");
+    let token_body = lock(&harness.http.requests)
+        .iter()
+        .find(|request| request.url.ends_with("/oidc/v1/token"))
+        .and_then(|request| request.body.clone())
+        .map(|body| String::from_utf8(body).unwrap())
+        .unwrap();
+    assert!(
+        token_body.contains("redirect_uri=http%3A%2F%2Flocalhost%3A49152"),
+        "{token_body}"
+    );
+    assert_eq!(
+        bearer_of(&harness, "/api/2.0/omnigent/v1/me").as_deref(),
+        Some("Bearer access-1")
+    );
+}
+
+#[test]
+fn databricks_loopback_callbacks_on_another_port_are_refused() {
+    let mut harness = Harness::with_databricks(
+        UrlPolicy::Release,
+        Some(DatabricksOAuthSettings {
+            client_id: "omnigent".into(),
+            redirect_url: "http://localhost".into(),
+        }),
+    );
+    route_databricks(&harness, "access-1", 3_600);
+    let core = Arc::clone(&harness.core);
+    harness
+        .run(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await })
+        .unwrap();
+    let challenge = harness.core.begin_databricks_sign_in(Some(49_152)).unwrap();
+    let state = url::Url::parse(&challenge.authorize_url)
+        .unwrap()
+        .query_pairs()
+        .find(|(name, _)| name == "state")
+        .map(|(_, value)| value.into_owned())
+        .unwrap();
+    let callback = format!("http://localhost:49153/?code=abc&state={state}");
+    let core = Arc::clone(&harness.core);
+    let attempt = challenge.attempt_id;
+    let result =
+        harness.run(async move { core.complete_databricks_sign_in(attempt, callback).await });
+    assert!(
+        matches!(result, Err(CoreError::Databricks { .. })),
+        "{result:?}"
+    );
+    assert!(
+        !lock(&harness.http.requests)
+            .iter()
+            .any(|request| request.url.ends_with("/oidc/v1/token")),
+        "no token request for a callback on another port"
+    );
+}
+
 #[test]
 fn databricks_callbacks_that_do_not_match_are_refused_without_a_token_request() {
     let mut harness = databricks();
@@ -655,7 +762,7 @@ fn databricks_callbacks_that_do_not_match_are_refused_without_a_token_request() 
     harness
         .run(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await })
         .unwrap();
-    let challenge = harness.core.begin_databricks_sign_in().unwrap();
+    let challenge = harness.core.begin_databricks_sign_in(None).unwrap();
     let core = Arc::clone(&harness.core);
     let attempt = challenge.attempt_id;
     let error = harness

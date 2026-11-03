@@ -10,6 +10,12 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!--
+	Browser sign-in (OIDC and Databricks) receives its redirect on an ephemeral loopback port
+	(RFC 8252), which the sandbox allows only with the server entitlement.
+	-->
+	<key>com.apple.security.network.server</key>
+	<true/>
 	<!-- Web pages may use the camera, microphone and location after the user allows it. -->
 	<key>com.apple.security.device.camera</key>
 	<true/>

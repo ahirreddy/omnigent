@@ -2,14 +2,17 @@ public import Foundation
 public import OmnigentCoreFFI
 
 extension ConnectionStore {
-  /// Starts a Databricks workspace sign-in; present ``databricksChallenge``'s `authorizeUrl`
-  /// in the sign-in sheet, intercepting the HTTPS callback at its callback host and path.
+  /// Starts a Databricks workspace sign-in. With a loopback client, pass the port the local
+  /// listener bound and open ``databricksChallenge``'s `authorizeUrl` in the system browser;
+  /// otherwise present it in the sign-in sheet, intercepting the HTTPS callback at its callback
+  /// host and path.
+  /// - Parameter loopbackPort: The listener's port for a loopback client, else `nil`.
   /// - Returns: The challenge, or `nil` after recording the failure.
   @discardableResult
-  public func beginDatabricksSignIn() -> DatabricksChallenge? {
+  public func beginDatabricksSignIn(loopbackPort: UInt16? = nil) -> DatabricksChallenge? {
     guard let core else { return nil }
     do {
-      let challenge = try core.beginDatabricksSignIn()
+      let challenge = try core.beginDatabricksSignIn(loopbackPort: loopbackPort)
       databricksChallenge = challenge
       return challenge
     } catch {
@@ -20,7 +23,7 @@ extension ConnectionStore {
 
   /// Finishes a Databricks sign-in with the callback the sheet intercepted.
   /// - Parameters:
-  ///   - challenge: The challenge from ``beginDatabricksSignIn()``.
+  ///   - challenge: The challenge from ``beginDatabricksSignIn(loopbackPort:)``.
   ///   - callbackURL: The full callback URL.
   /// - Returns: The server signed in to, or `nil` after recording the failure or when the
   ///   sign-in was cancelled. It can return before ``phase`` reads `connected`.

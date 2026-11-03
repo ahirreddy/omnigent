@@ -134,6 +134,14 @@ public enum Omnigent {
       "Omnigent uses Bluetooth to sign in with a passkey on your phone.",
   ]
 
+  /// The Mac apps' Databricks redirect: the published client's loopback `http://localhost`,
+  /// received on an ephemeral port in the system browser (as the Electron app does). The iOS
+  /// HTTPS redirect needs an associated domain that `login.databricks.com` grants only to the
+  /// iOS app.
+  public static let desktopDatabricksRedirect: SettingsDictionary = [
+    "DATABRICKS_OAUTH_REDIRECT_URL": "http://localhost"
+  ]
+
   /// The Databricks workspace OAuth client (public configuration, as in `web/ios`; see
   /// `web/ios/docs/databricks-oauth.md`). Override with `DATABRICKS_OAUTH_CLIENT_ID` and
   /// `DATABRICKS_OAUTH_REDIRECT_URL` build settings.

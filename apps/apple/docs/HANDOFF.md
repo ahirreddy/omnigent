@@ -39,6 +39,14 @@ remote browser package tests with a live host (50), the OmnigentAppUI tests (68)
 tests on both editions, and on iPhone 17 Pro and iPad Pro 11 the four remote browser and two
 glass UI tests. The Mac suite takes about 80 s without UI automation (it took 16 minutes).
 
+5. **Databricks workspace sign-in on the Mac.** Workspace-hosted servers (for example
+   `isaac.databricks.com`) need a Databricks OAuth bearer, even for discovery. The iOS HTTPS
+   redirect cannot work on the Mac: `login.databricks.com`'s association file authorizes only
+   the iOS app. The Mac apps now use the published `omnigent` client's loopback redirect
+   (`http://localhost`, ephemeral port, system browser), as the Electron app does; the core binds
+   each attempt to the listener's port. The App Store edition gained `network.server` for the
+   listener. Covered by core, FFI and controller tests; the live sign-in needs a person.
+
 ## How to build and verify on a fresh machine
 
 ```sh

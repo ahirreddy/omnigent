@@ -425,16 +425,22 @@ impl Inner {
 
 #[uniffi::export]
 impl ClientCore {
-    /// Starts a Databricks workspace sign-in for the connected-to server. Present
-    /// `authorize_url` in the sign-in sheet, intercepting the HTTPS callback, and pass the
-    /// callback to [`Self::complete_databricks_sign_in`]. A login still in progress is
+    /// Starts a Databricks workspace sign-in for the connected-to server and passes the callback
+    /// to [`Self::complete_databricks_sign_in`]. For a loopback client (`SignInMethod::
+    /// DatabricksWorkspace { loopback: true, .. }`) `loopback_port` is the port the host's
+    /// listener bound, and `authorize_url` opens in the system browser; otherwise it is `None`
+    /// and the sign-in sheet intercepts the HTTPS callback. A login still in progress is
     /// abandoned.
     ///
     /// # Errors
     ///
-    /// [`CoreError::InvalidState`] before connecting to a Databricks workspace server;
-    /// [`CoreError::Databricks`] for an unusable build client or workspace URL, or a failed RNG.
-    pub fn begin_databricks_sign_in(&self) -> Result<DatabricksChallenge, CoreError> {
+    /// [`CoreError::InvalidState`] before connecting to a Databricks workspace server, or when
+    /// `loopback_port` does not fit the client; [`CoreError::Databricks`] for an unusable build
+    /// client, port or workspace URL, or a failed RNG.
+    pub fn begin_databricks_sign_in(
+        &self,
+        loopback_port: Option<u16>,
+    ) -> Result<DatabricksChallenge, CoreError> {
         let inner = &self.inner;
         let resolved = inner.resolved()?;
         let workspace = resolved
@@ -442,7 +448,19 @@ impl ClientCore {
             .clone()
             .ok_or_else(not_databricks)?;
         let auth = inner.databricks_auth()?;
-        let configuration = auth.configuration()?;
+        let configuration = match (auth.configuration()?, loopback_port) {
+            (configuration, Some(port)) if configuration.is_loopback() => {
+                configuration.bound_to_port(port).map_err(CoreError::from)?
+            }
+            (configuration, None) if !configuration.is_loopback() => configuration.clone(),
+            (configuration, _) => {
+                return Err(CoreError::invalid_state(if configuration.is_loopback() {
+                    "This build signs in to Databricks through a loopback listener; pass its port."
+                } else {
+                    "This build signs in to Databricks through the sign-in sheet, not a loopback port."
+                }));
+            }
+        };
         let entropy = inner.entropy()?;
         let mut state = lock(&auth.state);
         state.cancel_login();
@@ -454,7 +472,7 @@ impl ClientCore {
             ..
         } = &mut *state;
         let start = login
-            .start(tokens, &workspace, configuration, entropy)
+            .start(tokens, &workspace, &configuration, entropy)
             .map_err(CoreError::from)?;
         *next_attempt = next_attempt.wrapping_add(1);
         let attempt_id = *next_attempt;

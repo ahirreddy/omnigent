@@ -18,7 +18,8 @@
     case failed(message: String)
   }
 
-  /// Receives one OAuth redirect on `http://127.0.0.1:<port><path>`.
+  /// Receives one OAuth redirect on `http://<host>:<port><path>`, where `host` is `127.0.0.1` or
+  /// `localhost` (both reach the loopback interface this listens on).
   ///
   /// Used for the desktop sign-in flow: the system browser is sent to the URL from `start(path:)`,
   /// and the browser's redirect to that URL is received here. Only the first `GET` whose path
@@ -38,6 +39,7 @@
     private struct State {
       var listener: NWListener?
       var path: String?
+      var host = "127.0.0.1"
       var startWaiter: StartContinuation?
       var callbackWaiter: CallbackContinuation?
       var outcome: Result<URL, LoopbackRedirectError>?
@@ -55,24 +57,6 @@
 
     /// Creates a listener. Nothing is bound until ``start(path:)``.
     public init() {}
-
-    /// Binds an ephemeral port on the loopback interface.
-    /// - Parameter path: The redirect path, starting with `/`, for example `/oauth/callback`.
-    /// - Returns: The redirect URL to register with the authorization server.
-    /// - Throws: ``LoopbackRedirectError`` when the listener cannot start or was cancelled.
-    public func start(path: String) async throws(LoopbackRedirectError) -> URL {
-      guard path.hasPrefix("/") else {
-        throw .failed(message: "The redirect path must start with /: \(path)")
-      }
-      let result = await withCheckedContinuation { (continuation: StartContinuation) in
-        startListener(path: path, continuation: continuation)
-      }
-      let port = try result.get()
-      guard let url = URL(string: "http://127.0.0.1:\(port)\(path)") else {
-        throw .failed(message: "The redirect URL could not be formed for port \(port).")
-      }
-      return url
-    }
 
     /// Waits for the redirect. Cancelling the calling task stops the listener.
     /// - Returns: The full callback URL, including its query.
@@ -255,8 +239,8 @@
         respond(on: accepted, status: 404, reason: "Not Found", body: "Not found.")
         return
       }
-      let port = state.withLock { $0.listener?.port?.rawValue }
-      guard let port, let url = URL(string: "http://127.0.0.1:\(port)\(line.target)") else {
+      let (port, host) = state.withLock { ($0.listener?.port?.rawValue, $0.host) }
+      guard let port, let url = URL(string: "http://\(host):\(port)\(line.target)") else {
         respond(on: accepted, status: 400, reason: "Bad Request", body: "Malformed request.")
         return
       }
@@ -325,6 +309,35 @@
 
     init(_ connection: NWConnection) {
       self.connection = connection
+    }
+  }
+
+  extension LoopbackRedirectListener {
+    /// Binds an ephemeral port on the loopback interface.
+    /// - Parameters:
+    ///   - path: The redirect path, starting with `/`, for example `/oauth/callback`.
+    ///   - host: The host the redirect URL names: `127.0.0.1`, or `localhost` for an
+    ///     authorization server that registers `http://localhost` (Databricks).
+    /// - Returns: The redirect URL to register with the authorization server.
+    /// - Throws: ``LoopbackRedirectError`` when the listener cannot start or was cancelled.
+    public func start(path: String, host: String = "127.0.0.1") async throws(LoopbackRedirectError)
+      -> URL
+    {
+      guard path.hasPrefix("/") else {
+        throw .failed(message: "The redirect path must start with /: \(path)")
+      }
+      guard host == "127.0.0.1" || host == "localhost" else {
+        throw .failed(message: "The redirect host must be 127.0.0.1 or localhost: \(host)")
+      }
+      state.withLock { $0.host = host }
+      let result = await withCheckedContinuation { (continuation: StartContinuation) in
+        startListener(path: path, continuation: continuation)
+      }
+      let port = try result.get()
+      guard let url = URL(string: "http://\(host):\(port)\(path)") else {
+        throw .failed(message: "The redirect URL could not be formed for port \(port).")
+      }
+      return url
     }
   }
 #endif
