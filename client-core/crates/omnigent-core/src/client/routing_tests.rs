@@ -162,3 +162,63 @@ fn other_refusals_and_other_servers_are_not_rerouted() {
     assert_eq!(local.slice_key("/v1/sessions/conv_a/stream"), None);
     assert_eq!(local.modal_slice_key(), None);
 }
+
+#[test]
+fn a_sub_agents_host_is_its_nearest_host_bound_ancestors() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    let agent = format!("{MOUNT}/v1/sessions/conv_child/agent");
+    transport.enqueue(
+        "GET",
+        &agent,
+        vec![
+            Reply::json(400, WRONG_REPLICA),
+            Reply::json(200, r#"{"terminals":[]}"#),
+        ],
+    );
+    transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_child"),
+        r#"{"id":"conv_child","status":"idle","created_at":3,"host_id":null,"parent_session_id":"conv_mid"}"#,
+    );
+    transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_mid"),
+        r#"{"id":"conv_mid","status":"idle","created_at":2,"parent_session_id":"conv_root"}"#,
+    );
+    transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_root"),
+        r#"{"id":"conv_root","status":"idle","created_at":1,"host_id":"host_r"}"#,
+    );
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+
+    block_on(core.declared_terminal_names("conv_child")).unwrap();
+    assert_eq!(
+        keys(&core.transport, &agent),
+        [None, Some("host_r".to_owned())],
+        "keyed with the root's host after walking the chain"
+    );
+}
+
+#[test]
+fn terminal_requests_are_routed_like_the_rest() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    let terminals = format!("{MOUNT}/v1/sessions/conv_a/resources/terminals");
+    transport.enqueue(
+        "GET",
+        &terminals,
+        vec![
+            Reply::json(400, WRONG_REPLICA),
+            Reply::json(200, r#"{"object":"list","data":[],"has_more":false}"#),
+        ],
+    );
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+    let listed = block_on(core.list_terminals("conv_a")).unwrap();
+    assert_eq!(listed.len(), 0, "{listed:?}");
+    assert_eq!(
+        keys(&core.transport, &terminals),
+        [Some("host_a".to_owned()), None],
+        "keyed by the session's host, then re-addressed keyless"
+    );
+}

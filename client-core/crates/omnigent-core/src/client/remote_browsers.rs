@@ -6,6 +6,7 @@
 //! connection, and redirects are never followed.
 
 use super::ClientCore;
+use super::terminals::Credentialed;
 use crate::http::{HttpRequest, HttpResponse, HttpTransport, TransportError};
 use crate::remote_browser::AttachOptions;
 use crate::remote_browser::rest::{
@@ -18,7 +19,7 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         session_id: &str,
         build: impl FnOnce(&BrowserEndpoint) -> Result<HttpRequest, RemoteBrowserError>,
-    ) -> Result<(HttpRequest, u64), RemoteBrowserError> {
+    ) -> Result<Credentialed, RemoteBrowserError> {
         self.credentialed_request(
             |root| build(&BrowserEndpoint::new(root, session_id)?),
             RemoteBrowserError::NotConnected,
@@ -32,10 +33,10 @@ impl<T: HttpTransport> ClientCore<T> {
     )]
     async fn send_browser<R>(
         &self,
-        (request, epoch): (HttpRequest, u64),
+        (request, epoch, addressing): Credentialed,
         decode: impl FnOnce(Result<HttpResponse, TransportError>) -> Result<R, RemoteBrowserError>,
     ) -> Result<R, RemoteBrowserError> {
-        let result = self.transport().send(request).await;
+        let result = self.send_routed(request, addressing).await;
         if !self.is_current_epoch(epoch) {
             return Err(RemoteBrowserError::NotConnected);
         }
@@ -158,7 +159,7 @@ impl<T: HttpTransport> ClientCore<T> {
         self.browser_request(session_id, |endpoint| {
             endpoint.attach_request(tab_id, options)
         })
-        .map(|(request, _)| request)
+        .map(|(request, _, _)| request)
     }
 }
 

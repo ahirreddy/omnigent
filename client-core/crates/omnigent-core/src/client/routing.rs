@@ -140,6 +140,11 @@ impl ReplicaRouting {
         None
     }
 
+    /// The routing parent recorded for `session_id`, if any.
+    pub(crate) fn parent(&self, session_id: &str) -> Option<&str> {
+        self.parents.get(session_id).map(String::as_str)
+    }
+
     /// Freezes the modal host after the first successful session list; later calls do nothing.
     pub(crate) fn resolve_modal(&mut self) {
         if matches!(self.modal, Modal::Frozen(_)) {

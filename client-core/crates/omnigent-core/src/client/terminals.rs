@@ -18,6 +18,10 @@ use crate::terminal::{
 /// Credential headers a terminal request carries.
 const CREDENTIAL_HEADERS: [&str; 2] = ["Authorization", DATABRICKS_ORG_HEADER];
 
+/// A request built with the connection's credentials, the epoch it belongs to, and how it was
+/// addressed on a host-sharded server.
+pub(super) type Credentialed = (HttpRequest, u64, Option<super::routing::Addressing>);
+
 impl<T: HttpTransport> ClientCore<T> {
     /// Builds a request against the connected server's root URL with the connection's
     /// credential headers, and the connection epoch it belongs to. Shared by the terminal and
@@ -27,7 +31,7 @@ impl<T: HttpTransport> ClientCore<T> {
         build: impl FnOnce(Url) -> Result<HttpRequest, E>,
         not_connected: E,
         invalid: impl Fn(String) -> E,
-    ) -> Result<(HttpRequest, u64), E> {
+    ) -> Result<Credentialed, E> {
         let state = lock(&self.state);
         let Some(connection) = state
             .connection
@@ -49,7 +53,8 @@ impl<T: HttpTransport> ClientCore<T> {
                 .into_iter()
                 .filter(|header| CREDENTIAL_HEADERS.contains(&header.name.as_str())),
         );
-        Ok((request, state.epoch))
+        let addressing = super::requests::address_built_request(&state, &mut request);
+        Ok((request, state.epoch, addressing))
     }
 
     /// Whether a result that arrived for `epoch` still belongs to the live connection.
@@ -64,7 +69,7 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         session_id: &str,
         build: impl FnOnce(&TerminalEndpoint) -> Result<HttpRequest, TerminalError>,
-    ) -> Result<(HttpRequest, u64), TerminalError> {
+    ) -> Result<Credentialed, TerminalError> {
         self.credentialed_request(
             |root| build(&TerminalEndpoint::new(root, session_id)?),
             TerminalError::NotConnected,
@@ -79,10 +84,10 @@ impl<T: HttpTransport> ClientCore<T> {
     )]
     async fn send_terminal<R>(
         &self,
-        (request, epoch): (HttpRequest, u64),
+        (request, epoch, addressing): Credentialed,
         decode: impl FnOnce(Result<HttpResponse, TransportError>) -> Result<R, TerminalError>,
     ) -> Result<R, TerminalError> {
-        let result = self.transport().send(request).await;
+        let result = self.send_routed(request, addressing).await;
         if !self.is_current_epoch(epoch) {
             return Err(TerminalError::NotConnected);
         }
@@ -181,7 +186,7 @@ impl<T: HttpTransport> ClientCore<T> {
         self.terminal_request(session_id, |endpoint| {
             endpoint.attach_request(terminal_id, options)
         })
-        .map(|(request, _)| request)
+        .map(|(request, _, _)| request)
     }
 }
 

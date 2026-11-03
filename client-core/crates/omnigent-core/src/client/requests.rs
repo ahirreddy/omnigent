@@ -19,6 +19,8 @@
     reason = "crate-internal helpers of a private module; `pub` would trip rustc's unreachable_pub"
 )]
 
+use std::collections::BTreeSet;
+
 use serde_json::Value;
 
 use super::routing::{self, Addressing, SLICE_KEY_HEADER};
@@ -30,6 +32,9 @@ use crate::http::{HttpHeader, HttpRequest, HttpResponse, HttpTransport, Transpor
 
 /// The largest page any list route accepts.
 pub(crate) const MAX_PAGE_LIMIT: u32 = 1000;
+
+/// How many snapshots a host lookup reads up a session's parent chain.
+const MAX_HOST_CHAIN_READS: usize = 16;
 
 /// A request bound to the connection epoch it was built in.
 #[derive(Debug)]
@@ -97,6 +102,32 @@ fn read_transport_error(error: TransportError) -> SessionError {
     }
 }
 
+/// Addresses `request` (a full URL on the connected server, built outside [`ClientCore::prepare`]:
+/// terminals, remote browsers) like `prepare` does, stamping the routing key; `None` when the
+/// server does not route by host.
+pub(super) fn address_built_request(
+    state: &super::State,
+    request: &mut HttpRequest,
+) -> Option<Addressing> {
+    if !state.routes_by_host() {
+        return None;
+    }
+    let endpoint = state.connection.as_ref()?.endpoint();
+    let url = url::Url::parse(&request.url).ok()?;
+    let path = url
+        .path()
+        .strip_prefix(endpoint.mount())
+        .unwrap_or_else(|| url.path())
+        .to_owned();
+    let addressing = state.routing.address(&request.method, &path, &[], None);
+    if let (Some(host), true) = (&addressing.host, addressing.keyed) {
+        request
+            .headers
+            .push(HttpHeader::new(SLICE_KEY_HEADER, host.as_str()));
+    }
+    Some(addressing)
+}
+
 impl<T: HttpTransport> ClientCore<T> {
     /// Builds a request for `path` on the connected server.
     pub(crate) fn prepare(
@@ -154,7 +185,7 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    async fn send_routed(
+    pub(super) async fn send_routed(
         &self,
         request: HttpRequest,
         addressing: Option<Addressing>,
@@ -237,12 +268,34 @@ impl<T: HttpTransport> ClientCore<T> {
         }
     }
 
-    /// Reads the session's snapshot (served by any replica) to learn its routing host.
+    /// Learns a session's routing host from snapshots, which any replica serves: the session's,
+    /// then each ancestor's until one names a host (a sub-agent runs on its parent's runner), as
+    /// the web client does, reading at most [`MAX_HOST_CHAIN_READS`] snapshots.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     async fn learn_session_host(&self, session_id: &str) -> Option<String> {
+        let mut visited = BTreeSet::new();
+        let mut current = session_id.to_owned();
+        while visited.len() < MAX_HOST_CHAIN_READS && visited.insert(current.clone()) {
+            self.read_routing_snapshot(&current).await?;
+            let state = lock(&self.state);
+            if let Some(host) = state.routing.session_host(session_id) {
+                return Some(host.to_owned());
+            }
+            current = state.routing.parent(&current)?.to_owned();
+        }
+        None
+    }
+
+    /// Reads `session_id`'s snapshot and records its host and parent; `None` when it is
+    /// unreadable.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn read_routing_snapshot(&self, session_id: &str) -> Option<()> {
         let path = format!("/v1/sessions/{session_id}");
         let request = {
             let state = lock(&self.state);
@@ -261,9 +314,10 @@ impl<T: HttpTransport> ClientCore<T> {
             return None;
         }
         let decoded = decode_snapshot(&response.body).ok()?;
-        let mut state = lock(&self.state);
-        decoded.projection.record_routing(&mut state.routing);
-        state.routing.session_host(session_id).map(str::to_owned)
+        decoded
+            .projection
+            .record_routing(&mut lock(&self.state).routing);
+        Some(())
     }
 
     /// Sends a read and applies the read status policy. A result from an older connection is
