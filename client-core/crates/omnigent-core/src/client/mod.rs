@@ -24,6 +24,7 @@
     reason = "each operation applies its state changes under one guard so they land atomically"
 )]
 
+pub mod agent_info;
 pub mod browser;
 pub mod configure;
 pub mod create;
@@ -548,3 +549,7 @@ mod export_tests;
 #[cfg(test)]
 #[path = "recovery_tests.rs"]
 mod recovery_tests;
+
+#[cfg(test)]
+#[path = "agent_info_tests.rs"]
+mod agent_info_tests;

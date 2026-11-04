@@ -105,6 +105,17 @@ pub struct Activity {
     pub recovery: Option<FailureRecovery>,
 }
 
+/// The header's Agent info.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct AgentInfo {
+    /// The agent's name.
+    pub name: String,
+    /// Its MCP servers, by name.
+    pub tools: Vec<String>,
+    /// The policies the session runs under, by name.
+    pub policies: Vec<String>,
+}
+
 /// What Retry does for a failed turn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum FailureRecovery {
@@ -604,6 +615,29 @@ impl ClientCore {
             .export_transcript(&session_id)
             .await
             .map_err(crate::errors::CoreError::from)
+    }
+
+    /// The Agent info of `session_id`, whose agent is `agent_id`: its MCP servers and the
+    /// policies the session runs under.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::errors::CoreError::Session`]: the read errors and `MalformedResponse`.
+    pub async fn agent_info(
+        &self,
+        session_id: String,
+        agent_id: String,
+    ) -> Result<AgentInfo, crate::errors::CoreError> {
+        let info = self
+            .sessions()
+            .agent_info(&session_id, &agent_id)
+            .await
+            .map_err(crate::errors::CoreError::from)?;
+        Ok(AgentInfo {
+            name: info.name,
+            tools: info.tools,
+            policies: info.policies,
+        })
     }
 
     /// Recovers `session_id`'s failed turn as `recovery` says (the error card's Retry). Returns
