@@ -48,6 +48,12 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   public var worktrees: [NewSessionWorktreeOption]
   /// The worktree choice.
   public var worktree: NewSessionWorktreeChoice
+  /// The selected agent is not ready on the host: `"<agent> isn't ready on <host>."`.
+  public var harnessNotice: String?
+  /// The Set Up button's agent name.
+  public var setUpName: String?
+  /// Plan mode is armed for the launch.
+  public var isPlanMode: Bool
 
   /// Creates options.
   /// - Parameters:
@@ -58,10 +64,14 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   ///   - offersWorktrees: Git repository.
   ///   - worktrees: Existing worktrees.
   ///   - worktree: Worktree choice.
+  ///   - harnessNotice: The not-ready notice.
+  ///   - setUpName: The Set Up button's agent name.
+  ///   - isPlanMode: Plan mode is armed.
   public init(
     folder: String? = nil, recentFolders: [String] = [], isSandbox: Bool = false,
     repositories: String = "", offersWorktrees: Bool = false,
-    worktrees: [NewSessionWorktreeOption] = [], worktree: NewSessionWorktreeChoice = .none
+    worktrees: [NewSessionWorktreeOption] = [], worktree: NewSessionWorktreeChoice = .none,
+    harnessNotice: String? = nil, setUpName: String? = nil, isPlanMode: Bool = false
   ) {
     self.folder = folder
     self.recentFolders = recentFolders
@@ -70,6 +80,9 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
     self.offersWorktrees = offersWorktrees
     self.worktrees = worktrees
     self.worktree = worktree
+    self.harnessNotice = harnessNotice
+    self.setUpName = setUpName
+    self.isPlanMode = isPlanMode
   }
 
   /// The worktree chip's title.
@@ -100,6 +113,8 @@ public struct NewSessionOptionActions {
   public var isValidBranch: (@MainActor (String) -> Bool)?
   /// Edit the sandbox repositories.
   public var setRepositories: (@MainActor (String) -> Void)?
+  /// Open the harness setup sheet from the not-ready notice.
+  public var setUpHarness: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:
@@ -108,18 +123,21 @@ public struct NewSessionOptionActions {
   ///   - selectWorktree: Choose a worktree.
   ///   - isValidBranch: Branch validation.
   ///   - setRepositories: Sandbox repositories.
+  ///   - setUpHarness: Open the harness setup sheet.
   public init(
     selectFolder: (@MainActor (String) -> Void)? = nil,
     browse: (@MainActor (String?) async -> Result<FolderListing, FolderBrowseError>)? = nil,
     selectWorktree: (@MainActor (NewSessionWorktreeChoice) -> Void)? = nil,
     isValidBranch: (@MainActor (String) -> Bool)? = nil,
-    setRepositories: (@MainActor (String) -> Void)? = nil
+    setRepositories: (@MainActor (String) -> Void)? = nil,
+    setUpHarness: (@MainActor () -> Void)? = nil
   ) {
     self.selectFolder = selectFolder
     self.browse = browse
     self.selectWorktree = selectWorktree
     self.isValidBranch = isValidBranch
     self.setRepositories = setRepositories
+    self.setUpHarness = setUpHarness
   }
 }
 
@@ -134,16 +152,25 @@ struct NewSessionOptionsBar: View {
   @State private var base = ""
 
   var body: some View {
-    HStack(spacing: Theme.Spacing.small) {
-      if options.isSandbox {
-        repositoriesField
-      } else {
-        folderMenu
-        if options.offersWorktrees, actions.selectWorktree != nil {
-          worktreeMenu
-        }
+    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      if let notice = options.harnessNotice {
+        harnessNoticeRow(notice)
       }
-      Spacer(minLength: 0)
+      HStack(spacing: Theme.Spacing.small) {
+        if options.isSandbox {
+          repositoriesField
+        } else {
+          folderMenu
+          if options.offersWorktrees, actions.selectWorktree != nil {
+            worktreeMenu
+          }
+        }
+        if options.isPlanMode {
+          Label("Plan mode", systemImage: "doc.text")
+            .accessibilityIdentifier("new-session-plan-mode")
+        }
+        Spacer(minLength: 0)
+      }
     }
     .font(.callout)
     .menuStyle(.button)
@@ -161,6 +188,22 @@ struct NewSessionOptionsBar: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("new-session-options")
+  }
+
+  /// The web's amber "not ready" line with its Set Up button.
+  private func harnessNoticeRow(_ notice: String) -> some View {
+    HStack(spacing: Theme.Spacing.small) {
+      Label(notice, systemImage: "exclamationmark.triangle.fill")
+        .foregroundStyle(Theme.warning)
+      if let setUp = actions.setUpHarness {
+        Button("Set Up \(options.setUpName ?? "Agent")\u{2026}", action: setUp)
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .accessibilityIdentifier("new-session-harness-setup")
+      }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("new-session-harness-notice")
   }
 
   private var folderMenu: some View {

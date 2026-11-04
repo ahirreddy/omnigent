@@ -153,13 +153,13 @@ public struct ShareSheet: View {
 }
 
 /// The Fork dialog: "Clone session", "Fork from this response" or "Continue in another
-/// directory", with the agent and directory. The buttons repeat the title's verb: Clone and
-/// Clone & start, Fork and Fork & start, or Continue.
+/// directory", with the agent, host (or a new sandbox), directory, model, effort and
+/// permissions, and under Advanced the title and a worktree branch. The buttons repeat the
+/// title's verb: Clone and Clone & start, Fork and Fork & start, or Continue.
 public struct ForkSheet: View {
   private let state: ForkViewState
   private let actions: ForkActions
-  @State private var agentID: String
-  @State private var directory: String
+  @State private var choices: ForkChoices
 
   /// Creates the dialog.
   /// - Parameters:
@@ -168,21 +168,25 @@ public struct ForkSheet: View {
   public init(state: ForkViewState, actions: ForkActions) {
     self.state = state
     self.actions = actions
-    _agentID = State(initialValue: state.agentID)
-    _directory = State(initialValue: state.directory)
+    _choices = State(
+      initialValue: ForkChoices(
+        agentID: state.agentID, directory: state.directory, start: false,
+        hostID: state.options.hosts.first?.id))
   }
 
   /// The dialog.
   public var body: some View {
     NavigationStack {
       Form {
-        Picker("Agent", selection: $agentID) {
+        Picker("Agent", selection: $choices.agentID) {
           // Menu pickers on macOS show text labels only; the harness reads from the name.
           ForEach(state.agents) { agent in
             Text(agent.name).tag(agent.id)
           }
         }
         .accessibilityIdentifier("fork-agent")
+        ForkOptionsSections(
+          options: state.options, startsOnHost: startsInDirectory, choices: $choices)
         // The directory is where "Clone & start" runs, so it shows only when that can.
         if startsInDirectory {
           directoryField
@@ -192,7 +196,8 @@ public struct ForkSheet: View {
             .foregroundStyle(Theme.failure)
             .accessibilityIdentifier("fork-error")
         }
-        if let reason = state.startUnavailableReason, state.kind != .anotherDirectory {
+        if let reason = startUnavailableReason, state.kind != .anotherDirectory, !choices.isSandbox
+        {
           Text("\(state.verb) copies the conversation without starting it. \(reason)")
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -212,20 +217,20 @@ public struct ForkSheet: View {
             ProgressView().controlSize(.small)
           }
           if case .anotherDirectory = state.kind {
-            Button("Continue") { actions.fork(agentID, directory, true) }
+            Button("Continue") { fork(start: true) }
               .primaryActionStyle()
               .disabled(state.isForking)
               .accessibilityIdentifier("fork-continue")
           } else if !startsInDirectory {
-            Button(state.verb) { actions.fork(agentID, directory, false) }
+            Button(state.verb) { fork(start: choices.isSandbox) }
               .primaryActionStyle()
               .disabled(state.isForking)
               .accessibilityIdentifier("fork-clone")
           } else {
-            Button(state.verb) { actions.fork(agentID, directory, false) }
+            Button(state.verb) { fork(start: false) }
               .disabled(state.isForking)
               .accessibilityIdentifier("fork-clone")
-            Button("\(state.verb) & start") { actions.fork(agentID, directory, true) }
+            Button("\(state.verb) & start") { fork(start: true) }
               .primaryActionStyle()
               .disabled(state.isForking)
               .accessibilityIdentifier("fork-clone-start")
@@ -234,29 +239,55 @@ public struct ForkSheet: View {
       }
     }
     #if os(macOS)
-      .frame(width: 480, height: startsInDirectory ? 280 : 210)
+      .frame(width: 520)
+      .frame(minHeight: 240, idealHeight: startsInDirectory ? 460 : 340)
     #endif
+    .onChange(of: choices.agentID, initial: true) { reportSelection() }
+    .onChange(of: choices.hostID) { reportSelection() }
+    // The host list loads after the sheet opens: start on the source's host.
+    .onChange(of: state.options.hosts) { _, hosts in
+      if choices.hostID == nil, !choices.isSandbox { choices.hostID = hosts.first?.id }
+    }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("fork-sheet")
   }
 
-  /// Continue always runs in the directory; a fork can when its start is available.
+  private func fork(start: Bool) {
+    var chosen = choices
+    chosen.start = start
+    actions.forkWith(chosen)
+  }
+
+  private func reportSelection() {
+    actions.selectionChanged?(choices.agentID, choices.hostID)
+  }
+
+  /// Why the copy cannot start on the chosen host (or the source's, without a host list).
+  private var startUnavailableReason: String? {
+    guard !state.options.hosts.isEmpty else { return state.startUnavailableReason }
+    return state.options.hosts.first { $0.id == choices.hostID }?.unavailableReason
+      ?? (choices.hostID == nil ? state.startUnavailableReason : nil)
+  }
+
+  /// Continue always runs in the directory; a fork can when its start is available. A new
+  /// sandbox has no directory.
   private var startsInDirectory: Bool {
+    if choices.isSandbox { return false }
     if case .anotherDirectory = state.kind { return true }
-    return state.startUnavailableReason == nil
+    return startUnavailableReason == nil
   }
 
   private var directoryField: some View {
     LabeledContent("Directory") {
       HStack {
-        TextField("Directory", text: $directory)
+        TextField("Directory", text: $choices.directory)
           .labelsHidden()
           .font(Theme.codeFont)
           .accessibilityIdentifier("fork-directory")
         if !state.recentDirectories.isEmpty {
           Menu {
             ForEach(state.recentDirectories, id: \.self) { path in
-              Button(path) { directory = path }
+              Button(path) { choices.directory = path }
             }
           } label: {
             Label("Recent directories", systemImage: "clock")

@@ -42,6 +42,16 @@ struct ServerWindowRoot: View {
     .task { start() }
   }
 
+  /// "Use This Mac" in Connect a Host: hosts for the server where the edition runs the CLI.
+  private var useThisMachine: UseThisMachineAction? {
+    let server = desktop.localServer
+    guard server.capability.isAvailable else { return nil }
+    return UseThisMachineAction { url in
+      await server.startHost(serverURL: url)
+      return server.host.summary
+    }
+  }
+
   private func window(_ session: ServerSession) -> some View {
     let isReady = Self.isReady(session, boundTo: id.serverURL)
     let notifications = session.connection.notifications
@@ -53,6 +63,7 @@ struct ServerWindowRoot: View {
         moveToNewWindow: { tabs in moveToNewWindow(tabs) }, adopting: adopting),
       serverSwitching: serverSwitching(session)
     )
+    .environment(\.useThisMachine, useThisMachine)
     .navigationTitle(title(session))
     .sheet(isPresented: $showsCoreDebug) {
       CoreDebugView()

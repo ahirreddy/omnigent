@@ -1276,6 +1276,29 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
+    /// Uploads one staged file to a session just created with `create_session`, before its
+    /// live stream opens, for its first message. Never uploads a file twice.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`] (kind `Upload` or `Draft`).
+    pub async fn upload_first_attachment(
+        &self,
+        session_id: String,
+        item_id: u64,
+    ) -> Result<(), CoreError> {
+        let item = self.inner.draft_item(&session_id, item_id)?;
+        let bytes = core::auth::EntropySource::random_bytes(self.inner.entropy()?, 16)
+            .map_err(CoreError::from)?;
+        let boundary = format!("omnigent-{}", core::auth::pkce::base64url(&bytes));
+        self.inner
+            .sessions
+            .upload_first_attachment(&session_id, item, &boundary)
+            .await
+            .map(|_| ())
+            .map_err(CoreError::from)
+    }
+
     /// The user reviewed an uncertain send; sending is allowed again. Returns whether anything
     /// was blocked.
     ///

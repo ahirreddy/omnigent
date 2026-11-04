@@ -1,4 +1,4 @@
-import Foundation
+public import Foundation
 public import Observation
 public import OmnigentCoreFFI
 
@@ -36,6 +36,26 @@ public enum CreationPhase: Equatable, Sendable {
   case created(sessionID: String, firstMessageError: CoreError?)
 }
 
+/// A file staged on the new-session form, uploaded to the session once it exists.
+public struct PendingAttachment: Identifiable, Equatable, Sendable {
+  /// Stable within the form.
+  public let id: UUID
+  /// File name.
+  public let filename: String
+  /// Declared media type.
+  public let mediaType: String?
+  /// The bytes.
+  public let data: Data
+
+  /// Creates a staged file.
+  public init(filename: String, mediaType: String?, data: Data) {
+    id = UUID()
+    self.filename = filename
+    self.mediaType = mediaType
+    self.data = data
+  }
+}
+
 /// The new-session form: the catalog, the selected host's folders and models, validation by
 /// the core, and one creation at a time that is never repeated.
 @Observable
@@ -50,6 +70,8 @@ public final class CreationStore {
   public private(set) var worktrees: CreationLoad<[HostWorktree]> = .idle
   /// The request state.
   public private(set) var phase: CreationPhase = .editing
+  /// Files to send with the first message.
+  public private(set) var attachments: [PendingAttachment] = []
 
   private let core: ClientCore
   private var pendingFirstMessage: String?
@@ -154,8 +176,19 @@ public final class CreationStore {
       catalog: catalog, selection: selection, models: models.value ?? [])
   }
 
+  /// Stages a file for the first message.
+  public func stageAttachment(_ attachment: PendingAttachment) {
+    attachments.append(attachment)
+  }
+
+  /// Removes a staged file.
+  public func removeAttachment(_ id: UUID) {
+    attachments.removeAll { $0.id == id }
+  }
+
   /// Creates the session, then sends `firstMessage` to it when it is not blank. Creation is
-  /// never retried: an unclear outcome becomes ``CreationPhase/uncertain(_:)``.
+  /// never retried: an unclear outcome becomes ``CreationPhase/uncertain(_:)``. Staged files
+  /// are uploaded to the new session and sent with the first message.
   /// - Parameters:
   ///   - selection: Host, agent, workspace and model.
   ///   - title: The session name; may be empty.
@@ -165,7 +198,12 @@ public final class CreationStore {
     phase = .creating
     let text = firstMessage.trimmingCharacters(in: .whitespacesAndNewlines)
     do {
-      if text.isEmpty {
+      if !attachments.isEmpty {
+        let receipt = try await core.createSession(selection: selection, title: title)
+        pendingFirstMessage = firstMessage
+        phase = .created(sessionID: receipt.sessionId, firstMessageError: nil)
+        await sendWithAttachments(sessionID: receipt.sessionId, text: firstMessage)
+      } else if text.isEmpty {
         let receipt = try await core.createSession(selection: selection, title: title)
         pendingFirstMessage = nil
         phase = .created(sessionID: receipt.sessionId, firstMessageError: nil)
@@ -221,6 +259,24 @@ public final class CreationStore {
     } catch {
       let error = coreError(error)
       phase = error.isDeliveryUncertain ? .uncertain(error) : .failed(error)
+    }
+  }
+
+  /// Uploads the staged files to `sessionID`, then sends `text` with them. A failure leaves
+  /// the session created with the error to retry from the session.
+  private func sendWithAttachments(sessionID: String, text: String) async {
+    do {
+      for attachment in attachments {
+        let item = try core.addAttachment(
+          sessionId: sessionID, filename: attachment.filename, mediaType: attachment.mediaType,
+          data: attachment.data)
+        try await core.uploadFirstAttachment(sessionId: sessionID, itemId: item)
+      }
+      attachments = []
+      _ = try await core.sendFirstMessage(sessionId: sessionID, text: text)
+      pendingFirstMessage = nil
+    } catch {
+      phase = .created(sessionID: sessionID, firstMessageError: coreError(error))
     }
   }
 

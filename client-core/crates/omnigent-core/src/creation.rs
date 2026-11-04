@@ -296,6 +296,8 @@ pub struct CreationSelection {
     pub approval_mode: Option<String>,
     /// A git worktree to create or start in, or `None` to start in the workspace itself.
     pub git: Option<CreationGit>,
+    /// Start a Codex session in Plan mode (see [`CreationCatalog::starts_in_plan_mode`]).
+    pub plan_mode: bool,
 }
 
 /// The `git` block of a new external-host session.
@@ -390,6 +392,8 @@ pub struct CreationCapabilities {
     pub managed_sandboxes: bool,
     /// `sandbox_providers`: the configured sandbox providers, the default first.
     pub sandbox_providers: Vec<String>,
+    /// `features.codex_plan_at_launch`: a Codex session can start in Plan mode.
+    pub codex_plan_at_launch: bool,
 }
 
 impl CreationCapabilities {
@@ -418,9 +422,20 @@ impl CreationCapabilities {
             agent_install: opt_bool(object, "agent_install")?.unwrap_or(false),
             managed_sandboxes: opt_bool(object, "managed_sandboxes_enabled")?.unwrap_or(false),
             sandbox_providers,
+            codex_plan_at_launch: opt_object(object, "features")?
+                .and_then(|features| features.get("codex_plan_at_launch"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         })
     }
 }
+
+/// The native Codex harness, which can start in Plan mode.
+const CODEX_NATIVE: &str = "codex-native";
+
+/// The label that starts a Codex session in Plan mode (the web's
+/// `CODEX_NATIVE_COLLABORATION_MODE_LABEL_KEY`).
+const CODEX_COLLABORATION_MODE_LABEL: &str = "omnigent.codex_native.collaboration_mode";
 
 /// The hosts and agents a session can be created with.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -476,6 +491,17 @@ pub fn merge_user_agents(
 pub const MAX_TITLE_CHARS: usize = 120;
 
 impl CreationCatalog {
+    /// Whether a session of `agent_id` can start in Plan mode through
+    /// [`CreationSelection::plan_mode`]: a native Codex agent on a server that supports it.
+    /// (Claude Code starts in Plan mode through its `plan` approval mode instead.)
+    #[must_use]
+    pub fn starts_in_plan_mode(&self, agent_id: &str) -> bool {
+        self.capabilities.codex_plan_at_launch
+            && self
+                .agent(agent_id)
+                .is_some_and(|agent| agent.harness_id() == CODEX_NATIVE)
+    }
+
     /// The agent with `agent_id`.
     #[must_use]
     pub fn agent(&self, agent_id: &str) -> Option<&CreationAgent> {
@@ -633,6 +659,12 @@ pub(crate) fn creation_body(
         let mut labels = Map::new();
         labels.insert("omnigent.ui".into(), Value::String("terminal".into()));
         labels.insert("omnigent.wrapper".into(), Value::String(wrapper));
+        if selection.plan_mode && agent.harness_id() == CODEX_NATIVE {
+            labels.insert(
+                CODEX_COLLABORATION_MODE_LABEL.into(),
+                Value::String("plan".into()),
+            );
+        }
         body.insert("labels".into(), Value::Object(labels));
     }
     Value::Object(body)
@@ -773,6 +805,33 @@ mod tests {
             hidden,
             ..ModelChoice::default()
         }
+    }
+
+    #[test]
+    fn codex_starts_in_plan_mode_only_when_the_server_supports_it() {
+        let mut catalog = catalog();
+        assert!(!catalog.starts_in_plan_mode("ag_codex"));
+        catalog.capabilities = CreationCapabilities::from_value(&serde_json::json!({
+            "features": {"codex_plan_at_launch": true}
+        }))
+        .unwrap();
+        assert!(catalog.starts_in_plan_mode("ag_codex"));
+        let planned = CreationSelection {
+            plan_mode: true,
+            ..selection()
+        };
+        let codex = agent("ag_codex", Some("codex-native"));
+        let body = creation_body(&planned, "", &codex);
+        assert_eq!(
+            body["labels"][CODEX_COLLABORATION_MODE_LABEL],
+            Value::String("plan".into())
+        );
+        let claude = agent("ag_claude", Some("claude-native"));
+        assert!(
+            creation_body(&planned, "", &claude)["labels"]
+                .get(CODEX_COLLABORATION_MODE_LABEL)
+                .is_none()
+        );
     }
 
     #[test]

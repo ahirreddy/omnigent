@@ -117,6 +117,12 @@ pub enum SessionError {
     /// The session is archived.
     #[error("Restore this session before sending a message.")]
     Archived,
+    /// A field the user entered cannot be sent. Nothing was sent.
+    #[error("{reason}")]
+    InvalidInput {
+        /// What to fix.
+        reason: String,
+    },
     /// A title that is blank or longer than 120 characters.
     #[error("Use a session name between 1 and 120 characters.")]
     InvalidTitle,

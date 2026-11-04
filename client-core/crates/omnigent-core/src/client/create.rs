@@ -632,6 +632,27 @@ impl<T: HttpTransport> ClientCore<T> {
         result
     }
 
+    /// Sends the first message of a session this client just created, with the attachments
+    /// staged and uploaded to it, without waiting for its live stream (as
+    /// [`Self::create_session_and_send`] does). Never retried.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::send_message`] without `StreamNotReady`.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn send_first_message(
+        &self,
+        session_id: &str,
+        text: &str,
+    ) -> Result<MessageSent, SessionError> {
+        let result = self.send(session_id, text, false).await;
+        self.dispatch();
+        result
+    }
+
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"

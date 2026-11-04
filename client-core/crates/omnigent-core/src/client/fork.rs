@@ -50,12 +50,23 @@ const FAMILY_HARNESSES: [&str; 6] = [
 ];
 
 /// Where to start a fork: a directory on a host.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ForkStart {
     /// The host.
     pub host_id: String,
     /// Absolute directory on the host.
     pub workspace: String,
+    /// A new git worktree branch to start in; `None` starts in the directory itself.
+    pub branch: Option<String>,
+}
+
+/// A fork onto a new sandbox the server provisions (`host_type: "managed"`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ForkSandbox {
+    /// The sandbox provider; `None` takes the server's default.
+    pub provider: Option<String>,
+    /// `<url>[#<branch>]` repositories to clone; `None` inherits the source's.
+    pub workspaces: Option<Vec<String>>,
 }
 
 /// What to fork.
@@ -71,6 +82,15 @@ pub struct ForkRequest {
     pub title: Option<String>,
     /// Start the fork on a host; `None` leaves it unbound.
     pub start: Option<ForkStart>,
+    /// Fork onto a new sandbox instead of a host; never with `start`.
+    pub sandbox: Option<ForkSandbox>,
+    /// The fork's model (`model_override`); `None` keeps the source's.
+    pub model: Option<String>,
+    /// The fork's reasoning effort; `None` keeps the source's.
+    pub reasoning_effort: Option<String>,
+    /// The launch flags for an approval mode (from `launch_approval_args`); `None` keeps the
+    /// harness default.
+    pub terminal_launch_args: Option<Vec<String>>,
 }
 
 /// How starting the fork went.
@@ -96,6 +116,17 @@ pub struct ForkedSession {
     pub launch: RunnerLaunch,
 }
 
+/// A host the fork sheet offers to start the copy on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForkHost {
+    /// Host id.
+    pub host_id: String,
+    /// Display name.
+    pub name: String,
+    /// Why the copy cannot start there, or `None` when it can.
+    pub unavailable_reason: Option<String>,
+}
+
 /// The fork sheet's choices for one source session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForkPlan {
@@ -109,6 +140,10 @@ pub struct ForkPlan {
     pub host_id: Option<String>,
     /// Why "Clone & start" is unavailable, or `None` when it is available.
     pub start_unavailable_reason: Option<String>,
+    /// The hosts the copy can start on (not managed sandboxes), the source's first.
+    pub hosts: Vec<ForkHost>,
+    /// The server can fork onto a new managed sandbox.
+    pub offers_sandbox: bool,
 }
 
 /// Whether forking into `harness` keeps the source's history. Unknown harnesses do not.
@@ -189,7 +224,24 @@ pub fn fork_plan(source: &SessionSummary, catalog: Option<&CreationCatalog>) -> 
     let workspace = source.workspace.trim();
     let host_id = configuration.and_then(|configuration| configuration.host_id.clone());
     let start_unavailable_reason = start_unavailable_reason(host_id.as_deref(), catalog);
+    let mut hosts: Vec<ForkHost> = catalog
+        .map(|catalog| {
+            catalog
+                .hosts
+                .iter()
+                .filter(|host| host.sandbox_provider.is_none())
+                .map(|host| ForkHost {
+                    host_id: host.host_id.clone(),
+                    name: host.name.clone(),
+                    unavailable_reason: host_unavailable_reason(Some(host)),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    hosts.sort_by_key(|host| Some(&host.host_id) != host_id.as_ref());
     ForkPlan {
+        hosts,
+        offers_sandbox: catalog.is_some_and(|catalog| catalog.capabilities.managed_sandboxes),
         agents,
         agent_id: source_agent_id,
         directory: if workspace.starts_with('/') {
@@ -249,6 +301,30 @@ fn fork_body(request: &ForkRequest) -> Value {
             Value::String(response_id.clone()),
         );
     }
+    if let Some(model) = &request.model {
+        body.insert("model_override".into(), Value::String(model.clone()));
+    }
+    if let Some(effort) = &request.reasoning_effort {
+        body.insert("reasoning_effort".into(), Value::String(effort.clone()));
+    }
+    if let Some(args) = &request.terminal_launch_args {
+        body.insert(
+            "terminal_launch_args".into(),
+            Value::Array(args.iter().cloned().map(Value::String).collect()),
+        );
+    }
+    if let Some(sandbox) = &request.sandbox {
+        body.insert("host_type".into(), Value::String("managed".into()));
+        if let Some(provider) = &sandbox.provider {
+            body.insert("sandbox_provider".into(), Value::String(provider.clone()));
+        }
+        if let Some(workspaces) = &sandbox.workspaces {
+            body.insert(
+                "workspaces".into(),
+                Value::Array(workspaces.iter().cloned().map(Value::String).collect()),
+            );
+        }
+    }
     Value::Object(body)
 }
 
@@ -267,8 +343,24 @@ fn validate_request(request: &ForkRequest) -> Result<(), SessionError> {
     {
         return Err(SessionError::InvalidTitle);
     }
+    if request.start.is_some() && request.sandbox.is_some() {
+        return Err(CreationError::Unavailable(
+            "Start the copy on a host or a new sandbox, not both.".to_owned(),
+        )
+        .into());
+    }
     if let Some(start) = &request.start {
         validate_identifier(&start.host_id)?;
+        if start
+            .branch
+            .as_deref()
+            .is_some_and(|branch| !crate::creation::is_branch_name(branch))
+        {
+            return Err(CreationError::Unavailable(
+                "Use a valid git branch name for the worktree.".to_owned(),
+            )
+            .into());
+        }
         let path = start.workspace.trim();
         if !path.starts_with('/') || path.contains('\0') {
             return Err(CreationError::Unavailable(
@@ -382,6 +474,11 @@ impl<T: HttpTransport> ClientCore<T> {
             "workspace".into(),
             Value::String(start.workspace.trim().to_owned()),
         );
+        if let Some(branch) = start.branch.as_deref().map(str::trim) {
+            let mut git = Map::new();
+            git.insert("branch_name".into(), Value::String(branch.to_owned()));
+            body.insert("git".into(), Value::Object(git));
+        }
         let path = format!("/v1/hosts/{}/runners", start.host_id);
         let acknowledgement = self.write_json("POST", &path, &Value::Object(body)).await;
         lock(&self.state).request_rehydration(session_id);

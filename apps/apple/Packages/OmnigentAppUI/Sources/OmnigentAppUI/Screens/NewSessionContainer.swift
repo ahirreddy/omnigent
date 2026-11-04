@@ -5,31 +5,42 @@ import OmnigentUIComponents
 import SwiftUI
 
 /// The web's new-session page over the core's ``CreationStore``: the composer in start mode with
-/// the host (or a new sandbox), the agent grouped as on the web, the model, effort and approval
-/// mode, and under it the folder, worktree or sandbox repositories. Start creates the session and
-/// sends the first message immediately; creation is never repeated, and an unclear outcome
-/// blocks until the user acknowledges it.
+/// the host (or a new sandbox, or Connect a Host), the agent grouped as on the web (with Create
+/// Custom Agent and Import Bundle), the model, effort, approval and Plan mode, attachments, and
+/// under it the folder, worktree or sandbox repositories and a Set Up notice for a harness that
+/// is not ready. Start creates the session and sends the first message immediately; creation is
+/// never repeated, and an unclear outcome blocks until the user acknowledges it.
 struct NewSessionContainer: View {
   let connection: ConnectionStore
   let open: @MainActor (String) -> Void
 
   @State private var draft = ""
-  @State private var selection = OmnigentCoreFFI.CreationSelection(
+  @State var selection = OmnigentCoreFFI.CreationSelection(
     hostId: "", agentId: "", workspace: "", model: nil)
   /// The folder the user chose; the workspace differs when starting in an existing worktree.
   @State private var folder = ""
   @State private var worktree = NewSessionWorktreeChoice.none
-  @State private var isSandbox = false
+  @State var isSandbox = false
   @State private var repositories = ""
   @State private var creation: CreationStore?
   @State private var coreMissing = false
+  @State var attachmentError: String?
+  @State private var setupTarget: HarnessSetupTarget?
+  @State private var harnessSetup: HarnessSetupStore?
+  @State private var customAgents: CustomAgentsStore?
+  @State private var isCreatingAgent = false
+  @State private var isImportingBundle = false
+  @State private var isConnectingHost = false
+  @Environment(\.useThisMachine) private var useThisMachine
+  @Environment(\.openURL) private var openURL
 
   var body: some View {
     Group {
       if let creation {
         NewSessionPage(
           draft: $draft, composer: composerState(creation), actions: actions(creation),
-          options: options(creation), optionActions: optionActions(creation)
+          importSessions: importSessions(openURL), options: options(creation),
+          optionActions: optionActions(creation)
         )
         .onChange(of: creation.phase) { _, phase in
           if case .created(let sessionID, nil) = phase {
@@ -38,6 +49,33 @@ struct NewSessionContainer: View {
             open(sessionID)
           }
         }
+        .sheet(item: $setupTarget, onDismiss: { Task { await reloadCatalog(creation) } }) {
+          target in
+          if let harnessSetup {
+            HarnessSetupContainer(store: harnessSetup, target: target) { setupTarget = nil }
+          }
+        }
+        .sheet(isPresented: $isCreatingAgent) {
+          if let customAgents {
+            CreateAgentContainer(
+              store: customAgents, allowsImport: true,
+              created: { agent in
+                isCreatingAgent = false
+                Task { await agentInstalled(agent, creation) }
+              },
+              cancel: { isCreatingAgent = false })
+          }
+        }
+        .sheet(
+          isPresented: $isConnectingHost, onDismiss: { Task { await reloadCatalog(creation) } }
+        ) {
+          ConnectHostSheet(
+            serverURL: serverURLText, useThisMachine: useThisMachineHere,
+            close: { isConnectingHost = false })
+        }
+        .agentBundleImporter(
+          isPresented: $isImportingBundle, store: customAgents,
+          imported: { agent in Task { await agentInstalled(agent, creation) } })
       } else if coreMissing {
         ContentUnavailableView(
           "Cannot Start Sessions", systemImage: "exclamationmark.triangle",
@@ -53,6 +91,7 @@ struct NewSessionContainer: View {
         return
       }
       self.creation = creation
+      customAgents = connection.customAgents()
       await load(creation)
     }
   }
@@ -80,7 +119,27 @@ struct NewSessionContainer: View {
     Task { await creation.selectionChanged(selection) }
   }
 
-  private var selectedAgent: OmnigentCoreFFI.CreationAgent? {
+  /// Reloads hosts and agents after a setup, an install or a new host, keeping the selection.
+  private func reloadCatalog(_ creation: CreationStore) async {
+    await creation.loadCatalog()
+    await creation.selectionChanged(selection)
+  }
+
+  /// A new or imported agent: reload the catalog and select it.
+  private func agentInstalled(_ agent: OmnigentCoreFFI.ManagedAgent, _ creation: CreationStore)
+    async
+  {
+    await creation.loadCatalog()
+    change(creation) {
+      $0.agentId = agent.id
+      $0.model = nil
+      $0.reasoningEffort = nil
+      $0.approvalMode = nil
+      $0.planMode = false
+    }
+  }
+
+  var selectedAgent: OmnigentCoreFFI.CreationAgent? {
     creation?.catalog.value?.agents.first { $0.id == selection.agentId }
   }
 
@@ -97,7 +156,8 @@ struct NewSessionContainer: View {
     configuration.agentGroups = agents?.groups ?? [:]
     return ComposerViewState(
       availability: availability(creation), delivery: delivery(creation.phase),
-      acceptsAttachments: false, configuration: configuration,
+      attachments: attachmentChips(creation), acceptsAttachments: !isSandbox,
+      configuration: configuration,
       placeholder: "Describe what to build\u{2026}",
       hosts: ComposerHosts(hosts: NewSessionAdapter.hosts(catalog), selectedID: hostID),
       approvalModes: isSandbox
@@ -147,7 +207,8 @@ struct NewSessionContainer: View {
   }
 
   private func delivery(_ phase: OmnigentStores.CreationPhase) -> DeliveryState {
-    switch phase {
+    if let attachmentError, phase == .editing { return .failed(message: attachmentError) }
+    return switch phase {
     case .editing: .idle
     case .creating: .sending
     case .failed(let error): .failed(message: error.message)
@@ -163,6 +224,10 @@ struct NewSessionContainer: View {
   private func actions(_ creation: CreationStore) -> ComposerActions {
     ComposerActions(
       send: { start(creation) },
+      addAttachments: { stage($0, in: creation) },
+      removeAttachment: { chip in
+        if let id = UUID(uuidString: chip.id) { creation.removeAttachment(id) }
+      },
       selectModel: { model in
         change(creation) {
           let current = ComposerConfiguration(
@@ -180,10 +245,12 @@ struct NewSessionContainer: View {
           $0.model = nil
           $0.reasoningEffort = nil
           $0.approvalMode = nil
+          $0.planMode = false
         }
       },
       acknowledgeUncertainDelivery: { creation.acknowledgeUncertain() },
       dismissDeliveryError: {
+        attachmentError = nil
         if case .created(let sessionID, .some) = creation.phase {
           // The session exists; open it so the user can send again there.
           creation.reset()
@@ -202,9 +269,27 @@ struct NewSessionContainer: View {
             selectFolder(creation, folder)
           }
         },
+        connectHost: { isConnectingHost = true },
         selectApprovalMode: { option in
           selection.approvalMode = NewSessionAdapter.approvalMode(option, agent: selectedAgent)
-        }))
+        },
+        togglePlan: planToggle(creation), isPlanOn: isPlanOn,
+        createAgent: agentAction(creation) { isCreatingAgent = true },
+        importAgentBundle: agentAction(creation) { isImportingBundle = true }))
+  }
+
+  /// `action` when agents can be installed here: the server reports `agent_install` and the
+  /// session starts on a host (a managed sandbox has no create path for an uploaded bundle).
+  private func agentAction(
+    _ creation: CreationStore, _ action: @escaping @MainActor () -> Void
+  ) -> (@MainActor () -> Void)? {
+    !isSandbox && creation.catalog.value?.agentInstall == true ? action : nil
+  }
+
+  /// "Use This Mac" for this server, where the edition can run hosts.
+  private var useThisMachineHere: (@MainActor () async -> String?)? {
+    guard let useThisMachine, let url = URL(string: serverURLText) else { return nil }
+    return { await useThisMachine(url) }
   }
 
   /// Creates the session on the chosen host or a new sandbox and sends the draft.
@@ -225,12 +310,14 @@ struct NewSessionContainer: View {
 
   private func options(_ creation: CreationStore) -> NewSessionOptions {
     let worktrees = NewSessionAdapter.worktrees(creation.worktrees.value ?? [])
+    let notice = harnessNotice(creation.catalog.value)
     return NewSessionOptions(
       folder: folder.isEmpty ? nil : folder,
       recentFolders: (creation.workspaces.value ?? []).map(\.path),
       isSandbox: isSandbox, repositories: repositories,
       offersWorktrees: !(creation.worktrees.value ?? []).isEmpty, worktrees: worktrees,
-      worktree: worktree)
+      worktree: worktree, harnessNotice: notice?.text, setUpName: notice?.name,
+      isPlanMode: isPlanOn)
   }
 
   private func optionActions(_ creation: CreationStore) -> NewSessionOptionActions {
@@ -247,7 +334,13 @@ struct NewSessionContainer: View {
         applyWorktree()
       },
       isValidBranch: { isValidBranchName(name: $0) },
-      setRepositories: { repositories = $0 })
+      setRepositories: { repositories = $0 },
+      setUpHarness: {
+        guard let harness = setupHarness else { return }
+        if harnessSetup == nil { harnessSetup = connection.harnessSetup() }
+        Task { await harnessSetup?.load() }
+        setupTarget = HarnessSetupTarget(harness: harness, hostID: selection.hostId)
+      })
   }
 
   /// A new folder starts in the folder itself and reloads its repository's worktrees.
