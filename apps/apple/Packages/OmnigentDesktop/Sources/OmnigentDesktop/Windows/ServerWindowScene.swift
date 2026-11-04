@@ -39,10 +39,7 @@ public struct ServerWindowScene<Content: View>: Scene {
   /// The window group.
   public var body: some Scene {
     WindowGroup(title, for: ServerWindowID.self) { id in
-      content(id)
-        .frame(
-          minWidth: ServerWindowMetrics.minimumSize.width,
-          minHeight: ServerWindowMetrics.minimumSize.height)
+      WindowMinimumSize(ServerWindowMetrics.minimumSize) { content(id) }
     } defaultValue: {
       ServerWindowID.newWindow(serverURL: defaultServerURL())
     }

@@ -61,8 +61,10 @@ large_futures = "deny"
 await_holding_lock = "deny"
 
 [profile.release]
-lto = "fat"
-codegen-units = 1
+# Thin LTO across 16 codegen units: nearly fat LTO's speed at a fraction of the link time.
+opt-level = 3
+lto = "thin"
+codegen-units = 16
 # Kept at unwind: UniFFI wraps every FFI call in catch_unwind and surfaces a Rust panic to Swift as
 # a thrown error; with panic = "abort" any panic would terminate the app instead.
 panic = "unwind"
