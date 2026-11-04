@@ -77,6 +77,8 @@ public final class ConversationStore {
   public let decisions: DecisionStore
   /// The composer.
   public let composer: ComposerStore
+  /// The Add (+) menu's side chat, plan mode and goal.
+  public let tools: SessionToolsStore
   /// Older history exists above ``rows``; ``loadOlderHistory()`` reads the next page.
   public private(set) var hasOlderHistory = false
   /// A page of older history is loading.
@@ -97,6 +99,7 @@ public final class ConversationStore {
     self.listStatus = listStatus
     decisions = DecisionStore(sessionID: sessionID, core: core, listStatus: listStatus)
     composer = ComposerStore(sessionID: sessionID, core: core)
+    tools = SessionToolsStore(sessionID: sessionID, core: core)
   }
 
   /// Rows that belong in the transcript.

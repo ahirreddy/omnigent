@@ -16,6 +16,8 @@ struct WorkspacePanelSlots {
   let tabRoutes: ConversationTabRoutes?
   let terminalNames: DeclaredTerminals
   let permissionLevel: Int64?
+  /// Starts a side chat; `nil` hides it.
+  var newSideChat: (@MainActor () -> Void)?
   /// Inserts a path reference into the composer.
   let mention: (@MainActor (String) -> Void)?
 
@@ -89,6 +91,16 @@ struct WorkspacePanelSlots {
   private var openNew: [InspectorMenuSection] {
     guard let tabRoutes else { return [] }
     var sections: [InspectorMenuSection] = []
+    if let newSideChat {
+      sections.append(
+        InspectorMenuSection(
+          id: "chat",
+          items: [
+            InspectorMenuItem(
+              id: "side-chat", title: "Side Chat", systemImage: "bubble.left.and.bubble.right",
+              action: newSideChat)
+          ]))
+    }
     if let terminals {
       var items: [InspectorMenuItem] = []
       if case .ready = terminals.terminals.harness {

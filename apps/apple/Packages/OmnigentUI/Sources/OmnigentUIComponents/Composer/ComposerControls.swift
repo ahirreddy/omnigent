@@ -153,6 +153,10 @@ struct ComposerTrayView: View {
         leadingItems.trayChip()
       }
       Spacer(minLength: 0)
+      if !tray.indicators.isEmpty {
+        ComposerIndicatorsView(indicators: tray.indicators, actions: actions.indicators)
+          .trayChip()
+      }
       if let fraction = tray.contextFraction {
         contextUsage(fraction).trayChip()
       }
@@ -215,9 +219,15 @@ struct ComposerTrayView: View {
           .accessibilityLabel("Branch, \(branch)")
       }
       if let pullRequest = tray.pullRequest {
-        Label(pullRequest, systemImage: "arrow.triangle.pull").foregroundStyle(.secondary)
-          .help("Pull request \(pullRequest)")
-          .accessibilityLabel("Pull request \(pullRequest)")
+        Button {
+          actions.indicators.openPullRequests?()
+        } label: {
+          Label(pullRequest, systemImage: "arrow.triangle.pull").foregroundStyle(.secondary)
+        }
+        .disabled(actions.indicators.openPullRequests == nil)
+        .help("Pull requests: \(pullRequest)")
+        .accessibilityLabel("Pull requests, \(pullRequest)")
+        .accessibilityIdentifier("composer-pull-requests")
       }
     }
   }

@@ -50,6 +50,7 @@ pub mod inbox;
 pub mod pull_requests;
 pub mod remote_browser;
 pub mod server_admin;
+pub mod session_tools;
 pub mod sessions;
 pub mod share;
 pub mod sidebar;

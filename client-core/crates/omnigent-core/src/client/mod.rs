@@ -49,6 +49,7 @@ mod routing;
 pub mod server_admin;
 mod session_actions;
 pub mod session_search;
+pub mod session_tools;
 pub mod sessions;
 pub mod share;
 mod skills;

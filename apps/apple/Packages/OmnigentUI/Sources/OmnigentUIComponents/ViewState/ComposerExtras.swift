@@ -181,6 +181,8 @@ nonisolated public struct ComposerTray: Hashable, Sendable {
   public var pullRequest: String?
   /// Context window used, 0 to 1.
   public var contextFraction: Double?
+  /// Background tasks, sub-agents and the goal.
+  public var indicators = ComposerTaskIndicators()
 
   /// Creates a tray.
   /// - Parameters:
@@ -324,6 +326,8 @@ public struct ComposerExtraActions {
   public var reconnect: (@MainActor () -> Void)?
   /// Dismiss the output of a local command (`/help`, usage).
   public var dismissCommandNotice: (@MainActor () -> Void)?
+  /// The tray's pull request, sub-agent and goal indicators.
+  public var indicators = ComposerIndicatorActions()
 
   /// Creates actions.
   /// - Parameters:
