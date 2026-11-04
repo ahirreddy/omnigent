@@ -9,7 +9,9 @@ public final class ComposerStore {
   /// The draft text. Changes are recorded in the core, so a late send result keeps newer text.
   public var text = "" {
     didSet {
-      guard text != oldValue, !applyingCoreText else { return }
+      guard text != oldValue else { return }
+      mentionTextChanged()
+      guard !applyingCoreText else { return }
       do {
         try core.updateComposer(sessionId: sessionID, text: text)
       } catch {
@@ -47,6 +49,14 @@ public final class ComposerStore {
   /// The core's verdicts on the configuration, computed when it changes rather than on every
   /// read, so views that redraw while a reply streams make no core calls.
   var rules = ConfigurationRules()
+  /// Workspace paths matching the draft's `@` mention, for the `@` menu.
+  public internal(set) var mentionCandidates: [String] = []
+  /// Why the `@` menu has no results (the workspace search failed); `nil` otherwise.
+  public internal(set) var mentionProblem: String?
+  /// Finds workspace paths for an `@` query; `nil` turns mentions off.
+  public var searchMentions: (@MainActor (String) async throws -> [String])?
+  var mentionQuery: String?
+  var mentionTask: Task<Void, Never>?
   /// A configuration change is in flight.
   public internal(set) var isApplyingConfiguration = false
   /// The last configuration failure.

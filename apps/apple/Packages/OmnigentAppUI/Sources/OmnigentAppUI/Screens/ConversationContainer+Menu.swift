@@ -2,6 +2,7 @@ import Foundation
 import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
+import OmnigentWorkspaceUI
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -31,6 +32,21 @@ struct TranscriptExport: FileDocument {
 }
 
 extension ConversationContainer {
+  /// The `@` menu's search over the session's workspace: files whose path contains the query.
+  static func mentionSearch(_ workspace: WorkspaceBrowserModel)
+    -> @MainActor (String) async throws -> [String]
+  {
+    let source = workspace.source
+    return { query in
+      do throws(WorkspaceFailure) {
+        let result = try await source.searchPaths(query)
+        return result.entries.filter { $0.kind == .file }.prefix(20).map(\.path)
+      } catch {
+        throw CoreError.InvalidState(message: error.message)
+      }
+    }
+  }
+
   /// The web's link to one message (`?message=<id>`): a user message by its item id, an answer
   /// by its turn. Live previews have no stable id yet.
   static func messageURL(_ row: OmnigentUIComponents.Row, in session: URL?) -> URL? {

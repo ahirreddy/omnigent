@@ -46,6 +46,23 @@ struct SlashCommandStoreTests {
     #expect(composer.commandNotice == nil)
   }
 
+  @Test(.timeLimit(.minutes(1))) func mentionsSearchTheTypedQueryAndShowFailures() async throws {
+    let (composer, close) = try await composer()
+    defer { close() }
+    composer.searchMentions = { query in
+      if query == "bad" { throw CoreError.InvalidState(message: "offline") }
+      return ["src/\(query).swift"]
+    }
+    composer.text = "see @ma"
+    try await waitUntil("results") { composer.mentionCandidates == ["src/ma.swift"] }
+    composer.text = "see @bad"
+    try await waitUntil("the failure") { composer.mentionProblem != nil }
+    #expect(composer.mentionCandidates.isEmpty)
+    #expect(composer.mentionProblem?.contains("offline") == true)
+    composer.text = "see "
+    #expect(composer.mentionProblem == nil)
+  }
+
   @Test(.timeLimit(.minutes(1))) func newIsLeftToTheCallerAndClearsTheDraft() async throws {
     let (composer, close) = try await composer()
     defer { close() }
@@ -55,5 +72,17 @@ struct SlashCommandStoreTests {
     composer.text = "/new now"
     #expect(await composer.send() == .handled)
     #expect(composer.commandNotice == "/new does not accept arguments")
+  }
+}
+
+@Suite("Mention queries")
+struct MentionQueryTests {
+  @Test("Only an @ at the start or after a space, with nothing typed past a space")
+  func queries() {
+    #expect(ComposerStore.mentionQuery(in: "@")?.isEmpty == true)
+    #expect(ComposerStore.mentionQuery(in: "look at @src/Ma") == "src/Ma")
+    #expect(ComposerStore.mentionQuery(in: "mail me@example") == nil)
+    #expect(ComposerStore.mentionQuery(in: "@src/main.swift and") == nil)
+    #expect(ComposerStore.mentionQuery(in: "no mention") == nil)
   }
 }

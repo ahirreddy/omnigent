@@ -29,12 +29,13 @@ enum ComposerAdapter {
         ? settings.map(configuration) : configuration(composer),
       approvalModes: composer.approvalModeMenu.map(approvalModes),
       slashCommands: composer.slashCommands.map(slashCommand),
+      mentionCandidates: composer.mentionCandidates,
       queue: composer.queue.items.map(queued),
       submitWithCommandReturn: submitWithCommandReturn,
       context: context(store, server: server), canSteer: composer.supportsSteering)
     state.isReadOnly = isReadOnly(store)
     state.commandNotice = composer.commandNotice
-    state.slashCommandsNote = composer.skillsProblem
+    state.slashCommandsNote = composer.mentionProblem ?? composer.skillsProblem
     state.connection = connection(store)
     if let fraction = contextFraction(store.sections) {
       state.tray = ComposerTray(contextFraction: fraction)

@@ -86,6 +86,7 @@ struct ConversationContainer: View {
     )
     .task {
       if shareStore == nil { shareStore = makeShareStore?() }
+      composer.searchMentions = workspace.map(Self.mentionSearch)
       await composer.loadConfiguration()
       if let agentID = composer.configuration?.agentId {
         await conversation.loadAgentInfo(agentID: agentID)
