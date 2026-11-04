@@ -8,19 +8,40 @@ public struct LocalServerLogsWindow: Scene {
   public static let id = "omnigent.local-server.logs"
 
   private let manager: LocalServerManager
+  private let router: DesktopRouter?
 
   /// Creates the scene.
-  /// - Parameter manager: Whose logs to show.
-  public init(manager: LocalServerManager) {
+  /// - Parameters:
+  ///   - manager: Whose logs to show.
+  ///   - router: Gets this window's opener, so links still open while it is the only window.
+  public init(manager: LocalServerManager, router: DesktopRouter? = nil) {
     self.manager = manager
+    self.router = router
   }
 
-  /// The window.
+  /// The window. It is not restored at launch: alone it would stand in for the server window, and
+  /// links would wait for a window that never opens.
   public var body: some Scene {
     Window("Server Logs", id: Self.id) {
       LocalServerLogsView(manager: manager)
+        .modifier(RouterWindowOpener(router: router))
     }
     .defaultSize(width: 860, height: 520)
+    .restorationBehavior(.disabled)
+  }
+}
+
+/// Gives the router this scene's `openWindow`, so queued links open server windows from it.
+struct RouterWindowOpener: ViewModifier {
+  let router: DesktopRouter?
+  @Environment(\.openWindow) private var openWindow
+
+  func body(content: Content) -> some View {
+    content.onAppear {
+      guard let router else { return }
+      let openWindow = openWindow
+      router.attachWindowOpener { openWindow(value: $0) }
+    }
   }
 }
 

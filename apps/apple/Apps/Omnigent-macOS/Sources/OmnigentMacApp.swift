@@ -51,7 +51,7 @@ struct OmnigentMacApp: App {
     // Hosting unit tests, the app opens no window of its own (see `isTestHost`).
     .defaultLaunchBehavior(OmnigentMacAppDelegate.isTestHost ? .suppressed : .automatic)
 
-    LocalServerLogsWindow(manager: desktop.localServer)
+    LocalServerLogsWindow(manager: desktop.localServer, router: desktop.router)
 
     OmnigentMenuBarExtra(desktop: desktop, sessions: services.menuBar)
 
