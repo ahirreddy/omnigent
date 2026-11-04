@@ -5,6 +5,7 @@ public import SwiftUI
 public struct TerminalSettingsView: View {
   @State private var appearance: TerminalAppearance
   @State private var error: String?
+  @AppStorage(TerminalClipboardPolicy.key) private var clipboard = TerminalClipboardPolicy.ask
 
   /// Settings for the shared runtime's current appearance.
   public init() {
@@ -37,6 +38,18 @@ public struct TerminalSettingsView: View {
           Toggle("Use Option as Alt", isOn: $appearance.optionAsAlt)
         #endif
         Toggle("Blinking cursor", isOn: $appearance.cursorBlink)
+      }
+      Section {
+        Picker("Copying from terminals", selection: $clipboard) {
+          ForEach(TerminalClipboardPolicy.allCases) { Text($0.title).tag($0) }
+        }
+        .accessibilityIdentifier("settings.terminal-clipboard")
+      } header: {
+        Text("Clipboard")
+      } footer: {
+        Text(
+          "Allowing copying also lets terminal programs silently replace your clipboard with text or commands you didn\u{2019}t intend to paste."
+        )
       }
       if let error {
         Section {
