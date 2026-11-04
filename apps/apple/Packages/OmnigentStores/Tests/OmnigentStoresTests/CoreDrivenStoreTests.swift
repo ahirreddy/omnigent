@@ -247,7 +247,7 @@ struct RowOpTests {
   private func row(_ id: String, _ text: String = "") -> Row {
     Row(
       id: id, role: .assistant, text: text, isStreaming: false, activity: nil, attachments: [],
-      callId: nil, responseId: nil, interrupted: false, author: nil, agent: nil,
+      callId: nil, responseId: nil, interrupted: false, author: nil, agent: nil, createdAt: nil,
       isEphemeral: false, isActivityOnly: false)
   }
 

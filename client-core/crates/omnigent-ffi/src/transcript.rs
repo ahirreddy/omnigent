@@ -126,6 +126,8 @@ pub struct Row {
     pub author: Option<String>,
     /// The agent that wrote it.
     pub agent: Option<String>,
+    /// When the server wrote the item, in Unix seconds; live previews have none.
+    pub created_at: Option<i64>,
     /// A live preview or event row that a persisted item may replace.
     pub is_ephemeral: bool,
     /// Routine bookkeeping that belongs in an activity drawer, not the transcript.
@@ -379,6 +381,7 @@ impl From<core::Row> for Row {
             interrupted: row.interrupted,
             author: row.author,
             agent: row.agent,
+            created_at: row.created_at,
         }
     }
 }

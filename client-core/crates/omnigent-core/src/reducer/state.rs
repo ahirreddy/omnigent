@@ -256,6 +256,8 @@ pub struct Row {
     pub author: Option<String>,
     /// The agent that wrote it.
     pub agent: Option<String>,
+    /// When the server wrote the item, in Unix seconds; live previews have none.
+    pub created_at: Option<i64>,
 }
 
 impl Row {
@@ -274,6 +276,7 @@ impl Row {
             interrupted: false,
             author: None,
             agent: None,
+            created_at: None,
         }
     }
 

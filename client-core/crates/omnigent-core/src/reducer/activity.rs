@@ -121,6 +121,7 @@ impl Projector<'_> {
         row.response_id.clone_from(&self.item.response_id);
         row.author.clone_from(&self.item.created_by);
         row.agent = self.agent();
+        row.created_at = self.item.created_at;
         row
     }
 

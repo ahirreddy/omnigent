@@ -294,3 +294,22 @@ fn private_blocks_never_reach_a_row_and_unknown_items_are_safe_placeholders() {
     assert!(!display_text(&row).contains("PRIVATE_"));
     assert_eq!(capitalized("in progress"), "In Progress");
 }
+
+#[test]
+fn persisted_rows_carry_the_item_time_for_message_timestamps() {
+    let message = decode(
+        "message",
+        json!({"role":"user","content":[{"type":"input_text","text":"hi"}],"created_at":1_700_000_123}),
+    );
+    let tool = decode(
+        "function_call",
+        json!({"name":"lookup","arguments":"{}","call_id":"call","created_at":1_700_000_200}),
+    );
+    let undated = decode(
+        "message",
+        json!({"role":"assistant","content":[{"type":"output_text","text":"reply"}]}),
+    );
+    assert_eq!(message.created_at, Some(1_700_000_123));
+    assert_eq!(tool.created_at, Some(1_700_000_200));
+    assert_eq!(undated.created_at, None);
+}
