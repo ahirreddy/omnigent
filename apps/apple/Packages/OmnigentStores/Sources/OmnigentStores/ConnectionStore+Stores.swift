@@ -66,6 +66,12 @@ extension ConnectionStore {
     core.map { ShareStore(core: $0, sessionID: sessionID) }
   }
 
+  /// A store for this server's settings in the Settings window.
+  /// - Returns: The store, or `nil` when the core did not start.
+  public func serverSettings() -> ServerSettingsStore? {
+    core.map { ServerSettingsStore(core: $0) }
+  }
+
   /// The workspace (files, search, changes, diffs) of `sessionID`, created on first use.
   /// - Parameters:
   ///   - sessionID: The session.
