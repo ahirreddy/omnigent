@@ -14,15 +14,15 @@ public import SwiftUI
 /// session's conversation, terminals and workspace stay open while a built tab shows it; the core
 /// is told which session is visible for notifications and the badge.
 public struct ConnectedServerView: View {
-  private let session: ServerSession
+  let session: ServerSession
   @Binding private var selection: SidebarDestination?
-  private let isWindowFocused: Bool
+  let isWindowFocused: Bool
   private let opener: ExternalURLOpener
-  private let openInNewWindow: (@MainActor (String) -> Void)?
+  let openInNewWindow: (@MainActor (String) -> Void)?
   private let tabContext: TabWindowContext
+  let serverSwitching: ServerSwitching?
 
-  @State private var display = SessionDisplayOptions()
-  @State private var undo: SidebarUndo?
+  @State private var sidebar = SidebarModel()
   @State private var showsTabOverview = false
   @State private var tabFailure: String?
   @State private var tabCommandRelay = FocusedActionsRelay<TabCommandActions>()
@@ -36,11 +36,13 @@ public struct ConnectedServerView: View {
   ///   - opener: Opens pages in the system browser.
   ///   - openInNewWindow: Opens a session in a new window, where the platform has windows.
   ///   - tabContext: Where the window's tabs are saved, the browser, and tear-off.
+  ///   - serverSwitching: Other servers the sidebar's switcher offers, where windows can switch.
   public init(
     session: ServerSession, selection: Binding<SidebarDestination?>,
     isWindowFocused: Bool = true, opener: ExternalURLOpener = .system,
     openInNewWindow: (@MainActor (String) -> Void)? = nil,
-    tabContext: TabWindowContext = TabWindowContext()
+    tabContext: TabWindowContext = TabWindowContext(),
+    serverSwitching: ServerSwitching? = nil
   ) {
     self.session = session
     _selection = selection
@@ -48,9 +50,14 @@ public struct ConnectedServerView: View {
     self.opener = opener
     self.openInNewWindow = openInNewWindow
     self.tabContext = tabContext
+    self.serverSwitching = serverSwitching
   }
 
-  private var connection: ConnectionStore { session.connection }
+  var connection: ConnectionStore { session.connection }
+  /// The sidebar's display options, undo and fork sheet.
+  var sidebarModel: SidebarModel { sidebar }
+  /// What the detail shows.
+  var selectionBinding: Binding<SidebarDestination?> { $selection }
 
   /// The connected server’s sidebar and selected destination.
   public var body: some View {
@@ -85,13 +92,21 @@ public struct ConnectedServerView: View {
     .alert(
       "Could Not Update the Session", isPresented: editErrorPresented,
       actions: { Button("OK") { connection.sessionList.dismissEditError() } },
-      message: { Text(connection.sessionList.editError?.message ?? "") })
+      message: { Text(connection.sessionList.editError?.message ?? "") }
+    )
+    .sheet(isPresented: sidebarForkPresented) {
+      if let fork = sidebar.fork.viewState {
+        ForkSheet(state: fork, actions: sidebarForkActions)
+      }
+    }
   }
 
   private var sidebarState: SidebarViewState {
     var state = SidebarAdapter.state(
-      list: connection.sessionList, display: display, server: connection.connectedServer)
-    state.undo = undo?.banner
+      list: connection.sessionList, display: sidebar.display,
+      server: connection.connectedServer,
+      servers: serverSwitching?.choices ?? [])
+    state.undo = sidebar.undo?.banner
     return state
   }
 
@@ -152,85 +167,6 @@ public struct ConnectedServerView: View {
     }
   }
 
-  private var sidebarActions: SidebarActions {
-    let list = connection.sessionList
-    let connection = connection
-    let server = connection.connectedServer
-    var openInWindow: (@MainActor (OmnigentUIComponents.SessionSummary) -> Void)?
-    if let open = openInNewWindow {
-      openInWindow = { summary in open(summary.id) }
-    }
-    return SidebarActions(
-      sessions: SessionListActions(
-        setFilter: { list.filter = OmnigentCoreFFI.SessionFilter($0) },
-        setPinned: { summary, pinned in edit(.pin(summary.id, pinned)) },
-        setArchived: { summary, archived in edit(.archive([summary.id], archived)) },
-        rename: { summary, title in rename(summary.id, to: title) },
-        openInNewWindow: openInWindow,
-        webURL: { SidebarAdapter.webURL(server: server, sessionID: $0.id) },
-        newSession: { selection = .newSession },
-        retry: { connection.refreshSessions() }),
-      setDisplay: { display = $0 },
-      setQuickFilter: { list.filter = OmnigentCoreFFI.SessionFilter($0 ?? .all) },
-      undo: { _ in
-        guard let undo else { return }
-        self.undo = nil
-        edit(undo.inverse, recordUndo: false)
-      },
-      dismissUndo: { undo = nil },
-      viewArchived: { list.filter = .archived })
-  }
-
-  /// Renames through the session list, which reports a failure in `editError` (shown above).
-  private func rename(_ sessionID: String, to title: String) {
-    let list = connection.sessionList
-    Task {
-      // The Boolean only repeats whether `editError` was set.
-      _ = await list.rename(sessionID, to: title)
-    }
-  }
-
-  /// Pins or archives through the session list (which reports failures in `editError`), and
-  /// offers Undo for the change.
-  private func edit(_ change: SidebarUndo.Change, recordUndo: Bool = true) {
-    let list = connection.sessionList
-    Task {
-      var succeeded = true
-      switch change {
-      case .pin(let id, let pinned):
-        succeeded = await list.setPinned(id, pinned)
-      case .archive(let ids, let archived):
-        for id in ids where succeeded {
-          succeeded = await list.setArchived(id, archived)
-        }
-        if archived {
-          // An archived session's tabs leave with it, its primary chat among them.
-          session.tabs.removeSessions(Set(ids))
-        }
-      }
-      if succeeded, recordUndo { undo = SidebarUndo(change: change) }
-    }
-  }
-
-  /// Previous and next session in the sidebar's order.
-  private func navigation(from id: String) -> SessionCommandActions {
-    let ids = connection.sessionList.visible.map(\.id)
-    guard let index = ids.firstIndex(of: id) else { return SessionCommandActions() }
-    let previous = index > ids.startIndex ? ids[index - 1] : nil
-    let next = index + 1 < ids.endIndex ? ids[index + 1] : nil
-    var actions = SessionCommandActions()
-    if let previous {
-      actions.previousSession = { showInPlace(previous) }
-    }
-    if let next {
-      actions.nextSession = { showInPlace(next) }
-    }
-    return actions
-  }
-
-  private func report() {
-    connection.setView(sessionID: viewedSessionID, focused: isWindowFocused)
-  }
 }
 
 // MARK: Tabs
@@ -247,7 +183,7 @@ extension ConnectedServerView {
   }
 
   /// The session whose chat is on screen, for notification suppression.
-  private var viewedSessionID: String? {
+  var viewedSessionID: String? {
     if case .chat(let id) = session.tabs.selected?.content { return id }
     return nil
   }
@@ -364,36 +300,10 @@ extension ConnectedServerView {
 
   /// Previous and Next Session show the session in the current tab when it may be replaced; a
   /// primary chat never is, so the session's own chat opens or is focused.
-  private func showInPlace(_ sessionID: String) {
+  func showInPlace(_ sessionID: String) {
     session.tabs.navigate(to: .chat(sessionID: sessionID)) { content in
       if case .chat = content { return true }
       return false
-    }
-  }
-}
-
-/// A sidebar change the user can undo from the undo bar.
-struct SidebarUndo: Identifiable {
-  enum Change {
-    case pin(String, Bool)
-    case archive([String], Bool)
-  }
-
-  let id = UUID().uuidString
-  let change: Change
-
-  var banner: UndoBanner? {
-    switch change {
-    case .pin(_, let pinned): UndoBanner(id: id, kind: pinned ? .pinned : .unpinned)
-    case .archive(let ids, true): UndoBanner(id: id, kind: .archived(count: ids.count))
-    case .archive(_, false): nil
-    }
-  }
-
-  var inverse: Change {
-    switch change {
-    case .pin(let id, let pinned): .pin(id, !pinned)
-    case .archive(let ids, let archived): .archive(ids, !archived)
     }
   }
 }

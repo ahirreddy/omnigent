@@ -296,6 +296,14 @@ pub fn project_members(
     projects::project_members(&projects, &sessions, viewer_id.as_deref())
 }
 
+/// Whether `viewer_id` owns `session`; an unreported owner counts as the viewer's (the web's
+/// `isOwnedByViewer`).
+#[must_use]
+#[uniffi::export]
+pub fn session_is_owned_by(session: SessionSummary, viewer_id: Option<String>) -> bool {
+    CoreSummary::from(&session).is_owned_by(viewer_id.as_deref())
+}
+
 /// The display title of a list filter.
 #[must_use]
 #[uniffi::export]

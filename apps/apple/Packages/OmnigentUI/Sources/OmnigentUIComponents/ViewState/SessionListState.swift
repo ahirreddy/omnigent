@@ -47,6 +47,8 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
   public var canArchive: Bool
   /// Why it needs the user (the core's attention model). Defaults to what ``status`` implies.
   public var attention: SessionAttentionState
+  /// Stop can end its live process.
+  public var canStop: Bool
 
   /// Creates a summary.
   /// - Parameters:
@@ -66,12 +68,14 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
   ///   - canPin: May pin.
   ///   - canArchive: May archive.
   ///   - attention: Attention; `nil` derives it from `status` and `failureMessage`.
+  ///   - canStop: Stop can end it.
   public init(
     id: String, title: String, preview: String = "", status: SessionListStatus = .idle,
     isReadOnly: Bool = false, updatedAt: Int64 = 0, workspace: String = "",
     agentName: String = "", isPinned: Bool = false, isArchived: Bool = false,
     permissionLevel: Int64? = nil, failureMessage: String? = nil, canRename: Bool = true,
-    canPin: Bool = true, canArchive: Bool = true, attention: SessionAttentionState? = nil
+    canPin: Bool = true, canArchive: Bool = true, attention: SessionAttentionState? = nil,
+    canStop: Bool = false
   ) {
     self.id = id
     self.title = title
@@ -89,6 +93,7 @@ nonisolated public struct SessionSummary: Hashable, Sendable, Identifiable {
     self.canPin = canPin
     self.canArchive = canArchive
     self.attention = attention ?? SessionAttentionState(status: status, failure: failureMessage)
+    self.canStop = canStop
   }
 
   /// ``updatedAt`` as a date.

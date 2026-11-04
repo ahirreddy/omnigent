@@ -48,9 +48,8 @@ nonisolated enum SidebarSections {
     }
     var result: [Section] = []
     if !pinned.isEmpty { result.append(Section(title: "Pinned", sessions: pinned)) }
-    if !state.projects.isEmpty {
-      result.append(Section(title: "Projects", sessions: [], isProjects: true))
-    }
+    // Always shown, as on the web, so New project stays reachable.
+    result.append(Section(title: "Projects", sessions: [], isProjects: true))
     if !shared.isEmpty { result.append(Section(title: "Shared", sessions: shared)) }
     result.append(Section(title: "Sessions", sessions: rest, showsDisplayMenu: true))
     return result

@@ -92,12 +92,13 @@ fn validate_name(name: &str) -> Result<String, SessionError> {
 }
 
 impl<T: HttpTransport> ClientCore<T> {
-    /// The caller's projects in their display order (`GET /v1/sessions/projects`).
+    /// The caller's projects in their display order (`GET /v1/sessions/projects`). A server
+    /// without projects (404) has none.
     ///
     /// # Errors
     ///
     /// The read errors; [`SessionError::MalformedResponse`] for a body that is not a list of
-    /// projects. A server without projects answers 404 (`HttpStatus`).
+    /// projects.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -105,6 +106,9 @@ impl<T: HttpTransport> ClientCore<T> {
     pub async fn projects(&self) -> Result<Vec<ProjectSummary>, SessionError> {
         let result = self.get_json("/v1/sessions/projects", &[]).await;
         self.dispatch();
+        if matches!(result, Err(SessionError::HttpStatus { status: 404 })) {
+            return Ok(Vec::new());
+        }
         let malformed = |detail: String| SessionError::MalformedResponse {
             detail: format!("/v1/sessions/projects: {detail}"),
         };

@@ -16,6 +16,9 @@ public struct SidebarView: View {
   @State private var confirmingLeave: SessionSummary?
   @State private var expandedProjects: Set<String> = []
   @State private var showsAllInProject: Set<String> = []
+  @State private var projectPrompt: ProjectPrompt?
+  @State private var projectName = ""
+  @State private var confirmingProjectDelete: SessionProject?
 
   /// Creates the sidebar.
   /// - Parameters:
@@ -90,6 +93,11 @@ public struct SidebarView: View {
     } message: { _ in
       Text("This permanently deletes the session and its history.")
     }
+    .modifier(
+      ProjectDialogs(
+        prompt: $projectPrompt, name: $projectName, confirmingDelete: $confirmingProjectDelete,
+        actions: actions)
+    )
     .confirmationDialog(
       "Leave this session?",
       isPresented: Binding(
@@ -145,6 +153,9 @@ public struct SidebarView: View {
         ForEach(state.projects) { project in
           projectGroup(project)
         }
+        if state.projects.isEmpty {
+          Text("No projects").foregroundStyle(.secondary)
+        }
       } else {
         ForEach(section.sessions) { session in
           row(session)
@@ -157,6 +168,17 @@ public struct SidebarView: View {
           .foregroundStyle(Theme.mutedText)
           .textCase(nil)
         Spacer()
+        if section.isProjects, actions.createProject != nil {
+          Button("New project", systemImage: "plus") {
+            projectName = ""
+            projectPrompt = .create(moving: nil)
+          }
+          .labelStyle(.iconOnly)
+          .buttonStyle(.borderless)
+          .foregroundStyle(.secondary)
+          .help("New project")
+          .accessibilityIdentifier("sidebar-new-project")
+        }
         if section.showsDisplayMenu, let setDisplay = actions.setDisplay {
           DisplayMenu(options: state.display, set: setDisplay)
         }
@@ -248,7 +270,31 @@ extension SidebarView {
         .foregroundStyle(.secondary)
       }
     } label: {
-      Label(project.name, systemImage: "folder")
+      Label {
+        Text(project.name)
+      } icon: {
+        if let icon = project.icon {
+          Text(icon)
+        } else {
+          Image(systemName: "folder")
+        }
+      }
+      .contextMenu { projectMenu(project) }
+      .accessibilityIdentifier("sidebar-project-\(project.id)")
+    }
+  }
+
+  @ViewBuilder private func projectMenu(_ project: SessionProject) -> some View {
+    if actions.renameProject != nil {
+      Button("Rename\u{2026}", systemImage: "pencil") {
+        projectName = project.name
+        projectPrompt = .rename(project)
+      }
+    }
+    if actions.deleteProject != nil {
+      Button("Delete project\u{2026}", systemImage: "trash", role: .destructive) {
+        confirmingProjectDelete = project
+      }
     }
   }
 
@@ -256,15 +302,22 @@ extension SidebarView {
     let info = state.rowInfo[session.id] ?? SessionRowInfo()
     let isUnread = state.list.unreadIds.contains(session.id)
     let menu = SessionRowMenu(
-      session: session, isUnread: isUnread, isRunning: session.status == .running,
-      isShared: info.isShared, pinLimitReached: state.pinnedCount >= state.pinLimit,
+      session: session, isUnread: isUnread, isShared: info.isShared,
+      pinLimitReached: state.pinnedCount >= state.pinLimit,
       projects: state.projects, actions: actions.sessions,
       rename: {
         renameText = session.title
         renaming = session
       },
       confirmDelete: { confirmingDelete = session },
-      confirmLeave: { confirmingLeave = session })
+      confirmLeave: { confirmingLeave = session },
+      project: state.projects.first { $0.sessionIds.contains(session.id) },
+      newProject: actions.createProject.map { _ in
+        {
+          projectName = ""
+          projectPrompt = .create(moving: session)
+        }
+      })
     return SessionRow(
       session: session, info: info, isUnread: isUnread,
       attention: state.list.attentionCounts[session.id] ?? 0, details: state.display.details,

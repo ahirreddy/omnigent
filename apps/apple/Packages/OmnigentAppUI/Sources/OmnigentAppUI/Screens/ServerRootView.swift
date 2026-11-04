@@ -11,6 +11,7 @@ public struct ServerRootView: View {
   private let isWindowFocused: Bool
   private let openInNewWindow: (@MainActor (String) -> Void)?
   private let tabContext: TabWindowContext
+  private let serverSwitching: ServerSwitching?
 
   /// Creates the root.
   /// - Parameters:
@@ -19,16 +20,18 @@ public struct ServerRootView: View {
   ///   - isWindowFocused: Whether the window is key.
   ///   - openInNewWindow: Opens a session in a new window, where the platform has windows.
   ///   - tabContext: Where the window's tabs are saved, the browser, and tear-off.
+  ///   - serverSwitching: Other servers the sidebar's switcher offers.
   public init(
     session: ServerSession, selection: Binding<SidebarDestination?>,
     isWindowFocused: Bool = true, openInNewWindow: (@MainActor (String) -> Void)? = nil,
-    tabContext: TabWindowContext = TabWindowContext()
+    tabContext: TabWindowContext = TabWindowContext(), serverSwitching: ServerSwitching? = nil
   ) {
     self.session = session
     _selection = selection
     self.isWindowFocused = isWindowFocused
     self.openInNewWindow = openInNewWindow
     self.tabContext = tabContext
+    self.serverSwitching = serverSwitching
   }
 
   /// Sign-in until connected, then the connected app.
@@ -36,7 +39,8 @@ public struct ServerRootView: View {
     if session.isSignedIn {
       ConnectedServerView(
         session: session, selection: $selection, isWindowFocused: isWindowFocused,
-        openInNewWindow: openInNewWindow, tabContext: tabContext)
+        openInNewWindow: openInNewWindow, tabContext: tabContext,
+        serverSwitching: serverSwitching)
     } else {
       AuthFlowView(
         state: session.signIn.state, actions: session.signIn.actions, validator: .app

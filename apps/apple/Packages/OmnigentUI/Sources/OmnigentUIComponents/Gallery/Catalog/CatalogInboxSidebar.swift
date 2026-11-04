@@ -181,8 +181,8 @@ private struct SessionRowSample: View {
           attention: list.attentionCounts[session.id] ?? 0,
           details: SessionDisplayOptions().details, now: PreviewData.now,
           menu: SessionRowMenu(
-            session: session, isUnread: false, isRunning: session.status == .running,
-            isShared: false, pinLimitReached: false, projects: [],
+            session: session, isUnread: false, isShared: false, pinLimitReached: false,
+            projects: [],
             actions: CatalogActions.sidebar.sessions, rename: {}, confirmDelete: {},
             confirmLeave: {})
         )

@@ -198,7 +198,6 @@ nonisolated enum RelativeTime {
 struct SessionRowMenu {
   let session: SessionSummary
   let isUnread: Bool
-  let isRunning: Bool
   let isShared: Bool
   let pinLimitReached: Bool
   let projects: [SessionProject]
@@ -206,6 +205,10 @@ struct SessionRowMenu {
   let rename: () -> Void
   let confirmDelete: () -> Void
   let confirmLeave: () -> Void
+  /// The project it is filed in, if any.
+  var project: SessionProject?
+  /// Asks for a name and moves the session into a new project; `nil` hides the item.
+  var newProject: (() -> Void)?
 
   var canHoverPin: Bool {
     #if os(macOS)
@@ -266,19 +269,27 @@ struct SessionRowMenu {
         setUnread(session, !isUnread)
       }
     }
-    if let move = actions.moveToProject, !projects.isEmpty {
+    // Filing is owner-only, as on the web.
+    if let move = actions.moveToProject, !isShared, !projects.isEmpty || newProject != nil {
       Menu("Move session", systemImage: "folder") {
-        ForEach(projects) { project in
-          Button(project.name) { move(session, project) }
+        ForEach(projects) { target in
+          Button(target.name) { move(session, target) }
+            .disabled(target.id == project?.id)
         }
-        Divider()
-        Button("Remove from project") { move(session, nil) }
+        if let newProject {
+          if !projects.isEmpty { Divider() }
+          Button("New project\u{2026}", systemImage: "folder.badge.plus", action: newProject)
+        }
+        if project != nil {
+          Divider()
+          Button("Remove from project") { move(session, nil) }
+        }
       }
     }
-    if let stop = actions.stop {
+    if let stop = actions.stop, session.canStop {
       Button("Stop session", systemImage: "stop.circle") { stop(session) }
-        .disabled(!isRunning)
-        .help(isRunning ? "" : "The session is not running")
+        .disabled(isShared)
+        .help(isShared ? "Only the owner can stop this session" : "")
     }
     if let setArchived = actions.setArchived, session.canArchive {
       Button(

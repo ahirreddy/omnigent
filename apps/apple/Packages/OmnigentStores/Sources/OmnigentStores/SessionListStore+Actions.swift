@@ -1,0 +1,136 @@
+public import OmnigentCoreFFI
+
+/// The sidebar row menu's actions beyond rename, pin and archive, and the project folders. Each
+/// reports a failure in ``SessionListStore/editError`` and returns whether it succeeded; the
+/// list itself changes through the core's events.
+extension SessionListStore {
+  /// Marks `sessionID` unread, or read.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - unread: Unread or read.
+  /// - Returns: Whether the mark was saved.
+  @discardableResult
+  public func setUnread(_ sessionID: String, _ unread: Bool) async -> Bool {
+    await perform { core in try await core.setSessionUnread(sessionId: sessionID, unread: unread) }
+  }
+
+  /// Ends the live process of `sessionID`; the transcript stays.
+  /// - Parameter sessionID: The session.
+  /// - Returns: Whether the stop was sent.
+  @discardableResult
+  public func stop(_ sessionID: String) async -> Bool {
+    await perform { core in try await core.stopSession(sessionId: sessionID) }
+  }
+
+  /// Deletes `sessionID` and its history (owner).
+  /// - Parameter sessionID: The session.
+  /// - Returns: Whether it was deleted.
+  @discardableResult
+  public func delete(_ sessionID: String) async -> Bool {
+    await perform { core in try await core.deleteSession(sessionId: sessionID) }
+  }
+
+  /// Leaves `sessionID`, shared with the caller.
+  /// - Parameter sessionID: The session.
+  /// - Returns: Whether the caller left it.
+  @discardableResult
+  public func leave(_ sessionID: String) async -> Bool {
+    await perform { core in try await core.leaveSession(sessionId: sessionID) }
+  }
+
+  /// Files `sessionID` into `project`, or removes it from its project. A label-only project
+  /// is promoted to a first-class one first, as the web does.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - project: The project, or `nil`.
+  /// - Returns: Whether it moved.
+  @discardableResult
+  public func move(_ sessionID: String, to project: ProjectSummary?) async -> Bool {
+    var projectID = project?.id
+    if let project, projectID == nil {
+      guard let promoted = await renameProject(project, to: project.name) else { return false }
+      projectID = promoted.id
+    }
+    let moved = await edit(sessionID, .project(projectId: projectID))
+    // A label-only folder disappears once its last session leaves it.
+    if moved { await loadProjects() }
+    return moved
+  }
+
+  /// Creates an empty project.
+  /// - Parameter name: Its name.
+  /// - Returns: The project, or `nil` on failure.
+  @discardableResult
+  public func createProject(named name: String) async -> ProjectSummary? {
+    var created: ProjectSummary?
+    let succeeded = await perform { core in created = try await core.createProject(name: name) }
+    if succeeded { await loadProjects() }
+    return created
+  }
+
+  /// Renames `project` and re-files its sessions.
+  /// - Parameters:
+  ///   - project: The project.
+  ///   - name: The new name.
+  /// - Returns: The renamed project, or `nil` on failure.
+  @discardableResult
+  public func renameProject(_ project: ProjectSummary, to name: String) async -> ProjectSummary? {
+    var renamed: ProjectSummary?
+    let succeeded = await perform { core in
+      renamed = try await core.renameProject(project: project, name: name)
+    }
+    if succeeded { await loadProjects() }
+    return renamed
+  }
+
+  /// Deletes `project` after archiving and unfiling its sessions (never deleting them).
+  /// - Parameter project: The project.
+  /// - Returns: Whether it was deleted.
+  @discardableResult
+  public func deleteProject(_ project: ProjectSummary) async -> Bool {
+    let deleted = await perform { core in try await core.deleteProject(project: project) }
+    await loadProjects()
+    return deleted
+  }
+
+  /// Re-reads the project list (empty on a server without projects).
+  public func loadProjects() async {
+    guard let core else { return }
+    do {
+      projects = try await core.projects()
+      projectsError = nil
+    } catch {
+      projectsError = coreError(error)
+    }
+  }
+
+  /// The visible session ids in each project, in display order: sessions the viewer owns that
+  /// carry the project's id or legacy label (the core's `projectMembers`).
+  /// - Parameter sessions: The sessions to group, in display order.
+  /// - Returns: One id list per entry of ``projects``.
+  public func members(of sessions: [SessionSummary]) -> [[String]] {
+    projectMembers(projects: projects, sessions: sessions, viewerId: viewerID)
+  }
+
+  /// Whether the viewer owns `session` (an unreported owner counts as the viewer's).
+  /// - Parameter session: The session.
+  /// - Returns: Whether it is the viewer's own.
+  public func isOwned(_ session: SessionSummary) -> Bool {
+    sessionIsOwnedBy(session: session, viewerId: viewerID)
+  }
+
+  private func perform(_ operation: (ClientCore) async throws -> Void) async -> Bool {
+    guard let core else {
+      setEditError(.InvalidState(message: "Connect to a server before editing sessions."))
+      return false
+    }
+    do {
+      try await operation(core)
+      setEditError(nil)
+      return true
+    } catch {
+      setEditError(coreError(error))
+      return false
+    }
+  }
+}

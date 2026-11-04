@@ -24,6 +24,7 @@ struct ServerWindowRoot: View {
   /// Tabs torn off from another window into this one.
   @State private var adopting: [AppTab] = []
   @Environment(\.openWindow) private var openWindow
+  @Environment(\.openSettings) private var openSettings
   @Environment(\.appearsActive) private var appearsActive
 
   private var desktop: DesktopController { services.desktop }
@@ -49,7 +50,8 @@ struct ServerWindowRoot: View {
       openInNewWindow: { sessionID in openNewWindow(on: sessionID) },
       tabContext: TabWindowContext(
         window: id.instance, persistence: services.tabPersistence, browser: services.browserTabs,
-        moveToNewWindow: { tabs in moveToNewWindow(tabs) }, adopting: adopting)
+        moveToNewWindow: { tabs in moveToNewWindow(tabs) }, adopting: adopting),
+      serverSwitching: serverSwitching(session)
     )
     .navigationTitle(title(session))
     .sheet(isPresented: $showsCoreDebug) {
@@ -116,6 +118,25 @@ struct ServerWindowRoot: View {
     }
     guard let url = id.serverURL else { return "Omnigent" }
     return ExecutionContext.serverDisplayName(name: nil, baseURL: url.absoluteString)
+  }
+
+  /// The sidebar's server switcher: known servers, switching this window in place, connecting
+  /// another server (the server picker) and Settings.
+  private func serverSwitching(_ session: ServerSession) -> ServerSwitching {
+    ServerSwitching(
+      servers: services.knownServers(),
+      switchTo: { url in
+        guard !Self.sameServer(id.serverURL, url) else { return }
+        session.connection.disconnect()
+        selection = nil
+        id = id.rebound(to: url)
+      },
+      addServer: {
+        session.connection.disconnect()
+        selection = nil
+        id = id.rebound(to: nil)
+      },
+      openSettings: { openSettings() })
   }
 
   private func actions(_ session: ServerSession) -> ServerWindowActions {

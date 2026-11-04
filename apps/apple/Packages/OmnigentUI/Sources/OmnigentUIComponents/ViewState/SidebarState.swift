@@ -20,22 +20,32 @@ nonisolated public enum SidebarDestination: Hashable, Sendable {
 
 /// A project (folder) in the sidebar's Projects section.
 nonisolated public struct SessionProject: Hashable, Sendable, Identifiable {
-  /// Project id.
+  /// Stable id: the project id, or the name of a label-only project.
   public var id: String
   /// Display name.
   public var name: String
   /// Its sessions, in the core's order.
   public var sessionIds: [String]
+  /// The server's project id; `nil` for a legacy label-only project.
+  public var projectID: String?
+  /// An emoji icon, shown instead of the folder.
+  public var icon: String?
 
   /// Creates a project.
   /// - Parameters:
   ///   - id: Project id.
   ///   - name: Name.
   ///   - sessionIds: Session ids.
-  public init(id: String, name: String, sessionIds: [String]) {
+  ///   - projectID: The server's id, when first-class.
+  ///   - icon: An emoji icon.
+  public init(
+    id: String, name: String, sessionIds: [String], projectID: String? = nil, icon: String? = nil
+  ) {
     self.id = id
     self.name = name
     self.sessionIds = sessionIds
+    self.projectID = projectID
+    self.icon = icon
   }
 }
 
@@ -345,6 +355,12 @@ public struct SidebarActions {
   public var dismissUndo: (@MainActor () -> Void)?
   /// Show archived sessions (from the archive banner).
   public var viewArchived: (@MainActor () -> Void)?
+  /// Create a project with the given name, moving the session into it when one is given.
+  public var createProject: (@MainActor (String, SessionSummary?) -> Void)?
+  /// Rename a project.
+  public var renameProject: (@MainActor (SessionProject, String) -> Void)?
+  /// Delete a project (its sessions are archived, never deleted).
+  public var deleteProject: (@MainActor (SessionProject) -> Void)?
 
   /// Creates actions.
   /// - Parameters:

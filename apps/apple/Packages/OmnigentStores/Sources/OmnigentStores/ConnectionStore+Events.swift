@@ -11,6 +11,11 @@ extension ConnectionStore {
       } else {
         browserLogin = nil
       }
+      if case .connected(let server) = phase {
+        sessionList.viewerID = server.userId
+        let list = sessionList
+        Task { await list.loadProjects() }
+      }
     case .updatesLinkChanged(let state):
       updatesLink = state
     case .sessionListChanged(let change):
@@ -80,6 +85,8 @@ extension ConnectionStore {
       hostsRevision += 1
     case .projectsChanged:
       projectsRevision += 1
+      let list = sessionList
+      Task { await list.loadProjects() }
     case .unknownUpdate(let frameType):
       unknownUpdates.append(frameType)
       if unknownUpdates.count > 20 { unknownUpdates.removeFirst() }

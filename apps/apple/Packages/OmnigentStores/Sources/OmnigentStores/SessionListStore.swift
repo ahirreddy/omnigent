@@ -49,6 +49,12 @@ public final class SessionListStore {
 
   /// The core edits go through; set by the owning ``ConnectionStore``.
   @ObservationIgnored var core: ClientCore?
+  /// The caller's projects (sidebar folders), in display order.
+  public internal(set) var projects: [ProjectSummary] = []
+  /// The last project list failure, until the next successful read.
+  public internal(set) var projectsError: CoreError?
+  /// The connected user, for ownership (Shared, Mine, project membership).
+  public internal(set) var viewerID: String?
 
   /// The server's rows, as the core last reported them.
   private var serverSessions: [String: SessionSummary] = [:]
@@ -99,6 +105,17 @@ public final class SessionListStore {
     await edit(sessionID, .archived(archived: archived))
   }
 
+  /// Records `error` as the edit failure; `nil` clears it.
+  func setEditError(_ error: CoreError?) {
+    editError = error
+  }
+
+  /// Shows `error` where edit failures show, for a sidebar action that failed elsewhere.
+  /// - Parameter error: The failure.
+  public func reportFailure(_ error: CoreError) {
+    editError = error
+  }
+
   /// Clears ``editError`` after the user has seen it.
   public func dismissEditError() {
     editError = nil
@@ -142,7 +159,7 @@ public final class SessionListStore {
     recompute()
   }
 
-  private func edit(_ sessionID: String, _ change: SessionChange) async -> Bool {
+  func edit(_ sessionID: String, _ change: SessionChange) async -> Bool {
     guard let core else {
       editError = .InvalidState(message: "Connect to a server before editing sessions.")
       return false
@@ -223,6 +240,8 @@ public final class SessionListStore {
     serverSessions = [:]
     expectations = [:]
     isLoaded = false
+    projects = []
+    projectsError = nil
     recompute()
   }
 

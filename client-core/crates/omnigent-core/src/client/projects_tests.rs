@@ -36,6 +36,10 @@ fn lists_first_class_and_label_projects_with_icons() {
         ]
     );
 
+    // An older server without projects.
+    let core = connected(RouteTransport::local());
+    assert_eq!(block_on(core.projects()), Ok(Vec::new()));
+
     let malformed = RouteTransport::local();
     malformed.ok("/v1/sessions/projects", r#"{"data":[]}"#);
     let core = connected(malformed);

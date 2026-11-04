@@ -167,7 +167,8 @@ nonisolated extension OmnigentUIComponents.SessionSummary {
       agentName: summary.agentName, isPinned: summary.isPinned, isArchived: summary.isArchived,
       permissionLevel: summary.permissionLevel, failureMessage: summary.failureMessage,
       canRename: summary.canRename, canPin: summary.canPin, canArchive: summary.canArchive,
-      attention: OmnigentUIComponents.SessionAttentionState(attention.state))
+      attention: OmnigentUIComponents.SessionAttentionState(attention.state),
+      canStop: summary.canStop)
   }
 }
 
