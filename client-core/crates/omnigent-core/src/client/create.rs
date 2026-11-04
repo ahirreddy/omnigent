@@ -26,14 +26,21 @@ use crate::attachments::policy::is_identifier;
 use crate::auth::mode::error_text;
 use crate::config::session::ModelChoice;
 use crate::creation::{
-    CreationAgent, CreationCatalog, CreationError, CreationHost, CreationReceipt,
-    CreationSelection, CreationWorkspace, MAX_TITLE_CHARS, creation_body, creation_rejection,
+    CreationAgent, CreationCapabilities, CreationCatalog, CreationError, CreationHost,
+    CreationReceipt, CreationSelection, CreationWorkspace, HostDirectoryListing, HostWorktree,
+    MAX_TITLE_CHARS, creation_body, creation_rejection, merge_user_agents, parent_directory,
     sandbox_creation_body,
 };
 use crate::http::HttpTransport;
 
 /// The largest page the catalog routes are asked for.
 const CATALOG_PAGE_LIMIT: u32 = 1000;
+
+/// The page size and the most agent names read from `GET /v1/agents?scope=user`.
+const USER_AGENT_LIMIT: usize = 50;
+
+/// The most `?scope=user` pages read: copies and repeats can fill a page without a new name.
+const USER_AGENT_PAGES: usize = 5;
 
 /// How the first message of a newly created session went.
 #[derive(Debug, Clone, PartialEq)]
@@ -127,6 +134,59 @@ impl<T: HttpTransport> ClientCore<T> {
         }
     }
 
+    /// The caller's own agents, `GET /v1/agents?scope=user`: pages of 50 until 50 root names,
+    /// at most five pages (the web's `fetchUserAgents`).
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(crate) async fn user_agent_rows(&self) -> Result<Vec<Value>, SessionError> {
+        let mut rows = Vec::new();
+        let mut names = BTreeSet::new();
+        let mut after: Option<String> = None;
+        let mut cursors = BTreeSet::new();
+        for _ in 0..USER_AGENT_PAGES {
+            let mut query = vec![
+                ("scope", "user".to_owned()),
+                ("limit", USER_AGENT_LIMIT.to_string()),
+            ];
+            if let Some(cursor) = &after {
+                query.push(("after", cursor.clone()));
+            }
+            let value = self.get_json("/v1/agents", &query).await?;
+            let page = raw_page(&value, "/v1/agents?scope=user")?;
+            let next = page.next_cursor(after.as_deref(), &mut cursors)?;
+            for row in page.data {
+                let name = row
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(|name| super::fork::agent_root_name(name).to_owned())
+                    .unwrap_or_default();
+                if names.len() >= USER_AGENT_LIMIT && !names.contains(&name) {
+                    continue;
+                }
+                names.insert(name);
+                rows.push(row);
+            }
+            match next {
+                Some(cursor) if names.len() < USER_AGENT_LIMIT => after = Some(cursor),
+                _ => break,
+            }
+        }
+        Ok(rows)
+    }
+
+    /// The creation fields of `GET /v1/info`.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(crate) async fn creation_capabilities(&self) -> Result<CreationCapabilities, SessionError> {
+        let value = self.get_json("/v1/info", &[]).await?;
+        CreationCapabilities::from_value(&value)
+            .map_err(|detail| SessionError::MalformedResponse { detail })
+    }
+
     /// Every `/v1/hosts` row.
     #[allow(
         clippy::future_not_send,
@@ -207,6 +267,7 @@ impl<T: HttpTransport> ClientCore<T> {
     )]
     async fn catalog(&self) -> Result<CreationCatalog, SessionError> {
         let malformed = |detail: String| SessionError::MalformedResponse { detail };
+        let capabilities = self.creation_capabilities().await?;
         let hosts = self
             .host_rows()
             .await?
@@ -214,24 +275,32 @@ impl<T: HttpTransport> ClientCore<T> {
             .map(CreationHost::from_value)
             .collect::<Result<Vec<_>, String>>()
             .map_err(malformed)?;
-        let agents = self
-            .agent_rows()
-            .await?
-            .iter()
-            .map(CreationAgent::from_value)
-            .collect::<Result<Vec<_>, String>>()
-            .map_err(malformed)?;
+        let decode = |rows: Vec<Value>| {
+            rows.iter()
+                .map(CreationAgent::from_value)
+                .collect::<Result<Vec<_>, String>>()
+                .map_err(malformed)
+        };
         let mut seen_hosts = BTreeSet::new();
         let mut seen_agents = BTreeSet::new();
+        let mut agents: Vec<CreationAgent> = decode(self.agent_rows().await?)?
+            .into_iter()
+            .filter(|agent| !agent.id.is_empty() && seen_agents.insert(agent.id.clone()))
+            .collect();
+        if capabilities.agent_install {
+            let user = decode(self.user_agent_rows().await?)?
+                .into_iter()
+                .filter(|agent| !agent.id.is_empty())
+                .collect();
+            agents.extend(merge_user_agents(&agents, user));
+        }
         Ok(CreationCatalog {
             hosts: hosts
                 .into_iter()
                 .filter(|host| !host.host_id.is_empty() && seen_hosts.insert(host.host_id.clone()))
                 .collect(),
-            agents: agents
-                .into_iter()
-                .filter(|agent| !agent.id.is_empty() && seen_agents.insert(agent.id.clone()))
-                .collect(),
+            agents,
+            capabilities,
         })
     }
 
@@ -261,14 +330,132 @@ impl<T: HttpTransport> ClientCore<T> {
     )]
     async fn workspaces(&self, host_id: &str) -> Result<Vec<CreationWorkspace>, SessionError> {
         validate_identifier(host_id)?;
-        let path = format!("/v1/hosts/{host_id}/filesystem");
+        self.directories(&format!("/v1/hosts/{host_id}/filesystem"))
+            .await
+            .map(|(directories, _)| directories)
+    }
+
+    /// The directories in `directory` on `host_id` (the host's home when `None`), for the folder
+    /// browser, with the listed path and its parent.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request, also for a path that is not
+    /// absolute or cannot be sent; the read errors; [`SessionError::InvalidPagination`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn host_directory(
+        &self,
+        host_id: &str,
+        directory: Option<&str>,
+    ) -> Result<HostDirectoryListing, SessionError> {
+        let result = async {
+            validate_identifier(host_id)?;
+            let route = match directory {
+                None => format!("/v1/hosts/{host_id}/filesystem"),
+                Some(path) => {
+                    let trimmed = path.trim();
+                    let trimmed = if trimmed.len() > 1 {
+                        trimmed.trim_end_matches('/')
+                    } else {
+                        trimmed
+                    };
+                    if !trimmed.starts_with('/') || trimmed.contains(['\0', '?', '#', '%']) {
+                        return Err(SessionError::InvalidIdentifier {
+                            value: path.to_owned(),
+                        });
+                    }
+                    if trimmed == "/" {
+                        format!("/v1/hosts/{host_id}/filesystem/")
+                    } else {
+                        format!("/v1/hosts/{host_id}/filesystem{trimmed}")
+                    }
+                }
+            };
+            let (directories, first_entry) = self.directories(&route).await?;
+            let path = directory
+                .map(|path| {
+                    let trimmed = path.trim();
+                    if trimmed.len() > 1 {
+                        trimmed.trim_end_matches('/').to_owned()
+                    } else {
+                        trimmed.to_owned()
+                    }
+                })
+                .or_else(|| first_entry.as_deref().and_then(parent_directory));
+            Ok(HostDirectoryListing {
+                parent: path.as_deref().and_then(parent_directory),
+                path,
+                directories,
+            })
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// The git worktrees of the repository at `path` on `host_id`, main first; empty when `path`
+    /// is not in a git repository (the server's 400).
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request; the other read errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn host_worktrees(
+        &self,
+        host_id: &str,
+        path: &str,
+    ) -> Result<Vec<HostWorktree>, SessionError> {
+        let result = async {
+            validate_identifier(host_id)?;
+            let route = format!("/v1/hosts/{host_id}/worktrees");
+            let value = match self
+                .get_json(&route, &[("path", path.trim().to_owned())])
+                .await
+            {
+                Err(SessionError::HttpStatus { status: 400 }) => return Ok(Vec::new()),
+                other => other?,
+            };
+            let page = as_object(&value, "worktrees")
+                .map_err(|detail| SessionError::MalformedResponse { detail })?;
+            opt_array(page, "data")
+                .map_err(|detail| SessionError::MalformedResponse { detail })?
+                .ok_or_else(|| SessionError::MalformedResponse {
+                    detail: format!("{route}: `data` is missing"),
+                })?
+                .iter()
+                .map(HostWorktree::from_value)
+                .collect::<Result<Vec<_>, String>>()
+                .map_err(|detail| SessionError::MalformedResponse { detail })
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Every directory under the filesystem route `path`, following the cursor, and the first
+    /// entry's path (to find the listed directory of the home route).
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn directories(
+        &self,
+        path: &str,
+    ) -> Result<(Vec<CreationWorkspace>, Option<String>), SessionError> {
+        let mut first_entry: Option<String> = None;
         let mut results = Vec::new();
         let mut seen = BTreeSet::new();
         let mut cursors = BTreeSet::new();
         let mut after: Option<String> = None;
         loop {
             let query = page_query(after.as_deref(), CATALOG_PAGE_LIMIT)?;
-            let value = self.get_json(&path, &query).await?;
+            let value = self.get_json(path, &query).await?;
             let malformed = |detail: String| SessionError::MalformedResponse {
                 detail: format!("{path}: {detail}"),
             };
@@ -286,6 +473,9 @@ impl<T: HttpTransport> ClientCore<T> {
                     .map_err(malformed)?
                     .unwrap_or_default();
                 let kind = opt_str(entry, "type").map_err(malformed)?;
+                if first_entry.is_none() && entry_path.starts_with('/') {
+                    first_entry = Some(entry_path.clone());
+                }
                 if kind.as_deref() == Some("directory")
                     && entry_path.starts_with('/')
                     && seen.insert(entry_path.clone())
@@ -301,7 +491,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 .map_err(malformed)?
                 .ok_or_else(|| malformed("`has_more` is missing".into()))?;
             if !has_more {
-                return Ok(results);
+                return Ok((results, first_entry));
             }
             match last_path {
                 Some(cursor) if !cursor.is_empty() && cursors.insert(cursor.clone()) => {

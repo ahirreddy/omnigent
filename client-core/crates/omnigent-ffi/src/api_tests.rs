@@ -105,6 +105,7 @@ fn creation_creates_once_and_reports_a_failed_first_message_without_recreating()
         agent_id: "ag_codex".into(),
         workspace: "/work/project".into(),
         model: Some("provider-model".into()),
+        ..CreationSelection::default()
     };
     assert_eq!(
         crate::creation::creation_validation_error(
@@ -171,6 +172,7 @@ fn an_unclear_creation_is_uncertain_and_never_retried() {
                     agent_id: "ag_codex".into(),
                     workspace: "/work/project".into(),
                     model: None,
+                    ..CreationSelection::default()
                 },
                 String::new(),
             )

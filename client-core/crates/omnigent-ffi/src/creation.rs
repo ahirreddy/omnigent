@@ -54,6 +54,46 @@ pub struct CreationAgent {
     /// The host can preview models for the agent's harness.
     #[uniffi(default)]
     pub supports_model_preview: bool,
+    /// The server's `builtin` flag; `None` from servers that predate it.
+    #[uniffi(default)]
+    pub builtin: Option<bool>,
+    /// One of the caller's own agents.
+    #[uniffi(default)]
+    pub mine: bool,
+    /// Last change, in seconds since 1970.
+    #[uniffi(default)]
+    pub changed_at: Option<u64>,
+    /// Where the new-session picker lists it.
+    #[uniffi(default)]
+    pub picker_section: AgentPickerSection,
+    /// A harness listed inline rather than under "Other…".
+    #[uniffi(default)]
+    pub is_primary_harness: bool,
+    /// The order within its section, lowest first.
+    #[uniffi(default)]
+    pub picker_rank: u32,
+}
+
+/// Where the new-session picker lists an agent, as the web groups it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum AgentPickerSection {
+    /// A native coding CLI or an ACP harness ("Harnesses").
+    Harness,
+    /// A built-in composed agent such as Polly ("Agents").
+    Agent,
+    /// A user-registered or uploaded agent ("Agents", under "Other…").
+    #[default]
+    Custom,
+}
+
+impl From<core::AgentPickerSection> for AgentPickerSection {
+    fn from(section: core::AgentPickerSection) -> Self {
+        match section {
+            core::AgentPickerSection::Harness => Self::Harness,
+            core::AgentPickerSection::Agent => Self::Agent,
+            core::AgentPickerSection::Custom => Self::Custom,
+        }
+    }
 }
 
 /// The hosts and agents a session can be created with.
@@ -61,8 +101,17 @@ pub struct CreationAgent {
 pub struct CreationCatalog {
     /// Hosts, de-duplicated by id.
     pub hosts: Vec<CreationHost>,
-    /// Agents, de-duplicated by id.
+    /// Agents, de-duplicated by id: the server's catalog, then the caller's own.
     pub agents: Vec<CreationAgent>,
+    /// `/v1/info.agent_install`: the caller's own agents are listed.
+    #[uniffi(default)]
+    pub agent_install: bool,
+    /// `/v1/info.managed_sandboxes_enabled`: sessions can start on a new sandbox.
+    #[uniffi(default)]
+    pub managed_sandboxes: bool,
+    /// `/v1/info.sandbox_providers`, the default first.
+    #[uniffi(default)]
+    pub sandbox_providers: Vec<String>,
 }
 
 /// A directory offered as a session workspace.
@@ -75,7 +124,7 @@ pub struct CreationWorkspace {
 }
 
 /// What the user chose in the new-session form.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct CreationSelection {
     /// Host id.
     pub host_id: String,
@@ -85,6 +134,51 @@ pub struct CreationSelection {
     pub workspace: String,
     /// The model's wire value (`ModelChoice::value`), or `None` for the harness default.
     pub model: Option<String>,
+    /// The reasoning effort, or `None` for the model default.
+    #[uniffi(default)]
+    pub reasoning_effort: Option<String>,
+    /// The approval mode to launch in (from `launch_approval_mode_menu`), or `None` for the
+    /// harness default.
+    #[uniffi(default)]
+    pub approval_mode: Option<String>,
+    /// A git worktree to create or start in; `None` starts in the workspace itself.
+    #[uniffi(default)]
+    pub git: Option<CreationGit>,
+}
+
+/// The `git` block of a new external-host session.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct CreationGit {
+    /// The branch: a new worktree's, or an existing worktree's.
+    pub branch_name: String,
+    /// What a new worktree branches from; `None` for the repository default.
+    #[uniffi(default)]
+    pub base_branch: Option<String>,
+    /// Start in an existing worktree instead of creating one.
+    #[uniffi(default)]
+    pub existing_worktree: bool,
+}
+
+/// One git worktree of a repository on a host.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct HostWorktree {
+    /// Absolute path.
+    pub path: String,
+    /// Checked-out branch; `None` when detached.
+    pub branch: Option<String>,
+    /// The repository's main worktree.
+    pub is_main: bool,
+}
+
+/// A directory on a host and the directories in it, for the folder browser.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct HostDirectoryListing {
+    /// The listed directory; `None` when the home was listed and held nothing.
+    pub path: Option<String>,
+    /// Its parent; `None` at `/`.
+    pub parent: Option<String>,
+    /// Directories in it.
+    pub directories: Vec<CreationWorkspace>,
 }
 
 /// What a successful `POST /v1/sessions` returned.
@@ -153,10 +247,16 @@ impl From<core::CreationAgent> for CreationAgent {
             harness_label: agent.harness_label(),
             supports_creation: agent.supports_creation(),
             supports_model_preview: agent.supports_model_preview(),
+            picker_section: agent.picker_section().into(),
+            is_primary_harness: agent.is_primary_harness(),
+            picker_rank: u32::try_from(agent.picker_rank()).unwrap_or(u32::MAX),
             id: agent.id,
             name: agent.name,
             harness: agent.harness,
             description: agent.description,
+            builtin: agent.builtin,
+            mine: agent.mine,
+            changed_at: agent.changed_at,
         }
     }
 }
@@ -168,6 +268,9 @@ impl From<CreationAgent> for core::CreationAgent {
             name: agent.name,
             harness: agent.harness,
             description: agent.description,
+            builtin: agent.builtin,
+            mine: agent.mine,
+            changed_at: agent.changed_at,
         }
     }
 }
@@ -177,6 +280,9 @@ impl From<core::CreationCatalog> for CreationCatalog {
         Self {
             hosts: catalog.hosts.into_iter().map(Into::into).collect(),
             agents: catalog.agents.into_iter().map(Into::into).collect(),
+            agent_install: catalog.capabilities.agent_install,
+            managed_sandboxes: catalog.capabilities.managed_sandboxes,
+            sandbox_providers: catalog.capabilities.sandbox_providers,
         }
     }
 }
@@ -186,6 +292,11 @@ impl From<CreationCatalog> for core::CreationCatalog {
         Self {
             hosts: catalog.hosts.into_iter().map(Into::into).collect(),
             agents: catalog.agents.into_iter().map(Into::into).collect(),
+            capabilities: core::CreationCapabilities {
+                agent_install: catalog.agent_install,
+                managed_sandboxes: catalog.managed_sandboxes,
+                sandbox_providers: catalog.sandbox_providers,
+            },
         }
     }
 }
@@ -197,6 +308,13 @@ impl From<CreationSelection> for core::CreationSelection {
             agent_id: selection.agent_id,
             workspace: selection.workspace,
             model: selection.model,
+            reasoning_effort: selection.reasoning_effort,
+            approval_mode: selection.approval_mode,
+            git: selection.git.map(|git| core::CreationGit {
+                branch_name: git.branch_name,
+                base_branch: git.base_branch,
+                existing_worktree: git.existing_worktree,
+            }),
         }
     }
 }
@@ -263,6 +381,13 @@ pub fn creation_validation_error(
         .map(|error| error.to_string())
 }
 
+/// Whether `name` is a branch name a new worktree can use.
+#[must_use]
+#[uniffi::export]
+pub fn is_valid_branch_name(name: String) -> bool {
+    core::is_branch_name(&name)
+}
+
 /// The longest session title, in characters.
 #[must_use]
 #[uniffi::export]
@@ -305,6 +430,62 @@ impl ClientCore {
                     .map(|workspace| CreationWorkspace {
                         path: workspace.path,
                         name: workspace.name,
+                    })
+                    .collect()
+            })
+            .map_err(CoreError::from)
+    }
+
+    /// The directories in `path` on `host_id` (its home when `None`), for the folder browser.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` before any request (also for a path that is
+    /// not absolute), the read errors and `InvalidPagination`.
+    pub async fn host_directory(
+        &self,
+        host_id: String,
+        path: Option<String>,
+    ) -> Result<HostDirectoryListing, CoreError> {
+        self.sessions()
+            .host_directory(&host_id, path.as_deref())
+            .await
+            .map(|listing| HostDirectoryListing {
+                path: listing.path,
+                parent: listing.parent,
+                directories: listing
+                    .directories
+                    .into_iter()
+                    .map(|workspace| CreationWorkspace {
+                        path: workspace.path,
+                        name: workspace.name,
+                    })
+                    .collect(),
+            })
+            .map_err(CoreError::from)
+    }
+
+    /// The git worktrees of the repository at `path` on `host_id`, main first; empty when it is
+    /// not a git repository.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` before any request and the read errors.
+    pub async fn host_worktrees(
+        &self,
+        host_id: String,
+        path: String,
+    ) -> Result<Vec<HostWorktree>, CoreError> {
+        self.sessions()
+            .host_worktrees(&host_id, &path)
+            .await
+            .map(|worktrees| {
+                worktrees
+                    .into_iter()
+                    .map(|worktree| HostWorktree {
+                        path: worktree.path,
+                        branch: worktree.branch,
+                        is_main: worktree.is_main,
                     })
                     .collect()
             })

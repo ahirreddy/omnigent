@@ -171,6 +171,7 @@ pub fn fork_plan(source: &SessionSummary, catalog: Option<&CreationCatalog>) -> 
         name: format!("{root} (same as original)"),
         harness: configuration.and_then(|configuration| configuration.harness.clone()),
         description: None,
+        ..CreationAgent::default()
     }];
     if let Some(catalog) = catalog {
         agents.extend(

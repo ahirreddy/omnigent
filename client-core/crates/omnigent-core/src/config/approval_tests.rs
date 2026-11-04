@@ -164,3 +164,49 @@ fn steering_follows_the_executors_live_queue_support() {
     assert!(!session("copilot").supports_steering());
     assert!(!SessionConfiguration::default().supports_steering());
 }
+
+#[test]
+fn launch_modes_offer_launch_only_modes_and_send_flags_only_off_default() {
+    let claude = launch_approval_mode_menu(Some("claude-code-native-ui")).unwrap();
+    assert_eq!(claude.selected.as_deref(), Some("default"));
+    assert!(
+        claude
+            .options
+            .iter()
+            .any(|o| o.value == "bypassPermissions")
+    );
+    assert!(claude.options.iter().all(|o| o.switchable));
+    assert_eq!(
+        launch_approval_args(Some("claude-code-native-ui"), "default"),
+        None
+    );
+    assert_eq!(
+        launch_approval_args(Some("claude-code-native-ui"), "bypassPermissions"),
+        Some(vec!["--permission-mode".into(), "bypassPermissions".into()])
+    );
+    let codex = launch_approval_mode_menu(Some("codex-native-ui")).unwrap();
+    let values: Vec<_> = codex.options.iter().map(|o| o.value.as_str()).collect();
+    assert_eq!(values, ["ask-for-approval", "read-only", "full-access"]);
+    assert_eq!(
+        launch_approval_args(Some("codex-native-ui"), "full-access"),
+        Some(
+            [
+                "--sandbox",
+                "danger-full-access",
+                "--ask-for-approval",
+                "never"
+            ]
+            .map(String::from)
+            .to_vec()
+        )
+    );
+    assert_eq!(
+        launch_approval_args(Some("codex-native-ui"), "approve-for-me"),
+        None
+    );
+    assert_eq!(launch_approval_mode_menu(Some("pi-native-ui")), None);
+    assert_eq!(
+        launch_approval_args(Some("devin-native-ui"), "smart").map(|args| args.len()),
+        Some(2)
+    );
+}

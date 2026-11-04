@@ -95,6 +95,20 @@ pub fn approval_mode_menu(configuration: SessionConfiguration) -> Option<Approva
     })
 }
 
+/// The approval modes a new session of `wrapper` can launch in, its default selected; `None`
+/// when the harness takes no launch mode.
+#[must_use]
+#[uniffi::export]
+pub fn launch_approval_mode_menu(wrapper: Option<String>) -> Option<ApprovalModeMenu> {
+    let menu = core::launch_approval_mode_menu(wrapper.as_deref())?;
+    Some(ApprovalModeMenu {
+        harness: menu.harness,
+        options: menu.options.into_iter().map(Into::into).collect(),
+        selected: menu.selected,
+        next: None,
+    })
+}
+
 #[uniffi::export]
 impl ClientCore {
     /// Switches `session_id`'s live approval mode to `value`, also while a turn runs. Never

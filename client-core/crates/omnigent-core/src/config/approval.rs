@@ -414,6 +414,74 @@ pub fn reported_approval_mode(
     }
 }
 
+/// The approval modes a new session can launch in for `wrapper`, the default selected; `None`
+/// when the harness takes no launch mode. Launch-only modes are offered here.
+#[must_use]
+pub fn launch_approval_mode_menu(wrapper: Option<&str>) -> Option<ApprovalModeMenu> {
+    let vocabulary = vocabulary(wrapper)?;
+    let options: Vec<ApprovalModeOption> = match wrapper? {
+        // Codex launches from its `/permissions` presets, which only some live modes match.
+        CODEX_WRAPPER => CODEX_LAUNCH_PRESETS
+            .iter()
+            .filter_map(|(value, _)| vocabulary.modes.iter().find(|mode| mode.value == *value))
+            .map(option)
+            .collect(),
+        _ => vocabulary.modes.iter().map(option).collect(),
+    };
+    let selected = options.first().map(|option| option.value.clone());
+    Some(ApprovalModeMenu {
+        harness: vocabulary.harness.to_owned(),
+        field: vocabulary.field,
+        options: options
+            .into_iter()
+            .map(|option| ApprovalModeOption {
+                switchable: true,
+                ..option
+            })
+            .collect(),
+        selected,
+    })
+}
+
+/// Codex launch presets (`web/src/lib/nativeHarnessModes.ts`), the default first.
+const CODEX_LAUNCH_PRESETS: [(&str, &[&str]); 3] = [
+    ("ask-for-approval", &[]),
+    (
+        "read-only",
+        &["--sandbox", "read-only", "--ask-for-approval", "on-request"],
+    ),
+    (
+        "full-access",
+        &[
+            "--sandbox",
+            "danger-full-access",
+            "--ask-for-approval",
+            "never",
+        ],
+    ),
+];
+
+/// The `terminal_launch_args` that start `wrapper` in `mode`; `None` for the harness default, a
+/// harness without launch modes, or a mode it does not offer at launch.
+#[must_use]
+pub fn launch_approval_args(wrapper: Option<&str>, mode: &str) -> Option<Vec<String>> {
+    let menu = launch_approval_mode_menu(wrapper)?;
+    if menu.selected.as_deref() == Some(mode) || !menu.options.iter().any(|o| o.value == mode) {
+        return None;
+    }
+    let args: Vec<String> = match wrapper? {
+        CODEX_WRAPPER => CODEX_LAUNCH_PRESETS
+            .iter()
+            .find(|(value, _)| *value == mode)?
+            .1
+            .iter()
+            .map(|arg| (*arg).to_owned())
+            .collect(),
+        _ => vec![PERMISSION_MODE_FLAG.to_owned(), mode.to_owned()],
+    };
+    Some(args)
+}
+
 #[cfg(test)]
 #[path = "approval_tests.rs"]
 mod tests;

@@ -8,7 +8,7 @@ use super::test_support::{
     Reply, RouteTransport, body_json, connected, envelopes, header, path_of, query_value,
 };
 use super::{ClientEvent, SessionError};
-use crate::creation::{CreationError, CreationSelection};
+use crate::creation::{CreationError, CreationGit, CreationSelection};
 
 const CREATION: &str = "sessions/SessionCreation--";
 
@@ -18,6 +18,7 @@ fn selection() -> CreationSelection {
         agent_id: "ag_codex".into(),
         workspace: "/work/project".into(),
         model: None,
+        ..CreationSelection::default()
     }
 }
 
@@ -402,5 +403,212 @@ fn a_sandbox_session_posts_the_managed_contract_without_a_host() {
         posts(core.transport()),
         1,
         "nothing posted for an unknown agent"
+    );
+}
+
+/// `/v1/info` advertising the caller's own agents.
+fn with_agent_install(transport: &RouteTransport) {
+    transport.ok(
+        "/v1/info",
+        r#"{"single_user":true,"accounts_enabled":false,"agent_install":true,
+            "managed_sandboxes_enabled":true,"sandbox_providers":["modal","docker"]}"#,
+    );
+}
+
+#[test]
+fn catalog_lists_the_callers_own_agents_when_the_server_installs_them() {
+    let transport = stub();
+    with_agent_install(&transport);
+    transport.enqueue(
+        "GET",
+        "/v1/agents",
+        vec![
+            Reply::json(
+                200,
+                r#"{"data":[{"id":"ag_codex","name":"codex-native-ui","harness":"codex-native",
+                    "builtin":true}],"has_more":false}"#,
+            ),
+            Reply::json(
+                200,
+                r#"{"data":[
+                    {"id":"ag_mock_new","name":"mock-model","harness":"openai-agents",
+                     "builtin":false,"updated_at":20},
+                    {"id":"ag_mock_old","name":"mock-model (fork ag_x)","harness":"openai-agents",
+                     "builtin":false,"created_at":10},
+                    {"id":"ag_shadow","name":"codex-native-ui","harness":"codex-native"}
+                   ],"has_more":true,"last_id":"ag_shadow"}"#,
+            ),
+            Reply::json(
+                200,
+                r#"{"data":[{"id":"ag_mine_claude","name":"reviewer","harness":"claude-native"}],
+                    "has_more":false}"#,
+            ),
+        ],
+    );
+    let core = connected(transport);
+    let catalog = block_on(core.creation_catalog()).unwrap();
+    let ids: Vec<_> = catalog.agents.iter().map(|a| a.id.as_str()).collect();
+    assert_eq!(ids, ["ag_codex", "ag_mock_new", "ag_mine_claude"]);
+    assert!(catalog.capabilities.agent_install);
+    assert!(catalog.capabilities.managed_sandboxes);
+    assert_eq!(catalog.capabilities.sandbox_providers, ["modal", "docker"]);
+    let requests = core.transport().taken();
+    let user_pages: Vec<_> = requests
+        .iter()
+        .filter(|request| query_value(request, "scope").as_deref() == Some("user"))
+        .collect();
+    assert_eq!(user_pages.len(), 2);
+    assert_eq!(query_value(user_pages[0], "limit").as_deref(), Some("50"));
+    assert_eq!(
+        query_value(user_pages[1], "after").as_deref(),
+        Some("ag_shadow")
+    );
+}
+
+#[test]
+fn catalog_skips_user_agents_on_servers_without_agent_install() {
+    let core = connected(stub());
+    let catalog = block_on(core.creation_catalog()).unwrap();
+    assert!(!catalog.capabilities.agent_install);
+    assert!(!catalog.capabilities.managed_sandboxes);
+    assert!(
+        !core
+            .transport()
+            .taken()
+            .iter()
+            .any(|request| query_value(request, "scope").is_some())
+    );
+}
+
+#[test]
+fn creation_body_carries_effort_launch_mode_and_worktree() {
+    let core = connected(stub());
+    let value = CreationSelection {
+        reasoning_effort: Some("high".into()),
+        approval_mode: Some("full-access".into()),
+        git: Some(CreationGit {
+            branch_name: " feature/x ".into(),
+            base_branch: Some("main".into()),
+            existing_worktree: false,
+        }),
+        ..selection()
+    };
+    block_on(core.create_session(&value, "")).unwrap();
+    let body = body_json(&core.transport().writes()[0]);
+    assert_eq!(body["reasoning_effort"], json!("high"));
+    assert_eq!(
+        body["terminal_launch_args"],
+        json!([
+            "--sandbox",
+            "danger-full-access",
+            "--ask-for-approval",
+            "never"
+        ])
+    );
+    assert_eq!(
+        body["git"],
+        json!({"branch_name": "feature/x", "base_branch": "main"})
+    );
+}
+
+#[test]
+fn default_launch_mode_sends_no_args_and_unknown_modes_or_branches_block() {
+    let core = connected(stub());
+    let value = CreationSelection {
+        approval_mode: Some("ask-for-approval".into()),
+        git: Some(CreationGit {
+            branch_name: "wt".into(),
+            base_branch: Some("ignored".into()),
+            existing_worktree: true,
+        }),
+        ..selection()
+    };
+    block_on(core.create_session(&value, "")).unwrap();
+    let body = body_json(&core.transport().writes()[0]);
+    assert!(body.get("terminal_launch_args").is_none());
+    assert_eq!(
+        body["git"],
+        json!({"branch_name": "wt", "existing_worktree": true})
+    );
+    for value in [
+        CreationSelection {
+            approval_mode: Some("bypassPermissions".into()),
+            ..selection()
+        },
+        CreationSelection {
+            git: Some(CreationGit {
+                branch_name: "bad name".into(),
+                ..CreationGit::default()
+            }),
+            ..selection()
+        },
+    ] {
+        assert!(matches!(
+            block_on(core.create_session(&value, "")),
+            Err(SessionError::Creation(CreationError::Unavailable(_)))
+        ));
+    }
+    assert_eq!(posts(core.transport()), 1);
+}
+
+#[test]
+fn host_directory_lists_home_then_absolute_paths_with_parents() {
+    let transport = stub();
+    transport.ok(
+        "/v1/hosts/host_a/filesystem",
+        r#"{"data":[{"name":".zshrc","path":"/Users/me/.zshrc","type":"file"},
+            {"name":"src","path":"/Users/me/src","type":"directory"}],"has_more":false}"#,
+    );
+    transport.ok(
+        "/v1/hosts/host_a/filesystem/Users/me/my%20repo",
+        r#"{"data":[{"name":"app","path":"/Users/me/my repo/app","type":"directory"}],
+            "has_more":false}"#,
+    );
+    let core = connected(transport);
+    let home = block_on(core.host_directory("host_a", None)).unwrap();
+    assert_eq!(home.path.as_deref(), Some("/Users/me"));
+    assert_eq!(home.parent.as_deref(), Some("/Users"));
+    assert_eq!(home.directories.len(), 1);
+    let nested = block_on(core.host_directory("host_a", Some("/Users/me/my repo/"))).unwrap();
+    assert_eq!(nested.path.as_deref(), Some("/Users/me/my repo"));
+    assert_eq!(nested.directories[0].name, "app");
+    for path in ["relative", "/a?b", "/a%20b"] {
+        assert!(matches!(
+            block_on(core.host_directory("host_a", Some(path))),
+            Err(SessionError::InvalidIdentifier { .. })
+        ));
+    }
+}
+
+#[test]
+fn host_worktrees_read_rows_and_treat_non_git_as_empty() {
+    let transport = stub();
+    transport.enqueue(
+        "GET",
+        "/v1/hosts/host_a/worktrees",
+        vec![
+            Reply::json(
+                200,
+                r#"{"object":"list","data":[
+                    {"path":"/r","branch":"main","is_main":true,"detached":false},
+                    {"path":"/r-wt","branch":null,"is_main":false,"detached":true}]}"#,
+            ),
+            Reply::json(400, r#"{"detail":"not a git repository"}"#),
+        ],
+    );
+    let core = connected(transport);
+    let worktrees = block_on(core.host_worktrees("host_a", "/r")).unwrap();
+    assert_eq!(worktrees.len(), 2);
+    assert!(worktrees[0].is_main);
+    assert_eq!(worktrees[1].branch, None);
+    let requests = core.transport().taken();
+    let listed = requests
+        .iter()
+        .find(|request| path_of(request) == "/v1/hosts/host_a/worktrees")
+        .unwrap();
+    assert_eq!(query_value(listed, "path").as_deref(), Some("/r"));
+    assert_eq!(
+        block_on(core.host_worktrees("host_a", "/tmp")),
+        Ok(Vec::new())
     );
 }

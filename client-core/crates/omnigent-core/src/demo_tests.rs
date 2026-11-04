@@ -34,6 +34,7 @@ fn selection() -> CreationSelection {
         agent_id: "demo-codex".into(),
         workspace: "/demo".into(),
         model: None,
+        ..CreationSelection::default()
     }
 }
 

@@ -17,8 +17,10 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
 
-use crate::client::json::{as_object, opt_object, opt_str, req_str};
+use crate::client::fork::agent_root_name;
+use crate::client::json::{as_object, opt_array, opt_bool, opt_object, opt_str, opt_u64, req_str};
 use crate::client::sessions::SessionSummary;
+use crate::config::approval::{launch_approval_args, launch_approval_mode_menu};
 use crate::config::session::{ModelChoice, canonical_harness, harness_label};
 
 /// What a host reports for one harness in `configured_harnesses`.
@@ -107,7 +109,7 @@ impl CreationHost {
 }
 
 /// One `GET /v1/agents` row.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CreationAgent {
     /// Durable agent id.
     pub id: String,
@@ -117,7 +119,47 @@ pub struct CreationAgent {
     pub harness: Option<String>,
     /// Description.
     pub description: Option<String>,
+    /// The server's `builtin` flag; `None` from servers that predate it.
+    pub builtin: Option<bool>,
+    /// One of the caller's own agents (`GET /v1/agents?scope=user`).
+    pub mine: bool,
+    /// Last change, in seconds: `updated_at`, else `created_at`.
+    pub changed_at: Option<u64>,
 }
+
+/// Where the new-session picker lists an agent, as the web groups it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum AgentPickerSection {
+    /// A native coding CLI or an ACP harness ("Harnesses"), never one of the caller's own agents.
+    Harness,
+    /// A built-in composed agent such as Polly ("Agents").
+    Agent,
+    /// A user-registered or uploaded agent ("Agents", under "Other…").
+    Custom,
+}
+
+/// Built-in agents by name, for servers that do not send `builtin` (the web's `BUILTIN_AGENTS`).
+const BUILTIN_AGENT_NAMES: [&str; 13] = [
+    "claude-native-ui",
+    "codex-native-ui",
+    "opencode-native-ui",
+    "pi-native-ui",
+    "cursor-native-ui",
+    "kiro-native-ui",
+    "antigravity-native-ui",
+    "goose-native-ui",
+    "qwen-native-ui",
+    "kimi-native-ui",
+    "devin-native-ui",
+    "polly",
+    "debby",
+];
+
+/// Harnesses listed inline in the picker, in order; the rest fold into "Other…".
+const PRIMARY_HARNESSES: [&str; 3] = ["claude-native", "cursor-native", "codex-native"];
+
+/// ACP CLI harnesses from before the `acp:` prefix.
+const LEGACY_ACP_HARNESSES: [&str; 2] = ["devin", "grok"];
 
 /// Native harnesses whose wrapper carries chat and approvals through the session API.
 const WRAPPED_NATIVE: [&str; 5] = [
@@ -144,7 +186,50 @@ impl CreationAgent {
             name: opt_str(object, "name")?.unwrap_or_default(),
             harness: opt_str(object, "harness")?,
             description: opt_str(object, "description")?,
+            builtin: opt_bool(object, "builtin")?,
+            mine: false,
+            changed_at: opt_u64(object, "updated_at")?.or(opt_u64(object, "created_at")?),
         })
+    }
+
+    /// The picker section: harness-backed rows unless the agent is the caller's own, then
+    /// built-ins (the server's flag, else the known names), then everything else.
+    #[must_use]
+    pub fn picker_section(&self) -> AgentPickerSection {
+        let harness = self.harness_id();
+        let harness_backed = harness.ends_with("-native")
+            || harness.starts_with("acp:")
+            || LEGACY_ACP_HARNESSES.contains(&harness.as_str());
+        if harness_backed && !self.mine {
+            return AgentPickerSection::Harness;
+        }
+        let builtin = !self.mine
+            && self
+                .builtin
+                .unwrap_or_else(|| BUILTIN_AGENT_NAMES.contains(&self.name.as_str()));
+        if builtin {
+            AgentPickerSection::Agent
+        } else {
+            AgentPickerSection::Custom
+        }
+    }
+
+    /// A harness listed inline rather than under "Other…" (Claude Code, Cursor, Codex).
+    #[must_use]
+    pub fn is_primary_harness(&self) -> bool {
+        self.picker_section() == AgentPickerSection::Harness
+            && PRIMARY_HARNESSES.contains(&self.harness_id().as_str())
+    }
+
+    /// The picker's order within a section: primary harnesses first in their order, then the
+    /// rest as listed.
+    #[must_use]
+    pub fn picker_rank(&self) -> usize {
+        let harness = self.harness_id();
+        PRIMARY_HARNESSES
+            .iter()
+            .position(|primary| *primary == harness)
+            .unwrap_or(PRIMARY_HARNESSES.len())
     }
 
     /// The canonical harness id.
@@ -204,6 +289,74 @@ pub struct CreationSelection {
     pub workspace: String,
     /// The model's wire value, or `None` for the harness default.
     pub model: Option<String>,
+    /// The reasoning effort, or `None` for the model default.
+    pub reasoning_effort: Option<String>,
+    /// The approval mode to launch in (a value of [`launch_approval_mode_menu`]), or `None` for
+    /// the harness default.
+    pub approval_mode: Option<String>,
+    /// A git worktree to create or start in, or `None` to start in the workspace itself.
+    pub git: Option<CreationGit>,
+}
+
+/// The `git` block of a new external-host session.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CreationGit {
+    /// The branch: a new worktree's, or an existing worktree's.
+    pub branch_name: String,
+    /// What a new worktree branches from; `None` for the repository default.
+    pub base_branch: Option<String>,
+    /// Start in an existing worktree (records its branch) instead of creating one.
+    pub existing_worktree: bool,
+}
+
+/// One git worktree of a repository on a host (`GET /v1/hosts/{id}/worktrees`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HostWorktree {
+    /// Absolute path.
+    pub path: String,
+    /// Checked-out branch; `None` when detached.
+    pub branch: Option<String>,
+    /// The repository's main worktree.
+    pub is_main: bool,
+}
+
+impl HostWorktree {
+    /// Decodes one worktree row.
+    ///
+    /// # Errors
+    ///
+    /// A description of the first field with the wrong shape.
+    pub fn from_value(value: &Value) -> Result<Self, String> {
+        let object = as_object(value, "worktree")?;
+        Ok(Self {
+            path: req_str(object, "path")?,
+            branch: opt_str(object, "branch")?,
+            is_main: opt_bool(object, "is_main")?.unwrap_or(false),
+        })
+    }
+}
+
+/// A directory on a host and the directories in it, for the folder browser.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HostDirectoryListing {
+    /// The listed directory; `None` when the host's home was listed and it held nothing.
+    pub path: Option<String>,
+    /// Its parent; `None` at `/`.
+    pub parent: Option<String>,
+    /// Directories in it, by name.
+    pub directories: Vec<CreationWorkspace>,
+}
+
+/// The parent of an absolute `path`; `None` at `/`.
+#[must_use]
+pub fn parent_directory(path: &str) -> Option<String> {
+    let trimmed = path.trim_end_matches('/');
+    let (parent, _) = trimmed.rsplit_once('/')?;
+    Some(if parent.is_empty() {
+        "/".to_owned()
+    } else {
+        parent.to_owned()
+    })
 }
 
 /// Why a session cannot be created, or what happened to a creation request.
@@ -227,13 +380,96 @@ pub enum CreationError {
     Uncertain,
 }
 
+/// What `GET /v1/info` says the server offers for session creation. Missing fields mean
+/// unsupported.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CreationCapabilities {
+    /// `agent_install`: the caller's own agents are listed with `GET /v1/agents?scope=user`.
+    pub agent_install: bool,
+    /// `managed_sandboxes_enabled`: sessions can start on a new sandbox the server provisions.
+    pub managed_sandboxes: bool,
+    /// `sandbox_providers`: the configured sandbox providers, the default first.
+    pub sandbox_providers: Vec<String>,
+}
+
+impl CreationCapabilities {
+    /// Decodes the creation fields of a `/v1/info` body.
+    ///
+    /// # Errors
+    ///
+    /// A description of the first field with the wrong shape.
+    pub fn from_value(value: &Value) -> Result<Self, String> {
+        let object = as_object(value, "/v1/info")?;
+        let sandbox_providers = opt_array(object, "sandbox_providers")?
+            .map(|providers| {
+                providers
+                    .iter()
+                    .map(|provider| {
+                        provider
+                            .as_str()
+                            .map(str::to_owned)
+                            .ok_or_else(|| "`sandbox_providers` holds a non-string".to_owned())
+                    })
+                    .collect::<Result<Vec<_>, String>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
+        Ok(Self {
+            agent_install: opt_bool(object, "agent_install")?.unwrap_or(false),
+            managed_sandboxes: opt_bool(object, "managed_sandboxes_enabled")?.unwrap_or(false),
+            sandbox_providers,
+        })
+    }
+}
+
 /// The hosts and agents a session can be created with.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CreationCatalog {
     /// Hosts, de-duplicated by id.
     pub hosts: Vec<CreationHost>,
-    /// Agents, de-duplicated by id.
+    /// Agents, de-duplicated by id: the server's catalog, then the caller's own.
     pub agents: Vec<CreationAgent>,
+    /// What the server offers.
+    pub capabilities: CreationCapabilities,
+}
+
+/// The caller's own agents to list after `catalog`: one per root name, the one changed last,
+/// skipping names and ids the catalog already has (the web's `mergeAvailableAgents`).
+#[must_use]
+pub fn merge_user_agents(
+    catalog: &[CreationAgent],
+    user: Vec<CreationAgent>,
+) -> Vec<CreationAgent> {
+    let taken_names: std::collections::BTreeSet<&str> = catalog
+        .iter()
+        .filter(|agent| agent.builtin != Some(false))
+        .map(|agent| agent_root_name(&agent.name))
+        .collect();
+    let taken_ids: std::collections::BTreeSet<&str> =
+        catalog.iter().map(|agent| agent.id.as_str()).collect();
+    let mut by_name: BTreeMap<String, CreationAgent> = BTreeMap::new();
+    let mut order: Vec<String> = Vec::new();
+    for mut agent in user {
+        let root = agent_root_name(&agent.name).to_owned();
+        if taken_ids.contains(agent.id.as_str()) || taken_names.contains(root.as_str()) {
+            continue;
+        }
+        agent.mine = true;
+        match by_name.get(&root) {
+            Some(existing) if existing.changed_at.unwrap_or(0) > agent.changed_at.unwrap_or(0) => {}
+            Some(_) => {
+                by_name.insert(root, agent);
+            }
+            None => {
+                order.push(root.clone());
+                by_name.insert(root, agent);
+            }
+        }
+    }
+    order
+        .into_iter()
+        .filter_map(|root| by_name.remove(&root))
+        .collect()
 }
 
 /// The title limit, in characters.
@@ -299,6 +535,25 @@ impl CreationCatalog {
                 "Enter an absolute workspace path beginning with /.".to_owned(),
             ));
         }
+        if let Some(git) = &selection.git
+            && !is_branch_name(&git.branch_name)
+        {
+            return Err(CreationError::Unavailable(
+                "Enter a branch name without spaces, `..` or a leading `-`.".to_owned(),
+            ));
+        }
+        if let Some(mode) = &selection.approval_mode {
+            let wrapper = self
+                .agent(&selection.agent_id)
+                .and_then(CreationAgent::wrapper);
+            let offered = launch_approval_mode_menu(wrapper.as_deref())
+                .is_some_and(|menu| menu.options.iter().any(|option| &option.value == mode));
+            if !offered {
+                return Err(CreationError::Unavailable(
+                    "This agent cannot start in that approval mode.".to_owned(),
+                ));
+            }
+        }
         if let Some(model) = &selection.model {
             let previewable = self
                 .agent(&selection.agent_id)
@@ -346,6 +601,34 @@ pub(crate) fn creation_body(
     if let Some(model) = &selection.model {
         body.insert("model_override".into(), Value::String(model.clone()));
     }
+    if let Some(effort) = &selection.reasoning_effort {
+        body.insert("reasoning_effort".into(), Value::String(effort.clone()));
+    }
+    if let Some(args) = selection
+        .approval_mode
+        .as_deref()
+        .and_then(|mode| launch_approval_args(agent.wrapper().as_deref(), mode))
+    {
+        body.insert(
+            "terminal_launch_args".into(),
+            Value::Array(args.into_iter().map(Value::String).collect()),
+        );
+    }
+    if let Some(git) = &selection.git {
+        let mut block = Map::new();
+        block.insert(
+            "branch_name".into(),
+            Value::String(git.branch_name.trim().to_owned()),
+        );
+        if git.existing_worktree {
+            block.insert("existing_worktree".into(), Value::Bool(true));
+        } else if let Some(base) = git.base_branch.as_deref().map(str::trim)
+            && !base.is_empty()
+        {
+            block.insert("base_branch".into(), Value::String(base.to_owned()));
+        }
+        body.insert("git".into(), Value::Object(block));
+    }
     if let Some(wrapper) = agent.wrapper() {
         let mut labels = Map::new();
         labels.insert("omnigent.ui".into(), Value::String("terminal".into()));
@@ -381,6 +664,23 @@ pub(crate) fn sandbox_creation_body(
         body.insert("labels".into(), Value::Object(labels));
     }
     Value::Object(body)
+}
+
+/// A git branch name the server accepts: non-empty, no whitespace, control characters, `..`,
+/// `~^:?*[\\`, no leading `-` or `/`, no trailing `/`, `.` or `.lock`.
+#[must_use]
+pub fn is_branch_name(name: &str) -> bool {
+    let name = name.trim();
+    !name.is_empty()
+        && !name.starts_with(['-', '/'])
+        && !name.ends_with(['/', '.'])
+        && !name.to_ascii_lowercase().ends_with(".lock")
+        && !name.contains("..")
+        && !name.contains("//")
+        && !name.contains("@{")
+        && !name
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || "~^:?*[\\".contains(c))
 }
 
 /// The server's explanation for a rejected creation: `error.message`, `detail`, or the joined
@@ -426,6 +726,7 @@ mod tests {
             agent_id: "ag_codex".into(),
             workspace: "/work/project".into(),
             model: None,
+            ..CreationSelection::default()
         }
     }
 
@@ -450,6 +751,7 @@ mod tests {
             name: "Custom Codex".into(),
             harness: harness.map(str::to_owned),
             description: None,
+            ..CreationAgent::default()
         }
     }
 
@@ -460,6 +762,7 @@ mod tests {
                 Some(&[("codex-native", HarnessReadiness::Ready)]),
             )],
             agents: vec![agent("ag_codex", Some("codex-native"))],
+            ..CreationCatalog::default()
         }
     }
 
@@ -482,6 +785,7 @@ mod tests {
             let catalog = CreationCatalog {
                 hosts: vec![host("online", Some(&[("codex-native", readiness)]))],
                 agents: vec![agent("ag_codex", Some("codex-native"))],
+                ..CreationCatalog::default()
             };
             assert!(
                 catalog.validate(&selection(), &[]).is_err(),
@@ -520,6 +824,7 @@ mod tests {
             let catalog = CreationCatalog {
                 hosts: vec![host],
                 agents: catalog().agents,
+                ..CreationCatalog::default()
             };
             assert!(catalog.validate(&selection(), &[]).is_err());
         }
@@ -529,6 +834,7 @@ mod tests {
                 name: "codex-native-ui".into(),
                 ..agent("ag_codex", None)
             }],
+            ..CreationCatalog::default()
         };
         assert!(unknown.validate(&selection(), &[]).is_err());
         assert!(!agent("ag_future", Some("future-native")).supports_creation());
@@ -606,5 +912,92 @@ mod tests {
             creation_rejection(long.as_bytes(), 400).chars().count(),
             1000
         );
+    }
+
+    #[test]
+    fn picker_sections_follow_the_web_grouping() {
+        use AgentPickerSection::{Agent, Custom, Harness};
+        let row = |name: &str, harness: &str, builtin: Option<bool>, mine: bool| CreationAgent {
+            name: name.into(),
+            harness: Some(harness.into()),
+            builtin,
+            mine,
+            ..agent("a", None)
+        };
+        for (agent, section, primary) in [
+            (
+                row("claude-native-ui", "claude-native", Some(true), false),
+                Harness,
+                true,
+            ),
+            (
+                row("pi-native-ui", "native-pi", None, false),
+                Harness,
+                false,
+            ),
+            (
+                row("kilocode", "acp:kilocode", Some(true), false),
+                Harness,
+                false,
+            ),
+            (row("grok", "grok", Some(true), false), Harness, false),
+            (row("polly", "claude-sdk", Some(true), false), Agent, false),
+            (row("debby", "claude-sdk", None, false), Agent, false),
+            (
+                row("mock-model", "openai-agents", Some(false), false),
+                Custom,
+                false,
+            ),
+            (
+                row("reviewer", "claude-native", Some(false), true),
+                Custom,
+                false,
+            ),
+            (row("bundle", "openai-agents", None, false), Custom, false),
+        ] {
+            assert_eq!(agent.picker_section(), section, "{}", agent.name);
+            assert_eq!(agent.is_primary_harness(), primary, "{}", agent.name);
+        }
+        assert!(
+            row("c", "claude-native", None, false).picker_rank()
+                < row("x", "codex-native", None, false).picker_rank()
+        );
+    }
+
+    #[test]
+    fn user_agents_merge_newest_per_root_name_after_the_catalog() {
+        let user = |id: &str, name: &str, changed: u64| CreationAgent {
+            name: name.into(),
+            changed_at: Some(changed),
+            ..agent(id, Some("openai-agents"))
+        };
+        let catalog = vec![CreationAgent {
+            name: "polly".into(),
+            builtin: Some(true),
+            ..agent("ag_polly", Some("claude-sdk"))
+        }];
+        let merged = merge_user_agents(
+            &catalog,
+            vec![
+                user("ag_old", "mock", 1),
+                user("ag_new", "mock (fork ag_1)", 5),
+                user("ag_polly_copy", "polly", 9),
+                user("ag_polly", "polly-renamed", 9),
+            ],
+        );
+        let ids: Vec<_> = merged.iter().map(|agent| agent.id.as_str()).collect();
+        assert_eq!(ids, ["ag_new"]);
+        assert!(merged[0].mine);
+    }
+
+    #[test]
+    fn capabilities_default_to_unsupported() {
+        let value = serde_json::json!({"single_user": true});
+        assert_eq!(
+            CreationCapabilities::from_value(&value),
+            Ok(CreationCapabilities::default())
+        );
+        let bad = serde_json::json!({"sandbox_providers": [1]});
+        assert!(CreationCapabilities::from_value(&bad).is_err());
     }
 }

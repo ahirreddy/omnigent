@@ -294,6 +294,7 @@ fn agent(id: &str, name: &str, harness: Option<&str>) -> CreationAgent {
         name: name.into(),
         harness: harness.map(str::to_owned),
         description: None,
+        ..CreationAgent::default()
     }
 }
 
@@ -311,6 +312,7 @@ fn catalog(status: &str, sandbox: Option<&str>) -> CreationCatalog {
             agent("ag_claude", "claude-native-ui", Some("claude-native")),
             agent("ag_goose", "goose", Some("goose-native")),
         ],
+        ..CreationCatalog::default()
     }
 }
 
