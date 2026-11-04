@@ -5,8 +5,8 @@ use futures::executor::block_on;
 use serde_json::json;
 
 use super::fork::{
-    ForkRequest, ForkStart, RunnerLaunch, agent_root_name, fork_plan, fork_target_carries_history,
-    fork_unavailable_reason,
+    ForkRequest, ForkSandbox, ForkStart, RunnerLaunch, agent_root_name, fork_plan,
+    fork_target_carries_history, fork_unavailable_reason,
 };
 use super::sessions::SessionSummary;
 use super::test_support::{Reply, RouteTransport, body_json, connected, path_of, record};
@@ -30,6 +30,7 @@ fn start() -> ForkStart {
     ForkStart {
         host_id: "host_a".into(),
         workspace: " /work/project ".into(),
+        branch: None,
     }
 }
 
@@ -220,6 +221,79 @@ fn starts_the_fork_on_the_host() {
 }
 
 #[test]
+fn sends_the_run_configuration_and_a_worktree_branch() {
+    let transport = forking(Reply::json(201, FORKED));
+    transport.ok("/v1/hosts", hosts("online"));
+    transport.respond(
+        Some("POST"),
+        RUNNERS,
+        None,
+        Reply::json(200, r#"{"runner_id":"runner_1"}"#),
+    );
+    let core = connected(transport);
+    block_on(core.fork_session(&ForkRequest {
+        start: Some(ForkStart {
+            branch: Some(" feature/copy ".into()),
+            ..start()
+        }),
+        model: Some("gpt-5".into()),
+        reasoning_effort: Some("high".into()),
+        terminal_launch_args: Some(vec!["--permission-mode".into(), "plan".into()]),
+        ..request()
+    }))
+    .unwrap();
+    let writes = core.transport().writes();
+    assert_eq!(
+        body_json(&writes[0]),
+        json!({
+            "up_to_response_id": "resp_2", "model_override": "gpt-5", "reasoning_effort": "high",
+            "terminal_launch_args": ["--permission-mode", "plan"]
+        })
+    );
+    assert_eq!(
+        body_json(&writes[1])["git"],
+        json!({"branch_name": "feature/copy"})
+    );
+}
+
+#[test]
+fn forks_onto_a_new_sandbox_but_never_also_a_host() {
+    let core = connected(forking(Reply::json(201, FORKED)));
+    let sandbox = ForkSandbox {
+        provider: Some("modal".into()),
+        workspaces: Some(vec!["https://github.com/o/r#main".into()]),
+    };
+    let forked = block_on(core.fork_session(&ForkRequest {
+        sandbox: Some(sandbox.clone()),
+        ..request()
+    }))
+    .unwrap();
+    assert_eq!(forked.launch, RunnerLaunch::NotRequested);
+    assert_eq!(
+        body_json(&core.transport().writes()[0]),
+        json!({
+            "up_to_response_id": "resp_2", "host_type": "managed", "sandbox_provider": "modal",
+            "workspaces": ["https://github.com/o/r#main"]
+        })
+    );
+    let both = block_on(core.fork_session(&ForkRequest {
+        sandbox: Some(sandbox),
+        start: Some(start()),
+        ..request()
+    }));
+    assert!(matches!(both, Err(SessionError::Creation(_))));
+    let bad_branch = block_on(core.fork_session(&ForkRequest {
+        start: Some(ForkStart {
+            branch: Some("bad branch".into()),
+            ..start()
+        }),
+        ..request()
+    }));
+    assert!(matches!(bad_branch, Err(SessionError::Creation(_))));
+    assert_eq!(core.transport().writes().len(), 1);
+}
+
+#[test]
 fn a_failed_launch_still_returns_the_fork() {
     let transport = forking(Reply::json(201, FORKED));
     transport.ok("/v1/hosts", hosts("online"));
@@ -326,6 +400,17 @@ fn the_plan_offers_the_source_first_then_switch_targets() {
     assert_eq!(plan.directory, "/work/project");
     assert_eq!(plan.host_id.as_deref(), Some("host_a"));
     assert_eq!(plan.start_unavailable_reason, None);
+    assert_eq!(plan.hosts.len(), 1);
+    assert_eq!(plan.hosts[0].unavailable_reason, None);
+    assert!(!plan.offers_sandbox);
+    let offline = fork_plan(&source(), Some(&catalog("offline", None)));
+    assert!(offline.hosts[0].unavailable_reason.is_some());
+    assert_eq!(
+        fork_plan(&source(), Some(&catalog("online", Some("modal"))))
+            .hosts
+            .len(),
+        0
+    );
 }
 
 #[test]

@@ -24,8 +24,11 @@ public final class ForkStore {
   public private(set) var catalog: CreationLoad<CreationCatalog> = .idle
   /// The request state.
   public private(set) var phase: ForkPhase = .idle
+  /// Models the chosen host advertises for the chosen agent.
+  public private(set) var models: CreationLoad<[ModelChoice]> = .idle
 
   private let core: ClientCore
+  private var modelsGeneration = 0
 
   init(core: ClientCore) {
     self.core = core
@@ -56,6 +59,29 @@ public final class ForkStore {
     } catch {
       catalog = .failed(coreError(error))
     }
+  }
+
+  /// The agent or host changed: loads the agent's models on the host. A newer choice
+  /// supersedes an older one's result; no host clears them.
+  /// - Parameters:
+  ///   - agentID: The agent.
+  ///   - hostID: The host, or `nil` for a new sandbox.
+  public func loadModels(agentID: String, hostID: String?) async {
+    modelsGeneration += 1
+    let generation = modelsGeneration
+    guard let hostID, !agentID.isEmpty else {
+      models = .idle
+      return
+    }
+    models = .loading
+    let result: CreationLoad<[ModelChoice]>
+    do {
+      result = .loaded(try await core.creationModels(agentId: agentID, hostId: hostID))
+    } catch {
+      result = .failed(coreError(error))
+    }
+    guard generation == modelsGeneration else { return }
+    models = result
   }
 
   /// The sheet's choices for `source`, from the core.

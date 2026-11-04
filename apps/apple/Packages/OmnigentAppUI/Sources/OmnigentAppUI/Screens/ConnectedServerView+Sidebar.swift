@@ -264,15 +264,17 @@ extension ConnectedServerView {
     let tabs = session.tabs
     let list = connection.sessionList
     return ForkActions(
-      fork: { agentID, directory, start in
+      forkWith: { choices in
         Task {
           await flow.fork(
-            agentID: agentID, directory: directory, start: start,
-            open: { tabs.open(.chat(sessionID: $0)) },
+            choices, open: { tabs.open(.chat(sessionID: $0)) },
             report: { message in
               list.reportFailure(.InvalidState(message: message))
             })
         }
+      },
+      selectionChanged: { agentID, hostID in
+        Task { await flow.selectionChanged(agentID: agentID, hostID: hostID) }
       },
       cancel: { flow.cancel() })
   }

@@ -17,10 +17,14 @@ final class ForkFlow {
     let catalogError: String? =
       if case .failed(let error) = store.catalog { error.message } else { nil }
     // An unacknowledged uncertain fork blocks another until the sheet is dismissed.
+    let modelsError: String? =
+      if case .failed(let error) = store.models { "Models unavailable: \(error.message)" } else {
+        nil
+      }
     return ForkAdapter.state(
-      context: context, plan: store.plan(for: context.source),
+      context: context, plan: store.plan(for: context.source), models: store.models.value ?? [],
       isForking: store.phase == .forking || !store.canFork,
-      errorMessage: store.errorMessage ?? catalogError)
+      errorMessage: store.errorMessage ?? catalogError ?? modelsError)
   }
 
   /// Opens the sheet for `context` and loads the agents and hosts it offers.
@@ -47,10 +51,25 @@ final class ForkFlow {
     agentID: String, directory: String, start: Bool, open: @MainActor (String) -> Void,
     report: @MainActor (String) -> Void
   ) async {
+    await fork(
+      ForkChoices(agentID: agentID, directory: directory, start: start), open: open,
+      report: report)
+  }
+
+  /// The agent or host changed in the sheet: loads that agent's models on that host.
+  func selectionChanged(agentID: String, hostID: String?) async {
+    guard let context, let store else { return }
+    await store.loadModels(
+      agentID: agentID, hostID: hostID ?? store.plan(for: context.source).hostId)
+  }
+
+  /// Forks with every choice in the sheet; otherwise as ``fork(agentID:directory:start:open:report:)``.
+  func fork(
+    _ choices: ForkChoices, open: @MainActor (String) -> Void, report: @MainActor (String) -> Void
+  ) async {
     guard let context, let store else { return }
     let plan = store.plan(for: context.source)
-    let request = ForkAdapter.request(
-      context: context, plan: plan, agentID: agentID, directory: directory, start: start)
+    let request = ForkAdapter.request(context: context, plan: plan, choices: choices)
     guard let sessionID = await store.fork(request) else { return }
     self.context = nil
     open(sessionID)

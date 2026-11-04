@@ -1,3 +1,4 @@
+import Foundation
 import OmnigentCoreFFI
 import OmnigentUIComponents
 
@@ -19,13 +20,15 @@ enum ForkAdapter {
   /// - Parameters:
   ///   - context: What is being forked.
   ///   - plan: The core's choices for the source.
+  ///   - models: The chosen host's models for the chosen agent.
   ///   - isForking: Whether the request is in flight (or blocked), which disables the sheet.
   ///   - errorMessage: The request's or the catalog's failure.
   /// - Returns: The sheet's state.
   static func state(
-    context: ForkContext, plan: ForkPlan, isForking: Bool, errorMessage: String?
+    context: ForkContext, plan: ForkPlan, models: [ModelChoice] = [], isForking: Bool,
+    errorMessage: String?
   ) -> ForkViewState {
-    ForkViewState(
+    var state = ForkViewState(
       id: "fork-\(context.source.id)-\(context.upToResponseID ?? "all")", kind: context.kind,
       agents: plan.agents.map {
         OmnigentUIComponents.CreationAgent(
@@ -33,6 +36,24 @@ enum ForkAdapter {
       },
       agentID: plan.agentId, directory: plan.directory, isForking: isForking,
       errorMessage: errorMessage, startUnavailableReason: plan.startUnavailableReason)
+    state.options = options(plan, models: models)
+    return state
+  }
+
+  /// The host, model and approval choices: Continue keeps the source's host and agent setup.
+  static func options(_ plan: ForkPlan, models: [ModelChoice]) -> ForkOptions {
+    var modes: [String: [OmnigentUIComponents.ApprovalModeOption]] = [:]
+    for agent in plan.agents {
+      if let menu = creationApprovalModeMenu(agent: agent) {
+        modes[agent.id] = ComposerAdapter.approvalModes(menu).options
+      }
+    }
+    return ForkOptions(
+      hosts: plan.hosts.map {
+        ForkHostOption(id: $0.hostId, name: $0.name, unavailableReason: $0.unavailableReason)
+      },
+      offersSandbox: plan.offersSandbox, models: NewSessionAdapter.models(models),
+      approvalModes: modes)
   }
 
   /// The request for the sheet's choices. Keeping the source's agent sends no agent, and a
@@ -47,15 +68,32 @@ enum ForkAdapter {
   static func request(
     context: ForkContext, plan: ForkPlan, agentID: String, directory: String, start: Bool
   ) -> ForkRequest {
+    request(
+      context: context, plan: plan,
+      choices: ForkChoices(agentID: agentID, directory: directory, start: start))
+  }
+
+  /// The request for every choice in the sheet: a start on the chosen host (else the
+  /// source's) with an optional worktree branch, or a new sandbox, and the run configuration.
+  static func request(context: ForkContext, plan: ForkPlan, choices: ForkChoices) -> ForkRequest {
+    let branch = choices.branch.trimmingCharacters(in: .whitespaces)
     let forkStart: ForkStart? =
-      if start, let hostID = plan.hostId {
-        ForkStart(hostId: hostID, workspace: directory)
+      if choices.start, !choices.isSandbox, let hostID = choices.hostID ?? plan.hostId {
+        ForkStart(
+          hostId: hostID, workspace: choices.directory, branch: branch.isEmpty ? nil : branch)
       } else {
         nil
       }
+    let repositories = NewSessionOptions.repositoryList(choices.repositories)
+    let title = choices.title.trimmingCharacters(in: .whitespaces)
     return ForkRequest(
       sourceId: context.source.id, upToResponseId: context.upToResponseID,
-      agentId: agentID == plan.agentId ? nil : agentID, title: nil, start: forkStart)
+      agentId: choices.agentID == plan.agentId ? nil : choices.agentID,
+      title: title.isEmpty ? nil : title, start: forkStart,
+      sandbox: choices.isSandbox
+        ? ForkSandbox(provider: nil, workspaces: repositories.isEmpty ? nil : repositories) : nil,
+      model: choices.model, reasoningEffort: choices.effort, approvalMode: choices.approvalMode,
+      agent: choices.approvalMode == nil ? nil : plan.agents.first { $0.id == choices.agentID })
   }
 
   /// The row a "Fork chat from here" cuts after: a settled assistant message with a response.

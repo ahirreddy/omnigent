@@ -138,6 +138,8 @@ nonisolated public struct ForkViewState: Hashable, Sendable, Identifiable {
   public var errorMessage: String?
   /// Why "Clone & start" is unavailable (for example the host is offline); `nil` allows it.
   public var startUnavailableReason: String?
+  /// Host, model, effort and approval choices; empty hides them.
+  public var options = ForkOptions()
 
   /// Creates fork state.
   /// - Parameters:
@@ -187,12 +189,29 @@ nonisolated public struct ForkViewState: Hashable, Sendable, Identifiable {
 
 /// Fork actions.
 public struct ForkActions {
-  /// Fork with the chosen agent and directory; `start` begins work immediately ("Clone & start").
-  public var fork: @MainActor (_ agentID: String, _ directory: String, _ start: Bool) -> Void
+  /// Fork with the dialog's choices; `start` begins work immediately ("Clone & start").
+  public var forkWith: @MainActor (ForkChoices) -> Void
+  /// The agent or host changed: load that agent's models on that host.
+  public var selectionChanged: (@MainActor (_ agentID: String, _ hostID: String?) -> Void)?
   /// Close the dialog.
   public var cancel: @MainActor () -> Void
 
-  /// Creates actions.
+  /// Creates actions that use every choice.
+  /// - Parameters:
+  ///   - forkWith: Fork.
+  ///   - selectionChanged: Load the models for an agent on a host.
+  ///   - cancel: Close.
+  public init(
+    forkWith: @escaping @MainActor (ForkChoices) -> Void,
+    selectionChanged: (@MainActor (_ agentID: String, _ hostID: String?) -> Void)? = nil,
+    cancel: @escaping @MainActor () -> Void
+  ) {
+    self.forkWith = forkWith
+    self.selectionChanged = selectionChanged
+    self.cancel = cancel
+  }
+
+  /// Creates actions that take only the agent, directory and start.
   /// - Parameters:
   ///   - fork: Fork.
   ///   - cancel: Close.
@@ -200,7 +219,6 @@ public struct ForkActions {
     fork: @escaping @MainActor (_ agentID: String, _ directory: String, _ start: Bool) -> Void,
     cancel: @escaping @MainActor () -> Void
   ) {
-    self.fork = fork
-    self.cancel = cancel
+    self.init(forkWith: { fork($0.agentID, $0.directory, $0.start) }, cancel: cancel)
   }
 }

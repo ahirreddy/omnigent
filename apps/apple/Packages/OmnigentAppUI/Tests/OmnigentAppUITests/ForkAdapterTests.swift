@@ -97,4 +97,41 @@ struct ForkAdapterTests {
     #expect(started.agentId == "ag_claude")
     #expect(started.start == ForkStart(hostId: "host_a", workspace: "/work"))
   }
+
+  @Test("Every choice reaches the request: host, branch, run configuration, title, sandbox")
+  func fullChoices() {
+    let context = ForkContext(source: source(), upToResponseID: nil, kind: .session)
+    let plan = forkPlan(source: source(), catalog: catalog(hostStatus: "online"))
+    #expect(plan.hosts.map(\.hostId) == ["host_a"])
+    var choices = ForkChoices(agentID: "ag_claude", directory: "/work", start: true)
+    choices.hostID = "host_a"
+    choices.branch = " feature/copy "
+    choices.model = "opus"
+    choices.effort = "high"
+    choices.approvalMode = "plan"
+    choices.title = " Copy "
+    let request = ForkAdapter.request(context: context, plan: plan, choices: choices)
+    #expect(request.start?.branch == "feature/copy")
+    #expect(request.title == "Copy")
+    #expect(request.model == "opus")
+    #expect(request.reasoningEffort == "high")
+    #expect(request.approvalMode == "plan")
+    #expect(request.agent?.id == "ag_claude")
+    #expect(request.sandbox == nil)
+
+    choices.isSandbox = true
+    choices.repositories = "https://github.com/o/r#main"
+    let sandboxed = ForkAdapter.request(context: context, plan: plan, choices: choices)
+    #expect(sandboxed.start == nil)
+    #expect(sandboxed.sandbox?.workspaces == ["https://github.com/o/r#main"])
+  }
+
+  @Test("Options list hosts and each agent's approval modes")
+  func options() {
+    let plan = forkPlan(source: source(), catalog: catalog(hostStatus: "offline"))
+    let options = ForkAdapter.options(plan, models: [])
+    #expect(options.hosts.first?.unavailableReason != nil)
+    #expect(options.approvalModes["ag_claude"]?.isEmpty == false)
+    #expect(!options.offersSandbox)
+  }
 }

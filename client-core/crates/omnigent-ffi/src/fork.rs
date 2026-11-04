@@ -17,6 +17,29 @@ pub struct ForkStart {
     pub host_id: String,
     /// Absolute directory on the host.
     pub workspace: String,
+    /// A new git worktree branch to start in; `None` starts in the directory itself.
+    #[uniffi(default)]
+    pub branch: Option<String>,
+}
+
+/// A fork onto a new sandbox the server provisions.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct ForkSandbox {
+    /// The sandbox provider; `None` takes the server's default.
+    pub provider: Option<String>,
+    /// `<url>[#<branch>]` repositories to clone; `None` inherits the source's.
+    pub workspaces: Option<Vec<String>>,
+}
+
+/// A host the fork sheet offers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct ForkHost {
+    /// Host id.
+    pub host_id: String,
+    /// Display name.
+    pub name: String,
+    /// Why the copy cannot start there, or `None` when it can.
+    pub unavailable_reason: Option<String>,
 }
 
 /// What to fork.
@@ -32,6 +55,22 @@ pub struct ForkRequest {
     pub title: Option<String>,
     /// Start the fork on a host; `None` leaves it unbound.
     pub start: Option<ForkStart>,
+    /// Fork onto a new sandbox instead of a host; never with `start`.
+    #[uniffi(default)]
+    pub sandbox: Option<ForkSandbox>,
+    /// The fork's model; `None` keeps the source's.
+    #[uniffi(default)]
+    pub model: Option<String>,
+    /// The fork's reasoning effort; `None` keeps the source's.
+    #[uniffi(default)]
+    pub reasoning_effort: Option<String>,
+    /// The approval mode to launch in (a `creation_approval_mode_menu` value of the fork's
+    /// agent); `None` keeps the harness default.
+    #[uniffi(default)]
+    pub approval_mode: Option<String>,
+    /// The fork's agent, for the approval mode's launch flags.
+    #[uniffi(default)]
+    pub agent: Option<CreationAgent>,
 }
 
 /// How starting the fork went.
@@ -73,6 +112,12 @@ pub struct ForkPlan {
     pub host_id: Option<String>,
     /// Why "Clone & start" is unavailable, or `None` when it is available.
     pub start_unavailable_reason: Option<String>,
+    /// The hosts the copy can start on, the source's first.
+    #[uniffi(default)]
+    pub hosts: Vec<ForkHost>,
+    /// The server can fork onto a new managed sandbox.
+    #[uniffi(default)]
+    pub offers_sandbox: bool,
 }
 
 impl From<ForkRequest> for core::ForkRequest {
@@ -82,10 +127,24 @@ impl From<ForkRequest> for core::ForkRequest {
             up_to_response_id: request.up_to_response_id,
             agent_id: request.agent_id,
             title: request.title,
+            terminal_launch_args: request.approval_mode.as_deref().and_then(|mode| {
+                let agent = omnigent_core::creation::CreationAgent::from(request.agent?);
+                omnigent_core::config::approval::launch_approval_args(
+                    agent.wrapper().as_deref(),
+                    mode,
+                )
+            }),
             start: request.start.map(|start| core::ForkStart {
                 host_id: start.host_id,
                 workspace: start.workspace,
+                branch: start.branch.filter(|branch| !branch.trim().is_empty()),
             }),
+            sandbox: request.sandbox.map(|sandbox| core::ForkSandbox {
+                provider: sandbox.provider,
+                workspaces: sandbox.workspaces,
+            }),
+            model: request.model,
+            reasoning_effort: request.reasoning_effort,
         }
     }
 }
@@ -113,6 +172,16 @@ impl From<core::ForkPlan> for ForkPlan {
             directory: plan.directory,
             host_id: plan.host_id,
             start_unavailable_reason: plan.start_unavailable_reason,
+            hosts: plan
+                .hosts
+                .into_iter()
+                .map(|host| ForkHost {
+                    host_id: host.host_id,
+                    name: host.name,
+                    unavailable_reason: host.unavailable_reason,
+                })
+                .collect(),
+            offers_sandbox: plan.offers_sandbox,
         }
     }
 }
