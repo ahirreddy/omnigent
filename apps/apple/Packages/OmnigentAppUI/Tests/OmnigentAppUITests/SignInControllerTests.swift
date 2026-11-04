@@ -197,14 +197,29 @@ struct SignInControllerTests {
   }
 #endif
 
-#if DEBUG && os(macOS)
-  @Suite("Debug keychain fallback")
+#if os(macOS)
+  @Suite("Keychain fallback without a team")
   struct KeychainModeSelectionTests {
-    @Test("Debug credentials live in the app's Application Support, outside the Keychain")
-    func debugCredentialDirectory() {
-      let directory = KeychainModeSelection.debugCredentialDirectory()
-      #expect(directory.lastPathComponent == "DebugCredentials")
+    @Test("Fallback credentials live in the app's Application Support, outside the Keychain")
+    func credentialDirectory() {
+      let directory = KeychainModeSelection.credentialDirectory("LocalCredentials")
+      #expect(directory.lastPathComponent == "LocalCredentials")
       #expect(directory.path.hasPrefix(URL.applicationSupportDirectory.path))
+    }
+
+    @Test("An ad-hoc signed test runner has no team, so it would fall back to files")
+    func adHocBuildHasNoTeam() {
+      #expect(!KeychainModeSelection.hasTeamIdentifier())
+    }
+
+    @Test("Without the entitlement a Mac build without a team keeps credentials in files")
+    func unentitledBuildUsesFiles() {
+      let choice = KeychainModeSelection.current()
+      if let directory = choice.credentialDirectory {
+        #expect(choice.fallbackReason?.contains(directory.path) == true)
+      } else {
+        #expect(choice.fallbackReason == nil)
+      }
     }
   }
 #endif

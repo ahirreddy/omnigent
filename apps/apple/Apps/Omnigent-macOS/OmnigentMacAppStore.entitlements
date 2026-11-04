@@ -27,7 +27,7 @@
 	The data-protection keychain, where the core keeps sign-in credentials. Without this group
 	macOS answers errSecMissingEntitlement (-34018). The group is the app's own application
 	identifier, which every provisioning profile for the bundle allows. Release only: ad-hoc signed
-	Debug builds use OmnigentMacAppStore-Debug.entitlements and the login keychain
+	Debug builds use OmnigentMacAppStore-Debug.entitlements and credential files
 	(KeychainModeSelection).
 	-->
 	<key>keychain-access-groups</key>

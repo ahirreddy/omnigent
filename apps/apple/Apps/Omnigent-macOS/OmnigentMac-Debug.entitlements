@@ -5,7 +5,7 @@
 	<!--
 	Debug builds are ad-hoc signed, and Xcode refuses keychain-access-groups without a
 	development certificate, so this file is the Release entitlements minus that group. Debug
-	stores credentials in the login keychain instead (KeychainModeSelection). Keep every other
+	keeps credentials in files instead (KeychainModeSelection). Keep every other
 	key identical to OmnigentMac.entitlements.
 	-->
 	<!--

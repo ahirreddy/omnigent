@@ -384,6 +384,12 @@ apple-run: apple-build
 
 alias apple-run-mac := apple-run
 
+# flags: --skip-prereqs, --no-launch.
+# Build a Release Mac app for this Mac (ad hoc signed) and install it as ~/Applications/Omnigent Native.app.
+[group('client')]
+apple-install-local *flags:
+    bash apps/apple/scripts/install-local-release.sh {{ flags }}
+
 # Build and launch the Mac App Store edition.
 [group('client')]
 apple-run-appstore: apple-build-appstore

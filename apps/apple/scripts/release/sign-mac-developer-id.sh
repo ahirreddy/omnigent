@@ -10,10 +10,12 @@
 #
 # Usage: sign-mac-developer-id.sh --app PATH --identity IDENTITY
 #                                 [--entitlements-dir DIR] [--app-entitlements FILE]
-#                                 [--keychain KEYCHAIN]
+#                                 [--keychain KEYCHAIN] [--no-hardened-runtime]
 #
 # IDENTITY is a codesign identity ("Developer ID Application: Databricks, Inc. (8RMX4WU6F8)")
 # or "-" for an ad-hoc dry run, which uses no secure timestamp.
+# --no-hardened-runtime is for an ad-hoc build meant to run: hardened runtime's library validation
+# refuses ad-hoc frameworks ("different Team IDs"), so such an app dies at launch.
 # --entitlements-dir defaults to Derived/Entitlements, where `tuist generate` writes the helper
 # entitlements from BrowserTargets.helperVariants (OmnigentMacWebHostHelper<Variant>.entitlements).
 # --app-entitlements defaults to Apps/Omnigent-macOS/OmnigentMac.entitlements.
@@ -22,7 +24,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 usage() {
-  sed -n '2,20p' "$0" >&2
+  sed -n '2,21p' "$0" >&2
   exit 64
 }
 
@@ -31,6 +33,7 @@ identity=""
 entitlements_dir="$apple_root/Derived/Entitlements"
 app_entitlements="$apple_root/Apps/Omnigent-macOS/OmnigentMac.entitlements"
 keychain=""
+hardened_runtime=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app) app="${2:?}"; shift 2 ;;
@@ -38,6 +41,7 @@ while [[ $# -gt 0 ]]; do
     --entitlements-dir) entitlements_dir="${2:?}"; shift 2 ;;
     --app-entitlements) app_entitlements="${2:?}"; shift 2 ;;
     --keychain) keychain="${2:?}"; shift 2 ;;
+    --no-hardened-runtime) hardened_runtime=0; shift ;;
     -h | --help) usage ;;
     *) echo "error: unknown argument '$1'" >&2; usage ;;
   esac
@@ -51,7 +55,10 @@ if /usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$app_enti
   die "$app_entitlements enables App Sandbox, which the Chromium web host cannot run inside"
 fi
 
-flags=(--force --sign "$identity" --options runtime)
+flags=(--force --sign "$identity")
+if [[ $hardened_runtime -eq 1 ]]; then
+  flags+=(--options runtime)
+fi
 if [[ "$identity" == "-" ]]; then
   flags+=(--timestamp=none)
 else
