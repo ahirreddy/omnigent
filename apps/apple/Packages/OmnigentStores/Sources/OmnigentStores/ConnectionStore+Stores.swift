@@ -59,6 +59,13 @@ extension ConnectionStore {
     return store
   }
 
+  /// The sharing of `sessionID`: a new store each time the Share sheet opens.
+  /// - Parameter sessionID: The session.
+  /// - Returns: The store, or `nil` without a core.
+  public func share(sessionID: String) -> ShareStore? {
+    core.map { ShareStore(core: $0, sessionID: sessionID) }
+  }
+
   /// The workspace (files, search, changes, diffs) of `sessionID`, created on first use.
   /// - Parameters:
   ///   - sessionID: The session.

@@ -29,7 +29,8 @@ nonisolated private func recorded(_ path: String) throws -> String {
 }
 
 /// A loopback single-user server answering by method and path, then by path.
-nonisolated private final class RouteServer: Sendable {
+/// Serves fixed responses by path, and by method and path.
+nonisolated final class RouteServer: Sendable {
   private let routes = Mutex<[String: HttpResponse]>([:])
 
   init() {
@@ -50,8 +51,9 @@ nonisolated private final class RouteServer: Sendable {
   }
 }
 
+/// A store signed in to `server`.
 @MainActor
-private func connectedStore(
+func connectedStore(
   _ server: RouteServer, sockets: FakeWebSocketTransport = FakeWebSocketTransport()
 ) async throws -> ConnectionStore {
   let http = FakeHttpTransport { request throws(TransportError) in server.respond(request) }

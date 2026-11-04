@@ -42,6 +42,7 @@ mod routing;
 mod session_actions;
 pub mod session_search;
 pub mod sessions;
+pub mod share;
 mod skills;
 mod terminals;
 
