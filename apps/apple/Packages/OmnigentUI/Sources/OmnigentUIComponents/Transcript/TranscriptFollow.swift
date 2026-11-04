@@ -77,6 +77,12 @@ nonisolated struct TranscriptFollow: Equatable {
     follow()
   }
 
+  /// The user navigated to an earlier message: stop following, as a scroll up would.
+  mutating func readEarlier() {
+    follows = false
+    owesCatchUp = false
+  }
+
   /// Another session opened: start again at its newest row.
   mutating func reset() {
     self = Self()

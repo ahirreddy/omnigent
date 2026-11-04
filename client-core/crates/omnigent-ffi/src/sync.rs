@@ -258,9 +258,34 @@ impl ConversationSync {
         request: &core::HydrationRequest,
         session: &SessionSnapshot,
         items: &[ConversationItem],
+        older_cursor: Option<&str>,
     ) -> Result<Applied, CoreError> {
         let update = lock(&self.inner)
-            .finish_hydration(request, session, items)
+            .finish_hydration_page(request, session, items, older_cursor)
+            .map_err(core_error)?;
+        Ok(Applied::new(update, &self.session_id))
+    }
+
+    pub(crate) fn history_paging_raw(&self) -> core::HistoryPaging {
+        lock(&self.inner).history_paging()
+    }
+
+    pub(crate) fn begin_older_history_raw(&self) -> Option<core::OlderHistoryRequest> {
+        lock(&self.inner).begin_older_history()
+    }
+
+    pub(crate) fn older_history_failed_raw(&self, request: &core::OlderHistoryRequest) -> bool {
+        lock(&self.inner).older_history_failed(request)
+    }
+
+    pub(crate) fn finish_older_history_raw(
+        &self,
+        request: &core::OlderHistoryRequest,
+        items: &[ConversationItem],
+        next_cursor: Option<&str>,
+    ) -> Result<Applied, CoreError> {
+        let update = lock(&self.inner)
+            .finish_older_history(request, items, next_cursor)
             .map_err(core_error)?;
         Ok(Applied::new(update, &self.session_id))
     }

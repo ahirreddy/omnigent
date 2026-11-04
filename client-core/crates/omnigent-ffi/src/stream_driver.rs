@@ -36,6 +36,8 @@ pub(crate) struct SessionDriver {
     pub(crate) terminal_tick: Option<AbortHandle>,
     /// Whether the open stream attempt carried the replica routing key.
     stream_keyed: bool,
+    /// The history paging state last reported.
+    pub(crate) paging: Option<omnigent_core::reconcile::HistoryPaging>,
 }
 
 /// What a failed history read means for the stream.
@@ -81,6 +83,7 @@ impl Engine {
                     terminal_view: None,
                     terminal_tick: None,
                     stream_keyed: false,
+                    paging: None,
                 },
             );
         }
@@ -98,7 +101,15 @@ impl Engine {
         }
     }
 
-    fn emit_reset(&self, session_id: &str) {
+    fn emit_reset(&mut self, session_id: &str) {
+        if let Some(driver) = self.drivers.get_mut(session_id) {
+            driver.paging = None;
+        }
+        self.emit_transcript_reset(session_id);
+        self.emit_paging(session_id);
+    }
+
+    fn emit_transcript_reset(&self, session_id: &str) {
         let Some(driver) = self.drivers.get(session_id) else {
             return;
         };
@@ -403,10 +414,12 @@ impl Engine {
             session_id: session_id.to_owned(),
         };
         let failure = match result {
-            Ok(page) => match driver
-                .sync
-                .finish_hydration_raw(request, &page.snapshot, &page.items)
-            {
+            Ok(page) => match driver.sync.finish_hydration_raw(
+                request,
+                &page.snapshot,
+                &page.items,
+                page.next_cursor.as_deref(),
+            ) {
                 Ok(applied) => {
                     let current = attempt.is_none() || driver.live_attempt == attempt;
                     if current {
@@ -416,6 +429,7 @@ impl Engine {
                         });
                     }
                     self.publish(session_id, applied);
+                    self.emit_paging(session_id);
                     self.terminals_after_hydration(session_id);
                     return;
                 }

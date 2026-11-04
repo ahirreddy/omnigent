@@ -14,10 +14,14 @@ public struct TranscriptView: View {
   @State private var follow = TranscriptFollow()
   @State private var layout = TranscriptLayoutMemo()
   @State private var environmentRelay = TranscriptEnvironmentRelay()
+  @State private var position = TranscriptReadingPosition()
   @Environment(\.transcriptAppearance) private var appearance
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private static let bottomID = "transcript-bottom"
+  private static let topID = "transcript-top"
+  /// How close to the top, in points, reading starts loading older history.
+  private static let olderHistoryReach: CGFloat = 400
 
   /// Creates the transcript.
   /// - Parameters:
@@ -42,6 +46,7 @@ public struct TranscriptView: View {
         LazyVStack(
           alignment: .leading, spacing: appearance.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row
         ) {
+          Color.clear.frame(height: 1).id(Self.topID)
           if appearance.isCLI {
             CLITranscriptRows(
               state: state, actions: actions, blocks: layout.blocks(for: state),
@@ -80,6 +85,7 @@ public struct TranscriptView: View {
           }
           Color.clear.frame(height: 1).id(Self.bottomID)
         }
+        .scrollTargetLayout()
         .padding(.vertical, Theme.Spacing.extraLarge)
         // CLI rows set their own column, so user bands reach the edges.
         .transcriptStackColumn()
@@ -122,6 +128,19 @@ public struct TranscriptView: View {
       .onChange(of: state.revision) { _, _ in
         _ = follow.contentChanged()
       }
+      .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.01) { ids in
+        position.visible = Set(ids)
+      }
+      .onScrollGeometryChange(for: Bool.self) { geometry in
+        geometry.visibleRect.minY - geometry.contentInsets.top < Self.olderHistoryReach
+      } action: { _, isNearTop in
+        // Only a reader moving up asks for more, not a short transcript that fits.
+        if isNearTop, follow.isUserScrolling || !follow.follows { loadOlder() }
+      }
+      .onChange(of: state.rows.first?.id) { _, _ in holdReadingPosition(proxy) }
+      .onChange(of: state.isLoadingHistory) { _, isLoading in
+        if !isLoading { olderHistoryEnded(proxy) }
+      }
       .onChange(of: Self.ownMessageID(state)) { previous, current in
         // The reader's own new message takes them to the latest, wherever they were reading.
         if current != nil, previous != nil, current != previous { jumpToLatest(proxy) }
@@ -129,9 +148,19 @@ public struct TranscriptView: View {
       .onChange(of: scrollToLatestRequest) { _, _ in jumpToLatest(proxy) }
       .task(id: state.header.id) {
         follow.reset()
+        position.reset()
         // Lazy rows size themselves after the first layout; anchor once they have.
         await Task.yield()
         proxy.scrollTo(Self.bottomID, anchor: .bottom)
+      }
+      .overlay(alignment: .bottomTrailing) {
+        if state.rows.contains(where: { $0.role == .user }) {
+          TranscriptNavigator(
+            jumpToTop: { jumpToTop(proxy) }, previous: { step(.previous, proxy) },
+            next: { step(.next, proxy) }
+          )
+          .padding(Theme.Spacing.medium)
+        }
       }
       .overlay(alignment: .bottom) {
         if follow.showsJumpToLatest {
@@ -156,10 +185,10 @@ public struct TranscriptView: View {
         Spacer()
       }
       .accessibilityIdentifier("history-loading")
-    } else if state.hasMoreHistory, let loadOlder = actions.loadOlder {
+    } else if state.hasMoreHistory, actions.loadOlder != nil {
       HStack {
         Spacer()
-        Button("Load earlier messages", systemImage: "clock.arrow.circlepath", action: loadOlder)
+        Button("Load earlier messages", systemImage: "clock.arrow.circlepath") { loadOlder() }
           .buttonStyle(.borderless)
           .accessibilityIdentifier("load-older-messages")
         Spacer()
@@ -170,6 +199,71 @@ public struct TranscriptView: View {
   private func hasErrorRow(matching failure: String) -> Bool {
     state.rows.suffix(20).contains {
       $0.activity?.isFailure == true && $0.activity?.summary == failure
+    }
+  }
+
+  /// Asks for the page above the loaded rows, remembering the top row to keep in place.
+  private func loadOlder() {
+    guard state.hasMoreHistory, !state.isLoadingHistory, let loadOlder = actions.loadOlder else {
+      return
+    }
+    let order = layout.entries(for: state).map(\.id)
+    position.prependAnchor = order.first { position.visible.contains($0) }
+    position.awaitsPage = true
+    loadOlder()
+  }
+
+  /// Older rows landed above: put the row that was on top back at the top.
+  private func holdReadingPosition(_ proxy: ScrollViewProxy) {
+    guard position.awaitsPage else { return }
+    position.awaitsPage = false
+    if let anchor = position.prependAnchor, !position.seeksTop {
+      proxy.scrollTo(anchor, anchor: .top)
+    }
+  }
+
+  /// Jump to top pages in the rest of the history first, as the web does.
+  private func jumpToTop(_ proxy: ScrollViewProxy) {
+    follow.readEarlier()
+    if state.hasMoreHistory, actions.loadOlder != nil {
+      position.seeksTop = true
+      loadOlder()
+    } else {
+      withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+        proxy.scrollTo(Self.topID, anchor: .top)
+      }
+    }
+  }
+
+  /// A read of older history ended. Jump to top keeps paging while pages add rows; a failed or
+  /// empty page stops it where it is.
+  private func olderHistoryEnded(_ proxy: ScrollViewProxy) {
+    let added = !position.awaitsPage
+    position.awaitsPage = false
+    position.prependAnchor = nil
+    guard position.seeksTop else { return }
+    if added, state.hasMoreHistory, actions.loadOlder != nil {
+      loadOlder()
+    } else {
+      position.seeksTop = false
+      proxy.scrollTo(Self.topID, anchor: .top)
+    }
+  }
+
+  /// Moves to the previous or next user message. With none above, older history loads; with
+  /// none below, the newest row shows.
+  private func step(_ direction: TranscriptNavigation.Direction, _ proxy: ScrollViewProxy) {
+    let entries = layout.entries(for: state)
+    let target = TranscriptNavigation.target(
+      direction, order: entries.map(\.id),
+      userMessages: TranscriptNavigation.userMessages(entries), visible: position.visible)
+    guard let target else {
+      if direction == .previous { loadOlder() } else { jumpToLatest(proxy) }
+      return
+    }
+    follow.readEarlier()
+    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+      proxy.scrollTo(target, anchor: .top)
     }
   }
 

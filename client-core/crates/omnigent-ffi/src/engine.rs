@@ -146,6 +146,8 @@ pub(crate) enum Msg {
         request: core::reconcile::HydrationRequest,
         result: Box<Result<ConversationPage, SessionError>>,
     },
+    /// Older history: a caller's request, or a finished read.
+    History(crate::history_driver::HistoryMsg),
     /// An input for the updates machine.
     Updates(UpdatesInput),
     /// Reload the session list now.
@@ -360,6 +362,7 @@ impl Engine {
                 request,
                 result,
             } => self.hydrated(&session_id, attempt, &request, *result),
+            Msg::History(message) => self.history_message(message),
             Msg::Updates(input) => self.updates_input(input),
             Msg::RefreshList => self.refresh_list(),
             Msg::ListLoaded { generation, result } => self.list_loaded(generation, result),

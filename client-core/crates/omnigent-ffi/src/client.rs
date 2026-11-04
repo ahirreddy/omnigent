@@ -1077,6 +1077,15 @@ impl ClientCore {
         self.inner.post(Msg::Open(session_id));
     }
 
+    /// Loads the page of history above an open session's rows. It arrives as a
+    /// `TranscriptChanged` that inserts rows at the top; `HistoryPagingChanged` reports progress.
+    pub fn load_older_history(&self, session_id: String) {
+        self.inner
+            .post(Msg::History(crate::history_driver::HistoryMsg::Load(
+                session_id,
+            )));
+    }
+
     /// Stops watching `session_id`.
     pub fn close_session(&self, session_id: String) {
         self.inner.post(Msg::Close(session_id));

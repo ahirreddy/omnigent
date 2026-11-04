@@ -320,6 +320,16 @@ pub enum CoreEvent {
         /// The session.
         session_id: String,
     },
+    /// Whether an open session has older history to load, and whether a page of it is
+    /// loading. Sent after `TranscriptReset` and whenever either changes.
+    HistoryPagingChanged {
+        /// The session.
+        session_id: String,
+        /// Older history exists above the loaded rows.
+        has_older: bool,
+        /// A page of older history is loading.
+        is_loading: bool,
+    },
     /// An opened session's whole published state. Replace what the store holds; later
     /// `TranscriptChanged` events apply on top of it.
     TranscriptReset {

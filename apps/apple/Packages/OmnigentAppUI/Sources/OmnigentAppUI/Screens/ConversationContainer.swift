@@ -284,6 +284,7 @@ extension ConversationContainer {
       dismissError: { conversation.dismissErrors() },
       retry: retry,
       resume: { Task { await conversation.recoverTurn(.resume) } })
+    actions.loadOlder = { conversation.loadOlderHistory() }
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
     actions.messageURL = { row in Self.messageURL(row, in: link) }
     actions.retryFailedTurn = { row in

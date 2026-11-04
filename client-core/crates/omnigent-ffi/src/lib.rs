@@ -63,6 +63,7 @@ pub mod client;
 pub mod connection;
 mod databricks;
 mod engine;
+mod history_driver;
 mod read_driver;
 mod runtime;
 mod stream_driver;

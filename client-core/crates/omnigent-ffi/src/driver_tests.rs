@@ -678,3 +678,76 @@ fn every_open_demo_session_stays_live() {
         })
         .unwrap();
 }
+
+/// A newest-first `/items` page of assistant messages.
+fn message_page(ids: &[&str], has_more: bool) -> String {
+    let data: Vec<serde_json::Value> = ids
+        .iter()
+        .map(|id| serde_json::json!({"id": id, "type": "message", "role": "assistant", "content": id}))
+        .collect();
+    serde_json::json!({"data": data, "has_more": has_more, "last_id": ids.last()}).to_string()
+}
+
+fn paging_events(events: &[CoreEvent]) -> Vec<(bool, bool)> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            CoreEvent::HistoryPagingChanged {
+                has_older,
+                is_loading,
+                ..
+            } => Some((*has_older, *is_loading)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn row_ids(harness: &Harness) -> Vec<String> {
+    rows_from(&harness.events.all(), SESSION)
+        .into_iter()
+        .map(|row| row.id)
+        .collect()
+}
+
+#[test]
+fn older_history_loads_above_the_rows_on_request() {
+    let mut harness = connected();
+    route_session(&harness);
+    let items = format!("/v1/sessions/{SESSION}/items");
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["msg_3", "msg_2"], true)));
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(b"event: session.heartbeat\ndata: {\"type\":\"session.heartbeat\"}\n\n".to_vec());
+    harness.pump();
+    assert_eq!(row_ids(&harness), ["msg_2", "msg_3"]);
+    assert_eq!(
+        paging_events(&harness.events.all()),
+        [(false, false), (true, false)]
+    );
+
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["msg_1"], false)));
+    harness.core.load_older_history(SESSION.into());
+    harness.pump();
+    assert_eq!(row_ids(&harness), ["msg_1", "msg_2", "msg_3"]);
+    assert_eq!(
+        paging_events(&harness.events.all()),
+        [(false, false), (true, false), (true, true), (false, false)]
+    );
+    let older = lock(&harness.http.requests).last().cloned().unwrap();
+    assert!(older.url.contains("after=msg_2"), "{}", older.url);
+    // Nothing older is left to ask for.
+    harness.core.load_older_history(SESSION.into());
+    harness.pump();
+    assert_eq!(
+        lock(&harness.http.requests)
+            .last()
+            .map(|request| request.url.clone()),
+        Some(older.url)
+    );
+}

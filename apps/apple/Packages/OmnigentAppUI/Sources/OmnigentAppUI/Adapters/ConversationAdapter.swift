@@ -25,7 +25,7 @@ enum ConversationAdapter {
       decisions: store.decisions.cards.map(OmnigentUIComponents.DecisionCard.init),
       decisionPhases: decisionPhases(store.decisions),
       sections: store.sections.map(OmnigentUIComponents.EventSection.init),
-      isLoadingHistory: !store.isHydrated && !store.isClosed,
+      hasMoreHistory: store.hasOlderHistory, isLoadingHistory: isLoadingHistory(store),
       errorMessage: errorMessage(store),
       connectionStatus: connectionStatus(store),
       turnDurations: store.turnTimer.durations,
@@ -52,7 +52,7 @@ enum ConversationAdapter {
       decisions: store.decisions.cards.map(OmnigentUIComponents.DecisionCard.init),
       decisionPhases: decisionPhases(store.decisions),
       sections: store.sections.map(OmnigentUIComponents.EventSection.init),
-      isLoadingHistory: !store.isHydrated && !store.isClosed,
+      hasMoreHistory: store.hasOlderHistory, isLoadingHistory: isLoadingHistory(store),
       errorMessage: errorMessage(store),
       connectionStatus: connectionStatus(store),
       turnDurations: store.turnTimer.durations,
@@ -63,6 +63,11 @@ enum ConversationAdapter {
       isEmpty: digest.isEmpty, lastInterrupted: digest.lastInterrupted,
       activityTitle: digest.activityTitle)
     return state
+  }
+
+  /// The first history read, or a page of older history, is in flight.
+  static func isLoadingHistory(_ store: ConversationStore) -> Bool {
+    store.isLoadingOlderHistory || (!store.isHydrated && !store.isClosed)
   }
 
   /// Reads the store's rows inside the transcript's body.
