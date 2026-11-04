@@ -30,6 +30,7 @@ pub mod create;
 pub mod databricks_session;
 mod error;
 pub mod events;
+mod export;
 pub mod fork;
 mod hydration;
 pub mod items;
@@ -536,3 +537,7 @@ pub(crate) mod test_support;
 #[cfg(test)]
 #[path = "skills_tests.rs"]
 mod skills_tests;
+
+#[cfg(test)]
+#[path = "export_tests.rs"]
+mod export_tests;

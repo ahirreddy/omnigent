@@ -3,6 +3,8 @@
 
 use omnigent_core::reducer as core;
 
+use crate::client::ClientCore;
+
 /// Who a row belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum RowRole {
@@ -554,4 +556,23 @@ pub fn apply_row_ops(
         }
     }
     Ok(rows)
+}
+
+#[uniffi::export]
+impl ClientCore {
+    /// `session_id`'s metadata and full history as JSON Lines, in the web's export format.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::errors::CoreError::Session`]: the read errors, `MalformedResponse` and
+    /// `InvalidPagination`.
+    pub async fn export_transcript(
+        &self,
+        session_id: String,
+    ) -> Result<String, crate::errors::CoreError> {
+        self.sessions()
+            .export_transcript(&session_id)
+            .await
+            .map_err(crate::errors::CoreError::from)
+    }
 }
