@@ -180,8 +180,11 @@ private struct FileTreeRow: View {
 }
 
 /// SF Symbols for file names, display only.
-enum FileIcons {
-  static func symbol(forName name: String) -> String {
+public enum FileIcons {
+  /// The symbol for a file called `name`.
+  /// - Parameter name: The file name.
+  /// - Returns: An SF Symbol name.
+  public static func symbol(forName name: String) -> String {
     let lower = name.lowercased()
     let ext = lower.split(separator: ".").last.map(String.init) ?? ""
     switch ext {

@@ -167,6 +167,37 @@ struct WorkspaceModelTests {
     #expect(browser.document == nil)
   }
 
+  @Test("documents open as tabs; closing the shown one shows its neighbour")
+  func documentTabs() async {
+    let browser = WorkspaceBrowserModel(source: SampleWorkspaceDataSource())
+    await browser.open(.file(path: "README.md", line: nil))
+    await browser.open(.diff(path: "src/lib.rs"))
+    await browser.open(.file(path: "src/main.rs", line: nil))
+    await browser.open(.file(path: "README.md", line: 4))
+    #expect(
+      browser.openDocuments.map(\.tabID) == [
+        "file:README.md", "diff:src/lib.rs", "file:src/main.rs",
+      ])
+    #expect(
+      browser.openDocuments.first == .file(path: "README.md", line: 4), "the tab takes the line")
+    #expect(browser.document == .file(path: "README.md", line: 4))
+
+    await browser.close(.file(path: "README.md", line: nil))
+    #expect(browser.document == .diff(path: "src/lib.rs"))
+    #expect(browser.diff.value?.path == "src/lib.rs")
+    await browser.close(.file(path: "src/main.rs", line: nil))
+    #expect(
+      browser.document == .diff(path: "src/lib.rs"), "closing a hidden tab keeps the shown one")
+
+    browser.hideDocument()
+    #expect(browser.document == nil)
+    #expect(browser.openDocuments.count == 1, "showing the panel keeps the tabs")
+    await browser.open(.diff(path: "src/lib.rs"))
+    await browser.close(.diff(path: "src/lib.rs"))
+    #expect(browser.document == nil)
+    #expect(browser.openDocuments.isEmpty)
+  }
+
   @Test("opening a file from the tree opens it in the browser")
   func treeOpens() async {
     let browser = WorkspaceBrowserModel(source: SampleWorkspaceDataSource())
