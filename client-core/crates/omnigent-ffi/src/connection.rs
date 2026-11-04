@@ -107,6 +107,8 @@ pub(crate) struct Resolved {
     /// For a server inside a Databricks workspace: the workspace URL (origin plus `?o=`) its
     /// credential is scoped to.
     pub(crate) databricks_workspace: Option<Url>,
+    /// Accounts mode with no administrator yet (`/v1/info` `needs_setup`).
+    pub(crate) needs_setup: bool,
 }
 
 /// A discovery for a server inside a Databricks workspace. Its routes (the manifest and
@@ -167,6 +169,7 @@ pub(crate) async fn resolve(
             endpoint,
             mode: AuthenticationMode::Proxy,
             manifest_auth: None,
+            needs_setup: false,
         });
     }
     let manifest_auth = discovery.auth_mode.clone().map(|mode| ManifestAuth {
@@ -186,6 +189,7 @@ pub(crate) async fn resolve(
         mode: info.mode,
         manifest_auth,
         databricks_workspace: None,
+        needs_setup: info.needs_setup,
     })
 }
 

@@ -19,6 +19,7 @@
 use std::fmt;
 use std::future::Future;
 
+pub mod account_creation;
 pub mod accounts;
 pub mod databricks;
 pub mod endpoint;

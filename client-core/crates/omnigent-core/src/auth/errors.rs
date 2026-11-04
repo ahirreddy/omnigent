@@ -79,6 +79,14 @@ pub enum HostedAuthError {
     },
     /// `403`.
     Forbidden,
+    /// Creating an account was refused (`400` or `409`): the name is taken, the invite is invalid,
+    /// or setup already happened.
+    AccountRefused {
+        /// HTTP status.
+        status: u16,
+        /// The server's `error` text, when present.
+        reason: Option<String>,
+    },
     /// Any other non-success status.
     HttpStatus {
         /// HTTP status.
@@ -104,9 +112,11 @@ impl HostedAuthError {
             Self::CredentialExpired | Self::BrowserLoginExpired { .. } => AuthFailure::Expired,
             Self::Unauthorized { .. } | Self::NotConnected => AuthFailure::SignInRequired,
             Self::IdentityMismatch => AuthFailure::EndedByServer,
-            Self::BrowserLoginRejected { reason, .. } => AuthFailure::Refused {
-                reason: reason.clone(),
-            },
+            Self::BrowserLoginRejected { reason, .. } | Self::AccountRefused { reason, .. } => {
+                AuthFailure::Refused {
+                    reason: reason.clone(),
+                }
+            }
             Self::Transport(_) | Self::HttpStatus { .. } => AuthFailure::Transport,
             Self::InvalidBaseUrl
             | Self::UnsupportedAuthentication
@@ -162,6 +172,7 @@ impl fmt::Display for HostedAuthError {
                 f.write_str("Sign in again or provide a valid bearer token for this server.")
             }
             Self::Forbidden => f.write_str("The server denied access to this resource."),
+            Self::AccountRefused { .. } => f.write_str("The server did not create the account."),
             Self::HttpStatus { status } => write!(
                 f,
                 "The server returned HTTP {status}. Check that it is running and try again."
