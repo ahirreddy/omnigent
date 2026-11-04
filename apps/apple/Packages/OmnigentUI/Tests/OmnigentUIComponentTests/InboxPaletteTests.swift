@@ -128,6 +128,23 @@ struct InboxPaletteTests {
     #expect(available.first { $0.target == .composer }?.shortcut == "⌃⇧L")
   }
 
+  @Test("Automations and Usage follow Open Inbox only when the server offers them")
+  func offeredPages() {
+    var state = PaletteViewState(scope: "Mac Studio", sessions: [])
+    let none = PaletteCatalog.entries(state: state, commands: SessionCommandActions())
+    #expect(!none.contains { $0.target == .automations || $0.target == .usage })
+    state.showsAutomations = true
+    state.showsUsage = true
+    let targets = PaletteCatalog.entries(state: state, commands: SessionCommandActions())
+      .map(\.target)
+    let inbox = targets.firstIndex(of: .inbox) ?? 0
+    #expect(Array(targets[inbox...].prefix(3)) == [.inbox, .automations, .usage])
+    state.showsAutomations = false
+    #expect(
+      !PaletteCatalog.entries(state: state, commands: SessionCommandActions())
+        .contains { $0.target == .automations })
+  }
+
   private func entry(_ id: String, _ title: String, detail: String = "") -> PaletteEntry {
     PaletteEntry(id: id, title: title, detail: detail, symbol: "tray", target: .inbox)
   }

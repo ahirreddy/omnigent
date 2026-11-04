@@ -16,6 +16,10 @@ nonisolated public enum PaletteTarget: Hashable, Sendable {
   case toggleTerminal
   /// Open triage.
   case inbox
+  /// Open Automations.
+  case automations
+  /// Open Usage.
+  case usage
   /// Open Settings.
   case settings
   /// Show or hide the sessions sidebar.
@@ -70,6 +74,10 @@ nonisolated public struct PaletteViewState: Hashable, Sendable {
   public var servers: [PaletteEntry]
   /// Whether the shared attention model has a next request.
   public var hasNextRequest: Bool
+  /// The server offers Automations, as the sidebar row is shown.
+  public var showsAutomations = false
+  /// The server offers Usage, as the sidebar row is shown.
+  public var showsUsage = false
 
   /// Creates palette data without loading or searching over the network.
   public init(

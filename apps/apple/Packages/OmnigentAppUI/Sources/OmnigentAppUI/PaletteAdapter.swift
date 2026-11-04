@@ -39,7 +39,7 @@ struct PaletteAdapter: ViewModifier {
           id: $0, title: URL(string: $0)?.host() ?? $0, detail: "Recent server",
           symbol: "server.rack", target: .server($0))
       }
-    return PaletteViewState(
+    var state = PaletteViewState(
       scope: connection.connectedServer?.serverName ?? "Connected server",
       sessions: connection.sessionList.sessionsByID.values.sorted { $0.updatedAt > $1.updatedAt }
         .map {
@@ -50,6 +50,10 @@ struct PaletteAdapter: ViewModifier {
             symbol: "bubble.left.and.text.bubble.right", target: .session(summary.id))
         }, servers: managed + recent,
       hasNextRequest: !connection.sessionList.needsResponse.isEmpty)
+    // Gated as the sidebar rows are, on what the server offers.
+    state.showsAutomations = connection.pages?.offered?.automations == true
+    state.showsUsage = connection.pages?.offered?.usage == true
+    return state
   }
 
   /// Server matches: titles first, then message content ("In messages") with its snippet.
@@ -94,11 +98,24 @@ struct PaletteAdapter: ViewModifier {
     }
   }
 
-  private func perform(_ target: PaletteTarget) {
+  /// The sidebar destination a palette entry opens, if it is one.
+  private static func destination(_ target: PaletteTarget) -> SidebarDestination? {
     switch target {
-    case .newSession: selection = .newSession
-    case .inbox: selection = .inbox
-    case .session(let id): selection = .session(id)
+    case .newSession: .newSession
+    case .inbox: .inbox
+    case .automations: .automations
+    case .usage: .usage
+    case .session(let id): .session(id)
+    default: nil
+    }
+  }
+
+  private func perform(_ target: PaletteTarget) {
+    if let destination = Self.destination(target) {
+      selection = destination
+      return
+    }
+    switch target {
     case .nextRequest:
       let ids = session.connection.sessionList.needsResponse.map(\.id)
       if let current = selection?.sessionID, let index = ids.firstIndex(of: current), !ids.isEmpty {
@@ -118,7 +135,8 @@ struct PaletteAdapter: ViewModifier {
         // The split view's own toggle, as View > Show Sidebar sends it.
         NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
       #endif
-    case .findSession, .switchServer, .changes, .composer, .toggleTerminal, .toggleInspector:
+    case .newSession, .inbox, .automations, .usage, .session, .findSession, .switchServer,
+      .changes, .composer, .toggleTerminal, .toggleInspector:
       break
     }
   }

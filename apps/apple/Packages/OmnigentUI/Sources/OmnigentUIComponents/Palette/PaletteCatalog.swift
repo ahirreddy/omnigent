@@ -1,7 +1,7 @@
 /// The initial command catalog and its current-session availability.
 enum PaletteCatalog {
   static func entries(state: PaletteViewState, commands: SessionCommandActions) -> [PaletteEntry] {
-    [
+    var entries = [
       PaletteEntry(
         id: "find", title: "Find session", detail: state.scope, symbol: "magnifyingglass",
         target: .findSession),
@@ -38,5 +38,27 @@ enum PaletteCatalog {
         symbol: "sidebar.right", shortcut: "⌥⌘I", isEnabled: commands.toggleInspector != nil,
         target: .toggleInspector),
     ]
+    // The pages the server offers, after Open Inbox as in the sidebar.
+    let inbox = (entries.firstIndex { $0.id == "inbox" } ?? entries.count - 1) + 1
+    entries.insert(contentsOf: pages(state), at: inbox)
+    return entries
+  }
+
+  /// Automations and Usage, when the server offers them.
+  private static func pages(_ state: PaletteViewState) -> [PaletteEntry] {
+    var pages: [PaletteEntry] = []
+    if state.showsAutomations {
+      pages.append(
+        PaletteEntry(
+          id: "automations", title: "Go to Automations", detail: state.scope, symbol: "clock",
+          target: .automations))
+    }
+    if state.showsUsage {
+      pages.append(
+        PaletteEntry(
+          id: "usage", title: "Go to Usage", detail: state.scope, symbol: "creditcard",
+          target: .usage))
+    }
+    return pages
   }
 }
