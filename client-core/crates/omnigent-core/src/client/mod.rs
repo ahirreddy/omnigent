@@ -36,6 +36,7 @@ mod hydration;
 pub mod items;
 pub(crate) mod json;
 pub mod projects;
+pub mod pull_requests;
 mod remote_browsers;
 mod requests;
 mod routing;
@@ -541,3 +542,7 @@ mod skills_tests;
 #[cfg(test)]
 #[path = "export_tests.rs"]
 mod export_tests;
+
+#[cfg(test)]
+#[path = "pull_requests_tests.rs"]
+mod pull_requests_tests;
