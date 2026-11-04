@@ -51,7 +51,7 @@ struct CustomAgentsAdapterTests {
     let edit = CustomAgentsAdapter.edit(form)
     #expect(edit.removedMcpServers == ["fs"])
     #expect(edit.model == "m2")
-    #expect(edit.description == "")
+    #expect(edit.description.isEmpty)
   }
 
   @Test func rowsCarryDates() {

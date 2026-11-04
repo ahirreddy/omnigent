@@ -4,26 +4,33 @@ import OmnigentUIComponents
 
 /// Maps the core's harness setup plan and inventory to the setup sheet and the Settings rows.
 enum HarnessSetupAdapter {
+  /// What the store says besides the plan: the catalog load, detected credentials, writes in
+  /// flight and the last write's outcome.
+  struct Progress {
+    var catalog: CreationLoad<HarnessSetupCatalog>
+    var detected: [DetectedCredential] = []
+    var isInstalling = false
+    var isSaving = false
+    var notice: String?
+    var error: String?
+  }
+
   /// The setup sheet for `plan`, or a loading or failed sheet before it exists.
-  static func sheet(
-    _ plan: HarnessSetupPlan?, catalog: CreationLoad<HarnessSetupCatalog>,
-    detected: [DetectedCredential]?, isInstalling: Bool, isSaving: Bool, notice: String?,
-    error: String?
-  ) -> HarnessSetupSheetState {
+  static func sheet(_ plan: HarnessSetupPlan?, progress: Progress) -> HarnessSetupSheetState {
     guard let plan else {
       var loadError: String?
-      if case .failed(let failure) = catalog { loadError = failure.message }
+      if case .failed(let failure) = progress.catalog { loadError = failure.message }
       return HarnessSetupSheetState(
         name: "Harness", hostName: "Host", isLoading: loadError == nil,
-        errorMessage: loadError ?? error)
+        errorMessage: loadError ?? progress.error)
     }
     return HarnessSetupSheetState(
       name: plan.label, hostName: plan.hostName ?? "the host",
       steps: plan.steps.map(step), allDone: plan.allDone, needsOmniSetup: plan.needsOmniSetup,
-      isInstalling: isInstalling, isSavingCredential: isSaving,
-      adoptableSource: adoptableHarnessCredential(harness: plan.harness, detected: detected ?? [])?
-        .source,
-      notice: notice, errorMessage: error)
+      isInstalling: progress.isInstalling, isSavingCredential: progress.isSaving,
+      adoptableSource: adoptableHarnessCredential(
+        harness: plan.harness, detected: progress.detected)?.source,
+      notice: progress.notice, errorMessage: progress.error)
   }
 
   static func step(_ step: ResolvedSetupStep) -> HarnessSetupStepState {

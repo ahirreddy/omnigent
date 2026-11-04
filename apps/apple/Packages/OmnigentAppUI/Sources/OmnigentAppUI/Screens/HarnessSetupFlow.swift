@@ -29,9 +29,11 @@ struct HarnessSetupContainer: View {
 
   private var state: HarnessSetupSheetState {
     HarnessSetupAdapter.sheet(
-      plan, catalog: store.catalog, detected: store.detected[target.hostID]?.value,
-      isInstalling: store.isInstalling(harness: target.harness, hostID: target.hostID),
-      isSaving: store.isSavingCredential, notice: store.notice, error: store.error?.message)
+      plan,
+      progress: HarnessSetupAdapter.Progress(
+        catalog: store.catalog, detected: store.detected[target.hostID]?.value ?? [],
+        isInstalling: store.isInstalling(harness: target.harness, hostID: target.hostID),
+        isSaving: store.isSavingCredential, notice: store.notice, error: store.error?.message))
   }
 
   private var actions: HarnessSetupActions {

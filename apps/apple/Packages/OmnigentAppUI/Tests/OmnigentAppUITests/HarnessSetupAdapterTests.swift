@@ -32,13 +32,12 @@ struct HarnessSetupAdapterTests {
       ])
   }
 
-  private func sheet(_ catalog: HarnessSetupCatalog, detected: [DetectedCredential]? = nil)
+  private func sheet(_ catalog: HarnessSetupCatalog, detected: [DetectedCredential] = [])
     -> HarnessSetupSheetState
   {
     HarnessSetupAdapter.sheet(
       harnessSetupPlan(catalog: catalog, harness: "codex-native", hostId: "h1"),
-      catalog: .loaded(catalog), detected: detected, isInstalling: false, isSaving: false,
-      notice: nil, error: nil)
+      progress: HarnessSetupAdapter.Progress(catalog: .loaded(catalog), detected: detected))
   }
 
   @Test func missingHarnessOffersInstallThenLockedSignIn() {
@@ -72,12 +71,11 @@ struct HarnessSetupAdapterTests {
 
   @Test func loadingAndFailedCatalogsSaySo() {
     let loading = HarnessSetupAdapter.sheet(
-      nil, catalog: .loading, detected: nil, isInstalling: false, isSaving: false, notice: nil,
-      error: nil)
+      nil, progress: HarnessSetupAdapter.Progress(catalog: .loading))
     #expect(loading.isLoading)
     let failed = HarnessSetupAdapter.sheet(
-      nil, catalog: .failed(.InvalidState(message: "boom")), detected: nil, isInstalling: false,
-      isSaving: false, notice: nil, error: nil)
+      nil,
+      progress: HarnessSetupAdapter.Progress(catalog: .failed(.InvalidState(message: "boom"))))
     #expect(!failed.isLoading)
     #expect(failed.errorMessage == "boom")
   }
