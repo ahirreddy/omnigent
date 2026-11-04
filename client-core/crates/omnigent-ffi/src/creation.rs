@@ -7,6 +7,7 @@
 use omnigent_core::create as core_create;
 use omnigent_core::creation as core;
 
+use crate::approval::ApprovalModeMenu;
 use crate::client::{ClientCore, MessageSent};
 use crate::configuration::{HarnessStatus, ModelChoice, harness_map, harness_statuses};
 use crate::engine::Msg;
@@ -378,6 +379,14 @@ pub fn creation_validation_error(
         .validate(&selection.into(), &models)
         .err()
         .map(|error| error.to_string())
+}
+
+/// The approval modes a new session of `agent` can launch in, its default selected; `None` when
+/// its harness takes no launch mode.
+#[must_use]
+#[uniffi::export]
+pub fn creation_approval_mode_menu(agent: CreationAgent) -> Option<ApprovalModeMenu> {
+    crate::approval::launch_approval_mode_menu(core::CreationAgent::from(agent).wrapper())
 }
 
 /// Whether `name` is a branch name a new worktree can use.

@@ -177,6 +177,36 @@ struct CreationStoreTests {
     creation.acknowledgeUncertain()
     #expect(creation.canCreate)
   }
+
+  @Test(.timeLimit(.minutes(1))) func browsesHostFoldersAndLoadsTheFoldersWorktrees()
+    async throws
+  {
+    let server = try creationServer()
+    server.route(
+      "/v1/hosts/host_a/filesystem/work",
+      .json(
+        #"{"data":[{"name":"repo","path":"/work/repo","type":"directory"}],"has_more":false}"#))
+    server.route(
+      "/v1/hosts/host_a/worktrees",
+      .json(
+        #"{"data":[{"path":"/work/repo","branch":"main","is_main":true},{"path":"/wt","branch":"x","is_main":false}]}"#
+      ))
+    let store = try await connectedStore(server)
+    let creation = try #require(store.creation())
+    let home = try await creation.directory(hostID: "host_a", path: nil).get()
+    #expect(home.path == "/work")
+    let work = try await creation.directory(hostID: "host_a", path: "/work").get()
+    #expect(work.directories.map(\.path) == ["/work/repo"])
+    #expect(work.parent == "/")
+    guard case .failure = await creation.directory(hostID: "host_a", path: "relative") else {
+      Issue.record("a relative path must not be read")
+      return
+    }
+    await creation.folderChanged(hostID: "host_a", path: "/work/repo")
+    #expect(creation.worktrees.value?.map(\.branch) == ["main", "x"])
+    await creation.folderChanged(hostID: "host_a", path: "")
+    #expect(creation.worktrees == .idle)
+  }
 }
 
 @MainActor

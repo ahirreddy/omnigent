@@ -1,5 +1,17 @@
 import Foundation
 
+/// Where the agent picker lists an agent, as the web's new-session picker groups them.
+nonisolated public enum AgentPickerGroup: Hashable, Sendable {
+  /// "Harnesses", inline (Claude Code, Cursor, Codex).
+  case harness
+  /// "Harnesses", under "Other…".
+  case otherHarness
+  /// "Agents", inline (built-in composed agents).
+  case agent
+  /// "Agents", under "Other…" (custom and the user's own agents).
+  case custom
+}
+
 /// The agent, model and reasoning picker the composer shows, in that order. Defaults are always
 /// shown as what they resolve to ("Default (GPT-5.2 Codex)"), or "Agent default" when unknown.
 nonisolated public struct ComposerConfiguration: Hashable, Sendable {
@@ -23,6 +35,8 @@ nonisolated public struct ComposerConfiguration: Hashable, Sendable {
   public var isApplying: Bool
   /// Why the model catalog could not load, if it failed.
   public var errorMessage: String?
+  /// Picker groups by agent id; empty lists the agents flat under "Agent".
+  public var agentGroups: [String: AgentPickerGroup] = [:]
 
   /// Creates a configuration.
   /// - Parameters:

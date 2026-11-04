@@ -46,12 +46,15 @@ public final class CreationStore {
   public private(set) var workspaces: CreationLoad<[CreationWorkspace]> = .idle
   /// Models the selected host advertises for the selected agent.
   public private(set) var models: CreationLoad<[ModelChoice]> = .idle
+  /// Git worktrees of the selected folder's repository; empty when it is not one.
+  public private(set) var worktrees: CreationLoad<[HostWorktree]> = .idle
   /// The request state.
   public private(set) var phase: CreationPhase = .editing
 
   private let core: ClientCore
   private var pendingFirstMessage: String?
   private var selectionGeneration = 0
+  private var worktreeGeneration = 0
 
   init(core: ClientCore) {
     self.core = core
@@ -100,6 +103,45 @@ public final class CreationStore {
     }
     guard generation == selectionGeneration else { return }
     models = advertised
+  }
+
+  /// The folder changed: loads its repository's worktrees on `hostID`. A newer folder supersedes
+  /// an older one's result; an empty folder clears them.
+  /// - Parameters:
+  ///   - hostID: The host.
+  ///   - path: The folder.
+  public func folderChanged(hostID: String, path: String) async {
+    worktreeGeneration += 1
+    let generation = worktreeGeneration
+    let trimmed = path.trimmingCharacters(in: .whitespaces)
+    guard trimmed.hasPrefix("/"), !hostID.isEmpty else {
+      worktrees = .idle
+      return
+    }
+    worktrees = .loading
+    let result: CreationLoad<[HostWorktree]>
+    do {
+      result = .loaded(try await core.hostWorktrees(hostId: hostID, path: trimmed))
+    } catch {
+      result = .failed(coreError(error))
+    }
+    guard generation == worktreeGeneration else { return }
+    worktrees = result
+  }
+
+  /// The directories in `path` on `hostID` (its home when `nil`), for the folder browser.
+  /// - Parameters:
+  ///   - hostID: The host.
+  ///   - path: An absolute folder, or `nil` for the home folder.
+  /// - Returns: The listing, or why it could not be read.
+  public func directory(hostID: String, path: String?) async -> Result<
+    HostDirectoryListing, CoreError
+  > {
+    do {
+      return .success(try await core.hostDirectory(hostId: hostID, path: path))
+    } catch {
+      return .failure(coreError(error))
+    }
   }
 
   /// Why `selection` cannot be created now (the core's validation against the loaded catalog
@@ -153,14 +195,29 @@ public final class CreationStore {
   ///   - agentID: The agent.
   ///   - title: The session name; may be empty.
   ///   - workspaces: Repositories to clone.
-  public func createInSandbox(agentID: String, title: String, workspaces: [String]) async {
+  ///   - firstMessage: Sent once the session exists; may be empty.
+  public func createInSandbox(
+    agentID: String, title: String, workspaces: [String], firstMessage: String = ""
+  ) async {
     guard canCreate else { return }
     phase = .creating
     do {
       let receipt = try await core.createSandboxSession(
         agentId: agentID, title: title, workspaces: workspaces)
-      pendingFirstMessage = nil
+      let text = firstMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !text.isEmpty else {
+        pendingFirstMessage = nil
+        phase = .created(sessionID: receipt.sessionId, firstMessageError: nil)
+        return
+      }
+      pendingFirstMessage = firstMessage
       phase = .created(sessionID: receipt.sessionId, firstMessageError: nil)
+      do {
+        _ = try await core.sendMessage(sessionId: receipt.sessionId, text: firstMessage)
+        pendingFirstMessage = nil
+      } catch {
+        phase = .created(sessionID: receipt.sessionId, firstMessageError: coreError(error))
+      }
     } catch {
       let error = coreError(error)
       phase = error.isDeliveryUncertain ? .uncertain(error) : .failed(error)

@@ -13,6 +13,8 @@ public struct NewSessionPage: View {
   private let heading: String
   private let importSessions: (@MainActor () -> Void)?
   private let showsContextDetails: Bool
+  private let options: NewSessionOptions?
+  private let optionActions: NewSessionOptionActions
 
   @State private var gaze: CGSize = .zero
   @Environment(\.layoutWidth) private var layoutWidth
@@ -31,11 +33,16 @@ public struct NewSessionPage: View {
   ///   - heading: The heading; servers and projects can replace it.
   ///   - importSessions: "Import your recent sessions", shown when the list is empty.
   ///   - showsContextDetails: Open the execution-context details (playground captures).
+  ///   - options: The folder, worktree and repository chips under the composer.
+  ///   - optionActions: Their actions.
   public init(
     draft: Binding<String>, composer: ComposerViewState, actions: ComposerActions,
     heading: String = "What should we work on?",
-    importSessions: (@MainActor () -> Void)? = nil, showsContextDetails: Bool = false
+    importSessions: (@MainActor () -> Void)? = nil, showsContextDetails: Bool = false,
+    options: NewSessionOptions? = nil, optionActions: NewSessionOptionActions = .init()
   ) {
+    self.options = options
+    self.optionActions = optionActions
     _draft = draft
     self.composer = composer
     self.actions = actions
@@ -81,8 +88,15 @@ public struct NewSessionPage: View {
   }
 
   private var composerView: some View {
-    ComposerView(
-      draft: $draft, state: composer, actions: actions, showsContextDetails: showsContextDetails)
+    VStack(spacing: Theme.Spacing.small) {
+      ComposerView(
+        draft: $draft, state: composer, actions: actions, showsContextDetails: showsContextDetails)
+      if let options {
+        NewSessionOptionsBar(options: options, actions: optionActions)
+          .frame(maxWidth: Theme.transcriptWidth)
+          .padding(.horizontal, Theme.Spacing.extraLarge)
+      }
+    }
   }
 
   @ViewBuilder private var importButton: some View {

@@ -20,7 +20,11 @@ struct ConfigurationMenu: View {
   var body: some View {
     Menu {
       if let selectAgent = actions.selectAgent, !configuration.harnessChoices.isEmpty {
-        Section("Agent") { agentRows(selectAgent) }
+        if configuration.agentGroups.isEmpty {
+          Section("Agent") { agentRows(configuration.harnessChoices, selectAgent) }
+        } else {
+          groupedAgentRows(selectAgent)
+        }
       }
       if let selectModel = actions.selectModel, !configuration.visibleModels.isEmpty {
         Section("Model") { modelPicker(selectModel) }
@@ -91,9 +95,50 @@ struct ConfigurationMenu: View {
     .accessibilityElement(children: .combine)
   }
 
+  /// The web's grouping: Harnesses (the rest under "Other…"), then Agents (custom ones under
+  /// "Other…"). The submenu names the selected agent when it is inside.
   @ViewBuilder
-  private func agentRows(_ select: @escaping @MainActor (String) -> Void) -> some View {
-    ForEach(configuration.harnessChoices) { choice in
+  private func groupedAgentRows(_ select: @escaping @MainActor (String) -> Void) -> some View {
+    let harnesses = choices(in: .harness)
+    let otherHarnesses = choices(in: .otherHarness)
+    let agents = choices(in: .agent)
+    let custom = choices(in: .custom)
+    if !harnesses.isEmpty || !otherHarnesses.isEmpty {
+      Section("Harnesses") {
+        agentRows(harnesses, select)
+        if !otherHarnesses.isEmpty {
+          Menu(otherTitle(otherHarnesses)) { agentRows(otherHarnesses, select) }
+            .accessibilityIdentifier("composer-agent-other-harnesses")
+        }
+      }
+    }
+    if !agents.isEmpty || !custom.isEmpty {
+      Section("Agents") {
+        agentRows(agents, select)
+        if !custom.isEmpty {
+          Menu(otherTitle(custom)) { agentRows(custom, select) }
+            .accessibilityIdentifier("composer-agent-other-agents")
+        }
+      }
+    }
+  }
+
+  private func choices(in group: AgentPickerGroup) -> [HarnessChoice] {
+    configuration.harnessChoices.filter { configuration.agentGroups[$0.id] == group }
+  }
+
+  private func otherTitle(_ choices: [HarnessChoice]) -> String {
+    guard let selected = choices.first(where: { $0.id == configuration.selectedAgentId }) else {
+      return "Other\u{2026}"
+    }
+    return "Other\u{2026} (\(selected.name))"
+  }
+
+  @ViewBuilder
+  private func agentRows(
+    _ rows: [HarnessChoice], _ select: @escaping @MainActor (String) -> Void
+  ) -> some View {
+    ForEach(rows) { choice in
       Button {
         select(choice.id)
       } label: {
