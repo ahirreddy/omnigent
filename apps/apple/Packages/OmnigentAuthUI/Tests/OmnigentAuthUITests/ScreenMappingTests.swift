@@ -232,6 +232,8 @@ struct ScreenMappingTests {
 
   @Test func everySampleMapsToItsIntendedScreen() throws {
     let expected: [String: String] = [
+      "landing": "serverPicker", "landing-organization": "serverPicker",
+      "create-admin": "createAccount", "register": "createAccount",
       "picker": "serverPicker", "picker-signed-out": "serverPicker",
       "picker-unreachable": "serverPicker", "picker-invalid-url": "serverPicker",
       "discovering": "discovering", "password": "password", "password-error": "password",

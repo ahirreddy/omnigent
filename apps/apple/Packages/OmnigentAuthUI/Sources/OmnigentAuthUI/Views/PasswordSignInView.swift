@@ -53,6 +53,7 @@ public struct PasswordSignInView: View {
         AuthBannerView(banner, title: bannerTitle, retry: actions.retry)
       }
       fields
+      createAccountLink
     } buttons: {
       AuthButton(
         title: "Use Another Server", kind: .cancel, identifier: "auth.cancel",
@@ -120,15 +121,36 @@ public struct PasswordSignInView: View {
   private var setupNotice: some View {
     VStack(alignment: .leading, spacing: 8) {
       AuthBannerView(
-        .notice(
-          "This server has no administrator yet. Finish setting it up in its web app, then sign in here."
-        ))
-      if let url = server.webURL {
-        Button("Open Setup in Browser", systemImage: "safari") { openURL(url) }
-          .controlSize(.small)
-          .accessibilityIdentifier("auth.open-setup")
+        .notice("This server has no administrator yet. Create the admin account to set it up."))
+      HStack {
+        Button("Create Admin Account\u{2026}", systemImage: "person.badge.shield.checkmark") {
+          actions.showAccountForm(.createAdmin)
+        }
+        .accessibilityIdentifier("auth.create-admin")
+        if let url = server.webURL {
+          Button("Open Setup in Browser", systemImage: "safari") { openURL(url) }
+            .accessibilityIdentifier("auth.open-setup")
+        }
       }
+      .controlSize(.small)
     }
+  }
+
+  /// Registration is by invite: the admin sends a link, which the form below accepts.
+  private var createAccountLink: some View {
+    HStack(spacing: 4) {
+      Text("Have an invite?")
+        .foregroundStyle(.secondary)
+      Button("Create an account") { actions.showAccountForm(.register) }
+        #if os(macOS)
+          .buttonStyle(.link)
+        #else
+          .buttonStyle(.borderless)
+        #endif
+        .accessibilityIdentifier("auth.show-register")
+    }
+    .font(.callout)
+    .disabled(isSubmitting)
   }
 
   private func handleReturn(fromPassword: Bool) {

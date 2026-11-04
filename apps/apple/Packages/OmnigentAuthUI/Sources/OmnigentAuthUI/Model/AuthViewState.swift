@@ -16,6 +16,10 @@ public nonisolated struct AuthViewState: Hashable, Sendable {
   /// A one-off informational message, for example Rust `signed_out_message` ("You're signed
   /// out of host.") or "Sign-in was cancelled."
   public var notice: String?
+  /// Which accounts form to show: signing in, or creating an account.
+  public var accountForm: AccountForm
+  /// This Mac's local setup; `nil` where the platform cannot run a local server.
+  public var localSetup: LocalSetupState?
 
   /// Creates a state.
   /// - Parameters:
@@ -24,16 +28,20 @@ public nonisolated struct AuthViewState: Hashable, Sendable {
   ///   - directory: The servers the picker offers.
   ///   - lastServerUrl: The last server the user tried.
   ///   - notice: A one-off informational message.
+  ///   - accountForm: Which accounts form to show.
+  ///   - localSetup: This Mac's local setup.
   public init(
     phase: SignInPhase = .disconnected, server: ServerIdentity? = nil,
     directory: ServerDirectory = ServerDirectory(), lastServerUrl: String? = nil,
-    notice: String? = nil
+    notice: String? = nil, accountForm: AccountForm = .signIn, localSetup: LocalSetupState? = nil
   ) {
     self.phase = phase
     self.server = server
     self.directory = directory
     self.lastServerUrl = lastServerUrl
     self.notice = notice
+    self.accountForm = accountForm
+    self.localSetup = localSetup
   }
 
   /// The screen to show.

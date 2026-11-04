@@ -46,14 +46,17 @@ struct AuthScreenView: View {
   var body: some View {
     switch screen {
     case .serverPicker(let banner):
-      ServerPickerView(
+      OnboardingFlowView(
         directory: state.directory, prefill: state.prefillServerUrl, banner: banner,
-        validator: validator, actions: actions)
+        localSetup: state.localSetup, validator: validator, actions: actions)
     case .discovering(let serverUrl):
       ConnectingView(title: "Connecting\u{2026}", serverUrl: serverUrl, actions: actions)
     case .password(let server, let banner, let isSubmitting):
       PasswordSignInView(
         server: server, banner: banner, isSubmitting: isSubmitting, actions: actions)
+    case .createAccount(let server, let form, let banner, let isSubmitting):
+      CreateAccountView(
+        server: server, form: form, banner: banner, isSubmitting: isSubmitting, actions: actions)
     case .browserSignIn(let server, let option, let alternatives, let banner):
       BrowserSignInView(
         server: server, option: option, alternatives: alternatives, banner: banner,

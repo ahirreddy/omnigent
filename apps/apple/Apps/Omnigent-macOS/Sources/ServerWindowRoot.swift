@@ -79,6 +79,10 @@ struct ServerWindowRoot: View {
     .windowFrameAutosave()
     .onDisappear { services.windowClosed(id.instance) }
     .task(id: id.serverURL) { await connectBoundServer(session, force: false) }
+    .onChange(of: id.serverURL) { _, url in
+      // Back on the server list: show the servers connected to since the window opened.
+      if url == nil { session.signIn.directory = services.serverDirectory() }
+    }
     .task { await reconnectOnSystemTriggers(session) }
   }
 
@@ -88,6 +92,8 @@ struct ServerWindowRoot: View {
     adopting = services.takeHandoff(for: id.instance)
     let session = services.makeServerSession()
     session.signIn.directory = services.serverDirectory()
+    session.signIn.localSetup = LocalServerSetup(
+      manager: desktop.localServer, showLogs: { openWindow(id: LocalServerLogsWindow.id) })
     session.signIn.forgetServer = { [services] url in
       if let url = URL(string: url) { services.recentServers.forget(url) }
       session.signIn.directory = services.serverDirectory()

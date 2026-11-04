@@ -73,6 +73,58 @@
       }
     }
 
+    /// The steps a window reaches from the landing, which no view state opens on.
+    struct OnboardingShot {
+      let id: String
+      let step: OnboardingStep
+      let setup: LocalSetupState
+
+      init(id: String, step: OnboardingStep, _ setup: LocalSetupState) {
+        self.id = id
+        self.step = step
+        self.setup = setup
+      }
+    }
+
+    @Test func rendersOnboardingSteps() throws {
+      let log = [
+        "Starting Omnigent server on http://127.0.0.1:6767", "Applying migrations\u{2026}",
+      ]
+      let steps: [OnboardingShot] = [
+        OnboardingShot(
+          id: "local-intro", step: .localIntro, LocalSetupState(cli: .found, server: .stopped)),
+        OnboardingShot(
+          id: "local-progress", step: .localProgress,
+          LocalSetupState(cli: .found, server: .busy("Starting\u{2026}"), log: log)
+        ),
+        OnboardingShot(
+          id: "local-failed", step: .localProgress,
+          LocalSetupState(cli: .found, server: .failed("Port 6767 is in use."), log: log)
+        ),
+        OnboardingShot(
+          id: "install-cli", step: .installCLI,
+          LocalSetupState(cli: .missing("omnigent was not found."), server: .stopped)
+        ),
+        OnboardingShot(
+          id: "runner", step: .runner(serverUrl: AuthSamples.oidcUrl),
+          LocalSetupState(cli: .found, server: .stopped)
+        ),
+        OnboardingShot(
+          id: "servers", step: .servers, LocalSetupState(cli: .found, server: .stopped)),
+      ]
+      for shot in steps {
+        let (id, step, setup) = (shot.id, shot.step, shot.setup)
+        let view = AuthContainer(presentation: .sheet) {
+          OnboardingFlowView(
+            step: step, directory: AuthSamples.directory, localSetup: setup, actions: .inert)
+        }
+        let name = "auth-onboarding-\(id)-mac-light"
+        let image = try Self.hostRender(view, width: .mac, scheme: .light)
+        try Self.write(image, name: name)
+        #expect(Self.inkCoverage(image) > 0.02, "\(name) looks blank")
+      }
+    }
+
     @Test func rendersAccountChipWithImageRenderer() throws {
       for scheme in [ColorScheme.light, .dark] {
         let chip = AccountChipLabel(account: AuthSamples.account)

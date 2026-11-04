@@ -62,6 +62,10 @@ public nonisolated enum AuthScreen: Hashable, Sendable {
   case discovering(serverUrl: String)
   /// The accounts form; `isSubmitting` while the password sign-in runs.
   case password(server: ServerIdentity, banner: AuthBanner?, isSubmitting: Bool)
+  /// Creating an account: the first administrator (`form` ``AccountForm/createAdmin``) or an
+  /// invited user (``AccountForm/register``); `isSubmitting` while it is created.
+  case createAccount(
+    server: ServerIdentity, form: AccountForm, banner: AuthBanner?, isSubmitting: Bool)
   /// A browser sign-in to start, with any other options to offer.
   case browserSignIn(
     server: ServerIdentity, option: SignInOption, alternatives: [SignInOption], banner: AuthBanner?)
@@ -93,9 +97,10 @@ public nonisolated enum AuthScreen: Hashable, Sendable {
     case .signInRequired(let baseUrl, let serverName, let mode, let methods, let reason):
       let server = state.identity(baseUrl: baseUrl, serverName: serverName, mode: mode)
       self = Self.signIn(
-        server: server, mode: mode, methods: methods, reason: reason, notice: noticeBanner)
+        server: server, mode: mode, methods: methods, reason: reason, state: state)
     case .signingIn(let baseUrl, let method):
-      self = Self.signingIn(server: state.identity(baseUrl: baseUrl), method: method)
+      self = Self.signingIn(
+        server: state.identity(baseUrl: baseUrl), method: method, form: state.accountForm)
     case .awaitingBrowserLogin(let baseUrl, let login):
       self = .awaitingBrowserApproval(server: state.identity(baseUrl: baseUrl), approval: login)
     case .connecting(let baseUrl):
@@ -109,9 +114,10 @@ public nonisolated enum AuthScreen: Hashable, Sendable {
 
   private static func signIn(
     server: ServerIdentity, mode: SignInMode, methods: [SignInOption], reason: SignInError?,
-    notice: AuthBanner?
+    state: AuthViewState
   ) -> Self {
-    let banner = reason.map(AuthBanner.error) ?? notice
+    let banner = reason.map(AuthBanner.error) ?? state.notice.map(AuthBanner.notice)
+    let form = state.accountForm
     guard let primary = methods.first else {
       if mode == .localSingleUser {
         // A loopback server that still wants a sign-in is a connection problem, not a mode.
@@ -121,6 +127,9 @@ public nonisolated enum AuthScreen: Hashable, Sendable {
     }
     switch primary {
     case .password:
+      if form != .signIn {
+        return .createAccount(server: server, form: form, banner: banner, isSubmitting: false)
+      }
       return .password(server: server, banner: banner, isSubmitting: false)
     case .databricksWorkspace(let host):
       if let cause = reauthCause(reason) {
@@ -138,8 +147,12 @@ public nonisolated enum AuthScreen: Hashable, Sendable {
   }
 
   /// A password sign-in keeps its form on screen; a browser sign-in shows "Signing in...".
-  private static func signingIn(server: ServerIdentity, method: SignInOption?) -> Self {
+  private static func signingIn(server: ServerIdentity, method: SignInOption?, form: AccountForm)
+    -> Self
+  {
     switch method {
+    case .password where form != .signIn:
+      .createAccount(server: server, form: form, banner: nil, isSubmitting: true)
     case .password:
       .password(server: server, banner: nil, isSubmitting: true)
     case .databricksWorkspace(let host):
@@ -160,7 +173,8 @@ public nonisolated enum AuthScreen: Hashable, Sendable {
   public var server: ServerIdentity? {
     switch self {
     case .serverPicker, .discovering: nil
-    case .password(let server, _, _), .browserSignIn(let server, _, _, _),
+    case .password(let server, _, _), .createAccount(let server, _, _, _),
+      .browserSignIn(let server, _, _, _),
       .reauthenticate(let server, _, _), .workspaceSignIn(let server, _, _, _),
       .signingIn(let server, _), .awaitingBrowserApproval(let server, _),
       .connecting(let server), .unsupported(let server, _):
@@ -173,7 +187,8 @@ public nonisolated enum AuthScreen: Hashable, Sendable {
   public var isBusy: Bool {
     switch self {
     case .discovering, .signingIn, .awaitingBrowserApproval, .connecting: true
-    case .password(_, _, let isSubmitting): isSubmitting
+    case .password(_, _, let isSubmitting), .createAccount(_, _, _, let isSubmitting):
+      isSubmitting
     case .workspaceSignIn(_, _, _, let isSigningIn): isSigningIn
     case .serverPicker, .browserSignIn, .reauthenticate, .unsupported, .signedIn: false
     }
