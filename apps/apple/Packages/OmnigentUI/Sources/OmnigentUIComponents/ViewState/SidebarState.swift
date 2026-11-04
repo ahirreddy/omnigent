@@ -1,23 +1,5 @@
 import Foundation
 
-/// What the sidebar selects; the detail column shows it.
-nonisolated public enum SidebarDestination: Hashable, Sendable {
-  /// The new-session page ("What should we work on?").
-  case newSession
-  /// The Inbox.
-  case inbox
-  /// The Canvas.
-  case canvas
-  /// A session.
-  case session(String)
-
-  /// The selected session id, if a session is selected.
-  public var sessionID: String? {
-    if case .session(let id) = self { return id }
-    return nil
-  }
-}
-
 /// A project (folder) in the sidebar's Projects section.
 nonisolated public struct SessionProject: Hashable, Sendable, Identifiable {
   /// Stable id: the project id, or the name of a label-only project.
@@ -280,6 +262,10 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var inboxCount: Int
   /// The server offers Canvas.
   public var showsCanvas: Bool
+  /// The server offers Automations.
+  public var showsAutomations = false
+  /// The server offers Usage.
+  public var showsUsage = false
   /// The display menu choices.
   public var display: SessionDisplayOptions
   /// A one-click quick filter (Running or Needs you), or `nil` for none.

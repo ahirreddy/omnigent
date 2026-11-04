@@ -68,7 +68,7 @@ public struct TabsPlayground: View {
         SamplePage(tab: tab)
       case .remoteBrowser:
         if let remoteBrowser { remoteBrowser } else { SamplePage(tab: tab) }
-      case .newTab, .newSession, .inbox, .canvas:
+      case .newTab, .newSession, .inbox, .canvas, .automations, .usage:
         NewTabPage(
           state: NewTabPageState(
             recentSessions: Array(PreviewData.sessions.prefix(5)), canOpenBrowser: true,

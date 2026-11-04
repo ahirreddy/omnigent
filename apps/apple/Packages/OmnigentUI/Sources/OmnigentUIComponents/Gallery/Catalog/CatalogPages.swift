@@ -213,6 +213,10 @@ private struct CatalogDetail: View {
       InboxView(state: model.inbox, actions: model.inboxActions)
     case .canvas:
       CanvasView(sessions: model.sidebar.list.sessions) { model.selection = .session($0) }
+    case .automations:
+      AutomationsView(state: PreviewData.automations, actions: AutomationsActions())
+    case .usage:
+      UsageView(state: PreviewData.usage, actions: UsageActions(formatCost: PreviewData.cost))
     case .session:
       ConversationScreen(
         state: model.conversation, composer: model.composer, draft: $model.draft,
