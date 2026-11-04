@@ -112,14 +112,36 @@ struct ConfigurationMenu: View {
         }
       }
     }
-    if !agents.isEmpty || !custom.isEmpty {
+    let createsAgents =
+      actions.extras.createAgent != nil || actions.extras.importAgentBundle != nil
+    if !agents.isEmpty || !custom.isEmpty || createsAgents {
       Section("Agents") {
         agentRows(agents, select)
-        if !custom.isEmpty {
-          Menu(otherTitle(custom)) { agentRows(custom, select) }
-            .accessibilityIdentifier("composer-agent-other-agents")
+        if !custom.isEmpty || createsAgents {
+          Menu(otherTitle(custom)) {
+            agentRows(custom, select)
+            if createsAgents {
+              if !custom.isEmpty { Divider() }
+              customAgentActions
+            }
+          }
+          .accessibilityIdentifier("composer-agent-other-agents")
         }
       }
+    }
+  }
+
+  /// Create a custom agent, or import one from a bundle (a new session only).
+  @ViewBuilder private var customAgentActions: some View {
+    if let createAgent = actions.extras.createAgent {
+      Button("Create Custom Agent\u{2026}", systemImage: "plus", action: createAgent)
+        .accessibilityIdentifier("composer-agent-create")
+    }
+    if let importAgentBundle = actions.extras.importAgentBundle {
+      Button(
+        "Import Bundle\u{2026}", systemImage: "square.and.arrow.down", action: importAgentBundle
+      )
+      .accessibilityIdentifier("composer-agent-import")
     }
   }
 

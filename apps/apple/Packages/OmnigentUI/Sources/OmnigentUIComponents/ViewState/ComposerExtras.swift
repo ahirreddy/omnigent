@@ -324,6 +324,10 @@ public struct ComposerExtraActions {
   public var reconnect: (@MainActor () -> Void)?
   /// Dismiss the output of a local command (`/help`, usage).
   public var dismissCommandNotice: (@MainActor () -> Void)?
+  /// "Create custom agent…" under the agent picker's custom agents (a new session only).
+  public var createAgent: (@MainActor () -> Void)?
+  /// "Import bundle…" under the agent picker's custom agents (a new session only).
+  public var importAgentBundle: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:
@@ -346,6 +350,8 @@ public struct ComposerExtraActions {
   ///   - queueDraft: Queue the draft after this turn.
   ///   - reconnect: Reconnect the stream.
   ///   - dismissCommandNotice: Dismiss a command's output.
+  ///   - createAgent: Create a custom agent.
+  ///   - importAgentBundle: Import an agent bundle.
   public init(
     selectHost: (@MainActor (ComposerHost) -> Void)? = nil,
     connectHost: (@MainActor () -> Void)? = nil,
@@ -363,7 +369,9 @@ public struct ComposerExtraActions {
     recallPrevious: (@MainActor () -> String?)? = nil,
     queueDraft: (@MainActor () -> Void)? = nil,
     reconnect: (@MainActor () -> Void)? = nil,
-    dismissCommandNotice: (@MainActor () -> Void)? = nil
+    dismissCommandNotice: (@MainActor () -> Void)? = nil,
+    createAgent: (@MainActor () -> Void)? = nil,
+    importAgentBundle: (@MainActor () -> Void)? = nil
   ) {
     self.selectHost = selectHost
     self.connectHost = connectHost
@@ -384,5 +392,7 @@ public struct ComposerExtraActions {
     self.queueDraft = queueDraft
     self.reconnect = reconnect
     self.dismissCommandNotice = dismissCommandNotice
+    self.createAgent = createAgent
+    self.importAgentBundle = importAgentBundle
   }
 }
