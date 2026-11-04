@@ -16,6 +16,12 @@ nonisolated public enum PaletteTarget: Hashable, Sendable {
   case toggleTerminal
   /// Open triage.
   case inbox
+  /// Open Settings.
+  case settings
+  /// Show or hide the sessions sidebar.
+  case toggleSidebar
+  /// Show or hide the selected session's right panel.
+  case toggleInspector
   /// Open a particular session.
   case session(String)
   /// Connect to a configured server.

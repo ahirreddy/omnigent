@@ -5,10 +5,17 @@ import OmnigentStores
 import OmnigentUIComponents
 import SwiftUI
 
+#if os(macOS)
+  import AppKit
+#endif
+
 /// Palette data and navigation over the connected window's existing stores.
 struct PaletteAdapter: ViewModifier {
   let session: ServerSession
   @Binding var selection: SidebarDestination?
+  #if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+  #endif
 
   func body(content: Content) -> some View {
     content.commandPalette(
@@ -102,7 +109,16 @@ struct PaletteAdapter: ViewModifier {
     case .server(let url):
       selection = nil
       session.signIn.connect(url)
-    case .findSession, .switchServer, .changes, .composer, .toggleTerminal:
+    case .settings:
+      #if os(macOS)
+        openSettings()
+      #endif
+    case .toggleSidebar:
+      #if os(macOS)
+        // The split view's own toggle, as View > Show Sidebar sends it.
+        NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
+      #endif
+    case .findSession, .switchServer, .changes, .composer, .toggleTerminal, .toggleInspector:
       break
     }
   }

@@ -80,6 +80,7 @@ private struct PalettePresentation: ViewModifier {
     case .composer: capturedCommands.focusComposer?()
     case .toggleTerminal: capturedCommands.toggleViewMode?()
     case .changes: capturedCommands.openChanges?()
+    case .toggleInspector: capturedCommands.toggleInspector?()
     default: actions.perform(target)
     }
   }

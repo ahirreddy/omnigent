@@ -28,7 +28,9 @@ extension PlaygroundModel {
       case .inbox: scenario = .inboxTriage
       case .nextRequest: scenario = .approvals
       case .server: scenario = .serverSettings
-      case .findSession, .switchServer, .changes, .composer, .toggleTerminal: break
+      case .findSession, .switchServer, .changes, .composer, .toggleTerminal, .settings,
+        .toggleSidebar, .toggleInspector:
+        break
       }
     }
   }
