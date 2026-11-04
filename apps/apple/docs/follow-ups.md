@@ -270,6 +270,16 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   offscreen renders flatten ``GlassSurface`` to a material (`flattensGlass`). System glass
   (toolbar items, `.glass` buttons) still draws nothing there; the gallery's
   `--gallery-capture window` shows the real thing.
+- [ ] **Settings › Servers, not yet native:** connecting GitHub, Databricks and OAuth MCP services
+  opens the server's web settings, because `/v1/connections/*/connect` needs the browser's
+  cookie session; adding default policies from the policy registry; inviting members; changing
+  a member's role (the server has no role API: roles come from its admin list).
+- [ ] **Device preferences without a consumer yet** (keys as on the web): Always steer
+  (`omnigent:always-steer`, composer), Always use a worktree and Default base branch
+  (`GitPreferences`, new-session form), Delete worktrees on archive (archive action), background
+  session titles (needs the core to send `X-Omnigent-Background-Session-Titles`), open links in
+  the in-app browser, open sub-agents in a panel, and the Appearance extras (harness picker
+  visibility, fold narration, workspace panel defaults, UI and code typography).
 
 ## Product decisions
 

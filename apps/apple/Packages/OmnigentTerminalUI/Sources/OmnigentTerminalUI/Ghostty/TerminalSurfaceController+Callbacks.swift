@@ -90,9 +90,20 @@ extension TerminalSurfaceController {
   /// Ghostty copied text (a user copy, or an OSC 52 write when `requiresConfirmation`).
   func copied(text: String, requiresConfirmation: Bool) {
     if requiresConfirmation {
-      pendingClipboard = PendingClipboardWrite(id: UUID(), text: text)
+      remoteCopied(text)
     } else {
       TerminalPasteboard.write(text)
+    }
+  }
+
+  /// A terminal program copied `text`: copy, ask or refuse, as Settings > Terminal says.
+  func remoteCopied(_ text: String, policy: TerminalClipboardPolicy = .current()) {
+    switch policy {
+    case .ask: pendingClipboard = PendingClipboardWrite(id: UUID(), text: text)
+    case .allow: TerminalPasteboard.write(text)
+    case .block:
+      lastError =
+        "A terminal program tried to copy text. Copying is blocked in Settings > Terminal."
     }
   }
 

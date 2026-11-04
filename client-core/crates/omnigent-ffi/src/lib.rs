@@ -46,6 +46,7 @@ pub mod fork;
 pub mod host;
 pub mod http;
 pub mod remote_browser;
+pub mod server_admin;
 pub mod sessions;
 pub mod share;
 pub mod slash;

@@ -41,6 +41,7 @@ mod recovery;
 mod remote_browsers;
 mod requests;
 mod routing;
+pub mod server_admin;
 mod session_actions;
 pub mod session_search;
 pub mod sessions;

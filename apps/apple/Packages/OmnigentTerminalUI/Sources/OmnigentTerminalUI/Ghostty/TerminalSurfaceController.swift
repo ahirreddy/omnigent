@@ -203,7 +203,7 @@ public final class TerminalSurfaceController {
       // the current screen.
       feed([0x1B, UInt8(ascii: "c")])
     case .clipboardWrite(let text):
-      pendingClipboard = PendingClipboardWrite(id: UUID(), text: text)
+      remoteCopied(text)
     }
   }
 

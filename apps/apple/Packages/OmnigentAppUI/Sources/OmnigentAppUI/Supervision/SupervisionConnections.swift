@@ -42,6 +42,11 @@ public final class SupervisionConnections {
     entries.values.compactMap { $0.connection?.supervisedServerURL }.sorted()
   }
 
+  /// The signed-in connections, one per server, by server URL; for Settings' server picker.
+  public var connections: [ConnectionStore] {
+    entries.keys.sorted().compactMap { connection(for: $0) }
+  }
+
   static func key(_ serverURL: String) -> String {
     var value = serverURL.lowercased()
     while value.hasSuffix("/") { value.removeLast() }

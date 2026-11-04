@@ -191,24 +191,38 @@ extension PreviewData {
           note: "Needs sign-in on 1 host"),
         ServerHarness(id: "h4", name: "Pi", harness: "pi", isEnabled: true),
       ],
-      mcpServers: [
-        ServerSettingRow(id: "m1", name: "github", detail: "https://api.githubcopilot.com/mcp"),
-        ServerSettingRow(id: "m2", name: "linear", detail: "OAuth token expired", isEnabled: false),
+      mcpServices: [
+        MCPServiceRow(
+          id: "m1", name: "GitHub", detail: "Issues and pull requests", isConnected: true,
+          tools: ["search", "create_issue"], canDisconnect: true),
+        MCPServiceRow(id: "m2", name: "Linear", isConnected: false, connectsInBrowser: true),
       ],
-      gitProviders: [
-        ServerSettingRow(id: "g1", name: "GitHub", detail: "Signed in as ahirreddy"),
-        ServerSettingRow(id: "g2", name: "GitLab", detail: "Not connected", isEnabled: false),
+      connections: [
+        ProviderConnectionRow(id: "github", name: "GitHub", isConnected: true, account: "ahir"),
+        ProviderConnectionRow(id: "databricks", name: "Databricks", isConnected: false),
       ],
       members: [
-        ServerMember(id: "u1", name: "Ahir Reddy", email: "ahir@example.com", role: "Admin"),
-        ServerMember(id: "u2", name: "Ankit", email: "ankit@example.com", role: "Member"),
+        ServerMember(
+          id: "ahir@example.com", detail: "Last signed in today", isAdmin: true,
+          canResetPassword: true),
+        ServerMember(
+          id: "ankit@example.com", detail: "Never signed in", isAdmin: false,
+          canResetPassword: true, canRemove: true),
       ],
       policies: [
+        ServerSettingRow(id: "p1", name: "Ask before pushing", detail: "omnigent.policies.ask"),
         ServerSettingRow(
-          id: "p1", name: "No network to package registries", detail: "Applies to every agent"),
-        ServerSettingRow(
-          id: "p2", name: "Ask before pushing", detail: "Git push requires approval"),
+          id: "p2", name: "Limit tool calls", detail: "omnigent.policies.limit", isReadOnly: true),
       ],
-      archived: sessions.filter(\.isPinned), isAdmin: true)
+      sharing: SharingViewState(
+        mode: "on",
+        modeChoices: [
+          SettingChoice(id: "on", title: "Anyone can share"),
+          SettingChoice(id: "off", title: "Sharing off"),
+        ],
+        modeEditable: true, publicSharing: true, publicSharingEditable: true),
+      archived: sessions.filter(\.isPinned),
+      importHosts: [SettingChoice(id: "h1", title: "ahir-mbp")],
+      importSources: [SettingChoice(id: "all", title: "All harnesses")], isAdmin: true)
   }
 }

@@ -150,8 +150,8 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   #endif
 }
 
-/// Settings: the desktop tabs, plus Appearance (theme, under the web's keys) and Terminal, with
-/// this edition's browser engines on the General tab.
+/// Settings: the desktop tabs, plus Appearance (theme, under the web's keys), Terminal, Phone and
+/// Servers, with the composer's send shortcut and this edition's browser engines on General.
 struct AppSettingsView: View {
   let services: AppServices
 
@@ -166,8 +166,13 @@ struct AppSettingsView: View {
         SettingsTabItem("Phone", systemImage: "iphone") {
           PairingSettingsView(servers: services.pairingServers())
         },
+        // Each signed-in server's settings, as the web's /settings server sections.
+        SettingsTabItem("Servers", systemImage: "network", isWide: true) {
+          ServerSettingsContainer()
+        },
       ]
     ) {
+      ComposerSettingsSection()
       BrowserEngineSettingsView(
         preferences: services.browserPreferences, provider: services.browserProvider)
       BrowserSettingsView(environment: services.browser)

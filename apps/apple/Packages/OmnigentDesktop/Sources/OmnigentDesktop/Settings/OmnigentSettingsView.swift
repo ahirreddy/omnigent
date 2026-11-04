@@ -10,15 +10,22 @@ public struct SettingsTabItem: Identifiable {
   public let systemImage: String
   /// The tab's content, usually a `Form`.
   public let content: AnyView
+  /// The content sizes itself (a split view) instead of taking the form width.
+  public let isWide: Bool
 
   /// Creates a tab.
   /// - Parameters:
   ///   - title: The tab title.
   ///   - systemImage: An SF Symbol.
+  ///   - isWide: The content sizes itself instead of taking the form width.
   ///   - content: The tab's content.
-  public init(_ title: String, systemImage: String, @ViewBuilder content: () -> some View) {
+  public init(
+    _ title: String, systemImage: String, isWide: Bool = false,
+    @ViewBuilder content: () -> some View
+  ) {
     self.title = title
     self.systemImage = systemImage
+    self.isWide = isWide
     self.content = AnyView(content())
   }
 
@@ -64,28 +71,40 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
       Tab("General", systemImage: "gearshape") {
         GeneralSettingsTab(
           preferences: desktop.preferences, managed: desktop.managedPreferences,
-          recentServers: recentServers, browserSettings: browserSettings)
+          recentServers: recentServers, browserSettings: browserSettings
+        )
+        .frame(width: Self.formWidth)
       }
       Tab("Notifications", systemImage: "bell.badge") {
         NotificationSettingsTab(
-          preferences: desktop.preferences, notifications: desktop.notifications)
+          preferences: desktop.preferences, notifications: desktop.notifications
+        )
+        .frame(width: Self.formWidth)
       }
       ForEach(extraTabs) { item in
-        Tab(item.title, systemImage: item.systemImage) { item.content }
+        Tab(item.title, systemImage: item.systemImage) {
+          item.content.frame(width: item.isWide ? nil : Self.formWidth)
+        }
       }
       Tab("Local Server", systemImage: "server.rack") {
         LocalServerSettingsTab(
-          manager: desktop.localServer, preferences: desktop.localServerPreferences)
+          manager: desktop.localServer, preferences: desktop.localServerPreferences
+        )
+        .frame(width: Self.formWidth)
       }
       Tab("Advanced", systemImage: "gearshape.2") {
         AdvancedSettingsTab(
-          managed: desktop.managedPreferences, exportDiagnostics: exportDiagnostics)
+          managed: desktop.managedPreferences, exportDiagnostics: exportDiagnostics
+        )
+        .frame(width: Self.formWidth)
       }
     }
     .scenePadding()
-    .frame(width: 520)
     .frame(minHeight: 320)
   }
+
+  /// The width of the form tabs; a wide tab (``SettingsTabItem/isWide``) sizes itself.
+  static var formWidth: CGFloat { 520 }
 }
 
 extension OmnigentSettingsView where BrowserSettings == EmptyView {
