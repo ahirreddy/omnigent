@@ -27,11 +27,13 @@
 pub mod browser;
 pub mod configure;
 pub mod create;
+mod custom_agents;
 pub mod databricks_session;
 mod error;
 pub mod events;
 mod export;
 pub mod fork;
+mod harness_setup;
 mod hydration;
 pub mod items;
 pub(crate) mod json;

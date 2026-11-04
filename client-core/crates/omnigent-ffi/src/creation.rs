@@ -112,6 +112,9 @@ pub struct CreationCatalog {
     /// `/v1/info.sandbox_providers`, the default first.
     #[uniffi(default)]
     pub sandbox_providers: Vec<String>,
+    /// `/v1/info.features.codex_plan_at_launch`: a Codex session can start in Plan mode.
+    #[uniffi(default)]
+    pub codex_plan_at_launch: bool,
 }
 
 /// A directory offered as a session workspace.
@@ -144,6 +147,9 @@ pub struct CreationSelection {
     /// A git worktree to create or start in; `None` starts in the workspace itself.
     #[uniffi(default)]
     pub git: Option<CreationGit>,
+    /// Start a Codex session in Plan mode (see `creation_starts_in_plan_mode`).
+    #[uniffi(default)]
+    pub plan_mode: bool,
 }
 
 /// The `git` block of a new external-host session.
@@ -283,6 +289,7 @@ impl From<core::CreationCatalog> for CreationCatalog {
             agent_install: catalog.capabilities.agent_install,
             managed_sandboxes: catalog.capabilities.managed_sandboxes,
             sandbox_providers: catalog.capabilities.sandbox_providers,
+            codex_plan_at_launch: catalog.capabilities.codex_plan_at_launch,
         }
     }
 }
@@ -296,6 +303,7 @@ impl From<CreationCatalog> for core::CreationCatalog {
                 agent_install: catalog.agent_install,
                 managed_sandboxes: catalog.managed_sandboxes,
                 sandbox_providers: catalog.sandbox_providers,
+                codex_plan_at_launch: catalog.codex_plan_at_launch,
             },
         }
     }
@@ -315,6 +323,7 @@ impl From<CreationSelection> for core::CreationSelection {
                 base_branch: git.base_branch,
                 existing_worktree: git.existing_worktree,
             }),
+            plan_mode: selection.plan_mode,
         }
     }
 }
@@ -387,6 +396,14 @@ pub fn creation_validation_error(
 #[uniffi::export]
 pub fn creation_approval_mode_menu(agent: CreationAgent) -> Option<ApprovalModeMenu> {
     crate::approval::launch_approval_mode_menu(core::CreationAgent::from(agent).wrapper())
+}
+
+/// Whether a session of `agent_id` can start in Plan mode through `plan_mode`: a native Codex
+/// agent on a server that supports it. Claude Code uses its `plan` approval mode instead.
+#[must_use]
+#[uniffi::export]
+pub fn creation_starts_in_plan_mode(catalog: CreationCatalog, agent_id: String) -> bool {
+    core::CreationCatalog::from(catalog).starts_in_plan_mode(&agent_id)
 }
 
 /// Whether `name` is a branch name a new worktree can use.
@@ -582,5 +599,24 @@ impl ClientCore {
             self.post(Msg::DemoKick);
         }
         Ok(created.into())
+    }
+
+    /// Sends the first message of a session just created with `create_session`, with the
+    /// attachments staged and uploaded to it, without waiting for its live stream. Never
+    /// retried.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`] as `send_message`.
+    pub async fn send_first_message(
+        &self,
+        session_id: String,
+        text: String,
+    ) -> Result<MessageSent, CoreError> {
+        self.sessions()
+            .send_first_message(&session_id, &text)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
     }
 }

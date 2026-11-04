@@ -276,7 +276,28 @@ impl<T: HttpTransport> ClientCore<T> {
         item: DraftItemId,
         boundary: &str,
     ) -> Result<UploadedAttachment, SessionError> {
-        let result = self.upload(session_id, item, boundary).await;
+        let result = self.upload(session_id, item, boundary, true).await;
+        self.dispatch();
+        result
+    }
+
+    /// Uploads one staged file to a session this client just created, before its live stream
+    /// opens (for the first message). Otherwise as [`Self::upload_attachment`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::upload_attachment`] without `StreamNotReady`.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn upload_first_attachment(
+        &self,
+        session_id: &str,
+        item: DraftItemId,
+        boundary: &str,
+    ) -> Result<UploadedAttachment, SessionError> {
+        let result = self.upload(session_id, item, boundary, false).await;
         self.dispatch();
         result
     }
@@ -290,10 +311,12 @@ impl<T: HttpTransport> ClientCore<T> {
         session_id: &str,
         item: DraftItemId,
         boundary: &str,
+        require_live_stream: bool,
     ) -> Result<UploadedAttachment, SessionError> {
         validate_identifier(session_id)?;
         let key = self.draft_key(session_id)?;
-        self.require_sendable(session_id, true).await?;
+        self.require_sendable(session_id, require_live_stream)
+            .await?;
         let (target, _) = self.upload_target(session_id)?;
         let (attempt, file, mut request, epoch) = {
             let mut state = lock(&self.state);
