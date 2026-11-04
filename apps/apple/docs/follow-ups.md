@@ -168,7 +168,20 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   `ConfigurationMenu`'s pickers (no agent switch).
 - [ ] **CLI style:** fold the non-message hover host (`cliActions`) into the shared
   `messageActionsHost` once it takes arbitrary actions.
-- [ ] **CLI style:** Styled renders fenced code without syntax highlighting.
+- [ ] **CLI style:** Styled renders fenced code without syntax highlighting (the rich renderer
+  colors it with `CodeHighlighting`; the CLI palette has no token colors yet).
+- [ ] **Markdown: Mermaid.** ```` ```mermaid ```` blocks render as code. Diagrams need a WebKit
+  renderer (non-persistent `WKWebsiteDataStore`, as for other inline HTML) and a vendored
+  `mermaid.min.js` (~3 MB) as a package resource; it must not be loaded from a CDN.
+- [ ] **Markdown: math** draws TeX as Unicode text (`MathText`): fractions are `a/b` and matrices,
+  `\begin{cases}` and over/under-sets are flattened. Typeset math (KaTeX in WebKit, or a native
+  TeX layout) would match the web exactly.
+- [ ] **Markdown: message attachments.** Uploaded images in a message are chips; inline
+  thumbnails need the core's attachment preview (`attachments::preview`,
+  `GET …/resources/files/{id}/content`) exported over FFI. Markdown images from the workspace and
+  `data:` URLs already render inline with a lightbox.
+- [ ] **Markdown: file links** check existence by listing the cited file's folder; links to
+  folders (the web opens them in the Files tree) and paths outside the workspace are not linked.
 - [ ] **CLI style on iOS:** the request review sheet opened from the dock keeps the system sheet
   background instead of the terminal canvas.
 - [ ] **CLI style on iOS:** the unfolded iPhone Duo is untested; the Xcode 27.2 simulator has no

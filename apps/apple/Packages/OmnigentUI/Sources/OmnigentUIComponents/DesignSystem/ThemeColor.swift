@@ -138,8 +138,8 @@ nonisolated public struct ThemeColor: ShapeStyle, Hashable, Sendable {
     case .rowSelection:
       return palette.accent.opacity(ThemeContrast.roles(in: environment).rowSelectionOpacity)
     case .codeSurface:
-      return (environment.omnigentTheme.dark.canvas ?? Color(white: 0.08))
-        .mix(with: .black, by: 0.18)
+      let canvas = palette.canvas ?? (dark ? Color(white: 0.08) : .white)
+      return canvas.mix(with: .black, by: dark ? 0.18 : 0.035)
     case .onAccent: return ThemeContrast.roles(in: environment).onPrimary.color
     case .mutedText: return ThemeContrast.roles(in: environment).mutedText.color
     default: return nil

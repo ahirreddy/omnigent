@@ -255,4 +255,37 @@ struct SyntaxHighlighterTests {
     #expect(tokens("# Title", .markdown).map(\.0) == [.type])
     #expect(tokens("plain text", .markdown).isEmpty)
   }
+
+  private func textTokens(_ text: String, _ language: SyntaxLanguage) -> [(SyntaxToken, String)] {
+    let units = Array(text.utf16)
+    return SyntaxHighlighter(language: language).spans(inText: text).map {
+      ($0.token, String(decoding: units[$0.range], as: UTF16.self))
+    }
+  }
+
+  @Test("whole texts carry block comments and multi-line strings across lines")
+  func multiline() {
+    let swift = textTokens("/* one\ntwo */ let x = \"\"\"\nhi\n\"\"\"", .swift)
+    #expect(swift.map(\.0) == [.comment, .keyword, .string])
+    #expect(swift[0].1 == "/* one\ntwo */")
+    #expect(swift[2].1 == "\"\"\"\nhi\n\"\"\"")
+    let python = textTokens("'''doc\nstring'''\nx = 'a' # c\ny", .python)
+    #expect(python.map(\.0) == [.string, .string, .comment])
+    #expect(python[2].1 == "# c", "a line comment ends at its newline")
+    #expect(textTokens("const s = `a\nb`", .typescript).map(\.1) == ["const", "`a\nb`"])
+    #expect(
+      textTokens("x = \"open\ny = 1", .python).map(\.1) == ["\"open", "1"],
+      "an ordinary string ends with its line")
+    #expect(textTokens("<!-- a\nb --><p>", .html).map(\.0) == [.comment])
+    #expect(textTokens("# A\ntext\n> q", .markdown).map(\.1) == ["# A", "> q"])
+  }
+
+  @Test("fence names map to languages")
+  func fenceNames() {
+    #expect(SyntaxLanguage(fenceName: "ts") == .typescript)
+    #expect(SyntaxLanguage(fenceName: "Python") == .python)
+    #expect(SyntaxLanguage(fenceName: "sh") == .bash)
+    #expect(SyntaxLanguage(fenceName: "rust") == .rust)
+    #expect(SyntaxLanguage(fenceName: "brainfuck") == nil)
+  }
 }

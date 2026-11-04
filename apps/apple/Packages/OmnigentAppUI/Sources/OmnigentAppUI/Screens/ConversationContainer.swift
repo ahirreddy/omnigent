@@ -39,6 +39,7 @@ struct ConversationContainer: View {
   @State private var failures: [String] = []
   @State private var harnessSurface: TerminalSurfaceController?
   @State private var forkFlow = ForkFlow()
+  @State private var fileLinks: WorkspaceFileLinks?
 
   var body: some View {
     let composer = conversation.composer
@@ -53,6 +54,10 @@ struct ConversationContainer: View {
       liveRows: ConversationAdapter.liveRows(conversation)
     ) {
       harnessTerminal
+    }
+    .environment(\.workspaceFileLinks, fileLinks)
+    .task(id: workspace.map(ObjectIdentifier.init)) {
+      fileLinks = workspace.map(MarkdownLinksAdapter.links)
     }
     .sheet(isPresented: documentPresented) {
       if let workspace {

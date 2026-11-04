@@ -31,7 +31,8 @@ let package = Package(
     .package(path: "../OmnigentCoreFFI"),
     // Sign-in screens for the gallery's sign-in pages and flow; it has no dependencies.
     .package(path: "../OmnigentAuthUI"),
-    // The playground only: real Files, Changes and Terminals content for the right panel.
+    // The shared syntax highlighter for markdown code blocks; in the playground, real Files,
+    // Changes and Terminals content for the right panel.
     .package(path: "../OmnigentWorkspaceUI"),
     .package(path: "../OmnigentTerminalUI"),
     // The playground only: a remote browser tab playing the recorded fixture.
@@ -55,6 +56,7 @@ let package = Package(
       dependencies: [
         .product(name: "OmnigentPlatform", package: "OmnigentPlatform"),
         .product(name: "OmnigentAuthUI", package: "OmnigentAuthUI"),
+        .product(name: "OmnigentWorkspaceUI", package: "OmnigentWorkspaceUI"),
         .product(name: "Markdown", package: "swift-markdown"),
       ],
       swiftSettings: mainActorSwiftSettings
@@ -74,6 +76,7 @@ let package = Package(
       name: "OmnigentUIComponentTests",
       dependencies: [
         "OmnigentUIComponents", .product(name: "OmnigentAuthUI", package: "OmnigentAuthUI"),
+        .product(name: "OmnigentWorkspaceUI", package: "OmnigentWorkspaceUI"),
       ],
       swiftSettings: mainActorSwiftSettings
     ),
