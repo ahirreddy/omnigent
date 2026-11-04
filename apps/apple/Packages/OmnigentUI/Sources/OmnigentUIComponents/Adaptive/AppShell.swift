@@ -19,6 +19,7 @@ public struct AppShell<Detail: View>: View {
 
   @State private var columns: NavigationSplitViewVisibility = .all
   @State private var detailWidth: CGFloat = 0
+  @State private var trailingItems: Int?
   /// A tab dragged from the strip onto the content, for the split view's drop targets.
   @State private var tabDrag = TabDragTracker()
   @Environment(\.horizontalSizeClass) private var sizeClass
@@ -58,6 +59,7 @@ public struct AppShell<Detail: View>: View {
           .environment(\.tabsInTitlebar, showsStrip)
           .toolbar { tabsToolbar }
           .modifier(TitlelessToolbar(isActive: showsStrip))
+          .onPreferenceChange(TitlebarTrailingItems.self) { trailingItems = $0 }
       }
       .environment(tabDrag)
       .onGeometryChange(for: CGFloat.self) {
@@ -99,10 +101,13 @@ extension AppShell {
 
   /// Toolbar items take their ideal width, so the strip is given the detail column's width less
   /// what sits around it: the traffic lights and sidebar toggle when the sidebar is hidden, and
-  /// the screen's trailing items.
+  /// the screen's trailing items (as many as it reports, else room for all of them).
   private var stripWidth: CGFloat {
     let leading = columns == .detailOnly ? TitlebarMetrics.collapsedLeading : 0
-    let width = detailWidth - leading - TitlebarMetrics.trailingReserve
+    let trailing =
+      trailingItems.map { TitlebarMetrics.trailingWidth(items: $0) }
+      ?? TitlebarMetrics.trailingReserve
+    let width = detailWidth - leading - trailing
     return max(TitlebarMetrics.minimumStrip, width.rounded(.down))
   }
 }
@@ -123,6 +128,27 @@ enum TitlebarMetrics {
   /// The strip never gets narrower than this; the toolbar then moves trailing items to its
   /// overflow menu.
   static let minimumStrip: CGFloat = 220
+
+  /// Room for `items` trailing toolbar buttons and the toolbar's margins.
+  /// - Parameter items: Button widths (a viewer stack counts as two).
+  /// - Returns: The width to keep clear of the strip.
+  static func trailingWidth(items: Int) -> CGFloat {
+    #if os(macOS)
+      32 + 36 * CGFloat(items)
+    #else
+      trailingReserve
+    #endif
+  }
+}
+
+/// How many button widths the detail's trailing toolbar items take, so the titlebar's tab strip
+/// reaches them instead of stopping short. `nil` when the detail does not say.
+struct TitlebarTrailingItems: PreferenceKey {
+  static let defaultValue: Int? = nil
+
+  static func reduce(value: inout Int?, nextValue: () -> Int?) {
+    value = nextValue() ?? value
+  }
 }
 
 /// Hides the toolbar's title when the selected tab shows it. The bars are the system's: content
