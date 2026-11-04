@@ -105,6 +105,34 @@ fn submit_uses_real_message_wire_and_retains_accepted_queue_identity() {
 }
 
 #[test]
+fn reply_sends_text_alone_without_an_open_stream_and_keeps_the_composer() {
+    let transport = RouteTransport::local();
+    transport.writable_session("[]");
+    transport.load(&format!(
+        "{SESSIONS}SubmitUsesRealMessageWireAndRetainsAcceptedQueueIdentity.jsonl"
+    ));
+    let core = connected(transport);
+    core.update_composer("conv_a", "Unsent draft").unwrap();
+    // A staged, unuploaded file would hold a composer send; the reply leaves it alone.
+    let file = UploadFile::new("draft.txt", Some("text/plain"), b"draft".to_vec()).unwrap();
+    core.add_attachment("conv_a", file).unwrap();
+    let sent = block_on(core.send_reply("conv_a", " Exact draft\n")).unwrap();
+    assert!(sent.submission.queued);
+    assert_eq!(core.composer_text("conv_a").unwrap(), "Unsent draft");
+    let posts = core.transport().writes();
+    assert_eq!(
+        body_json(&posts[posts.len() - 1]),
+        json!({"type": "message", "data": {"role": "user", "content": [
+            {"type": "input_text", "text": " Exact draft\n"}
+        ]}})
+    );
+    assert_eq!(
+        block_on(core.send_reply("conv_a", "  ")),
+        Err(SessionError::EmptyMessage)
+    );
+}
+
+#[test]
 fn send_requires_hydrated_live_stream_and_does_not_retry_uncertain_post() {
     let transport = RouteTransport::local();
     transport.writable_session("[]");

@@ -33,6 +33,7 @@
 
 pub mod approval;
 pub mod attention;
+pub mod automations;
 pub mod browser;
 pub mod config;
 pub mod configuration;
@@ -44,6 +45,7 @@ pub mod events;
 pub mod fork;
 pub mod host;
 pub mod http;
+pub mod inbox;
 pub mod remote_browser;
 pub mod sessions;
 pub mod slash;

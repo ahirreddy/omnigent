@@ -24,7 +24,9 @@
     reason = "each operation applies its state changes under one guard so they land atomically"
 )]
 
+pub mod automations;
 pub mod browser;
+pub mod comments;
 pub mod configure;
 pub mod create;
 pub mod databricks_session;
@@ -43,6 +45,7 @@ mod session_actions;
 pub mod sessions;
 mod skills;
 mod terminals;
+pub mod usage;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
