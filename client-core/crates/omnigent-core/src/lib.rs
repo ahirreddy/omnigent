@@ -22,6 +22,7 @@ pub mod notifications;
 pub mod read_state;
 pub mod realtime;
 pub mod reconcile;
+pub mod recovery;
 pub mod reducer;
 pub mod remote_browser;
 pub mod server_url;

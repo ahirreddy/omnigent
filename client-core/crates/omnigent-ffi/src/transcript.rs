@@ -101,6 +101,35 @@ pub struct Activity {
     pub details: Vec<DetailSection>,
     /// An error, or a failed, error or denied status.
     pub is_failure: bool,
+    /// What Retry does for an error row; `None` when retrying would not help.
+    pub recovery: Option<FailureRecovery>,
+}
+
+/// What Retry does for a failed turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum FailureRecovery {
+    /// The runner is healthy and only the model call failed: ask it to continue.
+    Continue,
+    /// The runner or terminal went away: relaunch it.
+    Resume,
+}
+
+impl From<omnigent_core::recovery::FailureRecovery> for FailureRecovery {
+    fn from(recovery: omnigent_core::recovery::FailureRecovery) -> Self {
+        match recovery {
+            omnigent_core::recovery::FailureRecovery::Continue => Self::Continue,
+            omnigent_core::recovery::FailureRecovery::Resume => Self::Resume,
+        }
+    }
+}
+
+impl From<FailureRecovery> for omnigent_core::recovery::FailureRecovery {
+    fn from(recovery: FailureRecovery) -> Self {
+        match recovery {
+            FailureRecovery::Continue => Self::Continue,
+            FailureRecovery::Resume => Self::Resume,
+        }
+    }
 }
 
 /// One transcript or activity row, keyed by a stable id.
@@ -358,6 +387,7 @@ impl From<core::Activity> for Activity {
     fn from(activity: core::Activity) -> Self {
         Self {
             is_failure: activity.is_failure(),
+            recovery: activity.recovery().map(Into::into),
             kind: activity.kind.into(),
             title: activity.title,
             summary: activity.summary,
@@ -572,6 +602,24 @@ impl ClientCore {
     ) -> Result<String, crate::errors::CoreError> {
         self.sessions()
             .export_transcript(&session_id)
+            .await
+            .map_err(crate::errors::CoreError::from)
+    }
+
+    /// Recovers `session_id`'s failed turn as `recovery` says (the error card's Retry). Returns
+    /// whether anything was recovered; resuming a connected runner does nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::errors::CoreError::Session`]: the preflight and write errors, `MessageDenied`
+    /// and `DeliveryUncertain`.
+    pub async fn recover_turn(
+        &self,
+        session_id: String,
+        recovery: FailureRecovery,
+    ) -> Result<bool, crate::errors::CoreError> {
+        self.sessions()
+            .recover_turn(&session_id, recovery.into())
             .await
             .map_err(crate::errors::CoreError::from)
     }
