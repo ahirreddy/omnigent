@@ -87,6 +87,9 @@ struct ConversationContainer: View {
     .task {
       if shareStore == nil { shareStore = makeShareStore?() }
       await composer.loadConfiguration()
+      if let agentID = composer.configuration?.agentId {
+        await conversation.loadAgentInfo(agentID: agentID)
+      }
       await composer.loadSkills()
     }
     .onChange(of: conversation.isRunning) { _, running in
@@ -102,6 +105,9 @@ struct ConversationContainer: View {
   private var state: ConversationViewState {
     var state = ConversationAdapter.screenState(conversation, summary: summary)
     if let terminals { state.terminal = TerminalAdapter.status(terminals.terminals.harness) }
+    state.agentInfo = conversation.agentInfo.map {
+      OmnigentUIComponents.AgentInfo(name: $0.name, tools: $0.tools, policies: $0.policies)
+    }
     return state
   }
 
@@ -289,6 +295,8 @@ extension ConversationContainer {
       dismissError: { conversation.dismissErrors() },
       retry: retry,
       resume: { Task { await conversation.recoverTurn(.resume) } })
+    let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
+    actions.messageURL = { row in Self.messageURL(row, in: link) }
     actions.retryFailedTurn = { row in
       guard let recovery = row.activity?.recovery else { return }
       guard !conversation.isRunning else {

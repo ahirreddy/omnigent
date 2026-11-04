@@ -120,3 +120,23 @@ struct ComposerAdapterTests {
     #expect(!ComposerAdapter.state(question, isStopping: false, dismissedError: nil).isReadOnly)
   }
 }
+
+@Suite("Message links")
+struct MessageLinkTests {
+  @Test("Answers link by turn, prompts by item, previews not at all")
+  func links() throws {
+    let session = try #require(URL(string: "https://omni.example/c/conv_1"))
+    let answer = Row(id: "msg_2", role: .assistant, responseId: "resp_9")
+    #expect(
+      ConversationContainer.messageURL(answer, in: session)?.absoluteString
+        == "https://omni.example/c/conv_1?message=resp_9")
+    let prompt = Row(id: "msg_1", role: .user, responseId: "resp_9")
+    #expect(
+      ConversationContainer.messageURL(prompt, in: session)?.absoluteString
+        == "https://omni.example/c/conv_1?message=msg_1")
+    #expect(
+      ConversationContainer.messageURL(
+        Row(id: "live:x", role: .assistant, isEphemeral: true), in: session) == nil)
+    #expect(ConversationContainer.messageURL(answer, in: nil) == nil)
+  }
+}

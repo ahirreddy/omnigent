@@ -31,6 +31,19 @@ struct TranscriptExport: FileDocument {
 }
 
 extension ConversationContainer {
+  /// The web's link to one message (`?message=<id>`): a user message by its item id, an answer
+  /// by its turn. Live previews have no stable id yet.
+  static func messageURL(_ row: OmnigentUIComponents.Row, in session: URL?) -> URL? {
+    guard let session, !row.isEphemeral,
+      var components = URLComponents(url: session, resolvingAgainstBaseURL: false)
+    else { return nil }
+    let id = row.role == .user ? row.id : (row.responseId ?? row.id)
+    components.queryItems =
+      (components.queryItems ?? []).filter { $0.name != "message" }
+      + [URLQueryItem(name: "message", value: id)]
+    return components.url
+  }
+
   /// The session menu's context from the session list: the viewer's projects, the one the
   /// session is in, and whether someone else shared it.
   static func menuContext(_ list: SessionListStore, session: OmnigentCoreFFI.SessionSummary?)

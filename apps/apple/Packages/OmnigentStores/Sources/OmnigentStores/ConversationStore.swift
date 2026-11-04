@@ -77,6 +77,9 @@ public final class ConversationStore {
   public let decisions: DecisionStore
   /// The composer.
   public let composer: ComposerStore
+  /// The agent's MCP servers and the session's policies, once ``loadAgentInfo(agentID:)`` read
+  /// them.
+  public private(set) var agentInfo: AgentInfo?
 
   private let core: ClientCore
   private let listStatus: ListStatusExpectation
@@ -137,6 +140,17 @@ public final class ConversationStore {
           : "The retry was not accepted."
         record(.InvalidState(message: message))
       }
+    } catch {
+      record(coreError(error))
+    }
+  }
+
+  /// Reads the Agent info of this session's agent `agentID`. A failure is kept in ``errors``.
+  /// - Parameter agentID: The session's agent.
+  public func loadAgentInfo(agentID: String) async {
+    do {
+      let info = try await core.agentInfo(sessionId: sessionID, agentId: agentID)
+      if info != agentInfo { agentInfo = info }
     } catch {
       record(coreError(error))
     }
