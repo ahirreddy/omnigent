@@ -100,6 +100,16 @@ extension NewSessionContainer {
     }
   }
 
+  /// "Import your recent sessions" while the server has none: the server's import page (the
+  /// native Settings window has no import section yet).
+  func importSessions(_ openURL: OpenURLAction) -> (@MainActor () -> Void)? {
+    let list = connection.sessionList
+    guard list.isLoaded, list.sessionsByID.isEmpty,
+      let url = URL(string: serverURLText)?.appending(path: "settings/import")
+    else { return nil }
+    return { openURL(url) }
+  }
+
   /// The server URL a new host connects to.
   var serverURLText: String {
     connection.connectedServer?.baseUrl ?? ""

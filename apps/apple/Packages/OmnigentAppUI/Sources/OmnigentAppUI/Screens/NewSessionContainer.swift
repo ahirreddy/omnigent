@@ -32,13 +32,15 @@ struct NewSessionContainer: View {
   @State private var isImportingBundle = false
   @State private var isConnectingHost = false
   @Environment(\.useThisMachine) private var useThisMachine
+  @Environment(\.openURL) private var openURL
 
   var body: some View {
     Group {
       if let creation {
         NewSessionPage(
           draft: $draft, composer: composerState(creation), actions: actions(creation),
-          options: options(creation), optionActions: optionActions(creation)
+          importSessions: importSessions(openURL), options: options(creation),
+          optionActions: optionActions(creation)
         )
         .onChange(of: creation.phase) { _, phase in
           if case .created(let sessionID, nil) = phase {
