@@ -40,19 +40,26 @@ nonisolated indirect enum MarkdownBlock: Hashable, Sendable {
   case rule
   /// Raw HTML, shown as written and never interpreted.
   case html(String)
+  /// An image alone in its paragraph whose source is a workspace path or a `data:` URL.
+  case image(source: String, alt: String)
+  /// Display math, as TeX.
+  case math(String)
 }
 
 /// Parses markdown (CommonMark plus GFM tables, strikethrough and task lists) with Apple's
 /// `swift-markdown` into ``MarkdownBlock``s.
 ///
-/// Safety: links keep only `http`, `https` and `mailto` destinations; anything else renders as
-/// plain text. Images are never fetched; they render as their alt text, linked when the source
-/// is `http(s)`. Raw HTML is shown verbatim.
+/// Safety: links keep only `http`, `https` and `mailto` destinations; a link to a file path and
+/// path-shaped inline code are tagged (``WorkspacePathAttribute``) for ``WorkspaceFileLinks`` to
+/// link once the file is known to exist; anything else renders as plain text. Remote images are
+/// never fetched; they render as their alt text, linked when the source is `http(s)`. An image
+/// alone in its paragraph from the workspace or a `data:` URL becomes an ``MarkdownBlock/image``
+/// block. Raw HTML is shown verbatim.
 nonisolated enum MarkdownParser {
   static let allowedLinkSchemes: Set<String> = ["http", "https", "mailto"]
 
   static func parse(_ text: String) -> [MarkdownBlock] {
-    let document = Document(parsing: text, options: [.disableSmartOpts])
+    let document = Document(parsing: MarkdownMath.delimited(text), options: [.disableSmartOpts])
     return blocks(document.children)
   }
 
@@ -76,13 +83,14 @@ nonisolated enum MarkdownParser {
   static func block(_ markup: any Markup) -> MarkdownBlock? {
     switch markup {
     case let paragraph as Paragraph:
-      return .paragraph(inline(paragraph.children))
+      return soleImage(paragraph) ?? .paragraph(inline(paragraph.children))
     case let heading as Heading:
       return .heading(level: heading.level, text: inline(heading.children))
     case let code as CodeBlock:
       let language = code.language?.trimmingCharacters(in: .whitespaces)
       var body = code.code
       if body.hasSuffix("\n") { body.removeLast() }
+      if language?.lowercased() == "math" { return .math(body) }
       return .code(language: language?.isEmpty == true ? nil : language, code: body)
     case is BlockQuote, is OrderedList, is UnorderedList, is Markdown.Table:
       return container(markup)
@@ -96,6 +104,14 @@ nonisolated enum MarkdownParser {
       let text = markup.format().trimmingCharacters(in: .whitespacesAndNewlines)
       return text.isEmpty ? nil : .paragraph(AttributedString(text))
     }
+  }
+
+  /// An image block for a paragraph holding only one image from the workspace or a `data:` URL.
+  private static func soleImage(_ paragraph: Paragraph) -> MarkdownBlock? {
+    guard paragraph.childCount == 1, let image = paragraph.child(at: 0) as? Markdown.Image,
+      let source = image.source, MarkdownImageSource(source) != nil
+    else { return nil }
+    return .image(source: source, alt: String(inline(image.children).characters))
   }
 
   private static func container(_ markup: any Markup) -> MarkdownBlock? {
@@ -164,9 +180,15 @@ nonisolated enum MarkdownParser {
     case is LineBreak:
       return AttributedString("\n")
     case let code as InlineCode:
+      if let tex = MarkdownMath.inlineSource(code.code) {
+        var span = AttributedString(MathText.unicode(tex))
+        span[MathSpanAttribute.self] = true
+        return span
+      }
       var span = AttributedString(code.code)
       span.inlinePresentationIntent = .code
       span.backgroundColor = Color.secondary.opacity(0.14)
+      if WorkspacePaths.mayCite(code.code) { span[WorkspacePathAttribute.self] = code.code }
       return span
     case is Emphasis, is Strong, is Strikethrough:
       return styled(markup)
@@ -184,7 +206,12 @@ nonisolated enum MarkdownParser {
     case let link as Markdown.Link:
       var span = inline(link.children)
       if span.characters.isEmpty { span = AttributedString(link.destination ?? "") }
-      if let url = safeURL(link.destination) { span.link = url }
+      if let url = safeURL(link.destination) {
+        span.link = url
+      } else if let path = WorkspacePaths.linkedPath(link.destination) {
+        span[WorkspacePathAttribute.self] = path
+        span[WorkspacePathIsExplicitAttribute.self] = true
+      }
       return span
     case let image as Markdown.Image:
       let alt = String(inline(image.children).characters)
@@ -247,6 +274,8 @@ nonisolated struct BoundedCache<Key: Hashable, Value> {
 
   var count: Int { entries.count }
 
+  func cached(_ key: Key) -> Value? { entries[key] }
+
   mutating func value(for key: Key, make: () -> Value) -> Value {
     if let cached = entries[key] { return cached }
     let value = make()
@@ -272,11 +301,25 @@ final class MarkdownRenderMemo {
   private var text: String?
   private var blocks: [MarkdownBlock] = []
   private var stream = MarkdownStream(convert: MarkdownParser.blocks)
+  private var citedText: String?
+  private var cited: [CitedPath] = []
 
   func blocks(for text: String, isStreaming: Bool) -> [MarkdownBlock] {
     if text == self.text { return blocks }
-    blocks = isStreaming ? stream.elements(for: text) : MarkdownCache.shared.blocks(for: text)
+    blocks =
+      isStreaming
+      ? stream.elements(for: MarkdownMath.delimited(text))
+      : MarkdownCache.shared.blocks(for: text)
     self.text = text
     return blocks
+  }
+
+  /// The workspace paths the blocks of `text` cite, collected once per text.
+  func citedPaths(for text: String) -> [CitedPath] {
+    if citedText != text {
+      cited = MarkdownBlock.citedPaths(in: blocks)
+      citedText = text
+    }
+    return cited
   }
 }

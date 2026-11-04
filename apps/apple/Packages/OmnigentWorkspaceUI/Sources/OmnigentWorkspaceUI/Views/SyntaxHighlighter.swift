@@ -14,11 +14,12 @@ nonisolated public enum SyntaxToken: Hashable, Sendable {
   case type
 }
 
-/// A cheap single-line highlighter: line comments, quoted strings, numbers, keywords and
-/// capitalized identifiers. It never spans lines, so block comments and multi-line strings are
-/// only partly colored; correctness of the text never depends on it.
+/// A cheap highlighter: comments, quoted strings, numbers, keywords and capitalized identifiers.
+/// ``spans(in:)`` colors one line, so block comments and multi-line strings are only partly
+/// colored there; ``spans(inText:)`` colors a whole text and carries them across lines.
+/// Correctness of the text never depends on it.
 nonisolated public struct SyntaxHighlighter: Sendable {
-  /// One colored span, in UTF-16 offsets of the line.
+  /// One colored span, in UTF-16 offsets of the line or text.
   public struct Span: Hashable, Sendable {
     /// The token class.
     public var token: SyntaxToken
@@ -26,9 +27,16 @@ nonisolated public struct SyntaxHighlighter: Sendable {
     public var range: Range<Int>
   }
 
+  private struct Delimiters: Sendable {
+    var lineComments: [[UInt16]]
+    var blockComments: [(open: [UInt16], close: [UInt16])]
+    var quotes: Set<UInt16>
+    var multilineQuotes: Set<UInt16>
+    var tripleQuotes: [[UInt16]]
+  }
+
   private let keywords: Set<String>
-  private let lineComments: [String]
-  private let quotes: Set<Character>
+  private let delimiters: Delimiters
   private let markup: Bool
 
   /// A highlighter for `language`.
@@ -36,8 +44,12 @@ nonisolated public struct SyntaxHighlighter: Sendable {
   public init(language: SyntaxLanguage) {
     let rules = Self.rules(for: language)
     keywords = rules.keywords
-    lineComments = rules.comments
-    quotes = rules.quotes
+    delimiters = Delimiters(
+      lineComments: rules.comments.map { Array($0.utf16) },
+      blockComments: Self.blockComments(for: language).map { (Array($0.utf16), Array($1.utf16)) },
+      quotes: Set(rules.quotes.flatMap(\.utf16)),
+      multilineQuotes: Set(Self.multilineQuotes(for: language).flatMap(\.utf16)),
+      tripleQuotes: Self.tripleQuotes(for: language).map { Array($0.utf16) })
     markup = language == .markdown
   }
 
@@ -45,22 +57,35 @@ nonisolated public struct SyntaxHighlighter: Sendable {
   /// - Parameter line: One line, without its newline.
   /// - Returns: Non-overlapping spans, in order.
   public func spans(in line: String) -> [Span] {
-    if markup { return markupSpans(in: line) }
-    let characters = Array(line.utf16)
+    if markup { return markupSpans(in: line, offset: 0) }
+    return scan(Array(line.utf16))
+  }
+
+  /// The spans of `text`, which may hold many lines. Block comments and multi-line strings
+  /// continue across lines; line comments and ordinary strings end with their line.
+  /// - Parameter text: The text.
+  /// - Returns: Non-overlapping spans, in order, in UTF-16 offsets of `text`.
+  public func spans(inText text: String) -> [Span] {
+    guard markup else { return scan(Array(text.utf16)) }
+    var spans: [Span] = []
+    var offset = 0
+    for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+      spans += markupSpans(in: String(line), offset: offset)
+      offset += line.utf16.count + 1
+    }
+    return spans
+  }
+
+  private func scan(_ characters: [UInt16]) -> [Span] {
     var spans: [Span] = []
     var index = 0
     while index < characters.count {
-      if startsComment(characters, at: index) {
-        spans.append(Span(token: .comment, range: index..<characters.count))
-        break
-      }
-      let unit = characters[index]
-      if let scalar = Unicode.Scalar(unit), quotes.contains(Character(scalar)) {
-        let end = stringEnd(characters, from: index, quote: unit)
-        spans.append(Span(token: .string, range: index..<end))
+      if let (token, end) = delimited(characters, at: index) {
+        spans.append(Span(token: token, range: index..<end))
         index = end
         continue
       }
+      let unit = characters[index]
       if Self.isIdentifierStart(unit) {
         var end = index + 1
         while end < characters.count, Self.isIdentifierPart(characters[end]) { end += 1 }
@@ -87,36 +112,65 @@ nonisolated public struct SyntaxHighlighter: Sendable {
     return spans
   }
 
-  private func startsComment(_ characters: [UInt16], at index: Int) -> Bool {
-    lineComments.contains { marker in
-      let units = Array(marker.utf16)
-      return index + units.count <= characters.count
-        && Array(characters[index..<index + units.count]) == units
+  /// A comment or string starting at `index`, with the offset where it ends.
+  private func delimited(_ characters: [UInt16], at index: Int) -> (SyntaxToken, Int)? {
+    if delimiters.lineComments.contains(where: { Self.matches($0, in: characters, at: index) }) {
+      return (.comment, characters[index...].firstIndex(of: Self.newline) ?? characters.count)
     }
+    for block in delimiters.blockComments where Self.matches(block.open, in: characters, at: index)
+    {
+      return (.comment, Self.end(of: block.close, in: characters, from: index + block.open.count))
+    }
+    for triple in delimiters.tripleQuotes where Self.matches(triple, in: characters, at: index) {
+      return (.string, Self.end(of: triple, in: characters, from: index + triple.count))
+    }
+    if delimiters.quotes.contains(characters[index]) {
+      return (.string, stringEnd(characters, from: index, quote: characters[index]))
+    }
+    return nil
   }
 
   private func stringEnd(_ characters: [UInt16], from start: Int, quote: UInt16) -> Int {
     var index = start + 1
     let backslash = UInt16(UInt8(ascii: "\\"))
+    let spansLines = delimiters.multilineQuotes.contains(quote)
     while index < characters.count {
       if characters[index] == backslash {
         index += 2
         continue
       }
       if characters[index] == quote { return index + 1 }
+      if characters[index] == Self.newline, !spansLines { return index }
+      index += 1
+    }
+    return min(index, characters.count)
+  }
+
+  private func markupSpans(in line: String, offset: Int) -> [Span] {
+    let range = offset..<offset + line.utf16.count
+    if line.hasPrefix("#") { return [Span(token: .type, range: range)] }
+    if line.hasPrefix("```") || line.hasPrefix("    ") {
+      return [Span(token: .string, range: range)]
+    }
+    if line.hasPrefix(">") { return [Span(token: .comment, range: range)] }
+    return []
+  }
+
+  private static let newline = UInt16(UInt8(ascii: "\n"))
+
+  private static func matches(_ marker: [UInt16], in characters: [UInt16], at index: Int) -> Bool {
+    guard !marker.isEmpty, index + marker.count <= characters.count else { return false }
+    return characters[index..<index + marker.count].elementsEqual(marker)
+  }
+
+  /// The offset just past `close` at or after `start`, or the end when it never closes.
+  private static func end(of close: [UInt16], in characters: [UInt16], from start: Int) -> Int {
+    var index = start
+    while index + close.count <= characters.count {
+      if matches(close, in: characters, at: index) { return index + close.count }
       index += 1
     }
     return characters.count
-  }
-
-  private func markupSpans(in line: String) -> [Span] {
-    let length = line.utf16.count
-    if line.hasPrefix("#") { return [Span(token: .type, range: 0..<length)] }
-    if line.hasPrefix("```") || line.hasPrefix("    ") {
-      return [Span(token: .string, range: 0..<length)]
-    }
-    if line.hasPrefix(">") { return [Span(token: .comment, range: 0..<length)] }
-    return []
   }
 
   private static func isIdentifierStart(_ unit: UInt16) -> Bool {
@@ -133,14 +187,17 @@ nonisolated public struct SyntaxHighlighter: Sendable {
   private static func isNumberPart(_ unit: UInt16) -> Bool {
     isIdentifierPart(unit) || unit == 0x2E
   }
+}
 
-  private struct Rules {
+// Per-language tables.
+nonisolated extension SyntaxHighlighter {
+  fileprivate struct Rules {
     var keywords: Set<String>
     var comments: [String]
     var quotes: Set<Character>
   }
 
-  private static let cFamily: Set<String> = [
+  fileprivate static let cFamily: Set<String> = [
     "break", "case", "const", "continue", "default", "do", "else", "enum", "for", "if",
     "return", "static", "struct", "switch", "typedef", "void", "while", "true", "false", "null",
     "class", "public", "private", "protected", "new", "this", "import", "package", "try",
@@ -150,7 +207,7 @@ nonisolated public struct SyntaxHighlighter: Sendable {
 
   // A table of per-language keyword lists reads best as one switch.
   // swiftlint:disable:next function_body_length cyclomatic_complexity
-  private static func rules(for language: SyntaxLanguage) -> Rules {
+  fileprivate static func rules(for language: SyntaxLanguage) -> Rules {
     let slash = ["//"]
     let hash = ["#"]
     let standard: Set<Character> = ["\"", "'"]
@@ -233,4 +290,56 @@ nonisolated public struct SyntaxHighlighter: Sendable {
         comments: slash, quotes: standard)
     }
   }
+
+  fileprivate static func blockComments(for language: SyntaxLanguage) -> [(String, String)] {
+    switch language {
+    case .html, .xml, .markdown: [("<!--", "-->")]
+    case .python, .ruby, .bash, .dockerfile, .makefile, .toml, .yaml, .json: []
+    default: [("/*", "*/")]
+    }
+  }
+
+  /// Quotes whose strings may continue onto the next line.
+  fileprivate static func multilineQuotes(for language: SyntaxLanguage) -> [String] {
+    switch language {
+    case .javascript, .typescript, .go: ["`"]
+    default: []
+    }
+  }
+
+  /// Triple-quoted (multi-line) string delimiters.
+  fileprivate static func tripleQuotes(for language: SyntaxLanguage) -> [String] {
+    switch language {
+    case .python: ["\"\"\"", "'''"]
+    case .swift, .kotlin, .scala, .java, .toml: ["\"\"\""]
+    default: []
+    }
+  }
+}
+
+nonisolated extension SyntaxLanguage {
+  /// The language a fenced code block's info string names (`ts`, `py`, `sh`, `rust`...), or
+  /// `nil` when it names none this highlighter knows.
+  /// - Parameter fenceName: The info string's first word, any case.
+  public init?(fenceName: String) {
+    let name = fenceName.lowercased()
+    if let language = Self(rawValue: name) ?? Self.fenceAliases[name] {
+      self = language
+    } else {
+      return nil
+    }
+  }
+
+  private static let fenceAliases: [String: Self] = [
+    "sh": .bash, "shell": .bash, "zsh": .bash, "console": .bash, "shellsession": .bash,
+    "h": .c, "c++": .cpp, "cc": .cpp, "hpp": .cpp, "cxx": .cpp, "cs": .csharp, "c#": .csharp,
+    "scss": .css, "less": .css, "docker": .dockerfile, "golang": .go, "htm": .html,
+    "vue": .html, "svelte": .html, "js": .javascript, "jsx": .javascript, "mjs": .javascript,
+    "cjs": .javascript, "jsonc": .json, "json5": .json, "jsonl": .json, "kt": .kotlin,
+    "kts": .kotlin, "make": .makefile, "just": .makefile, "justfile": .makefile,
+    "md": .markdown, "mdx": .markdown, "objc": .objectiveC, "objective-c": .objectiveC,
+    "py": .python, "python3": .python, "rb": .ruby, "rs": .rust, "ts": .typescript,
+    "tsx": .typescript, "mts": .typescript, "svg": .xml, "plist": .xml, "yml": .yaml,
+    "psql": .sql, "postgresql": .sql, "mysql": .sql, "sqlite": .sql,
+  ]
 }

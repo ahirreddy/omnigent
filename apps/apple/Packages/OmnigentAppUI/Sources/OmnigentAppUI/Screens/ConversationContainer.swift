@@ -48,6 +48,7 @@ struct ConversationContainer: View {
   @State private var shareStore: ShareStore?
   @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
     false
+  @State private var fileLinks: WorkspaceFileLinks?
 
   var body: some View {
     let composer = conversation.composer
@@ -64,6 +65,10 @@ struct ConversationContainer: View {
       liveRows: ConversationAdapter.liveRows(conversation)
     ) {
       harnessTerminal
+    }
+    .environment(\.workspaceFileLinks, fileLinks)
+    .task(id: workspace.map(ObjectIdentifier.init)) {
+      fileLinks = workspace.map(MarkdownLinksAdapter.links)
     }
     .sheet(isPresented: documentPresented) {
       if let workspace {

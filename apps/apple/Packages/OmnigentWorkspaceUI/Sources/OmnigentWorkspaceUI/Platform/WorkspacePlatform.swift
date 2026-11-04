@@ -1,5 +1,5 @@
-import Foundation
-import SwiftUI
+public import Foundation
+public import SwiftUI
 
 #if os(macOS)
   import AppKit
@@ -8,7 +8,7 @@ import SwiftUI
 #endif
 
 /// The `#if os()` shims the workspace views need: the pasteboard and image decoding.
-enum WorkspacePlatform {
+public enum WorkspacePlatform {
   /// Puts `text` on the general pasteboard.
   static func copy(_ text: String) {
     #if os(macOS)
@@ -20,7 +20,7 @@ enum WorkspacePlatform {
   }
 
   /// The decoded image and its pixel size, or `nil` when the platform cannot decode `data`.
-  static func image(from data: Data) -> (image: Image, size: CGSize)? {
+  public static func image(from data: Data) -> (image: Image, size: CGSize)? {
     #if os(macOS)
       guard let image = NSImage(data: data) else { return nil }
       let pixels = image.representations.first.map {

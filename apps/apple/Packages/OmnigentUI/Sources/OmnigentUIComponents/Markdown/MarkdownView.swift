@@ -1,8 +1,9 @@
 public import SwiftUI
 
 /// Renders markdown text: paragraphs, headings, lists and task lists, block quotes, GFM tables,
-/// fenced code with a copy button, and rules. Text is selectable; links open only for
-/// `http(s)` and `mailto`.
+/// syntax-highlighted fenced code with a copy button, rules, math, and workspace and `data:`
+/// images. Text is selectable; links open only for `http(s)`, `mailto` and, with
+/// ``WorkspaceFileLinks`` in the environment, workspace files that exist.
 public struct MarkdownView: View {
   private let text: String
   private let isStreaming: Bool
@@ -24,25 +25,53 @@ public struct MarkdownView: View {
     case .plain: CLISourceText(text: text, isStreaming: isStreaming)
     case .styled: CLIStyledMarkdown(text: text, isStreaming: isStreaming)
     case .rich:
-      MarkdownBlocksView(blocks: memo.blocks(for: text, isStreaming: isStreaming))
-        .readingProseStyle()
-        .tint(Theme.link)
+      MarkdownBlocksView(
+        blocks: memo.blocks(for: text, isStreaming: isStreaming), lastIsOpen: isStreaming
+      )
+      .readingProseStyle()
+      .tint(Theme.link)
+      .modifier(WorkspacePathLinking(paths: isStreaming ? [] : memo.citedPaths(for: text)))
+    }
+  }
+}
+
+/// Checks the workspace paths a message cites and routes in-app file links, when the host
+/// provided ``WorkspaceFileLinks``.
+private struct WorkspacePathLinking: ViewModifier {
+  let paths: [CitedPath]
+  @Environment(\.workspaceFileLinks) private var links
+  @Environment(\.openURL) private var openURL
+
+  func body(content: Content) -> some View {
+    if let links {
+      content
+        .environment(\.openURL, links.openURLAction(fallback: openURL))
+        .task(id: paths) { await links.check(paths) }
+    } else {
+      content
     }
   }
 }
 
 extension EnvironmentValues {
   @Entry var markdownFillsWidth = true
+  /// The block below is the one a stream is still writing.
+  @Entry var markdownBlockIsOpen = false
 }
 
 struct MarkdownBlocksView: View {
   let blocks: [MarkdownBlock]
+  /// The last block is still being streamed.
+  var lastIsOpen = false
   @Environment(\.markdownFillsWidth) private var fillsWidth
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
         MarkdownBlockView(block: block)
+          .transformEnvironment(\.markdownBlockIsOpen) { isOpen in
+            if lastIsOpen, index == blocks.count - 1 { isOpen = true }
+          }
           .padding(
             .top, TypeRamp.spacing(above: block, after: index > 0 ? blocks[index - 1] : nil))
       }
@@ -55,17 +84,18 @@ private struct MarkdownBlockView: View {
   let block: MarkdownBlock
   @Environment(\.markdownFillsWidth) private var fillsWidth
   @Environment(\.typeRamp) private var ramp
+  @Environment(\.workspaceFileLinks) private var links
 
   var body: some View {
     switch block {
     case .paragraph(let text):
-      Text(ramp.sizingCode(in: text, size: ramp.code))
+      Text(ramp.sizingMath(in: ramp.sizingCode(in: linked(text), size: ramp.code), size: ramp.body))
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
     case .heading(let level, let text):
       let size = ramp.heading(level)
-      Text(ramp.sizingCode(in: text, size: (size * TypeRamp.codeScale).rounded(.down)))
+      Text(ramp.sizingCode(in: linked(text), size: (size * TypeRamp.codeScale).rounded(.down)))
         .font(.system(size: size, weight: .semibold))
         .lineHeight(.exact(points: ramp.headingLineHeight(level)))
         .textSelection(.enabled)
@@ -94,7 +124,17 @@ private struct MarkdownBlockView: View {
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
+    case .image(let source, let alt):
+      MarkdownImageView(source: source, alt: alt)
+        .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
+    case .math(let tex):
+      MathBlockView(tex: tex)
     }
+  }
+
+  /// `text` with the workspace files it cites linked, once they are known to exist.
+  private func linked(_ text: AttributedString) -> AttributedString {
+    links?.linking(text) ?? text
   }
 }
 
@@ -136,6 +176,7 @@ private struct MarkdownListView: View {
 
 private struct MarkdownTableView: View {
   let table: MarkdownTable
+  @Environment(\.workspaceFileLinks) private var links
 
   var body: some View {
     ScrollView(.horizontal) {
@@ -169,7 +210,7 @@ private struct MarkdownTableView: View {
 
   private func cellView(_ text: AttributedString, column: Int) -> some View {
     let alignment = column < table.alignments.count ? table.alignments[column] : .leading
-    return Text(text)
+    return Text(links?.linking(text) ?? text)
       .textSelection(.enabled)
       .multilineTextAlignment(textAlignment(alignment))
       .frame(minWidth: 60, maxWidth: 360, alignment: frameAlignment(alignment))
@@ -210,6 +251,8 @@ struct CodeBlockView: View {
   var maxLines: Int?
   @State private var wrapsLines = true
   @Environment(\.typeRamp) private var ramp
+  @Environment(\.colorScheme) private var scheme
+  @Environment(\.markdownBlockIsOpen) private var isOpen
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -249,7 +292,6 @@ struct CodeBlockView: View {
     .overlay {
       RoundedRectangle(cornerRadius: Theme.Radius.large).strokeBorder(ThemeColor.border)
     }
-    .environment(\.colorScheme, .dark)
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Code block\(language.map { ", \($0)" } ?? "")")
   }
@@ -264,8 +306,11 @@ struct CodeBlockView: View {
     }
   }
 
+  /// The code, colored unless its block is still streaming (it colors once, when it closes).
   private var codeText: some View {
-    Text(verbatim: code)
+    let highlighted =
+      isOpen ? nil : CodeHighlightCache.shared.attributed(code, language: language, scheme: scheme)
+    return Text(highlighted ?? AttributedString(code))
       .font(.system(size: ramp.code, design: .monospaced))
       .lineHeight(.exact(points: ramp.codeLineHeight))
       .textSelection(.enabled)

@@ -109,6 +109,14 @@ private struct CLIMarkdownBlockView: View {
     case .html(let raw):
       Text(withCursor(colored(raw, palette.dim)))
         .fixedSize(horizontal: false, vertical: true)
+    case .image(let source, let alt):
+      Text(withCursor(colored("[Image: \(alt.isEmpty ? source : alt)]", palette.dim)))
+        .fixedSize(horizontal: false, vertical: true)
+    case .math(let tex):
+      Text(withCursor(colored(MathText.unicode(tex), palette.code)))
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.leading, size.character * 2)
+        .accessibilityLabel("Math: \(tex)")
     }
   }
 
