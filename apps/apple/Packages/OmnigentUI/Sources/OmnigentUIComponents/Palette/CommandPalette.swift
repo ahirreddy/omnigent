@@ -5,7 +5,10 @@ public struct CommandPalette: View {
   private let state: PaletteViewState
   private let commands: [PaletteEntry]
   private let perform: (PaletteTarget) -> Void
+  private let search: (@MainActor (String) async -> [PaletteEntry])?
   @State private var query = ""
+  /// Server matches for the current query, beyond the loaded sessions.
+  @State private var found: [PaletteEntry] = []
   @State private var scope: Scope = .all
   @State private var selection: String?
   @FocusState private var searchFocused: Bool
@@ -19,11 +22,19 @@ public struct CommandPalette: View {
   }
 
   /// Creates the palette with resolved, window-local actions.
+  /// - Parameters:
+  ///   - state: Loaded sessions and servers.
+  ///   - commands: Commands.
+  ///   - search: Server-side session search, debounced as the query changes.
+  ///   - perform: Executes a destination.
   public init(
-    state: PaletteViewState, commands: [PaletteEntry], perform: @escaping (PaletteTarget) -> Void
+    state: PaletteViewState, commands: [PaletteEntry],
+    search: (@MainActor (String) async -> [PaletteEntry])? = nil,
+    perform: @escaping (PaletteTarget) -> Void
   ) {
     self.state = state
     self.commands = commands
+    self.search = search
     self.perform = perform
   }
 
@@ -34,7 +45,10 @@ public struct CommandPalette: View {
     case .sessions: entries = state.sessions
     case .servers: entries = state.servers
     }
-    return PaletteSearch.results(entries, query: query)
+    let local = PaletteSearch.results(entries, query: query)
+    guard scope != .servers else { return local }
+    var shown = Set(local.map(\.target))
+    return local + found.filter { shown.insert($0.target).inserted }
   }
 
   /// Search, scoped results and keyboard help.
@@ -107,6 +121,7 @@ public struct CommandPalette: View {
       if !results.contains(where: { $0.id == selection && $0.isEnabled }) { resetSelection() }
     }
     .onChange(of: query) { resetSelection() }
+    .task(id: query) { await searchServer() }
     .onChange(of: scope) { resetSelection() }
     .onKeyPress(.downArrow) {
       move(1)
@@ -137,6 +152,23 @@ public struct CommandPalette: View {
     .padding(.vertical, Theme.Spacing.small)
     .frame(maxWidth: .infinity, alignment: .leading)
     .contentShape(Rectangle())
+  }
+
+  /// Asks the server once typing pauses; a newer query cancels the wait.
+  private func searchServer() async {
+    let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let search, !text.isEmpty else {
+      found = []
+      return
+    }
+    do {
+      try await Task.sleep(for: .milliseconds(250))
+    } catch {
+      // A newer query replaced this one.
+      return
+    }
+    let results = await search(text)
+    if !Task.isCancelled { found = results }
   }
 
   private func resetSelection() { selection = results.first(where: \.isEnabled)?.id }

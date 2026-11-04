@@ -40,6 +40,7 @@ mod remote_browsers;
 mod requests;
 mod routing;
 mod session_actions;
+pub mod session_search;
 pub mod sessions;
 mod skills;
 mod terminals;

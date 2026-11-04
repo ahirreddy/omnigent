@@ -119,6 +119,27 @@ extension SessionListStore {
     sessionIsOwnedBy(session: session, viewerId: viewerID)
   }
 
+  /// Sessions on the server whose title, or message content, matches `query` (archived
+  /// included), beyond the loaded list.
+  /// - Parameters:
+  ///   - query: The search text.
+  ///   - inMessages: Match message content instead of titles; previews are the snippets.
+  ///   - limit: The most to return.
+  /// - Returns: The matches, most recent first.
+  /// - Throws: The core's error.
+  public func search(_ query: String, inMessages: Bool, limit: UInt32 = 10) async throws(CoreError)
+    -> [SessionSummary]
+  {
+    guard let core else {
+      throw .InvalidState(message: "Connect to a server before searching sessions.")
+    }
+    do {
+      return try await core.searchSessions(query: query, inMessages: inMessages, limit: limit)
+    } catch {
+      throw coreError(error)
+    }
+  }
+
   private func perform(_ operation: (ClientCore) async throws -> Void) async -> Bool {
     guard let core else {
       setEditError(.InvalidState(message: "Connect to a server before editing sessions."))

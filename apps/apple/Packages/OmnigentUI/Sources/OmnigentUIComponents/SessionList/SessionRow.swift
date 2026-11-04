@@ -5,7 +5,7 @@ import SwiftUI
 /// One sidebar session row, as the web's: the title on one line, an optional details line, and
 /// on the right the session's attention (Needs you > Failed > Working > Unread, with a
 /// disconnected ring before Unread), else a draft pencil, else the relative time. Hovering on Mac
-/// reveals pin and more buttons; the same actions are in the context menu and are VoiceOver
+/// reveals pin, archive and more buttons; the same actions are in the context menu and are VoiceOver
 /// actions, so nothing needs hover.
 struct SessionRow: View {
   let session: SessionSummary
@@ -41,6 +41,15 @@ struct SessionRow: View {
             menu.togglePin()
           }
           .help(session.isPinned ? "Unpin" : "Pin")
+          if let setArchived = menu.actions.setArchived, session.canArchive {
+            Button(
+              session.isArchived ? "Unarchive" : "Archive",
+              systemImage: session.isArchived ? "tray.and.arrow.up" : "archivebox"
+            ) {
+              setArchived(session, !session.isArchived)
+            }
+            .help(session.isArchived ? "Unarchive" : "Archive")
+          }
           Menu {
             menu.items
           } label: {

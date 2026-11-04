@@ -11,7 +11,8 @@ struct PaletteAdapter: ViewModifier {
   @Binding var selection: SidebarDestination?
 
   func body(content: Content) -> some View {
-    content.commandPalette(state: state, actions: PaletteActions(perform: perform))
+    content.commandPalette(
+      state: state, actions: PaletteActions(perform: perform, search: searchServer))
   }
 
   private var state: PaletteViewState {
@@ -42,6 +43,40 @@ struct PaletteAdapter: ViewModifier {
             symbol: "bubble.left.and.text.bubble.right", target: .session(summary.id))
         }, servers: managed + recent,
       hasNextRequest: !connection.sessionList.needsResponse.isEmpty)
+  }
+
+  /// Server matches: titles first, then message content ("In messages") with its snippet.
+  private func searchServer(_ query: String) async -> [PaletteEntry] {
+    let list = session.connection.sessionList
+    do {
+      let titles = try await list.search(query, inMessages: false)
+      let content = try await list.search(query, inMessages: true)
+      let titleEntries = titles.map { summary in
+        entry(OmnigentUIComponents.SessionSummary(summary), detail: nil, prefix: "found")
+      }
+      let contentEntries = content.map { summary in
+        entry(
+          OmnigentUIComponents.SessionSummary(summary), detail: "In messages: \(summary.preview)",
+          prefix: "message")
+      }
+      return titleEntries + contentEntries
+    } catch {
+      return [
+        PaletteEntry(
+          id: "search-failed", title: "Could not search the server", detail: error.message,
+          symbol: "exclamationmark.triangle", isEnabled: false, target: .findSession)
+      ]
+    }
+  }
+
+  private func entry(
+    _ summary: OmnigentUIComponents.SessionSummary, detail: String?, prefix: String
+  ) -> PaletteEntry {
+    PaletteEntry(
+      id: "\(prefix)-\(summary.id)", title: summary.title,
+      detail: detail ?? "\(status(summary)) · \(summary.agentName) · \(summary.workspace)",
+      symbol: detail == nil ? "bubble.left.and.text.bubble.right" : "text.magnifyingglass",
+      target: .session(summary.id))
   }
 
   private func status(_ summary: OmnigentUIComponents.SessionSummary) -> String {

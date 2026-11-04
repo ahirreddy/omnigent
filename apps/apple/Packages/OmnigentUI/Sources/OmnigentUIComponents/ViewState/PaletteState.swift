@@ -81,9 +81,19 @@ nonisolated public struct PaletteViewState: Hashable, Sendable {
 public struct PaletteActions {
   /// Executes a destination after dismissing the palette.
   public var perform: @MainActor (PaletteTarget) -> Void
+  /// Searches the server for sessions beyond the loaded list: title matches, then message
+  /// content matches ("In messages"). `nil` searches only the loaded sessions.
+  public var search: (@MainActor (String) async -> [PaletteEntry])?
 
   /// Creates navigation actions.
-  public init(perform: @escaping @MainActor (PaletteTarget) -> Void) {
+  /// - Parameters:
+  ///   - perform: Executes a destination.
+  ///   - search: Server-side session search.
+  public init(
+    perform: @escaping @MainActor (PaletteTarget) -> Void,
+    search: (@MainActor (String) async -> [PaletteEntry])? = nil
+  ) {
     self.perform = perform
+    self.search = search
   }
 }

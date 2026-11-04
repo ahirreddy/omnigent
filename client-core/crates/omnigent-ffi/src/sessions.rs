@@ -4,6 +4,7 @@
 
 use omnigent_core::projects::{self, ProjectSummary as CoreProject};
 use omnigent_core::session_query::{self, SessionFilter as CoreFilter};
+use omnigent_core::session_search::SearchScope;
 use omnigent_core::sessions::{
     SessionChange as CoreChange, SessionSummary as CoreSummary, SummaryStatus,
 };
@@ -432,6 +433,30 @@ impl ClientCore {
         self.sessions()
             .delete_project(&project.into())
             .await
+            .map_err(CoreError::from)
+    }
+
+    /// Up to `limit` sessions whose title (or, with `in_messages`, message content) matches
+    /// `query`, archived included. Content matches carry the snippet as their preview.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the read errors.
+    pub async fn search_sessions(
+        &self,
+        query: String,
+        in_messages: bool,
+        limit: u32,
+    ) -> Result<Vec<SessionSummary>, CoreError> {
+        let scope = if in_messages {
+            SearchScope::Content
+        } else {
+            SearchScope::Title
+        };
+        self.sessions()
+            .search_sessions(&query, scope, limit)
+            .await
+            .map(|found| found.into_iter().map(Into::into).collect())
             .map_err(CoreError::from)
     }
 }

@@ -58,7 +58,7 @@ private struct PalettePresentation: ViewModifier {
           PaletteCommandActions(openPalette: open, openShortcuts: { showsShortcuts = true }))
       )
       .sheet(isPresented: $showsPalette, onDismiss: executePending) {
-        CommandPalette(state: state, commands: entries) { target in
+        CommandPalette(state: state, commands: entries, search: actions.search) { target in
           pendingTarget = target
           showsPalette = false
         }

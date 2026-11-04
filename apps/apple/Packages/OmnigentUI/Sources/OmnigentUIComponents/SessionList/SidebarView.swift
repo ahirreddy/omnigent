@@ -19,6 +19,8 @@ public struct SidebarView: View {
   @State private var projectPrompt: ProjectPrompt?
   @State private var projectName = ""
   @State private var confirmingProjectDelete: SessionProject?
+  /// Collapsed section titles, newline-separated, kept across launches.
+  @AppStorage("omnigent:sidebar-collapsed-sections") private var collapsedSections = ""
 
   /// Creates the sidebar.
   /// - Parameters:
@@ -148,7 +150,7 @@ public struct SidebarView: View {
 
   @ViewBuilder
   private func sessionSection(_ section: SidebarSections.Section) -> some View {
-    Section {
+    Section(isExpanded: expansion(of: section.title)) {
       if section.isProjects {
         ForEach(state.projects) { project in
           projectGroup(project)
@@ -184,6 +186,18 @@ public struct SidebarView: View {
         }
       }
     }
+  }
+
+  /// Whether a section is expanded; collapsing one is remembered.
+  private func expansion(of title: String) -> Binding<Bool> {
+    Binding(
+      get: { !collapsedSections.split(separator: "\n").contains(Substring(title)) },
+      set: { expanded in
+        var titles = collapsedSections.split(separator: "\n").map(String.init)
+        titles.removeAll { $0 == title }
+        if !expanded { titles.append(title) }
+        collapsedSections = titles.joined(separator: "\n")
+      })
   }
 
   private func summary(_ id: String) -> SessionSummary? {
