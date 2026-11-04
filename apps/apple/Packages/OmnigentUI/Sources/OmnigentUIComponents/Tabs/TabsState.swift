@@ -82,6 +82,8 @@ nonisolated public struct TabItemState: Identifiable, Hashable, Sendable {
   public var leadsGroup = false
   /// The pane showing the tab while the window is split; `nil` when it is not.
   public var pane: TabPane?
+  /// A session's primary chat the viewer may rename: its menu offers Rename Session.
+  public var canRenameSession = false
 
   /// Creates a tab.
   /// - Parameters:
@@ -297,6 +299,8 @@ public struct TabActions {
   public var newRemoteBrowser: (@MainActor (String) -> Void)?
   /// The remote browser profiles the + button's menu offers.
   public var remoteBrowserProfiles: [String] = []
+  /// Rename the session of a chat tab (``TabItemState/canRenameSession``); `nil` hides it.
+  public var renameSession: (@MainActor (String) -> Void)?
 
   /// Creates the actions.
   /// - Parameters:

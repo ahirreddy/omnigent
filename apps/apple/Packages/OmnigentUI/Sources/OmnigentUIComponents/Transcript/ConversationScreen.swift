@@ -121,6 +121,11 @@ public struct ConversationScreen<Terminal: View>: View {
       .background { BarHitShield() }
     }
     .scrollEdgeEffectStyle(.soft, for: .bottom)
+    .safeAreaInset(edge: .top, spacing: 0) {
+      if let creator = extras.menuContext.createdBy, let open = actions.openSession {
+        CreatedByBar(creator: creator, open: open)
+      }
+    }
     .themeCanvas()
     .cliPalette()
     .environment(drafts).environment(decisionSurfaces)
@@ -139,6 +144,7 @@ public struct ConversationScreen<Terminal: View>: View {
       value: TitlebarTrailingItems.count(
         state, hasShare: extras.share != nil, tabsInTitlebar: tabsInTitlebar,
         isRegular: layoutWidth == .regular)
+        + (showsProjectTag ? 1 : 0)
     )
     .toolbar { toolbarContent }
     .sheet(isPresented: $showsShare) {
@@ -185,6 +191,11 @@ public struct ConversationScreen<Terminal: View>: View {
           .help("Agent info")
           .accessibilityIdentifier("header-agent-info")
       }
+      if let summary = state.summary, showsProjectTag,
+        let move = extras.sessionActions.moveToProject
+      {
+        HeaderProjectTag(session: summary, context: extras.menuContext, move: move)
+      }
       // The title menu's commands, Share among them, when the titlebar holds the tabs.
       if tabsInTitlebar {
         SessionActionsButton { titleMenu }
@@ -226,6 +237,14 @@ public struct ConversationScreen<Terminal: View>: View {
       Button("Export\u{2026}", systemImage: "square.and.arrow.down", action: exportTranscript)
         .accessibilityIdentifier("header-export-conversation")
     }
+    if let open = actions.openSession {
+      if let parentID = parentSessionID {
+        Button("Go to Parent Session", systemImage: "chevron.backward") { open(parentID) }
+      }
+      if let creator = extras.menuContext.createdBy {
+        Button("Go to Creating Session", systemImage: "arrow.up.backward") { open(creator.id) }
+      }
+    }
     transcriptTitleMenuItems(transcriptTitleMenu)
   }
 
@@ -249,6 +268,21 @@ public struct ConversationScreen<Terminal: View>: View {
       confirmDelete: { confirmingDelete = summary },
       confirmLeave: { confirmingLeave = summary },
       project: context.projects.first { $0.id == context.projectID })
+  }
+}
+
+extension ConversationScreen {
+  /// A sub-agent's parent session.
+  private var parentSessionID: String? {
+    state.header.settings?.parentId.flatMap { $0.isEmpty || $0 == state.header.id ? nil : $0 }
+  }
+
+  /// The header's project tag: the viewer's own top-level session.
+  private var showsProjectTag: Bool {
+    state.summary != nil
+      && HeaderProjectTag.applies(
+        extras.menuContext, isSubagent: parentSessionID != nil,
+        canMove: extras.sessionActions.moveToProject != nil)
   }
 
   private var canSendDraft: Bool {
@@ -290,6 +324,12 @@ public struct ConversationScreen<Terminal: View>: View {
         showsInspector = true
       })
     actions.approveOwnsCommandReturn = commandReturnOwner == .approve
+    if let summary = state.summary, summary.canRename, extras.sessionActions.rename != nil {
+      actions.rename = {
+        renameText = summary.title
+        renaming = summary
+      }
+    }
     return actions
   }
 }

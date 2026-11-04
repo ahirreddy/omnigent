@@ -26,6 +26,9 @@ public struct ConnectedServerView: View {
   @State private var showsTabOverview = false
   @State private var tabFailure: String?
   @State private var tabCommandRelay = FocusedActionsRelay<TabCommandActions>()
+  /// The session a chat tab's Rename Session is renaming.
+  @State private var renamingFromTab: OmnigentUIComponents.SessionSummary?
+  @State private var renameText = ""
   @Environment(\.horizontalSizeClass) private var sizeClass
 
   /// Creates the view.
@@ -64,7 +67,7 @@ public struct ConnectedServerView: View {
     let tabs = windowTabs
     AppShell(
       sidebar: sidebarState, selection: $selection, searchText: searchBinding,
-      actions: sidebarActions, tabs: (tabs.state, tabs.actions)
+      actions: sidebarActions, tabs: (tabs.state, renamable(tabs.actions))
     ) { _ in
       tabDetail
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -102,6 +105,28 @@ public struct ConnectedServerView: View {
         ForkSheet(state: fork, actions: sidebarForkActions)
       }
     }
+    .sheet(isPresented: sidebarSharePresented) { sidebarShareSheet }
+    .archiveWorktreePrompt($sidebar.archiveRequest) { request, delete, remember in
+      archiveAnswered(request, delete: delete, remember: remember)
+    }
+    .sessionRenamePrompt($renamingFromTab, text: $renameText) { summary, title in
+      rename(summary.id, to: title)
+    }
+  }
+
+  /// A chat tab's menu renames its session, as the session menu and Option-Command-R do.
+  private func renamable(_ actions: TabActions) -> TabActions {
+    var actions = actions
+    let tabs = session.tabs
+    let list = connection.sessionList
+    actions.renameSession = { tabID in
+      guard let id = tabs.tab(tabID)?.content.sessionID, let summary = list.session(id) else {
+        return
+      }
+      renameText = summary.title
+      renamingFromTab = OmnigentUIComponents.SessionSummary(summary)
+    }
+    return actions
   }
 
   private var sidebarState: SidebarViewState {

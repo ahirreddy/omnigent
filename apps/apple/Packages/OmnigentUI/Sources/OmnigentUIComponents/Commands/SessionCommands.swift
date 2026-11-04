@@ -22,6 +22,8 @@ public struct SessionCommandActions {
 
   /// Open the Changes tab in the right panel.
   public var openChanges: (@MainActor () -> Void)?
+  /// Rename the session (Option-Command-R).
+  public var rename: (@MainActor () -> Void)?
   /// A pending request's Approve owns Command-Return, so Send Message shows no shortcut.
   public var approveOwnsCommandReturn = false
 
@@ -91,6 +93,9 @@ public struct OmnigentSessionCommands: Commands {
         .keyboardShortcut(".", modifiers: .command)
         .disabled(actions?.interrupt == nil)
       Divider()
+      Button("Rename Session\u{2026}") { actions?.rename?() }
+        .keyboardShortcut("r", modifiers: [.command, .option])
+        .disabled(actions?.rename == nil)
       Button("Focus Composer") { actions?.focusComposer?() }
         .keyboardShortcut("l", modifiers: [.control, .shift])
         .disabled(actions?.focusComposer == nil)

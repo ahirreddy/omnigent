@@ -20,6 +20,7 @@ public struct KeyboardShortcutsSheet: View {
           shortcut("Chat / Terminal", "⌥⌘\\")
         }
         Section("Conversation") {
+          shortcut("Rename session", "⌥⌘R")
           shortcut("Focus composer", "⌃⇧L")
           shortcut("Jump to latest", "⌘↓")
           shortcut("Send message", "Return / ⌘Return")
@@ -56,7 +57,7 @@ public struct KeyboardShortcutsSheet: View {
             shortcut("New window", "⇧⌘N")
             shortcut("Close window", "⇧⌘W")
             shortcut("Settings", "⌘,")
-            shortcut("Reconnect", "⌘R")
+            shortcut("Reconnect", "⇧⌥⌘R")
             shortcut("Browser tab", "⌥⌘B")
             shortcut("Zoom in / out / actual size", "⌘+ / ⌘− / ⌘0")
             shortcut("Find", "⌘F")
