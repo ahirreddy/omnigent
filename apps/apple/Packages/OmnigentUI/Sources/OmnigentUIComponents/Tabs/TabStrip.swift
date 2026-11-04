@@ -22,9 +22,9 @@ public struct TabStrip: View {
   private let state: TabsState
   private let actions: TabActions
   private let isInTitlebar: Bool
+  private let includesControls: Bool
 
   @State private var drag: TabDrag?
-  @State private var showsOverview = false
   @State private var sectionsFrame = CGRect.zero
   @State private var sectionFrames: [TabPane: CGRect] = [:]
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -35,37 +35,23 @@ public struct TabStrip: View {
   ///   - state: The window's tabs.
   ///   - actions: What the tabs do.
   ///   - isInTitlebar: The strip sits in the titlebar row rather than in a bar of its own.
-  public init(state: TabsState, actions: TabActions, isInTitlebar: Bool = false) {
+  ///   - includesControls: New Tab and the overview menu follow the tabs; `false` when the host
+  ///     shows ``TabStripControls`` elsewhere (the titlebar puts them by its trailing items).
+  public init(
+    state: TabsState, actions: TabActions, isInTitlebar: Bool = false, includesControls: Bool = true
+  ) {
     self.state = state
     self.actions = actions
     self.isInTitlebar = isInTitlebar
+    self.includesControls = includesControls
   }
 
   /// The strip.
   public var body: some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
       sections
-      Button(action: actions.newTab) {
-        Image(systemName: "plus")
-          .font(.system(size: 13, weight: .medium))
-          .frame(width: 26, height: 26)
-          .contentShape(Rectangle())
-          .touchTarget(width: 26, height: 26)
-      }
-      .buttonStyle(.plain)
-      .foregroundStyle(.secondary)
-      .hoverHighlight()
-      .help("New tab (Command-T)")
-      .accessibilityLabel("New tab")
-      .accessibilityIdentifier("tab-new")
-      .contextMenu { NewTabMenu(actions: actions) }
-      TabOverviewMenu(state: state, actions: actions) { showsOverview = true }
-      if let issue = state.issue {
-        Image(systemName: "exclamationmark.triangle")
-          .foregroundStyle(Theme.warning)
-          .help(issue)
-          .accessibilityLabel(issue)
-          .accessibilityIdentifier("tab-issue")
+      if includesControls {
+        TabStripControls(state: state, actions: actions)
       }
     }
     .padding(.horizontal, isInTitlebar ? 0 : Theme.Spacing.small)
@@ -73,9 +59,6 @@ public struct TabStrip: View {
     .frame(maxWidth: .infinity)
     .background { if !isInTitlebar { Rectangle().fill(.bar) } }
     .overlay(alignment: .bottom) { if !isInTitlebar { Divider() } }
-    .sheet(isPresented: $showsOverview) {
-      TabOverviewSheet(state: state, actions: actions) { showsOverview = false }
-    }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Tabs")
     .accessibilityIdentifier("tab-strip")

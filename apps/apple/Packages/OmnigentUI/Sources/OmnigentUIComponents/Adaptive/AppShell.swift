@@ -77,11 +77,18 @@ extension AppShell {
     if let tabs {
       if showsStrip {
         ToolbarItem(placement: .navigation) {
-          TabStrip(state: tabs.state, actions: tabs.actions, isInTitlebar: true)
-            .frame(width: stripWidth)
+          TabStrip(
+            state: tabs.state, actions: tabs.actions, isInTitlebar: true, includesControls: false
+          )
+          .frame(width: stripWidth)
         }
         .sharedBackgroundVisibility(.hidden)
         ToolbarSpacer(.flexible)
+        // New Tab sits by the trailing items, not wherever the tabs end.
+        ToolbarItem(placement: .primaryAction) {
+          TabStripControls(state: tabs.state, actions: tabs.actions)
+        }
+        .sharedBackgroundVisibility(.hidden)
       } else {
         ToolbarItem(placement: Self.switcherPlacement) {
           TabSwitcherButton(state: tabs.state, actions: tabs.actions)
@@ -107,7 +114,7 @@ extension AppShell {
     let trailing =
       trailingItems.map { TitlebarMetrics.trailingWidth(items: $0) }
       ?? TitlebarMetrics.trailingReserve
-    let width = detailWidth - leading - trailing
+    let width = detailWidth - leading - trailing - TitlebarMetrics.newTabControls
     return max(TitlebarMetrics.minimumStrip, width.rounded(.down))
   }
 }
@@ -128,6 +135,8 @@ enum TitlebarMetrics {
   /// The strip never gets narrower than this; the toolbar then moves trailing items to its
   /// overflow menu.
   static let minimumStrip: CGFloat = 220
+  /// New Tab and the overview menu, beside the trailing items.
+  static let newTabControls: CGFloat = 64
 
   /// Room for `items` trailing toolbar buttons and the toolbar's margins.
   /// - Parameter items: Button widths (a viewer stack counts as two).
