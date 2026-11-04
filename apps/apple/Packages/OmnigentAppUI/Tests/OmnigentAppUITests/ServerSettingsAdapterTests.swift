@@ -18,20 +18,22 @@ private func info(
 struct ServerSettingsAdapterTests {
   @Test("panes follow what the server offers and the caller may manage")
   func panes() {
-    #expect(ServerSettingsAdapter.panes(nil) == [.git, .importSessions, .archived])
+    #expect(
+      ServerSettingsAdapter.panes(nil)
+        == [.harnesses, .customAgents, .git, .importSessions, .archived])
     #expect(
       ServerSettingsAdapter.panes(info(admin: false))
-        == [.git, .importSessions, .archived])
+        == [.harnesses, .customAgents, .git, .importSessions, .archived])
     #expect(
       ServerSettingsAdapter.panes(info(admin: true, singleUser: true))
-        == [.git, .importSessions, .policies, .archived],
+        == [.harnesses, .customAgents, .git, .importSessions, .policies, .archived],
       "no Members or Sharing without other users")
     #expect(
       ServerSettingsAdapter.panes(
         info(admin: true, accounts: true, mcp: true, connections: ["github"]))
         == [
-          .account, .mcp, .integrations, .git, .importSessions, .members, .policies, .sharing,
-          .archived,
+          .account, .harnesses, .customAgents, .mcp, .integrations, .git, .importSessions,
+          .members, .policies, .sharing, .archived,
         ])
   }
 

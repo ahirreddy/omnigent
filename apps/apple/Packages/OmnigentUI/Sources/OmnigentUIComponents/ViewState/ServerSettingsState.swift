@@ -6,6 +6,8 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
   case account
   /// Harnesses.
   case harnesses
+  /// Custom agents: yours and the server's.
+  case customAgents
   /// MCP registry services.
   case mcp
   /// Sandbox integrations (provider accounts).
@@ -31,6 +33,7 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
     switch self {
     case .account: "Account"
     case .harnesses: "Harnesses"
+    case .customAgents: "Custom Agents"
     case .mcp: "MCP"
     case .integrations: "Sandbox Integrations"
     case .git: "Git"
@@ -47,6 +50,7 @@ nonisolated public enum ServerSettingsPane: String, Hashable, Sendable, CaseIter
     switch self {
     case .account: "person.crop.circle"
     case .harnesses: "cpu"
+    case .customAgents: "person.crop.rectangle.stack"
     case .mcp: "powerplug"
     case .integrations: "square.grid.2x2"
     case .git: "arrow.triangle.branch"

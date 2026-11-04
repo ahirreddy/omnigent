@@ -40,11 +40,12 @@ enum ServerSettingsAdapter {
       errorMessage: (store.error ?? loads.compactMap(\.self).first)?.message)
   }
 
-  /// The panes `info` offers, in order. Harnesses are added by their own settings.
+  /// The panes `info` offers, in order.
   static func panes(_ info: ServerSettingsInfo?) -> [ServerSettingsPane] {
-    guard let info else { return [.git, .importSessions, .archived] }
+    guard let info else { return [.harnesses, .customAgents, .git, .importSessions, .archived] }
     var panes: [ServerSettingsPane] = []
     if info.accountsEnabled { panes.append(.account) }
+    panes += [.harnesses, .customAgents]
     if info.mcpRegistry { panes.append(.mcp) }
     if !info.connections.isEmpty { panes.append(.integrations) }
     panes += [.git, .importSessions]

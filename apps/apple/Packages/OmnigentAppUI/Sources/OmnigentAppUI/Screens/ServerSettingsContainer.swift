@@ -32,12 +32,29 @@ public struct ServerSettingsContainer: View {
     let store = selected.flatMap { stores[$0] }
     var state = ServerSettingsAdapter.state(store, servers: servers.map(Self.choice))
     if let openFailure { state.errorMessage = openFailure }
+    let connection = servers.first { $0.supervisedServerURL == selected }
     return ServerSettingsView(
       state: state, selectedServer: $selected,
-      actions: store.map(actions) ?? ServerSettingsActions()
+      actions: store.map(actions) ?? ServerSettingsActions(),
+      hostedPane: { pane in Self.hostedPane(pane, connection: connection) }
     )
     .onAppear(perform: refresh)
     .onChange(of: selected) { refresh() }
+  }
+
+  /// Harnesses and Custom Agents run over the connection's own stores.
+  private static func hostedPane(_ pane: ServerSettingsPane, connection: ConnectionStore?)
+    -> AnyView?
+  {
+    guard let connection else { return nil }
+    switch pane {
+    case .harnesses:
+      return AnyView(HarnessesSettingsView(connection: connection).id(ObjectIdentifier(connection)))
+    case .customAgents:
+      return AnyView(
+        CustomAgentsSettingsView(connection: connection).id(ObjectIdentifier(connection)))
+    default: return nil
+    }
   }
 
   private static func choice(_ connection: ConnectionStore) -> ServerChoice {
@@ -107,7 +124,7 @@ public struct ServerSettingsContainer: View {
     case .policies: await store.loadPolicies()
     case .sharing: await store.loadSharing()
     case .archived: await store.loadArchived()
-    case .account, .harnesses, .git: break
+    case .account, .harnesses, .customAgents, .git: break
     }
   }
 

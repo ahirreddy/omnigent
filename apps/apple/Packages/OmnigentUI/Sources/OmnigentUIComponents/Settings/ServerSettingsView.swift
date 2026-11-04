@@ -7,6 +7,7 @@ public struct ServerSettingsView: View {
   private let state: ServerSettingsViewState
   @Binding private var selectedServer: String?
   private let actions: ServerSettingsActions
+  private let hostedPane: (ServerSettingsPane) -> AnyView?
   @State private var pane: ServerSettingsPane?
 
   /// Creates the settings.
@@ -14,12 +15,17 @@ public struct ServerSettingsView: View {
   ///   - state: The selected server's settings.
   ///   - selectedServer: The server whose settings show.
   ///   - actions: Loads and changes.
+  ///   - hostedPane: A pane the host draws itself (for example Harnesses over the app's stores),
+  ///     or `nil` for the built-in one.
   public init(
-    state: ServerSettingsViewState, selectedServer: Binding<String?>, actions: ServerSettingsActions
+    state: ServerSettingsViewState, selectedServer: Binding<String?>,
+    actions: ServerSettingsActions,
+    hostedPane: @escaping (ServerSettingsPane) -> AnyView? = { _ in nil }
   ) {
     self.state = state
     _selectedServer = selectedServer
     self.actions = actions
+    self.hostedPane = hostedPane
   }
 
   private var shownPane: ServerSettingsPane? {
@@ -83,9 +89,18 @@ public struct ServerSettingsView: View {
   }
 
   @ViewBuilder private var paneContent: some View {
+    if let shownPane, let hosted = hostedPane(shownPane) {
+      hosted
+    } else {
+      builtInPane
+    }
+  }
+
+  @ViewBuilder private var builtInPane: some View {
     switch shownPane {
     case .account: ChangePasswordPane(actions: actions)
     case .harnesses: harnesses
+    case .customAgents: Text("Custom agents are not available here.").foregroundStyle(.secondary)
     case .mcp: MCPPane(services: state.mcpServices, actions: actions)
     case .integrations: IntegrationsPane(connections: state.connections, actions: actions)
     case .git: GitSettingsPane(archiveWorktreeCleanup: state.archiveWorktreeCleanup)
