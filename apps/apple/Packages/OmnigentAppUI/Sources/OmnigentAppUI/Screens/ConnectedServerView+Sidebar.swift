@@ -137,7 +137,40 @@ extension ConnectedServerView {
     actions.deleteProject = { project in
       Task { await list.deleteProject(ProjectSummary(project)) }
     }
+    actions.setArchivedMany = { sessions, archived in
+      edit(.archive(sessions.map(\.id), archived))
+    }
+    actions.dropSession = { session, action in drop(session, action) }
+    actions.reorderProjects = { projects in
+      Task { await list.saveProjectOrder(projects.map(ProjectSummary.init)) }
+    }
     return actions
+  }
+
+  /// Carries out a sidebar drag: pins into a slot, or files into or out of a project, unpinning
+  /// a pin so it shows where it was dropped (the web's `handleDragEnd`).
+  func drop(_ session: OmnigentUIComponents.SessionSummary, _ action: SidebarDropAction) {
+    let list = connection.sessionList
+    Task {
+      switch action {
+      case .move(let project, let unpin):
+        guard await list.move(session.id, to: ProjectSummary(project)), unpin else { return }
+        await list.setPinned(session.id, false)
+      case .ungroup(let unpin):
+        guard await list.move(session.id, to: nil), unpin else { return }
+        await list.setPinned(session.id, false)
+      case .pin(let target):
+        if let target {
+          await list.movePin(session.id, slotOf: target)
+        } else {
+          await list.setPinned(session.id, true)
+        }
+      case .unpin:
+        await list.setPinned(session.id, false)
+      case .none:
+        break
+      }
+    }
   }
 
   var sessionListActions: SessionListActions {

@@ -93,6 +93,59 @@ extension SessionListStore {
     return deleted
   }
 
+  /// Moves `sessionID` into `targetID`'s slot of the Pinned section, pinning it if needed.
+  /// - Parameters:
+  ///   - sessionID: The dragged session.
+  ///   - targetID: The pinned session it was dropped on.
+  /// - Returns: Whether every write was saved.
+  @discardableResult
+  public func movePin(_ sessionID: String, slotOf targetID: String) async -> Bool {
+    await perform { core in try await core.movePin(sessionId: sessionID, targetId: targetID) }
+  }
+
+  /// Saves `projects` as the project order (promoting label-only ones), then re-reads them.
+  /// - Parameter projects: The projects, in their new order.
+  /// - Returns: Whether the order was saved.
+  @discardableResult
+  public func saveProjectOrder(_ projects: [ProjectSummary]) async -> Bool {
+    let previous = self.projects
+    self.projects = projects
+    let saved = await perform { core in _ = try await core.saveProjectOrder(projects: projects) }
+    if !saved { self.projects = previous }
+    await loadProjects()
+    return saved
+  }
+
+  /// Re-reads the hosts and where a session on each runs.
+  /// - Parameter serverURL: The connected server, which decides whether a host is this Mac.
+  public func loadHosts(serverURL: String) async {
+    guard let core else { return }
+    do {
+      let hosts = try await core.hosts()
+      let environments = OmnigentCoreFFI.hostEnvironments(
+        hosts: hosts, serverUrl: serverURL, thisMachineHostId: nil)
+      let byID = Dictionary(
+        environments.map { ($0.hostId, $0.environment) }, uniquingKeysWith: { first, _ in first })
+      if byID != hostEnvironments { hostEnvironments = byID }
+      hostsError = nil
+    } catch {
+      hostsError = coreError(error)
+    }
+  }
+
+  /// Records whether `sessionID`'s composer holds a draft.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - hasDraft: Whether it does.
+  public func setDraft(_ sessionID: String, _ hasDraft: Bool) {
+    guard draftSessionIDs.contains(sessionID) != hasDraft else { return }
+    if hasDraft {
+      draftSessionIDs.insert(sessionID)
+    } else {
+      draftSessionIDs.remove(sessionID)
+    }
+  }
+
   /// Re-reads the project list (empty on a server without projects).
   public func loadProjects() async {
     guard let core else { return }

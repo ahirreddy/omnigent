@@ -27,6 +27,16 @@ enum PaletteCatalog {
         isEnabled: commands.toggleViewMode != nil, target: .toggleTerminal),
       PaletteEntry(
         id: "inbox", title: "Open Inbox", detail: state.scope, symbol: "tray", target: .inbox),
+      PaletteEntry(
+        id: "settings", title: "Open Settings", detail: "Preferences and servers",
+        symbol: "gearshape", shortcut: "⌘,", target: .settings),
+      PaletteEntry(
+        id: "sidebar", title: "Toggle sessions sidebar", detail: "Window",
+        symbol: "sidebar.left", shortcut: "⌃⌘S", target: .toggleSidebar),
+      PaletteEntry(
+        id: "inspector", title: "Toggle right panel", detail: "Current session",
+        symbol: "sidebar.right", shortcut: "⌥⌘I", isEnabled: commands.toggleInspector != nil,
+        target: .toggleInspector),
     ]
   }
 }

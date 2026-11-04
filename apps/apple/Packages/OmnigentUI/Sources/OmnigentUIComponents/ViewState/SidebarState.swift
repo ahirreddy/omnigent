@@ -361,6 +361,12 @@ public struct SidebarActions {
   public var renameProject: (@MainActor (SessionProject, String) -> Void)?
   /// Delete a project (its sessions are archived, never deleted).
   public var deleteProject: (@MainActor (SessionProject) -> Void)?
+  /// Archive or restore several sessions at once, with one Undo (bulk selection).
+  public var setArchivedMany: (@MainActor ([SessionSummary], Bool) -> Void)?
+  /// Carry out a session drag (pin into a slot, file into or out of a project).
+  public var dropSession: (@MainActor (SessionSummary, SidebarDropAction) -> Void)?
+  /// Save a new project order (a project dragged onto another).
+  public var reorderProjects: (@MainActor ([SessionProject]) -> Void)?
 
   /// Creates actions.
   /// - Parameters:

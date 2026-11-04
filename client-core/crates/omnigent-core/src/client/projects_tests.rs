@@ -225,3 +225,46 @@ fn deleting_archives_and_unfiles_members_and_keeps_the_project_on_failure() {
             .all(|request| request.method != "DELETE")
     );
 }
+
+#[test]
+fn saving_the_order_promotes_label_projects_and_puts_every_id() {
+    let transport = RouteTransport::local();
+    members_page(&transport);
+    transport.respond(
+        Some("POST"),
+        "/v1/projects",
+        None,
+        Reply::json(201, r#"{"id":"p2","name":"Legacy"}"#),
+    );
+    transport.respond(
+        Some("PATCH"),
+        "/v1/sessions/m1",
+        None,
+        Reply::json(200, r#"{"id":"m1","status":"idle","created_at":1}"#),
+    );
+    transport.respond(
+        Some("PUT"),
+        "/v1/projects/order",
+        None,
+        Reply::json(
+            200,
+            r#"{"sort_mode":"manual","ordered_project_ids":["p2","p1"]}"#,
+        ),
+    );
+    let core = connected(transport);
+    let saved =
+        block_on(core.save_project_order(&[project(None, "Legacy"), project(Some("p1"), "Alpha")]))
+            .unwrap();
+    assert_eq!(
+        saved,
+        vec![project(Some("p2"), "Legacy"), project(Some("p1"), "Alpha")]
+    );
+    assert_eq!(
+        core.transport().write_bodies(),
+        vec![
+            json!({"name": "Legacy"}),
+            json!({"project_id": "p2", "labels": {"omni_project": ""}}),
+            json!({"ordered_project_ids": ["p2", "p1"]}),
+        ]
+    );
+}

@@ -84,15 +84,16 @@ struct InboxPaletteTests {
     #expect(PaletteSearch.results([entry("one", "A")], query: "aa").isEmpty)
   }
 
-  @Test("Palette offers eight scoped commands and disables unavailable session actions")
+  @Test("Palette offers eleven scoped commands and disables unavailable session actions")
   func commands() {
     let state = PaletteViewState(scope: "Mac Studio", sessions: [])
     let entries = PaletteCatalog.entries(state: state, commands: SessionCommandActions())
-    #expect(entries.count == 8)
+    #expect(entries.count == 11)
     #expect(
       entries.filter { !$0.isEnabled }.map(\.target) == [
-        .nextRequest, .changes, .composer, .toggleTerminal,
+        .nextRequest, .changes, .composer, .toggleTerminal, .toggleInspector,
       ])
+    #expect(entries.suffix(3).map(\.target) == [.settings, .toggleSidebar, .toggleInspector])
     let available = PaletteCatalog.entries(
       state: state,
       commands: SessionCommandActions(focusComposer: {}, toggleViewMode: {}, openChanges: {}))

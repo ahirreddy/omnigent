@@ -55,6 +55,12 @@ public final class SessionListStore {
   public internal(set) var projectsError: CoreError?
   /// The connected user, for ownership (Shared, Mine, project membership).
   public internal(set) var viewerID: String?
+  /// Where a session on each host runs, by host id (the sidebar's Environment detail).
+  public internal(set) var hostEnvironments: [String: SessionEnvironment] = [:]
+  /// The last host list failure, until the next successful read.
+  public internal(set) var hostsError: CoreError?
+  /// Sessions whose composer holds an unsent draft.
+  public internal(set) var draftSessionIDs: Set<String> = []
 
   /// The server's rows, as the core last reported them.
   private var serverSessions: [String: SessionSummary] = [:]
@@ -242,6 +248,8 @@ public final class SessionListStore {
     isLoaded = false
     projects = []
     projectsError = nil
+    hostEnvironments = [:]
+    hostsError = nil
     recompute()
   }
 

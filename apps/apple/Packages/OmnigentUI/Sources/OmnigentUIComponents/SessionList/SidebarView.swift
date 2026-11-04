@@ -13,7 +13,12 @@ public struct SidebarView: View {
   @State private var renaming: SessionSummary?
   @State private var renameText = ""
   @State private var confirmingDelete: SessionSummary?
+  @State private var confirmingBulkDelete: [SessionSummary] = []
   @State private var confirmingLeave: SessionSummary?
+  @State private var bulk = SidebarBulkSelection()
+  /// The session whose title is edited in place, and the text.
+  @State private var inlineRenaming: SessionSummary?
+  @State private var inlineText = ""
   @State private var expandedProjects: Set<String> = []
   @State private var showsAllInProject: Set<String> = []
   @State private var projectPrompt: ProjectPrompt?
@@ -42,12 +47,12 @@ public struct SidebarView: View {
 
   /// The sidebar.
   public var body: some View {
-    List(selection: $selection) {
+    List(selection: listSelection) {
       navigation
       ForEach(SidebarSections.sections(state)) { section in
         sessionSection(section)
       }
-      emptyState
+      SidebarEmptyState(state: state, searchText: searchText)
     }
     .listStyle(.sidebar)
     .font(.callout)
@@ -62,53 +67,56 @@ public struct SidebarView: View {
     .safeAreaInset(edge: .bottom, spacing: 0) { bottomBars }
     #if os(macOS)
       .onDeleteCommand {
-        guard let id = selection?.sessionID, let session = summary(id), session.canArchive,
-          let setArchived = actions.sessions.setArchived
+        guard !bulk.isActive, let id = selection?.sessionID, let session = summary(id),
+          session.canArchive, let setArchived = actions.sessions.setArchived
         else { return }
         setArchived(session, !session.isArchived)
       }
+      .onExitCommand { if bulk.isActive { bulk.end() } }
     #endif
-    .alert(
-      "Rename Session",
-      isPresented: Binding(
-        get: { renaming != nil }, set: { if !$0 { renaming = nil } })
-    ) {
-      TextField("Title", text: $renameText)
-      Button("Rename") {
-        if let renaming, let rename = actions.sessions.rename {
-          rename(renaming, renameText.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-        renaming = nil
-      }
-      .disabled(
-        renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || renameText.count > 120
-      )
-      Button("Cancel", role: .cancel) { renaming = nil }
-    }
-    .confirmationDialog(
-      "Delete this session?",
-      isPresented: Binding(
-        get: { confirmingDelete != nil }, set: { if !$0 { confirmingDelete = nil } }),
-      presenting: confirmingDelete
-    ) { session in
-      Button("Delete", role: .destructive) { actions.sessions.delete?(session) }
-    } message: { _ in
-      Text("This permanently deletes the session and its history.")
-    }
+    .onChange(of: state.display.show) { bulk.end() }
+    .modifier(
+      SessionDialogs(
+        renaming: $renaming, renameText: $renameText, confirmingDelete: $confirmingDelete,
+        confirmingBulkDelete: $confirmingBulkDelete, confirmingLeave: $confirmingLeave,
+        actions: actions.sessions, deletedMany: { bulk.clear() })
+    )
     .modifier(
       ProjectDialogs(
         prompt: $projectPrompt, name: $projectName, confirmingDelete: $confirmingProjectDelete,
         actions: actions)
     )
-    .confirmationDialog(
-      "Leave this session?",
-      isPresented: Binding(
-        get: { confirmingLeave != nil }, set: { if !$0 { confirmingLeave = nil } }),
-      presenting: confirmingLeave
-    ) { session in
-      Button("Leave", role: .destructive) { actions.sessions.leave?(session) }
-    } message: { _ in
-      Text("You lose access until someone shares it with you again.")
+  }
+
+  /// The list's selection. While selecting sessions a click checks the row instead (Shift
+  /// extends from the last one), and the list shows no selection of its own.
+  private var listSelection: Binding<SidebarDestination?> {
+    Binding(
+      get: { bulk.isActive ? nil : selection },
+      set: { destination in
+        guard bulk.isActive else {
+          selection = destination
+          return
+        }
+        if let id = destination?.sessionID {
+          bulk.toggle(id, extending: SidebarBulkSelection.isExtending, order: visibleSessionIDs)
+        } else if let destination {
+          bulk.end()
+          selection = destination
+        }
+      })
+  }
+
+  /// The session rows on screen, top to bottom, for a Shift-click range.
+  private var visibleSessionIDs: [String] {
+    let collapsed = Set(collapsedSections.split(separator: "\n").map(String.init))
+    let open = SidebarSections.sections(state).filter { !collapsed.contains($0.title) }
+    return open.flatMap { (section: SidebarSections.Section) -> [String] in
+      guard section.isProjects else { return section.sessions.map(\.id) }
+      return state.projects.filter { expandedProjects.contains($0.id) }.flatMap { project in
+        showsAllInProject.contains(project.id)
+          ? project.sessionIds : Array(project.sessionIds.prefix(5))
+      }
     }
   }
 
@@ -160,7 +168,7 @@ public struct SidebarView: View {
         }
       } else {
         ForEach(section.sessions) { session in
-          row(session)
+          row(session, target: dropHandler.rowTarget(session, in: section))
         }
       }
     } header: {
@@ -175,16 +183,34 @@ public struct SidebarView: View {
             projectName = ""
             projectPrompt = .create(moving: nil)
           }
-          .labelStyle(.iconOnly)
-          .buttonStyle(.borderless)
-          .foregroundStyle(.secondary)
           .help("New project")
           .accessibilityIdentifier("sidebar-new-project")
         }
-        if section.showsDisplayMenu, let setDisplay = actions.setDisplay {
-          DisplayMenu(options: state.display, set: setDisplay)
+        if section.showsDisplayMenu {
+          sessionsHeaderButtons
+          if let setDisplay = actions.setDisplay {
+            DisplayMenu(options: state.display, set: setDisplay)
+          }
         }
       }
+      .labelStyle(.iconOnly)
+      .buttonStyle(.borderless)
+      .foregroundStyle(.secondary)
+      .sidebarDropTarget { item in drop(item, on: dropHandler.sectionTarget(section)) }
+    }
+  }
+
+  /// New session and Select sessions, on the Sessions header (the web's header actions).
+  @ViewBuilder private var sessionsHeaderButtons: some View {
+    if !bulk.isActive {
+      if let newSession = actions.sessions.newSession {
+        Button("New session", systemImage: "plus.bubble", action: newSession)
+          .help("New session")
+          .accessibilityIdentifier("sessions-new-session")
+      }
+      Button("Select sessions", systemImage: "checklist") { bulk.begin() }
+        .help("Select sessions")
+        .accessibilityIdentifier("toggle-selection-mode")
     }
   }
 
@@ -204,47 +230,19 @@ public struct SidebarView: View {
     state.list.sessions.first { $0.id == id }
   }
 
-  @ViewBuilder private var emptyState: some View {
-    if state.list.sessions.isEmpty, state.projects.isEmpty {
-      switch state.list.phase {
-      case .loading:
-        ProgressView("Loading sessions\u{2026}")
-      case .loaded, .failed:
-        if !searchText.isEmpty {
-          ContentUnavailableView.search(text: searchText)
-        } else {
-          ContentUnavailableView(
-            state.display.show == .archived ? "No archived sessions" : "No sessions",
-            systemImage: "bubble.left.and.bubble.right"
-          )
-          .font(.callout)
-          .listRowSeparator(.hidden)
-        }
-      }
-    }
-  }
-
   @ViewBuilder private var bottomBars: some View {
     VStack(spacing: 0) {
+      if bulk.isActive {
+        BulkActionBar(
+          selected: state.list.sessions.filter { bulk.ids.contains($0.id) }, state: state,
+          actions: actions, exit: { bulk.end() }, clear: { bulk.clear() },
+          confirmDelete: { confirmingBulkDelete = $0 })
+      }
       if let undo = state.undo {
         UndoBar(banner: undo, actions: actions)
       }
       if case .failed(let message) = state.list.phase {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
-          Image(systemName: "exclamationmark.triangle.fill")
-            .foregroundStyle(Theme.failure)
-            .accessibilityHidden(true)
-          Text(message).font(.caption).lineLimit(3).textSelection(.enabled)
-          Spacer(minLength: 4)
-          if let retry = actions.sessions.retry {
-            Button("Retry", action: retry).controlSize(.small)
-              .accessibilityIdentifier("session-list-retry")
-          }
-        }
-        .padding(Theme.Spacing.medium)
-        .background(.bar)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("session-list-error")
+        SessionListErrorBar(message: message, retry: actions.sessions.retry)
       }
     }
     .frame(minWidth: 0, maxWidth: .infinity)
@@ -270,7 +268,7 @@ extension SidebarView {
         Text("No sessions").foregroundStyle(.secondary)
       }
       ForEach(showsAll ? sessions : Array(sessions.prefix(5))) { session in
-        row(session)
+        row(session, target: .project(project))
       }
       if sessions.count > 5 {
         Button(showsAll ? "Show less" : "Show more") {
@@ -294,6 +292,8 @@ extension SidebarView {
         }
       }
       .contextMenu { projectMenu(project) }
+      .draggable(SidebarDragItem.project(project.id).payload)
+      .sidebarDropTarget { item in drop(item, on: .project(project)) }
       .accessibilityIdentifier("sidebar-project-\(project.id)")
     }
   }
@@ -312,8 +312,10 @@ extension SidebarView {
     }
   }
 
-  private func row(_ session: SessionSummary) -> some View {
-    let info = state.rowInfo[session.id] ?? SessionRowInfo()
+  private func row(_ session: SessionSummary, target: SidebarDropTarget?) -> some View {
+    var info = state.rowInfo[session.id] ?? SessionRowInfo()
+    // The open session's composer already shows its draft.
+    info.hasDraft = info.hasDraft && selection != .session(session.id)
     let isUnread = state.list.unreadIds.contains(session.id)
     let menu = SessionRowMenu(
       session: session, isUnread: isUnread, isShared: info.isShared,
@@ -335,33 +337,47 @@ extension SidebarView {
     return SessionRow(
       session: session, info: info, isUnread: isUnread,
       attention: state.list.attentionCounts[session.id] ?? 0, details: state.display.details,
-      now: now, menu: menu
+      now: now, menu: menu, isSelecting: bulk.isActive, isChecked: bulk.ids.contains(session.id),
+      inlineRename: inlineRenaming?.id == session.id ? inlineRename : nil,
+      beginInlineRename: canRenameInline(session, info: info)
+        ? {
+          inlineText = session.title
+          inlineRenaming = session
+        } : nil
     )
     .tag(SidebarDestination.session(session.id))
-    .sidebarSelection(selection == .session(session.id))
-    #if os(iOS)
-      .swipeActions(edge: .leading) {
-        if let setUnread = actions.sessions.setUnread {
-          Button(
-            isUnread ? "Read" : "Unread", systemImage: isUnread ? "envelope.open" : "envelope.badge"
-          ) {
-            setUnread(session, !isUnread)
-          }
-          .tint(Theme.unread)
-        }
-        if actions.sessions.setPinned != nil, session.canPin {
-          Button(session.isPinned ? "Unpin" : "Pin", systemImage: "pin") { menu.togglePin() }
-          .tint(.orange)
-        }
-      }
-      .swipeActions(edge: .trailing) {
-        if let setArchived = actions.sessions.setArchived, session.canArchive {
-          Button(session.isArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
-            setArchived(session, !session.isArchived)
-          }
-          .tint(.indigo)
-        }
-      }
-    #endif
+    .sidebarSelection(
+      bulk.isActive ? bulk.ids.contains(session.id) : selection == .session(session.id)
+    )
+    .draggable(SidebarDragItem.session(session.id).payload)
+    .sidebarDropTarget { item in target.map { drop(item, on: $0) } ?? false }
+    .modifier(SessionSwipeActions(session: session, isUnread: isUnread, menu: menu))
   }
+
+  /// Double-click renames in place, as the web: the owner only, never while selecting.
+  private func canRenameInline(_ session: SessionSummary, info: SessionRowInfo) -> Bool {
+    actions.sessions.rename != nil && session.canRename && !info.isShared && !bulk.isActive
+  }
+
+  private var inlineRename: InlineRename {
+    InlineRename(
+      text: $inlineText,
+      commit: {
+        guard let session = inlineRenaming else { return }
+        inlineRenaming = nil
+        let title = inlineText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, title != session.title,
+          title.count <= SessionDialogs.maxTitleLength
+        else { return }
+        actions.sessions.rename?(session, title)
+      },
+      cancel: { inlineRenaming = nil })
+  }
+
+  private func drop(_ item: SidebarDragItem, on target: SidebarDropTarget?) -> Bool {
+    guard let target, !bulk.isActive else { return false }
+    return dropHandler.drop(item, on: target)
+  }
+
+  private var dropHandler: SidebarDropHandler { SidebarDropHandler(state: state, actions: actions) }
 }

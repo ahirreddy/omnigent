@@ -204,6 +204,32 @@ impl<T: HttpTransport> ClientCore<T> {
             })
     }
 
+    /// The server's hosts, de-duplicated by id (the sidebar's environment line).
+    ///
+    /// # Errors
+    ///
+    /// The read errors and [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn hosts(&self) -> Result<Vec<CreationHost>, SessionError> {
+        let result = self.host_rows().await.and_then(|rows| {
+            let mut seen = BTreeSet::new();
+            let mut hosts = Vec::with_capacity(rows.len());
+            for row in &rows {
+                let host = CreationHost::from_value(row)
+                    .map_err(|detail| SessionError::MalformedResponse { detail })?;
+                if !host.host_id.is_empty() && seen.insert(host.host_id.clone()) {
+                    hosts.push(host);
+                }
+            }
+            Ok(hosts)
+        });
+        self.dispatch();
+        result
+    }
+
     /// The host's model preview for `harness`: rows with an id and a value, not hidden,
     /// de-duplicated by value when `by_value` (creation) or by id (configuration).
     #[allow(

@@ -8,6 +8,7 @@ nonisolated enum SidebarSections {
     var sessions: [SessionSummary]
     var isProjects = false
     var showsDisplayMenu = false
+    var isPinned = false
     var id: String { title }
   }
 
@@ -47,7 +48,7 @@ nonisolated enum SidebarSections {
       !$0.isPinned && !inProject.contains($0.id) && state.rowInfo[$0.id]?.isShared != true
     }
     var result: [Section] = []
-    if !pinned.isEmpty { result.append(Section(title: "Pinned", sessions: pinned)) }
+    if !pinned.isEmpty { result.append(Section(title: "Pinned", sessions: pinned, isPinned: true)) }
     // Always shown, as on the web, so New project stays reachable.
     result.append(Section(title: "Projects", sessions: [], isProjects: true))
     if !shared.isEmpty { result.append(Section(title: "Shared", sessions: shared)) }

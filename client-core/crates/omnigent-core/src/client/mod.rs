@@ -36,6 +36,7 @@ pub mod fork;
 mod hydration;
 pub mod items;
 pub(crate) mod json;
+pub mod pin_order;
 pub mod projects;
 mod recovery;
 mod remote_browsers;

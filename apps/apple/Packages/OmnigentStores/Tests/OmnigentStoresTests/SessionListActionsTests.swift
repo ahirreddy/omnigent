@@ -84,6 +84,28 @@ struct SessionListActionsTests {
   }
 
   @Test(.timeLimit(.minutes(1)))
+  func projectOrderAndHostEnvironments() async throws {
+    let server = ListServer()
+    server.route(
+      "/v1/hosts",
+      .json(
+        #"{"hosts":[{"host_id":"mac","name":"Mac","status":"online"},{"host_id":"box","name":"Box","status":"online","sandbox_provider":"modal"}]}"#
+      ))
+    server.route(
+      "/v1/projects/order", method: "PUT",
+      .json(#"{"sort_mode":"manual","ordered_project_ids":["p1"]}"#))
+    let store = try await connected(server)
+    let list = store.sessionList
+    await list.loadHosts(serverURL: "http://127.0.0.1:6767")
+    #expect(
+      list.hostEnvironments == ["mac": .thisMachine, "box": .sandbox(label: "Modal Sandbox")])
+    #expect(list.hostsError == nil)
+
+    #expect(await list.saveProjectOrder(list.projects))
+    #expect(server.writes.contains("PUT /v1/projects/order"))
+  }
+
+  @Test(.timeLimit(.minutes(1)))
   func failuresLandInEditError() async throws {
     let server = ListServer()
     server.route(

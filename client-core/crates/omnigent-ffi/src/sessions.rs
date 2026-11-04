@@ -82,6 +82,9 @@ pub struct SessionSummary {
     /// Stop can end its live process (host-spawned, or a wrapper that kills its own harness).
     #[uniffi(default)]
     pub can_stop: bool,
+    /// The Pinned section's sort key (the `omnigent.pinned` label); `None` when unpinned.
+    #[uniffi(default)]
+    pub pin_stamp: Option<String>,
 }
 
 /// One of the caller's projects (a sidebar folder).
@@ -190,6 +193,7 @@ impl From<CoreSummary> for SessionSummary {
             workspace: summary.workspace,
             agent_name: summary.agent_name,
             is_pinned: summary.is_pinned,
+            pin_stamp: summary.pin_stamp,
             is_archived: summary.is_archived,
             permission_level: summary.permission_level,
             failure_message: summary.failure_message,
@@ -213,6 +217,7 @@ impl From<&SessionSummary> for CoreSummary {
             workspace: summary.workspace.clone(),
             agent_name: summary.agent_name.clone(),
             is_pinned: summary.is_pinned,
+            pin_stamp: summary.pin_stamp.clone(),
             is_archived: summary.is_archived,
             permission_level: summary.permission_level,
             failure_message: summary.failure_message.clone(),
