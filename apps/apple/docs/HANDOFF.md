@@ -1,4 +1,4 @@
-# Handoff: native Apple apps (2026-11-02)
+# Handoff: native Apple apps (2026-11-04)
 
 State of the `apple-native-scaffold` branch on `ahirreddy/omnigent`, for continuing the work on
 another machine.
@@ -46,6 +46,23 @@ glass UI tests. The Mac suite takes about 80 s without UI automation (it took 16
    (`http://localhost`, ephemeral port, system browser), as the Electron app does; the core binds
    each attempt to the listener's port. The App Store edition gained `network.server` for the
    listener. Covered by core, FFI and controller tests; the live sign-in needs a person.
+6. **Replica routing for host-sharded servers.** isaac answers `400 wrong_replica` unless a
+   request carries its session's host as `X-Databricks-Omnigent-Slice-Key` (the WebSocket takes
+   `omnigent_slice_key`). `client-core/.../client/routing.rs` learns hosts from snapshots
+   (walking sub-agent parents), keys sessions, terminals and remote browsers, retries keyless
+   on a refusal, and freezes the modal host after the first list. `routing_tests.rs`.
+7. **Sign-ins that survive rebuilds.** A Mac build without an Apple team ID (Debug, or the local
+   Release below) is refused the data-protection keychain, and the login keychain ties items to
+   the exact build. Such builds keep credentials in 0600 files (`CredentialFileStore`, chosen by
+   `KeychainModeSelection`); a team-signed Release still requires the keychain.
+8. **Networking verified without the app.** `LiveWorkspaceTests` (OmnigentStores) drive the core
+   and the URLSession transports against a live workspace: list, history, live stream,
+   terminals, and creating a session on a new managed sandbox (`create_sandbox_session`), sending,
+   streaming and Stop. Needs `OMNIGENT_LIVE_WORKSPACE_URL` and `OMNIGENT_LIVE_CREDENTIALS`.
+9. **Local Release build for daily use.** `just apple-install-local` builds Release (release
+   Rust core, host arch), signs ad hoc without hardened runtime (library validation refuses
+   ad-hoc frameworks) and installs `~/Applications/Omnigent Native.app` (`ai.omnigent.mac`).
+   The user is running it against isaac and will send feedback; Sparkle is off.
 
 ## How to build and verify on a fresh machine
 
@@ -65,8 +82,13 @@ cd apps/apple && mise exec -- swiftlint lint --strict --config .swiftlint.yml
 - Gallery: `docs/gallery.md` (`swift run OmnigentPlayground --gallery`, `--export-gallery`).
 
 The local test scripts used during the session (`/private/tmp/claude-502/...`: snapshot builds,
-UI-test lock, integration servers on 6795/6797/6805/6835) were scratch tooling and did not move
-with the branch. Mac UI tests take over the mouse and keyboard; run them only on an idle machine.
+UI-test lock, integration servers on 6795/6797/6805/6835) are scratch tooling, kept with the
+Claude Code session in the private repo `ahirreddy/omnigent-native-handoff` (its `restore.sh`
+puts both back). Mac UI tests take over the mouse and keyboard; run them only on an idle machine,
+and the user asked for background priority (`taskpolicy -b`, two jobs) while they use the Mac.
+
+isaac is a multi-workspace host: use `https://isaac.databricks.com/?o=1965859176160743`.
+Where crates.io is unreachable, cargo needs the Databricks crates proxy as a source replacement.
 
 ## Where things are documented
 
@@ -80,6 +102,8 @@ with the branch. Mac UI tests take over the mouse and keyboard; run them only on
 
 - Register OmnigentMac as an http/https browser and apply for Apple's passkey entitlement
   (deferred; see `browser-engine-decision.md`).
-- Mac app name vs. the Electron `Omnigent.app`, the Sparkle EdDSA key, and Ankit's co-author
-  credit on the NativeLab import.
+- Mac app name vs. the Electron `Omnigent.app` (the local build is "Omnigent Native"), the
+  Sparkle EdDSA key, Developer ID signing, and Ankit's co-author credit on the NativeLab import.
+- Next feature in line: a sandbox option in the New Session sheet (the core and store support
+  it; see `follow-ups.md`).
 - Server half of phone notifications (APNs), per `phone-supervision.md`.
