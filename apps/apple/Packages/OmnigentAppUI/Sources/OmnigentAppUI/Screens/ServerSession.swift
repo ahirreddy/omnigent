@@ -20,6 +20,8 @@ public final class ServerSession {
   public private(set) var terminalStores: [String: TerminalStore] = [:]
   /// Workspace browsers (Files, Changes, documents) of open sessions.
   public private(set) var workspaces: [String: WorkspaceBrowserModel] = [:]
+  /// The right panel's server data (panel features, pull requests) of open sessions.
+  public private(set) var panels: [String: SessionPanelStore] = [:]
   /// The window's tabs.
   public let tabs = TabStore()
   /// Sessions whose conversation, terminals and workspace are open.
@@ -85,6 +87,7 @@ public final class ServerSession {
     if workspaces[sessionID] == nil, let workspace = connection.workspace(sessionID) {
       workspaces[sessionID] = WorkspaceBrowserModel(source: workspace)
     }
+    if panels[sessionID] == nil { panels[sessionID] = connection.makePanelStore(sessionID) }
     Task { await loadDeclaredTerminalNames([sessionID]) }
   }
 
@@ -97,6 +100,7 @@ public final class ServerSession {
       for id in terminals.controllers.keys { terminals.close(id) }
     }
     workspaces[sessionID] = nil
+    panels[sessionID] = nil
   }
 
   /// Opens and closes sessions so exactly `wanted` are open: the sessions the window's built

@@ -56,6 +56,13 @@ public final class SessionPanelStore {
     }
     if current == generation { pullRequests = result }
   }
+
+  /// Re-reads the pull requests when they were read before, for example after a turn that
+  /// may have opened one.
+  public func refreshPullRequestsIfShown() async {
+    guard pullRequests != .idle else { return }
+    await reloadPullRequests()
+  }
 }
 
 extension ConnectionStore {

@@ -1,5 +1,4 @@
 import OmnigentRemoteBrowser
-import OmnigentTerminalUI
 import OmnigentUIComponents
 import OmnigentWorkspaceUI
 import SwiftUI
@@ -162,8 +161,8 @@ enum GalleryExportRunner {
   }
 }
 
-/// Real Files and Changes content from `OmnigentWorkspaceUI`, on its sample data source, and the
-/// real terminal list and surface from `OmnigentTerminalUI`, on local echo shells.
+/// Real Files, Changes and Search content from `OmnigentWorkspaceUI`, on its sample data
+/// source; opened files and diffs show as the panel's tabs.
 enum PlaygroundWorkspace {
   static let browser = WorkspaceBrowserModel(source: SampleWorkspaceDataSource())
 
@@ -173,58 +172,39 @@ enum PlaygroundWorkspace {
         FileTreeView(model: browser.tree, source: browser.source, actions: .none)
           .task { await WorkspaceGallery.prepare(browser.tree) }),
       changes: AnyView(
-        ChangedFilesList(model: browser.changes, source: browser.source, actions: .none) { _ in }
-          .task { await browser.changes.reload() }),
-      terminals: AnyView(PlaygroundTerminals()))
-  }
-}
-
-/// The Terminals tab as the app lays it out (the list above the attached surface), over sample
-/// rows and a local echo shell. Nothing here talks to a server.
-struct PlaygroundTerminals: View {
-  @State private var items = [
-    TerminalListItem(
-      id: "terminal_claude_main", title: "claude \u{00B7} main", status: .active,
-      isAgentTerminal: true),
-    TerminalListItem(
-      id: "terminal_zsh_u-4f2k9q", title: "zsh \u{00B7} u-4f2k9q", status: .idle,
-      isAgentTerminal: false),
-    TerminalListItem(
-      id: "terminal_bash_u-0c1d2e", title: "bash \u{00B7} u-0c1d2e", status: .exited,
-      isAgentTerminal: false),
-  ]
-  @State private var selection: TerminalListItem.ID? = "terminal_zsh_u-4f2k9q"
-
-  var body: some View {
-    VStack(spacing: 0) {
-      TerminalListView(
-        items: items, shellChoices: ["zsh", "bash"], canEdit: true, errorMessage: nil,
-        selection: $selection,
-        onCreate: { shell in
-          let item = TerminalListItem(
-            id: "terminal_\(shell)_\(items.count)", title: "\(shell) \u{00B7} new", status: .idle,
-            isAgentTerminal: false)
-          items.append(item)
-          selection = item.id
-        },
-        onClose: { id in
-          items.removeAll { $0.id == id }
-          if selection == id { selection = nil }
+        ChangedFilesList(model: browser.changes, source: browser.source, actions: .none) { file in
+          Task { await browser.open(.diff(path: file.path)) }
         }
-      )
-      .listStyle(.plain)
-      .frame(minHeight: 96, idealHeight: 160, maxHeight: selection == nil ? .infinity : 200)
-      if let selection, let item = items.first(where: { $0.id == selection }) {
-        Divider()
-        SessionTerminalView(
-          connection: EchoTerminalConnection(
-            prompt: "\(item.title.split(separator: " ").first ?? "sh")$ ",
-            banner: "Attached to \(item.title)")
-        )
-        .id(selection)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-      }
-    }
+        .task { await browser.changes.reload() }),
+      search: AnyView(
+        ContentSearchPanel(
+          model: browser.search, source: browser.source, actions: .none, onOpen: openMatch)),
+      documents: documents)
+  }
+
+  private static func openMatch(_ match: ContentMatch) {
+    Task { await browser.open(.file(path: match.path, line: match.line)) }
+  }
+
+  private static var documents: InspectorDocuments {
+    let browser = browser
+    return InspectorDocuments(
+      tabs: browser.openDocuments.map { document in
+        InspectorDocumentTab(
+          id: document.tabID, title: WorkspacePaths.name(of: document.path),
+          detail: document.path, systemImage: "doc.text")
+      },
+      selected: browser.document?.tabID,
+      select: { id in
+        guard let document = browser.openDocuments.first(where: { $0.tabID == id }) else { return }
+        Task { await browser.open(document) }
+      },
+      close: { id in
+        guard let document = browser.openDocuments.first(where: { $0.tabID == id }) else { return }
+        Task { await browser.close(document) }
+      },
+      showPanel: { browser.hideDocument() },
+      content: AnyView(WorkspaceDocumentView(model: browser)))
   }
 }
 

@@ -365,15 +365,31 @@ struct ConversationTabRoutes {
   /// Another session's chat (a sub-agent or the parent), focused when already open, else
   /// opened right after this tab.
   var openSession: @MainActor (String) -> Void
+  /// Starts a terminal (a declared name, or the default) and opens it in a tab.
+  var newTerminal: (@MainActor (String?) -> Void)?
+  /// Opens a browser tab; `nil` when the window has no browser.
+  var openBrowser: (@MainActor () -> Void)?
 }
 
 extension WindowTabs {
   /// The routes for `sessionID`'s conversation.
   func routes(for sessionID: String) -> ConversationTabRoutes {
-    ConversationTabRoutes(
+    let store = store
+    var routes = ConversationTabRoutes(
       openHarness: { openHarness(sessionID) },
       openTerminal: { openTerminal(sessionID, $0) },
       openSideChat: { openSideChat(sessionID, rowID: $0, title: $1) },
       openSession: { store.open(.chat(sessionID: $0)) })
+    routes.newTerminal = { name in
+      Task { await newTerminal(in: sessionID, named: name, replacing: nil) }
+    }
+    if let browser {
+      let session = session
+      routes.openBrowser = {
+        let page = browser.makePage(url: session.connectedURL)
+        store.open(.browser(browserID: page.id), browserState: page.state)
+      }
+    }
+    return routes
   }
 }

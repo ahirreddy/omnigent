@@ -136,6 +136,7 @@ public struct ConnectedServerView: View {
         ConversationContainer(
           conversation: conversation, summary: connection.sessionList.session(id),
           terminals: session.terminalStores[id], workspace: session.workspaces[id],
+          panel: session.panels[id],
           changedFilesRevision: connection.changedFilesRevision,
           navigation: navigation(from: id), opener: opener,
           openSession: { selection = .session($0) },
