@@ -144,6 +144,7 @@ public struct ConversationScreen<Terminal: View>: View {
     .sheet(isPresented: $showsShare) {
       if let share = extras.share {
         ShareSheet(state: share.state, actions: share.actions) { showsShare = false }
+          .onAppear { extras.shareOpened?() }
       }
     }
     .sheet(item: ForkSheetID.binding($fork)) { _ in

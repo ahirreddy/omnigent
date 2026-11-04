@@ -146,7 +146,8 @@ public struct ConnectedServerView: View {
           sessionActions: sidebarActions.sessions,
           makeForkStore: { connection.makeForkStore() },
           menuContext: ConversationContainer.menuContext(
-            connection.sessionList, session: connection.sessionList.session(id))
+            connection.sessionList, session: connection.sessionList.session(id)),
+          makeShareStore: { connection.share(sessionID: id) }
         )
         .id(id)
       } else {

@@ -125,6 +125,14 @@ nonisolated public struct Attachment: Hashable, Sendable, Identifiable {
   }
 }
 
+/// What Retry does for a failed turn (the core's `FailureRecovery`).
+nonisolated public enum FailureRecovery: Hashable, Sendable {
+  /// The runner survived: ask it to continue the turn.
+  case `continue`
+  /// The runner or terminal went away: resume the session.
+  case resume
+}
+
 /// The typed presentation of a non-text row.
 nonisolated public struct Activity: Hashable, Sendable {
   /// What the row shows.
@@ -139,6 +147,8 @@ nonisolated public struct Activity: Hashable, Sendable {
   public var details: [DetailSection]
   /// An error, or a failed, error or denied status (computed by the core).
   public var isFailure: Bool
+  /// What Retry does for an error row (the core's rule); `nil` offers no Retry.
+  public var recovery: FailureRecovery?
 
   /// Creates an activity.
   /// - Parameters:
@@ -148,9 +158,10 @@ nonisolated public struct Activity: Hashable, Sendable {
   ///   - status: Reported status.
   ///   - details: Detail blocks.
   ///   - isFailure: Whether the core classified it as a failure.
+  ///   - recovery: What Retry does.
   public init(
     kind: ActivityKind, title: String, summary: String = "", status: String? = nil,
-    details: [DetailSection] = [], isFailure: Bool = false
+    details: [DetailSection] = [], isFailure: Bool = false, recovery: FailureRecovery? = nil
   ) {
     self.kind = kind
     self.title = title
@@ -158,6 +169,7 @@ nonisolated public struct Activity: Hashable, Sendable {
     self.status = status
     self.details = details
     self.isFailure = isFailure
+    self.recovery = recovery
   }
 
   /// The text of the detail section with `id`.

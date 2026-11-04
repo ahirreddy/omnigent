@@ -153,6 +153,7 @@ private struct ErrorRowView: View {
   let row: Row
   let activity: Activity
   @State private var isExpanded = false
+  @Environment(\.conversationActions) private var actions
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
@@ -168,6 +169,15 @@ private struct ErrorRowView: View {
             .fixedSize(horizontal: false, vertical: true)
         }
         Spacer(minLength: 0)
+        if let recovery = activity.recovery, let retry = actions.retryFailedTurn {
+          Button(recovery == .continue ? "Retry" : "Resume") { retry(row) }
+            .buttonStyle(.bordered)
+            .help(
+              recovery == .continue
+                ? "Continue the turn from where it stopped" : "Restart the agent and continue"
+            )
+            .accessibilityIdentifier("error-retry-\(row.id)")
+        }
         CopyButton(text: row.text.isEmpty ? activity.summary : row.text, label: "Copy error")
       }
       if !activity.details.isEmpty {

@@ -124,6 +124,24 @@ public final class ConversationStore {
     }
   }
 
+  /// Recovers the failed turn as `recovery` says (the error card's Retry). A failure, or a
+  /// resume that found the runner already connected, is kept in ``errors``.
+  /// - Parameter recovery: Continue the turn, or resume the session.
+  public func recoverTurn(_ recovery: FailureRecovery) async {
+    do {
+      let recovered = try await core.recoverTurn(sessionId: sessionID, recovery: recovery)
+      if !recovered {
+        let message =
+          recovery == .resume
+          ? "The session is already connected; nothing was recovered."
+          : "The retry was not accepted."
+        record(.InvalidState(message: message))
+      }
+    } catch {
+      record(coreError(error))
+    }
+  }
+
   /// Clears ``errors`` after the user has seen them.
   public func dismissErrors() {
     errors = []

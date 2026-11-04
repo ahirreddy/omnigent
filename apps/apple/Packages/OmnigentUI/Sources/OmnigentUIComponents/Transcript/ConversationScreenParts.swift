@@ -16,6 +16,8 @@ public struct ConversationExtras {
   public var menuContext: SessionMenuContext
   /// Save the transcript as a file (Export); `nil` hides it.
   public var exportTranscript: (@MainActor () -> Void)?
+  /// The Share sheet opened: read the current grants.
+  public var shareOpened: (@MainActor () -> Void)?
 
   /// Creates extras.
   /// - Parameters:
@@ -26,13 +28,15 @@ public struct ConversationExtras {
   ///   - navigation: Session navigation commands.
   ///   - menuContext: Projects and sharing for the session menu.
   ///   - exportTranscript: Export the transcript.
+  ///   - shareOpened: The Share sheet opened.
   public init(
     sessionActions: SessionListActions = SessionListActions(),
     slots: WorkspaceSlots = WorkspaceSlots(),
     share: (state: ShareViewState, actions: ShareActions)? = nil, forkActions: ForkActions? = nil,
     navigation: SessionCommandActions = SessionCommandActions(),
     menuContext: SessionMenuContext = SessionMenuContext(),
-    exportTranscript: (@MainActor () -> Void)? = nil
+    exportTranscript: (@MainActor () -> Void)? = nil,
+    shareOpened: (@MainActor () -> Void)? = nil
   ) {
     self.sessionActions = sessionActions
     self.slots = slots
@@ -41,6 +45,7 @@ public struct ConversationExtras {
     self.navigation = navigation
     self.menuContext = menuContext
     self.exportTranscript = exportTranscript
+    self.shareOpened = shareOpened
   }
 }
 

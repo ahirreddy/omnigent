@@ -167,6 +167,7 @@ extension ConversationActions: FocusedActions {
       loadOlder != nil, openSession != nil, openAttachment != nil, openURL != nil,
       respond != nil, validateForm != nil, dismissError != nil, retry != nil, forkFrom != nil,
       messageURL != nil, resume != nil, share != nil, openSideChat != nil, openChild != nil,
+      retryFailedTurn != nil,
     ]
   }
 
@@ -189,6 +190,7 @@ extension ConversationActions: FocusedActions {
     if messageURL != nil { copy.messageURL = { latest()?.messageURL?($0) } }
     if openSideChat != nil { copy.openSideChat = { latest()?.openSideChat?($0) } }
     if openChild != nil { copy.openChild = { latest()?.openChild?($0) } }
+    if retryFailedTurn != nil { copy.retryFailedTurn = { latest()?.retryFailedTurn?($0) } }
     return copy
   }
 }

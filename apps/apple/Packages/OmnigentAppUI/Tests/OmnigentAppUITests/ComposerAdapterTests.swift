@@ -47,6 +47,40 @@ struct ComposerAdapterTests {
         == nil)
   }
 
+  @Test("The / menu keeps each command's prefix; Codex skills read $")
+  func slashMenu() {
+    let skill = Skill(name: "review", description: "Review the diff", displayName: nil)
+    let commands = slashCommands(
+      configuration: configuration(wrapper: "codex-native-ui", mode: nil, harness: "codex-native"),
+      skills: [skill]
+    )
+    .map(ComposerAdapter.slashCommand)
+    #expect(commands.map(\.id) == ["/compact", "/effort", "/model", "/new", "/help", "$review"])
+    #expect(commands.last?.isSkill == true)
+  }
+
+  @Test("Error rows carry the core's Retry choice into the transcript")
+  func errorRecovery() {
+    func row(code: String) -> OmnigentUIComponents.Row {
+      let activity = OmnigentCoreFFI.Activity(
+        kind: .error, title: "Response error", summary: "", status: "failed",
+        details: [
+          OmnigentCoreFFI.DetailSection(id: "code", title: "Code", text: code, isCode: true)
+        ],
+        isFailure: true,
+        recovery: code == "rate_limit_exceeded" ? .continue : nil)
+      return OmnigentUIComponents.Row(
+        OmnigentCoreFFI.Row(
+          id: "e", role: .tool, text: "", isStreaming: false, activity: activity, attachments: [],
+          callId: nil, responseId: nil, interrupted: false, author: nil, agent: nil,
+          createdAt: 1_700_000_000, isEphemeral: false, isActivityOnly: false))
+    }
+    let failed = row(code: "rate_limit_exceeded")
+    #expect(failed.activity?.recovery == .continue)
+    #expect(failed.createdAt == Date(timeIntervalSince1970: 1_700_000_000))
+    #expect(row(code: "budget_exhausted").activity?.recovery == nil)
+  }
+
   @Test("Steering follows the harness")
   func steering() {
     #expect(

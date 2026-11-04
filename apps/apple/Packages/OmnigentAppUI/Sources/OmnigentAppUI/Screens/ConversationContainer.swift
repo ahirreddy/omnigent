@@ -34,6 +34,8 @@ struct ConversationContainer: View {
   var makeForkStore: (@MainActor () -> ForkStore?)?
   /// Projects and sharing, for the session menu's Move and owner-only items.
   var menuContext = SessionMenuContext()
+  /// Creates the Share sheet's store; `nil` hides Share.
+  var makeShareStore: (@MainActor () -> ShareStore?)?
 
   @State private var showsInspector = false
   @State private var mode: SessionViewMode = .chat
@@ -43,6 +45,7 @@ struct ConversationContainer: View {
   @State private var harnessSurface: TerminalSurfaceController?
   @State private var forkFlow = ForkFlow()
   @State private var export: TranscriptExport?
+  @State private var shareStore: ShareStore?
   @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
     false
 
@@ -55,8 +58,9 @@ struct ConversationContainer: View {
       actions: routed(forkable(actions)), composerActions: composerActions,
       extras: ConversationExtras(
         sessionActions: forkable(sessionActions), slots: workspaceSlots,
-        forkActions: forkActions, navigation: navigation, menuContext: menuContext,
-        exportTranscript: exportTranscript),
+        share: share, forkActions: forkActions, navigation: navigation,
+        menuContext: menuContext, exportTranscript: exportTranscript,
+        shareOpened: { [shareStore] in Task { await shareStore?.load() } }),
       liveRows: ConversationAdapter.liveRows(conversation)
     ) {
       harnessTerminal
@@ -81,6 +85,7 @@ struct ConversationContainer: View {
       message: { Text(failures.joined(separator: "\n")) }
     )
     .task {
+      if shareStore == nil { shareStore = makeShareStore?() }
       await composer.loadConfiguration()
       await composer.loadSkills()
     }
@@ -104,6 +109,13 @@ struct ConversationContainer: View {
     ComposerAdapter.state(
       conversation, isStopping: isStopping, dismissedError: dismissedSendError, server: server,
       submitWithCommandReturn: submitWithCommandReturn)
+  }
+
+  /// The Share sheet over the session's grants, once its store exists.
+  private var share: (state: ShareViewState, actions: ShareActions)? {
+    guard let shareStore else { return nil }
+    let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
+    return (ShareAdapter.state(shareStore, link: link), ShareAdapter.actions(shareStore))
   }
 
   /// Reads the whole transcript, then asks where to save it.
@@ -257,7 +269,7 @@ extension ConversationContainer {
   private var actions: ConversationActions {
     let conversation = conversation
     let opener = opener
-    return ConversationActions(
+    var actions = ConversationActions(
       openSession: openSession,
       openAttachment: { attachment in
         guard let reference = attachment.reference, let url = URL(string: reference) else {
@@ -275,7 +287,17 @@ extension ConversationContainer {
         }
       },
       dismissError: { conversation.dismissErrors() },
-      retry: retry)
+      retry: retry,
+      resume: { Task { await conversation.recoverTurn(.resume) } })
+    actions.retryFailedTurn = { row in
+      guard let recovery = row.activity?.recovery else { return }
+      guard !conversation.isRunning else {
+        failures.append("Wait for the current turn to finish before retrying.")
+        return
+      }
+      Task { await conversation.recoverTurn(recovery == .continue ? .continue : .resume) }
+    }
+    return actions
   }
 
   private func open(_ url: URL, with opener: ExternalURLOpener) {

@@ -34,7 +34,8 @@ nonisolated extension OmnigentUIComponents.Activity {
       kind: OmnigentUIComponents.ActivityKind(activity.kind), title: activity.title,
       summary: activity.summary, status: activity.status,
       details: activity.details.map(OmnigentUIComponents.DetailSection.init),
-      isFailure: activity.isFailure)
+      isFailure: activity.isFailure,
+      recovery: activity.recovery.map { $0 == .continue ? .continue : .resume })
   }
 }
 

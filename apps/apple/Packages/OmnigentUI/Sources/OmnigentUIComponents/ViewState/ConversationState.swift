@@ -272,6 +272,8 @@ public struct ConversationActions {
   public var share: (@MainActor () -> Void)?
   /// Open a side question (a `sidechat` row) in its own tab; `nil` hides Open in Tab.
   public var openSideChat: (@MainActor (Row) -> Void)?
+  /// Retry a failed turn from its error row, as ``Activity/recovery`` says; `nil` hides Retry.
+  public var retryFailedTurn: (@MainActor (Row) -> Void)?
   /// Open a sub-agent's transcript; `nil` falls back to ``openSession``. The one route for
   /// children, so a host can send them somewhere else (a tab) without touching the views.
   public var openChild: (@MainActor (String) -> Void)?

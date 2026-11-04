@@ -39,18 +39,20 @@ public struct ShareSheet: View {
           }
           .disabled(actions.setGeneralAccess == nil)
           .accessibilityIdentifier("share-general-access")
-          Toggle(
-            isOn: Binding(get: { state.workspaceFiles }, set: { actions.setWorkspaceFiles?($0) })
-          ) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-              Text("Workspace files")
-              Text("Let people with view access browse this session's files")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+          // Shown only where the server can store the choice.
+          if let setWorkspaceFiles = actions.setWorkspaceFiles {
+            Toggle(
+              isOn: Binding(get: { state.workspaceFiles }, set: { setWorkspaceFiles($0) })
+            ) {
+              VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+                Text("Workspace files")
+                Text("Let people with view access browse this session's files")
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
             }
+            .accessibilityIdentifier("share-workspace-files")
           }
-          .disabled(actions.setWorkspaceFiles == nil)
-          .accessibilityIdentifier("share-workspace-files")
         }
         Section("People") {
           if state.grants.isEmpty {
