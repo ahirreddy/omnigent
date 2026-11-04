@@ -50,6 +50,7 @@ struct ConversationContainer: View {
   @State private var shareStore: ShareStore?
   @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
     false
+  @AppStorage(ComposerPreferences.alwaysSteerKey) private var alwaysSteer = true
   @State private var fileLinks: WorkspaceFileLinks?
 
   var body: some View {
@@ -117,9 +118,11 @@ struct ConversationContainer: View {
   }
 
   private var composerState: ComposerViewState {
-    ComposerAdapter.state(
+    var state = ComposerAdapter.state(
       conversation, isStopping: isStopping, dismissedError: dismissedSendError, server: server,
       submitWithCommandReturn: submitWithCommandReturn)
+    state.prefersSteer = alwaysSteer
+    return state
   }
 
   /// The Share sheet over the session's grants, once its store exists.

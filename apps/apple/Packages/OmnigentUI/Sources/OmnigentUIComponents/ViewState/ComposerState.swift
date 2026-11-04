@@ -156,6 +156,8 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var context: ExecutionContext?
   /// A message sent mid-turn steers the running turn; otherwise it waits for the turn to end.
   public var canSteer: Bool
+  /// The "Always steer" setting: a mid-turn send steers where it can rather than queueing.
+  public var prefersSteer = true
   /// Sending will not become possible here (read-only, archived or closed); the touch composer
   /// shows the reason in place of the field.
   public var isReadOnly = false
@@ -283,4 +285,7 @@ public struct ComposerActions {
 public enum ComposerPreferences {
   /// "Submit with ⌘ + Enter": Return inserts a newline and Command-Return sends.
   public static let submitWithCommandReturnKey = "composer.submitWithCommandReturn"
+  /// "Always steer" (on by default): a message sent mid-turn goes into the running turn instead
+  /// of waiting in the queue. The web's key.
+  public static let alwaysSteerKey = "omnigent:always-steer"
 }

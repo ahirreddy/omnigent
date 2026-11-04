@@ -3,6 +3,22 @@ import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
 
+/// The worktree branch the always-use-worktree setting chose, and the folder it chose it for.
+struct WorktreeSeed: Hashable {
+  let folder: String
+  let branch: String
+}
+
+/// Settings › Git's worktree defaults for a new session.
+struct WorktreeDefaults {
+  /// "Always use a random worktree".
+  var alwaysUse: Bool
+  /// The default base branch.
+  var base: String
+  /// A new random branch name.
+  var makeBranch: () -> String = NewSessionAdapter.randomWorktreeBranch
+}
+
 /// Maps the core's creation catalog and the new-session form's choices to the composer and the
 /// start options, the way the web's new-session page lays them out.
 enum NewSessionAdapter {
@@ -108,6 +124,43 @@ enum NewSessionAdapter {
         worktree.path
       )
     }
+  }
+
+  /// The worktree a new session starts in under Settings › Git's "Always use a random worktree"
+  /// (the web's seed): once per folder, a fresh `worktree-xxxxxxxx` branch from the default base
+  /// when the folder is a git repository and nothing else is chosen. Turning the setting off
+  /// takes back a branch it chose, and lets a later turn-on choose again.
+  /// - Parameters:
+  ///   - choice: The current worktree choice.
+  ///   - folder: The chosen folder.
+  ///   - isRepository: The folder's worktrees were read and it is in a git repository.
+  ///   - defaults: Settings › Git.
+  ///   - previous: The branch this rule last chose, and for which folder.
+  /// - Returns: The choice, and what this rule has chosen.
+  static func seededWorktree(
+    _ choice: NewSessionWorktreeChoice, folder: String, isRepository: Bool,
+    defaults: WorktreeDefaults, previous: WorktreeSeed?
+  ) -> (choice: NewSessionWorktreeChoice, seed: WorktreeSeed?) {
+    guard defaults.alwaysUse else {
+      if case .new(let branch, _) = choice, branch == previous?.branch { return (.none, nil) }
+      return (choice, nil)
+    }
+    guard previous?.folder != folder, choice == .none, !folder.isEmpty, isRepository else {
+      return (choice, previous)
+    }
+    let branch = defaults.makeBranch()
+    let base = defaults.base.trimmingCharacters(in: .whitespaces)
+    return (.new(branch: branch, base: base), WorktreeSeed(folder: folder, branch: branch))
+  }
+
+  /// Whether `worktrees`, once read, belong to a git repository (they include its main one).
+  static func isRepository(_ worktrees: CreationLoad<[HostWorktree]>) -> Bool {
+    worktrees.value?.contains(where: \.isMain) == true
+  }
+
+  /// A throwaway branch name, as the web generates one: `worktree-` and eight hex digits.
+  nonisolated static func randomWorktreeBranch() -> String {
+    "worktree-" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8).lowercased()
   }
 
   /// Existing worktrees to offer: the repository's linked worktrees, main excluded.

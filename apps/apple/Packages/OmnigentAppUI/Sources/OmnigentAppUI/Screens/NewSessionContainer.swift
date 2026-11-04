@@ -24,6 +24,8 @@ struct NewSessionContainer: View {
   @State private var isCreatingAgent = false
   @State private var isImportingBundle = false
   @State private var isConnectingHost = false
+  /// Observed so turning Settings › Git's random worktree on or off reseeds the form.
+  @AppStorage(GitPreferences.alwaysUseWorktreeKey) private var alwaysUseWorktree = false
   @Environment(\.useThisMachine) private var useThisMachine
   @Environment(\.openURL) private var openURL
 
@@ -64,6 +66,8 @@ struct NewSessionContainer: View {
         open(sessionID)
       }
     }
+    .onChange(of: creation.worktrees, initial: true) { form.seedWorktree(creation) }
+    .onChange(of: alwaysUseWorktree) { form.seedWorktree(creation) }
     .sheet(
       item: $setupTarget, onDismiss: { Task { await form.reloadCatalog(creation) } },
       content: { target in harnessSetupSheet(target) }
