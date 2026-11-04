@@ -1,11 +1,12 @@
 //! Session list search, filters and ordering.
 //!
-//! Port of `NativeLab`'s `SessionQuery.swift`. Pinned sessions come first, then the most recently
-//! updated; equal timestamps order by id so the list never reshuffles. A session that needs a
+//! Port of `NativeLab`'s `SessionQuery.swift`. Pinned sessions come first, in pin order (the web's
+//! `orderByPinnedTimestamp`), then the most recently updated; equal timestamps order by id so the list never reshuffles. A session that needs a
 //! response stays in the attention filter even when archived.
 
 use std::cmp::Ordering;
 
+use crate::client::pin_order;
 use crate::client::sessions::SessionSummary;
 use crate::session_attention::{AttentionState, SessionAttention};
 
@@ -83,12 +84,20 @@ fn order(left: &SessionSummary, right: &SessionSummary) -> Ordering {
     right
         .is_pinned
         .cmp(&left.is_pinned)
+        .then_with(|| {
+            if left.is_pinned && right.is_pinned {
+                pin_order::compare(left, right)
+            } else {
+                Ordering::Equal
+            }
+        })
         .then_with(|| right.updated_at.cmp(&left.updated_at))
         .then_with(|| left.id.cmp(&right.id))
 }
 
 /// The sessions matching `text` (title, preview, workspace or agent; case- and
-/// diacritic-insensitive; trimmed) and `filter`, pinned first, then most recent, then by id.
+/// diacritic-insensitive; trimmed) and `filter`, pinned first in pin order, then most recent, then
+/// by id.
 #[must_use]
 pub fn matching(
     sessions: &[SessionSummary],

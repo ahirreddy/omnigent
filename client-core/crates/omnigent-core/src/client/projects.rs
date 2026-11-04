@@ -252,6 +252,55 @@ impl<T: HttpTransport> ClientCore<T> {
         Ok(())
     }
 
+    /// Saves `projects` as the caller's manual order (`PUT /v1/projects/order`), as the web's
+    /// `useSaveProjectOrder`: label-only projects are promoted first so every entry has an id.
+    /// Returns the projects with their ids.
+    ///
+    /// # Errors
+    ///
+    /// The promotion's errors (see [`Self::rename_project`]); the write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn save_project_order(
+        &self,
+        projects: &[ProjectSummary],
+    ) -> Result<Vec<ProjectSummary>, SessionError> {
+        let result = self.save_project_order_rows(projects).await;
+        self.dispatch();
+        result
+    }
+
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn save_project_order_rows(
+        &self,
+        projects: &[ProjectSummary],
+    ) -> Result<Vec<ProjectSummary>, SessionError> {
+        let mut ordered = Vec::with_capacity(projects.len());
+        for project in projects {
+            if project.id.is_some() {
+                ordered.push(project.clone());
+            } else {
+                ordered.push(self.rename_project_rows(project, &project.name).await?);
+            }
+        }
+        let ids: Vec<&str> = ordered
+            .iter()
+            .filter_map(|project| project.id.as_deref())
+            .collect();
+        self.write_json(
+            "PUT",
+            "/v1/projects/order",
+            &json!({"ordered_project_ids": ids}),
+        )
+        .await?;
+        Ok(ordered)
+    }
+
     /// Every session filed under `name` (dual-read `?project=`), archived included.
     #[allow(
         clippy::future_not_send,

@@ -47,6 +47,7 @@ pub mod http;
 pub mod remote_browser;
 pub mod sessions;
 pub mod share;
+pub mod sidebar;
 pub mod slash;
 pub mod sync;
 pub mod terminal;

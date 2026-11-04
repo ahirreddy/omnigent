@@ -26,6 +26,7 @@ pub mod reducer;
 pub mod remote_browser;
 pub mod server_url;
 pub mod session_attention;
+pub mod session_environment;
 pub mod session_query;
 pub mod slash;
 pub mod sse;
@@ -38,7 +39,7 @@ pub mod workspace_store;
 pub use client::{
     ClientCore, ClientEvent, ClientListener, CoreConfig, SLICE_KEY_HEADER, SLICE_KEY_QUERY,
     SessionError, SubscriptionId, browser, configure, create, databricks_session, events, fork,
-    items, projects, session_search, sessions, share,
+    items, pin_order, projects, session_search, sessions, share,
 };
 pub use discovery::{ServerDiscovery, discovery_from_response, manifest_request};
 pub use error::CoreError;

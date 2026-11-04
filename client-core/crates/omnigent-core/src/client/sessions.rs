@@ -13,6 +13,7 @@ use omnigent_protocol::sessions::{SessionList, SessionListItem, SessionSnapshot,
 use omnigent_protocol::{DecodeError, Field, FromWire, ServerStreamEvent};
 use serde_json::{Value, json};
 
+use super::pin_order::PinStamp;
 use super::requests::{page_query, validate_identifier};
 use super::{ClientCore, ClientEvent, SessionError, State, lock};
 use crate::config::session::{ModelChoice, SessionConfiguration};
@@ -58,6 +59,9 @@ pub struct SessionSummary {
     pub agent_name: String,
     /// Pinned (`omnigent.pinned` label set).
     pub is_pinned: bool,
+    /// The `omnigent.pinned` label: the Pinned section's sort key (epoch milliseconds, or a
+    /// value between two neighbours after a drag), `None` when unpinned.
+    pub pin_stamp: Option<String>,
     /// Archived.
     pub is_archived: bool,
     /// Its harness TUI is the primary view (`omnigent.ui = terminal`): a Chat/Terminal switcher.
@@ -112,6 +116,7 @@ impl SessionSummary {
             workspace: "Omni mobile".to_owned(),
             agent_name: "Omni".to_owned(),
             is_pinned: false,
+            pin_stamp: None,
             is_archived: false,
             terminal_first: false,
             permission_level: None,
@@ -195,6 +200,9 @@ const STOPPABLE_WRAPPERS: [&str; 2] = ["claude-code-native-ui", "devin-native-ui
 /// The legacy label a session's project name is stored under.
 pub const PROJECT_LABEL: &str = "omni_project";
 
+/// The label a pin is stored under; its value is the Pinned section's sort key.
+pub const PINNED_LABEL: &str = "omnigent.pinned";
+
 /// A change to a session's organisation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionChange {
@@ -207,6 +215,9 @@ pub enum SessionChange {
         /// The host's wall-clock time, used as the pin's ordering stamp.
         at_ms: u64,
     },
+    /// Re-pin at an explicit sort key (a drag in the Pinned section); see
+    /// [`crate::client::pin_order`].
+    PinnedAt(PinStamp),
     /// Archive or restore.
     Archived(bool),
     /// File into a first-class project, or `None` to remove it from its project. The legacy
@@ -459,8 +470,12 @@ impl SessionProjection {
                 .cloned()
                 .unwrap_or_else(|| "Omnigent".to_owned()),
             is_pinned: labels
-                .and_then(|labels| labels.get("omnigent.pinned"))
+                .and_then(|labels| labels.get(PINNED_LABEL))
                 .is_some_and(|stamp| !stamp.is_empty()),
+            pin_stamp: labels
+                .and_then(|labels| labels.get(PINNED_LABEL))
+                .filter(|stamp| !stamp.is_empty())
+                .cloned(),
             is_archived: self.archived.value().copied().unwrap_or(false),
             terminal_first: match &self.labels {
                 Field::Absent => previous.is_some_and(|previous| previous.terminal_first),
@@ -941,7 +956,7 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    async fn edit(
+    pub(super) async fn edit(
         &self,
         session_id: &str,
         change: SessionChange,
@@ -969,7 +984,13 @@ impl<T: HttpTransport> ClientCore<T> {
                 } else {
                     String::new()
                 };
-                json!({"labels": {"omnigent.pinned": stamp}})
+                json!({"labels": {PINNED_LABEL: stamp}})
+            }
+            SessionChange::PinnedAt(stamp) => {
+                if !summary.can_pin() {
+                    return Err(SessionError::ReadOnly);
+                }
+                json!({"labels": {PINNED_LABEL: stamp.label()}})
             }
             SessionChange::Archived(archived) => {
                 if !summary.can_archive() {
