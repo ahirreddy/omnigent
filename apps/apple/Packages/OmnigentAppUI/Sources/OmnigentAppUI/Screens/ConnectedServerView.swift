@@ -178,7 +178,8 @@ public struct ConnectedServerView: View {
           makeForkStore: { connection.makeForkStore() },
           menuContext: ConversationContainer.menuContext(
             connection.sessionList, session: connection.sessionList.session(id)),
-          makeShareStore: { connection.share(sessionID: id) }
+          makeShareStore: { connection.share(sessionID: id) },
+          offersShare: connection.pages?.offered?.sharing == true
         )
         .id(id)
       } else {

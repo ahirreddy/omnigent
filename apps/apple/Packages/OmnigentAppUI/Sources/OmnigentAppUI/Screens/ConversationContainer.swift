@@ -38,6 +38,8 @@ struct ConversationContainer: View {
   var menuContext = SessionMenuContext()
   /// Creates the Share sheet's store; `nil` hides Share.
   var makeShareStore: (@MainActor () -> ShareStore?)?
+  /// The server shares sessions (multi-user, sharing not off); `false` hides Share.
+  var offersShare = true
 
   @State private var showsInspector = false
   @State private var mode: SessionViewMode = .chat
@@ -127,7 +129,7 @@ struct ConversationContainer: View {
 
   /// The Share sheet over the session's grants, once its store exists.
   private var share: (state: ShareViewState, actions: ShareActions)? {
-    guard let shareStore else { return nil }
+    guard offersShare, let shareStore else { return nil }
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
     return (ShareAdapter.state(shareStore, link: link), ShareAdapter.actions(shareStore))
   }
