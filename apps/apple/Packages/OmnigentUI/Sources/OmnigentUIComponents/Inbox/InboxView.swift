@@ -4,7 +4,7 @@ public import SwiftUI
 public struct InboxView: View {
   private let state: InboxViewState
   private let actions: InboxActions
-  @State private var filter: InboxFilter = .awaiting
+  @AppStorage("omnigent.inbox.filter") private var filter: InboxFilter = .all
   @State private var search = ""
   @State private var selection: String?
   @State private var expanded: Set<String> = []
@@ -20,7 +20,7 @@ public struct InboxView: View {
   }
 
   private var filtered: [InboxItem] {
-    InboxTriage.items(state.items, filter: filter, search: search)
+    InboxTriage.items(state.items, filter: filter, search: search, now: state.now ?? .now)
   }
 
   /// The triage list and its keyboard hints.
@@ -29,7 +29,7 @@ public struct InboxView: View {
       header
       ScrollViewReader { proxy in
         List {
-          ForEach(InboxTriage.groups(filtered), id: \.title) { group in
+          ForEach(InboxTriage.groups(filtered, now: state.now ?? .now), id: \.title) { group in
             Section(group.title) {
               ForEach(group.items) { item in row(item).id(item.id) }
             }
@@ -75,7 +75,7 @@ public struct InboxView: View {
           if filtered.isEmpty {
             ContentUnavailableView(
               search.isEmpty ? emptyTitle : "No matching items", systemImage: "tray",
-              description: Text("Unread updates and pending requests are tracked separately."))
+              description: Text(emptyDescription))
           }
         }
       }
@@ -121,15 +121,38 @@ public struct InboxView: View {
         .focused($focus, equals: .search)
         .onSubmit { focus = .list }
         .accessibilityIdentifier("inbox-search")
+      if state.failedSessionCount > 0 {
+        HStack {
+          Label(
+            "Couldn\u{2019}t load inbox items from \(state.failedSessionCount) "
+              + (state.failedSessionCount == 1 ? "session." : "sessions."),
+            systemImage: "exclamationmark.triangle"
+          )
+          .foregroundStyle(.red)
+          Spacer()
+          if let retry = actions.retry { Button("Retry", action: retry) }
+        }
+        .font(.callout)
+        .accessibilityIdentifier("inbox-load-error")
+      }
     }
     .padding(Theme.Spacing.medium)
   }
 
   private var emptyTitle: String {
     switch filter {
-    case .all: "You’re all caught up"
-    case .unread: "Nothing unread"
-    case .awaiting: "Nothing waiting on you"
+    case .all: "Nothing waiting on you"
+    case .unread: "You’re all caught up"
+    case .awaiting: "No approvals waiting"
+    }
+  }
+
+  private var emptyDescription: String {
+    switch filter {
+    case .all:
+      "When an agent replies or needs your input, or someone comments on a file, it will show up here."
+    case .unread: "New agent replies and unseen file comments will show up here."
+    case .awaiting: "When an agent needs your input, it will show up here."
     }
   }
 
