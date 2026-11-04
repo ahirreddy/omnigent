@@ -35,6 +35,7 @@ pub mod events;
 mod export;
 pub mod fork;
 mod hydration;
+pub mod inbox;
 pub mod items;
 pub(crate) mod json;
 pub mod projects;

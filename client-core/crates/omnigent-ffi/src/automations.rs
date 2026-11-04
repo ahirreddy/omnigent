@@ -158,7 +158,7 @@ pub struct ScheduleModel {
     /// A custom schedule's interval.
     pub interval: u16,
     /// Monthly and yearly days of the month.
-    pub month_days: Vec<u8>,
+    pub month_days: Vec<u16>,
     /// The yearly month, 1-12.
     pub month: u8,
 }
@@ -210,7 +210,11 @@ impl From<ScheduleModel> for rules::ScheduleModel {
             weekdays: model.weekdays.into_iter().map(Into::into).collect(),
             frequency: model.frequency.into(),
             interval: model.interval,
-            month_days: model.month_days,
+            month_days: model
+                .month_days
+                .into_iter()
+                .filter_map(|day| u8::try_from(day).ok())
+                .collect(),
             month: model.month,
         }
     }
@@ -225,7 +229,7 @@ impl From<rules::ScheduleModel> for ScheduleModel {
             weekdays: model.weekdays.into_iter().map(Into::into).collect(),
             frequency: model.frequency.into(),
             interval: model.interval,
-            month_days: model.month_days,
+            month_days: model.month_days.into_iter().map(u16::from).collect(),
             month: model.month,
         }
     }

@@ -256,8 +256,40 @@ pub fn format_cost_usd(cost_usd: f64) -> String {
     usage_core::format_cost_usd(cost_usd)
 }
 
+/// A session's latest agent output, for the Inbox's unread rows.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct LatestOutput {
+    /// The item it came from.
+    pub item_id: String,
+    /// The first lines, cut to the budget.
+    pub preview: String,
+    /// The whole text when the preview cut some of it.
+    pub full_text: Option<String>,
+}
+
 #[uniffi::export]
 impl ClientCore {
+    /// `session_id`'s latest agent reply or error, from its newest items.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the history read's errors.
+    pub async fn latest_output(
+        &self,
+        session_id: String,
+    ) -> Result<Option<LatestOutput>, CoreError> {
+        let output = self
+            .sessions()
+            .latest_output(&session_id)
+            .await
+            .map_err(CoreError::from)?;
+        Ok(output.map(|output| LatestOutput {
+            item_id: output.item_id,
+            preview: output.preview,
+            full_text: output.full_text,
+        }))
+    }
+
     /// Every comment on `session_id`'s files.
     ///
     /// # Errors
