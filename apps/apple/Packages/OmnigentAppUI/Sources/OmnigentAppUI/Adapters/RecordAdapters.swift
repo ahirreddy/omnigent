@@ -1,3 +1,4 @@
+import Foundation
 import OmnigentCoreFFI
 import OmnigentUIComponents
 
@@ -12,7 +13,8 @@ nonisolated extension OmnigentUIComponents.Row {
       isStreaming: row.isStreaming, activity: row.activity.map(OmnigentUIComponents.Activity.init),
       attachments: row.attachments.map(OmnigentUIComponents.Attachment.init), callId: row.callId,
       responseId: row.responseId, interrupted: row.interrupted, author: row.author,
-      agent: row.agent, isEphemeral: row.isEphemeral, isActivityOnly: row.isActivityOnly)
+      agent: row.agent, isEphemeral: row.isEphemeral, isActivityOnly: row.isActivityOnly,
+      createdAt: row.createdAt.map { Date(timeIntervalSince1970: TimeInterval($0)) })
   }
 }
 

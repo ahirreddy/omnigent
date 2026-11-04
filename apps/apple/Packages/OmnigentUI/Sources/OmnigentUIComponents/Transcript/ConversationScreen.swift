@@ -9,40 +9,6 @@ nonisolated public enum SessionViewMode: String, Hashable, Sendable, CaseIterabl
   case terminal
 }
 
-/// Optional pieces of the conversation screen the host supplies.
-public struct ConversationExtras {
-  /// Title-menu actions (Pin, Share, Fork, Rename, Mark as unread, Move, Archive, Delete).
-  public var sessionActions: SessionListActions
-  /// Files and Changes content for the right panel.
-  public var slots: WorkspaceSlots
-  /// The Share sheet's state and actions; `nil` hides Share.
-  public var share: (state: ShareViewState, actions: ShareActions)?
-  /// The Fork dialog's actions; the dialog shows while `fork` is non-`nil`.
-  public var forkActions: ForkActions?
-  /// Previous and next session commands from the host's list.
-  public var navigation: SessionCommandActions
-
-  /// Creates extras.
-  /// - Parameters:
-  ///   - sessionActions: Title-menu actions.
-  ///   - slots: Right-panel content.
-  ///   - share: Share sheet.
-  ///   - forkActions: Fork dialog actions.
-  ///   - navigation: Session navigation commands.
-  public init(
-    sessionActions: SessionListActions = SessionListActions(),
-    slots: WorkspaceSlots = WorkspaceSlots(),
-    share: (state: ShareViewState, actions: ShareActions)? = nil, forkActions: ForkActions? = nil,
-    navigation: SessionCommandActions = SessionCommandActions()
-  ) {
-    self.sessionActions = sessionActions
-    self.slots = slots
-    self.share = share
-    self.forkActions = forkActions
-    self.navigation = navigation
-  }
-}
-
 /// A whole conversation, laid out like the web's session page: the toolbar header (title menu,
 /// viewers, Info, Chat/Terminal, Share, right-panel toggle), the transcript or the harness's
 /// terminal on the theme canvas, pending decisions docked above the composer, and the right
@@ -66,6 +32,10 @@ public struct ConversationScreen<Terminal: View>: View {
   private let externalInspectorTab: Binding<InspectorTab>?
   @State private var showsShare = false
   @State private var showsInfo = false
+  @State private var renaming: SessionSummary?
+  @State private var renameText = ""
+  @State private var confirmingDelete: SessionSummary?
+  @State private var confirmingLeave: SessionSummary?
   @State private var drafts = DecisionDrafts()
   @State private var approveCandidate: DecisionShortcutTarget?
   @State private var decisionSurfaces = DecisionSurfaces()
@@ -133,8 +103,7 @@ public struct ConversationScreen<Terminal: View>: View {
         .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
       }
     }
-    // A bar, so the transcript blurs and fades under the dock and composer (the scroll edge
-    // effect) and its bottom clearance follows them, the keyboard included.
+    // A bar: the transcript fades under the dock and composer, its inset following them.
     .safeAreaBar(edge: .bottom, spacing: 0) {
       VStack(spacing: 0) {
         DecisionDock(state: state, actions: actions)
@@ -145,8 +114,7 @@ public struct ConversationScreen<Terminal: View>: View {
           Spacer().frame(height: 10)
         }
       }
-      // Report no minimum width: wrapping banners would otherwise push their single-line
-      // ideal width into the split view's minimum and the detail would fail to lay out.
+      // No minimum width: wrapping banners would push their ideal width into the split view's.
       .frame(minWidth: 0, maxWidth: .infinity)
       .decisionBottomBar(decisionSurfaces)
       // Clicks and taps in the bar's gaps stop here instead of reaching the rows beneath.
@@ -166,6 +134,12 @@ public struct ConversationScreen<Terminal: View>: View {
     // The one status line ("Waiting for you · 2 requests"); the project shows in the sidebar.
     .navigationSubtitle(SessionStatusLine(state).text)
     .toolbarTitleMenu { titleMenu }
+    .preference(
+      key: TitlebarTrailingItems.self,
+      value: TitlebarTrailingItems.count(
+        state, hasShare: extras.share != nil, tabsInTitlebar: tabsInTitlebar,
+        isRegular: layoutWidth == .regular)
+    )
     .toolbar { toolbarContent }
     .sheet(isPresented: $showsShare) {
       if let share = extras.share {
@@ -177,6 +151,11 @@ public struct ConversationScreen<Terminal: View>: View {
         ForkSheet(state: fork, actions: forkActions)
       }
     }
+    .modifier(
+      SessionMenuDialogs(
+        renaming: $renaming, renameText: $renameText, confirmingDelete: $confirmingDelete,
+        confirmingLeave: $confirmingLeave, actions: extras.sessionActions)
+    )
     // In a split window only the focused pane's conversation drives the menus.
     .focusedSceneValue(\.sessionCommands, commandRelay.publish(isActivePane ? commands : nil))
   }
@@ -238,36 +217,37 @@ public struct ConversationScreen<Terminal: View>: View {
 
   @ViewBuilder private var titleMenu: some View {
     if let summary = state.summary {
-      let session = extras.sessionActions
-      if let setPinned = session.setPinned, summary.canPin {
-        Button(
-          summary.isPinned ? "Unpin" : "Pin", systemImage: summary.isPinned ? "pin.slash" : "pin"
-        ) {
-          setPinned(summary, !summary.isPinned)
-        }
-      }
-      if extras.share != nil {
-        Button("Share", systemImage: "person.badge.plus") { showsShare = true }
-          .disabled(state.shareUnavailableReason != nil)
-          .accessibilityIdentifier(tabsInTitlebar ? "header-share" : "title-menu-share")
-      }
-      if let forkSession = session.fork {
-        Button("Fork", systemImage: "arrow.triangle.branch") { forkSession(summary) }
-      }
-      if let setUnread = session.setUnread {
-        Button("Mark as unread", systemImage: "envelope.badge") { setUnread(summary, true) }
-      }
-      if let setArchived = session.setArchived, summary.canArchive {
-        Button(summary.isArchived ? "Unarchive" : "Archive", systemImage: "archivebox") {
-          setArchived(summary, !summary.isArchived)
-        }
-      }
-      if let delete = session.delete {
-        Button("Delete", systemImage: "trash", role: .destructive) { delete(summary) }
-      }
+      sessionMenu(summary).items
+    } else {
+      Button("Copy Session ID", systemImage: "number") { Pasteboard.copy(state.header.id) }
+    }
+    if let exportTranscript = extras.exportTranscript {
+      Button("Export\u{2026}", systemImage: "square.and.arrow.down", action: exportTranscript)
+        .accessibilityIdentifier("header-export-conversation")
     }
     transcriptTitleMenuItems(transcriptTitleMenu)
-    Button("Copy Session ID", systemImage: "number") { Pasteboard.copy(state.header.id) }
+  }
+
+  /// The sidebar row's menu for this session (as the web's header menu mirrors its row), with
+  /// Share opening this screen's sheet.
+  private func sessionMenu(_ summary: SessionSummary) -> SessionRowMenu {
+    var actions = extras.sessionActions
+    actions.share = nil
+    if extras.share != nil, state.shareUnavailableReason == nil {
+      let present: @MainActor (SessionSummary) -> Void = { _ in showsShare = true }
+      actions.share = present
+    }
+    let context = extras.menuContext
+    return SessionRowMenu(
+      session: summary, isUnread: false, isShared: context.isShared, pinLimitReached: false,
+      projects: context.projects, actions: actions,
+      rename: {
+        renameText = summary.title
+        renaming = summary
+      },
+      confirmDelete: { confirmingDelete = summary },
+      confirmLeave: { confirmingLeave = summary },
+      project: context.projects.first { $0.id == context.projectID })
   }
 
   private var canSendDraft: Bool {
@@ -333,65 +313,5 @@ extension ConversationScreen where Terminal == EmptyView {
     ) {
       EmptyView()
     }
-  }
-}
-
-/// The session's actions (Pin, Share, Fork, Archive, Copy Session ID) in the toolbar, where the
-/// tabs replace the title and its menu. On the Mac a menu; on iPad a dialog, because a `Menu` in
-/// the navigation bar beside the tab strip keeps the bar relaying out (a busy loop on open).
-struct SessionActionsButton<Actions: View>: View {
-  @ViewBuilder let actions: () -> Actions
-  @State private var isPresented = false
-
-  var body: some View {
-    #if os(macOS)
-      Menu("Session", systemImage: "ellipsis.circle", content: actions)
-        .menuIndicator(.hidden)
-        .help("Session actions")
-        .accessibilityIdentifier("header-session-menu")
-    #else
-      Button("Session", systemImage: "ellipsis.circle") { isPresented = true }
-        .confirmationDialog("Session", isPresented: $isPresented, actions: actions)
-        .accessibilityIdentifier("header-session-menu")
-    #endif
-  }
-}
-
-/// The Chat and Terminal segmented switch.
-struct ViewModePicker: View {
-  @Binding var mode: SessionViewMode
-  let status: TerminalStatus
-
-  var body: some View {
-    Picker("View", selection: $mode) {
-      Label("Chat", systemImage: "bubble.left.and.text.bubble.right").tag(SessionViewMode.chat)
-      Label("Terminal", systemImage: "apple.terminal").tag(SessionViewMode.terminal)
-    }
-    .pickerStyle(.segmented)
-    .labelStyle(.iconOnly)
-    .fixedSize()
-    .help("Chat or Terminal (Option-Command-\\)")
-    .accessibilityIdentifier("session-view-mode")
-  }
-}
-
-private struct HeaderShareLabelStyle: LabelStyle {
-  let isCompact: Bool
-
-  func makeBody(configuration: Configuration) -> some View {
-    HStack(spacing: Theme.Spacing.extraSmall) {
-      configuration.icon
-      if !isCompact { configuration.title }
-    }
-  }
-}
-
-/// An invisible backing for the bottom bar that takes the hits its gaps would pass to the
-/// transcript beneath; the bar's own controls sit above it and keep theirs.
-private struct BarHitShield: View {
-  var body: some View {
-    Color.clear
-      .contentShape(Rectangle())
-      .accessibilityHidden(true)
   }
 }

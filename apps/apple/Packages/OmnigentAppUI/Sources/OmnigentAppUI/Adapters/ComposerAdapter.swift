@@ -13,10 +13,11 @@ enum ComposerAdapter {
   ///   - isStopping: An interrupt is in flight.
   ///   - dismissedError: A send failure the user dismissed; it stays hidden until a new one.
   ///   - server: The connected server, for the execution context.
+  ///   - submitWithCommandReturn: Return inserts a newline and Command-Return sends.
   /// - Returns: The state.
   static func state(
     _ store: ConversationStore, isStopping: Bool, dismissedError: CoreError?,
-    server: OmnigentCoreFFI.ConnectedServer? = nil
+    server: OmnigentCoreFFI.ConnectedServer? = nil, submitWithCommandReturn: Bool = false
   ) -> ComposerViewState {
     let composer = store.composer
     let settings = store.header?.settings
@@ -27,10 +28,42 @@ enum ComposerAdapter {
       configuration: composer.configuration == nil
         ? settings.map(configuration) : configuration(composer),
       approvalModes: composer.approvalModeMenu.map(approvalModes),
+      slashCommands: composer.slashCommands.map(slashCommand),
       queue: composer.queue.items.map(queued),
+      submitWithCommandReturn: submitWithCommandReturn,
       context: context(store, server: server), canSteer: composer.supportsSteering)
     state.isReadOnly = isReadOnly(store)
+    state.commandNotice = composer.commandNotice
+    state.slashCommandsNote = composer.skillsProblem
+    state.connection = connection(store)
     return state
+  }
+
+  static func slashCommand(_ command: OmnigentCoreFFI.SlashCommand)
+    -> OmnigentUIComponents.SlashCommand
+  {
+    OmnigentUIComponents.SlashCommand(
+      name: command.name, prefix: command.prefix, description: command.description,
+      isSkill: command.isSkill)
+  }
+
+  /// The stream's state under the composer while it is not live. A closed or superseded
+  /// session has its own banner, so it shows nothing here.
+  static func connection(_ store: ConversationStore) -> ComposerConnectionNotice? {
+    guard !store.isClosed, store.supersededBy == nil,
+      let message = ConversationAdapter.connectionStatus(store)
+    else { return nil }
+    switch store.link {
+    case .closed, .stopped, .failed:
+      return ComposerConnectionNotice(message: message, isFailure: true)
+    default: return ComposerConnectionNotice(message: message)
+    }
+  }
+
+  /// The newest user message's text, for Up-arrow recall into an empty composer. Called on the
+  /// key press, never while rendering, so the composer does not observe the rows.
+  static func lastPrompt(_ store: ConversationStore) -> String? {
+    store.rows.last { $0.role == .user && !$0.text.isEmpty }?.text
   }
 
   /// Whether the session can never take a message from this viewer (read-only, archived or
@@ -99,7 +132,8 @@ enum ComposerAdapter {
   /// The composer's queue and approval-mode actions over the store. A queue change while no
   /// turn runs drains it at once.
   static func extras(
-    _ composer: ComposerStore, isRunning: @escaping @MainActor () -> Bool
+    _ composer: ComposerStore, isRunning: @escaping @MainActor () -> Bool,
+    recallPrevious: (@MainActor () -> String?)? = nil, reconnect: (@MainActor () -> Void)? = nil
   ) -> ComposerExtraActions {
     let drain: @MainActor () -> Void = {
       Task { await composer.drainQueue(isRunning: isRunning()) }
@@ -123,10 +157,13 @@ enum ComposerAdapter {
       moveQueued: { offsets, destination in
         composer.moveQueued(fromOffsets: offsets, toOffset: destination)
       },
+      recallPrevious: recallPrevious,
       queueDraft: {
         composer.queueDraft()
         drain()
-      })
+      },
+      reconnect: reconnect,
+      dismissCommandNotice: { composer.dismissCommandNotice() })
   }
 
   static func availability(_ store: ConversationStore) -> ComposerAvailability {

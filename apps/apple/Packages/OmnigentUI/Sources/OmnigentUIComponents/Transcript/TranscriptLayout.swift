@@ -37,11 +37,14 @@ nonisolated enum TranscriptItem: Hashable, Sendable, Identifiable {
     }
   }
 
-  var rowIDs: [String] {
+  var rowIDs: [String] { rows.map(\.id) }
+
+  /// The rows the item shows, in order.
+  var rows: [Row] {
     switch self {
-    case .message(let row), .activity(let row): [row.id]
+    case .message(let row), .activity(let row): [row]
     case .tools(_, let entries):
-      entries.flatMap { [$0.call?.id, $0.result?.id].compactMap(\.self) }
+      entries.flatMap { [$0.call, $0.result].compactMap(\.self) }
     }
   }
 }

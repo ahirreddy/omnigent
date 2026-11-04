@@ -106,7 +106,7 @@ final class TranscriptLayoutMemo {
     for item in items {
       guard case .message(let row) = item else { continue }
       result[row.id] = MessageDecoration(
-        timestamp: state.timestamps[row.id], showsActions: row.id == lastAnswerID,
+        timestamp: state.timestamps[row.id] ?? row.createdAt, showsActions: row.id == lastAnswerID,
         showsAvatar: isOtherAuthor(row, state: state))
     }
     return result
@@ -121,7 +121,7 @@ final class TranscriptLayoutMemo {
     for item in segment.items {
       guard case .message(let row) = item else { continue }
       result[row.id] = MessageDecoration(
-        timestamp: state.timestamps[row.id], showsActions: false,
+        timestamp: state.timestamps[row.id] ?? row.createdAt, showsActions: false,
         showsAvatar: isOtherAuthor(row, state: state))
     }
     return result

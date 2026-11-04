@@ -144,7 +144,9 @@ public struct ConnectedServerView: View {
           tabRoutes: windowTabs.routes(for: id),
           terminalNames: session.declaredTerminalNames(in: id),
           sessionActions: sidebarActions.sessions,
-          makeForkStore: { connection.makeForkStore() }
+          makeForkStore: { connection.makeForkStore() },
+          menuContext: ConversationContainer.menuContext(
+            connection.sessionList, session: connection.sessionList.session(id))
         )
         .id(id)
       } else {

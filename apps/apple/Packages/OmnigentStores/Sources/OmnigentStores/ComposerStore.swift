@@ -26,11 +26,27 @@ public final class ComposerStore {
   /// The last failure.
   public internal(set) var lastError: CoreError?
   /// The session's harness, model and effort, once ``loadConfiguration()`` read them.
-  public internal(set) var configuration: SessionConfiguration?
+  public internal(set) var configuration: SessionConfiguration? {
+    didSet { if configuration != oldValue { refreshRules() } }
+  }
   /// Their display labels.
   public internal(set) var configurationLabels: ConfigurationLabels?
   /// What the session may switch to, and the host's model preview.
-  public internal(set) var configurationCatalog: ConfigurationCatalog?
+  public internal(set) var configurationCatalog: ConfigurationCatalog? {
+    didSet { if configurationCatalog != oldValue { refreshRules() } }
+  }
+  /// The skills the session's host offers, once ``loadSkills()`` read them.
+  public internal(set) var skills: [Skill] = [] {
+    didSet { if skills != oldValue { refreshRules() } }
+  }
+  /// Why the skill list is missing or incomplete (a failed read, or sources the host could not
+  /// read); `nil` when complete.
+  public internal(set) var skillsProblem: String?
+  /// The output of the last local command (`/help`, a usage line), until dismissed.
+  public internal(set) var commandNotice: String?
+  /// The core's verdicts on the configuration, computed when it changes rather than on every
+  /// read, so views that redraw while a reply streams make no core calls.
+  var rules = ConfigurationRules()
   /// A configuration change is in flight.
   public internal(set) var isApplyingConfiguration = false
   /// The last configuration failure.
@@ -56,21 +72,86 @@ public final class ComposerStore {
         || !attachments.items.isEmpty)
   }
 
-  /// Sends the draft and the uploaded attachments.
-  public func send() async {
+  /// Sends the draft and the uploaded attachments. A slash command does what the core says:
+  /// a skill runs on the server, `/compact` uses the compact control, `/model` and `/effort`
+  /// change the configuration, `/help` shows text, and `/new` is left to the caller.
+  /// - Returns: What the caller still has to do.
+  @discardableResult
+  public func send() async -> ComposerSendOutcome {
+    switch slashAction() {
+    case nil, .sendText:
+      await deliver { core, session, text in
+        try await core.sendMessage(sessionId: session, text: text)
+      }
+    case .runSkill(let name, let arguments):
+      await deliver { core, session, text in
+        try await core.runSkill(sessionId: session, text: text, name: name, arguments: arguments)
+      }
+    case .compact:
+      await deliver { core, session, text in
+        try await core.compact(sessionId: session, text: text)
+      }
+    case .setModel(let model):
+      text = ""
+      await selectModel(model)
+    case .setEffort(let effort):
+      text = ""
+      await selectEffort(effort)
+    case .newSession:
+      text = ""
+      return .newSession
+    case .show(let output):
+      commandNotice = output
+    }
+    return .handled
+  }
+
+  /// Hides ``commandNotice``.
+  public func dismissCommandNotice() {
+    commandNotice = nil
+  }
+
+  /// What sending the draft would do, when it is a command this session knows.
+  func slashAction() -> SlashAction? {
+    let trimmed = text.drop { $0.isWhitespace }
+    guard trimmed.hasPrefix("/") || trimmed.hasPrefix("$"), let configuration else { return nil }
+    return OmnigentCoreFFI.slashAction(
+      text: text, hasAttachments: !attachments.items.isEmpty, configuration: configuration,
+      skills: skills)
+  }
+
+  private func deliver(
+    _ post: (ClientCore, String, String) async throws -> MessageSent
+  ) async {
     isSending = true
     lastError = nil
+    commandNotice = nil
     defer {
       isSending = false
       refreshBlocked()
     }
     do {
-      let sent = try await core.sendMessage(sessionId: sessionID, text: text)
+      let sent = try await post(core, sessionID, text)
       setText(fromCore: sent.draft)
       refreshAttachments()
     } catch {
       lastError = coreError(error)
       refreshAttachments()
+    }
+  }
+
+  /// Reads the skills the session's host offers, for the `/` menu. A failure leaves the
+  /// built-in commands and says why in ``skillsProblem``.
+  public func loadSkills() async {
+    do {
+      let catalog = try await core.sessionSkills(sessionId: sessionID)
+      if skills != catalog.skills { skills = catalog.skills }
+      let problem =
+        catalog.warnings.isEmpty
+        ? nil : "Some skills could not be read: \(catalog.warnings.joined(separator: "; "))"
+      if skillsProblem != problem { skillsProblem = problem }
+    } catch {
+      skillsProblem = "Skills are unavailable: \(coreError(error).message)"
     }
   }
 
@@ -154,4 +235,12 @@ public final class ComposerStore {
       lastError = coreError(error)
     }
   }
+}
+
+/// What the caller still has to do after ``ComposerStore/send()``.
+public enum ComposerSendOutcome: Sendable, Equatable {
+  /// Nothing: the store sent, applied or showed it.
+  case handled
+  /// `/new`: open a blank session in the same project.
+  case newSession
 }

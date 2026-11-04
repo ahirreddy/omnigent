@@ -13,66 +13,98 @@ public struct HarnessOption: Hashable, Sendable, Identifiable {
   public var id: String { choice.id }
 }
 
+/// The core's verdicts on a composer's configuration, recomputed only when the configuration,
+/// catalog or skills change.
+struct ConfigurationRules {
+  var effective: SessionConfiguration?
+  var modelChoices: [ModelChoice] = []
+  var effortsByModel: [String?: [String]] = [:]
+  var harnessOptions: [HarnessOption] = []
+  var supportsModelChoice = false
+  var supportsEffortChoice = false
+  var supportsSteering = false
+  var approvalModeMenu: ApprovalModeMenu?
+  var executionUnavailableReason: String?
+  var slashCommands: [SlashCommand] = []
+
+  init() {}
+
+  init(
+    configuration: SessionConfiguration?, catalog: ConfigurationCatalog?, skills: [Skill]
+  ) {
+    guard let configuration else { return }
+    let effective =
+      catalog.map { configurationWithCatalogModels(catalog: $0, current: configuration) }
+      ?? configuration
+    self.effective = effective
+    modelChoices = effective.models.filter { $0.hidden != true }
+    effortsByModel[nil] = configurationEfforts(configuration: effective, model: nil)
+    for choice in modelChoices {
+      effortsByModel[choice.value] = configurationEfforts(
+        configuration: effective, model: choice.value)
+    }
+    if let catalog {
+      harnessOptions = catalog.agents.map { choice in
+        HarnessOption(
+          choice: choice,
+          unavailableReason: harnessSwitchUnavailableReason(
+            catalog: catalog, target: choice, current: configuration),
+          isCurrent: choice.id == configuration.agentId)
+      }
+    }
+    supportsModelChoice = configurationSupportsModels(configuration: configuration)
+    supportsEffortChoice = configurationSupportsEffort(configuration: configuration)
+    supportsSteering = configurationSupportsSteering(configuration: configuration)
+    approvalModeMenu = OmnigentCoreFFI.approvalModeMenu(configuration: configuration)
+    executionUnavailableReason = OmnigentCoreFFI.executionUnavailableReason(
+      configuration: configuration)
+    slashCommands = OmnigentCoreFFI.slashCommands(configuration: configuration, skills: skills)
+  }
+}
+
 extension ComposerStore {
   /// The models to offer: the runner's, or the host's preview when the runner reported none.
   /// Hidden rows are excluded.
-  public var modelChoices: [ModelChoice] {
-    guard let configuration = effectiveConfiguration else { return [] }
-    return configuration.models.filter { $0.hidden != true }
-  }
+  public var modelChoices: [ModelChoice] { rules.modelChoices }
 
   /// Efforts selectable with `model` (`nil`: the runner's default model). Empty when the
   /// session's wrapper does not forward effort changes.
   /// - Parameter model: The model's value, or `nil`.
   /// - Returns: The efforts, in the runner's order.
   public func efforts(for model: String?) -> [String] {
-    guard let configuration = effectiveConfiguration else { return [] }
+    if let cached = rules.effortsByModel[model] { return cached }
+    guard let configuration = rules.effective else { return [] }
     return configurationEfforts(configuration: configuration, model: model)
   }
 
   /// The harnesses the session may switch to, each with the core's availability verdict.
-  public var harnessOptions: [HarnessOption] {
-    guard let catalog = configurationCatalog, let current = configuration else { return [] }
-    return catalog.agents.map { choice in
-      HarnessOption(
-        choice: choice,
-        unavailableReason: harnessSwitchUnavailableReason(
-          catalog: catalog, target: choice, current: current),
-        isCurrent: choice.id == current.agentId)
-    }
-  }
+  public var harnessOptions: [HarnessOption] { rules.harnessOptions }
 
   /// Whether the harness has a runner-owned model picker.
-  public var supportsModelChoice: Bool {
-    configuration.map { configurationSupportsModels(configuration: $0) } ?? false
-  }
+  public var supportsModelChoice: Bool { rules.supportsModelChoice }
 
   /// The session's approval modes and the current one; `nil` when its harness has no live
   /// switch.
-  public var approvalModeMenu: ApprovalModeMenu? {
-    configuration.flatMap { OmnigentCoreFFI.approvalModeMenu(configuration: $0) }
-  }
+  public var approvalModeMenu: ApprovalModeMenu? { rules.approvalModeMenu }
 
   /// Whether a message sent mid-turn steers the running turn.
-  public var supportsSteering: Bool {
-    configuration.map { configurationSupportsSteering(configuration: $0) } ?? false
-  }
+  public var supportsSteering: Bool { rules.supportsSteering }
 
   /// Why nothing can run in this session now, or `nil` (the core's rule).
-  public var executionUnavailableReason: String? {
-    configuration.flatMap { OmnigentCoreFFI.executionUnavailableReason(configuration: $0) }
-  }
+  public var executionUnavailableReason: String? { rules.executionUnavailableReason }
 
   /// Whether the wrapper forwards reasoning-effort changes.
-  public var supportsEffortChoice: Bool {
-    configuration.map { configurationSupportsEffort(configuration: $0) } ?? false
-  }
+  public var supportsEffortChoice: Bool { rules.supportsEffortChoice }
+
+  /// The `/` menu: the built-ins this harness supports, then the session's skills.
+  public var slashCommands: [SlashCommand] { rules.slashCommands }
 
   /// The configuration with the host's model preview merged in when the runner reported none.
-  var effectiveConfiguration: SessionConfiguration? {
-    guard let configuration else { return nil }
-    guard let catalog = configurationCatalog else { return configuration }
-    return configurationWithCatalogModels(catalog: catalog, current: configuration)
+  var effectiveConfiguration: SessionConfiguration? { rules.effective }
+
+  func refreshRules() {
+    rules = ConfigurationRules(
+      configuration: configuration, catalog: configurationCatalog, skills: skills)
   }
 
   /// Reads the session's configuration and what it may switch to. Failures are kept in

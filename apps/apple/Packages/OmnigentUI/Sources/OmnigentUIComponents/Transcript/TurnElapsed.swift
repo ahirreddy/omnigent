@@ -12,7 +12,7 @@ nonisolated enum TurnElapsed {
     guard state.header.status == .running else { return nil }
     if let started = state.turnStartedAt { return started }
     guard let prompt = state.rows.last(where: { $0.role == .user }) else { return nil }
-    return state.timestamps[prompt.id]
+    return state.timestamps[prompt.id] ?? prompt.createdAt
   }
 
   /// "12s" or "1m 4s" since `start`.

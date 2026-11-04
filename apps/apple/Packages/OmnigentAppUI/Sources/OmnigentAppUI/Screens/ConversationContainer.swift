@@ -6,6 +6,7 @@ import OmnigentTerminalUI
 import OmnigentUIComponents
 import OmnigentWorkspaceUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One open conversation on screen: `ConversationScreen` (header, transcript or the harness
 /// terminal, decision dock, composer, and the right panel with Files, Changes and Terminals) over a
@@ -31,6 +32,8 @@ struct ConversationContainer: View {
   var sessionActions = SessionListActions()
   /// Creates the fork sheet's store; `nil` hides Fork.
   var makeForkStore: (@MainActor () -> ForkStore?)?
+  /// Projects and sharing, for the session menu's Move and owner-only items.
+  var menuContext = SessionMenuContext()
 
   @State private var showsInspector = false
   @State private var mode: SessionViewMode = .chat
@@ -39,6 +42,9 @@ struct ConversationContainer: View {
   @State private var failures: [String] = []
   @State private var harnessSurface: TerminalSurfaceController?
   @State private var forkFlow = ForkFlow()
+  @State private var export: TranscriptExport?
+  @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
+    false
 
   var body: some View {
     let composer = conversation.composer
@@ -49,7 +55,8 @@ struct ConversationContainer: View {
       actions: routed(forkable(actions)), composerActions: composerActions,
       extras: ConversationExtras(
         sessionActions: forkable(sessionActions), slots: workspaceSlots,
-        forkActions: forkActions, navigation: navigation),
+        forkActions: forkActions, navigation: navigation, menuContext: menuContext,
+        exportTranscript: exportTranscript),
       liveRows: ConversationAdapter.liveRows(conversation)
     ) {
       harnessTerminal
@@ -59,12 +66,24 @@ struct ConversationContainer: View {
         WorkspaceDocumentSheet(model: workspace) { workspace.close() }
       }
     }
+    .fileExporter(
+      isPresented: Binding(get: { export != nil }, set: { if !$0 { export = nil } }),
+      document: export, contentType: TranscriptExport.contentType,
+      defaultFilename: "\(conversation.sessionID).jsonl"
+    ) { result in
+      if case .failure(let error) = result {
+        failures.append("Could not save the transcript: \(error.localizedDescription)")
+      }
+    }
     .alert(
       "Something Went Wrong", isPresented: .constant(!failures.isEmpty),
       actions: { Button("OK") { failures = [] } },
       message: { Text(failures.joined(separator: "\n")) }
     )
-    .task { await composer.loadConfiguration() }
+    .task {
+      await composer.loadConfiguration()
+      await composer.loadSkills()
+    }
     .onChange(of: conversation.isRunning) { _, running in
       Task { await composer.drainQueue(isRunning: running) }
     }
@@ -83,7 +102,20 @@ struct ConversationContainer: View {
 
   private var composerState: ComposerViewState {
     ComposerAdapter.state(
-      conversation, isStopping: isStopping, dismissedError: dismissedSendError, server: server)
+      conversation, isStopping: isStopping, dismissedError: dismissedSendError, server: server,
+      submitWithCommandReturn: submitWithCommandReturn)
+  }
+
+  /// Reads the whole transcript, then asks where to save it.
+  private func exportTranscript() {
+    let conversation = conversation
+    Task {
+      do throws(CoreError) {
+        export = TranscriptExport(text: try await conversation.exportTranscript())
+      } catch {
+        failures.append("Could not export the transcript: \(error.message)")
+      }
+    }
   }
 
   /// Attaches the harness TUI once the core reports it ready. The store keeps the surface, so
@@ -219,7 +251,9 @@ struct ConversationContainer: View {
     return Binding(
       get: { workspace?.document != nil }, set: { if !$0 { workspace?.close() } })
   }
+}
 
+extension ConversationContainer {
   private var actions: ConversationActions {
     let conversation = conversation
     let opener = opener
@@ -256,7 +290,10 @@ struct ConversationContainer: View {
     return ComposerActions(
       send: {
         dismissedSendError = nil
-        Task { await composer.send() }
+        let newSession = sessionActions.newSession
+        Task {
+          if await composer.send() == .newSession { newSession?() }
+        }
       },
       interrupt: {
         isStopping = true
@@ -283,7 +320,9 @@ struct ConversationContainer: View {
         dismissedSendError = composer.lastError
         composer.dismissConfigurationError()
       },
-      extras: ComposerAdapter.extras(composer) { conversation.isRunning })
+      extras: ComposerAdapter.extras(
+        composer, isRunning: { conversation.isRunning },
+        recallPrevious: { ComposerAdapter.lastPrompt(conversation) }, reconnect: retry))
   }
 
   /// Switches the harness when the core allows it; otherwise says why.

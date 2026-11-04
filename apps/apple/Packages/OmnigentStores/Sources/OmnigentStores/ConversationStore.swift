@@ -113,6 +113,17 @@ public final class ConversationStore {
     }
   }
 
+  /// The session's metadata and full history as JSON Lines, in the web's export format.
+  /// - Returns: The file's text.
+  /// - Throws: The core's read error.
+  public func exportTranscript() async throws(CoreError) -> String {
+    do {
+      return try await core.exportTranscript(sessionId: sessionID)
+    } catch {
+      throw coreError(error)
+    }
+  }
+
   /// Clears ``errors`` after the user has seen them.
   public func dismissErrors() {
     errors = []

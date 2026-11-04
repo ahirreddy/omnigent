@@ -159,6 +159,12 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   /// Sending will not become possible here (read-only, archived or closed); the touch composer
   /// shows the reason in place of the field.
   public var isReadOnly = false
+  /// The output of a local command (`/help`, a usage line), shown above the card.
+  public var commandNotice: String?
+  /// Why the `/` menu may be incomplete (skill discovery failed or is partial).
+  public var slashCommandsNote: String?
+  /// The stream is not live: shown under the composer with Reconnect.
+  public var connection: ComposerConnectionNotice?
 
   /// Creates composer state.
   /// - Parameters:
@@ -272,3 +278,9 @@ public struct ComposerActions {
 }
 
 // swiftlint:enable discouraged_optional_boolean
+
+/// The composer's per-user preferences, stored in `UserDefaults` (the Settings window writes them).
+public enum ComposerPreferences {
+  /// "Submit with ⌘ + Enter": Return inserts a newline and Command-Return sends.
+  public static let submitWithCommandReturnKey = "composer.submitWithCommandReturn"
+}

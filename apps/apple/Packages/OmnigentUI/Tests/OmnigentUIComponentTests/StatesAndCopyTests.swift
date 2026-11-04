@@ -31,6 +31,10 @@ struct StatesAndCopyTests {
       header: header(.running), rows: [Row(id: "u", role: .user, text: "Go")],
       timestamps: ["u": sent])
     #expect(TurnElapsed.start(in: state) == sent)
+    state.timestamps = [:]
+    #expect(TurnElapsed.start(in: state) == nil)
+    state.rows[0].createdAt = sent
+    #expect(TurnElapsed.start(in: state) == sent, "the row's own time is the fallback")
     let started = Date(timeIntervalSince1970: 1_005)
     state.turnStartedAt = started
     #expect(TurnElapsed.start(in: state) == started)

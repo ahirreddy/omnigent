@@ -56,7 +56,10 @@ nonisolated enum CLILayout {
   ) -> String? {
     let items = turn.flatMap(\.items)
     let duration = items.lazy.compactMap(\.responseID).compactMap { durations[$0] }.first
-    let finished = items.flatMap(\.rowIDs).reversed().lazy.compactMap { timestamps[$0] }.first
+    let finished = items.flatMap(\.rows).reversed().lazy.compactMap {
+      timestamps[$0.id] ?? $0.createdAt
+    }
+    .first
     let parts = [
       duration.map { "Worked for \(TurnLayout.duration($0))" },
       finished.map { MessageTimestamp.format($0, now: now) },

@@ -1,4 +1,4 @@
-import Foundation
+public import Foundation
 
 // Mirrors of the core's transcript records (`omnigent-ffi` `transcript.rs`, which mirrors
 // `omnigent_core::reducer::state`). Field names match the generated Swift bindings, so the store
@@ -196,6 +196,8 @@ nonisolated public struct Row: Hashable, Sendable, Identifiable {
   public var isEphemeral: Bool
   /// Routine bookkeeping that belongs in an activity drawer, not the transcript.
   public var isActivityOnly: Bool
+  /// When the server wrote it; live previews have none.
+  public var createdAt: Date?
 
   /// Creates a row.
   /// - Parameters:
@@ -212,11 +214,13 @@ nonisolated public struct Row: Hashable, Sendable, Identifiable {
   ///   - agent: Agent name.
   ///   - isEphemeral: Live preview or event row.
   ///   - isActivityOnly: Belongs in the activity drawer.
+  ///   - createdAt: When the server wrote it.
   public init(
     id: String, role: RowRole, text: String = "", isStreaming: Bool = false,
     activity: Activity? = nil, attachments: [Attachment] = [], callId: String? = nil,
     responseId: String? = nil, interrupted: Bool = false, author: String? = nil,
-    agent: String? = nil, isEphemeral: Bool = false, isActivityOnly: Bool = false
+    agent: String? = nil, isEphemeral: Bool = false, isActivityOnly: Bool = false,
+    createdAt: Date? = nil
   ) {
     self.id = id
     self.role = role
@@ -231,5 +235,6 @@ nonisolated public struct Row: Hashable, Sendable, Identifiable {
     self.agent = agent
     self.isEphemeral = isEphemeral
     self.isActivityOnly = isActivityOnly
+    self.createdAt = createdAt
   }
 }

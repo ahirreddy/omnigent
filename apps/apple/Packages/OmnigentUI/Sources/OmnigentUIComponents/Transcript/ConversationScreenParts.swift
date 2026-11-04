@@ -1,0 +1,173 @@
+public import SwiftUI
+
+/// Optional pieces of the conversation screen the host supplies.
+public struct ConversationExtras {
+  /// Title-menu actions (Pin, Share, Fork, Rename, Mark as unread, Move, Archive, Delete).
+  public var sessionActions: SessionListActions
+  /// Files and Changes content for the right panel.
+  public var slots: WorkspaceSlots
+  /// The Share sheet's state and actions; `nil` hides Share.
+  public var share: (state: ShareViewState, actions: ShareActions)?
+  /// The Fork dialog's actions; the dialog shows while `fork` is non-`nil`.
+  public var forkActions: ForkActions?
+  /// Previous and next session commands from the host's list.
+  public var navigation: SessionCommandActions
+  /// The session's projects and sharing, for Move session and the owner-only items.
+  public var menuContext: SessionMenuContext
+  /// Save the transcript as a file (Export); `nil` hides it.
+  public var exportTranscript: (@MainActor () -> Void)?
+
+  /// Creates extras.
+  /// - Parameters:
+  ///   - sessionActions: Title-menu actions.
+  ///   - slots: Right-panel content.
+  ///   - share: Share sheet.
+  ///   - forkActions: Fork dialog actions.
+  ///   - navigation: Session navigation commands.
+  ///   - menuContext: Projects and sharing for the session menu.
+  ///   - exportTranscript: Export the transcript.
+  public init(
+    sessionActions: SessionListActions = SessionListActions(),
+    slots: WorkspaceSlots = WorkspaceSlots(),
+    share: (state: ShareViewState, actions: ShareActions)? = nil, forkActions: ForkActions? = nil,
+    navigation: SessionCommandActions = SessionCommandActions(),
+    menuContext: SessionMenuContext = SessionMenuContext(),
+    exportTranscript: (@MainActor () -> Void)? = nil
+  ) {
+    self.sessionActions = sessionActions
+    self.slots = slots
+    self.share = share
+    self.forkActions = forkActions
+    self.navigation = navigation
+    self.menuContext = menuContext
+    self.exportTranscript = exportTranscript
+  }
+}
+
+/// What the session menu needs beyond the session itself.
+nonisolated public struct SessionMenuContext: Hashable, Sendable {
+  /// The projects the session can move to.
+  public var projects: [SessionProject]
+  /// The project it is filed in.
+  public var projectID: String?
+  /// Shared with the viewer by someone else: Leave instead of Delete, no filing.
+  public var isShared: Bool
+
+  /// Creates a context.
+  /// - Parameters:
+  ///   - projects: Move targets.
+  ///   - projectID: The current project.
+  ///   - isShared: Someone else's session.
+  public init(projects: [SessionProject] = [], projectID: String? = nil, isShared: Bool = false) {
+    self.projects = projects
+    self.projectID = projectID
+    self.isShared = isShared
+  }
+}
+
+/// The session's actions (Pin, Share, Fork, Archive, Copy Session ID) in the toolbar, where the
+/// tabs replace the title and its menu. On the Mac a menu; on iPad a dialog, because a `Menu` in
+/// the navigation bar beside the tab strip keeps the bar relaying out (a busy loop on open).
+struct SessionActionsButton<Actions: View>: View {
+  @ViewBuilder let actions: () -> Actions
+  @State private var isPresented = false
+
+  var body: some View {
+    #if os(macOS)
+      Menu("Session", systemImage: "ellipsis.circle", content: actions)
+        .menuIndicator(.hidden)
+        .help("Session actions")
+        .accessibilityIdentifier("header-session-menu")
+    #else
+      Button("Session", systemImage: "ellipsis.circle") { isPresented = true }
+        .confirmationDialog("Session", isPresented: $isPresented, actions: actions)
+        .accessibilityIdentifier("header-session-menu")
+    #endif
+  }
+}
+
+/// The Chat and Terminal segmented switch.
+struct ViewModePicker: View {
+  @Binding var mode: SessionViewMode
+  let status: TerminalStatus
+
+  var body: some View {
+    Picker("View", selection: $mode) {
+      Label("Chat", systemImage: "bubble.left.and.text.bubble.right").tag(SessionViewMode.chat)
+      Label("Terminal", systemImage: "apple.terminal").tag(SessionViewMode.terminal)
+    }
+    .pickerStyle(.segmented)
+    .labelStyle(.iconOnly)
+    .fixedSize()
+    .help("Chat or Terminal (Option-Command-\\)")
+    .accessibilityIdentifier("session-view-mode")
+  }
+}
+
+struct HeaderShareLabelStyle: LabelStyle {
+  let isCompact: Bool
+
+  func makeBody(configuration: Configuration) -> some View {
+    HStack(spacing: Theme.Spacing.extraSmall) {
+      configuration.icon
+      if !isCompact { configuration.title }
+    }
+  }
+}
+
+/// An invisible backing for the bottom bar that takes the hits its gaps would pass to the
+/// transcript beneath; the bar's own controls sit above it and keep theirs.
+struct BarHitShield: View {
+  var body: some View {
+    Color.clear
+      .contentShape(Rectangle())
+      .accessibilityHidden(true)
+  }
+}
+
+/// The session menu's Rename prompt and Delete and Leave confirmations.
+struct SessionMenuDialogs: ViewModifier {
+  @Binding var renaming: SessionSummary?
+  @Binding var renameText: String
+  @Binding var confirmingDelete: SessionSummary?
+  @Binding var confirmingLeave: SessionSummary?
+  let actions: SessionListActions
+
+  private var trimmed: String { renameText.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+  func body(content: Content) -> some View {
+    content
+      .alert(
+        "Rename Session",
+        isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
+      ) {
+        TextField("Title", text: $renameText)
+        Button("Rename") {
+          if let renaming { actions.rename?(renaming, trimmed) }
+          renaming = nil
+        }
+        .disabled(trimmed.isEmpty || renameText.count > 120)
+        Button("Cancel", role: .cancel) { renaming = nil }
+      }
+      .confirmationDialog(
+        "Delete this session?",
+        isPresented: Binding(
+          get: { confirmingDelete != nil }, set: { if !$0 { confirmingDelete = nil } }),
+        presenting: confirmingDelete
+      ) { session in
+        Button("Delete", role: .destructive) { actions.delete?(session) }
+      } message: { _ in
+        Text("This permanently deletes the session and its history.")
+      }
+      .confirmationDialog(
+        "Leave this session?",
+        isPresented: Binding(
+          get: { confirmingLeave != nil }, set: { if !$0 { confirmingLeave = nil } }),
+        presenting: confirmingLeave
+      ) { session in
+        Button("Leave", role: .destructive) { actions.leave?(session) }
+      } message: { _ in
+        Text("You lose access until someone shares it with you again.")
+      }
+  }
+}

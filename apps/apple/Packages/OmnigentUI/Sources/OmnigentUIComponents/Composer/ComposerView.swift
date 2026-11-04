@@ -129,8 +129,13 @@ public struct ComposerView: View {
         )
         .tint(.secondary)
       }
+      if let notice = state.commandNotice {
+        CommandNoticeView(text: notice, dismiss: actions.extras.dismissCommandNotice)
+      }
       if !completions.items.isEmpty {
-        CompletionList(items: completions.items) { draft = completions.applying($0) }
+        CompletionList(items: completions.items, note: state.slashCommandsNote) {
+          draft = completions.applying($0)
+        }
       }
       VStack(alignment: .leading, spacing: isCollapsed ? 0 : Theme.Spacing.small) {
         if let reason = state.availability.reason {
@@ -164,6 +169,9 @@ public struct ComposerView: View {
         }
       }
       .animation(reduceMotion ? nil : Theme.Motion.feedback, value: modeHUD)
+      if let connection = state.connection {
+        ConnectionNoticeRow(notice: connection, reconnect: actions.extras.reconnect)
+      }
     }
     .padding(.vertical, layout == .touch ? ComposerBarMetrics.outerPadding : Theme.Spacing.medium)
     .readingColumn()

@@ -208,25 +208,46 @@ nonisolated public struct ComposerTray: Hashable, Sendable {
 
 /// A command or skill for the `/` menu.
 nonisolated public struct SlashCommand: Hashable, Sendable, Identifiable {
-  /// The name without the slash.
+  /// The name without the prefix.
   public var name: String
+  /// What is typed before the name: `/`, or `$` for Codex skills.
+  public var prefix: String
   /// One line.
   public var description: String
   /// A skill rather than a command.
   public var isSkill: Bool
 
-  /// The name.
-  public var id: String { name }
+  /// The typed form, for example `/compact`.
+  public var id: String { prefix + name }
 
   /// Creates a command.
   /// - Parameters:
   ///   - name: Name.
+  ///   - prefix: The typed prefix.
   ///   - description: Description.
   ///   - isSkill: Skill.
-  public init(name: String, description: String = "", isSkill: Bool = false) {
+  public init(name: String, prefix: String = "/", description: String = "", isSkill: Bool = false) {
     self.name = name
+    self.prefix = prefix
     self.description = description
     self.isSkill = isSkill
+  }
+}
+
+/// The session's live connection, shown under the composer when it is not live.
+nonisolated public struct ComposerConnectionNotice: Hashable, Sendable {
+  /// What is wrong, for example "Reconnecting in 4s: network lost".
+  public var message: String
+  /// The connection failed or stopped, rather than recovering by itself.
+  public var isFailure: Bool
+
+  /// Creates a notice.
+  /// - Parameters:
+  ///   - message: The line.
+  ///   - isFailure: Failed rather than recovering.
+  public init(message: String, isFailure: Bool = false) {
+    self.message = message
+    self.isFailure = isFailure
   }
 }
 
@@ -299,6 +320,10 @@ public struct ComposerExtraActions {
   public var recallPrevious: (@MainActor () -> String?)?
   /// Queue the draft to send after the current turn, instead of steering it in now.
   public var queueDraft: (@MainActor () -> Void)?
+  /// Reconnect the session's stream (the connection notice's button).
+  public var reconnect: (@MainActor () -> Void)?
+  /// Dismiss the output of a local command (`/help`, usage).
+  public var dismissCommandNotice: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:
@@ -319,6 +344,8 @@ public struct ComposerExtraActions {
   ///   - moveQueued: Reorder.
   ///   - recallPrevious: Up-arrow recall.
   ///   - queueDraft: Queue the draft after this turn.
+  ///   - reconnect: Reconnect the stream.
+  ///   - dismissCommandNotice: Dismiss a command's output.
   public init(
     selectHost: (@MainActor (ComposerHost) -> Void)? = nil,
     connectHost: (@MainActor () -> Void)? = nil,
@@ -334,7 +361,9 @@ public struct ComposerExtraActions {
     removeQueued: (@MainActor (QueuedMessage) -> Void)? = nil,
     moveQueued: (@MainActor (IndexSet, Int) -> Void)? = nil,
     recallPrevious: (@MainActor () -> String?)? = nil,
-    queueDraft: (@MainActor () -> Void)? = nil
+    queueDraft: (@MainActor () -> Void)? = nil,
+    reconnect: (@MainActor () -> Void)? = nil,
+    dismissCommandNotice: (@MainActor () -> Void)? = nil
   ) {
     self.selectHost = selectHost
     self.connectHost = connectHost
@@ -353,5 +382,7 @@ public struct ComposerExtraActions {
     self.moveQueued = moveQueued
     self.recallPrevious = recallPrevious
     self.queueDraft = queueDraft
+    self.reconnect = reconnect
+    self.dismissCommandNotice = dismissCommandNotice
   }
 }

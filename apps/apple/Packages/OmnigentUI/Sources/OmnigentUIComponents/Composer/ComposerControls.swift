@@ -267,15 +267,11 @@ struct ComposerCompletions {
 
   init(draft: String, commands: [SlashCommand], mentions: [String]) {
     self.draft = draft
-    if draft.hasPrefix("/"), !draft.contains(" "), !commands.isEmpty {
-      let query = draft.dropFirst().lowercased()
-      items = commands.filter { query.isEmpty || $0.name.lowercased().hasPrefix(query) }
-        .prefix(8)
-        .map {
-          Item(
-            id: "/\($0.name)", title: "/\($0.name)", detail: $0.description,
-            replacement: "/\($0.name) ", systemImage: $0.isSkill ? "wand.and.sparkles" : "command")
-        }
+    if let typed = draft.first, typed == "/" || typed == "$",
+      !draft.contains(where: \.isWhitespace),
+      !commands.isEmpty
+    {
+      items = Self.commandItems(draft: draft, commands: commands)
       prefixRange = draft.startIndex..<draft.endIndex
       return
     }
@@ -296,6 +292,27 @@ struct ComposerCompletions {
     prefixRange = nil
   }
 
+  /// Commands for the typed token, names that start with the query first. `/` lists every
+  /// command; `$` lists the ones typed with `$`. A token that already names its only match
+  /// offers nothing, so Return sends it.
+  private static func commandItems(draft: String, commands: [SlashCommand]) -> [Item] {
+    let typed = String(draft.prefix(1))
+    let query = draft.dropFirst().lowercased()
+    let offered = commands.filter { typed == "/" || $0.prefix == typed }
+    let leading = offered.filter { query.isEmpty || $0.name.lowercased().hasPrefix(query) }
+    let inner = offered.filter {
+      !query.isEmpty && !$0.name.lowercased().hasPrefix(query)
+        && $0.name.lowercased().contains(query)
+    }
+    let matches = Array((leading + inner).prefix(8))
+    if matches.count == 1, matches[0].id == draft || draft == "/\(matches[0].name)" { return [] }
+    return matches.map {
+      Item(
+        id: $0.id, title: $0.id, detail: $0.description, replacement: "\($0.id) ",
+        systemImage: $0.isSkill ? "wand.and.sparkles" : "command")
+    }
+  }
+
   func applying(_ item: Item) -> String {
     guard let prefixRange else { return draft }
     var copy = draft
@@ -306,6 +323,8 @@ struct ComposerCompletions {
 
 struct CompletionList: View {
   let items: [ComposerCompletions.Item]
+  /// Why the list may be incomplete.
+  var note: String?
   let pick: (ComposerCompletions.Item) -> Void
 
   var body: some View {
@@ -332,6 +351,14 @@ struct CompletionList: View {
         .buttonStyle(.plain)
         .hoverHighlight()
         .accessibilityIdentifier("composer-completion-\(item.id)")
+      }
+      if let note {
+        Label(note, systemImage: "exclamationmark.triangle")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .padding(.horizontal, Theme.Spacing.medium)
+          .padding(.vertical, Theme.Spacing.extraSmall)
+          .accessibilityIdentifier("composer-completion-note")
       }
       Text("Tab to complete, Esc to dismiss")
         .font(.caption2)

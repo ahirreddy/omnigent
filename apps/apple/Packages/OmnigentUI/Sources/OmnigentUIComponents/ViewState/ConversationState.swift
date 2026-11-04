@@ -26,7 +26,7 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
   public var connectionStatus: String?
   /// The terminal mode's state; `.none` hides the Chat/Terminal switch.
   public var terminal: TerminalStatus
-  /// When each row was written, by row id (the transcript's timestamps). Optional per row.
+  /// When rows were written, by row id, overriding each row's own ``Row/createdAt``.
   public var timestamps: [String: Date]
   /// How long each assistant turn worked, by response id ("Worked for 2m").
   public var turnDurations: [String: TimeInterval]

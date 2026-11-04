@@ -315,6 +315,22 @@ struct SessionListTests {
         .isEmpty)
   }
 
+  @Test("command completions rank prefixes first, honor $ skills and stop at an exact name")
+  func commandCompletions() {
+    let commands = [
+      SlashCommand(name: "compact"), SlashCommand(name: "help"),
+      SlashCommand(name: "review", prefix: "$", isSkill: true),
+      SlashCommand(name: "code-review", prefix: "$", isSkill: true),
+    ]
+    let slash = ComposerCompletions(draft: "/rev", commands: commands, mentions: [])
+    #expect(slash.items.map(\.title) == ["$review", "$code-review"])
+    #expect(slash.applying(slash.items[0]) == "$review ")
+    let dollar = ComposerCompletions(draft: "$", commands: commands, mentions: [])
+    #expect(dollar.items.map(\.title) == ["$review", "$code-review"])
+    #expect(ComposerCompletions(draft: "/help", commands: commands, mentions: []).items.isEmpty)
+    #expect(ComposerCompletions(draft: "/help me", commands: commands, mentions: []).items.isEmpty)
+  }
+
   @Test("Shift-Tab cycles approval modes and wraps")
   func approvalModes() {
     var modes = PreviewData.claudeModes
