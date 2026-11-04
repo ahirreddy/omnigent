@@ -126,10 +126,10 @@ public struct ConversationScreen<Terminal: View>: View {
     .environment(drafts).environment(decisionSurfaces)
     .environment(\.commandReturnOwner, commandReturnOwner)
     .onPreferenceChange(ApproveShortcutCandidate.self) { approveCandidate = $0 }
-    .inspector(isPresented: $showsInspector) {
-      WorkspaceInspector(state: state, actions: actions, slots: extras.slots, tab: inspectorTab)
-        .inspectorColumnWidth(min: 260, ideal: 360, max: 600)
-    }
+    .workspaceInspector(
+      state: state, actions: actions, slots: extras.slots, isPresented: $showsInspector,
+      tab: inspectorTab
+    )
     .navigationTitle(state.header.title)
     // The one status line ("Waiting for you · 2 requests"); the project shows in the sidebar.
     .navigationSubtitle(SessionStatusLine(state).text)
@@ -286,6 +286,7 @@ public struct ConversationScreen<Terminal: View>: View {
       toggleViewMode: toggleMode,
       openChanges: {
         inspectorTab.wrappedValue = .changes
+        extras.slots.documents?.showPanel()
         showsInspector = true
       })
     actions.approveOwnsCommandReturn = commandReturnOwner == .approve

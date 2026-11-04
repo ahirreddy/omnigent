@@ -65,18 +65,44 @@
         AnyView(GalleryPageContent(page: .inspector))
       },
       Surface(
-        name: "inspector-terminals", regular: CGSize(width: 340, height: 600), compactHeight: nil
+        name: "inspector-open-files", regular: CGSize(width: 340, height: 600), compactHeight: nil
       ) {
         AnyView(
           WorkspaceInspector(
             state: PreviewData.shellConversation, actions: ConversationActions(),
             slots: WorkspaceSlots(
-              terminals: AnyView(
-                List {
-                  Label("zsh \u{00B7} u-4f2k9q", systemImage: "terminal")
-                  Label("claude \u{00B7} main", systemImage: "sparkles.rectangle.stack")
-                })),
-            tab: .constant(.terminals)))
+              documents: InspectorDocuments(
+                tabs: [
+                  InspectorDocumentTab(
+                    id: "file:README.md", title: "README.md", detail: "README.md",
+                    systemImage: "doc.text"),
+                  InspectorDocumentTab(
+                    id: "diff:src/main.rs", title: "main.rs", detail: "src/main.rs",
+                    systemImage: "plus.forwardslash.minus"),
+                ],
+                selected: "diff:src/main.rs", select: { _ in }, close: { _ in }, showPanel: {},
+                content: AnyView(Text("fn main() {}").monospaced())),
+              openNew: {
+                [
+                  InspectorMenuSection(
+                    id: "new",
+                    items: [
+                      InspectorMenuItem(id: "shell", title: "Shell", systemImage: "terminal") {}
+                    ])
+                ]
+              }),
+            tab: .constant(.files), maximized: .constant(false)))
+      },
+      Surface(
+        name: "inspector-pull-requests", regular: CGSize(width: 340, height: 600),
+        compactHeight: nil
+      ) {
+        AnyView(
+          WorkspaceInspector(
+            state: PreviewData.shellConversation, actions: ConversationActions(),
+            slots: WorkspaceSlots(
+              pullRequests: .loaded(PreviewData.pullRequests, synced: true)),
+            tab: .constant(.pullRequests)))
       },
       Surface(name: "markdown", regular: CGSize(width: 760, height: 0), compactHeight: nil) {
         AnyView(GalleryPageContent(page: .markdown).padding(20))

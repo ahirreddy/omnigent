@@ -9,14 +9,16 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// One open conversation on screen: `ConversationScreen` (header, transcript or the harness
-/// terminal, decision dock, composer, and the right panel with Files, Changes and Terminals) over a
-/// ``ConversationStore``. Send, interrupt, decisions and the model, effort and harness menus go
-/// through the stores; everything they report, including failures, is rendered.
+/// terminal, decision dock, composer, and the right panel) over a ``ConversationStore``. Send,
+/// interrupt, decisions and the model, effort and harness menus go through the stores;
+/// everything they report, including failures, is rendered.
 struct ConversationContainer: View {
   let conversation: ConversationStore
   let summary: OmnigentCoreFFI.SessionSummary?
   let terminals: TerminalStore?
   let workspace: WorkspaceBrowserModel?
+  /// The right panel's server data (panel features, pull requests).
+  let panel: SessionPanelStore?
   let changedFilesRevision: Int
   let navigation: SessionCommandActions
   let opener: ExternalURLOpener
@@ -70,11 +72,6 @@ struct ConversationContainer: View {
     .task(id: workspace.map(ObjectIdentifier.init)) {
       fileLinks = workspace.map(MarkdownLinksAdapter.links)
     }
-    .sheet(isPresented: documentPresented) {
-      if let workspace {
-        WorkspaceDocumentSheet(model: workspace) { workspace.close() }
-      }
-    }
     .fileExporter(
       isPresented: Binding(get: { export != nil }, set: { if !$0 { export = nil } }),
       document: export, contentType: TranscriptExport.contentType,
@@ -98,8 +95,10 @@ struct ConversationContainer: View {
       }
       await composer.loadSkills()
     }
+    .task { await panel?.loadFeatures() }
     .onChange(of: conversation.isRunning) { _, running in
       Task { await composer.drainQueue(isRunning: running) }
+      if !running { Task { await panel?.refreshPullRequestsIfShown() } }
     }
     .onChange(of: terminals?.terminals.harness, initial: true) { attachHarness() }
     .onChange(of: changedFilesRevision) {
@@ -166,28 +165,17 @@ struct ConversationContainer: View {
     }
   }
 
-  /// The right panel's Files and Changes tabs, over the core's workspace reads, and its
-  /// Terminals tab over the session's terminal store.
+  /// The right panel's tabs, open files and "Open new" menu.
   private var workspaceSlots: WorkspaceSlots {
-    var slots = WorkspaceSlots()
-    if let terminals, let tabRoutes {
-      var openHarness: (@MainActor () -> Void)?
-      if case .ready = terminals.terminals.harness { openHarness = tabRoutes.openHarness }
-      slots.terminals = AnyView(
-        TerminalsPanel(
-          store: terminals, permissionLevel: conversation.header?.permissionLevel,
-          openTerminal: tabRoutes.openTerminal, openHarness: openHarness,
-          declaredNames: terminalNames))
-    }
-    guard let workspace else { return slots }
-    slots.files = AnyView(WorkspacePanel(model: workspace))
-    slots.changes = AnyView(
-      ChangedFilesList(
-        model: workspace.changes, source: workspace.source, actions: .none
-      ) { file in
-        Task { await workspace.open(.diff(path: file.path)) }
-      })
-    return slots
+    let composer = conversation.composer
+    return WorkspacePanelSlots(
+      workspace: workspace, panel: panel, terminals: terminals, tabRoutes: tabRoutes,
+      terminalNames: terminalNames, permissionLevel: conversation.header?.permissionLevel,
+      mention: { path in
+        let separator = composer.text.isEmpty || composer.text.hasSuffix(" ") ? "" : " "
+        composer.text += "\(separator)@\(path) "
+      }
+    ).slots
   }
 
   /// With tabs, choosing Terminal opens the agent's TUI in its own tab and this tab stays on
@@ -270,11 +258,6 @@ struct ConversationContainer: View {
       cancel: { flow.cancel() })
   }
 
-  private var documentPresented: Binding<Bool> {
-    let workspace = workspace
-    return Binding(
-      get: { workspace?.document != nil }, set: { if !$0 { workspace?.close() } })
-  }
 }
 
 extension ConversationContainer {
@@ -369,32 +352,5 @@ extension ConversationContainer {
       return
     }
     Task { await composer.switchHarness(to: agentID) }
-  }
-}
-
-/// An opened workspace file or diff, over the conversation.
-private struct WorkspaceDocumentSheet: View {
-  let model: WorkspaceBrowserModel
-  let close: () -> Void
-
-  var body: some View {
-    NavigationStack {
-      WorkspaceDocumentView(model: model)
-        .navigationTitle(model.document.map(Self.title) ?? "File")
-        .toolbar {
-          ToolbarItem(placement: .confirmationAction) {
-            Button("Done", action: close)
-          }
-        }
-    }
-    #if os(macOS)
-      .frame(minWidth: 720, minHeight: 520)
-    #endif
-  }
-
-  private static func title(_ document: WorkspaceDocument) -> String {
-    switch document {
-    case .file(let path, _), .diff(let path): path
-    }
   }
 }

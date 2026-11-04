@@ -237,9 +237,9 @@ enum InspectorCatalog {
         ]),
       .component(
         .inspector, "workspace", "Workspace Panel",
-        summary: "The right panel's tabs with built-in fallbacks for files, changes and terminals.",
+        summary: "The right panel's tabs with built-in fallbacks for files and changes.",
         systemImage: "sidebar.right", canvas: .fixed(width: 340, height: 720),
-        keywords: ["files", "changes", "pull requests", "agents", "terminals"],
+        keywords: ["files", "changes", "pull requests", "agents", "info", "search"],
         states: InspectorTab.allCases.map { tab in
           CatalogState(tab.rawValue, tab.title) {
             WorkspaceInspector(

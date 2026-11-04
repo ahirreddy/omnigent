@@ -131,6 +131,14 @@ nonisolated public enum WorkspaceDocument: Hashable, Sendable {
     case .file(let path, _), .diff(let path): path
     }
   }
+
+  /// Identifies the document's tab: one tab per file and one per diff, whatever the line.
+  public var tabID: String {
+    switch self {
+    case .file(let path, _): "file:\(path)"
+    case .diff(let path): "diff:\(path)"
+    }
+  }
 }
 
 /// The panels a workspace inspector offers.
@@ -177,8 +185,10 @@ public final class WorkspaceBrowserModel {
   public let changes: ChangesModel
   /// The selected inspector tab.
   public var tab: WorkspaceTab = .files
-  /// The open document.
+  /// The shown document; `nil` shows the panel.
   public private(set) var document: WorkspaceDocument?
+  /// The documents open as tabs, in the order they opened.
+  public private(set) var openDocuments: [WorkspaceDocument] = []
   /// The open file, when `document` is a file.
   public private(set) var file: LoadState<WorkspaceFile> = .idle
   /// The open diff, when `document` is a diff.
@@ -197,11 +207,16 @@ public final class WorkspaceBrowserModel {
     }
   }
 
-  /// Opens `document`, reading it.
+  /// Opens `document` as a tab (or in its existing tab) and shows it, reading it.
   /// - Parameter document: The file or diff.
   public func open(_ document: WorkspaceDocument) async {
     generation += 1
     let current = generation
+    if let index = openDocuments.firstIndex(where: { $0.tabID == document.tabID }) {
+      openDocuments[index] = document
+    } else {
+      openDocuments.append(document)
+    }
     self.document = document
     switch document {
     case .file(let path, _):
@@ -227,8 +242,31 @@ public final class WorkspaceBrowserModel {
     }
   }
 
-  /// Closes the open document.
+  /// Closes the shown document's tab and shows the panel.
   public func close() {
+    if let document { openDocuments.removeAll { $0.tabID == document.tabID } }
+    hideDocument()
+  }
+
+  /// Closes `document`'s tab. When it was shown, the tab after it (else the last) shows, or
+  /// the panel when no tab is left.
+  /// - Parameter document: The document.
+  public func close(_ document: WorkspaceDocument) async {
+    guard let index = openDocuments.firstIndex(where: { $0.tabID == document.tabID }) else {
+      return
+    }
+    openDocuments.remove(at: index)
+    guard self.document?.tabID == document.tabID else { return }
+    if let next = openDocuments.indices.contains(index) ? openDocuments[index] : openDocuments.last
+    {
+      await open(next)
+    } else {
+      hideDocument()
+    }
+  }
+
+  /// Shows the panel, keeping the open tabs.
+  public func hideDocument() {
     generation += 1
     document = nil
     file = .idle

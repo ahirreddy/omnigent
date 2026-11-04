@@ -163,6 +163,13 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Share:** the session Share control isn't wired in the real app yet; there's no share store
   or core API.
 - [ ] **Tabs:** the overview menu's "Recently Closed" entries are inert labels.
+- [ ] **Right panel, Pull Requests:** lists the server's stored PRs only. The web's PR view (the
+  runner's `/resources/github`: checks, reviewers, labels, the stacked diff, merge, comments,
+  linking and unlinking a PR) is not ported.
+- [ ] **Right panel, Agents:** a sub-agent's chat shows only its own children, not the root's
+  tree (the web reads `GET /v1/sessions/{id}/child_sessions` from the root); no graph view or
+  Add agent.
+- [ ] **Right panel, Open new:** no Side chat item; starting a new side chat has no route yet.
 - [ ] **Tabs:** the titlebar tab row reserves a fixed estimated width for the trailing controls. An
   account chip or four viewers may leave a gap or push items into overflow; measure it instead.
 - [ ] **Lint:** `SupportingScreens`, `AdapterTests` and `NativeAppE2EUITests` have pre-existing

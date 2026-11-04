@@ -173,6 +173,8 @@ nonisolated public struct PullRequestSummary: Hashable, Sendable, Identifiable {
     case merged
     /// Closed.
     case closed
+    /// The host has not fetched the state yet.
+    case unknown
 
     /// The label.
     public var title: String {
@@ -185,6 +187,7 @@ nonisolated public struct PullRequestSummary: Hashable, Sendable, Identifiable {
       case .draft: "Draft"
       case .merged: "Merged"
       case .closed: "Closed"
+      case .unknown: "Not checked yet"
       }
     }
   }
@@ -201,6 +204,8 @@ nonisolated public struct PullRequestSummary: Hashable, Sendable, Identifiable {
   public var url: String
   /// Status.
   public var status: Status
+  /// A second line, for example how the PR joined the session.
+  public var detail: String?
 
   /// Creates a pull request summary.
   /// - Parameters:
@@ -210,13 +215,18 @@ nonisolated public struct PullRequestSummary: Hashable, Sendable, Identifiable {
   ///   - repo: Repository.
   ///   - url: URL.
   ///   - status: Status.
-  public init(id: String, number: Int, title: String, repo: String, url: String, status: Status) {
+  ///   - detail: A second line.
+  public init(
+    id: String, number: Int, title: String, repo: String, url: String, status: Status,
+    detail: String? = nil
+  ) {
     self.id = id
     self.number = number
     self.title = title
     self.repo = repo
     self.url = url
     self.status = status
+    self.detail = detail
   }
 }
 

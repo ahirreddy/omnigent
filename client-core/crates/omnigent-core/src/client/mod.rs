@@ -38,6 +38,7 @@ pub mod items;
 pub(crate) mod json;
 pub mod pin_order;
 pub mod projects;
+pub mod pull_requests;
 mod recovery;
 mod remote_browsers;
 mod requests;
@@ -555,3 +556,7 @@ mod recovery_tests;
 #[cfg(test)]
 #[path = "agent_info_tests.rs"]
 mod agent_info_tests;
+
+#[cfg(test)]
+#[path = "pull_requests_tests.rs"]
+mod pull_requests_tests;
