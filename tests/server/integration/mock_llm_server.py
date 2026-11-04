@@ -1580,14 +1580,17 @@ async def set_fallback(request: Request) -> dict[str, object]:
     ``response.output_text.delta`` events (one per word) before the completed
     event — so a caller that subscribes to a streaming response sees
     incremental deltas from the fallback, not just a single completed body.
+    ``chunk_delay`` (optional, default 0) paces those events, as on
+    ``POST /mock/configure``.
     """
     body = await request.json()
     key = body.get("key", _DEFAULT_KEY)
     text = body.get("text", "Mock LLM response")
     stream = bool(body.get("stream", False))
+    chunk_delay = float(body.get("chunk_delay", 0.0))
     async with _state._lock:
         queue = _state.get_queue(key)
-        queue.fallback = QueuedResponse(text=text, stream=stream)
+        queue.fallback = QueuedResponse(text=text, stream=stream, chunk_delay=chunk_delay)
     return {"fallback_set": True, "key": key}
 
 

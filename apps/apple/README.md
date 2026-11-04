@@ -184,6 +184,8 @@ just apple-services install   # register login LaunchAgents (API + isolated host
 just apple-services start
 just apple-services status    # also: stop, uninstall (both keep data)
 just apple-seed               # stored test conversations; no model is invoked
+just apple-mock-model         # mock LLM on 6796 (foreground): streamed replies, no provider
+just apple-mock-agent         # installs the "mock-model" agent on the local API
 ```
 
 - The API is at `http://127.0.0.1:6767`, with docs at `/docs`. The apps accept
@@ -195,6 +197,10 @@ just apple-seed               # stored test conversations; no model is invoked
 - For foreground debugging, stop the managed services first, then run
   `bash apps/apple/Tools/local-server.sh` and, in a second terminal,
   `bash apps/apple/Tools/local-host.sh`.
+- For end-to-end checks without a provider, run `just apple-mock-model` and, once, `just
+  apple-mock-agent`; then start a session on the local host with the **mock-model** agent. Every
+  turn streams the same markdown reply (headings, lists, code, a table), paced word by word.
+  Open a session in the app with `open -b ai.omnigent.mac omnigent://127.0.0.1:6767/c/<id>`.
 - For real replies, configure and sign into the Codex native harness on your
   machine, then run `.venv/bin/python apps/apple/Tools/prepare-live-session.py`.
   It creates or reuses **Native live chat** but does not send a prompt. A

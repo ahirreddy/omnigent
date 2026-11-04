@@ -419,6 +419,16 @@ apple-run-ios device=APPLE_SIMULATOR: (apple-build-ios device)
 apple-services *args:
     bash apps/apple/Tools/local-services.sh "$@"
 
+# Mock LLM on 127.0.0.1:6796 that streams a canned markdown reply to every turn (foreground).
+[group('client')]
+apple-mock-model:
+    .venv/bin/python apps/apple/Tools/mock-model.py serve
+
+# Install the "mock-model" agent on the local API; it answers through apple-mock-model.
+[group('client')]
+apple-mock-agent:
+    .venv/bin/python apps/apple/Tools/mock-model.py install-agent
+
 # Seed the local API with stored test conversations (no model calls).
 [group('client')]
 apple-seed:
