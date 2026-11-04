@@ -64,6 +64,8 @@ nonisolated public struct LocalServerEndpoint: Equatable, Sendable {
 nonisolated public enum LocalServerStartTrigger: Equatable, Sendable {
   /// The user chose Start Server.
   case user
+  /// A window's "Get started locally", which connects that window itself.
+  case window
   /// Settings > Local Server > Start when Omnigent opens.
   case launch
   /// An automatic restart after a crash.

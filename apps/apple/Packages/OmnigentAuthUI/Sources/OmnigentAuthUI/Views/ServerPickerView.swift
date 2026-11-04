@@ -1,16 +1,23 @@
 public import SwiftUI
 
 /// The connect screen: a server URL field with validation, the organization's servers (marked as
-/// managed), and recent servers.
+/// managed), and recent servers with whether each answers.
 ///
-/// Return in the field, or the default Connect button, connects. Picking a server connects to it.
-/// Recent servers can be forgotten from their context menu or the trailing button.
+/// Return in the field, or the default Connect button, connects. Picking a server connects to it;
+/// picking this Mac's stopped local install starts it. Recent servers can be forgotten from their
+/// context menu or the trailing button.
 public struct ServerPickerView: View {
   private let directory: ServerDirectory
   private let prefill: String
   private let banner: AuthBanner?
   private let validator: ServerURLValidator
   private let actions: AuthActions
+  private let localSetup: LocalSetupState?
+  private let back: (() -> Void)?
+  private let join: ((String) -> Void)?
+  private let startLocal: (() -> Void)?
+
+  @State private var reachability: [String: ServerReachability] = [:]
 
   @State private var serverUrl: String
   @State private var revealsValidation = false
@@ -26,23 +33,32 @@ public struct ServerPickerView: View {
   ///   - banner: A notice or the last connection failure.
   ///   - validator: Checks the typed URL with the core's normalizer.
   ///   - actions: The store's actions.
+  ///   - localSetup: This Mac's local setup, when it has one.
+  ///   - back: Back to the landing, when the flow has one.
+  ///   - join: Joins a server; by default ``AuthActions/connect``.
+  ///   - startLocal: Starts this Mac's local install, when it can.
   public init(
     directory: ServerDirectory, prefill: String, banner: AuthBanner?,
-    validator: ServerURLValidator, actions: AuthActions
+    validator: ServerURLValidator, actions: AuthActions, localSetup: LocalSetupState? = nil,
+    back: (() -> Void)? = nil, join: ((String) -> Void)? = nil, startLocal: (() -> Void)? = nil
   ) {
     self.directory = directory
     self.prefill = prefill
     self.banner = banner
     self.validator = validator
     self.actions = actions
+    self.localSetup = localSetup
+    self.back = back
+    self.join = join
+    self.startLocal = startLocal
     _serverUrl = State(initialValue: prefill)
   }
 
   /// The picker.
   public var body: some View {
     AuthCard(
-      systemImage: "server.rack", title: "Connect to Omnigent",
-      subtitle: "Enter the URL of your Omnigent server."
+      systemImage: "server.rack", title: "Join your team",
+      subtitle: "Pick a server, or enter the URL of your team\u{2019}s Omnigent server."
     ) {
       if let banner {
         AuthBannerView(banner, retry: actions.retry)
@@ -55,6 +71,9 @@ public struct ServerPickerView: View {
         recentSection
       }
     } buttons: {
+      if let back {
+        AuthButton(title: "Back", kind: .cancel, identifier: "auth.back", action: back)
+      }
       #if os(iOS)
         AuthButton(title: "Scan Pairing Code", identifier: "auth.scan-pairing-code") {
           scansPairingCode = true
@@ -132,20 +151,26 @@ public struct ServerPickerView: View {
   private var recentSection: some View {
     ServerSection(title: "Recent servers", footer: nil) {
       ForEach(directory.recentServers, id: \.self) { url in
+        let status = RecentStatus(
+          url: url, reachability: reachability[url],
+          isLastUsed: url == directory.recentServers.first)
         ServerRow(
-          title: ServerIdentity.hostLabel(url),
-          subtitle: url == ServerIdentity.hostLabel(url)
-            ? nil : ServerText.escaped(url, limit: 120),
-          systemImage: "clock.arrow.circlepath", isManaged: false,
-          identifier: "auth.recent-server",
+          title: status.title, subtitle: status.subtitle, systemImage: status.systemImage,
+          isManaged: false, identifier: "auth.recent-server", badge: status.badge,
+          subtitleIsError: status.isError,
           forget: { actions.forgetServer(url) },
           action: { choose(url) }
         )
+        .task(id: url) { reachability[url] = await actions.checkServer(url) }
       }
     }
   }
 
   private func choose(_ url: String) {
+    if let startLocal, LocalInstall.isLocalInstall(url), reachability[url] == .unreachable {
+      startLocal()
+      return
+    }
     serverUrl = url
     connect()
   }
@@ -153,7 +178,11 @@ public struct ServerPickerView: View {
   private func connect() {
     revealsValidation = true
     guard case .valid(let normalized) = validator.check(serverUrl) else { return }
-    actions.connect(normalized)
+    if let join {
+      join(normalized)
+    } else {
+      actions.connect(normalized)
+    }
   }
 }
 
@@ -192,6 +221,8 @@ private struct ServerRow: View {
   let systemImage: String
   let isManaged: Bool
   let identifier: String
+  var badge: String?
+  var subtitleIsError = false
   var forget: (@MainActor () -> Void)?
   let action: () -> Void
 
@@ -208,12 +239,23 @@ private struct ServerRow: View {
           VStack(alignment: .leading, spacing: 1) {
             Text(verbatim: title)
               .lineLimit(1)
-            if let subtitle {
-              Text(verbatim: subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            HStack(spacing: 6) {
+              if let badge {
+                Text(badge)
+                  .font(.caption2.weight(.medium))
+                  .padding(.horizontal, 5)
+                  .padding(.vertical, 1)
+                  .background(.quaternary, in: Capsule())
+              }
+              if let subtitle {
+                Text(verbatim: subtitle)
+                  .font(.caption)
+                  .foregroundStyle(
+                    subtitleIsError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary)
+                  )
+                  .lineLimit(1)
+                  .truncationMode(.middle)
+              }
             }
           }
           Spacer(minLength: 0)
@@ -268,6 +310,7 @@ private struct ServerRow: View {
 
   private var accessibilityLabel: String {
     var label = title
+    if let badge { label += ", \(badge)" }
     if let subtitle { label += ", \(subtitle)" }
     if isManaged { label += ", managed by your organization" }
     return label

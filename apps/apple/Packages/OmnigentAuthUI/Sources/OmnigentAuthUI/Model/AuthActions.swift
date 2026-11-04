@@ -1,3 +1,5 @@
+import Foundation
+
 /// A username and password to submit. The password is never printed: `description`,
 /// `debugDescription` and reflection redact it.
 public nonisolated struct AccountCredentials: Sendable, CustomStringConvertible,
@@ -48,6 +50,16 @@ public struct AuthActions {
   public var retry: @MainActor () -> Void
   /// Remove a server from the recents (organization servers cannot be forgotten).
   public var forgetServer: @MainActor (String) -> Void
+  /// Create an account (the first administrator, or an invited user) and sign in with it.
+  public var createAccount: @MainActor (AccountCreationRequest) -> Void
+  /// Switch the accounts screen between signing in and creating an account.
+  public var showAccountForm: @MainActor (AccountForm) -> Void
+  /// Read the invite token from a pasted invite link or token, with the core's rules.
+  public var inviteToken: @MainActor (String) -> String?
+  /// Check whether a server answers, for the server list.
+  public var checkServer: @MainActor (String) async -> ServerReachability
+  /// Set up Omnigent on this Mac; `nil` where the platform cannot run a local server.
+  public var localSetup: LocalSetupActions?
 
   /// Creates actions.
   /// - Parameters:
@@ -58,6 +70,11 @@ public struct AuthActions {
   ///   - signOut: Sign out of the connected account.
   ///   - retry: Connect again to the last server.
   ///   - forgetServer: Remove a server from the recents.
+  ///   - createAccount: Create an account and sign in with it.
+  ///   - showAccountForm: Switch between signing in and creating an account.
+  ///   - inviteToken: Read the invite token from a pasted link.
+  ///   - checkServer: Check whether a server answers.
+  ///   - localSetup: Set up Omnigent on this Mac.
   public init(
     connect: @escaping @MainActor (String) -> Void,
     submitCredentials: @escaping @MainActor (AccountCredentials) -> Void,
@@ -65,7 +82,12 @@ public struct AuthActions {
     cancel: @escaping @MainActor () -> Void,
     signOut: @escaping @MainActor () -> Void,
     retry: @escaping @MainActor () -> Void,
-    forgetServer: @escaping @MainActor (String) -> Void
+    forgetServer: @escaping @MainActor (String) -> Void,
+    createAccount: @escaping @MainActor (AccountCreationRequest) -> Void = { _ in },
+    showAccountForm: @escaping @MainActor (AccountForm) -> Void = { _ in },
+    inviteToken: @escaping @MainActor (String) -> String? = Self.previewInviteToken,
+    checkServer: @escaping @MainActor (String) async -> ServerReachability = { _ in .reachable },
+    localSetup: LocalSetupActions? = nil
   ) {
     self.connect = connect
     self.submitCredentials = submitCredentials
@@ -74,10 +96,28 @@ public struct AuthActions {
     self.signOut = signOut
     self.retry = retry
     self.forgetServer = forgetServer
+    self.createAccount = createAccount
+    self.showAccountForm = showAccountForm
+    self.inviteToken = inviteToken
+    self.checkServer = checkServer
+    self.localSetup = localSetup
+  }
+
+  /// A stand-in for previews and tests only: the `invite` query item of a link, or the text.
+  /// The app passes the core's `invite_token_from_link`.
+  public static func previewInviteToken(_ text: String) -> String? {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return nil }
+    guard let components = URLComponents(string: trimmed), components.scheme != nil else {
+      return trimmed.contains(" ") ? nil : trimmed
+    }
+    return components.queryItems?.first { $0.name == "invite" }?.value.flatMap {
+      $0.isEmpty ? nil : $0
+    }
   }
 
   /// Actions that do nothing, for previews and snapshots only.
   public static let inert = Self(
     connect: { _ in }, submitCredentials: { _ in }, startBrowserSignIn: { _ in }, cancel: {},
-    signOut: {}, retry: {}, forgetServer: { _ in })
+    signOut: {}, retry: {}, forgetServer: { _ in }, localSetup: .inert)
 }

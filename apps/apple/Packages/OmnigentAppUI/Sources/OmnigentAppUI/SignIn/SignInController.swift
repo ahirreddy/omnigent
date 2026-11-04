@@ -2,8 +2,8 @@ public import Foundation
 public import Observation
 public import OmnigentAuthUI
 public import OmnigentCoreFFI
-public import OmnigentStores
 import OmnigentServices
+public import OmnigentStores
 
 /// Drives the sign-in UI for one ``ConnectionStore``: it builds ``AuthViewState`` from the
 /// core's phase and runs the platform half of each sign-in (the loopback listener and system
@@ -25,6 +25,12 @@ public final class SignInController {
   public internal(set) var flowError: SignInError?
   /// The sign-in this controller started, while it runs.
   public internal(set) var method: SignInOption?
+  /// Whether the accounts screen signs in or creates an account.
+  public internal(set) var accountForm = AccountForm.signIn
+  /// The server being signed in to, when it has no administrator yet.
+  public internal(set) var unclaimedServer: ServerIdentity?
+  /// This Mac's local server for "Get started locally"; `nil` where it cannot run.
+  @ObservationIgnored public var localSetup: (any LocalSetupSource)?
 
   /// Removes a server from the recents.
   @ObservationIgnored public var forgetServer: @MainActor (String) -> Void = { _ in }
@@ -61,8 +67,8 @@ public final class SignInController {
   /// Everything the sign-in UI renders.
   public var state: AuthViewState {
     AuthViewState(
-      phase: phase, server: nil, directory: directory, lastServerUrl: lastServerUrl,
-      notice: notice)
+      phase: phase, server: unclaimedServer, directory: directory, lastServerUrl: lastServerUrl,
+      notice: notice, accountForm: accountForm, localSetup: localSetup?.state)
   }
 
   /// The actions the sign-in UI calls.
@@ -74,7 +80,12 @@ public final class SignInController {
       cancel: { [weak self] in self?.cancel() },
       signOut: { [weak self] in self?.signOut() },
       retry: { [weak self] in self?.retry() },
-      forgetServer: { [weak self] in self?.forgetServer($0) })
+      forgetServer: { [weak self] in self?.forgetServer($0) },
+      createAccount: { [weak self] in self?.createAccount($0) },
+      showAccountForm: { [weak self] in self?.showAccountForm($0) },
+      inviteToken: { inviteTokenFromLink(text: $0) },
+      checkServer: { [weak self] in await self?.checkServer($0) ?? .unreachable },
+      localSetup: localSetup?.actions(connect: { [weak self] in self?.connect($0) }))
   }
 
   private var phase: SignInPhase {
@@ -105,6 +116,8 @@ public final class SignInController {
     notice = nil
     flowError = nil
     method = nil
+    accountForm = .signIn
+    unclaimedServer = nil
     Task { await connectNow(trimmed) }
   }
 
@@ -138,10 +151,13 @@ public final class SignInController {
       baseUrl = server.baseUrl
       accounts.remember(server)
       if let url = URL(string: baseUrl) { onServerChange(url) }
-      onSignedIn(server)
+      signedInHere(server)
       return
     case .signInRequired(let url, _, _, _, _):
       baseUrl = url
+      let needsSetup = store.core?.needsAccountSetup() ?? false
+      unclaimedServer = needsSetup ? ServerIdentity(baseUrl: url, needsSetup: true) : nil
+      accountForm = needsSetup ? .createAdmin : .signIn
     default:
       return
     }
@@ -173,7 +189,7 @@ public final class SignInController {
   func signedIn(_ server: ConnectedServer?, issuesBefore: Int) {
     if let server {
       accounts.remember(server)
-      onSignedIn(server)
+      signedInHere(server)
     } else if store.issues.count > issuesBefore, let issue = store.issues.last {
       flowError = SignInError(issue.error)
     }

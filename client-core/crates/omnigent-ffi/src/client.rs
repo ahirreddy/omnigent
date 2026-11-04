@@ -14,6 +14,7 @@ use futures::future::AbortHandle;
 use omnigent_core as core;
 use omnigent_core::SessionError;
 use omnigent_core::attachments::{UploadFile, UploadState};
+use omnigent_core::auth::account_creation::{self, AccountCreation};
 use omnigent_core::auth::accounts::{self, AccountLoginOptions};
 use omnigent_core::auth::errors::HostedAuthError;
 use omnigent_core::auth::mode::AuthenticationMode as CoreMode;
@@ -496,6 +497,7 @@ impl Inner {
             mode: CoreMode::LocalSingleUser,
             manifest_auth: None,
             databricks_workspace: None,
+            needs_setup: false,
         };
         lock(&self.auth).resolved = Some(resolved.clone());
         self.establish(generation, &resolved, None, None)
@@ -847,65 +849,7 @@ impl ClientCore {
         username: String,
         password: String,
     ) -> Result<ConnectedServer, CoreError> {
-        let inner = &self.inner;
-        let generation = lock(&inner.auth).generation;
-        let resolved = inner.resolved()?;
-        // The password goes only to a server whose auth mode is accounts.
-        if resolved.mode != CoreMode::Accounts {
-            return Err(HostedAuthError::UnsupportedAuthentication.into());
-        }
-        inner.post(Msg::Phase(ConnectionPhase::SigningIn {
-            base_url: resolved.endpoint.base_url().to_owned(),
-        }));
-        let password = SecretString::new(password);
-        let request = accounts::login_request(
-            &resolved.endpoint,
-            &username,
-            &password,
-            AccountLoginOptions {
-                issue_refresh: false,
-            },
-        )
-        .map_err(CoreError::from)?;
-        let response = inner.transport.send(request).await;
-        inner.check_generation(generation)?;
-        let credential = response
-            .map_err(HostedAuthError::from)
-            .and_then(|response| {
-                omnigent_core::auth::mode::check_json_response(&response, false)?;
-                accounts::credential_from_login(&response.body, inner.host.unix_ms())
-            });
-        let credential = match credential {
-            Ok(credential) => credential,
-            Err(error) => {
-                let error = CoreError::from(error);
-                inner.sign_in_required(&resolved, Some(error.clone()));
-                return Err(error);
-            }
-        };
-        let saved = match inner.store() {
-            Ok(store) => accounts::save_credential(
-                store,
-                &resolved.endpoint,
-                &credential,
-                inner.host.unix_ms(),
-            )
-            .await
-            .map_err(CoreError::from),
-            Err(error) => Err(error),
-        };
-        if let Err(error) = saved {
-            // Leave `SigningIn` (unless a newer connect owns the phase): the sign-in screen shows
-            // why the credential was not kept. The caller gets the save error either way.
-            if inner.check_generation(generation).is_ok() {
-                inner.sign_in_required(&resolved, Some(error.clone()));
-            }
-            return Err(error);
-        }
-        inner.check_generation(generation)?;
-        let user = Some(credential.user_id.clone());
-        inner
-            .establish(generation, &resolved, Some(credential.token), user)
+        self.password_flow(PasswordFlow::SignIn, username, password)
             .await
     }
 
@@ -1360,6 +1304,99 @@ impl ClientCore {
     /// Stops every connection and the engine. The core is unusable afterwards.
     pub fn shutdown(&self) {
         self.inner.post(Msg::Shutdown);
+    }
+}
+
+/// What a username and password are for: signing in, or creating the account first.
+pub(crate) enum PasswordFlow {
+    SignIn,
+    Create(AccountCreation),
+}
+
+impl ClientCore {
+    /// Sends the password request for `flow`, saves the credential it answers and connects.
+    /// A refusal returns the phase to `SignInRequired` with the reason.
+    pub(crate) async fn password_flow(
+        &self,
+        flow: PasswordFlow,
+        username: String,
+        password: String,
+    ) -> Result<ConnectedServer, CoreError> {
+        let inner = &self.inner;
+        let generation = lock(&inner.auth).generation;
+        let resolved = inner.resolved()?;
+        // The password goes only to a server whose auth mode is accounts.
+        if resolved.mode != CoreMode::Accounts {
+            return Err(HostedAuthError::UnsupportedAuthentication.into());
+        }
+        inner.post(Msg::Phase(ConnectionPhase::SigningIn {
+            base_url: resolved.endpoint.base_url().to_owned(),
+        }));
+        let password = SecretString::new(password);
+        let request = match &flow {
+            PasswordFlow::SignIn => accounts::login_request(
+                &resolved.endpoint,
+                &username,
+                &password,
+                AccountLoginOptions {
+                    issue_refresh: false,
+                },
+            ),
+            PasswordFlow::Create(creation) => account_creation::creation_request(
+                &resolved.endpoint,
+                creation,
+                &username,
+                &password,
+            ),
+        }
+        .map_err(CoreError::from)?;
+        let response = inner.transport.send(request).await;
+        inner.check_generation(generation)?;
+        let credential = response
+            .map_err(HostedAuthError::from)
+            .and_then(|response| {
+                match flow {
+                    PasswordFlow::SignIn => {
+                        omnigent_core::auth::mode::check_json_response(&response, false)?;
+                    }
+                    PasswordFlow::Create(_) => {
+                        account_creation::check_creation_response(&response)?;
+                    }
+                }
+                accounts::credential_from_login(&response.body, inner.host.unix_ms())
+            });
+        let credential = match credential {
+            Ok(credential) => credential,
+            Err(error) => {
+                let error = CoreError::from(error);
+                inner.sign_in_required(&resolved, Some(error.clone()));
+                return Err(error);
+            }
+        };
+        let saved = match inner.store() {
+            Ok(store) => accounts::save_credential(
+                store,
+                &resolved.endpoint,
+                &credential,
+                inner.host.unix_ms(),
+            )
+            .await
+            .map_err(CoreError::from),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = saved {
+            // Leave `SigningIn` (unless a newer connect owns the phase): the sign-in screen shows
+            // why the credential was not kept. The caller gets the save error either way.
+            if inner.check_generation(generation).is_ok() {
+                inner.sign_in_required(&resolved, Some(error.clone()));
+            }
+            return Err(error);
+        }
+        inner.check_generation(generation)?;
+        let user = Some(credential.user_id.clone());
+        inner
+            .establish(generation, &resolved, Some(credential.token), user)
+            .await
     }
 }
 

@@ -47,6 +47,30 @@ public nonisolated enum AuthSamples {
   /// Every sample, in flow order.
   public static let all: [AuthSample] = [
     AuthSample(
+      id: "landing", title: "First-run landing",
+      state: AuthViewState(localSetup: LocalSetupState(cli: .found, server: .stopped))),
+    AuthSample(
+      id: "landing-organization", title: "First-run landing with organization servers",
+      state: AuthViewState(
+        directory: ServerDirectory(managed: directory.managed),
+        localSetup: LocalSetupState(cli: .found, server: .stopped))),
+    AuthSample(
+      id: "create-admin", title: "Create the first admin",
+      state: AuthViewState(
+        phase: .signInRequired(
+          baseUrl: accountsUrl, serverName: "Acme Agents", mode: .accounts, methods: [.password],
+          reason: nil),
+        server: accountsServer, accountForm: .createAdmin)),
+    AuthSample(
+      id: "register", title: "Create an invited account",
+      state: AuthViewState(
+        phase: .signInRequired(
+          baseUrl: accountsUrl, serverName: "Acme Agents", mode: .accounts, methods: [.password],
+          reason: SignInError(
+            category: .auth, failure: .refused(reason: "invite invalid or expired"),
+            message: "The server did not create the account.")),
+        server: accountsServer, accountForm: .register)),
+    AuthSample(
       id: "picker", title: "Server picker",
       state: AuthViewState(directory: directory, lastServerUrl: "")),
     AuthSample(

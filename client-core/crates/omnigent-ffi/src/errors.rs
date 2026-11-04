@@ -104,6 +104,7 @@ pub enum AuthErrorKind {
     RedirectNotAllowed,
     Unauthorized,
     Forbidden,
+    AccountRefused,
     HttpStatus,
     Transport,
     CredentialExpired,
@@ -486,6 +487,7 @@ const fn auth_kind(error: &HostedAuthError) -> AuthErrorKind {
         HostedAuthError::RedirectNotAllowed => AuthErrorKind::RedirectNotAllowed,
         HostedAuthError::Unauthorized { .. } => AuthErrorKind::Unauthorized,
         HostedAuthError::Forbidden => AuthErrorKind::Forbidden,
+        HostedAuthError::AccountRefused { .. } => AuthErrorKind::AccountRefused,
         HostedAuthError::HttpStatus { .. } => AuthErrorKind::HttpStatus,
         HostedAuthError::Transport(_) => AuthErrorKind::Transport,
         HostedAuthError::CredentialExpired => AuthErrorKind::CredentialExpired,
@@ -499,6 +501,7 @@ fn auth_detail(error: &HostedAuthError) -> Option<String> {
     match error {
         HostedAuthError::BrowserLoginExpired { reason }
         | HostedAuthError::BrowserLoginRejected { reason, .. }
+        | HostedAuthError::AccountRefused { reason, .. }
         | HostedAuthError::Unauthorized { reason } => reason.clone(),
         HostedAuthError::MalformedResponse { detail } => Some(detail.clone()),
         HostedAuthError::Transport(error) => Some(error.to_string()),

@@ -144,6 +144,15 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   1 s of opening a session.
 - [ ] **iPhone:** transcript content shows briefly under the dock and composer while the layout
   settles.
+- [ ] **Onboarding (Mac):** install the `omnigent` CLI from "Get started locally" as Electron's
+  `onInstallCli` does; today the step links to the install guide and checks again.
+- [ ] **Onboarding (Mac):** "Where do you work today?" connects this Mac with
+  `omnigent host --non-interactive`, which refuses when the CLI is not signed in to that server
+  (for example "Run `omnigent login …`" on a Databricks-fronted one). Electron first runs
+  `ensureServerAuth` (CLI login, browser if needed); port it, and offer the
+  remote (Arca) runner where Electron does.
+- [ ] **Invite links:** open `…/register?invite=` links in the app (deep link) with the invite
+  prefilled; today the user pastes the link into Create an Account.
 - [ ] **Tabs:** drag-to-reorder on iPad.
 - [ ] **Split view:** in iPad portrait the right pane's tab-strip section is narrow and clips titles.
 - [ ] **Split view on the unfolded Duo:** the hinge layout applies only when both sides of the

@@ -42,6 +42,21 @@ struct LocalServerManagerTests {
     #expect(harness.manager.serverLog.text.contains("Starting omnigent server on 127.0.0.1:6767"))
   }
 
+  @Test("a start from a window's setup reports its own trigger, so no other window is offered")
+  func windowTrigger() async throws {
+    let harness = try LocalServerHarness()
+    defer { harness.cleanUp() }
+    harness.runner.script(announces(6767))
+    harness.probe.answer(try loopback(6767), .ready(manifest))
+    var triggers: [LocalServerStartTrigger] = []
+    harness.manager.onServerReady = { triggers.append($1) }
+
+    await harness.manager.startServer(trigger: .window)
+
+    #expect(harness.manager.server.endpoint?.port == 6767)
+    #expect(triggers == [.window])
+  }
+
   @Test("a fixed port passes --port and is checked before spawning")
   func fixedPort() async throws {
     let harness = try LocalServerHarness { $0.port = 7100 }
