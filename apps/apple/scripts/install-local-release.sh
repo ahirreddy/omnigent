@@ -3,11 +3,12 @@
 # ~/Applications/Omnigent Native.app (bundle id ai.omnigent.mac), apart from the Debug
 # "Omnigent Lab" and the Electron "Omnigent". For day-to-day use before Developer ID builds exist.
 #
-# Usage: install-local-release.sh [--skip-prereqs] [--no-launch]
+# Usage: install-local-release.sh [--skip-prereqs] [--no-launch] [--full-priority]
 #
 # Without a team the app is not entitled to the data-protection keychain, so it keeps sign-ins in
 # files only the user can read (KeychainModeSelection). Sparkle stays off: the build has no
-# update key. Everything runs at background priority with two jobs so the Mac stays usable.
+# update key. Everything runs at background priority with two Rust jobs so the Mac stays usable;
+# --full-priority drops both limits when nobody is using the Mac.
 # --skip-prereqs reuses the current Rust core, CEF and generated workspace.
 set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=release/common.sh
@@ -15,11 +16,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/release/common.sh"
 
 skip_prereqs=0
 launch=1
+full_priority=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-prereqs) skip_prereqs=1; shift ;;
     --no-launch) launch=0; shift ;;
-    -h | --help) sed -n '2,12p' "$0" >&2; exit 64 ;;
+    --full-priority) full_priority=1; shift ;;
+    -h | --help) sed -n '2,13p' "$0" >&2; exit 64 ;;
     *) die "unknown argument '$1'" ;;
   esac
 done
@@ -32,12 +35,20 @@ case "$(uname -m)" in
 esac
 
 background() {
-  taskpolicy -b nice -n 20 "$@"
+  if [[ $full_priority -eq 1 ]]; then
+    "$@"
+  else
+    taskpolicy -b nice -n 20 "$@"
+  fi
 }
 
 if [[ $skip_prereqs -eq 0 ]]; then
   log "build-core.sh release --sim-only (host macOS and iOS simulator)"
-  CARGO_BUILD_JOBS=2 background bash "$apple_root/scripts/build-core.sh" release --sim-only
+  if [[ $full_priority -eq 1 ]]; then
+    bash "$apple_root/scripts/build-core.sh" release --sim-only
+  else
+    CARGO_BUILD_JOBS=2 background bash "$apple_root/scripts/build-core.sh" release --sim-only
+  fi
   log "fetch-cef.sh --arch $arch"
   background bash "$apple_root/scripts/fetch-cef.sh" --arch "$arch"
   log "tuist install && tuist generate"
