@@ -39,7 +39,7 @@ pub mod workspace_store;
 pub use client::{
     ClientCore, ClientEvent, ClientListener, CoreConfig, SLICE_KEY_HEADER, SLICE_KEY_QUERY,
     SessionError, SubscriptionId, browser, configure, create, databricks_session, events, fork,
-    items, projects, session_search, sessions, share,
+    items, projects, server_admin, session_search, sessions, share,
 };
 pub use discovery::{ServerDiscovery, discovery_from_response, manifest_request};
 pub use error::CoreError;

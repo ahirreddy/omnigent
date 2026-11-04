@@ -718,17 +718,34 @@ fn malformed(context: &str) -> impl FnOnce(String) -> SessionError + '_ {
     }
 }
 
+/// Which sessions a list read asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ListScope {
+    /// The sidebar's sessions, archived included.
+    Visible,
+    /// Every session of every kind, for the attention inventory.
+    Inventory,
+    /// Archived sessions only.
+    Archived,
+}
+
 /// The list query `NativeLab` sent, plus the explicit `visibility` the repo requires.
 fn list_query(
     after: Option<&str>,
     limit: u32,
-    inventory: bool,
+    scope: ListScope,
 ) -> Result<Vec<(&'static str, String)>, SessionError> {
     let mut query = page_query(after, limit)?;
     query.push(("sort_by", "updated_at".to_owned()));
+    // Older servers ignore `visibility=archived`; their rows are filtered after the read.
     query.push(("include_archived", "true".to_owned()));
-    query.push(("visibility", "all".to_owned()));
-    if inventory {
+    let visibility = if scope == ListScope::Archived {
+        "archived"
+    } else {
+        "all"
+    };
+    query.push(("visibility", visibility.to_owned()));
+    if scope == ListScope::Inventory {
         query.push(("kind", "any".to_owned()));
     }
     Ok(query)
@@ -764,11 +781,37 @@ impl<T: HttpTransport> ClientCore<T> {
         after: Option<&str>,
         limit: u32,
     ) -> Result<SessionPage, SessionError> {
-        let result = self.list_page(after, limit, false).await;
+        let result = self.list_page(after, limit, ListScope::Visible).await;
         self.dispatch();
         result.map(|(sessions, next_cursor)| SessionPage {
             sessions,
             next_cursor,
+        })
+    }
+
+    /// One page of archived sessions (`visibility=archived`), most recently updated first, for
+    /// Settings > Archived sessions. Rows an older server returns unarchived are dropped.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::session_page`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn archived_session_page(
+        &self,
+        after: Option<&str>,
+        limit: u32,
+    ) -> Result<SessionPage, SessionError> {
+        let result = self.list_page(after, limit, ListScope::Archived).await;
+        self.dispatch();
+        result.map(|(mut sessions, next_cursor)| {
+            sessions.retain(|session| session.is_archived);
+            SessionPage {
+                sessions,
+                next_cursor,
+            }
         })
     }
 
@@ -800,7 +843,7 @@ impl<T: HttpTransport> ClientCore<T> {
         let mut after: Option<String> = None;
         loop {
             let (page, next) = self
-                .list_page(after.as_deref(), INVENTORY_PAGE_LIMIT, true)
+                .list_page(after.as_deref(), INVENTORY_PAGE_LIMIT, ListScope::Inventory)
                 .await?;
             for summary in page {
                 if ids.insert(summary.id.clone()) {
@@ -827,9 +870,9 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         after: Option<&str>,
         limit: u32,
-        inventory: bool,
+        scope: ListScope,
     ) -> Result<(Vec<SessionSummary>, Option<String>), SessionError> {
-        let query = list_query(after, limit, inventory)?;
+        let query = list_query(after, limit, scope)?;
         let prepared = self.prepare("GET", "/v1/sessions", &query, None)?;
         let epochs = lock(&self.state).metadata_epochs.clone();
         let response = self.read(prepared).await?;
