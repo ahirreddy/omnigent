@@ -46,7 +46,7 @@ From the repository root:
 just apple-generate         # Rust core (debug) + bindings, fetch-cef, tuist install, tuist generate
 just apple-run              # build and launch OmnigentMac (alias: apple-run-mac)
 just apple-test             # Swift package tests + OmnigentMac hosted tests
-just apple-install-local    # Release build for daily use: ~/Applications/Omnigent Native.app
+just apple-install-local    # build for daily use: ~/Applications/Omnigent Native.app
 just apple-run-appstore     # build and launch OmnigentMacAppStore
 just apple-test-appstore    # OmnigentMacAppStore hosted tests
 just apple-test-ui          # both editions' UI tests (take the mouse; idle machine only)
@@ -60,12 +60,14 @@ After changing Rust, rebuild the core and bindings with `just apple-core` (or
 without launching. Re-run `just apple-generate` after changing `Project.swift` or the
 Tuist manifests.
 
-`just apple-install-local` builds a Release, ad-hoc signed OmnigentMac (Rust core in release,
-host architecture only) at background priority, and installs it as `~/Applications/Omnigent
-Native.app`, apart from the Debug "Omnigent Lab" and the Electron "Omnigent". Without a team ID
-it keeps sign-ins in files under `~/Library/Application Support/ai.omnigent.mac/LocalCredentials`
-instead of the keychain, and Sparkle stays off. Rerun it to update; it quits the running copy
-first. `--skip-prereqs` reuses the current core, CEF and workspace.
+`just apple-install-local` builds a Debug, ad-hoc signed OmnigentMac (debug Rust core, host
+architecture only) at background priority, and installs it as `~/Applications/Omnigent
+Native.app`, apart from the Electron "Omnigent". It keeps sign-ins in files under
+`~/Library/Application Support/ai.omnigent.mac.lab/DebugCredentials` instead of the keychain, and
+Sparkle stays off. Rerun it to update; builds are incremental and it quits the running copy first.
+`--skip-prereqs` reuses the current core, CEF and workspace; `--full-priority` drops the
+background priority when nobody is using the Mac. Debug, because optimized incremental builds of
+a shared module take minutes (and an archive recompiles everything); Debug takes seconds.
 
 Then open `apps/apple/Omnigent.xcworkspace` in Xcode if you prefer to build from
 there. There is no checked-in `.xcodeproj`; Tuist generates it.

@@ -270,8 +270,7 @@ data-protection keychain needs for saved sign-ins. Release signing therefore nee
 provisioning profile for the bundle id (Developer ID or Mac App Store). Ad-hoc Debug builds use
 the `*-Debug.entitlements` files without the group and keep credentials in files only the user
 can read (`KeychainModeSelection`). A Release build falls back the same way only when it has no
-team ID (the local build from `scripts/install-local-release.sh`); a team-signed Release never
-falls back.
+team ID; a team-signed Release never falls back.
 
 ### Publish the Developer ID release
 

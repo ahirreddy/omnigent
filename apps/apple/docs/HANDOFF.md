@@ -59,10 +59,10 @@ glass UI tests. The Mac suite takes about 80 s without UI automation (it took 16
    and the URLSession transports against a live workspace: list, history, live stream,
    terminals, and creating a session on a new managed sandbox (`create_sandbox_session`), sending,
    streaming and Stop. Needs `OMNIGENT_LIVE_WORKSPACE_URL` and `OMNIGENT_LIVE_CREDENTIALS`.
-9. **Local Release build for daily use.** `just apple-install-local` builds Release (release
-   Rust core, host arch), signs ad hoc without hardened runtime (library validation refuses
-   ad-hoc frameworks) and installs `~/Applications/Omnigent Native.app` (`ai.omnigent.mac`).
-   The user is running it against isaac and will send feedback; Sparkle is off.
+9. **Local build for daily use.** `just apple-install-local` builds Debug (debug Rust core, host
+   arch; the user chose Debug for build speed), signs ad hoc without hardened runtime (library
+   validation refuses ad-hoc frameworks) and installs `~/Applications/Omnigent Native.app`
+   (`ai.omnigent.mac.lab`). Sparkle is off.
 
 ## How to build and verify on a fresh machine
 
