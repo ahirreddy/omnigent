@@ -40,6 +40,7 @@ mod requests;
 mod routing;
 mod session_actions;
 pub mod sessions;
+mod skills;
 mod terminals;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -531,3 +532,7 @@ mod routing_tests;
 
 #[cfg(test)]
 pub(crate) mod test_support;
+
+#[cfg(test)]
+#[path = "skills_tests.rs"]
+mod skills_tests;

@@ -46,6 +46,7 @@ pub mod host;
 pub mod http;
 pub mod remote_browser;
 pub mod sessions;
+pub mod slash;
 pub mod sync;
 pub mod terminal;
 pub mod transcript;

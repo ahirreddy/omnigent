@@ -128,6 +128,35 @@ fn changed_files(value: &Value) -> Result<Vec<ChangedFile>, String> {
         .collect()
 }
 
+/// What a send posts for the composer text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SendPayload {
+    /// A user `message` with the text and the staged attachments.
+    Message,
+    /// A skill run on the server (`slash_command`); the text is its typed invocation.
+    Skill {
+        /// The skill name.
+        name: String,
+        /// Everything after the name.
+        arguments: String,
+    },
+    /// The harness's compact control (`compact`); the text is the typed `/compact`.
+    Compact,
+}
+
+impl SendPayload {
+    fn body(&self, text: &str, attachments: &[UploadedAttachment]) -> Value {
+        match self {
+            Self::Message => message_body(text, attachments),
+            Self::Skill { name, arguments } => json!({
+                "type": "slash_command",
+                "data": {"kind": "skill", "name": name, "arguments": arguments},
+            }),
+            Self::Compact => json!({"type": "compact", "data": {}}),
+        }
+    }
+}
+
 /// What a send captured before its request went out.
 struct SendGate {
     operation: SubmissionOperation,
@@ -373,6 +402,28 @@ impl<T: HttpTransport> ClientCore<T> {
         result
     }
 
+    /// Sends the composer `text` as `payload` through the same gate as
+    /// [`Self::send_message`]. A skill or compact control never carries attachments.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::send_message`], plus [`SessionError::Draft`] when attachments are staged for
+    /// a skill or compact control.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn send_command(
+        &self,
+        session_id: &str,
+        text: &str,
+        payload: SendPayload,
+    ) -> Result<MessageSent, SessionError> {
+        let result = self.send_payload(session_id, text, &payload, true).await;
+        self.dispatch();
+        result
+    }
+
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -383,6 +434,21 @@ impl<T: HttpTransport> ClientCore<T> {
         text: &str,
         require_live_stream: bool,
     ) -> Result<MessageSent, SessionError> {
+        self.send_payload(session_id, text, &SendPayload::Message, require_live_stream)
+            .await
+    }
+
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn send_payload(
+        &self,
+        session_id: &str,
+        text: &str,
+        payload: &SendPayload,
+        require_live_stream: bool,
+    ) -> Result<MessageSent, SessionError> {
         validate_identifier(session_id)?;
         let key = self.draft_key(session_id)?;
         let gate = {
@@ -390,6 +456,9 @@ impl<T: HttpTransport> ClientCore<T> {
             let has_attachments = state.drafts.draft(&key).has_attachments();
             if text.trim().is_empty() && !has_attachments {
                 return Err(SessionError::EmptyMessage);
+            }
+            if has_attachments && *payload != SendPayload::Message {
+                return Err(DraftError::NotReady.into());
             }
             if has_attachments && !state.drafts.can_submit(&key) {
                 return Err(DraftError::NotReady.into());
@@ -415,7 +484,7 @@ impl<T: HttpTransport> ClientCore<T> {
             }
         };
         let result = self
-            .deliver(session_id, text, &gate, require_live_stream)
+            .deliver(session_id, text, payload, &gate, require_live_stream)
             .await;
         let outcome = match &result {
             Ok(_) => SubmissionOutcome::Accepted,
@@ -453,6 +522,7 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         session_id: &str,
         text: &str,
+        payload: &SendPayload,
         gate: &SendGate,
         require_live_stream: bool,
     ) -> Result<MessageSubmission, SessionError> {
@@ -467,7 +537,7 @@ impl<T: HttpTransport> ClientCore<T> {
             .await?;
         let path = format!("/v1/sessions/{session_id}/events");
         let value = self
-            .write_json("POST", &path, &message_body(text, &attachments))
+            .write_json("POST", &path, &payload.body(text, &attachments))
             .await?;
         match acknowledgement(&value).map_err(|detail| SessionError::DeliveryUncertain {
             detail: format!("unreadable {path} acknowledgement: {detail}"),

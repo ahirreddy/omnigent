@@ -27,6 +27,7 @@ pub mod remote_browser;
 pub mod server_url;
 pub mod session_attention;
 pub mod session_query;
+pub mod slash;
 pub mod sse;
 pub mod terminal;
 #[cfg(test)]
