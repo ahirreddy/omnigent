@@ -49,7 +49,13 @@ enum SidebarAdapter {
     return SidebarViewState(
       list: listState,
       rowInfo: Dictionary(
-        layout.sessions.map { ($0.id, rowInfo($0, isOwned: list.isOwned($0))) },
+        layout.sessions.map { session in
+          let info = rowInfo(
+            session, isOwned: list.isOwned(session),
+            environments: list.hostEnvironments,
+            hasDraft: list.draftSessionIDs.contains(session.id))
+          return (session.id, info)
+        },
         uniquingKeysWith: { first, _ in first }),
       projects: layout.projects, inboxCount: Int(totals.sessionsNeedingYou), showsCanvas: false,
       display: display, quickFilter: filter == .all || filter == .archived ? nil : filter,
@@ -96,13 +102,42 @@ enum SidebarAdapter {
   }
 
   /// What a row shows beyond the summary.
-  static func rowInfo(_ session: OmnigentCoreFFI.SessionSummary, isOwned: Bool) -> SessionRowInfo {
+  /// - Parameters:
+  ///   - session: The session.
+  ///   - isOwned: The viewer owns it.
+  ///   - environments: Where a session on each host runs; empty until the hosts are read.
+  ///   - hasDraft: Its composer holds an unsent draft.
+  /// - Returns: The row's facts.
+  static func rowInfo(
+    _ session: OmnigentCoreFFI.SessionSummary, isOwned: Bool,
+    environments: [String: SessionEnvironment] = [:], hasDraft: Bool = false
+  ) -> SessionRowInfo {
     let configuration = session.configuration
     return SessionRowInfo(
-      harness: configuration?.harness, repo: repoName(session.workspace),
+      harness: configuration?.harness,
+      environment: environments.isEmpty
+        ? nil
+        : configuration.map { environmentLabel($0.hostId.map { environments[$0] ?? .remote }) },
+      repo: repoName(session.workspace),
       branch: configuration?.gitBranch, createdAt: session.createdAt, isShared: !isOwned,
+      hasDraft: hasDraft,
       isDisconnected: configuration.map { executionUnavailableReason(configuration: $0) != nil }
         ?? false)
+  }
+
+  /// The Environment detail: a session without a host runs on the server's own machine.
+  static func environmentLabel(_ environment: SessionEnvironment?) -> String {
+    switch environment ?? .localMachine {
+    case .localMachine: "Local machine"
+    case .thisMachine:
+      #if os(macOS)
+        "This Mac"
+      #else
+        "This device"
+      #endif
+    case .remote: "Remote"
+    case .sandbox(let label): label
+    }
   }
 
   /// The folder name of a workspace path; labels that are not paths have none.

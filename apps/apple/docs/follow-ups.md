@@ -164,6 +164,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Mac sidebar:** with the window inactive, the Running and Needs you rows don't dim like the
   other rows (`QuickFilterRow` forces the primary color).
 - [ ] **iOS sidebar:** the swipe actions still use system orange (Pin) and indigo (Archive).
+- [ ] **Mac sidebar:** "This Mac" in the Environment detail is a guess (the only online machine of a
+  loopback server) until the app knows the host it runs; pass that id to `host_environments`.
+- [ ] **Mac sidebar:** composer drafts live only in the core's memory, so the draft marker covers
+  sessions opened since launch (the web keeps drafts in local storage).
+- [ ] **Palette:** add "Go to Automations" once the Mac app has an Automations page.
 - [ ] **CLI style:** the CLI composer has no host chip, and its status-line model menu duplicates
   `ConfigurationMenu`'s pickers (no agent switch).
 - [ ] **CLI style:** fold the non-message hover host (`cliActions`) into the shared

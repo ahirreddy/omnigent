@@ -14,7 +14,11 @@ extension ConnectionStore {
       if case .connected(let server) = phase {
         sessionList.viewerID = server.userId
         let list = sessionList
-        Task { await list.loadProjects() }
+        Task {
+          async let projects: Void = list.loadProjects()
+          await list.loadHosts(serverURL: server.baseUrl)
+          await projects
+        }
       }
     case .updatesLinkChanged(let state):
       updatesLink = state
@@ -75,6 +79,13 @@ extension ConnectionStore {
     }
   }
 
+  /// Re-reads the hosts, for the sidebar's Environment detail.
+  private func reloadHosts() {
+    guard let server = connectedServer else { return }
+    let list = sessionList
+    Task { await list.loadHosts(serverURL: server.baseUrl) }
+  }
+
   private func applyServerEvent(_ event: CoreEvent) {
     switch event {
     case .notification(let notification):
@@ -83,6 +94,7 @@ extension ConnectionStore {
       notifications?.badge(ids)
     case .hostsChanged:
       hostsRevision += 1
+      reloadHosts()
     case .projectsChanged:
       projectsRevision += 1
       let list = sessionList

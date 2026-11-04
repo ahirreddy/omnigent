@@ -38,6 +38,10 @@ struct DraftPersistenceTests {
     }
     #expect(reopened.composer.text == "Draft for the first session")
     #expect(second.composer.text == "Another draft")
+    // The sidebar's draft marker follows whether each composer holds text.
+    #expect(list.draftSessionIDs == [ids[0], ids[1]])
+    second.composer.text = "  "
+    #expect(list.draftSessionIDs == [ids[0]])
     store.closeConversation(ids[0])
     store.closeConversation(ids[1])
   }

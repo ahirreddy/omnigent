@@ -68,6 +68,45 @@ struct SidebarAdapterTests {
     #expect(SidebarAdapter.repoName("Local server") == nil)
   }
 
+  @Test("Row info names the environment once the hosts are read, and carries the draft marker")
+  func rowEnvironmentAndDraft() {
+    func hosted(_ hostID: String?) -> OmnigentCoreFFI.SessionSummary {
+      var summary = session("s")
+      summary.configuration = OmnigentCoreFFI.SessionConfiguration(
+        agentId: nil, harness: nil, wrapper: nil, modelOverride: nil, baseModel: nil, effort: nil,
+        modelReported: nil, effortReported: nil, models: [], hostId: hostID, hostOnline: nil,
+        runnerOnline: nil, runnerBound: nil, hostResumable: nil, parentId: nil, routingMode: nil,
+        approvalMode: nil)
+      return summary
+    }
+    let environments: [String: SessionEnvironment] = [
+      "mac": .thisMachine, "box": .sandbox(label: "Modal Sandbox"),
+    ]
+    func environment(_ hostID: String?) -> String? {
+      SidebarAdapter.rowInfo(hosted(hostID), isOwned: true, environments: environments)
+        .environment
+    }
+    #expect(environment("mac") == "This Mac")
+    #expect(environment("box") == "Modal Sandbox")
+    #expect(environment("elsewhere") == "Remote")
+    #expect(environment(nil) == "Local machine")
+    // Unknown until the hosts are read.
+    #expect(SidebarAdapter.rowInfo(hosted("mac"), isOwned: true).environment == nil)
+    #expect(SidebarAdapter.rowInfo(session("s"), isOwned: true, hasDraft: true).hasDraft)
+    // The core names this Mac as the only online machine of a local server.
+    let hosts = [
+      CreationHost(
+        hostId: "mac", name: "Mac", status: "online", sandboxProvider: nil,
+        configuredHarnesses: nil, isAvailable: true)
+    ]
+    #expect(
+      hostEnvironments(hosts: hosts, serverUrl: "http://127.0.0.1:6767", thisMachineHostId: nil)
+        .map(\.environment) == [.thisMachine])
+    #expect(
+      hostEnvironments(hosts: hosts, serverUrl: "https://omni.example.com", thisMachineHostId: nil)
+        .map(\.environment) == [.remote])
+  }
+
   @Test("Display options persist and bad data falls back to the defaults")
   func displayDefaults() throws {
     let defaults = try #require(UserDefaults(suiteName: "SidebarAdapterTests"))

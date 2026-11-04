@@ -16,15 +16,32 @@ struct SessionRow: View {
   let details: Set<SessionRowDetail>
   let now: Date
   let menu: SessionRowMenu
+  /// Selecting sessions: the row shows a check mark instead of its hover buttons.
+  var isSelecting = false
+  /// Checked while selecting sessions.
+  var isChecked = false
+  /// The title being edited in place, after a double-click.
+  var inlineRename: InlineRename?
+  /// Starts editing the title in place; `nil` when it cannot be renamed here.
+  var beginInlineRename: (() -> Void)?
 
   @State private var isHovered = false
 
   var body: some View {
     HStack(alignment: .center, spacing: Theme.Spacing.small) {
+      if isSelecting {
+        Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+          .foregroundStyle(isChecked ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+          .accessibilityHidden(true)
+      }
       VStack(alignment: .leading, spacing: 1) {
-        Text(session.title)
-          .lineLimit(1)
-          .fontWeight(isUnread ? .semibold : .regular)
+        if let inlineRename {
+          InlineTitleField(rename: inlineRename)
+        } else {
+          Text(session.title)
+            .lineLimit(1)
+            .fontWeight(isUnread ? .semibold : .regular)
+        }
         if let line = detailLine {
           Text(line)
             .font(.caption)
@@ -33,7 +50,7 @@ struct SessionRow: View {
         }
       }
       Spacer(minLength: 4)
-      if isHovered, menu.canHoverPin {
+      if isHovered, menu.canHoverPin, !isSelecting, inlineRename == nil {
         HStack(spacing: Theme.Spacing.tiny) {
           Button(
             session.isPinned ? "Unpin" : "Pin", systemImage: session.isPinned ? "pin.slash" : "pin"
@@ -69,10 +86,15 @@ struct SessionRow: View {
     // Height comes from the list's `defaultMinListRowHeight`, the same for every sidebar row.
     .contentShape(Rectangle())
     .onHover { isHovered = $0 }
+    .simultaneousGesture(
+      TapGesture(count: 2).onEnded { beginInlineRename?() },
+      including: beginInlineRename == nil ? .subviews : .all
+    )
     .help(tooltip)
     .contextMenu { menu.items }
     .accessibilityElement(children: .combine)
     .accessibilityLabel(accessibilityLabel)
+    .accessibilityAddTraits(isSelecting && isChecked ? .isSelected : [])
     .accessibilityActions { menu.accessibilityItems }
     .accessibilityIdentifier("session-row-\(session.id)")
   }
@@ -157,6 +179,36 @@ struct SessionRow: View {
     if info.isShared { parts.append("Shared") }
     parts.append("updated \(RelativeTime.short(session.updatedDate, now: now)) ago")
     return parts.joined(separator: ", ")
+  }
+}
+
+/// A title edited in place: Return or leaving the field saves it, Escape cancels.
+struct InlineRename {
+  /// The text being edited.
+  let text: Binding<String>
+  /// Saves the trimmed title (nothing for an empty or unchanged one).
+  let commit: () -> Void
+  /// Abandons the edit.
+  let cancel: () -> Void
+}
+
+private struct InlineTitleField: View {
+  let rename: InlineRename
+  @FocusState private var isFocused: Bool
+
+  var body: some View {
+    TextField("Title", text: rename.text)
+      .textFieldStyle(.plain)
+      .focused($isFocused)
+      .onSubmit(rename.commit)
+      #if os(macOS)
+        .onExitCommand(perform: rename.cancel)
+      #endif
+      .onAppear { isFocused = true }
+      .onChange(of: isFocused) { _, focused in
+        if !focused { rename.commit() }
+      }
+      .accessibilityIdentifier("session-row-rename-field")
   }
 }
 

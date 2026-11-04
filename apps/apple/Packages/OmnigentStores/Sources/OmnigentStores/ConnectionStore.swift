@@ -331,6 +331,8 @@ public final class ConnectionStore {
     let store = ConversationStore(
       sessionID: sessionID, core: core,
       listStatus: ListStatusExpectation(list: sessionList, sessionID: sessionID))
+    let list = sessionList
+    store.composer.draftChanged = { [weak list] hasDraft in list?.setDraft(sessionID, hasDraft) }
     conversations[sessionID] = store
     core.openSession(sessionId: sessionID)
     return store

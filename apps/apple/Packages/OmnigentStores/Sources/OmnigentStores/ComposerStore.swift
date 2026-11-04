@@ -9,6 +9,10 @@ public final class ComposerStore {
   /// The draft text. Changes are recorded in the core, so a late send result keeps newer text.
   public var text = "" {
     didSet {
+      let hasDraft = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      if hasDraft != !oldValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        draftChanged?(hasDraft)
+      }
       guard text != oldValue, !applyingCoreText else { return }
       do {
         try core.updateComposer(sessionId: sessionID, text: text)
@@ -59,6 +63,8 @@ public final class ComposerStore {
   let sessionID: String
   let core: ClientCore
   private var applyingCoreText = false
+  /// Told when the draft becomes empty or not (the sidebar's draft marker).
+  @ObservationIgnored var draftChanged: ((Bool) -> Void)?
 
   init(sessionID: String, core: ClientCore) {
     self.sessionID = sessionID
