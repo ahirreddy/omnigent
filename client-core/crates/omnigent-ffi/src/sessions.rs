@@ -79,6 +79,9 @@ pub struct SessionSummary {
     /// The legacy label project it is filed in (`omni_project`).
     #[uniffi(default)]
     pub project_label: Option<String>,
+    /// File review comments on it, for the Inbox.
+    #[uniffi(default)]
+    pub comments_count: u64,
     /// Stop can end its live process (host-spawned, or a wrapper that kills its own harness).
     #[uniffi(default)]
     pub can_stop: bool,
@@ -203,6 +206,7 @@ impl From<CoreSummary> for SessionSummary {
             owner: summary.owner,
             project_id: summary.project_id,
             project_label: summary.project_label,
+            comments_count: summary.comments_count,
         }
     }
 }
@@ -227,6 +231,7 @@ impl From<&SessionSummary> for CoreSummary {
             owner: summary.owner.clone(),
             project_id: summary.project_id.clone(),
             project_label: summary.project_label.clone(),
+            comments_count: summary.comments_count,
             ..Self::new(
                 summary.id.clone(),
                 summary.title.clone(),

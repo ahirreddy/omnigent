@@ -81,6 +81,9 @@ public struct ConnectedServerView: View {
     // A background tab whose work settles gets the unread dot until it is shown.
     .onChange(of: tabs.state.busyIDs, initial: true) { _, busy in session.tabs.noteBusy(busy) }
     .onChange(of: isWindowFocused) { report() }
+    .task(id: connection.connectedServer?.baseUrl) {
+      if connection.connectedServer != nil { await connection.loadOfferedPages() }
+    }
     .sheet(isPresented: $showsTabOverview) {
       TabOverviewSheet(state: tabs.state, actions: tabs.actions) { showsTabOverview = false }
     }
@@ -107,6 +110,8 @@ public struct ConnectedServerView: View {
       server: connection.connectedServer,
       servers: serverSwitching?.choices ?? [])
     state.undo = sidebar.undo?.banner
+    state.showsAutomations = connection.pages?.offered?.automations == true
+    state.showsUsage = connection.pages?.offered?.usage == true
     return state
   }
 
@@ -162,6 +167,10 @@ public struct ConnectedServerView: View {
       CanvasView(
         sessions: connection.sessionList.visible.map(OmnigentUIComponents.SessionSummary.init),
         open: { selection = .session($0) })
+    case .automations:
+      AutomationsAdapter(connection: connection) { selection = .session($0) }
+    case .usage:
+      UsageAdapter(connection: connection) { selection = .session($0) }
     case nil:
       ContentUnavailableView {
         Label("No Session Selected", systemImage: "bubble.left.and.text.bubble.right")
@@ -221,7 +230,7 @@ extension ConnectedServerView {
     let tabs = session.tabs
     return Group {
       switch tab.content {
-      case .chat, .newSession, .inbox, .canvas:
+      case .chat, .newSession, .inbox, .canvas, .automations, .usage:
         detail(tab.content.destination)
       case .newTab:
         NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: tab.id))

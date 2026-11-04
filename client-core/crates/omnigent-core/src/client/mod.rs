@@ -25,7 +25,9 @@
 )]
 
 pub mod agent_info;
+pub mod automations;
 pub mod browser;
+pub mod comments;
 pub mod configure;
 pub mod create;
 pub mod databricks_session;
@@ -34,6 +36,7 @@ pub mod events;
 mod export;
 pub mod fork;
 mod hydration;
+pub mod inbox;
 pub mod items;
 pub(crate) mod json;
 pub mod pin_order;
@@ -50,6 +53,7 @@ pub mod sessions;
 pub mod share;
 mod skills;
 mod terminals;
+pub mod usage;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};

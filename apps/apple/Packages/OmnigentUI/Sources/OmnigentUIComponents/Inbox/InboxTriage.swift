@@ -7,31 +7,57 @@ nonisolated enum InboxTriage {
     let items: [InboxItem]
   }
 
-  static func items(_ items: [InboxItem], filter: InboxFilter, search: String) -> [InboxItem] {
+  static func items(
+    _ items: [InboxItem], filter: InboxFilter, search: String, now: Date = .now,
+    calendar: Calendar = .current
+  ) -> [InboxItem] {
     let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
     let visible = items.filter { item in
       let matchesFilter: Bool
       switch filter {
       case .all: matchesFilter = true
-      case .unread: matchesFilter = item.isUnread || item.isPinned
+      case .unread: matchesFilter = (item.isUnread && !item.isUnresolved) || item.isPinned
       case .awaiting: matchesFilter = item.isUnresolved || item.isPinned
       }
-      let text = [item.preview, item.sessionTitle, item.agentName, item.executionContext].joined(
-        separator: " ")
+      let text = [
+        item.preview, item.sessionTitle, item.agentName, item.executionContext,
+        item.comment?.path ?? "",
+      ]
+      .joined(separator: " ")
       return matchesFilter && (query.isEmpty || text.localizedStandardContains(query))
     }
-    return groups(visible).flatMap(\.items)
+    return groups(visible, now: now, calendar: calendar).flatMap(\.items)
   }
 
-  static func groups(_ items: [InboxItem]) -> [Group] {
-    [
-      Group(title: "Pinned", items: items.filter(\.isPinned)),
-      Group(title: "Needs you", items: items.filter { !$0.isPinned && $0.isUnresolved }),
-      Group(
-        title: "Unread", items: items.filter { !$0.isPinned && !$0.isUnresolved && $0.isUnread }),
-      Group(
-        title: "Read", items: items.filter { !$0.isPinned && !$0.isUnresolved && !$0.isUnread }),
-    ].filter { !$0.items.isEmpty }
+  /// Newest first under the web's recency headers: "Just now" (five minutes), "Earlier today",
+  /// "Yesterday", "This week" (six calendar days back) and "Older".
+  static func groups(_ items: [InboxItem], now: Date = .now, calendar: Calendar = .current)
+    -> [Group]
+  {
+    let today = calendar.startOfDay(for: now)
+    let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+    let week = calendar.date(byAdding: .day, value: -6, to: today) ?? today
+    func title(_ date: Date) -> String {
+      if now.timeIntervalSince(date) < 5 * 60 { return "Just now" }
+      if date >= today { return "Earlier today" }
+      if date >= yesterday { return "Yesterday" }
+      if date >= week { return "This week" }
+      return "Older"
+    }
+    var groups: [Group] = []
+    // A stable sort keeps same-time items in the adapter's order.
+    let sorted = items.enumerated().sorted {
+      $0.element.date == $1.element.date ? $0.offset < $1.offset : $0.element.date > $1.element.date
+    }
+    for item in sorted.map(\.element) {
+      let label = title(item.date)
+      if let last = groups.last, last.title == label {
+        groups[groups.count - 1] = Group(title: label, items: last.items + [item])
+      } else {
+        groups.append(Group(title: label, items: [item]))
+      }
+    }
+    return groups
   }
 
   static func selection(_ selected: String?, previous: [InboxItem], current: [InboxItem]) -> String?

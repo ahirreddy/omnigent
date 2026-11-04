@@ -47,7 +47,7 @@ enum TabAdapter {
     var item = TabItemState(
       id: tab.id, kind: tab.content.kind, title: tab.title ?? "", isPinned: tab.isPinned)
     switch tab.content {
-    case .newTab, .newSession, .inbox, .canvas:
+    case .newTab, .newSession, .inbox, .canvas, .automations, .usage:
       item.title = tab.content.kind == .newTab ? "New Tab" : tab.content.kind.label.capitalized
       item.canDuplicate = false
     case .chat, .harness, .agentBrowser, .sideChat:
@@ -158,7 +158,7 @@ enum TabAdapter {
     _ tab: AppTab, session: ServerSession, browser: (any BrowserTabHosting)?
   ) -> String? {
     switch tab.content {
-    case .newTab, .newSession, .inbox, .canvas, .agentBrowser: nil
+    case .newTab, .newSession, .inbox, .canvas, .automations, .usage, .agentBrowser: nil
     case .chat, .terminal, .harness, .sideChat, .browser, .remoteBrowser:
       item(tab, session: session, browser: browser).title
     }

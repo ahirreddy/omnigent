@@ -49,6 +49,13 @@ extension ConnectionStore {
     core?.cancelDatabricksSignIn(attemptId: challenge.attemptId)
   }
 
+  /// Reads which top-level pages the server offers; a failure is recorded in ``issues`` and
+  /// leaves them unoffered.
+  public func loadOfferedPages() async {
+    guard let pages, let error = await pages.loadOffered() else { return }
+    record(scope: .connection, error)
+  }
+
   /// The new-session form's store, created on first use.
   /// - Returns: The store, or `nil` when the core did not start.
   public func creation() -> CreationStore? {

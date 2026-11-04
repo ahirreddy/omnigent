@@ -58,7 +58,7 @@ struct InboxRow: View {
   private var summary: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
       HStack {
-        Text(item.isUnresolved ? "Needs you" : item.isUnread ? item.kind.title : "Read")
+        Text(kindLabel)
           .font(.caption.weight(.semibold))
           .foregroundStyle(item.isUnresolved ? Theme.brandAccent : Theme.secondary)
         if item.isPinned {
@@ -80,6 +80,15 @@ struct InboxRow: View {
         Text(item.executionContext).font(.caption).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
+    }
+  }
+
+  private var kindLabel: String {
+    if item.isUnresolved { return "Needs you" }
+    if !item.isUnread { return "Read" }
+    switch item.kind {
+    case .unread: return item.isError ? "Error" : "Done"
+    case .approval, .question, .comment: return item.kind.title
     }
   }
 
@@ -117,22 +126,82 @@ struct InboxRow: View {
     } else if item.isUnresolved {
       Text("Open the session to review this request. Details are not available yet.")
         .font(.callout).foregroundStyle(.secondary)
-    } else if let send = actions.reply {
-      HStack {
-        TextField("Reply…", text: $reply)
-          .textFieldStyle(.roundedBorder)
-          .accessibilityIdentifier("inbox-reply-\(item.id)")
-        Button("Send") { send(item, reply) }
-          .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          .accessibilityIdentifier("inbox-send-\(item.id)")
-      }
+    } else if let comment = item.comment {
+      commentDetail(comment)
+    } else {
+      replyDetail
     }
     HStack { rowActions }.buttonStyle(.borderless).tint(.secondary)
   }
 
+  private func commentDetail(_ comment: InboxComment) -> some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
+      Text(
+        "\(Text(comment.author).foregroundStyle(.primary)) commented on \(Text(comment.path).font(Theme.Typography.code))"
+      )
+      .font(.callout).foregroundStyle(.secondary)
+      if let anchor = comment.anchor {
+        Text(anchor.trimmingCharacters(in: .whitespacesAndNewlines))
+          .font(Theme.Typography.code).foregroundStyle(.secondary).lineLimit(1)
+      }
+      Text(comment.body).font(Theme.Typography.label).textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .accessibilityIdentifier("inbox-comment-\(item.id)")
+  }
+
+  @ViewBuilder private var replyDetail: some View {
+    switch item.reply {
+    case .sent:
+      Label("Reply sent. The agent\u{2019}s answer will show up here.", systemImage: "checkmark")
+        .font(.callout).foregroundStyle(.secondary)
+        .accessibilityIdentifier("inbox-reply-sent-\(item.id)")
+        .onAppear { reply = "" }
+    case .idle, .sending, .failed:
+      if item.canReply, let send = actions.reply {
+        replyField(send)
+        if case .failed(let message) = item.reply {
+          Label(message, systemImage: "exclamationmark.triangle").font(.callout)
+            .foregroundStyle(.red)
+            .accessibilityIdentifier("inbox-reply-error-\(item.id)")
+        }
+      }
+    }
+  }
+
+  private func replyField(_ send: @escaping @MainActor (InboxItem, String) -> Void) -> some View {
+    let sending = item.reply == .sending
+    return HStack(alignment: .bottom) {
+      TextField("Reply to \(item.sessionTitle)", text: $reply, axis: .vertical)
+        .lineLimit(1...6)
+        .textFieldStyle(.roundedBorder)
+        .disabled(sending)
+        .onSubmit { submit(send) }
+        .onChange(of: reply) {
+          if case .failed = item.reply { actions.editReply?(item) }
+        }
+        .accessibilityIdentifier("inbox-reply-\(item.id)")
+      Button {
+        submit(send)
+      } label: {
+        if sending { ProgressView().controlSize(.small) } else { Text("Send") }
+      }
+      .buttonStyle(.borderedProminent)
+      .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
+      .accessibilityIdentifier("inbox-send-\(item.id)")
+    }
+  }
+
+  private func submit(_ send: @MainActor (InboxItem, String) -> Void) {
+    guard !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, item.reply != .sending
+    else { return }
+    send(item, reply)
+  }
+
   @ViewBuilder private var rowActions: some View {
     if let open = actions.open {
-      Button("Open session") { open(item) }
+      Button(item.comment == nil ? "Open session" : "Open file") { open(item) }
+        .disabled(item.reply == .sending)
         .accessibilityIdentifier("inbox-open-\(item.id)")
     }
     if let markRead = actions.markRead, item.isUnread {

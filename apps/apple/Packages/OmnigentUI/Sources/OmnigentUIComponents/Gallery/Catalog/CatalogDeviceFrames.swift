@@ -364,6 +364,8 @@ extension PlaygroundModel {
     case .session: conversation.header.title
     case .inbox: "Inbox"
     case .canvas: "Canvas"
+    case .automations: "Automations"
+    case .usage: "Usage"
     case .newSession, nil: ""
     }
   }

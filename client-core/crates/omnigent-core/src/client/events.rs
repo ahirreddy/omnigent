@@ -419,7 +419,32 @@ impl<T: HttpTransport> ClientCore<T> {
         text: &str,
         payload: SendPayload,
     ) -> Result<MessageSent, SessionError> {
-        let result = self.send_payload(session_id, text, &payload, true).await;
+        let result = self
+            .send_payload(session_id, text, &payload, true, true)
+            .await;
+        self.dispatch();
+        result
+    }
+
+    /// Sends `text` alone to a session that is not open here (the Inbox's reply): the same
+    /// ledger and editable-session preflight as [`Self::send_message`], without the live-stream
+    /// requirement and without the composer's staged attachments.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::send_message`], less [`SessionError::StreamNotReady`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn send_reply(
+        &self,
+        session_id: &str,
+        text: &str,
+    ) -> Result<MessageSent, SessionError> {
+        let result = self
+            .send_payload(session_id, text, &SendPayload::Message, false, false)
+            .await;
         self.dispatch();
         result
     }
@@ -434,8 +459,14 @@ impl<T: HttpTransport> ClientCore<T> {
         text: &str,
         require_live_stream: bool,
     ) -> Result<MessageSent, SessionError> {
-        self.send_payload(session_id, text, &SendPayload::Message, require_live_stream)
-            .await
+        self.send_payload(
+            session_id,
+            text,
+            &SendPayload::Message,
+            require_live_stream,
+            true,
+        )
+        .await
     }
 
     #[allow(
@@ -448,12 +479,13 @@ impl<T: HttpTransport> ClientCore<T> {
         text: &str,
         payload: &SendPayload,
         require_live_stream: bool,
+        staged_attachments: bool,
     ) -> Result<MessageSent, SessionError> {
         validate_identifier(session_id)?;
         let key = self.draft_key(session_id)?;
         let gate = {
             let mut state = lock(&self.state);
-            let has_attachments = state.drafts.draft(&key).has_attachments();
+            let has_attachments = staged_attachments && state.drafts.draft(&key).has_attachments();
             if text.trim().is_empty() && !has_attachments {
                 return Err(SessionError::EmptyMessage);
             }

@@ -11,6 +11,10 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   case inbox
   /// The Canvas.
   case canvas
+  /// Automations.
+  case automations
+  /// Usage.
+  case usage
   /// A session's conversation.
   case chat(sessionID: String)
   /// A user shell of a session.
@@ -31,7 +35,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     switch self {
     case .chat(let id), .harness(let id), .agentBrowser(let id): id
     case .terminal(let id, _), .sideChat(let id, _), .remoteBrowser(let id, _): id
-    case .newTab, .newSession, .inbox, .canvas, .browser: nil
+    case .newTab, .newSession, .inbox, .canvas, .automations, .usage, .browser: nil
     }
   }
 
@@ -42,6 +46,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .newSession: .newSession
     case .inbox: .inbox
     case .canvas: .canvas
+    case .automations: .automations
+    case .usage: .usage
     case .chat: .chat
     case .terminal: .terminal
     case .harness: .agentTerminal
@@ -57,7 +63,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   public var focusesExisting: Bool {
     switch self {
     case .newTab, .newSession, .browser: false
-    case .inbox, .canvas, .chat, .terminal, .harness, .sideChat, .agentBrowser, .remoteBrowser:
+    case .inbox, .canvas, .automations, .usage, .chat, .terminal, .harness, .sideChat,
+      .agentBrowser, .remoteBrowser:
       true
     }
   }
@@ -69,6 +76,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .newSession: .newSession
     case .inbox: .inbox
     case .canvas: .canvas
+    case .automations: .automations
+    case .usage: .usage
     case .newTab, .terminal, .harness, .sideChat, .browser, .agentBrowser, .remoteBrowser: nil
     }
   }
@@ -81,6 +90,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .newSession: self = .newSession
     case .inbox: self = .inbox
     case .canvas: self = .canvas
+    case .automations: self = .automations
+    case .usage: self = .usage
     }
   }
 }

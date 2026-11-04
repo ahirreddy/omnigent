@@ -127,6 +127,13 @@ public struct SidebarView: View {
       .tag(SidebarDestination.newSession)
       .sidebarSelection(selection == .newSession)
       .accessibilityIdentifier("sidebar-new-session")
+    if state.showsAutomations {
+      Label("Automations", systemImage: "clock")
+        .neutralSidebarIcon()
+        .tag(SidebarDestination.automations)
+        .sidebarSelection(selection == .automations)
+        .accessibilityIdentifier("sidebar-automations")
+    }
     Label("Inbox", systemImage: "tray")
       .neutralSidebarIcon()
       .badge(state.inboxCount)
@@ -139,6 +146,13 @@ public struct SidebarView: View {
         .tag(SidebarDestination.canvas)
         .sidebarSelection(selection == .canvas)
         .accessibilityIdentifier("sidebar-canvas")
+    }
+    if state.showsUsage {
+      Label("Usage", systemImage: "creditcard")
+        .neutralSidebarIcon()
+        .tag(SidebarDestination.usage)
+        .sidebarSelection(selection == .usage)
+        .accessibilityIdentifier("sidebar-usage")
     }
     if let setQuickFilter = actions.setQuickFilter {
       QuickFilterRow(

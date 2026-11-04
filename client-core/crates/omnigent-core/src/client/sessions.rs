@@ -85,6 +85,8 @@ pub struct SessionSummary {
     pub project_id: Option<String>,
     /// The legacy label project it is filed in (`omni_project` label).
     pub project_label: Option<String>,
+    /// File review comments on it (`comments_count`), for the Inbox's comment side.
+    pub comments_count: u64,
 }
 
 /// The caller's read state for one session, as the server reports it
@@ -128,6 +130,7 @@ impl SessionSummary {
             owner: None,
             project_id: None,
             project_label: None,
+            comments_count: 0,
         }
     }
 
@@ -271,6 +274,7 @@ pub(crate) struct SessionProjection {
     viewer_unread: Field<bool>,
     owner: Field<String>,
     project_id: Field<String>,
+    comments_count: Field<u64>,
 }
 
 impl SessionProjection {
@@ -332,6 +336,7 @@ impl SessionProjection {
             viewer_unread: row.viewer_unread.clone(),
             owner: row.owner.clone(),
             project_id: row.project_id.clone(),
+            comments_count: row.comments_count.clone(),
         }
     }
 
@@ -378,6 +383,7 @@ impl SessionProjection {
             viewer_unread: Field::Absent,
             owner: Field::Absent,
             project_id: snapshot.project_id.clone(),
+            comments_count: Field::Absent,
         }
     }
 
@@ -504,6 +510,11 @@ impl SessionProjection {
                     .get(PROJECT_LABEL)
                     .filter(|name| !name.is_empty())
                     .cloned(),
+            },
+            comments_count: match &self.comments_count {
+                Field::Absent => previous.map_or(0, |previous| previous.comments_count),
+                Field::Null => 0,
+                Field::Present(count) => *count,
             },
         })
     }

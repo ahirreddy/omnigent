@@ -68,6 +68,8 @@ public final class ConnectionStore {
   public internal(set) var terminalStores: [String: SessionTerminalsStore] = [:]
   /// The new-session form, once created.
   public internal(set) var creationStore: CreationStore?
+  /// Automations, Usage and the Inbox's comments and replies; `nil` when the core did not start.
+  public let pages: PagesStore?
 
   /// The core, or `nil` when it could not start (see ``issues``).
   public let core: ClientCore?
@@ -82,6 +84,7 @@ public final class ConnectionStore {
     self.core = core
     notifications = NotificationsStore(core: core, list: sessionList)
     browserActions = BrowserActionStore(core: core)
+    pages = PagesStore(core: core)
     sessionList.core = core
     _ = core.subscribe(listener: relay)
     startPump()
@@ -91,6 +94,7 @@ public final class ConnectionStore {
     core = nil
     notifications = nil
     browserActions = nil
+    pages = nil
     record(scope: .connection, startupError)
     phase = .failed(serverUrl: "", error: startupError)
   }

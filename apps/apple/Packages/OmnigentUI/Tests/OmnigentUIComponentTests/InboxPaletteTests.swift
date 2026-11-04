@@ -14,8 +14,35 @@ struct InboxPaletteTests {
     let unread = InboxTriage.items(items, filter: .unread, search: "")
     #expect(!unread.contains { $0.id == "in2" })
     #expect(unread.contains { $0.id == "in4" })
-    #expect(InboxTriage.groups(items).map(\.title) == ["Pinned", "Needs you", "Unread"])
     #expect(InboxTriage.items(items, filter: .all, search: "Build Mac").map(\.id) == ["in5"])
+  }
+
+  @Test("Items group newest first under the web's recency headers")
+  func recencyGroups() throws {
+    var utc = Calendar(identifier: .gregorian)
+    utc.timeZone = try #require(TimeZone(identifier: "UTC"))
+    let groups = InboxTriage.groups(
+      InboxTriageSamples.state.items, now: PreviewData.now, calendar: utc)
+    #expect(groups.map(\.title) == ["Just now", "Earlier today", "Yesterday", "This week"])
+    #expect(groups.flatMap(\.items).map(\.id) == ["in5", "in1", "in2", "in3", "in4"])
+    let old = InboxItem(
+      id: "old", kind: .unread, sessionId: "s", sessionTitle: "Old", preview: "",
+      date: PreviewData.now.addingTimeInterval(-30 * 86_400))
+    #expect(
+      InboxTriage.groups([old], now: PreviewData.now, calendar: utc).map(\.title) == ["Older"])
+  }
+
+  @Test("Unread lists replies and comments, not pending requests")
+  func unreadExcludesRequests() {
+    var request = InboxTriageSamples.state.items[0]
+    request.isUnread = true
+    #expect(request.isUnresolved)
+    #expect(InboxTriage.items([request], filter: .unread, search: "").isEmpty)
+    var comment = InboxItem(
+      id: "c1", kind: .comment, sessionId: "s", sessionTitle: "Docs", preview: "bob: Why?",
+      date: PreviewData.now)
+    comment.comment = InboxComment(author: "bob", path: "src/app.rs", body: "Why?")
+    #expect(InboxTriage.items([comment], filter: .unread, search: "app.rs").map(\.id) == ["c1"])
   }
 
   @Test("Resolving advances to the next request without losing selection on refresh or failure")

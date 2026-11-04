@@ -53,6 +53,14 @@ nonisolated public struct InboxItem: Hashable, Sendable, Identifiable {
   public var phase: DecisionPhase = .pending
   /// Whether this account can respond.
   public var isReadOnly = false
+  /// A file comment's details, for ``Kind/comment``.
+  public var comment: InboxComment?
+  /// An unread session that ended in an error ("Error" rather than "Done").
+  public var isError = false
+  /// Whether a reply can be sent from the Inbox (editor access to an unread session).
+  public var canReply = false
+  /// The inline reply's progress.
+  public var reply: InboxReplyPhase = .idle
 
   /// A pending request is independent of whether it has been read.
   public var isUnresolved: Bool {
@@ -101,6 +109,38 @@ nonisolated public struct InboxItem: Hashable, Sendable, Identifiable {
   }
 }
 
+/// A comment someone left on a session's file.
+nonisolated public struct InboxComment: Hashable, Sendable {
+  /// Who left it.
+  public var author: String
+  /// File path relative to the workspace.
+  public var path: String
+  /// The commented text.
+  public var anchor: String?
+  /// The comment.
+  public var body: String
+
+  /// Creates a comment.
+  public init(author: String, path: String, anchor: String? = nil, body: String) {
+    self.author = author
+    self.path = path
+    self.anchor = anchor
+    self.body = body
+  }
+}
+
+/// Where an inline Inbox reply stands.
+nonisolated public enum InboxReplyPhase: Hashable, Sendable {
+  /// Nothing sent.
+  case idle
+  /// In flight.
+  case sending
+  /// Sent; the agent's answer shows up here.
+  case sent
+  /// Not sent; the draft stays.
+  case failed(message: String)
+}
+
 /// The Inbox's filter.
 nonisolated public enum InboxFilter: String, Hashable, Sendable, CaseIterable, Identifiable {
   /// All.
@@ -132,6 +172,8 @@ nonisolated public struct InboxViewState: Hashable, Sendable {
 
   /// The shared attention model's count; never inferred from loaded rows.
   public var needsYouCount: Int?
+  /// Sessions whose Inbox items could not be read; their items are missing.
+  public var failedSessionCount = 0
 
   /// Creates Inbox state.
   /// - Parameters:
@@ -153,6 +195,10 @@ public struct InboxActions {
   public var reply: (@MainActor (InboxItem, String) -> Void)?
   /// Answer the item's decision in place.
   public var respond: (@MainActor (DecisionCard, DecisionResponse) -> Void)?
+  /// The reply draft changed after a failure or a sent reply.
+  public var editReply: (@MainActor (InboxItem) -> Void)?
+  /// Read the items that failed again.
+  public var retry: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:

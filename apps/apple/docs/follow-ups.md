@@ -292,6 +292,14 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   session titles (needs the core to send `X-Omnigent-Background-Session-Titles`), open links in
   the in-app browser, open sub-agents in a panel, and the Appearance extras (harness picker
   visibility, fold narration, workspace panel defaults, UI and code typography).
+- [ ] **Inbox replies to an offline host:** the web sends `x-omnigent-hold-when-host-offline` and
+  shows a 503 `host_offline` as "the host is offline"; the core's write policy reads any 503 as an
+  uncertain delivery, so the Mac reply (and composer) does not send the header yet.
+- [ ] **Inbox comments:** "Open file" opens the session, not the file with its comment, because the
+  Mac app has no file comments view yet; seen comments are kept per device, as on the web.
+- [ ] **Automations editor:** no host/workspace pin, model, effort, permission mode, project, end
+  condition (COUNT/UNTIL, kept as is when present), Jira/Slack/GitHub trigger templates or the
+  `automations_v2` run-history page.
 
 ## Product decisions
 
