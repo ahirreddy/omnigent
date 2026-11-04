@@ -295,7 +295,14 @@ fn rename_pin_archive_restore_and_read_only_guards() {
         },
     ))
     .unwrap();
-    let archived = block_on(core.edit_session(&created, SessionChange::Archived(true))).unwrap();
+    let archived = block_on(core.edit_session(
+        &created,
+        SessionChange::Archived {
+            archived: true,
+            delete_worktree: false,
+        },
+    ))
+    .unwrap();
     assert_eq!(archived.title, "Renamed");
     assert!(archived.is_pinned);
     assert!(archived.is_archived);
@@ -306,11 +313,21 @@ fn rename_pin_archive_restore_and_read_only_guards() {
         send(&core, &created, "No hidden sends"),
         Err(SessionError::Archived)
     );
-    let restored = block_on(core.edit_session(&created, SessionChange::Archived(false))).unwrap();
+    let restored = block_on(core.edit_session(
+        &created,
+        SessionChange::Archived {
+            archived: false,
+            delete_worktree: false,
+        },
+    ))
+    .unwrap();
     assert!(!restored.is_archived);
     for change in [
         SessionChange::Title("New".into()),
-        SessionChange::Archived(true),
+        SessionChange::Archived {
+            archived: true,
+            delete_worktree: false,
+        },
     ] {
         assert_eq!(
             block_on(core.edit_session("demo-notes", change)),
@@ -351,7 +368,14 @@ fn persistence_round_trips_organization_and_exact_drafts() {
     let core = sample();
     block_on(core.edit_session("demo-design", SessionChange::Title("Mobile review".into())))
         .unwrap();
-    block_on(core.edit_session("demo-design", SessionChange::Archived(true))).unwrap();
+    block_on(core.edit_session(
+        "demo-design",
+        SessionChange::Archived {
+            archived: true,
+            delete_worktree: false,
+        },
+    ))
+    .unwrap();
     let snapshot = core.transport().session("demo-design").unwrap();
     let drafts = BTreeMap::from([
         (

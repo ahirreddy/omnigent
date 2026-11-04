@@ -230,7 +230,8 @@ public final class ServerSettingsStore {
   /// - Parameter sessionIDs: The sessions.
   public func unarchive(_ sessionIDs: [String]) async {
     await bulk(sessionIDs, verb: "unarchive") { core, id in
-      _ = try await core.editSession(sessionId: id, change: .archived(archived: false))
+      _ = try await core.editSession(
+        sessionId: id, change: .archived(archived: false, deleteWorktree: false))
     }
   }
 

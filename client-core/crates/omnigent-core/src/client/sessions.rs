@@ -87,6 +87,8 @@ pub struct SessionSummary {
     pub project_label: Option<String>,
     /// File review comments on it (`comments_count`), for the Inbox's comment side.
     pub comments_count: u64,
+    /// The session that started this independent worker (`omnigent.created_by_session_id`).
+    pub created_by_session_id: Option<String>,
 }
 
 /// The caller's read state for one session, as the server reports it
@@ -131,6 +133,7 @@ impl SessionSummary {
             project_id: None,
             project_label: None,
             comments_count: 0,
+            created_by_session_id: None,
         }
     }
 
@@ -206,6 +209,9 @@ pub const PROJECT_LABEL: &str = "omni_project";
 /// The label a pin is stored under; its value is the Pinned section's sort key.
 pub const PINNED_LABEL: &str = "omnigent.pinned";
 
+/// The label naming the session that started an independent worker.
+pub const CREATED_BY_SESSION_LABEL: &str = "omnigent.created_by_session_id";
+
 /// A change to a session's organisation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionChange {
@@ -222,7 +228,13 @@ pub enum SessionChange {
     /// [`crate::client::pin_order`].
     PinnedAt(PinStamp),
     /// Archive or restore.
-    Archived(bool),
+    Archived {
+        /// Archive or restore.
+        archived: bool,
+        /// With `archived`, also remove the session's git worktree (servers that report
+        /// `archive_worktree_cleanup`; the branch is kept).
+        delete_worktree: bool,
+    },
     /// File into a first-class project, or `None` to remove it from its project. The legacy
     /// label is cleared either way so the two representations never disagree.
     Project(Option<String>),
@@ -515,6 +527,16 @@ impl SessionProjection {
                 Field::Absent => previous.map_or(0, |previous| previous.comments_count),
                 Field::Null => 0,
                 Field::Present(count) => *count,
+            },
+            created_by_session_id: match &self.labels {
+                Field::Absent => {
+                    previous.and_then(|previous| previous.created_by_session_id.clone())
+                }
+                Field::Null => None,
+                Field::Present(labels) => labels
+                    .get(CREATED_BY_SESSION_LABEL)
+                    .filter(|id| !id.is_empty())
+                    .cloned(),
             },
         })
     }
@@ -1046,11 +1068,19 @@ impl<T: HttpTransport> ClientCore<T> {
                 }
                 json!({"labels": {PINNED_LABEL: stamp.label()}})
             }
-            SessionChange::Archived(archived) => {
+            SessionChange::Archived {
+                archived,
+                delete_worktree,
+            } => {
                 if !summary.can_archive() {
                     return Err(SessionError::ReadOnly);
                 }
-                json!({"archived": archived})
+                // The server rejects `delete_worktree` without `archived: true`.
+                if archived && delete_worktree {
+                    json!({"archived": true, "delete_worktree": true})
+                } else {
+                    json!({"archived": archived})
+                }
             }
             SessionChange::Project(project_id) => {
                 if !summary.can_archive() {
@@ -1365,6 +1395,23 @@ mod tests {
             generic.failure_message.as_deref(),
             Some("The last response failed. Check the server or provider sign-in.")
         );
+    }
+
+    #[test]
+    fn a_worker_names_the_session_that_created_it_until_labels_say_otherwise() {
+        let worker = summary_of(
+            &json!({"labels": {CREATED_BY_SESSION_LABEL: "conv_parent"}}),
+            None,
+            true,
+        );
+        assert_eq!(worker.created_by_session_id.as_deref(), Some("conv_parent"));
+        // A read without labels keeps it; labels without the key or with it empty clear it.
+        let kept = summary_of(&json!({}), Some(&worker), true);
+        assert_eq!(kept.created_by_session_id.as_deref(), Some("conv_parent"));
+        for labels in [json!({}), json!({CREATED_BY_SESSION_LABEL: ""})] {
+            let cleared = summary_of(&json!({ "labels": labels }), Some(&worker), true);
+            assert_eq!(cleared.created_by_session_id, None);
+        }
     }
 
     #[test]
