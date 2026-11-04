@@ -193,11 +193,14 @@ public final class ServerSettingsStore {
 
   /// Checks an MCP service over the caller's account.
   /// - Parameter serviceID: The service.
-  /// - Returns: Its tools; `nil` on failure (see ``error``).
-  public func testMCPService(_ serviceID: String) async -> [String]? {
-    var tools: [String]?
-    await write { tools = try await $0.testMcpService(serviceId: serviceID) }
-    return tools
+  /// - Returns: Its tools.
+  /// - Throws: The core's error, for the service's row to show.
+  public func testMCPService(_ serviceID: String) async throws(CoreError) -> [String] {
+    do {
+      return try await core.testMcpService(serviceId: serviceID)
+    } catch {
+      throw coreError(error)
+    }
   }
 
   /// Removes the caller's account connection to `provider`, then reloads the connections.

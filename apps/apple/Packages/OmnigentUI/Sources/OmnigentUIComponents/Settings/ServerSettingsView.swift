@@ -1,19 +1,19 @@
 public import SwiftUI
 
-/// Server settings as native panes for the Mac Settings window: a server picker, then
-/// Harnesses, MCP, Git, Members, Policies, Sharing and Archived sessions. Admin panes are
-/// read-only for non-admins.
+/// Server settings as native panes for the Mac Settings window: a server picker, then the panes
+/// the server and caller offer (Account, Harnesses, MCP, Integrations, Git, Import, the Admin
+/// panes and Archived sessions). Each pane loads when shown.
 public struct ServerSettingsView: View {
   private let state: ServerSettingsViewState
   @Binding private var selectedServer: String?
   private let actions: ServerSettingsActions
-  @State private var pane: ServerSettingsPane? = .harnesses
+  @State private var pane: ServerSettingsPane?
 
   /// Creates the settings.
   /// - Parameters:
   ///   - state: The selected server's settings.
   ///   - selectedServer: The server whose settings show.
-  ///   - actions: Changes.
+  ///   - actions: Loads and changes.
   public init(
     state: ServerSettingsViewState, selectedServer: Binding<String?>, actions: ServerSettingsActions
   ) {
@@ -22,11 +22,24 @@ public struct ServerSettingsView: View {
     self.actions = actions
   }
 
+  private var shownPane: ServerSettingsPane? {
+    pane.flatMap { state.panes.contains($0) ? $0 : nil } ?? state.panes.first
+  }
+
   /// The settings.
   public var body: some View {
     NavigationSplitView {
-      List(ServerSettingsPane.allCases, selection: $pane) { pane in
-        Label(pane.title, systemImage: pane.systemImage).tag(pane)
+      List(selection: $pane) {
+        Section {
+          ForEach(state.panes.filter { !$0.isAdmin && $0 != .archived }) { row($0) }
+        }
+        let admin = state.panes.filter(\.isAdmin)
+        if !admin.isEmpty {
+          Section("Admin") { ForEach(admin) { row($0) } }
+        }
+        if state.panes.contains(.archived) {
+          Section { row(.archived) }
+        }
       }
       .safeAreaInset(edge: .top, spacing: 0) {
         Picker("Server", selection: $selectedServer) {
@@ -48,108 +61,69 @@ public struct ServerSettingsView: View {
               .textSelection(.enabled)
           }
         }
+        if state.isLoading {
+          ProgressView().frame(maxWidth: .infinity)
+        }
         paneContent
       }
       .formStyle(.grouped)
-      .navigationTitle(pane?.title ?? "Server Settings")
+      .disabled(state.isSaving)
+      .navigationTitle(shownPane?.title ?? "Server Settings")
     }
-    .frame(minWidth: 680, minHeight: 460)
+    .frame(minWidth: 720, minHeight: 480)
+    .task(id: LoadKey(server: selectedServer, pane: shownPane)) {
+      if let shownPane { actions.load?(shownPane) }
+    }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("server-settings")
   }
 
+  private func row(_ pane: ServerSettingsPane) -> some View {
+    Label(pane.title, systemImage: pane.systemImage).tag(pane)
+  }
+
   @ViewBuilder private var paneContent: some View {
-    switch pane {
-    case .harnesses, nil:
-      Section {
-        ForEach(state.harnesses) { harness in
-          Toggle(
-            isOn: Binding(
-              get: { harness.isEnabled }, set: { actions.setHarnessEnabled?(harness, $0) })
-          ) {
-            HStack(spacing: Theme.Spacing.small) {
-              HarnessGlyph(harness: harness.harness, size: 18)
-              VStack(alignment: .leading) {
-                Text(harness.name)
-                if let note = harness.note { Text(note).font(.caption).foregroundStyle(.secondary) }
-              }
-            }
-          }
-          .disabled(actions.setHarnessEnabled == nil)
-        }
-      } footer: {
-        Text("Hide unconfigured harnesses from the model menu in Settings > Appearance.")
-      }
-    case .mcp:
-      toggles(state.mcpServers, set: actions.setMCPEnabled)
-      if let add = actions.addMCPServer {
-        Button("Add MCP Server\u{2026}", action: add)
-      }
-    case .git:
-      toggles(state.gitProviders, set: actions.setGitConnected)
-    case .members:
-      Section {
-        ForEach(state.members) { member in
-          LabeledContent {
-            Picker(
-              "Role",
-              selection: Binding(get: { member.role }, set: { actions.setMemberRole?(member, $0) })
-            ) {
-              Text("Admin").tag("Admin")
-              Text("Member").tag("Member")
-            }
-            .labelsHidden()
-            .fixedSize()
-            .disabled(!state.isAdmin || actions.setMemberRole == nil)
-          } label: {
-            HStack(spacing: Theme.Spacing.small) {
-              AuthorAvatar(name: member.name)
-              VStack(alignment: .leading) {
-                Text(member.name)
-                Text(member.email).font(.caption).foregroundStyle(.secondary)
-              }
-            }
-          }
-        }
-      } footer: {
-        if !state.isAdmin { Text("Only admins can change roles.") }
-      }
-    case .policies:
-      toggles(state.policies, set: state.isAdmin ? actions.setPolicyEnabled : nil)
-    case .sharing:
-      Toggle(
-        "Allow sharing sessions",
-        isOn: Binding(get: { state.sharingEnabled }, set: { actions.setSharingEnabled?($0) })
-      )
-      .disabled(!state.isAdmin || actions.setSharingEnabled == nil)
+    switch shownPane {
+    case .account: ChangePasswordPane(actions: actions)
+    case .harnesses: harnesses
+    case .mcp: MCPPane(services: state.mcpServices, actions: actions)
+    case .integrations: IntegrationsPane(connections: state.connections, actions: actions)
+    case .git: GitSettingsPane(archiveWorktreeCleanup: state.archiveWorktreeCleanup)
+    case .importSessions:
+      ImportSessionsPane(hosts: state.importHosts, sources: state.importSources, actions: actions)
+    case .members: MembersPane(members: state.members, actions: actions)
+    case .policies: PoliciesPane(policies: state.policies, actions: actions)
+    case .sharing: SharingPane(sharing: state.sharing, actions: actions)
     case .archived:
-      if state.archived.isEmpty {
-        Text("No archived sessions").foregroundStyle(.secondary)
-      }
-      ForEach(state.archived) { session in
-        LabeledContent(session.title) {
-          if let unarchive = actions.unarchive {
-            Button("Unarchive") { unarchive(session) }
-          }
-        }
-      }
+      ArchivedSessionsPane(
+        sessions: state.archived, hasMore: state.hasMoreArchived, actions: actions)
+    case nil: Text("Sign in to a server to see its settings.").foregroundStyle(.secondary)
     }
   }
 
-  private func toggles(
-    _ rows: [ServerSettingRow], set: (@MainActor (ServerSettingRow, Bool) -> Void)?
-  ) -> some View {
+  private var harnesses: some View {
     Section {
-      if rows.isEmpty { Text("None").foregroundStyle(.secondary) }
-      ForEach(rows) { row in
-        Toggle(isOn: Binding(get: { row.isEnabled }, set: { set?(row, $0) })) {
-          VStack(alignment: .leading) {
-            Text(row.name)
-            if !row.detail.isEmpty { Text(row.detail).font(.caption).foregroundStyle(.secondary) }
+      ForEach(state.harnesses) { harness in
+        Toggle(
+          isOn: Binding(
+            get: { harness.isEnabled }, set: { actions.setHarnessEnabled?(harness, $0) })
+        ) {
+          HStack(spacing: Theme.Spacing.small) {
+            HarnessGlyph(harness: harness.harness, size: 18)
+            VStack(alignment: .leading) {
+              Text(harness.name)
+              if let note = harness.note { Text(note).font(.caption).foregroundStyle(.secondary) }
+            }
           }
         }
-        .disabled(set == nil)
+        .disabled(actions.setHarnessEnabled == nil)
       }
     }
   }
+}
+
+/// Reloads a pane when the server or the pane changes.
+private struct LoadKey: Hashable {
+  let server: String?
+  let pane: ServerSettingsPane?
 }
