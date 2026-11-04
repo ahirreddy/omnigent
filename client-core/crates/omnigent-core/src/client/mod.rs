@@ -34,9 +34,11 @@ pub mod fork;
 mod hydration;
 pub mod items;
 pub(crate) mod json;
+pub mod projects;
 mod remote_browsers;
 mod requests;
 mod routing;
+mod session_actions;
 pub mod sessions;
 mod terminals;
 

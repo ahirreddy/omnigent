@@ -219,3 +219,36 @@ fn mark_seen_puts_the_read_state_and_reports_failures() {
     ));
     assert_eq!(core.transport().writes().len(), 0);
 }
+
+#[test]
+fn marking_unread_sticks_while_viewing_and_opening_clears_it() {
+    let mut state = ReadState::new();
+    state.observe(&row("a", 100, Some(server(Some(100), false))));
+    assert!(!state.is_unread("a"));
+    assert_eq!(
+        state.mark_unread("a"),
+        Some(ReadMark {
+            session_id: "a".into(),
+            last_seen: 99,
+            unread: true
+        })
+    );
+    assert!(state.is_unread("a"));
+    assert_eq!(state.mark_unread("a"), None, "already unread");
+    // A row from before the write does not undo it.
+    state.observe(&row("a", 100, Some(server(Some(100), false))));
+    assert!(state.is_unread("a"));
+    assert_eq!(state.mark_seen("a", 120, SeenReason::Viewing), None);
+    // The server confirming it settles the mark; opening clears it.
+    state.observe(&row("a", 100, Some(server(Some(99), true))));
+    assert!(state.is_unread("a"));
+    assert_eq!(
+        state.mark_seen("a", 120, SeenReason::Opened),
+        Some(ReadMark {
+            session_id: "a".into(),
+            last_seen: 120,
+            unread: false
+        })
+    );
+    assert!(!state.is_unread("a"));
+}

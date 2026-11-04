@@ -73,6 +73,14 @@ pub struct SessionSummary {
     /// The caller's read state as the server last reported it (`viewer_last_seen`,
     /// `viewer_unread` on list and update rows); `None` until a row reports it.
     pub viewer_read: Option<ViewerRead>,
+    /// Created, Unix seconds.
+    pub created_at: i64,
+    /// The owner's user id; `None` when unreported (single-user servers own everything).
+    pub owner: Option<String>,
+    /// The first-class project it is filed in (`project_id`).
+    pub project_id: Option<String>,
+    /// The legacy label project it is filed in (`omni_project` label).
+    pub project_label: Option<String>,
 }
 
 /// The caller's read state for one session, as the server reports it
@@ -111,6 +119,10 @@ impl SessionSummary {
             configuration: None,
             configuration_revision: None,
             viewer_read: None,
+            created_at: 0,
+            owner: None,
+            project_id: None,
+            project_label: None,
         }
     }
 
@@ -135,6 +147,31 @@ impl SessionSummary {
             .map_or(!self.is_read_only, |level| level >= 4)
     }
 
+    /// Whether `viewer_id` owns it. A session without a reported owner counts as owned, as on
+    /// the web (`isOwnedByViewer`).
+    #[must_use]
+    pub fn is_owned_by(&self, viewer_id: Option<&str>) -> bool {
+        self.owner
+            .as_deref()
+            .is_none_or(|owner| Some(owner) == viewer_id)
+    }
+
+    /// Whether Stop can end it: a host-spawned runner (the server kills it through the host), or
+    /// a wrapper whose runner kills its own harness. A local in-process runner cannot be stopped.
+    #[must_use]
+    pub fn is_stoppable(&self) -> bool {
+        let Some(configuration) = &self.configuration else {
+            return false;
+        };
+        let wrapper_stops = configuration
+            .wrapper
+            .as_deref()
+            .is_some_and(|wrapper| STOPPABLE_WRAPPERS.contains(&wrapper));
+        let host_spawned =
+            configuration.host_id.is_some() && configuration.runner_bound == Some(true);
+        wrapper_stops || host_spawned
+    }
+
     /// `self`, unless `current` is the same session with newer metadata: then `current`. The
     /// caller merges transcript content separately.
     #[must_use]
@@ -152,6 +189,12 @@ impl SessionSummary {
     }
 }
 
+/// Wrappers whose runner kills the harness itself (the web's `STOPPABLE_WRAPPERS`).
+const STOPPABLE_WRAPPERS: [&str; 2] = ["claude-code-native-ui", "devin-native-ui"];
+
+/// The legacy label a session's project name is stored under.
+pub const PROJECT_LABEL: &str = "omni_project";
+
 /// A change to a session's organisation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionChange {
@@ -166,6 +209,9 @@ pub enum SessionChange {
     },
     /// Archive or restore.
     Archived(bool),
+    /// File into a first-class project, or `None` to remove it from its project. The legacy
+    /// label is cleared either way so the two representations never disagree.
+    Project(Option<String>),
 }
 
 /// One page of the session list.
@@ -212,6 +258,8 @@ pub(crate) struct SessionProjection {
     git_branch: Field<String>,
     viewer_last_seen: Field<i64>,
     viewer_unread: Field<bool>,
+    owner: Field<String>,
+    project_id: Field<String>,
 }
 
 impl SessionProjection {
@@ -271,6 +319,8 @@ impl SessionProjection {
             git_branch: row.git_branch.clone(),
             viewer_last_seen: row.viewer_last_seen.clone(),
             viewer_unread: row.viewer_unread.clone(),
+            owner: row.owner.clone(),
+            project_id: row.project_id.clone(),
         }
     }
 
@@ -315,6 +365,8 @@ impl SessionProjection {
             git_branch: snapshot.git_branch.clone(),
             viewer_last_seen: Field::Absent,
             viewer_unread: Field::Absent,
+            owner: Field::Absent,
+            project_id: snapshot.project_id.clone(),
         }
     }
 
@@ -337,6 +389,10 @@ impl SessionProjection {
     /// # Errors
     ///
     /// A status this client does not know.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one plain field merge per summary field; splitting it scatters the merge rules"
+    )]
     pub(crate) fn summary(
         &self,
         previous: Option<&SessionSummary>,
@@ -420,6 +476,20 @@ impl SessionProjection {
             configuration: Some(configuration),
             configuration_revision: None,
             viewer_read: self.viewer_read(previous),
+            created_at: self.created_at,
+            owner: reported_or_previous(&self.owner, previous.and_then(|p| p.owner.as_ref())),
+            project_id: reported_or_previous(
+                &self.project_id,
+                previous.and_then(|p| p.project_id.as_ref()),
+            ),
+            project_label: match &self.labels {
+                Field::Absent => previous.and_then(|previous| previous.project_label.clone()),
+                Field::Null => None,
+                Field::Present(labels) => labels
+                    .get(PROJECT_LABEL)
+                    .filter(|name| !name.is_empty())
+                    .cloned(),
+            },
         })
     }
 
@@ -517,6 +587,15 @@ impl SessionProjection {
             .clone()
             .apply_to(&mut configuration.git_branch);
         configuration
+    }
+}
+
+/// A reported non-empty value, `None` for `null` or empty, else `previous`.
+fn reported_or_previous(field: &Field<String>, previous: Option<&String>) -> Option<String> {
+    match field {
+        Field::Absent => previous.cloned(),
+        Field::Null => None,
+        Field::Present(value) => Some(value.clone()).filter(|value| !value.is_empty()),
     }
 }
 
@@ -897,6 +976,18 @@ impl<T: HttpTransport> ClientCore<T> {
                     return Err(SessionError::ReadOnly);
                 }
                 json!({"archived": archived})
+            }
+            SessionChange::Project(project_id) => {
+                if !summary.can_archive() {
+                    return Err(SessionError::ReadOnly);
+                }
+                if let Some(id) = &project_id {
+                    validate_identifier(id)?;
+                }
+                json!({
+                    "project_id": project_id.unwrap_or_default(),
+                    "labels": {PROJECT_LABEL: ""},
+                })
             }
         };
         let path = format!("/v1/sessions/{session_id}");

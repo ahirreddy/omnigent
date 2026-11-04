@@ -51,6 +51,8 @@ pub struct ReadMark {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Pending {
     last_seen: i64,
+    /// The explicit unread flag the mark stores.
+    unread: bool,
     written: bool,
 }
 
@@ -77,9 +79,13 @@ impl Entry {
             .max()
     }
 
-    /// The server's explicit unread, unless this device's mark is not settled yet.
+    /// The server's explicit unread, unless this device's mark is not settled yet: then the
+    /// mark's.
     const fn explicitly_unread(&self) -> bool {
-        self.server_unread && self.pending.is_none()
+        match self.pending {
+            Some(pending) => pending.unread,
+            None => self.server_unread,
+        }
     }
 
     fn is_unread(&self) -> bool {
@@ -112,7 +118,8 @@ impl ReadState {
             entry.server_last_seen = read.last_seen;
             entry.server_unread = read.unread;
             let settled = entry.pending.is_some_and(|pending| {
-                pending.written || (read.last_seen == Some(pending.last_seen) && !read.unread)
+                pending.written
+                    || (read.last_seen == Some(pending.last_seen) && read.unread == pending.unread)
             });
             if settled {
                 entry.pending = None;
@@ -198,12 +205,38 @@ impl ReadState {
         );
         entry.pending = Some(Pending {
             last_seen,
+            unread: false,
             written: false,
         });
         Some(ReadMark {
             session_id: session_id.to_owned(),
             last_seen,
             unread: false,
+        })
+    }
+
+    /// Marks `session_id` unread explicitly (the row menu's "Mark as unread") and returns the
+    /// write, or `None` when it is already explicitly unread. The baseline stays, so a later
+    /// "Mark as read" or opening the session clears it.
+    pub fn mark_unread(&mut self, session_id: &str) -> Option<ReadMark> {
+        let entry = self.sessions.entry(session_id.to_owned()).or_default();
+        if entry.explicitly_unread() {
+            return None;
+        }
+        // The server needs a baseline; just below the last activity reads as unseen too.
+        let last_seen = entry
+            .baseline()
+            .unwrap_or(entry.updated_at)
+            .min(entry.updated_at.saturating_sub(1));
+        entry.pending = Some(Pending {
+            last_seen,
+            unread: true,
+            written: false,
+        });
+        Some(ReadMark {
+            session_id: session_id.to_owned(),
+            last_seen,
+            unread: true,
         })
     }
 }

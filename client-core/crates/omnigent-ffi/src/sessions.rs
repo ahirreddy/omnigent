@@ -2,6 +2,7 @@
 //! and the `/v1/sessions/updates` socket; ordering and filtering are the core's
 //! (`omnigent_core::session_query`).
 
+use omnigent_core::projects::{self, ProjectSummary as CoreProject};
 use omnigent_core::session_query::{self, SessionFilter as CoreFilter};
 use omnigent_core::sessions::{
     SessionChange as CoreChange, SessionSummary as CoreSummary, SummaryStatus,
@@ -65,6 +66,32 @@ pub struct SessionSummary {
     /// Its harness TUI is the primary view (`omnigent.ui = terminal`).
     #[uniffi(default)]
     pub terminal_first: bool,
+    /// Created, Unix seconds.
+    #[uniffi(default)]
+    pub created_at: i64,
+    /// The owner's user id; `None` when unreported (the caller then owns it).
+    #[uniffi(default)]
+    pub owner: Option<String>,
+    /// The first-class project it is filed in.
+    #[uniffi(default)]
+    pub project_id: Option<String>,
+    /// The legacy label project it is filed in (`omni_project`).
+    #[uniffi(default)]
+    pub project_label: Option<String>,
+    /// Stop can end its live process (host-spawned, or a wrapper that kills its own harness).
+    #[uniffi(default)]
+    pub can_stop: bool,
+}
+
+/// One of the caller's projects (a sidebar folder).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct ProjectSummary {
+    /// The first-class id; `None` for a legacy label-only project.
+    pub id: Option<String>,
+    /// The name.
+    pub name: String,
+    /// An emoji icon, when set.
+    pub icon: Option<String>,
 }
 
 /// A change to a session's organisation (`PATCH /v1/sessions/{id}`).
@@ -84,6 +111,11 @@ pub enum SessionChange {
     Archived {
         /// Archive or restore.
         archived: bool,
+    },
+    /// File into a first-class project, or `None` to remove it from its project (owner).
+    Project {
+        /// The project id.
+        project_id: Option<String>,
     },
 }
 
@@ -146,6 +178,7 @@ impl From<CoreSummary> for SessionSummary {
             can_rename: summary.can_rename(),
             can_pin: summary.can_pin(),
             can_archive: summary.can_archive(),
+            can_stop: summary.is_stoppable(),
             id: summary.id,
             title: summary.title,
             preview: summary.preview,
@@ -161,6 +194,10 @@ impl From<CoreSummary> for SessionSummary {
             failure_message: summary.failure_message,
             configuration: summary.configuration.map(Into::into),
             terminal_first: summary.terminal_first,
+            created_at: summary.created_at,
+            owner: summary.owner,
+            project_id: summary.project_id,
+            project_label: summary.project_label,
         }
     }
 }
@@ -180,11 +217,35 @@ impl From<&SessionSummary> for CoreSummary {
             failure_message: summary.failure_message.clone(),
             configuration: summary.configuration.clone().map(Into::into),
             terminal_first: summary.terminal_first,
+            created_at: summary.created_at,
+            owner: summary.owner.clone(),
+            project_id: summary.project_id.clone(),
+            project_label: summary.project_label.clone(),
             ..Self::new(
                 summary.id.clone(),
                 summary.title.clone(),
                 summary.preview.clone(),
             )
+        }
+    }
+}
+
+impl From<CoreProject> for ProjectSummary {
+    fn from(project: CoreProject) -> Self {
+        Self {
+            id: project.id,
+            name: project.name,
+            icon: project.icon,
+        }
+    }
+}
+
+impl From<ProjectSummary> for CoreProject {
+    fn from(project: ProjectSummary) -> Self {
+        Self {
+            id: project.id,
+            name: project.name,
+            icon: project.icon,
         }
     }
 }
@@ -221,6 +282,20 @@ pub fn filter_sessions(
         .collect()
 }
 
+/// The session ids in each of `projects`, in `sessions`' order: sessions the viewer owns that
+/// carry the project's id or its legacy label (the web's `sessionBelongsToProject`).
+#[must_use]
+#[uniffi::export]
+pub fn project_members(
+    projects: Vec<ProjectSummary>,
+    sessions: Vec<SessionSummary>,
+    viewer_id: Option<String>,
+) -> Vec<Vec<String>> {
+    let projects: Vec<CoreProject> = projects.into_iter().map(Into::into).collect();
+    let sessions: Vec<CoreSummary> = sessions.iter().map(Into::into).collect();
+    projects::project_members(&projects, &sessions, viewer_id.as_deref())
+}
+
 /// The display title of a list filter.
 #[must_use]
 #[uniffi::export]
@@ -250,11 +325,105 @@ impl ClientCore {
                 at_ms: self.unix_ms(),
             },
             SessionChange::Archived { archived } => CoreChange::Archived(archived),
+            SessionChange::Project { project_id } => CoreChange::Project(project_id),
         };
         self.sessions()
             .edit_session(&session_id, change)
             .await
             .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Ends the session's live process (`stop_session`); the transcript stays.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `ReadOnly` below edit permission; the read and write errors.
+    pub async fn stop_session(&self, session_id: String) -> Result<(), CoreError> {
+        self.sessions()
+            .stop_session(&session_id)
+            .await
+            .map_err(CoreError::from)
+    }
+
+    /// Deletes the session and its history (owner); it leaves the list.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `ReadOnly` without owner permission; the read and write errors.
+    pub async fn delete_session(&self, session_id: String) -> Result<(), CoreError> {
+        self.sessions()
+            .delete_session(&session_id)
+            .await
+            .map_err(CoreError::from)
+    }
+
+    /// Leaves a session shared with the caller; it leaves the list.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the write errors.
+    pub async fn leave_session(&self, session_id: String) -> Result<(), CoreError> {
+        self.sessions()
+            .leave_session(&session_id)
+            .await
+            .map_err(CoreError::from)
+    }
+
+    /// The caller's projects in display order.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the read errors (`HttpStatus` 404 on a server without projects).
+    pub async fn projects(&self) -> Result<Vec<ProjectSummary>, CoreError> {
+        self.sessions()
+            .projects()
+            .await
+            .map(|projects| projects.into_iter().map(Into::into).collect())
+            .map_err(CoreError::from)
+    }
+
+    /// Creates an empty project.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidTitle` for an empty or long name; `Rejected` for a name
+    /// in use; the write errors.
+    pub async fn create_project(&self, name: String) -> Result<ProjectSummary, CoreError> {
+        self.sessions()
+            .create_project(&name)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Renames a project (promoting a label-only one) and re-files its members.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidTitle`; the read and write errors.
+    pub async fn rename_project(
+        &self,
+        project: ProjectSummary,
+        name: String,
+    ) -> Result<ProjectSummary, CoreError> {
+        self.sessions()
+            .rename_project(&project.into(), &name)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Deletes a project after archiving and unfiling its members (never deleting them).
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the read and write errors; the first member failure, with the
+    /// project kept.
+    pub async fn delete_project(&self, project: ProjectSummary) -> Result<(), CoreError> {
+        self.sessions()
+            .delete_project(&project.into())
+            .await
             .map_err(CoreError::from)
     }
 }

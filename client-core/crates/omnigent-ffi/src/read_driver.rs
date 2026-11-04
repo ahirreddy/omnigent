@@ -30,6 +30,11 @@ pub(crate) enum ReadMsg {
         session_id: String,
         reply: oneshot::Sender<Result<(), CoreError>>,
     },
+    /// Mark a session unread for a caller (`set_session_unread`).
+    MarkUnread {
+        session_id: String,
+        reply: oneshot::Sender<Result<(), CoreError>>,
+    },
     /// A write finished.
     Written {
         mark: ReadMark,
@@ -52,6 +57,10 @@ impl Engine {
         match message {
             ReadMsg::MarkSeen { session_id, reply } => {
                 self.mark(&session_id, SeenReason::Opened, Some(reply));
+            }
+            ReadMsg::MarkUnread { session_id, reply } => {
+                let mark = self.read.mark_unread(&session_id);
+                self.write_mark(mark, Some(reply));
             }
             ReadMsg::Written {
                 mark,
@@ -113,7 +122,13 @@ impl Engine {
     /// Marks `session_id` seen and writes it to the server.
     pub(crate) fn mark(&mut self, session_id: &str, reason: SeenReason, reply: ReadReply) {
         let now = i64::try_from(self.host.unix_ms() / 1_000).unwrap_or(i64::MAX);
-        let Some(mark) = self.read.mark_seen(session_id, now, reason) else {
+        let mark = self.read.mark_seen(session_id, now, reason);
+        self.write_mark(mark, reply);
+    }
+
+    /// Publishes a changed mark and writes it to the server when it keeps read state.
+    fn write_mark(&mut self, mark: Option<ReadMark>, reply: ReadReply) {
+        let Some(mark) = mark else {
             answer(reply, Ok(()));
             return;
         };
@@ -193,6 +208,29 @@ impl ClientCore {
     pub async fn mark_session_seen(&self, session_id: String) -> Result<(), CoreError> {
         let (reply, outcome) = oneshot::channel();
         self.post(Msg::Read(ReadMsg::MarkSeen { session_id, reply }));
+        // The engine drops the reply only when it has shut down.
+        outcome
+            .await
+            .map_err(|_| CoreError::from(SessionError::NotConnected))?
+    }
+
+    /// Marks `session_id` unread (the row menu's "Mark as unread") or read ("Mark as read",
+    /// as [`Self::mark_session_seen`]). An unread mark stays while the session is open until it
+    /// is opened again.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::mark_session_seen`]. The mark is kept on this device either way.
+    pub async fn set_session_unread(
+        &self,
+        session_id: String,
+        unread: bool,
+    ) -> Result<(), CoreError> {
+        if !unread {
+            return self.mark_session_seen(session_id).await;
+        }
+        let (reply, outcome) = oneshot::channel();
+        self.post(Msg::Read(ReadMsg::MarkUnread { session_id, reply }));
         // The engine drops the reply only when it has shut down.
         outcome
             .await
