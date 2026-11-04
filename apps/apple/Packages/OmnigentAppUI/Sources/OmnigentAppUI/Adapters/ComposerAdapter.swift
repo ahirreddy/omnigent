@@ -36,7 +36,22 @@ enum ComposerAdapter {
     state.commandNotice = composer.commandNotice
     state.slashCommandsNote = composer.skillsProblem
     state.connection = connection(store)
+    if let fraction = contextFraction(store.sections) {
+      state.tray = ComposerTray(contextFraction: fraction)
+    }
     return state
+  }
+
+  /// How full the context window is, from the core's usage section; `nil` until both the
+  /// tokens in context and the window are reported.
+  static func contextFraction(_ sections: [OmnigentCoreFFI.EventSection]) -> Double? {
+    guard let usage = sections.first(where: { $0.id == "usage" }) else { return nil }
+    func value(_ id: String) -> Double? {
+      usage.details.first { $0.id == id }.flatMap { Double($0.text) }
+    }
+    guard let tokens = value("context_tokens"), let window = value("context_window"), window > 0
+    else { return nil }
+    return min(1, max(0, tokens / window))
   }
 
   static func slashCommand(_ command: OmnigentCoreFFI.SlashCommand)

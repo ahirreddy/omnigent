@@ -140,3 +140,32 @@ struct MessageLinkTests {
     #expect(ConversationContainer.messageURL(answer, in: nil) == nil)
   }
 }
+
+@Suite("Context usage")
+struct ContextUsageTests {
+  private func usage(_ details: [(String, String)]) -> OmnigentCoreFFI.EventSection {
+    OmnigentCoreFFI.EventSection(
+      id: "usage", title: "Usage", summary: "",
+      details: details.map {
+        OmnigentCoreFFI.DetailSection(id: $0.0, title: $0.0, text: $0.1, isCode: false)
+      }, sessionId: nil)
+  }
+
+  @Test("The gauge needs both tokens and a window, and stays within 0...1")
+  func fraction() {
+    #expect(
+      ComposerAdapter.contextFraction([
+        usage([("context_tokens", "50000"), ("context_window", "200000")])
+      ]) == 0.25)
+    #expect(
+      ComposerAdapter.contextFraction([
+        usage([("context_tokens", "300000"), ("context_window", "200000")])
+      ]) == 1)
+    #expect(ComposerAdapter.contextFraction([usage([("context_tokens", "5")])]) == nil)
+    #expect(
+      ComposerAdapter.contextFraction([
+        usage([("context_tokens", "5"), ("context_window", "0")])
+      ]) == nil)
+    #expect(ComposerAdapter.contextFraction([]) == nil)
+  }
+}
