@@ -28,7 +28,8 @@ private func catalog(hostStatus: String) -> OmnigentCoreFFI.CreationCatalog {
     ],
     agents: [
       OmnigentCoreFFI.CreationAgent(
-        id: "ag_claude", name: "claude-native-ui", harness: "claude-native", description: nil)
+        id: "ag_claude", name: "claude-native-ui", harness: "claude-native", description: nil,
+        pickerSection: .harness)
     ])
 }
 

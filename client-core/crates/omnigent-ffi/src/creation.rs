@@ -64,7 +64,6 @@ pub struct CreationAgent {
     #[uniffi(default)]
     pub changed_at: Option<u64>,
     /// Where the new-session picker lists it.
-    #[uniffi(default)]
     pub picker_section: AgentPickerSection,
     /// A harness listed inline rather than under "Other…".
     #[uniffi(default)]
