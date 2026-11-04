@@ -46,6 +46,9 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
   public var agentInfo: AgentInfo?
   /// Why sharing is unavailable ("Sharing is unavailable from a local server."), or `nil`.
   public var shareUnavailableReason: String?
+  /// The status line's transcript facts when ``rows`` are read live instead; `nil` derives them
+  /// from ``rows``.
+  public var transcriptStatus: TranscriptStatus?
 
   /// Creates conversation state.
   /// - Parameters:

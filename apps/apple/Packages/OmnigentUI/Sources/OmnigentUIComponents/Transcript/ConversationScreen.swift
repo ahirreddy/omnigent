@@ -57,6 +57,7 @@ public struct ConversationScreen<Terminal: View>: View {
   private let actions: ConversationActions
   private let composerActions: ComposerActions
   private let extras: ConversationExtras
+  private let liveRows: LiveTranscriptRows?
   private let terminal: Terminal
 
   @State private var scrollRequest = 0
@@ -87,13 +88,16 @@ public struct ConversationScreen<Terminal: View>: View {
   ///   - actions: Conversation actions.
   ///   - composerActions: Composer actions.
   ///   - extras: Title menu, right-panel content, Share and navigation.
+  ///   - liveRows: Reads the rows inside the transcript, so streaming re-renders only the
+  ///     transcript; `nil` uses `state.rows`.
   ///   - terminal: The terminal surface the app supplies (for example the libghostty view).
   public init(
     state: ConversationViewState, composer: ComposerViewState, draft: Binding<String>,
     showsInspector: Binding<Bool>, inspectorTab: Binding<InspectorTab>? = nil,
     mode: Binding<SessionViewMode>, fork: Binding<ForkViewState?> = .constant(nil),
     actions: ConversationActions, composerActions: ComposerActions,
-    extras: ConversationExtras = ConversationExtras(), @ViewBuilder terminal: () -> Terminal
+    extras: ConversationExtras = ConversationExtras(), liveRows: LiveTranscriptRows? = nil,
+    @ViewBuilder terminal: () -> Terminal
   ) {
     self.state = state
     self.composer = composer
@@ -105,6 +109,7 @@ public struct ConversationScreen<Terminal: View>: View {
     self.actions = actions
     self.composerActions = composerActions
     self.extras = extras
+    self.liveRows = liveRows
     self.terminal = terminal()
   }
 
@@ -122,8 +127,10 @@ public struct ConversationScreen<Terminal: View>: View {
         TerminalPane(status: state.terminal, resume: actions.resume) { terminal }
       } else {
         // A request answers inline while its card is on screen, else in the dock.
-        TranscriptView(state: state, actions: actions, scrollToLatestRequest: scrollRequest)
-          .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
+        LiveTranscript(
+          state: state, liveRows: liveRows, actions: actions, scrollToLatestRequest: scrollRequest
+        )
+        .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
       }
     }
     // A bar, so the transcript blurs and fades under the dock and composer (the scroll edge

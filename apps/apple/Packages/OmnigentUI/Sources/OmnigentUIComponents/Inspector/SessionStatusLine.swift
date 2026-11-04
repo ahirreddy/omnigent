@@ -31,6 +31,7 @@ nonisolated public struct SessionStatusLine: Hashable, Sendable {
   /// - Parameter state: The conversation.
   public init(_ state: ConversationViewState) {
     let header = state.header
+    let transcript = state.transcriptStatus ?? TranscriptStatus(rows: state.rows)
     let pending = state.decisions.count { card in
       switch state.phase(of: card) {
       case .pending, .resolving, .failed: true
@@ -49,11 +50,11 @@ nonisolated public struct SessionStatusLine: Hashable, Sendable {
       text = "Failed \u{00B7} \(failure)"
     } else if header.status == .running {
       kind = .running
-      text = Self.activity(state).map { "Running \u{00B7} \($0)" } ?? "Running"
-    } else if state.transcriptRows.isEmpty {
+      text = Self.activity(state, transcript).map { "Running \u{00B7} \($0)" } ?? "Running"
+    } else if transcript.isEmpty {
       kind = .ready
       text = "Ready"
-    } else if state.transcriptRows.last?.interrupted == true {
+    } else if transcript.lastInterrupted {
       kind = .finished
       text = "Stopped"
     } else {
@@ -65,14 +66,16 @@ nonisolated public struct SessionStatusLine: Hashable, Sendable {
   }
 
   /// The plan's in-progress task, else the latest in-progress tool's title.
-  private static func activity(_ state: ConversationViewState) -> String? {
+  private static func activity(
+    _ state: ConversationViewState, _ transcript: TranscriptStatus
+  ) -> String? {
     if let todos = state.section("todos"),
       let task = SectionReading.todos(todos).first(where: { $0.state == .inProgress }),
       !task.text.isEmpty
     {
       return task.text
     }
-    return state.transcriptRows.last { $0.activity?.status == "in_progress" }?.activity?.title
+    return transcript.activityTitle
   }
 
   /// Files across the loaded changed-files sections (`<N> files in <environment>`), or `nil`

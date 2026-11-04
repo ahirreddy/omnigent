@@ -70,6 +70,9 @@ public final class ConversationStore {
   /// When the running turn started and how long finished turns worked, for the turns this
   /// store saw start.
   public private(set) var turnTimer = TurnTimer()
+  /// What the status line needs from the rows. Changes only when those facts do, so views that
+  /// read it do not re-render for every streamed delta.
+  public private(set) var transcriptDigest = TranscriptDigest(rows: [])
   /// Decision cards.
   public let decisions: DecisionStore
   /// The composer.
@@ -121,10 +124,11 @@ public final class ConversationStore {
   ) {
     self.revision = revision
     self.rows = rows
-    self.header = header
-    self.sections = sections
+    if header != self.header { self.header = header }
+    if sections != self.sections { self.sections = sections }
     decisions.replace(cards)
     timeTurn(observed: false)
+    digestRows()
   }
 
   func apply(revision: UInt64, change: TranscriptChange) {
@@ -136,10 +140,17 @@ public final class ConversationStore {
       core.openSession(sessionId: sessionID)
       return
     }
-    if let header = change.header { self.header = header }
-    if let sections = change.sections { self.sections = sections }
+    // Setting an observed property notifies even when the value is unchanged.
+    if let header = change.header, header != self.header { self.header = header }
+    if let sections = change.sections, sections != self.sections { self.sections = sections }
     self.revision = revision
     timeTurn(observed: true)
+    digestRows()
+  }
+
+  private func digestRows() {
+    let digest = TranscriptDigest(rows: rows)
+    if digest != transcriptDigest { transcriptDigest = digest }
   }
 
   private func timeTurn(observed: Bool) {
@@ -187,5 +198,26 @@ public final class ConversationStore {
   func record(_ error: CoreError) {
     errors.append(error)
     if errors.count > 50 { errors.removeFirst(errors.count - 50) }
+  }
+}
+
+/// The transcript facts the session status line reads: whether there are rows, whether the last
+/// was interrupted, and the latest in-progress tool.
+public struct TranscriptDigest: Equatable, Sendable {
+  /// No transcript rows yet.
+  public var isEmpty: Bool
+  /// The last transcript row was interrupted.
+  public var lastInterrupted: Bool
+  /// The latest in-progress tool's title.
+  public var activityTitle: String?
+
+  /// The digest of `rows`.
+  /// - Parameter rows: Every row; activity-only rows are skipped.
+  public init(rows: [Row]) {
+    let transcript = rows.lazy.filter { !$0.isActivityOnly }
+    isEmpty = transcript.isEmpty
+    lastInterrupted = transcript.last?.interrupted == true
+    activityTitle =
+      transcript.last { $0.activity?.status == "in_progress" }?.activity?.title
   }
 }

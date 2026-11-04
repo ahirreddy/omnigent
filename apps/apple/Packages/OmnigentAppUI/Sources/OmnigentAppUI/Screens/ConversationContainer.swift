@@ -49,7 +49,8 @@ struct ConversationContainer: View {
       actions: routed(forkable(actions)), composerActions: composerActions,
       extras: ConversationExtras(
         sessionActions: forkable(sessionActions), slots: workspaceSlots,
-        forkActions: forkActions, navigation: navigation)
+        forkActions: forkActions, navigation: navigation),
+      liveRows: ConversationAdapter.liveRows(conversation)
     ) {
       harnessTerminal
     }
@@ -75,7 +76,7 @@ struct ConversationContainer: View {
   }
 
   private var state: ConversationViewState {
-    var state = ConversationAdapter.state(conversation, summary: summary)
+    var state = ConversationAdapter.screenState(conversation, summary: summary)
     if let terminals { state.terminal = TerminalAdapter.status(terminals.terminals.harness) }
     return state
   }

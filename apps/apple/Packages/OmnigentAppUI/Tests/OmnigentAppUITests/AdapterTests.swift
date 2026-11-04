@@ -163,5 +163,14 @@ struct AdapterTests {
     let state = ConversationAdapter.state(conversation, summary: first)
     #expect(state.rows.map(\.id) == conversation.rows.map(\.id))
     #expect(state.header.id == first.id)
+
+    // The screen around the transcript reads no rows; the transcript reads them live.
+    let screen = ConversationAdapter.screenState(conversation, summary: first)
+    #expect(screen.rows.isEmpty)
+    #expect(screen.transcriptStatus == TranscriptStatus(rows: state.rows))
+    #expect(SessionStatusLine(screen) == SessionStatusLine(state))
+    let live = ConversationAdapter.liveRows(conversation).read()
+    #expect(live.rows.map(\.id) == conversation.rows.map(\.id))
+    #expect(live.revision == conversation.revision)
   }
 }

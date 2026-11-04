@@ -33,6 +33,45 @@ enum ConversationAdapter {
       turnStartedAt: store.turnTimer.startedAt)
   }
 
+  /// The conversation's state without its rows, for the screen around the transcript. It reads
+  /// no rows or revision, so streamed deltas don't re-render the header, composer or panels;
+  /// the transcript reads them through ``liveRows(_:)``.
+  /// - Parameters:
+  ///   - store: The conversation.
+  ///   - summary: Its session-list row, for the title before the header arrives.
+  /// - Returns: The state, with ``ConversationViewState/transcriptStatus`` in place of rows.
+  static func screenState(
+    _ store: ConversationStore, summary: OmnigentCoreFFI.SessionSummary?
+  ) -> ConversationViewState {
+    let header =
+      store.header.map(OmnigentUIComponents.SessionHeader.init)
+      ?? OmnigentUIComponents.SessionHeader(
+        id: store.sessionID, title: summary?.title ?? "Loading\u{2026}")
+    var state = ConversationViewState(
+      header: header,
+      decisions: store.decisions.cards.map(OmnigentUIComponents.DecisionCard.init),
+      decisionPhases: decisionPhases(store.decisions),
+      sections: store.sections.map(OmnigentUIComponents.EventSection.init),
+      isLoadingHistory: !store.isHydrated && !store.isClosed,
+      errorMessage: errorMessage(store),
+      connectionStatus: connectionStatus(store),
+      turnDurations: store.turnTimer.durations,
+      summary: summary.map(OmnigentUIComponents.SessionSummary.init),
+      turnStartedAt: store.turnTimer.startedAt)
+    let digest = store.transcriptDigest
+    state.transcriptStatus = TranscriptStatus(
+      isEmpty: digest.isEmpty, lastInterrupted: digest.lastInterrupted,
+      activityTitle: digest.activityTitle)
+    return state
+  }
+
+  /// Reads the store's rows inside the transcript's body.
+  /// - Parameter store: The conversation.
+  /// - Returns: The reader.
+  static func liveRows(_ store: ConversationStore) -> LiveTranscriptRows {
+    LiveTranscriptRows { (store.rows.map(OmnigentUIComponents.Row.init), store.revision) }
+  }
+
   /// The newest failure to show. Stream and transport failures describe a connection problem,
   /// which the connection line covers while it lasts; once the stream is live again they are
   /// history, not a current error. Every other failure stays until dismissed.
