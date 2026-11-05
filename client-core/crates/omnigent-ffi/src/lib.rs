@@ -51,6 +51,7 @@ pub mod fork;
 pub mod harness_accounts;
 pub mod harness_setup;
 pub mod host;
+pub mod host_switch;
 pub mod http;
 pub mod inbox;
 pub mod policy_registry;
