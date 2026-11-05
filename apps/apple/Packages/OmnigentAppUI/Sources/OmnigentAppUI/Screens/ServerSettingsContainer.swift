@@ -140,6 +140,24 @@ public struct ServerSettingsContainer: View {
       .map(ServerSettingsAdapter.importSummary)
     }
     actions.changePassword = { await store.changePassword(current: $0, new: $1) }
+    adminActions(&actions, store)
+    actions.changeSharing = { change in
+      Task { await store.updateSharing(ServerSettingsAdapter.update(change)) }
+    }
+    actions.unarchive = { ids in Task { await store.unarchive(ids) } }
+    actions.delete = { ids in Task { await store.delete(ids) } }
+    actions.loadMoreArchived = { Task { await store.loadMoreArchived() } }
+    if let connection, store.info.value?.hasLoginSession ?? false {
+      actions.signOut = { signOut(connection) }
+    }
+    if let openSession, let selected, let url = URL(string: selected) {
+      actions.openSession = { openSession(url, $0) }
+    }
+    return actions
+  }
+
+  /// Members and Policies: password resets, removals, invites and default policies.
+  private func adminActions(_ actions: inout ServerSettingsActions, _ store: ServerSettingsStore) {
     actions.resetPassword = { await store.resetPassword($0.id) }
     actions.removeMember = { member in Task { await store.removeMember(member.id) } }
     if store.info.value?.accountsEnabled == true {
@@ -156,19 +174,6 @@ public struct ServerSettingsContainer: View {
       Task { await store.setPolicyEnabled(row.id, enabled) }
     }
     actions.deletePolicy = { row in Task { await store.deletePolicy(row.id) } }
-    actions.changeSharing = { change in
-      Task { await store.updateSharing(ServerSettingsAdapter.update(change)) }
-    }
-    actions.unarchive = { ids in Task { await store.unarchive(ids) } }
-    actions.delete = { ids in Task { await store.delete(ids) } }
-    actions.loadMoreArchived = { Task { await store.loadMoreArchived() } }
-    if let connection, store.info.value?.hasLoginSession ?? false {
-      actions.signOut = { signOut(connection) }
-    }
-    if let openSession, let selected, let url = URL(string: selected) {
-      actions.openSession = { openSession(url, $0) }
-    }
-    return actions
   }
 
   /// Signs the server's connection out and forgets its account, as the window's Sign Out does.
