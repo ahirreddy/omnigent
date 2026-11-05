@@ -14,7 +14,7 @@ struct MessageQueueTests {
     #expect(queue.next(isRunning: true, isBlocked: false) == nil)
     #expect(queue.next(isRunning: false, isBlocked: true) == nil)
     #expect(queue.next(isRunning: false, isBlocked: false)?.id == first.id)
-    #expect(try queue.begin(first.id) == "first")
+    #expect(try queue.begin(first.id).text == "first")
     #expect(queue.isSending)
     #expect(queue.next(isRunning: false, isBlocked: false) == nil, "one send at a time")
     queue.finish(first.id, failure: nil)
@@ -31,7 +31,7 @@ struct MessageQueueTests {
     queue.finish(first.id, failure: "The host is offline.")
     #expect(queue.items.first?.state == .failed("The host is offline."))
     #expect(queue.next(isRunning: false, isBlocked: false) == nil)
-    #expect(try queue.begin(first.id) == "first", "Retry is the user's")
+    #expect(try queue.begin(first.id).text == "first", "Retry is the user's")
     queue.finish(first.id, failure: nil)
     #expect(queue.items.map(\.text) == ["second"])
   }
@@ -54,6 +54,19 @@ struct MessageQueueTests {
     #expect(queue.isEmpty)
     #expect(throws: MessageQueue.Refusal.missing) { try queue.remove(item.id) }
     #expect(throws: MessageQueue.Refusal.empty) { try queue.enqueue("\n") }
+  }
+
+  @Test("Files or paths alone are a message, and keep it when its text is cleared")
+  func extras() throws {
+    var queue = MessageQueue()
+    let files = MessageQueue.Extras(
+      holdID: 7, files: [MessageQueue.File(name: "shot.png", isImage: true)])
+    let item = try queue.enqueue(" ", extras: files)
+    #expect(item.text.isEmpty && item.extras == files)
+    try queue.edit(item.id, text: "")
+    #expect(try queue.begin(item.id).extras.holdID == 7)
+    try queue.hold("", extras: MessageQueue.Extras(mentions: ["src/"]))
+    #expect(queue.items.first?.extras.mentions == ["src/"])
   }
 
   @Test("Moving keeps every message, as List.onMove reports it")

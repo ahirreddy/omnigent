@@ -70,6 +70,27 @@ struct ComposerSuggestions: View {
   }
 }
 
+/// What goes with the draft, over the editor in both styles: attached files, `@` paths and
+/// quote blocks.
+struct ComposerDraftAccessories: View {
+  let state: ComposerViewState
+  let actions: ComposerActions
+
+  var body: some View {
+    if !state.attachments.isEmpty {
+      DraftAttachmentStrip(attachments: state.attachments, remove: actions.removeAttachment)
+    }
+    if !state.mentions.isEmpty {
+      MentionChips(paths: state.mentions, remove: actions.extras.removeMention)
+    }
+    if !state.quotes.isEmpty {
+      QuoteBlocks(
+        quotes: state.quotes, actions: actions.extras.quotes,
+        isEnabled: state.availability.reason == nil)
+    }
+  }
+}
+
 /// Opens the pickers a command or menu asks for: `/permissions`'s approval-mode choice and
 /// Choose Model (Control-Shift-M), which SwiftUI menus cannot open from code.
 private struct ComposerPickerRequests: ViewModifier {

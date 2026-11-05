@@ -24,8 +24,8 @@ use super::json::{as_object, opt_bool, opt_str};
 use super::requests::{HOST_OFFLINE_HOLD_HEADER, validate_identifier};
 use super::{ChangedFilesFetch, ClientCore, ClientEvent, SessionError, lock};
 use crate::attachments::{
-    AttachmentDraft, AttachmentSubmission, DraftError, DraftItemId, DraftKey, UploadError,
-    UploadFile, UploadTarget, UploadUncertainty, UploadedAttachment,
+    AttachmentDraft, AttachmentSubmission, DraftError, DraftItem, DraftItemId, DraftKey, HoldId,
+    UploadError, UploadFile, UploadTarget, UploadUncertainty, UploadedAttachment,
 };
 use crate::auth::endpoint::DATABRICKS_ORG_HEADER;
 use crate::auth::hosted::HostedConnection;
@@ -181,6 +181,17 @@ impl SendPayload {
     }
 }
 
+/// The files a message carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AttachmentSource {
+    /// None.
+    Nothing,
+    /// The composer's staged files.
+    Staged,
+    /// The files held for a queued message.
+    Held(HoldId),
+}
+
 /// What a send captured before its request went out.
 struct SendGate {
     operation: SubmissionOperation,
@@ -281,6 +292,53 @@ impl<T: HttpTransport> ClientCore<T> {
     pub fn attachment_draft(&self, session_id: &str) -> Result<AttachmentDraft, SessionError> {
         let key = self.draft_key(session_id)?;
         Ok(lock(&self.state).drafts.draft(&key).clone())
+    }
+
+    /// Moves `session_id`'s uploaded files out of its composer to go with a queued message;
+    /// `None` when there are none. Returns the hold and its files.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::NotConnected`]; [`SessionError::Draft`] while a file is not uploaded.
+    pub fn hold_attachments(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<(HoldId, Vec<DraftItem>)>, SessionError> {
+        let key = self.draft_key(session_id)?;
+        let mut state = lock(&self.state);
+        let Some(hold) = state.drafts.hold(&key)? else {
+            return Ok(None);
+        };
+        Ok(Some((hold, state.drafts.held(&key, hold)?.to_vec())))
+    }
+
+    /// Puts a queued message's files back in `session_id`'s composer.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::NotConnected`] and [`SessionError::Draft`] (no such hold, being sent, or
+    /// no room in the draft).
+    pub fn restore_held_attachments(
+        &self,
+        session_id: &str,
+        hold: HoldId,
+    ) -> Result<(), SessionError> {
+        let key = self.draft_key(session_id)?;
+        Ok(lock(&self.state).drafts.restore(&key, hold)?)
+    }
+
+    /// Forgets a removed queued message's files.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::NotConnected`] and [`SessionError::Draft`] (no such hold, or being sent).
+    pub fn discard_held_attachments(
+        &self,
+        session_id: &str,
+        hold: HoldId,
+    ) -> Result<(), SessionError> {
+        let key = self.draft_key(session_id)?;
+        Ok(lock(&self.state).drafts.discard(&key, hold)?)
     }
 
     /// Uploads one staged file to `session_id` with the multipart `boundary` (random in
@@ -470,7 +528,41 @@ impl<T: HttpTransport> ClientCore<T> {
             preamble: crate::mentions::mention_preamble(harness, paths),
         };
         let result = self
-            .send_payload(session_id, text, &payload, true, true)
+            .send_payload(session_id, text, &payload, true, AttachmentSource::Staged)
+            .await;
+        self.dispatch();
+        result
+    }
+
+    /// Sends a queued message: `text` with the files of `hold` (none when `None`) and the
+    /// `@`-tagged `paths` ahead of it, through the same gate as [`Self::send_message`]. The
+    /// composer's own staged files stay in its draft.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::send_message`]; [`SessionError::Draft`] for a hold this session does not have.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn send_queued_message(
+        &self,
+        session_id: &str,
+        text: &str,
+        hold: Option<HoldId>,
+        harness: Option<&str>,
+        paths: &[String],
+    ) -> Result<MessageSent, SessionError> {
+        let payload = if paths.is_empty() {
+            SendPayload::Message
+        } else {
+            SendPayload::Mentioning {
+                preamble: crate::mentions::mention_preamble(harness, paths),
+            }
+        };
+        let attachments = hold.map_or(AttachmentSource::Nothing, AttachmentSource::Held);
+        let result = self
+            .send_payload(session_id, text, &payload, true, attachments)
             .await;
         self.dispatch();
         result
@@ -494,7 +586,7 @@ impl<T: HttpTransport> ClientCore<T> {
         payload: SendPayload,
     ) -> Result<MessageSent, SessionError> {
         let result = self
-            .send_payload(session_id, text, &payload, true, true)
+            .send_payload(session_id, text, &payload, true, AttachmentSource::Staged)
             .await;
         self.dispatch();
         result
@@ -517,7 +609,13 @@ impl<T: HttpTransport> ClientCore<T> {
         text: &str,
     ) -> Result<MessageSent, SessionError> {
         let result = self
-            .send_payload(session_id, text, &SendPayload::Message, false, false)
+            .send_payload(
+                session_id,
+                text,
+                &SendPayload::Message,
+                false,
+                AttachmentSource::Nothing,
+            )
             .await
             .map_err(|error| match error {
                 // The Inbox keeps the reply in its field rather than holding it for the host.
@@ -545,7 +643,7 @@ impl<T: HttpTransport> ClientCore<T> {
             text,
             &SendPayload::Message,
             require_live_stream,
-            true,
+            AttachmentSource::Staged,
         )
         .await
     }
@@ -560,35 +658,45 @@ impl<T: HttpTransport> ClientCore<T> {
         text: &str,
         payload: &SendPayload,
         require_live_stream: bool,
-        staged_attachments: bool,
+        attachments: AttachmentSource,
     ) -> Result<MessageSent, SessionError> {
         validate_identifier(session_id)?;
         let key = self.draft_key(session_id)?;
         let gate = {
             let mut state = lock(&self.state);
-            let has_attachments = staged_attachments && state.drafts.draft(&key).has_attachments();
+            let has_attachments = match attachments {
+                AttachmentSource::Nothing => false,
+                AttachmentSource::Staged => state.drafts.draft(&key).has_attachments(),
+                AttachmentSource::Held(hold) => !state.drafts.held(&key, hold)?.is_empty(),
+            };
             if text.trim().is_empty() && !has_attachments && !payload.has_preamble() {
                 return Err(SessionError::EmptyMessage);
             }
             if has_attachments && !payload.is_message() {
                 return Err(DraftError::NotReady.into());
             }
-            if has_attachments && !state.drafts.can_submit(&key) {
+            if attachments == AttachmentSource::Staged
+                && has_attachments
+                && !state.drafts.can_submit(&key)
+            {
                 return Err(DraftError::NotReady.into());
             }
             let operation = state.ledger.begin(&key.scope, session_id, text)?;
-            let batch = if has_attachments {
-                match state.drafts.begin_submission(&key) {
-                    Ok(batch) => Some(batch),
-                    Err(error) => {
-                        state
-                            .ledger
-                            .complete(&operation, SubmissionOutcome::Rejected, text)?;
-                        return Err(error.into());
-                    }
+            let captured = match attachments {
+                _ if !has_attachments => Ok(None),
+                AttachmentSource::Held(hold) => {
+                    state.drafts.begin_held_submission(&key, hold).map(Some)
                 }
-            } else {
-                None
+                _ => state.drafts.begin_submission(&key).map(Some),
+            };
+            let batch = match captured {
+                Ok(batch) => batch,
+                Err(error) => {
+                    state
+                        .ledger
+                        .complete(&operation, SubmissionOutcome::Rejected, text)?;
+                    return Err(error.into());
+                }
             };
             SendGate {
                 operation,

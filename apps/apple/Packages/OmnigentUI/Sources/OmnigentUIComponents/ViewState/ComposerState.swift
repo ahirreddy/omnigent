@@ -174,6 +174,8 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var modelPickerRequest = 0
   /// Workspace paths tagged with `@`, shown as chips; they go with the next message.
   public var mentions: [String] = []
+  /// Transcript text the draft quotes (Reply), shown as removable blocks.
+  public var quotes: [ComposerQuote] = []
   /// The stream is not live: shown under the composer with Reconnect.
   public var connection: ComposerConnectionNotice?
   /// Replaces the placeholder while something else needs the user first (a pending request,

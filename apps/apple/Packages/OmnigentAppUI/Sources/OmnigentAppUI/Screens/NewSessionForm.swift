@@ -116,6 +116,8 @@ final class NewSessionForm {
     var selection = selection
     // A first-class project files the session at creation; a label-only one is moved after.
     selection.projectId = project?.id
+    // Routing stays chosen across agents but goes only with one the server routes.
+    selection.smartRouting = smartRouting(creation.catalog.value) == .enabled
     if isSandbox {
       let target = sandbox.target(creation.catalog.value)
       Task {

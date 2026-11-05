@@ -31,6 +31,18 @@ struct UserPromptTests {
     #expect(UserPrompt.collapsed(long)?.count == 12_000)
   }
 
+  @Test("a reply's quote blocks split from the text around them; fenced code never quotes")
+  func quoteRuns() {
+    let text = "Before\n\n> first line\n>\n> second\n\nReply\n```\n> not a quote\n```"
+    #expect(
+      UserPrompt.runs(text) == [
+        UserPrompt.Run(text: "Before", isQuote: false),
+        UserPrompt.Run(text: "first line\n\nsecond", isQuote: true),
+        UserPrompt.Run(text: "Reply\n```\n> not a quote\n```", isQuote: false),
+      ])
+    #expect(UserPrompt.runs("a -> b") == [UserPrompt.Run(text: "a -> b", isQuote: false)])
+  }
+
   @Test("Share counts two button widths in the titlebar beside the session menu")
   func titlebarShare() {
     let state = ConversationViewState(header: SessionHeader(id: "s", title: "T"))

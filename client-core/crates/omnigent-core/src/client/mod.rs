@@ -562,6 +562,10 @@ pub(crate) mod test_support;
 mod skills_tests;
 
 #[cfg(test)]
+#[path = "queue_tests.rs"]
+mod queue_tests;
+
+#[cfg(test)]
 #[path = "export_tests.rs"]
 mod export_tests;
 

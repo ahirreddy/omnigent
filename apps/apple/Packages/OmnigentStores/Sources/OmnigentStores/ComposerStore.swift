@@ -2,27 +2,23 @@ public import Foundation
 public import Observation
 public import OmnigentCoreFFI
 
-/// The composer of one conversation: draft text, attachments, and sending through the core's
-/// submission ledger. An uncertain send blocks the next one until the user reviews it.
+/// The composer of one conversation: draft text, quotes, attachments, and sending through the
+/// core's submission ledger. An uncertain send blocks the next one until the user reviews it.
 @Observable
 public final class ComposerStore {
-  /// The draft text. Changes are recorded in the core, so a late send result keeps newer text.
+  /// The draft text after the last quote. Changes are recorded in the core, so a late send
+  /// result keeps newer text.
   public var text = "" {
     didSet {
-      let hasDraft = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      if hasDraft != !oldValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        draftChanged?(hasDraft)
-      }
       guard text != oldValue else { return }
-      draftStored?(text)
       mentionTextChanged()
-      guard !applyingCoreText else { return }
-      do {
-        try core.updateComposer(sessionId: sessionID, text: text)
-      } catch {
-        lastError = coreError(error)
-      }
+      draftDidChange()
     }
+  }
+  /// Transcript text the draft quotes (Reply), each after the text typed before it; sent as
+  /// Markdown block quotes ahead of ``text``.
+  public internal(set) var quotes: [ReplyQuote] = [] {
+    didSet { if quotes != oldValue { draftDidChange() } }
   }
   /// Staged attachments.
   public private(set) var attachments = AttachmentDraft(items: [], selectionError: nil)
@@ -85,6 +81,8 @@ public final class ComposerStore {
   let sessionID: String
   let core: ClientCore
   private var applyingCoreText = false
+  /// The draft had something to send, at the last change.
+  @ObservationIgnored private var hadDraft = false
   /// Told when the draft becomes empty or not (the sidebar's draft marker).
   @ObservationIgnored var draftChanged: ((Bool) -> Void)?
   /// Told the new draft text, to keep it across launches.
@@ -102,8 +100,25 @@ public final class ComposerStore {
   /// Whether a send could start now.
   public var canSend: Bool {
     !isSending && !isBlocked
-      && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && (!draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         || !attachments.items.isEmpty || !mentions.isEmpty)
+  }
+
+  /// Records a changed draft: the sidebar's marker, the saved copy and the core's text.
+  private func draftDidChange() {
+    let message = draftMessage
+    let hasDraft = !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    if hasDraft != hadDraft {
+      hadDraft = hasDraft
+      draftChanged?(hasDraft)
+    }
+    draftStored?(message)
+    guard !applyingCoreText else { return }
+    do {
+      try core.updateComposer(sessionId: sessionID, text: message)
+    } catch {
+      lastError = coreError(error)
+    }
   }
 
   func deliver(
@@ -117,7 +132,7 @@ public final class ComposerStore {
       refreshBlocked()
     }
     do {
-      let sent = try await post(core, sessionID, text)
+      let sent = try await post(core, sessionID, draftMessage)
       setText(fromCore: sent.draft)
       refreshAttachments()
     } catch {
@@ -201,8 +216,11 @@ public final class ComposerStore {
     refreshBlocked()
   }
 
+  /// Shows the core's composer text; quotes stay while it is the draft's own message.
   func setText(fromCore value: String) {
+    guard value != draftMessage else { return }
     applyingCoreText = true
+    quotes = []
     text = value
     applyingCoreText = false
   }

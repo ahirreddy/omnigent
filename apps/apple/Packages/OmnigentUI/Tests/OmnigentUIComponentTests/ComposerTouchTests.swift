@@ -12,7 +12,7 @@ struct ComposerTouchTests {
     ComposerSendRules(state: state, draft: draft, canQueue: true, layout: layout)
   }
 
-  @Test("touch placeholders say what a send does; the Mac's name the keys")
+  @Test("placeholders say what a send does, as the web's do; the Mac's also name the keys")
   func placeholders() {
     var running = ComposerSamples.running
     running.queue = []
@@ -21,30 +21,41 @@ struct ComposerTouchTests {
     #expect(!touch.placeholder.contains("Esc"))
     #expect(
       rules(running, layout: .card).placeholder
-        == "\u{21B5} to send now, \u{2325}\u{2318}\u{21B5} to queue for later")
+        == "Steer the agent \u{2014} \u{21B5} to send now, \u{2325}\u{2318}\u{21B5} to queue for later, "
+        + "Esc to stop")
 
     var queueing = ComposerSamples.running
     queueing.canSteer = false
-    #expect(rules(queueing, layout: .touch).placeholder == "Queue a follow-up\u{2026}")
-    #expect(rules(queueing, layout: .card).placeholder == "\u{21B5} to queue for later")
+    #expect(
+      rules(queueing, layout: .touch).placeholder == "Send a follow-up (queued)\u{2026}")
+    #expect(
+      rules(queueing, layout: .card).placeholder
+        == "Send a follow-up (queued) \u{2014} \u{21B5} to queue for later, Esc to stop")
     // Queued messages keep their order, so Return queues and the alternative steers.
     #expect(
       rules(ComposerSamples.running, layout: .card).placeholder
-        == "\u{21B5} to queue for later, \u{2325}\u{2318}\u{21B5} to send now")
+        == "Send a follow-up (queued) \u{2014} \u{21B5} to queue for later, "
+        + "\u{2325}\u{2318}\u{21B5} to send now, Esc to stop")
 
-    #expect(rules(ComposerSamples.idle, layout: .touch).placeholder == "Reply\u{2026}")
+    #expect(rules(ComposerSamples.idle, layout: .touch).placeholder == "Send a message\u{2026}")
     #expect(
       rules(ComposerSamples.idle, layout: .card).placeholder
-        == "\u{21B5} to send, \u{21E7}\u{21B5} for a new line")
+        == "Send a message \u{2014} \u{21B5} to send, \u{21E7}\u{21B5} for a new line")
     var commandReturn = ComposerSamples.idle
     commandReturn.submitWithCommandReturn = true
     #expect(
       rules(commandReturn, layout: .card).placeholder
-        == "\u{2318}\u{21B5} to send, \u{21B5} for a new line")
-    // A new session keeps its own prompt.
-    #expect(!rules(ComposerSamples.start, layout: .touch).placeholder.contains("Reply"))
+        == "Send a message \u{2014} \u{2318}\u{21B5} to send, \u{21B5} for a new line")
+    // Why sending waits replaces the prompt.
+    var loading = ComposerSamples.idle
+    loading.availability = .unavailable(reason: "Waiting for the session to load\u{2026}")
     #expect(
-      rules(ComposerSamples.start, layout: .card).placeholder == "Describe what to build\u{2026}")
+      rules(loading, layout: .touch).placeholder == "Waiting for the session to load\u{2026}")
+    // A new session keeps its own prompt.
+    #expect(!rules(ComposerSamples.start, layout: .touch).placeholder.contains("Send a message"))
+    #expect(
+      rules(ComposerSamples.start, layout: .card).placeholder
+        == "Describe a task to start a new session\u{2026}")
   }
 
   #if os(macOS)

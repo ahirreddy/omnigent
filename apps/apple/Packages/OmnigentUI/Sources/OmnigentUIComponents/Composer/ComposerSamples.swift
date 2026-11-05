@@ -112,7 +112,7 @@ enum ComposerSamples {
             supportedReasoningEfforts: ["low", "medium", "high", "max"], isDefault: true),
           ModelOption(id: "sonnet", displayName: "Claude Sonnet 5"),
         ]),
-      placeholder: "Describe what to build\u{2026}", hosts: PreviewData.hosts,
+      placeholder: "Describe a task to start a new session\u{2026}", hosts: PreviewData.hosts,
       tray: ComposerTray(
         directory: "/Users/ahir/src/universe",
         recentDirectories: ["/Users/ahir/src/universe", "/Users/ahir/src/omnigent"],

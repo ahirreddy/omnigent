@@ -215,7 +215,8 @@ public final class CreationStore {
     let text = firstMessage.trimmingCharacters(in: .whitespacesAndNewlines)
     do {
       if !attachments.isEmpty {
-        let receipt = try await core.createSession(selection: selection, title: title)
+        let receipt = try await core.createSessionForMessage(
+          selection: selection, title: title, text: firstMessage)
         pendingFirstMessage = firstMessage
         phase = .created(sessionID: receipt.sessionId, firstMessageError: nil)
         await sendWithAttachments(sessionID: receipt.sessionId, text: firstMessage)

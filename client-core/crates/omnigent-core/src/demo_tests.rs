@@ -603,3 +603,57 @@ fn the_demo_keeps_the_viewers_read_state() {
         Err(SessionError::Rejected { status: 404, .. })
     ));
 }
+
+#[test]
+fn a_file_queued_while_the_demo_replies_sends_after_the_reply() {
+    let core = sample();
+    let demo = core.transport();
+    let created =
+        block_on(core.create_session_and_send(&selection(), "Files", "Plan it in detail"))
+            .unwrap()
+            .receipt
+            .session_id;
+    core.set_live_session(&created, true);
+    assert!(demo.is_replying());
+    let file =
+        crate::attachments::UploadFile::new("plan.txt", Some("text/plain"), b"notes".to_vec())
+            .unwrap();
+    let item = core.add_attachment(&created, file).unwrap();
+    block_on(core.upload_attachment(&created, item, "boundary")).unwrap();
+    let (hold, _) = core.hold_attachments(&created).unwrap().unwrap();
+    while demo.is_replying() {
+        demo.advance_replies();
+    }
+    block_on(core.send_queued_message(&created, "see the plan", Some(hold), None, &[])).unwrap();
+    let session = demo.session(&created).unwrap();
+    let sent = session
+        .snapshot
+        .items
+        .iter()
+        .find_map(|item| match &item.data {
+            ItemData::Message(message) if message.content.len() == 2 => {
+                Some(message.visible_text())
+            }
+            _ => None,
+        });
+    assert_eq!(sent.as_deref(), Some("see the plan"));
+}
+
+#[test]
+fn asking_for_detail_streams_the_longer_reply() {
+    let core = sample();
+    let demo = core.transport();
+    let created = create(&core, "Detail");
+    send(&core, &created, "Explain it In Detail").unwrap();
+    let mut ticks = 0;
+    while demo.is_replying() {
+        demo.advance_replies();
+        ticks += 1;
+    }
+    assert!(
+        ticks > 60,
+        "long enough to queue a follow-up while it streams"
+    );
+    let session = demo.session(&created).unwrap();
+    assert_eq!(texts(&session).last().unwrap(), DEMO_DETAILED_REPLY_TEXT);
+}

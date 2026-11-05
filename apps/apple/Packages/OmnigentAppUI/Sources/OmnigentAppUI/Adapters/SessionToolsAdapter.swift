@@ -140,9 +140,7 @@ enum SessionToolsAdapter {
   ) {
     guard !ComposerAdapter.isReadOnly(store) else { return }
     let composer = store.composer
-    actions.replyWithSelection = { text in
-      composer.text = replyQuote(draft: composer.text, selection: text)
-    }
+    actions.replyWithSelection = { text in composer.quote(text) }
     if sideChat(store, routes: routes) != nil {
       actions.askInSideChat = { text in startSideChat(store, routes: routes, quote: text) }
     }

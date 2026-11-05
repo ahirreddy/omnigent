@@ -11,6 +11,7 @@ enum GalleryCatalog {
     + SettingsCatalog.entries
     + NewSessionCatalog.entries + PageCatalog.entries + ConversationFlowCatalog.entries
     + NavigationFlowCatalog.entries + SignInCatalog.entries + CLICatalog.entries
+    + ReplyQueueCatalog.entries
 
   static func entry(_ id: String) -> CatalogEntry? {
     entries.first { $0.id == id }

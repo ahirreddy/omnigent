@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Messages waiting for the running turn to end, in send order, under "Queued · after this turn".
-/// Each has labelled Edit, Send now (steers the running turn; Retry after a failure) and Remove
+/// Messages waiting for the running turn to end, in send order, under "Queued · after this turn",
+/// each with the files and `@` paths it carries. Each has labelled Edit, Send now (steers the running turn; Retry after a failure) and Remove
 /// actions, always visible. Editing happens in place, so the draft below is never replaced; Esc
 /// cancels the edit only. The handle drags a message to another place in the order; the context
 /// menu moves it up or down.
@@ -61,10 +61,13 @@ struct QueueStrip: View {
           .accessibilityLabel("Reorder")
           .accessibilityIdentifier("queued-handle-\(message.id)")
       }
-      Text(message.text)
-        .font(.callout)
-        .lineLimit(2)
-        .frame(maxWidth: .infinity, alignment: .leading)
+      VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+        if !message.text.isEmpty {
+          Text(message.text).font(.callout).lineLimit(2)
+        }
+        QueuedExtras(message: message)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
       stateLabel(message.state)
       ViewThatFits(in: .horizontal) {
         buttons(message).labelStyle(.titleAndIcon)
@@ -141,7 +144,7 @@ struct QueueStrip: View {
       Button("Cancel", action: cancelEditing)
         .accessibilityIdentifier("queued-edit-cancel-\(message.id)")
       Button("Save") { save(message) }
-        .disabled(editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .disabled(!canSave(message))
         .accessibilityIdentifier("queued-edit-save-\(message.id)")
     }
     .buttonStyle(.borderless)
@@ -204,10 +207,50 @@ struct QueueStrip: View {
     editText = ""
   }
 
+  /// Blank text is fine while files or paths are the message.
+  private func canSave(_ message: QueuedMessage) -> Bool {
+    !editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !message.files.isEmpty
+      || !message.mentions.isEmpty
+  }
+
   private func save(_ message: QueuedMessage) {
-    let text = editText.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !text.isEmpty else { return }
-    actions.editQueued?(message, text)
+    guard canSave(message) else { return }
+    actions.editQueued?(message, editText.trimmingCharacters(in: .whitespacesAndNewlines))
     cancelEditing()
+  }
+}
+
+/// A queued message's files (the first name, then how many more, as on the web) and its `@`
+/// paths.
+private struct QueuedExtras: View {
+  let message: QueuedMessage
+
+  var body: some View {
+    if !message.files.isEmpty || !message.mentions.isEmpty {
+      HStack(spacing: Theme.Spacing.small) {
+        if let first = message.files.first {
+          let names = message.files.map(\.name)
+          Label {
+            HStack(spacing: Theme.Spacing.extraSmall) {
+              Text(first.name).lineLimit(1).truncationMode(.middle)
+              if names.count > 1 { Text("+\(names.count - 1)").monospacedDigit() }
+            }
+          } icon: {
+            Image(systemName: message.files.allSatisfy(\.isImage) ? "photo" : "paperclip")
+          }
+          .help(names.joined(separator: "\n"))
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel("Attached \(names.joined(separator: ", "))")
+          .accessibilityIdentifier("queued-attachments-\(message.id)")
+        }
+        ForEach(message.mentions, id: \.self) { path in
+          Label(path, systemImage: path.hasSuffix("/") ? "folder" : "doc")
+            .lineLimit(1)
+            .truncationMode(.middle)
+        }
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
+    }
   }
 }

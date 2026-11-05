@@ -58,7 +58,7 @@ struct CLIUserBand: View, Equatable {
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       if !row.text.isEmpty {
-        CLISourceText(text: row.text, tintsMarkdown: false, color: \.userText)
+        CLIUserText(text: row.text)
       }
       AttachmentStrip(attachments: row.attachments)
       if let activity = row.activity {

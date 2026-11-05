@@ -37,37 +37,41 @@ struct ComposerSendRules {
       return "Waiting for attachments to upload."
     }
     if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, state.attachments.isEmpty,
-      state.mentions.isEmpty
+      state.mentions.isEmpty, state.quotes.isEmpty
     {
       return state.purpose == .start ? "Enter a message to get started" : "Type a message."
     }
     return nil
   }
 
-  /// Why `intent` cannot run now, or `nil`.
+  /// Why `intent` cannot run now, or `nil`. A queued message takes the draft's files with it.
   /// - Parameter intent: The intent.
   /// - Returns: The reason.
   func blockedReason(for intent: ComposerSendIntent) -> String? {
-    if let reason = sendBlockedReason { return reason }
-    if intent == .queue, canQueue, !state.attachments.isEmpty {
-      return "Queued messages can't carry attachments. Steer now, or send after this turn."
-    }
-    return nil
+    sendBlockedReason
   }
 
-  /// The placeholder. The Mac's default one names the keys ("↵ to send now, ⌥⌘↵ to queue for
-  /// later", ⌘↵ with the Command-Return setting); touch says what a send does while it runs.
+  /// The draft has text, files, `@` paths or quotes.
+  var hasContent: Bool {
+    !draft.isEmpty || !state.attachments.isEmpty || !state.mentions.isEmpty
+      || !state.quotes.isEmpty
+  }
+
+  /// The placeholder, in the web's words: what needs the user first, why sending waits, or what
+  /// a send does while a turn runs. The Mac's default one also names the keys ("↵ to send now,
+  /// ⌥⌘↵ to queue for later", ⌘↵ with the Command-Return setting) and Esc while running.
   var placeholder: String {
     if let status = state.statusPlaceholder { return status }
-    let isDefault = state.placeholder == ComposerViewState().placeholder
-    guard layout == .touch else { return isDefault ? keyHints : state.placeholder }
-    let idle = isDefault && state.purpose == .session ? "Reply\u{2026}" : state.placeholder
-    guard state.isRunning, isDefault else { return idle }
-    switch intent {
-    case .steer: return "Steer the agent\u{2026}"
-    case .queue: return "Queue a follow-up\u{2026}"
-    case .send: return idle
-    }
+    if state.purpose == .session, let reason = state.availability.reason { return reason }
+    guard state.placeholder == ComposerViewState().placeholder else { return state.placeholder }
+    let lead =
+      switch state.isRunning ? intent : .send {
+      case .steer: "Steer the agent"
+      case .queue: "Send a follow-up (queued)"
+      case .send: "Send a message"
+      }
+    guard layout != .touch else { return lead + "\u{2026}" }
+    return "\(lead) \u{2014} \(keyHints)" + (state.isRunning ? ", Esc to stop" : "")
   }
 
   /// What Return does, then Option-Command-Return's alternative (or the newline key while idle).
