@@ -30,8 +30,9 @@ struct IOSRootView: View {
 
   @State private var session: ServerSession?
   @State private var selection: SidebarDestination?
-  /// The launch connect finished, so links route against the scene's real connection.
-  @State private var hasStarted = false
+  /// The server the launch is reconnecting to, until that connect returns: links to it wait
+  /// for it, links to another server supersede it.
+  @State private var restoringServer: URL?
   /// The launch is reconnecting to the last server and the core has not reported progress yet.
   @State private var isRestoring = false
   /// Tabs torn off from another window into this one.
@@ -70,13 +71,15 @@ struct IOSRootView: View {
       // iOS may end a backgrounded app without notice: save the tabs now.
       if phase == .background { Self.tabPersistence?.flush() }
     }
+    // Inside the supervision, so settings links reach its Settings screen.
+    .phoneDeepLinks(
+      session: session, restoringServer: restoringServer, selection: $selection,
+      knownServers: knownServers, switchServer: { switchServer(to: $0) },
+      launchLink: request == nil ? Self.launchLink : nil
+    )
     .phoneSupervision(
       PhoneAppDelegate.supervision, session: session, selection: $selection,
       scenePhase: scenePhase
-    )
-    .phoneDeepLinks(
-      session: hasStarted ? session : nil, selection: $selection, knownServers: knownServers,
-      switchServer: { switchServer(to: $0) }, launchLink: request == nil ? Self.launchLink : nil
     )
     .focusedSceneValue(\.serverCommands, serverCommandRelay.publish(session.map(serverCommands)))
   }
@@ -113,10 +116,11 @@ struct IOSRootView: View {
     if isNewWindow, let sessionID = request?.sessionID { selection = .session(sessionID) }
     if let server {
       isRestoring = true
+      restoringServer = URL(string: server)
       await session.signIn.connectNow(server)
       isRestoring = false
+      restoringServer = nil
     }
-    hasStarted = true
     #if DEBUG
       if request == nil { runLaunchChecks(session) }
     #endif

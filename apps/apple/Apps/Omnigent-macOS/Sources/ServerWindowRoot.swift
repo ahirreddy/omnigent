@@ -210,6 +210,11 @@ struct ServerWindowRoot: View {
     switch route {
     case .home: selection = nil
     case .conversation(let sessionID): selection = .session(sessionID)
+    case .page(let page): selection = DeepLinkDestinations.selection(for: page)
+    case .settings(let section):
+      OpenSettingsDestinationAction.settingsWindow(openSettings: openSettings)(
+        DeepLinkDestinations.settings(
+          section: section, server: session?.connection.supervisedServerURL))
     case .register(let invite):
       guard let session, let serverURL = id.serverURL,
         let link = SceneLinkPlan.inviteLink(server: serverURL, invite: invite)

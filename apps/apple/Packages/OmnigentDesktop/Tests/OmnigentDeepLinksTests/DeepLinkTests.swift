@@ -79,9 +79,10 @@ struct DeepLinkTests {
   }
 
   @Test(
-    "rejects non-/c/<id> paths",
+    "rejects paths that are not a conversation, page or settings",
     arguments: [
-      "omnigent://localhost:8000/inbox", "omnigent://localhost:8000/settings/appearance",
+      "omnigent://localhost:8000/members", "omnigent://localhost:8000/tasks/t_1",
+      "omnigent://localhost:8000/settings/..", "omnigent://localhost:8000/settings/a/b/c",
       "omnigent://localhost:8000/c/", "omnigent://localhost:8000/c/a/b",
       "omnigent://localhost:8000//",
     ])
@@ -92,6 +93,21 @@ struct DeepLinkTests {
       guard case .unsupportedPath = error as? DeepLinkError else { return false }
       return true
     }
+  }
+
+  @Test("opens the web app's pages and settings sections")
+  func pagesAndSettings() throws {
+    #expect(try parse("omnigent://127.0.0.1:6767/usage").route == .page(.usage))
+    #expect(try parse("omnigent://127.0.0.1:6767/new/").route == .page(.newSession))
+    #expect(try parse("omnigent://127.0.0.1:6767/tasks").route == .page(.automations))
+    #expect(try parse("omnigent://127.0.0.1:6767/inbox").route.path == "/inbox")
+    #expect(try parse("omnigent://127.0.0.1:6767/settings").route == .settings(section: nil))
+    let section = try parse("omnigent://127.0.0.1:6767/settings/custom-agents").route
+    #expect(section == .settings(section: "custom-agents"))
+    #expect(section.path == "/settings/custom-agents")
+    #expect(
+      try parse("omnigent://127.0.0.1:6767/settings/harnesses/codex").route
+        == .settings(section: "harnesses"))
   }
 
   @Test("rejects unparseable input")
@@ -190,8 +206,8 @@ struct DeepLinkAcknowledgmentTests {
     #expect(throws: DeepLinkError.invalidAcknowledgment("duplicate desktop_ack")) {
       try parse("omnigent://localhost/?desktop_ack=123:\(Self.token)&desktop_ack=123:\(Self.token)")
     }
-    #expect(throws: DeepLinkError.unsupportedPath("/settings")) {
-      try parse("omnigent://localhost/settings?desktop_ack=123:\(Self.token)")
+    #expect(throws: DeepLinkError.unsupportedPath("/members")) {
+      try parse("omnigent://localhost/members?desktop_ack=123:\(Self.token)")
     }
   }
 
