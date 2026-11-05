@@ -164,6 +164,8 @@ struct State {
     events: Vec<ClientEvent>,
     /// Where sessions run, for replica routing on host-sharded servers.
     routing: routing::ReplicaRouting,
+    /// The user turned off automatic session titles (a device preference, kept across connects).
+    background_titles_off: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy)]

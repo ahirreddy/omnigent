@@ -3,10 +3,12 @@
 //!
 //! Native harnesses (`*-native`) run their own commands, so a typed command or skill reaches
 //! them as plain text. Other harnesses run skills through the server's `slash_command` event.
+//! `/context` and `/mcp` answer locally from what the client already knows.
 
 use serde_json::Value;
 
 use crate::client::json::{as_object, opt_array, opt_str, req_str};
+use crate::config::approval::approval_mode_menu;
 use crate::config::session::{SessionConfiguration, canonical_harness};
 
 /// A skill discovered on the session's host (`GET /v1/skills`).
@@ -61,6 +63,27 @@ impl SkillCatalog {
     }
 }
 
+/// What the server offers beyond the session's configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SlashOptions {
+    /// The server takes the `clear` control (`/v1/info.session_event_types` lists `clear`).
+    pub server_clears: bool,
+}
+
+impl SlashOptions {
+    /// Decodes the command fields of a `/v1/info` body; missing fields mean unsupported.
+    ///
+    /// # Errors
+    ///
+    /// A description of the first field with the wrong shape.
+    pub fn from_info(value: &Value) -> Result<Self, String> {
+        let object = as_object(value, "/v1/info")?;
+        let server_clears = opt_array(object, "session_event_types")?
+            .is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str() == Some("clear")));
+        Ok(Self { server_clears })
+    }
+}
+
 /// One entry of the `/` menu.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SlashCommand {
@@ -100,6 +123,19 @@ pub enum SlashAction {
     },
     /// Start a blank session in the same project.
     NewSession,
+    /// Run the harness's own `/clear`: the terminal moves to a fresh session the view follows.
+    Clear,
+    /// Fork a side chat and open it with `question` as its draft.
+    SideChat {
+        /// Everything after `/side`; may be empty.
+        question: String,
+    },
+    /// Show the context window usage ([`context_report`]).
+    Context,
+    /// Show the session's MCP servers ([`mcp_report`]).
+    Mcp,
+    /// Open the approval-mode picker.
+    Permissions,
     /// Show `text` to the user and send nothing (help, usage, a refusal).
     Show {
         /// The text.
@@ -108,6 +144,11 @@ pub enum SlashAction {
 }
 
 const COMPACT: &str = "Compact conversation context to free up space";
+const CLEAR: &str = "Clear the context and continue in a new chat on the same machine";
+const CONTEXT: &str = "Show context window usage for this session";
+const MCP: &str = "Show MCP servers enabled for this session";
+const PERMISSIONS: &str = "Change the approval mode for this session";
+const SIDE: &str = "Start a side chat: an ephemeral fork opened as its own sub-agent chat, kept out of this conversation";
 const EFFORT: &str = "Set reasoning effort: /effort low | medium | high | default";
 const MODEL: &str = "Switch the model for this session: /model <name>";
 const NEW: &str = "Start a blank session in the same project";
@@ -129,13 +170,33 @@ fn offers_compact(harness: &str) -> bool {
     is_native(harness) || harness == "claude-sdk"
 }
 
+/// The harnesses whose own `/clear` the server can run in the session terminal.
+fn offers_clear(harness: &str) -> bool {
+    matches!(harness, "claude-native" | "codex-native")
+}
+
+/// Codex forks its side chat in-process from the typed `/side`; others fork on the server.
+fn forks_side_chat_natively(harness: &str) -> bool {
+    harness == "codex-native"
+}
+
+/// Codex's approval mode has a live switch here; Claude's `/permissions` edits tool rules in
+/// its terminal instead.
+fn offers_permissions(harness: &str, configuration: &SessionConfiguration) -> bool {
+    harness == "codex-native" && approval_mode_menu(configuration).is_some()
+}
+
 fn skill_prefix(harness: &str) -> &'static str {
     if harness == "codex-native" { "$" } else { "/" }
 }
 
 /// The `/` menu for a session: the built-ins it supports first, then its skills.
 #[must_use]
-pub fn slash_commands(configuration: &SessionConfiguration, skills: &[Skill]) -> Vec<SlashCommand> {
+pub fn slash_commands(
+    configuration: &SessionConfiguration,
+    skills: &[Skill],
+    options: &SlashOptions,
+) -> Vec<SlashCommand> {
     let harness = canonical_harness(configuration.harness.as_deref());
     let builtin = |name: &str, description: &str| SlashCommand {
         name: name.to_owned(),
@@ -147,15 +208,26 @@ pub fn slash_commands(configuration: &SessionConfiguration, skills: &[Skill]) ->
     if offers_compact(&harness) {
         commands.push(builtin("compact", COMPACT));
     }
+    if options.server_clears && offers_clear(&harness) {
+        commands.push(builtin("clear", CLEAR));
+    }
+    commands.push(builtin("context", CONTEXT));
     if configuration.supports_effort() {
         commands.push(builtin("effort", EFFORT));
     }
     if configuration.supports_models() {
         commands.push(builtin("model", MODEL));
     }
+    commands.push(builtin("mcp", MCP));
+    if offers_permissions(&harness, configuration) {
+        commands.push(builtin("permissions", PERMISSIONS));
+    }
     commands.push(builtin("new", NEW));
     if harness == "claude-native" {
         commands.push(builtin("btw", BTW));
+    }
+    if !harness.is_empty() {
+        commands.push(builtin("side", SIDE));
     }
     commands.push(builtin("help", HELP));
     let prefix = skill_prefix(&harness);
@@ -212,11 +284,12 @@ pub fn slash_action(
     has_attachments: bool,
     configuration: &SessionConfiguration,
     skills: &[Skill],
+    options: &SlashOptions,
 ) -> Option<SlashAction> {
     if has_attachments {
         return None;
     }
-    let commands = slash_commands(configuration, skills);
+    let commands = slash_commands(configuration, skills, options);
     let (command, arguments) = match_invocation(text, &commands)?;
     let harness = canonical_harness(configuration.harness.as_deref());
     if command.is_skill {
@@ -242,6 +315,17 @@ pub fn slash_action(
         "compact" if compacts_by_control(&harness) => no_arguments("compact", SlashAction::Compact),
         "compact" | "btw" => SlashAction::SendText,
         "new" => no_arguments("new", SlashAction::NewSession),
+        "clear" => no_arguments("clear", SlashAction::Clear),
+        "permissions" => no_arguments("permissions", SlashAction::Permissions),
+        "context" => SlashAction::Context,
+        "mcp" if arguments.is_empty() => SlashAction::Mcp,
+        "mcp" => SlashAction::Show {
+            text: "Usage: /mcp".to_owned(),
+        },
+        "side" if forks_side_chat_natively(&harness) => SlashAction::SendText,
+        "side" => SlashAction::SideChat {
+            question: arguments,
+        },
         "help" => SlashAction::Show {
             text: commands
                 .iter()
@@ -293,6 +377,87 @@ fn effort_action(arguments: &str, configuration: &SessionConfiguration) -> Slash
     SlashAction::SetEffort {
         effort: (level != "default").then_some(level),
     }
+}
+
+/// How full the context window is, as `/context` shows it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ContextUsage {
+    /// Tokens in context, once a turn reported them.
+    pub tokens_used: Option<u64>,
+    /// The model's context window, when known.
+    pub context_window: Option<u64>,
+    /// Transcript items in the conversation.
+    pub items: u64,
+}
+
+const CONTEXT_BAR_WIDTH: u64 = 20;
+
+/// The `/context` text: the model, the tokens used against the window with a bar, and the
+/// item count (the web composer's `/context`).
+#[must_use]
+pub fn context_report(configuration: Option<&SessionConfiguration>, usage: ContextUsage) -> String {
+    let mut lines = Vec::new();
+    if let Some(configuration) = configuration {
+        if let Some(model) = &configuration.model_override {
+            lines.push(format!("Model: {model} (override)"));
+        } else if let Some(model) = &configuration.base_model {
+            lines.push(format!("Model: {model}"));
+        }
+    }
+    match (usage.tokens_used, usage.context_window) {
+        (Some(tokens), Some(window)) if window > 0 => {
+            let used = tokens.min(window);
+            let filled = (used * CONTEXT_BAR_WIDTH + window / 2) / window;
+            // Tenths of a percent, rounded.
+            let tenths = (used * 1000 + window / 2) / window;
+            lines.push(format!(
+                "{} / {} tokens ({}.{}%)",
+                grouped(tokens),
+                grouped(window),
+                tenths / 10,
+                tenths % 10
+            ));
+            lines.push(format!(
+                "{}{}",
+                "\u{2588}".repeat(usize::try_from(filled).unwrap_or(0)),
+                "\u{2591}".repeat(usize::try_from(CONTEXT_BAR_WIDTH - filled).unwrap_or(0))
+            ));
+        }
+        (Some(tokens), _) => {
+            lines.push(format!("{} tokens", grouped(tokens)));
+            lines.push("(Context window size unknown)".to_owned());
+        }
+        (None, _) => lines.push("No usage data yet \u{2014} send a message first.".to_owned()),
+    }
+    lines.push(format!("Items in context: {}", usage.items));
+    lines.join("\n")
+}
+
+/// The `/mcp` text for the agent's MCP servers; `None` while they are unknown.
+#[must_use]
+pub fn mcp_report(servers: Option<&[String]>) -> String {
+    match servers {
+        None => "This session's MCP servers have not loaded yet. Try again in a moment.".to_owned(),
+        Some([]) => "No MCP servers are enabled for this session.".to_owned(),
+        Some(servers) => {
+            let mut lines = vec!["MCP servers enabled for this session:".to_owned()];
+            lines.extend(servers.iter().map(|name| format!("\u{2022} {name}")));
+            lines.join("\n")
+        }
+    }
+}
+
+/// `1234567` as `1,234,567`.
+fn grouped(value: u64) -> String {
+    let digits = value.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
 }
 
 #[cfg(test)]

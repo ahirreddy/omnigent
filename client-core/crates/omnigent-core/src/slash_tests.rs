@@ -17,6 +17,26 @@ fn skill(name: &str) -> Skill {
     }
 }
 
+const NO_OPTIONS: SlashOptions = SlashOptions {
+    server_clears: false,
+};
+
+fn act(
+    text: &str,
+    has_attachments: bool,
+    configuration: &SessionConfiguration,
+    skills: &[Skill],
+) -> Option<SlashAction> {
+    slash_action(text, has_attachments, configuration, skills, &NO_OPTIONS)
+}
+
+fn codex() -> SessionConfiguration {
+    SessionConfiguration {
+        wrapper: Some("codex-native-ui".to_owned()),
+        ..session("codex-native")
+    }
+}
+
 fn names(commands: &[SlashCommand]) -> Vec<String> {
     commands
         .iter()
@@ -44,24 +64,44 @@ fn catalog_decodes_skills_and_deduplicates_warnings() {
 
 #[test]
 fn builtins_follow_the_harness_then_skills() {
-    let sdk = slash_commands(&session("openai-agents"), &[skill("review")]);
-    assert_eq!(names(&sdk), ["/new", "/help", "/review"]);
-    let claude = slash_commands(&session("native-claude"), &[skill("review")]);
+    let sdk = slash_commands(&session("openai-agents"), &[skill("review")], &NO_OPTIONS);
+    assert_eq!(
+        names(&sdk),
+        ["/context", "/mcp", "/new", "/side", "/help", "/review"]
+    );
+    let claude = slash_commands(&session("native-claude"), &[skill("review")], &NO_OPTIONS);
     assert_eq!(
         names(&claude),
-        ["/compact", "/model", "/new", "/btw", "/help", "/review"]
-    );
-    let codex = SessionConfiguration {
-        wrapper: Some("codex-native-ui".to_owned()),
-        ..session("codex-native")
-    };
-    assert_eq!(
-        names(&slash_commands(&codex, &[skill("review")])),
-        ["/compact", "/effort", "/model", "/new", "/help", "$review"]
+        [
+            "/compact", "/context", "/model", "/mcp", "/new", "/btw", "/side", "/help", "/review"
+        ]
     );
     assert_eq!(
-        names(&slash_commands(&session("claude-sdk"), &[])),
-        ["/compact", "/new", "/help"]
+        names(&slash_commands(&codex(), &[skill("review")], &NO_OPTIONS)),
+        [
+            "/compact",
+            "/context",
+            "/effort",
+            "/model",
+            "/mcp",
+            "/permissions",
+            "/new",
+            "/side",
+            "/help",
+            "$review"
+        ]
+    );
+    assert_eq!(
+        names(&slash_commands(&session("claude-sdk"), &[], &NO_OPTIONS)),
+        ["/compact", "/context", "/mcp", "/new", "/side", "/help"]
+    );
+    assert_eq!(
+        names(&slash_commands(
+            &SessionConfiguration::default(),
+            &[],
+            &NO_OPTIONS
+        )),
+        ["/context", "/mcp", "/new", "/help"]
     );
 }
 
@@ -71,7 +111,7 @@ fn display_names_lead_the_description() {
         display_name: Some("Review PR".to_owned()),
         ..skill("review-pr")
     };
-    let commands = slash_commands(&session("openai-agents"), &[named]);
+    let commands = slash_commands(&session("openai-agents"), &[named], &NO_OPTIONS);
     assert_eq!(
         commands.last().map(|command| command.description.as_str()),
         Some("Review PR \u{2014} review-pr description")
@@ -83,6 +123,7 @@ fn invocations_match_whole_names_and_keep_arguments() {
     let commands = slash_commands(
         &session("openai-agents"),
         &[skill("review"), skill("review-pr")],
+        &NO_OPTIONS,
     );
     let (command, arguments) =
         match_invocation("  /review-pr https://github.com/o/r/pull/1 ", &commands).expect("match");
@@ -97,7 +138,7 @@ fn invocations_match_whole_names_and_keep_arguments() {
 fn skills_run_on_the_server_except_on_native_harnesses() {
     let skills = [skill("review")];
     assert_eq!(
-        slash_action(
+        act(
             "/review the diff",
             false,
             &session("openai-agents"),
@@ -109,23 +150,23 @@ fn skills_run_on_the_server_except_on_native_harnesses() {
         })
     );
     assert_eq!(
-        slash_action("/review", false, &session("claude-native"), &skills),
+        act("/review", false, &session("claude-native"), &skills),
         Some(SlashAction::SendText)
     );
     assert_eq!(
-        slash_action("$review", false, &session("codex-native"), &skills),
+        act("$review", false, &session("codex-native"), &skills),
         Some(SlashAction::SendText)
     );
     assert_eq!(
-        slash_action("/review", true, &session("openai-agents"), &skills),
+        act("/review", true, &session("openai-agents"), &skills),
         None
     );
     assert_eq!(
-        slash_action("hello", false, &session("openai-agents"), &skills),
+        act("hello", false, &session("openai-agents"), &skills),
         None
     );
     assert_eq!(
-        slash_action("/unknown", false, &session("openai-agents"), &skills),
+        act("/unknown", false, &session("openai-agents"), &skills),
         None
     );
 }
@@ -134,39 +175,38 @@ fn skills_run_on_the_server_except_on_native_harnesses() {
 fn builtins_map_to_their_actions() {
     let claude = session("claude-native");
     assert_eq!(
-        slash_action("/compact", false, &claude, &[]),
+        act("/compact", false, &claude, &[]),
         Some(SlashAction::SendText)
     );
     assert_eq!(
-        slash_action("/compact", false, &session("pi-native"), &[]),
+        act("/compact", false, &session("pi-native"), &[]),
         Some(SlashAction::Compact)
     );
     assert_eq!(
-        slash_action("/compact now", false, &session("claude-sdk"), &[]),
+        act("/compact now", false, &session("claude-sdk"), &[]),
         Some(SlashAction::Show {
             text: "/compact does not accept arguments".to_owned()
         })
     );
     assert_eq!(
-        slash_action("/new", false, &claude, &[]),
+        act("/new", false, &claude, &[]),
         Some(SlashAction::NewSession)
     );
     assert_eq!(
-        slash_action("/model opus", false, &claude, &[]),
+        act("/model opus", false, &claude, &[]),
         Some(SlashAction::SetModel {
             model: Some("opus".to_owned())
         })
     );
     assert_eq!(
-        slash_action("/model Default", false, &claude, &[]),
+        act("/model Default", false, &claude, &[]),
         Some(SlashAction::SetModel { model: None })
     );
     assert!(matches!(
-        slash_action("/model", false, &claude, &[]),
+        act("/model", false, &claude, &[]),
         Some(SlashAction::Show { text }) if text.starts_with("Model: agent default")
     ));
-    let Some(SlashAction::Show { text }) = slash_action("/help", false, &claude, &[skill("x")])
-    else {
+    let Some(SlashAction::Show { text }) = act("/help", false, &claude, &[skill("x")]) else {
         panic!("help shows text");
     };
     assert!(text.contains("/compact \u{2014} Compact"));
@@ -174,17 +214,146 @@ fn builtins_map_to_their_actions() {
 }
 
 #[test]
-fn effort_accepts_the_models_levels_and_default() {
-    let codex = SessionConfiguration {
-        wrapper: Some("codex-native-ui".to_owned()),
+fn clear_needs_the_server_control_and_a_native_terminal() {
+    let clears = SlashOptions {
+        server_clears: true,
+    };
+    let claude = session("claude-native");
+    assert!(!names(&slash_commands(&claude, &[], &NO_OPTIONS)).contains(&"/clear".to_owned()));
+    assert_eq!(act("/clear", false, &claude, &[]), None);
+    assert_eq!(
+        slash_action("/clear", false, &claude, &[], &clears),
+        Some(SlashAction::Clear)
+    );
+    assert_eq!(
+        slash_action("/clear now", false, &codex(), &[], &clears),
+        Some(SlashAction::Show {
+            text: "/clear does not accept arguments".to_owned()
+        })
+    );
+    assert_eq!(
+        slash_action("/clear", false, &session("claude-sdk"), &[], &clears),
+        None
+    );
+}
+
+#[test]
+fn side_forks_on_the_server_except_for_codex() {
+    assert_eq!(
+        act(
+            "/side why is it slow?",
+            false,
+            &session("claude-native"),
+            &[]
+        ),
+        Some(SlashAction::SideChat {
+            question: "why is it slow?".to_owned()
+        })
+    );
+    assert_eq!(
+        act("/side", false, &session("openai-agents"), &[]),
+        Some(SlashAction::SideChat {
+            question: String::new()
+        })
+    );
+    assert_eq!(
+        act("/side why?", false, &codex(), &[]),
+        Some(SlashAction::SendText)
+    );
+}
+
+#[test]
+fn context_mcp_and_permissions_act_locally() {
+    let claude = session("claude-native");
+    assert_eq!(
+        act("/context", false, &claude, &[]),
+        Some(SlashAction::Context)
+    );
+    assert_eq!(act("/mcp", false, &claude, &[]), Some(SlashAction::Mcp));
+    assert_eq!(
+        act("/mcp list", false, &claude, &[]),
+        Some(SlashAction::Show {
+            text: "Usage: /mcp".to_owned()
+        })
+    );
+    assert_eq!(
+        act("/permissions", false, &codex(), &[]),
+        Some(SlashAction::Permissions)
+    );
+    assert_eq!(
+        act("/permissions full", false, &codex(), &[]),
+        Some(SlashAction::Show {
+            text: "/permissions does not accept arguments".to_owned()
+        })
+    );
+    // Claude's own /permissions edits tool rules in its terminal.
+    assert_eq!(act("/permissions", false, &claude, &[]), None);
+}
+
+#[test]
+fn context_report_shows_usage_against_the_window() {
+    let configuration = SessionConfiguration {
+        base_model: Some("gpt-5".to_owned()),
         ..session("codex-native")
     };
+    let report = context_report(
+        Some(&configuration),
+        ContextUsage {
+            tokens_used: Some(50_000),
+            context_window: Some(200_000),
+            items: 12,
+        },
+    );
     assert_eq!(
-        slash_action("/effort default", false, &codex, &[]),
+        report,
+        "Model: gpt-5\n50,000 / 200,000 tokens (25.0%)\n\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\
+         \u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\
+         \u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\nItems in context: 12"
+    );
+    let overridden = SessionConfiguration {
+        model_override: Some("o3".to_owned()),
+        ..configuration
+    };
+    let unknown_window = context_report(
+        Some(&overridden),
+        ContextUsage {
+            tokens_used: Some(1_234_567),
+            context_window: Some(0),
+            items: 0,
+        },
+    );
+    assert_eq!(
+        unknown_window,
+        "Model: o3 (override)\n1,234,567 tokens\n(Context window size unknown)\nItems in context: 0"
+    );
+    assert_eq!(
+        context_report(None, ContextUsage::default()),
+        "No usage data yet \u{2014} send a message first.\nItems in context: 0"
+    );
+}
+
+#[test]
+fn mcp_report_lists_the_agents_servers() {
+    assert_eq!(
+        mcp_report(Some(&["github".to_owned(), "jira".to_owned()])),
+        "MCP servers enabled for this session:\n\u{2022} github\n\u{2022} jira"
+    );
+    assert_eq!(
+        mcp_report(Some(&[])),
+        "No MCP servers are enabled for this session."
+    );
+    assert!(mcp_report(None).contains("not loaded yet"));
+}
+
+#[test]
+fn effort_accepts_the_models_levels_and_default() {
+    let codex = codex();
+    assert_eq!(
+        act("/effort default", false, &codex, &[]),
         Some(SlashAction::SetEffort { effort: None })
     );
     assert!(matches!(
-        slash_action("/effort extreme", false, &codex, &[]),
+        act("/effort extreme", false, &codex, &[]),
         Some(SlashAction::Show { text }) if text.starts_with("Usage: /effort")
     ));
 }

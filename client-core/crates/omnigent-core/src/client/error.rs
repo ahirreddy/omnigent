@@ -93,6 +93,13 @@ pub enum SessionError {
     /// The session's live stream is not open and hydrated yet.
     #[error("Wait for the live connection to finish syncing before sending.")]
     StreamNotReady,
+    /// The session's host is offline (HTTP 503 `host_offline`). The server recorded nothing, so
+    /// the message is kept to send again once the host reconnects.
+    #[error("{message}")]
+    HostOffline {
+        /// The server's explanation.
+        message: String,
+    },
     /// The session cannot run a message now.
     #[error("{reason}")]
     ExecutionUnavailable {
