@@ -14,7 +14,7 @@ struct PaletteAdapter: ViewModifier {
   let session: ServerSession
   @Binding var selection: SidebarDestination?
   #if os(macOS)
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openSettingsAt) private var openSettingsAt
   #endif
 
   func body(content: Content) -> some View {
@@ -128,7 +128,7 @@ struct PaletteAdapter: ViewModifier {
       session.signIn.connect(url)
     case .settings:
       #if os(macOS)
-        openSettings()
+        openSettingsAt?(.tab(SettingsNavigator.generalTab))
       #endif
     case .toggleSidebar:
       #if os(macOS)

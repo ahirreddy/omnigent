@@ -36,6 +36,12 @@ nonisolated public struct ServerSettingsViewState: Hashable, Sendable {
   public var isSaving: Bool
   /// A load or save error, never swallowed.
   public var errorMessage: String?
+  /// Who the caller is signed in as, for the Account pane.
+  public var account: ServerAccountState?
+  /// Per archived session (by id): its project, archive time and whether it can be deleted.
+  public var archivedInfo: [String: ArchivedSessionInfo] = [:]
+  /// Projects with loaded archived sessions, for the Archived pane's filter.
+  public var archivedProjects: [SettingChoice] = []
 
   /// Creates settings state.
   /// - Parameters:
@@ -102,10 +108,15 @@ public struct ServerSettingsActions {
   public var openInBrowser: (@MainActor (ServerSettingsPane) -> Void)?
   /// Disconnect a provider account.
   public var disconnectProvider: (@MainActor (ProviderConnectionRow) -> Void)?
-  /// Import sessions (host, source, limit); returns a one-line tally, or `nil` on failure.
-  public var importSessions: (@MainActor (String, String, Int) async -> String?)?
+  /// Import sessions (host, source, limit, and a harness session id for one session); returns a
+  /// one-line tally, or `nil` on failure.
+  public var importSessions: (@MainActor (String, String, Int, String?) async -> String?)?
   /// Change the caller's password (current, new); returns whether it changed.
   public var changePassword: (@MainActor (String, String) async -> Bool)?
+  /// Sign out of the server.
+  public var signOut: (@MainActor () -> Void)?
+  /// Open a session in a window (after Unarchive).
+  public var openSession: (@MainActor (String) -> Void)?
   /// Reset a member's password; returns the new one, shown once.
   public var resetPassword: (@MainActor (ServerMember) async -> String?)?
   /// Remove a member.

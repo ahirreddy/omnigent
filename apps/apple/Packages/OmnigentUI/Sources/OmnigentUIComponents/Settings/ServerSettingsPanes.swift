@@ -193,6 +193,8 @@ struct ImportSessionsPane: View {
   @State private var host: String?
   @State private var source = "all"
   @State private var limit = 25
+  @State private var mode = ImportMode.recent
+  @State private var sessionID = ""
   @State private var result: String?
   @State private var isImporting = false
 
@@ -207,33 +209,74 @@ struct ImportSessionsPane: View {
         Picker("Machine", selection: $host) {
           ForEach(hosts) { Text($0.title).tag(Optional($0.id)) }
         }
-        Picker("Harness", selection: $source) {
-          ForEach(sources) { Text($0.title).tag($0.id) }
+        Picker("Import", selection: $mode) {
+          ForEach(ImportMode.allCases) { Text($0.title).tag($0) }
         }
-        Picker("Most recent", selection: $limit) {
-          ForEach(Self.limits, id: \.self) { Text("\($0) sessions").tag($0) }
+        .onChange(of: mode) { if mode == .session, source == "all" { source = "claude" } }
+        .accessibilityIdentifier("settings.import.mode")
+        Picker("Harness", selection: $source) {
+          ForEach(sources.filter { mode == .recent || $0.id != "all" }) {
+            Text($0.title).tag($0.id)
+          }
+        }
+        switch mode {
+        case .recent:
+          Picker("Most recent", selection: $limit) {
+            ForEach(Self.limits, id: \.self) { Text("\($0) sessions").tag($0) }
+          }
+        case .session:
+          TextField("Session ID", text: $sessionID, prompt: Text("Enter a session ID"))
+            .autocorrectionDisabled()
+            .onSubmit { if canImport { Task { await runImport() } } }
+            .accessibilityIdentifier("settings.import.session-id")
         }
         HStack {
           if let result { Text(result).foregroundStyle(.secondary).textSelection(.enabled) }
           Spacer()
           if isImporting { ProgressView().controlSize(.small) }
           Button("Import") { Task { await runImport() } }
-            .disabled(host == nil || isImporting || actions.importSessions == nil)
+            .disabled(!canImport)
         }
       }
     } header: {
       Text("Import from a machine")
     } footer: {
-      Text("Sessions already imported are skipped.")
+      Text(
+        mode == .recent
+          ? "Sessions already imported are skipped."
+          : "The harness's own id for the session, as its CLI shows it.")
     }
     .onAppear { if host == nil { host = hosts.first?.id } }
     .onChange(of: hosts) { if host == nil { host = hosts.first?.id } }
   }
 
+  private var canImport: Bool {
+    host != nil && !isImporting && actions.importSessions != nil
+      && (mode == .recent || !sessionID.trimmingCharacters(in: .whitespaces).isEmpty)
+  }
+
   private func runImport() async {
     guard let host else { return }
     isImporting = true
-    result = await actions.importSessions?(host, source, limit)
+    let exact = mode == .session ? sessionID.trimmingCharacters(in: .whitespaces) : nil
+    result = await actions.importSessions?(host, source, limit, exact)
     isImporting = false
+  }
+}
+
+/// Import the most recent sessions, or one by its harness id.
+enum ImportMode: String, CaseIterable, Identifiable {
+  /// The most recent sessions.
+  case recent
+  /// One session by id.
+  case session
+
+  var id: Self { self }
+
+  var title: String {
+    switch self {
+    case .recent: "Recent sessions"
+    case .session: "Session by ID"
+    }
   }
 }

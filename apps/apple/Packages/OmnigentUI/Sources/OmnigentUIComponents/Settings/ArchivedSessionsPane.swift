@@ -1,46 +1,122 @@
 import SwiftUI
 
-/// Archived sessions grouped by when they last changed, each with Unarchive, and a selection for
-/// bulk Unarchive and Delete.
+/// Archived sessions grouped by when they last changed, as the web's Archived section: a
+/// retention that marks old ones expired (with Delete expired), a project filter, per-row
+/// Unarchive (which opens the session) and Delete, and a selection for bulk Unarchive and Delete.
+/// Only the caller's own sessions offer Delete.
 struct ArchivedSessionsPane: View {
   let sessions: [SessionSummary]
+  let info: [String: ArchivedSessionInfo]
+  let projects: [SettingChoice]
   let hasMore: Bool
   let actions: ServerSettingsActions
+  @AppStorage(ArchivedRetention.key) private var storedRetention: String?
+  @State private var project: String?
   @State private var selection: Set<String> = []
-  @State private var confirmingDelete = false
+  @State private var pendingDelete: DeleteRequest?
 
   var body: some View {
-    if sessions.isEmpty {
+    Section { filters }
+    if let days = retentionDays, !expired.isEmpty { expiredRow(days) }
+    if shown.isEmpty {
       Section { Text("No archived sessions.").foregroundStyle(.secondary) }
     } else {
       Section { bulkBar }
-      ForEach(ArchivedGroup.groups(sessions, now: .now), id: \.label) { group in
+      ForEach(ArchivedGroup.groups(shown, now: .now), id: \.label) { group in
         Section(group.label) {
           ForEach(group.sessions) { session in row(session) }
         }
       }
-      if hasMore, let loadMore = actions.loadMoreArchived {
-        Section { Button("Load More", action: loadMore) }
+    }
+    if hasMore, let loadMore = actions.loadMoreArchived {
+      Section { Button("Load More", action: loadMore) }
+    }
+  }
+
+  private var retentionDays: Int? { ArchivedRetention.days(storedRetention) }
+
+  /// The project filter, dropped once no loaded session is in it.
+  private var shownProject: String? {
+    project.flatMap { id in projects.contains { $0.id == id } ? id : nil }
+  }
+
+  private var shown: [SessionSummary] {
+    guard let shownProject else { return sessions }
+    return sessions.filter { info[$0.id]?.projectID == shownProject }
+  }
+
+  private var expired: [String] {
+    ArchivedRetention.expired(shown, info: info, days: retentionDays, now: .now)
+  }
+
+  private func canDelete(_ id: String) -> Bool { info[id]?.canDelete ?? true }
+
+  @ViewBuilder private var filters: some View {
+    Picker(
+      "Mark as expired after",
+      selection: Binding(
+        get: { retentionDays },
+        set: { days in
+          let text = days.map(String.init)
+          if storedRetention != text { storedRetention = text }
+        })
+    ) {
+      ForEach(ArchivedRetention.choices, id: \.self) { Text(ArchivedRetention.title($0)).tag($0) }
+    }
+    .accessibilityIdentifier("settings.archived.retention")
+    if !projects.isEmpty {
+      Picker("Project", selection: Binding(get: { shownProject }, set: { project = $0 })) {
+        Text("All projects").tag(String?.none)
+        ForEach(projects) { Text($0.title).tag(Optional($0.id)) }
+      }
+      .accessibilityIdentifier("settings.archived.project")
+    }
+  }
+
+  private func expiredRow(_ days: Int) -> some View {
+    Section {
+      HStack {
+        Label(
+          "\(count(expired.count)) \(hasMore ? "on loaded pages " : "")past the \(days)-day retention",
+          systemImage: "clock.badge.exclamationmark")
+        Spacer()
+        Button("Delete Expired\u{2026}", role: .destructive) {
+          pendingDelete = DeleteRequest(ids: expired)
+        }
+        .disabled(actions.delete == nil)
+        .accessibilityIdentifier("settings.archived.delete-expired")
       }
     }
   }
 
   private var bulkBar: some View {
-    HStack {
+    let ids = shown.map(\.id).filter(selection.contains)
+    let deletable = ids.filter(canDelete)
+    return HStack {
       SelectionCheck(
-        isOn: allSelected, label: selection.isEmpty ? "Select all" : "\(selection.count) selected")
+        isOn: allSelected, label: ids.isEmpty ? "Select all" : "\(ids.count) selected")
       Spacer()
-      Button("Unarchive") { run(actions.unarchive) }
-        .disabled(selection.isEmpty || actions.unarchive == nil)
-      Button("Delete\u{2026}", role: .destructive) { confirmingDelete = true }
-        .disabled(selection.isEmpty || actions.delete == nil)
+      Button("Unarchive") {
+        selection = []
+        actions.unarchive?(ids)
+      }
+      .disabled(ids.isEmpty || actions.unarchive == nil)
+      Button("Delete\u{2026}", role: .destructive) {
+        pendingDelete = DeleteRequest(ids: deletable)
+      }
+      .disabled(deletable.isEmpty || actions.delete == nil)
+      .help(deletable.count < ids.count ? "Only your own sessions can be deleted." : "")
     }
     .confirmationDialog(
-      "Delete \(selection.count) session\(selection.count == 1 ? "" : "s")?",
-      isPresented: $confirmingDelete
-    ) {
-      Button("Delete", role: .destructive) { run(actions.delete) }
-    } message: {
+      pendingDelete.map { "Delete \(count($0.ids.count))?" } ?? "",
+      isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+      presenting: pendingDelete
+    ) { request in
+      Button("Delete", role: .destructive) {
+        selection.subtract(request.ids)
+        actions.delete?(request.ids)
+      }
+    } message: { _ in
       Text("Their history is deleted for everyone. This can't be undone.")
     }
   }
@@ -59,15 +135,27 @@ struct ArchivedSessionsPane: View {
       }
       Spacer()
       if let unarchive = actions.unarchive {
-        Button("Unarchive") { unarchive([session.id]) }
+        Button("Unarchive") {
+          unarchive([session.id])
+          actions.openSession?(session.id)
+        }
+      }
+      if canDelete(session.id), actions.delete != nil {
+        Button(role: .destructive) {
+          pendingDelete = DeleteRequest(ids: [session.id])
+        } label: {
+          Image(systemName: "trash")
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Delete \(session.title)")
       }
     }
   }
 
   private var allSelected: Binding<Bool> {
     Binding(
-      get: { !sessions.isEmpty && selection.count == sessions.count },
-      set: { selection = $0 ? Set(sessions.map(\.id)) : [] })
+      get: { !shown.isEmpty && shown.allSatisfy { selection.contains($0.id) } },
+      set: { selection = $0 ? Set(shown.map(\.id)) : [] })
   }
 
   private func selected(_ id: String) -> Binding<Bool> {
@@ -76,11 +164,14 @@ struct ArchivedSessionsPane: View {
       set: { if $0 { selection.insert(id) } else { selection.remove(id) } })
   }
 
-  private func run(_ action: (@MainActor ([String]) -> Void)?) {
-    let ids = sessions.map(\.id).filter(selection.contains)
-    selection = []
-    action?(ids)
+  private func count(_ sessions: Int) -> String {
+    "\(sessions) session\(sessions == 1 ? "" : "s")"
   }
+}
+
+/// Sessions waiting for the user to confirm their deletion.
+private struct DeleteRequest: Hashable {
+  let ids: [String]
 }
 
 /// Archived sessions under the web's date labels: Today, Yesterday, Previous 7 days, Previous

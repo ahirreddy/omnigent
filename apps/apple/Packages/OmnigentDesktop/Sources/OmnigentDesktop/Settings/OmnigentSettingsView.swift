@@ -45,6 +45,8 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
   private let exportDiagnostics: (() -> Void)?
   private let browserSettings: BrowserSettings
   private let extraTabs: [SettingsTabItem]
+  private let selection: Binding<String>?
+  @State private var localSelection = SettingsTabID.general
 
   /// Creates the view.
   /// - Parameters:
@@ -52,47 +54,53 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
   ///   - recentServers: The user's recent servers, offered as the default server.
   ///   - exportDiagnostics: Shown on the Advanced tab when provided.
   ///   - extraTabs: Tabs after Notifications, in order.
+  ///   - selection: The shown tab's id (a ``SettingsTabID`` or an extra tab's title), so other
+  ///     windows can open Settings at a tab; the view keeps its own when `nil`.
   ///   - browserSettings: A `Section` for the General tab's browser settings.
   public init(
     desktop: DesktopController, recentServers: [URL] = [],
     exportDiagnostics: (() -> Void)? = nil, extraTabs: [SettingsTabItem] = [],
+    selection: Binding<String>? = nil,
     @ViewBuilder browserSettings: () -> BrowserSettings
   ) {
     self.desktop = desktop
     self.recentServers = recentServers
     self.exportDiagnostics = exportDiagnostics
     self.extraTabs = extraTabs
+    self.selection = selection
     self.browserSettings = browserSettings()
   }
 
   /// The tabs.
   public var body: some View {
-    TabView {
-      Tab("General", systemImage: "gearshape") {
+    TabView(selection: selection ?? $localSelection) {
+      Tab(SettingsTabID.general, systemImage: "gearshape", value: SettingsTabID.general) {
         GeneralSettingsTab(
           preferences: desktop.preferences, managed: desktop.managedPreferences,
           recentServers: recentServers, browserSettings: browserSettings
         )
         .frame(width: Self.formWidth)
       }
-      Tab("Notifications", systemImage: "bell.badge") {
+      Tab(
+        SettingsTabID.notifications, systemImage: "bell.badge", value: SettingsTabID.notifications
+      ) {
         NotificationSettingsTab(
           preferences: desktop.preferences, notifications: desktop.notifications
         )
         .frame(width: Self.formWidth)
       }
       ForEach(extraTabs) { item in
-        Tab(item.title, systemImage: item.systemImage) {
+        Tab(item.title, systemImage: item.systemImage, value: item.id) {
           item.content.frame(width: item.isWide ? nil : Self.formWidth)
         }
       }
-      Tab("Local Server", systemImage: "server.rack") {
+      Tab(SettingsTabID.localServer, systemImage: "server.rack", value: SettingsTabID.localServer) {
         LocalServerSettingsTab(
           manager: desktop.localServer, preferences: desktop.localServerPreferences
         )
         .frame(width: Self.formWidth)
       }
-      Tab("Advanced", systemImage: "gearshape.2") {
+      Tab(SettingsTabID.advanced, systemImage: "gearshape.2", value: SettingsTabID.advanced) {
         AdvancedSettingsTab(
           managed: desktop.managedPreferences, exportDiagnostics: exportDiagnostics
         )
