@@ -143,7 +143,7 @@ class Device:
         before a quiet second."""
         read = cpu or self.main_cpu_ms
         history: list[tuple[float, float]] = [(time.time(), read())]
-        busy_until = start
+        busy_until = history[0][0]
         while time.time() - start < limit:
             time.sleep(0.2)
             now, used = time.time(), read()
@@ -198,7 +198,8 @@ class Device:
         else:
             settled = self.settle(start)
         self.post("end")
-        line = self.log.wait_for("interval marked", start)
+        # A hung main thread answers the end mark only once it frees up.
+        line = self.log.wait_for("interval marked", start, timeout=180)
         stats = parse_stats(line) or {}
         stats["main_cpu_ms"] = self.main_cpu_ms() - cpu
         stats["settled_s"] = settled
@@ -263,7 +264,10 @@ def launch_scenario(device: Device) -> dict[str, float]:
 
 
 def scenarios(device: Device, names: list[str], ipad: bool) -> dict[str, dict[str, float]]:
-    first, second = long_session(1), long_session(2)
+    # iPad runs use transcripts 2 and 3, so an iPhone run can stream into 1 at the same time.
+    first, second = (
+        (long_session(2), long_session(3)) if ipad else (long_session(1), long_session(2))
+    )
     results: dict[str, dict[str, float]] = {}
     device.clear_tabs()
     device.launch()

@@ -1,5 +1,6 @@
 #if DEBUG
   public import Foundation
+  import MetricKit
   import OSLog
   import QuartzCore
 
@@ -22,7 +23,7 @@
     /// The launch argument (a `UserDefaults` key) that starts the monitor.
     public static let launchArgument = "OmnigentFrameMonitor"
     /// The log subsystem.
-    public static let subsystem = "ai.omnigent.perf"
+    nonisolated public static let subsystem = "ai.omnigent.perf"
 
     private static var shared: FrameMonitor?
     private static let logger = Logger(subsystem: subsystem, category: "frames")
@@ -40,6 +41,7 @@
     private var interval: Interval?
     private var observers: [Int32] = []
     private var activation: (any NSObjectProtocol)?
+    private let metrics = MetricKitLog()
 
     /// Starts the monitor when the launch argument asks for it.
     /// - Parameter defaults: Where launch arguments land; `standard` by default.
@@ -48,6 +50,7 @@
       let monitor = FrameMonitor()
       shared = monitor
       monitor.start()
+      MXMetricManager.shared.add(monitor.metrics)
     }
 
     /// Counts one render of `name` (a view body), reported beside the frames.
