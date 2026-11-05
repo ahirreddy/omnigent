@@ -32,10 +32,27 @@ public struct KeptAliveTabs<Item: Identifiable, Content: View>: View {
   public var body: some View {
     ZStack {
       ForEach(items) { item in
-        content(item).modifier(HiddenTabContent(isHidden: item.id != shownID))
+        let isHidden = item.id != shownID
+        HeldWhileHidden(content: content(item), isHidden: isHidden)
+          .equatable()
+          .modifier(HiddenTabContent(isHidden: isHidden))
       }
     }
   }
+}
+
+/// A tab's content that ignores new values from above while it stays hidden: the window
+/// re-renders for the sidebar and the tab strip, and a hidden conversation need not follow.
+/// Its own observed state still updates it; it takes the latest values when it shows again.
+private struct HeldWhileHidden<Content: View>: View, Equatable {
+  let content: Content
+  let isHidden: Bool
+
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.isHidden && rhs.isHidden
+  }
+
+  var body: some View { content }
 }
 
 /// A kept tab's content while another tab shows: invisible, inert and quiet.
