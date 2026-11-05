@@ -18,18 +18,24 @@ final class NewSessionForm {
   var worktree = NewSessionWorktreeChoice.none
   /// The branch Settings › Git's "Always use a random worktree" chose, and for which folder.
   @ObservationIgnored var worktreeSeed: WorktreeSeed?
-  /// Where Settings › Git's worktree defaults are saved.
+  /// Where Settings › Git's worktree defaults and the last start's choices are saved.
   @ObservationIgnored var preferences = UserDefaults.standard
+  /// The host whose folder was filled in, so a later change of folder is kept.
+  @ObservationIgnored var seededFolderHost: String?
   /// The session starts on a new sandbox.
   var isSandbox = false
-  /// Repositories to clone into the sandbox.
-  var repositories = ""
+  /// The sandbox's provider, repositories and profile.
+  var sandbox = SandboxChoices()
+  /// The sandbox reads (profiles, GitHub repositories).
+  @ObservationIgnored var sandboxes: SandboxStore?
+  /// A custom agent created on this page and not saved: it uploads with the session.
+  var pendingAgent: OmnigentCoreFFI.AgentDraft?
   /// A picked file that could not be read.
   var attachmentError: String?
 
   /// The selected agent in `creation`'s catalog.
   func selectedAgent(_ creation: CreationStore?) -> OmnigentCoreFFI.CreationAgent? {
-    creation?.catalog.value?.agents.first { $0.id == selection.agentId }
+    pendingCreationAgent ?? creation?.catalog.value?.agents.first { $0.id == selection.agentId }
   }
 
   /// Picks the first available host and agent once the catalog loads, then loads their folders
@@ -39,12 +45,13 @@ final class NewSessionForm {
     guard let catalog = creation.catalog.value else { return }
     if selection.hostId.isEmpty {
       let host = catalog.hosts.first(where: \.isAvailable) ?? catalog.hosts.first
-      selection.hostId = host?.hostId ?? ""
+      selection.hostId = rememberedHost(catalog) ?? host?.hostId ?? ""
     }
     if selection.agentId.isEmpty {
       let ordered = NewSessionAdapter.agents(catalog, hostID: selection.hostId).choices
       selection.agentId =
-        ordered.first { $0.unavailableReason == nil }?.id ?? ordered.first?.id ?? ""
+        rememberedAgent(catalog)
+        ?? ordered.first { $0.unavailableReason == nil }?.id ?? ordered.first?.id ?? ""
     }
     await creation.selectionChanged(selection)
   }
@@ -99,13 +106,16 @@ final class NewSessionForm {
 
   /// Creates the session on the chosen host or a new sandbox and sends `text`.
   func start(_ creation: CreationStore, text: String) {
+    rememberChoices()
     if isSandbox {
-      let agentID = selection.agentId
-      let repos = NewSessionOptions.repositoryList(repositories)
+      let selection = selection
+      let target = sandbox.target(creation.catalog.value)
       Task {
-        await creation.createInSandbox(
-          agentID: agentID, title: "", workspaces: repos, firstMessage: text)
+        await creation.createInSandbox(selection, target: target, title: "", firstMessage: text)
       }
+    } else if let draft = pendingAgent, selection.agentId == Self.pendingAgentID {
+      let selection = selection
+      Task { await creation.create(agent: draft, selection, firstMessage: text) }
     } else {
       let selection = selection
       Task { await creation.create(selection, title: "", firstMessage: text) }
@@ -115,7 +125,8 @@ final class NewSessionForm {
   /// The amber "not ready" notice: the selected agent's harness reports a readiness that is
   /// not ready on an online host (offline hosts and unknown agents say so in the context row).
   func harnessNotice(_ creation: CreationStore) -> (text: String, name: String)? {
-    guard !isSandbox, let catalog = creation.catalog.value, let agent = selectedAgent(creation),
+    guard !isSandbox, !startsPendingAgent, let catalog = creation.catalog.value,
+      let agent = selectedAgent(creation),
       let host = catalog.hosts.first(where: { $0.hostId == selection.hostId }),
       host.status == "online", host.sandboxProvider == nil,
       creationUnavailableReason(
@@ -191,7 +202,9 @@ final class NewSessionForm {
     return NewSessionOptions(
       folder: folder.isEmpty ? nil : folder,
       recentFolders: (creation.workspaces.value ?? []).map(\.path),
-      isSandbox: isSandbox, repositories: repositories,
+      isSandbox: isSandbox,
+      repositories: sandbox.repositoriesState(creation.catalog.value, sandboxes: sandboxes),
+      profiles: sandbox.profilesState(creation.catalog.value, sandboxes: sandboxes),
       offersWorktrees: !(creation.worktrees.value ?? []).isEmpty, worktrees: worktrees,
       worktree: worktree, harnessNotice: notice?.text, setUpName: notice?.name,
       isPlanMode: isPlanOn, defaultBaseBranch: worktreeDefaults.base)

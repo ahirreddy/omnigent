@@ -26,6 +26,8 @@ struct NewSessionContainer: View {
   @State private var isConnectingHost = false
   /// Observed so turning Settings › Git's random worktree on or off reseeds the form.
   @AppStorage(GitPreferences.alwaysUseWorktreeKey) private var alwaysUseWorktree = false
+  @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
+    false
   @Environment(\.useThisMachine) private var useThisMachine
   @Environment(\.openURL) private var openURL
   @Environment(\.openSettingsAt) private var openSettingsAt
@@ -50,13 +52,16 @@ struct NewSessionContainer: View {
       }
       self.creation = creation
       customAgents = connection.customAgents()
+      form.sandboxes = connection.sandboxes()
       await form.load(creation)
     }
   }
 
   private func page(_ creation: CreationStore) -> some View {
     NewSessionPage(
-      draft: $draft, composer: form.composerState(creation, connection: connection),
+      draft: $draft,
+      composer: form.composerState(
+        creation, connection: connection, submitWithCommandReturn: submitWithCommandReturn),
       actions: actions(creation), importSessions: importSessions(openURL, openSettingsAt),
       options: form.options(creation), optionActions: optionActions(creation)
     )
@@ -68,6 +73,14 @@ struct NewSessionContainer: View {
       }
     }
     .onChange(of: creation.worktrees, initial: true) { form.seedWorktree(creation) }
+    .task(id: form.selection.hostId) {
+      await form.seedFolder(creation, sessions: connection.sessionList.visible)
+    }
+    .task(id: form.isSandbox ? form.sandbox.provider ?? "" : nil) {
+      if form.isSandbox, let sandboxes = form.sandboxes {
+        await form.sandbox.load(creation.catalog.value, sandboxes: sandboxes)
+      }
+    }
     .onChange(of: alwaysUseWorktree) { form.seedWorktree(creation) }
     .sheet(
       item: $setupTarget, onDismiss: { Task { await form.reloadCatalog(creation) } },
@@ -97,10 +110,14 @@ struct NewSessionContainer: View {
   @ViewBuilder private func createAgentSheet(_ creation: CreationStore) -> some View {
     if let customAgents {
       CreateAgentContainer(
-        store: customAgents, allowsImport: true,
+        store: customAgents, allowsImport: creation.catalog.value?.agentInstall == true,
         created: { agent in
           isCreatingAgent = false
           Task { await form.agentInstalled(agent, creation) }
+        },
+        drafted: { draft in
+          isCreatingAgent = false
+          form.adoptPendingAgent(draft)
         },
         cancel: { isCreatingAgent = false })
     }
@@ -141,9 +158,21 @@ struct NewSessionContainer: View {
 
   private func extraActions(_ creation: CreationStore) -> ComposerExtraActions {
     let form = form
+    // A new agent uploads with the session, so it needs no `agent_install`; importing a bundle
+    // installs it. A managed sandbox has no create path for an uploaded bundle.
+    var createAgent: (@MainActor () -> Void)?
+    var importBundle: (@MainActor () -> Void)?
+    if !form.isSandbox {
+      createAgent = { isCreatingAgent = true }
+      if creation.catalog.value?.agentInstall == true {
+        importBundle = { isImportingBundle = true }
+      }
+    }
     return ComposerExtraActions(
       selectHost: { host in
-        if host.id == NewSessionAdapter.newSandboxHostID {
+        if let provider = NewSessionAdapter.sandboxProvider(hostID: host.id) {
+          if form.sandbox.provider != provider { form.sandbox.profile = nil }
+          form.sandbox.provider = provider
           form.isSandbox = true
         } else {
           form.isSandbox = false
@@ -157,16 +186,7 @@ struct NewSessionContainer: View {
           option, agent: form.selectedAgent(creation))
       },
       togglePlan: form.planToggle(creation), isPlanOn: form.isPlanOn,
-      createAgent: agentAction(creation) { isCreatingAgent = true },
-      importAgentBundle: agentAction(creation) { isImportingBundle = true })
-  }
-
-  /// `action` when agents can be installed here: the server reports `agent_install` and the
-  /// session starts on a host (a managed sandbox has no create path for an uploaded bundle).
-  private func agentAction(
-    _ creation: CreationStore, _ action: @escaping @MainActor () -> Void
-  ) -> (@MainActor () -> Void)? {
-    !form.isSandbox && creation.catalog.value?.agentInstall == true ? action : nil
+      createAgent: createAgent, importAgentBundle: importBundle)
   }
 
   /// "Use This Mac" for this server, where the edition can run hosts.
@@ -190,7 +210,10 @@ struct NewSessionContainer: View {
         form.applyWorktree()
       },
       isValidBranch: { isValidBranchName(name: $0) },
-      setRepositories: { form.repositories = $0 },
+      repositories: SandboxChoices.repositoryActions(form.sandboxes) { form.sandbox.repos = $0 },
+      profiles: SandboxChoices.profileActions(
+        form.sandbox.profileProvider(creation.catalog.value), sandboxes: form.sandboxes
+      ) { form.sandbox.profile = $0 },
       setUpHarness: {
         guard let harness = form.setupHarness(creation) else { return }
         if harnessSetup == nil { harnessSetup = connection.harnessSetup() }

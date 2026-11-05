@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// Sessions waiting on the delete sheet with branch cleanup.
+private struct BranchDeletion: Identifiable {
+  let sessions: [SessionSummary]
+  let isBulk: Bool
+  var id: [String] { sessions.map(\.id) }
+}
+
 /// The sidebar's session prompts: Rename, and the Delete, bulk Delete, Leave and Stop
 /// confirmations.
 struct SessionDialogs: ViewModifier {
@@ -9,7 +16,8 @@ struct SessionDialogs: ViewModifier {
   @Binding var confirmingBulkDelete: [SessionSummary]
   @Binding var confirmingLeave: SessionSummary?
   @Binding var confirmingStop: SessionSummary?
-  /// Per-session facts, for whether Stop also stops a runner.
+  /// Per-session facts: whether Stop also stops a runner, and the worktree branch a delete
+  /// can clean up.
   let rowInfo: [String: SessionRowInfo]
   let actions: SessionListActions
   /// Runs after a bulk delete is confirmed.
@@ -19,23 +27,41 @@ struct SessionDialogs: ViewModifier {
   static let maxTitleLength = 120
 
   func body(content: Content) -> some View {
-    content
-      .alert(
-        "Rename Session",
-        isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
-      ) {
-        TextField("Title", text: $renameText)
-        Button("Rename") {
-          if let renaming, let rename = actions.rename { rename(renaming, trimmed) }
-          renaming = nil
+    deleteDialogs(
+      content
+        .alert(
+          "Rename Session",
+          isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
+        ) {
+          TextField("Title", text: $renameText)
+          Button("Rename") {
+            if let renaming, let rename = actions.rename { rename(renaming, trimmed) }
+            renaming = nil
+          }
+          .disabled(trimmed.isEmpty || renameText.count > Self.maxTitleLength)
+          Button("Cancel", role: .cancel) { renaming = nil }
         }
-        .disabled(trimmed.isEmpty || renameText.count > Self.maxTitleLength)
-        Button("Cancel", role: .cancel) { renaming = nil }
-      }
+    )
+    .confirmationDialog(
+      "Leave this session?",
+      isPresented: Binding(
+        get: { confirmingLeave != nil }, set: { if !$0 { confirmingLeave = nil } }),
+      presenting: confirmingLeave
+    ) { session in
+      Button("Leave", role: .destructive) { actions.leave?(session) }
+    } message: { _ in
+      Text("You lose access until someone shares it with you again.")
+    }
+  }
+
+  /// Delete and bulk Delete: a confirmation, or the branch cleanup sheet for worktrees.
+  private func deleteDialogs(_ content: some View) -> some View {
+    content
       .confirmationDialog(
         "Delete this session?",
         isPresented: Binding(
-          get: { confirmingDelete != nil }, set: { if !$0 { confirmingDelete = nil } }),
+          get: { confirmingDelete.map { !offersBranches([$0]) } ?? false },
+          set: { if !$0 { confirmingDelete = nil } }),
         presenting: confirmingDelete
       ) { session in
         Button("Delete", role: .destructive) { actions.delete?(session) }
@@ -45,7 +71,8 @@ struct SessionDialogs: ViewModifier {
       .confirmationDialog(
         bulkTitle,
         isPresented: Binding(
-          get: { !confirmingBulkDelete.isEmpty }, set: { if !$0 { confirmingBulkDelete = [] } }),
+          get: { !confirmingBulkDelete.isEmpty && !offersBranches(confirmingBulkDelete) },
+          set: { if !$0 { confirmingBulkDelete = [] } }),
         presenting: confirmingBulkDelete
       ) { sessions in
         Button("Delete", role: .destructive) {
@@ -55,21 +82,47 @@ struct SessionDialogs: ViewModifier {
       } message: { _ in
         Text("This permanently deletes the sessions and their history.")
       }
-      .confirmationDialog(
-        "Leave this session?",
-        isPresented: Binding(
-          get: { confirmingLeave != nil }, set: { if !$0 { confirmingLeave = nil } }),
-        presenting: confirmingLeave
-      ) { session in
-        Button("Leave", role: .destructive) { actions.leave?(session) }
-      } message: { _ in
-        Text("You lose access until someone shares it with you again.")
+      .sheet(item: branchDeletion) { pending in
+        DeleteSessionsSheet(
+          sessions: pending.sessions, branches: rowInfo.compactMapValues(\.branch),
+          delete: { branchIDs in
+            for session in pending.sessions {
+              actions.deleteWithBranch?(session, branchIDs.contains(session.id))
+            }
+            if pending.isBulk { deletedMany() }
+            dismissBranchDeletion()
+          },
+          cancel: dismissBranchDeletion)
       }
       .stopSessionConfirmation(
         $confirmingStop, runsOnHost: { rowInfo[$0.id]?.runsOnHost == true }, stop: actions.stop)
   }
 
   private var trimmed: String { renameText.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+  /// The web's branch cleanup applies when the host can delete branches and one has a branch.
+  private func offersBranches(_ sessions: [SessionSummary]) -> Bool {
+    actions.deleteWithBranch != nil && sessions.contains { rowInfo[$0.id]?.branch != nil }
+  }
+
+  private var branchDeletion: Binding<BranchDeletion?> {
+    Binding(
+      get: {
+        if let session = confirmingDelete, offersBranches([session]) {
+          return BranchDeletion(sessions: [session], isBulk: false)
+        }
+        if offersBranches(confirmingBulkDelete) {
+          return BranchDeletion(sessions: confirmingBulkDelete, isBulk: true)
+        }
+        return nil
+      },
+      set: { if $0 == nil { dismissBranchDeletion() } })
+  }
+
+  private func dismissBranchDeletion() {
+    if confirmingDelete != nil { confirmingDelete = nil }
+    if !confirmingBulkDelete.isEmpty { confirmingBulkDelete = [] }
+  }
 
   private var bulkTitle: String {
     confirmingBulkDelete.count == 1

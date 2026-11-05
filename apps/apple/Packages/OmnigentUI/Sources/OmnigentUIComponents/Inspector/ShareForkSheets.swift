@@ -160,6 +160,7 @@ public struct ForkSheet: View {
   private let state: ForkViewState
   private let actions: ForkActions
   @State private var choices: ForkChoices
+  @State private var isBrowsing = false
 
   /// Creates the dialog.
   /// - Parameters:
@@ -186,7 +187,8 @@ public struct ForkSheet: View {
         }
         .accessibilityIdentifier("fork-agent")
         ForkOptionsSections(
-          options: state.options, startsOnHost: startsInDirectory, choices: $choices)
+          options: state.options, actions: actions, startsOnHost: startsInDirectory,
+          choices: $choices)
         // The directory is where "Clone & start" runs, so it shows only when that can.
         if startsInDirectory {
           directoryField
@@ -224,7 +226,8 @@ public struct ForkSheet: View {
           } else if !startsInDirectory {
             Button(state.verb) { fork(start: choices.isSandbox) }
               .primaryActionStyle()
-              .disabled(state.isForking)
+              .disabled(state.isForking || sandboxBlocked)
+              .help(choices.isSandbox ? state.options.sandboxProblem ?? "" : "")
               .accessibilityIdentifier("fork-clone")
           } else {
             Button(state.verb) { fork(start: false) }
@@ -262,6 +265,13 @@ public struct ForkSheet: View {
     actions.selectionChanged?(choices.agentID, choices.hostID)
   }
 
+  /// A new sandbox waits for the original's branches, and needs usable repositories and a
+  /// profile where its provider requires one.
+  private var sandboxBlocked: Bool {
+    choices.isSandbox
+      && (state.options.isCheckingBranches || state.options.sandboxProblem != nil)
+  }
+
   /// Why the copy cannot start on the chosen host (or the source's, without a host list).
   private var startUnavailableReason: String? {
     guard !state.options.hosts.isEmpty else { return state.startUnavailableReason }
@@ -296,6 +306,22 @@ public struct ForkSheet: View {
           .fixedSize()
           .help("Recent directories")
           .accessibilityIdentifier("fork-recent-directories")
+        }
+        if let browse = actions.browse {
+          Button("Browse Folders\u{2026}", systemImage: "folder") { isBrowsing = true }
+            .labelStyle(.iconOnly)
+            .help("Browse the host's folders")
+            .accessibilityIdentifier("fork-browse-folders")
+            .sheet(isPresented: $isBrowsing) {
+              FolderBrowserView(
+                initialPath: choices.directory.isEmpty ? nil : choices.directory,
+                load: { path in await browse(choices.hostID, path) },
+                choose: { path in
+                  choices.directory = path
+                  isBrowsing = false
+                },
+                cancel: { isBrowsing = false })
+            }
         }
       }
     }

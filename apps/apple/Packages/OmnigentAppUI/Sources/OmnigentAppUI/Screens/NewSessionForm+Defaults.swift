@@ -1,0 +1,64 @@
+import Foundation
+import OmnigentCoreFFI
+import OmnigentStores
+
+/// What the new-session page starts with, as the web's New Chat dialog: the host and agent used
+/// last (when still offered), and on each host its most recent session's folder, else the
+/// host's home folder.
+extension NewSessionForm {
+  /// Where the last start's choices are kept.
+  enum DefaultsKey {
+    static let host = "omnigent:new-session:last-host"
+    static let agent = "omnigent:new-session:last-agent"
+    static let sandboxProvider = "omnigent:new-session:last-sandbox-provider"
+  }
+
+  /// The remembered host, when the catalog still lists it.
+  func rememberedHost(_ catalog: OmnigentCoreFFI.CreationCatalog) -> String? {
+    guard let id = preferences.string(forKey: DefaultsKey.host) else { return nil }
+    return catalog.hosts.contains { $0.hostId == id && $0.isAvailable } ? id : nil
+  }
+
+  /// The remembered agent, when the catalog still lists it.
+  func rememberedAgent(_ catalog: OmnigentCoreFFI.CreationCatalog) -> String? {
+    guard let id = preferences.string(forKey: DefaultsKey.agent) else { return nil }
+    return catalog.agents.contains { $0.id == id } ? id : nil
+  }
+
+  /// Keeps this start's host (or sandbox provider) and agent for the next new session.
+  func rememberChoices() {
+    if isSandbox {
+      preferences.set(sandbox.provider ?? "", forKey: DefaultsKey.sandboxProvider)
+    } else if !selection.hostId.isEmpty {
+      preferences.set(selection.hostId, forKey: DefaultsKey.host)
+    }
+    if !selection.agentId.isEmpty, selection.agentId != Self.pendingAgentID {
+      preferences.set(selection.agentId, forKey: DefaultsKey.agent)
+    }
+  }
+
+  /// The folder a new session on `hostID` starts in: its most recent session's folder there.
+  static func recentFolder(hostID: String, sessions: [OmnigentCoreFFI.SessionSummary]) -> String? {
+    sessions
+      .filter { $0.configuration?.hostId == hostID && $0.workspace.hasPrefix("/") }
+      .max { $0.updatedAt < $1.updatedAt }?
+      .workspace
+  }
+
+  /// Fills an empty folder once per host: the host's recent folder, else its home folder.
+  func seedFolder(_ creation: CreationStore, sessions: [OmnigentCoreFFI.SessionSummary]) async {
+    let hostID = selection.hostId
+    guard !isSandbox, folder.isEmpty, !hostID.isEmpty, seededFolderHost != hostID else { return }
+    seededFolderHost = hostID
+    if let recent = Self.recentFolder(hostID: hostID, sessions: sessions) {
+      selectFolder(creation, recent)
+      return
+    }
+    // The home listing's own path; a host that cannot list it leaves the folder to choose.
+    if case .success(let home) = await creation.directory(hostID: hostID, path: nil),
+      let path = home.path, folder.isEmpty, selection.hostId == hostID
+    {
+      selectFolder(creation, path)
+    }
+  }
+}

@@ -255,10 +255,17 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Error copy:** runner failures still surface raw text ("the session's runner is unavailable
   (HTTP 503)…"); map them to plain-language banners with a retry.
 - [ ] **Tabs (Mac):** no hover card for tabs (only the close button and a title tooltip).
-- [ ] **New session on a sandbox:** the core and `CreationStore.createInSandbox` can create a
-  session on a new managed sandbox (`host_type: "managed"`), verified live against
-  isaac.databricks.com, but the New Session sheet only offers existing hosts. Add the sandbox
-  choice (provider, repositories) as the web's New Chat dialog has.
+- [ ] **Sandboxes, not yet native:** the sandbox model preview (`inference_models`,
+  `configuration_revision`), the Databricks git-credentials hint, the arclet dbcert preflight,
+  remembering the last sandbox repositories, and re-checking a chosen profile's revision before
+  launch (the server rejects a stale one). Verified against fake servers only: the local
+  server has `sandbox_profiles` off.
+- [ ] **New-session composer:** no `/` commands, `@` mentions or skill pills before the session
+  exists (the web reads the agent's bundled skills and the host's catalog; the core reads skills
+  only per session); no project choice (`CreationSelection` has no `project_id`).
+- [ ] **Archive Undo and worktrees:** after the server's grace the worktree is gone and Undo
+  only warns; recreating it needs a runner launch with `existing_branch` for the unarchived
+  session.
 - [ ] **Tests (Mac):** run the two remaining Mac UI tests (launch smoke, titlebar drags) in a
   macOS VM so they never take the developer's mouse and keyboard: Tart
   (`ghcr.io/cirruslabs/macos-tahoe-xcode:27.2`, 70.8 GB compressed) with the tests built on the

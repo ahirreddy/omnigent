@@ -193,6 +193,20 @@ public struct ForkActions {
   public var forkWith: @MainActor (ForkChoices) -> Void
   /// The agent or host changed: load that agent's models on that host.
   public var selectionChanged: (@MainActor (_ agentID: String, _ hostID: String?) -> Void)?
+  /// A new sandbox of the provider (`nil` for the default) was chosen: read its profiles and
+  /// the original's repositories.
+  public var sandboxSelected: (@MainActor (_ provider: String?) -> Void)?
+  /// Edit the new sandbox's repositories.
+  public var repositories: SandboxRepositoriesActions?
+  /// Choose the new sandbox's profile.
+  public var profiles: SandboxProfilesActions?
+  /// Read a folder on a host for the directory browser (`nil` path: its home).
+  public var browse:
+    (
+      @MainActor (_ hostID: String?, _ path: String?) async -> Result<
+        FolderListing, FolderBrowseError
+      >
+    )?
   /// Close the dialog.
   public var cancel: @MainActor () -> Void
 

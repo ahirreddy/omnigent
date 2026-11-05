@@ -7,30 +7,31 @@ import Testing
 
 private func info(
   admin: Bool, singleUser: Bool = false, accounts: Bool = false, mcp: Bool = false,
-  connections: [String] = []
+  connections: [String] = [], customAgents: Bool = false
 ) -> ServerSettingsInfo {
   ServerSettingsInfo(
     userId: "ada", isAdmin: admin, singleUser: singleUser, accountsEnabled: accounts,
-    mcpRegistry: mcp, connections: connections, archiveWorktreeCleanup: false)
+    mcpRegistry: mcp, connections: connections, archiveWorktreeCleanup: false,
+    customAgents: customAgents)
 }
 
 @Suite("Server settings adapter")
 struct ServerSettingsAdapterTests {
   @Test("panes follow what the server offers and the caller may manage")
   func panes() {
-    #expect(
-      ServerSettingsAdapter.panes(nil)
-        == [.harnesses, .customAgents, .git, .importSessions, .archived])
+    #expect(ServerSettingsAdapter.panes(nil) == [.harnesses, .git, .importSessions, .archived])
     #expect(
       ServerSettingsAdapter.panes(info(admin: false))
-        == [.harnesses, .customAgents, .git, .importSessions, .archived])
+        == [.harnesses, .git, .importSessions, .archived],
+      "Custom Agents needs the server's custom_agents_settings_ui and agent_install")
     #expect(
       ServerSettingsAdapter.panes(info(admin: true, singleUser: true))
-        == [.harnesses, .customAgents, .git, .importSessions, .policies, .archived],
+        == [.harnesses, .git, .importSessions, .policies, .archived],
       "no Members or Sharing without other users")
     #expect(
       ServerSettingsAdapter.panes(
-        info(admin: true, accounts: true, mcp: true, connections: ["github"]))
+        info(
+          admin: true, accounts: true, mcp: true, connections: ["github"], customAgents: true))
         == [
           .account, .harnesses, .customAgents, .mcp, .integrations, .git, .importSessions,
           .members, .policies, .sharing, .archived,

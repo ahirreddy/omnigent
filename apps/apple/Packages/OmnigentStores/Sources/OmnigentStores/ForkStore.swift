@@ -27,11 +27,15 @@ public final class ForkStore {
   /// Models the chosen host advertises for the chosen agent.
   public private(set) var models: CreationLoad<[ModelChoice]> = .idle
 
+  /// What a fork onto a new sandbox can launch with.
+  public let sandboxes: SandboxStore
+
   private let core: ClientCore
   private var modelsGeneration = 0
 
   init(core: ClientCore) {
     self.core = core
+    sandboxes = SandboxStore(core: core)
   }
 
   /// Whether a fork can start now (none in flight, none unacknowledged as uncertain).
@@ -82,6 +86,18 @@ public final class ForkStore {
     }
     guard generation == modelsGeneration else { return }
     models = result
+  }
+
+  /// The directories in `path` on `hostID` (its home when `nil`), for the folder browser.
+  /// - Returns: The listing, or why it could not be read.
+  public func directory(hostID: String, path: String?) async -> Result<
+    HostDirectoryListing, CoreError
+  > {
+    do {
+      return .success(try await core.hostDirectory(hostId: hostID, path: path))
+    } catch {
+      return .failure(coreError(error))
+    }
   }
 
   /// The sheet's choices for `source`, from the core.

@@ -48,7 +48,10 @@ public struct ServerSettingsContainer: View {
     return ServerSettingsView(
       state: state, selectedServer: $selected, selectedPane: $pane,
       actions: store.map { actions($0, connection: connection) } ?? ServerSettingsActions(),
-      hostedPane: { pane in Self.hostedPane(pane, connection: connection) }
+      hostedPane: { pane in
+        Self.hostedPane(
+          pane, connection: connection, agentDetail: store?.info.value?.agentDetail ?? false)
+      }
     )
     .onAppear {
       refresh()
@@ -59,16 +62,17 @@ public struct ServerSettingsContainer: View {
   }
 
   /// Harnesses and Custom Agents run over the connection's own stores.
-  private static func hostedPane(_ pane: ServerSettingsPane, connection: ConnectionStore?)
-    -> AnyView?
-  {
+  private static func hostedPane(
+    _ pane: ServerSettingsPane, connection: ConnectionStore?, agentDetail: Bool
+  ) -> AnyView? {
     guard let connection else { return nil }
     switch pane {
     case .harnesses:
       return AnyView(HarnessesSettingsView(connection: connection).id(ObjectIdentifier(connection)))
     case .customAgents:
       return AnyView(
-        CustomAgentsSettingsView(connection: connection).id(ObjectIdentifier(connection)))
+        CustomAgentsSettingsView(connection: connection, canEdit: agentDetail)
+          .id(ObjectIdentifier(connection)))
     default: return nil
     }
   }

@@ -237,7 +237,14 @@ struct UndoBar: View {
 
   var body: some View {
     HStack(spacing: Theme.Spacing.small) {
-      Text(banner.message).font(.callout)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(banner.message).font(.callout)
+        if let note = banner.note {
+          Text(note).font(.caption).foregroundStyle(Theme.warning)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("undo-note")
+        }
+      }
       Spacer(minLength: 4)
       if case .archived = banner.kind, let viewArchived = actions.viewArchived {
         Button("View archived", action: viewArchived).buttonStyle(.borderless)

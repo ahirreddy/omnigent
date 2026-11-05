@@ -208,6 +208,9 @@ public struct SessionListActions {
   public var stop: (@MainActor (SessionSummary) -> Void)?
   /// Delete (after confirmation).
   public var delete: (@MainActor (SessionSummary) -> Void)?
+  /// Delete, also removing the session's worktree branch when `true` (irreversible). When set,
+  /// the delete confirmation offers the cleanup for sessions with a branch.
+  public var deleteWithBranch: (@MainActor (SessionSummary, _ deleteBranch: Bool) -> Void)?
   /// Leave a shared session (after confirmation).
   public var leave: (@MainActor (SessionSummary) -> Void)?
   /// Open in a new window or tab.

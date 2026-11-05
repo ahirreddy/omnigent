@@ -47,14 +47,18 @@ nonisolated public struct UndoBanner: Hashable, Sendable, Identifiable {
   public var id: String
   /// What happened.
   public var kind: Kind
+  /// A caveat under the message, such as a worktree that Undo cannot bring back.
+  public var note: String?
 
   /// Creates a banner.
   /// - Parameters:
   ///   - id: Id.
   ///   - kind: What happened.
-  public init(id: String, kind: Kind) {
+  ///   - note: A caveat.
+  public init(id: String, kind: Kind, note: String? = nil) {
     self.id = id
     self.kind = kind
+    self.note = note
   }
 
   /// The banner text, in the web's words.

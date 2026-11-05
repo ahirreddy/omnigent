@@ -4,12 +4,13 @@ import SwiftUI
 /// and a new worktree branch), as on the web's `ForkSessionDialog`.
 struct ForkOptionsSections: View {
   let options: ForkOptions
+  let actions: ForkActions
   let startsOnHost: Bool
   @Binding var choices: ForkChoices
   @State private var showsAdvanced = false
 
-  /// The "New sandbox" host row's tag.
-  static let sandboxTag = "\u{0}sandbox"
+  /// The prefix of the new-sandbox host rows' tags; the provider follows.
+  static let sandboxTag = "\u{0}sandbox:"
 
   var body: some View {
     if !options.hosts.isEmpty || options.offersSandbox {
@@ -20,14 +21,14 @@ struct ForkOptionsSections: View {
               .tag(host.id)
           }
           if options.offersSandbox {
-            Text("New sandbox").tag(Self.sandboxTag)
+            ForEach(sandboxRows) { row in
+              Text(row.label).tag(Self.sandboxTag + row.id)
+            }
           }
         }
         .accessibilityIdentifier("fork-host")
         if choices.isSandbox {
-          TextField(
-            "Repositories", text: $choices.repositories,
-            prompt: Text("Inherit the original's (or https://github.com/org/repo#branch)"))
+          sandboxChoices
         }
       }
     }
@@ -90,12 +91,42 @@ struct ForkOptionsSections: View {
     options.models.first { $0.id == choices.model }?.supportedReasoningEfforts ?? []
   }
 
+  /// The sandbox rows; a server naming no provider gets one "New sandbox".
+  private var sandboxRows: [ForkSandboxOption] {
+    options.sandboxes.isEmpty
+      ? [ForkSandboxOption(provider: nil, label: "New sandbox")]
+      : options.sandboxes
+  }
+
+  @ViewBuilder private var sandboxChoices: some View {
+    if let profiles = options.profiles, let profileActions = actions.profiles {
+      LabeledContent("Profile") {
+        SandboxProfilePicker(state: profiles, actions: profileActions)
+          .buttonStyle(.borderless)
+      }
+    }
+    if options.isCheckingBranches {
+      Label("Checking current branches\u{2026}", systemImage: "arrow.triangle.branch")
+        .foregroundStyle(.secondary)
+    } else if let repositories = actions.repositories {
+      SandboxRepositoriesEditor(state: options.repositories, actions: repositories)
+    }
+  }
+
   private var hostSelection: Binding<String> {
     Binding(
-      get: { choices.isSandbox ? Self.sandboxTag : (choices.hostID ?? "") },
+      get: {
+        choices.isSandbox
+          ? Self.sandboxTag + (choices.sandboxProvider ?? "") : (choices.hostID ?? "")
+      },
       set: { tag in
-        choices.isSandbox = tag == Self.sandboxTag
+        choices.isSandbox = tag.hasPrefix(Self.sandboxTag)
         choices.hostID = choices.isSandbox ? nil : tag
+        if choices.isSandbox {
+          let provider = String(tag.dropFirst(Self.sandboxTag.count))
+          choices.sandboxProvider = provider.isEmpty ? nil : provider
+          actions.sandboxSelected?(choices.sandboxProvider)
+        }
       })
   }
 }

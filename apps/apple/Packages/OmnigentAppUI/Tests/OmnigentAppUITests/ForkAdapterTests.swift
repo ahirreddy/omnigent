@@ -120,10 +120,12 @@ struct ForkAdapterTests {
     #expect(request.sandbox == nil)
 
     choices.isSandbox = true
-    choices.repositories = "https://github.com/o/r#main"
+    choices.sandboxProvider = "modal"
     let sandboxed = ForkAdapter.request(context: context, plan: plan, choices: choices)
     #expect(sandboxed.start == nil)
-    #expect(sandboxed.sandbox?.workspaces == ["https://github.com/o/r#main"])
+    #expect(sandboxed.sandbox?.provider == "modal")
+    // The sheet's repository picker sets the repositories; until then they are inherited.
+    #expect(sandboxed.sandbox?.workspaces == nil)
   }
 
   @Test("Options list hosts and each agent's approval modes")

@@ -62,11 +62,13 @@ enum ServerSettingsAdapter {
 
   /// The panes `info` offers, in order.
   static func panes(_ info: ServerSettingsInfo?) -> [ServerSettingsPane] {
-    guard let info else { return [.harnesses, .customAgents, .git, .importSessions, .archived] }
+    guard let info else { return [.harnesses, .git, .importSessions, .archived] }
     var panes: [ServerSettingsPane] = []
     // Any sign-in with a session to end (password or SSO) shows who you are and Sign out.
     if info.accountsEnabled || info.hasLoginSession { panes.append(.account) }
-    panes += [.harnesses, .customAgents]
+    panes.append(.harnesses)
+    // As on the web, Custom Agents shows only where the server enables its settings page.
+    if info.customAgents { panes.append(.customAgents) }
     if info.mcpRegistry { panes.append(.mcp) }
     if !info.connections.isEmpty { panes.append(.integrations) }
     panes += [.git, .importSessions]

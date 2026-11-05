@@ -40,8 +40,10 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   public var recentFolders: [String]
   /// The session starts on a new sandbox: repositories replace the folder.
   public var isSandbox: Bool
-  /// Repositories to clone into the sandbox, `<url>[#<branch>]`, comma or newline separated.
-  public var repositories: String
+  /// Repositories to clone into the sandbox.
+  public var repositories: SandboxRepositoriesState
+  /// The sandbox's profile, when its provider launches with one.
+  public var profiles: SandboxProfilesState?
   /// The folder is a git repository, so worktrees are offered.
   public var offersWorktrees: Bool
   /// Existing worktrees, main excluded.
@@ -63,6 +65,7 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   ///   - recentFolders: Recents.
   ///   - isSandbox: New sandbox.
   ///   - repositories: Sandbox repositories.
+  ///   - profiles: The sandbox profile picker.
   ///   - offersWorktrees: Git repository.
   ///   - worktrees: Existing worktrees.
   ///   - worktree: Worktree choice.
@@ -72,7 +75,8 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   ///   - defaultBaseBranch: The base pre-filled for a new branch.
   public init(
     folder: String? = nil, recentFolders: [String] = [], isSandbox: Bool = false,
-    repositories: String = "", offersWorktrees: Bool = false,
+    repositories: SandboxRepositoriesState = SandboxRepositoriesState(),
+    profiles: SandboxProfilesState? = nil, offersWorktrees: Bool = false,
     worktrees: [NewSessionWorktreeOption] = [], worktree: NewSessionWorktreeChoice = .none,
     harnessNotice: String? = nil, setUpName: String? = nil, isPlanMode: Bool = false,
     defaultBaseBranch: String = ""
@@ -81,6 +85,7 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
     self.recentFolders = recentFolders
     self.isSandbox = isSandbox
     self.repositories = repositories
+    self.profiles = profiles
     self.offersWorktrees = offersWorktrees
     self.worktrees = worktrees
     self.worktree = worktree
@@ -98,12 +103,6 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
     case .existing(let option): "Worktree: \(option.branch ?? option.path)"
     }
   }
-
-  /// Repositories as separate `<url>[#<branch>]` entries.
-  public static func repositoryList(_ text: String) -> [String] {
-    text.split(whereSeparator: { $0 == "," || $0.isNewline || $0 == " " })
-      .map(String.init).filter { !$0.isEmpty }
-  }
 }
 
 /// The start options' actions. `nil` hides the control.
@@ -117,7 +116,9 @@ public struct NewSessionOptionActions {
   /// Validate a new branch name.
   public var isValidBranch: (@MainActor (String) -> Bool)?
   /// Edit the sandbox repositories.
-  public var setRepositories: (@MainActor (String) -> Void)?
+  public var repositories: SandboxRepositoriesActions?
+  /// Choose the sandbox profile.
+  public var profiles: SandboxProfilesActions?
   /// Open the harness setup sheet from the not-ready notice.
   public var setUpHarness: (@MainActor () -> Void)?
 
@@ -127,21 +128,24 @@ public struct NewSessionOptionActions {
   ///   - browse: Read a host folder.
   ///   - selectWorktree: Choose a worktree.
   ///   - isValidBranch: Branch validation.
-  ///   - setRepositories: Sandbox repositories.
+  ///   - repositories: Sandbox repositories.
+  ///   - profiles: Sandbox profile.
   ///   - setUpHarness: Open the harness setup sheet.
   public init(
     selectFolder: (@MainActor (String) -> Void)? = nil,
     browse: (@MainActor (String?) async -> Result<FolderListing, FolderBrowseError>)? = nil,
     selectWorktree: (@MainActor (NewSessionWorktreeChoice) -> Void)? = nil,
     isValidBranch: (@MainActor (String) -> Bool)? = nil,
-    setRepositories: (@MainActor (String) -> Void)? = nil,
+    repositories: SandboxRepositoriesActions? = nil,
+    profiles: SandboxProfilesActions? = nil,
     setUpHarness: (@MainActor () -> Void)? = nil
   ) {
     self.selectFolder = selectFolder
     self.browse = browse
     self.selectWorktree = selectWorktree
     self.isValidBranch = isValidBranch
-    self.setRepositories = setRepositories
+    self.repositories = repositories
+    self.profiles = profiles
     self.setUpHarness = setUpHarness
   }
 }
@@ -152,6 +156,7 @@ struct NewSessionOptionsBar: View {
   let actions: NewSessionOptionActions
 
   @State private var isBrowsing = false
+  @State private var isChoosingRepositories = false
   @State private var isNamingBranch = false
   @State private var branch = ""
   @State private var base = ""
@@ -163,7 +168,10 @@ struct NewSessionOptionsBar: View {
       }
       HStack(spacing: Theme.Spacing.small) {
         if options.isSandbox {
-          repositoriesField
+          repositoriesChip
+          if let profiles = options.profiles, let profileActions = actions.profiles {
+            SandboxProfilePicker(state: profiles, actions: profileActions)
+          }
         } else {
           folderMenu
           if options.offersWorktrees, actions.selectWorktree != nil {
@@ -296,19 +304,28 @@ struct NewSessionOptionsBar: View {
     .frame(width: 320)
   }
 
-  private var repositoriesField: some View {
-    Label {
-      TextField(
-        "Repositories",
-        text: Binding(
-          get: { options.repositories }, set: { actions.setRepositories?($0) }),
-        prompt: Text("Repositories to clone (https://github.com/org/repo#branch)")
-      )
-      .textFieldStyle(.plain)
-      .frame(minWidth: 280)
-    } icon: {
-      Image(systemName: "shippingbox")
+  /// The web's repository chip: the chosen repositories, opening the picker.
+  @ViewBuilder private var repositoriesChip: some View {
+    if let repositoryActions = actions.repositories {
+      let label = options.repositories.label(name: repositoryActions.repoName)
+      Button {
+        isChoosingRepositories = true
+      } label: {
+        Label(label, systemImage: "arrow.triangle.branch")
+      }
+      .fixedSize()
+      .foregroundStyle(options.repositories.problem == nil ? .primary : Theme.warning)
+      .help(options.repositories.problem ?? "Repositories cloned into the sandbox")
+      .accessibilityLabel("Sandbox repositories, \(label)")
+      .accessibilityIdentifier("new-session-repositories")
+      .popover(isPresented: $isChoosingRepositories) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+          Text("Repositories (optional)").font(.headline)
+          SandboxRepositoriesEditor(state: options.repositories, actions: repositoryActions)
+        }
+        .padding()
+        .frame(width: 400)
+      }
     }
-    .accessibilityIdentifier("new-session-repositories")
   }
 }

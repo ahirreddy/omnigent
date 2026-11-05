@@ -126,6 +126,9 @@ extension ConnectedServerView {
         guard let undo = model.undo else { return }
         model.undo = nil
         edit(undo.inverse, recordUndo: false)
+        if let warning = undo.lostWorktreeWarning(now: .now) {
+          connection.sessionList.reportFailure(.InvalidState(message: warning))
+        }
       },
       dismissUndo: { model.undo = nil },
       viewArchived: { setDisplay(model.display.with(show: .archived)) })
@@ -182,7 +185,7 @@ extension ConnectedServerView {
     if let open = openInNewWindow {
       openInWindow = { summary in open(summary.id) }
     }
-    return SessionListActions(
+    var actions = SessionListActions(
       setFilter: { list.filter = OmnigentCoreFFI.SessionFilter($0) },
       setPinned: { summary, pinned in edit(.pin(summary.id, pinned)) },
       setArchived: { summary, archived in requestArchive([summary.id], archived: archived) },
@@ -200,6 +203,10 @@ extension ConnectedServerView {
       webURL: { SidebarAdapter.webURL(server: server, sessionID: $0.id) },
       newSession: { selection.wrappedValue = .newSession },
       retry: { connection.refreshSessions() })
+    actions.deleteWithBranch = { summary, deleteBranch in
+      removeSession(summary.id) { await list.delete($0, deleteBranch: deleteBranch) }
+    }
+    return actions
   }
 
   /// Saves the display options; Show > Archived is the archived list.
@@ -241,8 +248,9 @@ extension ConnectedServerView {
   }
 
   /// Pins or archives through the session list (which reports failures in `editError`), and
-  /// offers Undo for the change. Archiving also removes the worktrees of `deletingWorktrees`;
-  /// Undo restores the session, not a removed worktree.
+  /// offers Undo for the change. Archiving also removes the worktrees of `deletingWorktrees`
+  /// once the server's Undo grace passes; Undo after that restores the session, not the
+  /// worktree, and says so.
   func edit(
     _ change: SidebarUndo.Change, recordUndo: Bool = true, deletingWorktrees: Set<String> = []
   ) {
@@ -263,7 +271,9 @@ extension ConnectedServerView {
           session.tabs.removeSessions(Set(ids))
         }
       }
-      if succeeded, recordUndo { model.undo = SidebarUndo(change: change) }
+      if succeeded, recordUndo {
+        model.undo = SidebarUndo(change: change, removesWorktrees: !deletingWorktrees.isEmpty)
+      }
     }
   }
 
@@ -301,20 +311,21 @@ extension ConnectedServerView {
     let flow = sidebarModel.fork
     let tabs = session.tabs
     let list = connection.sessionList
-    return ForkActions(
-      forkWith: { choices in
-        Task {
-          await flow.fork(
-            choices, open: { tabs.open(.chat(sessionID: $0)) },
-            report: { message in
-              list.reportFailure(.InvalidState(message: message))
-            })
-        }
-      },
-      selectionChanged: { agentID, hostID in
-        Task { await flow.selectionChanged(agentID: agentID, hostID: hostID) }
-      },
-      cancel: { flow.cancel() })
+    return flow.withSandboxActions(
+      ForkActions(
+        forkWith: { choices in
+          Task {
+            await flow.fork(
+              choices, open: { tabs.open(.chat(sessionID: $0)) },
+              report: { message in
+                list.reportFailure(.InvalidState(message: message))
+              })
+          }
+        },
+        selectionChanged: { agentID, hostID in
+          Task { await flow.selectionChanged(agentID: agentID, hostID: hostID) }
+        },
+        cancel: { flow.cancel() }))
   }
 
   /// Opens the fork sheet for a whole session, when this app can fork it.
@@ -330,32 +341,6 @@ extension ConnectedServerView {
       await flow.begin(
         ForkContext(source: source, upToResponseID: nil, kind: .session),
         makeStore: { connection.makeForkStore() })
-    }
-  }
-}
-
-/// A sidebar change the user can undo from the undo bar.
-struct SidebarUndo: Identifiable {
-  enum Change {
-    case pin(String, Bool)
-    case archive([String], Bool)
-  }
-
-  let id = UUID().uuidString
-  let change: Change
-
-  var banner: UndoBanner? {
-    switch change {
-    case .pin(_, let pinned): UndoBanner(id: id, kind: pinned ? .pinned : .unpinned)
-    case .archive(let ids, true): UndoBanner(id: id, kind: .archived(count: ids.count))
-    case .archive(_, false): nil
-    }
-  }
-
-  var inverse: Change {
-    switch change {
-    case .pin(let id, let pinned): .pin(id, !pinned)
-    case .archive(let ids, let archived): .archive(ids, !archived)
     }
   }
 }

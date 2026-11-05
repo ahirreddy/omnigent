@@ -84,14 +84,14 @@ enum ForkAdapter {
       } else {
         nil
       }
-    let repositories = NewSessionOptions.repositoryList(choices.repositories)
     let title = choices.title.trimmingCharacters(in: .whitespaces)
     return ForkRequest(
       sourceId: context.source.id, upToResponseId: context.upToResponseID,
       agentId: choices.agentID == plan.agentId ? nil : choices.agentID,
       title: title.isEmpty ? nil : title, start: forkStart,
+      // The sandbox inherits the original's repositories until the sheet's picker sets them.
       sandbox: choices.isSandbox
-        ? ForkSandbox(provider: nil, workspaces: repositories.isEmpty ? nil : repositories) : nil,
+        ? ForkSandbox(provider: choices.sandboxProvider, workspaces: nil) : nil,
       model: choices.model, reasoningEffort: choices.effort, approvalMode: choices.approvalMode,
       agent: choices.approvalMode == nil ? nil : plan.agents.first { $0.id == choices.agentID })
   }

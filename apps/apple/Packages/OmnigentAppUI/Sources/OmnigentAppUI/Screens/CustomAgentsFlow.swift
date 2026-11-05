@@ -14,6 +14,9 @@ struct CreateAgentContainer: View {
   var notice: String?
   let allowsImport: Bool
   let created: @MainActor (ManagedAgent) -> Void
+  /// When set, Create hands the form back unsaved (it uploads with the new session, as on the
+  /// web) instead of installing it.
+  var drafted: (@MainActor (AgentDraft) -> Void)?
   let cancel: @MainActor () -> Void
 
   @State private var isImporting = false
@@ -24,6 +27,10 @@ struct CreateAgentContainer: View {
       notice: notice, isSaving: store.isSaving, errorMessage: store.error?.message,
       problem: CustomAgentsAdapter.problem,
       save: { form in
+        if let drafted {
+          drafted(CustomAgentsAdapter.draft(form))
+          return
+        }
         Task {
           if let agent = await store.create(CustomAgentsAdapter.draft(form)) { created(agent) }
         }
@@ -82,14 +89,18 @@ enum CustomAgentsBundle {
 /// editor with Delete. Self-contained: give it the server's connection.
 public struct CustomAgentsSettingsView: View {
   private let connection: ConnectionStore
+  private let canEdit: Bool
   @State private var store: CustomAgentsStore?
   @State private var editingID: String?
   @State private var isCreating = false
 
   /// Creates the section.
-  /// - Parameter connection: The server whose agents show.
-  public init(connection: ConnectionStore) {
+  /// - Parameters:
+  ///   - connection: The server whose agents show.
+  ///   - canEdit: The server reads and changes an agent's configuration (`agent_detail`).
+  public init(connection: ConnectionStore, canEdit: Bool = true) {
     self.connection = connection
+    self.canEdit = canEdit
   }
 
   /// The section, as a grouped form.
@@ -119,7 +130,7 @@ public struct CustomAgentsSettingsView: View {
             isCreating = false
             Task {
               await store.load()
-              edit(agent.id, store: store)
+              if canEdit { edit(agent.id, store: store) }
             }
           },
           cancel: { isCreating = false })
@@ -151,12 +162,14 @@ public struct CustomAgentsSettingsView: View {
   }
 
   private func actions(_ store: CustomAgentsStore) -> CustomAgentsSettingsActions {
-    CustomAgentsSettingsActions(
+    var openEditor: (@MainActor (CustomAgentRow) -> Void)?
+    if canEdit { openEditor = { row in edit(row.id, store: store) } }
+    return CustomAgentsSettingsActions(
       create: {
         store.dismissMessages()
         isCreating = true
       },
-      edit: { edit($0.id, store: store) },
+      edit: openEditor,
       save: { form in
         Task {
           if await store.save(CustomAgentsAdapter.edit(form)) { await store.load() }

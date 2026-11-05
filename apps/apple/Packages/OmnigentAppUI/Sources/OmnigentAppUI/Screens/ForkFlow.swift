@@ -9,7 +9,11 @@ import OmnigentUIComponents
 final class ForkFlow {
   /// What the open sheet copies; `nil` when no sheet shows.
   private(set) var context: ForkContext?
-  private var store: ForkStore?
+  private(set) var store: ForkStore?
+  /// A new sandbox's provider, repositories and profile.
+  var sandbox = SandboxChoices()
+  /// The new sandbox's repositories start from the original's, once read.
+  var isSandboxSeeded = false
 
   /// The sheet's state, while one shows.
   var viewState: ForkViewState? {
@@ -21,10 +25,12 @@ final class ForkFlow {
       if case .failed(let error) = store.models { "Models unavailable: \(error.message)" } else {
         nil
       }
-    return ForkAdapter.state(
+    var state = ForkAdapter.state(
       context: context, plan: store.plan(for: context.source), models: store.models.value ?? [],
       isForking: store.phase == .forking || !store.canFork,
       errorMessage: store.errorMessage ?? catalogError ?? modelsError)
+    applySandboxOptions(to: &state.options, store: store, sourceID: context.source.id)
+    return state
   }
 
   /// Opens the sheet for `context` and loads the agents and hosts it offers.
@@ -35,6 +41,8 @@ final class ForkFlow {
     guard let store = store ?? makeStore() else { return }
     self.store = store
     store.reset()
+    sandbox = SandboxChoices()
+    isSandboxSeeded = false
     self.context = context
     await store.loadCatalog()
   }
@@ -69,7 +77,8 @@ final class ForkFlow {
   ) async {
     guard let context, let store else { return }
     let plan = store.plan(for: context.source)
-    let request = ForkAdapter.request(context: context, plan: plan, choices: choices)
+    var request = ForkAdapter.request(context: context, plan: plan, choices: choices)
+    if choices.isSandbox { request.sandbox = sandboxRequest(choices, store: store) }
     guard let sessionID = await store.fork(request) else { return }
     self.context = nil
     open(sessionID)

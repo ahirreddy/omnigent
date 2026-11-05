@@ -283,14 +283,15 @@ struct ConversationContainer: View {
   private var forkActions: ForkActions {
     let flow = forkFlow
     let open = tabRoutes?.openSession ?? openSession
-    return ForkActions(
-      forkWith: { choices in
-        Task { await flow.fork(choices, open: open, report: { failures.append($0) }) }
-      },
-      selectionChanged: { agentID, hostID in
-        Task { await flow.selectionChanged(agentID: agentID, hostID: hostID) }
-      },
-      cancel: { flow.cancel() })
+    return flow.withSandboxActions(
+      ForkActions(
+        forkWith: { choices in
+          Task { await flow.fork(choices, open: open, report: { failures.append($0) }) }
+        },
+        selectionChanged: { agentID, hostID in
+          Task { await flow.selectionChanged(agentID: agentID, hostID: hostID) }
+        },
+        cancel: { flow.cancel() }))
   }
 }
 

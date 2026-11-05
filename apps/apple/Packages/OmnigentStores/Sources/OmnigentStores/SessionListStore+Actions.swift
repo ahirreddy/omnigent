@@ -30,6 +30,19 @@ extension SessionListStore {
     await perform { core in try await core.deleteSession(sessionId: sessionID) }
   }
 
+  /// Deletes `sessionID` and its history, and with `deleteBranch` its worktree's local git
+  /// branch (irreversible).
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - deleteBranch: Also delete the branch.
+  /// - Returns: Whether it was deleted.
+  @discardableResult
+  public func delete(_ sessionID: String, deleteBranch: Bool) async -> Bool {
+    await perform { core in
+      try await core.deleteSessionWithBranch(sessionId: sessionID, deleteBranch: deleteBranch)
+    }
+  }
+
   /// Leaves `sessionID`, shared with the caller.
   /// - Parameter sessionID: The session.
   /// - Returns: Whether the caller left it.

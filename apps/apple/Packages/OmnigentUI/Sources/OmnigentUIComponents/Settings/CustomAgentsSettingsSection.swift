@@ -35,14 +35,17 @@ nonisolated public struct CustomAgentMCPServer: Identifiable, Hashable, Sendable
   public let id: String
   /// `stdio · npx -y …` or `http · https://…`.
   public let summary: String
-  /// Can be removed here.
+  /// Can be changed or removed here.
   public let isEditable: Bool
+  /// What the editor starts from.
+  public var edit: MCPServerEdit?
 
   /// Creates a server.
-  public init(id: String, summary: String, isEditable: Bool) {
+  public init(id: String, summary: String, isEditable: Bool, edit: MCPServerEdit? = nil) {
     self.id = id
     self.summary = summary
     self.isEditable = isEditable
+    self.edit = edit
   }
 }
 
@@ -64,6 +67,8 @@ nonisolated public struct CustomAgentConfigForm: Hashable, Sendable {
   public var mcpServers: [CustomAgentMCPServer]
   /// Servers marked for removal.
   public var removedMCPServers: Set<String> = []
+  /// Added servers and changes to editable ones, by name.
+  public var mcpEdits: [String: MCPServerEdit] = [:]
 
   /// Creates the form.
   public init(
@@ -124,8 +129,9 @@ public struct CustomAgentsSettingsState: Equatable, Sendable {
 public struct CustomAgentsSettingsActions {
   /// Opens the create sheet.
   public var create: @MainActor () -> Void
-  /// Opens one of the caller's agents for editing.
-  public var edit: @MainActor (CustomAgentRow) -> Void
+  /// Opens one of the caller's agents for editing; `nil` where the server cannot read an
+  /// agent's configuration (`agent_detail`).
+  public var edit: (@MainActor (CustomAgentRow) -> Void)?
   /// Saves the editor.
   public var save: @MainActor (CustomAgentConfigForm) -> Void
   /// Removes an agent; `force` removes one sessions still use.
@@ -136,7 +142,7 @@ public struct CustomAgentsSettingsActions {
   /// Creates the actions.
   public init(
     create: @escaping @MainActor () -> Void,
-    edit: @escaping @MainActor (CustomAgentRow) -> Void,
+    edit: (@MainActor (CustomAgentRow) -> Void)?,
     save: @escaping @MainActor (CustomAgentConfigForm) -> Void,
     remove: @escaping @MainActor (String, Bool) -> Void,
     closeEditor: @escaping @MainActor () -> Void
@@ -159,6 +165,7 @@ public struct CustomAgentsSettingsSection: View {
   @State private var draft: CustomAgentConfigForm?
   @State private var confirmsDelete: CustomAgentRow?
   @State private var pendingRemoval: String?
+  @State private var editingServer: MCPServerEdit?
 
   /// Creates the section.
   public init(state: CustomAgentsSettingsState, actions: CustomAgentsSettingsActions) {
@@ -204,8 +211,10 @@ public struct CustomAgentsSettingsSection: View {
         HStack {
           agentLabel(agent)
           Spacer()
-          Button("Edit\u{2026}") { actions.edit(agent) }
-            .accessibilityIdentifier("custom-agent-edit-\(agent.name)")
+          if let edit = actions.edit {
+            Button("Edit\u{2026}") { edit(agent) }
+              .accessibilityIdentifier("custom-agent-edit-\(agent.name)")
+          }
         }
         .contextMenu {
           Button("Delete\u{2026}", role: .destructive) { confirmsDelete = agent }
@@ -297,12 +306,7 @@ public struct CustomAgentsSettingsSection: View {
       Section("Instructions") {
         TextEditor(text: form.instructions).frame(minHeight: 100)
       }
-      Section("MCP Servers") {
-        if form.wrappedValue.mcpServers.isEmpty { Text("None").foregroundStyle(.secondary) }
-        ForEach(form.wrappedValue.mcpServers) { server in
-          mcpRow(server, form: form)
-        }
-      }
+      mcpSection(form)
       Section {
         HStack {
           Button("Delete Agent\u{2026}", role: .destructive) {
@@ -323,6 +327,52 @@ public struct CustomAgentsSettingsSection: View {
     }
   }
 
+  /// The agent's MCP servers, with Add, and Edit for the editable ones (the web's editor).
+  private func mcpSection(_ form: Binding<CustomAgentConfigForm>) -> some View {
+    Section {
+      if form.wrappedValue.mcpServers.isEmpty, form.wrappedValue.mcpEdits.isEmpty {
+        Text("None").foregroundStyle(.secondary)
+      }
+      ForEach(form.wrappedValue.mcpServers) { server in
+        mcpRow(server, form: form)
+      }
+      ForEach(addedServers(form.wrappedValue)) { edit in
+        HStack {
+          Text(edit.name)
+          Text("New").font(.caption).foregroundStyle(.secondary)
+          Spacer()
+          Button("Edit\u{2026}") { editingServer = edit }
+          Button("Remove") { form.wrappedValue.mcpEdits[edit.name] = nil }
+        }
+      }
+    } header: {
+      HStack {
+        Text("MCP Servers")
+        Spacer()
+        Button("Add", systemImage: "plus") { editingServer = MCPServerEdit(isNew: true) }
+          .accessibilityIdentifier("custom-agent-add-mcp")
+      }
+    }
+    .sheet(item: $editingServer) { server in
+      MCPServerEditorSheet(
+        server: server,
+        taken: Set(form.wrappedValue.mcpServers.map(\.id))
+          .union(form.wrappedValue.mcpEdits.keys).subtracting([server.originalName]),
+        save: { edited in
+          if !edited.originalName.isEmpty, edited.originalName != edited.name {
+            form.wrappedValue.mcpEdits[edited.originalName] = nil
+          }
+          form.wrappedValue.mcpEdits[edited.name] = edited
+          editingServer = nil
+        },
+        cancel: { editingServer = nil })
+    }
+  }
+
+  private func addedServers(_ form: CustomAgentConfigForm) -> [MCPServerEdit] {
+    form.mcpEdits.values.filter(\.isNew).sorted { $0.name < $1.name }
+  }
+
   private func mcpRow(
     _ server: CustomAgentMCPServer, form: Binding<CustomAgentConfigForm>
   ) -> some View {
@@ -333,6 +383,9 @@ public struct CustomAgentsSettingsSection: View {
         Text(server.summary).font(.caption).foregroundStyle(.secondary)
       }
       Spacer()
+      if server.isEditable, !removed, let edit = server.edit {
+        Button("Edit\u{2026}") { editingServer = form.wrappedValue.mcpEdits[server.id] ?? edit }
+      }
       if server.isEditable {
         Button(removed ? "Keep" : "Remove") {
           if removed {

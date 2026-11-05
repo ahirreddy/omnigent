@@ -54,6 +54,33 @@ struct CustomAgentsAdapterTests {
     #expect(edit.description.isEmpty)
   }
 
+  @Test func addedAndChangedServersBecomeCoreEdits() throws {
+    let config = AgentConfig(
+      id: "a1", name: "reviewer", version: 2, description: nil, instructions: nil,
+      model: "m", harness: "codex",
+      mcpServers: [
+        AgentMcpServer(
+          name: "docs", transport: "http", url: "https://d/mcp", command: nil, args: [],
+          editable: true, description: "Docs", credentialNames: ["Authorization"])
+      ], etag: nil)
+    var form = CustomAgentsAdapter.form(config)
+    var docs = try #require(form.mcpServers.first?.edit)
+    #expect(docs.credentials.map(\.name) == ["Authorization"])
+    #expect(docs.credentials.first?.existing == true)
+    docs.url = "https://d/v2"
+    docs.credentials[0].action = .remove
+    form.mcpEdits["docs"] = docs
+    form.mcpEdits["fs"] = MCPServerEdit(
+      name: "fs", originalName: "fs", isNew: true, transport: "stdio", command: "npx",
+      arguments: "-y  fs")
+    let edits = CustomAgentsAdapter.edit(form).mcpServers
+    #expect(edits.map(\.name) == ["docs", "fs"])
+    #expect(edits[0].credentials.first?.action == .remove)
+    #expect(edits[1].args == ["-y", "fs"])
+    form.removedMCPServers = ["docs"]
+    #expect(CustomAgentsAdapter.edit(form).mcpServers.map(\.name) == ["fs"])
+  }
+
   @Test func rowsCarryDates() {
     let rows = CustomAgentsAdapter.rows([
       ManagedAgent(

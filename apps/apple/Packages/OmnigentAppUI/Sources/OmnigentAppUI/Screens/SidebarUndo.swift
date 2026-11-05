@@ -1,0 +1,51 @@
+import Foundation
+import OmnigentUIComponents
+
+/// A sidebar change the user can undo from the undo bar.
+struct SidebarUndo: Identifiable {
+  enum Change {
+    case pin(String, Bool)
+    case archive([String], Bool)
+  }
+
+  /// How long the server waits before tearing down an archived session (its
+  /// `_ARCHIVE_STOP_UNDO_GRACE_S` is 8 s), with margin for the unarchive request, as the web's
+  /// Undo pill keeps.
+  static let worktreeGrace: TimeInterval = 5
+
+  let id = UUID().uuidString
+  let change: Change
+  /// The archive also removes worktrees once the grace passes.
+  var removesWorktrees = false
+  let createdAt = Date.now
+
+  var banner: UndoBanner? {
+    switch change {
+    case .pin(_, let pinned): UndoBanner(id: id, kind: pinned ? .pinned : .unpinned)
+    case .archive(let ids, true):
+      UndoBanner(
+        id: id, kind: .archived(count: ids.count),
+        note: removesWorktrees
+          ? "Worktrees are removed in a few seconds; Undo after that restores only the session."
+          : nil)
+    case .archive(_, false): nil
+    }
+  }
+
+  /// What to tell the user when Undo comes after the server removed the worktrees: the
+  /// session is back, its branch is kept, its worktree is not.
+  func lostWorktreeWarning(now: Date) -> String? {
+    guard removesWorktrees, now.timeIntervalSince(createdAt) >= Self.worktreeGrace else {
+      return nil
+    }
+    return "Restored, but its worktree was already removed. The branch is kept: start a new "
+      + "session in that branch's worktree to keep working on it."
+  }
+
+  var inverse: Change {
+    switch change {
+    case .pin(let id, let pinned): .pin(id, !pinned)
+    case .archive(let ids, let archived): .archive(ids, !archived)
+    }
+  }
+}

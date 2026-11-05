@@ -22,8 +22,22 @@ struct WorktreeDefaults {
 /// Maps the core's creation catalog and the new-session form's choices to the composer and the
 /// start options, the way the web's new-session page lays them out.
 enum NewSessionAdapter {
-  /// The Host menu's entry for a new sandbox the server provisions.
-  static let newSandboxHostID = "omnigent.new-sandbox"
+  /// The Host menu's entries for a new sandbox the server provisions: this prefix and the
+  /// provider (empty for the server's default).
+  static let newSandboxHostID = "omnigent.new-sandbox:"
+
+  /// The Host menu id of a new sandbox of `provider`.
+  static func sandboxHostID(_ provider: String?) -> String {
+    newSandboxHostID + (provider ?? "")
+  }
+
+  /// The provider of a Host menu sandbox id, or `nil` when `hostID` is not a sandbox row
+  /// (`.some(nil)` for the server's default).
+  static func sandboxProvider(hostID: String) -> String?? {
+    guard hostID.hasPrefix(newSandboxHostID) else { return nil }
+    let provider = String(hostID.dropFirst(newSandboxHostID.count))
+    return .some(provider.isEmpty ? nil : provider)
+  }
 
   /// The agent picker rows in the web's order (primary harnesses, other harnesses, built-in
   /// agents, the user's own) and each row's group.
@@ -47,7 +61,7 @@ enum NewSessionAdapter {
       OmnigentUIComponents.HarnessChoice(
         id: entry.agent.id, name: entry.agent.name, harness: entry.agent.harness,
         builtin: entry.agent.builtin,
-        unavailableReason: hostID == newSandboxHostID
+        unavailableReason: hostID.hasPrefix(newSandboxHostID)
           ? nil
           : creationUnavailableReason(catalog: catalog, agentId: entry.agent.id, hostId: hostID))
     }
@@ -72,19 +86,19 @@ enum NewSessionAdapter {
     }
   }
 
-  /// The Host menu: the server's hosts, then "New Sandbox" when it provisions them.
+  /// The Host menu: a new sandbox row per provider the server offers ("Modal Sandbox", or
+  /// "New Sandbox" when it names none), then the server's hosts.
   static func hosts(_ catalog: OmnigentCoreFFI.CreationCatalog?) -> [ComposerHost] {
-    var hosts = (catalog?.hosts ?? []).map { host in
+    let sandboxes = catalog.map { sandboxProviderOptions(catalog: $0) } ?? []
+    let machines = (catalog?.hosts ?? []).map { host in
       ComposerHost(
         id: host.hostId, name: ExecutionContext.hostDisplayName(host.name) ?? host.hostId,
         kind: host.sandboxProvider == nil ? .machine : .cloud, isOnline: host.isAvailable)
     }
-    if catalog?.managedSandboxes == true {
-      hosts.insert(
-        ComposerHost(id: newSandboxHostID, name: "New Sandbox", kind: .cloud, isOnline: true),
-        at: 0)
-    }
-    return hosts
+    return sandboxes.map { option in
+      ComposerHost(
+        id: sandboxHostID(option.provider), name: option.label, kind: .cloud, isOnline: true)
+    } + machines
   }
 
   /// The approval modes the selected agent can start in, with `selected` (or its default).

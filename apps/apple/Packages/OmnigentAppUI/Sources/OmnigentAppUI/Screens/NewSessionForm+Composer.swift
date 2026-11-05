@@ -5,26 +5,34 @@ import OmnigentUIComponents
 extension NewSessionForm {
   /// The composer in start mode: the agent grouped as on the web, the model and effort, the
   /// host (or a new sandbox), the approval mode, attachments and where it will run.
-  func composerState(_ creation: CreationStore, connection: ConnectionStore) -> ComposerViewState {
+  func composerState(
+    _ creation: CreationStore, connection: ConnectionStore, submitWithCommandReturn: Bool = false
+  ) -> ComposerViewState {
     let catalog = creation.catalog.value
-    let hostID = isSandbox ? NewSessionAdapter.newSandboxHostID : selection.hostId
+    let hostID =
+      isSandbox
+      ? NewSessionAdapter.sandboxHostID(sandbox.option(catalog)?.provider) : selection.hostId
     let agents = catalog.map { NewSessionAdapter.agents($0, hostID: hostID) }
     let agent = selectedAgent(creation)
     var configuration = ComposerConfiguration(
-      harness: agent?.harness, agentName: agent?.name, harnessChoices: agents?.choices ?? [],
+      harness: agent?.harness, agentName: agent?.name,
+      harnessChoices: (agents?.choices ?? []) + (pendingChoice.map { [$0] } ?? []),
       selectedAgentId: selection.agentId,
-      modelOptions: isSandbox ? [] : NewSessionAdapter.models(creation.models.value ?? []),
+      modelOptions: isSandbox || startsPendingAgent
+        ? [] : NewSessionAdapter.models(creation.models.value ?? []),
       selectedModelId: selection.model, selectedEffort: selection.reasoningEffort)
     configuration.agentGroups = agents?.groups ?? [:]
-    return ComposerViewState(
+    if pendingChoice != nil { configuration.agentGroups[Self.pendingAgentID] = .custom }
+    var state = ComposerViewState(
       availability: availability(creation), delivery: delivery(creation.phase),
       attachments: attachmentChips(creation), acceptsAttachments: !isSandbox,
       configuration: configuration,
       placeholder: "Describe what to build\u{2026}",
       hosts: ComposerHosts(hosts: NewSessionAdapter.hosts(catalog), selectedID: hostID),
-      approvalModes: isSandbox
-        ? nil : NewSessionAdapter.approvalModes(agent, selected: selection.approvalMode),
+      approvalModes: NewSessionAdapter.approvalModes(agent, selected: selection.approvalMode),
       purpose: .start, context: context(creation, connection: connection))
+    state.submitWithCommandReturn = submitWithCommandReturn
+    return state
   }
 
   /// Where the session will run, and why it cannot, before the first send.
@@ -35,18 +43,20 @@ extension NewSessionForm {
     let server = connection.connectedServer
     return ExecutionContext(
       agent: agent?.name, harness: agent?.harness,
-      host: isSandbox ? "New sandbox" : ExecutionContext.hostDisplayName(host?.name),
+      host: isSandbox
+        ? sandbox.option(catalog)?.label ?? "New Sandbox"
+        : ExecutionContext.hostDisplayName(host?.name),
       hostKind: isSandbox || host?.sandboxProvider != nil ? .cloud : .machine,
       isHostOnline: isSandbox ? true : host.map { $0.status == "online" },
       server: ExecutionContext.serverDisplayName(
         name: server?.serverName, baseURL: server?.baseUrl),
       directory: isSandbox || selection.workspace.isEmpty ? nil : selection.workspace,
       sandbox: isSandbox
-        ? "Managed sandbox \u{00B7} \(catalog?.sandboxProviders.first ?? "server default")"
+        ? "Managed sandbox \u{00B7} \(sandbox.option(catalog)?.provider ?? "server default")"
         : host.map {
           $0.sandboxProvider.map { "Managed sandbox \u{00B7} \($0)" } ?? "None (runs on the host)"
         },
-      unavailableReason: isSandbox
+      unavailableReason: isSandbox || startsPendingAgent
         ? nil
         : catalog.flatMap {
           creationUnavailableReason(
@@ -60,8 +70,14 @@ extension NewSessionForm {
     case .failed(let error): return .unavailable(reason: error.message)
     case .loaded:
       if isSandbox {
-        return selectedAgent(creation) == nil
-          ? .unavailable(reason: "Choose an agent.") : .available
+        if selectedAgent(creation) == nil || startsPendingAgent {
+          return .unavailable(reason: "Choose an agent.")
+        }
+        let problem = sandbox.problem(creation.catalog.value, sandboxes: sandboxes)
+        return problem.map { .unavailable(reason: $0) } ?? .available
+      }
+      if startsPendingAgent {
+        return pendingAgentProblem(creation).map { .unavailable(reason: $0) } ?? .available
       }
       if selection.workspace.isEmpty {
         return .unavailable(reason: "Choose the folder the session works in.")

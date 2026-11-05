@@ -241,36 +241,55 @@ public final class CreationStore {
     }
   }
 
-  /// Creates a session for `agentID` on a new sandbox the server provisions, cloning
-  /// `workspaces` (`<url>[#<branch>]` repositories; empty for an empty sandbox). Like
+  /// Creates a session for `selection`'s agent, effort and approval mode on a new sandbox the
+  /// server provisions as `target` describes (provider, profile, repositories). Like
   /// ``create(_:title:firstMessage:)`` it is never retried; the sandbox registers after the
   /// session exists.
   /// - Parameters:
-  ///   - agentID: The agent.
+  ///   - selection: The agent and run configuration; its host and workspace are not used.
+  ///   - target: The sandbox.
   ///   - title: The session name; may be empty.
-  ///   - workspaces: Repositories to clone.
   ///   - firstMessage: Sent once the session exists; may be empty.
   public func createInSandbox(
-    agentID: String, title: String, workspaces: [String], firstMessage: String = ""
+    _ selection: CreationSelection, target: SandboxTarget, title: String,
+    firstMessage: String = ""
+  ) async {
+    await createThenSend(firstMessage: firstMessage) { core in
+      let receipt = try await core.createSandboxSession(
+        selection: selection, target: target, title: title)
+      return (receipt.sessionId, nil)
+    }
+  }
+
+  /// Runs `create`, then sends `firstMessage` (when not blank) to the session it made. A failed
+  /// send, or a start `create` reports as failed, leaves the session created with the error;
+  /// creation is never repeated.
+  func createThenSend(
+    firstMessage: String,
+    _ create: (ClientCore) async throws -> (sessionID: String, startError: CoreError?)
   ) async {
     guard canCreate else { return }
     phase = .creating
     do {
-      let receipt = try await core.createSandboxSession(
-        agentId: agentID, title: title, workspaces: workspaces)
+      let (sessionID, startError) = try await create(core)
+      if let startError {
+        pendingFirstMessage = firstMessage
+        phase = .created(sessionID: sessionID, firstMessageError: startError)
+        return
+      }
       let text = firstMessage.trimmingCharacters(in: .whitespacesAndNewlines)
       guard !text.isEmpty else {
         pendingFirstMessage = nil
-        phase = .created(sessionID: receipt.sessionId, firstMessageError: nil)
+        phase = .created(sessionID: sessionID, firstMessageError: nil)
         return
       }
       pendingFirstMessage = firstMessage
-      phase = .created(sessionID: receipt.sessionId, firstMessageError: nil)
+      phase = .created(sessionID: sessionID, firstMessageError: nil)
       do {
-        _ = try await core.sendMessage(sessionId: receipt.sessionId, text: firstMessage)
+        _ = try await core.sendMessage(sessionId: sessionID, text: firstMessage)
         pendingFirstMessage = nil
       } catch {
-        phase = .created(sessionID: receipt.sessionId, firstMessageError: coreError(error))
+        phase = .created(sessionID: sessionID, firstMessageError: coreError(error))
       }
     } catch {
       let error = coreError(error)
@@ -321,5 +340,27 @@ public final class CreationStore {
     if case .uncertain = phase { return }
     pendingFirstMessage = nil
     phase = .editing
+  }
+}
+
+extension CreationStore {
+  /// Creates a session running the unsaved custom agent `draft` (uploaded with the session, as
+  /// the web does), starts it on `selection`'s host, then sends `firstMessage`. A start that
+  /// failed leaves the session created with that error and the message unsent.
+  /// - Parameters:
+  ///   - draft: The agent form.
+  ///   - selection: Host, workspace and worktree; its agent is not used.
+  ///   - firstMessage: Sent once the session runs; may be empty.
+  public func create(
+    agent draft: AgentDraft, _ selection: CreationSelection, firstMessage: String
+  ) async {
+    await createThenSend(firstMessage: firstMessage) { core in
+      let created = try await core.createSessionWithAgent(
+        draft: draft, selection: selection, title: "")
+      if case .failed(let error) = created.launch {
+        return (created.receipt.sessionId, error)
+      }
+      return (created.receipt.sessionId, nil)
+    }
   }
 }
