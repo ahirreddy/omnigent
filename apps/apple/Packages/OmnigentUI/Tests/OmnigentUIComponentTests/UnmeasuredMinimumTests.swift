@@ -5,7 +5,7 @@ import Testing
 
 @Suite("The detail column answers size questions without measuring its content")
 struct UnmeasuredMinimumTests {
-  let minimum = CGSize(width: 360, height: 200)
+  let minimum = UnmeasuredMinimum.column
 
   @Test("the zero and unspecified proposals a hosting controller asks read as the minimum")
   func smallProposals() {

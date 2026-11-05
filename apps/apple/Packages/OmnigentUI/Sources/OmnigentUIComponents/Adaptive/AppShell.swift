@@ -47,33 +47,21 @@ public struct AppShell<Detail: View>: View {
 
   private var showsStrip: Bool { tabs != nil && sizeClass != .compact }
 
-  /// The detail column's minimum: the window's minimum less the widest sidebar leaves more on
-  /// Mac; touch layouts take any width they are given.
-  static var detailMinimum: CGSize {
-    #if os(macOS)
-      CGSize(width: 360, height: 200)
-    #else
-      .zero
-    #endif
-  }
-
   /// The shell.
   public var body: some View {
     NavigationSplitView(columnVisibility: $columns) {
       SidebarView(state: sidebar, selection: $selection, searchText: $searchText, actions: actions)
         .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
     } detail: {
-      // The column's hosting controller would otherwise measure the whole detail per update.
-      UnmeasuredMinimum(minimum: Self.detailMinimum) {
-        NavigationStack {
-          detail(selection)
-            .adaptiveLayoutWidth()
-            .environment(\.tabsInTitlebar, showsStrip)
-            .toolbar { tabsToolbar }
-            .modifier(TitlelessToolbar(isActive: showsStrip))
-            .onPreferenceChange(TitlebarTrailingItems.self) { trailingItems = $0 }
-        }
+      NavigationStack {
+        detail(selection)
+          .adaptiveLayoutWidth()
+          .environment(\.tabsInTitlebar, showsStrip)
+          .toolbar { tabsToolbar }
+          .modifier(TitlelessToolbar(isActive: showsStrip))
+          .onPreferenceChange(TitlebarTrailingItems.self) { trailingItems = $0 }
       }
+      .unmeasuredMinimum(UnmeasuredMinimum.column)
       .environment(tabDrag)
       .onGeometryChange(for: CGFloat.self) {
         $0.size.width
