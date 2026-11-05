@@ -18,8 +18,11 @@ nonisolated enum TurnLayout {
   /// Folds each run of tool work and reasoning between assistant messages into its own Worked
   /// group, as the web does: every message, error and side question stays visible. A settled
   /// turn with no message stays unfolded; trailing reasoning joins the turn's last run. The live
-  /// turn's folds stay open.
-  static func segments(_ items: [TranscriptItem], isRunning: Bool) -> [TurnSegment] {
+  /// turn's folds stay open. `closesLastTurn` folds items that end before a user message (a
+  /// transcript's settled prefix), whose last turn is never the live one.
+  static func segments(
+    _ items: [TranscriptItem], isRunning: Bool, closesLastTurn: Bool = false
+  ) -> [TurnSegment] {
     var result: [TurnSegment] = []
     var turn: [TranscriptItem] = []
 
@@ -38,7 +41,7 @@ nonisolated enum TurnLayout {
         turn.append(item)
       }
     }
-    flush(isLast: true)
+    flush(isLast: !closesLastTurn)
     return result
   }
 

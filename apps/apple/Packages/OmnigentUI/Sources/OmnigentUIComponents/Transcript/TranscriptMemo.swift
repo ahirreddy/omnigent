@@ -41,12 +41,34 @@ final class TranscriptLayoutMemo {
     }
   }
 
+  /// What message decorations read besides the rows.
+  private struct DecorationInputs: Equatable {
+    var lastAnswerID: String?
+    var timestamps: [String: Date]
+    var turnDurations: [String: TimeInterval]
+    var isShared: Bool
+    var viewerName: String?
+  }
+
+  /// The rows before the last user message, folded and decorated. While they and their
+  /// decorations are unchanged, a streamed delta folds only the open turn instead of the whole
+  /// transcript.
+  private struct Prefix {
+    var rows: [Row]
+    var decorations: DecorationInputs
+    var responseIDs: Set<String>
+    var entries: [SegmentEntry]
+  }
+
   private var inputs: Inputs?
+  private var prefix: Prefix?
   private var cachedEntries: [SegmentEntry] = []
   private var cachedBlocks: [CLIBlockEntry] = []
   private var hasBlocks = false
   /// How many times the layout was computed, for tests.
   private(set) var computations = 0
+  /// How many of those reused the folded prefix, for tests.
+  private(set) var prefixReuses = 0
 
   /// The chat transcript's segments for `state`.
   /// - Parameter state: The conversation.
@@ -79,26 +101,68 @@ final class TranscriptLayoutMemo {
     guard current != inputs else { return }
     inputs = current
     computations += 1
-    let lastAnswerID = current.isRunning ? nil : TranscriptView.lastAnswerID(state.rows)
-    let segments = TranscriptView.segments(for: state)
-    let turnAnswers = Self.lastAnswerIDs(segments)
-    cachedEntries = segments.map { segment in
+    cachedBlocks = []
+    hasBlocks = false
+    let decorations = DecorationInputs(
+      lastAnswerID: current.isRunning ? nil : TranscriptView.lastAnswerID(state.rows),
+      timestamps: state.timestamps, turnDurations: state.turnDurations,
+      isShared: state.isShared, viewerName: state.viewerName)
+    guard let split = state.rows.lastIndex(where: { $0.role == .user && !$0.isActivityOnly }),
+      split > 0
+    else {
+      prefix = nil
+      cachedEntries = Self.entries(TranscriptView.segments(for: state), state, decorations)
+      return
+    }
+    let tailRows = state.rows[split...]
+    let tail = TurnLayout.segments(
+      TranscriptLayout.items(for: Array(tailRows)), isRunning: current.isRunning)
+    let tailResponses = Set(tailRows.compactMap(\.responseId))
+    if let prefix, prefix.decorations == decorations, prefix.rows.count == split,
+      prefix.responseIDs.isDisjoint(with: tailResponses),
+      state.rows[..<split].elementsEqual(prefix.rows)
+    {
+      prefixReuses += 1
+      cachedEntries = prefix.entries + Self.entries(tail, state, decorations)
+      return
+    }
+    let prefixRows = Array(state.rows[..<split])
+    let head = TurnLayout.segments(
+      TranscriptLayout.items(for: prefixRows), isRunning: current.isRunning, closesLastTurn: true)
+    let responses = Set(prefixRows.compactMap(\.responseId))
+    guard responses.isDisjoint(with: tailResponses) else {
+      // A response continues past the user's message (a steer): its "Worked for" belongs to the
+      // answer after it, so the turns are decorated together and nothing is kept.
+      self.prefix = nil
+      cachedEntries = Self.entries(head + tail, state, decorations)
+      return
+    }
+    let headEntries = Self.entries(head, state, decorations)
+    self.prefix = Prefix(
+      rows: prefixRows, decorations: decorations, responseIDs: responses, entries: headEntries)
+    cachedEntries = headEntries + Self.entries(tail, state, decorations)
+  }
+
+  /// `segments` with their message decorations and turn durations.
+  private static func entries(
+    _ segments: [TurnSegment], _ state: ConversationViewState, _ inputs: DecorationInputs
+  ) -> [SegmentEntry] {
+    let turnAnswers = lastAnswerIDs(segments)
+    return segments.map { segment in
       var duration: TimeInterval?
       if case .worked(_, let responseID?, _, _) = segment {
-        duration = state.turnDurations[responseID]
+        duration = inputs.turnDurations[responseID]
       }
       var decorations = Self.decorations(
-        for: segment.items, state: state, lastAnswerID: lastAnswerID)
+        for: segment.items, state: state, lastAnswerID: inputs.lastAnswerID)
       // A turn's last settled answer carries its "Worked for".
       if case .item(.message(let row)) = segment, row.role == .assistant, !row.isStreaming,
         let responseID = row.responseId, turnAnswers[responseID] == row.id
       {
-        decorations[row.id]?.workedFor = state.turnDurations[responseID]
+        decorations[row.id]?.workedFor = inputs.turnDurations[responseID]
       }
       return SegmentEntry(segment: segment, decorations: decorations, duration: duration)
     }
-    cachedBlocks = []
-    hasBlocks = false
   }
 
   /// The last visible assistant message of each response.
