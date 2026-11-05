@@ -92,9 +92,16 @@ private struct AlertTint: UIViewRepresentable {
 
     private func applyTint() {
       guard tints.count == 2 else { return }
-      let (light, dark) = (tints[0], tints[1])
       UIView.appearance(whenContainedInInstancesOf: [UIAlertController.self]).tintColor =
-        UIColor { $0.userInterfaceStyle == .dark ? dark : light }
+        .adaptive(light: tints[0], dark: tints[1])
     }
+  }
+}
+
+extension UIColor {
+  /// `light` or `dark` by the traits' interface style. Nonisolated, so its provider is too:
+  /// SwiftUI's async renderer resolves tints off the main thread mid-animation.
+  nonisolated static func adaptive(light: UIColor, dark: UIColor) -> UIColor {
+    UIColor { $0.userInterfaceStyle == .dark ? dark : light }
   }
 }
