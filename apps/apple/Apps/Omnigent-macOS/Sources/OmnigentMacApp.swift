@@ -208,5 +208,29 @@ struct AppSettingsView: View {
         UpdateSettingsSection(updater: updater, issue: services.updaterIssue)
       #endif
     }
+    // A link that moves to a wide tab rebuilds the toolbar with the old tab highlighted.
+    .onChange(of: navigator.tab, initial: true) { _, tab in
+      Task { @MainActor in
+        SettingsToolbarHighlight.select(tab)
+        try? await Task.sleep(for: .milliseconds(150))
+        SettingsToolbarHighlight.select(tab)
+      }
+    }
+  }
+}
+
+/// Keeps the Settings toolbar's highlighted item on the shown tab.
+enum SettingsToolbarHighlight {
+  /// Highlights the toolbar item titled `tab` in the window that shows the Settings tabs.
+  @MainActor static func select(_ tab: String) {
+    for window in NSApp.windows where window.isVisible {
+      // The Settings toolbar is the one with a General item.
+      guard let toolbar = window.toolbar,
+        toolbar.items.contains(where: { $0.label == SettingsNavigator.generalTab }),
+        let item = toolbar.items.first(where: { $0.label == tab }),
+        toolbar.selectedItemIdentifier != item.itemIdentifier
+      else { continue }
+      toolbar.selectedItemIdentifier = item.itemIdentifier
+    }
   }
 }

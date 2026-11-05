@@ -54,6 +54,8 @@ struct ConversationContainer: View {
     false
   @AppStorage(ComposerPreferences.alwaysSteerKey) private var alwaysSteer = true
   @State private var fileLinks: WorkspaceFileLinks?
+  /// The liveness row's open sheet; a send can open Resume on a Machine.
+  @State private var livenessSheets = SessionLivenessSheets()
 
   var body: some View {
     let composer = conversation.composer
@@ -248,6 +250,7 @@ struct ConversationContainer: View {
   /// "Fork from here" on settled assistant messages.
   private func forkable(_ actions: ConversationActions) -> ConversationActions {
     var actions = actions
+    addRecoveryFork(to: &actions)
     if let source = forkSource {
       actions.forkFrom = { row in
         guard let responseID = ForkAdapter.forkPoint(row) else { return }
@@ -312,6 +315,7 @@ extension ConversationContainer {
       retry: retry,
       resume: { Task { await conversation.recoverTurn(.resume) } })
     actions.loadOlder = { conversation.loadOlderHistory() }
+    actions.openSignIn = openSignIn
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
     actions.messageURL = { row in Self.messageURL(row, in: link) }
     actions.retryFailedTurn = { row in
@@ -335,13 +339,7 @@ extension ConversationContainer {
     let conversation = conversation
     let composer = conversation.composer
     return ComposerActions(
-      send: {
-        dismissedSendError = nil
-        let (newSession, routes) = (sessionActions.newSession, toolRoutes)
-        Task {
-          await SessionToolsAdapter.send(conversation, newSession: newSession, routes: routes)
-        }
-      },
+      send: { [livenessSheets] in if !holdsSendForResume(livenessSheets) { sendDraft() } },
       interrupt: {
         isStopping = true
         Task {
@@ -377,7 +375,17 @@ extension ConversationContainer {
       prompts: { ComposerAdapter.prompts(conversation) })
     SessionToolsAdapter.add(to: &extras, store: conversation, summary: summary, routes: toolRoutes)
     extras.liveness.fork = forkSession
+    addHostMoves(to: &extras.liveness, sheets: livenessSheets)
     return extras
+  }
+
+  /// Sends the composer's draft.
+  func sendDraft() {
+    dismissedSendError = nil
+    let (conversation, newSession, routes) = (conversation, sessionActions.newSession, toolRoutes)
+    Task {
+      await SessionToolsAdapter.send(conversation, newSession: newSession, routes: routes)
+    }
   }
 
   /// Switches the harness when the core allows it; otherwise says why.

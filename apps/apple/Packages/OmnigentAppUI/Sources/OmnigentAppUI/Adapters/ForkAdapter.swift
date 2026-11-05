@@ -34,7 +34,9 @@ enum ForkAdapter {
         OmnigentUIComponents.CreationAgent(
           id: $0.id, name: $0.name, harness: $0.harness, description: $0.description)
       },
-      agentID: plan.agentId, directory: plan.directory, isForking: isForking,
+      // The source's workspace is the one that went missing: Continue asks for another.
+      agentID: plan.agentId,
+      directory: context.kind == .anotherDirectory ? "" : plan.directory, isForking: isForking,
       errorMessage: errorMessage, startUnavailableReason: plan.startUnavailableReason)
     state.options = options(plan, models: models)
     return state

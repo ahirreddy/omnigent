@@ -36,6 +36,8 @@ struct IOSRootView: View {
   @State private var restoringServer: URL?
   /// The launch is reconnecting to the last server and the core has not reported progress yet.
   @State private var isRestoring = false
+  /// The scene has been on screen, so leaving the background later is a return.
+  @State private var hasBeenActive = false
   /// Tabs torn off from another window into this one.
   @State private var adopting: [AppTab] = []
   @State private var serverCommandRelay = FocusedActionsRelay<ServerCommandActions>()
@@ -63,14 +65,17 @@ struct IOSRootView: View {
       }
     }
     .task { await start() }
-    .onChange(of: scenePhase) { previous, phase in
-      // Back from the background: streams reopen and reconcile. Launch (inactive to active)
-      // is not a return; the first connect opens the streams.
-      if previous == .background, phase != .background, session?.isSignedIn == true {
+    .onChange(of: scenePhase, initial: true) { previous, phase in
+      // Back from the background: streams reopen and reconcile. A launch, even one that starts
+      // in the background to open a link, is not a return; the first connect opens the streams.
+      if SceneReturn.isReturn(from: previous, to: phase, hasBeenActive: hasBeenActive),
+        session?.isSignedIn == true
+      {
         session?.connection.foreground()
       }
+      if phase == .active, !hasBeenActive { hasBeenActive = true }
       // iOS may end a backgrounded app without notice: save the tabs now.
-      if phase == .background { Self.tabPersistence?.flush() }
+      if phase == .background, previous != .background { Self.tabPersistence?.flush() }
     }
     // Inside the supervision, so settings links reach its Settings screen.
     .phoneDeepLinks(

@@ -179,6 +179,15 @@ public struct ForkSheet: View {
   public var body: some View {
     NavigationStack {
       Form {
+        if case .anotherDirectory = state.kind {
+          Text(
+            "Choose an existing directory to continue this conversation in a new session, "
+              + "optionally in a new git worktree. Files from the missing workspace won\u{2019}t "
+              + "be restored."
+          )
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("fork-another-directory-description")
+        }
         Picker("Agent", selection: $choices.agentID) {
           // Menu pickers on macOS show text labels only; the harness reads from the name.
           ForEach(state.agents) { agent in

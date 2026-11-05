@@ -283,6 +283,7 @@ extension ConversationActions: FocusedActions {
       respond != nil, validateForm != nil, dismissError != nil, retry != nil, forkFrom != nil,
       messageURL != nil, resume != nil, share != nil, openSideChat != nil, openChild != nil,
       retryFailedTurn != nil, replyWithSelection != nil, askInSideChat != nil,
+      forkToRecover != nil, openSignIn != nil,
     ]
   }
 
@@ -307,7 +308,18 @@ extension ConversationActions: FocusedActions {
     if openChild != nil { copy.openChild = { latest()?.openChild?($0) } }
     if retryFailedTurn != nil { copy.retryFailedTurn = { latest()?.retryFailedTurn?($0) } }
     forwardQuotes(into: &copy, to: latest)
+    forwardRecovery(into: &copy, to: latest)
     return copy
+  }
+
+  /// The error card's recovery fork and sign-in link.
+  private func forwardRecovery(
+    into copy: inout Self, to latest: @escaping @MainActor () -> Self?
+  ) {
+    if forkToRecover != nil { copy.forkToRecover = { latest()?.forkToRecover?($0) } }
+    if openSignIn != nil {
+      copy.openSignIn = { await latest()?.openSignIn?() ?? .notPending }
+    }
   }
 
   /// Reply and Ask in side chat, which quote text from the transcript.

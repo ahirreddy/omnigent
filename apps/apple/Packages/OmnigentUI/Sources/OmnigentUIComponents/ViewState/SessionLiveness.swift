@@ -1,4 +1,5 @@
 import Foundation
+public import Observation
 
 /// Whether the open session's agent can take a message now, from the runner and host signals
 /// (the web's `useSessionLiveness`). Each case has one affordance: nothing, a passive
@@ -174,6 +175,13 @@ public struct SessionLivenessActions {
   public var checkAgain: (@MainActor () -> Void)?
   /// Opens the fork sheet, to continue in a copy.
   public var fork: (@MainActor () -> Void)?
+  /// Moves the session to another online host (owners of a session whose host is offline).
+  public var switchHost: HostMoveRoute?
+  /// Starts a session bound to no host on one of the user's machines.
+  public var resume: HostMoveRoute?
+  /// Which sheet shows, kept by the conversation so a send can open Resume on a Machine;
+  /// `nil` keeps it in the row.
+  public var sheets: SessionLivenessSheets?
 
   /// Creates the actions.
   /// - Parameters:
@@ -183,4 +191,50 @@ public struct SessionLivenessActions {
     self.checkAgain = checkAgain
     self.fork = fork
   }
+}
+
+/// A Switch Host or Resume on a Machine sheet the liveness row can open.
+public struct HostMoveRoute {
+  /// The sheet.
+  public var kind: HostMoveKind
+  /// What it reads and does.
+  public var actions: HostMoveActions
+
+  /// Creates a route.
+  /// - Parameters:
+  ///   - kind: The sheet.
+  ///   - actions: What it reads and does.
+  public init(kind: HostMoveKind, actions: HostMoveActions) {
+    self.kind = kind
+    self.actions = actions
+  }
+}
+
+/// A sheet over the liveness row.
+nonisolated public enum SessionLivenessSheet: String, Hashable, Sendable, Identifiable {
+  /// How to reconnect.
+  case reconnect
+  /// Move to another host.
+  case switchHost
+  /// Start on one of the user's machines.
+  case resume
+
+  /// The case.
+  public var id: String { rawValue }
+}
+
+/// The liveness row's open sheet.
+@MainActor
+@Observable
+public final class SessionLivenessSheets {
+  /// The sheet showing, if any.
+  public var shown: SessionLivenessSheet? {
+    didSet { if shown == nil { sendsDraftOnResume = false } }
+  }
+  /// A send opened Resume on a Machine: the draft goes once the session starts; closing the
+  /// sheet keeps the draft unsent.
+  @ObservationIgnored public var sendsDraftOnResume = false
+
+  /// Creates the presenter with nothing showing.
+  public init() {}
 }

@@ -102,7 +102,7 @@ public final class ConversationStore {
   /// them.
   public private(set) var agentInfo: AgentInfo?
 
-  private let core: ClientCore
+  let core: ClientCore
   private let listStatus: ListStatusExpectation
 
   init(
