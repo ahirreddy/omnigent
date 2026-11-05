@@ -218,6 +218,12 @@ public struct AppearanceSettingsView: View {
 public struct OpenAppearanceSettingsAction: Equatable {
   let presenter: AppearanceSettingsPresenter
 
+  /// Creates the action, for a host that shows Appearance in its own Settings screen.
+  /// - Parameter presenter: The host's presenter.
+  public init(presenter: AppearanceSettingsPresenter) {
+    self.presenter = presenter
+  }
+
   /// Opens the settings.
   @MainActor public func callAsFunction() { presenter.open?() }
 
@@ -227,14 +233,21 @@ public struct OpenAppearanceSettingsAction: Equatable {
 
 /// Presents a scene's Appearance settings; the host refreshes ``open`` on each update.
 @MainActor
-final class AppearanceSettingsPresenter {
-  var open: (@MainActor () -> Void)?
+public final class AppearanceSettingsPresenter {
+  /// Shows the settings.
+  public var open: (@MainActor () -> Void)?
+
+  /// Creates a presenter.
+  public init() {}
 }
 
 extension EnvironmentValues {
   /// Opens Settings › Appearance. Set by ``SwiftUICore/View/appearanceSettings(_:)``; `nil`
   /// hides the menu items.
   @Entry public var openAppearanceSettings: OpenAppearanceSettingsAction?
+  /// The device's appearance preferences, for a Settings screen below
+  /// ``SwiftUICore/View/appearanceSettings(_:)``.
+  @Entry public var themePreferences: ThemePreferences?
 }
 
 extension View {
@@ -261,6 +274,7 @@ private struct AppearanceSettingsHost: ViewModifier {
       content
       .transcriptAppearance(from: preferences.transcript)
       .environment(\.openAppearanceSettings, OpenAppearanceSettingsAction(presenter: presenter))
+      .environment(\.themePreferences, preferences)
       .sheet(isPresented: $isPresented) {
         AppearanceSettingsView(preferences: preferences)
       }

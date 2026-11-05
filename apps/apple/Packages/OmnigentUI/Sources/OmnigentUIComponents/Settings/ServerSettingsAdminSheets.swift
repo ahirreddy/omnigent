@@ -51,7 +51,7 @@ struct InviteMemberSheet: View {
       }
     }
     .padding(Theme.Spacing.large)
-    .frame(width: 440)
+    .settingsSheetFrame(width: 440)
   }
 
   private func create() {
@@ -108,7 +108,7 @@ struct AddPolicySheet: View {
       }
       .padding(Theme.Spacing.large)
     }
-    .frame(width: 520, height: 520)
+    .settingsSheetFrame(width: 520, height: 520)
   }
 
   private var picker: some View {

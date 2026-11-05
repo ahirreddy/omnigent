@@ -13,9 +13,8 @@ import SwiftUI
 struct PaletteAdapter: ViewModifier {
   let session: ServerSession
   @Binding var selection: SidebarDestination?
-  #if os(macOS)
-    @Environment(\.openSettingsAt) private var openSettingsAt
-  #else
+  @Environment(\.openSettingsAt) private var openSettingsAt
+  #if os(iOS)
     @State private var sidebarToggle = SidebarToggle()
   #endif
 
@@ -132,9 +131,7 @@ struct PaletteAdapter: ViewModifier {
       selection = nil
       session.signIn.connect(url)
     case .settings:
-      #if os(macOS)
-        openSettingsAt?(.tab(SettingsNavigator.generalTab))
-      #endif
+      openSettingsAt?(.tab(SettingsNavigator.generalTab))
     case .toggleSidebar:
       #if os(macOS)
         // The split view's own toggle, as View > Show Sidebar sends it.

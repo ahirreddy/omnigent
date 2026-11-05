@@ -20,20 +20,17 @@ public struct SettingsDataSection: View {
   /// The section.
   public var body: some View {
     Section {
-      HStack {
-        if let failure {
-          Label(failure, systemImage: "exclamationmark.triangle").foregroundStyle(Theme.failure)
-        } else if let status {
-          Text(status).foregroundStyle(.secondary)
+      #if os(iOS)
+        // One row per action: a touch row fires every plain button it holds.
+        message
+        buttons
+      #else
+        HStack {
+          message
+          Spacer()
+          buttons
         }
-        Spacer()
-        Button("Export\u{2026}", action: export)
-          .accessibilityIdentifier("settings.data.export")
-        Button("Import\u{2026}") { importing = true }
-          .accessibilityIdentifier("settings.data.import")
-        Button("Reset to Defaults\u{2026}") { confirmingReset = true }
-          .accessibilityIdentifier("settings.data.reset")
-      }
+      #endif
     } header: {
       Text("Settings data")
     } footer: {
@@ -63,6 +60,23 @@ public struct SettingsDataSection: View {
     } message: {
       Text("This will reset every appearance choice back to its default.")
     }
+  }
+
+  @ViewBuilder private var message: some View {
+    if let failure {
+      Label(failure, systemImage: "exclamationmark.triangle").foregroundStyle(Theme.failure)
+    } else if let status {
+      Text(status).foregroundStyle(.secondary)
+    }
+  }
+
+  @ViewBuilder private var buttons: some View {
+    Button("Export\u{2026}", action: export)
+      .accessibilityIdentifier("settings.data.export")
+    Button("Import\u{2026}") { importing = true }
+      .accessibilityIdentifier("settings.data.import")
+    Button("Reset to Defaults\u{2026}") { confirmingReset = true }
+      .accessibilityIdentifier("settings.data.reset")
   }
 
   private func export() {

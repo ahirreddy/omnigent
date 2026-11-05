@@ -44,18 +44,27 @@ extension ServerCommandActions: FocusedActions {
 extension FocusedValues {
   /// The focused scene's server commands.
   @Entry public var serverCommands: ServerCommandActions?
+  /// The focused iPhone or iPad scene's Settings screen.
+  @Entry public var openSettingsScreen: OpenSettingsScreenAction?
 }
 
 /// View > Reconnect and the Server menu (Change Server, Sign Out) for iPad's menu bar and
 /// keyboard. Add it with `.commands { OmnigentServerCommands() }`.
 public struct OmnigentServerCommands: Commands {
   @FocusedValue(\.serverCommands) private var actions
+  @FocusedValue(\.openSettingsScreen) private var openSettings
 
   /// Creates the commands.
   public init() {}
 
   /// The menus.
   public var body: some Commands {
+    // iPad's app menu: the Settings screen (Command-comma), as the Mac's Settings window.
+    CommandGroup(replacing: .appSettings) {
+      Button("Settings\u{2026}") { openSettings?() }
+        .keyboardShortcut(AppShortcuts.settings)
+        .disabled(openSettings == nil)
+    }
     CommandGroup(before: .toolbar) {
       // Command-R reloads a browser tab and Option-Command-R renames the session.
       Button("Reconnect") { actions?.reconnect?() }
