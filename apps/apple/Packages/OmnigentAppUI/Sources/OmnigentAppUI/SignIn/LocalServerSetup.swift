@@ -31,7 +31,18 @@
 
     /// The CLI and server as the setup screens show them.
     public var state: LocalSetupState {
-      Self.state(cli: manager.cli, server: manager.server, log: recentLog)
+      var state = Self.state(cli: manager.cli, server: manager.server, log: recentLog)
+      state.install = Self.install(manager.cliInstall)
+      return state
+    }
+
+    /// The installer's state as the install screen shows it.
+    nonisolated static func install(_ install: LocalCLIInstallState) -> LocalSetupState.Install {
+      switch install {
+      case .idle: .idle
+      case .installing: .installing
+      case .failed(let reason): .failed(reason)
+      }
     }
 
     private var recentLog: [String] {
@@ -47,7 +58,11 @@
           Task { await manager.refreshCLI() }
         },
         hostAfterSignIn: { [weak self] url in self?.pendingHost = url },
-        showLogs: showLogs)
+        showLogs: showLogs,
+        installCLI: { [weak self] in
+          guard let manager = self?.manager else { return }
+          Task { await manager.installCLI() }
+        })
     }
 
     /// Hosts for `baseUrl` when the user chose this Mac for it before signing in.

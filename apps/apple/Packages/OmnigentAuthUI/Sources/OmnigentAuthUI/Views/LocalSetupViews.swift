@@ -126,31 +126,56 @@ struct InstallCLIView: View {
 
   var body: some View {
     AuthCard(
-      systemImage: "terminal", title: "Install the Omnigent CLI",
-      subtitle:
-        "Omnigent runs on this Mac through its command-line tool. Install it, check that `omnigent --version` works in a new Terminal window, then check again."
+      systemImage: "terminal", title: "Install the Omnigent CLI", subtitle: subtitle,
+      isProgress: isInstalling
     ) {
       if let url = LocalSetupActions.installGuideURL {
         Button("Installation Instructions", systemImage: "safari") { openURL(url) }
           .accessibilityIdentifier("auth.install-guide")
       }
-      if checked, case .missing(let reason) = state.cli {
+      if case .failed(let reason) = state.install {
+        AuthBannerView(.notice(ServerText.escaped(reason, limit: 400)))
+      } else if checked, !isInstalling, case .missing(let reason) = state.cli {
         AuthBannerView(.notice(ServerText.escaped(reason, limit: 400)))
       }
+      if isInstalling || state.install != .idle { LogTail(lines: state.log) }
     } buttons: {
       AuthButton(title: "Back", kind: .cancel, identifier: "auth.back", action: back)
+        .disabled(isInstalling)
       AuthButton(
-        title: state.cli == .checking ? "Checking\u{2026}" : "Check Again", kind: .primary,
+        title: state.cli == .checking ? "Checking\u{2026}" : "Check Again",
+        kind: actions.installCLI == nil ? .primary : .secondary,
         isBusy: state.cli == .checking, identifier: "auth.recheck-cli"
       ) {
         checked = true
         actions.recheckCLI()
       }
-      .disabled(state.cli == .checking)
+      .disabled(state.cli == .checking || isInstalling)
+      if let install = actions.installCLI {
+        AuthButton(
+          title: isInstalling ? "Installing\u{2026}" : "Install", kind: .primary,
+          isBusy: isInstalling, identifier: "auth.install-cli"
+        ) {
+          checked = true
+          install()
+        }
+        .disabled(isInstalling)
+      }
     }
     .onChange(of: state.cli) { _, cli in
       if checked, cli == .found { start() }
     }
+  }
+
+  private var isInstalling: Bool { state.install == .installing }
+
+  private var subtitle: String {
+    if isInstalling {
+      return "Installing uv and the Omnigent CLI. This can take a few minutes."
+    }
+    return actions.installCLI == nil
+      ? "Omnigent runs on this Mac through its command-line tool. Install it, check that `omnigent --version` works in a new Terminal window, then check again."
+      : "Omnigent runs on this Mac through its command-line tool. Install it here, or follow the instructions and check again."
   }
 }
 

@@ -29,6 +29,8 @@ public final class SignInController {
   public internal(set) var accountForm = AccountForm.signIn
   /// The server being signed in to, when it has no administrator yet.
   public internal(set) var unclaimedServer: ServerIdentity?
+  /// An invite link that opened the app: Create Account opens with it until signed in.
+  public internal(set) var inviteLink: String?
   /// This Mac's local server for "Get started locally"; `nil` where it cannot run.
   @ObservationIgnored public var localSetup: (any LocalSetupSource)?
 
@@ -68,7 +70,8 @@ public final class SignInController {
   public var state: AuthViewState {
     AuthViewState(
       phase: phase, server: unclaimedServer, directory: directory, lastServerUrl: lastServerUrl,
-      notice: notice, accountForm: accountForm, localSetup: localSetup?.state)
+      notice: notice, accountForm: accountForm, localSetup: localSetup?.state,
+      inviteLink: inviteLink)
   }
 
   /// The actions the sign-in UI calls.
@@ -111,12 +114,18 @@ public final class SignInController {
   /// saved sign-in when there is one, and reports progress through the phase.
   /// - Parameter serverURL: The server as typed.
   public func connect(_ serverURL: String) {
-    let trimmed = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    var trimmed = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    inviteLink = nil
+    // A pasted invite link connects to its server and opens Create Account with it.
+    if let server = Self.inviteServer(trimmed) {
+      inviteLink = trimmed
+      trimmed = server
+    }
     lastServerUrl = trimmed
     notice = nil
     flowError = nil
     method = nil
-    accountForm = .signIn
+    accountForm = inviteLink == nil ? .signIn : .register
     unclaimedServer = nil
     Task { await connectNow(trimmed) }
   }
@@ -157,7 +166,7 @@ public final class SignInController {
       baseUrl = url
       let needsSetup = store.core?.needsAccountSetup() ?? false
       unclaimedServer = needsSetup ? ServerIdentity(baseUrl: url, needsSetup: true) : nil
-      accountForm = needsSetup ? .createAdmin : .signIn
+      accountForm = needsSetup ? .createAdmin : inviteLink == nil ? .signIn : .register
     default:
       return
     }

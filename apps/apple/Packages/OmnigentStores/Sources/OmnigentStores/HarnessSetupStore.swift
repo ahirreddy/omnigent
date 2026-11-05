@@ -132,6 +132,29 @@ public final class HarnessSetupStore {
     notice = nil
   }
 
+  /// Applies what a sign-in, sign-out, update or refresh reported for `hostID`.
+  /// - Parameters:
+  ///   - snapshot: The host's reported readiness and accounts.
+  ///   - hostID: The host.
+  public func apply(_ snapshot: HarnessHostSnapshot, hostID: String) {
+    guard let current = catalog.value else { return }
+    let updated = harnessSetupCatalogApplyingSnapshot(
+      catalog: current, hostId: hostID, snapshot: snapshot)
+    if updated != current { catalog = .loaded(updated) }
+  }
+
+  /// The details of `harness` on `hostID`, once the catalog loaded.
+  /// - Parameters:
+  ///   - harness: The harness id.
+  ///   - name: Its display name.
+  ///   - hostID: The host.
+  /// - Returns: The details, or `nil` before the catalog loads or for an unknown host.
+  public func detail(harness: String, name: String, hostID: String) -> HarnessDetail? {
+    catalog.value.flatMap {
+      harnessDetail(catalog: $0, harness: harness, name: name, hostId: hostID)
+    }
+  }
+
   private func apply(_ readiness: [HarnessAvailabilityEntry], hostID: String) {
     guard let current = catalog.value else { return }
     catalog = .loaded(

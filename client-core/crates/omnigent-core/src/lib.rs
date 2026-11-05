@@ -17,6 +17,7 @@ pub mod deeplink;
 pub mod demo;
 mod discovery;
 mod error;
+pub mod harness_accounts;
 pub mod harness_setup;
 pub mod http;
 pub mod ledger;

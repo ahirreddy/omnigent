@@ -293,6 +293,58 @@ struct LocalHostModeTests {
     #expect(serverURL == url)
   }
 
+  @Test("a remote server the CLI is not signed in to runs omnigent login first")
+  func signsInBeforeHosting() async throws {
+    let harness = try LocalServerHarness()
+    defer { harness.cleanUp() }
+    harness.manager.confirmHostMode = { _ in true }
+    harness.probe.answerSignIn(.signInNeeded)
+    let tokens = harness.root.appending(path: ".omnigent")
+    try FileManager.default.createDirectory(at: tokens, withIntermediateDirectories: true)
+    try Data(#"{"https://omnigent.example.com":{"token":"tok","expires_at":1}}"#.utf8)
+      .write(to: tokens.appending(path: "auth_tokens.json"))
+    harness.runner.script(
+      { process in process.exit(.exited(0)) },
+      { process in process.print("\u{2713} Connected as 'mac' (abc), 0 live runner(s).") })
+    let url = try url("https://omnigent.example.com/")
+    await harness.manager.startHost(serverURL: url)
+    #expect(harness.runner.launches.map(\.arguments.first) == ["login", "host"])
+    #expect(harness.runner.launches.first?.arguments.last == "https://omnigent.example.com/")
+    #expect(harness.probe.signInBearers == [nil], "an expired token is not sent")
+    #expect(harness.manager.host == .connected(serverURL: url, .owned))
+  }
+
+  @Test("a sign-in that does not complete stops before hosting")
+  func signInFails() async throws {
+    let harness = try LocalServerHarness()
+    defer { harness.cleanUp() }
+    harness.manager.confirmHostMode = { _ in true }
+    harness.probe.answerSignIn(.signInNeeded)
+    harness.runner.script({ process in process.exit(.exited(1)) })
+    let url = try url("https://omnigent.example.com")
+    await harness.manager.startHost(serverURL: url)
+    #expect(harness.runner.launches.count == 1)
+    guard case .failed(.hostAuthenticationRequired(let serverURL, _)) = harness.manager.host else {
+      Issue.record("expected an authentication failure, got \(harness.manager.host)")
+      return
+    }
+    #expect(serverURL == url)
+  }
+
+  @Test("a loopback or signed-in server hosts without a sign-in")
+  func noSignInNeeded() async throws {
+    let harness = try LocalServerHarness()
+    defer { harness.cleanUp() }
+    harness.manager.confirmHostMode = { _ in true }
+    harness.probe.answerSignIn(.signInNeeded)
+    harness.runner.script({ process in
+      process.print("\u{2713} Connected as 'mac' (abc), 0 live runner(s).")
+    })
+    await harness.manager.startHost(serverURL: try loopback(6767))
+    #expect(harness.runner.launches.map(\.arguments.first) == ["host"])
+    #expect(harness.probe.signInBearers.isEmpty)
+  }
+
   @Test("without a server URL hosting fails clearly")
   func noServer() async throws {
     let harness = try LocalServerHarness()

@@ -27,22 +27,36 @@ public nonisolated struct LocalSetupState: Hashable, Sendable {
     case failed(String)
   }
 
+  /// Installing the CLI from the app.
+  public enum Install: Hashable, Sendable {
+    /// Not installing.
+    case idle
+    /// The installer is running.
+    case installing
+    /// The installer failed, with why.
+    case failed(String)
+  }
+
   /// The CLI lookup.
   public var cli: CLI
   /// The local server.
   public var server: Server
   /// The server's most recent output lines, oldest first.
   public var log: [String]
+  /// Installing the CLI.
+  public var install: Install
 
   /// Creates a state.
   /// - Parameters:
   ///   - cli: The CLI lookup.
   ///   - server: The local server.
   ///   - log: Recent output lines.
-  public init(cli: CLI, server: Server, log: [String] = []) {
+  ///   - install: Installing the CLI.
+  public init(cli: CLI, server: Server, log: [String] = [], install: Install = .idle) {
     self.cli = cli
     self.server = server
     self.log = log
+    self.install = install
   }
 
   /// Whether the server already runs, so the action opens it rather than starting it.
@@ -68,6 +82,8 @@ public struct LocalSetupActions {
   public var hostAfterSignIn: @MainActor (String) -> Void
   /// Show the local server's full log, when the app has a window for it.
   public var showLogs: (@MainActor () -> Void)?
+  /// Install the CLI from the app, where it can.
+  public var installCLI: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:
@@ -75,15 +91,17 @@ public struct LocalSetupActions {
   ///   - recheckCLI: Look for the CLI again.
   ///   - hostAfterSignIn: Host for a server once signed in to it.
   ///   - showLogs: Show the server's full log.
+  ///   - installCLI: Install the CLI.
   public init(
     start: @escaping @MainActor () -> Void, recheckCLI: @escaping @MainActor () -> Void,
     hostAfterSignIn: @escaping @MainActor (String) -> Void,
-    showLogs: (@MainActor () -> Void)? = nil
+    showLogs: (@MainActor () -> Void)? = nil, installCLI: (@MainActor () -> Void)? = nil
   ) {
     self.start = start
     self.recheckCLI = recheckCLI
     self.hostAfterSignIn = hostAfterSignIn
     self.showLogs = showLogs
+    self.installCLI = installCLI
   }
 
   /// Where to read how to install the CLI.

@@ -109,11 +109,14 @@ public final class ServerWindowRegistry {
     pendingRoutes[instance]
   }
 
-  /// Removes and returns the route waiting for a ready window.
+  /// Removes and returns the route waiting for a ready window, or for any open window when the
+  /// route applies before sign-in (an invite).
   /// - Parameter instance: The window's instance.
-  /// - Returns: The route, or `nil` when none is waiting or the window is not ready.
+  /// - Returns: The route, or `nil` when none is waiting or the window cannot take it yet.
   public func takePendingRoute(for instance: UUID) -> DeepLinkRoute? {
-    guard entry(instance)?.isReady == true, let route = pendingRoutes[instance] else {
+    guard let entry = entry(instance), let route = pendingRoutes[instance],
+      entry.isReady || route.appliesBeforeSignIn
+    else {
       return nil
     }
     pendingRoutes[instance] = nil

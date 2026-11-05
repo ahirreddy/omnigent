@@ -39,6 +39,26 @@ extension SignInController {
     }
   }
 
+  /// Opens Create Account with `link`, an invite to the server this controller connects to.
+  /// - Parameter link: The invite link (`…/register?invite=<token>`).
+  public func openInvite(_ link: String) {
+    inviteLink = link
+    flowError = nil
+    if store.connectedServer == nil { accountForm = .register }
+  }
+
+  /// The server of an invite link (`https://host/mount/register?invite=<token>` →
+  /// `https://host/mount`), or `nil` when `text` is not one.
+  nonisolated static func inviteServer(_ text: String) -> String? {
+    guard inviteTokenFromLink(text: text) != nil, var components = URLComponents(string: text),
+      components.scheme != nil, components.path.hasSuffix("/register")
+    else { return nil }
+    components.path.removeLast("/register".count)
+    components.query = nil
+    components.fragment = nil
+    return components.string
+  }
+
   /// Switches the accounts screen between signing in and creating an account.
   func showAccountForm(_ form: AccountForm) {
     flowError = nil
@@ -66,6 +86,7 @@ extension SignInController {
 
   /// A connect or sign-in in this window reached `server`.
   func signedInHere(_ server: ConnectedServer) {
+    inviteLink = nil
     localSetup?.didSignIn(to: server.baseUrl)
     onSignedIn(server)
   }

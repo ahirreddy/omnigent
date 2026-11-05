@@ -123,7 +123,7 @@ extension SessionListStore {
     do {
       let hosts = try await core.hosts()
       let environments = OmnigentCoreFFI.hostEnvironments(
-        hosts: hosts, serverUrl: serverURL, thisMachineHostId: nil)
+        hosts: hosts, serverUrl: serverURL, thisMachineHostId: thisMachineHostID())
       let byID = Dictionary(
         environments.map { ($0.hostId, $0.environment) }, uniquingKeysWith: { first, _ in first })
       if byID != hostEnvironments { hostEnvironments = byID }

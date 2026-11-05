@@ -105,6 +105,15 @@ struct ServerWindowRoot: View {
     session.signIn.directory = services.serverDirectory()
     session.signIn.localSetup = LocalServerSetup(
       manager: desktop.localServer, showLogs: { openWindow(id: LocalServerLogsWindow.id) })
+    session.connection.sessionList.thisMachineHostID = { [services, server = desktop.localServer] in
+      do {
+        return try server.cliConfigText().flatMap { hostIdFromCliConfig(configYaml: $0) }
+      } catch {
+        services.logger.error(
+          "This Mac's host id is unreadable: \(error.localizedDescription, privacy: .public)")
+        return nil
+      }
+    }
     session.signIn.forgetServer = { [services] url in
       if let url = URL(string: url) { services.recentServers.forget(url) }
       session.signIn.directory = services.serverDirectory()
@@ -195,6 +204,14 @@ struct ServerWindowRoot: View {
     switch route {
     case .home: selection = nil
     case .conversation(let sessionID): selection = .session(sessionID)
+    case .register(let invite):
+      guard let session, let serverURL = id.serverURL,
+        var components = URLComponents(url: serverURL, resolvingAgainstBaseURL: false)
+      else { return }
+      while components.path.hasSuffix("/") { components.path.removeLast() }
+      components.path += "/register"
+      components.queryItems = [URLQueryItem(name: "invite", value: invite)]
+      if let link = components.string { session.signIn.openInvite(link) }
     }
   }
 

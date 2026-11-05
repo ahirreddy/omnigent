@@ -23,13 +23,22 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
   case home
   /// A conversation, `omnigent://host/c/<sessionID>`.
   case conversation(sessionID: String)
+  /// An invite, `omnigent://host/register?invite=<token>`: Create Account with it.
+  case register(invite: String)
 
-  /// The basename-less SPA path for this route, `/` or `/c/<id>`.
+  /// The basename-less SPA path for this route, `/`, `/c/<id>` or `/register`.
   public var path: String {
     switch self {
     case .home: "/"
     case .conversation(let sessionID): "/c/\(sessionID)"
+    case .register: "/register"
     }
+  }
+
+  /// Whether a window opens the route while still signing in, as an invite must.
+  public var appliesBeforeSignIn: Bool {
+    if case .register = self { return true }
+    return false
   }
 }
 
@@ -98,13 +107,22 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
     } catch {
       throw .invalidOrigin(error)
     }
-    route = try Self.route(path)
+    route = try Self.route(path, query: query)
     acknowledgment = try Self.acknowledgment(query)
   }
 
-  /// `""` and `/` are home; `/c/<id>` and `/c/<id>/` are a conversation.
-  private static func route(_ path: Substring) throws(DeepLinkError) -> DeepLinkRoute {
+  /// `""` and `/` are home; `/c/<id>` and `/c/<id>/` are a conversation; `/register` with a
+  /// non-empty `invite` is an invite.
+  private static func route(_ path: Substring, query: Substring) throws(DeepLinkError)
+    -> DeepLinkRoute
+  {
     if path.isEmpty || path == "/" { return .home }
+    if path == "/register" || path == "/register/" {
+      guard let invite = queryValue("invite", in: query), !invite.isEmpty else {
+        throw .unsupportedPath(String(path))
+      }
+      return .register(invite: invite)
+    }
     var segments = path.split(separator: "/", omittingEmptySubsequences: false)
     if segments.last?.isEmpty == true { segments.removeLast() }
     guard segments.count == 3, segments[0].isEmpty, segments[1] == "c", !segments[2].isEmpty,
@@ -138,6 +156,16 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
       nonce.unicodeScalars.allSatisfy({ ("0"..."9").contains($0) || ("a"..."f").contains($0) })
     else { throw .invalidAcknowledgment(value) }
     return DeepLinkAcknowledgment(port: port, nonce: String(nonce))
+  }
+
+  /// The first decoded value of `name` in `query`.
+  private static func queryValue(_ name: String, in query: Substring) -> String? {
+    for pair in query.split(separator: "&") {
+      let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+      guard let key = parts.first, formDecoded(key) == name else { continue }
+      return parts.dropFirst().first.flatMap(formDecoded) ?? ""
+    }
+    return nil
   }
 
   /// `application/x-www-form-urlencoded` decoding, as URLSearchParams does.

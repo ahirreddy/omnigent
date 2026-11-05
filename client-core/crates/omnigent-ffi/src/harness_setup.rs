@@ -8,6 +8,9 @@ use omnigent_core::harness_setup as core;
 
 use crate::client::ClientCore;
 use crate::errors::CoreError;
+use crate::harness_accounts::{
+    GatewayInferenceEntry, HarnessAccountEntry, account_entries, account_map, gateway_entries,
+};
 
 /// What a host reports for one harness.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -64,7 +67,9 @@ pub struct HarnessAvailabilityEntry {
     pub availability: HarnessAvailability,
 }
 
-fn entries(map: BTreeMap<String, core::HarnessAvailability>) -> Vec<HarnessAvailabilityEntry> {
+pub(crate) fn entries(
+    map: BTreeMap<String, core::HarnessAvailability>,
+) -> Vec<HarnessAvailabilityEntry> {
     map.into_iter()
         .map(|(harness, availability)| HarnessAvailabilityEntry {
             harness,
@@ -114,6 +119,15 @@ pub struct SetupHost {
     pub sandbox_provider: Option<String>,
     /// Per-harness availability; `None` when not reported.
     pub harnesses: Option<Vec<HarnessAvailabilityEntry>>,
+    /// The accounts harnesses are signed in with; `None` when not reported.
+    #[uniffi(default)]
+    pub accounts: Option<Vec<HarnessAccountEntry>>,
+    /// Harnesses whose inference goes through a gateway; `None` when not reported.
+    #[uniffi(default)]
+    pub gateway_inference: Option<Vec<GatewayInferenceEntry>>,
+    /// The host signs harnesses in and out from the app.
+    #[uniffi(default)]
+    pub login_supported: bool,
 }
 
 /// The setup features, the harnesses' steps and the hosts (online first).
@@ -167,6 +181,9 @@ impl From<core::SetupHost> for SetupHost {
             status: host.status,
             sandbox_provider: host.sandbox_provider,
             harnesses: host.harnesses.map(entries),
+            accounts: host.accounts.map(account_entries),
+            gateway_inference: host.gateway_inference.map(gateway_entries),
+            login_supported: host.login_supported,
         }
     }
 }
@@ -184,6 +201,14 @@ impl From<SetupHost> for core::SetupHost {
                     .map(|entry| (entry.harness, entry.availability.into()))
                     .collect()
             }),
+            accounts: host.accounts.map(account_map),
+            gateway_inference: host.gateway_inference.map(|entries| {
+                entries
+                    .into_iter()
+                    .map(|entry| (entry.harness, entry.enabled))
+                    .collect()
+            }),
+            login_supported: host.login_supported,
         }
     }
 }
