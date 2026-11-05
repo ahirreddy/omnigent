@@ -71,4 +71,90 @@ struct ServerSettingsAdapterTests {
       ServerSettingsAdapter.importSummary(result)
         == "Imported 3, 1 already imported, 1 failed. x: unreadable")
   }
+
+  @Test("an SSO sign-in shows Account, with Sign out but no password change")
+  func ssoAccount() {
+    var sso = info(admin: false)
+    sso.hasLoginSession = true
+    #expect(ServerSettingsAdapter.panes(sso).first == .account)
+    #expect(ServerSettingsAdapter.panes(info(admin: false)).first != .account)
+  }
+
+  @Test("archived sessions: only your own can be deleted; projects are named and sorted")
+  func archivedFacts() {
+    let mine = archivedSession("a", owner: nil, projectID: "p_2")
+    let ada = archivedSession("b", owner: "ada", projectLabel: "Legacy")
+    let bob = archivedSession("c", owner: "bob", projectID: "p_1")
+    #expect(ServerSettingsAdapter.archivedInfo(mine, userID: "ada").canDelete)
+    #expect(ServerSettingsAdapter.archivedInfo(ada, userID: "ada").canDelete)
+    #expect(!ServerSettingsAdapter.archivedInfo(bob, userID: "ada").canDelete)
+    #expect(ServerSettingsAdapter.archivedInfo(ada, userID: "ada").projectID == "label:Legacy")
+    let projects = [
+      OmnigentCoreFFI.ProjectSummary(id: "p_1", name: "Zeta", icon: nil),
+      OmnigentCoreFFI.ProjectSummary(id: "p_2", name: "Alpha", icon: nil),
+    ]
+    let choices = ServerSettingsAdapter.archivedProjects(
+      [mine, ada, bob, mine], projects: projects)
+    #expect(choices.map(\.title) == ["Alpha", "Legacy", "Zeta"])
+    #expect(choices.map(\.id) == ["p_2", "label:Legacy", "p_1"])
+  }
+
+  @Test("a request for a server matches it ignoring case and a trailing slash")
+  func requestedServer() {
+    let ids = ["https://a.example.com", "http://127.0.0.1:6767"]
+    #expect(ServerSettingsContainer.server("HTTPS://a.example.com/", in: ids) == ids[0])
+    #expect(ServerSettingsContainer.server("https://b.example.com", in: ids) == nil)
+    #expect(ServerSettingsContainer.server(nil, in: ids) == nil)
+  }
+}
+
+@Suite("Settings navigation")
+@MainActor
+struct SettingsNavigatorTests {
+  @Test("a server destination selects the Servers tab and leaves one request to take")
+  func serverDestination() {
+    let navigator = SettingsNavigator()
+    #expect(navigator.tab == SettingsNavigator.generalTab)
+    navigator.show(.server(url: "https://a.example.com", pane: .importSessions))
+    #expect(navigator.tab == SettingsNavigator.serversTab)
+    let request = navigator.takeServerRequest()
+    #expect(request?.url == "https://a.example.com" && request?.pane == .importSessions)
+    #expect(navigator.takeServerRequest() == nil)
+    navigator.show(.tab(SettingsNavigator.terminalTab))
+    #expect(navigator.tab == SettingsNavigator.terminalTab && navigator.serverRequest == nil)
+  }
+
+  @Test("asking twice for the same server is two requests")
+  func repeatedRequestsDiffer() {
+    let navigator = SettingsNavigator()
+    navigator.show(.server(url: nil, pane: nil))
+    let first = navigator.takeServerRequest()
+    navigator.show(.server(url: nil, pane: nil))
+    #expect(first != navigator.takeServerRequest())
+  }
+
+  @Test("opening Settings moves the navigator, then shows the window")
+  func openAction() {
+    let navigator = SettingsNavigator()
+    var opened: [String] = []
+    let action = OpenSettingsDestinationAction { destination in
+      navigator.show(destination)
+      opened.append(navigator.tab)
+    }
+    action(.tab(SettingsNavigator.appearanceTab))
+    #expect(opened == [SettingsNavigator.appearanceTab])
+  }
+}
+
+private func archivedSession(
+  _ id: String, owner: String?, projectID: String? = nil, projectLabel: String? = nil
+) -> OmnigentCoreFFI.SessionSummary {
+  var session = OmnigentCoreFFI.SessionSummary(
+    id: id, title: id, preview: "", status: .idle, isReadOnly: false, updatedAt: 100,
+    workspace: "", agentName: "", isPinned: false, isArchived: true, permissionLevel: 4,
+    failureMessage: nil, canRename: true, canPin: true, canArchive: true)
+  session.owner = owner
+  session.projectId = projectID
+  session.projectLabel = projectLabel
+  return session
 }

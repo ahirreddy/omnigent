@@ -324,6 +324,12 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Automations intro:** the "Watch for new work" step is left out until the Mac editor has the
   Jira, Slack and GitHub templates it describes.
 - [ ] **Toasts:** fork's "Session created [Open]" should use `TransientBanner` (fork flow).
+- [ ] **Host import review (Mac):** the web's `ImportReviewGate` (behind the `import_review`
+  feature) opens the import modal for a newly connected host's MCPs, skills and plugins; the Mac
+  app has no harness-inventory read or modal yet.
+- [ ] **Settings › Archived (Mac):** retention uses a session's last change, not the server's
+  `omnigent.archived_at` label (the core's session summary does not carry it), and the project
+  filter covers loaded pages only (the web pages through every archived session).
 
 ## Product decisions
 

@@ -9,12 +9,32 @@ enum ServerSettingsAdapter {
   /// - Parameters:
   ///   - store: The selected server's settings, if one is signed in.
   ///   - servers: The signed-in servers.
+  ///   - projects: The server's projects, naming the Archived pane's filter.
   ///   - now: For "last signed in" labels.
   /// - Returns: The state.
-  static func state(_ store: ServerSettingsStore?, servers: [ServerChoice], now: Date = .now)
+  static func state(
+    _ store: ServerSettingsStore?, servers: [ServerChoice],
+    projects: [OmnigentCoreFFI.ProjectSummary] = [],
+    now: Date = .now
+  ) -> ServerSettingsViewState {
+    guard let store else { return ServerSettingsViewState(servers: servers, panes: []) }
+    var state = baseState(store, servers: servers, now: now)
+    let info = store.info.value
+    state.account = info.map {
+      ServerAccountState(
+        userID: $0.userId, isAdmin: $0.isAdmin, canChangePassword: $0.accountsEnabled)
+    }
+    let archived = store.archived.value ?? []
+    state.archivedInfo = Dictionary(
+      archived.map { ($0.id, archivedInfo($0, userID: info?.userId)) },
+      uniquingKeysWith: { first, _ in first })
+    state.archivedProjects = archivedProjects(archived, projects: projects)
+    return state
+  }
+
+  private static func baseState(_ store: ServerSettingsStore, servers: [ServerChoice], now: Date)
     -> ServerSettingsViewState
   {
-    guard let store else { return ServerSettingsViewState(servers: servers, panes: []) }
     let info = store.info.value
     let loads: [CoreError?] = [
       store.info.error, store.members.error, store.policies.error, store.sharing.error,
@@ -44,7 +64,8 @@ enum ServerSettingsAdapter {
   static func panes(_ info: ServerSettingsInfo?) -> [ServerSettingsPane] {
     guard let info else { return [.harnesses, .customAgents, .git, .importSessions, .archived] }
     var panes: [ServerSettingsPane] = []
-    if info.accountsEnabled { panes.append(.account) }
+    // Any sign-in with a session to end (password or SSO) shows who you are and Sign out.
+    if info.accountsEnabled || info.hasLoginSession { panes.append(.account) }
     panes += [.harnesses, .customAgents]
     if info.mcpRegistry { panes.append(.mcp) }
     if !info.connections.isEmpty { panes.append(.integrations) }
@@ -55,6 +76,38 @@ enum ServerSettingsAdapter {
     if info.isAdmin, !info.singleUser { panes.append(.sharing) }
     panes.append(.archived)
     return panes
+  }
+
+  /// An archived session's project key, archive time and whether the caller may delete it (only
+  /// their own; an unreported owner is the caller). The archive time is the last change: it is
+  /// never earlier than the archive, so retention can only keep a session longer.
+  static func archivedInfo(_ session: OmnigentCoreFFI.SessionSummary, userID: String?)
+    -> ArchivedSessionInfo
+  {
+    ArchivedSessionInfo(
+      projectID: projectKey(session), archivedAt: session.updatedAt,
+      canDelete: session.owner == nil || session.owner == userID)
+  }
+
+  /// The projects the archived sessions are filed in, by name.
+  static func archivedProjects(
+    _ sessions: [OmnigentCoreFFI.SessionSummary], projects: [OmnigentCoreFFI.ProjectSummary]
+  ) -> [SettingChoice] {
+    let names = Dictionary(
+      projects.compactMap { project in project.id.map { ($0, project.name) } },
+      uniquingKeysWith: { first, _ in first })
+    var seen = Set<String>()
+    let choices = sessions.compactMap { session -> SettingChoice? in
+      guard let key = projectKey(session), seen.insert(key).inserted else { return nil }
+      let title = session.projectId.flatMap { names[$0] } ?? session.projectLabel ?? "Project"
+      return SettingChoice(id: key, title: title)
+    }
+    return choices.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+  }
+
+  /// A first-class project's id, or a legacy label project's name under its own prefix.
+  private static func projectKey(_ session: OmnigentCoreFFI.SessionSummary) -> String? {
+    session.projectId ?? session.projectLabel.map { "label:\($0)" }
   }
 
   static func member(_ member: ServerMemberRecord, info: ServerSettingsInfo?, now: Date)

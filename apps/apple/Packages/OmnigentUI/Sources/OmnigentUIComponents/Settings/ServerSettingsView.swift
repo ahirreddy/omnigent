@@ -8,34 +8,40 @@ public struct ServerSettingsView: View {
   @Binding private var selectedServer: String?
   private let actions: ServerSettingsActions
   private let hostedPane: (ServerSettingsPane) -> AnyView?
-  @State private var pane: ServerSettingsPane?
+  private let selectedPane: Binding<ServerSettingsPane?>?
+  @State private var localPane: ServerSettingsPane?
 
   /// Creates the settings.
   /// - Parameters:
   ///   - state: The selected server's settings.
   ///   - selectedServer: The server whose settings show.
+  ///   - selectedPane: The shown pane, so the host can open one; the view keeps its own when
+  ///     `nil`.
   ///   - actions: Loads and changes.
   ///   - hostedPane: A pane the host draws itself (for example Harnesses over the app's stores),
   ///     or `nil` for the built-in one.
   public init(
     state: ServerSettingsViewState, selectedServer: Binding<String?>,
-    actions: ServerSettingsActions,
+    selectedPane: Binding<ServerSettingsPane?>? = nil, actions: ServerSettingsActions,
     hostedPane: @escaping (ServerSettingsPane) -> AnyView? = { _ in nil }
   ) {
     self.state = state
     _selectedServer = selectedServer
+    self.selectedPane = selectedPane
     self.actions = actions
     self.hostedPane = hostedPane
   }
 
+  private var pane: Binding<ServerSettingsPane?> { selectedPane ?? $localPane }
+
   private var shownPane: ServerSettingsPane? {
-    pane.flatMap { state.panes.contains($0) ? $0 : nil } ?? state.panes.first
+    pane.wrappedValue.flatMap { state.panes.contains($0) ? $0 : nil } ?? state.panes.first
   }
 
   /// The settings.
   public var body: some View {
     NavigationSplitView {
-      List(selection: $pane) {
+      List(selection: pane) {
         Section {
           ForEach(state.panes.filter { !$0.isAdmin && $0 != .archived }) { row($0) }
         }
@@ -98,7 +104,7 @@ public struct ServerSettingsView: View {
 
   @ViewBuilder private var builtInPane: some View {
     switch shownPane {
-    case .account: ChangePasswordPane(actions: actions)
+    case .account: AccountSettingsPane(account: state.account, actions: actions)
     case .harnesses: harnesses
     case .customAgents: Text("Custom agents are not available here.").foregroundStyle(.secondary)
     case .mcp: MCPPane(services: state.mcpServices, actions: actions)
@@ -111,7 +117,8 @@ public struct ServerSettingsView: View {
     case .sharing: SharingPane(sharing: state.sharing, actions: actions)
     case .archived:
       ArchivedSessionsPane(
-        sessions: state.archived, hasMore: state.hasMoreArchived, actions: actions)
+        sessions: state.archived, info: state.archivedInfo, projects: state.archivedProjects,
+        hasMore: state.hasMoreArchived, actions: actions)
     case nil: Text("Sign in to a server to see its settings.").foregroundStyle(.secondary)
     }
   }

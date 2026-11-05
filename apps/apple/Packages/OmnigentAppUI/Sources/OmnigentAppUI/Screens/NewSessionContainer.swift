@@ -28,6 +28,7 @@ struct NewSessionContainer: View {
   @AppStorage(GitPreferences.alwaysUseWorktreeKey) private var alwaysUseWorktree = false
   @Environment(\.useThisMachine) private var useThisMachine
   @Environment(\.openURL) private var openURL
+  @Environment(\.openSettingsAt) private var openSettingsAt
 
   var body: some View {
     Group {
@@ -56,7 +57,7 @@ struct NewSessionContainer: View {
   private func page(_ creation: CreationStore) -> some View {
     NewSessionPage(
       draft: $draft, composer: form.composerState(creation, connection: connection),
-      actions: actions(creation), importSessions: importSessions(openURL),
+      actions: actions(creation), importSessions: importSessions(openURL, openSettingsAt),
       options: form.options(creation), optionActions: optionActions(creation)
     )
     .onChange(of: creation.phase) { _, phase in

@@ -210,18 +210,20 @@ public final class ServerSettingsStore {
     await loadConnections(connections.value?.map(\.provider) ?? [provider])
   }
 
-  /// Imports recent local sessions from a host.
+  /// Imports recent local sessions from a host, or one session by its harness id.
   /// - Parameters:
   ///   - hostID: The host.
-  ///   - source: An ``importSources()`` id.
+  ///   - source: An ``importSources()`` id; one harness (not `all`) with `sessionID`.
   ///   - limit: The most recent sessions to read.
+  ///   - sessionID: The harness session to import, instead of the most recent ones.
   /// - Returns: The tally; `nil` on failure (see ``error``).
-  public func importSessions(hostID: String, source: String, limit: UInt32) async
-    -> ImportResultRecord?
-  {
+  public func importSessions(
+    hostID: String, source: String, limit: UInt32, sessionID: String? = nil
+  ) async -> ImportResultRecord? {
     var result: ImportResultRecord?
     await write {
-      result = try await $0.importLocalSessions(hostId: hostID, source: source, limit: limit)
+      result = try await $0.importLocalSessions(
+        hostId: hostID, source: source, limit: limit, sessionId: sessionID)
     }
     return result
   }

@@ -64,6 +64,7 @@ struct ServerWindowRoot: View {
       serverSwitching: serverSwitching(session)
     )
     .environment(\.useThisMachine, useThisMachine)
+    .environment(\.openSettingsAt, .settingsWindow(openSettings: openSettings))
     .navigationTitle(title(session))
     .sheet(isPresented: $showsCoreDebug) {
       CoreDebugView()
@@ -162,7 +163,11 @@ struct ServerWindowRoot: View {
         selection = nil
         id = id.rebound(to: nil)
       },
-      openSettings: { openSettings() })
+      openSettings: {
+        // This window's server, not the first signed-in one.
+        OpenSettingsDestinationAction.settingsWindow(openSettings: openSettings)(
+          .server(url: session.connection.supervisedServerURL, pane: nil))
+      })
   }
 
   private func actions(_ session: ServerSession) -> ServerWindowActions {

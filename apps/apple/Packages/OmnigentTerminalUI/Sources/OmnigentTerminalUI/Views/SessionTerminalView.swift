@@ -50,6 +50,7 @@ public struct SessionTerminalView: View {
   private let source: Source
   @State private var holder = TerminalControllerHolder()
   @Environment(\.colorScheme) private var colorScheme
+  @AppStorage(TerminalThemeMode.key) private var terminalTheme = TerminalThemeMode.auto.rawValue
 
   /// A view of an existing controller.
   public init(controller: TerminalSurfaceController) {
@@ -78,12 +79,17 @@ public struct SessionTerminalView: View {
         }
       }
     }
-    .onChange(of: colorScheme, initial: true) { _, scheme in
+    .onChange(of: resolvedScheme, initial: true) { _, scheme in
       applyColorScheme(scheme)
     }
   }
 
-  private func applyColorScheme(_ scheme: ColorScheme) {
+  /// The app's light or dark mode, unless Settings › Appearance pins the terminal's.
+  private var resolvedScheme: TerminalColorScheme {
+    TerminalThemeMode(stored: terminalTheme).resolved(app: colorScheme == .dark ? .dark : .light)
+  }
+
+  private func applyColorScheme(_ scheme: TerminalColorScheme) {
     let controller: TerminalSurfaceController
     switch (source, holder.result) {
     case (.controller(let value), _): controller = value
@@ -91,7 +97,7 @@ public struct SessionTerminalView: View {
     case (.connection, .failure), (.connection, nil): return
     }
     var appearance = controller.runtime.appearance
-    appearance.colorScheme = scheme == .dark ? .dark : .light
+    appearance.colorScheme = scheme
     do {
       try controller.runtime.update(appearance: appearance)
     } catch {

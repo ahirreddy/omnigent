@@ -163,6 +163,7 @@ struct LandingView: View {
           systemImage: "person.2", prominent: false, identifier: "auth.join-team",
           action: joinTeam)
       }
+      LandingFooter().padding(.top, 8)
     } buttons: {
       EmptyView()
     }

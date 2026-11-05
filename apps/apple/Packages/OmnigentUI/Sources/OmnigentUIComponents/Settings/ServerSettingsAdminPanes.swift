@@ -85,6 +85,8 @@ struct MembersPane: View {
 struct PoliciesPane: View {
   let policies: [ServerSettingRow]
   let actions: ServerSettingsActions
+  /// The policy whose removal is being confirmed.
+  @State private var deleting: ServerSettingRow?
 
   var body: some View {
     Section {
@@ -99,9 +101,9 @@ struct PoliciesPane: View {
             Text(policy.isReadOnly ? "From the server's config file" : policy.detail)
           }
           .disabled(policy.isReadOnly || actions.setPolicyEnabled == nil)
-          if !policy.isReadOnly, let delete = actions.deletePolicy {
+          if !policy.isReadOnly, actions.deletePolicy != nil {
             Button(role: .destructive) {
-              delete(policy)
+              deleting = policy
             } label: {
               Image(systemName: "trash")
             }
@@ -112,6 +114,17 @@ struct PoliciesPane: View {
       }
     } footer: {
       Text("Default policies apply to every new session on this server.")
+    }
+    .confirmationDialog(
+      "Remove \(deleting?.name ?? "policy")?",
+      isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+      presenting: deleting
+    ) { policy in
+      Button("Remove", role: .destructive) { actions.deletePolicy?(policy) }
+    } message: { _ in
+      Text(
+        "This removes the global policy from all sessions. Existing session-level policies with the same handler are unaffected."
+      )
     }
   }
 }

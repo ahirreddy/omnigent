@@ -1,6 +1,7 @@
 public import Foundation
 import OmnigentCoreFFI
 import OmnigentStores
+import OmnigentUIComponents
 public import SwiftUI
 
 /// Connects this Mac as a host for a server ("Use this machine"). The app sets it where the
@@ -26,13 +27,20 @@ extension EnvironmentValues {
 }
 
 extension NewSessionContainer {
-  /// "Import your recent sessions" while the server has none: the server's import page (the
-  /// native Settings window has no import section yet).
-  func importSessions(_ openURL: OpenURLAction) -> (@MainActor () -> Void)? {
+  /// "Import your recent sessions" while the server has none: the Settings window's Import pane
+  /// for this server, or the server's web import page where there is no Settings window.
+  func importSessions(_ openURL: OpenURLAction, _ openSettingsAt: OpenSettingsDestinationAction?)
+    -> (@MainActor () -> Void)?
+  {
     let list = connection.sessionList
-    guard list.isLoaded, list.sessionsByID.isEmpty,
-      let url = URL(string: serverURLText)?.appending(path: "settings/import")
-    else { return nil }
+    guard list.isLoaded, list.sessionsByID.isEmpty else { return nil }
+    if let openSettingsAt {
+      let server = connection.supervisedServerURL ?? serverURLText
+      return { openSettingsAt(.server(url: server, pane: .importSessions)) }
+    }
+    guard let url = URL(string: serverURLText)?.appending(path: "settings/import") else {
+      return nil
+    }
     return { openURL(url) }
   }
 
