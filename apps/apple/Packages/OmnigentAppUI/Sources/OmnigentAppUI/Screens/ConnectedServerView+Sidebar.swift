@@ -206,6 +206,9 @@ extension ConnectedServerView {
     actions.deleteWithBranch = { summary, deleteBranch in
       removeSession(summary.id) { await list.delete($0, deleteBranch: deleteBranch) }
     }
+    actions.forkUnavailableReason = { summary in
+      list.session(summary.id).flatMap { forkUnavailableReason(source: $0) }
+    }
     return actions
   }
 

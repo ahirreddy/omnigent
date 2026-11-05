@@ -6,6 +6,8 @@ struct ForkOptionsSections: View {
   let options: ForkOptions
   let actions: ForkActions
   let startsOnHost: Bool
+  /// The chosen agent's harness, which names the run-configuration row.
+  var harness: String?
   @Binding var choices: ForkChoices
   @State private var showsAdvanced = false
 
@@ -75,15 +77,27 @@ struct ForkOptionsSections: View {
           .accessibilityIdentifier("fork-effort")
         }
         if !modes.isEmpty {
-          Picker("Permissions", selection: $choices.approvalMode) {
+          Picker(Self.modeTitle(harness: harness), selection: $choices.approvalMode) {
             ForEach(modes) { mode in
               Text(mode.label).tag(mode.id == modes.first?.id ? String?.none : Optional(mode.id))
             }
           }
           .accessibilityIdentifier("fork-permissions")
+          ForkModeNotes(
+            mode: modes.first { $0.id == (choices.approvalMode ?? modes.first?.id) },
+            harnessName: options.harnessNames[choices.agentID])
         }
       }
     }
+  }
+
+  /// The run-configuration row's name, as the web's fork dialog: Codex's "Approval", Cursor's
+  /// "Mode", otherwise "Permissions".
+  static func modeTitle(harness: String?) -> String {
+    let harness = harness?.lowercased() ?? ""
+    if harness.hasPrefix("codex") { return "Approval" }
+    if harness.hasPrefix("cursor") { return "Mode" }
+    return "Permissions"
   }
 
   /// The chosen model's efforts.
@@ -128,5 +142,31 @@ struct ForkOptionsSections: View {
           actions.sandboxSelected?(choices.sandboxProvider)
         }
       })
+  }
+}
+
+/// The chosen mode's description, and a danger warning when it runs without prompts or the
+/// command sandbox.
+private struct ForkModeNotes: View {
+  let mode: ApprovalModeOption?
+  let harnessName: String?
+
+  var body: some View {
+    if let detail = mode?.detail {
+      Text(detail).font(.caption).foregroundStyle(.secondary)
+    }
+    if let mode, mode.risk == .fullAccess {
+      Label {
+        Text(
+          "Danger: this fork runs \(harnessName ?? "the agent") with \(mode.label): no "
+            + "permission prompts and no command sandbox. It can edit any file and run any "
+            + "command without asking.")
+      } icon: {
+        Image(systemName: "exclamationmark.triangle.fill").accessibilityHidden(true)
+      }
+      .font(.caption.weight(.medium))
+      .foregroundStyle(Theme.failure)
+      .accessibilityIdentifier("fork-danger-warning")
+    }
   }
 }

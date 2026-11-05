@@ -28,14 +28,9 @@ public struct WorkspaceInspector: View {
     self.maximized = maximized
   }
 
-  private var changedCount: Int {
-    state.sections.filter { $0.id.hasPrefix("files-") }
-      .reduce(0) { $0 + SectionReading.changedFiles($1).count }
-  }
+  private var labels: InspectorTabLabels { InspectorTabLabels(state: state, slots: slots) }
 
-  private var children: [EventSection] { state.sections.filter { $0.id.hasPrefix("child-") } }
-
-  private var tabs: [InspectorTab] { InspectorTab.shown(hasSearch: slots.search != nil) }
+  private var tabs: [InspectorTab] { labels.tabs }
 
   /// The fixed tab on screen; Search falls back to Files when the server has no search.
   private var shownTab: InspectorTab { tabs.contains(tab) ? tab : .files }
@@ -122,20 +117,7 @@ public struct WorkspaceInspector: View {
     .accessibilityHint("Switches between files, changes, pull requests, agents and info")
   }
 
-  private func label(for tab: InspectorTab) -> String {
-    switch tab {
-    case .changes where changedCount > 0: "Changes (\(changedCount))"
-    case .pullRequests where pullRequestCount > 0: "Pull Requests (\(pullRequestCount))"
-    case .agents where !children.isEmpty:
-      "Agents (\(children.filter { $0.summary.lowercased() == "running" }.count)/\(children.count))"
-    default: tab.title
-    }
-  }
-
-  private var pullRequestCount: Int {
-    if case .loaded(let pullRequests, _) = slots.pullRequests { return pullRequests.count }
-    return slots.pullRequests == nil ? state.pullRequests.count : 0
-  }
+  private func label(for tab: InspectorTab) -> String { labels.label(for: tab) }
 
   @ViewBuilder private var content: some View {
     if let documents, documents.selected != nil {

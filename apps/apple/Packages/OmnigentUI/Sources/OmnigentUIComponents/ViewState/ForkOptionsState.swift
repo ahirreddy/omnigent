@@ -55,6 +55,8 @@ nonisolated public struct ForkOptions: Hashable, Sendable {
   public var models: [ModelOption]
   /// Approval modes by agent id; the first is the harness default.
   public var approvalModes: [String: [ApprovalModeOption]]
+  /// The harness's display name by agent id ("Codex"), for the danger warning.
+  public var harnessNames: [String: String] = [:]
 
   /// Creates options.
   public init(

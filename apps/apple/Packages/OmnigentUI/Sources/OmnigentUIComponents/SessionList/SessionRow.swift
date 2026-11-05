@@ -269,6 +269,8 @@ struct SessionRowMenu {
   var project: SessionProject?
   /// Asks for a name and moves the session into a new project; `nil` hides the item.
   var newProject: (() -> Void)?
+  /// Why Share is unavailable; it then shows disabled with the reason.
+  var shareUnavailableReason: String?
 
   var canHoverPin: Bool {
     #if os(macOS)
@@ -314,10 +316,15 @@ struct SessionRowMenu {
     }
     // Sharing is the owner's, as on the web.
     if let share = actions.share, !isShared {
-      Button("Share", systemImage: "person.badge.plus") { share(session) }
+      ReasonedMenuButton(
+        "Share", systemImage: "person.badge.plus", unavailableReason: shareUnavailableReason
+      ) { share(session) }
     }
     if let fork = actions.fork {
-      Button("Fork", systemImage: "arrow.triangle.branch") { fork(session) }
+      ReasonedMenuButton(
+        "Fork", systemImage: "arrow.triangle.branch",
+        unavailableReason: actions.forkUnavailableReason?(session)
+      ) { fork(session) }
     }
     if actions.rename != nil, session.canRename {
       Button("Rename\u{2026}", systemImage: "pencil", action: rename)
