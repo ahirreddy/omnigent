@@ -75,4 +75,29 @@ struct MessageActionRowTests {
     #expect(MessageActionItem.quoteItems(for: empty, actions: actions).isEmpty)
     #expect(MessageActionItem.quoteItems(for: streaming, actions: actions).isEmpty)
   }
+
+  @Test("A message link finds the user message by item id and an answer by its response")
+  func linkedMessageRow() {
+    let rows = [
+      Row(id: "u1", role: .user, text: "Fix it"),
+      Row(id: "a1", role: .assistant, text: "Looking.", responseId: "resp_1"),
+      Row(id: "a2", role: .assistant, text: "Fixed.", responseId: "resp_1"),
+    ]
+    let segments = TurnLayout.segments(TranscriptLayout.items(for: rows), isRunning: false)
+    #expect(TranscriptFocus.entryID(forMessage: "u1", in: segments) == "u1")
+    #expect(TranscriptFocus.entryID(forMessage: "resp_1", in: segments) == "a2")
+    #expect(TranscriptFocus.entryID(forMessage: "missing", in: segments) == nil)
+  }
+
+  @Test("A focused message waits per session until the transcript shows it")
+  func focusQueue() {
+    let focus = TranscriptFocus()
+    focus.focus("m1", in: "s1")
+    #expect(focus.messageID(in: "s1") == "m1")
+    #expect(focus.messageID(in: "s2") == nil)
+    focus.clear("s1")
+    #expect(focus.messageID(in: "s1") == nil)
+    focus.flash("row")
+    #expect(focus.flashedRowID == "row")
+  }
 }
