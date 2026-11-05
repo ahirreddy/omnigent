@@ -165,6 +165,7 @@ public struct TranscriptView: View {
             .padding(Theme.Spacing.medium)
         }
       }
+      .modifier(TranscriptNavigatorClearance(isShown: state.rows.contains { $0.role == .user }))
       .modifier(
         JumpToTopReveal(
           hasMoreHistory: state.hasMoreHistory && actions.loadOlder != nil,

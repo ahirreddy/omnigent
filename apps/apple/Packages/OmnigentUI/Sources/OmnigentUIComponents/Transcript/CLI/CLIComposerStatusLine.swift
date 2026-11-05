@@ -13,12 +13,27 @@ struct CLIStatusLine: View {
   @Environment(\.layoutWidth) private var layoutWidth
 
   var body: some View {
+    // A phone puts the indicators on their own line rather than truncating the status away.
+    VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
+      statusRow
+      if layoutWidth == .compact {
+        CLIStatusIndicators(state: state, actions: actions)
+      }
+    }
+    .cliFont()
+    .lineLimit(1)
+    .foregroundStyle(palette.dim.color)
+  }
+
+  private var statusRow: some View {
     HStack(alignment: .firstTextBaseline, spacing: 0) {
       // One row whose texts truncate (the directory first, the model last). No ViewThatFits:
       // measuring several copies of the menus keeps UIKit relaying out on iPhone.
       leading
       Spacer(minLength: Theme.Spacing.medium)
-      CLIStatusIndicators(state: state, actions: actions).layoutPriority(4)
+      if layoutWidth != .compact {
+        CLIStatusIndicators(state: state, actions: actions).layoutPriority(4)
+      }
       if !warnings.isEmpty {
         Button {
           showsWarnings.toggle()
@@ -37,9 +52,6 @@ struct CLIStatusLine: View {
         .accessibilityIdentifier("composer-warnings")
       }
     }
-    .cliFont()
-    .lineLimit(1)
-    .foregroundStyle(palette.dim.color)
   }
 
   private var leading: some View {
@@ -69,7 +81,7 @@ struct CLIStatusLine: View {
   }
 
   private var separator: some View {
-    Text(verbatim: " \u{00B7} ").accessibilityHidden(true)
+    Text(verbatim: " \u{00B7} ").fixedSize().accessibilityHidden(true)
   }
 }
 
