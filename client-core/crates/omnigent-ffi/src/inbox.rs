@@ -77,6 +77,41 @@ impl From<FileComment> for comments_core::FileComment {
     }
 }
 
+/// The 0-based character range (`[start, end]`) of `text`'s 1-based `line`, without its line
+/// break, as a comment's range counts; `None` past the last line.
+#[must_use]
+#[uniffi::export]
+pub fn line_character_range(text: String, line: u64) -> Option<Vec<u64>> {
+    comments_core::line_character_range(&text, line).map(|(start, end)| vec![start, end])
+}
+
+/// An open comment on a file and the line it starts on.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct FileCommentLine {
+    /// The 1-based line; `None` when the comment has no position in the current text.
+    pub line: Option<u64>,
+    /// The comment.
+    pub comment: FileComment,
+}
+
+/// The open comments on `path`, each with the line of `text` it starts on, in file order.
+#[must_use]
+#[uniffi::export]
+pub fn file_comment_lines(
+    comments: Vec<FileComment>,
+    path: String,
+    text: String,
+) -> Vec<FileCommentLine> {
+    let comments: Vec<comments_core::FileComment> = comments.into_iter().map(Into::into).collect();
+    comments_core::file_comment_lines(&comments, &path, &text)
+        .into_iter()
+        .map(|(line, comment)| FileCommentLine {
+            line,
+            comment: comment.into(),
+        })
+        .collect()
+}
+
 /// The comments the Inbox lists: open, by someone other than `viewer_id`, unseen; newest first.
 #[must_use]
 #[uniffi::export]
@@ -301,6 +336,35 @@ impl ClientCore {
             preview: output.preview,
             full_text: output.full_text,
         }))
+    }
+
+    /// Leaves a comment on the character range `start_index..end_index` of `path`.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`; `InvalidInput` for an empty comment or a
+    /// reversed range; the write errors.
+    pub async fn add_session_comment(
+        &self,
+        session_id: String,
+        path: String,
+        body: String,
+        start_index: u64,
+        end_index: u64,
+        anchor: Option<String>,
+    ) -> Result<FileComment, CoreError> {
+        let comment = comments_core::NewFileComment {
+            path,
+            body,
+            start_index,
+            end_index,
+            anchor,
+        };
+        self.sessions()
+            .add_session_comment(&session_id, &comment)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
     }
 
     /// Every comment on `session_id`'s files.

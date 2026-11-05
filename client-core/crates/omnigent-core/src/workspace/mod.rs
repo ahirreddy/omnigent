@@ -15,7 +15,7 @@
 //!
 //! [`ClientCore`](crate::ClientCore) sends these through the host transport; see
 //! `ClientCore::workspace` and the typed wrappers (`list_workspace_directory`,
-//! `read_workspace_file`, `search_workspace_paths`, `search_workspace_content`,
+//! `read_workspace_file`, `save_workspace_file`, `search_workspace_paths`, `search_workspace_content`,
 //! `workspace_changes`, `workspace_file_diff`, `workspace_environments`, `session_files`).
 //!
 //! The ground truth is the server: `omnigent/server/routes/sessions/routes_resources.py` and the
@@ -42,12 +42,12 @@ pub use diff::{
 pub use error::WorkspaceError;
 pub use model::{
     ChangeStatus, ChangeTotals, ChangedFileEntry, ChangesList, DirectoryPage, EntryKind,
-    FileDiffContent, PathSearchResult, SessionFile, SessionFilesPage, WorkspaceEntry,
-    WorkspaceEnvironment, sort_for_tree,
+    FileDiffContent, FileSave, FileWritten, PathSearchResult, SessionFile, SessionFilesPage,
+    WorkspaceEntry, WorkspaceEnvironment, sort_for_tree,
 };
 pub use path::{MAX_PATH_BYTES, PathError, WorkspacePath, absolute_location};
 pub use request::{
-    DEFAULT_ENVIRONMENT_ID, DirectoryQuery, MAX_DIRECTORY_LIMIT, SessionFilesQuery,
+    DEFAULT_ENVIRONMENT_ID, DirectoryQuery, FileWrite, MAX_DIRECTORY_LIMIT, SessionFilesQuery,
     WorkspaceOperation, WorkspaceRequest, WorkspaceResponse,
 };
 pub use search::{

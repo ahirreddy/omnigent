@@ -466,6 +466,45 @@ pub(super) fn file_diff(
     decode().map_err(|error| WorkspaceError::malformed(context, error))
 }
 
+/// A file the server wrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileWritten {
+    /// The file.
+    pub path: WorkspacePath,
+    /// The write created the file.
+    pub created: bool,
+    /// Bytes written, when the server says.
+    pub bytes_written: Option<u64>,
+}
+
+/// What saving an edited file did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileSave {
+    /// The new content was written.
+    Saved(FileWritten),
+    /// The file changed since it was read, so nothing was written.
+    Conflict {
+        /// Its text now; `None` when it was deleted or is no longer readable text.
+        latest: Option<String>,
+    },
+}
+
+pub(super) fn file_written(
+    value: &Value,
+    requested: &WorkspacePath,
+) -> Result<FileWritten, WorkspaceError> {
+    let context = "file save";
+    let decode = || -> Result<FileWritten, String> {
+        let object = as_object(value, context)?;
+        Ok(FileWritten {
+            path: requested.clone(),
+            created: opt_bool(object, "created")?.unwrap_or(false),
+            bytes_written: opt_u64(object, "bytes_written")?,
+        })
+    };
+    decode().map_err(|error| WorkspaceError::malformed(context, error))
+}
+
 fn environment(value: &Value) -> Result<WorkspaceEnvironment, String> {
     let object = as_object(value, "environment")?;
     let empty = Map::new();

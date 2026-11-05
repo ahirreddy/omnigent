@@ -13,6 +13,7 @@
 //! | [`WorkspaceOperation::GetEnvironment`] | `GET environments/{env}` |
 //! | [`WorkspaceOperation::ListDirectory`] | `GET environments/{env}/filesystem[/{path}]?limit&order=asc[&after]` |
 //! | [`WorkspaceOperation::ReadFile`] | `GET environments/{env}/filesystem/{path}` |
+//! | [`WorkspaceOperation::WriteFile`] | `PUT environments/{env}/filesystem/{path}` with `{content, encoding}` |
 //! | [`WorkspaceOperation::SearchPaths`] | `GET environments/{env}/search[/{path}]?q&limit[&include][&exclude]` |
 //! | [`WorkspaceOperation::SearchContent`] | `GET environments/{env}/content-search?q&case_sensitive&regex&include&exclude&limit` |
 //! | [`WorkspaceOperation::ListChanges`] | `GET environments/{env}/changes` |
@@ -22,14 +23,15 @@
 //! File paths are sent one percent-encoded segment per path segment (`docs/caf%C3%A9%20notes.md`),
 //! exactly as the web client's `browseLocationSegment` does, never with a leading `%2F`.
 
+use serde_json::{Value, json};
 use url::Url;
 
 use super::content::{FileContent, file_content};
 use super::error::{NotFoundMeaning, WorkspaceError, check};
 use super::model::{
-    ChangesList, DirectoryPage, FileDiffContent, PathSearchResult, SessionFilesPage,
-    WorkspaceEnvironment, changes, directory_page, environments, file_diff, path_search,
-    session_files, single_environment,
+    ChangesList, DirectoryPage, FileDiffContent, FileWritten, PathSearchResult, SessionFilesPage,
+    WorkspaceEnvironment, changes, directory_page, environments, file_diff, file_written,
+    path_search, session_files, single_environment,
 };
 use super::path::WorkspacePath;
 use super::search::{
@@ -40,7 +42,7 @@ use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
 use crate::auth::hosted::HostedConnection;
 use crate::client::SessionError;
-use crate::http::{HttpRequest, HttpResponse};
+use crate::http::{HttpHeader, HttpRequest, HttpResponse};
 
 /// The environment every session's primary workspace uses.
 pub const DEFAULT_ENVIRONMENT_ID: &str = "default";
@@ -79,6 +81,15 @@ pub struct SessionFilesQuery {
     pub after: Option<String>,
 }
 
+/// A file's new text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileWrite {
+    /// The file; created with its parent folders when missing.
+    pub path: WorkspacePath,
+    /// The whole new content, written as UTF-8.
+    pub content: String,
+}
+
 /// What to ask for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceOperation {
@@ -90,6 +101,8 @@ pub enum WorkspaceOperation {
     ListDirectory(DirectoryQuery),
     /// A file's content.
     ReadFile(WorkspacePath),
+    /// Replaces a file's content.
+    WriteFile(FileWrite),
     /// Files by name.
     SearchPaths(PathSearchQuery),
     /// Lines by content.
@@ -113,6 +126,8 @@ pub enum WorkspaceResponse {
     Directory(DirectoryPage),
     /// [`WorkspaceOperation::ReadFile`].
     File(FileContent),
+    /// [`WorkspaceOperation::WriteFile`].
+    Written(FileWritten),
     /// [`WorkspaceOperation::SearchPaths`].
     PathSearch(PathSearchResult),
     /// [`WorkspaceOperation::SearchContent`].
@@ -136,6 +151,8 @@ pub struct WorkspaceRequest {
 /// The route of a request: a fixed path, file path segments appended after it, and the query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Route {
+    pub(super) method: &'static str,
+    pub(super) body: Option<Value>,
     pub(super) path: String,
     pub(super) segments: Vec<String>,
     pub(super) query: Vec<(&'static str, String)>,
@@ -195,7 +212,9 @@ impl WorkspaceRequest {
                 page_limit(query.limit)?;
                 cursor(query.after.as_deref())?;
             }
-            WorkspaceOperation::ReadFile(path) | WorkspaceOperation::FileDiff(path)
+            WorkspaceOperation::ReadFile(path)
+            | WorkspaceOperation::FileDiff(path)
+            | WorkspaceOperation::WriteFile(FileWrite { path, .. })
                 if path.is_root() =>
             {
                 return Err(super::path::PathError::Root.into());
@@ -229,11 +248,17 @@ impl WorkspaceRequest {
         &self.operation
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one arm per route, read top to bottom"
+    )]
     pub(super) fn route(&self) -> Result<Route, WorkspaceError> {
         let resources = format!("/v1/sessions/{}/resources", self.session_id);
         let environment = format!("{resources}/environments/{}", self.environment_id);
         let segments = |path: &WorkspacePath| path.segments().map(str::to_owned).collect();
         let route = |path: String, segments: Vec<String>, query| Route {
+            method: "GET",
+            body: None,
             path,
             segments,
             query,
@@ -257,6 +282,15 @@ impl WorkspaceRequest {
             WorkspaceOperation::ReadFile(path) => {
                 route(format!("{environment}/filesystem"), segments(path), vec![])
             }
+            WorkspaceOperation::WriteFile(write) => Route {
+                method: "PUT",
+                body: Some(json!({"content": write.content, "encoding": "utf-8"})),
+                ..route(
+                    format!("{environment}/filesystem"),
+                    segments(&write.path),
+                    vec![],
+                )
+            },
             WorkspaceOperation::SearchPaths(query) => {
                 let mut pairs = vec![
                     ("q", query.query.clone()),
@@ -318,9 +352,12 @@ impl WorkspaceRequest {
             .map(|(name, value)| (*name, value.as_str()))
             .collect();
         let request = connection
-            .request("GET", &route.path, &pairs, "application/json")
+            .request(route.method, &route.path, &pairs, "application/json")
             .map_err(SessionError::from)?;
-        with_segments(request, &route.segments)
+        with_body(
+            with_segments(request, &route.segments)?,
+            route.body.as_ref(),
+        )
     }
 
     /// The request on `endpoint` with `bearer`, for hosts that manage the connection themselves.
@@ -340,15 +377,25 @@ impl WorkspaceRequest {
             .map(|(name, value)| (*name, value.as_str()))
             .collect();
         let request = endpoint
-            .request_with("GET", &route.path, &pairs, "application/json", bearer)
+            .request_with(
+                route.method,
+                &route.path,
+                &pairs,
+                "application/json",
+                bearer,
+            )
             .map_err(SessionError::from)?;
-        with_segments(request, &route.segments)
+        with_body(
+            with_segments(request, &route.segments)?,
+            route.body.as_ref(),
+        )
     }
 
     const fn not_found_meaning(&self) -> NotFoundMeaning {
         match self.operation {
             WorkspaceOperation::ListDirectory(_)
             | WorkspaceOperation::ReadFile(_)
+            | WorkspaceOperation::WriteFile(_)
             | WorkspaceOperation::SearchPaths(_) => NotFoundMeaning::Path,
             WorkspaceOperation::FileDiff(_) => NotFoundMeaning::Diff,
             WorkspaceOperation::SearchContent(_) => NotFoundMeaning::ContentSearch,
@@ -360,6 +407,7 @@ impl WorkspaceRequest {
         match &self.operation {
             WorkspaceOperation::ListDirectory(DirectoryQuery { path, .. })
             | WorkspaceOperation::ReadFile(path)
+            | WorkspaceOperation::WriteFile(FileWrite { path, .. })
             | WorkspaceOperation::FileDiff(path)
             | WorkspaceOperation::SearchPaths(PathSearchQuery { under: path, .. }) => {
                 path.to_string()
@@ -391,6 +439,9 @@ impl WorkspaceRequest {
             WorkspaceOperation::ReadFile(path) => {
                 WorkspaceResponse::File(file_content(&value, path)?)
             }
+            WorkspaceOperation::WriteFile(write) => {
+                WorkspaceResponse::Written(file_written(&value, &write.path)?)
+            }
             WorkspaceOperation::SearchPaths(query) => {
                 WorkspaceResponse::PathSearch(path_search(&value, &query.under)?)
             }
@@ -413,6 +464,7 @@ impl WorkspaceRequest {
             WorkspaceOperation::GetEnvironment => "the environment",
             WorkspaceOperation::ListDirectory(_) => "the directory listing",
             WorkspaceOperation::ReadFile(_) => "the file",
+            WorkspaceOperation::WriteFile(_) => "the file save",
             WorkspaceOperation::SearchPaths(_) => "the file search",
             WorkspaceOperation::SearchContent(_) => "the content search",
             WorkspaceOperation::ListChanges => "the changed files",
@@ -420,6 +472,23 @@ impl WorkspaceRequest {
             WorkspaceOperation::ListSessionFiles(_) => "the session files",
         }
     }
+}
+
+/// `request` carrying `body` as JSON, when there is one.
+pub(super) fn with_body(
+    mut request: HttpRequest,
+    body: Option<&Value>,
+) -> Result<HttpRequest, WorkspaceError> {
+    let Some(body) = body else {
+        return Ok(request);
+    };
+    request
+        .headers
+        .push(HttpHeader::new("Content-Type", "application/json"));
+    request.body = Some(
+        serde_json::to_vec(body).map_err(|error| WorkspaceError::malformed("request", error))?,
+    );
+    Ok(request)
 }
 
 /// `request` with `segments` appended to its URL path, each percent-encoded as one segment.

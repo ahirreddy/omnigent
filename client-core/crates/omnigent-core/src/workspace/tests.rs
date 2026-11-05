@@ -697,3 +697,123 @@ fn client_core_hosted_reads_use_the_mount() {
         Some(format!("Bearer {TOKEN}").as_str())
     );
 }
+
+fn file_reply(content: &str) -> Reply {
+    Reply::json(
+        200,
+        serde_json::json!({
+            "object": "session.environment.filesystem.file_content",
+            "path": "notes.md", "bytes": content.len(), "truncated": false,
+            "encoding": "utf-8", "content": content,
+        })
+        .to_string(),
+    )
+}
+
+fn notes_route() -> String {
+    format!("/v1/sessions/{SESSION}/resources/environments/default/filesystem/notes.md")
+}
+
+#[test]
+fn saving_puts_the_text_after_checking_nobody_changed_the_file() {
+    let transport = RouteTransport::local();
+    transport.respond(Some("GET"), &notes_route(), None, file_reply("old"));
+    transport.respond(
+        Some("PUT"),
+        &notes_route(),
+        None,
+        Reply::json(
+            200,
+            r#"{"object":"session.environment.filesystem.write_result","operation":"write","path":"notes.md","created":false,"bytes_written":3}"#,
+        ),
+    );
+    let core = connected(transport);
+    let saved = block_on(core.save_workspace_file(
+        SESSION,
+        DEFAULT_ENVIRONMENT_ID,
+        path("notes.md"),
+        "new".into(),
+        Some("old"),
+    ))
+    .unwrap();
+    assert_eq!(
+        saved,
+        FileSave::Saved(FileWritten {
+            path: path("notes.md"),
+            created: false,
+            bytes_written: Some(3),
+        })
+    );
+    let writes = core.transport().writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].method, "PUT");
+    assert_eq!(
+        crate::client::test_support::body_json(&writes[0]),
+        serde_json::json!({"content": "new", "encoding": "utf-8"})
+    );
+}
+
+#[test]
+fn saving_over_someone_elses_change_is_a_conflict_until_forced() {
+    let transport = RouteTransport::local();
+    transport.respond(Some("GET"), &notes_route(), None, file_reply("theirs"));
+    transport.respond(
+        Some("PUT"),
+        &notes_route(),
+        None,
+        Reply::json(200, r#"{"created":false}"#),
+    );
+    let core = connected(transport);
+    let save = |base: Option<&str>| {
+        block_on(core.save_workspace_file(
+            SESSION,
+            DEFAULT_ENVIRONMENT_ID,
+            path("notes.md"),
+            "mine".into(),
+            base,
+        ))
+    };
+    assert_eq!(
+        save(Some("old")),
+        Ok(FileSave::Conflict {
+            latest: Some("theirs".into())
+        })
+    );
+    assert!(core.transport().writes().is_empty(), "nothing was written");
+    assert!(matches!(save(None), Ok(FileSave::Saved(_))));
+    assert_eq!(core.transport().writes().len(), 1);
+
+    core.transport().respond(
+        Some("GET"),
+        &notes_route(),
+        None,
+        Reply::json(
+            404,
+            r#"{"error":{"code":"not_found","message":"No such file"}}"#,
+        ),
+    );
+    assert_eq!(save(Some("old")), Ok(FileSave::Conflict { latest: None }));
+    core.transport().respond(
+        Some("PUT"),
+        &notes_route(),
+        None,
+        Reply::json(403, r#"{"error":{"message":"Read-only share"}}"#),
+    );
+    assert_eq!(
+        save(None),
+        Err(WorkspaceError::Forbidden {
+            message: "Read-only share".into()
+        })
+    );
+    assert!(matches!(
+        WorkspaceRequest::new(
+            SESSION,
+            DEFAULT_ENVIRONMENT_ID,
+            WorkspaceOperation::WriteFile(FileWrite {
+                path: WorkspacePath::root(),
+                content: String::new(),
+            }),
+        ),
+        Err(WorkspaceError::InvalidPath(_))
+    ));
+}

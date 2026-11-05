@@ -7,16 +7,16 @@
 //! the connection ended or changed identity is [`SessionError::NotConnected`], a `401` ends the
 //! connection, and redirects are never followed.
 
-use super::content::FileContent;
+use super::content::{FileBody, FileContent};
 use super::error::WorkspaceError;
 use super::model::{
-    ChangesList, DirectoryPage, FileDiffContent, PathSearchResult, SessionFilesPage,
-    WorkspaceEnvironment,
+    ChangesList, DirectoryPage, FileDiffContent, FileSave, FileWritten, PathSearchResult,
+    SessionFilesPage, WorkspaceEnvironment,
 };
 use super::path::WorkspacePath;
 use super::request::{
-    DirectoryQuery, SessionFilesQuery, WorkspaceOperation, WorkspaceRequest, WorkspaceResponse,
-    with_segments,
+    DirectoryQuery, FileWrite, SessionFilesQuery, WorkspaceOperation, WorkspaceRequest,
+    WorkspaceResponse, with_segments,
 };
 use super::search::{ContentSearchQuery, ContentSearchResult, PathSearchQuery};
 use crate::client::{ClientCore, SessionError};
@@ -50,7 +50,8 @@ impl<T: HttpTransport> ClientCore<T> {
         request: &WorkspaceRequest,
     ) -> Result<WorkspaceResponse, WorkspaceError> {
         let route = request.route()?;
-        let prepared = self.prepare("GET", &route.path, &route.query, None)?;
+        let prepared =
+            self.prepare(route.method, &route.path, &route.query, route.body.as_ref())?;
         let http = with_segments(prepared.request, &route.segments)?;
         let identity = self.connected_server();
         let response = self
@@ -160,6 +161,73 @@ impl<T: HttpTransport> ClientCore<T> {
             WorkspaceOperation::ReadFile(path),
         )?;
         expect!(self.workspace(&request).await?, File)
+    }
+
+    /// Replaces the file's content with `content`.
+    ///
+    /// # Errors
+    ///
+    /// See [`ClientCore::workspace`]; `Forbidden` without edit access.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport"
+    )]
+    pub async fn write_workspace_file(
+        &self,
+        session_id: &str,
+        environment_id: &str,
+        path: WorkspacePath,
+        content: String,
+    ) -> Result<FileWritten, WorkspaceError> {
+        let request = WorkspaceRequest::new(
+            session_id,
+            environment_id,
+            WorkspaceOperation::WriteFile(FileWrite { path, content }),
+        )?;
+        expect!(self.workspace(&request).await?, Written)
+    }
+
+    /// Saves an edit of a file read as `base`: the file is read again first, and when someone
+    /// else changed (or deleted) it since, nothing is written and the latest text is returned.
+    /// Without `base` the file is written unconditionally ("Keep mine").
+    ///
+    /// # Errors
+    ///
+    /// See [`ClientCore::read_workspace_file`] and [`ClientCore::write_workspace_file`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport"
+    )]
+    pub async fn save_workspace_file(
+        &self,
+        session_id: &str,
+        environment_id: &str,
+        path: WorkspacePath,
+        content: String,
+        base: Option<&str>,
+    ) -> Result<FileSave, WorkspaceError> {
+        if let Some(base) = base {
+            let latest = match self
+                .read_workspace_file(session_id, environment_id, path.clone())
+                .await
+            {
+                Ok(FileContent {
+                    body: FileBody::Text(text),
+                    truncated: false,
+                    ..
+                }) => Some(text),
+                Ok(_) | Err(WorkspaceError::NotFound { .. }) => None,
+                Err(error) => return Err(error),
+            };
+            let current = latest.as_deref();
+            if current != Some(base) && current != Some(content.as_str()) {
+                return Ok(FileSave::Conflict { latest });
+            }
+        }
+        let written = self
+            .write_workspace_file(session_id, environment_id, path, content)
+            .await?;
+        Ok(FileSave::Saved(written))
     }
 
     /// Files whose name or path contains the query.
