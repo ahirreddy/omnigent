@@ -176,6 +176,7 @@ fn string_field<'a>(fields: &'a Map<String, Value>, key: &str) -> Option<&'a str
 pub fn sections(state: &SessionEventState) -> Vec<EventSection> {
     let mut result = Vec::new();
     status_sections(state, &mut result);
+    background_section(state, &mut result);
     usage_section(state, &mut result);
     todo_section(state, &mut result);
     startup_sections(state, &mut result);
@@ -222,6 +223,59 @@ fn status_sections(state: &SessionEventState, result: &mut Vec<EventSection>) {
     if let Some(mode) = &state.approval_mode {
         result.push(EventSection::new("approval", "Approval mode", mode.clone()));
     }
+}
+
+/// The running background shells (web `BackgroundTaskIndicator`): one detail per named shell,
+/// titled by its description or command, with the command as its text. The count is
+/// authoritative: a longer list is cut to it, and an `undetailed` detail counts the rest.
+fn background_section(state: &SessionEventState, result: &mut Vec<EventSection>) {
+    let count = state.background_task_count.unwrap_or_default();
+    if count == 0 {
+        return;
+    }
+    let plural = if count == 1 { "" } else { "s" };
+    let summary = format!("{count} background task{plural}");
+    let tasks = state.background_tasks.as_deref().unwrap_or_default();
+    let shown = tasks
+        .iter()
+        .take(usize::try_from(count).unwrap_or(usize::MAX));
+    let mut details: Vec<DetailSection> = shown
+        .enumerate()
+        .map(|(index, task)| {
+            let trimmed = |text: &Option<String>| {
+                text.as_deref()
+                    .map(str::trim)
+                    .filter(|text| !text.is_empty())
+                    .map(str::to_owned)
+            };
+            let command = trimmed(&task.command);
+            let title = trimmed(&task.description)
+                .or_else(|| command.clone())
+                .unwrap_or_else(|| "Background task".to_owned());
+            let id = task.id.clone().unwrap_or_else(|| format!("task-{index}"));
+            let text = command
+                .filter(|command| *command != title)
+                .unwrap_or_default();
+            DetailSection::new(
+                &id,
+                &bounded(&title, TITLE_CHARS),
+                prefix_chars(&text, SECTION_DETAIL_CHARS),
+                true,
+            )
+        })
+        .collect();
+    let undetailed = count.saturating_sub(u64::try_from(details.len()).unwrap_or(u64::MAX));
+    if undetailed > 0 {
+        let text = if details.is_empty() {
+            format!("{summary} \u{2014} details unavailable")
+        } else {
+            format!("+{undetailed} more \u{2014} details unavailable")
+        };
+        details.push(detail("undetailed", "", &text));
+    }
+    result.push(
+        EventSection::new("background-tasks", "Background tasks", summary).with_details(details),
+    );
 }
 
 fn usage_section(state: &SessionEventState, result: &mut Vec<EventSection>) {

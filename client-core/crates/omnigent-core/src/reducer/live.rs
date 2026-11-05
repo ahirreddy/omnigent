@@ -803,8 +803,15 @@ impl LiveReducer {
         }
         let state = self.state();
         state.status = Some(event.status.as_str().to_owned());
+        // An explicit count is authoritative and carries its detail; a failure clears both,
+        // since a dead session may never report the count again (web `chatStore`).
         if let Field::Present(count) = event.background_task_count {
             state.background_task_count = Some(count);
+            state.background_tasks =
+                Some(event.background_tasks.value().cloned().unwrap_or_default());
+        } else if event.status == SessionStatus::Failed {
+            state.background_task_count = Some(0);
+            state.background_tasks = Some(Vec::new());
         }
         if self.snap.has_pending_decisions() {
             self.snap.header.status = TurnStatus::NeedsResponse;

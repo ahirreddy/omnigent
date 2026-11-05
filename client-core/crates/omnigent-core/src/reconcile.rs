@@ -364,6 +364,14 @@ pub fn event_state_from_snapshot(session: &SessionSnapshot) -> SessionEventState
         .and_then(|labels| labels.get(COLLABORATION_LABEL).cloned());
     SessionEventState {
         status: Some(session.status.as_str().to_owned()),
+        background_task_count: session.background_task_count.value().copied(),
+        background_tasks: session.background_task_count.value().is_some().then(|| {
+            session
+                .background_tasks
+                .value()
+                .cloned()
+                .unwrap_or_default()
+        }),
         context_tokens: session.last_total_tokens.value().copied(),
         context_window: session
             .context_window

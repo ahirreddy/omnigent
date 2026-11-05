@@ -560,3 +560,19 @@ fn browser_action_requests_reach_the_host_once_across_replays_and_reconnects() {
         .expect("applies");
     assert!(foreign.effects.browser_action.is_none());
 }
+
+#[test]
+fn a_snapshot_seeds_background_tasks_only_with_their_count() {
+    let counted = session(json!({"id": SESSION, "status": "waiting", "created_at": 1,
+        "background_task_count": 2, "background_tasks": [{"command": "make watch"}]}));
+    let state = crate::reconcile::event_state_from_snapshot(&counted);
+    assert_eq!(state.background_task_count, Some(2));
+    assert_eq!(state.background_tasks.map(|tasks| tasks.len()), Some(1));
+    let silent = session(json!({"id": SESSION, "status": "idle", "created_at": 1,
+        "background_tasks": [{"command": "make watch"}]}));
+    let state = crate::reconcile::event_state_from_snapshot(&silent);
+    assert_eq!(
+        (state.background_task_count, state.background_tasks),
+        (None, None)
+    );
+}

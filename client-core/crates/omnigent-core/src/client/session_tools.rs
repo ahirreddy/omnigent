@@ -124,6 +124,27 @@ pub fn goal_command(condition: &str) -> Option<String> {
     (!condition.is_empty()).then(|| format!("{GOAL_COMMAND_PREFIX}{condition}"))
 }
 
+/// `draft` with `selection` quoted after it as a Markdown block quote, then an empty paragraph
+/// to type the reply in (web `appendReplyQuote`, serialized). A blank selection changes nothing.
+#[must_use]
+pub fn reply_quote(draft: &str, selection: &str) -> String {
+    let selection = selection.replace("\r\n", "\n").replace('\r', "\n");
+    let selection = selection.trim_matches('\n');
+    if selection.trim().is_empty() {
+        return draft.to_owned();
+    }
+    let quote: Vec<String> = selection.lines().map(|line| format!("> {line}")).collect();
+    let quote = quote.join("\n");
+    // A blank line between the draft and the quote, counting the newlines it already ends with.
+    let trailing = draft.len() - draft.trim_end_matches('\n').len();
+    let separator = if draft.is_empty() {
+        ""
+    } else {
+        "\n\n".get(trailing.min(2)..).unwrap_or_default()
+    };
+    format!("{draft}{separator}{quote}\n\n")
+}
+
 fn goal_path(session_id: &str) -> String {
     format!("/v1/sessions/{session_id}/codex_goal")
 }
@@ -154,7 +175,9 @@ fn decode_goal(value: &Value) -> Result<Option<SessionGoal>, String> {
 }
 
 impl<T: HttpTransport> ClientCore<T> {
-    /// Starts a side chat of `source_id`.
+    /// Starts a side chat of `source_id`. With a `quote` (text selected in the transcript), the
+    /// side chat's composer starts with it quoted: a forked session's draft, or after the command
+    /// prefix for a harness that forks from a typed command.
     ///
     /// # Errors
     ///
@@ -166,8 +189,24 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    pub async fn start_side_chat(&self, source_id: &str) -> Result<SideChatStart, SessionError> {
-        let result = self.side_chat(source_id).await;
+    pub async fn start_side_chat(
+        &self,
+        source_id: &str,
+        quote: Option<&str>,
+    ) -> Result<SideChatStart, SessionError> {
+        let result = self.side_chat(source_id).await.and_then(|start| {
+            let Some(quote) = quote else { return Ok(start) };
+            let draft = reply_quote("", quote);
+            match start {
+                SideChatStart::Command { prefix } => Ok(SideChatStart::Command {
+                    prefix: format!("{prefix}{draft}"),
+                }),
+                SideChatStart::Session { session_id } => {
+                    self.update_composer(&session_id, &draft)?;
+                    Ok(SideChatStart::Session { session_id })
+                }
+            }
+        });
         self.dispatch();
         result
     }

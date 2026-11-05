@@ -118,17 +118,28 @@ pub fn goal_command(condition: String) -> Option<String> {
     core::goal_command(&condition)
 }
 
+/// `draft` with `selection` quoted after it, then an empty paragraph for the reply.
+#[uniffi::export]
+pub fn reply_quote(draft: String, selection: String) -> String {
+    core::reply_quote(&draft, &selection)
+}
+
 #[uniffi::export]
 impl ClientCore {
-    /// Starts a side chat of `session_id`.
+    /// Starts a side chat of `session_id`; a `quote` (selected transcript text) starts its
+    /// composer quoted.
     ///
     /// # Errors
     ///
     /// [`CoreError::Session`]: the read and write errors, `ExecutionUnavailable` when the
     /// session's runner is gone, `DeliveryUncertain` when the fork may exist.
-    pub async fn start_side_chat(&self, session_id: String) -> Result<SideChatStart, CoreError> {
+    pub async fn start_side_chat(
+        &self,
+        session_id: String,
+        quote: Option<String>,
+    ) -> Result<SideChatStart, CoreError> {
         self.sessions()
-            .start_side_chat(&session_id)
+            .start_side_chat(&session_id, quote.as_deref())
             .await
             .map(Into::into)
             .map_err(CoreError::from)

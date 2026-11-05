@@ -10,7 +10,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use omnigent_protocol::ElicitationRequest;
 use omnigent_protocol::events::{PresenceViewer, Todo};
-use omnigent_protocol::sessions::{McpServerStartup, ModelUsage, NativeModelOption, SandboxStatus};
+use omnigent_protocol::sessions::{
+    BackgroundTaskInfo, McpServerStartup, ModelUsage, NativeModelOption, SandboxStatus,
+};
 use serde_json::{Map, Value};
 
 /// Bound on keyed session records (resources, children, changed-file environments).
@@ -501,6 +503,9 @@ pub struct SessionEventState {
     pub status: Option<String>,
     /// Running background shells.
     pub background_task_count: Option<u64>,
+    /// What each running background shell is, reported with the count. It may name fewer
+    /// shells than the count; the count is authoritative.
+    pub background_tasks: Option<Vec<BackgroundTaskInfo>>,
     /// Codex collaboration mode.
     pub collaboration_mode: Option<String>,
     /// Permission mode.
@@ -551,6 +556,7 @@ impl SessionEventState {
             &mut self.background_task_count,
             newer.background_task_count.as_ref(),
         );
+        take_newer(&mut self.background_tasks, newer.background_tasks.as_ref());
         take_newer(
             &mut self.collaboration_mode,
             newer.collaboration_mode.as_ref(),

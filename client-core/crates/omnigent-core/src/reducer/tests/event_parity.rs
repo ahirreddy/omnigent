@@ -127,6 +127,61 @@ fn invalid_usage_never_replaces_valid_nonnegative_state() {
     ));
 }
 
+/// A detail's id, title and text.
+type DetailTexts = Vec<(String, String, String)>;
+
+/// The background-tasks section the composer's indicator lists (web `BackgroundTaskIndicator`).
+fn background_details(harness: &Harness) -> Option<(String, DetailTexts)> {
+    let sections = crate::reducer::sections(&harness.snapshot().event_state);
+    let section = sections.into_iter().find(|s| s.id == "background-tasks")?;
+    let details = section.details.into_iter();
+    Some((
+        section.summary,
+        details.map(|d| (d.id, d.title, d.text)).collect(),
+    ))
+}
+
+#[test]
+fn background_task_detail_rides_with_the_count_and_a_failure_clears_it() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "session.status", "status": "waiting",
+        "background_task_count": 3, "background_tasks": [
+            {"id": "sh_1", "description": "Dev server", "command": "npm run dev"},
+            {"command": "  tail -f log  "}]}));
+    let (summary, details) = background_details(&harness).expect("section");
+    assert_eq!(summary, "3 background tasks");
+    assert_eq!(
+        details,
+        [
+            ("sh_1".into(), "Dev server".into(), "npm run dev".into()),
+            ("task-1".into(), "tail -f log".into(), String::new()),
+            (
+                "undetailed".into(),
+                String::new(),
+                "+1 more \u{2014} details unavailable".into()
+            ),
+        ]
+    );
+    // A status without a count keeps the tally; an explicit count replaces the list.
+    harness.send(json!({"type": "session.status", "status": "idle"}));
+    assert_eq!(
+        harness.snapshot().event_state.background_task_count,
+        Some(3)
+    );
+    harness.send(json!({"type": "session.status", "status": "waiting",
+        "background_task_count": 1}));
+    let (summary, details) = background_details(&harness).expect("section");
+    assert_eq!(summary, "1 background task");
+    assert_eq!(details.len(), 1);
+    assert_eq!(details[0].0, "undetailed");
+    harness.send(json!({"type": "session.status", "status": "failed"}));
+    assert_eq!(background_details(&harness), None);
+    assert_eq!(
+        harness.snapshot().event_state.background_tasks,
+        Some(Vec::new())
+    );
+}
+
 #[test]
 fn status_background_count_is_sparse_and_explicit_zero_clears() {
     let mut harness = Harness::new(SESSION);
