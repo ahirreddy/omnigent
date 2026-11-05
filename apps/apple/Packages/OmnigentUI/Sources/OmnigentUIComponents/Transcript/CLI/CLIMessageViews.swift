@@ -78,7 +78,8 @@ struct CLIUserBand: View, Equatable {
     .padding(.vertical, CLIMetrics.bandPadding)
     .background(palette.band.color)
     .messageActionsHost(
-      row: row, actions: actions, pinned: false, showsOnTouch: false, focus: $actionsFocused
+      row: row, actions: actions, pinned: false, showsOnTouch: decoration.showsActions,
+      focus: $actionsFocused
     )
     .accessibilityElement(children: .contain)
     .accessibilityLabel(decoration.showsAvatar ? "\(row.author ?? "Someone") said" : "You said")
@@ -112,19 +113,29 @@ struct CLIAssistantBlock: View, Equatable {
       AttachmentStrip(attachments: row.attachments)
       if let activity = row.activity { UnsupportedContentView(activity: activity, rowID: row.id) }
       if row.interrupted { CLIInterruptedLine(rowID: row.id) }
+      #if !os(macOS)
+        // Touch shows the latest answer's actions under it, as chat does; the turn's footer
+        // line already gives the time.
+        if !row.isStreaming {
+          MessageActionRow(row: row, actions: actions, focus: $actionsFocused)
+        }
+      #endif
     }
     .cliMarker(Text(verbatim: "\u{2022}").foregroundStyle(palette.bullet.color))
-    .overlay(alignment: .topTrailing) {
-      if !row.isStreaming {
-        CLIActionCluster {
-          MessageActionRow(
-            row: row, actions: actions, timestamp: decoration.timestamp, focus: $actionsFocused)
+    #if os(macOS)
+      .overlay(alignment: .topTrailing) {
+        if !row.isStreaming {
+          CLIActionCluster {
+            MessageActionRow(
+              row: row, actions: actions, timestamp: decoration.timestamp, focus: $actionsFocused)
+          }
         }
       }
-    }
+    #endif
     .transcriptColumn()
     .messageActionsHost(
-      row: row, actions: actions, pinned: false, showsOnTouch: false, focus: $actionsFocused
+      row: row, actions: actions, pinned: false, showsOnTouch: decoration.showsActions,
+      focus: $actionsFocused
     )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("message-\(row.id)")

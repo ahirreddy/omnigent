@@ -84,12 +84,16 @@ final class TranscriptLayoutMemo {
   func blocks(for state: ConversationViewState) -> [CLIBlockEntry] {
     refresh(state)
     if hasBlocks { return cachedBlocks }
+    let isRunning = state.header.status == .running
+    let lastAnswerID = isRunning ? nil : TranscriptView.lastAnswerID(state.rows)
     let blocks = CLILayout.blocks(
       cachedEntries.map(\.segment), durations: state.turnDurations, timestamps: state.timestamps,
-      isRunning: state.header.status == .running
+      isRunning: isRunning
     )
     .map { block in
-      CLIBlockEntry(block: block, decorations: Self.cliDecorations(for: block, state: state))
+      CLIBlockEntry(
+        block: block,
+        decorations: Self.cliDecorations(for: block, state: state, lastAnswerID: lastAnswerID))
     }
     cachedBlocks = blocks
     hasBlocks = true
@@ -191,16 +195,17 @@ final class TranscriptLayoutMemo {
     return result
   }
 
-  /// Timestamps for the hover action row and the shared-session author.
-  private static func cliDecorations(for block: CLIBlock, state: ConversationViewState)
-    -> [String: MessageDecoration]
-  {
+  /// Timestamps for the hover action row, the shared-session author, and the latest answer
+  /// whose actions stay shown on touch, as in chat.
+  static func cliDecorations(
+    for block: CLIBlock, state: ConversationViewState, lastAnswerID: String?
+  ) -> [String: MessageDecoration] {
     guard case .segment(let segment) = block else { return [:] }
     var result: [String: MessageDecoration] = [:]
     for item in segment.items {
       guard case .message(let row) = item else { continue }
       result[row.id] = MessageDecoration(
-        timestamp: state.timestamps[row.id] ?? row.createdAt, showsActions: false,
+        timestamp: state.timestamps[row.id] ?? row.createdAt, showsActions: row.id == lastAnswerID,
         showsAvatar: isOtherAuthor(row, state: state))
     }
     return result

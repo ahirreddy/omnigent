@@ -37,10 +37,11 @@ nonisolated enum ComposerDraftText {
 }
 
 /// The CLI composer: a full-width band with a `›` prompt and a dim placeholder, then a status
-/// line (model and effort · directory · branch, warnings on the right). It keeps the composer's
-/// rules (``ComposerSendRules``): Return sends or steers or queues, Shift- or Option-Return adds
-/// a line, Esc closes completions then stops the turn, Up recalls, ⇧Tab cycles the approval mode.
-/// Queued messages, delivery problems, completions and attachments keep their native views.
+/// line (model and effort · directory · branch, task indicators and warnings on the right). Only
+/// the presentation differs from ``ComposerView``: it shares the keys (``ComposerKeyboard``), the
+/// send rules, command output, completions and pickers (``ComposerSuggestions``,
+/// ``View/composerPickerRequests(state:actions:)``). Queued messages, delivery problems, command
+/// output, completions, attachments, `@` mentions and the connection row keep their native views.
 /// The touch bar's controls (``ComposerControlParts``: Add with photos, files and paste, Mic,
 /// Stop and Send) sit at the band's trailing edge: always on touch, in the thumb zone, and on
 /// hover or focus on the Mac. Touch never mentions Esc.
@@ -57,6 +58,8 @@ public struct CLIComposer: View {
   @State private var isHovered = false
   @State private var attachmentError: String?
   @State private var dismissedCompletionsDraft: String?
+  @State private var highlightedCompletion = 0
+  @State private var recall = PromptRecall()
   @State private var showsWarnings = false
   @FocusState private var isFocused: Bool
   @Environment(\.cliPalette) private var palette
@@ -89,11 +92,16 @@ public struct CLIComposer: View {
   private var isEditable: Bool { state.availability.reason == nil }
 
   private var completions: ComposerCompletions {
-    guard draft != dismissedCompletionsDraft else {
-      return ComposerCompletions(draft: draft, commands: [], mentions: [])
-    }
-    return ComposerCompletions(
-      draft: draft, commands: state.slashCommands, mentions: state.mentionCandidates)
+    .offered(draft: draft, dismissed: dismissedCompletionsDraft, state: state)
+  }
+
+  /// The chat composer's keys; the CLI's status line shows the approval mode, so no HUD.
+  private var keyboard: ComposerKeyboard {
+    ComposerKeyboard(
+      state: state, actions: actions, rules: rules, completions: completions,
+      commandReturnOwner: commandReturnOwner, draft: $draft,
+      dismissedCompletionsDraft: $dismissedCompletionsDraft, highlighted: $highlightedCompletion,
+      recall: $recall, modeHUD: .constant(nil), perform: perform)
   }
 
   private var showsControls: Bool {
@@ -125,11 +133,15 @@ public struct CLIComposer: View {
             queue: state.queue, isRunning: state.isRunning, canSteer: state.canSteer,
             actions: actions.extras)
         }
-        if !completions.items.isEmpty {
-          CompletionList(items: completions.items) { draft = completions.applying($0) }
-        }
+        ComposerSuggestions(
+          state: state, actions: actions, draft: draft, dismissedDraft: dismissedCompletionsDraft,
+          highlighted: highlightedCompletion
+        ) { keyboard.apply($0) }
         if !state.attachments.isEmpty {
           DraftAttachmentStrip(attachments: state.attachments, remove: actions.removeAttachment)
+        }
+        if !state.mentions.isEmpty {
+          MentionChips(paths: state.mentions, remove: actions.extras.removeMention)
         }
       }
       .transcriptColumn()
@@ -140,6 +152,11 @@ public struct CLIComposer: View {
       )
       .transcriptColumn()
       .padding(.vertical, layout == .touch ? Theme.Spacing.extraSmall : Theme.Spacing.small)
+      if let connection = state.connection {
+        ConnectionNoticeRow(notice: connection, reconnect: actions.extras.reconnect)
+          .transcriptColumn()
+          .padding(.bottom, Theme.Spacing.small)
+      }
     }
     .dropDestination(for: URL.self, isEnabled: canAttach) { urls, _ in
       add(urls.map { ComposerAttachmentInput.file(url: $0) })
@@ -167,6 +184,7 @@ public struct CLIComposer: View {
       }
     #endif
     .readingPostureFocus($isFocused, focusRequest: focusRequest)
+    .composerPickerRequests(state: state, actions: actions)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("composer")
   }
@@ -231,10 +249,13 @@ public struct CLIComposer: View {
     .padding(.leading, -inset.leading)
     .focused($isFocused)
     .disabled(!isEditable)
-    .onKeyPress(.return, phases: .down) { press in handleReturn(press) }
-    .onKeyPress(.tab, phases: .down) { press in handleTab(press) }
-    .onKeyPress(.escape, phases: .down) { _ in handleEscape() }
-    .onKeyPress(.upArrow, phases: .down) { _ in handleUpArrow() }
+    .onKeyPress(.return, phases: .down) { press in keyboard.handleReturn(press) }
+    .onKeyPress(.tab, phases: .down) { press in keyboard.handleTab(press) }
+    .onKeyPress(.escape, phases: .down) { _ in keyboard.handleEscape() }
+    .onKeyPress(keys: [.upArrow, .downArrow], phases: .down) { press in
+      keyboard.handleArrow(press)
+    }
+    .onChange(of: draft) { if highlightedCompletion != 0 { highlightedCompletion = 0 } }
     .accessibilityLabel("Message")
     .accessibilityHint(
       isEditable
@@ -246,7 +267,8 @@ public struct CLIComposer: View {
   private var controls: some View {
     let parts = ComposerControlParts(
       state: state, actions: actions, rules: rules,
-      hasDraft: !draft.isEmpty || !state.attachments.isEmpty, isEditable: isEditable,
+      hasDraft: !draft.isEmpty || !state.attachments.isEmpty || !state.mentions.isEmpty,
+      isEditable: isEditable,
       canAttach: canAttach, layoutWidth: layoutWidth, layout: layout,
       isImporting: $isImporting, isPickingPhotos: $isPickingPhotos, isExpanded: $isExpanded,
       loadProviders: { providers in Task { await loadProviders(providers) } }, perform: perform)
@@ -279,13 +301,7 @@ public struct CLIComposer: View {
   }
 
   private func perform(_ intent: ComposerSendIntent) {
-    guard rules.blockedReason(for: intent) == nil else { return }
-    dismissedCompletionsDraft = nil
-    if intent == .queue, let queueDraft = actions.extras.queueDraft {
-      queueDraft()
-    } else {
-      actions.send()
-    }
+    if actions.perform(intent, rules: rules) { dismissedCompletionsDraft = nil }
   }
 
   private func add(_ inputs: [ComposerAttachmentInput]) {
@@ -304,64 +320,5 @@ public struct CLIComposer: View {
     let result = await AttachmentLoading.providers(providers)
     add(result.inputs)
     if !result.failures.isEmpty { attachmentError = result.failures.joined(separator: "\n") }
-  }
-}
-
-extension CLIComposer {
-  // MARK: Keys (the editor's own; they act only while it has focus)
-
-  private func handleReturn(_ press: KeyPress) -> KeyPress.Result {
-    if let first = completions.items.first {
-      draft = completions.applying(first)
-      return .handled
-    }
-    #if os(iOS)
-      if !press.modifiers.contains(.command) { return .ignored }
-    #endif
-    if press.modifiers == .command, commandReturnOwner == .approve { return .ignored }
-    if press.modifiers.contains(.command), press.modifiers.contains(.option) {
-      guard let alternative = rules.alternative else { return .ignored }
-      perform(alternative)
-      return .handled
-    }
-    if press.modifiers.contains(.shift) || press.modifiers.contains(.option) { return .ignored }
-    if state.submitWithCommandReturn, !press.modifiers.contains(.command) { return .ignored }
-    perform(rules.intent)
-    return .handled
-  }
-
-  private func handleTab(_ press: KeyPress) -> KeyPress.Result {
-    if press.modifiers.contains(.shift), let next = state.approvalModes?.next,
-      let select = actions.extras.selectApprovalMode
-    {
-      select(next)
-      AccessibilityNotification.Announcement("Approval mode \(next.label)").post()
-      return .handled
-    }
-    if !press.modifiers.contains(.shift), let first = completions.items.first {
-      draft = completions.applying(first)
-      return .handled
-    }
-    return .ignored
-  }
-
-  private func handleEscape() -> KeyPress.Result {
-    if !completions.items.isEmpty {
-      dismissedCompletionsDraft = draft
-      return .handled
-    }
-    guard state.isRunning, let interrupt = actions.interrupt, !state.isStopping else {
-      return .ignored
-    }
-    interrupt()
-    return .handled
-  }
-
-  private func handleUpArrow() -> KeyPress.Result {
-    guard draft.isEmpty, let recall = actions.extras.recallPrevious, let previous = recall() else {
-      return .ignored
-    }
-    draft = previous
-    return .handled
   }
 }

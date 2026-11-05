@@ -28,8 +28,6 @@ public struct ComposerView: View {
   @State private var dismissedCompletionsDraft: String?
   @State private var highlightedCompletion = 0
   @State private var recall = PromptRecall()
-  @State private var showsApprovalPicker = false
-  @State private var showsModelPicker = false
   @FocusState private var isFocused: Bool
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -109,16 +107,10 @@ public struct ComposerView: View {
         )
         .tint(.secondary)
       }
-      if let notice = state.commandNotice {
-        CommandNoticeView(text: notice, dismiss: actions.extras.dismissCommandNotice)
-      }
-      if !completions.items.isEmpty {
-        CompletionList(
-          items: completions.items, note: completionsNote, highlighted: highlightedCompletion
-        ) { keyboard.apply($0) }
-      } else if let note = failedMentionNote {
-        CompletionList(items: [], note: note) { _ in }
-      }
+      ComposerSuggestions(
+        state: state, actions: actions, draft: draft, dismissedDraft: dismissedCompletionsDraft,
+        highlighted: highlightedCompletion
+      ) { keyboard.apply($0) }
       VStack(alignment: .leading, spacing: isCollapsed ? 0 : Theme.Spacing.small) {
         if let reason = state.availability.reason {
           Label(reason, systemImage: "lock")
@@ -206,16 +198,7 @@ public struct ComposerView: View {
     #endif
     .readingPostureFocus($isFocused, focusRequest: focusRequest)
     .task(id: modeHUD) { await clearHUD() }
-    .modifier(
-      ApprovalModePicker(
-        modes: state.approvalModes, request: state.approvalPickerRequest,
-        isPresented: $showsApprovalPicker, select: actions.extras.selectApprovalMode)
-    )
-    .modifier(
-      ModelPicker(
-        configuration: state.configuration, request: state.modelPickerRequest,
-        isPresented: $showsModelPicker, select: actions.selectModel)
-    )
+    .composerPickerRequests(state: state, actions: actions)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("composer")
   }
@@ -255,13 +238,7 @@ public struct ComposerView: View {
 
   /// Sends now (idle or steering) or queues, as `intent` says.
   private func perform(_ intent: ComposerSendIntent) {
-    guard rules.blockedReason(for: intent) == nil else { return }
-    dismissedCompletionsDraft = nil
-    if intent == .queue, let queueDraft = actions.extras.queueDraft {
-      queueDraft()
-    } else {
-      actions.send()
-    }
+    if actions.perform(intent, rules: rules) { dismissedCompletionsDraft = nil }
   }
 
   // MARK: Attachment loading
@@ -362,23 +339,6 @@ extension ComposerView {
   }
 
   private var completions: ComposerCompletions {
-    guard draft != dismissedCompletionsDraft else {
-      return ComposerCompletions(draft: draft, commands: [], mentions: [])
-    }
-    return ComposerCompletions(
-      draft: draft, commands: state.slashCommands, mentions: state.mentionCandidates)
-  }
-
-  /// A mention's note under its rows, or the skills note under commands.
-  private var completionsNote: String? {
-    ComposerCompletions.isTypingMention(draft) ? state.mentionsNote : state.slashCommandsNote
-  }
-
-  /// Why a mention being typed has no rows: the search failed.
-  private var failedMentionNote: String? {
-    guard draft != dismissedCompletionsDraft, ComposerCompletions.isTypingMention(draft) else {
-      return nil
-    }
-    return state.mentionsNote
+    .offered(draft: draft, dismissed: dismissedCompletionsDraft, state: state)
   }
 }

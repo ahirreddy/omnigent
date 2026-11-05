@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The line under the CLI composer: `model effort · ~/dir · branch · mode`, and the warning
-/// count on the right. The model is a real menu, drawn as text.
+/// The line under the CLI composer: `model effort · ~/dir · branch · mode`, then on the right
+/// what the chat composer's row shows beside its controls (plan mode, background tasks,
+/// sub-agents, goal, pull request, context use) and the warning count. Menus draw as text.
 struct CLIStatusLine: View {
   let state: ComposerViewState
   let actions: ComposerActions
@@ -12,11 +13,27 @@ struct CLIStatusLine: View {
   @Environment(\.layoutWidth) private var layoutWidth
 
   var body: some View {
+    // A phone puts the indicators on their own line rather than truncating the status away.
+    VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
+      statusRow
+      if layoutWidth == .compact {
+        CLIStatusIndicators(state: state, actions: actions)
+      }
+    }
+    .cliFont()
+    .lineLimit(1)
+    .foregroundStyle(palette.dim.color)
+  }
+
+  private var statusRow: some View {
     HStack(alignment: .firstTextBaseline, spacing: 0) {
       // One row whose texts truncate (the directory first, the model last). No ViewThatFits:
       // measuring several copies of the menus keeps UIKit relaying out on iPhone.
       leading
       Spacer(minLength: Theme.Spacing.medium)
+      if layoutWidth != .compact {
+        CLIStatusIndicators(state: state, actions: actions).layoutPriority(4)
+      }
       if !warnings.isEmpty {
         Button {
           showsWarnings.toggle()
@@ -35,9 +52,6 @@ struct CLIStatusLine: View {
         .accessibilityIdentifier("composer-warnings")
       }
     }
-    .cliFont()
-    .lineLimit(1)
-    .foregroundStyle(palette.dim.color)
   }
 
   private var leading: some View {
@@ -67,7 +81,58 @@ struct CLIStatusLine: View {
   }
 
   private var separator: some View {
-    Text(verbatim: " \u{00B7} ").accessibilityHidden(true)
+    Text(verbatim: " \u{00B7} ").fixedSize().accessibilityHidden(true)
+  }
+}
+
+/// The chat composer's task indicators, pull request and context use, as status-line items.
+private struct CLIStatusIndicators: View {
+  let state: ComposerViewState
+  let actions: ComposerActions
+  @Environment(\.cliPalette) private var palette
+
+  private var showsPlan: Bool { actions.extras.isPlanOn && state.purpose == .session }
+
+  var body: some View {
+    let tray = state.tray ?? ComposerTray()
+    if showsPlan || !tray.indicators.isEmpty || tray.pullRequest != nil
+      || tray.contextFraction != nil
+    {
+      items(tray)
+    }
+  }
+
+  private func items(_ tray: ComposerTray) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.medium) {
+      if showsPlan {
+        Text(verbatim: "plan mode").foregroundStyle(palette.heading.color)
+          .help("The agent plans and asks before making changes")
+          .accessibilityIdentifier("composer-plan-mode")
+      }
+      if !tray.indicators.isEmpty {
+        ComposerIndicatorsView(indicators: tray.indicators, actions: actions.extras.indicators)
+          .buttonStyle(.plain)
+          .menuStyle(.button)
+      }
+      if let pullRequest = tray.pullRequest {
+        ComposerPullRequestChip(
+          label: pullRequest, status: tray.pullRequestStatus, preview: tray.pullRequestPreview,
+          open: actions.extras.indicators.openPullRequests
+        )
+        .buttonStyle(.plain)
+      }
+      if let fraction = tray.contextFraction {
+        let percent = Int((fraction * 100).rounded())
+        Text(verbatim: "\(percent)% context")
+          .foregroundStyle(fraction > 0.85 ? palette.needsYou.color : palette.dim.color)
+          .help("Context used: \(percent)% of the context window")
+          .accessibilityLabel("Context used")
+          .accessibilityValue("\(percent) percent")
+          .accessibilityIdentifier("composer-context-usage")
+      }
+    }
+    .fixedSize()
+    .padding(.trailing, Theme.Spacing.medium)
   }
 }
 

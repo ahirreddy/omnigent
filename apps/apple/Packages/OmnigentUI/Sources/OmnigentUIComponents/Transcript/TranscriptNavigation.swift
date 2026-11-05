@@ -101,6 +101,20 @@ struct TranscriptNavigator: View {
     width - column >= 2 * Theme.Control.target
   }
 
+  /// The room the transcript keeps under its last row while the pill floats over the column (the
+  /// Mac, whose pill also carries the shortcuts), so it never covers a banner's Retry there.
+  /// - Parameters:
+  ///   - layout: The composer's layout; touch hides the pill over the column instead.
+  ///   - width: The transcript's width.
+  ///   - column: The transcript column's maximum width.
+  /// - Returns: The bottom content margin.
+  static func bottomClearance(layout: ComposerLayoutStyle, width: CGFloat, column: CGFloat)
+    -> CGFloat
+  {
+    guard layout == .card, !fitsBesideColumn(width: width, column: column) else { return 0 }
+    return Theme.Control.target * 2 + Theme.Spacing.medium
+  }
+
   private var navigator: some View {
     VStack(spacing: 0) {
       button(
@@ -134,6 +148,40 @@ struct TranscriptNavigator: View {
     .help(shortcut.map { "\(title) (\($0))" } ?? title)
     .accessibilityLabel(title)
     .accessibilityIdentifier(id)
+  }
+}
+
+/// The transcript's ``TranscriptNavigator`` at its bottom-trailing corner, with
+/// ``TranscriptNavigator/bottomClearance(layout:width:column:)`` kept under the scroll content
+/// while the pill shows.
+struct TranscriptNavigatorOverlay: ViewModifier {
+  /// There is a user message to move between.
+  let isShown: Bool
+  let previous: () -> Void
+  let next: () -> Void
+  @State private var width: CGFloat = 0
+  @Environment(\.layoutWidth) private var layoutWidth
+  @Environment(\.composerLayoutStyle) private var composerLayout
+  @Environment(\.transcriptAppearance) private var appearance
+
+  func body(content: Content) -> some View {
+    let column = layoutWidth == .compact ? .infinity : appearance.contentWidth.maxWidth
+    let inset =
+      isShown
+      ? TranscriptNavigator.bottomClearance(layout: composerLayout, width: width, column: column)
+      : 0
+    content
+      .overlay(alignment: .bottomTrailing) {
+        if isShown {
+          TranscriptNavigator(previous: previous, next: next).padding(Theme.Spacing.medium)
+        }
+      }
+      .onGeometryChange(for: CGFloat.self) {
+        $0.size.width
+      } action: {
+        width = $0
+      }
+      .contentMargins(.bottom, inset, for: .scrollContent)
   }
 }
 
