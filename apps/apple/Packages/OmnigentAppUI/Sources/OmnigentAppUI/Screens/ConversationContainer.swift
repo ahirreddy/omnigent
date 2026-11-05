@@ -41,7 +41,7 @@ struct ConversationContainer: View {
   @State private var showsInspector = WorkspacePanelDefault.stored() == .open
   @State private var inspectorTab: InspectorTab = DefaultWorkspaceTab.stored().inspectorTab
   @State private var showsGoal = false
-  @State private var mode: SessionViewMode = .chat
+  @State private var modeRoute = ConversationModeRoute()
   @State private var isStopping = false
   @State private var dismissedSendError: CoreError?
   @State private var failures: [String] = []
@@ -61,7 +61,7 @@ struct ConversationContainer: View {
       state: screen, composer: composerState(screen),
       draft: ComposerDraft(get: { composer.text }, set: { composer.text = $0 }),
       showsInspector: $showsInspector, inspectorTab: $inspectorTab, mode: modeBinding,
-      fork: forkSheet,
+      fork: $forkFlow.sheet,
       actions: routed(forkable(actions)), composerActions: composerActions,
       extras: ConversationExtras(
         sessionActions: forkable(sessionActions), slots: workspaceSlots,
@@ -112,6 +112,12 @@ struct ConversationContainer: View {
     }
     .onChange(of: terminals?.terminals.harness, initial: true) { attachHarness() }
     .modifier(WorkspacePanelDefaults(workspace: workspace, showsInspector: $showsInspector))
+    #if DEBUG
+      .modifier(
+        PerfConversationHooks(
+          showsInspector: $showsInspector, inspectorTab: $inspectorTab,
+          openBrowser: tabRoutes?.openBrowser))
+    #endif
     .onChange(of: changedFilesRevision) {
       guard let workspace else { return }
       Task { await workspace.changedFilesInvalidated() }
@@ -215,11 +221,10 @@ struct ConversationContainer: View {
   }
 
   /// With tabs, choosing Terminal opens the agent's TUI in its own tab and this tab stays on
-  /// the chat.
+  /// the chat. A key-path binding, so it compares equal across updates.
   private var modeBinding: Binding<SessionViewMode> {
-    guard let tabRoutes else { return $mode }
-    return Binding(
-      get: { .chat }, set: { if $0 == .terminal { tabRoutes.openHarness() } })
+    modeRoute.openHarness = tabRoutes?.openHarness
+    return $modeRoute.mode
   }
 
   /// Side questions open in their own tab; sub-agents and the "Back to the parent session"
@@ -273,11 +278,6 @@ struct ConversationContainer: View {
   private func beginFork(_ context: ForkContext) {
     guard let makeForkStore else { return }
     Task { await forkFlow.begin(context, makeStore: makeForkStore) }
-  }
-
-  private var forkSheet: Binding<ForkViewState?> {
-    let flow = forkFlow
-    return Binding(get: { flow.viewState }, set: { if $0 == nil { flow.cancel() } })
   }
 
   /// The fork opens as a chat tab next to this one, focused.
