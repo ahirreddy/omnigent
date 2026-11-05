@@ -158,9 +158,9 @@ struct DesktopRouterTests {
   func rejected() async throws {
     let harness = Harness()
     harness.attach()
-    try await harness.open("omnigent://localhost/settings")
+    try await harness.open("omnigent://localhost/members")
     #expect(harness.opened.isEmpty)
-    guard case .deepLinkRejected(_, .unsupportedPath("/settings")) = harness.issues.first else {
+    guard case .deepLinkRejected(_, .unsupportedPath("/members")) = harness.issues.first else {
       Issue.record("expected deepLinkRejected, got \(harness.issues)")
       return
     }
