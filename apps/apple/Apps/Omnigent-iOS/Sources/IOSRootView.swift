@@ -72,7 +72,7 @@ struct IOSRootView: View {
     )
     .phoneDeepLinks(
       session: hasStarted ? session : nil, selection: $selection, knownServers: knownServers,
-      switchServer: { switchServer(to: $0) }
+      switchServer: { switchServer(to: $0) }, launchLink: request == nil ? Self.launchLink : nil
     )
     .focusedSceneValue(\.serverCommands, serverCommandRelay.publish(session.map(serverCommands)))
   }
@@ -104,12 +104,35 @@ struct IOSRootView: View {
       session.isDemo
       ? ServerSession.demoServerURL
       : request?.serverURL ?? defaults.string(forKey: Self.lastServerKey)
+    // Chosen before connecting: the connected app opens with it, however late the core
+    // reports the sign-in.
+    if isNewWindow, let sessionID = request?.sessionID { selection = .session(sessionID) }
     if let server { await session.signIn.connectNow(server) }
-    if isNewWindow, let sessionID = request?.sessionID, session.isSignedIn {
-      selection = .session(sessionID)
-    }
     hasStarted = true
+    #if DEBUG
+      if request == nil { runLaunchChecks(session) }
+    #endif
   }
+
+  /// Debug builds launched with `-OmnigentOpenURL <link>` open the link as the system would,
+  /// without its "Open in" prompt, for simulator checks.
+  private static var launchLink: URL? {
+    #if DEBUG
+      UserDefaults.standard.string(forKey: "OmnigentOpenURL").flatMap(URL.init(string:))
+    #else
+      nil
+    #endif
+  }
+
+  #if DEBUG
+    /// Debug builds launched with `-OmnigentOpenWindow <session>` open the session in a new iPad
+    /// window, for simulator checks.
+    private func runLaunchChecks(_ session: ServerSession) {
+      if let sessionID = UserDefaults.standard.string(forKey: "OmnigentOpenWindow") {
+        openInNewWindow(session)?(sessionID)
+      }
+    }
+  #endif
 
   /// Keeps the recent servers (the sign-in list and the sidebar's switcher) and the server the
   /// next launch reconnects to.

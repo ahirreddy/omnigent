@@ -15,15 +15,17 @@
     ///   - selection: The scene's destination.
     ///   - knownServers: Servers the user connected to before.
     ///   - switchServer: Moves the scene to a server.
+    ///   - launchLink: A link to open once the scene is ready, as if the system had opened it.
     /// - Returns: The view.
     public func phoneDeepLinks(
       session: ServerSession?, selection: Binding<SidebarDestination?>,
-      knownServers: [URL], switchServer: @escaping @MainActor (URL) -> Void
+      knownServers: [URL], switchServer: @escaping @MainActor (URL) -> Void,
+      launchLink: URL? = nil
     ) -> some View {
       modifier(
         PhoneDeepLinks(
           session: session, selection: selection, knownServers: knownServers,
-          switchServer: switchServer))
+          switchServer: switchServer, launchLink: launchLink))
     }
   }
 
@@ -32,6 +34,9 @@
     @Binding var selection: SidebarDestination?
     let knownServers: [URL]
     let switchServer: @MainActor (URL) -> Void
+    let launchLink: URL?
+
+    @State private var openedLaunchLink = false
 
     /// A link that arrived before the scene's session was ready to route it.
     @State private var waiting: OmnigentDeepLink?
@@ -49,7 +54,13 @@
     func body(content: Content) -> some View {
       content
         .onOpenURL(perform: received)
-        .onChange(of: session == nil, initial: true) { routeWaiting() }
+        .onChange(of: session == nil, initial: true) {
+          if session != nil, let launchLink, !openedLaunchLink {
+            openedLaunchLink = true
+            received(launchLink)
+          }
+          routeWaiting()
+        }
         .onChange(of: readyServer) { deliverPending() }
         .alert(
           "Open this Omnigent link?",
