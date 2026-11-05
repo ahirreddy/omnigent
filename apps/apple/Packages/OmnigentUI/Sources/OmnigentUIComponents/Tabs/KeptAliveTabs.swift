@@ -9,7 +9,8 @@ extension EnvironmentValues {
 /// Shows one tab and keeps a few recently shown ones built underneath, hidden, so switching back
 /// to them shows their views as they were (scroll position included) instead of building them
 /// again. Hidden tabs take no clicks, are hidden from accessibility, show no toolbar, commands
-/// or right panel (see ``EnvironmentValues/isTabContentHidden``).
+/// or right panel (see ``EnvironmentValues/isTabContentHidden``). The shown conversation's
+/// toolbar items are placed here, so switching tabs updates them instead of replacing them.
 public struct KeptAliveTabs<Item: Identifiable, Content: View>: View {
   private let items: [Item]
   private let shownID: Item.ID
@@ -38,6 +39,7 @@ public struct KeptAliveTabs<Item: Identifiable, Content: View>: View {
           .modifier(HiddenTabContent(isHidden: isHidden))
       }
     }
+    .hostsConversationToolbar()
   }
 }
 

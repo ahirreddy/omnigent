@@ -99,6 +99,26 @@ struct TranscriptBenchmarks {
     }
   }
 
+  @Test("benchmark: CLI transcript blocks per streamed delta", .enabled(if: isEnabled))
+  func cliBlocksPerDelta() {
+    for turns in [100, 500, 1_000] {
+      var rows = Self.rows(turns: turns)
+      // Seeded rows carry their write times, which each settled turn's footer shows.
+      for index in rows.indices {
+        rows[index].createdAt = Date(timeIntervalSinceReferenceDate: 7e8 + Double(index) * 30)
+      }
+      rows[rows.count - 1].isStreaming = true
+      let memo = TranscriptLayoutMemo()
+      var state = Self.conversation(rows, running: true)
+      _ = memo.blocks(for: state)
+      let perDelta = Self.perCall(50) { index in
+        state.rows[state.rows.count - 1].text += " word\(index)"
+        _ = memo.blocks(for: state)
+      }
+      print("benchmark: \(state.rows.count) rows; CLI blocks per delta \(Self.format(perDelta)) ms")
+    }
+  }
+
   @Test("benchmark: markdown parse per answer, uncached", .enabled(if: isEnabled))
   func markdownParse() {
     let answers = (1...200).map(Self.answer)

@@ -77,6 +77,7 @@ public struct ConnectedServerView: View {
           ConnectionIssuesBanner(connection: connection)
         }
     }
+    .environment(\.tabStatusDetails, TabAdapter.statusDetails(session))
     .modifier(PaletteAdapter(session: session, selection: $selection))
     .background { PinnedSessionShortcuts(open: openPinnedSession) }
     .copyConfirmations()

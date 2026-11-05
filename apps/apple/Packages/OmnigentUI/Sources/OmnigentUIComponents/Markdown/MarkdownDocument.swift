@@ -1,5 +1,6 @@
 import Foundation
 import Markdown
+import OmnigentPlatform
 import SwiftUI
 
 /// Column alignment of a markdown table.
@@ -257,7 +258,11 @@ final class MarkdownCache {
   }
 
   func blocks(for text: String) -> [MarkdownBlock] {
-    entries.value(for: text) { MarkdownParser.parse(text) }
+    entries.value(for: text) {
+      PerformanceSignposts.measure(PerformanceSignposts.transcript, "markdown parse") {
+        MarkdownParser.parse(text)
+      }
+    }
   }
 }
 

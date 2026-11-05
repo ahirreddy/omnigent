@@ -47,6 +47,32 @@ class LogTests(unittest.TestCase):
         self.assertEqual(perf.parse_log(earlier + LOG, 1000, 2000).numbers["worst_ms"], 150.0)
 
 
+FRAMES = """# start 900
+# frames 1250 15 16.67
+1300 50.0
+# frames 1500 12 16.67
+1600 25.0
+# frames 1750 15 16.67
+# frames 2000 15 16.67
+"""
+
+
+class FrameTests(unittest.TestCase):
+    def test_counts_frames_and_long_ones_inside_the_window(self):
+        numbers = perf.parse_frames(FRAMES, 1000, 2000).numbers
+        # The windows ending at 1250 through 2000: 57 frames over a second.
+        self.assertEqual(numbers["fps"], 57)
+        self.assertEqual(numbers["long_frames"], 2)
+        self.assertEqual(numbers["dropped"], 2)
+        self.assertAlmostEqual(numbers["hitch_ms_per_s"], 50 + 25 - 2 * 16.67)
+        self.assertEqual(numbers["worst_frame_ms"], 50.0)
+
+    def test_driver_steps_take_their_frames(self):
+        self.assertAlmostEqual(perf.step_seconds("scroll 0.5 0.5 -60 59"), 1.0)
+        self.assertAlmostEqual(perf.step_seconds("wait 700"), 0.7)
+        self.assertAlmostEqual(perf.step_seconds("resize 10 10 30"), 0.5)
+
+
 class SampleTests(unittest.TestCase):
     REPORT = """Call graph:
     10 Thread_1   DispatchQueue_1: com.apple.main-thread  (serial)

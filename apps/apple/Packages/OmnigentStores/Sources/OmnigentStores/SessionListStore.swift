@@ -30,6 +30,10 @@ public final class SessionListStore {
   }
   /// The sessions matching ``searchText`` and ``filter``: pinned first, then most recent.
   public private(set) var visible: [SessionSummary] = []
+  /// Sessions that need the user (``AttentionState/needsYou``), archived or not, in display
+  /// order. Its count is ``attentionTotals``' `sessionsNeedingYou`. Kept current here, so the
+  /// views reading it (the palette, the Inbox) cost nothing per read.
+  public private(set) var needsResponse: [SessionSummary] = []
   /// Whether the first list read finished.
   public private(set) var isLoaded = false
   /// Search text, matched by the core.
@@ -232,12 +236,6 @@ public final class SessionListStore {
     attentionByID[sessionID] ?? SessionAttention(state: .idle, requests: 0)
   }
 
-  /// Sessions that need the user (``AttentionState/needsYou``), archived or not, in display
-  /// order. Its count is ``attentionTotals``' `sessionsNeedingYou`.
-  public var needsResponse: [SessionSummary] {
-    filterSessions(sessions: Array(sessionsByID.values), text: "", filter: .needsResponse)
-  }
-
   func apply(_ change: SessionListChange) {
     // Every server row settles its session's expectation.
     switch change {
@@ -314,6 +312,11 @@ public final class SessionListStore {
     computedAttention = computed
     let attention = computed.mapValues(\.attention)
     if attention != attentionByID { attentionByID = attention }
+    // Only the sessions that need the user go through the core, for its display order.
+    let needing = sessions.values.filter { attention[$0.id]?.state == .needsYou }
+    let ordered =
+      needing.isEmpty ? [] : filterSessions(sessions: needing, text: "", filter: .needsResponse)
+    if ordered != needsResponse { needsResponse = ordered }
     let totals = OmnigentCoreFFI.attentionTotals(sessions: all, unreadIds: Array(unreadIDs))
     if totals != attentionTotals { attentionTotals = totals }
   }

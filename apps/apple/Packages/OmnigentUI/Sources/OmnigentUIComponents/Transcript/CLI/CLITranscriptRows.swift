@@ -18,9 +18,10 @@ nonisolated enum CLIBlock: Hashable, Sendable, Identifiable {
 nonisolated enum CLILayout {
   /// Adds a footer after each settled turn (the segments between user messages) that reports a
   /// duration or a time. The live turn has none; its working line shows instead.
+  /// `closesLastTurn` settles the last turn too: the segments end before a user message.
   static func blocks(
     _ segments: [TurnSegment], durations: [String: TimeInterval], timestamps: [String: Date],
-    isRunning: Bool, now: Date = Date()
+    isRunning: Bool, closesLastTurn: Bool = false, now: Date = Date()
   ) -> [CLIBlock] {
     var blocks: [CLIBlock] = []
     var turn: [TurnSegment] = []
@@ -45,7 +46,7 @@ nonisolated enum CLILayout {
         turn.append(segment)
       }
     }
-    flush(isLast: true)
+    flush(isLast: !closesLastTurn)
     return blocks
   }
 

@@ -22,8 +22,7 @@ enum TabAdapter {
   ) -> TabsState {
     TabsState(
       tabs: tabs.tabs.map {
-        var entry = item(
-          $0, session: session, browser: browser, isSelected: $0.id == tabs.selectedID)
+        var entry = item($0, session: session, browser: browser)
         entry.pane = tabs.pane(of: $0.id)
         entry.status = status(entry.status, isUnread: tabs.unread.contains($0.id))
         return entry
@@ -38,11 +37,9 @@ enum TabAdapter {
   ///   - tab: The tab.
   ///   - session: The connection and its stores.
   ///   - browser: The browser host.
-  ///   - isSelected: The selected tab, whose tooltip carries its session's status line.
   /// - Returns: The strip's tab.
   static func item(
-    _ tab: AppTab, session: ServerSession, browser: (any BrowserTabHosting)?,
-    isSelected: Bool = false
+    _ tab: AppTab, session: ServerSession, browser: (any BrowserTabHosting)?
   ) -> TabItemState {
     var item = TabItemState(
       id: tab.id, kind: tab.content.kind, title: tab.title ?? "", isPinned: tab.isPinned)
@@ -51,7 +48,7 @@ enum TabAdapter {
       item.title = tab.content.kind == .newTab ? "New Tab" : tab.content.kind.label.capitalized
       item.canDuplicate = false
     case .chat, .harness, .agentBrowser, .sideChat:
-      sessionItem(&item, tab: tab, session: session, isSelected: isSelected)
+      sessionItem(&item, tab: tab, session: session)
     case .terminal(let sessionID, let terminalID):
       let store = session.terminalStores[sessionID]
       let row = store?.terminals.rows.first { $0.terminal.id == terminalID }
@@ -109,9 +106,7 @@ enum TabAdapter {
   }
 
   /// Chat, agent terminal, agent browser and side chat tabs: titled from their session.
-  private static func sessionItem(
-    _ item: inout TabItemState, tab: AppTab, session: ServerSession, isSelected: Bool
-  ) {
+  private static func sessionItem(_ item: inout TabItemState, tab: AppTab, session: ServerSession) {
     let connection = session.connection
     let list = connection.sessionList
     guard let id = tab.content.sessionID else { return }
@@ -125,10 +120,6 @@ enum TabAdapter {
       item.isReadOnly = summary?.isReadOnly ?? false
       item.canRenameSession = summary?.canRename == true
       item.link = SidebarAdapter.webURL(server: connection.connectedServer, sessionID: id)
-      // The titlebar has no status line of its own; the selected chat's tooltip carries it.
-      if isSelected, let conversation = connection.conversations[id] {
-        item.statusDetail = ConversationAdapter.statusLine(conversation, summary: summary).text
-      }
     case .harness:
       item.title = summary.map { "\($0.title) (agent)" } ?? tab.title ?? "Agent Terminal"
       item.subtitle = summary.flatMap(context)
@@ -145,6 +136,20 @@ enum TabAdapter {
       item.subtitle = summary?.title
       item.isReadOnly = true
       item.canDuplicate = false
+    }
+  }
+
+  /// Reads a chat tab's status line for its tooltip, in the tab's own body: the shell building
+  /// the strip's state then does not redraw for the session's header, decisions and sections.
+  /// - Parameter session: The connection and its stores.
+  /// - Returns: The reader.
+  static func statusDetails(_ session: ServerSession) -> TabStatusDetails {
+    TabStatusDetails(owner: session) { tabID in
+      guard case .chat(let id) = session.tabs.tab(tabID)?.content,
+        let conversation = session.connection.conversations[id]
+      else { return nil }
+      let summary = session.connection.sessionList.session(id)
+      return ConversationAdapter.statusLine(conversation, summary: summary).text
     }
   }
 

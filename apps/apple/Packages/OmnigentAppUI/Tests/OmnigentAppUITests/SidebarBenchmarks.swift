@@ -91,9 +91,15 @@ struct SidebarBenchmarks {
       row.updatedAt = Int64(20_000 + index)
       list.apply(.upsert(sessions: [row]))
     }
+    // The palette and Inbox read the sessions needing the user on every shell redraw.
+    let needsYouRead = perCall(20) { _ in _ = list.needsResponse }
+    let needsYouFiltered = perCall(20) { _ in
+      _ = filterSessions(sessions: sessions, text: "", filter: .needsResponse)
+    }
     print(
       "benchmark: 650 sessions; sidebar state built \(built), memo hit \(reused); "
         + "a server row through the whole list \(everyRow), now unchanged \(unchanged), "
-        + "changed \(changed)")
+        + "changed \(changed); needs-you read \(needsYouRead) (filtering every session "
+        + "\(needsYouFiltered))")
   }
 }

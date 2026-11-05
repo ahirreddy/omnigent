@@ -8,6 +8,7 @@ public import SwiftUI
 /// the reading position and "Jump to latest" offers the way back (``TranscriptFollow``).
 public struct TranscriptView: View {
   private let state: ConversationViewState
+  private let liveRows: LiveTranscriptRows?
   private let actions: ConversationActions
   private let scrollToLatestRequest: Int
 
@@ -15,12 +16,14 @@ public struct TranscriptView: View {
   @State private var layout = TranscriptLayoutMemo()
   @State private var environmentRelay = TranscriptEnvironmentRelay()
   @State private var position = TranscriptReadingPosition()
-  @Environment(\.transcriptFocus) private var focus
+  @State private var pacer = TranscriptRowsPacer()
+  @State private var current: TranscriptCurrentState
+  @State private var hasUserMessages = false
   @Environment(\.transcriptAppearance) private var appearance
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-  private static let bottomID = "transcript-bottom"
-  private static let topID = "transcript-top"
+  static let bottomID = "transcript-bottom"
+  static let topID = "transcript-top"
   /// How close to the top, in points, reading starts loading older history.
   private static let olderHistoryReach: CGFloat = 400
 
@@ -34,63 +37,39 @@ public struct TranscriptView: View {
     state: ConversationViewState, actions: ConversationActions = ConversationActions(),
     scrollToLatestRequest: Int = 0
   ) {
+    self.init(
+      state: state, liveRows: nil, actions: actions, scrollToLatestRequest: scrollToLatestRequest)
+  }
+
+  /// Creates the transcript.
+  /// - Parameters:
+  ///   - state: The conversation.
+  ///   - liveRows: Reads the rows inside the row list, so a row change re-renders only the list;
+  ///     `nil` uses `state.rows`.
+  ///   - actions: Host actions.
+  ///   - scrollToLatestRequest: Increment to scroll to the newest row.
+  init(
+    state: ConversationViewState, liveRows: LiveTranscriptRows?, actions: ConversationActions,
+    scrollToLatestRequest: Int
+  ) {
     self.state = state
+    self.liveRows = liveRows
     self.actions = actions
     self.scrollToLatestRequest = scrollToLatestRequest
+    _current = State(initialValue: TranscriptCurrentState(state))
   }
+
+  /// The rows as the list last showed them, for scroll actions outside a body.
+  private var shown: ConversationViewState { current.state }
 
   /// The transcript.
   public var body: some View {
     let actions = environmentRelay.publish(self.actions)
     ScrollViewReader { proxy in
       ScrollView {
-        LazyVStack(
-          alignment: .leading, spacing: appearance.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row
-        ) {
-          Color.clear.frame(height: 1).id(Self.topID)
-          if appearance.isCLI {
-            CLITranscriptRows(
-              state: state, actions: actions, blocks: layout.blocks(for: state),
-              header: historyHeader)
-          } else {
-            historyHeader
-            if let superseded = state.section("superseded"), let target = superseded.sessionId,
-              target != state.header.id
-            {
-              SupersededBanner(section: superseded, target: target)
-            }
-            let entries = layout.entries(for: state)
-            if entries.isEmpty {
-              EmptyTranscriptView(state: state)
-            }
-            ForEach(entries) { entry in
-              TurnSegmentView(entry: entry)
-                .equatable()
-                .id(entry.id)
-                .background { if focus?.flashedRowID == entry.id { MessageFlash() } }
-            }
-            InlineDecisions(state: state, actions: actions)
-            SubagentGroupView(state: state, actions: actions)
-            if let startup = state.section("startup") {
-              StartupLine(section: startup)
-            }
-            if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
-              WorkingIndicator(
-                isBlocked: !state.pendingDecisions.isEmpty, startedAt: TurnElapsed.start(in: state))
-            }
-            if let failure = state.header.failureMessage, !hasErrorRow(matching: failure) {
-              FailureBanner(message: failure, resume: actions.resume)
-            }
-            if let error = state.errorMessage {
-              ErrorBanner(message: error, dismiss: actions.dismissError, retry: actions.retry)
-            }
-          }
-          Color.clear.frame(height: 1).id(Self.bottomID)
-        }
-        .scrollTargetLayout()
-        .padding(.vertical, Theme.Spacing.extraLarge)
-        // CLI rows set their own column, so user bands reach the edges.
-        .transcriptStackColumn()
+        TranscriptRowsContent(
+          state: state, liveRows: liveRows, pacer: pacer, actions: actions, layout: layout,
+          current: current, events: rowEvents(proxy), header: historyHeader)
       }
       .safeAreaBar(edge: .top, spacing: 0) {
         // The plan stays pinned above the thread, collapsed, as the web's tracker.
@@ -133,9 +112,6 @@ public struct TranscriptView: View {
       } action: { old, new in
         if new > old, follow.layoutGrew() { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
       }
-      .onChange(of: state.revision) { _, _ in
-        _ = follow.contentChanged()
-      }
       .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.01) { ids in
         position.visible = Set(ids)
       }
@@ -145,13 +121,8 @@ public struct TranscriptView: View {
         // Only a reader moving up asks for more, not a short transcript that fits.
         if isNearTop, follow.isUserScrolling || !follow.follows { loadOlder() }
       }
-      .onChange(of: state.rows.first?.id) { _, _ in holdReadingPosition(proxy) }
       .onChange(of: state.isLoadingHistory) { _, isLoading in
         if !isLoading { olderHistoryEnded(proxy) }
-      }
-      .onChange(of: Self.ownMessageID(state)) { previous, current in
-        // The reader's own new message takes them to the latest, wherever they were reading.
-        if current != nil, previous != nil, current != previous { jumpToLatest(proxy) }
       }
       .onChange(of: scrollToLatestRequest) { _, _ in jumpToLatest(proxy) }
       .modifier(messageFocus(proxy))
@@ -164,7 +135,7 @@ public struct TranscriptView: View {
       }
       .modifier(
         TranscriptNavigatorOverlay(
-          isShown: state.rows.contains { $0.role == .user },
+          isShown: hasUserMessages,
           previous: { step(.previous, proxy) }, next: { step(.next, proxy) })
       )
       .modifier(
@@ -187,6 +158,20 @@ public struct TranscriptView: View {
     .cliPalette()
     .accessibilityIdentifier("transcript-\(state.header.id)")
     .countsRenders("transcript")
+  }
+
+  /// The row list's changes, acted on here.
+  private func rowEvents(_ proxy: ScrollViewProxy) -> TranscriptRowEvents {
+    TranscriptRowEvents(
+      revisionChanged: { _ = follow.contentChanged() },
+      firstRowChanged: { holdReadingPosition(proxy) },
+      ownMessageChanged: { previous, latest in
+        // The reader's own new message takes them to the latest, wherever they were reading.
+        if latest != nil, previous != nil, latest != previous { jumpToLatest(proxy) }
+      },
+      hasUserMessagesChanged: { hasUser in
+        if hasUserMessages != hasUser { hasUserMessages = hasUser }
+      })
   }
 
   @ViewBuilder private var historyHeader: some View {
@@ -213,7 +198,7 @@ public struct TranscriptView: View {
     guard state.hasMoreHistory, !state.isLoadingHistory, let loadOlder = actions.loadOlder else {
       return
     }
-    let order = layout.entries(for: state).map(\.id)
+    let order = layout.entries(for: shown).map(\.id)
     position.prependAnchor = order.first { position.visible.contains($0) }
     position.awaitsPage = true
     loadOlder()
@@ -259,7 +244,7 @@ public struct TranscriptView: View {
   /// Moves to the previous or next user message. With none above, older history loads; with
   /// none below, the newest row shows.
   private func step(_ direction: TranscriptNavigation.Direction, _ proxy: ScrollViewProxy) {
-    let entries = layout.entries(for: state)
+    let entries = layout.entries(for: shown)
     let target = TranscriptNavigation.target(
       direction, order: entries.map(\.id),
       userMessages: TranscriptNavigation.userMessages(entries), visible: position.visible)
@@ -301,12 +286,6 @@ public struct TranscriptView: View {
 }
 
 extension TranscriptView {
-  private func hasErrorRow(matching failure: String) -> Bool {
-    state.rows.suffix(20).contains {
-      $0.activity?.isFailure == true && $0.activity?.summary == failure
-    }
-  }
-
   /// Scrolls to the message a `?message=` link points at; a page still landing must not put
   /// the old top row back.
   private func messageFocus(_ proxy: ScrollViewProxy) -> TranscriptMessageFocus {
@@ -325,7 +304,7 @@ extension TranscriptView {
   /// Opening a session frames its latest user message at the top, as the web does, so a long
   /// answer reads from its start. When the turn fits, the transcript keeps following.
   private func frameLatestTurn(_ proxy: ScrollViewProxy) async {
-    let entries = layout.entries(for: state)
+    let entries = layout.entries(for: shown)
     let userMessages = TranscriptNavigation.userMessages(entries)
     guard !appearance.isCLI, let latest = entries.last(where: { userMessages.contains($0.id) })
     else {
@@ -365,21 +344,6 @@ private struct JumpToLatestPill: View {
     .accessibilityLabel("Jump to latest message")
     .accessibilityValue(hasUnseenOutput ? "New output" : "")
     .accessibilityIdentifier("jump-to-latest")
-  }
-}
-
-/// One folded segment: a plain item, or a Worked fold.
-private struct TurnSegmentView: View, Equatable {
-  let entry: SegmentEntry
-
-  var body: some View {
-    switch entry.segment {
-    case .item(let item):
-      TranscriptItemView(item: item, decorations: entry.decorations)
-    case .worked(_, _, let items, let isLive):
-      WorkedFold(
-        items: items, isLive: isLive, duration: entry.duration, decorations: entry.decorations)
-    }
   }
 }
 
