@@ -25,8 +25,14 @@ public final class PagesStore {
   public private(set) var busyAutomationIDs: Set<String> = []
   /// The last failed automation write, until dismissed.
   public private(set) var automationError: CoreError?
-  /// The agents an automation can run.
-  public private(set) var automationAgents: CreationLoad<[CreationAgent]> = .idle
+  /// The agents an automation can run and the hosts it can pin.
+  public private(set) var automationCatalog: CreationLoad<CreationCatalog> = .idle
+  /// The projects an automation can file its sessions into.
+  public private(set) var automationProjects: CreationLoad<[ProjectSummary]> = .idle
+  /// The models a host offers an agent, by ``modelsKey(agentID:hostID:)``.
+  public private(set) var automationModels: [String: CreationLoad<[ModelChoice]>] = [:]
+  /// Each automation's run history, by automation.
+  public private(set) var automationRuns: [String: CreationLoad<[AutomationRun]>] = [:]
   /// The caller's spend.
   public private(set) var usage: CreationLoad<UsageReport> = .idle
   /// File comments by session, for sessions that report some.
@@ -83,19 +89,61 @@ public final class PagesStore {
     }
   }
 
-  /// Creates an automation, or saves `id`'s edits.
+  /// Creates an automation, or saves the edits of `saved`.
   /// - Parameters:
   ///   - draft: What to save.
-  ///   - id: The automation being edited; `nil` creates one.
+  ///   - saved: The automation being edited; `nil` creates one.
   /// - Returns: Whether it was saved; a failure is in ``automationError``.
   @discardableResult
-  public func saveAutomation(_ draft: AutomationDraft, editing id: String?) async -> Bool {
-    await writeAutomation(id) { core in
-      if let id {
-        _ = try await core.updateAutomation(id: id, draft: draft)
+  public func saveAutomation(_ draft: AutomationDraft, editing saved: Automation?) async -> Bool {
+    await writeAutomation(saved?.id) { core in
+      if let saved {
+        _ = try await core.updateAutomation(saved: saved, draft: draft)
       } else {
         _ = try await core.createAutomation(draft: draft)
       }
+    }
+  }
+
+  /// Reads `id`'s run history; a reload keeps the runs on screen until it lands.
+  public func loadAutomationRuns(_ id: String) async {
+    if automationRuns[id]?.value == nil { automationRuns[id] = .loading }
+    do {
+      automationRuns[id] = .loaded(try await core.automationRuns(id: id))
+    } catch {
+      automationRuns[id] = .failed(coreError(error))
+    }
+  }
+
+  /// Reads the projects an automation can use, unless they are loaded.
+  public func loadAutomationProjects() async {
+    if automationProjects.value != nil { return }
+    automationProjects = .loading
+    do {
+      automationProjects = .loaded(try await core.projects())
+    } catch {
+      automationProjects = .failed(coreError(error))
+    }
+  }
+
+  /// The ``automationModels`` key of an agent on a host.
+  public static func modelsKey(agentID: String, hostID: String) -> String {
+    "\(agentID)\n\(hostID)"
+  }
+
+  /// Reads the models `hostID` offers `agentID`, unless they are loaded or loading.
+  public func loadAutomationModels(agentID: String, hostID: String) async {
+    let key = Self.modelsKey(agentID: agentID, hostID: hostID)
+    switch automationModels[key] {
+    case .loading, .loaded: return
+    case .idle, .failed, nil: break
+    }
+    automationModels[key] = .loading
+    do {
+      automationModels[key] = .loaded(
+        try await core.creationModels(agentId: agentID, hostId: hostID))
+    } catch {
+      automationModels[key] = .failed(coreError(error))
     }
   }
 
@@ -119,14 +167,14 @@ public final class PagesStore {
     await writeAutomation(id) { core in try await core.deleteAutomation(id: id) }
   }
 
-  /// Reads the agents an automation can run, unless they are loaded.
-  public func loadAutomationAgents() async {
-    if automationAgents.value != nil { return }
-    automationAgents = .loading
+  /// Reads the agents and hosts an automation can use, unless they are loaded.
+  public func loadAutomationCatalog() async {
+    if automationCatalog.value != nil { return }
+    automationCatalog = .loading
     do {
-      automationAgents = .loaded(try await core.creationCatalog().agents)
+      automationCatalog = .loaded(try await core.creationCatalog())
     } catch {
-      automationAgents = .failed(coreError(error))
+      automationCatalog = .failed(coreError(error))
     }
   }
 

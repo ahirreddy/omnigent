@@ -1,4 +1,4 @@
-import Foundation
+public import Foundation
 
 /// One automation in the Automations list.
 nonisolated public struct AutomationRow: Hashable, Sendable, Identifiable {
@@ -64,6 +64,9 @@ nonisolated public struct AutomationsViewState: Hashable, Sendable {
   public var loadError: String?
   /// Why the last change failed.
   public var actionError: String?
+  /// The Jira, Slack and GitHub trigger templates offered; empty when the server can't keep a
+  /// trigger's session.
+  public var triggers: [AutomationTriggerChip] = []
 
   /// Creates the state.
   public init(
@@ -78,12 +81,33 @@ nonisolated public struct AutomationsViewState: Hashable, Sendable {
   }
 }
 
+/// A trigger template offered with the suggestions.
+nonisolated public struct AutomationTriggerChip: Hashable, Sendable, Identifiable {
+  /// The source's id (`jira`, `slack`, `github`).
+  public var id: String
+  /// The chip's title, e.g. "Jira tickets".
+  public var title: String
+  /// SF Symbol.
+  public var systemImage: String
+
+  /// Creates a chip.
+  public init(id: String, title: String, systemImage: String) {
+    self.id = id
+    self.title = title
+    self.systemImage = systemImage
+  }
+}
+
 /// What the Automations page can do. Missing actions hide their controls.
 public struct AutomationsActions {
   /// Narrow the list.
   public var filter: (@MainActor (AutomationsFilter, String) -> Void)?
   /// Open the editor for a new automation, optionally prefilled from a suggestion.
   public var create: (@MainActor (AutomationSuggestion?) -> Void)?
+  /// Open the editor on a trigger template, by its chip id.
+  public var createTrigger: (@MainActor (String) -> Void)?
+  /// Open an automation's page with its run history.
+  public var openDetail: (@MainActor (String) -> Void)?
   /// Open the editor for an automation.
   public var edit: (@MainActor (String) -> Void)?
   /// Pause or resume.
@@ -210,11 +234,24 @@ nonisolated public struct ScheduleChoice: Hashable, Sendable {
   public var monthDays: [Int]
   /// The yearly month, 1-12.
   public var month: Int
+  /// When it stops.
+  public var end: End
+
+  /// When a schedule stops firing.
+  public enum End: Hashable, Sendable {
+    /// It never ends.
+    case never
+    /// After this many runs, 2 or more.
+    case count(Int)
+    /// At this instant (the end of the chosen day in the rule's zone).
+    case until(Date)
+  }
 
   /// Creates a choice; the defaults are the web's (every day at 9:00 AM).
   public init(
     preset: Preset = .daily, hour: Int = 9, minute: Int = 0, weekdays: Set<Int> = [0],
-    frequency: Frequency = .daily, interval: Int = 1, monthDays: [Int] = [1], month: Int = 1
+    frequency: Frequency = .daily, interval: Int = 1, monthDays: [Int] = [1], month: Int = 1,
+    end: End = .never
   ) {
     self.preset = preset
     self.hour = hour
@@ -224,85 +261,6 @@ nonisolated public struct ScheduleChoice: Hashable, Sendable {
     self.interval = interval
     self.monthDays = monthDays
     self.month = month
-  }
-}
-
-/// The automation editor's fields.
-nonisolated public struct AutomationDraftState: Hashable, Sendable {
-  /// Name.
-  public var name: String
-  /// Prompt.
-  public var prompt: String
-  /// The chosen agent's id.
-  public var agentID: String
-  /// The schedule; `nil` keeps a rule the editor cannot show (``keptRule``).
-  public var schedule: ScheduleChoice?
-  /// A rule kept as it is, described.
-  public var keptRule: String?
-  /// Continue one session across runs.
-  public var continuesSession: Bool
-
-  /// Creates the fields.
-  public init(
-    name: String = "", prompt: String = "", agentID: String = "",
-    schedule: ScheduleChoice? = ScheduleChoice(), keptRule: String? = nil,
-    continuesSession: Bool = false
-  ) {
-    self.name = name
-    self.prompt = prompt
-    self.agentID = agentID
-    self.schedule = schedule
-    self.keptRule = keptRule
-    self.continuesSession = continuesSession
-  }
-
-  /// Whether Save can be pressed.
-  public var canSave: Bool {
-    !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !agentID.isEmpty
-  }
-}
-
-/// An agent the editor offers.
-nonisolated public struct AutomationAgentChoice: Hashable, Sendable, Identifiable {
-  /// Id.
-  public var id: String
-  /// Display name.
-  public var name: String
-
-  /// Creates a choice.
-  public init(id: String, name: String) {
-    self.id = id
-    self.name = name
-  }
-}
-
-/// The editor's context: the agents, what the server supports, and the live summary.
-public struct AutomationEditorContext {
-  /// Agents to choose from.
-  public var agents: [AutomationAgentChoice]
-  /// The server can continue one session across runs.
-  public var supportsSessionModes: Bool
-  /// The schedule as text, from the core.
-  public var describe: @MainActor (ScheduleChoice) -> String
-  /// Editing an existing automation.
-  public var isEditing: Bool
-  /// The save is in flight.
-  public var isSaving: Bool
-  /// Why the save failed.
-  public var error: String?
-
-  /// Creates a context.
-  public init(
-    agents: [AutomationAgentChoice], supportsSessionModes: Bool,
-    describe: @escaping @MainActor (ScheduleChoice) -> String, isEditing: Bool = false,
-    isSaving: Bool = false, error: String? = nil
-  ) {
-    self.agents = agents
-    self.supportsSessionModes = supportsSessionModes
-    self.describe = describe
-    self.isEditing = isEditing
-    self.isSaving = isSaving
-    self.error = error
+    self.end = end
   }
 }

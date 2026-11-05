@@ -65,6 +65,13 @@ public struct AutomationsView: View {
       if let create = actions.create {
         Menu("New automation") {
           Button("Create manually", systemImage: "pencil") { create(nil) }
+          if let createTrigger = actions.createTrigger, !state.triggers.isEmpty {
+            Section("When something happens") {
+              ForEach(state.triggers) { chip in
+                Button(chip.title, systemImage: chip.systemImage) { createTrigger(chip.id) }
+              }
+            }
+          }
           Section("From a template") {
             ForEach(AutomationSuggestion.all) { suggestion in
               Button(suggestion.title, systemImage: suggestion.systemImage) { create(suggestion) }
@@ -128,6 +135,13 @@ public struct AutomationsView: View {
           Text("Suggestions").font(.callout).foregroundStyle(.secondary)
         }
         HStack(spacing: Theme.Spacing.small) {
+          if let createTrigger = actions.createTrigger {
+            ForEach(state.triggers) { chip in
+              Button(chip.title, systemImage: chip.systemImage) { createTrigger(chip.id) }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("automations-trigger-\(chip.id)")
+            }
+          }
           ForEach(AutomationSuggestion.all) { suggestion in
             Button(suggestion.title, systemImage: suggestion.systemImage) { create(suggestion) }
               .buttonStyle(.bordered)
@@ -160,6 +174,7 @@ public struct AutomationsView: View {
     if let runNow = actions.runNow { rowActions.runNow = { runNow(id) } }
     if actions.delete != nil { rowActions.delete = { confirmingDelete = row } }
     rowActions.openLastRun = openLastRun(row)
+    if let openDetail = actions.openDetail { rowActions.open = { openDetail(id) } }
     return rowActions
   }
 
@@ -177,6 +192,8 @@ struct AutomationRowView: View {
     var runNow: (@MainActor () -> Void)?
     var delete: (@MainActor () -> Void)?
     var openLastRun: (@MainActor () -> Void)?
+    /// Opens the automation's page; without it a double click edits.
+    var open: (@MainActor () -> Void)?
   }
 
   let row: AutomationRow
@@ -218,7 +235,9 @@ struct AutomationRowView: View {
     .cardSurface(cornerRadius: Theme.Radius.medium)
     .contentShape(Rectangle())
     .onHover { isHovered = $0 }
-    .onTapGesture(count: 2) { actions.edit?() }
+    .onTapGesture(count: actions.open == nil ? 2 : 1) {
+      if let open = actions.open { open() } else { actions.edit?() }
+    }
     .contextMenu { menuItems }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("automation-\(row.id)")

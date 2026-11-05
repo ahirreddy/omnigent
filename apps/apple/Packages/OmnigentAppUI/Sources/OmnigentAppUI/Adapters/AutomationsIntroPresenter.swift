@@ -34,7 +34,8 @@ struct AutomationsIntroPresenter: ViewModifier {
         AutomationsIntro(
           steps: AutomationsIntro.steps(
             sessionModes: connection.pages?.offered?.automationSessionModes == true,
-            sandboxes: connection.creationStore?.catalog.value?.managedSandboxes == true),
+            sandboxes: connection.creationStore?.catalog.value?.managedSandboxes == true,
+            triggers: connection.pages?.offered?.automationTriggers == true),
           dismiss: { isPresented = false })
       }
   }

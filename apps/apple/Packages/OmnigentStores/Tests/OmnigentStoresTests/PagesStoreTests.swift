@@ -96,6 +96,31 @@ struct PagesStoreTests {
   }
 
   @Test(.timeLimit(.minutes(1)))
+  func runHistoryAndEditsOfTheSavedAutomation() async throws {
+    let server = PagesServer()
+    server.route(
+      "/v1/scheduled-tasks/t1/runs",
+      .json(
+        #"{"runs":[{"id":"r1","scheduled_task_id":"t1","status":"failed","scheduled_at":10,"error_code":"host_offline"}]}"#
+      ))
+    let pages = try #require(try await connected(server).pages)
+    await pages.loadAutomationRuns("t1")
+    let run = try #require(pages.automationRuns["t1"]?.value?.first)
+    #expect(run.failureStage == "Host")
+    #expect(run.failureReason == "The host was offline.")
+    await pages.loadAutomationRuns("missing")
+    #expect(pages.automationRuns["missing"]?.value == nil)
+
+    await pages.loadAutomations()
+    let saved = try #require(pages.automations.value?.first)
+    let draft = AutomationDraft(
+      name: saved.name, prompt: saved.prompt, rrule: saved.rrule, agentId: saved.agentId,
+      timezone: saved.timezone, continuesSession: nil)
+    #expect(await pages.saveAutomation(draft, editing: saved))
+    #expect(server.writes == ["PATCH /v1/scheduled-tasks/t1"])
+  }
+
+  @Test(.timeLimit(.minutes(1)))
   func commentsAreReadOnceAndSeenOnThisDevice() async throws {
     let server = PagesServer()
     let store = try await connected(server)

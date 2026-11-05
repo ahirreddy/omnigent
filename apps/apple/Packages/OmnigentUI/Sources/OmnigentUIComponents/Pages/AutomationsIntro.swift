@@ -41,8 +41,9 @@ public struct AutomationsIntro: View {
   /// - Parameters:
   ///   - sessionModes: Automations can continue one session across runs.
   ///   - sandboxes: The server offers managed sandboxes.
+  ///   - triggers: The Jira, Slack and GitHub trigger templates are offered.
   /// - Returns: The steps, in order.
-  public static func steps(sessionModes: Bool, sandboxes: Bool) -> [Step] {
+  public static func steps(sessionModes: Bool, sandboxes: Bool, triggers: Bool = false) -> [Step] {
     var steps = [
       Step(
         id: "schedule", title: "Run on a schedule",
@@ -51,6 +52,15 @@ public struct AutomationsIntro: View {
         caption: "Every weekday \u{00B7} 9:00 AM", result: "Your results, ready to review",
         systemImage: "clock")
     ]
+    if triggers {
+      steps.append(
+        Step(
+          id: "watch", title: "Watch for new work",
+          detail:
+            "Use Jira, Slack, or GitHub templates to check periodically and start sessions for matching items. Your agent needs access to the service.",
+          caption: "Jira \u{00B7} Slack \u{00B7} GitHub", result: "Start work on matching items",
+          systemImage: "magnifyingglass"))
+    }
     if sessionModes {
       steps.append(
         Step(

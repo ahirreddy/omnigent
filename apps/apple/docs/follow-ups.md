@@ -317,9 +317,6 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   `ComposerDraftArchive.shared` on termination.
 - [ ] **Inbox comments:** "Open file" opens the session, not the file with its comment, because the
   Mac app has no file comments view yet; seen comments are kept per device, as on the web.
-- [ ] **Automations editor:** no host/workspace pin, model, effort, permission mode, project, end
-  condition (COUNT/UNTIL, kept as is when present), Jira/Slack/GitHub trigger templates or the
-  `automations_v2` run-history page.
 - [ ] **Inbox "Load more sessions":** the core's session list holds only its first page
   (`DEFAULT_PAGE_LIMIT`), so the Inbox cannot page further as the web does; needs list paging in
   the engine, shared with the sidebar's Show more.
@@ -327,8 +324,6 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   drawn (the web draws only visible ones, which matters past a few hundred sessions), the board
   pans with scrolling but not by dragging the background, and there is no "+" to create a project
   from the board tabs.
-- [ ] **Automations intro:** the "Watch for new work" step is left out until the Mac editor has the
-  Jira, Slack and GitHub templates it describes.
 - [ ] **Toasts:** fork's "Session created [Open]" should use `TransientBanner` (fork flow).
 - [ ] **Host import review (Mac):** the web's `ImportReviewGate` (behind the `import_review`
   feature) opens the import modal for a newly connected host's MCPs, skills and plugins; the Mac
@@ -341,6 +336,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   rail; Download in the Files panel; the error card's Continue in another directory, Fork session
   and sign-in link / Copy code; the approval card naming its sub-agent; per-session right-panel
   state; hiding the Pull Requests tab without git.
+- [ ] **Automations editor, still short of the web:** the folder is a typed path (no host folder
+  browser), a project can only be picked (the web also creates one from a typed name), there is no
+  timezone picker (the saved or device zone is kept), and a run's unread dot ignores this device's
+  read marks. The run history reloads every 30 s rather than waiting on a started run's row.
 
 ## Product decisions
 
@@ -388,6 +387,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   store, no navigation) whose snapshots show as native images; KaTeX and Mermaid are package
   resources from `scripts/vendor-rich-render.sh` (Mermaid LZMA-compressed under the 1 MB file
   limit). Streaming blocks stay code or Unicode until they close. 2026-11-04.
+- [x] Automations editor: host or sandbox pin with a folder, project, model, effort and
+  permission mode (Claude Code), end conditions (date, and run counts on `automations_v2`),
+  Jira/Slack/GitHub trigger templates (prompt rendered by the core, and the intro's "Watch for
+  new work" step), and the `automations_v2` run-history page. 2026-11-04.
 
 - [x] Host: after Back, the remote tab kept showing the old page (or a blank one) when many other
   tabs showed the same site. Windowless Chromium restored the page from the back/forward cache

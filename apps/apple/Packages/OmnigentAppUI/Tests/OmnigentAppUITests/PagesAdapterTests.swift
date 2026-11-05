@@ -7,58 +7,8 @@ import Testing
 @testable import OmnigentAppUI
 
 @MainActor
-@Suite("Automations, Usage and Inbox mapping")
+@Suite("Usage and Inbox mapping")
 struct PagesAdapterTests {
-  private func automation(rrule: String) -> Automation {
-    Automation(
-      id: "t1", name: "Standup", prompt: "Summarize", rrule: rrule,
-      scheduleText: describeSchedule(rrule: rrule), agentId: "a1", timezone: "Europe/Paris",
-      continuesSession: true, state: .active, nextRunAt: nil, lastRunAt: nil,
-      lastRunStatus: nil, lastRunSessionId: nil, updatedAt: 0)
-  }
-
-  @Test("An editable rule round-trips through the editor; the device zone is not forced on it")
-  func editableRule() {
-    let rule = "FREQ=WEEKLY;BYDAY=MO,FR;BYHOUR=8;BYMINUTE=30"
-    let draft = AutomationsMapping.draft(automation(rrule: rule))
-    #expect(draft.schedule?.preset == .weekly)
-    #expect(draft.schedule?.weekdays == [0, 4])
-    #expect(draft.keptRule == nil)
-    #expect(draft.continuesSession)
-    #expect(
-      AutomationsMapping.describe(draft.schedule ?? ScheduleChoice())
-        == "Weekly on Monday and Friday at 8:30 AM")
-    let request = AutomationsMapping.request(
-      draft, keptRule: rule, timezone: "Europe/Paris", sessionModes: false)
-    #expect(request.rrule == rule)
-    #expect(request.timezone == "Europe/Paris")
-    #expect(request.continuesSession == nil)
-  }
-
-  @Test("A rule the editor cannot show is kept as it is")
-  func keptRule() {
-    let rule = "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;COUNT=5"
-    let draft = AutomationsMapping.draft(automation(rrule: rule))
-    #expect(draft.schedule == nil)
-    #expect(draft.keptRule == "Every day at 8:00 AM")
-    let request = AutomationsMapping.request(
-      draft, keptRule: rule, timezone: "UTC", sessionModes: true)
-    #expect(request.rrule == rule)
-    #expect(request.continuesSession == true)
-  }
-
-  @Test("A suggestion fills a new automation with the first agent that can start sessions")
-  func suggestion() throws {
-    let suggestion = try #require(AutomationSuggestion.all.first)
-    let draft = AutomationsMapping.newDraft(suggestion, agents: [])
-    #expect(draft.name == suggestion.title)
-    #expect(draft.prompt == suggestion.prompt)
-    #expect(draft.agentID.isEmpty)
-    #expect(!draft.canSave)
-    #expect(
-      AutomationsMapping.describe(suggestion.schedule) == "Weekdays at 9:00 AM")
-  }
-
   @Test("Usage presets start on the web's day; custom ranges use local calendar days")
   func usageBounds() throws {
     let now = Date(timeIntervalSince1970: 1_793_865_600)  // 2026-11-05 08:00 UTC

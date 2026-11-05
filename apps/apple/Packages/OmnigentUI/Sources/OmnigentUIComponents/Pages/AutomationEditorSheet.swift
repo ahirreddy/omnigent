@@ -1,6 +1,8 @@
 public import SwiftUI
 
-/// Creates or edits an automation: name, prompt, agent, schedule and session mode.
+/// Creates or edits an automation, in the web dialog's order: name, session, prompt or trigger,
+/// schedule, where it runs (host or sandbox, folder, project), the agent and its model, effort
+/// and permission mode.
 public struct AutomationEditorSheet: View {
   @Binding private var draft: AutomationDraftState
   private let context: AutomationEditorContext
@@ -10,7 +12,7 @@ public struct AutomationEditorSheet: View {
   /// Creates the sheet.
   /// - Parameters:
   ///   - draft: The fields.
-  ///   - context: Agents, server support and the save state.
+  ///   - context: What the editor offers, server support and the save state.
   ///   - save: Save the fields.
   ///   - cancel: Close without saving.
   public init(
@@ -28,30 +30,18 @@ public struct AutomationEditorSheet: View {
     VStack(spacing: 0) {
       Form {
         Section {
-          TextField("Name", text: $draft.name)
+          TextField("Name", text: $draft.name, prompt: Text("daily-brief"))
             .accessibilityIdentifier("automation-name")
-          TextField("Prompt", text: $draft.prompt, axis: .vertical)
-            .lineLimit(4...10)
-            .accessibilityIdentifier("automation-prompt")
-          Picker("Agent", selection: $draft.agentID) {
-            if draft.agentID.isEmpty { Text("Choose an agent").tag("") }
-            ForEach(context.agents) { Text($0.name).tag($0.id) }
-          }
-          .accessibilityIdentifier("automation-agent")
+          if context.supportsSessionModes { sessionMode }
         }
+        promptFields
         Section("Schedule") { schedule }
-        if context.supportsSessionModes {
+        Section("Runs on") { placement }
+        Section("Harness") { harness }
+        if let overrides = context.overrides { advanced(overrides) }
+        if let message = context.error ?? context.blocker {
           Section {
-            Picker("Each run", selection: $draft.continuesSession) {
-              Text("Starts a new session").tag(false)
-              Text("Continues the same session").tag(true)
-            }
-            .accessibilityIdentifier("automation-session-mode")
-          }
-        }
-        if let error = context.error {
-          Section {
-            Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+            Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
               .accessibilityIdentifier("automation-error")
           }
         }
@@ -60,27 +50,88 @@ public struct AutomationEditorSheet: View {
       HStack {
         Spacer()
         Button("Cancel", role: .cancel, action: cancel).keyboardShortcut(.cancelAction)
-        Button(context.isEditing ? "Save" : "Create", action: save)
+        Button(context.isEditing ? "Save changes" : "Create automation", action: save)
           .keyboardShortcut(.defaultAction)
           .buttonStyle(.borderedProminent)
-          .disabled(!draft.canSave || context.isSaving)
+          .disabled(!canSave)
           .accessibilityIdentifier("automation-save")
       }
       .padding(Theme.Spacing.large)
     }
-    .frame(minWidth: 480, idealWidth: 540, minHeight: 520)
+    .frame(minWidth: 520, idealWidth: 580, minHeight: 600, idealHeight: 720)
     .navigationTitle(context.isEditing ? "Edit automation" : "New automation")
+  }
+
+  private var canSave: Bool {
+    draft.canSave && !context.isSaving && context.blocker == nil && context.scheduleProblem == nil
+      && (draft.trigger == nil || !context.triggerPrompt.isEmpty)
+  }
+
+  @ViewBuilder private var sessionMode: some View {
+    Picker("Session", selection: $draft.continuesSession) {
+      Text("New session each run").tag(false)
+      Text("Continue in the same session").tag(true)
+    }
+    .disabled(draft.trigger != nil)
+    .accessibilityIdentifier("automation-session-mode")
+    Text(sessionNote).font(.callout).foregroundStyle(.secondary)
+    if context.isEditing, draft.continuesSession, context.hasContinuingSession {
+      Toggle("Start a new session on the next run", isOn: $draft.startNewSession)
+        .accessibilityIdentifier("automation-start-new-session")
+    }
+  }
+
+  private var sessionNote: String {
+    if draft.trigger != nil {
+      return
+        "Trigger automations keep one session, which remembers its last check and the sessions it already started."
+    }
+    return draft.continuesSession
+      ? "The first run starts a session, and later runs send their prompt to it so the agent keeps its context, even while an earlier run is still working."
+      : "Each run starts a new session."
+  }
+
+  @ViewBuilder private var promptFields: some View {
+    if let template = context.trigger, draft.trigger != nil {
+      AutomationTriggerFields(
+        trigger: Binding(
+          get: { draft.trigger ?? AutomationTriggerDraft(source: "", event: "") },
+          set: { draft.trigger = $0 }),
+        template: template, renderedPrompt: context.triggerPrompt,
+        editAsPrompt: {
+          draft.prompt = context.triggerPrompt
+          draft.trigger = nil
+        })
+    } else {
+      Section("Prompt") {
+        TextField(
+          "Prompt", text: $draft.prompt, prompt: Text("What should the agent do each run?"),
+          axis: .vertical
+        )
+        .lineLimit(4...10)
+        .labelsHidden()
+        .accessibilityIdentifier("automation-prompt")
+      }
+    }
   }
 
   @ViewBuilder private var schedule: some View {
     if let kept = draft.keptRule, draft.schedule == nil {
       LabeledContent("Repeats", value: kept)
+      Text(
+        "This schedule can\u{2019}t be edited in this form yet. Choose a frequency to replace it."
+      )
+      .font(.callout).foregroundStyle(.secondary)
       Button("Choose a new schedule") { draft.schedule = ScheduleChoice() }
     } else {
-      ScheduleFields(choice: scheduleBinding)
+      ScheduleFields(choice: scheduleBinding, anchoredScheduling: context.anchoredScheduling)
       Text(context.describe(scheduleBinding.wrappedValue))
         .font(.callout).foregroundStyle(.secondary)
         .accessibilityIdentifier("automation-schedule-summary")
+      if let problem = context.scheduleProblem {
+        Text(problem).font(.callout).foregroundStyle(.red)
+          .accessibilityIdentifier("automation-schedule-problem")
+      }
     }
   }
 
@@ -89,97 +140,117 @@ public struct AutomationEditorSheet: View {
       get: { draft.schedule ?? ScheduleChoice() },
       set: { draft.schedule = $0 })
   }
-}
 
-/// The schedule picker: a preset, the time, and the custom unit, interval and days.
-struct ScheduleFields: View {
-  @Binding var choice: ScheduleChoice
+  /// The sandbox option's tag in the host picker.
+  private static let sandboxTag = "\u{0}sandbox"
 
-  private static let weekdayNames = Calendar.current.shortWeekdaySymbols
-
-  var body: some View {
-    Picker("Repeats", selection: $choice.preset) {
-      ForEach(ScheduleChoice.Preset.allCases) { Text($0.title).tag($0) }
+  @ViewBuilder private var placement: some View {
+    Picker("Host", selection: hostSelection) {
+      if draft.hostID.isEmpty, !draft.runsInSandbox {
+        Text(context.isEditing ? "Most recently active host" : "Pick a host").tag("")
+      }
+      if let sandbox = context.sandboxLabel ?? (draft.runsInSandbox ? "New Sandbox" : nil) {
+        Text(sandbox).tag(Self.sandboxTag)
+      }
+      ForEach(context.hosts) { Text($0.name).tag($0.id) }
     }
-    .accessibilityIdentifier("automation-schedule-preset")
-    if choice.preset == .custom {
-      Stepper(value: $choice.interval, in: 1...366) {
-        Picker("Every \(choice.interval)", selection: $choice.frequency) {
-          ForEach(ScheduleChoice.Frequency.allCases) { Text($0.title).tag($0) }
+    .accessibilityIdentifier("automation-host")
+    Text(hostNote).font(.callout).foregroundStyle(.secondary)
+    if !draft.runsInSandbox, !draft.hostID.isEmpty {
+      TextField("Workspace", text: $draft.workspace, prompt: Text("Home folder"))
+        .accessibilityIdentifier("automation-workspace")
+      Text("Defaults to the host\u{2019}s home directory. Enter an absolute path to pin a folder.")
+        .font(.callout).foregroundStyle(.secondary)
+    }
+    if context.supportsProjects {
+      Picker("Project", selection: $draft.projectID) {
+        Text("No project").tag("")
+        ForEach(context.projects) { Text($0.name).tag($0.id) }
+        if !draft.projectID.isEmpty,
+          !context.projects.contains(where: { $0.id == draft.projectID })
+        {
+          Text("Project unavailable").tag(draft.projectID)
         }
       }
-    }
-    if showsWeekdays { weekdays }
-    if choice.preset == .custom, choice.frequency == .yearly {
-      Picker("Month", selection: $choice.month) {
-        ForEach(1...12, id: \.self) { Text(Calendar.current.monthSymbols[$0 - 1]).tag($0) }
-      }
-    }
-    if choice.preset == .custom, [.monthly, .yearly].contains(choice.frequency) {
-      TextField("Days of the month", text: monthDays, prompt: Text("1, 15"))
-    }
-    if isHourly {
-      Picker("At minute", selection: $choice.minute) {
-        ForEach(0..<60, id: \.self) { Text($0 < 10 ? ":0\($0)" : ":\($0)").tag($0) }
-      }
-    } else {
-      DatePicker("At", selection: time, displayedComponents: .hourAndMinute)
-        .accessibilityIdentifier("automation-schedule-time")
+      .accessibilityIdentifier("automation-project")
     }
   }
 
-  private var isHourly: Bool {
-    choice.preset == .hourly || (choice.preset == .custom && choice.frequency == .hourly)
-  }
-
-  private var showsWeekdays: Bool {
-    choice.preset == .weekly || (choice.preset == .custom && choice.frequency == .weekly)
-  }
-
-  /// Monday first, as the rule counts them; the calendar's symbols start on Sunday.
-  private var weekdays: some View {
-    HStack(spacing: Theme.Spacing.extraSmall) {
-      ForEach(0..<7, id: \.self) { day in
-        let isOn = choice.weekdays.contains(day)
-        Button(Self.weekdayNames[(day + 1) % 7]) {
-          if isOn, choice.weekdays.count > 1 {
-            choice.weekdays.remove(day)
-          } else {
-            choice.weekdays.insert(day)
-          }
-        }
-        .buttonStyle(.bordered)
-        .tint(isOn ? Theme.accent : nil)
-        .accessibilityAddTraits(isOn ? .isSelected : [])
-        .accessibilityIdentifier("automation-weekday-\(day)")
-      }
-    }
-  }
-
-  private var time: Binding<Date> {
+  private var hostSelection: Binding<String> {
     Binding(
-      get: {
-        Calendar.current.date(
-          bySettingHour: choice.hour, minute: choice.minute, second: 0,
-          of: Date(timeIntervalSince1970: 0)
-        ) ?? Date(timeIntervalSince1970: 0)
-      },
-      set: { date in
-        let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
-        choice.hour = parts.hour ?? choice.hour
-        choice.minute = parts.minute ?? choice.minute
+      get: { draft.runsInSandbox ? Self.sandboxTag : draft.hostID },
+      set: { tag in
+        if tag == Self.sandboxTag {
+          draft.runsInSandbox = true
+          draft.hostID = ""
+          draft.workspace = ""
+        } else {
+          draft.runsInSandbox = false
+          draft.hostID = tag
+        }
       })
   }
 
-  private var monthDays: Binding<String> {
-    Binding(
-      get: { choice.monthDays.map(String.init).joined(separator: ", ") },
-      set: { text in
-        let days = text.split(separator: ",").compactMap {
-          Int($0.trimmingCharacters(in: .whitespaces))
-        }
-        .filter { (1...31).contains($0) }
-        if !days.isEmpty { choice.monthDays = days }
-      })
+  private var hostNote: String {
+    if draft.runsInSandbox {
+      return draft.continuesSession
+        ? "Keeps one sandbox for every run, including a session started after a reset. Shutdown follows the server\u{2019}s sandbox configuration."
+        : "Provisions a fresh sandbox for each run. Shutdown follows the server\u{2019}s sandbox configuration."
+    }
+    if draft.hostID.isEmpty {
+      return context.isEditing
+        ? "Runs on the connected host you used most recently. Pick a host to pin it."
+        : "Pick the host this automation runs on."
+    }
+    return "Runs on this host. A run fails while the host is offline."
+  }
+
+  @ViewBuilder private var harness: some View {
+    Picker("Agent", selection: $draft.agentID) {
+      if draft.agentID.isEmpty { Text("Choose an agent").tag("") }
+      ForEach(context.agents) { Text($0.name).tag($0.id) }
+      if !draft.agentID.isEmpty, !context.agents.contains(where: { $0.id == draft.agentID }) {
+        Text(draft.agentID).tag(draft.agentID)
+      }
+    }
+    .accessibilityIdentifier("automation-agent")
+    if let note = context.agentNote {
+      Text(note).font(.callout).foregroundStyle(.secondary)
+    }
+    if context.overrides == nil {
+      Text("Uses this agent\u{2019}s default model, effort, and permission settings")
+        .font(.callout).foregroundStyle(.secondary)
+    }
+  }
+
+  private func advanced(_ options: AutomationOverrideOptions) -> some View {
+    Section("Advanced") {
+      overridePicker("Model", selection: $draft.model, options: options.models)
+        .accessibilityIdentifier("automation-model")
+      overridePicker("Effort", selection: $draft.effort, options: options.efforts)
+        .accessibilityIdentifier("automation-effort")
+      overridePicker(
+        "Permission mode", selection: $draft.permissionMode, options: options.permissionModes
+      )
+      .accessibilityIdentifier("automation-permission-mode")
+      Text(
+        "Leave on Default to use the agent\u{2019}s configured model, effort, and permission mode. Automations run unattended, so a prompting mode (Manual or Plan) will wait for approval that never comes."
+      )
+      .font(.callout).foregroundStyle(.secondary)
+    }
+  }
+
+  private func overridePicker(
+    _ title: String, selection: Binding<String>, options: [AutomationOption]
+  ) -> some View {
+    Picker(title, selection: selection) {
+      Text("Default").tag("")
+      ForEach(options) { Text($0.name).tag($0.id) }
+      if !selection.wrappedValue.isEmpty,
+        !options.contains(where: { $0.id == selection.wrappedValue })
+      {
+        Text(selection.wrappedValue).tag(selection.wrappedValue)
+      }
+    }
   }
 }
