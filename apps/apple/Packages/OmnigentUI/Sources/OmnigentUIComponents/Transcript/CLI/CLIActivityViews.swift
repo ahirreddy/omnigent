@@ -8,9 +8,21 @@ struct CLIActivityLine: View, Equatable {
   @State private var isExpanded = false
   @Environment(\.cliPalette) private var palette
   @Environment(\.transcriptAppearance) private var appearance
+  @Environment(\.conversationActions) private var conversationActions
   private let size = CLIFontSize()
 
   static func == (lhs: Self, rhs: Self) -> Bool { lhs.row == rhs.row }
+
+  /// Retry or Resume for a failed turn, as the chat's error row offers it.
+  private func recovery(_ activity: Activity) -> CLIAction? {
+    guard let recovery = activity.recovery, let retry = conversationActions.retryFailedTurn else {
+      return nil
+    }
+    let row = row
+    return CLIAction(
+      title: recovery.title, systemImage: "arrow.clockwise",
+      identifier: "error-retry-\(row.id)", perform: { retry(row) })
+  }
 
   var body: some View {
     if let activity = row.activity, activity.kind != .sidechat, activity.kind != .unknown {
@@ -18,6 +30,7 @@ struct CLIActivityLine: View, Equatable {
         CLIBulletLine(
           line: line(activity), marker: activity.isFailure ? palette.failure : nil,
           isLive: row.isStreaming)
+        if let recovery = recovery(activity) { recoveryButton(recovery, help: activity) }
         if isExpanded { details(activity) }
       }
       .transcriptColumn()
@@ -53,6 +66,17 @@ struct CLIActivityLine: View, Equatable {
       }
     }
     return line
+  }
+
+  /// Always visible, as in chat: it may be the turn's only way to recover.
+  private func recoveryButton(_ action: CLIAction, help activity: Activity) -> some View {
+    Button(action: action.perform) {
+      Text(verbatim: action.title).cliFont().foregroundStyle(palette.strong.color)
+    }
+    .buttonStyle(.bordered)
+    .help(activity.recovery?.help ?? action.title)
+    .padding(.leading, size.character * 2)
+    .accessibilityIdentifier(action.identifier)
   }
 
   @ViewBuilder private func details(_ activity: Activity) -> some View {
@@ -113,6 +137,7 @@ struct CLIActivityLine: View, Equatable {
 
   private func actions(_ activity: Activity) -> [CLIAction] {
     var actions: [CLIAction] = []
+
     if hasDetails {
       actions.append(
         CLIAction(

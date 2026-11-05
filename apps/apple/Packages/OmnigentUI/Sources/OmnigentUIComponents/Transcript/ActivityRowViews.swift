@@ -121,6 +121,14 @@ private struct TerminalRowView: View {
   }
 }
 
+extension FailureRecovery {
+  /// The error row's recovery button, in both transcript styles.
+  var title: String { self == .continue ? "Retry" : "Resume" }
+  var help: String {
+    self == .continue ? "Continue the turn from where it stopped" : "Restart the agent and continue"
+  }
+}
+
 private struct ErrorRowView: View {
   let row: Row
   let activity: Activity
@@ -142,12 +150,9 @@ private struct ErrorRowView: View {
         }
         Spacer(minLength: 0)
         if let recovery = activity.recovery, let retry = actions.retryFailedTurn {
-          Button(recovery == .continue ? "Retry" : "Resume") { retry(row) }
+          Button(recovery.title) { retry(row) }
             .buttonStyle(.bordered)
-            .help(
-              recovery == .continue
-                ? "Continue the turn from where it stopped" : "Restart the agent and continue"
-            )
+            .help(recovery.help)
             .accessibilityIdentifier("error-retry-\(row.id)")
         }
         CopyButton(text: row.text.isEmpty ? activity.summary : row.text, label: "Copy error")

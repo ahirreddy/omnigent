@@ -36,9 +36,10 @@ struct CLIActionCluster<Content: View>: View {
   }
 }
 
-/// Reveals a non-message CLI block's ``CLIActionCluster`` on hover or keyboard focus (Mac), and
-/// offers the same actions in the context menu (long press on touch) and to VoiceOver. A
-/// message uses ``View/messageActionsHost(row:actions:pinned:showsOnTouch:focus:)`` instead.
+/// Reveals a non-message CLI block's ``CLIActionCluster`` on hover or keyboard focus (Mac); touch
+/// has no hover, so a visible ``CLITouchActionsButton`` sits at the block's trailing edge. Both
+/// also offer the actions in the context menu and to VoiceOver. A message uses
+/// ``View/messageActionsHost(row:actions:pinned:showsOnTouch:focus:)`` instead.
 private struct CLIActionsHost: ViewModifier {
   let actions: [CLIAction]
   @State private var isHovered = false
@@ -58,6 +59,10 @@ private struct CLIActionsHost: ViewModifier {
       content
     } else {
       content
+        #if !os(macOS)
+          .padding(.trailing, CLITouchActionsButton.width)
+          .overlay(alignment: .topTrailing) { CLITouchActionsButton(actions: actions) }
+        #endif
         .overlay(alignment: .topTrailing) {
           CLIActionCluster {
             ForEach(actions) { action in
@@ -88,6 +93,46 @@ private struct CLIActionsHost: ViewModifier {
           }
         }
     }
+  }
+}
+
+/// A block's actions on touch, so they don't hide behind an undisclosed long press: one action
+/// is a small button with its symbol (a disclosure chevron, Copy); several open from "More".
+struct CLITouchActionsButton: View {
+  /// The width the block's text leaves free for the button.
+  static let width: CGFloat = 28
+  let actions: [CLIAction]
+  @Environment(\.cliPalette) private var palette
+
+  var body: some View {
+    if actions.count == 1, let action = actions.first {
+      Button(action: action.perform) { glyph(action.systemImage) }
+        .buttonStyle(.plain)
+        .accessibilityLabel(action.title)
+        .accessibilityIdentifier("\(action.identifier)-touch")
+    } else {
+      Menu {
+        ForEach(actions) { action in
+          Button(action.title, systemImage: action.systemImage, action: action.perform)
+        }
+      } label: {
+        glyph("ellipsis")
+      }
+      .menuStyle(.button)
+      .buttonStyle(.plain)
+      .menuIndicator(.hidden)
+      .accessibilityLabel("Actions")
+      .accessibilityIdentifier("\(actions.first?.identifier ?? "cli")-more")
+    }
+  }
+
+  private func glyph(_ systemImage: String) -> some View {
+    Image(systemName: systemImage)
+      .font(.footnote.weight(.semibold))
+      .foregroundStyle(palette.dim.color)
+      .frame(width: Self.width, height: CLIFontSize().line)
+      // The glyph stays small; the touch target is the standard size.
+      .contentShape(Rectangle().inset(by: -(Theme.Control.target - Self.width) / 2))
   }
 }
 
