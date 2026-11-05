@@ -1,5 +1,6 @@
 #if os(iOS)
   import Foundation
+  import OmnigentPlatform
   import OmnigentStores
   import OmnigentTerminalUI
   import OmnigentUIComponents
@@ -52,6 +53,7 @@
         }
         #if DEBUG
           .task(id: connection?.supervisedServerURL) { openFromLaunchArguments() }
+          .perfHooks(Self.perfPages.map { "settings.\($0)" }) { openForMeasurement($0) }
         #endif
     }
 
@@ -67,6 +69,23 @@
           return
         }
         router.show(PhoneSettingsRoute.Page(launchName: name), server: server)
+      }
+
+      /// The pages `ai.omnigent.perf.settings.<page>` opens (docs/performance.md); `close`
+      /// dismisses the screen.
+      private static let perfPages =
+        ["close", "usage", "root"] + PhoneSettingsPage.allCases.map(\.rawValue)
+        + ServerSettingsPane.allCases.map(\.rawValue)
+
+      private func openForMeasurement(_ hook: String) {
+        let name = String(hook.dropFirst("settings.".count))
+        switch name {
+        case "close": router.isPresented = false
+        case "usage": selection = .usage
+        default:
+          router.show(
+            PhoneSettingsRoute.Page(launchName: name), server: connection?.supervisedServerURL)
+        }
       }
     #endif
 

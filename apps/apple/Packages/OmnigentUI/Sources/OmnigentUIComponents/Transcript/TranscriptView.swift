@@ -1,3 +1,4 @@
+import OmnigentPlatform
 public import SwiftUI
 
 /// The scrolling conversation: messages, grouped tool calls, activities, banners and the live
@@ -40,6 +41,10 @@ public struct TranscriptView: View {
 
   /// The transcript.
   public var body: some View {
+    #if DEBUG
+      // swiftlint:disable:next redundant_discardable_let
+      let _ = FrameMonitor.count("transcript")
+    #endif
     let actions = environmentRelay.publish(self.actions)
     ScrollViewReader { proxy in
       ScrollView {

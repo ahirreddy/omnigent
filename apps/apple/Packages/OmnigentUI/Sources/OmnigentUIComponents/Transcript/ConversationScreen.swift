@@ -97,6 +97,10 @@ public struct ConversationScreen<Terminal: View>: View {
 
   /// The screen.
   public var body: some View {
+    #if DEBUG
+      // swiftlint:disable:next redundant_discardable_let
+      let _ = FrameMonitor.count("screen")
+    #endif
     Group {
       if showsTerminal {
         TerminalPane(status: state.terminal, resume: actions.resume) { terminal }

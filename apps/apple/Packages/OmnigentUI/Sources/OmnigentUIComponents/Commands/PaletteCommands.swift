@@ -1,3 +1,4 @@
+import OmnigentPlatform
 public import SwiftUI
 
 /// Palette presentation actions for the focused window or iPad scene.
@@ -85,6 +86,9 @@ private struct PalettePresentation: ViewModifier {
       // republishes its own focused value, which never settles; a leaf view records them instead.
       .background { FocusedSessionCommandsReader(box: focusedCommands) }
       .background { ShortcutAliases(perform: actions.perform) }
+      #if DEBUG
+        .perfHooks(["palette", "palette.close"]) { palette = $0 == "palette" ? .all : nil }
+      #endif
       .focusedSceneValue(
         \.paletteCommands,
         paletteRelay.publish(

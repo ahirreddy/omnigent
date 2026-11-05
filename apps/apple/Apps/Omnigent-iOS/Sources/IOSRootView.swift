@@ -2,6 +2,7 @@ import OSLog
 import OmnigentAppUI
 import OmnigentAuthUI
 import OmnigentCoreFFI
+import OmnigentPlatform
 import OmnigentStores
 import OmnigentUIComponents
 import SwiftUI
@@ -76,6 +77,17 @@ struct IOSRootView: View {
       switchServer: { switchServer(to: $0) }, launchLink: request == nil ? Self.launchLink : nil
     )
     .focusedSceneValue(\.serverCommands, serverCommandRelay.publish(session.map(serverCommands)))
+    #if DEBUG
+      // Measurement hooks (docs/performance.md): a session as its deep link opens it (without
+      // the system's "Open in" prompt), New Session, and back to the session list.
+      .perfHooks(["open", "newsession", "list"]) { hook in
+        switch hook {
+        case "open": if let id = PerfDriver.requestedSession() { selection = .session(id) }
+        case "list": selection = nil
+        default: selection = .newSession
+        }
+      }
+    #endif
   }
 
   private func start() async {

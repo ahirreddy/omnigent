@@ -1,4 +1,5 @@
 import OmnigentAppUI
+import OmnigentPlatform
 import UIKit
 
 /// Installs phone supervision before launch finishes, so a notification action or a background
@@ -16,6 +17,10 @@ final class PhoneAppDelegate: NSObject, UIApplicationDelegate {
       UserDefaults.standard.string(forKey: IOSRootView.lastServerKey)
     }
     Self.supervision.install()
+    #if DEBUG
+      FrameMonitor.startIfRequested()
+      PerfDriver.startIfRequested()
+    #endif
     return true
   }
 }
