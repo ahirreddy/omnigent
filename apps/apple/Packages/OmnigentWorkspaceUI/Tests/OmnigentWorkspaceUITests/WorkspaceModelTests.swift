@@ -9,6 +9,7 @@ struct FileTreeModelTests {
   func lazyLoading() async {
     let source = SampleWorkspaceDataSource()
     let tree = FileTreeModel(source: source)
+    tree.showsHidden = true
     #expect(tree.rows.map(\.id) == ["#loading"])
     await tree.loadRoot()
     await tree.loadRoot()
@@ -28,6 +29,7 @@ struct FileTreeModelTests {
   func pagination() async {
     let source = SampleWorkspaceDataSource(pageSize: 3)
     let tree = FileTreeModel(source: source)
+    tree.showsHidden = true
     await tree.loadRoot()
     #expect(tree.rows.compactMap(\.entry).map(\.name) == [".git", "assets", "docs"])
     #expect(tree.rows.last?.content == .loadMore)
@@ -60,6 +62,7 @@ struct FileTreeModelTests {
   @Test("an empty directory says so")
   func emptyDirectory() async {
     let tree = FileTreeModel(source: SampleWorkspaceDataSource())
+    tree.showsHidden = true
     await tree.loadRoot()
     await tree.expand(".git")
     #expect(tree.rows.contains { $0.id == ".git#empty" })
@@ -68,6 +71,7 @@ struct FileTreeModelTests {
   @Test("keyboard: arrows move, right steps in, left steps out, return opens")
   func keyboard() async {
     let tree = FileTreeModel(source: SampleWorkspaceDataSource())
+    tree.showsHidden = true
     var opened: [String] = []
     tree.onOpen = { opened.append($0.path) }
     await tree.loadRoot()
@@ -107,6 +111,55 @@ struct FileTreeModelTests {
     let before = source.requests.count
     await tree.refresh()
     #expect(Array(source.requests.dropFirst(before)) == ["list ", "list src", "list src/util"])
+  }
+
+  @Test("dot entries stay hidden until shown; a filter keeps matches and the folders to them")
+  func hiddenAndFilter() async {
+    let tree = FileTreeModel(source: SampleWorkspaceDataSource())
+    await tree.loadRoot()
+    #expect(!tree.rows.contains { $0.id == ".git" || $0.id == ".gitignore" })
+    tree.showsHidden = true
+    #expect(tree.rows.contains { $0.id == ".gitignore" })
+    await tree.expand("src")
+    tree.collapse("src")
+    tree.filter = "main"
+    #expect(tree.rows.map(\.id) == ["src", "src/main.rs"])
+    tree.filter = ""
+    #expect(tree.rows.contains { $0.id == "README.md" })
+    #expect(!tree.expanded.contains("src"))
+  }
+}
+
+@Suite("File previews")
+struct FilePreviewTests {
+  @Test("Markdown, HTML, SVG and notebooks preview; other files show their source")
+  func kinds() {
+    #expect(FilePreviewKind.of(path: "docs/README.md") == .markdown)
+    #expect(FilePreviewKind.of(path: "site/Index.HTML") == .html)
+    #expect(FilePreviewKind.of(path: "logo.svg") == .html)
+    #expect(FilePreviewKind.of(path: "analysis.ipynb") == .notebook)
+    #expect(FilePreviewKind.of(path: "src/main.rs") == nil)
+    #expect(FilePreviewKind.of(path: "Makefile") == nil)
+  }
+
+  @Test("notebook cells join their source lines and keep text outputs")
+  func notebook() throws {
+    let json = """
+      {"cells": [
+        {"cell_type": "markdown", "source": ["# Title\\n", "Intro"]},
+        {"cell_type": "code", "source": "print(1)", "outputs": [
+          {"output_type": "stream", "text": ["1\\n"]},
+          {"output_type": "execute_result", "data": {"text/plain": "2"}},
+          {"output_type": "error", "ename": "ValueError", "evalue": "bad"}]}
+      ]}
+      """
+    let cells = try NotebookCells.parse(json).get()
+    #expect(cells.map(\.kind) == [.markdown, .code])
+    #expect(cells[0].source == "# Title\nIntro")
+    #expect(cells[1].outputs == ["1\n", "2", "ValueError: bad"])
+    #expect(
+      NotebookCells.parse("{\"cells\": [")
+        == .failure(NotebookCells.Failure(message: "The notebook is not valid JSON.")))
   }
 }
 

@@ -20,6 +20,8 @@ struct WorkspacePanelSlots {
   var newSideChat: (@MainActor () -> Void)?
   /// Inserts a path reference into the composer.
   let mention: (@MainActor (String) -> Void)?
+  /// Shows a failure, such as a path that would not open.
+  var report: @MainActor (String) -> Void = { _ in }
 
   var slots: WorkspaceSlots {
     var slots = WorkspaceSlots()
@@ -30,7 +32,7 @@ struct WorkspacePanelSlots {
       slots.refreshPullRequests = { Task { await panel.reloadPullRequests() } }
     }
     guard let workspace else { return slots }
-    let actions = WorkspaceActions(mention: mention)
+    let actions = WorkspaceActionsAdapter.actions(workspace, mention: mention, report: report)
     slots.files = AnyView(
       FileTreeView(model: workspace.tree, source: workspace.source, actions: actions))
     let openDiff: (ChangedFile) -> Void = { file in
@@ -68,7 +70,9 @@ struct WorkspacePanelSlots {
         Task { await workspace.close(document) }
       },
       showPanel: { workspace.hideDocument() },
-      content: AnyView(WorkspaceDocumentView(model: workspace, actions: actions)))
+      content: AnyView(
+        WorkspaceDocumentView(model: workspace, actions: actions)
+          .environment(\.workspaceMarkdownRenderer, WorkspaceActionsAdapter.markdownRenderer)))
   }
 
   /// A file tab shows the file's symbol; a diff tab the changes symbol.

@@ -47,6 +47,14 @@ extension ConversationContainer {
     }
   }
 
+  /// Inserts `@path` into the composer, after a space when the draft does not end in one.
+  static func mention(into composer: ComposerStore) -> @MainActor (String) -> Void {
+    { path in
+      let separator = composer.text.isEmpty || composer.text.hasSuffix(" ") ? "" : " "
+      composer.text += "\(separator)@\(path) "
+    }
+  }
+
   /// The web's link to one message (`?message=<id>`): a user message by its item id, an answer
   /// by its turn. Live previews have no stable id yet.
   static func messageURL(_ row: OmnigentUIComponents.Row, in session: URL?) -> URL? {
@@ -76,8 +84,11 @@ extension ConversationContainer {
     let creator = session.createdBySessionId.map {
       CreatingSession(id: $0, title: list.session($0)?.title)
     }
+    let parent = list.parent(of: session.id).map {
+      CreatingSession(id: $0, title: list.session($0)?.title)
+    }
     return SessionMenuContext(
       projects: projects, projectID: current?.id, isShared: !list.isOwned(session),
-      createdBy: creator)
+      createdBy: creator, parent: parent)
   }
 }

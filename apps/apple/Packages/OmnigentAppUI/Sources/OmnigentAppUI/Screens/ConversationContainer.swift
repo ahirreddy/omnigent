@@ -207,10 +207,7 @@ struct ConversationContainer: View {
       workspace: workspace, panel: panel, terminals: terminals, tabRoutes: tabRoutes,
       terminalNames: terminalNames, permissionLevel: conversation.header?.permissionLevel,
       newSideChat: SessionToolsAdapter.sideChat(conversation, routes: toolRoutes),
-      mention: { path in
-        let separator = composer.text.isEmpty || composer.text.hasSuffix(" ") ? "" : " "
-        composer.text += "\(separator)@\(path) "
-      }
+      mention: Self.mention(into: composer), report: { failures.append($0) }
     ).slots
   }
 

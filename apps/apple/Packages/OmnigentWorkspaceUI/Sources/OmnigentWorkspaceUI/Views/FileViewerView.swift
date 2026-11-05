@@ -8,6 +8,7 @@ public struct FileViewerView: View {
   private let line: UInt64?
   private let source: any WorkspaceDataSource
   private let actions: WorkspaceActions
+  @AppStorage("workspace.fileViewMode") private var viewMode = FileViewMode.preview
 
   /// A viewer.
   /// - Parameters:
@@ -28,14 +29,20 @@ public struct FileViewerView: View {
   /// The view.
   public var body: some View {
     VStack(spacing: 0) {
-      FileHeader(file: file, source: source, actions: actions)
+      FileHeader(
+        file: file, source: source, actions: actions,
+        viewMode: previewKind == nil ? nil : $viewMode)
       Divider()
       switch file.preview {
       case .text(let text):
         if text.serverTruncated || text.clipped {
           NoticeBar(symbol: "scissors", text: notice(for: text))
         }
-        CodeTextView(preview: text, markedLine: line)
+        if let previewKind, viewMode == .preview {
+          FilePreviewView(kind: previewKind, text: text.text)
+        } else {
+          CodeTextView(preview: text, markedLine: line)
+        }
       case .image(let format, let data):
         ImagePreview(format: format, data: data, byteCount: file.byteCount)
       case .binary(let reason):
@@ -47,6 +54,11 @@ public struct FileViewerView: View {
       }
     }
     .accessibilityIdentifier("workspace.viewer")
+  }
+
+  private var previewKind: FilePreviewKind? {
+    guard case .text = file.preview else { return nil }
+    return FilePreviewKind.of(path: file.path)
   }
 
   private func notice(for text: TextPreview) -> String {
@@ -62,6 +74,8 @@ private struct FileHeader: View {
   let file: WorkspaceFile
   let source: any WorkspaceDataSource
   let actions: WorkspaceActions
+  /// Preview or Source, for a previewable file.
+  let viewMode: Binding<FileViewMode>?
 
   var body: some View {
     HStack(spacing: 8) {
@@ -80,9 +94,19 @@ private struct FileHeader: View {
           .textSelection(.enabled)
       }
       Spacer(minLength: 8)
-      Text(details)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+      if let viewMode {
+        Picker("View", selection: viewMode) {
+          ForEach(FileViewMode.allCases) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .accessibilityIdentifier("workspace.viewer.mode")
+      } else {
+        Text(details)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
       Menu {
         PathMenu(path: file.path, source: source, actions: actions)
       } label: {
