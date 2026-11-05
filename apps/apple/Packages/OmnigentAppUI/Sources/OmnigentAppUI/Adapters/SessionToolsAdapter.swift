@@ -57,8 +57,11 @@ enum SessionToolsAdapter {
     case .command: if !readOnly { extras.setGoal = routes.showGoal }
     case nil: break
     }
-    if let isOn = planMode(store)?.isOn, !readOnly {
+    // Every viewer sees the Plan mode badge; only a writer can switch it.
+    if let isOn = planMode(store)?.isOn {
       extras.isPlanOn = isOn
+    }
+    if let isOn = planMode(store)?.isOn, !readOnly {
       extras.togglePlan = {
         guard !tools.isBusy else { return }
         Task {
@@ -83,18 +86,44 @@ enum SessionToolsAdapter {
   }
 
   /// Starts a side chat: a native `/side` fills the composer, a forked one opens next to this
-  /// chat.
-  static func startSideChat(_ store: ConversationStore, routes: Routes) {
+  /// chat. A `quote` (selected transcript text) starts the side chat's draft quoted.
+  static func startSideChat(_ store: ConversationStore, routes: Routes, quote: String? = nil) {
     let tools = store.tools
     guard !tools.isBusy else { return }
+    // A native side chat is typed here, so a draft in progress is never replaced by a quote.
+    if quote != nil, !store.composer.text.isEmpty, case .command = sideChatKind(store) {
+      routes.report("Send or clear the message you are writing before asking in a side chat.")
+      return
+    }
     Task {
-      switch await tools.startSideChat() {
+      switch await tools.startSideChat(quote: quote) {
       case .command(let prefix): store.composer.text = prefix
       case .session(let sessionID): routes.openSession(sessionID)
       case nil:
         let reason = tools.lastError?.message ?? "Unknown error."
         routes.report("Couldn't start a side chat for this session: \(reason)")
       }
+    }
+  }
+
+  /// How a side chat of this session starts, as far as the screen knows before asking the core:
+  /// Codex-native forks from a typed command.
+  private static func sideChatKind(_ store: ConversationStore) -> SideChatStart? {
+    store.header?.settings?.harness == "codex-native" ? .command(prefix: "") : nil
+  }
+
+  /// "Reply" and "Ask in side chat" for text selected in the transcript, for a viewer who can
+  /// write (web `SelectionPopup`).
+  static func addSelectionActions(
+    to actions: inout ConversationActions, store: ConversationStore, routes: Routes
+  ) {
+    guard !ComposerAdapter.isReadOnly(store) else { return }
+    let composer = store.composer
+    actions.replyWithSelection = { text in
+      composer.text = replyQuote(draft: composer.text, selection: text)
+    }
+    if sideChat(store, routes: routes) != nil {
+      actions.askInSideChat = { text in startSideChat(store, routes: routes, quote: text) }
     }
   }
 
@@ -108,10 +137,25 @@ enum SessionToolsAdapter {
   {
     let background = store.sections.first { $0.id == "status" }?.details
       .first { $0.id == "background" }.flatMap { Int($0.text) }
+    let tasks = backgroundTasks(store.sections)
     return ComposerTaskIndicators(
-      backgroundTasks: background ?? 0,
+      backgroundTasks: background ?? 0, backgroundTaskList: tasks.list,
+      backgroundTaskNote: tasks.note,
       subagents: SubagentGroup(state: screen)?.active ?? [],
       goal: store.tools.goal.map(goal))
+  }
+
+  /// The named background tasks of the core's `background-tasks` section, and its note about
+  /// the ones it could not name.
+  static func backgroundTasks(_ sections: [OmnigentCoreFFI.EventSection])
+    -> (list: [ComposerBackgroundTask], note: String?)
+  {
+    let details = sections.first { $0.id == "background-tasks" }?.details ?? []
+    let list = details.filter { $0.id != "undetailed" }.map { detail in
+      ComposerBackgroundTask(
+        id: detail.id, title: detail.title, command: detail.text.isEmpty ? nil : detail.text)
+    }
+    return (list, details.first { $0.id == "undetailed" }?.text)
   }
 
   /// "#1234", or "3 PRs"; `nil` without linked pull requests.

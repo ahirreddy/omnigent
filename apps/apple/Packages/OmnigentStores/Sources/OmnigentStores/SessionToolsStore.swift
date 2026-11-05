@@ -2,7 +2,8 @@ public import Observation
 public import OmnigentCoreFFI
 
 /// One conversation's Add (+) menu tools through the core: side chats, Codex plan mode and the
-/// session goal. Failures are kept in ``lastError`` until dismissed.
+/// session goal. Failures are kept in ``lastError`` until dismissed. Also the Agents panel's
+/// spawn tree.
 @Observable
 public final class SessionToolsStore {
   /// The session.
@@ -15,8 +16,13 @@ public final class SessionToolsStore {
   public private(set) var isBusy = false
   /// The latest failure.
   public private(set) var lastError: CoreError?
+  /// The spawn tree from its top-level session, once read.
+  public private(set) var agentTree: AgentTree?
+  /// Why the latest spawn tree read failed; the last good tree stays shown.
+  public private(set) var agentTreeError: CoreError?
 
   private let core: ClientCore
+  private var isReadingAgentTree = false
 
   init(sessionID: String, core: ClientCore) {
     self.sessionID = sessionID
@@ -65,12 +71,28 @@ public final class SessionToolsStore {
     await run { core in _ = try await core.setPlanMode(sessionId: sessionID, on: enabled) }
   }
 
-  /// Starts a side chat.
+  /// Starts a side chat; a `quote` (selected transcript text) starts its composer quoted.
   /// - Returns: How it starts, or `nil` after a failure (kept in ``lastError``).
-  public func startSideChat() async -> SideChatStart? {
+  public func startSideChat(quote: String? = nil) async -> SideChatStart? {
     var start: SideChatStart?
-    await run { core in start = try await core.startSideChat(sessionId: sessionID) }
+    await run { core in
+      start = try await core.startSideChat(sessionId: sessionID, quote: quote)
+    }
     return start
+  }
+
+  /// Reads the spawn tree. A read already in flight is not repeated.
+  public func loadAgentTree() async {
+    guard !isReadingAgentTree else { return }
+    isReadingAgentTree = true
+    defer { isReadingAgentTree = false }
+    do {
+      let tree = try await core.agentTree(sessionId: sessionID)
+      if tree != agentTree { agentTree = tree }
+      if agentTreeError != nil { agentTreeError = nil }
+    } catch {
+      agentTreeError = coreError(error)
+    }
   }
 
   /// Clears ``lastError`` after the user has seen it.

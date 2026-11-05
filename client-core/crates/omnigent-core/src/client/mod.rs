@@ -25,6 +25,7 @@
 )]
 
 pub mod agent_info;
+pub mod agent_tree;
 pub mod automations;
 pub mod browser;
 pub mod comments;

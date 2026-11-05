@@ -47,7 +47,7 @@ fn a_side_chat_forks_and_binds_the_parents_runner() {
         &json!({"runner_id": "run_1", "runner_online": true, "host_id": "host_1"}),
     ));
     assert_eq!(
-        block_on(core.start_side_chat("conv_a")),
+        block_on(core.start_side_chat("conv_a", None)),
         Ok(SideChatStart::Session {
             session_id: "conv_side".into()
         })
@@ -78,7 +78,7 @@ fn a_stopped_runner_is_relaunched_and_a_lost_one_refuses() {
     );
     // The relaunch did not bring the runner back: nothing is forked.
     assert!(matches!(
-        block_on(core.start_side_chat("conv_a")),
+        block_on(core.start_side_chat("conv_a", None)),
         Err(SessionError::ExecutionUnavailable { .. })
     ));
     let writes = core.transport().writes();
@@ -93,7 +93,7 @@ fn a_stopped_runner_is_relaunched_and_a_lost_one_refuses() {
 fn codex_native_side_chats_start_from_the_command() {
     let core = connected(side_chat_transport(&json!({"harness": "codex-native"})));
     assert_eq!(
-        block_on(core.start_side_chat("conv_a")),
+        block_on(core.start_side_chat("conv_a", None)),
         Ok(SideChatStart::Command {
             prefix: SIDE_CHAT_COMMAND_PREFIX.into()
         })
@@ -218,4 +218,38 @@ fn no_goal_reads_as_none() {
     transport.ok("/v1/sessions/conv_a/codex_goal", r#"{"goal":null}"#);
     let core = connected(transport);
     assert_eq!(block_on(core.session_goal("conv_a")), Ok(None));
+}
+
+#[test]
+fn a_reply_quote_follows_the_draft_after_a_blank_line() {
+    assert_eq!(reply_quote("", "one\r\ntwo\n"), "> one\n> two\n\n");
+    assert_eq!(reply_quote("Look:", "x"), "Look:\n\n> x\n\n");
+    assert_eq!(reply_quote("Look:\n", "x"), "Look:\n\n> x\n\n");
+    assert_eq!(reply_quote("> a\n\n", "b"), "> a\n\n> b\n\n");
+    assert_eq!(reply_quote("keep", "  \n "), "keep");
+}
+
+#[test]
+fn a_quoted_side_chat_starts_with_the_quote_as_its_draft() {
+    let core = connected(side_chat_transport(
+        &json!({"runner_id": "run_1", "runner_online": true, "host_id": "host_1"}),
+    ));
+    assert_eq!(
+        block_on(core.start_side_chat("conv_a", Some("why this?"))),
+        Ok(SideChatStart::Session {
+            session_id: "conv_side".into()
+        })
+    );
+    assert_eq!(
+        core.composer_text("conv_side").as_deref(),
+        Ok("> why this?\n\n")
+    );
+
+    let native = connected(side_chat_transport(&json!({"harness": "codex-native"})));
+    assert_eq!(
+        block_on(native.start_side_chat("conv_a", Some("why this?"))),
+        Ok(SideChatStart::Command {
+            prefix: "/side > why this?\n\n".into()
+        })
+    );
 }

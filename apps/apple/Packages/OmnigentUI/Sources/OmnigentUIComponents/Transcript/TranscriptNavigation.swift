@@ -65,16 +65,14 @@ final class TranscriptReadingPosition {
   }
 }
 
-/// Jump to top and previous and next user message, at the transcript's trailing edge.
+/// Previous and next user message, at the transcript's trailing edge (web `UserMessageNav`).
+/// Jump to top is the pill the top edge reveals (``JumpToTopReveal``).
 struct TranscriptNavigator: View {
-  let jumpToTop: () -> Void
   let previous: () -> Void
   let next: () -> Void
 
   var body: some View {
     VStack(spacing: 0) {
-      button(
-        "Jump to top", symbol: "arrow.up.to.line", id: "transcript-jump-top", action: jumpToTop)
       button(
         "Previous message", shortcut: "\u{2318}\u{2325}\u{2191}", symbol: "chevron.up",
         id: "transcript-previous-message", action: previous
@@ -106,5 +104,101 @@ struct TranscriptNavigator: View {
     .help(shortcut.map { "\(title) (\($0))" } ?? title)
     .accessibilityLabel(title)
     .accessibilityIdentifier(id)
+  }
+}
+
+/// Where the reader is, for the jump-to-top pill: kept out of view state so scrolling does not
+/// re-render anything until the pill's visibility changes.
+@MainActor
+private final class ScrollTopTracker {
+  var lastOffset: CGFloat = 0
+  var hideTask: Task<Void, Never>?
+}
+
+/// The web's hover-revealed "Jump to top" pill: pointing within ``band`` of the transcript's top,
+/// or scrolling up, shows a round button centered at the top edge while there is anywhere to go.
+struct JumpToTopReveal: ViewModifier {
+  /// Older history is still on the server.
+  let hasMoreHistory: Bool
+  /// Older history is being read.
+  let isLoading: Bool
+  let jump: () -> Void
+  @State private var isHovering = false
+  @State private var scrolledUp = false
+  @State private var isAtTop = true
+  @State private var tracker = ScrollTopTracker()
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  /// Points below the top edge that count as pointing at the top.
+  static let band: CGFloat = 140
+  /// How long the pill stays after the reader stops scrolling up.
+  static let scrollReveal: Duration = .seconds(2)
+
+  private var isShown: Bool { (isHovering || scrolledUp) && (hasMoreHistory || !isAtTop) }
+
+  func body(content: Content) -> some View {
+    content
+      .onContinuousHover { phase in
+        let hovering =
+          switch phase {
+          case .active(let location): location.y < Self.band
+          case .ended: false
+          }
+        if hovering != isHovering { isHovering = hovering }
+      }
+      .onScrollGeometryChange(for: CGFloat.self) { geometry in
+        geometry.contentOffset.y + geometry.contentInsets.top
+      } action: { _, offset in
+        scrolled(to: offset)
+      }
+      .overlay(alignment: .top) { pill }
+      .accessibilityAction(named: "Jump to the first message", jump)
+  }
+
+  private var pill: some View {
+    Button(action: jump) {
+      Group {
+        if isLoading {
+          ProgressView().controlSize(.small)
+        } else {
+          Image(systemName: "arrow.up").font(.callout.weight(.semibold))
+        }
+      }
+      .frame(width: 28, height: 28)
+      .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .glassSurface(in: Circle(), isInteractive: true)
+    .help("Jump to the first message")
+    .accessibilityLabel("Jump to the first message")
+    .accessibilityIdentifier("transcript-jump-top")
+    .padding(.top, Theme.Spacing.small)
+    .opacity(isShown ? 1 : 0)
+    .allowsHitTesting(isShown)
+    .accessibilityHidden(!isShown)
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isShown)
+  }
+
+  /// Reveals the pill while the reader scrolls up, and hides it once they stop or turn back.
+  private func scrolled(to offset: CGFloat) {
+    let atTop = offset <= 1
+    if atTop != isAtTop { isAtTop = atTop }
+    let delta = offset - tracker.lastOffset
+    tracker.lastOffset = offset
+    if delta < -1, !atTop {
+      if !scrolledUp { scrolledUp = true }
+      tracker.hideTask?.cancel()
+      tracker.hideTask = Task { @MainActor in
+        do {
+          try await Task.sleep(for: Self.scrollReveal)
+        } catch {
+          return  // Superseded by a newer scroll.
+        }
+        scrolledUp = false
+      }
+    } else if delta > 1, scrolledUp {
+      tracker.hideTask?.cancel()
+      scrolledUp = false
+    }
   }
 }

@@ -98,7 +98,8 @@ public struct ConversationScreen<Terminal: View>: View {
       } else {
         // A request answers inline while its card is on screen, else in the dock.
         LiveTranscript(
-          state: state, liveRows: liveRows, actions: actions, scrollToLatestRequest: scrollRequest
+          state: state, liveRows: liveRows, actions: transcriptActions,
+          scrollToLatestRequest: scrollRequest
         )
         .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
       }
@@ -294,6 +295,18 @@ extension ConversationScreen {
   /// Send while the draft can go, else the active request's Approve.
   private var commandReturnOwner: CommandReturnOwner {
     .resolve(canSend: canSendDraft, approvableCardID: approveCandidate?.cardID)
+  }
+
+  /// A reply to selected text lands in the composer, focused for typing.
+  private var transcriptActions: ConversationActions {
+    var actions = actions
+    if let reply = actions.replyWithSelection {
+      actions.replyWithSelection = { text in
+        reply(text)
+        focusRequest += 1
+      }
+    }
+    return actions
   }
 
   private var commands: SessionCommandActions {

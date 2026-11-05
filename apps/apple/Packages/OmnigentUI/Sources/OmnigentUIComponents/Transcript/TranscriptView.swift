@@ -155,13 +155,16 @@ public struct TranscriptView: View {
       }
       .overlay(alignment: .bottomTrailing) {
         if state.rows.contains(where: { $0.role == .user }) {
-          TranscriptNavigator(
-            jumpToTop: { jumpToTop(proxy) }, previous: { step(.previous, proxy) },
-            next: { step(.next, proxy) }
-          )
-          .padding(Theme.Spacing.medium)
+          TranscriptNavigator(previous: { step(.previous, proxy) }, next: { step(.next, proxy) })
+            .padding(Theme.Spacing.medium)
         }
       }
+      .modifier(
+        JumpToTopReveal(
+          hasMoreHistory: state.hasMoreHistory && actions.loadOlder != nil,
+          isLoading: state.isLoadingHistory, jump: { jumpToTop(proxy) })
+      )
+      .transcriptSelectionPopup(reply: actions.replyWithSelection, ask: actions.askInSideChat)
       .overlay(alignment: .bottom) {
         if follow.showsJumpToLatest {
           JumpToLatestPill(title: follow.jumpTitle, hasUnseenOutput: follow.hasUnseenOutput) {

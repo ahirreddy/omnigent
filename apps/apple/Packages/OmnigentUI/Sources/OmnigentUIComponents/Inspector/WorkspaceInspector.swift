@@ -169,7 +169,11 @@ public struct WorkspaceInspector: View {
           PullRequestList(pullRequests: state.pullRequests, open: actions.openURL)
         }
       case .agents:
-        AgentsPanel(state: state, open: actions.openSession)
+        if let agents = slots.agents {
+          agents
+        } else {
+          AgentsPanel(state: state, open: actions.openSession)
+        }
       case .info:
         SessionInspectorView(state: state, actions: actions)
       }

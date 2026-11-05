@@ -202,13 +202,13 @@ struct ConversationContainer: View {
 
   /// The right panel's tabs, open files and "Open new" menu.
   private var workspaceSlots: WorkspaceSlots {
-    let composer = conversation.composer
-    return WorkspacePanelSlots(
+    WorkspacePanelSlots(
       workspace: workspace, panel: panel, terminals: terminals, tabRoutes: tabRoutes,
       terminalNames: terminalNames, permissionLevel: conversation.header?.permissionLevel,
       canEdit: !(conversation.header?.readOnly ?? false),
       newSideChat: SessionToolsAdapter.sideChat(conversation, routes: toolRoutes),
-      mention: { path in
+      agents: AgentTreeAdapter.panel(conversation, open: tabRoutes?.openSession ?? openSession),
+      mention: { [composer = conversation.composer] path in
         let separator = composer.text.isEmpty || composer.text.hasSuffix(" ") ? "" : " "
         composer.text += "\(separator)@\(path) "
       }
@@ -234,6 +234,7 @@ struct ConversationContainer: View {
       actions.openChild = tabRoutes.openSession
       actions.openSession = tabRoutes.openSession
     }
+    SessionToolsAdapter.addSelectionActions(to: &actions, store: conversation, routes: toolRoutes)
     return actions
   }
 
@@ -383,8 +384,7 @@ extension ConversationContainer {
     var extras = ComposerAdapter.extras(
       conversation.composer, isRunning: { conversation.isRunning },
       recallPrevious: { ComposerAdapter.lastPrompt(conversation) }, reconnect: retry)
-    SessionToolsAdapter.add(
-      to: &extras, store: conversation, summary: summary, routes: toolRoutes)
+    SessionToolsAdapter.add(to: &extras, store: conversation, summary: summary, routes: toolRoutes)
     return extras
   }
 

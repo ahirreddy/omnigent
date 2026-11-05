@@ -50,6 +50,33 @@ struct SessionToolsAdapterTests {
     #expect(SessionToolsAdapter.goalSheet(conversation, summary: nil)?.isReadOnly == true)
   }
 
+  @Test("Selected text is quoted under the draft; a read-only viewer gets no selection popup")
+  func selectionActions() async throws {
+    let store = try await PreviewData.connectedDemoStore()
+    let conversation = try await loaded("demo-design", in: store)
+    var actions = ConversationActions()
+    SessionToolsAdapter.addSelectionActions(to: &actions, store: conversation, routes: routes)
+    #expect(actions.askInSideChat != nil)
+    conversation.composer.text = "Look at this:"
+    actions.replyWithSelection?("first\nsecond")
+    #expect(conversation.composer.text == "Look at this:\n\n> first\n> second\n\n")
+
+    var readOnly = ConversationActions()
+    let notes = try await loaded("demo-notes", in: store)
+    SessionToolsAdapter.addSelectionActions(to: &readOnly, store: notes, routes: routes)
+    #expect(readOnly.replyWithSelection == nil && readOnly.askInSideChat == nil)
+  }
+
+  @Test("Every viewer sees Plan mode; only a writer can switch it")
+  func planModeBadge() async throws {
+    let store = try await PreviewData.connectedDemoStore()
+    let conversation = try await loaded("demo-design", in: store)
+    var extras = ComposerExtraActions()
+    SessionToolsAdapter.add(to: &extras, store: conversation, summary: nil, routes: routes)
+    #expect(extras.isPlanOn == SessionToolsAdapter.planMode(conversation)?.isOn)
+    #expect(extras.togglePlan != nil)
+  }
+
   @Test("A goal maps to the tray pill with its usage")
   func goalPill() {
     let goal = SessionGoal(
