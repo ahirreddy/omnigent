@@ -291,7 +291,9 @@ struct TabContextMenu: View {
       }
     }
     if let link = tab.link {
-      Button("Copy Link", systemImage: "link") { Pasteboard.copy(link.absoluteString) }
+      ConfirmedCopyButton(
+        title: "Copy Link", systemImage: "link", text: link.absoluteString,
+        confirmation: "Link copied")
     }
     Divider()
     Button("Close Tab", systemImage: "xmark") { actions.close(tab.id) }

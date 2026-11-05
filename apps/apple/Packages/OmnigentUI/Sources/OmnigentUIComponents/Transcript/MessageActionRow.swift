@@ -29,7 +29,9 @@ struct MessageActionItem: Identifiable {
 
   /// Copy (when the message has text), Fork chat from here (a settled assistant message with a
   /// response, when the host can fork) and Copy link (when the host has links), in row order.
-  static func items(for row: Row, actions: ConversationActions) -> [Self] {
+  static func items(
+    for row: Row, actions: ConversationActions, copy: CopyAction = CopyAction(presenter: nil)
+  ) -> [Self] {
     var items: [Self] = []
     if !row.text.isEmpty {
       let text = row.text
@@ -49,7 +51,8 @@ struct MessageActionItem: Identifiable {
       items.append(
         Self(
           kind: .link, title: "Copy link", menuTitle: "Copy Link", systemImage: "link",
-          identifier: "message-link-\(row.id)", perform: { Pasteboard.copy(url.absoluteString) }))
+          identifier: "message-link-\(row.id)",
+          perform: { copy(url.absoluteString, confirmation: "Link copied") }))
     }
     return items
   }
@@ -98,6 +101,7 @@ struct MessageActionRow: View {
   var overlaysGap = false
 
   @Environment(\.messageActionsRevealed) private var revealed
+  @Environment(\.copyWithConfirmation) private var copy
 
   /// How far the controls rise into the message's spacing above the row (4 pt under a bubble,
   /// 8 under an answer), so they start at the message's edge and fit the 24 pt row gap.
@@ -141,7 +145,7 @@ struct MessageActionRow: View {
 
   private var controls: some View {
     HStack(spacing: Theme.Spacing.medium) {
-      ForEach(MessageActionItem.items(for: row, actions: actions)) { item in
+      ForEach(MessageActionItem.items(for: row, actions: actions, copy: copy)) { item in
         if item.kind == .copy {
           CopyButton(text: row.text, label: item.title, identifier: item.identifier)
             .focused(focus)
@@ -181,6 +185,7 @@ private struct MessageActionsHost: ViewModifier {
   @State private var isHovered = false
   @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.copyWithConfirmation) private var copy
 
   private var revealed: Bool {
     #if os(macOS)
@@ -202,7 +207,7 @@ private struct MessageActionsHost: ViewModifier {
       .animation(reduceMotion ? nil : Theme.Motion.feedback, value: revealed)
       .contextMenu { MessageContextMenu(row: row, actions: actions) }
       .accessibilityActions {
-        ForEach(MessageActionItem.items(for: row, actions: actions)) { item in
+        ForEach(MessageActionItem.items(for: row, actions: actions, copy: copy)) { item in
           Button(item.title, action: item.perform)
         }
         #if !os(macOS)
@@ -237,6 +242,7 @@ extension View {
 struct MessageContextMenu: View {
   let row: Row
   let actions: ConversationActions
+  @Environment(\.copyWithConfirmation) private var copy
 
   var body: some View {
     #if !os(macOS)
@@ -249,12 +255,14 @@ struct MessageContextMenu: View {
         Divider()
       }
     #endif
-    ForEach(MessageActionItem.items(for: row, actions: actions)) { item in
+    ForEach(MessageActionItem.items(for: row, actions: actions, copy: copy)) { item in
       Button(item.menuTitle, systemImage: item.systemImage, action: item.perform)
     }
     ShareLink(item: row.text) { Label("Share", systemImage: "square.and.arrow.up") }
       .disabled(row.text.isEmpty)
     Divider()
-    Button("Copy Message ID", systemImage: "number") { Pasteboard.copy(row.id) }
+    ConfirmedCopyButton(
+      title: "Copy Message ID", systemImage: "number", text: row.id,
+      confirmation: "Message ID copied")
   }
 }
