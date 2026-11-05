@@ -22,6 +22,8 @@ nonisolated struct PaletteSection: Hashable, Sendable, Identifiable {
 nonisolated enum PaletteResults {
   /// Recent sessions shown before typing, so the actions stay in view.
   static let idleSessionLimit = 5
+  /// Server matches asked for at a time, of each kind; Show more asks for this many more.
+  static let searchPageSize = 10
 
   /// The groups for a scope and query.
   /// - Parameters:

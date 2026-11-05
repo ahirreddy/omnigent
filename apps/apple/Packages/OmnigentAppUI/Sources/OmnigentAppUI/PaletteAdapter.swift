@@ -23,7 +23,7 @@ struct PaletteAdapter: ViewModifier {
       let content = content.environment(\.sidebarToggle, sidebarToggle)
     #endif
     return content.commandPalette(
-      state: state, actions: PaletteActions(perform: perform, search: searchServer))
+      state: state, actions: PaletteActions(perform: perform, search: searchServer(_:limit:)))
   }
 
   private var state: PaletteViewState {
@@ -61,12 +61,12 @@ struct PaletteAdapter: ViewModifier {
   }
 
   /// Server matches: titles, and message content ("In messages") with its snippet.
-  private func searchServer(_ query: String) async -> PaletteSearchResults {
+  private func searchServer(_ query: String, limit: Int) async -> PaletteSearchResults {
     let list = session.connection.sessionList
     do {
-      let titles = try await list.search(query, inMessages: false)
-      let content = try await list.search(query, inMessages: true)
-      return PaletteSearchResults(
+      let titles = try await list.search(query, inMessages: false, limit: UInt32(limit))
+      let content = try await list.search(query, inMessages: true, limit: UInt32(limit))
+      var results = PaletteSearchResults(
         titles: titles.map { summary in
           entry(OmnigentUIComponents.SessionSummary(summary), detail: nil, prefix: "found")
         },
@@ -75,12 +75,10 @@ struct PaletteAdapter: ViewModifier {
             OmnigentUIComponents.SessionSummary(summary), detail: summary.preview,
             prefix: "message")
         })
+      results.hasMore = titles.count >= limit || content.count >= limit
+      return results
     } catch {
-      return PaletteSearchResults(titles: [
-        PaletteEntry(
-          id: "search-failed", title: "Could not search the server", detail: error.message,
-          symbol: "exclamationmark.triangle", isEnabled: false, target: .findSession)
-      ])
+      return PaletteSearchResults(failure: error.message)
     }
   }
 
@@ -95,7 +93,9 @@ struct PaletteAdapter: ViewModifier {
   }
 
   private func status(_ summary: OmnigentUIComponents.SessionSummary) -> String {
-    switch summary.status {
+    // The web badges archived matches.
+    if summary.isArchived { return "Archived" }
+    return switch summary.status {
     case .needsResponse: "Needs you"
     case .running: "Working"
     case .idle: summary.failureMessage == nil ? "Ready" : "Failed"

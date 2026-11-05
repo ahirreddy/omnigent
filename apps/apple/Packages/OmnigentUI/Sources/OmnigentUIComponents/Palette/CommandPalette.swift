@@ -5,10 +5,15 @@ public struct CommandPalette: View {
   private let state: PaletteViewState
   private let commands: [PaletteEntry]
   private let perform: (PaletteTarget) -> Void
-  private let search: (@MainActor (String) async -> PaletteSearchResults)?
+  private let search: (@MainActor (String, Int) async -> PaletteSearchResults)?
   @State private var query = ""
   /// Server matches for the current query, beyond the loaded sessions.
   @State private var found = PaletteSearchResults()
+  /// How many server matches of each kind to ask for; Show more raises it.
+  @State private var searchLimit = PaletteResults.searchPageSize
+  /// Bumped by Retry, to search again.
+  @State private var searchAttempt = 0
+  @State private var isSearching = false
   @State private var scope: PaletteScope
   @State private var selection: String?
   @FocusState private var searchFocused: Bool
@@ -23,7 +28,7 @@ public struct CommandPalette: View {
   ///   - perform: Executes a destination.
   public init(
     state: PaletteViewState, commands: [PaletteEntry], findsSessions: Bool = false,
-    search: (@MainActor (String) async -> PaletteSearchResults)? = nil,
+    search: (@MainActor (String, Int) async -> PaletteSearchResults)? = nil,
     perform: @escaping (PaletteTarget) -> Void
   ) {
     self.state = state
@@ -83,10 +88,15 @@ public struct CommandPalette: View {
               ForEach(section.entries) { row($0) }
             }
           }
+          if scope != .servers, search != nil, isTyping {
+            PaletteSearchStatus(
+              isSearching: isSearching, found: found, retry: { searchAttempt += 1 },
+              showMore: { searchLimit += PaletteResults.searchPageSize })
+          }
         }
         .listStyle(.plain).scrollContentBackground(.hidden)
         .overlay {
-          if results.isEmpty {
+          if results.isEmpty, !isSearching, found.failure == nil {
             ContentUnavailableView.search(text: query)
           }
         }
@@ -110,8 +120,13 @@ public struct CommandPalette: View {
     .onChange(of: results) {
       if !results.contains(where: { $0.id == selection && $0.isEnabled }) { resetSelection() }
     }
-    .onChange(of: query) { resetSelection() }
-    .task(id: query) { await searchServer() }
+    .onChange(of: query) {
+      resetSelection()
+      searchLimit = PaletteResults.searchPageSize
+    }
+    .task(id: PaletteSearchRequest(query: query, limit: searchLimit, attempt: searchAttempt)) {
+      await searchServer()
+    }
     .onChange(of: scope) { resetSelection() }
     .onKeyPress(.downArrow) {
       move(1)
@@ -148,7 +163,7 @@ public struct CommandPalette: View {
     HStack(spacing: Theme.Spacing.medium) {
       Image(systemName: entry.symbol).frame(width: 24).accessibilityHidden(true)
       VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
-        Text(entry.title).font(Theme.Typography.label)
+        Text(PaletteSearch.highlighted(entry.title, query: query)).font(Theme.Typography.label)
         Text(entry.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
       }
       Spacer()
@@ -159,21 +174,27 @@ public struct CommandPalette: View {
     .contentShape(Rectangle())
   }
 
+  private var isTyping: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
   /// Asks the server once typing pauses; a newer query cancels the wait.
   private func searchServer() async {
     let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let search, !text.isEmpty else {
       found = PaletteSearchResults()
+      isSearching = false
       return
     }
+    isSearching = true
     do {
       try await Task.sleep(for: .milliseconds(250))
     } catch {
       // A newer query replaced this one.
       return
     }
-    let results = await search(text)
-    if !Task.isCancelled { found = results }
+    let results = await search(text, searchLimit)
+    guard !Task.isCancelled else { return }
+    found = results
+    isSearching = false
   }
 
   private func resetSelection() { selection = results.first(where: \.isEnabled)?.id }
