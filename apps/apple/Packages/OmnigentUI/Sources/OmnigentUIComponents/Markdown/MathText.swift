@@ -155,8 +155,8 @@ nonisolated struct MathText {
   }()
 }
 
-/// Marks inline math, which draws in the serif math face.
+/// Marks inline math with its TeX: typeset when it is ready, else drawn in the serif math face.
 nonisolated enum MathSpanAttribute: AttributedStringKey {
-  typealias Value = Bool
+  typealias Value = String
   static let name = "omnigent.math"
 }

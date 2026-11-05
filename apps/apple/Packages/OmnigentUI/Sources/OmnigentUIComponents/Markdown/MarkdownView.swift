@@ -89,10 +89,13 @@ private struct MarkdownBlockView: View {
   var body: some View {
     switch block {
     case .paragraph(let text):
-      Text(ramp.sizingMath(in: ramp.sizingCode(in: linked(text), size: ramp.code), size: ramp.body))
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
+      MarkdownParagraphText(
+        text: ramp.sizingMath(
+          in: ramp.sizingCode(in: linked(text), size: ramp.code), size: ramp.body)
+      )
+      .textSelection(.enabled)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
     case .heading(let level, let text):
       let size = ramp.heading(level)
       Text(ramp.sizingCode(in: linked(text), size: (size * TypeRamp.codeScale).rounded(.down)))
@@ -102,7 +105,11 @@ private struct MarkdownBlockView: View {
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityAddTraits(.isHeader)
     case .code(let language, let code):
-      CodeBlockView(code: code, language: language)
+      if CodeHighlighting.fenceName(language) == "mermaid" {
+        MermaidBlockView(source: code)
+      } else {
+        CodeBlockView(code: code, language: language)
+      }
     case .quote(let blocks):
       HStack(alignment: .top, spacing: Theme.Spacing.medium) {
         RoundedRectangle(cornerRadius: 1.5)

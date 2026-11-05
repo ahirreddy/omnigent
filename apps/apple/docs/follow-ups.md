@@ -191,12 +191,6 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   `messageActionsHost` once it takes arbitrary actions.
 - [ ] **CLI style:** Styled renders fenced code without syntax highlighting (the rich renderer
   colors it with `CodeHighlighting`; the CLI palette has no token colors yet).
-- [ ] **Markdown: Mermaid.** ```` ```mermaid ```` blocks render as code. Diagrams need a WebKit
-  renderer (non-persistent `WKWebsiteDataStore`, as for other inline HTML) and a vendored
-  `mermaid.min.js` (~3 MB) as a package resource; it must not be loaded from a CDN.
-- [ ] **Markdown: math** draws TeX as Unicode text (`MathText`): fractions are `a/b` and matrices,
-  `\begin{cases}` and over/under-sets are flattened. Typeset math (KaTeX in WebKit, or a native
-  TeX layout) would match the web exactly.
 - [ ] **Markdown: message attachments.** Uploaded images in a message are chips; inline
   thumbnails need the core's attachment preview (`attachments::preview`,
   `GET …/resources/files/{id}/content`) exported over FFI. Markdown images from the workspace and
@@ -309,6 +303,12 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] Reusing the iOS bundle ID requires a version above 0.3.2.
 
 ## Done
+
+- [x] **Markdown: Mermaid and math.** ```` ```mermaid ```` blocks draw as diagrams and TeX is
+  typeset by KaTeX, both in one offscreen WebKit view (`RichBlockRenderer`, non-persistent data
+  store, no navigation) whose snapshots show as native images; KaTeX and Mermaid are package
+  resources from `scripts/vendor-rich-render.sh` (Mermaid LZMA-compressed under the 1 MB file
+  limit). Streaming blocks stay code or Unicode until they close. 2026-11-04.
 
 - [x] Host: after Back, the remote tab kept showing the old page (or a blank one) when many other
   tabs showed the same site. Windowless Chromium restored the page from the back/forward cache

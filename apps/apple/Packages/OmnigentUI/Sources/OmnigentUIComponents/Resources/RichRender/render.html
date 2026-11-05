@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- The offline page RichBlockRenderer typesets math and draws Mermaid diagrams in. It loads
+     nothing from the network; Mermaid is injected by the renderer on first use. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src data:"
+    />
+    <link rel="stylesheet" href="katex.min.css" />
+    <script src="katex.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+      }
+      #out {
+        display: inline-block;
+        padding: 2px;
+        color: #000;
+        white-space: nowrap;
+      }
+      #out .katex-display {
+        margin: 0;
+      }
+      #out svg {
+        display: block;
+      }
+      .baseline-probe {
+        display: inline-block;
+        width: 0;
+        height: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="out"></div>
+    <script src="render.js"></script>
+  </body>
+</html>

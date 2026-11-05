@@ -182,7 +182,7 @@ nonisolated enum MarkdownParser {
     case let code as InlineCode:
       if let tex = MarkdownMath.inlineSource(code.code) {
         var span = AttributedString(MathText.unicode(tex))
-        span[MathSpanAttribute.self] = true
+        span[MathSpanAttribute.self] = tex
         return span
       }
       var span = AttributedString(code.code)

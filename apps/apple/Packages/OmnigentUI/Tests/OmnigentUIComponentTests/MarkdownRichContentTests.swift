@@ -216,7 +216,7 @@ struct MarkdownImagesAndMathTests {
       return
     }
     #expect(String(text.characters) == "Area π r² costs $5 or $6.")
-    #expect(text.runs.contains { $0[MathSpanAttribute.self] == true })
+    #expect(text.runs.contains { $0[MathSpanAttribute.self] == "\\pi r^2" })
   }
 
   @Test("code keeps its math delimiters verbatim")
