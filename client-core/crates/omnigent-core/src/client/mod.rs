@@ -53,6 +53,7 @@ mod recovery;
 mod remote_browsers;
 mod requests;
 mod routing;
+mod sandbox;
 pub mod server_admin;
 mod session_actions;
 pub mod session_search;

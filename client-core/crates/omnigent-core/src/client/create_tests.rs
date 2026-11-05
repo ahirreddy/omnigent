@@ -8,7 +8,7 @@ use super::test_support::{
     Reply, RouteTransport, body_json, connected, envelopes, header, path_of, query_value,
 };
 use super::{ClientEvent, SessionError};
-use crate::creation::{CreationError, CreationGit, CreationSelection};
+use crate::creation::{CreationError, CreationGit, CreationSelection, SandboxTarget};
 
 const CREATION: &str = "sessions/SessionCreation--";
 
@@ -365,13 +365,23 @@ fn create_and_send_reports_the_first_message() {
     assert_eq!(sent.submission.item_id.as_deref(), Some("item_1"));
 }
 
+fn sandbox(workspaces: &[&str]) -> SandboxTarget {
+    SandboxTarget {
+        workspaces: workspaces.iter().map(|w| (*w).to_owned()).collect(),
+        host_id: Some("0123456789abcdef0123456789abcdef".into()),
+        ..SandboxTarget::default()
+    }
+}
+
 #[test]
 fn a_sandbox_session_posts_the_managed_contract_without_a_host() {
-    let core = connected(stub());
+    let transport = stub();
+    with_agent_install(&transport);
+    let core = connected(transport);
     let receipt = block_on(core.create_sandbox_session(
-        "ag_codex",
+        &selection(),
+        &sandbox(&["https://github.com/example/repo#main"]),
         " Scratch ",
-        &["https://github.com/example/repo#main".to_owned()],
     ))
     .unwrap();
     assert_eq!(receipt.session_id, "conv_created");
@@ -387,11 +397,19 @@ fn a_sandbox_session_posts_the_managed_contract_without_a_host() {
     assert_eq!(body["title"], "Scratch");
     assert!(
         body.get("host_id").is_none(),
-        "the server mints the sandbox host: {body}"
+        "the server mints the sandbox host unless it asks: {body}"
     );
     assert!(body.get("workspace").is_none(), "{body}");
+    assert!(body.get("sandbox_provider").is_none(), "{body}");
 
-    let unknown = block_on(core.create_sandbox_session("ag_missing", "", &[]));
+    let unknown = block_on(core.create_sandbox_session(
+        &CreationSelection {
+            agent_id: "ag_missing".into(),
+            ..selection()
+        },
+        &sandbox(&[]),
+        "",
+    ));
     assert!(
         matches!(
             unknown,
@@ -404,6 +422,61 @@ fn a_sandbox_session_posts_the_managed_contract_without_a_host() {
         1,
         "nothing posted for an unknown agent"
     );
+}
+
+#[test]
+fn a_sandbox_session_sends_its_provider_profile_host_id_and_run_configuration() {
+    let transport = stub();
+    transport.ok(
+        "/v1/info",
+        r#"{"single_user":true,"accounts_enabled":false,"managed_sandboxes_enabled":true,
+            "sandbox_provider":"modal","sandbox_providers":["modal","agent_sandbox"],
+            "sandbox_provider_capabilities":{"agent_sandbox":{"multi_repo":true}},
+            "request_managed_sandbox_host_id":true}"#,
+    );
+    let core = connected(transport);
+    let target = SandboxTarget {
+        provider: Some("agent_sandbox".into()),
+        profile: Some(("prof_1".into(), "rev_2".into())),
+        ..sandbox(&["https://github.com/o/a", "git@github.com:o/b.git#dev"])
+    };
+    let codex = CreationSelection {
+        reasoning_effort: Some("high".into()),
+        approval_mode: Some("bypass".into()),
+        ..selection()
+    };
+    block_on(core.create_sandbox_session(&codex, &target, "")).unwrap();
+    let body = body_json(&core.transport().writes()[0]);
+    assert_eq!(body["sandbox_provider"], "agent_sandbox");
+    assert_eq!(body["sandbox_profile_id"], "prof_1");
+    assert_eq!(body["sandbox_profile_revision"], "rev_2");
+    assert_eq!(body["host_id"], "0123456789abcdef0123456789abcdef");
+    assert_eq!(body["reasoning_effort"], "high");
+    assert_eq!(body["labels"]["omnigent.codex_native.bypass_sandbox"], "1");
+    assert!(body.get("terminal_launch_args").is_none(), "{body}");
+
+    // The default provider clones one repository; an unknown provider is refused.
+    for refused in [
+        SandboxTarget {
+            provider: None,
+            ..target.clone()
+        },
+        SandboxTarget {
+            provider: Some("docker".into()),
+            ..target
+        },
+        sandbox(&["https://user@github.com/o/a"]),
+    ] {
+        let result = block_on(core.create_sandbox_session(&selection(), &refused, ""));
+        assert!(
+            matches!(
+                result,
+                Err(SessionError::Creation(CreationError::Unavailable(_)))
+            ),
+            "{refused:?}: {result:?}"
+        );
+    }
+    assert_eq!(posts(core.transport()), 1);
 }
 
 /// `/v1/info` advertising the caller's own agents.

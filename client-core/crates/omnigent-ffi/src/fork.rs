@@ -29,6 +29,9 @@ pub struct ForkSandbox {
     pub provider: Option<String>,
     /// `<url>[#<branch>]` repositories to clone; `None` inherits the source's.
     pub workspaces: Option<Vec<String>>,
+    /// The profile to launch with.
+    #[uniffi(default)]
+    pub profile: Option<crate::sandbox::SandboxProfile>,
 }
 
 /// A host the fork sheet offers.
@@ -122,17 +125,21 @@ pub struct ForkPlan {
 
 impl From<ForkRequest> for core::ForkRequest {
     fn from(request: ForkRequest) -> Self {
+        let wrapper = request
+            .agent
+            .and_then(|agent| omnigent_core::creation::CreationAgent::from(agent).wrapper());
+        let mode = request.approval_mode.as_deref();
         Self {
             source_id: request.source_id,
             up_to_response_id: request.up_to_response_id,
             agent_id: request.agent_id,
             title: request.title,
-            terminal_launch_args: request.approval_mode.as_deref().and_then(|mode| {
-                let agent = omnigent_core::creation::CreationAgent::from(request.agent?);
-                omnigent_core::config::approval::launch_approval_args(
-                    agent.wrapper().as_deref(),
-                    mode,
-                )
+            codex_bypass: omnigent_core::config::approval::is_codex_bypass(
+                wrapper.as_deref(),
+                mode,
+            ),
+            terminal_launch_args: mode.and_then(|mode| {
+                omnigent_core::config::approval::launch_approval_args(wrapper.as_deref(), mode)
             }),
             start: request.start.map(|start| core::ForkStart {
                 host_id: start.host_id,
@@ -142,9 +149,25 @@ impl From<ForkRequest> for core::ForkRequest {
             sandbox: request.sandbox.map(|sandbox| core::ForkSandbox {
                 provider: sandbox.provider,
                 workspaces: sandbox.workspaces,
+                profile: sandbox
+                    .profile
+                    .map(|profile| (profile.id, profile.revision)),
+                host_id: None,
             }),
             model: request.model,
             reasoning_effort: request.reasoning_effort,
+        }
+    }
+}
+
+impl From<core::RunnerLaunch> for RunnerLaunch {
+    fn from(launch: core::RunnerLaunch) -> Self {
+        match launch {
+            core::RunnerLaunch::NotRequested => Self::NotRequested,
+            core::RunnerLaunch::Launched { runner_id } => Self::Launched { runner_id },
+            core::RunnerLaunch::Failed(error) => Self::Failed {
+                error: error.into(),
+            },
         }
     }
 }
@@ -153,13 +176,7 @@ impl From<core::ForkedSession> for ForkedSession {
     fn from(forked: core::ForkedSession) -> Self {
         Self {
             receipt: forked.receipt.into(),
-            launch: match forked.launch {
-                core::RunnerLaunch::NotRequested => RunnerLaunch::NotRequested,
-                core::RunnerLaunch::Launched { runner_id } => RunnerLaunch::Launched { runner_id },
-                core::RunnerLaunch::Failed(error) => RunnerLaunch::Failed {
-                    error: error.into(),
-                },
-            },
+            launch: forked.launch.into(),
         }
     }
 }
@@ -215,8 +232,13 @@ impl ClientCore {
     /// `Forbidden`, `Unauthorized` and `DeliveryUncertain` from the fork `POST`; the host read
     /// errors.
     pub async fn fork_session(&self, request: ForkRequest) -> Result<ForkedSession, CoreError> {
+        let mut request = core::ForkRequest::from(request);
+        if let Some(sandbox) = request.sandbox.as_mut() {
+            // Sent only to servers that ask clients to name a new sandbox's host.
+            sandbox.host_id = Some(self.random_host_id()?);
+        }
         self.sessions()
-            .fork_session(&request.into())
+            .fork_session(&request)
             .await
             .map(Into::into)
             .map_err(CoreError::from)

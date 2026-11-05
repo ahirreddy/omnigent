@@ -262,18 +262,23 @@ fn forks_onto_a_new_sandbox_but_never_also_a_host() {
     let sandbox = ForkSandbox {
         provider: Some("modal".into()),
         workspaces: Some(vec!["https://github.com/o/r#main".into()]),
+        profile: Some(("prof_1".into(), "rev_1".into())),
+        host_id: Some("0123456789abcdef0123456789abcdef".into()),
     };
     let forked = block_on(core.fork_session(&ForkRequest {
         sandbox: Some(sandbox.clone()),
+        codex_bypass: true,
         ..request()
     }))
     .unwrap();
     assert_eq!(forked.launch, RunnerLaunch::NotRequested);
+    // The server mints the host id unless it asks clients to.
     assert_eq!(
         body_json(&core.transport().writes()[0]),
         json!({
             "up_to_response_id": "resp_2", "host_type": "managed", "sandbox_provider": "modal",
-            "workspaces": ["https://github.com/o/r#main"]
+            "workspaces": ["https://github.com/o/r#main"], "sandbox_profile_id": "prof_1",
+            "sandbox_profile_revision": "rev_1", "codex_bypass_sandbox": true
         })
     );
     let both = block_on(core.fork_session(&ForkRequest {

@@ -18,7 +18,9 @@ fn info_reads_admin_mode_and_known_connections() {
     core.transport().ok(
         "/v1/info",
         r#"{"single_user":false,"accounts_enabled":true,"archive_worktree_cleanup":true,
-            "login_url":"/login","enabled_connections":["mcp","github","slack","databricks"]}"#,
+            "login_url":"/login","enabled_connections":["mcp","github","slack","databricks"],
+            "agent_install":true,"agent_detail":true,
+            "features":{"custom_agents_settings_ui":true}}"#,
     );
     assert_eq!(
         block_on(core.server_settings_info()).unwrap(),
@@ -31,6 +33,8 @@ fn info_reads_admin_mode_and_known_connections() {
             connections: vec!["github".into(), "databricks".into()],
             archive_worktree_cleanup: true,
             has_login_session: true,
+            custom_agents: true,
+            agent_detail: true,
         }
     );
 
@@ -39,6 +43,15 @@ fn info_reads_admin_mode_and_known_connections() {
     let info = block_on(core.server_settings_info()).unwrap();
     assert!(info.single_user && !info.mcp_registry && info.connections.is_empty());
     assert!(!info.archive_worktree_cleanup && !info.has_login_session);
+    assert!(!info.custom_agents && !info.agent_detail);
+
+    // The Custom Agents page also needs `agent_install`.
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/info",
+        r#"{"single_user":true,"features":{"custom_agents_settings_ui":true}}"#,
+    );
+    assert!(!block_on(core.server_settings_info()).unwrap().custom_agents);
 }
 
 #[test]

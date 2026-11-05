@@ -55,6 +55,7 @@ pub mod inbox;
 pub mod pull_request_detail;
 pub mod pull_requests;
 pub mod remote_browser;
+pub mod sandbox;
 pub mod server_admin;
 pub mod session_tools;
 pub mod sessions;

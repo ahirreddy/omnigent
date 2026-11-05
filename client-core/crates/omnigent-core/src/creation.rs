@@ -20,7 +20,9 @@ use serde_json::{Map, Value};
 use crate::client::fork::agent_root_name;
 use crate::client::json::{as_object, opt_array, opt_bool, opt_object, opt_str, opt_u64, req_str};
 use crate::client::sessions::SessionSummary;
-use crate::config::approval::{launch_approval_args, launch_approval_mode_menu};
+use crate::config::approval::{
+    CODEX_BYPASS_LABEL, is_codex_bypass, launch_approval_args, launch_approval_mode_menu,
+};
 use crate::config::session::{ModelChoice, canonical_harness, harness_label};
 
 /// What a host reports for one harness in `configured_harnesses`.
@@ -311,6 +313,20 @@ pub struct CreationGit {
     pub existing_worktree: bool,
 }
 
+/// A new sandbox the server provisions for a session (`host_type: "managed"`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SandboxTarget {
+    /// The provider; `None` takes the server's default.
+    pub provider: Option<String>,
+    /// The profile to launch with, by id and the revision the user chose.
+    pub profile: Option<(String, String)>,
+    /// `<url>[#<branch>]` repositories to clone; empty for an empty sandbox.
+    pub workspaces: Vec<String>,
+    /// A fresh 32-hex id for the sandbox host, sent when the server asks clients to name it
+    /// (`request_managed_sandbox_host_id`).
+    pub host_id: Option<String>,
+}
+
 /// One git worktree of a repository on a host (`GET /v1/hosts/{id}/worktrees`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostWorktree {
@@ -384,6 +400,10 @@ pub enum CreationError {
 
 /// What `GET /v1/info` says the server offers for session creation. Missing fields mean
 /// unsupported.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent server capability flags, mirrored one to one from /v1/info"
+)]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CreationCapabilities {
     /// `agent_install`: the caller's own agents are listed with `GET /v1/agents?scope=user`.
@@ -394,9 +414,62 @@ pub struct CreationCapabilities {
     pub sandbox_providers: Vec<String>,
     /// `features.codex_plan_at_launch`: a Codex session can start in Plan mode.
     pub codex_plan_at_launch: bool,
+    /// `sandbox_provider`: the default sandbox provider; `None` when the server names none.
+    pub default_sandbox_provider: Option<String>,
+    /// Providers whose `sandbox_provider_capabilities` report `multi_repo`.
+    pub multi_repo_providers: Vec<String>,
+    /// `features.sandbox_profiles`: sandboxes launch with a server-defined profile.
+    pub sandbox_profiles: bool,
+    /// `request_managed_sandbox_host_id`: a sandbox create names its new host's id.
+    pub mints_sandbox_host_id: bool,
+    /// `enabled_connections` has `github`: the repository picker lists the caller's repos.
+    pub github_connection: bool,
+    /// `session_fork_workspaces`: a sandbox fork can change several repositories.
+    pub fork_workspaces: bool,
+    /// `features.custom_agents_settings_ui`: Settings lists and edits custom agents.
+    pub custom_agents_settings: bool,
+    /// `agent_detail`: an agent's configuration can be read.
+    pub agent_detail: bool,
 }
 
 impl CreationCapabilities {
+    /// The sandbox rows the new-session host menu offers, the default first: each configured
+    /// provider, else the one default (`None` for the generic "New Sandbox"). Empty when the
+    /// server provisions no sandboxes.
+    #[must_use]
+    pub fn sandbox_provider_options(&self) -> Vec<Option<String>> {
+        if !self.managed_sandboxes {
+            Vec::new()
+        } else if self.sandbox_providers.is_empty() {
+            vec![self.default_sandbox_provider.clone()]
+        } else {
+            self.sandbox_providers.iter().cloned().map(Some).collect()
+        }
+    }
+
+    /// How many repositories a sandbox of `provider` (`None` for the default) clones.
+    #[must_use]
+    pub fn max_sandbox_repos(&self, provider: Option<&str>) -> usize {
+        let provider = provider.or(self.default_sandbox_provider.as_deref());
+        if provider.is_some_and(|name| self.multi_repo_providers.iter().any(|p| p == name)) {
+            crate::sandbox::MAX_SANDBOX_REPOS
+        } else {
+            1
+        }
+    }
+
+    /// Whether sandboxes launch with a server-defined profile.
+    #[must_use]
+    pub const fn sandbox_profiles_enabled(&self) -> bool {
+        self.sandbox_profiles && self.managed_sandboxes
+    }
+
+    /// Whether Settings lists and edits custom agents (the web's `customAgentsSettingsEnabled`).
+    #[must_use]
+    pub const fn custom_agents_settings_enabled(&self) -> bool {
+        self.custom_agents_settings && self.agent_install
+    }
+
     /// Decodes the creation fields of a `/v1/info` body.
     ///
     /// # Errors
@@ -418,14 +491,41 @@ impl CreationCapabilities {
             })
             .transpose()?
             .unwrap_or_default();
+        let features = opt_object(object, "features")?;
+        let feature = |name: &str| {
+            features
+                .and_then(|features| features.get(name))
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        };
+        let multi_repo_providers = opt_object(object, "sandbox_provider_capabilities")?
+            .map(|providers| {
+                providers
+                    .iter()
+                    .filter(|(_, flags)| {
+                        flags.get("multi_repo").and_then(Value::as_bool) == Some(true)
+                    })
+                    .map(|(provider, _)| provider.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let github_connection = opt_array(object, "enabled_connections")?
+            .is_some_and(|names| names.iter().any(|name| name.as_str() == Some("github")));
         Ok(Self {
             agent_install: opt_bool(object, "agent_install")?.unwrap_or(false),
             managed_sandboxes: opt_bool(object, "managed_sandboxes_enabled")?.unwrap_or(false),
             sandbox_providers,
-            codex_plan_at_launch: opt_object(object, "features")?
-                .and_then(|features| features.get("codex_plan_at_launch"))
-                .and_then(Value::as_bool)
+            codex_plan_at_launch: feature("codex_plan_at_launch"),
+            default_sandbox_provider: opt_str(object, "sandbox_provider")?
+                .filter(|provider| !provider.is_empty()),
+            multi_repo_providers,
+            sandbox_profiles: feature("sandbox_profiles"),
+            mints_sandbox_host_id: opt_bool(object, "request_managed_sandbox_host_id")?
                 .unwrap_or(false),
+            github_connection,
+            fork_workspaces: opt_bool(object, "session_fork_workspaces")?.unwrap_or(false),
+            custom_agents_settings: feature("custom_agents_settings_ui"),
+            agent_detail: opt_bool(object, "agent_detail")?.unwrap_or(false),
         })
     }
 }
@@ -568,18 +668,7 @@ impl CreationCatalog {
                 "Enter a branch name without spaces, `..` or a leading `-`.".to_owned(),
             ));
         }
-        if let Some(mode) = &selection.approval_mode {
-            let wrapper = self
-                .agent(&selection.agent_id)
-                .and_then(CreationAgent::wrapper);
-            let offered = launch_approval_mode_menu(wrapper.as_deref())
-                .is_some_and(|menu| menu.options.iter().any(|option| &option.value == mode));
-            if !offered {
-                return Err(CreationError::Unavailable(
-                    "This agent cannot start in that approval mode.".to_owned(),
-                ));
-            }
-        }
+        self.approval_mode_offered(selection)?;
         if let Some(model) = &selection.model {
             let previewable = self
                 .agent(&selection.agent_id)
@@ -594,6 +683,64 @@ impl CreationCatalog {
             }
         }
         Ok(())
+    }
+
+    /// Checks a session on a new sandbox: the server provisions them (and `target`'s provider),
+    /// the agent is registered and its approval mode offered, and the repositories fit the
+    /// provider. The host, workspace and model of `selection` are not used.
+    ///
+    /// # Errors
+    ///
+    /// [`CreationError::Unavailable`] with the reason.
+    pub fn validate_sandbox(
+        &self,
+        selection: &CreationSelection,
+        target: &SandboxTarget,
+    ) -> Result<(), CreationError> {
+        let unavailable = |text: String| Err(CreationError::Unavailable(text));
+        let offered = self.capabilities.sandbox_provider_options();
+        if offered.is_empty()
+            || target
+                .provider
+                .as_ref()
+                .is_some_and(|provider| !offered.contains(&Some(provider.clone())))
+        {
+            return unavailable("This server does not offer that sandbox.".into());
+        }
+        if self.agent(&selection.agent_id).is_none() {
+            return unavailable("Choose a registered agent.".into());
+        }
+        self.approval_mode_offered(selection)?;
+        let repos: Vec<_> = target
+            .workspaces
+            .iter()
+            .map(|workspace| crate::sandbox::split_sandbox_workspace(workspace))
+            .collect();
+        let max = self
+            .capabilities
+            .max_sandbox_repos(target.provider.as_deref());
+        if let Some(problem) = crate::sandbox::sandbox_repos_problem(&repos, max) {
+            return unavailable(problem);
+        }
+        Ok(())
+    }
+
+    fn approval_mode_offered(&self, selection: &CreationSelection) -> Result<(), CreationError> {
+        let Some(mode) = &selection.approval_mode else {
+            return Ok(());
+        };
+        let wrapper = self
+            .agent(&selection.agent_id)
+            .and_then(CreationAgent::wrapper);
+        let offered = launch_approval_mode_menu(wrapper.as_deref())
+            .is_some_and(|menu| menu.options.iter().any(|option| &option.value == mode));
+        if offered {
+            Ok(())
+        } else {
+            Err(CreationError::Unavailable(
+                "This agent cannot start in that approval mode.".to_owned(),
+            ))
+        }
     }
 }
 
@@ -624,22 +771,7 @@ pub(crate) fn creation_body(
     if !title.is_empty() {
         body.insert("title".into(), Value::String(title.to_owned()));
     }
-    if let Some(model) = &selection.model {
-        body.insert("model_override".into(), Value::String(model.clone()));
-    }
-    if let Some(effort) = &selection.reasoning_effort {
-        body.insert("reasoning_effort".into(), Value::String(effort.clone()));
-    }
-    if let Some(args) = selection
-        .approval_mode
-        .as_deref()
-        .and_then(|mode| launch_approval_args(agent.wrapper().as_deref(), mode))
-    {
-        body.insert(
-            "terminal_launch_args".into(),
-            Value::Array(args.into_iter().map(Value::String).collect()),
-        );
-    }
+    insert_run_configuration(&mut body, selection, agent);
     if let Some(git) = &selection.git {
         let mut block = Map::new();
         block.insert(
@@ -655,9 +787,39 @@ pub(crate) fn creation_body(
         }
         body.insert("git".into(), Value::Object(block));
     }
-    if let Some(wrapper) = agent.wrapper() {
+    Value::Object(body)
+}
+
+/// The model, effort, approval launch flags and the native wrapper's labels of a new session.
+/// Codex's launch-only bypass rides a label instead of flags.
+pub(crate) fn insert_run_configuration(
+    body: &mut Map<String, Value>,
+    selection: &CreationSelection,
+    agent: &CreationAgent,
+) {
+    if let Some(model) = &selection.model {
+        body.insert("model_override".into(), Value::String(model.clone()));
+    }
+    if let Some(effort) = &selection.reasoning_effort {
+        body.insert("reasoning_effort".into(), Value::String(effort.clone()));
+    }
+    let wrapper = agent.wrapper();
+    if let Some(args) = selection
+        .approval_mode
+        .as_deref()
+        .and_then(|mode| launch_approval_args(wrapper.as_deref(), mode))
+    {
+        body.insert(
+            "terminal_launch_args".into(),
+            Value::Array(args.into_iter().map(Value::String).collect()),
+        );
+    }
+    if let Some(wrapper) = wrapper {
         let mut labels = Map::new();
         labels.insert("omnigent.ui".into(), Value::String("terminal".into()));
+        if is_codex_bypass(Some(&wrapper), selection.approval_mode.as_deref()) {
+            labels.insert(CODEX_BYPASS_LABEL.into(), Value::String("1".into()));
+        }
         labels.insert("omnigent.wrapper".into(), Value::String(wrapper));
         if selection.plan_mode && agent.harness_id() == CODEX_NATIVE {
             labels.insert(
@@ -667,34 +829,48 @@ pub(crate) fn creation_body(
         }
         body.insert("labels".into(), Value::Object(labels));
     }
-    Value::Object(body)
 }
 
-/// The `POST /v1/sessions` body for a session on a new sandbox the server provisions: the agent,
-/// `host_type: "managed"` and the repositories to clone (`[]` for an empty sandbox). The server
-/// mints the sandbox host's id.
+/// The `POST /v1/sessions` body for a session on a new sandbox the server provisions: the
+/// agent and its run configuration, `host_type: "managed"`, the repositories to clone (`[]` for
+/// an empty sandbox), and the provider, profile and host id when chosen.
 pub(crate) fn sandbox_creation_body(
-    agent_id: &str,
+    selection: &CreationSelection,
+    target: &SandboxTarget,
     title: &str,
-    workspaces: &[String],
     agent: &CreationAgent,
 ) -> Value {
     let mut body = Map::new();
-    body.insert("agent_id".into(), Value::String(agent_id.to_owned()));
+    body.insert("agent_id".into(), Value::String(selection.agent_id.clone()));
     body.insert("host_type".into(), Value::String("managed".into()));
     body.insert(
         "workspaces".into(),
-        Value::Array(workspaces.iter().cloned().map(Value::String).collect()),
+        Value::Array(
+            target
+                .workspaces
+                .iter()
+                .cloned()
+                .map(Value::String)
+                .collect(),
+        ),
     );
+    if let Some(provider) = &target.provider {
+        body.insert("sandbox_provider".into(), Value::String(provider.clone()));
+    }
+    if let Some((id, revision)) = &target.profile {
+        body.insert("sandbox_profile_id".into(), Value::String(id.clone()));
+        body.insert(
+            "sandbox_profile_revision".into(),
+            Value::String(revision.clone()),
+        );
+    }
+    if let Some(host_id) = &target.host_id {
+        body.insert("host_id".into(), Value::String(host_id.clone()));
+    }
     if !title.is_empty() {
         body.insert("title".into(), Value::String(title.to_owned()));
     }
-    if let Some(wrapper) = agent.wrapper() {
-        let mut labels = Map::new();
-        labels.insert("omnigent.ui".into(), Value::String("terminal".into()));
-        labels.insert("omnigent.wrapper".into(), Value::String(wrapper));
-        body.insert("labels".into(), Value::Object(labels));
-    }
+    insert_run_configuration(&mut body, selection, agent);
     Value::Object(body)
 }
 

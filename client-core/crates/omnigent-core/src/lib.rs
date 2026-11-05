@@ -30,6 +30,7 @@ pub mod reconcile;
 pub mod recovery;
 pub mod reducer;
 pub mod remote_browser;
+pub mod sandbox;
 pub mod schedule;
 pub mod server_url;
 pub mod session_attention;

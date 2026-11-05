@@ -22,7 +22,8 @@ use super::{ClientCore, ClientEvent, SessionError, lock};
 use crate::attachments::policy::is_identifier;
 use crate::config::session::canonical_harness;
 use crate::creation::{
-    CreationAgent, CreationCatalog, CreationError, CreationHost, CreationReceipt, MAX_TITLE_CHARS,
+    CreationAgent, CreationCatalog, CreationError, CreationGit, CreationHost, CreationReceipt,
+    MAX_TITLE_CHARS,
 };
 use crate::http::HttpTransport;
 
@@ -67,6 +68,10 @@ pub struct ForkSandbox {
     pub provider: Option<String>,
     /// `<url>[#<branch>]` repositories to clone; `None` inherits the source's.
     pub workspaces: Option<Vec<String>>,
+    /// The profile to launch with, by id and revision.
+    pub profile: Option<(String, String)>,
+    /// A fresh 32-hex id for the sandbox host, for servers that ask clients to name it.
+    pub host_id: Option<String>,
 }
 
 /// What to fork.
@@ -91,6 +96,8 @@ pub struct ForkRequest {
     /// The launch flags for an approval mode (from `launch_approval_args`); `None` keeps the
     /// harness default.
     pub terminal_launch_args: Option<Vec<String>>,
+    /// Launch Codex with approvals and its sandbox bypassed (`codex_bypass_sandbox`).
+    pub codex_bypass: bool,
 }
 
 /// How starting the fork went.
@@ -313,10 +320,23 @@ fn fork_body(request: &ForkRequest) -> Value {
             Value::Array(args.iter().cloned().map(Value::String).collect()),
         );
     }
+    if request.codex_bypass {
+        body.insert("codex_bypass_sandbox".into(), Value::Bool(true));
+    }
     if let Some(sandbox) = &request.sandbox {
         body.insert("host_type".into(), Value::String("managed".into()));
         if let Some(provider) = &sandbox.provider {
             body.insert("sandbox_provider".into(), Value::String(provider.clone()));
+        }
+        if let Some((id, revision)) = &sandbox.profile {
+            body.insert("sandbox_profile_id".into(), Value::String(id.clone()));
+            body.insert(
+                "sandbox_profile_revision".into(),
+                Value::String(revision.clone()),
+            );
+        }
+        if let Some(host_id) = &sandbox.host_id {
+            body.insert("host_id".into(), Value::String(host_id.clone()));
         }
         if let Some(workspaces) = &sandbox.workspaces {
             body.insert(
@@ -414,6 +434,14 @@ impl<T: HttpTransport> ClientCore<T> {
                 return Err(CreationError::Unavailable(reason).into());
             }
         }
+        let mut request = request.clone();
+        if let Some(sandbox) = request.sandbox.as_mut()
+            && sandbox.host_id.is_some()
+            && !self.creation_capabilities().await?.mints_sandbox_host_id
+        {
+            sandbox.host_id = None;
+        }
+        let request = &request;
         let path = format!("/v1/sessions/{}/fork", request.source_id);
         let acknowledgement = self.write_json("POST", &path, &fork_body(request)).await?;
         let receipt = self.accept_fork(acknowledgement)?;
@@ -471,18 +499,53 @@ impl<T: HttpTransport> ClientCore<T> {
         start: &ForkStart,
         session_id: &str,
     ) -> Result<String, SessionError> {
+        let git = start
+            .branch
+            .as_deref()
+            .map(str::trim)
+            .map(|branch| CreationGit {
+                branch_name: branch.to_owned(),
+                ..CreationGit::default()
+            });
+        self.launch_session_runner(&start.host_id, session_id, &start.workspace, git.as_ref())
+            .await
+    }
+
+    /// `POST /v1/hosts/{host_id}/runners` for `session_id` in `workspace`, with a worktree's
+    /// `git` block; returns the runner id. An unclear acknowledgement is `DeliveryUncertain`.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(super) async fn launch_session_runner(
+        &self,
+        host_id: &str,
+        session_id: &str,
+        workspace: &str,
+        git: Option<&CreationGit>,
+    ) -> Result<String, SessionError> {
         let mut body = Map::new();
         body.insert("session_id".into(), Value::String(session_id.to_owned()));
         body.insert(
             "workspace".into(),
-            Value::String(start.workspace.trim().to_owned()),
+            Value::String(workspace.trim().to_owned()),
         );
-        if let Some(branch) = start.branch.as_deref().map(str::trim) {
-            let mut git = Map::new();
-            git.insert("branch_name".into(), Value::String(branch.to_owned()));
-            body.insert("git".into(), Value::Object(git));
+        if let Some(git) = git {
+            let mut block = Map::new();
+            block.insert(
+                "branch_name".into(),
+                Value::String(git.branch_name.trim().to_owned()),
+            );
+            if git.existing_worktree {
+                block.insert("existing_worktree".into(), Value::Bool(true));
+            } else if let Some(base) = git.base_branch.as_deref().map(str::trim)
+                && !base.is_empty()
+            {
+                block.insert("base_branch".into(), Value::String(base.to_owned()));
+            }
+            body.insert("git".into(), Value::Object(block));
         }
-        let path = format!("/v1/hosts/{}/runners", start.host_id);
+        let path = format!("/v1/hosts/{host_id}/runners");
         let acknowledgement = self.write_json("POST", &path, &Value::Object(body)).await;
         lock(&self.state).request_rehydration(session_id);
         let acknowledgement = acknowledgement?;

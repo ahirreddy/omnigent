@@ -421,9 +421,11 @@ pub fn launch_approval_mode_menu(wrapper: Option<&str>) -> Option<ApprovalModeMe
     let vocabulary = vocabulary(wrapper)?;
     let options: Vec<ApprovalModeOption> = match wrapper? {
         // Codex launches from its `/permissions` presets, which only some live modes match.
+        // Bypass is a launch flag, not a preset, so it is offered only here.
         CODEX_WRAPPER => CODEX_LAUNCH_PRESETS
             .iter()
             .filter_map(|(value, _)| vocabulary.modes.iter().find(|mode| mode.value == *value))
+            .chain(std::iter::once(&CODEX_BYPASS_MODE))
             .map(option)
             .collect(),
         _ => vocabulary.modes.iter().map(option).collect(),
@@ -441,6 +443,28 @@ pub fn launch_approval_mode_menu(wrapper: Option<&str>) -> Option<ApprovalModeMe
             .collect(),
         selected,
     })
+}
+
+/// Codex's launch-only "Bypass approvals & sandbox": no approval prompts and no command sandbox.
+pub const CODEX_BYPASS_MODE_VALUE: &str = "bypass";
+
+/// The label that launches Codex with `--dangerously-bypass-approvals-and-sandbox`.
+pub const CODEX_BYPASS_LABEL: &str = "omnigent.codex_native.bypass_sandbox";
+
+const CODEX_BYPASS_MODE: Mode = mode(
+    CODEX_BYPASS_MODE_VALUE,
+    "Bypass approvals & sandbox",
+    "Bypass approvals & sandbox",
+    "Runs Codex with no approval prompts and no command sandbox",
+    FullAccess,
+    false,
+);
+
+/// Whether `mode` is Codex's bypass for a session of `wrapper`, which a launch sends as
+/// [`CODEX_BYPASS_LABEL`] instead of flags.
+#[must_use]
+pub fn is_codex_bypass(wrapper: Option<&str>, mode: Option<&str>) -> bool {
+    wrapper == Some(CODEX_WRAPPER) && mode == Some(CODEX_BYPASS_MODE_VALUE)
 }
 
 /// Codex launch presets (`web/src/lib/nativeHarnessModes.ts`), the default first.

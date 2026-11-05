@@ -115,6 +115,42 @@ pub struct CreationCatalog {
     /// `/v1/info.features.codex_plan_at_launch`: a Codex session can start in Plan mode.
     #[uniffi(default)]
     pub codex_plan_at_launch: bool,
+    /// `/v1/info.sandbox_provider`: the default sandbox provider.
+    #[uniffi(default)]
+    pub default_sandbox_provider: Option<String>,
+    /// Providers that clone several repositories.
+    #[uniffi(default)]
+    pub multi_repo_providers: Vec<String>,
+    /// `features.sandbox_profiles`.
+    #[uniffi(default)]
+    pub sandbox_profiles: bool,
+    /// `request_managed_sandbox_host_id`.
+    #[uniffi(default)]
+    pub mints_sandbox_host_id: bool,
+    /// GitHub is an enabled connection: the repository picker lists the caller's repos.
+    #[uniffi(default)]
+    pub github_connection: bool,
+    /// `session_fork_workspaces`.
+    #[uniffi(default)]
+    pub fork_workspaces: bool,
+    /// Settings lists and edits custom agents (`custom_agents_settings_ui` and
+    /// `agent_install`).
+    #[uniffi(default)]
+    pub custom_agents_settings: bool,
+    /// `agent_detail`: an agent's configuration can be read.
+    #[uniffi(default)]
+    pub agent_detail: bool,
+}
+
+/// A new sandbox for a session.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct SandboxTarget {
+    /// The provider; `None` takes the server's default.
+    pub provider: Option<String>,
+    /// The profile to launch with.
+    pub profile: Option<crate::sandbox::SandboxProfile>,
+    /// `<url>[#<branch>]` repositories; empty for an empty sandbox.
+    pub workspaces: Vec<String>,
 }
 
 /// A directory offered as a session workspace.
@@ -288,8 +324,16 @@ impl From<core::CreationCatalog> for CreationCatalog {
             agents: catalog.agents.into_iter().map(Into::into).collect(),
             agent_install: catalog.capabilities.agent_install,
             managed_sandboxes: catalog.capabilities.managed_sandboxes,
-            sandbox_providers: catalog.capabilities.sandbox_providers,
             codex_plan_at_launch: catalog.capabilities.codex_plan_at_launch,
+            custom_agents_settings: catalog.capabilities.custom_agents_settings_enabled(),
+            sandbox_providers: catalog.capabilities.sandbox_providers,
+            default_sandbox_provider: catalog.capabilities.default_sandbox_provider,
+            multi_repo_providers: catalog.capabilities.multi_repo_providers,
+            sandbox_profiles: catalog.capabilities.sandbox_profiles,
+            mints_sandbox_host_id: catalog.capabilities.mints_sandbox_host_id,
+            github_connection: catalog.capabilities.github_connection,
+            fork_workspaces: catalog.capabilities.fork_workspaces,
+            agent_detail: catalog.capabilities.agent_detail,
         }
     }
 }
@@ -304,6 +348,15 @@ impl From<CreationCatalog> for core::CreationCatalog {
                 managed_sandboxes: catalog.managed_sandboxes,
                 sandbox_providers: catalog.sandbox_providers,
                 codex_plan_at_launch: catalog.codex_plan_at_launch,
+                default_sandbox_provider: catalog.default_sandbox_provider,
+                multi_repo_providers: catalog.multi_repo_providers,
+                sandbox_profiles: catalog.sandbox_profiles,
+                mints_sandbox_host_id: catalog.mints_sandbox_host_id,
+                github_connection: catalog.github_connection,
+                fork_workspaces: catalog.fork_workspaces,
+                // Already combined with `agent_install` on the way out.
+                custom_agents_settings: catalog.custom_agents_settings,
+                agent_detail: catalog.agent_detail,
             },
         }
     }
@@ -557,8 +610,8 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
-    /// Creates a session for `agent_id` on a new sandbox the server provisions, cloning
-    /// `workspaces` (`<url>[#<branch>]` repositories; empty for an empty sandbox). Returns once
+    /// Creates a session for `selection`'s agent and run configuration on a new sandbox the
+    /// server provisions, as `target` describes (provider, profile, repositories). Returns once
     /// the session exists; its host binds when the sandbox registers. Never retried.
     ///
     /// # Errors
@@ -566,12 +619,19 @@ impl ClientCore {
     /// As [`Self::create_session`].
     pub async fn create_sandbox_session(
         &self,
-        agent_id: String,
+        selection: CreationSelection,
+        target: SandboxTarget,
         title: String,
-        workspaces: Vec<String>,
     ) -> Result<CreationReceipt, CoreError> {
+        let target = core::SandboxTarget {
+            provider: target.provider,
+            profile: target.profile.map(|profile| (profile.id, profile.revision)),
+            workspaces: target.workspaces,
+            // Sent only to servers that ask clients to name a new sandbox's host.
+            host_id: Some(self.random_host_id()?),
+        };
         self.sessions()
-            .create_sandbox_session(&agent_id, &title, &workspaces)
+            .create_sandbox_session(&selection.into(), &target, &title)
             .await
             .map(Into::into)
             .map_err(CoreError::from)

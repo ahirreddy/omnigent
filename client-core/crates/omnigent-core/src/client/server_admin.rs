@@ -6,7 +6,7 @@
 
 use serde_json::{Map, Value, json};
 
-use super::json::{as_object, opt_array, opt_bool, opt_str, opt_u64, req_str};
+use super::json::{as_object, opt_array, opt_bool, opt_object, opt_str, opt_u64, req_str};
 use super::requests::validate_identifier;
 use super::{ClientCore, SessionError};
 use crate::creation::CreationHost;
@@ -44,6 +44,11 @@ pub struct ServerSettingsInfo {
     /// Sign-in has a session to end (accounts or SSO; `login_url` is set), so Settings shows
     /// the caller's identity and Sign out.
     pub has_login_session: bool,
+    /// Settings lists custom agents: `features.custom_agents_settings_ui` with `agent_install`
+    /// (the web's `customAgentsSettingsEnabled`).
+    pub custom_agents: bool,
+    /// An agent's configuration can be read and edited (`agent_detail`).
+    pub agent_detail: bool,
 }
 
 impl ServerSettingsInfo {
@@ -56,6 +61,10 @@ impl ServerSettingsInfo {
         let info = as_object(info, "/v1/info")?;
         let me = as_object(me, "/v1/me")?;
         let enabled: Vec<String> = string_list(info, "enabled_connections")?;
+        let custom_agents = match opt_object(info, "features")? {
+            Some(features) => opt_bool(features, "custom_agents_settings_ui")?.unwrap_or(false),
+            None => false,
+        };
         Ok(Self {
             user_id: req_str(me, "user_id")?,
             is_admin: opt_bool(me, "is_admin")?.unwrap_or(false),
@@ -68,6 +77,8 @@ impl ServerSettingsInfo {
                 .collect(),
             archive_worktree_cleanup: opt_bool(info, "archive_worktree_cleanup")?.unwrap_or(false),
             has_login_session: opt_str(info, "login_url")?.is_some_and(|url| !url.is_empty()),
+            custom_agents: custom_agents && opt_bool(info, "agent_install")?.unwrap_or(false),
+            agent_detail: opt_bool(info, "agent_detail")?.unwrap_or(false),
         })
     }
 }

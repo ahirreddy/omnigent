@@ -3,7 +3,7 @@
 use futures::executor::block_on;
 use serde_json::json;
 
-use super::super::test_support::{Reply, RouteTransport, connected, path_of, record};
+use super::super::test_support::{Reply, RouteTransport, connected, path_of, query_value, record};
 use super::super::{ClientEvent, SessionError};
 
 const OWNED_HOST_SPAWNED: &str = r#"{"id":"conv_a","status":"running","created_at":1,"permission_level":4,"host_id":"host-1","runner_id":"runner-1"}"#;
@@ -115,6 +115,15 @@ fn delete_needs_owner_permission_and_skips_stop_for_a_local_runner() {
     let core = connected(local);
     block_on(core.delete_session("conv_a")).unwrap();
     assert_eq!(core.transport().writes().len(), 1);
+    assert_eq!(
+        query_value(&core.transport().writes()[0], "delete_branch"),
+        None
+    );
+    block_on(core.delete_session_with_branch("conv_a", true)).unwrap();
+    assert_eq!(
+        query_value(&core.transport().writes()[1], "delete_branch").as_deref(),
+        Some("true")
+    );
 }
 
 #[test]

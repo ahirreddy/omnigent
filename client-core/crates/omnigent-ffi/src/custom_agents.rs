@@ -165,6 +165,83 @@ pub struct AgentMcpServer {
     pub args: Vec<String>,
     /// Can be changed here.
     pub editable: bool,
+    /// Description; may be empty.
+    #[uniffi(default)]
+    pub description: String,
+    /// The names of its stored headers (`http`) or environment variables (`stdio`).
+    #[uniffi(default)]
+    pub credential_names: Vec<String>,
+}
+
+/// What an edit does to one stored credential of an MCP server.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum CredentialAction {
+    /// Leave the stored value.
+    #[default]
+    Keep,
+    /// Store a new value.
+    Replace,
+    /// Remove it.
+    Remove,
+}
+
+/// A header or environment variable in the MCP server editor.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct CredentialEdit {
+    /// Name.
+    pub name: String,
+    /// The new value, for `Replace`.
+    pub value: String,
+    /// What to do.
+    pub action: CredentialAction,
+    /// The server already stores it.
+    pub existing: bool,
+}
+
+/// An added or changed MCP server in the agent editor.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct McpServerEdit {
+    /// Tool name.
+    pub name: String,
+    /// `http` or `stdio`.
+    pub transport: String,
+    /// Description; blank clears it.
+    pub description: String,
+    /// Endpoint, for `http`.
+    pub url: String,
+    /// Executable, for `stdio`.
+    pub command: String,
+    /// Arguments, for `stdio`.
+    pub args: Vec<String>,
+    /// Headers or environment variables.
+    pub credentials: Vec<CredentialEdit>,
+}
+
+impl From<McpServerEdit> for core::McpServerEdit {
+    fn from(edit: McpServerEdit) -> Self {
+        Self {
+            name: edit.name,
+            transport: edit.transport,
+            description: edit.description,
+            url: edit.url,
+            command: edit.command,
+            args: edit.args,
+            credentials: edit
+                .credentials
+                .into_iter()
+                .map(|credential| core::CredentialEdit {
+                    name: credential.name,
+                    value: credential.value,
+                    action: match credential.action {
+                        CredentialAction::Keep => core::CredentialAction::Keep,
+                        CredentialAction::Replace => core::CredentialAction::Replace,
+                        CredentialAction::Remove => core::CredentialAction::Remove,
+                    },
+                    existing: credential.existing,
+                })
+                .collect(),
+        }
+    }
 }
 
 /// An agent's configuration and its revision.
@@ -210,6 +287,8 @@ impl From<core::AgentConfig> for AgentConfig {
                     command: server.command,
                     args: server.args,
                     editable: server.editable,
+                    description: server.description,
+                    credential_names: server.credential_names,
                 })
                 .collect(),
             etag: config.etag,
@@ -237,6 +316,8 @@ impl From<AgentConfig> for core::AgentConfig {
                     command: server.command,
                     args: server.args,
                     editable: server.editable,
+                    description: server.description,
+                    credential_names: server.credential_names,
                 })
                 .collect(),
             etag: config.etag,
@@ -257,6 +338,9 @@ pub struct AgentConfigEdit {
     pub harness: String,
     /// MCP servers to remove, by name.
     pub removed_mcp_servers: Vec<String>,
+    /// MCP servers to add, or editable ones to change.
+    #[uniffi(default)]
+    pub mcp_servers: Vec<McpServerEdit>,
 }
 
 impl From<AgentConfigEdit> for core::AgentConfigEdit {
@@ -267,8 +351,18 @@ impl From<AgentConfigEdit> for core::AgentConfigEdit {
             model: edit.model,
             harness: edit.harness,
             removed_mcp_servers: edit.removed_mcp_servers,
+            mcp_servers: edit.mcp_servers.into_iter().map(Into::into).collect(),
         }
     }
+}
+
+/// A session created with an unsaved custom agent, and its start on the host.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct BundledSession {
+    /// The creation acknowledgement.
+    pub receipt: crate::creation::CreationReceipt,
+    /// The start on the host; a failure leaves the session created.
+    pub launch: crate::fork::RunnerLaunch,
 }
 
 /// What removing an agent did.
@@ -300,6 +394,17 @@ impl ClientCore {
             "omnigent-{}",
             omnigent_core::auth::pkce::base64url(&bytes)
         ))
+    }
+
+    /// A fresh 32-hex id, in the shape the server mints sandbox host ids.
+    pub(crate) fn random_host_id(&self) -> Result<String, CoreError> {
+        let bytes = omnigent_core::auth::EntropySource::random_bytes(self.inner.entropy()?, 16)
+            .map_err(CoreError::from)?;
+        Ok(bytes
+            .iter()
+            .flat_map(|byte| [byte >> 4, byte & 0xf])
+            .filter_map(|nibble| char::from_digit(u32::from(nibble), 16))
+            .collect())
     }
 }
 
@@ -336,6 +441,33 @@ impl ClientCore {
             .await
             .map(Into::into)
             .map_err(CoreError::from)
+    }
+
+    /// Creates a session running the unsaved custom agent `draft`, uploaded with the session
+    /// (no `agent_install` needed), then starts it on `selection`'s host in its workspace and
+    /// worktree. Never retried; a failed start is `RunnerLaunch::Failed` and the session exists.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidInput` for a draft that cannot be saved; kind `Creation`
+    /// for an unusable host, workspace or branch (nothing sent), a rejection, or an uncertain
+    /// outcome.
+    pub async fn create_session_with_agent(
+        &self,
+        draft: AgentDraft,
+        selection: crate::creation::CreationSelection,
+        title: String,
+    ) -> Result<BundledSession, CoreError> {
+        let boundary = self.multipart_boundary()?;
+        let created = self
+            .sessions()
+            .create_session_with_agent(&draft.into(), &selection.into(), &title, &boundary)
+            .await
+            .map_err(CoreError::from)?;
+        Ok(BundledSession {
+            receipt: created.receipt.into(),
+            launch: created.launch.into(),
+        })
     }
 
     /// Installs a `.tar.gz` bundle the user picked. Never retried.

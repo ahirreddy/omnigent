@@ -4,8 +4,12 @@ use futures::executor::block_on;
 use serde_json::json;
 
 use super::super::SessionError;
-use super::super::test_support::{Reply, RouteTransport, connected, header, path_of, query_value};
-use crate::custom_agents::AgentRemoval;
+use super::super::fork::RunnerLaunch;
+use super::super::test_support::{
+    Reply, RouteTransport, body_json, connected, header, path_of, query_value,
+};
+use crate::creation::{CreationGit, CreationSelection};
+use crate::custom_agents::{AgentDraft, AgentRemoval};
 
 #[test]
 fn lists_the_callers_agents_across_pages() {
@@ -117,4 +121,105 @@ fn removal_reports_agents_in_use_unless_forced() {
     );
     let writes = core.transport().writes();
     assert_eq!(query_value(&writes[1], "force").as_deref(), Some("true"));
+}
+
+fn draft() -> AgentDraft {
+    AgentDraft {
+        name: "reviewer".into(),
+        harness: "claude-sdk".into(),
+        model: "claude-sonnet".into(),
+        ..AgentDraft::default()
+    }
+}
+
+fn host_selection(workspace: &str) -> CreationSelection {
+    CreationSelection {
+        host_id: "host_a".into(),
+        workspace: workspace.into(),
+        git: Some(CreationGit {
+            branch_name: "feat".into(),
+            base_branch: Some("main".into()),
+            existing_worktree: false,
+        }),
+        ..CreationSelection::default()
+    }
+}
+
+#[test]
+fn an_unsaved_agent_is_uploaded_with_its_session_then_started_on_the_host() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok(
+            "/v1/hosts",
+            r#"{"hosts":[{"host_id":"host_a","name":"Mac","status":"online"}]}"#,
+        )
+        .respond(
+            Some("POST"),
+            "/v1/sessions",
+            None,
+            Reply::json(201, r#"{"session_id":"conv_new","agent_id":"ag_new"}"#),
+        )
+        .respond(
+            Some("POST"),
+            "/v1/hosts/host_a/runners",
+            None,
+            Reply::json(201, r#"{"runner_id":"run_1"}"#),
+        );
+    let created = block_on(core.create_session_with_agent(
+        &draft(),
+        &host_selection(" /work/app "),
+        "",
+        "B0und",
+    ))
+    .unwrap();
+    assert_eq!(created.receipt.session_id, "conv_new");
+    assert_eq!(
+        created.launch,
+        RunnerLaunch::Launched {
+            runner_id: "run_1".into()
+        }
+    );
+    let writes = core.transport().writes();
+    assert_eq!(
+        header(&writes[0], "Content-Type"),
+        Some("multipart/form-data; boundary=B0und")
+    );
+    let body = String::from_utf8_lossy(writes[0].body.as_deref().unwrap()).into_owned();
+    assert!(
+        body.contains(
+            "name=\"metadata\"\r\nContent-Type: application/json\r\n\r\n{\"workspace\":\"/work/app\"}"
+        ),
+        "{body}"
+    );
+    assert!(
+        body.contains("name=\"bundle\"; filename=\"reviewer.tar.gz\""),
+        "{body}"
+    );
+    assert_eq!(
+        body_json(&writes[1]),
+        json!({"session_id": "conv_new", "workspace": "/work/app",
+               "git": {"branch_name": "feat", "base_branch": "main"}})
+    );
+}
+
+#[test]
+fn an_unsaved_agent_needs_a_valid_draft_and_an_online_host() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/hosts",
+        r#"{"hosts":[{"host_id":"host_a","name":"Mac","status":"offline"}]}"#,
+    );
+    let unnamed = AgentDraft {
+        name: String::new(),
+        ..draft()
+    };
+    assert!(matches!(
+        block_on(core.create_session_with_agent(&unnamed, &host_selection("/w"), "", "B")),
+        Err(SessionError::InvalidInput { .. })
+    ));
+    assert!(matches!(
+        block_on(core.create_session_with_agent(&draft(), &host_selection("/w"), "", "B")),
+        Err(SessionError::Creation(_))
+    ));
+    assert_eq!(core.transport().writes().len(), 0);
 }

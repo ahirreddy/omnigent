@@ -52,7 +52,28 @@ impl<T: HttpTransport> ClientCore<T> {
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     pub async fn delete_session(&self, session_id: &str) -> Result<(), SessionError> {
-        let result = self.delete(session_id).await;
+        let result = self.delete(session_id, false).await;
+        self.dispatch();
+        result
+    }
+
+    /// As [`Self::delete_session`], also removing the session's worktree and its local git
+    /// branch when `delete_branch` (`?delete_branch=true`; the server ignores it for a session
+    /// without one). Branch removal cannot be undone.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::delete_session`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn delete_session_with_branch(
+        &self,
+        session_id: &str,
+        delete_branch: bool,
+    ) -> Result<(), SessionError> {
+        let result = self.delete(session_id, delete_branch).await;
         self.dispatch();
         result
     }
@@ -61,7 +82,7 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    async fn delete(&self, session_id: &str) -> Result<(), SessionError> {
+    async fn delete(&self, session_id: &str, delete_branch: bool) -> Result<(), SessionError> {
         validate_identifier(session_id)?;
         let (decoded, epoch) = self.fetch_snapshot(session_id).await?;
         let summary = lock(&self.state).accept_projection(&decoded.projection, epoch)?;
@@ -79,7 +100,12 @@ impl<T: HttpTransport> ClientCore<T> {
             drop(stopped);
         }
         let path = format!("/v1/sessions/{session_id}");
-        self.write(self.prepare("DELETE", &path, &[], None)?)
+        let query = if delete_branch {
+            vec![("delete_branch", "true".to_owned())]
+        } else {
+            Vec::new()
+        };
+        self.write(self.prepare("DELETE", &path, &query, None)?)
             .await?;
         self.forget(session_id);
         Ok(())

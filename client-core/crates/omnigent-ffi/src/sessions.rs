@@ -390,6 +390,23 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
+    /// Deletes the session and, with `delete_branch`, its worktree and local git branch
+    /// (irreversible).
+    ///
+    /// # Errors
+    ///
+    /// As `delete_session`.
+    pub async fn delete_session_with_branch(
+        &self,
+        session_id: String,
+        delete_branch: bool,
+    ) -> Result<(), CoreError> {
+        self.sessions()
+            .delete_session_with_branch(&session_id, delete_branch)
+            .await
+            .map_err(CoreError::from)
+    }
+
     /// Leaves a session shared with the caller; it leaves the list.
     ///
     /// # Errors

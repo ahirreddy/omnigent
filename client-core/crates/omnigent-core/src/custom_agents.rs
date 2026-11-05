@@ -369,6 +369,54 @@ pub struct AgentMcpServer {
     pub args: Vec<String>,
     /// Can be changed here.
     pub editable: bool,
+    /// Description; may be empty.
+    pub description: String,
+    /// The names of its stored headers (`http`) or environment variables (`stdio`).
+    pub credential_names: Vec<String>,
+}
+
+/// What an edit does to one stored credential of an MCP server.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum CredentialAction {
+    /// Leave the stored value.
+    #[default]
+    Keep,
+    /// Store a new value.
+    Replace,
+    /// Remove it.
+    Remove,
+}
+
+/// A header or environment variable in the MCP server editor.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct CredentialEdit {
+    /// Name.
+    pub name: String,
+    /// The new value, for [`CredentialAction::Replace`].
+    pub value: String,
+    /// What to do.
+    pub action: CredentialAction,
+    /// The server already stores it.
+    pub existing: bool,
+}
+
+/// An added or changed MCP server in the agent editor (the web's `MCPDraft`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct McpServerEdit {
+    /// Tool name.
+    pub name: String,
+    /// `http` or `stdio`.
+    pub transport: String,
+    /// Description; blank clears it.
+    pub description: String,
+    /// Endpoint, for `http`.
+    pub url: String,
+    /// Executable, for `stdio`.
+    pub command: String,
+    /// Arguments, for `stdio`.
+    pub args: Vec<String>,
+    /// Headers (`http`) or environment variables (`stdio`).
+    pub credentials: Vec<CredentialEdit>,
 }
 
 /// `GET /v1/agents/{id}/config` and its `ETag`.
@@ -405,20 +453,33 @@ impl AgentConfig {
         let mut mcp_servers = Vec::new();
         for (name, server) in opt_object(object, "mcp_servers")?.into_iter().flatten() {
             let server = as_object(server, "mcp server")?;
-            mcp_servers.push(AgentMcpServer {
-                name: name.clone(),
-                transport: opt_str(server, "transport")?.unwrap_or_default(),
-                url: opt_str(server, "url")?,
-                command: opt_str(server, "command")?,
-                args: opt_array(server, "args")?
-                    .map(|args| {
-                        args.iter()
+            let names = |key: &str| -> Result<Vec<String>, String> {
+                Ok(opt_array(server, key)?
+                    .map(|items| {
+                        items
+                            .iter()
                             .filter_map(Value::as_str)
                             .map(str::to_owned)
                             .collect()
                     })
-                    .unwrap_or_default(),
-                editable: opt_bool(server, "editable")?.unwrap_or(false),
+                    .unwrap_or_default())
+            };
+            let transport = opt_str(server, "transport")?.unwrap_or_default();
+            let credential_names = if transport == "http" {
+                names("configured_header_names")?
+            } else {
+                names("configured_env_names")?
+            };
+            mcp_servers.push(AgentMcpServer {
+                name: name.clone(),
+                url: opt_str(server, "url")?,
+                command: opt_str(server, "command")?,
+                args: names("args")?,
+                editable: opt_bool(server, "editable")?.unwrap_or(false)
+                    && matches!(transport.as_str(), "http" | "stdio"),
+                description: opt_str(server, "description")?.unwrap_or_default(),
+                credential_names,
+                transport,
             });
         }
         Ok(Self {
@@ -448,6 +509,101 @@ pub struct AgentConfigEdit {
     pub harness: String,
     /// MCP servers to remove, by name.
     pub removed_mcp_servers: Vec<String>,
+    /// MCP servers to add, or editable ones to change (matched by name).
+    pub mcp_servers: Vec<McpServerEdit>,
+}
+
+/// The server's MCP server name rule.
+fn is_mcp_server_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphanumeric() || matches!(first, '_' | '-'))
+        && name.chars().count() <= 128
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+}
+
+/// One server's patch: only what differs from `original` (`None` for a new server), with
+/// credentials replaced or removed and the rest left as stored.
+fn mcp_server_patch(
+    edit: &McpServerEdit,
+    original: Option<&AgentMcpServer>,
+) -> Result<Map<String, Value>, String> {
+    let name = edit.name.as_str();
+    let http = edit.transport == "http";
+    if !http && edit.transport != "stdio" {
+        return Err(format!("{name}: choose HTTP or a command."));
+    }
+    let mut change = Map::new();
+    if original.is_none() {
+        change.insert("transport".into(), json!(edit.transport));
+    }
+    let description = edit.description.trim();
+    if description != original.map_or("", |server| server.description.as_str()) {
+        change.insert(
+            "description".into(),
+            if description.is_empty() {
+                Value::Null
+            } else {
+                json!(description)
+            },
+        );
+    }
+    let (field, value, now) = if http {
+        (
+            "url",
+            edit.url.trim(),
+            original.and_then(|s| s.url.as_deref()),
+        )
+    } else {
+        (
+            "command",
+            edit.command.trim(),
+            original.and_then(|s| s.command.as_deref()),
+        )
+    };
+    if original.is_none() || Some(value) != now {
+        if value.is_empty() {
+            return Err(format!("{name}: {field} is required."));
+        }
+        if http && !(value.starts_with("http://") || value.starts_with("https://")) {
+            return Err(format!("{name}: use an HTTP or HTTPS URL."));
+        }
+        change.insert(field.into(), json!(value));
+    }
+    if !http && edit.args != original.map(|s| s.args.clone()).unwrap_or_default() {
+        change.insert("args".into(), json!(edit.args));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut credentials = Map::new();
+    for credential in &edit.credentials {
+        let key = credential.name.trim();
+        if key.is_empty() {
+            return Err(format!("{name}: enter a credential name."));
+        }
+        if !seen.insert(key) {
+            return Err(format!("{name}: credential names must be unique."));
+        }
+        match credential.action {
+            CredentialAction::Replace if credential.value == "[REDACTED]" => {
+                return Err("Enter a credential value, not a redaction placeholder.".into());
+            }
+            CredentialAction::Replace => {
+                credentials.insert(key.into(), json!(credential.value));
+            }
+            CredentialAction::Remove if credential.existing => {
+                credentials.insert(key.into(), Value::Null);
+            }
+            CredentialAction::Remove | CredentialAction::Keep => {}
+        }
+    }
+    if !credentials.is_empty() {
+        change.insert(
+            if http { "headers" } else { "env" }.into(),
+            Value::Object(credentials),
+        );
+    }
+    Ok(change)
 }
 
 /// The `PATCH /v1/agents/{id}` body: only the fields that differ from `current`. `Err` with
@@ -483,15 +639,42 @@ pub fn config_patch(current: &AgentConfig, edit: &AgentConfigEdit) -> Result<Val
             patch.insert(key.into(), json!(value));
         }
     }
-    if !edit.removed_mcp_servers.is_empty() {
-        let removed: Map<String, Value> = edit
-            .removed_mcp_servers
-            .iter()
-            .map(|name| (name.clone(), Value::Null))
-            .collect();
-        patch.insert("mcp_servers".into(), Value::Object(removed));
+    let mut servers: Map<String, Value> = edit
+        .removed_mcp_servers
+        .iter()
+        .map(|name| (name.clone(), Value::Null))
+        .collect();
+    for server in &edit.mcp_servers {
+        let name = server.name.trim();
+        if !is_mcp_server_name(name) {
+            return Err("Enter a valid MCP server name (letters, numbers, _, - or .).".into());
+        }
+        if servers.contains_key(name) {
+            return Err("MCP server names must be unique.".into());
+        }
+        let original = current.mcp_servers.iter().find(|s| s.name == name);
+        if original.is_some_and(|s| !s.editable) {
+            return Err(format!("{name} cannot be changed here."));
+        }
+        let change = mcp_server_patch(server, original)?;
+        if !change.is_empty() {
+            servers.insert(name.to_owned(), Value::Object(change));
+        }
+    }
+    if !servers.is_empty() {
+        patch.insert("mcp_servers".into(), Value::Object(servers));
     }
     Ok(Value::Object(patch))
+}
+
+/// A session created with an uploaded agent, and its runner launch.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BundledSession {
+    /// The creation acknowledgement.
+    pub receipt: crate::creation::CreationReceipt,
+    /// The runner launch on the chosen host. A failure leaves the session created: open it,
+    /// never create again.
+    pub launch: crate::fork::RunnerLaunch,
 }
 
 /// What removing an agent did.

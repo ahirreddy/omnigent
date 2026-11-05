@@ -32,6 +32,12 @@ pub struct ServerSettingsInfo {
     /// Sign-in has a session to end (accounts or SSO): Settings shows the identity and Sign out.
     #[uniffi(default)]
     pub has_login_session: bool,
+    /// Settings lists custom agents (`custom_agents_settings_ui` and `agent_install`).
+    #[uniffi(default)]
+    pub custom_agents: bool,
+    /// An agent's configuration can be read and edited (`agent_detail`).
+    #[uniffi(default)]
+    pub agent_detail: bool,
 }
 
 impl From<core::ServerSettingsInfo> for ServerSettingsInfo {
@@ -45,6 +51,8 @@ impl From<core::ServerSettingsInfo> for ServerSettingsInfo {
             connections: info.connections,
             archive_worktree_cleanup: info.archive_worktree_cleanup,
             has_login_session: info.has_login_session,
+            custom_agents: info.custom_agents,
+            agent_detail: info.agent_detail,
         }
     }
 }

@@ -143,6 +143,7 @@ fn config_patch_sends_only_changes() {
         model: "m1".into(),
         harness: "codex".into(),
         removed_mcp_servers: Vec::new(),
+        mcp_servers: Vec::new(),
     };
     assert_eq!(config_patch(&current, &unchanged), Ok(json!({})));
     let changed = AgentConfigEdit {
@@ -160,6 +161,119 @@ fn config_patch_sends_only_changes() {
         ..unchanged
     };
     assert!(config_patch(&current, &blank).is_err());
+}
+
+fn mcp_config() -> AgentConfig {
+    AgentConfig::from_value(
+        &json!({
+            "id": "a1", "model": "m1", "harness": "codex",
+            "mcp_servers": {
+                "docs": {"transport": "http", "url": "https://docs.example/mcp",
+                         "description": "Docs", "configured_header_names": ["Authorization"],
+                         "editable": true},
+                "locked": {"transport": "sse", "url": "https://x", "editable": true}
+            }
+        }),
+        None,
+    )
+    .unwrap()
+}
+
+fn mcp_base() -> AgentConfigEdit {
+    AgentConfigEdit {
+        model: "m1".into(),
+        harness: "codex".into(),
+        ..AgentConfigEdit::default()
+    }
+}
+
+#[test]
+fn config_patch_adds_and_edits_mcp_servers_without_reading_credentials() {
+    let current = mcp_config();
+    assert_eq!(current.mcp_servers[0].credential_names, ["Authorization"]);
+    assert!(!current.mcp_servers[1].editable, "only http and stdio edit");
+    let edit = AgentConfigEdit {
+        mcp_servers: vec![
+            McpServerEdit {
+                name: "docs".into(),
+                transport: "http".into(),
+                description: "Docs".into(),
+                url: "https://docs.example/v2".into(),
+                credentials: vec![
+                    CredentialEdit {
+                        name: "Authorization".into(),
+                        action: CredentialAction::Remove,
+                        existing: true,
+                        ..CredentialEdit::default()
+                    },
+                    CredentialEdit {
+                        name: "X-Key".into(),
+                        value: "secret".into(),
+                        action: CredentialAction::Replace,
+                        existing: false,
+                    },
+                ],
+                ..McpServerEdit::default()
+            },
+            McpServerEdit {
+                name: "fs".into(),
+                transport: "stdio".into(),
+                command: "npx".into(),
+                args: vec!["-y".into(), "server".into()],
+                ..McpServerEdit::default()
+            },
+        ],
+        ..mcp_base()
+    };
+    assert_eq!(
+        config_patch(&current, &edit),
+        Ok(json!({"mcp_servers": {
+            "docs": {"url": "https://docs.example/v2",
+                     "headers": {"Authorization": null, "X-Key": "secret"}},
+            "fs": {"transport": "stdio", "command": "npx", "args": ["-y", "server"]}
+        }}))
+    );
+}
+
+#[test]
+fn config_patch_refuses_bad_names_urls_and_locked_servers() {
+    let current = mcp_config();
+    for (server, reason) in [
+        (
+            McpServerEdit {
+                name: "bad name".into(),
+                transport: "http".into(),
+                url: "https://x".into(),
+                ..McpServerEdit::default()
+            },
+            "valid MCP server name",
+        ),
+        (
+            McpServerEdit {
+                name: "new".into(),
+                transport: "http".into(),
+                url: "ftp://x".into(),
+                ..McpServerEdit::default()
+            },
+            "HTTP or HTTPS",
+        ),
+        (
+            McpServerEdit {
+                name: "locked".into(),
+                transport: "http".into(),
+                url: "https://y".into(),
+                ..McpServerEdit::default()
+            },
+            "cannot be changed",
+        ),
+    ] {
+        let edit = AgentConfigEdit {
+            mcp_servers: vec![server],
+            ..mcp_base()
+        };
+        let error = config_patch(&current, &edit).unwrap_err();
+        assert!(error.contains(reason), "{error}");
+    }
 }
 
 #[test]

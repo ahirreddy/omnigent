@@ -186,7 +186,21 @@ fn launch_modes_offer_launch_only_modes_and_send_flags_only_off_default() {
     );
     let codex = launch_approval_mode_menu(Some("codex-native-ui")).unwrap();
     let values: Vec<_> = codex.options.iter().map(|o| o.value.as_str()).collect();
-    assert_eq!(values, ["ask-for-approval", "read-only", "full-access"]);
+    assert_eq!(
+        values,
+        ["ask-for-approval", "read-only", "full-access", "bypass"]
+    );
+    // Bypass is a launch label, never flags, and only Codex has it.
+    assert_eq!(
+        launch_approval_args(Some("codex-native-ui"), "bypass"),
+        None
+    );
+    assert!(is_codex_bypass(Some("codex-native-ui"), Some("bypass")));
+    assert!(!is_codex_bypass(Some("devin-native-ui"), Some("bypass")));
+    assert!(!is_codex_bypass(
+        Some("codex-native-ui"),
+        Some("full-access")
+    ));
     assert_eq!(
         launch_approval_args(Some("codex-native-ui"), "full-access"),
         Some(

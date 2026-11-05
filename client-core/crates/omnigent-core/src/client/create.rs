@@ -28,8 +28,8 @@ use crate::config::session::ModelChoice;
 use crate::creation::{
     CreationAgent, CreationCapabilities, CreationCatalog, CreationError, CreationHost,
     CreationReceipt, CreationSelection, CreationWorkspace, HostDirectoryListing, HostWorktree,
-    MAX_TITLE_CHARS, creation_body, creation_rejection, merge_user_agents, parent_directory,
-    sandbox_creation_body,
+    MAX_TITLE_CHARS, SandboxTarget, creation_body, creation_rejection, merge_user_agents,
+    parent_directory, sandbox_creation_body,
 };
 use crate::http::HttpTransport;
 
@@ -689,26 +689,28 @@ impl<T: HttpTransport> ClientCore<T> {
         self.submit_creation(&body).await
     }
 
-    /// Creates a session for `agent_id` on a new sandbox the server provisions (`host_type:
-    /// "managed"`), cloning `workspaces` (`<url>[#<branch>]` repositories; empty for an empty
-    /// sandbox). The call returns once the session row exists; its host binds when the sandbox
-    /// registers, and until then requests route by the host it requested. Sends no message.
+    /// Creates a session for `selection`'s agent, effort and approval mode on a new sandbox the
+    /// server provisions (`host_type: "managed"`) as `target` describes. The call returns once
+    /// the session row exists; its host binds when the sandbox registers, and until then requests
+    /// route by the host it requested. `target.host_id` is sent only when the server asks clients
+    /// to name the sandbox host. Sends no message.
     ///
     /// # Errors
     ///
-    /// As [`Self::create_session`].
+    /// As [`Self::create_session`]; [`CreationError::Unavailable`] for a provider the server
+    /// does not offer or repositories it would refuse.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     pub async fn create_sandbox_session(
         &self,
-        agent_id: &str,
+        selection: &CreationSelection,
+        target: &SandboxTarget,
         title: &str,
-        workspaces: &[String],
     ) -> Result<CreationReceipt, SessionError> {
         let result = async {
-            validate_identifier(agent_id)?;
+            validate_identifier(&selection.agent_id)?;
             let name = title.trim();
             if name.chars().count() > MAX_TITLE_CHARS {
                 return Err(CreationError::Unavailable(
@@ -717,11 +719,16 @@ impl<T: HttpTransport> ClientCore<T> {
                 .into());
             }
             let catalog = self.catalog().await?;
+            catalog.validate_sandbox(selection, target)?;
             let agent = catalog
-                .agent(agent_id)
+                .agent(&selection.agent_id)
                 .ok_or_else(|| CreationError::Unavailable("Choose a registered agent.".into()))?
                 .clone();
-            let body = sandbox_creation_body(agent_id, name, workspaces, &agent);
+            let mut target = target.clone();
+            if !catalog.capabilities.mints_sandbox_host_id {
+                target.host_id = None;
+            }
+            let body = sandbox_creation_body(selection, &target, name, &agent);
             self.submit_creation(&body).await
         }
         .await;
@@ -737,6 +744,19 @@ impl<T: HttpTransport> ClientCore<T> {
     )]
     async fn submit_creation(&self, body: &Value) -> Result<CreationReceipt, SessionError> {
         let prepared = self.prepare("POST", "/v1/sessions", &[], Some(body))?;
+        self.submit_prepared_creation(prepared).await
+    }
+
+    /// Sends a prepared `POST /v1/sessions` (JSON or multipart) and reads the receipt: `id`, or
+    /// a multipart create's `session_id`. Never retried.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(crate) async fn submit_prepared_creation(
+        &self,
+        prepared: super::requests::Prepared,
+    ) -> Result<CreationReceipt, SessionError> {
         let result = self.transport.send(prepared.request).await;
         let mut state = lock(&self.state);
         let response = result.map_err(|_| CreationError::Uncertain)?;
@@ -762,7 +782,13 @@ impl<T: HttpTransport> ClientCore<T> {
         }
         let id = serde_json::from_slice::<Value>(&response.body)
             .ok()
-            .and_then(|value| value.get("id").and_then(Value::as_str).map(str::to_owned))
+            .and_then(|value| {
+                value
+                    .get("id")
+                    .or_else(|| value.get("session_id"))
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
             .filter(|id| is_identifier(id))
             .ok_or(CreationError::Uncertain)?;
         let summary = decode_snapshot(&response.body).ok().and_then(|decoded| {
