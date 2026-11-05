@@ -190,9 +190,9 @@ public struct ConnectedServerView: View {
     case .inbox:
       InboxTriageAdapter(connection: connection) { selection = .session($0) }
     case .canvas:
-      CanvasView(
-        sessions: connection.sessionList.visible.map(OmnigentUIComponents.SessionSummary.init),
-        open: { selection = .session($0) })
+      CanvasAdapter(
+        connection: connection, open: { selection = .session($0) },
+        newSession: { selection = .newSession })
     case .automations:
       AutomationsAdapter(connection: connection) { selection = .session($0) }
     case .usage:

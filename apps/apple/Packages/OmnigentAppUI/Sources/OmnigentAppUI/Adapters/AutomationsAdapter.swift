@@ -29,6 +29,7 @@ struct AutomationsAdapter: View {
             pages: pages, filter: filter, search: search, now: context.date),
           actions: actions(pages))
       }
+      .automationsIntro(connection)
       .task {
         await pages.loadAutomations()
         await pages.loadAutomationAgents()

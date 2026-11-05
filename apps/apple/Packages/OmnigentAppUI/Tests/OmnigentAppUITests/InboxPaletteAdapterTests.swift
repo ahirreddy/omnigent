@@ -46,6 +46,17 @@ struct InboxPaletteAdapterTests {
     #expect(!request.preview.isEmpty)
     #expect(!request.agentName.isEmpty)
     #expect(request.isUnresolved)
+    // Everything is read: the list no longer claims to be loading.
+    #expect(!state.isAssembling)
+    // As the web, a pinned session that is read and waiting on nobody is not listed.
+    let listed = Set(state.items.map(\.sessionId))
+    let badged = Set(store.notifications?.badgeSessionIDs ?? [])
+    for pinned in store.sessionList.sessionsByID.values
+    where pinned.isPinned && pinned.status == .idle
+      && !store.sessionList.unreadIDs.contains(pinned.id) && !badged.contains(pinned.id)
+    {
+      #expect(!listed.contains(pinned.id))
+    }
     let read = InboxTriageMapping.state(
       connection: store, readRevisions: [request.id: request.date.timeIntervalSince1970])
     let readRequest = try #require(read.items.first { $0.id == request.id })

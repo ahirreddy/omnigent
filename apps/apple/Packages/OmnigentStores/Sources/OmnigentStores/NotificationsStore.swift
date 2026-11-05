@@ -17,6 +17,8 @@ public final class NotificationsStore {
   private let list: SessionListStore
   /// Sub-agent notifications fold into their parent's.
   private var rollup = ChildNotificationRollup()
+  /// Indexes in ``pending`` of sessions' own finished turns, whose body can be the reply.
+  @ObservationIgnored private var ownTurnEnds: Set<Int> = []
 
   init(core: ClientCore, list: SessionListStore) {
     self.core = core
@@ -32,9 +34,31 @@ public final class NotificationsStore {
   public func take() -> [AttentionNotification] {
     defer {
       pending = []
+      ownTurnEnds = []
       rollup.reset()
     }
     return pending
+  }
+
+  /// Hands the pending notifications to the presenter, as the web does: a session's own finished
+  /// turn carries the agent's reply preview as its body. Without a reply, or when it cannot be
+  /// read, the core's default body stays.
+  /// - Returns: The notifications, oldest first, and the reads that failed.
+  public func takeWithReplyPreviews() async -> (
+    notifications: [AttentionNotification], failures: [CoreError]
+  ) {
+    let previewed = ownTurnEnds
+    var notifications = take()
+    var failures: [CoreError] = []
+    for index in previewed.sorted() where notifications.indices.contains(index) {
+      do {
+        let output = try await core.latestOutput(sessionId: notifications[index].sessionId)
+        if let preview = output?.preview, !preview.isEmpty { notifications[index].body = preview }
+      } catch {
+        failures.append(coreError(error))
+      }
+    }
+    return (notifications, failures)
   }
 
   /// Records whether notification permission was granted.
@@ -47,6 +71,10 @@ public final class NotificationsStore {
   func notify(_ notification: AttentionNotification) {
     let parent = list.parent(of: notification.sessionId).map {
       ChildNotificationRollup.Parent(id: $0, title: list.session($0)?.title)
+    }
+    // A top-level turn end is appended as is; rollups only replace their own earlier entries.
+    if notification.kind == .completed, parent == nil || parent?.id == notification.sessionId {
+      ownTurnEnds.insert(pending.count)
     }
     rollup.add(
       notification, to: &pending, parent: parent,

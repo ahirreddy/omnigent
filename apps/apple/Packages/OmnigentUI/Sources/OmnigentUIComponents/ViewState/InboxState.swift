@@ -61,6 +61,8 @@ nonisolated public struct InboxItem: Hashable, Sendable, Identifiable {
   public var canReply = false
   /// The inline reply's progress.
   public var reply: InboxReplyPhase = .idle
+  /// The agent's whole reply when ``preview`` is cut from it.
+  public var fullText: String?
 
   /// A pending request is independent of whether it has been read.
   public var isUnresolved: Bool {
@@ -174,6 +176,9 @@ nonisolated public struct InboxViewState: Hashable, Sendable {
   public var needsYouCount: Int?
   /// Sessions whose Inbox items could not be read; their items are missing.
   public var failedSessionCount = 0
+  /// Items are still being read (the session list, requests, comments or replies), so an empty
+  /// list does not yet mean nothing is waiting.
+  public var isAssembling = false
 
   /// Creates Inbox state.
   /// - Parameters:

@@ -212,7 +212,9 @@ private struct CatalogDetail: View {
     case .inbox:
       InboxView(state: model.inbox, actions: model.inboxActions)
     case .canvas:
-      CanvasView(sessions: model.sidebar.list.sessions) { model.selection = .session($0) }
+      CanvasView(
+        state: PreviewData.canvas(model.sidebar.list.sessions),
+        actions: CanvasActions { model.selection = .session($0) })
     case .automations:
       AutomationsView(state: PreviewData.automations, actions: AutomationsActions())
     case .usage:

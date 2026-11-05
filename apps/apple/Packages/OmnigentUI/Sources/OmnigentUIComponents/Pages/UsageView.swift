@@ -106,19 +106,8 @@ public struct UsageView: View {
     if state.daily.isEmpty {
       empty("No spend recorded in this range")
     } else {
-      Chart(state.daily) { day in
-        BarMark(x: .value("Day", day.label), y: .value("Cost", day.costUSD))
-          .foregroundStyle(Theme.accent)
-      }
-      .chartXAxis(.hidden)
-      .chartYAxis {
-        AxisMarks { value in
-          AxisGridLine()
-          AxisValueLabel { Text(actions.formatCost(value.as(Double.self) ?? 0)) }
-        }
-      }
-      .frame(height: 180)
-      .accessibilityIdentifier("usage-daily-chart")
+      UsageDailyChart(daily: state.daily, formatCost: actions.formatCost)
+        .frame(height: 200)
     }
   }
 

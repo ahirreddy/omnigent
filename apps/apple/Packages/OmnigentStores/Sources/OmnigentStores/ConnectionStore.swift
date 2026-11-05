@@ -70,6 +70,8 @@ public final class ConnectionStore {
   public internal(set) var creationStore: CreationStore?
   /// Automations, Usage and the Inbox's comments and replies; `nil` when the core did not start.
   public let pages: PagesStore?
+  /// The Canvas page's sessions and layout; `nil` when the core did not start.
+  public let canvas: CanvasStore?
 
   /// The core, or `nil` when it could not start (see ``issues``).
   public let core: ClientCore?
@@ -85,6 +87,7 @@ public final class ConnectionStore {
     notifications = NotificationsStore(core: core, list: sessionList)
     browserActions = BrowserActionStore(core: core)
     pages = PagesStore(core: core)
+    canvas = CanvasStore(core: core)
     sessionList.core = core
     _ = core.subscribe(listener: relay)
     startPump()
@@ -95,6 +98,7 @@ public final class ConnectionStore {
     notifications = nil
     browserActions = nil
     pages = nil
+    canvas = nil
     record(scope: .connection, startupError)
     phase = .failed(serverUrl: "", error: startupError)
   }

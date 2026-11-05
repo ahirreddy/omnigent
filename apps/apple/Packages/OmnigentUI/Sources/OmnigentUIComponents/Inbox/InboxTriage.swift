@@ -16,8 +16,8 @@ nonisolated enum InboxTriage {
       let matchesFilter: Bool
       switch filter {
       case .all: matchesFilter = true
-      case .unread: matchesFilter = (item.isUnread && !item.isUnresolved) || item.isPinned
-      case .awaiting: matchesFilter = item.isUnresolved || item.isPinned
+      case .unread: matchesFilter = item.isUnread && !item.isUnresolved
+      case .awaiting: matchesFilter = item.isUnresolved
       }
       let text = [
         item.preview, item.sessionTitle, item.agentName, item.executionContext,
@@ -27,6 +27,19 @@ nonisolated enum InboxTriage {
       return matchesFilter && (query.isEmpty || text.localizedStandardContains(query))
     }
     return groups(visible, now: now, calendar: calendar).flatMap(\.items)
+  }
+
+  /// The count pill's description, as the web: "2 approvals · 1 comment · 3 unread".
+  static func summary(_ items: [InboxItem]) -> String {
+    let requests = items.filter { $0.kind == .approval || $0.kind == .question }.count
+    let comments = items.filter { $0.kind == .comment }.count
+    let unread = items.filter { $0.kind == .unread }.count
+    return [
+      requests > 0 ? (requests == 1 ? "1 approval" : "\(requests) approvals") : nil,
+      comments > 0 ? (comments == 1 ? "1 comment" : "\(comments) comments") : nil,
+      unread > 0 ? "\(unread) unread" : nil,
+    ]
+    .compactMap { $0 }.joined(separator: " \u{00B7} ")
   }
 
   /// Newest first under the web's recency headers: "Just now" (five minutes), "Earlier today",
