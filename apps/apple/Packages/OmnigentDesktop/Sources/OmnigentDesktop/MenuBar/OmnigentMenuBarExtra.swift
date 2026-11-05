@@ -11,6 +11,8 @@ public import SwiftUI
 public struct OmnigentMenuBarExtra: Scene {
   private let desktop: DesktopController
   private let sessions: (any MenuBarSessionSource)?
+  /// The icon's state, republished after window layout rather than during it.
+  @State private var label: DeferredObservedValue<MenuBarLabelState>
 
   /// Creates the scene.
   /// - Parameters:
@@ -19,6 +21,13 @@ public struct OmnigentMenuBarExtra: Scene {
   public init(desktop: DesktopController, sessions: (any MenuBarSessionSource)? = nil) {
     self.desktop = desktop
     self.sessions = sessions
+    let manager = desktop.localServer
+    _label = State(
+      initialValue: DeferredObservedValue {
+        MenuBarLabelState(
+          isServerRunning: manager.server.endpoint != nil,
+          unreadCount: sessions?.unreadCount ?? 0)
+      })
   }
 
   /// The extra.
@@ -30,27 +39,56 @@ public struct OmnigentMenuBarExtra: Scene {
     ) {
       OmnigentMenuBarContent(desktop: desktop, sessions: sessions)
     } label: {
-      OmnigentMenuBarLabel(manager: desktop.localServer, unreadCount: sessions?.unreadCount ?? 0)
+      OmnigentMenuBarLabel(state: label.value)
     }
     .menuBarExtraStyle(.window)
   }
 }
 
+/// What the menu bar icon shows.
+nonisolated struct MenuBarLabelState: Equatable, Sendable {
+  /// Whether the local server is running.
+  var isServerRunning: Bool
+  /// Sessions that need the user.
+  var unreadCount: Int
+}
+
 /// The icon in the menu bar, with the unread count when there is one.
 struct OmnigentMenuBarLabel: View {
-  let manager: LocalServerManager
-  let unreadCount: Int
+  let state: MenuBarLabelState
 
   var body: some View {
-    let symbol =
-      manager.server.endpoint == nil ? "circle.hexagongrid" : "circle.hexagongrid.fill"
+    let icon = Image(nsImage: Self.icon(isServerRunning: state.isServerRunning))
+    let unreadCount = state.unreadCount
     if unreadCount > 0 {
-      Label("Omnigent, \(unreadCount) need you", systemImage: symbol)
-        .labelStyle(.titleAndIcon)
-        .accessibilityLabel("Omnigent, \(unreadCount) need you")
+      Label {
+        Text("Omnigent, \(unreadCount) need you")
+      } icon: {
+        icon
+      }
+      .labelStyle(.titleAndIcon)
+      .accessibilityLabel("Omnigent, \(unreadCount) need you")
     } else {
-      Image(systemName: symbol).accessibilityLabel("Omnigent")
+      icon.accessibilityLabel("Omnigent")
     }
+  }
+
+  /// The icon, one object per state. SwiftUI resets the status item's image whenever the app's
+  /// scenes update, often during a window's layout; AppKit re-lays out the status bar only when
+  /// the image object changes, and throws when that happens too often in one layout pass.
+  /// - Parameter isServerRunning: Whether the local server is running.
+  /// - Returns: The template image.
+  static func icon(isServerRunning: Bool) -> NSImage {
+    isServerRunning ? running : stopped
+  }
+
+  private static let running = symbol("circle.hexagongrid.fill")
+  private static let stopped = symbol("circle.hexagongrid")
+
+  private static func symbol(_ name: String) -> NSImage {
+    let image = NSImage(systemSymbolName: name, accessibilityDescription: "Omnigent") ?? NSImage()
+    image.isTemplate = true
+    return image
   }
 }
 
