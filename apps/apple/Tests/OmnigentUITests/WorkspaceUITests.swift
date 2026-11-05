@@ -11,7 +11,7 @@ final class WorkspaceUITests: XCTestCase {
     support.waitForTranscript(sessionID, in: app)
     let input = app.textViews["composer-input"]
     support.tap(input, "the composer")
-    input.typeText("@")
+    support.type("@", into: input)
 
     let header = support.element("composer-completion-folder", in: app)
     XCTAssertTrue(header.waitForExistence(timeout: 10), "@ listed no workspace")
@@ -33,13 +33,14 @@ final class WorkspaceUITests: XCTestCase {
     let app = support.launch(opening: sessionID)
     support.waitForTranscript(sessionID, in: app)
     support.tap(app.buttons["toggle-inspector"], "the right-panel toggle")
-    support.tap(app.staticTexts["src"].firstMatch, "the src folder", timeout: 15)
-    support.tap(app.staticTexts["main.swift"].firstMatch, "main.swift")
+    // The tree's rows are buttons; a tap opens a folder or file.
+    support.tap(support.element("src", in: app), "the src folder", timeout: 15)
+    support.tap(support.element("main.swift", in: app), "main.swift")
     support.tap(
       support.element("workspace.viewer.mode", in: app).buttons["Edit"], "the Edit mode")
     let editor = support.element("workspace.editor", in: app)
     support.tap(editor, "the editor")
-    editor.typeText("// edited by the UI test\n")
+    support.type("// edited by the UI test\n", into: editor)
     let save = app.buttons["workspace.editor.save"]
     XCTAssertTrue(support.waitUntil { save.isEnabled }, "the edit left Save off")
     support.shot("file-edit-unsaved")

@@ -85,10 +85,8 @@ final class PadShellUITests: XCTestCase {
       return true
     }
     let app = XCUIApplication()
-    app.launchArguments += [
-      "-omnigent.lastServer", server, "-ApplePersistenceIgnoreState", "YES",
-      "-OmnigentNoNotificationPrompt", "YES",
-    ]
+    app.launchArguments +=
+      ["-omnigent.lastServer", server] + LiveServerUITestSupport.freshStateArguments
     app.launch()
     XCUIDevice.shared.orientation = isPad ? .landscapeLeft : .portrait
     return app

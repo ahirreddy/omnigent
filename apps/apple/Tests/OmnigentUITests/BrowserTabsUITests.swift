@@ -29,10 +29,10 @@ final class BrowserTabsUITests: XCTestCase {
     sleep(3)
     try shot("browser-server-page")
 
-    omnibox.tap()
-    omnibox.typeText("example.com\n")
+    // The server's page can take the keyboard as it finishes loading.
+    LiveServerUITestSupport(self).type("example.com\n", into: omnibox)
     XCTAssertTrue(
-      app.webViews.staticTexts["Example Domain"].waitForExistence(timeout: 20),
+      examplePage(app).waitForExistence(timeout: 20),
       "example.com did not load")
     XCTAssertTrue(app.buttons["browser.back"].isEnabled, "Back stays off after a navigation")
     if isPhone {
@@ -59,7 +59,7 @@ final class BrowserTabsUITests: XCTestCase {
     let omnibox = app.textFields["browser.omnibox"]
     XCTAssertTrue(omnibox.waitForExistence(timeout: 10), "the link did not open a browser tab")
     XCTAssertTrue(
-      app.webViews.staticTexts["Example Domain"].waitForExistence(timeout: 20),
+      examplePage(app).waitForExistence(timeout: 20),
       "the linked page did not load")
     XCTAssertTrue((omnibox.value as? String ?? "").contains("example.com"))
     try shot("transcript-link")
@@ -69,21 +69,20 @@ final class BrowserTabsUITests: XCTestCase {
   func testWorkspaceFileOpensInQuickLookAndShare() throws {
     let app = try launch(opening: try setting("OMNIGENT_FILES_SESSION_ID"))
     tap(app.buttons["toggle-inspector"], "the right-panel toggle")
-    let pdf = app.staticTexts["notes.pdf"].firstMatch
+    let pdf = app.descendants(matching: .any)["notes.pdf"].firstMatch
     XCTAssertTrue(pdf.waitForExistence(timeout: 20), "the files panel shows no notes.pdf")
     try shot("files-panel")
 
     pdf.press(forDuration: 1.2)
     tap(app.buttons["Quick Look"], "Quick Look in the file's menu")
-    let preview = app.navigationBars.matching(
-      NSPredicate(format: "identifier CONTAINS 'QL' OR identifier CONTAINS 'notes'")
-    ).firstMatch
-    XCTAssertTrue(preview.waitForExistence(timeout: 15), "Quick Look did not open")
+    let preview = app.otherElements["QLPreviewControllerView"]
+    XCTAssertTrue(preview.waitForExistence(timeout: 30), "Quick Look did not open")
     sleep(2)
     try shot("files-quicklook")
-    tap(app.buttons["Done"].firstMatch, "Done in Quick Look")
+    // iOS 26's Quick Look closes with an X, not Done.
+    tap(app.buttons["QLOverlayDoneButtonAccessibilityIdentifier"], "Close in Quick Look")
 
-    let markdown = app.staticTexts["notes.md"].firstMatch
+    let markdown = app.descendants(matching: .any)["notes.md"].firstMatch
     XCTAssertTrue(markdown.waitForExistence(timeout: 10))
     markdown.press(forDuration: 1.2)
     tap(app.buttons["Share\u{2026}"], "Share in the file's menu")
@@ -96,6 +95,13 @@ final class BrowserTabsUITests: XCTestCase {
   }
 
   // MARK: Helpers
+
+  /// Text of example.com's page, whose wording changes ("Example Domain", "examples").
+  @MainActor
+  private func examplePage(_ app: XCUIApplication) -> XCUIElement {
+    app.webViews.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'example'"))
+      .firstMatch
+  }
 
   @MainActor
   private func setting(_ name: String) throws -> String {
@@ -113,10 +119,8 @@ final class BrowserTabsUITests: XCTestCase {
       LiveServerUITestSupport.sessionLink(server: server, sessionID: sessionID))
     let app = XCUIApplication()
     app.launchArguments +=
-      [
-        "-omnigent.lastServer", server, "-ApplePersistenceIgnoreState", "YES",
-        "-OmnigentNoNotificationPrompt", "YES", "-OmnigentOpenURL", link,
-      ] + extra
+      ["-omnigent.lastServer", server, "-OmnigentOpenURL", link]
+      + LiveServerUITestSupport.freshStateArguments + extra
     app.launch()
     XCUIDevice.shared.orientation = isPhone ? .portrait : .landscapeLeft
     XCTAssertTrue(

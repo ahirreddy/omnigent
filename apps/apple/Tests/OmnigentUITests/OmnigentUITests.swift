@@ -19,7 +19,9 @@ final class OmnigentUITests: XCTestCase {
   @MainActor
   func testComposerStatesOnTouch() throws {
     let app = XCUIApplication()
-    app.launchArguments += ["-OmnigentDemo", "-omnigent.lastServer", "http://127.0.0.1:6767"]
+    app.launchArguments +=
+      ["-OmnigentDemo", "-omnigent.lastServer", "http://127.0.0.1:6767"]
+      + LiveServerUITestSupport.freshStateArguments
     app.launch()
 
     let any = app.descendants(matching: .any)
@@ -31,8 +33,7 @@ final class OmnigentUITests: XCTestCase {
     XCTAssertTrue(input.waitForExistence(timeout: 10))
     try shot(app, "new")
 
-    input.tap()
-    input.typeText("Summarize the open questions")
+    LiveServerUITestSupport(self).type("Summarize the open questions", into: input)
     try shot(app, "typing")
     app.buttons["composer-send"].tap()
 
@@ -41,8 +42,7 @@ final class OmnigentUITests: XCTestCase {
     if stop.waitForExistence(timeout: 10) {
       try shot(app, "running")
       let running = app.textViews["composer-input"].firstMatch
-      running.tap()
-      running.typeText("Also list the risks")
+      LiveServerUITestSupport(self).type("Also list the risks", into: running)
       try shot(app, "running-draft")
       // The demo reply may finish while typing; Send joins Stop only while it runs.
       if stop.exists { XCTAssertTrue(app.buttons["composer-send"].exists) }

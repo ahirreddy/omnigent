@@ -126,11 +126,12 @@ The iOS recipe needs the local server on 127.0.0.1:6767 with the mock-model agen
 (`just apple-services start`, `just apple-mock-agent`; `just apple-seed-large` for the palette
 paging test). It first runs `Tools/seed-ui-test-fixtures.py`, which writes the "UI test fixture"
 session (an exchange with a tool call and a link, bound to a small workspace) into the server's
-database; set `OMNIGENT_LAB_RUNTIME` to the server's `.native-lab-server` when it runs from
+database and has the online host launch its runner, which the file panel needs; set `OMNIGENT_LAB_RUNTIME` to the server's `.native-lab-server` when it runs from
 another checkout. The session id and workspace reach the tests as `TEST_RUNNER_OMNIGENT_UITEST_*`.
 Tests that need it share `Tests/OmnigentUITests/LiveServerUITestSupport.swift` (launch on a
 session link, identifiers, waits); write new ones against it and accessibility identifiers.
-iOS menu items do not carry SwiftUI identifiers, so tests find them by label.
+iOS menu items do not carry SwiftUI identifiers, so tests find them by label. Launch arguments
+shadow `UserDefaults` writes for the whole run, so do not set a default the test then changes.
 
 ## Follow-ups
 

@@ -35,10 +35,7 @@ struct LiveServerUITestSupport {
   /// - Returns: The app.
   func launch(opening sessionID: String? = nil, extra: [String] = []) -> XCUIApplication {
     let app = XCUIApplication()
-    app.launchArguments += [
-      "-omnigent.lastServer", server, "-ApplePersistenceIgnoreState", "YES",
-      "-OmnigentNoNotificationPrompt", "YES",
-    ]
+    app.launchArguments += ["-omnigent.lastServer", server] + Self.freshStateArguments
     if let sessionID, let link = Self.sessionLink(server: server, sessionID: sessionID) {
       app.launchArguments += ["-OmnigentOpenURL", link]
     }
@@ -47,6 +44,12 @@ struct LiveServerUITestSupport {
     XCUIDevice.shared.orientation = isPhone ? .portrait : .landscapeLeft
     return app
   }
+
+  /// No restored windows, notification prompt or right panel (whose last state is the default).
+  nonisolated static let freshStateArguments = [
+    "-ApplePersistenceIgnoreState", "YES", "-OmnigentNoNotificationPrompt", "YES",
+    "-omnigent:default-workspace-panel", "collapsed",
+  ]
 
   /// The session's deep link on `server`, which debug builds open at launch (`-OmnigentOpenURL`).
   nonisolated static func sessionLink(server: String, sessionID: String) -> String? {
@@ -69,6 +72,17 @@ struct LiveServerUITestSupport {
   func tap(_ element: XCUIElement, _ name: String, timeout: TimeInterval = 10) {
     XCTAssertTrue(element.waitForExistence(timeout: timeout), "\(name) is missing")
     element.tap()
+  }
+
+  /// Taps `field` until it has the keyboard (a loaded machine can drop the first tap's focus),
+  /// then types `text`.
+  func type(_ text: String, into field: XCUIElement) {
+    let focused = { (field.value(forKey: "hasKeyboardFocus") as? Bool) == true }
+    for _ in 0..<3 where !focused() {
+      field.tap()
+      _ = waitUntil(timeout: 5, focused)
+    }
+    field.typeText(text)
   }
 
   /// Goes back to the session list: an iPhone reopens the chat tab its last run left open.

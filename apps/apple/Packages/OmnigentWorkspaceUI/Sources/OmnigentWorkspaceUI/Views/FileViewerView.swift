@@ -62,6 +62,8 @@ public struct FileViewerView: View {
     .sheet(item: $commenting) { span in
       if let review { CommentComposer(span: span, add: review.add) }
     }
+    // A container, so the viewer's identifier does not replace its controls' own.
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace.viewer")
   }
 

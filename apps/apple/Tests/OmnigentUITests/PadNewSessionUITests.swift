@@ -22,7 +22,7 @@ final class PadNewSessionUITests: XCTestCase {
 
     let input = app.textViews["composer-input"]
     support.tap(input, "the composer")
-    input.typeText("UI test: start a session from the iPad page")
+    support.type("UI test: start a session from the iPad page", into: input)
     support.tap(app.buttons["composer-send"], "Start")
     XCTAssertTrue(
       support.element(prefix: "transcript-", in: app).waitForExistence(timeout: 30),
@@ -77,8 +77,13 @@ final class PadNewSessionUITests: XCTestCase {
   @MainActor
   private func checkFolderChip(_ support: LiveServerUITestSupport, _ app: XCUIApplication) {
     let folder = support.element("new-session-folder", in: app)
-    support.tap(folder, "the folder chip")
-    support.tap(support.element("new-session-browse-folders", in: app), "Browse Folders")
+    // A menu item: no identifier on iOS. A tap while the host menu closes can miss the chip.
+    let browse = app.buttons["Browse Folders\u{2026}"]
+    for _ in 0..<3 where !browse.exists {
+      support.tap(folder, "the folder chip")
+      _ = browse.waitForExistence(timeout: 5)
+    }
+    support.tap(browse, "Browse Folders")
     let choose = app.buttons["folder-browser-choose"]
     XCTAssertTrue(choose.waitForExistence(timeout: 10), "the folder browser did not open")
     XCTAssertTrue(support.waitUntil { choose.isEnabled }, "the folder browser loaded no folder")

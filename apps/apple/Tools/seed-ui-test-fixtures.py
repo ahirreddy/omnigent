@@ -3,9 +3,9 @@
 link, bound to the online host and a small workspace (folders for `@` mentions, files to edit,
 `notes.md` and `notes.pdf` to preview).
 
-Stored test data only: no runner or model call. Reruns keep the session (fixed id) and restore
-the workspace files, so a test that edited one starts from the same text. Prints the session id
-and the workspace path.
+Stored test data, no model call; the host launches the session's runner so its file APIs work.
+Reruns keep the session (fixed id) and restore the workspace files, so a test that edited one
+starts from the same text. Prints the session id and the workspace path.
 """
 
 import argparse
@@ -146,14 +146,17 @@ def seed(args: argparse.Namespace) -> None:
     if existing is not None:
         if existing.title != TITLE:
             raise SystemExit(f"Refusing to modify an unexpected session: {session_id}")
+        if existing.runner_id is None and existing.host_id is not None:
+            launch_runner(large, args.server, existing.host_id, session_id, workspace)
         print(session_id, workspace)
         return
     agent = large.mock_agent(args.server)
+    host_id = large.online_host(args.server)
     conversations.create_conversation(
         conversation_id=session_id,
         title=TITLE,
         agent_id=agent["id"],
-        host_id=large.online_host(args.server),
+        host_id=host_id,
         workspace=str(workspace),
     )
     models = {
@@ -171,7 +174,14 @@ def seed(args: argparse.Namespace) -> None:
         ],
     )
     SqlAlchemyPermissionStore(uri).grant("local", session_id, 4)
+    launch_runner(large, args.server, host_id, session_id, workspace)
     print(session_id, workspace)
+
+
+def launch_runner(large, server: str, host_id: str, session_id: str, workspace: Path) -> None:
+    """Has the host launch a runner bound to the session, which the file APIs go through."""
+    body = {"session_id": session_id, "workspace": str(workspace)}
+    large.request_json(server, "POST", f"/v1/hosts/{host_id}/runners", body)
 
 
 if __name__ == "__main__":

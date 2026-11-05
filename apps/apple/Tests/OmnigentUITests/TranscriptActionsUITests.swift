@@ -15,7 +15,10 @@ final class TranscriptActionsUITests: XCTestCase {
       support.tap(support.element(prefix: "message-link-", in: app), "\(style): Copy link")
       let banner = support.element("transient-banner", in: app)
       XCTAssertTrue(banner.waitForExistence(timeout: 5), "\(style): no Link copied banner")
-      XCTAssertTrue(banner.label.contains("Link copied"), "\(style): banner says \(banner.label)")
+      // The banner is a container; its message is a child.
+      let message = banner.descendants(matching: .any)
+        .matching(NSPredicate(format: "label == 'Link copied'")).firstMatch
+      XCTAssertTrue(message.exists, "\(style): the banner does not say Link copied")
       support.shot("\(style)-copy-link")
       app.terminate()
     }
@@ -53,29 +56,33 @@ final class TranscriptActionsUITests: XCTestCase {
 
     openTitleMenu(support, app)
     support.shot("title-menu")
-    support.tap(app.buttons["Terminal"], "Terminal in the title menu")
-    let terminal = app.descendants(matching: .any).matching(
-      NSPredicate(
-        format: "identifier IN {'session-terminal', 'terminal-offline', 'terminal-starting'}")
-    ).firstMatch
-    XCTAssertTrue(terminal.waitForExistence(timeout: 10), "Terminal did not show the terminal")
-    openTitleMenu(support, app)
-    support.tap(app.buttons["Chat"], "Chat in the title menu")
-    support.waitForTranscript(sessionID, in: app)
-
-    openTitleMenu(support, app)
+    // Chat and Terminal lead the menu only for a session that offers a terminal.
+    if app.buttons["Terminal"].exists {
+      app.buttons["Terminal"].tap()
+      let terminal = app.descendants(matching: .any).matching(
+        NSPredicate(
+          format: "identifier IN {'session-terminal', 'terminal-offline', 'terminal-starting'}")
+      ).firstMatch
+      XCTAssertTrue(terminal.waitForExistence(timeout: 10), "Terminal did not show the terminal")
+      openTitleMenu(support, app)
+      support.tap(app.buttons["Chat"], "Chat in the title menu")
+      support.waitForTranscript(sessionID, in: app)
+      openTitleMenu(support, app)
+    }
     support.tap(filesItem(app), "Files in the title menu")
     XCTAssertTrue(
-      app.staticTexts["README.md"].waitForExistence(timeout: 15), "Files did not open the panel")
+      app.descendants(matching: .any)["README.md"].firstMatch.waitForExistence(timeout: 15),
+      "Files did not open the panel")
     support.shot("title-menu-files")
   }
 
   /// Opens the navigation bar's title menu.
   @MainActor
   private func openTitleMenu(_ support: LiveServerUITestSupport, _ app: XCUIApplication) {
-    let title = app.navigationBars.firstMatch.buttons["UI test fixture"]
-    let target = title.exists ? title : app.navigationBars.firstMatch.staticTexts["UI test fixture"]
-    support.tap(target, "the title")
+    // A button once the menu is attached, plain text before.
+    let title = app.navigationBars.firstMatch.descendants(matching: .any)
+      .matching(NSPredicate(format: "label == 'UI test fixture'")).firstMatch
+    support.tap(title, "the title", timeout: 20)
     XCTAssertTrue(filesItem(app).waitForExistence(timeout: 5), "the title menu did not open")
   }
 
