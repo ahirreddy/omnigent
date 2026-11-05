@@ -74,7 +74,7 @@ public protocol WorkspaceDataSource: AnyObject {
   func save(_ path: String, text: String, base: String?) async throws(WorkspaceFailure)
     -> FileSaveResult
 
-  /// The open review comments on a file, each with the line of `text` it starts on.
+  /// The review comments on a file, open and sent, each with the line of `text` it starts on.
   /// - Parameters:
   ///   - path: The file.
   ///   - text: The file's text.
@@ -89,6 +89,27 @@ public protocol WorkspaceDataSource: AnyObject {
   ///   - span: What it is about.
   /// - Throws: The failure to show.
   func addComment(_ body: String, on span: FileTextSpan) async throws(WorkspaceFailure)
+
+  // `open` mirrors the core's `Option<bool>`: `nil` keeps the state.
+  // swiftlint:disable discouraged_optional_boolean
+  /// Changes a comment's text, or resolves (`open` false) or reopens it.
+  /// - Parameters:
+  ///   - id: The comment.
+  ///   - body: The new text; `nil` keeps it.
+  ///   - open: The new state; `nil` keeps it.
+  /// - Throws: The failure to show.
+  func updateComment(_ id: String, body: String?, open: Bool?) async throws(WorkspaceFailure)
+  // swiftlint:enable discouraged_optional_boolean
+
+  /// Deletes a comment.
+  /// - Parameter id: The comment.
+  /// - Throws: The failure to show.
+  func deleteComment(_ id: String) async throws(WorkspaceFailure)
+
+  /// Sends comments to the agent as one message and marks them sent (the web's "Address All").
+  /// - Parameter ids: The comments.
+  /// - Throws: The failure to show; the comments stay open.
+  func sendCommentsToAgent(_ ids: [String]) async throws(WorkspaceFailure)
 }
 
 extension WorkspaceDataSource {

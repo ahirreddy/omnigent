@@ -14,6 +14,9 @@ public struct FileViewerView: View {
   private let review: FileReviewContext?
   @AppStorage("workspace.fileViewMode") private var viewMode = FileViewMode.preview
   @State private var commenting: FileTextSpan?
+  @AppStorage("workspace.showsComments") private var showsComments = false
+  @State private var selectedCommentID: String?
+  @State private var width: CGFloat = 0
 
   /// A viewer.
   /// - Parameters:
@@ -41,14 +44,15 @@ public struct FileViewerView: View {
     VStack(spacing: 0) {
       FileHeader(
         file: file, source: source, actions: actions, modes: modes,
-        viewMode: modes.count > 1 ? modeBinding : nil, review: review)
+        viewMode: modes.count > 1 ? modeBinding : nil, review: review,
+        showsComments: $showsComments)
       Divider()
       switch file.preview {
       case .text(let text):
         if text.serverTruncated || text.clipped {
           NoticeBar(symbol: "scissors", text: notice(for: text))
         }
-        content(text)
+        withComments(content(text))
       case .image(let format, let data):
         ImagePreview(format: format, data: data, byteCount: file.byteCount)
       case .binary(let reason):
@@ -62,23 +66,62 @@ public struct FileViewerView: View {
     .sheet(item: $commenting) { span in
       if let review { CommentComposer(span: span, add: review.add) }
     }
+    // A container, so the header, editor and comments keep their own identifiers.
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace.viewer")
   }
 
   @ViewBuilder private func content(_ text: TextPreview) -> some View {
     let mode = shownMode
     if let editor, mode == .edit {
-      FileEditorView(editor: editor, review: review) { commenting = $0 }
+      FileEditorView(
+        editor: editor, language: text.skipHighlighting ? nil : text.language,
+        isMarkdown: previewKind == .markdown, review: review
+      ) { commenting = $0 }
     } else if let previewKind, mode == .preview {
-      FilePreviewView(kind: previewKind, text: editor?.text ?? text.text)
+      FilePreviewView(kind: previewKind, text: editedText(text))
     } else if let editor, editor.isDirty {
       // Unsaved edits show as source; comments wait until they are saved.
-      CodeTextView(preview: edited(text, editor.text), markedLine: line)
+      CodeTextView(preview: edited(text, editedText(text)), markedLine: line)
     } else {
       CodeTextView(
-        preview: text, markedLine: line, path: file.path, review: review
-      ) { commenting = $0 }
+        preview: text, markedLine: line, path: file.path, review: review,
+        comment: { commenting = $0 }, showComment: show)
     }
+  }
+
+  /// The file's text with unsaved edits; reading the editor's revision redraws after a revert.
+  private func editedText(_ text: TextPreview) -> String {
+    guard let editor else { return text.text }
+    _ = editor.textRevision
+    return editor.isDirty ? editor.text : text.text
+  }
+
+  /// The comments panel beside the text when the viewer is wide, else below it, as the web
+  /// stacks it on narrow screens.
+  @ViewBuilder private func withComments(_ content: some View) -> some View {
+    let wide = width >= 640
+    let layout = wide ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
+    layout {
+      content.frame(maxWidth: .infinity, maxHeight: .infinity)
+      if showsComments, let review {
+        Divider()
+        FileCommentsPanel(review: review, selectedID: $selectedCommentID) {
+          showsComments = false
+        }
+        .frame(width: wide ? 300 : nil, height: wide ? nil : 300)
+      }
+    }
+    .onGeometryChange(for: CGFloat.self) {
+      $0.size.width
+    } action: {
+      width = $0
+    }
+  }
+
+  private func show(_ commentID: String) {
+    selectedCommentID = commentID
+    showsComments = true
   }
 
   /// Preview for a previewable file, Source, and Edit when the viewer may edit it.
@@ -127,6 +170,7 @@ private struct FileHeader: View {
   /// The chosen mode, when there is a choice.
   let viewMode: Binding<FileViewMode>?
   let review: FileReviewContext?
+  @Binding var showsComments: Bool
 
   var body: some View {
     HStack(spacing: 8) {
@@ -145,8 +189,8 @@ private struct FileHeader: View {
           .textSelection(.enabled)
       }
       Spacer(minLength: 8)
-      if let review, !review.comments.isEmpty {
-        FileCommentsMenu(review: review)
+      if let review, case .text = file.preview, review.canComment || !review.comments.isEmpty {
+        FileCommentsToggle(openCount: review.openComments.count, isShown: $showsComments)
       }
       if let viewMode {
         Picker("View", selection: viewMode) {

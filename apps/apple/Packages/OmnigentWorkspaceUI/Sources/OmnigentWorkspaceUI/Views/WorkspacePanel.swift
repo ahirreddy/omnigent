@@ -142,12 +142,22 @@ public struct WorkspaceDocumentView: View {
     let model = model
     let mention = actions.mention
     let ask = actions.ask
-    return FileReviewContext(
+    let path = file.path
+    var review = FileReviewContext(
       comments: model.comments[file.path]?.value ?? [], canComment: actions.canEdit,
       add: { body, span throws(WorkspaceFailure) in try await model.addComment(body, on: span) },
       reveal: { line in model.reveal(line: line) },
       attach: mention.map { mention in { span in mention(span.reference) } },
       ask: ask)
+    guard actions.canEdit else { return review }
+    review.update = { comment, body, open throws(WorkspaceFailure) in
+      try await model.updateComment(comment.id, on: path, body: body, open: open)
+    }
+    review.delete = { comment throws(WorkspaceFailure) in
+      try await model.deleteComment(comment.id, on: path)
+    }
+    review.sendAll = { () throws(WorkspaceFailure) in try await model.sendOpenComments(on: path) }
+    return review
   }
 }
 

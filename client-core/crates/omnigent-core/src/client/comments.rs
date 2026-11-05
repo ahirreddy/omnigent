@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 
 use serde_json::{Value, json};
 
+use super::events::MessageSent;
 use super::json::{as_object, opt_str, opt_u64, req_str};
 use super::requests::validate_identifier;
 use super::{ClientCore, SessionError};
@@ -112,8 +113,10 @@ pub struct NewFileComment {
     pub anchor: Option<String>,
 }
 
-/// The open comments on `path`, each with the 1-based line of `text` it starts on (`None` when
-/// it has no position or its position is past the end), in file order.
+/// The comments on `path`, open and sent, in file order, each with the 1-based line it starts on.
+///
+/// The line is `None` when the comment has no position or its position is past the end of
+/// `text`. An open comment whose text moved follows its anchor, as the web remaps it.
 #[must_use]
 pub fn file_comment_lines(
     comments: &[FileComment],
@@ -122,16 +125,60 @@ pub fn file_comment_lines(
 ) -> Vec<(Option<u64>, FileComment)> {
     let mut lines: Vec<(Option<u64>, FileComment)> = comments
         .iter()
-        .filter(|comment| comment.is_open && comment.path == path)
+        .filter(|comment| comment.path == path)
         .map(|comment| {
-            let line = comment
-                .start_index
-                .and_then(|start| line_at_character(text, start));
+            let start = if comment.is_open {
+                anchored_start(comment, text)
+            } else {
+                comment.start_index
+            };
+            let line = start.and_then(|start| line_at_character(text, start));
             (line, comment.clone())
         })
         .collect();
     lines.sort_by_key(|(line, comment)| (line.is_none(), *line, comment.created_at));
     lines
+}
+
+/// How far from a comment's stored start its moved anchor is looked for first, in characters.
+const ANCHOR_SEARCH_WINDOW: u64 = 200;
+
+/// Where `comment`'s anchor is in `text` now, as the web's `classifyAndRemapComments`: the
+/// occurrence nearest the stored start within [`ANCHOR_SEARCH_WINDOW`], else the first one,
+/// else the stored start.
+#[must_use]
+pub fn anchored_start(comment: &FileComment, text: &str) -> Option<u64> {
+    let (Some(anchor), Some(stored)) = (comment.anchor.as_deref(), comment.start_index) else {
+        return comment.start_index;
+    };
+    let anchor_length = anchor.chars().fold(0_u64, |count, _| count + 1);
+    let window =
+        stored.saturating_sub(ANCHOR_SEARCH_WINDOW)..=stored + anchor_length + ANCHOR_SEARCH_WINDOW;
+    let mut first = None;
+    let mut nearest: Option<u64> = None;
+    let mut characters = 0_u64;
+    let mut counted_to = 0_usize;
+    let mut from = 0_usize;
+    while let Some(found) = text.get(from..).and_then(|rest| rest.find(anchor)) {
+        let byte = from + found;
+        characters += text.get(counted_to..byte).map_or(0, |between| {
+            between.chars().fold(0_u64, |count, _| count + 1)
+        });
+        counted_to = byte;
+        first.get_or_insert(characters);
+        if window.contains(&characters)
+            && nearest.is_none_or(|best| characters.abs_diff(stored) < best.abs_diff(stored))
+        {
+            nearest = Some(characters);
+        }
+        // The next occurrence may overlap this one, as the web's `indexOf(anchor, from + 1)`.
+        from = byte
+            + text
+                .get(byte..)
+                .and_then(|rest| rest.chars().next())
+                .map_or(1, char::len_utf8);
+    }
+    nearest.or(first).or(Some(stored))
 }
 
 fn comment_from(value: &Value) -> Result<FileComment, String> {
@@ -226,11 +273,156 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 }
 
+/// A change to a comment: its text, its state, or both.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CommentUpdate {
+    /// The new comment.
+    pub body: Option<String>,
+    /// Reopen (`true`, `draft`) or resolve (`false`, `addressed`) it.
+    pub open: Option<bool>,
+}
+
+const HOST_OFFLINE_COMMENTS: &str = "The host for this session is offline, so the comments \
+                                     weren\u{2019}t sent. Try again once it reconnects.";
+
+impl<T: HttpTransport> ClientCore<T> {
+    /// Edits, resolves or reopens a comment on `session_id`'s files.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; `InvalidInput` for an empty comment or an empty update; the write
+    /// errors (the server lets only the author edit a comment's text);
+    /// [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn update_session_comment(
+        &self,
+        session_id: &str,
+        comment_id: &str,
+        update: &CommentUpdate,
+    ) -> Result<FileComment, SessionError> {
+        validate_identifier(session_id)?;
+        validate_identifier(comment_id)?;
+        let mut body = serde_json::Map::new();
+        if let Some(text) = &update.body {
+            if text.trim().is_empty() {
+                return Err(SessionError::InvalidInput {
+                    reason: "Write a comment first.".to_owned(),
+                });
+            }
+            body.insert("body".into(), json!(text.trim()));
+        }
+        if let Some(open) = update.open {
+            let status = if open { "draft" } else { "addressed" };
+            body.insert("status".into(), json!(status));
+        }
+        if body.is_empty() {
+            return Err(SessionError::InvalidInput {
+                reason: "Nothing to change.".to_owned(),
+            });
+        }
+        let path = format!("/v1/sessions/{session_id}/comments/{comment_id}");
+        let value = self.write_json("PATCH", &path, &Value::Object(body)).await;
+        self.dispatch();
+        comment_from(&value?).map_err(|detail| SessionError::MalformedResponse {
+            detail: format!("{path}: {detail}"),
+        })
+    }
+
+    /// Deletes a comment on `session_id`'s files.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; the write errors (the server lets only the author delete it).
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn delete_session_comment(
+        &self,
+        session_id: &str,
+        comment_id: &str,
+    ) -> Result<(), SessionError> {
+        validate_identifier(session_id)?;
+        validate_identifier(comment_id)?;
+        let path = format!("/v1/sessions/{session_id}/comments/{comment_id}");
+        let result = self.write(self.prepare("DELETE", &path, &[], None)?).await;
+        self.dispatch();
+        result.map(|_| ())
+    }
+
+    /// Sends comments to the agent, as the web's "Address All": the server marks them sent and
+    /// formats them into one message, which goes to the session as the user's message. When
+    /// the message cannot be sent the comments are reopened, so none reads as sent unsent.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidIdentifier`; `InvalidInput` without comments; the write errors;
+    /// [`SessionError::MalformedResponse`]; the send's errors (a host offline says the comments
+    /// were not sent).
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn send_comments_to_agent(
+        &self,
+        session_id: &str,
+        comment_ids: &[String],
+    ) -> Result<MessageSent, SessionError> {
+        validate_identifier(session_id)?;
+        if comment_ids.is_empty() {
+            return Err(SessionError::InvalidInput {
+                reason: "There are no open comments to send.".to_owned(),
+            });
+        }
+        for id in comment_ids {
+            validate_identifier(id)?;
+        }
+        let path = format!("/v1/sessions/{session_id}/comments/send");
+        let value = self
+            .write_json("POST", &path, &json!({ "comment_ids": comment_ids }))
+            .await?;
+        let message = value
+            .get("formatted_message")
+            .and_then(Value::as_str)
+            .ok_or_else(|| SessionError::MalformedResponse {
+                detail: format!("{path}: `formatted_message` is not a string"),
+            })?
+            .to_owned();
+        let error = match self.send_reply(session_id, &message).await {
+            Ok(sent) => return Ok(sent),
+            Err(error) => error,
+        };
+        let reopen = CommentUpdate {
+            body: None,
+            open: Some(true),
+        };
+        for id in comment_ids {
+            // The send's failure is the one to show; a comment left sent can still be reopened.
+            if self
+                .update_session_comment(session_id, id, &reopen)
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+        Err(match error {
+            SessionError::HostOffline { .. } => SessionError::HostOffline {
+                message: HOST_OFFLINE_COMMENTS.to_owned(),
+            },
+            other => other,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use futures::executor::block_on;
 
-    use super::super::test_support::{RouteTransport, connected};
+    use super::super::test_support::{Reply, RouteTransport, body_json, connected};
     use super::*;
 
     const COMMENTS: &str = r#"[
@@ -273,10 +465,14 @@ mod tests {
             .map(|(line, comment)| (*line, comment.id.as_str()))
             .collect();
         assert_eq!(ids, [(Some(1), "c1"), (Some(1), "c2"), (Some(2), "c7")]);
-        assert!(
-            file_comment_lines(&all, "b.rs", "x")
-                .iter()
-                .all(|(_, comment)| comment.is_open)
+        let states: Vec<bool> = file_comment_lines(&all, "b.rs", "x")
+            .iter()
+            .map(|(_, comment)| comment.is_open)
+            .collect();
+        assert_eq!(
+            states.iter().filter(|open| !**open).count(),
+            1,
+            "sent ones too"
         );
     }
 
@@ -314,6 +510,140 @@ mod tests {
             block_on(core.add_session_comment("s1", &reversed)),
             Err(SessionError::InvalidInput { .. })
         ));
+    }
+
+    fn comment_at(start: u64, anchor: Option<&str>) -> FileComment {
+        FileComment {
+            id: "c".into(),
+            session_id: "s1".into(),
+            path: "a.rs".into(),
+            body: "b".into(),
+            is_open: true,
+            anchor: anchor.map(str::to_owned),
+            start_index: Some(start),
+            author: None,
+            created_at: 1,
+            updated_at_micros: 1,
+        }
+    }
+
+    #[test]
+    fn open_comments_follow_their_moved_anchor() {
+        // Unmoved, moved by an insertion, nearest of two copies, and gone.
+        assert_eq!(anchored_start(&comment_at(2, Some("cd")), "abcd"), Some(2));
+        assert_eq!(
+            anchored_start(&comment_at(2, Some("cd")), "é\nabcd"),
+            Some(4)
+        );
+        let text = format!("x = 1\n{}x = 1\n", "y\n".repeat(150));
+        assert_eq!(
+            anchored_start(&comment_at(306, Some("x = 1")), &text),
+            Some(306)
+        );
+        assert_eq!(
+            anchored_start(&comment_at(3, Some("gone")), "abcd"),
+            Some(3)
+        );
+        assert_eq!(anchored_start(&comment_at(3, None), "abcd"), Some(3));
+        // Far away, the first occurrence wins; overlapping copies are found.
+        let far = format!("{}aaa", "z".repeat(900));
+        assert_eq!(anchored_start(&comment_at(0, Some("aa")), &far), Some(900));
+        let mut sent = comment_at(0, Some("cd"));
+        sent.is_open = false;
+        let lines = file_comment_lines(&[sent], "a.rs", "ab\ncd");
+        assert_eq!(lines[0].0, Some(1), "a sent comment keeps its stored place");
+    }
+
+    #[test]
+    fn edits_resolves_reopens_and_deletes_a_comment() {
+        let transport = RouteTransport::local();
+        transport.ok(
+            "/v1/sessions/s1/comments/c1",
+            r#"{"id":"c1","conversation_id":"s1","path":"a.rs","start_index":0,"end_index":1,"body":"new","status":"addressed","created_at":1,"updated_at":2}"#,
+        );
+        let core = connected(transport);
+        let edit = CommentUpdate {
+            body: Some(" new ".into()),
+            open: Some(false),
+        };
+        let updated = block_on(core.update_session_comment("s1", "c1", &edit)).unwrap();
+        assert!(!updated.is_open);
+        let reopen = CommentUpdate {
+            body: None,
+            open: Some(true),
+        };
+        block_on(core.update_session_comment("s1", "c1", &reopen)).unwrap();
+        block_on(core.delete_session_comment("s1", "c1")).unwrap();
+        let writes = core.transport().writes();
+        assert_eq!(writes[0].method, "PATCH");
+        assert_eq!(
+            body_json(&writes[0]),
+            json!({"body": "new", "status": "addressed"})
+        );
+        assert_eq!(body_json(&writes[1]), json!({"status": "draft"}));
+        assert_eq!(writes[2].method, "DELETE");
+        for empty in [
+            CommentUpdate::default(),
+            CommentUpdate {
+                body: Some(" ".into()),
+                open: None,
+            },
+        ] {
+            assert!(matches!(
+                block_on(core.update_session_comment("s1", "c1", &empty)),
+                Err(SessionError::InvalidInput { .. })
+            ));
+        }
+        assert!(matches!(
+            block_on(core.delete_session_comment("s1", "a/b")),
+            Err(SessionError::InvalidIdentifier { .. })
+        ));
+    }
+
+    #[test]
+    fn sends_comments_as_one_message_and_reopens_them_when_it_fails() {
+        let transport = RouteTransport::local();
+        transport.writable_session("[]");
+        transport.ok(
+            "/v1/sessions/conv_a/comments/send",
+            r#"{"formatted_message":"Please address:\n- a.rs:1 why?","sent_comment_ids":["c1","c2"]}"#,
+        );
+        transport.ok("/v1/sessions/conv_a/events", r#"{"queued":true}"#);
+        let core = connected(transport);
+        let ids = ["c1".to_owned(), "c2".to_owned()];
+        block_on(core.send_comments_to_agent("conv_a", &ids)).unwrap();
+        let writes = core.transport().writes();
+        assert_eq!(body_json(&writes[0]), json!({"comment_ids": ["c1", "c2"]}));
+        assert_eq!(
+            body_json(&writes[1])["data"]["content"][0]["text"],
+            "Please address:\n- a.rs:1 why?"
+        );
+        assert!(matches!(
+            block_on(core.send_comments_to_agent("conv_a", &[])),
+            Err(SessionError::InvalidInput { .. })
+        ));
+
+        let failing = RouteTransport::local();
+        failing.writable_session("[]");
+        failing.ok(
+            "/v1/sessions/conv_a/comments/send",
+            r#"{"formatted_message":"m","sent_comment_ids":["c1"]}"#,
+        );
+        failing.respond(
+            None,
+            "/v1/sessions/conv_a/events",
+            None,
+            Reply::json(400, r#"{"detail":"no"}"#),
+        );
+        failing.ok(
+            "/v1/sessions/conv_a/comments/c1",
+            r#"{"id":"c1","conversation_id":"conv_a","path":"a.rs","body":"b","status":"draft","created_at":1}"#,
+        );
+        let core = connected(failing);
+        assert!(block_on(core.send_comments_to_agent("conv_a", &ids[..1])).is_err());
+        let reopened = core.transport().writes().pop().unwrap();
+        assert_eq!(reopened.method, "PATCH");
+        assert_eq!(body_json(&reopened), json!({"status": "draft"}));
     }
 
     #[test]

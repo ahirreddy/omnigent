@@ -10,6 +10,8 @@ struct CodeTextView: View {
   var review: FileReviewContext?
   /// Opens the comment composer for a span.
   var comment: (FileTextSpan) -> Void = { _ in }
+  /// Shows a comment in the comments panel (a gutter marker's tap).
+  var showComment: (String) -> Void = { _ in }
 
   @Environment(\.colorScheme) private var scheme
 
@@ -35,7 +37,7 @@ struct CodeTextView: View {
               CodeLine(
                 number: index + 1, digits: digits, text: line, highlighter: highlighter,
                 isMarked: markedLine == UInt64(index + 1),
-                comments: commentsByLine[UInt64(index + 1)] ?? []
+                comments: commentsByLine[UInt64(index + 1)] ?? [], showComment: showComment
               )
               .id(index + 1)
               .contextMenu { lineMenu(UInt64(index + 1)) }
@@ -73,9 +75,9 @@ private struct CodeLine: View {
   let highlighter: SyntaxHighlighter?
   let isMarked: Bool
   let comments: [FileCommentLine]
+  let showComment: (String) -> Void
 
   @Environment(\.colorScheme) private var scheme
-  @State private var showsComments = false
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 0) {
@@ -99,7 +101,7 @@ private struct CodeLine: View {
         .accessibilityHidden(true)
     } else {
       Button {
-        showsComments = true
+        if let first = comments.first { showComment(first.id) }
       } label: {
         HStack(spacing: 2) {
           Image(systemName: "text.bubble.fill")
@@ -113,7 +115,6 @@ private struct CodeLine: View {
       }
       .buttonStyle(.plain)
       .padding(.trailing, 10)
-      .popover(isPresented: $showsComments) { LineCommentsPopover(comments: comments) }
       .accessibilityLabel("\(comments.count) comments on line \(number)")
     }
   }

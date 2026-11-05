@@ -90,6 +90,7 @@ extension ConnectionStore {
     }
     guard let core else { return nil }
     let store = WorkspaceStore(sessionID: sessionID, environmentID: environmentID, core: core)
+    store.viewerID = { [weak self] in self?.sessionList.viewerID }
     workspaceStores[sessionID] = store
     return store
   }

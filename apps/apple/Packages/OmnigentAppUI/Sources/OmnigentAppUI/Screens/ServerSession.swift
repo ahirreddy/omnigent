@@ -121,7 +121,9 @@ public final class ServerSession {
     }
   }
 
-  /// Closes `sessionID`: its stream, terminal attaches and workspace browser.
+  /// Closes `sessionID`: its stream, terminal attaches and workspace browser. Unsaved file
+  /// edits are saved first; a workspace whose edits cannot be saved stays, so reopening the
+  /// session shows them and closing the window or quitting asks about them.
   /// - Parameter sessionID: The session.
   public func close(_ sessionID: String) {
     connection.closeConversation(sessionID)
@@ -129,7 +131,17 @@ public final class ServerSession {
     if let terminals = terminalStores.removeValue(forKey: sessionID) {
       for id in terminals.controllers.keys { terminals.close(id) }
     }
-    workspaces[sessionID] = nil
+    if let workspace = workspaces[sessionID], !workspace.unsavedPaths.isEmpty {
+      Task { [weak self] in
+        let unsaved = await workspace.saveAll()
+        guard let self, unsaved.isEmpty, !self.openSessionIDs.contains(sessionID),
+          self.workspaces[sessionID] === workspace
+        else { return }
+        self.workspaces[sessionID] = nil
+      }
+    } else {
+      workspaces[sessionID] = nil
+    }
     panels[sessionID] = nil
   }
 

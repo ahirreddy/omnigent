@@ -126,6 +126,10 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   override func applicationShouldTerminate(_ sender: NSApplication)
     -> NSApplication.TerminateReply
   {
+    askAboutUnsavedEdits(sender) { [self] in finishTerminating(sender) }
+  }
+
+  private func finishTerminating(_ sender: NSApplication) -> NSApplication.TerminateReply {
     services.willTerminate()
     return super.applicationShouldTerminate(sender)
   }

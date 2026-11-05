@@ -45,7 +45,53 @@ extension WorkspaceBrowserModel {
   /// - Throws: The failure to show.
   public func addComment(_ body: String, on span: FileTextSpan) async throws(WorkspaceFailure) {
     try await source.addComment(body, on: span)
-    if let file = file.value, file.path == span.path { await loadComments(for: file) }
+    await reloadComments(on: span.path)
+  }
+
+  // swiftlint:disable discouraged_optional_boolean
+  /// Edits, resolves or reopens a comment on `path`, then reads the file's comments again.
+  /// - Parameters:
+  ///   - id: The comment.
+  ///   - path: Its file.
+  ///   - body: The new text; `nil` keeps it.
+  ///   - open: The new state; `nil` keeps it.
+  /// - Throws: The failure to show.
+  public func updateComment(_ id: String, on path: String, body: String? = nil, open: Bool? = nil)
+    async throws(WorkspaceFailure)
+  {
+    try await source.updateComment(id, body: body, open: open)
+    await reloadComments(on: path)
+  }
+  // swiftlint:enable discouraged_optional_boolean
+
+  /// Deletes a comment on `path`, then reads the file's comments again.
+  /// - Parameters:
+  ///   - id: The comment.
+  ///   - path: Its file.
+  /// - Throws: The failure to show.
+  public func deleteComment(_ id: String, on path: String) async throws(WorkspaceFailure) {
+    try await source.deleteComment(id)
+    await reloadComments(on: path)
+  }
+
+  /// Sends `path`'s open comments to the agent as one message ("Address All"), then reads them
+  /// again. A failed send leaves them open, so the comments are read again then too.
+  /// - Parameter path: The file.
+  /// - Throws: The failure to show.
+  public func sendOpenComments(on path: String) async throws(WorkspaceFailure) {
+    let ids = (comments[path]?.value ?? []).filter(\.isOpen).map(\.id)
+    guard !ids.isEmpty else { return }
+    do {
+      try await source.sendCommentsToAgent(ids)
+    } catch {
+      await reloadComments(on: path)
+      throw error
+    }
+    await reloadComments(on: path)
+  }
+
+  private func reloadComments(on path: String) async {
+    if let file = file.value, file.path == path { await loadComments(for: file) }
   }
 
   /// Finishes the close `pendingClose` waits on: saves first (the tab stays open when that
@@ -71,5 +117,21 @@ extension WorkspaceBrowserModel {
   /// Paths with edits not yet saved.
   public var unsavedPaths: [String] {
     editors.values.filter(\.isDirty).map(\.path).sorted()
+  }
+
+  /// Saves every unsaved edit now, as when a window closes or the app quits or goes to the
+  /// background. Edits held by a conflict stay unsaved.
+  /// - Returns: The paths still unsaved: a save failed or waits on a conflict.
+  @discardableResult
+  public func saveAll() async -> [String] {
+    for editor in editors.values where editor.isDirty && editor.conflict == nil {
+      await editor.save()
+    }
+    return unsavedPaths
+  }
+
+  /// Discards every unsaved edit, keeping the last saved text.
+  public func discardAll() {
+    for editor in editors.values where editor.isDirty || editor.conflict != nil { editor.revert() }
   }
 }
