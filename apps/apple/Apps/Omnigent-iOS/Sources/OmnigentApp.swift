@@ -82,7 +82,8 @@ struct IOSRootView: View {
         ServerRootView(
           session: session, selection: $selection, isWindowFocused: scenePhase == .active,
           tabContext: TabWindowContext(
-            window: UUID(uuidString: windowID) ?? UUID(), persistence: Self.tabPersistence))
+            window: UUID(uuidString: windowID) ?? UUID(), persistence: Self.tabPersistence,
+            browser: IOSBrowser.tabs))
       } else {
         ProgressView()
       }

@@ -1,6 +1,7 @@
 import Foundation
 import OSLog
 import Observation
+import OmnigentAppBrowser
 import OmnigentAppUI
 import OmnigentAuthUI
 import OmnigentBrowser
