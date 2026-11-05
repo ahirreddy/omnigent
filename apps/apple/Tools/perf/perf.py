@@ -11,7 +11,9 @@ permission. See apps/apple/docs/performance.md.
     perf.py idle --app <Omnigent.app> [--seconds 5] [--sample 1]
     perf.py type --app <Omnigent.app> [<session-id>] [--sample 1]  # 20 keystrokes, then deletes
     perf.py shot --app <Omnigent.app> [<file.png>]
+    perf.py drive --app <Omnigent.app> scroll-transcript  # or scroll-sidebar, toggle-panel...
     perf.py suite --app <Omnigent.app> [--runs 3]   # every scenario, medians
+    perf.py suite --app <Omnigent.app> --style cli    # the same with the CLI-style transcript
 """
 
 from __future__ import annotations
@@ -33,10 +35,14 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 CACHE = Path(os.environ.get("TMPDIR", tempfile.gettempdir())) / "omnigent-perf"
 LOG = CACHE / "hitches.log"
+FRAMES = CACHE / "frames.log"
+DRIVE = CACHE / "drive.txt"
 SERVER = "http://127.0.0.1:6767"
 # Waits of at least this long miss two frames at 60 Hz; 100 ms reads as a stall.
 HITCH_MS = 33.0
 HANG_MS = 100.0
+# Extra launch arguments, for example the transcript style (`--style cli`).
+LAUNCH_ARGS: list[str] = []
 
 
 @dataclass
@@ -83,6 +89,61 @@ def parse_log(text: str, start_ms: float, end_ms: float) -> Hitches:
         if start_ms <= float(began) < end_ms:
             waits.append(float(wait))
     return Hitches(waits)
+
+
+@dataclass
+class Frames:
+    """Display frames the main thread started inside a time window (driver.m's frame log)."""
+
+    seconds: float
+    frames: int
+    period_ms: float
+    long: list[float]
+    # The time the frame counts cover (whole 250 ms windows).
+    counted_seconds: float = 0.0
+
+    @property
+    def numbers(self) -> dict[str, float]:
+        period = self.period_ms or 1000 / 60
+        dropped = sum(max(0, round(interval / period) - 1) for interval in self.long)
+        hitch = sum(interval - period for interval in self.long)
+        return {
+            "fps": self.frames / self.counted_seconds if self.counted_seconds else 0.0,
+            "long_frames": len(self.long),
+            "over_16ms": sum(interval > 1000 / 60 for interval in self.long),
+            "dropped": dropped,
+            "hitch_ms_per_s": hitch / self.seconds if self.seconds else 0.0,
+            "worst_frame_ms": max(self.long, default=period),
+        }
+
+    @property
+    def summary(self) -> str:
+        n = self.numbers
+        return (
+            f"{n['fps']:.0f} fps at {1000 / (self.period_ms or 1000 / 60):.0f} Hz, "
+            f"long frames {n['long_frames']:.0f} (>16.7ms {n['over_16ms']:.0f}), "
+            f"dropped {n['dropped']:.0f}, hitch {n['hitch_ms_per_s']:.0f} ms/s, "
+            f"worst frame {n['worst_frame_ms']:.0f}ms"
+        )
+
+
+def parse_frames(text: str, start_ms: float, end_ms: float) -> Frames:
+    """The frames in ``text`` (driver.m lines) inside [start, end)."""
+    frames, windows, period, long = 0, 0, 0.0, []
+    for line in current(text):
+        parts = line.split()
+        if line.startswith("# frames"):
+            stamp = float(parts[2])
+            # Each line counts the 250 ms before it.
+            if start_ms + 250 <= stamp <= end_ms:
+                frames += int(parts[3])
+                windows += 1
+                period = float(parts[4])
+        elif not line.startswith("#"):
+            stamp, interval = float(parts[0]), float(parts[1])
+            if start_ms <= stamp < end_ms:
+                long.append(interval)
+    return Frames((end_ms - start_ms) / 1000, frames, period, long, windows * 0.25)
 
 
 def settle_time(text: str, start_ms: float, quiet_ms: float = 1000.0) -> float:
@@ -138,6 +199,7 @@ def build_tools() -> tuple[str, Path]:
     CACHE.mkdir(parents=True, exist_ok=True)
     dylib, probe = CACHE / "hitch-monitor.dylib", CACHE / "window-probe"
     typist = CACHE / "typist.dylib"
+    driver = CACHE / "driver.dylib"
     builds = {
         dylib: ["clang", "-dynamiclib", "-O2", "-o", dylib, HERE / "hitch-monitor.c"],
         typist: [
@@ -150,6 +212,19 @@ def build_tools() -> tuple[str, Path]:
             "-o",
             typist,
             HERE / "typist.m",
+        ],
+        driver: [
+            "clang",
+            "-dynamiclib",
+            "-fobjc-arc",
+            "-O2",
+            "-framework",
+            "AppKit",
+            "-framework",
+            "QuartzCore",
+            "-o",
+            driver,
+            HERE / "driver.m",
         ],
         probe: [
             "clang",
@@ -166,7 +241,7 @@ def build_tools() -> tuple[str, Path]:
     for output, command in builds.items():
         if not output.exists() or output.stat().st_mtime < command[-1].stat().st_mtime:
             subprocess.run(command, check=True)
-    return f"{dylib}:{typist}", probe
+    return f"{dylib}:{typist}:{driver}", probe
 
 
 def app_pid(app: Path) -> int | None:
@@ -275,6 +350,7 @@ def launch(app: Path, session_id: str | None) -> dict[str, float]:
     tabs_file(bundle_id).parent.mkdir(parents=True, exist_ok=True)
     tabs_file(bundle_id).write_text(json.dumps(saved_tabs()))
     LOG.write_text("")
+    FRAMES.write_text("")
     start = now_ms()
     # Without SwiftUI's saved windows every launch opens one window; the link connects it to the
     # local server and shows the session.
@@ -292,10 +368,15 @@ def launch(app: Path, session_id: str | None) -> dict[str, float]:
             f"DYLD_INSERT_LIBRARIES={libraries}",
             "--env",
             f"OMNIGENT_HITCH_LOG={LOG}",
+            "--env",
+            f"OMNIGENT_FRAME_LOG={FRAMES}",
+            "--env",
+            f"OMNIGENT_DRIVE_FILE={DRIVE}",
             target,
             "--args",
             "-ApplePersistenceIgnoreState",
             "YES",
+            *LAUNCH_ARGS,
         ],
         check=True,
     )
@@ -352,11 +433,12 @@ def open_session(app: Path, session_id: str, sample_seconds: int = 0) -> dict[st
     settled = wait_settled(start)
     cpu = main_cpu_ms(pid) - cpu
     hitches = parse_log(LOG.read_text(), start, start + settled + 1)
+    frames = parse_frames(FRAMES.read_text(), start, start + settled + 1)
     print(
         f"open {session_id[:8]}: settled {settled:.0f}ms, main thread CPU {cpu:.0f}ms; "
-        f"{hitches.summary}"
+        f"{hitches.summary}; {frames.summary}"
     )
-    return {"settled_ms": settled, "main_cpu_ms": cpu, **hitches.numbers}
+    return {"settled_ms": settled, "main_cpu_ms": cpu, **hitches.numbers, **frames.numbers}
 
 
 def stream(app: Path, session_id: str, seconds: int, sampled: bool = False) -> dict[str, float]:
@@ -385,12 +467,17 @@ def stream(app: Path, session_id: str, seconds: int, sampled: bool = False) -> d
         sample(pid, seconds, f"stream-{session_id[:8]}")
     else:
         time.sleep(seconds)
-    hitches = parse_log(LOG.read_text(), start, now_ms())
+    end = now_ms()
+    hitches = parse_log(LOG.read_text(), start, end)
+    frames = parse_frames(FRAMES.read_text(), start, end)
     cpu = main_cpu_ms(pid) - cpu
-    print(f"stream {session_id[:8]} ({seconds}s): main thread CPU {cpu:.0f}ms; {hitches.summary}")
+    print(
+        f"stream {session_id[:8]} ({seconds}s): main thread CPU {cpu:.0f}ms; {hitches.summary}; "
+        f"{frames.summary}"
+    )
     # Let the turn finish so the next run starts idle.
     wait_settled(now_ms())
-    return {"main_cpu_ms": cpu, **hitches.numbers}
+    return {"main_cpu_ms": cpu, **hitches.numbers, **frames.numbers}
 
 
 def type_burst(app: Path, sampled: bool = False, count: int = 20) -> dict[str, float]:
@@ -407,10 +494,73 @@ def type_burst(app: Path, sampled: bool = False, count: int = 20) -> dict[str, f
     else:
         time.sleep(seconds)
     wait_settled(now_ms())
-    hitches = parse_log(LOG.read_text(), start, now_ms())
+    end = now_ms()
+    hitches = parse_log(LOG.read_text(), start, end)
+    frames = parse_frames(FRAMES.read_text(), start, end)
     cpu = main_cpu_ms(pid) - cpu
-    print(f"type {count} characters, then delete: main thread CPU {cpu:.0f}ms; {hitches.summary}")
-    return {"main_cpu_ms": cpu, **hitches.numbers}
+    print(
+        f"type {count} characters, then delete: main thread CPU {cpu:.0f}ms; {hitches.summary}; "
+        f"{frames.summary}"
+    )
+    return {"main_cpu_ms": cpu, **hitches.numbers, **frames.numbers}
+
+
+# Driven scenarios (driver.m steps). Fractions of the window: the sidebar is the left fifth.
+SCENARIOS = {
+    "scroll-transcript": ["scroll 0.6 0.5 -60 90", "scroll 0.6 0.5 60 90"],
+    "scroll-sidebar": ["scroll 0.08 0.6 -60 90", "scroll 0.08 0.6 60 90"],
+    "toggle-sidebar": ["key s ct", "wait 700", "key s ct"],
+    "toggle-panel": ["key ] co", "wait 900", "key ] co"],
+    "resize": ["resize -320 -160 30", "resize 320 160 30"],
+    "palette": ["key k c", "wait 700", "key esc"],
+    "new-session": ["key n c"],
+    "settings": ["key , c", "wait 1500", "key w c"],
+    # Find Session focuses the sidebar's search; each letter filters every session.
+    "search": [
+        "key s co",
+        "wait 300",
+        *[f"key {c}" for c in "perf"],
+        "wait 150",
+        *["key del"] * 4,
+        "wait 300",
+        "key esc",
+    ],
+}
+
+
+def drive(app: Path, name: str, steps: list[str], sampled: bool = False) -> dict[str, float]:
+    """Runs driver steps in the app and reports the main thread and frames meanwhile."""
+    pid = require_monitored(app)
+    wait_settled(now_ms())
+    DRIVE.write_text("\n".join(steps) + "\n")
+    cpu = main_cpu_ms(pid)
+    start = now_ms()
+    subprocess.run(["kill", "-USR2", str(pid)], check=True)
+    seconds = 0.5 + sum(step_seconds(step) for step in steps)
+    if sampled:
+        sample(pid, max(1, round(seconds)), name)
+    else:
+        time.sleep(seconds)
+    # Work that outlasts the steps counts until the main thread is quiet.
+    end = max(now_ms(), start + wait_settled(start))
+    hitches = parse_log(LOG.read_text(), start, end)
+    frames = parse_frames(FRAMES.read_text(), start, end)
+    cpu = main_cpu_ms(pid) - cpu
+    print(f"{name}: main thread CPU {cpu:.0f}ms; {hitches.summary}; {frames.summary}")
+    return {"main_cpu_ms": cpu, **hitches.numbers, **frames.numbers}
+
+
+def step_seconds(step: str) -> float:
+    """How long a driver step takes."""
+    parts = step.split()
+    frame = 1 / 60
+    if parts[0] == "wait":
+        return float(parts[1]) / 1000
+    if parts[0] == "scroll":
+        return frame * (int(parts[4]) + 1)
+    if parts[0] == "resize":
+        return frame * int(parts[3])
+    return 0.05
 
 
 def idle(app: Path, seconds: int, sampled: bool) -> None:
@@ -428,6 +578,7 @@ def suite(app: Path, runs: int, sessions: list[str]) -> None:
 
     - launch: cold start to the first window and to a quiet main thread, on a New Tab;
     - open: a long session from that New Tab (deep link), until the main thread is quiet;
+    - open second: another long session in a second tab, the first staying built;
     - switch: back to the first long session's tab from a second one;
     - type: 20 characters typed into its composer and deleted again;
     - stream: a mock-model reply streamed into the open long session, 12 s.
@@ -436,16 +587,28 @@ def suite(app: Path, runs: int, sessions: list[str]) -> None:
     for _ in range(runs):
         results.setdefault("launch", []).append(launch(app, None))
         results.setdefault("open long", []).append(open_session(app, sessions[0]))
-        open_session(app, sessions[1])
+        results.setdefault("open second", []).append(open_session(app, sessions[1]))
         results.setdefault("switch tab", []).append(open_session(app, sessions[0]))
         results.setdefault("type", []).append(type_burst(app))
         results.setdefault("stream", []).append(stream(app, sessions[0], 12))
+        for name in (
+            "scroll-transcript",
+            "scroll-sidebar",
+            "toggle-sidebar",
+            "toggle-panel",
+            "resize",
+            "palette",
+            "search",
+            "settings",
+            "new-session",
+        ):
+            results.setdefault(name, []).append(drive(app, name, SCENARIOS[name]))
     print(f"\nmedians of {runs} runs ({app}):")
     for scenario, rows in results.items():
         keys = rows[0].keys()
         medians = {key: statistics.median(row[key] for row in rows) for key in keys}
         print(
-            f"  {scenario:11s} "
+            f"  {scenario:17s} "
             + "  ".join(f"{key}={value:.0f}" for key, value in medians.items())
         )
 
@@ -465,7 +628,8 @@ def screenshot(app: Path, path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "command", choices=["launch", "open", "stream", "idle", "type", "shot", "suite"]
+        "command",
+        choices=["launch", "open", "stream", "idle", "type", "shot", "suite", "drive"],
     )
     parser.add_argument("session", nargs="?")
     parser.add_argument("--app", type=Path, required=True, help="the Omnigent.app to measure")
@@ -477,8 +641,15 @@ def main() -> None:
         default=0,
         help="sample for N seconds (stream and idle: any N > 0 samples the whole run)",
     )
+    parser.add_argument(
+        "--style",
+        choices=["chat", "cli"],
+        help="launch with this transcript style (a launch argument; the saved setting is kept)",
+    )
     args = parser.parse_args()
     app = args.app.resolve()
+    if args.style:
+        LAUNCH_ARGS.extend(["-omnigent:transcript-style", args.style])
     if args.command == "launch":
         launch(app, args.session)
     elif args.command == "suite":
@@ -487,6 +658,10 @@ def main() -> None:
         idle(app, args.seconds, args.sample > 0)
     elif args.command == "type":
         type_burst(app, args.sample > 0)
+    elif args.command == "drive":
+        if args.session not in SCENARIOS:
+            raise SystemExit(f"drive needs one of: {', '.join(SCENARIOS)}")
+        drive(app, args.session, SCENARIOS[args.session], args.sample > 0)
     elif args.command == "shot":
         screenshot(app, Path(args.session or CACHE / "window.png"))
     elif args.session is None:
