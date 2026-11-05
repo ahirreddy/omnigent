@@ -161,6 +161,9 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   /// Sending will not become possible here (read-only, archived or closed); the touch composer
   /// shows the reason in place of the field.
   public var isReadOnly = false
+  /// Whether the draft holds more than whitespace, from a host that tracks it, so the screen
+  /// around the composer need not read the draft on every keystroke; `nil` reads the draft.
+  public var hasDraft: Bool?
   /// The output of a local command (`/help`, a usage line), shown above the card.
   public var commandNotice: String?
   /// Why the `/` menu may be incomplete (skill discovery failed or is partial).

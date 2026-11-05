@@ -302,7 +302,7 @@ extension ConversationScreen {
 
   private var canSendDraft: Bool {
     !showsTerminal && composer.availability == .available && composer.delivery == .idle
-      && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && ((composer.hasDraft ?? !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         || !composer.attachments.isEmpty || !composer.mentions.isEmpty)
   }
 

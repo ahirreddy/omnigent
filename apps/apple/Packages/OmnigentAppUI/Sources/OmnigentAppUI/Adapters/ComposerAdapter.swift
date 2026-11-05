@@ -34,6 +34,7 @@ enum ComposerAdapter {
       submitWithCommandReturn: submitWithCommandReturn,
       context: context(store, server: server), canSteer: composer.supportsSteering)
     state.isReadOnly = isReadOnly(store)
+    state.hasDraft = composer.hasDraft
     state.commandNotice = composer.commandNotice
     state.slashCommandsNote = composer.skillsProblem
     state.mentionsNote = composer.mentionProblem

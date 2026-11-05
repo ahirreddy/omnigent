@@ -1,4 +1,6 @@
 import Foundation
+import Observation
+import Synchronization
 import Testing
 
 @testable import OmnigentStores
@@ -44,5 +46,49 @@ struct DraftPersistenceTests {
     #expect(list.draftSessionIDs == [ids[0]])
     store.closeConversation(ids[0])
     store.closeConversation(ids[1])
+  }
+
+  @Test(.timeLimit(.minutes(1))) func hasDraftChangesOnlyWhenTheDraftEmptiesOrFills() async throws {
+    let store = try await PreviewData.connectedDemoStore()
+    let list = store.sessionList
+    try await waitUntil("the sample list") { !list.sessionsByID.isEmpty }
+    let id = try #require(list.sessionsByID.keys.min())
+    let composer = try #require(store.conversation(id)).composer
+    try await waitUntil("the session") { store.conversations[id]?.isHydrated == true }
+    let flips = Mutex(0)
+    func track() {
+      withObservationTracking {
+        _ = composer.hasDraft
+      } onChange: {
+        flips.withLock { $0 += 1 }
+      }
+    }
+    track()
+    composer.text = " \n"
+    #expect(!composer.hasDraft)
+    #expect(flips.withLock { $0 } == 0)
+    composer.text = "H"
+    #expect(composer.hasDraft)
+    track()
+    // Typing on, or adding trailing space, leaves it alone.
+    composer.text = "Hello"
+    composer.text = "Hello \n"
+    #expect(flips.withLock { $0 } == 1)
+    composer.text = ""
+    #expect(!composer.hasDraft)
+    #expect(flips.withLock { $0 } == 2)
+    store.closeConversation(id)
+  }
+
+  @Test func blankDraftsAreWhitespaceAndNewlinesOnly() {
+    #expect(!ComposerStore.isNonBlank(""))
+    #expect(!ComposerStore.isNonBlank(" \t\n\r\u{00A0}\u{2029}"))
+    #expect(ComposerStore.isNonBlank("  x "))
+    // The same rule as trimming whitespace and newlines.
+    for text in ["\u{200B}", "\u{3000}a", "\n\n", "é", "\u{FEFF}"] {
+      #expect(
+        ComposerStore.isNonBlank(text)
+          == !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
   }
 }
