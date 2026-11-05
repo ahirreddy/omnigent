@@ -1,5 +1,7 @@
 import Foundation
+import OmnigentPlatform
 import SwiftUI
+import os
 
 /// One folded segment with what its row needs: message decorations and the turn's duration.
 nonisolated struct SegmentEntry: Hashable, Sendable, Identifiable {
@@ -58,10 +60,15 @@ final class TranscriptLayoutMemo {
     var decorations: DecorationInputs
     var responseIDs: Set<String>
     var entries: [SegmentEntry]
+    /// The CLI blocks of ``entries``, made the first time the CLI style asks (never empty
+    /// once made: the prefix holds at least one turn).
+    var blocks: [CLIBlockEntry] = []
   }
 
   private var inputs: Inputs?
   private var prefix: Prefix?
+  /// ``cachedEntries`` start with the prefix's entries.
+  private var entriesUsePrefix = false
   private var cachedEntries: [SegmentEntry] = []
   private var cachedBlocks: [CLIBlockEntry] = []
   private var hasBlocks = false
@@ -84,25 +91,45 @@ final class TranscriptLayoutMemo {
   func blocks(for state: ConversationViewState) -> [CLIBlockEntry] {
     refresh(state)
     if hasBlocks { return cachedBlocks }
-    let blocks = CLILayout.blocks(
-      cachedEntries.map(\.segment), durations: state.turnDurations, timestamps: state.timestamps,
-      isRunning: state.header.status == .running
+    // A streamed delta changes only the open turn: the settled turns' blocks (each with a
+    // formatted footer) are kept with the prefix.
+    if entriesUsePrefix, var prefix {
+      if prefix.blocks.isEmpty {
+        prefix.blocks = Self.cliBlocks(prefix.entries[...], state: state, closesLastTurn: true)
+        self.prefix = prefix
+      }
+      let tail = cachedEntries[prefix.entries.count...]
+      cachedBlocks = prefix.blocks + Self.cliBlocks(tail, state: state)
+    } else {
+      cachedBlocks = Self.cliBlocks(cachedEntries[...], state: state)
+    }
+    hasBlocks = true
+    return cachedBlocks
+  }
+
+  private static func cliBlocks(
+    _ entries: ArraySlice<SegmentEntry>, state: ConversationViewState,
+    closesLastTurn: Bool = false
+  ) -> [CLIBlockEntry] {
+    CLILayout.blocks(
+      entries.map(\.segment), durations: state.turnDurations, timestamps: state.timestamps,
+      isRunning: state.header.status == .running, closesLastTurn: closesLastTurn
     )
     .map { block in
       CLIBlockEntry(block: block, decorations: Self.cliDecorations(for: block, state: state))
     }
-    cachedBlocks = blocks
-    hasBlocks = true
-    return blocks
   }
 
   private func refresh(_ state: ConversationViewState) {
     let current = Inputs(state)
     guard current != inputs else { return }
+    let signpost = PerformanceSignposts.transcript.beginInterval("layout")
+    defer { PerformanceSignposts.transcript.endInterval("layout", signpost) }
     inputs = current
     computations += 1
     cachedBlocks = []
     hasBlocks = false
+    entriesUsePrefix = false
     let decorations = DecorationInputs(
       lastAnswerID: current.isRunning ? nil : TranscriptView.lastAnswerID(state.rows),
       timestamps: state.timestamps, turnDurations: state.turnDurations,
@@ -123,6 +150,7 @@ final class TranscriptLayoutMemo {
       state.rows[..<split].elementsEqual(prefix.rows)
     {
       prefixReuses += 1
+      entriesUsePrefix = true
       cachedEntries = prefix.entries + Self.entries(tail, state, decorations)
       return
     }
@@ -140,6 +168,7 @@ final class TranscriptLayoutMemo {
     let headEntries = Self.entries(head, state, decorations)
     self.prefix = Prefix(
       rows: prefixRows, decorations: decorations, responseIDs: responses, entries: headEntries)
+    entriesUsePrefix = true
     cachedEntries = headEntries + Self.entries(tail, state, decorations)
   }
 

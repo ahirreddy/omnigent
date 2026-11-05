@@ -85,6 +85,40 @@ struct TranscriptMemoTests {
     #expect(settled.last?.decorations[lastID]?.showsActions == true)
   }
 
+  /// The CLI blocks laid out over the whole transcript at once.
+  static func fullBlocks(_ state: ConversationViewState) -> [CLIBlock] {
+    CLILayout.blocks(
+      TranscriptView.segments(for: state), durations: state.turnDurations,
+      timestamps: state.timestamps, isRunning: state.header.status == .running)
+  }
+
+  @Test("CLI blocks keep the settled turns' blocks across deltas and match a full rebuild")
+  func cliBlocksReuseSettledTurns() {
+    var rows = TranscriptBenchmarks.rows(turns: 12)
+    for index in rows.indices {
+      rows[index].createdAt = Date(timeIntervalSinceReferenceDate: 7e8 + Double(index) * 30)
+    }
+    rows[rows.count - 1].isStreaming = true
+    let memo = TranscriptLayoutMemo()
+    var state = Self.conversation(rows: rows)
+    state.turnDurations = ["r3": 4]
+    #expect(memo.blocks(for: state).map(\.block) == Self.fullBlocks(state))
+    for word in ["more", "words"] {
+      state.rows[state.rows.count - 1].text += " \(word)"
+      let blocks = memo.blocks(for: state)
+      #expect(blocks.map(\.block) == Self.fullBlocks(state))
+      // Settled turns carry their footers; the open one has none yet.
+      #expect(blocks.contains { $0.id == "footer:a3" })
+      #expect(!blocks.contains { $0.id == "footer:a12" })
+    }
+    #expect(memo.prefixReuses == 2)
+    state.rows[state.rows.count - 1].isStreaming = false
+    state.header.status = .idle
+    let settled = memo.blocks(for: state)
+    #expect(settled.map(\.block) == Self.fullBlocks(state))
+    #expect(settled.contains { $0.id == "footer:a12" })
+  }
+
   @Test("a steer inside a response keeps its Worked for on the answer after it")
   func steerDecoratesAcrossTheMessage() {
     let rows = [

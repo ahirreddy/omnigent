@@ -1,5 +1,7 @@
 import Foundation
 import Observation
+import OmnigentPlatform
+import os
 
 /// Hands the transcript its rows at most once per ``interval``. A streamed reply changes the
 /// rows for every delta (30 or more a second), and each change costs a whole SwiftUI update of
@@ -96,5 +98,6 @@ final class TranscriptRowsPacer {
     latest = track(reader)
     lastPublished = clock.now
     published += 1
+    PerformanceSignposts.transcript.emitEvent("rows published")
   }
 }
