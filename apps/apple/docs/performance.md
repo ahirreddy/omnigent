@@ -30,9 +30,10 @@ main queue every 4 ms and logs every wait of 12 ms or more) and needs no Accessi
 
 ```sh
 app=apps/apple/build/DerivedData/Build/Products/Debug/Omnigent.app
-just apple-perf suite --app "$app" --runs 3   # launch, open, switch, stream; prints medians
+just apple-perf suite --app "$app" --runs 3   # launch, open, switch, type, stream; medians
 just apple-perf launch --app "$app" [<session-id>]
 just apple-perf open --app "$app" <session-id> [--sample 6]
+just apple-perf type --app "$app" [--sample 1]
 just apple-perf stream --app "$app" <session-id> --seconds 12 [--sample 1]
 just apple-perf shot --app "$app" /tmp/window.png
 ```
@@ -41,6 +42,11 @@ just apple-perf shot --app "$app" /tmp/window.png
   same), starts it with `-ApplePersistenceIgnoreState YES` and reports time to the first window,
   time until the main thread is quiet for a second, and main-thread CPU.
 - `open` deep-links a session; `suite` opens long transcript 1, then 2, then switches back to 1.
+  A deep link costs about 0.2 s of main-thread CPU by itself (activating the app and window), so
+  `switch` includes it.
+- `type` makes the open session's composer first responder and types 20 characters, then
+  deletes them, one key every 80 ms (`typist.m`, injected with the monitor: on `SIGUSR1` it posts
+  key events to the app's own queue, which needs no Accessibility permission).
 - `stream` posts a message to the session (the mock model streams its canned reply) and reports
   main-thread CPU, hitches (waits of 33 ms or more), hangs (100 ms or more) and blocked time.
 - `--sample` also runs `sample` and prints the main thread's on-CPU share; the report is in
@@ -48,7 +54,7 @@ just apple-perf shot --app "$app" /tmp/window.png
   without it. Read the main thread's call tree in the report, or `sample <pid> 5` by hand, to
   see where the time goes; `Self._printChanges()` in a view body shows why it re-rendered.
 
-Typing in the composer, scrolling and opening the right panel need synthetic input, which needs
+Scrolling and opening the right panel need synthetic input from another process, which needs
 Accessibility permission; they are covered by the package benchmarks below instead.
 
 ## Package benchmarks
@@ -103,17 +109,61 @@ What changed:
 - `TranscriptLayoutMemo` reuses the folded turns before the last user message and folds only the
   open turn for each streamed delta.
 
+## Second pass (November 2026)
+
+Two rounds of `suite --runs 3` on an otherwise idle machine (load average about 5; the first
+pass ran at 500-900), medians, Debug, main-thread CPU. The baseline is the first pass's build.
+
+| Scenario | Before | After |
+| --- | --- | --- |
+| Launch | 0.61 / 0.62 s | 0.62 / 0.62 s |
+| Open a 500-turn transcript | 0.92 / 0.93 s | 0.97 / 0.93 s |
+| Open a 650-turn one as the second tab (the first stays built) | 1.22-1.24 s | 1.43-1.51 s |
+| Switch back to the first tab (with the 0.2 s deep link) | 0.67 / 0.66 s | 0.55 / 0.57 s |
+| Type 20 characters and delete them | 1.14 / 1.15 s | 0.52 / 0.58 s |
+| Stream a reply for 12 s | 1.87 / 1.83 s | 1.70 / 1.65 s |
+| Stream: CPU per half second while text arrives | 140-240 ms | 100-210 ms |
+| Stream: transcript renders per second | 32 | 19-20 |
+| Memory with three long chats open (`footprint`) | 178 MB | 223 MB |
+
+Under heavy load (load average 200-700) the same switch went from 1.35 s to 1.07 s.
+
+What changed:
+
+- **Recent chats stay built** (`KeptAliveTabs`, `TabStore.keptAlive`): the selected tab and the
+  two most recently shown chats or side chats stay mounted, hidden and inert, so switching back
+  shows them as they were, scroll position included. A hidden tab publishes no toolbar,
+  commands or right panel, gives up the composer's focus, ignores the window's redraws and stops
+  reading rows. Switching no longer builds any transcript row; what is left is the deep link,
+  the toolbar swapping its items and the sidebar's selection. The cost: hidden tabs' views stay
+  in the window, so opening another long session while two are kept costs up to 0.25 s more,
+  and memory grows by about 20 MB per kept long chat.
+- **Typing re-renders only the composer.** The draft reaches the composer as `ComposerDraft`
+  (accessors) instead of a `Binding`, which reads the text when it is made, so the container
+  and screen no longer track the text. The screen hears only when the draft gains or loses
+  text. Per keystroke: about 28 ms before, 13 ms after.
+- **The streaming transcript updates at most 20 times a second** (`TranscriptRowsPacer`). The
+  first change after a quiet spell shows at once and a burst lands together 50 ms later.
+
 ## Where the time still goes
 
-- Opening a long session costs about 3 s of main-thread CPU in Debug and switching back to its
-  tab about 1.5 s: the tab's content is rebuilt and SwiftUI lays out the transcript's lazy rows
-  (environment lookups, text layout and the selectable-text overlays dominate the samples; app
-  code is under 2%). Keeping recently used tabs alive, or fewer views per markdown block, are the
-  next levers.
-- Streaming into a long session uses 30-40% of the main thread in Debug: each delta re-renders the
-  transcript body (only the streaming row's views change) and its markdown block views.
+- Opening a long session (about 0.9 s here, 2-3 s under load) is SwiftUI building and laying
+  out about 27 transcript segments and their markdown: code blocks' text layout (one typesetter
+  pass over each whole block) is the largest single cost, then view and attribute setup and
+  the selectable-text overlays (one AppKit view per selectable `Text`, 3-5% of samples). App
+  code stays under 2%. The window re-renders the conversation 20-30 times while a session loads
+  (header, history pages, configuration, agent info, pull requests); `ConnectedServerView`
+  reads every chat's status line for the tab tooltip, so each section change rebuilds the shell.
+  Moving that read into the tab item would cut those passes.
+- Switching tabs still spends about 0.3 s on the toolbar, the sidebar selection and window
+  layout. Hoisting the conversation's toolbar out of the tab would keep its items stable.
+- While a reply streams, each paced render still costs 10-15 ms in Debug, spread over SwiftUI's
+  graph update, the lazy stack's layout and the text overlays; the whole transcript body
+  (scroll modifiers, overlays, the row list) is re-evaluated each time. Reading the rows inside
+  the scroll view's content instead of in `TranscriptView` would leave its chrome untouched.
 - A changed session-list row still sends every session through the core twice (filter and
-  totals), about 30 ms with 650 sessions; an incremental filter in the core would remove it.
+  totals), about 30 ms with 650 sessions. A turn changes its session's row a few times, so it
+  was not worth an incremental core API in this pass.
 - Debug is several times slower than Release for this generic SwiftUI and value-type code;
   measure a Release build (`xcodebuild -configuration Release`) before chasing a Debug-only
   cost.
@@ -177,10 +227,8 @@ What changed for iOS:
   `fork` closure bindings make every pass count as a change. Reading `transcriptTitleMenu` as
   `@Entry` values or not at all, or passing key-path bindings, did not stop it; removing the
   navigation title, title menu and toolbar items did.
-- **Typing.** SwiftUI reads the draft binding while updating `ConversationScreen`'s inputs, so
-  the container tracks the composer's text and each keystroke re-renders the whole screen
-  (transcript wrapper, right panel, toolbar). Not reading the draft in the screen's body is not
-  enough; the draft has to reach the composer without passing through the screen's inputs.
+- **Typing** (fixed in the Mac second pass, `ComposerDraft`): SwiftUI read the draft binding
+  while updating `ConversationScreen`'s inputs, so each keystroke re-rendered the whole screen.
 - Not measured here: rotating the iPad, split widths and keyboard show and hide (no input
   access to the iPad simulator in this pass), and the transcript showing under the dock while
   the iPhone layout settles.
