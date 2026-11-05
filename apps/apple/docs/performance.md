@@ -220,7 +220,7 @@ What changed for iOS:
 
 ### Where the time still goes
 
-- **The conversation's toolbar loop (P0).** With a conversation open, `ConversationScreen`
+- **The conversation's toolbar loop (P0, fixed in round 4: see below).** With a conversation open, `ConversationScreen`
   re-renders, re-vends its navigation bar items, the bar's hosting controllers update traits
   and environment, and that re-renders `ConversationScreen` again
   (`ToolbarBridge.preferencesDidChange` in every sample). The screen's `draft`, `mode` and
@@ -232,3 +232,137 @@ What changed for iOS:
 - Not measured here: rotating the iPad, split widths and keyboard show and hide (no input
   access to the iPad simulator in this pass), and the transcript showing under the dock while
   the iPhone layout settles.
+
+## iPhone and iPad, frames and scenarios (round 4)
+
+Instruments, xctrace and XCUITests don't run on the build machine, so Debug builds carry their
+own frame monitor and a driver for the motion a user would make.
+
+### Tools
+
+- **Frame monitor** (`OmnigentPlatform/FrameMonitor.swift`, shared with macOS through
+  `NSScreen.displayLink`). Launched with `-OmnigentFrameMonitor YES`, a display link logs
+  `FrameStats` once a second and over an interval marked by the Darwin notifications
+  `ai.omnigent.perf.begin` and `ai.omnigent.perf.end`: frames per second, the hitch-time ratio
+  (milliseconds a frame arrived later than one refresh, per second), dropped refreshes, frames
+  over 8.3, 16.7 and 33 ms, the worst frame, and how often the conversation screen and
+  transcript rendered. It also logs MetricKit payloads (devices only). Read the lines with
+  `xcrun simctl spawn <udid> log stream --predicate 'subsystem == "ai.omnigent.perf"'`.
+  `simctl spawn notifyutil` can take tens of seconds on a loaded machine, so the app also polls
+  `tmp/perf-command` in its data container every 50 ms: appending a `<sequence> <name>` line
+  there posts `ai.omnigent.perf.<name>` inside the app at once.
+- **Perf driver** (`Apps/Omnigent-iOS/Sources/PerfDriver.swift`), `-OmnigentPerfDriver YES`:
+  Darwin notifications (`xcrun simctl spawn <udid> notifyutil -p ai.omnigent.perf.<name>`)
+  scroll the view under the window's center (`scroll`) or iPad's sidebar (`scroll.leading`) at
+  2,400 pt/s for 3 s up and 3 s back, type 20 characters into the composer (`type`) or the
+  palette's field (`type.top`) and delete them, show and hide the keyboard (`keyboard`), rotate
+  (`rotate`, iPhone only) and hide or show iPad's sidebar (`sidebar`). Debug-only hooks open a
+  session without the system's "Open in" prompt (`open`, reading the id from `tmp/perf-link.txt`
+  in the app's container), New Session (`newsession`), the session list (`list`), a Settings page
+  (`settings.<page>`, `settings.usage`, `settings.close`), the palette (`palette`) and the right
+  panel's tabs (`panel.<tab>`, `panel.close`, `browser`).
+- **`Tools/perf/ios_perf.py`** runs the scenarios on a simulator with the build installed and
+  prints main-thread CPU (`ps -M`), time until the main thread is quiet, and the interval's
+  frame stats, with medians over runs:
+
+```sh
+python3 apps/apple/Tools/perf/ios_perf.py launch --udid <udid> --runs 3
+python3 apps/apple/Tools/perf/ios_perf.py suite --udid <udid> --runs 3 [--style cli] [--ipad]
+python3 apps/apple/Tools/perf/ios_perf.py run open scroll stream --udid <udid> [--sample]
+```
+
+`--style cli` launches with `-omnigent:transcript-style cli`; `--ipad` adds rotate, sidebar and
+panel and scrolls the sidebar. iPad runs use long transcripts 2 and 3 and iPhone runs 1 and 2
+(`--transcript`), so two simulators can stream at once.
+
+Caveats: the simulator draws at 60 Hz on the Mac's GPU, and the monitor sees main-thread
+(commit) hitches, not the render server's, so frame rates are not a device's; ProMotion's 8.3 ms
+budget shows only as a count. The lower-end simulators (iPhone 17e, iPad A16) run on the same
+Mac CPU as the others: they differ in screen size, not speed. Rotation is refused on iPad
+("the current windowing mode does not allow programmatic changes"), and dragging a split-view
+divider or a window edge needs input the simulator does not take from a script, so iPad
+rotation and resizing are measured through the sidebar's show and hide, which changes the
+detail's width the same way.
+
+### Results (November 2026)
+
+Debug builds, iOS 27.2 simulators, against the large seed; medians of 3 runs (`ios_perf.py
+suite`). Each cell is main-thread CPU, frames per second, hitch-time ratio (ms/s) and the worst
+frame over the scenario's interval. "Before" is the round-3 build with the tools added; its CLI
+runs and most iPad scenarios could not finish, because opening a transcript started the loop
+below and the main thread stayed busy past the script's three-minute limit. The machine's load
+average was 90-330 for the iPhone "before" runs and 300-1,000 for the rest (other agents'
+builds), so differences under about 50% between before and after are noise; the loops are not.
+
+| Scenario | iPhone chat before | iPhone chat after | iPhone CLI after | iPad chat before | iPad chat after | iPad CLI after |
+| --- | --- | --- | --- | --- | --- | --- |
+| Scroll the session list (650 sessions), 6 s | 0.44 s, 60 fps, 0, 17 ms | 0.48 s, 60 fps, 3, 33 ms | 0.44 s, 58 fps, 34, 77 ms | 0.58 s, 59 fps, 11, 229 ms | 0.46 s, 60 fps, 3, 33 ms | 0.47 s, 60 fps, 3, 33 ms |
+| Search: open the palette, type 20 characters, delete, close | 1.98 s, 46 fps, 221, 750 ms | 1.18 s, 47 fps, 220, 830 ms | 1.00 s, 49 fps, 179, 764 ms | 2.49 s, 54 fps, 95, 1750 ms | 1.94 s, 43 fps, 282, 800 ms | 1.14 s, 48 fps, 204, 817 ms |
+| Settings sheet, push Appearance, close | 0.92 s, 54 fps, 102, 386 ms | 0.96 s, 52 fps, 141, 415 ms | 0.72 s, 54 fps, 102, 327 ms | 2.72 s, 48 fps, 201, 22077 ms | 1.27 s, 50 fps, 174, 502 ms | 1.28 s, 49 fps, 187, 492 ms |
+| Usage page | 0.32 s, 55 fps, 89, 219 ms | 0.29 s, 45 fps, 178, 210 ms | 0.26 s, 49 fps, 184, 212 ms | 1.39 s, 53 fps, 114, 6542 ms | 0.23 s, 51 fps, 155, 218 ms | 0.34 s, 46 fps, 235, 325 ms |
+| Open a long transcript | 19.79 s, 9 fps, 847, 19033 ms (loop: 842 renders) | 2.04 s, 16 fps, 738, 1179 ms | 1.52 s, 22 fps, 641, 605 ms | 46.62 s, 35 fps, 409, 44471 ms (loop: 1202 renders) | 2.23 s, 20 fps, 672, 898 ms | 2.32 s, 19 fps, 685, 1000 ms |
+| Open a second one (first kept alive) | 1.73 s, 40 fps, 340, 390 ms | 1.17 s, 29 fps, 510, 458 ms | 1.08 s, 28 fps, 534, 389 ms | - | 1.75 s, 30 fps, 505, 907 ms | 1.49 s, 27 fps, 552, 858 ms |
+| Switch back to the first | 0.73 s, 45 fps, 241, 617 ms | 0.84 s, 32 fps, 468, 671 ms | 0.32 s, 46 fps, 230, 316 ms | - | 0.63 s, 40 fps, 328, 500 ms | 0.44 s, 41 fps, 318, 429 ms |
+| Fling the transcript up and back, 6 s | 1.18 s, 58 fps, 32, 142 ms | 1.48 s, 52 fps, 138, 301 ms | 0.63 s, 59 fps, 12, 43 ms | - | 1.61 s, 49 fps, 183, 305 ms | 0.78 s, 58 fps, 36, 124 ms |
+| Type 20 characters in the composer, delete them | 0.94 s, 54 fps, 98, 172 ms | 1.26 s, 48 fps, 201, 235 ms | 0.84 s, 53 fps, 113, 140 ms | - | 1.43 s, 44 fps, 256, 357 ms | 1.11 s, 50 fps, 172, 246 ms |
+| Keyboard show and hide | 0.40 s, 56 fps, 68, 102 ms | 0.41 s, 55 fps, 76, 163 ms | 0.24 s, 57 fps, 50, 93 ms | - | 0.86 s, 47 fps, 220, 327 ms | 0.68 s, 50 fps, 166, 168 ms |
+| Stream a reply, 12 s (transcript renders/s) | 1.58 s, 56 fps, 64, 175 ms, 8/s | 1.94 s, 54 fps, 92, 243 ms, 5/s | 1.69 s, 55 fps, 76, 178 ms, 8/s | - | 2.96 s, 49 fps, 172, 471 ms, 8/s | 2.64 s, 51 fps, 147, 501 ms, 9/s |
+| iPad: hide and show the sidebar (resize) | - | - | - | - | 1.55 s, 27 fps, 546, 549 ms | 1.40 s, 42 fps, 305, 434 ms |
+| iPad: right panel Files, Changes, PRs, close | - | - | - | - | 1.16 s, 52 fps, 136, 300 ms | 0.93 s, 54 fps, 96, 198 ms |
+
+Also on iPhone (chat, after): rotating with a long transcript open and back costs 2.6 s, 27 fps,
+553 ms/s and a 1.2 s frame (the transcript re-lays out at each width); New Session from the list
+0.65 s, 37 fps, 551 ms worst; a browser tab from a conversation 0.49 s, 41 fps, 412 ms worst.
+
+Launch to the idle session list (no saved tabs, frame monitor off): main thread busy for 3.3-4.5 s
+of CPU before and 1.3-5.3 s after (the load swung too much to compare), then 5-9% idle CPU on
+both, from other sessions' server events. Lower-end simulators (iPhone 17e, iPad A16): not
+measured this round; CoreSimulator stopped answering `simctl install` on the loaded machine, and
+they run on the same Mac CPU as the others, so they would only differ in screen size. Rotation:
+iPhone rotates (`rotate`); iPad refuses programmatic rotation in its windowing mode, so the
+sidebar row stands in for rotating and resizing. Side chats open as chat tabs, so "open a second
+one" and "switch back" cover them. A second iPad window (`-OmnigentOpenWindow <session>`) builds
+the same views as a tab.
+
+What changed:
+
+- **Bindings that compare equal (the P0 loop).** SwiftUI treats a `Binding` made from closures,
+  from `Bindable` or from `.constant` as changed on every update. The window's navigation bar and
+  trait updates re-delivered the environment, each pass re-rendered every view holding such a
+  binding, and those views re-vended bar items or menus, which updated the bar again. On
+  iPhone that held the main thread for 10-45 s (300-1,200 renders) whenever a long session
+  opened; on iPad a second chat kept the main thread at 100% indefinitely after a reply.
+  The conversation's Chat/Terminal mode (`ConversationModeRoute`), fork sheet
+  (`ForkFlow.sheet`) and composer draft (`ComposerTextSource`, `ComposerDraft(binding:)`) are
+  now key-path projections of `@State` objects, and a hidden tab's right panel gets a stored
+  `false`. Opening a long session now renders the screen 16-20 times.
+- **The palette's state is made only while it shows.** The window root sorted every session into
+  a palette entry on each render and read the session list to do it, so each list change from
+  the server re-rendered the root; the palette also ran its search three or four times per
+  keystroke.
+
+Gaps from the code review, measured: the iOS composer is a single glass surface without a
+shadow (the glass-plus-shadow stack is the Mac's pill only), and while a reply streams the
+transcript's bottom-follow `scrollTo` did not appear in 883 main-thread samples, so neither was
+changed here. The Mac app does not start the frame monitor yet: calling
+`FrameMonitor.startIfRequested()` at launch is all it needs.
+
+### Where the time still goes (iPhone and iPad)
+
+- **Opening a long session** costs 1.5-2.3 s of main-thread time in Debug, nearly all SwiftUI
+  building the visible rows' markdown and code blocks, with one 0.6-1.2 s frame while the
+  transcript first lays out. Switching back to a kept tab costs 0.3-0.8 s.
+- **Fast scrolling a long chat transcript** drops to 49-52 fps with frames up to 0.3 s as rows
+  with code blocks and tables materialize (markdown layout, the Mac performance stream's area);
+  the CLI transcript holds 58-59 fps.
+- **Keyboard show and hide** cost 0.35-0.45 s each on iPad, mostly UIKit's own input-view
+  machinery; the sidebar's collection view also updates.
+- **Hiding or showing iPad's sidebar** (the proxy for rotation and split resizing) re-lays out
+  the transcript at the new width: about 1.5 s and frames of 0.5 s.
+- **Idle CPU is not zero** while other sessions on the server change: each session event
+  updates `SessionListStore` and the sidebar (3-7% here, with other agents' sessions busy).
+- The side-chat tab reads its parent conversation's rows in its body, so it re-renders on every
+  streamed delta of the parent.
+- iPhone apps may draw above 60 Hz on ProMotion devices only with
+  `CADisableMinimumFrameDurationOnPhone` in Info.plist; without it SwiftUI animations there
+  are capped at 60 Hz (UIKit scrolling is not). Not changed: the simulator can't measure it.
