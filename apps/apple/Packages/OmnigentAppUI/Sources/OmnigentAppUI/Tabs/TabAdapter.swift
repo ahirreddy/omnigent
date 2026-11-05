@@ -127,8 +127,7 @@ enum TabAdapter {
       item.link = SidebarAdapter.webURL(server: connection.connectedServer, sessionID: id)
       // The titlebar has no status line of its own; the selected chat's tooltip carries it.
       if isSelected, let conversation = connection.conversations[id] {
-        item.statusDetail =
-          SessionStatusLine(ConversationAdapter.screenState(conversation, summary: summary)).text
+        item.statusDetail = ConversationAdapter.statusLine(conversation, summary: summary).text
       }
     case .harness:
       item.title = summary.map { "\($0.title) (agent)" } ?? tab.title ?? "Agent Terminal"

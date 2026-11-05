@@ -26,7 +26,7 @@ public final class SessionListStore {
   /// the server's per-viewer read state, with this device's marks as the fallback. Opening or
   /// focusing a session (`ConnectionStore.setView`) marks it seen.
   public var unreadIDs: Set<String> = [] {
-    didSet { recompute() }
+    didSet { if unreadIDs != oldValue { recompute() } }
   }
   /// The sessions matching ``searchText`` and ``filter``: pinned first, then most recent.
   public private(set) var visible: [SessionSummary] = []
@@ -34,11 +34,11 @@ public final class SessionListStore {
   public private(set) var isLoaded = false
   /// Search text, matched by the core.
   public var searchText = "" {
-    didSet { recompute() }
+    didSet { if searchText != oldValue { recompute() } }
   }
   /// Which sessions show.
   public var filter: SessionFilter = .all {
-    didSet { recompute() }
+    didSet { if filter != oldValue { recompute() } }
   }
   /// The last list failure, until the next successful load.
   public private(set) var lastError: CoreError?
@@ -81,6 +81,24 @@ public final class SessionListStore {
   }
 
   @ObservationIgnored private var nextToken: UInt64 = 0
+
+  /// What the derived values were last computed from, so an unchanged list skips the core.
+  private struct Inputs: Equatable {
+    var sessions: [String: SessionSummary]
+    var searchText: String
+    var filter: SessionFilter
+    var unreadIDs: Set<String>
+  }
+
+  /// A session's attention and the row and read state it came from.
+  private struct ComputedAttention {
+    var session: SessionSummary
+    var isUnread: Bool
+    var attention: SessionAttention
+  }
+
+  @ObservationIgnored private var computedFrom: Inputs?
+  @ObservationIgnored private var computedAttention: [String: ComputedAttention] = [:]
 
   /// Creates an empty list.
   public init() {}
@@ -268,12 +286,35 @@ public final class SessionListStore {
       // An answered decision clears its request now; the next server row confirms the count.
       if expectation.status != .needsResponse { sessions[id]?.pendingRequests = 0 }
     }
-    sessionsByID = sessions
+    let inputs = Inputs(
+      sessions: sessions, searchText: searchText, filter: filter, unreadIDs: unreadIDs)
+    guard inputs != computedFrom else { return }
+    computedFrom = inputs
+    // Each assignment notifies every view that read the property, even with an equal value: the
+    // sidebar, tab strip, menu bar and Dock would redraw for every server row.
+    if sessions != sessionsByID { sessionsByID = sessions }
     let all = Array(sessions.values)
-    visible = filterSessions(sessions: all, text: searchText, filter: filter)
-    attentionByID = sessions.mapValues {
-      sessionAttention(session: $0, isUnread: unreadIDs.contains($0.id))
+    let shown = filterSessions(sessions: all, text: searchText, filter: filter)
+    if shown != visible { visible = shown }
+    // One core call per changed session, not one per known session for every row that arrives.
+    var computed: [String: ComputedAttention] = [:]
+    computed.reserveCapacity(sessions.count)
+    for (id, session) in sessions {
+      let isUnread = unreadIDs.contains(id)
+      if let previous = computedAttention[id], previous.isUnread == isUnread,
+        previous.session == session
+      {
+        computed[id] = previous
+      } else {
+        computed[id] = ComputedAttention(
+          session: session, isUnread: isUnread,
+          attention: sessionAttention(session: session, isUnread: isUnread))
+      }
     }
-    attentionTotals = OmnigentCoreFFI.attentionTotals(sessions: all, unreadIds: Array(unreadIDs))
+    computedAttention = computed
+    let attention = computed.mapValues(\.attention)
+    if attention != attentionByID { attentionByID = attention }
+    let totals = OmnigentCoreFFI.attentionTotals(sessions: all, unreadIds: Array(unreadIDs))
+    if totals != attentionTotals { attentionTotals = totals }
   }
 }

@@ -15,10 +15,7 @@ enum ConversationAdapter {
   static func state(
     _ store: ConversationStore, summary: OmnigentCoreFFI.SessionSummary?
   ) -> ConversationViewState {
-    let header =
-      store.header.map(OmnigentUIComponents.SessionHeader.init)
-      ?? OmnigentUIComponents.SessionHeader(
-        id: store.sessionID, title: summary?.title ?? "Loading\u{2026}")
+    let header = Self.header(store, summary: summary)
     return ConversationViewState(
       revision: store.revision, header: header,
       rows: store.rows.map(OmnigentUIComponents.Row.init),
@@ -43,10 +40,7 @@ enum ConversationAdapter {
   static func screenState(
     _ store: ConversationStore, summary: OmnigentCoreFFI.SessionSummary?
   ) -> ConversationViewState {
-    let header =
-      store.header.map(OmnigentUIComponents.SessionHeader.init)
-      ?? OmnigentUIComponents.SessionHeader(
-        id: store.sessionID, title: summary?.title ?? "Loading\u{2026}")
+    let header = Self.header(store, summary: summary)
     var state = ConversationViewState(
       header: header,
       decisions: store.decisions.cards.map(OmnigentUIComponents.DecisionCard.init),
@@ -63,6 +57,38 @@ enum ConversationAdapter {
       isEmpty: digest.isEmpty, lastInterrupted: digest.lastInterrupted,
       activityTitle: digest.activityTitle)
     return state
+  }
+
+  /// The session's status line (``SessionStatusLine``). It reads only the header, decisions,
+  /// sections and transcript digest, so a view showing it (the tab strip's tooltip) does not
+  /// redraw for the turn timer, the link or history paging.
+  /// - Parameters:
+  ///   - store: The conversation.
+  ///   - summary: Its session-list row, for the title before the header arrives.
+  /// - Returns: The line.
+  static func statusLine(
+    _ store: ConversationStore, summary: OmnigentCoreFFI.SessionSummary?
+  ) -> SessionStatusLine {
+    let header = Self.header(store, summary: summary)
+    var state = ConversationViewState(
+      header: header,
+      decisions: store.decisions.cards.map(OmnigentUIComponents.DecisionCard.init),
+      decisionPhases: decisionPhases(store.decisions),
+      sections: store.sections.map(OmnigentUIComponents.EventSection.init))
+    let digest = store.transcriptDigest
+    state.transcriptStatus = TranscriptStatus(
+      isEmpty: digest.isEmpty, lastInterrupted: digest.lastInterrupted,
+      activityTitle: digest.activityTitle)
+    return SessionStatusLine(state)
+  }
+
+  /// The store's header, or a placeholder titled from the session-list row until it arrives.
+  private static func header(
+    _ store: ConversationStore, summary: OmnigentCoreFFI.SessionSummary?
+  ) -> OmnigentUIComponents.SessionHeader {
+    store.header.map(OmnigentUIComponents.SessionHeader.init)
+      ?? OmnigentUIComponents.SessionHeader(
+        id: store.sessionID, title: summary?.title ?? "Loading\u{2026}")
   }
 
   /// The first history read, or a page of older history, is in flight.
