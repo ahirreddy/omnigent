@@ -42,6 +42,7 @@
     private var observers: [Int32] = []
     private var activation: (any NSObjectProtocol)?
     private let metrics = MetricKitLog()
+    private let commands = PerfCommandFile()
 
     /// Starts the monitor when the launch argument asks for it.
     /// - Parameter defaults: Where launch arguments land; `standard` by default.
@@ -94,6 +95,7 @@
         DarwinNotifications.observe("ai.omnigent.perf.begin") { Self.begin("marked") },
         DarwinNotifications.observe("ai.omnigent.perf.end") { Self.end() },
       ]
+      commands.start()
       // Frames stop while the app is in the background; that pause is not a hang.
       #if os(iOS)
         let activated = UIApplication.didBecomeActiveNotification

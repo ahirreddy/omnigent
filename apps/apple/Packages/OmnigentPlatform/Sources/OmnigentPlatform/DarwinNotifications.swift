@@ -1,5 +1,7 @@
 #if DEBUG
   import Dispatch
+  import Foundation
+  import OSLog
   public import SwiftUI
   import notify
 
@@ -61,6 +63,69 @@
           tokens.forEach(DarwinNotifications.cancel)
           tokens = []
         }
+    }
+  }
+
+  /// A faster channel than `simctl spawn notifyutil` (which takes tens of seconds on a busy
+  /// machine): a script appends `<sequence> <name>` lines to `tmp/perf-command` in the app's
+  /// container, and the app posts `ai.omnigent.perf.<name>` itself for each new sequence.
+  @MainActor
+  final class PerfCommandFile {
+    private static let logger = Logger(subsystem: FrameMonitor.subsystem, category: "commands")
+    private let file = FileManager.default.temporaryDirectory.appending(path: "perf-command")
+    private var lastSequence: Int?
+    private var timer: Timer?
+
+    /// Checks the file every 50 ms.
+    func start() {
+      timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+        MainActor.assumeIsolated { self?.check() }
+      }
+    }
+
+    private func check() {
+      let text: String
+      do {
+        text = try String(contentsOf: file, encoding: .utf8)
+      } catch CocoaError.fileReadNoSuchFile {
+        return
+      } catch {
+        Self.logger.error(
+          "Reading the command file: \(error.localizedDescription, privacy: .public)")
+        return
+      }
+      let commands = Self.commands(in: text)
+      guard let newest = commands.last?.sequence else { return }
+      defer { lastSequence = newest }
+      // Commands left from an earlier launch are not for this one.
+      if lastSequence == nil, let modified = Self.modified(file),
+        modified < Date().addingTimeInterval(-2)
+      {
+        return
+      }
+      for command in commands where command.sequence > (lastSequence ?? 0) {
+        unsafe notify_post("ai.omnigent.perf.\(command.name)")
+      }
+    }
+
+    /// The `<sequence> <name>` lines in `text`, in order.
+    static func commands(in text: String) -> [(sequence: Int, name: String)] {
+      text.split(whereSeparator: \.isNewline).compactMap { line in
+        let parts = line.split(separator: " ", maxSplits: 1)
+        guard parts.count == 2, let sequence = Int(parts[0]) else { return nil }
+        return (sequence, String(parts[1]).trimmingCharacters(in: .whitespaces))
+      }
+    }
+
+    private static func modified(_ file: URL) -> Date? {
+      do {
+        return try file.resourceValues(forKeys: [.contentModificationDateKey])
+          .contentModificationDate
+      } catch {
+        logger.error(
+          "Reading the command file's date: \(error.localizedDescription, privacy: .public)")
+        return nil
+      }
     }
   }
 #endif

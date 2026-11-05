@@ -12,7 +12,8 @@ apps/apple/docs/performance.md.
     ios_perf.py suite --udid <udid> [--style cli] [--runs 3]
 
 Scenarios: open, switch, scroll, type, stream, list-scroll, search, keyboard, rotate,
-sidebar, settings, usage, panel, new-session. ``--sample`` also runs ``sample`` on each.
+sidebar, settings, usage, panel, new-session, browser (after open). ``--sample`` also runs
+``sample`` on each.
 """
 
 from __future__ import annotations
@@ -34,8 +35,9 @@ BUNDLE = "ai.omnigent.ios.lab"
 SERVER = "http://127.0.0.1:6767"
 LINK = "omnigent://127.0.0.1:6767"
 PREDICATE = 'subsystem == "ai.omnigent.perf"'
-# Main-thread CPU per second below which the app counts as quiet (the monitor costs a little).
-QUIET_MS_PER_S = 40.0
+# Main-thread CPU per second below which the app counts as quiet: the Debug frame monitor and
+# other sessions' server events cost 30-60 ms a second on a loaded machine.
+QUIET_MS_PER_S = 100.0
 
 
 def long_session(index: int) -> str:
@@ -106,6 +108,8 @@ class Device:
         self.log = LogStream(udid)
         self.log.start()
         self.pid = 0
+        self.sequence = 0
+        self.data_container: Path | None = None
 
     def simctl(self, *args: str) -> str:
         return subprocess.run(
@@ -113,7 +117,11 @@ class Device:
         ).stdout
 
     def post(self, name: str) -> None:
-        self.simctl("spawn", self.udid, "notifyutil", "-p", f"ai.omnigent.perf.{name}")
+        """Posts ``ai.omnigent.perf.<name>``. `simctl spawn notifyutil` can take tens of seconds
+        on a busy machine, so the app also polls a command file (PerfCommandFile)."""
+        self.sequence += 1
+        with (self.container() / "tmp/perf-command").open("a") as commands:
+            commands.write(f"{self.sequence} {name}\n")
 
     def open_link(self, path: str) -> None:
         # `simctl openurl` asks "Open in…?" first; the app routes the session as a link would.
@@ -121,7 +129,11 @@ class Device:
         self.post("open")
 
     def container(self) -> Path:
-        return Path(self.simctl("get_app_container", self.udid, BUNDLE, "data").strip())
+        if self.data_container is None:
+            self.data_container = Path(
+                self.simctl("get_app_container", self.udid, BUNDLE, "data").strip()
+            )
+        return self.data_container
 
     def main_cpu_ms(self) -> float:
         rows = subprocess.run(
@@ -160,10 +172,19 @@ class Device:
         self.terminate()
         args = ["-OmnigentNoNotificationPrompt", "YES", "-omnigent.lastServer", SERVER]
         args += ["-omnigent:transcript-style", self.style]
+        (self.container() / "tmp/perf-command").write_text("")
         if monitor:
             args += ["-OmnigentFrameMonitor", "YES", "-OmnigentPerfDriver", "YES"]
         start = time.time()
-        output = self.simctl("launch", self.udid, BUNDLE, *args, *(extra or []))
+        # CoreSimulator sometimes refuses a launch on a busy machine; a retry goes through.
+        for attempt in range(3):
+            try:
+                output = self.simctl("launch", self.udid, BUNDLE, *args, *(extra or []))
+                break
+            except subprocess.CalledProcessError:
+                if attempt == 2:
+                    raise
+                time.sleep(3)
         self.pid = int(output.strip().split(":")[-1])
         return start
 
@@ -263,11 +284,12 @@ def launch_scenario(device: Device) -> dict[str, float]:
     return stats
 
 
-def scenarios(device: Device, names: list[str], ipad: bool) -> dict[str, dict[str, float]]:
-    # iPad runs use transcripts 2 and 3, so an iPhone run can stream into 1 at the same time.
-    first, second = (
-        (long_session(2), long_session(3)) if ipad else (long_session(1), long_session(2))
-    )
+def scenarios(
+    device: Device, names: list[str], ipad: bool, transcript: int
+) -> dict[str, dict[str, float]]:
+    """Opens long transcript ``transcript`` (and the next one for open2/switch); streams into
+    the first. Runs on several simulators at once need different transcripts."""
+    first, second = long_session(transcript), long_session(transcript % 3 + 1)
     results: dict[str, dict[str, float]] = {}
     device.clear_tabs()
     device.launch()
@@ -289,6 +311,7 @@ def scenarios(device: Device, names: list[str], ipad: bool) -> dict[str, dict[st
             5.6,
         ),
         "new-session": lambda: device.measure("new-session", lambda: device.post("newsession")),
+        "browser": lambda: device.measure("browser", lambda: device.post("browser")),
         "settings": lambda: device.measure(
             "settings",
             lambda: (
@@ -390,6 +413,9 @@ def main() -> None:
     parser.add_argument("--style", choices=["chat", "cli"], default="chat")
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--ipad", action="store_true", help="iPad: sidebar beside the detail")
+    parser.add_argument(
+        "--transcript", type=int, choices=[1, 2, 3], help="long transcript (iPad 2, else 1)"
+    )
     parser.add_argument("--sample", action="store_true")
     options = parser.parse_args()
     device = Device(options.udid, options.style, options.sample)
@@ -401,7 +427,8 @@ def main() -> None:
         if options.command == "run"
         else SUITE + (IPAD_EXTRA if options.ipad else [])
     )
-    repeat(options.runs, lambda: scenarios(device, names, options.ipad))
+    transcript = options.transcript or (2 if options.ipad else 1)
+    repeat(options.runs, lambda: scenarios(device, names, options.ipad, transcript))
 
 
 if __name__ == "__main__":
