@@ -1076,9 +1076,17 @@ impl ClientCore {
         self.inner.sessions.disconnect();
     }
 
-    /// Reloads the session list.
+    /// Reloads the session list, keeping every page already loaded.
     pub fn refresh_sessions(&self) {
-        self.inner.post(Msg::RefreshList);
+        self.inner
+            .post(Msg::List(crate::list_driver::ListMsg::Refresh));
+    }
+
+    /// Loads the page of sessions after the list's rows. It arrives as a `SessionListChanged`
+    /// upsert; `SessionListPagingChanged` reports progress and whether more remain.
+    pub fn load_more_sessions(&self) {
+        self.inner
+            .post(Msg::List(crate::list_driver::ListMsg::LoadMore));
     }
 
     /// Starts watching `session_id`: a `TranscriptReset`, then its stream and history.

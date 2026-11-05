@@ -54,7 +54,7 @@ public enum SidebarNavigationOrder {
 
   static func sessionIDs(
     _ state: SidebarViewState, collapsed: Set<String>, expandedProjects: Set<String>,
-    showsAllInProject: Set<String> = []
+    shownInProject: [String: Int] = [:]
   ) -> [String] {
     let loaded = Set(state.list.sessions.map(\.id))
     let open = SidebarSections.sections(state).filter { !collapsed.contains($0.title) }
@@ -62,8 +62,9 @@ public enum SidebarNavigationOrder {
       guard section.isProjects else { return section.sessions.map(\.id) }
       return state.projects.filter { expandedProjects.contains($0.id) }.flatMap { project in
         let members = project.sessionIds.filter(loaded.contains)
-        return showsAllInProject.contains(project.id)
-          ? members : Array(members.prefix(ProjectFolder<EmptyView>.collapsedCount))
+        let count = ProjectFolderPaging.visibleCount(
+          count: members.count, shown: shownInProject[project.id] ?? 0, selectedIndex: nil)
+        return Array(members.prefix(count))
       }
     }
   }

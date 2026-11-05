@@ -124,3 +124,59 @@ struct SidebarSearchField: ViewModifier {
     #endif
   }
 }
+
+/// How many pages the Load more row read by itself in the current scope: the web loads up to
+/// three as the row scrolls into view, then waits for a click.
+@MainActor
+final class SidebarAutoLoads {
+  static let limit = 3
+  private var scope = ""
+  private var count = 0
+
+  /// Counts one automatic load in `scope`; `false` once the scope used its three.
+  func take(in scope: String) -> Bool {
+    if scope != self.scope {
+      self.scope = scope
+      count = 0
+    }
+    guard count < Self.limit else { return false }
+    count += 1
+    return true
+  }
+}
+
+/// The web's "Load more" under the sidebar's sessions: it reads the next page as it scrolls
+/// into view (up to three times per scope), and on a click.
+struct SidebarLoadMoreRow: View {
+  let isLoading: Bool
+  /// Sessions loaded so far, read out to VoiceOver.
+  let loaded: Int
+  let autoLoads: SidebarAutoLoads
+  let scope: String
+  let load: @MainActor () -> Void
+
+  var body: some View {
+    Button(action: load) {
+      HStack(spacing: Theme.Spacing.small) {
+        Spacer(minLength: 0)
+        if isLoading {
+          ProgressView().controlSize(.small)
+          Text("Loading\u{2026}")
+        } else {
+          Text("Load more")
+        }
+        Spacer(minLength: 0)
+      }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.borderless)
+    .foregroundStyle(.secondary)
+    .disabled(isLoading)
+    .onAppear {
+      if !isLoading, autoLoads.take(in: scope) { load() }
+    }
+    .accessibilityLabel(isLoading ? "Loading more sessions" : "Load more")
+    .accessibilityValue("\(loaded) sessions loaded")
+    .accessibilityIdentifier("sidebar-load-more")
+  }
+}

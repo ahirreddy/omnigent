@@ -32,6 +32,7 @@ use crate::events::{
     SignInMethod,
 };
 use crate::host::{EventStreamTransport, WebSocketTransport};
+use crate::list_driver::ListMsg;
 use crate::runtime::{Host, Sessions, post};
 use crate::sessions::SessionListChange;
 use crate::stream_driver::SessionDriver;
@@ -150,13 +151,8 @@ pub(crate) enum Msg {
     History(crate::history_driver::HistoryMsg),
     /// An input for the updates machine.
     Updates(UpdatesInput),
-    /// Reload the session list now.
-    RefreshList,
-    /// A list read finished.
-    ListLoaded {
-        generation: u64,
-        result: Result<Vec<core::sessions::SessionSummary>, SessionError>,
-    },
+    /// The session list: a reload, "Load more", or a finished read.
+    List(ListMsg),
     /// The view changed.
     View(View),
     /// Whether the app may show notifications.
@@ -250,8 +246,7 @@ pub(crate) struct Engine {
     /// Read state of every known session, and the unread sessions last reported.
     pub(crate) read: core::read_state::ReadState,
     pub(crate) unread: BTreeSet<String>,
-    pub(crate) list_generation: u64,
-    pub(crate) list_refresh: Option<AbortHandle>,
+    pub(crate) list: crate::list_driver::ListWindow,
     pub(crate) demo_ticker: Option<AbortHandle>,
 }
 
@@ -284,8 +279,7 @@ impl Engine {
                 attention: Attention::default(),
                 read: core::read_state::ReadState::new(),
                 unread: BTreeSet::new(),
-                list_generation: 0,
-                list_refresh: None,
+                list: crate::list_driver::ListWindow::default(),
                 demo_ticker: None,
             },
             rx,
@@ -335,6 +329,7 @@ impl Engine {
                 self.sign_in = Some(sign_in);
                 self.set_phase(ConnectionPhase::Connected { server });
                 self.read_reset();
+                self.reset_list_window();
                 self.start_realtime();
                 self.refresh_list();
             }
@@ -364,8 +359,7 @@ impl Engine {
             } => self.hydrated(&session_id, attempt, &request, *result),
             Msg::History(message) => self.history_message(message),
             Msg::Updates(input) => self.updates_input(input),
-            Msg::RefreshList => self.refresh_list(),
-            Msg::ListLoaded { generation, result } => self.list_loaded(generation, result),
+            Msg::List(message) => self.list_message(message),
             Msg::View(view) => self.set_view(view),
             Msg::NotificationsAllowed(allowed) => self.attention.can_notify = allowed,
             Msg::AttentionDue => self.attention_due(),
@@ -455,7 +449,7 @@ impl Engine {
     }
 
     fn stop_realtime(&mut self) {
-        if let Some(timer) = self.list_refresh.take() {
+        if let Some(timer) = self.list.refresh.take() {
             timer.abort();
         }
         if let Some(timer) = self.attention.timer.take() {
@@ -533,64 +527,17 @@ impl Engine {
     /// every watched and discovered row, so only a disconnected socket falls back to a reload.
     fn schedule_list_refresh(&mut self) {
         let socket_live = matches!(self.updates.state(), core::realtime::ConnectionState::Live);
-        if self.list_refresh.is_some() || !self.is_connected() || socket_live {
+        if self.list.refresh.is_some() || !self.is_connected() || socket_live {
             return;
         }
         let tx = self.sender();
-        self.list_refresh = Some(self.host.after(INVENTORY_REFRESH_DELAY_MS, move || {
-            post(&tx, Msg::RefreshList);
+        self.list.refresh = Some(self.host.after(INVENTORY_REFRESH_DELAY_MS, move || {
+            post(&tx, Msg::List(ListMsg::Refresh));
         }));
     }
 
-    pub(crate) fn refresh_list(&mut self) {
-        if let Some(timer) = self.list_refresh.take() {
-            timer.abort();
-        }
-        if !self.is_connected() {
-            return;
-        }
-        self.list_generation = self.list_generation.wrapping_add(1);
-        let generation = self.list_generation;
-        let sessions = Arc::clone(&self.sessions);
-        let tx = self.sender();
-        self.host.spawn(async move {
-            let result = sessions.sessions().await;
-            post(&tx, Msg::ListLoaded { generation, result });
-        });
-    }
-
-    fn list_loaded(
-        &mut self,
-        generation: u64,
-        result: Result<Vec<core::sessions::SessionSummary>, SessionError>,
-    ) {
-        if generation != self.list_generation || !self.is_connected() {
-            return;
-        }
-        match result {
-            Ok(list) => {
-                self.emit(CoreEvent::SessionListChanged {
-                    change: SessionListChange::Reset {
-                        sessions: list.iter().cloned().map(Into::into).collect(),
-                    },
-                });
-                self.read_observe(&list);
-                self.emit(CoreEvent::SessionListLoaded);
-                self.update_watch();
-            }
-            Err(error) => {
-                let error = CoreError::from(error);
-                if error.requires_sign_in() {
-                    self.sign_in_lost(error);
-                } else {
-                    self.error(ErrorScope::SessionList, error);
-                }
-            }
-        }
-    }
-
     /// Watches every known session, most recently updated first, up to the server's cap.
-    fn update_watch(&mut self) {
+    pub(crate) fn update_watch(&mut self) {
         if self.is_demo() || !self.is_connected() {
             return;
         }

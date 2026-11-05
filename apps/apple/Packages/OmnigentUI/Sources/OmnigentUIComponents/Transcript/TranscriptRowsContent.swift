@@ -21,6 +21,8 @@ struct TranscriptRowEvents {
   var ownMessageChanged: (String?, String?) -> Void = { _, _ in }
   /// Whether any user message is loaded, for the previous and next message buttons.
   var hasUserMessagesChanged: (Bool) -> Void = { _ in }
+  /// The user turns changed, for the turn rail.
+  var turnsChanged: ([TranscriptTurn]) -> Void = { _ in }
 }
 
 /// The transcript's scrolling content. It reads the rows in its own body (paced, see
@@ -70,6 +72,11 @@ struct TranscriptRowsContent<Header: View>: View {
     }
     .onChange(of: state.rows.contains { $0.role == .user }, initial: true) { _, hasUser in
       events.hasUserMessagesChanged(hasUser)
+    }
+    // The memo returns the same array while a delta changes only the open answer, so this
+    // comparison is an identity check while streaming.
+    .onChange(of: layout.turns(for: state), initial: true) { _, turns in
+      events.turnsChanged(turns)
     }
   }
 

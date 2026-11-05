@@ -40,7 +40,7 @@ enum SidebarAdapter {
     let current = server.map(ServerChoice.init)
     var choices = current.map { [$0] } ?? []
     choices += servers.filter { choice in choice.id != current?.id }
-    return SidebarViewState(
+    var state = SidebarViewState(
       list: listState,
       rowInfo: Dictionary(
         layout.sessions.map { session in
@@ -54,6 +54,18 @@ enum SidebarAdapter {
       projects: layout.projects, inboxCount: Int(totals.sessionsNeedingYou), showsCanvas: false,
       display: display, quickFilter: filter == .all || filter == .archived ? nil : filter,
       servers: choices, currentServerID: current?.id)
+    state.paging = paging(list.paging)
+    return state
+  }
+
+  /// Load more and each folder's pages.
+  static func paging(_ paging: SessionListPaging) -> SidebarPaging {
+    let projects = paging.projects
+    return SidebarPaging(
+      hasMore: paging.hasMore, isLoading: paging.isLoading,
+      loadedProjects: Set(projects.filter { $0.value.isLoaded }.keys),
+      projectsWithMore: Set(projects.filter { $0.value.isLoaded && $0.value.hasMore }.keys),
+      loadingProjects: Set(projects.filter { $0.value.isLoading }.keys))
   }
 
   /// The sessions and folders the sidebar shows, as the web builds them: pins always show,

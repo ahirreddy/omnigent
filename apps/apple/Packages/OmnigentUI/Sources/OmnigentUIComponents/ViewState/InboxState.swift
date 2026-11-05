@@ -179,6 +179,10 @@ nonisolated public struct InboxViewState: Hashable, Sendable {
   /// Items are still being read (the session list, requests, comments or replies), so an empty
   /// list does not yet mean nothing is waiting.
   public var isAssembling = false
+  /// More sessions exist after the loaded ones; their items are not known yet.
+  public var hasMoreSessions = false
+  /// A page of them is loading.
+  public var isLoadingMoreSessions = false
 
   /// Creates Inbox state.
   /// - Parameters:
@@ -204,6 +208,8 @@ public struct InboxActions {
   public var editReply: (@MainActor (InboxItem) -> Void)?
   /// Read the items that failed again.
   public var retry: (@MainActor () -> Void)?
+  /// Load the page of sessions after the loaded ones ("Load more sessions").
+  public var loadMoreSessions: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:
