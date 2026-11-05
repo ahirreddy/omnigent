@@ -1,7 +1,7 @@
 //! Port of `NativeLab` `EventParityTests.swift` (the WP3 rows).
 
 use omnigent_protocol::{ConversationItem, FromWire};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::{Harness, events, fixture, user};
 use crate::reducer::{
@@ -218,6 +218,53 @@ fn startup_transitions_retain_failures_and_clear_transient_terminal_state() {
             line["servers"]["fixture"]["status"].as_str()
         );
     }
+}
+
+#[test]
+fn startup_line_names_the_sandbox_stage_or_the_starting_mcp_servers() {
+    let mut harness = Harness::new(SESSION);
+    let line = |harness: &Harness| {
+        harness
+            .reducer
+            .sections()
+            .iter()
+            .find(|section| section.id == "startup")
+            .map(|section| {
+                let state = section.details[0].text.clone();
+                (section.summary.clone(), state)
+            })
+    };
+    let sandbox = |stage: &str, error: Value| {
+        json!({"type": "session.sandbox_status", "conversation_id": SESSION,
+               "stage": stage, "error": error})
+    };
+    let progress = |text: &str| Some((text.to_owned(), "progress".to_owned()));
+    harness.send(sandbox("cloning", Value::Null));
+    assert_eq!(line(&harness), progress("Cloning repository\u{2026}"));
+    harness.send(sandbox("failed", json!("No capacity")));
+    assert_eq!(
+        line(&harness),
+        Some(("Sandbox launch failed".to_owned(), "failed".to_owned()))
+    );
+    harness.send(sandbox("ready", Value::Null));
+    assert_eq!(line(&harness), None);
+    harness.send(
+        json!({"type": "session.mcp_startup", "conversation_id": SESSION, "servers": {
+        "a": {"status": "ready"}, "b": {"status": "starting"}, "c": {"status": "starting"},
+        "d": {"status": "starting"}, "e": {"status": "starting"}}}),
+    );
+    assert_eq!(
+        line(&harness),
+        progress("Starting MCP servers (1/5): b, c, d, \u{2026}")
+    );
+    harness.send(
+        json!({"type": "session.mcp_startup", "conversation_id": SESSION,
+                        "servers": {"solo": {"status": "starting"}}}),
+    );
+    assert_eq!(
+        line(&harness),
+        progress("Starting MCP server: solo\u{2026}")
+    );
 }
 
 #[test]

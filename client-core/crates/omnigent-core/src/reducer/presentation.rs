@@ -4,6 +4,7 @@
 //! `SessionConfiguration.modelLabel`/`effortLabel` and the reducer's stable fingerprints.
 
 use omnigent_protocol::display;
+use omnigent_protocol::sessions::{McpStartupStatus, SandboxStage};
 use serde_json::{Map, Value};
 
 use super::state::{
@@ -357,6 +358,73 @@ fn startup_sections(state: &SessionEventState, result: &mut Vec<EventSection>) {
         let summary = format!("{} servers", servers.len());
         result.push(EventSection::new("mcp", "MCP servers", summary).with_details(details));
     }
+    if let Some(section) = startup_line(state) {
+        result.push(section);
+    }
+}
+
+/// How many still-starting MCP servers the startup line names before "…".
+const MCP_STARTING_NAMES_SHOWN: usize = 3;
+
+/// The transcript's startup line (`startup`): a failed sandbox launch, the sandbox's in-flight
+/// stage, or the MCP servers still starting. Its `state` detail is `failed` or `progress`.
+fn startup_line(state: &SessionEventState) -> Option<EventSection> {
+    let line = |text: String, failed: bool, error: Option<&str>| {
+        let mut details = vec![detail(
+            "state",
+            "State",
+            if failed { "failed" } else { "progress" },
+        )];
+        details.extend(error.map(|error| detail("error", "Error", error)));
+        EventSection::new("startup", "Startup", text).with_details(details)
+    };
+    if let Some(sandbox) = &state.sandbox {
+        let label = match sandbox.stage {
+            SandboxStage::Failed => {
+                return Some(line(
+                    "Sandbox launch failed".to_owned(),
+                    true,
+                    sandbox.error.as_deref(),
+                ));
+            }
+            SandboxStage::Provisioning | SandboxStage::ActionRequired => {
+                Some("Provisioning sandbox")
+            }
+            SandboxStage::Cloning => Some("Cloning repository"),
+            SandboxStage::Starting => Some("Connecting host"),
+            SandboxStage::Connecting => Some("Starting agent"),
+            _ => None,
+        };
+        if let Some(label) = label {
+            return Some(line(format!("{label}\u{2026}"), false, None));
+        }
+    }
+    let servers = state.mcp_startup.as_ref()?;
+    let starting: Vec<&str> = servers
+        .iter()
+        .filter(|(_, server)| server.status == McpStartupStatus::Starting)
+        .map(|(name, _)| name.as_str())
+        .collect();
+    let first = starting.first()?;
+    let text = if servers.len() == 1 {
+        format!("Starting MCP server: {first}\u{2026}")
+    } else {
+        let mut shown = starting
+            .iter()
+            .take(MCP_STARTING_NAMES_SHOWN)
+            .copied()
+            .collect::<Vec<_>>();
+        if starting.len() > MCP_STARTING_NAMES_SHOWN {
+            shown.push("\u{2026}");
+        }
+        format!(
+            "Starting MCP servers ({}/{}): {}",
+            servers.len() - starting.len(),
+            servers.len(),
+            shown.join(", ")
+        )
+    };
+    Some(line(text, false, None))
 }
 
 fn presence_section(state: &SessionEventState, result: &mut Vec<EventSection>) {
