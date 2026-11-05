@@ -16,6 +16,10 @@ final class NewSessionForm {
   var folder = ""
   /// Where in the folder's repository the session works.
   var worktree = NewSessionWorktreeChoice.none
+  /// The branch Settings › Git's "Always use a random worktree" chose, and for which folder.
+  @ObservationIgnored var worktreeSeed: WorktreeSeed?
+  /// Where Settings › Git's worktree defaults are saved.
+  @ObservationIgnored var preferences = UserDefaults.standard
   /// The session starts on a new sandbox.
   var isSandbox = false
   /// Repositories to clone into the sandbox.
@@ -190,6 +194,6 @@ final class NewSessionForm {
       isSandbox: isSandbox, repositories: repositories,
       offersWorktrees: !(creation.worktrees.value ?? []).isEmpty, worktrees: worktrees,
       worktree: worktree, harnessNotice: notice?.text, setUpName: notice?.name,
-      isPlanMode: isPlanOn)
+      isPlanMode: isPlanOn, defaultBaseBranch: worktreeDefaults.base)
   }
 }

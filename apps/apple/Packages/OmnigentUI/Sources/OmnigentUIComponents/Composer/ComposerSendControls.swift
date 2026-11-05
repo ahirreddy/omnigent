@@ -13,7 +13,7 @@ struct ComposerSendRules {
   var intent: ComposerSendIntent {
     ComposerSendIntent.resolve(
       isRunning: state.isRunning, canSteer: state.canSteer, hasQueue: !state.queue.isEmpty,
-      canQueue: canQueue)
+      canQueue: canQueue, prefersSteer: state.prefersSteer)
   }
 
   /// The other choice while the agent works (⌥⌘Return and the Send button's menu).

@@ -54,6 +54,8 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   public var setUpName: String?
   /// Plan mode is armed for the launch.
   public var isPlanMode: Bool
+  /// Settings › Git's default base branch, pre-filled when naming a new worktree branch.
+  public var defaultBaseBranch: String
 
   /// Creates options.
   /// - Parameters:
@@ -67,11 +69,13 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   ///   - harnessNotice: The not-ready notice.
   ///   - setUpName: The Set Up button's agent name.
   ///   - isPlanMode: Plan mode is armed.
+  ///   - defaultBaseBranch: The base pre-filled for a new branch.
   public init(
     folder: String? = nil, recentFolders: [String] = [], isSandbox: Bool = false,
     repositories: String = "", offersWorktrees: Bool = false,
     worktrees: [NewSessionWorktreeOption] = [], worktree: NewSessionWorktreeChoice = .none,
-    harnessNotice: String? = nil, setUpName: String? = nil, isPlanMode: Bool = false
+    harnessNotice: String? = nil, setUpName: String? = nil, isPlanMode: Bool = false,
+    defaultBaseBranch: String = ""
   ) {
     self.folder = folder
     self.recentFolders = recentFolders
@@ -83,6 +87,7 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
     self.harnessNotice = harnessNotice
     self.setUpName = setUpName
     self.isPlanMode = isPlanMode
+    self.defaultBaseBranch = defaultBaseBranch
   }
 
   /// The worktree chip's title.
@@ -239,6 +244,8 @@ struct NewSessionOptionsBar: View {
         if case .new(let current, let currentBase) = options.worktree {
           branch = current
           base = currentBase
+        } else if base.isEmpty {
+          base = options.defaultBaseBranch.trimmingCharacters(in: .whitespaces)
         }
         isNamingBranch = true
       }

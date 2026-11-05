@@ -29,7 +29,7 @@ playground can't show. Every polish pass ends with this check, in the apps thems
    - Overflowing tabs fade at the edge, and the selected tab scrolls into view.
 4. **Names.** The server reads as its display name, and "This Mac" for a loopback server. Never
    `127.0.0.1`: check the window title, sidebar switcher, composer context and menu bar.
-5. **Shortcuts.** In a browser tab, Command-R reloads the page. Reconnect is Option-Command-R. Each
+5. **Shortcuts.** In a browser tab, Command-R reloads the page. Reconnect is Shift-Option-Command-R, and Option-Command-R renames the session. Each
    shortcut appears in exactly one enabled menu item.
 6. **Idle CPU.** Open a conversation, wait 15 seconds, then check the app's CPU (`ps -o %cpu= -p <pid>`)
    on Mac and iPad. Anything above a few percent is a layout or focused-value loop. Bisect it

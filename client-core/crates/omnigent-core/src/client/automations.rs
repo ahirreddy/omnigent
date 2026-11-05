@@ -12,6 +12,10 @@ use crate::schedule::{describe_schedule, parse_iso8601};
 
 /// The top-level pages `GET /v1/info` advertises. Missing fields mean unsupported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "one flag per independent /v1/info feature"
+)]
 pub struct ServerPages {
     /// `automations_enabled`: the Automations page.
     pub automations: bool,
@@ -19,6 +23,10 @@ pub struct ServerPages {
     pub automation_session_modes: bool,
     /// The `usage_page` feature: the Usage page.
     pub usage: bool,
+    /// `archive_worktree_cleanup`: archiving can also remove a session's git worktree.
+    pub archive_worktree_cleanup: bool,
+    /// Sessions can be shared: `single_user` is not `true` and `sharing_mode` is not `off`.
+    pub sharing: bool,
 }
 
 impl ServerPages {
@@ -38,6 +46,10 @@ impl ServerPages {
             automation_session_modes: opt_bool(object, "scheduled_task_session_modes")?
                 .unwrap_or(false),
             usage,
+            archive_worktree_cleanup: opt_bool(object, "archive_worktree_cleanup")?
+                .unwrap_or(false),
+            sharing: !opt_bool(object, "single_user")?.unwrap_or(false)
+                && opt_str(object, "sharing_mode")?.as_deref() != Some("off"),
         })
     }
 }

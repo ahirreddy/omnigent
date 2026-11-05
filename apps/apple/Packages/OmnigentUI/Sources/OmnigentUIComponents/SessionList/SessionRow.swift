@@ -313,7 +313,8 @@ struct SessionRowMenu {
       .disabled(!session.isPinned && pinLimitReached)
       .help(!session.isPinned && pinLimitReached ? "Unpin a session first" : "")
     }
-    if let share = actions.share {
+    // Sharing is the owner's, as on the web.
+    if let share = actions.share, !isShared {
       Button("Share", systemImage: "person.badge.plus") { share(session) }
     }
     if let fork = actions.fork {

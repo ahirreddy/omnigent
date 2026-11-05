@@ -88,6 +88,9 @@ pub struct SessionSummary {
     /// The Pinned section's sort key (the `omnigent.pinned` label); `None` when unpinned.
     #[uniffi(default)]
     pub pin_stamp: Option<String>,
+    /// The session that started this independent worker, when one did.
+    #[uniffi(default)]
+    pub created_by_session_id: Option<String>,
 }
 
 /// One of the caller's projects (a sidebar folder).
@@ -118,6 +121,8 @@ pub enum SessionChange {
     Archived {
         /// Archive or restore.
         archived: bool,
+        /// With `archived`, also remove its git worktree (`ServerPages::archive_worktree_cleanup`).
+        delete_worktree: bool,
     },
     /// File into a first-class project, or `None` to remove it from its project (owner).
     Project {
@@ -207,6 +212,7 @@ impl From<CoreSummary> for SessionSummary {
             project_id: summary.project_id,
             project_label: summary.project_label,
             comments_count: summary.comments_count,
+            created_by_session_id: summary.created_by_session_id,
         }
     }
 }
@@ -232,6 +238,7 @@ impl From<&SessionSummary> for CoreSummary {
             project_id: summary.project_id.clone(),
             project_label: summary.project_label.clone(),
             comments_count: summary.comments_count,
+            created_by_session_id: summary.created_by_session_id.clone(),
             ..Self::new(
                 summary.id.clone(),
                 summary.title.clone(),
@@ -343,7 +350,13 @@ impl ClientCore {
                 pinned,
                 at_ms: self.unix_ms(),
             },
-            SessionChange::Archived { archived } => CoreChange::Archived(archived),
+            SessionChange::Archived {
+                archived,
+                delete_worktree,
+            } => CoreChange::Archived {
+                archived,
+                delete_worktree,
+            },
             SessionChange::Project { project_id } => CoreChange::Project(project_id),
         };
         self.sessions()

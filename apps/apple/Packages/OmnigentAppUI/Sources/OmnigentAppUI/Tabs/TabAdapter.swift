@@ -123,6 +123,7 @@ enum TabAdapter {
       item.subtitle = summary.flatMap(context)
       item.status = attention
       item.isReadOnly = summary?.isReadOnly ?? false
+      item.canRenameSession = summary?.canRename == true
       item.link = SidebarAdapter.webURL(server: connection.connectedServer, sessionID: id)
       // The titlebar has no status line of its own; the selected chat's tooltip carries it.
       if isSelected, let conversation = connection.conversations[id] {

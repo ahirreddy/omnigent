@@ -175,4 +175,17 @@ struct ComposerRulesTests {
     let empty = ComposerSendRules(state: ComposerSamples.idle, draft: " ", canQueue: true)
     #expect(empty.sendBlockedReason == "Type a message.")
   }
+
+  @Test("With Always steer off, a mid-turn send queues and steering is the alternative")
+  func alwaysSteerOff() {
+    var state = ComposerSamples.running
+    state.queue = []
+    state.canSteer = true
+    state.prefersSteer = false
+    let rules = ComposerSendRules(state: state, draft: "next", canQueue: true)
+    #expect(rules.intent == .queue)
+    #expect(rules.alternative == .steer)
+    state.prefersSteer = true
+    #expect(ComposerSendRules(state: state, draft: "next", canQueue: true).intent == .steer)
+  }
 }

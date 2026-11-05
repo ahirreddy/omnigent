@@ -105,10 +105,13 @@ public final class SessionListStore {
   /// - Parameters:
   ///   - sessionID: The session.
   ///   - archived: Archive or restore.
+  ///   - deleteWorktree: When archiving, also remove its git worktree (the branch is kept).
   /// - Returns: Whether the change was saved; a failure is in ``editError``.
   @discardableResult
-  public func setArchived(_ sessionID: String, _ archived: Bool) async -> Bool {
-    await edit(sessionID, .archived(archived: archived))
+  public func setArchived(_ sessionID: String, _ archived: Bool, deleteWorktree: Bool = false)
+    async -> Bool
+  {
+    await edit(sessionID, .archived(archived: archived, deleteWorktree: deleteWorktree))
   }
 
   /// Records `error` as the edit failure; `nil` clears it.

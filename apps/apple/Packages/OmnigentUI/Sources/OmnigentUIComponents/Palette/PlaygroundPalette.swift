@@ -29,7 +29,7 @@ extension PlaygroundModel {
       case .nextRequest: scenario = .approvals
       case .server: scenario = .serverSettings
       case .findSession, .switchServer, .changes, .composer, .toggleTerminal, .settings,
-        .toggleSidebar, .toggleInspector:
+        .toggleSidebar, .toggleInspector, .automations, .usage:
         break
       }
     }

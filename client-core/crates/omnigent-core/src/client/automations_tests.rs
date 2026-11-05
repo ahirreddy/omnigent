@@ -177,19 +177,26 @@ fn an_incomplete_draft_or_bad_id_sends_nothing() {
 #[test]
 fn pages_follow_what_the_server_advertises() {
     let current = json!({"automations_enabled": true, "scheduled_task_session_modes": true,
-        "features": {"usage_page": true}});
+        "features": {"usage_page": true}, "archive_worktree_cleanup": true,
+        "single_user": false, "sharing_mode": "on"});
     assert_eq!(
         ServerPages::from_value(&current),
         Ok(ServerPages {
             automations: true,
             automation_session_modes: true,
             usage: true,
+            archive_worktree_cleanup: true,
+            sharing: true,
         })
     );
-    // An older server that names none of them offers none.
+    // An older server that names none of them offers none; a single-user one has no sharing.
     assert_eq!(
         ServerPages::from_value(&json!({"single_user": true})),
         Ok(ServerPages::default())
     );
+    // Sharing is on unless the server turns it off.
+    assert!(ServerPages::from_value(&json!({})).is_ok_and(|pages| pages.sharing));
+    assert!(ServerPages::from_value(&json!({"sharing_mode": "off"})).is_ok_and(|p| !p.sharing));
     assert!(ServerPages::from_value(&json!({"features": {"usage_page": "yes"}})).is_err());
+    assert!(ServerPages::from_value(&json!({"sharing_mode": 1})).is_err());
 }

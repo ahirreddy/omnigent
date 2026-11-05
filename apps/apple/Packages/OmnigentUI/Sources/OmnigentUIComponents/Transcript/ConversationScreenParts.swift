@@ -57,16 +57,43 @@ nonisolated public struct SessionMenuContext: Hashable, Sendable {
   public var projectID: String?
   /// Shared with the viewer by someone else: Leave instead of Delete, no filing.
   public var isShared: Bool
+  /// The session that started this independent worker, as "Created by" links to it.
+  public var createdBy: CreatingSession?
 
   /// Creates a context.
   /// - Parameters:
   ///   - projects: Move targets.
   ///   - projectID: The current project.
   ///   - isShared: Someone else's session.
-  public init(projects: [SessionProject] = [], projectID: String? = nil, isShared: Bool = false) {
+  ///   - createdBy: The session that started this worker.
+  public init(
+    projects: [SessionProject] = [], projectID: String? = nil, isShared: Bool = false,
+    createdBy: CreatingSession? = nil
+  ) {
     self.projects = projects
     self.projectID = projectID
     self.isShared = isShared
+    self.createdBy = createdBy
+  }
+
+  /// The project the session is filed in.
+  public var project: SessionProject? { projects.first { $0.id == projectID } }
+}
+
+/// The session that started an independent worker.
+nonisolated public struct CreatingSession: Hashable, Sendable {
+  /// Its id.
+  public var id: String
+  /// Its title; `nil` when the viewer's list does not have it.
+  public var title: String?
+
+  /// Creates a reference.
+  /// - Parameters:
+  ///   - id: Session id.
+  ///   - title: Title, when known.
+  public init(id: String, title: String?) {
+    self.id = id
+    self.title = title
   }
 }
 
@@ -138,22 +165,9 @@ struct SessionMenuDialogs: ViewModifier {
   @Binding var confirmingLeave: SessionSummary?
   let actions: SessionListActions
 
-  private var trimmed: String { renameText.trimmingCharacters(in: .whitespacesAndNewlines) }
-
   func body(content: Content) -> some View {
     content
-      .alert(
-        "Rename Session",
-        isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })
-      ) {
-        TextField("Title", text: $renameText)
-        Button("Rename") {
-          if let renaming { actions.rename?(renaming, trimmed) }
-          renaming = nil
-        }
-        .disabled(trimmed.isEmpty || renameText.count > 120)
-        Button("Cancel", role: .cancel) { renaming = nil }
-      }
+      .sessionRenamePrompt($renaming, text: $renameText, rename: actions.rename)
       .confirmationDialog(
         "Delete this session?",
         isPresented: Binding(

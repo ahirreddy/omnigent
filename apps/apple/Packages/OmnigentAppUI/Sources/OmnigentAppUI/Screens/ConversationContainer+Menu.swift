@@ -61,7 +61,7 @@ extension ConversationContainer {
   }
 
   /// The session menu's context from the session list: the viewer's projects, the one the
-  /// session is in, and whether someone else shared it.
+  /// session is in, whether someone else shared it, and the session that created it.
   static func menuContext(_ list: SessionListStore, session: OmnigentCoreFFI.SessionSummary?)
     -> SessionMenuContext
   {
@@ -73,7 +73,11 @@ extension ConversationContainer {
         projectID: project.id, icon: project.icon)
     }
     let current = zip(projects, groups).first { $0.1.contains(session.id) }?.0
+    let creator = session.createdBySessionId.map {
+      CreatingSession(id: $0, title: list.session($0)?.title)
+    }
     return SessionMenuContext(
-      projects: projects, projectID: current?.id, isShared: !list.isOwned(session))
+      projects: projects, projectID: current?.id, isShared: !list.isOwned(session),
+      createdBy: creator)
   }
 }

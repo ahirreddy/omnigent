@@ -656,7 +656,13 @@ fn read_only_permission_prevents_mutation_requests() {
         Err(SessionError::ReadOnly)
     );
     assert_eq!(
-        block_on(core.edit_session("conv_a", SessionChange::Archived(true))),
+        block_on(core.edit_session(
+            "conv_a",
+            SessionChange::Archived {
+                archived: true,
+                delete_worktree: false
+            }
+        )),
         Err(SessionError::ReadOnly)
     );
     assert_eq!(core.transport().writes(), []);
@@ -839,6 +845,43 @@ fn edits_trim_titles_pin_with_a_stamp_and_publish_the_acknowledgement() {
         .take()
         .iter()
         .any(|event| matches!(event, ClientEvent::SessionsChanged { sessions } if sessions[0].title == "Renamed")));
+}
+
+#[test]
+fn archive_asks_for_worktree_removal_only_when_archiving() {
+    let transport = RouteTransport::local();
+    let snapshot = r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":4}"#;
+    transport.respond(
+        Some("GET"),
+        "/v1/sessions/conv_a",
+        None,
+        Reply::json(200, snapshot),
+    );
+    transport.respond(
+        Some("PATCH"),
+        "/v1/sessions/conv_a",
+        None,
+        Reply::json(200, snapshot),
+    );
+    let core = connected(transport);
+    for (archived, delete_worktree) in [(true, true), (true, false), (false, true)] {
+        block_on(core.edit_session(
+            "conv_a",
+            SessionChange::Archived {
+                archived,
+                delete_worktree,
+            },
+        ))
+        .unwrap();
+    }
+    assert_eq!(
+        core.transport().write_bodies(),
+        vec![
+            json!({"archived": true, "delete_worktree": true}),
+            json!({"archived": true}),
+            json!({"archived": false}),
+        ]
+    );
 }
 
 #[test]

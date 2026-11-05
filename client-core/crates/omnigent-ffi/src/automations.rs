@@ -16,6 +16,12 @@ pub struct ServerPages {
     pub automation_session_modes: bool,
     /// The Usage page.
     pub usage: bool,
+    /// Archiving can also remove a session's git worktree.
+    #[uniffi(default)]
+    pub archive_worktree_cleanup: bool,
+    /// Sessions can be shared with other users.
+    #[uniffi(default)]
+    pub sharing: bool,
 }
 
 /// Whether an automation fires.
@@ -365,6 +371,8 @@ impl ClientCore {
             automations: pages.automations,
             automation_session_modes: pages.automation_session_modes,
             usage: pages.usage,
+            archive_worktree_cleanup: pages.archive_worktree_cleanup,
+            sharing: pages.sharing,
         })
     }
 

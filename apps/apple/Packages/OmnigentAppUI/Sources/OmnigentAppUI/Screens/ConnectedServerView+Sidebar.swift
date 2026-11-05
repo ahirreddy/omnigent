@@ -92,13 +92,17 @@ extension SessionDisplayOptions {
   }
 }
 
-/// The sidebar's state that outlives a view update: display options, the undo banner and the
-/// fork sheet.
+/// The sidebar's state that outlives a view update: display options, the undo banner, and the
+/// fork, share and archive-worktree dialogs.
 @Observable
 final class SidebarModel {
   var display = SidebarDisplayDefaults.load()
   var undo: SidebarUndo?
   let fork = ForkFlow()
+  /// The session a row's Share opened.
+  var share: ShareStore?
+  /// An archive waiting on whether to delete worktrees.
+  var archiveRequest: ArchiveWorktreeRequest?
 }
 
 // MARK: Actions
@@ -138,7 +142,7 @@ extension ConnectedServerView {
       Task { await list.deleteProject(ProjectSummary(project)) }
     }
     actions.setArchivedMany = { sessions, archived in
-      edit(.archive(sessions.map(\.id), archived))
+      requestArchive(sessions.map(\.id), archived: archived)
     }
     actions.dropSession = { session, action in drop(session, action) }
     actions.reorderProjects = { projects in
@@ -185,9 +189,10 @@ extension ConnectedServerView {
     return SessionListActions(
       setFilter: { list.filter = OmnigentCoreFFI.SessionFilter($0) },
       setPinned: { summary, pinned in edit(.pin(summary.id, pinned)) },
-      setArchived: { summary, archived in edit(.archive([summary.id], archived)) },
+      setArchived: { summary, archived in requestArchive([summary.id], archived: archived) },
       rename: { summary, title in rename(summary.id, to: title) },
       setUnread: { summary, unread in Task { await list.setUnread(summary.id, unread) } },
+      share: shareAction,
       fork: { summary in beginSidebarFork(summary.id) },
       moveToProject: { summary, project in
         Task { await list.move(summary.id, to: project.map(ProjectSummary.init)) }
@@ -240,8 +245,11 @@ extension ConnectedServerView {
   }
 
   /// Pins or archives through the session list (which reports failures in `editError`), and
-  /// offers Undo for the change.
-  func edit(_ change: SidebarUndo.Change, recordUndo: Bool = true) {
+  /// offers Undo for the change. Archiving also removes the worktrees of `deletingWorktrees`;
+  /// Undo restores the session, not a removed worktree.
+  func edit(
+    _ change: SidebarUndo.Change, recordUndo: Bool = true, deletingWorktrees: Set<String> = []
+  ) {
     let list = connection.sessionList
     let model = sidebarModel
     Task {
@@ -251,7 +259,8 @@ extension ConnectedServerView {
         succeeded = await list.setPinned(id, pinned)
       case .archive(let ids, let archived):
         for id in ids where succeeded {
-          succeeded = await list.setArchived(id, archived)
+          succeeded = await list.setArchived(
+            id, archived, deleteWorktree: deletingWorktrees.contains(id))
         }
         if archived {
           // An archived session's tabs leave with it, its primary chat among them.

@@ -8,10 +8,7 @@ import OmnigentWorkspaceUI
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// One open conversation on screen: `ConversationScreen` (header, transcript or the harness
-/// terminal, decision dock, composer, and the right panel) over a ``ConversationStore``. Send,
-/// interrupt, decisions and the model, effort and harness menus go through the stores;
-/// everything they report, including failures, is rendered.
+/// One open conversation: `ConversationScreen` over a ``ConversationStore``, failures included.
 struct ConversationContainer: View {
   let conversation: ConversationStore
   let summary: OmnigentCoreFFI.SessionSummary?
@@ -38,6 +35,8 @@ struct ConversationContainer: View {
   var menuContext = SessionMenuContext()
   /// Creates the Share sheet's store; `nil` hides Share.
   var makeShareStore: (@MainActor () -> ShareStore?)?
+  /// The server shares sessions (multi-user, sharing not off); `false` hides Share.
+  var offersShare = true
 
   @State private var showsInspector = false
   @State private var inspectorTab: InspectorTab = .files
@@ -52,6 +51,7 @@ struct ConversationContainer: View {
   @State private var shareStore: ShareStore?
   @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
     false
+  @AppStorage(ComposerPreferences.alwaysSteerKey) private var alwaysSteer = true
   @State private var fileLinks: WorkspaceFileLinks?
 
   var body: some View {
@@ -130,6 +130,7 @@ struct ConversationContainer: View {
     var composer = ComposerAdapter.state(
       conversation, isStopping: isStopping, dismissedError: dismissedSendError, server: server,
       submitWithCommandReturn: submitWithCommandReturn)
+    composer.prefersSteer = alwaysSteer
     let indicators = SessionToolsAdapter.indicators(conversation, screen: screen)
     let pullRequest = SessionToolsAdapter.pullRequestLabel(panel)
     if !indicators.isEmpty || pullRequest != nil {
@@ -158,7 +159,7 @@ struct ConversationContainer: View {
 
   /// The Share sheet over the session's grants, once its store exists.
   private var share: (state: ShareViewState, actions: ShareActions)? {
-    guard let shareStore else { return nil }
+    guard offersShare, let shareStore else { return nil }
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
     return (ShareAdapter.state(shareStore, link: link), ShareAdapter.actions(shareStore))
   }
