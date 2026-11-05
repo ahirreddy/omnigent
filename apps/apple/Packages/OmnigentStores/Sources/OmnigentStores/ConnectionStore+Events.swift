@@ -14,12 +14,7 @@ extension ConnectionStore {
       if case .connected(let server) = phase {
         sessionList.viewerID = server.userId
         markSavedDrafts()
-        let list = sessionList
-        Task {
-          async let projects: Void = list.loadProjects()
-          await list.loadHosts(serverURL: server.baseUrl)
-          await projects
-        }
+        loadServerLists(server)
       }
     case .updatesLinkChanged(let state):
       if state != updatesLink { updatesLink = state }
@@ -83,11 +78,27 @@ extension ConnectionStore {
     }
   }
 
-  /// Re-reads the hosts, for the sidebar's Environment detail.
+  /// Reads the projects and hosts of a server just connected to.
+  private func loadServerLists(_ server: ConnectedServer) {
+    let list = sessionList
+    let offlineHosts = notifications?.offlineHosts
+    Task {
+      async let projects: Void = list.loadProjects()
+      let hosts = await list.loadHosts(serverURL: server.baseUrl)
+      offlineHosts?.observe(hosts)
+      await projects
+    }
+  }
+
+  /// Re-reads the hosts, for the sidebar's Environment detail and host-offline notifications.
   private func reloadHosts() {
     guard let server = connectedServer else { return }
     let list = sessionList
-    Task { await list.loadHosts(serverURL: server.baseUrl) }
+    let offlineHosts = notifications?.offlineHosts
+    Task {
+      let hosts = await list.loadHosts(serverURL: server.baseUrl)
+      offlineHosts?.observe(hosts)
+    }
   }
 
   private func applyServerEvent(_ event: CoreEvent) {

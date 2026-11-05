@@ -98,6 +98,35 @@
       }
     }
 
+    /// The notification for a host that went offline; the policy drops it when the user turned
+    /// "A runner goes offline" off.
+    /// - Parameters:
+    ///   - host: The host.
+    ///   - serverURL: The window's server.
+    /// - Returns: The event.
+    /// - Throws: `ServerOriginError` when `serverURL` is not a server URL.
+    public static func event(
+      hostWentOffline host: HostWentOffline, serverURL: URL
+    ) throws(ServerOriginError) -> DesktopNotificationEvent {
+      DesktopNotificationEvent(
+        kind: .runnerOffline(runnerID: host.hostID), origin: try ServerOrigin(url: serverURL),
+        serverURL: serverURL, sessionID: nil, title: "\(host.name) went offline",
+        body: "Sessions on this host pause until it reconnects.")
+    }
+
+    /// Posts a notification per host that went offline since the last call.
+    static func deliverHostsWentOffline(
+      _ connection: ConnectionStore, serverURL: URL, desktop: DesktopController
+    ) async {
+      for host in connection.notifications?.offlineHosts.take() ?? [] {
+        do {
+          await post(try event(hostWentOffline: host, serverURL: serverURL), desktop: desktop)
+        } catch {
+          desktop.onIssue(.invalidServerURL(serverURL, error))
+        }
+      }
+    }
+
     private static func post(_ event: DesktopNotificationEvent, desktop: DesktopController) async {
       do {
         try await desktop.notifications.post(event)
@@ -136,6 +165,14 @@
           if connection.isSignedIn { SupervisionConnections.shared.register(connection) }
         }
         .onChange(of: pending, initial: true) { deliver() }
+        .onChange(of: connection.notifications?.offlineHosts.pending.count ?? 0) { _, count in
+          guard count > 0, let serverURL else { return }
+          let (connection, desktop) = (connection, desktop)
+          Task {
+            await DesktopAttention.deliverHostsWentOffline(
+              connection, serverURL: serverURL, desktop: desktop)
+          }
+        }
         .onChange(of: authorization, initial: true) {
           let allowed = authorization == .authorized || authorization == .provisional
           connection.notifications?.setAllowed(allowed)
