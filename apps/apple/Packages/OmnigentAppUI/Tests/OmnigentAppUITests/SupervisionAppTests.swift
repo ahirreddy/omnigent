@@ -35,4 +35,16 @@ struct SupervisionAppTests {
     #expect(registry.connection(for: "https://other.example.com") == nil)
     #expect(registry.serverURLs == [server])
   }
+
+  @Test("Settings lists the asking scene's connection before its sign-in registers it")
+  func settingsIncludesScene() async throws {
+    let registry = SupervisionConnections()
+    let store = try await PreviewData.connectedDemoStore()
+    #expect(registry.connections(including: nil).isEmpty)
+    #expect(
+      registry.connections(including: store).map(ObjectIdentifier.init) == [
+        ObjectIdentifier(store)
+      ])
+    #expect(registry.connections(including: store).count == 1)
+  }
 }

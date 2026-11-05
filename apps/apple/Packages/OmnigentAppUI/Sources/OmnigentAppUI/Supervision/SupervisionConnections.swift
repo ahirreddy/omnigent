@@ -47,6 +47,17 @@ public final class SupervisionConnections {
     entries.keys.sorted().compactMap { connection(for: $0) }
   }
 
+  /// ``connections``, registering `scene` first when it is signed in but its scene hasn't
+  /// registered it yet (Settings can open before the sign-in handlers run).
+  /// - Parameter scene: The asking scene's connection.
+  /// - Returns: The connections.
+  public func connections(including scene: ConnectionStore?) -> [ConnectionStore] {
+    if let scene, let server = scene.supervisedServerURL, connection(for: server) == nil {
+      register(scene)
+    }
+    return connections
+  }
+
   static func key(_ serverURL: String) -> String {
     var value = serverURL.lowercased()
     while value.hasSuffix("/") { value.removeLast() }

@@ -91,7 +91,13 @@
       connections.register(connection)
       logger.notice("Supervising a signed-in connection")
       // The system prompts only while undecided; afterwards this returns the decision.
-      await requestAuthorization()
+      #if DEBUG
+        // Screenshot runs launched with -OmnigentNoNotificationPrompt YES keep the screen clear.
+        let asks = !UserDefaults.standard.bool(forKey: "OmnigentNoNotificationPrompt")
+      #else
+        let asks = true
+      #endif
+      if asks { await requestAuthorization() }
       connection.notifications?.setAllowed(isAllowed)
     }
 
