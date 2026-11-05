@@ -192,6 +192,12 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **iOS sidebar:** the swipe actions still use system orange (Pin) and indigo (Archive).
 - [ ] **Mac sidebar:** composer drafts live only in the core's memory, so the draft marker covers
   sessions opened since launch (the web keeps drafts in local storage).
+- [ ] **Mac sidebar:** the row tooltip has no PR line; the core's `SessionSummary` doesn't carry
+  the session's `pull_request` yet (web `SessionTooltipDetails`).
+- [ ] **Mac sidebar:** the Inbox badge counts sessions that need you (matching the Dock and menu
+  bar); the web counts pending requests plus unseen comments.
+- [ ] **Project settings:** the working directory is a typed path; the web also offers its folder
+  browser, and its agent picker shows harness readiness.
 - [ ] **Palette:** add "Go to Automations" once the Mac app has an Automations page.
 - [ ] **CLI style:** the CLI composer has no host chip, and its status-line model menu duplicates
   `ConfigurationMenu`'s pickers (no agent switch).

@@ -62,7 +62,7 @@ pub fn project_members(
         .collect()
 }
 
-fn project_from(value: &Value) -> Result<ProjectSummary, String> {
+pub(super) fn project_from(value: &Value) -> Result<ProjectSummary, String> {
     let name = value
         .get("name")
         .and_then(Value::as_str)
@@ -177,7 +177,7 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    async fn rename_project_rows(
+    pub(super) async fn rename_project_rows(
         &self,
         project: &ProjectSummary,
         new_name: &str,

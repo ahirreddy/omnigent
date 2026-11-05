@@ -184,7 +184,7 @@ private struct SessionRowSample: View {
             session: session, isUnread: false, isShared: false, pinLimitReached: false,
             projects: [],
             actions: CatalogActions.sidebar.sessions, rename: {}, confirmDelete: {},
-            confirmLeave: {})
+            confirmLeave: {}, confirmStop: {})
         )
         .padding(.horizontal, Theme.Spacing.small)
         .sidebarSelection(session.id == PreviewData.sessionID)

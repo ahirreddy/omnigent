@@ -1,5 +1,6 @@
 public import Foundation
 import Observation
+import OmnigentAuthUI
 import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
@@ -16,18 +17,22 @@ public struct ServerSwitching {
   public var addServer: @MainActor () -> Void
   /// Opens server settings.
   public var openSettings: (@MainActor () -> Void)?
+  /// The servers among `servers` that the user's organization provides.
+  public var organizationServers: [URL]
 
   /// Creates the switcher.
   /// - Parameters:
   ///   - servers: Known servers.
+  ///   - organizationServers: Those the organization provides ("Provided by your organization").
   ///   - switchTo: Moves the window.
   ///   - addServer: Connects another server.
   ///   - openSettings: Opens server settings.
   public init(
-    servers: [URL], switchTo: @escaping @MainActor (URL) -> Void,
+    servers: [URL], organizationServers: [URL] = [], switchTo: @escaping @MainActor (URL) -> Void,
     addServer: @escaping @MainActor () -> Void, openSettings: (@MainActor () -> Void)? = nil
   ) {
     self.servers = servers
+    self.organizationServers = organizationServers
     self.switchTo = switchTo
     self.addServer = addServer
     self.openSettings = openSettings
@@ -35,6 +40,7 @@ public struct ServerSwitching {
 
   /// The switcher's rows, one per server, ids normalized so the current server matches.
   var choices: [ServerChoice] {
+    let organization = Set(organizationServers.map { ServerChoice.normalizedID($0.absoluteString) })
     var seen = Set<String>()
     return servers.compactMap { url in
       let id = ServerChoice.normalizedID(url.absoluteString)
@@ -42,7 +48,7 @@ public struct ServerSwitching {
       return ServerChoice(
         id: id,
         name: ExecutionContext.serverDisplayName(name: nil, baseURL: url.absoluteString),
-        url: url.absoluteString, isConnected: false)
+        url: url.absoluteString, isConnected: false, isOrganization: organization.contains(id))
     }
   }
 }
@@ -98,6 +104,8 @@ extension SessionDisplayOptions {
 final class SidebarModel {
   var display = SidebarDisplayDefaults.load()
   var undo: SidebarUndo?
+  /// The open Project settings sheet.
+  var projectSettings: ProjectSettingsFlow?
   let fork = ForkFlow()
   /// The session a row's Share opened.
   var share: ShareStore?
@@ -128,27 +136,15 @@ extension ConnectedServerView {
       actions.addServer = serverSwitching.addServer
       actions.openServerSettings = serverSwitching.openSettings
     }
-    let list = connection.sessionList
-    actions.createProject = { name, moving in
-      Task {
-        guard let project = await list.createProject(named: name), let moving else { return }
-        await list.move(moving.id, to: project)
-      }
-    }
-    actions.renameProject = { project, name in
-      Task { await list.renameProject(ProjectSummary(project), to: name) }
-    }
-    actions.deleteProject = { project in
-      Task { await list.deleteProject(ProjectSummary(project)) }
+    if case .connected(server: let account) = session.signIn.state.phase, account.canSignOut {
+      let signIn = session.signIn.actions
+      actions.signOut = { signIn.signOut() }
     }
     actions.setArchivedMany = { sessions, archived in
       requestArchive(sessions.map(\.id), archived: archived)
     }
     actions.dropSession = { session, action in drop(session, action) }
-    actions.reorderProjects = { projects in
-      Task { await list.saveProjectOrder(projects.map(ProjectSummary.init)) }
-    }
-    return actions
+    return withProjectActions(actions)
   }
 
   /// Carries out a sidebar drag: pins into a slot, or files into or out of a project, unpinning

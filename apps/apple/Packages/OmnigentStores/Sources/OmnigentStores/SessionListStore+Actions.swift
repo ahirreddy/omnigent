@@ -58,14 +58,61 @@ extension SessionListStore {
   }
 
   /// Creates an empty project.
-  /// - Parameter name: Its name.
+  /// - Parameters:
+  ///   - name: Its name.
+  ///   - icon: An emoji icon, or `nil`.
   /// - Returns: The project, or `nil` on failure.
   @discardableResult
-  public func createProject(named name: String) async -> ProjectSummary? {
+  public func createProject(named name: String, icon: String? = nil) async -> ProjectSummary? {
     var created: ProjectSummary?
-    let succeeded = await perform { core in created = try await core.createProject(name: name) }
-    if succeeded { await loadProjects() }
+    let succeeded = await perform { core in
+      created = try await core.createProject(name: name)
+      if let icon, let project = created {
+        created = try await core.setProjectIcon(project: project, icon: icon)
+      }
+    }
+    if succeeded || created != nil { await loadProjects() }
     return created
+  }
+
+  /// Renames `project` when `name` differs and sets its icon when `icon` differs.
+  /// - Parameters:
+  ///   - project: The project.
+  ///   - name: The name.
+  ///   - icon: The emoji icon, or `nil` for the folder.
+  /// - Returns: Whether every change was saved.
+  @discardableResult
+  public func editProject(_ project: ProjectSummary, name: String, icon: String?) async -> Bool {
+    var current = project
+    let succeeded = await perform { core in
+      if name != project.name {
+        current = try await core.renameProject(project: current, name: name)
+      }
+      if icon != project.icon {
+        current = try await core.setProjectIcon(project: current, icon: icon)
+      }
+    }
+    await loadProjects()
+    return succeeded
+  }
+
+  /// Sorts projects by name, or keeps `projects` (their order on screen) as the manual order.
+  /// - Parameters:
+  ///   - mode: The sort mode.
+  ///   - projects: The projects in display order, saved for a manual order.
+  /// - Returns: Whether it saved.
+  @discardableResult
+  public func setProjectSortMode(_ mode: ProjectSortMode, projects: [ProjectSummary]) async
+    -> Bool
+  {
+    switch mode {
+    case .manual:
+      return await saveProjectOrder(projects)
+    case .alphabetical:
+      let saved = await perform { core in try await core.sortProjectsAlphabetically() }
+      await loadProjects()
+      return saved
+    }
   }
 
   /// Renames `project` and re-files its sessions.
@@ -146,12 +193,15 @@ extension SessionListStore {
     }
   }
 
-  /// Re-reads the project list (empty on a server without projects).
+  /// Re-reads the project list (empty on a server without projects) and its sort mode.
   public func loadProjects() async {
     guard let core else { return }
     do {
-      projects = try await core.projects()
-      projectsError = nil
+      let projects = try await core.projects()
+      if projects != self.projects { self.projects = projects }
+      let mode = try await core.projectSortMode()
+      if mode != projectSortMode { projectSortMode = mode }
+      if projectsError != nil { projectsError = nil }
     } catch {
       projectsError = coreError(error)
     }

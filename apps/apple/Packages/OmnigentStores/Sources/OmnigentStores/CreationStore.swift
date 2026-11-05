@@ -72,6 +72,9 @@ public final class CreationStore {
   public private(set) var phase: CreationPhase = .editing
   /// Files to send with the first message.
   public private(set) var attachments: [PendingAttachment] = []
+  /// The project the sidebar's "New session in project" chose: the new session is filed there
+  /// and the form takes its defaults. The form clears it once read.
+  public var pendingProject: ProjectSummary?
 
   private let core: ClientCore
   private var pendingFirstMessage: String?
@@ -149,6 +152,19 @@ public final class CreationStore {
     }
     guard generation == worktreeGeneration else { return }
     worktrees = result
+  }
+
+  /// `project`'s stored new-session defaults (Project settings), to fill in the form.
+  /// - Parameter project: The project.
+  /// - Returns: The defaults, or why they could not be read.
+  public func projectSettings(_ project: ProjectSummary) async -> Result<
+    ProjectSettings, CoreError
+  > {
+    do {
+      return .success(try await core.projectSettings(project: project))
+    } catch {
+      return .failure(coreError(error))
+    }
   }
 
   /// The directories in `path` on `hostID` (its home when `nil`), for the folder browser.

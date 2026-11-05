@@ -21,6 +21,29 @@ extension FocusedValues {
   @Entry public var paletteCommands: PaletteCommandActions?
 }
 
+/// Opens the window's command palette (the sidebar's Search). It holds no closure, so it stays
+/// equal across updates.
+public struct OpenCommandPaletteAction: Equatable {
+  let presenter: PalettePresenter
+
+  /// Opens the palette.
+  @MainActor public func callAsFunction() { presenter.open?() }
+
+  /// Equal for the same window's presenter.
+  public static func == (lhs: Self, rhs: Self) -> Bool { lhs.presenter === rhs.presenter }
+}
+
+/// Presents a window's palette; the modifier refreshes ``open`` on each update.
+@MainActor
+final class PalettePresenter {
+  var open: (@MainActor () -> Void)?
+}
+
+extension EnvironmentValues {
+  /// Opens the command palette; `nil` outside a window with one.
+  @Entry public var openCommandPalette: OpenCommandPaletteAction?
+}
+
 extension View {
   /// Adds the palette and shortcut sheet to a window's root.
   /// - Parameters:
@@ -46,9 +69,13 @@ private struct PalettePresentation: ViewModifier {
   @State private var capturedCommands = SessionCommandActions()
   @State private var pendingTarget: PaletteTarget?
   @State private var paletteRelay = FocusedActionsRelay<PaletteCommandActions>()
+  @State private var presenter = PalettePresenter()
 
   func body(content: Content) -> some View {
-    content
+    presenter.open = open
+    return
+      content
+      .environment(\.openCommandPalette, OpenCommandPaletteAction(presenter: presenter))
       // Reading the focused session commands here would re-render this modifier whenever it
       // republishes its own focused value, which never settles; a leaf view records them instead.
       .background { FocusedSessionCommandsReader(box: focusedCommands) }

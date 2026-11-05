@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 /// What the list shows with no sessions and no projects: loading, no matches, or none.
@@ -85,5 +86,21 @@ struct SessionSwipeActions: ViewModifier {
     #else
       content
     #endif
+  }
+}
+
+/// A row's hover tooltip: the title, when it was updated, its harness and environment, then
+/// the web's details (Created by, Repo, Branch).
+nonisolated enum SessionRowTooltip {
+  static func text(_ session: SessionSummary, info: SessionRowInfo, now: Date) -> String {
+    var lines = [session.title, "Updated \(RelativeTime.short(session.updatedDate, now: now)) ago"]
+    if let harness = info.harness { lines.append(HarnessAppearance(harness: harness).label) }
+    if let environment = info.environment { lines.append(environment) }
+    let details = [
+      info.createdBy.map { "Created by: \($0)" }, info.repo.map { "Repo: \($0)" },
+      info.branch.map { "Branch: \($0)" },
+    ].compactMap { $0 }
+    if !details.isEmpty { lines += [""] + details }
+    return lines.joined(separator: "\n")
   }
 }

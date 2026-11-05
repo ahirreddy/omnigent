@@ -157,16 +157,18 @@ struct BarHitShield: View {
   }
 }
 
-/// The session menu's Rename prompt and Delete and Leave confirmations.
+/// The session menu's Rename prompt and Delete, Leave and Stop confirmations.
 struct SessionMenuDialogs: ViewModifier {
   @Binding var renaming: SessionSummary?
   @Binding var renameText: String
   @Binding var confirmingDelete: SessionSummary?
   @Binding var confirmingLeave: SessionSummary?
+  @Binding var confirmingStop: SessionSummary?
   let actions: SessionListActions
 
   func body(content: Content) -> some View {
     content
+      .stopSessionConfirmation($confirmingStop, runsOnHost: { _ in false }, stop: actions.stop)
       .sessionRenamePrompt($renaming, text: $renameText, rename: actions.rename)
       .confirmationDialog(
         "Delete this session?",
