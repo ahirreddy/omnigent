@@ -991,8 +991,22 @@ impl<T: HttpTransport> ClientCore<T> {
         limit: u32,
         scope: ListScope,
     ) -> Result<(Vec<SessionSummary>, Option<String>), SessionError> {
-        let query = list_query(after, limit, scope)?;
-        let prepared = self.prepare("GET", "/v1/sessions", &query, None)?;
+        self.read_list(&list_query(after, limit, scope)?, after)
+            .await
+    }
+
+    /// Reads one `GET /v1/sessions` page with `query`, recording its rows; `after` is the
+    /// cursor the query carries.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(super) async fn read_list(
+        &self,
+        query: &[(&'static str, String)],
+        after: Option<&str>,
+    ) -> Result<(Vec<SessionSummary>, Option<String>), SessionError> {
+        let prepared = self.prepare("GET", "/v1/sessions", query, None)?;
         let epochs = lock(&self.state).metadata_epochs.clone();
         let response = self.read(prepared).await?;
         let page = SessionList::from_json(&response.body)

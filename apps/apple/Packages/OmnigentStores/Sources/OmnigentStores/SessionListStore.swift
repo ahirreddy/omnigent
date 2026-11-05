@@ -52,7 +52,11 @@ public final class SessionListStore {
   public private(set) var editing: Set<String> = []
 
   /// The core edits go through; set by the owning ``ConnectionStore``.
-  @ObservationIgnored var core: ClientCore?
+  @ObservationIgnored var core: ClientCore? {
+    didSet { paging.core = core }
+  }
+  /// Pages loaded beyond the first ("Load more", project folders).
+  public let paging = SessionListPaging()
   /// The caller's projects (sidebar folders), in display order.
   public internal(set) var projects: [ProjectSummary] = []
   /// The last project list failure, until the next successful read.
@@ -105,7 +109,9 @@ public final class SessionListStore {
   @ObservationIgnored private var computedAttention: [String: ComputedAttention] = [:]
 
   /// Creates an empty list.
-  public init() {}
+  public init() {
+    paging.reportFailure = { [weak self] in self?.reportFailure($0) }
+  }
 
   /// Renames `sessionID` (edit permission). The title is trimmed and must be 1 to 120
   /// characters; the list updates from the core's acknowledgement.
@@ -243,6 +249,7 @@ public final class SessionListStore {
       serverSessions = Dictionary(
         sessions.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
       expectations = [:]
+      paging.listReset()
     case .upsert(let sessions):
       for session in sessions {
         serverSessions[session.id] = session
@@ -270,6 +277,7 @@ public final class SessionListStore {
     serverSessions = [:]
     expectations = [:]
     isLoaded = false
+    paging.clear()
     projects = []
     projectsError = nil
     hostEnvironments = [:]

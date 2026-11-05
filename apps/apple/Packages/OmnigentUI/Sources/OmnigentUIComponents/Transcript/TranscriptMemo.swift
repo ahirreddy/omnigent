@@ -60,6 +60,7 @@ final class TranscriptLayoutMemo {
     var decorations: DecorationInputs
     var responseIDs: Set<String>
     var entries: [SegmentEntry]
+    var turns: [TranscriptTurn]
     /// The CLI blocks of ``entries``, made the first time the CLI style asks (never empty
     /// once made: the prefix holds at least one turn).
     var blocks: [CLIBlockEntry] = []
@@ -72,6 +73,11 @@ final class TranscriptLayoutMemo {
   private var cachedEntries: [SegmentEntry] = []
   private var cachedBlocks: [CLIBlockEntry] = []
   private var hasBlocks = false
+  /// The user turns; kept (the same array) while a delta changes only the open answer.
+  private var cachedTurns: [TranscriptTurn] = []
+  /// The turns after the prefix's, and whether ``cachedTurns`` start with the prefix's.
+  private var tailTurns: [TranscriptTurn] = []
+  private var turnsUsePrefix = false
   /// How many times the layout was computed, for tests.
   private(set) var computations = 0
   /// How many of those reused the folded prefix, for tests.
@@ -136,8 +142,15 @@ final class TranscriptLayoutMemo {
     cachedBlocks = []
     hasBlocks = false
     entriesUsePrefix = false
+    let reusedPrefix = layOut(state, isRunning: current.isRunning)
+    updateTurns(reusedPrefix: reusedPrefix)
+  }
+
+  /// Folds and decorates the rows into ``cachedEntries``.
+  /// - Returns: Whether the folded prefix was reused.
+  private func layOut(_ state: ConversationViewState, isRunning: Bool) -> Bool {
     let decorations = DecorationInputs(
-      lastAnswerID: current.isRunning ? nil : TranscriptView.lastAnswerID(state.rows),
+      lastAnswerID: isRunning ? nil : TranscriptView.lastAnswerID(state.rows),
       timestamps: state.timestamps, turnDurations: state.turnDurations,
       isShared: state.isShared, viewerName: state.viewerName)
     guard let split = state.rows.lastIndex(where: { $0.role == .user && !$0.isActivityOnly }),
@@ -145,11 +158,11 @@ final class TranscriptLayoutMemo {
     else {
       prefix = nil
       cachedEntries = Self.entries(TranscriptView.segments(for: state), state, decorations)
-      return
+      return false
     }
     let tailRows = state.rows[split...]
     let tail = TurnLayout.segments(
-      TranscriptLayout.items(for: Array(tailRows)), isRunning: current.isRunning)
+      TranscriptLayout.items(for: Array(tailRows)), isRunning: isRunning)
     let tailResponses = Set(tailRows.compactMap(\.responseId))
     if let prefix, prefix.decorations == decorations, prefix.rows.count == split,
       prefix.responseIDs.isDisjoint(with: tailResponses),
@@ -158,24 +171,57 @@ final class TranscriptLayoutMemo {
       prefixReuses += 1
       entriesUsePrefix = true
       cachedEntries = prefix.entries + Self.entries(tail, state, decorations)
-      return
+      return true
     }
     let prefixRows = Array(state.rows[..<split])
     let head = TurnLayout.segments(
-      TranscriptLayout.items(for: prefixRows), isRunning: current.isRunning, closesLastTurn: true)
+      TranscriptLayout.items(for: prefixRows), isRunning: isRunning, closesLastTurn: true)
     let responses = Set(prefixRows.compactMap(\.responseId))
     guard responses.isDisjoint(with: tailResponses) else {
       // A response continues past the user's message (a steer): its "Worked for" belongs to the
       // answer after it, so the turns are decorated together and nothing is kept.
       self.prefix = nil
       cachedEntries = Self.entries(head + tail, state, decorations)
-      return
+      return false
     }
     let headEntries = Self.entries(head, state, decorations)
     self.prefix = Prefix(
-      rows: prefixRows, decorations: decorations, responseIDs: responses, entries: headEntries)
+      rows: prefixRows, decorations: decorations, responseIDs: responses, entries: headEntries,
+      turns: Self.turns(headEntries[...]))
     entriesUsePrefix = true
     cachedEntries = headEntries + Self.entries(tail, state, decorations)
+    return false
+  }
+
+  /// The turn rail's turns for `state`.
+  /// - Parameter state: The conversation.
+  /// - Returns: The user turns, the same array while a delta changes only the open answer.
+  func turns(for state: ConversationViewState) -> [TranscriptTurn] {
+    refresh(state)
+    return cachedTurns
+  }
+
+  /// Keeps ``cachedTurns`` when the reused prefix is the one they were built from and the tail's
+  /// turns are unchanged, so a streamed delta allocates nothing.
+  private func updateTurns(reusedPrefix: Bool) {
+    guard entriesUsePrefix, let prefix else {
+      cachedTurns = Self.turns(cachedEntries[...])
+      turnsUsePrefix = false
+      return
+    }
+    let tail = Self.turns(cachedEntries[prefix.entries.count...])
+    if reusedPrefix, turnsUsePrefix, tail == tailTurns { return }
+    cachedTurns = prefix.turns + tail
+    tailTurns = tail
+    turnsUsePrefix = true
+  }
+
+  /// The user messages among `entries`, in order.
+  private static func turns(_ entries: ArraySlice<SegmentEntry>) -> [TranscriptTurn] {
+    entries.compactMap { entry in
+      guard case .item(.message(let row)) = entry.segment, row.role == .user else { return nil }
+      return TranscriptTurn(id: entry.id, text: row.text)
+    }
   }
 
   /// `segments` with their message decorations and turn durations.

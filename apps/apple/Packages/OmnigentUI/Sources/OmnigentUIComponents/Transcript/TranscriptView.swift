@@ -19,7 +19,9 @@ public struct TranscriptView: View {
   @State private var pacer = TranscriptRowsPacer()
   @State private var current: TranscriptCurrentState
   @State private var hasUserMessages = false
+  @State private var rail = TurnRailModel()
   @Environment(\.transcriptAppearance) private var appearance
+  @Environment(\.transcriptFocus) private var focus
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   static let bottomID = "transcript-bottom"
@@ -114,6 +116,7 @@ public struct TranscriptView: View {
       }
       .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.01) { ids in
         position.visible = Set(ids)
+        updateActiveTurn()
       }
       .onScrollGeometryChange(for: Bool.self) { geometry in
         geometry.visibleRect.minY - geometry.contentInsets.top < Self.olderHistoryReach
@@ -138,6 +141,7 @@ public struct TranscriptView: View {
           isShown: hasUserMessages,
           previous: { step(.previous, proxy) }, next: { step(.next, proxy) })
       )
+      .modifier(turnRail(proxy))
       .modifier(
         JumpToTopReveal(
           hasMoreHistory: state.hasMoreHistory && actions.loadOlder != nil,
@@ -171,6 +175,10 @@ public struct TranscriptView: View {
       },
       hasUserMessagesChanged: { hasUser in
         if hasUserMessages != hasUser { hasUserMessages = hasUser }
+      },
+      turnsChanged: { turns in
+        rail.setTurns(turns)
+        updateActiveTurn()
       })
   }
 
@@ -286,6 +294,32 @@ public struct TranscriptView: View {
 }
 
 extension TranscriptView {
+  /// The turn rail at the leading edge: a tick scrolls to its turn and flashes it.
+  private func turnRail(_ proxy: ScrollViewProxy) -> TurnRailOverlay {
+    TurnRailOverlay(
+      model: rail,
+      jump: { id in
+        follow.readEarlier()
+        focus?.flash(id)
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+          proxy.scrollTo(id, anchor: .top)
+        }
+      },
+      preview: { TurnRailModel.responsePreview(after: $0, in: layout.entries(for: shown)) },
+      loadOlder: loadOlder)
+  }
+
+  /// Marks the turn owning the middle of the screen on the rail (only while it shows).
+  private func updateActiveTurn() {
+    let turns = rail.turns
+    guard turns.count >= 2 else { return }
+    let order =
+      appearance.isCLI ? layout.blocks(for: shown).map(\.id) : layout.entries(for: shown).map(\.id)
+    rail.setActive(
+      TurnRailModel.activeTurn(
+        order: order, turns: Set(turns.map(\.id)), visible: position.visible))
+  }
+
   /// Scrolls to the message a `?message=` link points at; a page still landing must not put
   /// the old top row back.
   private func messageFocus(_ proxy: ScrollViewProxy) -> TranscriptMessageFocus {

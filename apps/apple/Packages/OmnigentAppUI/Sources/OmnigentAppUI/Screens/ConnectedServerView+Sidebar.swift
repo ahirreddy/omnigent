@@ -147,6 +147,11 @@ extension ConnectedServerView {
       requestArchive(sessions.map(\.id), archived: archived)
     }
     actions.dropSession = { session, action in drop(session, action) }
+    let paging = connection.sessionList.paging
+    actions.loadMoreSessions = { paging.loadMore() }
+    actions.loadProjectPage = { project in
+      Task { await paging.loadProject(ProjectSummary(project), id: project.id) }
+    }
     return withProjectActions(actions)
   }
 

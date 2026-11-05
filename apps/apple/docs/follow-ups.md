@@ -328,9 +328,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   Markdown editor as the web's); a selection comment in a CRLF file is not offered (its offsets
   would skip the `\r`s); unsaved edits are not flushed or prompted for when the window closes
   or the app quits (autosave runs 1.5 s after the last keystroke).
-- [ ] **Inbox "Load more sessions":** the core's session list holds only its first page
-  (`DEFAULT_PAGE_LIMIT`), so the Inbox cannot page further as the web does; needs list paging in
-  the engine, shared with the sidebar's Show more.
+- [ ] **List paging, left:** a list reload asks for every loaded row in one request, so past the
+  server's 1,000-row page cap the rows beyond it fall out until Load more reads them again; a
+  folder's pages are dropped on a reload (the folder reads its first page again); search and the
+  quick filters still match loaded sessions only (the web's tabs query the server).
 - [ ] **Canvas:** cards show no pull request (summaries carry no `pull_request`), every card is
   drawn (the web draws only visible ones, which matters past a few hundred sessions), the board
   pans with scrolling but not by dragging the background, and there is no "+" to create a project
@@ -343,8 +344,8 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   `omnigent.archived_at` label (the core's session summary does not carry it), and the project
   filter covers loaded pages only (the web pages through every archived session).
 - [ ] **Session view parity left:** shared sessions' author badges (`ConversationViewState`
-  `isShared`/`viewerName` need the signed-in user's identity, which no store exposes); the turn
-  rail; Download in the Files panel; the error card's Continue in another directory, Fork session
+  `isShared`/`viewerName` need the signed-in user's identity, which no store exposes); Download in
+  the Files panel; the error card's Continue in another directory, Fork session
   and sign-in link / Copy code; the approval card naming its sub-agent; per-session right-panel
   state; hiding the Pull Requests tab without git.
 - [ ] **Automations editor, still short of the web:** the folder is a typed path (no host folder
@@ -367,6 +368,12 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Done
 
+- [x] Turn rail: one tick per user turn at the transcript's leading edge (Mac and iPad, both
+  transcript styles; left out at compact widths as the web leaves it out on phones), with the
+  hover preview, click to scroll, the active turn and paging from its top. List paging: the
+  core keeps a list window (`load_more_sessions`, `SessionListPagingChanged`; reloads keep the
+  loaded pages), the sidebar's and the Inbox's Load more, and project folders read their own
+  pages (`project_sessions`, `?project=`) five rows per Show more. 2026-11-05.
 - [x] Right panel, Agents: the whole spawn tree from the top-level session (core
   `agent_tree`, `GET /v1/sessions/{id}/child_sessions` three levels deep), a list with folding and
   a graph view; the composer's background-task list, a Plan mode badge, the hover-revealed jump to

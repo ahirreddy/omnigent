@@ -22,7 +22,10 @@ public struct SidebarView: View {
   @State private var inlineText = ""
   /// Expanded project folders (they start collapsed), newline-separated, kept across launches.
   @AppStorage(SidebarNavigationOrder.expandedProjectsKey) private var expandedProjectIDs = ""
-  @State private var showsAllInProject: Set<String> = []
+  /// Rows each folder's Show more has revealed, by folder id.
+  @State private var shownInProject: [String: Int] = [:]
+  /// Pages the Load more row read by itself as it scrolled into view.
+  @State private var autoLoads = SidebarAutoLoads()
   @State private var projectPrompt: ProjectPrompt?
   @State private var projectName = ""
   @State private var confirmingProjectDelete: SessionProject?
@@ -52,8 +55,17 @@ public struct SidebarView: View {
   public var body: some View {
     List(selection: listSelection) {
       SidebarNavigationRows(state: state, selection: selection, actions: actions)
-      ForEach(SidebarSections.sections(behavior.holding(state))) { section in
+      let sections = SidebarSections.sections(behavior.holding(state))
+      ForEach(sections) { section in
         sessionSection(section)
+      }
+      // A new page can land in any list section, so Load more hides only when all are collapsed.
+      if state.paging.hasMore, let load = actions.loadMoreSessions,
+        sections.contains(where: { !$0.isProjects && !collapsedTitles.contains($0.title) })
+      {
+        SidebarLoadMoreRow(
+          isLoading: state.paging.isLoading, loaded: state.list.sessions.count,
+          autoLoads: autoLoads, scope: loadMoreScope, load: load)
       }
       SidebarEmptyState(state: state, searchText: searchText)
     }
@@ -125,7 +137,7 @@ public struct SidebarView: View {
   private var visibleSessionIDs: [String] {
     SidebarNavigationOrder.sessionIDs(
       behavior.holding(state), collapsed: collapsedTitles,
-      expandedProjects: expandedProjects, showsAllInProject: showsAllInProject)
+      expandedProjects: expandedProjects, shownInProject: shownInProject)
   }
 
   @ViewBuilder
@@ -259,6 +271,11 @@ public struct SidebarView: View {
 }
 
 extension SidebarView {
+  /// What the list shows; each choice gets its own automatic Load more budget, as the web's tabs.
+  private var loadMoreScope: String {
+    "\(state.display.show)-\(state.quickFilter.map { "\($0)" } ?? "")-\(searchText)"
+  }
+
   private var expandedProjects: Set<String> {
     Set(expandedProjectIDs.split(separator: "\n").map(String.init))
   }
@@ -273,6 +290,10 @@ extension SidebarView {
     let marker = { (rows: ArraySlice<SessionSummary>) in
       SidebarMarker.strongest(rows, list: state.list, rowInfo: state.rowInfo)
     }
+    let pages = ProjectFolderPages(
+      project: project, sessions: sessions, paging: state.paging,
+      shown: shownInProject[project.id] ?? 0, selectedID: selection?.sessionID,
+      load: actions.loadProjectPage, setShown: { shownInProject[project.id] = $0 })
     return ProjectFolder(
       project: project, sessions: sessions,
       isExpanded: Binding(
@@ -281,16 +302,10 @@ extension SidebarView {
           var ids = expandedProjects
           if expanded { ids.insert(project.id) } else { ids.remove(project.id) }
           setExpandedProjects(ids)
+          // Each expansion starts at one page, as the web's.
+          if !expanded { shownInProject[project.id] = nil }
         }),
-      showsAll: Binding(
-        get: { showsAllInProject.contains(project.id) },
-        set: { showsAll in
-          if showsAll {
-            showsAllInProject.insert(project.id)
-          } else {
-            showsAllInProject.remove(project.id)
-          }
-        }),
+      pages: pages,
       menu: ProjectMenu(
         project: project, projects: state.projects, actions: actions,
         rename: {
@@ -301,8 +316,8 @@ extension SidebarView {
       drop: { item in drop(item, on: .project(project)) },
       row: { session in row(session, target: .project(project)) },
       folderMarker: expandedProjects.contains(project.id) ? nil : marker(sessions[...]),
-      moreMarker: showsAllInProject.contains(project.id)
-        ? nil : marker(sessions.dropFirst(ProjectFolder<EmptyView>.collapsedCount)))
+      moreMarker: pages.visibleCount < sessions.count
+        ? marker(sessions.dropFirst(pages.visibleCount)) : nil)
   }
 
   private func row(_ session: SessionSummary, target: SidebarDropTarget?) -> some View {
