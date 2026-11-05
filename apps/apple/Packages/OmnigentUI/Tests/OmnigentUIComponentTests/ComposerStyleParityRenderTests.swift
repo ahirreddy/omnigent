@@ -58,15 +58,18 @@
       return try RenderSupport.render(view, width: 760, scheme: .dark, layout: .regular)
     }
 
+    /// The ink drawn, not its share: Retry may add a row and so a taller image.
+    private static func ink(_ rendered: RenderSupport.Rendered) -> Double {
+      RenderSupport.inkCoverage(rendered) * rendered.size.width * rendered.size.height
+    }
+
     @Test("a recoverable error offers Retry in both styles")
     func errorRowsOfferRetry() throws {
       for style in TranscriptStyle.allCases {
         let withRetry = try renderError(style, canRetry: true)
         try RenderSupport.write(withRetry, name: "error-retry-\(style)")
         let without = try renderError(style, canRetry: false)
-        #expect(
-          RenderSupport.inkCoverage(withRetry) > RenderSupport.inkCoverage(without),
-          "\(style) error row shows no Retry")
+        #expect(Self.ink(withRetry) > Self.ink(without), "\(style) error row shows no Retry")
       }
     }
 
