@@ -434,6 +434,18 @@ apple-mock-agent:
 apple-seed:
     .venv/bin/python apps/apple/Tools/seed-local-fixtures.py
 
+# Seed 320 sessions in six projects and three 500+ turn transcripts for profiling (no model calls).
+[group('client')]
+[positional-arguments]
+apple-seed-large *args:
+    .venv/bin/python apps/apple/Tools/seed-large-fixtures.py "$@"
+
+# Timed Mac app scenarios (launch, open, switch, stream) with a main-thread hitch monitor.
+[group('client')]
+[positional-arguments]
+apple-perf *args:
+    .venv/bin/python apps/apple/Tools/perf/perf.py "$@"
+
 # Fails unless SSE text arrives in several temporally separated chunks. Known
 # to fail today (single-chunk delivery); never weaken or fake it.
 # Strict real-model streaming gate (needs apple-services and a signed-in harness).

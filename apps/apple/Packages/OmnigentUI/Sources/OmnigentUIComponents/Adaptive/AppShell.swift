@@ -61,6 +61,7 @@ public struct AppShell<Detail: View>: View {
           .modifier(TitlelessToolbar(isActive: showsStrip))
           .onPreferenceChange(TitlebarTrailingItems.self) { trailingItems = $0 }
       }
+      .unmeasuredMinimum(UnmeasuredMinimum.column)
       .environment(tabDrag)
       .onGeometryChange(for: CGFloat.self) {
         $0.size.width

@@ -346,6 +346,12 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   browser), a project can only be picked (the web also creates one from a typed name), there is no
   timezone picker (the saved or device zone is kept), and a run's unread dot ignores this device's
   read marks. The run history reloads every 30 s rather than waiting on a started run's row.
+- [ ] **Mac performance, next levers** (numbers and tools in [performance.md](performance.md)):
+  opening a long session costs about 3 s of main-thread CPU in Debug and switching back to its
+  tab about 1.5 s, because a tab's content is rebuilt (keep recent tabs alive, or fewer views per
+  markdown block); streaming into a long session uses 30-40% of the main thread (the transcript
+  body re-renders per delta); a changed session-list row still sends every session through the
+  core twice (an incremental filter in the core would avoid it).
 
 ## Product decisions
 

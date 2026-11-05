@@ -23,6 +23,7 @@ public struct ConnectedServerView: View {
   let serverSwitching: ServerSwitching?
 
   @State private var sidebar = SidebarModel()
+  @State private var sidebarMemo = SidebarStateMemo()
   @State private var showsTabOverview = false
   @State private var tabFailure: String?
   @State private var tabCommandRelay = FocusedActionsRelay<TabCommandActions>()
@@ -134,7 +135,7 @@ public struct ConnectedServerView: View {
   }
 
   private var sidebarState: SidebarViewState {
-    var state = SidebarAdapter.state(
+    var state = sidebarMemo.state(
       list: connection.sessionList, display: sidebar.display,
       server: connection.connectedServer,
       servers: serverSwitching?.choices ?? [])
