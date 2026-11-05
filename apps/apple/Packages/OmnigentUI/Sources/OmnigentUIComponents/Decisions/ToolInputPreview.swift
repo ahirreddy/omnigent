@@ -86,15 +86,46 @@ nonisolated enum ToolInputPreview {
       return [diff.files.isEmpty ? headed(text, path: path) : text]
     }
     let path = pathKeys.lazy.compactMap { dictionary[$0] as? String }.first ?? path
-    if let old = dictionary["old_string"] as? String, let new = dictionary["new_string"] as? String
-    {
-      let removed = old.isEmpty ? [] : old.components(separatedBy: "\n").map { "-" + $0 }
-      let added = new.isEmpty ? [] : new.components(separatedBy: "\n").map { "+" + $0 }
-      return [headed((removed + added).joined(separator: "\n"), path: path)]
+    if let old = string(dictionary, oldKeys), let new = string(dictionary, newKeys) {
+      guard old != new else { return [] }
+      let body = pairLines(old: old, new: new).joined(separator: "\n")
+      // Without a path, a hunk marker still marks the text as a diff.
+      return [path == nil ? "@@ edit @@\n" + body : headed(body, path: path)]
     }
     return dictionary.keys.sorted().flatMap { key in
       dictionary[key].map { diffTexts(in: $0, path: path) } ?? []
     }
+  }
+
+  /// Each harness's key for an edit's old and new text (Claude, Pi, OpenCode).
+  private static let oldKeys = ["old_string", "oldText", "oldString"]
+  private static let newKeys = ["new_string", "newText", "newString"]
+  /// Unchanged lines kept around a change, as the web's edit diff.
+  private static let contextLines = 2
+
+  private static func string(_ dictionary: [String: Any], _ keys: [String]) -> String? {
+    keys.lazy.compactMap { dictionary[$0] as? String }.first
+  }
+
+  /// One replacement as diff lines: lines both sides share at the start and end are context
+  /// (the nearest few kept), the rest removed then added.
+  static func pairLines(old: String, new: String) -> [String] {
+    let before = old.isEmpty ? [] : old.components(separatedBy: "\n")
+    let after = new.isEmpty ? [] : new.components(separatedBy: "\n")
+    var prefix = 0
+    while prefix < min(before.count, after.count), before[prefix] == after[prefix] { prefix += 1 }
+    var suffix = 0
+    while suffix < min(before.count, after.count) - prefix,
+      before[before.count - 1 - suffix] == after[after.count - 1 - suffix]
+    {
+      suffix += 1
+    }
+    let leading = before[max(0, prefix - contextLines)..<prefix].map { " " + $0 }
+    let removed = before[prefix..<(before.count - suffix)].map { "-" + $0 }
+    let added = after[prefix..<(after.count - suffix)].map { "+" + $0 }
+    let trailingEnd = min(before.count, before.count - suffix + contextLines)
+    let trailing = before[(before.count - suffix)..<trailingEnd].map { " " + $0 }
+    return leading + removed + added + trailing
   }
 
   private static func headed(_ text: String, path: String?) -> String {

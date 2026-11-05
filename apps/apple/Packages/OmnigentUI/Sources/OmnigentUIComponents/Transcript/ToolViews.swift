@@ -165,15 +165,20 @@ struct ToolRowView: View {
 
   private var activity: Activity? { entry.primary?.activity }
 
-  private var diff: DiffSummary? {
-    let texts = [
-      entry.call?.activity?.detail("arguments"), entry.result?.activity?.detail("output"),
-    ]
-    return texts.lazy.compactMap { $0 }.compactMap(DiffSummary.find(in:)).first
+  /// The edit the call's arguments describe, else a diff in its output.
+  private var diff: (summary: DiffSummary, isInput: Bool)? {
+    let output = entry.result?.activity?.detail("output")
+    if let call = entry.call?.activity, let arguments = call.detail("arguments"),
+      let diff = ToolEditDiff.diff(tool: call.title, arguments: arguments, output: output)
+    {
+      return (diff, true)
+    }
+    return output.flatMap(DiffSummary.find(in:)).map { ($0, false) }
   }
 
   var body: some View {
-    let diff = diff
+    let found = diff
+    let diff = found?.summary
     VStack(alignment: .leading, spacing: 0) {
       ExpandableHeader(
         isExpanded: $isExpanded,
@@ -192,7 +197,8 @@ struct ToolRowView: View {
       if isExpanded {
         VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
           if let diff { DiffView(diff: diff) }
-          if let call = entry.call?.activity {
+          // An edit's diff stands in for its raw arguments.
+          if let call = entry.call?.activity, found?.isInput != true {
             DetailSectionsView(
               sections: call.details.isEmpty && !call.summary.isEmpty
                 ? [DetailSection(id: "summary", title: "Input", text: call.summary, isCode: true)]
