@@ -233,3 +233,33 @@ struct ConfigurationMenu: View {
     .pickerStyle(.inline)
   }
 }
+
+/// The model choice Control-Shift-M opens, as in the configuration menu (which SwiftUI cannot
+/// open from code).
+struct ModelPicker: ViewModifier {
+  let configuration: ComposerConfiguration?
+  let request: Int
+  @Binding var isPresented: Bool
+  let select: (@MainActor (String?) -> Void)?
+
+  func body(content: Content) -> some View {
+    content
+      .onChange(of: request) {
+        isPresented = select != nil && configuration?.visibleModels.isEmpty == false
+      }
+      .confirmationDialog("Model", isPresented: $isPresented, titleVisibility: .visible) {
+        if let configuration {
+          Button(configuration.defaultModelTitle) { select?(nil) }
+          ForEach(configuration.visibleModels, id: \.id) { model in
+            Button(
+              model.id == configuration.selectedModelId ? "\(model.label) (current)" : model.label
+            ) {
+              select?(model.id)
+            }
+            .disabled(!configuration.canSelect(model: model.id))
+            .accessibilityIdentifier("composer-model-picker-\(model.id)")
+          }
+        }
+      }
+  }
+}

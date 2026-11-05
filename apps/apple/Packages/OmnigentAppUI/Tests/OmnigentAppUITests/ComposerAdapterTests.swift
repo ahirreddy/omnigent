@@ -52,10 +52,14 @@ struct ComposerAdapterTests {
     let skill = Skill(name: "review", description: "Review the diff", displayName: nil)
     let commands = slashCommands(
       configuration: configuration(wrapper: "codex-native-ui", mode: nil, harness: "codex-native"),
-      skills: [skill]
+      skills: [skill], options: SlashOptions(serverClears: true)
     )
     .map(ComposerAdapter.slashCommand)
-    #expect(commands.map(\.id) == ["/compact", "/effort", "/model", "/new", "/help", "$review"])
+    #expect(
+      commands.map(\.id) == [
+        "/compact", "/clear", "/context", "/effort", "/model", "/mcp", "/permissions", "/new",
+        "/side", "/help", "$review",
+      ])
     #expect(commands.last?.isSkill == true)
   }
 

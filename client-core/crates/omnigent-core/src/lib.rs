@@ -22,6 +22,7 @@ pub mod harness_accounts;
 pub mod harness_setup;
 pub mod http;
 pub mod ledger;
+pub mod mentions;
 pub mod notifications;
 pub mod read_state;
 pub mod realtime;

@@ -28,6 +28,21 @@ pub struct SkillCatalog {
     pub warnings: Vec<String>,
 }
 
+/// What the server offers beyond the session's configuration ([`ClientCore::slash_options`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Record)]
+pub struct SlashOptions {
+    /// The server takes the `clear` control.
+    pub server_clears: bool,
+}
+
+impl From<SlashOptions> for core::SlashOptions {
+    fn from(options: SlashOptions) -> Self {
+        Self {
+            server_clears: options.server_clears,
+        }
+    }
+}
+
 /// One entry of the `/` menu.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct SlashCommand {
@@ -67,6 +82,19 @@ pub enum SlashAction {
     },
     /// Start a blank session in the same project.
     NewSession,
+    /// Run the harness's own `/clear` ([`ClientCore::clear_context`]).
+    Clear,
+    /// Fork a side chat and open it with `question` as its draft.
+    SideChat {
+        /// Everything after `/side`; may be empty.
+        question: String,
+    },
+    /// Show the context usage ([`context_report`]).
+    Context,
+    /// Show the session's MCP servers ([`mcp_report`]).
+    Mcp,
+    /// Open the approval-mode picker.
+    Permissions,
     /// Show `text` and send nothing.
     Show {
         /// The text.
@@ -114,6 +142,11 @@ impl From<core::SlashAction> for SlashAction {
             core::SlashAction::SetModel { model } => Self::SetModel { model },
             core::SlashAction::SetEffort { effort } => Self::SetEffort { effort },
             core::SlashAction::NewSession => Self::NewSession,
+            core::SlashAction::Clear => Self::Clear,
+            core::SlashAction::SideChat { question } => Self::SideChat { question },
+            core::SlashAction::Context => Self::Context,
+            core::SlashAction::Mcp => Self::Mcp,
+            core::SlashAction::Permissions => Self::Permissions,
             core::SlashAction::Show { text } => Self::Show { text },
         }
     }
@@ -129,8 +162,9 @@ fn core_skills(skills: Vec<Skill>) -> Vec<core::Skill> {
 pub fn slash_commands(
     configuration: SessionConfiguration,
     skills: Vec<Skill>,
+    options: SlashOptions,
 ) -> Vec<SlashCommand> {
-    core::slash_commands(&configuration.into(), &core_skills(skills))
+    core::slash_commands(&configuration.into(), &core_skills(skills), &options.into())
         .into_iter()
         .map(Into::into)
         .collect()
@@ -144,14 +178,50 @@ pub fn slash_action(
     has_attachments: bool,
     configuration: SessionConfiguration,
     skills: Vec<Skill>,
+    options: SlashOptions,
 ) -> Option<SlashAction> {
     core::slash_action(
         &text,
         has_attachments,
         &configuration.into(),
         &core_skills(skills),
+        &options.into(),
     )
     .map(Into::into)
+}
+
+/// The `/context` text: the model, tokens used against the window, and the item count.
+#[must_use]
+#[uniffi::export]
+pub fn context_report(
+    configuration: Option<SessionConfiguration>,
+    tokens_used: Option<u64>,
+    context_window: Option<u64>,
+    items: u64,
+) -> String {
+    let configuration = configuration.map(Into::into);
+    core::context_report(
+        configuration.as_ref(),
+        core::ContextUsage {
+            tokens_used,
+            context_window,
+            items,
+        },
+    )
+}
+
+/// The marker lines `@`-tagged workspace `paths` put ahead of a message, worded for `harness`.
+#[must_use]
+#[uniffi::export]
+pub fn mention_preamble(harness: Option<String>, paths: Vec<String>) -> String {
+    omnigent_core::mentions::mention_preamble(harness.as_deref(), &paths)
+}
+
+/// The `/mcp` text for the agent's MCP servers; `None` while they are unknown.
+#[must_use]
+#[uniffi::export]
+pub fn mcp_report(servers: Option<Vec<String>>) -> String {
+    core::mcp_report(servers.as_deref())
 }
 
 #[uniffi::export]
@@ -172,6 +242,39 @@ impl ClientCore {
             skills: catalog.skills.into_iter().map(Into::into).collect(),
             warnings: catalog.warnings,
         })
+    }
+
+    /// Which server-backed commands the composer may offer.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: the read errors and `MalformedResponse`.
+    pub async fn slash_options(&self) -> Result<SlashOptions, CoreError> {
+        let options = self
+            .sessions()
+            .slash_options()
+            .await
+            .map_err(CoreError::from)?;
+        Ok(SlashOptions {
+            server_clears: options.server_clears,
+        })
+    }
+
+    /// Runs the harness's own `/clear`; the view follows the session that supersedes this one.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `ReadOnly` and the read and write errors.
+    pub async fn clear_context(&self, session_id: String) -> Result<(), CoreError> {
+        self.sessions()
+            .clear_context(&session_id)
+            .await
+            .map_err(CoreError::from)
+    }
+
+    /// Turns the server's automatic session titles on or off for this device's requests.
+    pub fn set_background_session_titles(&self, enabled: bool) {
+        self.sessions().set_background_session_titles(enabled);
     }
 
     /// Runs the skill the composer `text` invokes, through the same gate as `send_message`.

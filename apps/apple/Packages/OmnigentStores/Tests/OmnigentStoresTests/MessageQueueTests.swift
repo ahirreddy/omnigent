@@ -67,4 +67,25 @@ struct MessageQueueTests {
     queue.move(fromOffsets: IndexSet([0, 1]), toOffset: 3)
     #expect(queue.items.map(\.text) == ["c", "a", "b"])
   }
+
+  @Test("Messages held for an offline host go first and block the queue until released")
+  func hostHold() throws {
+    var queue = MessageQueue()
+    let queued = try queue.enqueue("queued")
+    try queue.hold("held first")
+    try queue.hold("held second")
+    #expect(queue.items.map(\.text) == ["held first", "held second", "queued"])
+    #expect(queue.isHoldingForHost)
+    #expect(queue.next(isRunning: false, isBlocked: false) == nil)
+    let held = try #require(queue.items.first)
+    try queue.edit(held.id, text: "edited")
+    #expect(queue.items.first?.state == .waitingForHost, "editing keeps it waiting")
+    queue.releaseHeld()
+    #expect(!queue.isHoldingForHost)
+    #expect(queue.next(isRunning: false, isBlocked: false)?.text == "edited")
+    _ = try queue.begin(queued.id)
+    queue.waitForHost(queued.id)
+    #expect(queue.items.last?.state == .waitingForHost)
+    #expect(throws: MessageQueue.Refusal.empty) { try queue.hold("  ") }
+  }
 }

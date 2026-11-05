@@ -49,6 +49,13 @@ extension CoreError {
     return false
   }
 
+  /// Whether the server refused a message because the session's host is offline; nothing was
+  /// recorded, so it can be sent again once the host is back.
+  public var isHostOffline: Bool {
+    if case .Session(let kind, _, _, _, _) = self { return kind == .hostOffline }
+    return false
+  }
+
   /// Whether a write may have landed; the user must review before sending again.
   public var isDeliveryUncertain: Bool {
     if case .Session(_, _, _, _, let deliveryUncertain) = self { return deliveryUncertain }

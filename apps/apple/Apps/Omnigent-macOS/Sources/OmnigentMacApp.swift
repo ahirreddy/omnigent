@@ -193,6 +193,7 @@ struct AppSettingsView: View {
       selection: $navigator.tab
     ) {
       ComposerSettingsSection()
+      SessionSettingsSection()
       BrowserEngineSettingsView(
         preferences: services.browserPreferences, provider: services.browserProvider)
       BrowserSettingsView(environment: services.browser)

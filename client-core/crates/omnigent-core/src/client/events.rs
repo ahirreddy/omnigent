@@ -14,12 +14,14 @@
 //! The events route has no idempotency key: an unclear outcome is
 //! [`SessionError::DeliveryUncertain`] and blocks the session's next send until the user reviews
 //! it ([`ClientCore::acknowledge_uncertain_send`]). Nothing is ever re-posted automatically.
+//! Messages ask the server to refuse rather than record a turn while the session's host is
+//! offline: that refusal is [`SessionError::HostOffline`], and the caller keeps the message.
 
 use serde_json::{Value, json};
 use url::Url;
 
 use super::json::{as_object, opt_bool, opt_str};
-use super::requests::validate_identifier;
+use super::requests::{HOST_OFFLINE_HOLD_HEADER, validate_identifier};
 use super::{ChangedFilesFetch, ClientCore, ClientEvent, SessionError, lock};
 use crate::attachments::{
     AttachmentDraft, AttachmentSubmission, DraftError, DraftItemId, DraftKey, UploadError,
@@ -30,6 +32,9 @@ use crate::auth::hosted::HostedConnection;
 use crate::decisions::{Decision, DecisionError, DecisionResponse, ResolveRoute};
 use crate::http::{HttpHeader, HttpTransport, TransportError};
 use crate::ledger::{SubmissionOperation, SubmissionOutcome};
+
+/// An Inbox reply refused because the session's host is offline (the web's wording).
+const HOST_OFFLINE_REPLY: &str = "The host for this session is offline, so the reply wasn\u{2019}t sent. Try again once it reconnects.";
 
 /// The server's acknowledgement of a message.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +138,12 @@ fn changed_files(value: &Value) -> Result<Vec<ChangedFile>, String> {
 pub enum SendPayload {
     /// A user `message` with the text and the staged attachments.
     Message,
+    /// A user `message` whose `preamble` (one marker line per `@`-tagged workspace path, see
+    /// [`crate::mentions::mention_preamble`]) goes ahead of the text.
+    Mentioning {
+        /// The marker lines.
+        preamble: String,
+    },
     /// A skill run on the server (`slash_command`); the text is its typed invocation.
     Skill {
         /// The skill name.
@@ -145,9 +156,22 @@ pub enum SendPayload {
 }
 
 impl SendPayload {
+    /// A user message (with or without tagged paths), rather than a command.
+    const fn is_message(&self) -> bool {
+        matches!(self, Self::Message | Self::Mentioning { .. })
+    }
+
+    /// Whether it carries content of its own beyond the text.
+    fn has_preamble(&self) -> bool {
+        matches!(self, Self::Mentioning { preamble } if !preamble.trim().is_empty())
+    }
+
     fn body(&self, text: &str, attachments: &[UploadedAttachment]) -> Value {
         match self {
             Self::Message => message_body(text, attachments),
+            Self::Mentioning { preamble } => {
+                message_body(&format!("{preamble}{text}"), attachments)
+            }
             Self::Skill { name, arguments } => json!({
                 "type": "slash_command",
                 "data": {"kind": "skill", "name": name, "arguments": arguments},
@@ -425,6 +449,33 @@ impl<T: HttpTransport> ClientCore<T> {
         result
     }
 
+    /// Sends `text` with the `@`-tagged workspace `paths` as marker lines ahead of it, through
+    /// the same gate as [`Self::send_message`]. The composer keeps only `text`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::send_message`]; text-less paths are a message of their own.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn send_message_mentioning(
+        &self,
+        session_id: &str,
+        text: &str,
+        harness: Option<&str>,
+        paths: &[String],
+    ) -> Result<MessageSent, SessionError> {
+        let payload = SendPayload::Mentioning {
+            preamble: crate::mentions::mention_preamble(harness, paths),
+        };
+        let result = self
+            .send_payload(session_id, text, &payload, true, true)
+            .await;
+        self.dispatch();
+        result
+    }
+
     /// Sends the composer `text` as `payload` through the same gate as
     /// [`Self::send_message`]. A skill or compact control never carries attachments.
     ///
@@ -467,7 +518,14 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<MessageSent, SessionError> {
         let result = self
             .send_payload(session_id, text, &SendPayload::Message, false, false)
-            .await;
+            .await
+            .map_err(|error| match error {
+                // The Inbox keeps the reply in its field rather than holding it for the host.
+                SessionError::HostOffline { .. } => SessionError::HostOffline {
+                    message: HOST_OFFLINE_REPLY.to_owned(),
+                },
+                other => other,
+            });
         self.dispatch();
         result
     }
@@ -509,10 +567,10 @@ impl<T: HttpTransport> ClientCore<T> {
         let gate = {
             let mut state = lock(&self.state);
             let has_attachments = staged_attachments && state.drafts.draft(&key).has_attachments();
-            if text.trim().is_empty() && !has_attachments {
+            if text.trim().is_empty() && !has_attachments && !payload.has_preamble() {
                 return Err(SessionError::EmptyMessage);
             }
-            if has_attachments && *payload != SendPayload::Message {
+            if has_attachments && !payload.is_message() {
                 return Err(DraftError::NotReady.into());
             }
             if has_attachments && !state.drafts.can_submit(&key) {
@@ -591,9 +649,21 @@ impl<T: HttpTransport> ClientCore<T> {
         self.require_sendable(session_id, require_live_stream)
             .await?;
         let path = format!("/v1/sessions/{session_id}/events");
-        let value = self
-            .write_json("POST", &path, &payload.body(text, &attachments))
-            .await?;
+        let mut prepared =
+            self.prepare("POST", &path, &[], Some(&payload.body(text, &attachments)))?;
+        if payload.is_message() {
+            // The caller keeps a message refused for an offline host, so none is recorded.
+            prepared
+                .request
+                .headers
+                .push(HttpHeader::new(HOST_OFFLINE_HOLD_HEADER, "on"));
+        }
+        let response = self.write(prepared).await?;
+        let value: Value = serde_json::from_slice(&response.body).map_err(|error| {
+            SessionError::DeliveryUncertain {
+                detail: format!("unreadable acknowledgement from {path}: {error}"),
+            }
+        })?;
         match acknowledgement(&value).map_err(|detail| SessionError::DeliveryUncertain {
             detail: format!("unreadable {path} acknowledgement: {detail}"),
         })? {

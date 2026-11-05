@@ -36,7 +36,9 @@ struct ComposerSendRules {
     {
       return "Waiting for attachments to upload."
     }
-    if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, state.attachments.isEmpty {
+    if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, state.attachments.isEmpty,
+      state.mentions.isEmpty
+    {
       return state.purpose == .start ? "Enter a message to get started" : "Type a message."
     }
     return nil

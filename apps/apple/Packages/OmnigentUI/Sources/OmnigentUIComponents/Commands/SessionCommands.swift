@@ -24,6 +24,12 @@ public struct SessionCommandActions {
   public var openChanges: (@MainActor () -> Void)?
   /// Rename the session (Option-Command-R).
   public var rename: (@MainActor () -> Void)?
+  /// Open the model picker (Control-Shift-M).
+  public var chooseModel: (@MainActor () -> Void)?
+  /// Switch to the next model (Control-Option-M).
+  public var cycleModel: (@MainActor () -> Void)?
+  /// Switch to the next reasoning effort (Control-Option-E).
+  public var cycleEffort: (@MainActor () -> Void)?
   /// A pending request's Approve owns Command-Return, so Send Message shows no shortcut.
   public var approveOwnsCommandReturn = false
 
@@ -102,6 +108,17 @@ public struct OmnigentSessionCommands: Commands {
       Button("Jump to Latest") { actions?.jumpToLatest?() }
         .keyboardShortcut(.downArrow, modifiers: .command)
         .disabled(actions?.jumpToLatest == nil)
+      Divider()
+      Button("Choose Model\u{2026}") { actions?.chooseModel?() }
+        .keyboardShortcut("m", modifiers: [.control, .shift])
+        .disabled(actions?.chooseModel == nil)
+      Button("Next Model") { actions?.cycleModel?() }
+        .keyboardShortcut("m", modifiers: [.control, .option])
+        .disabled(actions?.cycleModel == nil)
+      Button("Next Reasoning Effort") { actions?.cycleEffort?() }
+        .keyboardShortcut("e", modifiers: [.control, .option])
+        .disabled(actions?.cycleEffort == nil)
+      Divider()
       Button("Toggle Chat and Terminal") { actions?.toggleViewMode?() }
         .keyboardShortcut("\\", modifiers: [.command, .option])
         .disabled(actions?.toggleViewMode == nil)

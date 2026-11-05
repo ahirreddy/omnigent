@@ -13,6 +13,7 @@ extension ConnectionStore {
       }
       if case .connected(let server) = phase {
         sessionList.viewerID = server.userId
+        markSavedDrafts()
         let list = sessionList
         Task {
           async let projects: Void = list.loadProjects()

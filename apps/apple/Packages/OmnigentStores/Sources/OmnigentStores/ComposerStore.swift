@@ -14,6 +14,7 @@ public final class ComposerStore {
         draftChanged?(hasDraft)
       }
       guard text != oldValue else { return }
+      draftStored?(text)
       mentionTextChanged()
       guard !applyingCoreText else { return }
       do {
@@ -50,11 +51,19 @@ public final class ComposerStore {
   public internal(set) var skillsProblem: String?
   /// The output of the last local command (`/help`, a usage line), until dismissed.
   public internal(set) var commandNotice: String?
+  /// What the server offers for `/` commands, once ``loadSkills()`` read it.
+  public internal(set) var slashOptions = SlashOptions(serverClears: false) {
+    didSet { if slashOptions != oldValue { refreshRules() } }
+  }
+  /// Bumped by `/permissions`: the composer opens its approval-mode picker.
+  public internal(set) var approvalPickerRequests = 0
   /// The core's verdicts on the configuration, computed when it changes rather than on every
   /// read, so views that redraw while a reply streams make no core calls.
   var rules = ConfigurationRules()
   /// Workspace paths matching the draft's `@` mention, for the `@` menu.
   public internal(set) var mentionCandidates: [String] = []
+  /// Workspace paths tagged with `@`, shown as chips and sent as marker lines ahead of the text.
+  public internal(set) var mentions: [String] = []
   /// Why the `@` menu has no results (the workspace search failed); `nil` otherwise.
   public internal(set) var mentionProblem: String?
   /// Finds workspace paths for an `@` query; `nil` turns mentions off.
@@ -75,6 +84,12 @@ public final class ComposerStore {
   private var applyingCoreText = false
   /// Told when the draft becomes empty or not (the sidebar's draft marker).
   @ObservationIgnored var draftChanged: ((Bool) -> Void)?
+  /// Told the new draft text, to keep it across launches.
+  @ObservationIgnored var draftStored: ((String) -> Void)?
+  /// What `/context`, `/mcp` and held sends read from the conversation.
+  @ObservationIgnored var conversationFacts: (@MainActor () -> ConversationFacts?)?
+  /// Retries messages held for the host while it already reads online.
+  @ObservationIgnored var hostRecheck: Task<Void, Never>?
 
   init(sessionID: String, core: ClientCore) {
     self.sessionID = sessionID
@@ -85,58 +100,10 @@ public final class ComposerStore {
   public var canSend: Bool {
     !isSending && !isBlocked
       && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        || !attachments.items.isEmpty)
+        || !attachments.items.isEmpty || !mentions.isEmpty)
   }
 
-  /// Sends the draft and the uploaded attachments. A slash command does what the core says:
-  /// a skill runs on the server, `/compact` uses the compact control, `/model` and `/effort`
-  /// change the configuration, `/help` shows text, and `/new` is left to the caller.
-  /// - Returns: What the caller still has to do.
-  @discardableResult
-  public func send() async -> ComposerSendOutcome {
-    switch slashAction() {
-    case nil, .sendText:
-      await deliver { core, session, text in
-        try await core.sendMessage(sessionId: session, text: text)
-      }
-    case .runSkill(let name, let arguments):
-      await deliver { core, session, text in
-        try await core.runSkill(sessionId: session, text: text, name: name, arguments: arguments)
-      }
-    case .compact:
-      await deliver { core, session, text in
-        try await core.compact(sessionId: session, text: text)
-      }
-    case .setModel(let model):
-      text = ""
-      await selectModel(model)
-    case .setEffort(let effort):
-      text = ""
-      await selectEffort(effort)
-    case .newSession:
-      text = ""
-      return .newSession
-    case .show(let output):
-      commandNotice = output
-    }
-    return .handled
-  }
-
-  /// Hides ``commandNotice``.
-  public func dismissCommandNotice() {
-    commandNotice = nil
-  }
-
-  /// What sending the draft would do, when it is a command this session knows.
-  func slashAction() -> SlashAction? {
-    let trimmed = text.drop { $0.isWhitespace }
-    guard trimmed.hasPrefix("/") || trimmed.hasPrefix("$"), let configuration else { return nil }
-    return OmnigentCoreFFI.slashAction(
-      text: text, hasAttachments: !attachments.items.isEmpty, configuration: configuration,
-      skills: skills)
-  }
-
-  private func deliver(
+  func deliver(
     _ post: (ClientCore, String, String) async throws -> MessageSent
   ) async {
     isSending = true
@@ -169,6 +136,7 @@ public final class ComposerStore {
     } catch {
       skillsProblem = "Skills are unavailable: \(coreError(error).message)"
     }
+    await loadSlashOptions()
   }
 
   /// Stages a file.
@@ -259,4 +227,6 @@ public enum ComposerSendOutcome: Sendable, Equatable {
   case handled
   /// `/new`: open a blank session in the same project.
   case newSession
+  /// `/side`: fork a side chat and open it with `question` as its draft.
+  case sideChat(question: String)
 }

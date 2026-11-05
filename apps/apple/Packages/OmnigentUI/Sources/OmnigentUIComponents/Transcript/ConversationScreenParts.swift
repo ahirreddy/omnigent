@@ -192,3 +192,27 @@ struct SessionMenuDialogs: ViewModifier {
       }
   }
 }
+
+extension ConversationScreen where Terminal == EmptyView {
+  /// Creates the screen without a terminal mode.
+  /// - Parameters:
+  ///   - state: The conversation.
+  ///   - composer: The composer state.
+  ///   - draft: The draft text.
+  ///   - showsInspector: Whether the right panel shows.
+  ///   - actions: Conversation actions.
+  ///   - composerActions: Composer actions.
+  ///   - extras: Title menu, right-panel content, Share and navigation.
+  public init(
+    state: ConversationViewState, composer: ComposerViewState, draft: Binding<String>,
+    showsInspector: Binding<Bool>, actions: ConversationActions, composerActions: ComposerActions,
+    extras: ConversationExtras = ConversationExtras()
+  ) {
+    self.init(
+      state: state, composer: composer, draft: draft, showsInspector: showsInspector,
+      mode: .constant(.chat), actions: actions, composerActions: composerActions, extras: extras
+    ) {
+      EmptyView()
+    }
+  }
+}

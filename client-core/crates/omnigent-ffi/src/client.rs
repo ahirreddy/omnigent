@@ -1137,6 +1137,36 @@ impl ClientCore {
         })
     }
 
+    /// Sends like [`Self::send_message`], with the `@`-tagged workspace `paths` as marker lines
+    /// ahead of the text (worded for `harness`). The composer keeps only `text`.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]; check `delivery_uncertain`.
+    pub async fn send_message_mentioning(
+        &self,
+        session_id: String,
+        text: String,
+        harness: Option<String>,
+        paths: Vec<String>,
+    ) -> Result<MessageSent, CoreError> {
+        let sent = self
+            .inner
+            .sessions
+            .send_message_mentioning(&session_id, &text, harness.as_deref(), &paths)
+            .await
+            .map_err(CoreError::from)?;
+        if self.inner.demo.is_some() {
+            self.inner.post(Msg::DemoKick);
+        }
+        Ok(MessageSent {
+            queued: sent.submission.queued,
+            item_id: sent.submission.item_id,
+            pending_id: sent.submission.pending_id,
+            draft: sent.draft,
+        })
+    }
+
     /// Cancels the session's active turn.
     ///
     /// # Errors

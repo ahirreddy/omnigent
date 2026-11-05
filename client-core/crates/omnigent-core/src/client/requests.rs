@@ -8,7 +8,8 @@
 //! - **Writes** accept 200, 201, 202 and 204. A transport failure, cancellation, 3xx, 5xx, a result
 //!   from an older connection, or an unreadable acknowledgement is
 //!   [`SessionError::DeliveryUncertain`]: the write may have landed and is never retried. A 401
-//!   ends the connection; 403 and other 4xx definitely did not deliver.
+//!   ends the connection; 403 and other 4xx definitely did not deliver, nor did a 503
+//!   `host_offline` ([`SessionError::HostOffline`]).
 //!
 //! Requests carry `Accept: application/json`, the Databricks org header when the endpoint has
 //! one, the replica routing key on a host-sharded server (see [`super::routing`]), and the bearer
@@ -95,6 +96,38 @@ pub(crate) fn rejection_message(body: &[u8], status: u16) -> String {
         )
 }
 
+/// The server's `error.code`, when the body is an Omnigent error.
+fn error_code(body: &[u8]) -> Option<String> {
+    let parsed: Value = serde_json::from_slice(body).ok()?;
+    parsed
+        .get("error")?
+        .get("code")?
+        .as_str()
+        .map(str::to_owned)
+}
+
+/// Asks the server to refuse a message whose host is offline (`host_offline`) instead of
+/// recording a failed turn; the client keeps the message and sends it after the host is back.
+pub(crate) const HOST_OFFLINE_HOLD_HEADER: &str = "x-omnigent-hold-when-host-offline";
+
+/// The server's error code for a held send whose host is offline (HTTP 503). Nothing was
+/// recorded, so the write definitely did not deliver.
+const HOST_OFFLINE_CODE: &str = "host_offline";
+
+/// `off` keeps the server from naming a new session in the background after its first message.
+const BACKGROUND_TITLES_HEADER: &str = "X-Omnigent-Background-Session-Titles";
+
+/// A request that can start a session's first turn, where the server may name the session:
+/// creating a session or posting to its events (the web sends the title header on both).
+fn starts_session_turn(method: &str, path: &str) -> bool {
+    method == "POST"
+        && (path == "/v1/sessions"
+            || path
+                .strip_prefix("/v1/sessions/")
+                .and_then(|rest| rest.strip_suffix("/events"))
+                .is_some_and(|id| !id.is_empty() && !id.contains('/')))
+}
+
 fn read_transport_error(error: TransportError) -> SessionError {
     match error {
         TransportError::Cancelled => SessionError::Cancelled,
@@ -129,6 +162,12 @@ pub(super) fn address_built_request(
 }
 
 impl<T: HttpTransport> ClientCore<T> {
+    /// Turns the server's automatic session titles on or off for this device's requests (the
+    /// web's "Automatically name new sessions"). On unless turned off.
+    pub fn set_background_session_titles(&self, enabled: bool) {
+        lock(&self.state).background_titles_off = !enabled;
+    }
+
     /// Builds a request for `path` on the connected server.
     pub(crate) fn prepare(
         &self,
@@ -160,6 +199,11 @@ impl<T: HttpTransport> ClientCore<T> {
             request
                 .headers
                 .push(HttpHeader::new(SLICE_KEY_HEADER, host.as_str()));
+        }
+        if state.background_titles_off && starts_session_turn(method, path) {
+            request
+                .headers
+                .push(HttpHeader::new(BACKGROUND_TITLES_HEADER, "off"));
         }
         if let Some(body) = body {
             request
@@ -414,6 +458,11 @@ impl<T: HttpTransport> ClientCore<T> {
                 status,
                 message: rejection_message(&response.body, status),
             }),
+            503 if error_code(&response.body).as_deref() == Some(HOST_OFFLINE_CODE) => {
+                Err(SessionError::HostOffline {
+                    message: rejection_message(&response.body, 503),
+                })
+            }
             status => Err(uncertain(format!(
                 "{} answered HTTP {status}",
                 redact_query(&path)
@@ -505,6 +554,26 @@ mod tests {
             assert!(validate_identifier(id).is_err(), "{id:?}");
         }
         assert_eq!(validate_identifier("conv_A-1"), Ok(()));
+    }
+
+    #[test]
+    fn title_header_covers_session_creates_and_event_posts() {
+        assert!(starts_session_turn("POST", "/v1/sessions"));
+        assert!(starts_session_turn("POST", "/v1/sessions/conv_1/events"));
+        assert!(!starts_session_turn("GET", "/v1/sessions"));
+        assert!(!starts_session_turn("POST", "/v1/sessions/conv_1/fork"));
+        assert!(!starts_session_turn("POST", "/v1/sessions//events"));
+        assert!(!starts_session_turn("POST", "/v1/sessions/a/b/events"));
+    }
+
+    #[test]
+    fn error_code_reads_the_omnigent_error_body() {
+        assert_eq!(
+            error_code(br#"{"error":{"code":"host_offline","message":"offline"}}"#).as_deref(),
+            Some("host_offline")
+        );
+        assert_eq!(error_code(br#"{"error":"busy"}"#), None);
+        assert_eq!(error_code(b"<html>503</html>"), None);
     }
 
     #[test]

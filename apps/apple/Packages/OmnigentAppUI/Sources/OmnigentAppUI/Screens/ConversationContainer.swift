@@ -208,10 +208,7 @@ struct ConversationContainer: View {
       canEdit: !(conversation.header?.readOnly ?? false),
       newSideChat: SessionToolsAdapter.sideChat(conversation, routes: toolRoutes),
       agents: AgentTreeAdapter.panel(conversation, open: tabRoutes?.openSession ?? openSession),
-      mention: { [composer = conversation.composer] path in
-        let separator = composer.text.isEmpty || composer.text.hasSuffix(" ") ? "" : " "
-        composer.text += "\(separator)@\(path) "
-      }
+      mention: { [composer = conversation.composer] path in composer.addMention(path) }
     ).slots
   }
 
@@ -346,9 +343,9 @@ extension ConversationContainer {
     return ComposerActions(
       send: {
         dismissedSendError = nil
-        let newSession = sessionActions.newSession
+        let (newSession, routes) = (sessionActions.newSession, toolRoutes)
         Task {
-          if await composer.send() == .newSession { newSession?() }
+          await SessionToolsAdapter.send(conversation, newSession: newSession, routes: routes)
         }
       },
       interrupt: {
@@ -382,8 +379,8 @@ extension ConversationContainer {
   private var extras: ComposerExtraActions {
     let conversation = conversation
     var extras = ComposerAdapter.extras(
-      conversation.composer, isRunning: { conversation.isRunning },
-      recallPrevious: { ComposerAdapter.lastPrompt(conversation) }, reconnect: retry)
+      conversation.composer, isRunning: { conversation.isRunning }, reconnect: retry,
+      prompts: { ComposerAdapter.prompts(conversation) })
     SessionToolsAdapter.add(to: &extras, store: conversation, summary: summary, routes: toolRoutes)
     return extras
   }
