@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The transcript with its rows read in its own body, so row changes re-render only this view.
-/// A kept tab out of view keeps the rows it last showed and stops reading, so streaming into it
-/// costs nothing until it shows again.
+/// The rows arrive paced (``TranscriptRowsPacer``), and a kept tab out of view keeps the rows it
+/// last showed, so streaming into it costs nothing until it shows again.
 struct LiveTranscript: View {
   let state: ConversationViewState
   let liveRows: LiveTranscriptRows?
@@ -10,25 +10,18 @@ struct LiveTranscript: View {
   let scrollToLatestRequest: Int
 
   @Environment(\.isTabContentHidden) private var isHidden
-  @State private var shown = ShownRows()
+  @State private var pacer = TranscriptRowsPacer()
 
   var body: some View {
     var current = state
     if let liveRows {
-      let live = isHidden ? shown.rows ?? liveRows.read() : liveRows.read()
-      shown.rows = live
+      let live = pacer.rows(from: liveRows, isShown: !isHidden)
       current.rows = live.rows
       current.revision = live.revision
     }
     return TranscriptView(
       state: current, actions: actions, scrollToLatestRequest: scrollToLatestRequest)
   }
-}
-
-/// The rows a transcript last read. Not observed: keeping them must not re-render it.
-@MainActor
-private final class ShownRows {
-  var rows: (rows: [Row], revision: UInt64)?
 }
 
 extension TitlebarTrailingItems {
