@@ -1,4 +1,5 @@
 import Foundation
+import OmnigentAppBrowser
 import OmnigentAppUI
 import OmnigentBrowser
 import OmnigentCoreFFI
