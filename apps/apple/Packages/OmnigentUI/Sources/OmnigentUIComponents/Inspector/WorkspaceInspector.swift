@@ -35,9 +35,7 @@ public struct WorkspaceInspector: View {
 
   private var children: [EventSection] { state.sections.filter { $0.id.hasPrefix("child-") } }
 
-  private var tabs: [InspectorTab] {
-    InspectorTab.allCases.filter { $0 != .search || slots.search != nil }
-  }
+  private var tabs: [InspectorTab] { InspectorTab.shown(hasSearch: slots.search != nil) }
 
   /// The fixed tab on screen; Search falls back to Files when the server has no search.
   private var shownTab: InspectorTab { tabs.contains(tab) ? tab : .files }

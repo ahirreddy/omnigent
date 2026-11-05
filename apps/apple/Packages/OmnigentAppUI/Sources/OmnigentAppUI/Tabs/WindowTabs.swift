@@ -157,6 +157,7 @@ struct WindowTabs {
       Self.offersTerminal(selected.content)
     {
       commands.toggleTerminal = { toggleTerminal(sessionID) }
+      commands.newShell = { Task { await newTerminal(in: sessionID, named: nil, replacing: nil) } }
     }
     return commands
   }

@@ -119,24 +119,31 @@ struct InboxPaletteTests {
     #expect(PaletteSearch.results([entry("one", "A")], query: "aa").isEmpty)
   }
 
-  @Test("Palette offers eleven scoped commands and disables unavailable session actions")
+  @Test("Palette leads with the web's actions and labels, then disables unavailable ones")
   func commands() {
     let state = PaletteViewState(scope: "Mac Studio", sessions: [])
     let entries = PaletteCatalog.entries(state: state, commands: SessionCommandActions())
+    #expect(
+      entries.prefix(5).map(\.title) == [
+        "New chat", "Go to Inbox", "Go to Settings", "Toggle conversations sidebar",
+        "Toggle workspace sidebar",
+      ])
     #expect(entries.count == 11)
     #expect(
       entries.filter { !$0.isEnabled }.map(\.target) == [
-        .nextRequest, .changes, .composer, .toggleTerminal, .toggleInspector,
+        .toggleInspector, .nextRequest, .changes, .composer, .toggleTerminal,
       ])
-    #expect(entries.suffix(3).map(\.target) == [.settings, .toggleSidebar, .toggleInspector])
     let available = PaletteCatalog.entries(
       state: state,
       commands: SessionCommandActions(focusComposer: {}, toggleViewMode: {}, openChanges: {}))
     #expect(available.first { $0.target == .changes }?.isEnabled == true)
     #expect(available.first { $0.target == .composer }?.shortcut == "⌃⇧L")
+    #expect(available.first { $0.target == .findSession }?.shortcut == "⌥⌘S")
+    #expect(PaletteSearch.results(entries, query: "new session").first?.target == .newSession)
+    #expect(PaletteSearch.results(entries, query: "right panel").first?.target == .toggleInspector)
   }
 
-  @Test("Automations and Usage follow Open Inbox only when the server offers them")
+  @Test("Automations and Usage follow Go to Inbox only when the server offers them")
   func offeredPages() {
     var state = PaletteViewState(scope: "Mac Studio", sessions: [])
     let none = PaletteCatalog.entries(state: state, commands: SessionCommandActions())

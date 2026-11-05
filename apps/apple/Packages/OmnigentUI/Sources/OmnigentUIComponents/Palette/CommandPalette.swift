@@ -5,50 +5,47 @@ public struct CommandPalette: View {
   private let state: PaletteViewState
   private let commands: [PaletteEntry]
   private let perform: (PaletteTarget) -> Void
-  private let search: (@MainActor (String) async -> [PaletteEntry])?
+  private let search: (@MainActor (String) async -> PaletteSearchResults)?
   @State private var query = ""
   /// Server matches for the current query, beyond the loaded sessions.
-  @State private var found: [PaletteEntry] = []
-  @State private var scope: Scope = .all
+  @State private var found = PaletteSearchResults()
+  @State private var scope: PaletteScope
   @State private var selection: String?
   @FocusState private var searchFocused: Bool
   @Environment(\.dismiss) private var dismiss
-
-  private enum Scope: String, CaseIterable, Identifiable {
-    case all = "All"
-    case sessions = "Sessions"
-    case servers = "Servers"
-    var id: Self { self }
-  }
 
   /// Creates the palette with resolved, window-local actions.
   /// - Parameters:
   ///   - state: Loaded sessions and servers.
   ///   - commands: Commands.
+  ///   - findsSessions: Opens scoped to sessions, searching by name (Option-Command-S).
   ///   - search: Server-side session search, debounced as the query changes.
   ///   - perform: Executes a destination.
   public init(
-    state: PaletteViewState, commands: [PaletteEntry],
-    search: (@MainActor (String) async -> [PaletteEntry])? = nil,
+    state: PaletteViewState, commands: [PaletteEntry], findsSessions: Bool = false,
+    search: (@MainActor (String) async -> PaletteSearchResults)? = nil,
     perform: @escaping (PaletteTarget) -> Void
   ) {
     self.state = state
     self.commands = commands
     self.search = search
     self.perform = perform
+    _scope = State(initialValue: findsSessions ? .sessions : .all)
   }
 
-  private var results: [PaletteEntry] {
-    let entries: [PaletteEntry]
+  private var sections: [PaletteSection] {
+    PaletteResults.sections(
+      scope: scope, query: query, commands: commands, state: state, found: found)
+  }
+
+  private var results: [PaletteEntry] { sections.flatMap(\.entries) }
+
+  private var placeholder: String {
     switch scope {
-    case .all: entries = commands + state.sessions
-    case .sessions: entries = state.sessions
-    case .servers: entries = state.servers
+    case .all: "Search sessions or run a command"
+    case .sessions: "Search sessions by name"
+    case .servers: "Find a server"
     }
-    let local = PaletteSearch.results(entries, query: query)
-    guard scope != .servers else { return local }
-    var shown = Set(local.map(\.target))
-    return local + found.filter { shown.insert($0.target).inserted }
   }
 
   /// Search, scoped results and keyboard help.
@@ -56,7 +53,7 @@ public struct CommandPalette: View {
     VStack(spacing: 0) {
       HStack(spacing: Theme.Spacing.small) {
         Image(systemName: "magnifyingglass").accessibilityHidden(true)
-        TextField("Find a session or command", text: $query)
+        TextField(placeholder, text: $query)
           .textFieldStyle(.plain)
           .font(.title3)
           .focused($searchFocused)
@@ -69,7 +66,7 @@ public struct CommandPalette: View {
       .padding(Theme.Spacing.large)
       HStack {
         Picker("Search scope", selection: $scope) {
-          ForEach(Scope.allCases) { Text($0.rawValue).tag($0) }
+          ForEach(PaletteScope.allCases) { Text($0.rawValue).tag($0) }
         }
         .pickerStyle(.segmented).tint(Theme.secondary).labelsHidden().fixedSize()
         .accessibilityIdentifier("palette-scope")
@@ -80,19 +77,12 @@ public struct CommandPalette: View {
       .padding(.bottom, Theme.Spacing.small)
       Divider()
       ScrollViewReader { proxy in
-        List(results) { entry in
-          Button {
-            activate(entry)
-          } label: {
-            result(entry)
+        List {
+          ForEach(sections) { section in
+            Section(section.title) {
+              ForEach(section.entries) { row($0) }
+            }
           }
-          .buttonStyle(.plain)
-          .disabled(!entry.isEnabled)
-          .listRowBackground(
-            Rectangle().fill(ThemeColor.selection.opacity(selection == entry.id ? 1 : 0))
-          )
-          .accessibilityIdentifier("palette-result-\(entry.id)")
-          .id(entry.id)
         }
         .listStyle(.plain).scrollContentBackground(.hidden)
         .overlay {
@@ -139,6 +129,21 @@ public struct CommandPalette: View {
     .accessibilityIdentifier("command-palette")
   }
 
+  private func row(_ entry: PaletteEntry) -> some View {
+    Button {
+      activate(entry)
+    } label: {
+      result(entry)
+    }
+    .buttonStyle(.plain)
+    .disabled(!entry.isEnabled)
+    .listRowBackground(
+      Rectangle().fill(ThemeColor.selection.opacity(selection == entry.id ? 1 : 0))
+    )
+    .accessibilityIdentifier("palette-result-\(entry.id)")
+    .id(entry.id)
+  }
+
   private func result(_ entry: PaletteEntry) -> some View {
     HStack(spacing: Theme.Spacing.medium) {
       Image(systemName: entry.symbol).frame(width: 24).accessibilityHidden(true)
@@ -158,7 +163,7 @@ public struct CommandPalette: View {
   private func searchServer() async {
     let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let search, !text.isEmpty else {
-      found = []
+      found = PaletteSearchResults()
       return
     }
     do {

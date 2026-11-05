@@ -6,13 +6,17 @@ public struct PaletteCommandActions {
   public var openPalette: @MainActor () -> Void
   /// Open grouped keyboard help.
   public var openShortcuts: @MainActor () -> Void
+  /// Open the palette scoped to sessions, searching by name (Option-Command-S).
+  public var findSession: @MainActor () -> Void
 
   /// Creates scene-local presentation actions.
   public init(
-    openPalette: @escaping @MainActor () -> Void, openShortcuts: @escaping @MainActor () -> Void
+    openPalette: @escaping @MainActor () -> Void, openShortcuts: @escaping @MainActor () -> Void,
+    findSession: @escaping @MainActor () -> Void = {}
   ) {
     self.openPalette = openPalette
     self.openShortcuts = openShortcuts
+    self.findSession = findSession
   }
 }
 
@@ -63,7 +67,8 @@ private struct PalettePresentation: ViewModifier {
   let state: PaletteViewState
   let actions: PaletteActions
   let initiallyPresented: Bool
-  @State private var showsPalette = false
+  /// The shown palette's starting scope; an item, so the sheet opens with the requested one.
+  @State private var palette: PaletteScope?
   @State private var showsShortcuts = false
   @State private var focusedCommands = FocusedSessionCommandsBox()
   @State private var capturedCommands = SessionCommandActions()
@@ -79,25 +84,31 @@ private struct PalettePresentation: ViewModifier {
       // Reading the focused session commands here would re-render this modifier whenever it
       // republishes its own focused value, which never settles; a leaf view records them instead.
       .background { FocusedSessionCommandsReader(box: focusedCommands) }
+      .background { ShortcutAliases(perform: actions.perform) }
       .focusedSceneValue(
         \.paletteCommands,
         paletteRelay.publish(
-          PaletteCommandActions(openPalette: open, openShortcuts: { showsShortcuts = true }))
+          PaletteCommandActions(
+            openPalette: { open(.all) }, openShortcuts: { showsShortcuts = true },
+            findSession: { open(.sessions) }))
       )
-      .sheet(isPresented: $showsPalette, onDismiss: executePending) {
-        CommandPalette(state: state, commands: entries, search: actions.search) { target in
+      .sheet(item: $palette, onDismiss: executePending) { scope in
+        CommandPalette(
+          state: state, commands: entries, findsSessions: scope == .sessions,
+          search: actions.search
+        ) { target in
           pendingTarget = target
-          showsPalette = false
+          palette = nil
         }
       }
       .sheet(isPresented: $showsShortcuts) { KeyboardShortcutsSheet() }
-      .onAppear { if initiallyPresented { open() } }
-      .onChange(of: initiallyPresented) { _, presented in if presented { open() } }
+      .onAppear { if initiallyPresented { open(.all) } }
+      .onChange(of: initiallyPresented) { _, presented in if presented { open(.all) } }
   }
 
-  private func open() {
+  private func open(_ scope: PaletteScope) {
     capturedCommands = focusedCommands.commands ?? SessionCommandActions()
-    showsPalette = true
+    palette = scope
   }
 
   private func executePending() {
@@ -130,5 +141,41 @@ private struct FocusedSessionCommandsReader: View {
   var body: some View {
     box.commands = sessionCommands
     return Color.clear.accessibilityHidden(true)
+  }
+}
+
+/// The web's keys for actions whose menu items keep the Mac's own keys: Option-Command-[ for the
+/// sidebar and Option-Shift-Command-[ and ] for the split view's panes. A leaf, so reading the
+/// focused tab commands re-renders only it.
+private struct ShortcutAliases: View {
+  let perform: @MainActor (PaletteTarget) -> Void
+  @FocusedValue(\.tabCommands) private var tabs
+
+  var body: some View {
+    #if os(macOS)
+      Group {
+        Button("Toggle Sidebar") { perform(.toggleSidebar) }
+          .keyboardShortcut(AppShortcuts.toggleSidebarAlias)
+        // Shift turns [ into { on most layouts, so the shifted character is bound too; focusing
+        // a pane is idempotent if both match.
+        focus(.leading, AppShortcuts.previousPane)
+        focus(.leading, KeyboardShortcut("{", modifiers: [.command, .option]))
+        focus(.trailing, AppShortcuts.nextPane)
+        focus(.trailing, KeyboardShortcut("}", modifiers: [.command, .option]))
+      }
+      .opacity(0)
+      .frame(width: 0, height: 0)
+      .accessibilityHidden(true)
+    #else
+      Color.clear.accessibilityHidden(true)
+    #endif
+  }
+
+  private func focus(_ pane: TabPane, _ shortcut: KeyboardShortcut) -> some View {
+    Button(pane == .leading ? "Focus Previous Pane" : "Focus Next Pane") {
+      tabs?.focusPane?(pane)
+    }
+    .keyboardShortcut(shortcut)
+    .disabled(tabs?.focusPane == nil)
   }
 }

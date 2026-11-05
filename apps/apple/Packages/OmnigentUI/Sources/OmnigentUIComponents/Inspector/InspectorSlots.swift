@@ -20,6 +20,13 @@ nonisolated public enum InspectorTab: String, Hashable, Sendable, CaseIterable, 
   /// The tab itself.
   public var id: Self { self }
 
+  /// The tabs the panel shows, in order; Search only when the server offers it.
+  /// - Parameter hasSearch: The panel has content search.
+  /// - Returns: The tabs.
+  static func shown(hasSearch: Bool) -> [Self] {
+    allCases.filter { $0 != .search || hasSearch }
+  }
+
   /// The label.
   public var title: String {
     switch self {
