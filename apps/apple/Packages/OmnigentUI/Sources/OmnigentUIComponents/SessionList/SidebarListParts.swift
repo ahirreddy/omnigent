@@ -104,3 +104,23 @@ nonisolated enum SessionRowTooltip {
     return lines.joined(separator: "\n")
   }
 }
+
+/// The sidebar's search field. iPhone and iPad keep one search entry point: where the header's
+/// Search opens the palette (titles and message content), the field is left out, so a compact
+/// width does not also float a search button beside the list.
+struct SidebarSearchField: ViewModifier {
+  @Binding var text: String
+  @Environment(\.openCommandPalette) private var openPalette
+
+  func body(content: Content) -> some View {
+    #if os(iOS)
+      if openPalette != nil {
+        content
+      } else {
+        content.searchable(text: $text, placement: .sidebar, prompt: "Search sessions")
+      }
+    #else
+      content.searchable(text: $text, placement: .sidebar, prompt: "Search sessions")
+    #endif
+  }
+}
