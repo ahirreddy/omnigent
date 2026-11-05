@@ -24,9 +24,11 @@ struct OmnigentMacApp: App {
   var body: some Scene {
     let services = appDelegate.services
     let desktop = services.desktop
-    // The demo's windows open on its offline server, whatever the default server is.
+    // The demo's windows open on its offline server, whatever the default server is; a window
+    // opened for a link that launched the app opens on the link's server.
     let defaultServerURL = {
-      OmnigentMacAppDelegate.demoServerURL ?? desktop.preferences.defaultServerURL
+      OmnigentMacAppDelegate.demoServerURL ?? desktop.router.requestedServerURL
+        ?? desktop.preferences.defaultServerURL
     }
     ServerWindowScene(
       defaultServerURL: defaultServerURL,

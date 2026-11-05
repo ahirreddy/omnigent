@@ -38,6 +38,7 @@ private final class Harness {
   var consentRequests: [ServerOrigin] = []
   var consentAnswer = true
   var remembered: [URL] = []
+  var windowRequests = 0
 
   init(acknowledger: FakeAcknowledger.Answer = .accept, known: [URL] = []) {
     let log = log
@@ -46,6 +47,8 @@ private final class Harness {
       registry: registry, acknowledger: FakeAcknowledger(answer: acknowledger),
       reportIssue: { log.issues.append($0) })
     router.knownServers = { known }
+    router.windowRequestDelay = .zero
+    router.requestWindow = { [weak self] in self?.windowRequests += 1 }
     router.rememberServer = { [weak self] in self?.remembered.append($0) }
     router.confirmUnknownServer = { [weak self] origin in
       guard let self else { return false }
@@ -194,5 +197,39 @@ struct DesktopRouterTests {
       harness.opened.compactMap(\.serverURL?.host) == [
         "new.example.com", "a.example.com", "b.example.com",
       ])
+  }
+
+  @Test("a link that launched the app asks for a window on its server, then routes in it")
+  func coldStartRequestsWindow() async throws {
+    let server = try url("http://localhost:8000")
+    let harness = Harness(known: [server])
+    var requestedServers: [URL?] = []
+    harness.router.requestWindow = { [router = harness.router] in
+      requestedServers.append(router.requestedServerURL)
+    }
+    try await harness.open("omnigent://localhost:8000/c/c1")
+    await harness.router.windowRequest?.value
+    #expect(requestedServers == [server])
+    #expect(harness.router.requestedServerURL == nil)
+
+    // The requested window appears on that server and attaches; the link routes into it.
+    let window = ServerWindowID.newWindow(serverURL: server)
+    harness.registry.update(window, isReady: false, viewedSessionID: nil, unreadCount: 0)
+    harness.attach()
+    await harness.router.drainTask?.value
+    #expect(harness.opened == [window])
+    #expect(harness.registry.pendingRoute(for: window.instance) == .conversation(sessionID: "c1"))
+  }
+
+  @Test("no window is requested when one attaches during launch")
+  func coldStartWithRestoredWindow() async throws {
+    let harness = Harness(known: [try url("http://localhost:8000")])
+    harness.router.open([try url("omnigent://localhost:8000/c/c1")])
+    let request = harness.router.windowRequest
+    harness.attach()
+    await request?.value
+    await harness.router.drainTask?.value
+    #expect(harness.windowRequests == 0)
+    #expect(harness.opened.count == 1)
   }
 }
