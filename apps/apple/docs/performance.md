@@ -117,3 +117,70 @@ What changed:
 - Debug is several times slower than Release for this generic SwiftUI and value-type code;
   measure a Release build (`xcodebuild -configuration Release`) before chasing a Debug-only
   cost.
+
+## iOS and iPadOS
+
+Measured on the iPhone 17 and iPad Air 11-inch (M4) simulators (iOS 27.2) with Release
+(`-configuration Release`) and Debug builds against the large seed (about 650 sessions) while the
+machine's load average was 300-900, so treat single numbers as rough.
+
+### How to measure
+
+- Process CPU over a window: `ps -o cputime= -p <pid>` before and after (no sampling overhead);
+  the app's pid is `pgrep -f "<udid>.*Omnigent.app/Omnigent"`.
+- Where the main thread goes: `sample <pid> 5`. Sampling during launch makes dyld wait on the
+  sampler, so sample from a second or two after launch.
+- Open a session at launch without input: write the app's saved tabs file
+  (`Library/Application Support/<bundle id>/Tabs/*.json` in the app's data container, see
+  `TabPersistence`) with one chat tab selected, then `xcrun simctl launch`.
+- Time the connect: point `omnigent.lastServer` at a logging TCP proxy in front of
+  `127.0.0.1:6767` and read the request times.
+- Why a view re-rendered: `let _ = Self._printChanges()` in its body and
+  `xcrun simctl launch --console-pty`.
+
+### Results (November 2026)
+
+| Scenario | Device, build | Result |
+| --- | --- | --- |
+| Cold launch, New Tab restored: first request / signed in, list shown | iPhone Release | 3.5 s / 3.5-4.2 s |
+| Same, fresh install | iPad Debug and Release | 3.6 s / 4.6-5 s |
+| Connect itself (`/.well-known` through `/v1/me`, list and updates socket) | both | under 0.2 s |
+| Cold launch, a conversation tab restored | iPhone Release | main thread at 100% indefinitely; the screen stays on "Connecting…" because frames stop committing |
+| Same | iPad Debug | 1.3-1.5 CPU s per second for 10-30 s; follow-up requests (agent, pull requests, skills) leave 10-30 s late |
+| Idle on the session list | both | 0.0% |
+| A reply streaming in another session, list shown | iPhone Release | 2.4% CPU, 3 shell redraws |
+| Streaming into a 160-item transcript, then idle | iPhone Release* | 9-14% CPU, then 0.0-0.2% |
+| Sidebar state rebuild, 650 sessions (`SidebarBenchmarks`) | Mac Debug | 78 ms → 21 ms |
+| Typing 20 characters | iPhone Release* | the conversation container and screen re-render about 14 times |
+
+\* With the navigation bar items removed locally, to get past the loop below.
+
+The first 3.5 s of a launch is the simulator loading the app (dyld) before any app code runs;
+the connect is fast. The slow sign-in seen on iPad mini and the folded Duo ("about 50 s") is
+the conversation re-render loop starving the main actor while a restored chat tab builds, not
+the network.
+
+What changed for iOS:
+
+- `SessionListStore`, `ConnectionStore` and `ConversationStore` set observable properties only
+  when the value changes (connection phase, updates link, unread set, link and hydration
+  state), so a resent server row or status redraws nothing.
+- The sidebar no longer counts All and Archived through two `filterSessions` calls over every
+  session on each rebuild; nothing showed those counts.
+
+### Where the time still goes
+
+- **The conversation's toolbar loop (P0).** With a conversation open, `ConversationScreen`
+  re-renders, re-vends its navigation bar items, the bar's hosting controllers update traits
+  and environment, and that re-renders `ConversationScreen` again
+  (`ToolbarBridge.preferencesDidChange` in every sample). The screen's `draft`, `mode` and
+  `fork` closure bindings make every pass count as a change. Reading `transcriptTitleMenu` as
+  `@Entry` values or not at all, or passing key-path bindings, did not stop it; removing the
+  navigation title, title menu and toolbar items did.
+- **Typing.** SwiftUI reads the draft binding while updating `ConversationScreen`'s inputs, so
+  the container tracks the composer's text and each keystroke re-renders the whole screen
+  (transcript wrapper, right panel, toolbar). Not reading the draft in the screen's body is not
+  enough; the draft has to reach the composer without passing through the screen's inputs.
+- Not measured here: rotating the iPad, split widths and keyboard show and hide (no input
+  access to the iPad simulator in this pass), and the transcript showing under the dock while
+  the iPhone layout settles.
