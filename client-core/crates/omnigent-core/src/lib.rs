@@ -8,6 +8,7 @@
 
 pub mod attachments;
 pub mod auth;
+pub mod canvas;
 mod client;
 pub mod config;
 pub mod creation;

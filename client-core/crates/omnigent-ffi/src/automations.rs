@@ -22,6 +22,9 @@ pub struct ServerPages {
     /// Sessions can be shared with other users.
     #[uniffi(default)]
     pub sharing: bool,
+    /// The Canvas page.
+    #[uniffi(default)]
+    pub canvas: bool,
 }
 
 /// Whether an automation fires.
@@ -373,6 +376,7 @@ impl ClientCore {
             usage: pages.usage,
             archive_worktree_cleanup: pages.archive_worktree_cleanup,
             sharing: pages.sharing,
+            canvas: pages.canvas,
         })
     }
 

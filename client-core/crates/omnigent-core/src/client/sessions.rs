@@ -717,6 +717,10 @@ pub(crate) fn decode_list_row(value: Value) -> Result<SessionProjection, String>
 pub const INVENTORY_PAGE_LIMIT: u32 = 500;
 /// The default list page size.
 pub const DEFAULT_PAGE_LIMIT: u32 = 50;
+/// How many rows one Canvas page asks for: the server's maximum.
+pub const CANVAS_PAGE_LIMIT: u32 = 1_000;
+/// The most sessions the Canvas shows, as the web.
+pub const MAX_CANVAS_SESSIONS: usize = 5_000;
 
 /// Event types after which a session's metadata may differ from an in-flight snapshot read.
 const METADATA_EVENT_TYPES: [&str; 15] = [
@@ -775,6 +779,8 @@ enum ListScope {
     Inventory,
     /// Archived sessions only.
     Archived,
+    /// The caller's own top-level, unarchived sessions, for the Canvas.
+    Canvas,
 }
 
 /// The list query `NativeLab` sent, plus the explicit `visibility` the repo requires.
@@ -785,6 +791,14 @@ fn list_query(
 ) -> Result<Vec<(&'static str, String)>, SessionError> {
     let mut query = page_query(after, limit)?;
     query.push(("sort_by", "updated_at".to_owned()));
+    if scope == ListScope::Canvas {
+        // The web Canvas's query; rows an older server returns anyway are filtered after.
+        query.push(("order", "desc".to_owned()));
+        query.push(("kind", "default".to_owned()));
+        query.push(("visibility", "mine".to_owned()));
+        query.push(("include_archived", "false".to_owned()));
+        return Ok(query);
+    }
     // Older servers ignore `visibility=archived`; their rows are filtered after the read.
     query.push(("include_archived", "true".to_owned()));
     let visibility = if scope == ListScope::Archived {
@@ -878,6 +892,63 @@ impl<T: HttpTransport> ClientCore<T> {
         let result = self.inventory().await;
         self.dispatch();
         result
+    }
+
+    /// The Canvas's sessions: `viewer_id`'s own top-level, unarchived sessions, newest first,
+    /// following pages of [`CANVAS_PAGE_LIMIT`] up to [`MAX_CANVAS_SESSIONS`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::session_inventory`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn canvas_sessions(
+        &self,
+        viewer_id: Option<&str>,
+    ) -> Result<Vec<SessionSummary>, SessionError> {
+        let result = self.canvas_pages(viewer_id).await;
+        self.dispatch();
+        result
+    }
+
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn canvas_pages(
+        &self,
+        viewer_id: Option<&str>,
+    ) -> Result<Vec<SessionSummary>, SessionError> {
+        let mut result: Vec<SessionSummary> = Vec::new();
+        let mut ids = BTreeSet::new();
+        let mut cursors = BTreeSet::new();
+        let mut after: Option<String> = None;
+        loop {
+            let (page, next) = self
+                .list_page(after.as_deref(), CANVAS_PAGE_LIMIT, ListScope::Canvas)
+                .await?;
+            for summary in page {
+                if crate::canvas::is_canvas_session(&summary, viewer_id)
+                    && ids.insert(summary.id.clone())
+                {
+                    result.push(summary);
+                }
+            }
+            match next {
+                Some(cursor) if result.len() < MAX_CANVAS_SESSIONS => {
+                    if !cursors.insert(cursor.clone()) {
+                        return Err(SessionError::InvalidPagination);
+                    }
+                    after = Some(cursor);
+                }
+                _ => {
+                    result.truncate(MAX_CANVAS_SESSIONS);
+                    return Ok(result);
+                }
+            }
+        }
     }
 
     #[allow(
@@ -1457,5 +1528,58 @@ mod tests {
             ..SessionSummary::new("other", "Other", "")
         };
         assert_eq!(older.clone().preserving_newer_metadata(Some(&other)), older);
+    }
+
+    #[test]
+    fn canvas_sessions_page_through_the_viewers_own_top_level_rows() {
+        use futures::executor::block_on;
+
+        use super::super::test_support::{Reply, RouteTransport, connected, query_value};
+
+        let transport = RouteTransport::local();
+        transport.ok(
+            "/v1/sessions",
+            r#"{"data":[
+              {"id":"a","status":"idle","created_at":1,"updated_at":9},
+              {"id":"b","status":"idle","created_at":1,"updated_at":8,"owner":"someone"},
+              {"id":"c","status":"idle","created_at":1,"updated_at":7,"archived":true}
+            ],"has_more":true,"last_id":"c"}"#,
+        );
+        transport.respond(
+            None,
+            "/v1/sessions",
+            Some("c"),
+            Reply::json(
+                200,
+                r#"{"data":[
+                  {"id":"d","status":"idle","created_at":1,"updated_at":6,"parent_session_id":"a"},
+                  {"id":"e","status":"running","created_at":1,"updated_at":5}
+                ],"has_more":false}"#,
+            ),
+        );
+        let core = connected(transport);
+        let ids: Vec<String> = block_on(core.canvas_sessions(Some("me")))
+            .unwrap()
+            .into_iter()
+            .map(|session| session.id)
+            .collect();
+        assert_eq!(ids, ["a", "e"]);
+        let reads: Vec<_> = core
+            .transport()
+            .taken()
+            .into_iter()
+            .filter(|request| request.url.contains("/v1/sessions?"))
+            .collect();
+        assert_eq!(reads.len(), 2);
+        assert_eq!(
+            query_value(&reads[0], "visibility").as_deref(),
+            Some("mine")
+        );
+        assert_eq!(query_value(&reads[0], "kind").as_deref(), Some("default"));
+        assert_eq!(
+            query_value(&reads[0], "include_archived").as_deref(),
+            Some("false")
+        );
+        assert_eq!(query_value(&reads[0], "limit").as_deref(), Some("1000"));
     }
 }

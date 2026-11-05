@@ -27,6 +27,8 @@ pub struct ServerPages {
     pub archive_worktree_cleanup: bool,
     /// Sessions can be shared: `single_user` is not `true` and `sharing_mode` is not `off`.
     pub sharing: bool,
+    /// The `canvas` feature: the Canvas page.
+    pub canvas: bool,
 }
 
 impl ServerPages {
@@ -37,9 +39,12 @@ impl ServerPages {
     /// A description of the first field with the wrong shape.
     pub fn from_value(value: &Value) -> Result<Self, String> {
         let object = as_object(value, "/v1/info")?;
-        let usage = match opt_object(object, "features")? {
-            Some(features) => opt_bool(features, "usage_page")?.unwrap_or(false),
-            None => false,
+        let (usage, canvas) = match opt_object(object, "features")? {
+            Some(features) => (
+                opt_bool(features, "usage_page")?.unwrap_or(false),
+                opt_bool(features, "canvas")?.unwrap_or(false),
+            ),
+            None => (false, false),
         };
         Ok(Self {
             automations: opt_bool(object, "automations_enabled")?.unwrap_or(false),
@@ -50,6 +55,7 @@ impl ServerPages {
                 .unwrap_or(false),
             sharing: !opt_bool(object, "single_user")?.unwrap_or(false)
                 && opt_str(object, "sharing_mode")?.as_deref() != Some("off"),
+            canvas,
         })
     }
 }
