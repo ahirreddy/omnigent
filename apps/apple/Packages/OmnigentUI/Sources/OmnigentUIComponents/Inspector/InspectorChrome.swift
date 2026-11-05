@@ -37,6 +37,7 @@ private struct WorkspaceInspectorPresentation: ViewModifier {
 
   func body(content: Content) -> some View {
     content
+      .unmeasuredMinimum(UnmeasuredMinimum.column)
       .overlay {
         if isPresented, maximized { panel }
       }

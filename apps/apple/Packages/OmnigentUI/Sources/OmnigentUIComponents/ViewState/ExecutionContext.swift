@@ -84,27 +84,34 @@ nonisolated public struct ExecutionContext: Hashable, Sendable {
     return parts.isEmpty ? "Execution context" : parts.joined(separator: " \u{00B7} ")
   }
 
-  /// The server's name to show: the manifest's `server_name`, else the URL's host, and never a
-  /// loopback address ("This Mac").
+  /// The server's name to show: the manifest's `server_name`, else the URL's host, and on the
+  /// Mac never a loopback address ("This Mac").
   /// - Parameters:
   ///   - name: The manifest's display name.
   ///   - baseURL: The server's API root.
   /// - Returns: The name.
   public static func serverDisplayName(name: String?, baseURL: String?) -> String {
+    serverDisplayName(name: name, baseURL: baseURL, loopbackName: thisMachine)
+  }
+
+  /// ``serverDisplayName(name:baseURL:)`` with this device's name for a loopback server, or
+  /// `nil` to show its address.
+  static func serverDisplayName(name: String?, baseURL: String?, loopbackName: String?) -> String {
     if let name = nonEmpty(name), !isLoopback(name) { return name }
     guard let baseURL, let components = URLComponents(string: baseURL),
       let host = nonEmpty(components.host)
-    else { return nonEmpty(name).map { _ in thisDevice } ?? "Connected server" }
-    if isLoopback(host) { return thisDevice }
+    else { return nonEmpty(name).map { loopbackName ?? $0 } ?? "Connected server" }
+    if isLoopback(host), let loopbackName { return loopbackName }
     return components.port.map { "\(host):\($0)" } ?? host
   }
 
-  /// A host's name to show; a loopback address reads "This Mac".
+  /// A host's name to show; on the Mac a loopback address reads "This Mac".
   /// - Parameter name: The reported name.
   /// - Returns: The name, or `nil` when empty.
   public static func hostDisplayName(_ name: String?) -> String? {
     guard let name = nonEmpty(name) else { return nil }
-    return isLoopback(name) ? thisDevice : name
+    if isLoopback(name), let thisMachine { return thisMachine }
+    return name
   }
 
   /// `localhost`, `127.0.0.0/8`, `::1` or `0.0.0.0`, bracketed or not.
@@ -118,11 +125,13 @@ nonisolated public struct ExecutionContext: Hashable, Sendable {
       && octets.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isNumber) }
   }
 
-  private static var thisDevice: String {
+  /// What a loopback address means here: this Mac. On iPhone and iPad a loopback server is
+  /// rarely the device itself (the simulator reaches the Mac's), so its address shows instead.
+  private static var thisMachine: String? {
     #if os(macOS)
       "This Mac"
     #else
-      "This device"
+      nil
     #endif
   }
 

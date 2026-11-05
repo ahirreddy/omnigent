@@ -8,7 +8,8 @@ import SwiftUI
 #endif
 
 /// The workspace panel's host hooks: Reveal in Finder and Open in Editor when the session's
-/// folder is on this Mac, and the conversation's Markdown for file previews.
+/// folder is on this Mac, Share and Quick Look on iPhone and iPad (the file is read through the
+/// workspace, wherever the session runs), and the conversation's Markdown for file previews.
 enum WorkspaceActionsAdapter {
   /// The hooks for `workspace`.
   /// - Parameters:
@@ -32,6 +33,18 @@ enum WorkspaceActionsAdapter {
       actions.openExternally = { path in
         if !NSWorkspace.shared.open(URL(fileURLWithPath: path)) {
           report("Could not open \(path).")
+        }
+      }
+    #else
+      let source = workspace.source
+      actions.share = { path in
+        Task {
+          await WorkspaceFilePresenter.present(path, from: source, as: .share, report: report)
+        }
+      }
+      actions.quickLook = { path in
+        Task {
+          await WorkspaceFilePresenter.present(path, from: source, as: .quickLook, report: report)
         }
       }
     #endif

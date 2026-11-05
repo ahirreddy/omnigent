@@ -8,6 +8,9 @@ public struct BrowserTabContentView: View {
   private let environment: BrowserEnvironment
   private let keyboardShortcuts: Bool
   @State private var sheet: BrowserTabSheet?
+  #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+  #endif
 
   /// Creates the view.
   /// - Parameters:
@@ -26,7 +29,7 @@ public struct BrowserTabContentView: View {
   /// The view body.
   public var body: some View {
     VStack(spacing: 0) {
-      BrowserTabToolbar(model: model, environment: environment, sheet: $sheet)
+      toolbar
         .zIndex(1)  // Omnibox suggestions draw over the page below.
       progress
       if environment.settings.showsBookmarksBar,
@@ -48,6 +51,13 @@ public struct BrowserTabContentView: View {
             BrowserTabErrorBanner(error: error) { model.dismissError() }
           }
         }
+        #if os(iOS)
+          .safeAreaInset(edge: .bottom, spacing: 0) {
+            if sizeClass == .compact {
+              BrowserTouchBottomBar(model: model, environment: environment, sheet: $sheet)
+            }
+          }
+        #endif
     }
     .background {
       if keyboardShortcuts { BrowserTabShortcuts(model: model, sheet: $sheet) }
@@ -59,6 +69,15 @@ public struct BrowserTabContentView: View {
     .focusedSceneValue(\.browserTabSheet, $sheet)
     .sheet(item: $sheet) { sheet in sheetContent(sheet) }
     .accessibilityIdentifier("browser.tab")
+  }
+
+  @ViewBuilder private var toolbar: some View {
+    #if os(iOS)
+      BrowserTouchTopBar(
+        model: model, environment: environment, sheet: $sheet, isCompact: sizeClass == .compact)
+    #else
+      BrowserTabToolbar(model: model, environment: environment, sheet: $sheet)
+    #endif
   }
 
   @ViewBuilder private var progress: some View {
@@ -100,7 +119,7 @@ public struct BrowserTabContentView: View {
           profileIdentifier: model.browserProfile.identifier)
         BrowserSheetDoneButton()
       }
-      .frame(width: 420, height: 360)
+      .browserSheetFrame(width: 420, height: 360)
     }
   }
 }

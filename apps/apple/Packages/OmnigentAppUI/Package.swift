@@ -17,13 +17,17 @@ let mainActorSwiftSettings = strictSwiftSettings + [.defaultIsolation(MainActor.
 // The app assembly: thin adapters from the core-backed stores (`OmnigentStores`,
 // `OmnigentTerminalStores`) to the components' view state (`OmnigentUIComponents`,
 // `OmnigentAuthUI`, `OmnigentWorkspaceUI`, `OmnigentTerminalUI`), the sign-in flow controller,
-// and the connected screen both apps show. The components stay free of the Rust core;
+// and the connected screen both apps show, and deep-link routing. The components stay free of the Rust core;
 // everything that knows both sides lives here. The macOS-only desktop bridges (notifications,
 // Dock badge, menu bar) build only for macOS.
 let package = Package(
   name: "OmnigentAppUI",
   platforms: [.iOS("26.0"), .macOS("26.0")],
-  products: [.library(name: "OmnigentAppUI", targets: ["OmnigentAppUI"])],
+  products: [
+    .library(name: "OmnigentAppUI", targets: ["OmnigentAppUI"]),
+    // Browser tabs over OmnigentBrowser, for the apps that ship a browser.
+    .library(name: "OmnigentAppBrowser", targets: ["OmnigentAppBrowser"]),
+  ],
   dependencies: [
     .package(path: "../OmnigentStores"),
     .package(path: "../OmnigentServices"),
@@ -36,6 +40,7 @@ let package = Package(
     .package(path: "../OmnigentTerminalStores"),
     .package(path: "../OmnigentTestSupport"),
     .package(path: "../OmnigentRemoteBrowser"),
+    .package(path: "../OmnigentBrowser"),
   ],
   targets: [
     .target(
@@ -50,9 +55,18 @@ let package = Package(
         .product(name: "OmnigentTerminalUI", package: "OmnigentTerminalUI"),
         .product(name: "OmnigentTerminalStores", package: "OmnigentTerminalStores"),
         .product(name: "OmnigentRemoteBrowser", package: "OmnigentRemoteBrowser"),
+        .product(name: "OmnigentDeepLinks", package: "OmnigentDesktop"),
         .product(
           name: "OmnigentDesktop", package: "OmnigentDesktop",
           condition: .when(platforms: [.macOS])),
+      ],
+      swiftSettings: mainActorSwiftSettings
+    ),
+    .target(
+      name: "OmnigentAppBrowser",
+      dependencies: [
+        "OmnigentAppUI",
+        .product(name: "OmnigentBrowser", package: "OmnigentBrowser"),
       ],
       swiftSettings: mainActorSwiftSettings
     ),
@@ -67,6 +81,16 @@ let package = Package(
         .product(name: "OmnigentServices", package: "OmnigentServices"),
         .product(name: "OmnigentTestSupport", package: "OmnigentTestSupport"),
         .product(name: "OmnigentRemoteBrowser", package: "OmnigentRemoteBrowser"),
+        .product(name: "OmnigentDeepLinks", package: "OmnigentDesktop"),
+      ],
+      swiftSettings: mainActorSwiftSettings
+    ),
+    .testTarget(
+      name: "OmnigentAppBrowserTests",
+      dependencies: [
+        "OmnigentAppBrowser",
+        "OmnigentAppUI",
+        .product(name: "OmnigentBrowser", package: "OmnigentBrowser"),
       ],
       swiftSettings: mainActorSwiftSettings
     ),

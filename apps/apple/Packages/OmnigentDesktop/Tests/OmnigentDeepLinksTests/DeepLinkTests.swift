@@ -1,6 +1,6 @@
 import Testing
 
-@testable import OmnigentDesktop
+@testable import OmnigentDeepLinks
 
 // Cases ported from web/electron/test/deepLink.test.js ("parseOmnigentDeepLink" and "CLI
 // navigation acknowledgment"), plus native-only hardening.

@@ -23,6 +23,7 @@ public struct AppShell<Detail: View>: View {
   /// A tab dragged from the strip onto the content, for the split view's drop targets.
   @State private var tabDrag = TabDragTracker()
   @Environment(\.horizontalSizeClass) private var sizeClass
+  @Environment(\.sidebarToggle) private var sidebarToggle
 
   /// Creates the shell.
   /// - Parameters:
@@ -49,7 +50,9 @@ public struct AppShell<Detail: View>: View {
 
   /// The shell.
   public var body: some View {
-    NavigationSplitView(columnVisibility: $columns) {
+    let columns = $columns
+    sidebarToggle?.toggle = { columns.wrappedValue = SidebarToggle.toggled(columns.wrappedValue) }
+    return NavigationSplitView(columnVisibility: $columns) {
       SidebarView(state: sidebar, selection: $selection, searchText: $searchText, actions: actions)
         .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
     } detail: {
@@ -61,6 +64,7 @@ public struct AppShell<Detail: View>: View {
           .modifier(TitlelessToolbar(isActive: showsStrip))
           .onPreferenceChange(TitlebarTrailingItems.self) { trailingItems = $0 }
       }
+      .unmeasuredMinimum(UnmeasuredMinimum.column)
       .environment(tabDrag)
       .onGeometryChange(for: CGFloat.self) {
         $0.size.width

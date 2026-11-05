@@ -176,7 +176,7 @@ public struct BrowserProfileManagerView: View {
       }
     }
     .padding(20)
-    .frame(minWidth: 460, minHeight: 360)
+    .browserSheetFrame(minWidth: 460, minHeight: 360)
     .sheet(item: $editing) { profile in
       BrowserProfileEditor(
         profile: profile, isNew: store.profile(id: profile.id) == nil, save: save)
@@ -288,7 +288,7 @@ struct BrowserProfileEditor: View {
       }
     }
     .padding(20)
-    .frame(width: 380)
+    .browserSheetFrame(width: 380)
   }
 
   private func avatarButton(_ avatar: BrowserProfileAvatar, @ViewBuilder label: () -> some View)

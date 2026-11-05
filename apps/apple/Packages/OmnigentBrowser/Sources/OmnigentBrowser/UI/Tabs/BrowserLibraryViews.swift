@@ -98,7 +98,7 @@ public struct BrowserHistoryView: View {
       }
       .padding(12)
     }
-    .frame(minWidth: 560, minHeight: 440)
+    .browserSheetFrame(minWidth: 560, minHeight: 440)
     .accessibilityIdentifier("browser.history")
   }
 }
@@ -228,7 +228,7 @@ public struct BrowserBookmarksManagerView: View {
       }
       .padding(12)
     }
-    .frame(minWidth: 520, minHeight: 420)
+    .browserSheetFrame(minWidth: 520, minHeight: 420)
     .alert("Rename", isPresented: .constant(renaming != nil)) {
       TextField("Title", text: $newTitle)
       Button("Save") {
