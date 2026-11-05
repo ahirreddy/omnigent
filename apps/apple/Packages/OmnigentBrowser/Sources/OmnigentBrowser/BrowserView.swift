@@ -234,20 +234,68 @@ struct BrowserErrorBanner: View {
   struct BrowserTabContent: NSViewRepresentable {
     let tab: any BrowserTab
 
-    func makeNSView(context: Context) -> NSView {
-      tab.platformView
+    func makeNSView(context: Context) -> BrowserPageContainer {
+      BrowserPageContainer(page: tab.platformView)
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: BrowserPageContainer, context: Context) {}
+
+    static func dismantleNSView(_ nsView: BrowserPageContainer, coordinator: ()) {
+      nsView.release()
+    }
   }
 #else
   struct BrowserTabContent: UIViewRepresentable {
     let tab: any BrowserTab
 
-    func makeUIView(context: Context) -> UIView {
-      tab.platformView
+    func makeUIView(context: Context) -> BrowserPageContainer {
+      BrowserPageContainer(page: tab.platformView)
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func updateUIView(_ uiView: BrowserPageContainer, context: Context) {}
+
+    static func dismantleUIView(_ uiView: BrowserPageContainer, coordinator: ()) {
+      uiView.release()
+    }
   }
 #endif
+
+/// Holds a tab's page view for one host. A rebuild can briefly make a second host for the same
+/// tab, which takes the page; when that host goes, the page returns to a host still in use
+/// instead of leaving the screen blank.
+final class BrowserPageContainer: BrowserPlatformView {
+  private struct Weak { weak var container: BrowserPageContainer? }
+  /// Each page's containers, the newest last.
+  private static var containers: [ObjectIdentifier: [Weak]] = [:]
+
+  private let page: BrowserPlatformView
+
+  init(page: BrowserPlatformView) {
+    self.page = page
+    super.init(frame: .zero)
+    Self.containers[ObjectIdentifier(page), default: []].append(Weak(container: self))
+    adopt()
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+  /// Leaves the page's containers, handing the page to the newest other one.
+  func release() {
+    let key = ObjectIdentifier(page)
+    let others = (Self.containers[key] ?? []).compactMap(\.container).filter { $0 !== self }
+    Self.containers[key] = others.isEmpty ? nil : others.map { Weak(container: $0) }
+    if page.superview === self { others.last?.adopt() }
+  }
+
+  private func adopt() {
+    page.removeFromSuperview()
+    page.frame = bounds
+    #if os(macOS)
+      page.autoresizingMask = [.width, .height]
+    #else
+      page.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    #endif
+    addSubview(page)
+  }
+}

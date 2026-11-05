@@ -97,14 +97,15 @@ struct PrimaryChatTests {
     let session = try ServerSession.demo()
     let tabs = WindowTabs(
       session: session, context: TabWindowContext(), showAll: {}, fail: { _ in })
-    session.tabs.open(.chat(sessionID: "s1"))
+    session.tabs.showChat("s1")
     #expect(tabs.commands.closeTab == nil)
     #expect(tabs.commands.toggleTerminal != nil)
     session.tabs.open(.sideChat(sessionID: "s1", rowID: "r"))
     #expect(tabs.commands.closeTab != nil)
     #expect(tabs.commands.toggleTerminal == nil)
+    let store = try #require(session.tabs.current)
     #expect(
-      TabAdapter.state(session.tabs, session: session, browser: nil, issue: nil).tabs.map(
+      TabAdapter.state(store, session: session, browser: nil, issue: nil).tabs.map(
         \.isClosable) == [false, true])
   }
 }
@@ -214,18 +215,19 @@ struct TabSplitStoreTests {
   @Test("The split stays in the model at compact widths, so the panes come back")
   func compactKeepsSplit() throws {
     let session = try ServerSession.demo()
-    let page = session.tabs.open(.browser(browserID: UUID()))
-    session.tabs.open(.chat(sessionID: "s1"))
-    session.tabs.show(page.id, in: .trailing)
+    session.tabs.showChat("s1")
+    let store = try #require(session.tabs.current)
+    let page = store.open(.browser(browserID: UUID()), select: false)
+    store.show(page.id, in: .trailing)
     let compact = WindowTabs(
       session: session, context: TabWindowContext(), showAll: {}, fail: { _ in },
       supportsSplit: false)
-    #expect(compact.actions.showInPane == nil, "no split items at compact width")
+    #expect(compact.actions(store).showInPane == nil, "no split items at compact width")
     #expect(!compact.commands.supportsSplit)
-    #expect(session.tabs.split != nil, "the layout waits for the window to widen")
+    #expect(store.split != nil, "the layout waits for the window to widen")
     let wide = WindowTabs(
       session: session, context: TabWindowContext(), showAll: {}, fail: { _ in })
-    #expect(wide.actions.showInPane != nil)
+    #expect(wide.actions(store).showInPane != nil)
     #expect(wide.commands.isSplit)
     #expect(wide.commands.focusPane != nil)
   }
@@ -250,10 +252,15 @@ struct TabSplitStoreTests {
     store.setSplitFraction(0.35)
     store.focus(.leading)
     let writer = TabPersistence(directory: folder, debounce: .milliseconds(1))
-    writer.register(window: UUID(), server: server) { store.snapshot }
+    writer.register(window: UUID(), server: server) {
+      TabWindowState(
+        page: .session("s1"),
+        groups: ["s1": TabGroupState(snapshot: store.snapshot, changedAt: .now)])
+    }
     writer.flush()
     let reader = TabPersistence(directory: folder)
-    let saved = try #require(reader.claim(window: UUID(), server: server))
+    #expect(reader.claim(window: UUID(), server: server) == .session("s1"))
+    let saved = try #require(reader.savedTabs(session: "s1", server: server, for: UUID()))
     #expect(saved == store.snapshot)
     let restored = TabStore(saved)
     #expect(restored.splitState == store.splitState)
@@ -280,7 +287,8 @@ struct TabSplitStoreTests {
         "savedAt": "2026-11-01T10:00:00Z", "selectedID": "a", "closed": [], "split": \(split),
         "tabs": [
           {"id": "a", "isPinned": false, "content": {"chat": {"sessionID": "s"}}},
-          {"id": "b", "isPinned": false, "content": {"inbox": {}}}
+          {"id": "b", "isPinned": false,
+            "content": {"terminal": {"sessionID": "s", "terminalID": "t"}}}
         ]}
       """
     }
@@ -290,7 +298,8 @@ struct TabSplitStoreTests {
     let file = folder.appending(path: "\(TabPersistence.key(server)).json")
     try Data(json.utf8).write(to: file)
     let reader = TabPersistence(directory: folder)
-    let saved = try #require(reader.claim(window: UUID(), server: server))
+    #expect(reader.claim(window: UUID(), server: server) == .session("s"))
+    let saved = try #require(reader.savedTabs(session: "s", server: server, for: UUID()))
     #expect(saved.tabs.map(\.id) == ["a", "b"])
     #expect(saved.split == nil)
     #expect(reader.issue?.description.contains("newer version") == true)
@@ -299,7 +308,7 @@ struct TabSplitStoreTests {
     try Data(#"{"version": 1, "server": "\#(server)", "windows": [\#(broken)]}"#.utf8).write(
       to: file)
     let second = TabPersistence(directory: folder)
-    let kept = try #require(second.claim(window: UUID(), server: server))
+    let kept = try #require(second.savedTabs(session: "s", server: server, for: UUID()))
     #expect(kept.tabs.count == 2)
     #expect(kept.split == nil)
     // A pane whose tabs did not restore leaves one pane.
@@ -324,23 +333,8 @@ struct SessionTabsLifecycleTests {
   }
 }
 
-@Suite("Sub-agents beside the chat")
-struct OpenBesideTests {
-  @Test("A sub-agent opens in the pane beside the selected chat, splitting the window")
-  func opensBeside() {
-    let store = TabStore()
-    let parent = store.open(.chat(sessionID: "parent"))
-    store.openBeside(.chat(sessionID: "child"))
-    let child = store.tabs.first { $0.content == .chat(sessionID: "child") }
-    #expect(store.pane(of: parent.id) == .leading)
-    #expect(child.map { store.pane(of: $0.id) } == .trailing)
-    #expect(store.selected?.id == child?.id)
-    // From the right pane, the next one opens on the left.
-    store.openBeside(.chat(sessionID: "grandchild"))
-    let grandchild = store.tabs.first { $0.content == .chat(sessionID: "grandchild") }
-    #expect(grandchild.map { store.pane(of: $0.id) } == .leading)
-  }
-
+@Suite("In-app links")
+struct InAppLinkTests {
   @Test("Only web pages open in the in-app browser")
   func inAppLinks() throws {
     #expect(WindowTabs.opensInApp(try #require(URL(string: "https://example.com/a"))))

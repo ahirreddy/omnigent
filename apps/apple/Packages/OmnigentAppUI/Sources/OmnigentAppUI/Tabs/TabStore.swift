@@ -2,14 +2,16 @@ public import Foundation
 public import Observation
 public import OmnigentUIComponents
 
-/// One window's tabs, like a browser's: open or focus, close and reopen, pin, duplicate,
-/// reorder, select by position or cycle, tear off into another window, and split into two panes.
+/// One session's tabs, like a browser's: open or focus, close and reopen, pin, duplicate,
+/// reorder, select by position or cycle, and split into two panes.
 ///
-/// Tabs are per window and span sessions. A session's primary chat (``AppTabContent/chat``)
-/// cannot be closed, torn off, replaced or duplicated: it leaves the window only with its
-/// session (``removeSessions(_:)``, when the session is archived or deleted) or with the window.
-/// It is selected and moved like any other tab, but it stays first among its session's tabs in
-/// the same pane and pin group, and moving it carries them along.
+/// A window keeps one store per session (``SessionTabGroups``), so tabs are scoped per session:
+/// its primary chat (``AppTabContent/chat``), side chats, terminals, agent TUI and the browser
+/// tabs opened from it. The primary chat cannot be closed, replaced or duplicated: it leaves only
+/// with its session (``removeSessions(_:)``, when the session is archived or deleted). It is
+/// selected and moved like any other tab, so another tab can be the session's selected one, but
+/// it stays first among its session's tabs in the same pane and pin group, and moving it carries
+/// them along.
 ///
 /// Pinned tabs always come first. In a split window each pane has its own tabs (the left pane's
 /// first in ``tabs``) and its own selected tab; ``selectedID`` is the focused pane's. A tab's
@@ -66,6 +68,9 @@ public final class TabStore {
 
   /// Called after every change to the tabs, the selection, the split or the closed stack.
   @ObservationIgnored public var onChange: (@MainActor () -> Void)?
+  /// When the tabs last changed; `nil` while they are as they were made or restored, so an
+  /// untouched store never overwrites tabs another window saved since.
+  @ObservationIgnored public internal(set) var changedAt: Date?
   /// Called with each tab that leaves the window (closed or replaced, not torn off), so its live
   /// content (a browser page) can be released. Returns the tab to remember for Reopen Closed
   /// Tab, for example with the page's final restore state.
@@ -385,6 +390,7 @@ public final class TabStore {
     // Showing a tab reads it; a closed one has nothing left to read.
     let read = unread.subtracting(visibleIDs).intersection(Set(tabs.map(\.id)))
     if read != unread { unread = read }
+    changedAt = .now
     onChange?()
   }
 }

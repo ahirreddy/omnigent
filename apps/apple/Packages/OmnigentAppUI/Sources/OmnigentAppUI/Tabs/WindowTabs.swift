@@ -5,41 +5,32 @@ import OmnigentStores
 import OmnigentTerminalStores
 import OmnigentUIComponents
 
-/// What a window gives its tabs: its id, where tabs are saved, the browser, and tear-off.
+/// What a window gives its tabs: its id, where tabs are saved, and the browser.
 public struct TabWindowContext {
   /// The window's stable id (on the Mac, `ServerWindowID.instance`).
   public var window: UUID
-  /// Saves and restores the window's tabs; `nil` keeps them in memory.
+  /// Saves and restores the sessions' tabs and the window's page; `nil` keeps them in memory.
   public var persistence: TabPersistence?
   /// The browser for browser tabs; `nil` offers no Browser.
   public var browser: (any BrowserTabHosting)?
-  /// Opens tabs in a new window on the same server; `nil` where the platform has no windows.
-  public var moveToNewWindow: (@MainActor ([AppTab]) -> Void)?
-  /// Tabs handed to this window by a tear-off; they replace any saved tabs.
-  public var adopting: [AppTab]
 
   /// Creates a context.
   /// - Parameters:
   ///   - window: The window id.
   ///   - persistence: Tab saving.
   ///   - browser: The browser host.
-  ///   - moveToNewWindow: Tear-off.
-  ///   - adopting: Torn-off tabs for this window.
   public init(
     window: UUID = UUID(), persistence: TabPersistence? = nil,
-    browser: (any BrowserTabHosting)? = nil,
-    moveToNewWindow: (@MainActor ([AppTab]) -> Void)? = nil, adopting: [AppTab] = []
+    browser: (any BrowserTabHosting)? = nil
   ) {
     self.window = window
     self.persistence = persistence
     self.browser = browser
-    self.moveToNewWindow = moveToNewWindow
-    self.adopting = adopting
   }
 }
 
-/// The tab strip, overview, new-tab page and menu commands of one connected window, over its
-/// ``TabStore``.
+/// The tab strip, overview, new-tab page and menu commands of one connected window, over the
+/// shown session's ``TabStore`` in ``SessionTabGroups``.
 struct WindowTabs {
   let session: ServerSession
   let context: TabWindowContext
@@ -49,34 +40,40 @@ struct WindowTabs {
   let fail: @MainActor (String) -> Void
   /// The window is wide enough to split (not a compact width).
   var supportsSplit = true
+  /// Opens a session in another window, where the platform has windows.
+  var openInNewWindow: (@MainActor (String) -> Void)?
 
-  var store: TabStore { session.tabs }
+  var groups: SessionTabGroups { session.tabs }
+  /// The shown session's tabs; `nil` on a session-less page.
+  var store: TabStore? { groups.current }
   var browser: (any BrowserTabHosting)? { context.browser }
 
+  /// The strip's state and actions, for the shown session; `nil` on a session-less page.
+  var strip: (state: TabsState, actions: TabActions)? {
+    guard let store else { return nil }
+    return (state(store), actions(store))
+  }
+
   /// The strip's state.
-  var state: TabsState {
+  func state(_ store: TabStore) -> TabsState {
     TabAdapter.state(
       store, session: session, browser: browser,
       issue: context.persistence?.issue?.description)
   }
 
   /// The strip's actions.
-  var actions: TabActions {
-    let store = store
+  func actions(_ store: TabStore) -> TabActions {
     var actions = TabActions(
       select: { store.select($0) },
       close: { store.requestClose($0) },
       newTab: { store.open(.newTab) },
       move: { store.move($0, to: $1) },
       setPinned: { store.setPinned($0, $1) },
-      duplicate: { duplicate($0) },
+      duplicate: { duplicate($0, in: store) },
       closeOthers: { store.closeOthers($0) },
       closeToRight: { store.closeToRight($0) })
     if !store.closed.isEmpty {
       actions.reopenClosed = { store.reopenClosed() }
-    }
-    if context.moveToNewWindow != nil {
-      actions.moveToNewWindow = { moveToNewWindow($0) }
     }
     if supportsSplit {
       actions.showInPane = { store.show($0, in: $1) }
@@ -84,24 +81,13 @@ struct WindowTabs {
       actions.setSplitFraction = { store.setSplitFraction($0) }
       actions.closeSplit = { store.closeSplit() }
     }
-    if session.remoteBrowsers != nil {
+    if session.remoteBrowsers != nil, let sessionID = groups.currentSessionID {
       actions.newRemoteBrowser = { profile in
-        guard let sessionID = remoteBrowserSession else {
-          fail("Open a session first: a remote browser runs on a session's machine.")
-          return
-        }
         Task { await openRemoteBrowser(in: sessionID, profile: profile, replacing: nil) }
       }
       actions.remoteBrowserProfiles = remoteBrowserProfiles
     }
     return actions
-  }
-
-  /// The session a remote browser opened from the + menu belongs to: the selected tab's, else
-  /// the most recently active one.
-  private var remoteBrowserSession: String? {
-    store.selected?.content.sessionID
-      ?? session.connection.sessionList.visible.max { $0.updatedAt < $1.updatedAt }?.id
   }
 
   /// Profile names read for any session (profiles are per machine).
@@ -111,9 +97,14 @@ struct WindowTabs {
     return Array(Set(names)).sorted { $0 == "default" || ($1 != "default" && $0 < $1) }
   }
 
-  /// The menu commands.
+  /// The menu commands: the shown session's tabs, or New Tab going to New Session on a
+  /// session-less page.
   var commands: TabCommandActions {
-    let store = store
+    let groups = groups
+    guard let store, let sessionID = groups.currentSessionID else {
+      return TabCommandActions(
+        newTab: { groups.show(.newSession) }, selectTab: { _ in }, showAllTabs: nil, count: 0)
+    }
     let selected = store.selected
     var commands = TabCommandActions(
       newTab: { store.open(.newTab) },
@@ -127,10 +118,7 @@ struct WindowTabs {
       }
       commands.togglePinned = { store.setPinned(selected.id, !selected.isPinned) }
       if TabAdapter.item(selected, session: session, browser: nil).canDuplicate {
-        commands.duplicateTab = { duplicate(selected.id) }
-      }
-      if context.moveToNewWindow != nil, store.canClose(selected.id) {
-        commands.moveTabToNewWindow = { moveToNewWindow(selected.id) }
+        commands.duplicateTab = { duplicate(selected.id, in: store) }
       }
       if supportsSplit {
         let target = store.pane(of: selected.id)?.other ?? .trailing
@@ -140,7 +128,7 @@ struct WindowTabs {
     if supportsSplit {
       commands.supportsSplit = true
       commands.isSplit = store.split != nil
-      if !store.tabs.isEmpty { commands.toggleSplit = { store.toggleSplit() } }
+      commands.toggleSplit = { store.toggleSplit() }
       if store.split != nil { commands.focusPane = { store.focus($0) } }
     }
     if !store.closed.isEmpty {
@@ -151,21 +139,22 @@ struct WindowTabs {
       commands.selectPreviousTab = { store.selectPrevious() }
     }
     if browser != nil {
-      commands.openBrowser = { openBrowser() }
+      commands.openBrowser = { openBrowser(in: sessionID) }
     }
-    if let selected, let sessionID = selected.content.sessionID,
-      Self.offersTerminal(selected.content)
-    {
+    if let selected, Self.offersTerminal(selected.content) {
       commands.toggleTerminal = { toggleTerminal(sessionID) }
-      commands.newShell = { Task { await newTerminal(in: sessionID, named: nil, replacing: nil) } }
     }
+    commands.newShell = { Task { await newTerminal(in: sessionID, named: nil, replacing: nil) } }
     return commands
   }
 
-  /// The new-tab page's state.
+  /// The new-tab page's state: the shown session first, then the other recent ones.
   var newTabState: NewTabPageState {
     let list = session.connection.sessionList
-    let recent = list.visible.sorted { $0.updatedAt > $1.updatedAt }.prefix(12).map {
+    let current = groups.currentSessionID
+    let others = list.visible.filter { $0.id != current }.sorted { $0.updatedAt > $1.updatedAt }
+    let ordered = (current.flatMap(list.session).map { [$0] } ?? []) + others.prefix(11)
+    let recent = ordered.map {
       OmnigentUIComponents.SessionSummary($0, attention: list.attention(of: $0.id))
     }
     var names: [String: [String]] = [:]
@@ -175,40 +164,68 @@ struct WindowTabs {
       }
     }
     return NewTabPageState(
-      recentSessions: Array(recent), canOpenBrowser: browser != nil, terminalNames: names,
+      recentSessions: recent, canOpenBrowser: browser != nil, terminalNames: names,
       remoteBrowserProfiles: remoteBrowserProfiles)
   }
 
-  /// The new-tab page's actions; each replaces the tab `id` (or opens one when `nil`).
+  /// The new-tab page's actions. Each replaces the page's tab `id` (or opens one when `nil`)
+  /// in the shown session; what belongs elsewhere (another session, New Session) closes the
+  /// page and shows it there.
   /// - Parameter id: The new-tab page's tab.
   /// - Returns: The actions.
   func newTabActions(replacing id: String?) -> NewTabPageActions {
-    let store = store
-    func show(_ content: AppTabContent, browserState: Data? = nil) {
-      if let id {
-        store.replace(id, with: content, browserState: browserState)
-      } else {
-        store.open(content, browserState: browserState)
+    let groups = groups
+    let current = groups.currentSessionID
+    /// The page's tab when `sessionID` is the shown session; otherwise the page closes.
+    func target(_ sessionID: String) -> String? {
+      guard let id, sessionID == current else {
+        if let id { groups.current?.close(id) }
+        return nil
       }
+      return id
     }
     var actions = NewTabPageActions(
-      newSession: { show(.newSession) },
-      openSession: { show(.chat(sessionID: $0)) })
+      newSession: {
+        if let id { groups.current?.close(id) }
+        groups.show(.newSession)
+      },
+      openSession: { sessionID in
+        if let id { groups.current?.close(id) }
+        groups.showChat(sessionID)
+      })
     actions.newTerminal = { sessionID, name in
-      Task { await newTerminal(in: sessionID, named: name, replacing: id) }
+      let replacing = target(sessionID)
+      Task { await newTerminal(in: sessionID, named: name, replacing: replacing) }
     }
-    if let browser {
+    if let browser, let current {
       actions.openBrowser = {
         let page = browser.makePage(url: session.connectedURL)
-        show(.browser(browserID: page.id), browserState: page.state)
+        show(
+          .browser(browserID: page.id), in: current, replacing: id, browserState: page.state)
       }
     }
     if session.remoteBrowsers != nil {
       actions.openRemoteBrowser = { sessionID, profile in
-        Task { await openRemoteBrowser(in: sessionID, profile: profile, replacing: id) }
+        let replacing = target(sessionID)
+        Task { await openRemoteBrowser(in: sessionID, profile: profile, replacing: replacing) }
       }
     }
     return actions
+  }
+
+  /// Shows `content` in a session's group, in the tab `id` when it is still open there, else
+  /// in a new tab, and shows the session.
+  func show(
+    _ content: AppTabContent, in sessionID: String, replacing id: String?,
+    browserState: Data? = nil
+  ) {
+    let group = groups.group(sessionID)
+    if let id, group.tab(id) != nil {
+      group.replace(id, with: content, browserState: browserState)
+    } else {
+      group.open(content, browserState: browserState)
+    }
+    groups.show(.session(sessionID))
   }
 
   /// Creates a remote browser tab on a session's machine and shows it, replacing the tab `id`
@@ -233,44 +250,25 @@ struct WindowTabs {
       fail("The remote browser tab could not be saved: \(error)")
       return
     }
-    let content = AppTabContent.remoteBrowser(sessionID: sessionID, tabID: opened.tab.id)
-    if let id, store.tab(id) != nil {
-      store.replace(id, with: content, browserState: record)
-    } else {
-      store.open(content, browserState: record)
-    }
+    show(
+      .remoteBrowser(sessionID: sessionID, tabID: opened.tab.id), in: sessionID, replacing: id,
+      browserState: record)
   }
 
-  /// Opens a browser tab at `url` (the server's web app by default).
-  /// - Parameter url: The page.
-  func openBrowser(url: URL? = nil) {
+  /// Opens a browser tab at `url` (the server's web app by default) in a session's tabs.
+  /// - Parameters:
+  ///   - url: The page.
+  ///   - sessionID: The session it opens from.
+  func openBrowser(url: URL? = nil, in sessionID: String) {
     guard let browser else { return }
     let page = browser.makePage(url: url ?? session.connectedURL)
-    store.navigate(to: .browser(browserID: page.id))
-    if let tab = store.selected { store.record(tab.id, title: nil, browserState: page.state) }
+    groups.group(sessionID).open(.browser(browserID: page.id), browserState: page.state)
+    groups.show(.session(sessionID))
   }
 
-  /// Opens a session's harness TUI in a tab.
-  /// - Parameter sessionID: The session.
-  func openHarness(_ sessionID: String) {
-    store.open(.harness(sessionID: sessionID))
-  }
-
-  /// Opens one of a session's terminals in a tab.
-  /// - Parameters:
-  ///   - sessionID: The session.
-  ///   - terminalID: The terminal.
-  func openTerminal(_ sessionID: String, _ terminalID: String) {
-    store.open(.terminal(sessionID: sessionID, terminalID: terminalID))
-  }
-
-  /// Opens a side question in a tab.
-  /// - Parameters:
-  ///   - sessionID: The session.
-  ///   - rowID: The transcript row.
-  ///   - title: The question, for the strip.
-  func openSideChat(_ sessionID: String, rowID: String, title: String?) {
-    store.open(.sideChat(sessionID: sessionID, rowID: rowID), title: title)
+  /// Opens a session's tab, focusing it when it is one per session.
+  func open(_ content: AppTabContent, title: String? = nil) {
+    groups.open(content, title: title)
   }
 
   /// Whether Show Terminal (Control-`) applies: from a session's primary chat to its terminal,
@@ -285,15 +283,15 @@ struct WindowTabs {
   /// Control-`: from a session's chat to its terminal (the harness TUI, else its first shell),
   /// and from a terminal back to the chat.
   func toggleTerminal(_ sessionID: String) {
-    switch store.selected?.content {
+    switch groups.group(sessionID).selected?.content {
     case .terminal, .harness:
-      store.open(.chat(sessionID: sessionID))
+      open(.chat(sessionID: sessionID))
     default:
       let terminals = session.terminalStores[sessionID]?.terminals
       if case .ready = terminals?.harness {
-        openHarness(sessionID)
+        open(.harness(sessionID: sessionID))
       } else if let shell = terminals?.userShells.first {
-        openTerminal(sessionID, shell.terminal.id)
+        open(.terminal(sessionID: sessionID, terminalID: shell.terminal.id))
       } else {
         Task { await newTerminal(in: sessionID, named: nil, replacing: nil) }
       }
@@ -318,15 +316,11 @@ struct WindowTabs {
       fail(terminals.lastError?.message ?? "The terminal could not start.")
       return
     }
-    let content = AppTabContent.terminal(sessionID: sessionID, terminalID: created.id)
-    if let id {
-      store.replace(id, with: content)
-    } else {
-      store.open(content)
-    }
+    show(
+      .terminal(sessionID: sessionID, terminalID: created.id), in: sessionID, replacing: id)
   }
 
-  private func duplicate(_ id: String) {
+  private func duplicate(_ id: String, in store: TabStore) {
     guard let tab = store.tab(id) else { return }
     if case .browser(let pageID) = tab.content {
       guard let browser else { return }
@@ -335,15 +329,6 @@ struct WindowTabs {
     } else {
       store.duplicate(id)
     }
-  }
-
-  private func moveToNewWindow(_ id: String) {
-    guard let move = context.moveToNewWindow, let tab = store.detach(id) else { return }
-    if case .remoteBrowser(let sessionID, let tabID) = tab.content {
-      // The new window attaches its own stream; the remote tab stays open.
-      session.remoteBrowsers?.detach(sessionID: sessionID, tabID: tabID)
-    }
-    move([tab])
   }
 }
 
@@ -363,10 +348,9 @@ struct ConversationTabRoutes {
   var openTerminal: @MainActor (String) -> Void
   /// A side question by transcript row id, with the question as its title.
   var openSideChat: @MainActor (String, String?) -> Void
-  /// Another session's chat (a sub-agent or the parent), focused when already open, else
-  /// opened right after this tab.
+  /// Another session (a sub-agent or the parent): the window shows it with its tabs.
   var openSession: @MainActor (String) -> Void
-  /// A sub-agent's chat, when it opens elsewhere than `openSession` (beside the chat).
+  /// A sub-agent's chat, when it opens elsewhere than `openSession` (a window of its own).
   var openChild: (@MainActor (String) -> Void)?
   /// Starts a terminal (a declared name, or the default) and opens it in a tab.
   var newTerminal: (@MainActor (String?) -> Void)?
@@ -377,23 +361,19 @@ struct ConversationTabRoutes {
 }
 
 extension WindowTabs {
-  /// The routes for `sessionID`'s conversation.
+  /// The routes for `sessionID`'s conversation: its tabs open in its own group.
   func routes(for sessionID: String) -> ConversationTabRoutes {
-    let store = store
+    let groups = groups
     var routes = ConversationTabRoutes(
-      openHarness: { openHarness(sessionID) },
-      openTerminal: { openTerminal(sessionID, $0) },
-      openSideChat: { openSideChat(sessionID, rowID: $0, title: $1) },
-      openSession: { store.open(.chat(sessionID: $0)) })
+      openHarness: { groups.open(.harness(sessionID: sessionID)) },
+      openTerminal: { groups.open(.terminal(sessionID: sessionID, terminalID: $0)) },
+      openSideChat: { groups.open(.sideChat(sessionID: sessionID, rowID: $0), title: $1) },
+      openSession: { groups.show(.session($0)) })
     routes.newTerminal = { name in
       Task { await newTerminal(in: sessionID, named: name, replacing: nil) }
     }
-    if let browser {
-      let session = session
-      routes.openBrowser = {
-        let page = browser.makePage(url: session.connectedURL)
-        store.open(.browser(browserID: page.id), browserState: page.state)
-      }
+    if browser != nil {
+      routes.openBrowser = { openBrowser(in: sessionID) }
     }
     return routes
   }

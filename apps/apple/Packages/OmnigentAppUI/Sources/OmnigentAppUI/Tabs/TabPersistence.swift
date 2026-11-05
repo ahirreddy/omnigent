@@ -1,15 +1,51 @@
 import CryptoKit
 public import Foundation
 public import Observation
+public import OmnigentUIComponents
 
-/// Saves every window's tabs, one JSON file per server under Application Support, so a
-/// relaunch restores them.
+/// A window's tabs as they are saved: the page it shows and the session groups that changed.
+public struct TabWindowState {
+  /// The session or session-less page the window shows.
+  public var page: SidebarDestination?
+  /// Groups changed since they were made, by session.
+  public var groups: [String: TabGroupState]
+
+  /// Creates a state.
+  /// - Parameters:
+  ///   - page: The page.
+  ///   - groups: Changed groups.
+  public init(page: SidebarDestination?, groups: [String: TabGroupState] = [:]) {
+    self.page = page
+    self.groups = groups
+  }
+}
+
+/// One session's tabs in a window, and when they last changed (`nil`: untouched since made).
+public struct TabGroupState {
+  /// The tabs.
+  public var snapshot: TabWindowSnapshot
+  /// When they last changed.
+  public var changedAt: Date?
+
+  /// Creates a state.
+  /// - Parameters:
+  ///   - snapshot: The tabs.
+  ///   - changedAt: The last change.
+  public init(snapshot: TabWindowSnapshot, changedAt: Date?) {
+    self.snapshot = snapshot
+    self.changedAt = changedAt
+  }
+}
+
+/// Saves each session's tabs and each window's page, one JSON file per server under Application
+/// Support, so a relaunch restores them. A session's tabs are shared by every window: the window
+/// that changed them last writes them, and a window showing the session for the first time gets
+/// the newest, from another open window or from the file.
 ///
-/// Writes are atomic and debounced. A window registers a snapshot provider, which is read when
-/// the write happens (so browser pages save their latest state), and claims a saved window when
-/// it opens: its own record when SwiftUI restored the window, else the most recent record from a
-/// previous launch that no open window has claimed. Closing a window drops its record; quitting
-/// keeps every record.
+/// Writes are atomic and debounced. A window registers a provider, read when the write happens
+/// (so browser pages save their latest state), and claims a saved page when it opens: its own
+/// record when SwiftUI restored the window, else the most recent record from a previous launch
+/// that no open window has claimed. Closing a window drops its page, never sessions' tabs.
 @Observable
 public final class TabPersistence {
   /// A save or restore failure, shown in the tab strip.
@@ -18,11 +54,15 @@ public final class TabPersistence {
     public let description: String
   }
 
-  /// Reads a window's tabs at write time; a throw keeps the window's previous record.
-  public typealias Provider = @MainActor () throws -> TabWindowSnapshot
+  /// Reads a window's tabs at write time; a throw keeps the window's previous records.
+  public typealias Provider = @MainActor () throws -> TabWindowState
+  /// Reads one session's tabs in a window, `nil` when the window has none for it.
+  public typealias GroupProvider = @MainActor (String) -> TabGroupState?
 
   /// The file's format version; newer files are not read (and not overwritten).
-  public static let version = 1
+  public static let version = 2
+  /// How many sessions' tabs are kept; the least recently changed go first.
+  public static let sessionLimit = 300
 
   /// The last failure. A save failure clears with the next complete write; a restore failure
   /// stays for the launch.
@@ -35,10 +75,16 @@ public final class TabPersistence {
   @ObservationIgnored private var files: [String: TabFile] = [:]
   @ObservationIgnored private var unreadable: Set<String> = []
   @ObservationIgnored private var providers: [String: [UUID: Provider]] = [:]
+  @ObservationIgnored private var groupProviders: [String: [UUID: GroupProvider]] = [:]
   @ObservationIgnored private var pending: [String: (server: String, task: Task<Void, Never>)] =
     [:]
   @ObservationIgnored private var claimed: Set<UUID> = []
   @ObservationIgnored private var servers: [String: String] = [:]
+  /// Sessions archived or deleted this launch, and when, so a window's older copy is not saved.
+  @ObservationIgnored private var removedAt: [String: Date] = [:]
+  /// When each session's saved tabs last changed, by file and session, also for those saved as
+  /// none (just the chat), so an older copy in another window never wins.
+  @ObservationIgnored private var mergedAt: [String: Date] = [:]
 
   /// Creates the store.
   /// - Parameters:
@@ -66,24 +112,54 @@ public final class TabPersistence {
   /// - Parameters:
   ///   - window: The window's stable id.
   ///   - server: The server's URL.
-  /// - Returns: The saved tabs, or `nil` for a fresh window.
-  public func claim(window: UUID, server: String) -> TabWindowSnapshot? {
+  /// - Returns: The page the window showed, or `nil` for a fresh window.
+  public func claim(window: UUID, server: String) -> SidebarDestination? {
     let key = Self.key(server)
     guard var file = load(key, server: server) else { return nil }
     claimed.insert(window)
-    if let own = file.windows.first(where: { $0.window == window }) { return own.snapshot }
+    if let own = file.windows.first(where: { $0.window == window }) {
+      return own.page?.destination
+    }
     let candidates = file.windows.filter { $0.launch != launch && !claimed.contains($0.window) }
     guard let adopted = candidates.max(by: { $0.savedAt < $1.savedAt }) else { return nil }
     // The record moves to this window's id.
     file.windows.removeAll { $0.window == adopted.window }
     file.windows.append(
       TabWindowRecord(
-        window: window, launch: launch, savedAt: adopted.savedAt, snapshot: adopted.snapshot))
+        window: window, launch: launch, savedAt: adopted.savedAt, page: adopted.page))
     files[key] = file
-    if !adopted.skipped.isEmpty {
-      report("Some saved tabs could not be restored: \(adopted.skipped.joined(separator: "; ")).")
+    return adopted.page?.destination
+  }
+
+  /// A session's newest saved tabs: another open window's, or the file's.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - server: The server's URL.
+  ///   - window: The window asking, whose own tabs are not read.
+  /// - Returns: The tabs, or `nil` when the session has none saved.
+  public func savedTabs(session sessionID: String, server: String, for window: UUID)
+    -> TabWindowSnapshot?
+  {
+    let key = Self.key(server)
+    // A session saved as just its chat, or removed, counts with no tabs.
+    let cleared = [mergedAt["\(key)/\(sessionID)"], removedAt[sessionID]].compactMap(\.self).max()
+    var newest: (snapshot: TabWindowSnapshot?, date: Date)? = cleared.map { (nil, $0) }
+    if var file = load(key, server: server), let record = file.sessions[sessionID],
+      record.savedAt >= newest?.date ?? .distantPast
+    {
+      newest = (record.snapshot, record.savedAt)
+      if !record.skipped.isEmpty {
+        report("Some saved tabs could not be restored: \(record.skipped.joined(separator: "; ")).")
+        file.sessions[sessionID]?.skipped = []
+        files[key] = file
+      }
     }
-    return adopted.snapshot
+    for (other, provider) in groupProviders[key] ?? [:] where other != window {
+      guard let live = provider(sessionID) else { continue }
+      let date = live.changedAt ?? .distantPast
+      if newest.map({ date > $0.date }) ?? true { newest = (live.snapshot, date) }
+    }
+    return newest.flatMap(\.snapshot)
   }
 
   /// Registers a window's tabs for saving and saves them.
@@ -91,32 +167,51 @@ public final class TabPersistence {
   ///   - window: The window's id.
   ///   - server: The server's URL.
   ///   - snapshot: Reads the window's tabs at write time.
-  public func register(window: UUID, server: String, snapshot: @escaping Provider) {
+  ///   - group: Reads one of the window's session groups, for other windows.
+  public func register(
+    window: UUID, server: String, snapshot: @escaping Provider,
+    group: @escaping GroupProvider = { _ in nil }
+  ) {
     let key = Self.key(server)
     claimed.insert(window)
     servers[key] = server
     providers[key, default: [:]][window] = snapshot
+    groupProviders[key, default: [:]][window] = group
     scheduleSave(server: server)
   }
 
-  /// Stops saving a window. Closing the window (`keepRecord` false) also drops its saved tabs;
-  /// quitting or switching servers keeps them.
+  /// Stops saving a window, after saving its tabs. Closing the window (`keepRecord` false) also
+  /// drops its page; sessions keep their tabs either way.
   /// - Parameters:
   ///   - window: The window's id.
   ///   - server: The server's URL.
-  ///   - keepRecord: Keep the saved tabs for the next launch.
+  ///   - keepRecord: Keep the window's page for the next launch.
   public func unregister(window: UUID, server: String, keepRecord: Bool) {
     let key = Self.key(server)
-    if keepRecord {
-      write(key, server: server)
-    }
+    write(key, server: server)
     providers[key]?[window] = nil
+    groupProviders[key]?[window] = nil
     claimed.remove(window)
     if !keepRecord, var file = load(key, server: server) {
       file.windows.removeAll { $0.window == window }
       files[key] = file
       write(key, server: server)
     }
+  }
+
+  /// Forgets sessions' tabs: the sessions were archived or deleted.
+  /// - Parameters:
+  ///   - sessionIDs: The sessions.
+  ///   - server: The server's URL.
+  public func removeSessions(_ sessionIDs: Set<String>, server: String) {
+    let key = Self.key(server)
+    let now = Date()
+    for id in sessionIDs { removedAt[id] = now }
+    guard var file = load(key, server: server) else { return }
+    let before = file.sessions.count
+    for id in sessionIDs { file.sessions[id] = nil }
+    files[key] = file
+    if file.sessions.count != before { scheduleSave(server: server) }
   }
 
   /// Saves `server`'s windows after the debounce interval.
@@ -137,7 +232,7 @@ public final class TabPersistence {
     pending[key] = (server, task)
   }
 
-  /// A window closed for good: stops saving it and drops its saved tabs on every server.
+  /// A window closed for good: saves its tabs, stops saving it and drops its page.
   /// - Parameter window: The window's id.
   public func windowClosed(_ window: UUID) {
     for (key, windows) in providers where windows[window] != nil {
@@ -161,7 +256,7 @@ public final class TabPersistence {
     if unreadable.contains(key) { return nil }
     let url = fileURL(key)
     guard FileManager.default.fileExists(atPath: url.path) else {
-      let file = TabFile(version: Self.version, server: server, windows: [])
+      let file = TabFile(version: Self.version, server: server)
       files[key] = file
       return file
     }
@@ -188,9 +283,9 @@ public final class TabPersistence {
     let now = Date()
     var complete = true
     for (window, provider) in providers[key] ?? [:] {
-      let snapshot: TabWindowSnapshot
+      let state: TabWindowState
       do {
-        snapshot = try provider()
+        state = try provider()
       } catch {
         report("Some tabs could not be saved: \(error.localizedDescription)", saving: true)
         complete = false
@@ -198,8 +293,19 @@ public final class TabPersistence {
       }
       file.windows.removeAll { $0.window == window }
       file.windows.append(
-        TabWindowRecord(window: window, launch: launch, savedAt: now, snapshot: snapshot))
+        TabWindowRecord(
+          window: window, launch: launch, savedAt: now,
+          page: state.page.map(AppTabContent.init)))
+      for (sessionID, group) in state.groups {
+        merge(group, of: sessionID, into: &file, key: key)
+      }
     }
+    if file.sessions.count > Self.sessionLimit {
+      let oldest = file.sessions.sorted { $0.value.savedAt > $1.value.savedAt }
+        .dropFirst(Self.sessionLimit).map(\.key)
+      for id in oldest { file.sessions[id] = nil }
+    }
+    file.version = Self.version
     files[key] = file
     do {
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -208,6 +314,23 @@ public final class TabPersistence {
       if complete, issueIsFromSaving { issue = nil }
     } catch {
       report("Tabs could not be saved: \(error.localizedDescription)", saving: true)
+    }
+  }
+
+  /// Saves a window's group when it changed after the saved one; a group showing just its chat
+  /// leaves no record.
+  private func merge(
+    _ group: TabGroupState, of sessionID: String, into file: inout TabFile, key: String
+  ) {
+    let merged = "\(key)/\(sessionID)"
+    let newest = [file.sessions[sessionID]?.savedAt, removedAt[sessionID], mergedAt[merged]]
+      .compactMap(\.self).max()
+    guard let changedAt = group.changedAt, changedAt > newest ?? .distantPast else { return }
+    mergedAt[merged] = changedAt
+    if SessionTabGroups.isDefault(group.snapshot) {
+      file.sessions[sessionID] = nil
+    } else {
+      file.sessions[sessionID] = TabGroupRecord(savedAt: changedAt, snapshot: group.snapshot)
     }
   }
 
@@ -235,123 +358,5 @@ public final class TabPersistence {
       let hex = String(byte, radix: 16)
       return hex.count == 1 ? "0\(hex)" : hex
     }.joined()
-  }
-}
-
-/// One server's saved windows.
-nonisolated struct TabFile: Codable, Sendable {
-  var version: Int
-  /// The server, for people reading the file.
-  var server: String
-  var windows: [TabWindowRecord]
-}
-
-/// One window's saved tabs.
-nonisolated struct TabWindowRecord: Codable, Sendable {
-  var window: UUID
-  /// The launch that wrote it; records from this launch are never adopted by another window.
-  var launch: UUID
-  var savedAt: Date
-  var snapshot: TabWindowSnapshot
-  /// Tabs that could not be decoded (a kind from a newer app), reported once on restore.
-  var skipped: [String] = []
-
-  init(window: UUID, launch: UUID, savedAt: Date, snapshot: TabWindowSnapshot) {
-    self.window = window
-    self.launch = launch
-    self.savedAt = savedAt
-    self.snapshot = snapshot
-  }
-
-  private enum CodingKeys: String, CodingKey {
-    case window, launch, savedAt, selectedID, tabs, closed, split
-  }
-
-  init(from decoder: any Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    window = try container.decode(UUID.self, forKey: .window)
-    launch = try container.decode(UUID.self, forKey: .launch)
-    savedAt = try container.decode(Date.self, forKey: .savedAt)
-    let tabs = try container.decode([LenientTab].self, forKey: .tabs)
-    let closed = try container.decodeIfPresent([LenientTab].self, forKey: .closed) ?? []
-    let split = try container.decodeIfPresent(LenientSplit.self, forKey: .split)
-    snapshot = TabWindowSnapshot(
-      tabs: tabs.compactMap(\.tab),
-      selectedID: try container.decodeIfPresent(String.self, forKey: .selectedID),
-      closed: closed.compactMap(\.tab), split: split?.split)
-    skipped = (tabs + closed).compactMap(\.problem) + [split?.problem].compactMap { $0 }
-  }
-
-  func encode(to encoder: any Encoder) throws {
-    var container = encoder.container(keyedBy: CodingKeys.self)
-    try container.encode(window, forKey: .window)
-    try container.encode(launch, forKey: .launch)
-    try container.encode(savedAt, forKey: .savedAt)
-    try container.encode(snapshot.tabs, forKey: .tabs)
-    try container.encodeIfPresent(snapshot.selectedID, forKey: .selectedID)
-    try container.encode(snapshot.closed, forKey: .closed)
-    try container.encodeIfPresent(snapshot.split, forKey: .split)
-  }
-}
-
-/// A split view that decodes to `nil` with the reason when it is from a newer layout version or
-/// malformed, so the window still restores its tabs, in one pane.
-nonisolated struct LenientSplit: Decodable {
-  let split: TabSplitSnapshot?
-  let problem: String?
-
-  private enum CodingKeys: String, CodingKey {
-    case version
-  }
-
-  init(from decoder: any Decoder) throws {
-    do {
-      let version = try decoder.container(keyedBy: CodingKeys.self)
-        .decode(Int.self, forKey: .version)
-      guard version <= TabSplitSnapshot.version else {
-        split = nil
-        problem = "the split view is from a newer version of the app"
-        return
-      }
-      split = try TabSplitSnapshot(from: decoder)
-      problem = nil
-    } catch {
-      split = nil
-      problem = "the split view could not be read (\(error))"
-    }
-  }
-}
-
-/// A tab that decodes to `nil` with the reason when its kind is unknown, so one bad tab does
-/// not lose the window.
-nonisolated private struct LenientTab: Decodable {
-  let tab: AppTab?
-  let problem: String?
-
-  init(from decoder: any Decoder) throws {
-    do {
-      tab = try AppTab(from: decoder)
-      problem = nil
-    } catch {
-      tab = nil
-      problem = String(describing: error)
-    }
-  }
-}
-
-extension JSONEncoder {
-  fileprivate static var tabs: JSONEncoder {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    encoder.dateEncodingStrategy = .iso8601
-    return encoder
-  }
-}
-
-extension JSONDecoder {
-  fileprivate static var tabs: JSONDecoder {
-    let decoder = JSONDecoder()
-    decoder.dateDecodingStrategy = .iso8601
-    return decoder
   }
 }

@@ -173,9 +173,11 @@
       case .home:
         selection = nil
       case .conversation(let sessionID):
+        session?.tabs.showChat(sessionID)
         selection = .session(sessionID)
       case .message(let sessionID, let messageID):
         session?.transcriptFocus.focus(messageID, in: sessionID)
+        session?.tabs.showChat(sessionID)
         selection = .session(sessionID)
       case .page(let page):
         selection = DeepLinkDestinations.selection(for: page)

@@ -231,13 +231,14 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **UI review from the gallery:** sign-in screens use system blue instead of the Omnigent theme;
   "Tell the agent instead" with a shared draft opens in both the inline card and the dock.
 
-- [ ] **Tabs: primary chats accumulate.** Tabs span sessions per window and a session's primary
-  chat cannot be closed, so every session opened from the sidebar stays in the strip until it is
-  archived or deleted. Decide between per-session tab scoping, a preview tab, or a "Close
-  Session in This Window" command.
-- [ ] **Split view:** the other pane's Inbox, New Session and browser views still publish their
-  toolbar items and focused values (only conversations and terminals defer to the focused pane);
-  notification suppression covers only the focused pane's chat.
+- [x] **Tabs: primary chats accumulate.** Tabs are now scoped per session (`SessionTabGroups`):
+  the strip shows the selected session's tabs only, and session-less pages have none.
+- [ ] **Tabs across windows:** a session open in two windows has two live copies of its tabs; the
+  one changed last is saved, and a third window copies the newest. Changes don't sync live.
+- [ ] **Split view:** the other pane's browser views still publish their toolbar items and focused
+  values (only conversations and terminals defer to the focused pane).
+- [ ] **Browser identifiers on iOS:** `BrowserTabContentView`'s `browser.tab` identifier replaces
+  the omnibox's and other children's, so UI tests can't find `browser.omnibox` on iPhone.
 
 - [ ] **iPhone Duo unfolded:** the Xcode 27.2 simulator can't unfold, so the unfolded posture
   (safe areas, size classes, the `.division` region, camera position, `ArrangementView`'s axis)

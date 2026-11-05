@@ -226,7 +226,7 @@ nonisolated public struct TabSplitSnapshot: Hashable, Sendable, Codable {
 extension AppTabContent {
   /// A session's primary chat: one per session in a window, closed only with its session. It
   /// is also the only tab that offers the session's terminal view.
-  public var isPrimaryChat: Bool {
+  nonisolated public var isPrimaryChat: Bool {
     if case .chat = self { return true }
     return false
   }

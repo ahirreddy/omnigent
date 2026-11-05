@@ -6,7 +6,7 @@ public import Foundation
 nonisolated public enum InterfacePreferences {
   /// `omnigent:open-links-in-app`: web links from chat open in an in-app browser tab.
   public static let openLinksInAppKey = "omnigent:open-links-in-app"
-  /// `omnigent:open-subagents-in-panel`: a sub-agent's chat opens beside the chat.
+  /// `omnigent:open-subagents-in-panel` (the web's key): a sub-agent opens in a new window.
   public static let openSubagentsInPanelKey = "omnigent:open-subagents-in-panel"
   /// `omnigent:hide-unconfigured-harnesses`: the new-session picker hides harnesses that are
   /// not set up on the selected host.

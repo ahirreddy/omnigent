@@ -23,7 +23,12 @@ playground can't show. Every polish pass ends with this check, in the apps thems
    - Nothing folds into the toolbar's overflow menu at a normal window width.
    - Scrolled text never shows through the row.
    - With the sidebar collapsed, the strip starts after the traffic lights and the sidebar toggle.
-3. **Tabs.**
+3. **Tabs.** Tabs are scoped per session.
+   - Selecting another session swaps the whole strip; coming back shows its tabs and the tab
+     that was selected (a terminal stays selected, not the chat). The chat tab can't be closed.
+   - New Session, Inbox, Canvas, Automations and Usage show full size with no strip.
+   - Split view pairs two tabs of the same session; another session goes in another window.
+   - Quit and relaunch: the window comes back on its page and each session on its tabs.
    - Dragging a tab reorders it and never moves the window.
    - Dragging the strip's empty space moves the window, and a double-click there zooms it.
    - Overflowing tabs fade at the edge, and the selected tab scrolls into view.

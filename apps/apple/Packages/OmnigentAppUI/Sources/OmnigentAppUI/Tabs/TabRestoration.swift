@@ -1,20 +1,21 @@
 import Foundation
+import OSLog
 import OmnigentCoreFFI
 import OmnigentRemoteBrowser
 import OmnigentStores
+import OmnigentUIComponents
 import SwiftUI
 
-/// Binds a window's tabs to the connected server: restores the saved tabs (or adopts torn-off
-/// ones), registers them for saving, closes browser pages with their tabs, and keeps the
-/// sessions the built tabs show open.
+/// Binds a window's session tabs to the connected server: restores the window's page, reads
+/// each session's saved tabs when it first shows, registers them for saving, closes browser
+/// pages with their tabs, and keeps the recently shown sessions open.
 struct TabRestoration: ViewModifier {
   let session: ServerSession
   let context: TabWindowContext
-  /// Applies the host's selection once the tabs are in place.
-  let restored: @MainActor () -> Void
+  /// Applies the window's saved page (unless the host already chose one) once bound.
+  let restored: @MainActor (SidebarDestination?) -> Void
 
   @State private var boundServer: String?
-  @State private var adopted = false
 
   private var server: String? { session.connection.connectedServer?.baseUrl }
 
@@ -31,39 +32,74 @@ struct TabRestoration: ViewModifier {
     let tabs = session.tabs
     let browser = context.browser
     let window = context.window
+    let persistence = context.persistence
     let remoteBrowsers = session.remoteBrowsers
+    if boundServer != nil {
+      // Another server's sessions: their tabs leave with it.
+      tabs.onChange = nil
+      if let old = boundServer {
+        persistence?.unregister(window: window, server: old, keepRecord: true)
+      }
+      tabs.reset()
+    }
     tabs.willClose = { tab in
       Self.closeRemoteTab(
-        Self.closePage(of: tab, in: browser, persistence: context.persistence),
-        in: remoteBrowsers, persistence: context.persistence)
+        Self.closePage(of: tab, in: browser, persistence: persistence),
+        in: remoteBrowsers, persistence: persistence)
     }
+    tabs.pageInUse = { [weak browser] id in browser?.isPageShown(id, outside: window) ?? false }
     browser?.attach(window: window, tabs: tabs)
-    if let persistence = context.persistence {
-      if let old = boundServer {
-        persistence.unregister(window: window, server: old, keepRecord: true)
-      }
-      if !adopted, !context.adopting.isEmpty {
-        tabs.restore(TabWindowSnapshot())
-        tabs.adopt(context.adopting)
-      } else if let saved = persistence.claim(window: window, server: server) {
-        tabs.restore(saved)
-      } else if boundServer != nil {
-        tabs.restore(TabWindowSnapshot())
-      }
+    var saved: SidebarDestination?
+    if let persistence {
+      saved = persistence.claim(window: window, server: server)
+      tabs.loadSaved = { persistence.savedTabs(session: $0, server: server, for: window) }
+      tabs.onRemove = { persistence.removeSessions($0, server: server) }
       let session = session
-      persistence.register(window: window, server: server) {
-        try Self.snapshot(tabs, session: session, browser: browser)
-      }
-      tabs.onChange = { persistence.scheduleSave(server: server) }
-    } else if !adopted, !context.adopting.isEmpty {
-      tabs.adopt(context.adopting)
+      persistence.register(
+        window: window, server: server,
+        snapshot: { try Self.state(tabs, session: session, browser: browser) },
+        group: { sessionID in
+          Self.groupState(sessionID, of: tabs, session: session, browser: browser)
+        })
+      tabs.onChange = { _ in persistence.scheduleSave(server: server) }
     }
-    adopted = true
     boundServer = server
-    restored()
+    restored(saved)
   }
 
-  /// The tabs to save, with fresh titles and browser states.
+  /// The window's tabs to save: its page and the groups changed since they were made, with
+  /// fresh titles and browser states.
+  static func state(
+    _ tabs: SessionTabGroups, session: ServerSession, browser: (any BrowserTabHosting)?
+  ) throws -> TabWindowState {
+    var groups: [String: TabGroupState] = [:]
+    for (sessionID, group) in tabs.groups where group.changedAt != nil {
+      groups[sessionID] = TabGroupState(
+        snapshot: try snapshot(group, session: session, browser: browser),
+        changedAt: group.changedAt)
+    }
+    return TabWindowState(page: tabs.page, groups: groups)
+  }
+
+  /// One session's tabs for another window that shows the session for the first time. A page
+  /// whose state does not encode keeps its last saved state.
+  static func groupState(
+    _ sessionID: String, of tabs: SessionTabGroups, session: ServerSession,
+    browser: (any BrowserTabHosting)?
+  ) -> TabGroupState? {
+    guard let group = tabs.groups[sessionID] else { return nil }
+    do {
+      return TabGroupState(
+        snapshot: try snapshot(group, session: session, browser: browser),
+        changedAt: group.changedAt)
+    } catch {
+      Logger(subsystem: "ai.omnigent.app", category: "tabs").error(
+        "A session's pages did not encode: \(String(describing: error), privacy: .public)")
+      return TabGroupState(snapshot: group.snapshot, changedAt: group.changedAt)
+    }
+  }
+
+  /// A group's tabs to save, with fresh titles and browser states.
   static func snapshot(
     _ tabs: TabStore, session: ServerSession, browser: (any BrowserTabHosting)?
   ) throws -> TabWindowSnapshot {

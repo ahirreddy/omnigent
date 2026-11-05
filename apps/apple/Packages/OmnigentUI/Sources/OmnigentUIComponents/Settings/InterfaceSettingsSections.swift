@@ -1,7 +1,7 @@
 import OmnigentWorkspaceUI
 public import SwiftUI
 
-/// Settings › General › Links and Sub-agents: in-app links and sub-agents beside the chat.
+/// Settings › General › Links and Sub-agents: in-app links and sub-agents in a new window.
 public struct LinksAndSessionsSettingsSection: View {
   @AppStorage(InterfacePreferences.openLinksInAppKey) private var openLinksInApp = false
   @AppStorage(InterfacePreferences.openSubagentsInPanelKey) private var openSubagentsInPanel =
@@ -21,10 +21,10 @@ public struct LinksAndSessionsSettingsSection: View {
       }
       .accessibilityIdentifier("settings.open-links-in-app")
       Toggle(isOn: $openSubagentsInPanel) {
-        Text("Open sub-agents beside the chat")
+        Text("Open sub-agents in a new window")
         Text(
-          "On: a sub-agent's chat opens in a split pane next to the main chat. Off: it opens as a "
-            + "tab beside the chat. On iPhone, sub-agents always open as a tab.")
+          "On: a sub-agent opens in a window of its own, beside this one. Off: it replaces this "
+            + "session in the window. On iPhone, sub-agents always open in place.")
       }
       .accessibilityIdentifier("settings.open-subagents-in-panel")
     }
