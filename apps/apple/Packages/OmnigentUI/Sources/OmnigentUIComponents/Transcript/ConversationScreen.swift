@@ -28,6 +28,7 @@ public struct ConversationScreen<Terminal: View>: View {
 
   @State private var scrollRequest = 0
   @State private var focusRequest = 0
+  @State private var modelPickerRequest = 0
   @State private var localInspectorTab: InspectorTab = .files
   private let externalInspectorTab: Binding<InspectorTab>?
   @State private var showsShare = false
@@ -109,7 +110,8 @@ public struct ConversationScreen<Terminal: View>: View {
         DecisionDock(state: state, actions: actions)
         if !showsTerminal {
           TranscriptComposer(
-            draft: $draft, state: composer, actions: composerActions, focusRequest: focusRequest)
+            draft: $draft, state: composerState, actions: composerActions,
+            focusRequest: focusRequest)
         } else if !state.decisions.isEmpty {
           Spacer().frame(height: 10)
         }
@@ -288,7 +290,7 @@ extension ConversationScreen {
   private var canSendDraft: Bool {
     !showsTerminal && composer.availability == .available && composer.delivery == .idle
       && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        || !composer.attachments.isEmpty)
+        || !composer.attachments.isEmpty || !composer.mentions.isEmpty)
   }
 
   /// Send while the draft can go, else the active request's Approve.
@@ -311,7 +313,7 @@ extension ConversationScreen {
       toggleMode = { binding.wrappedValue = binding.wrappedValue == .chat ? .terminal : .chat }
     }
     var actions = SessionCommandActions(
-      send: canSend ? composerActions.send : nil,
+      send: canSend ? sendCommand : nil,
       interrupt: composer.isRunning ? composerActions.interrupt : nil,
       jumpToLatest: jump, focusComposer: focus,
       toggleInspector: { showsInspector.toggle() },
@@ -324,6 +326,9 @@ extension ConversationScreen {
         showsInspector = true
       })
     actions.approveOwnsCommandReturn = commandReturnOwner == .approve
+    if chat, let configuration = composer.configuration, !configuration.isApplying {
+      addModelCommands(to: &actions, configuration: configuration)
+    }
     if let summary = state.summary, summary.canRename, extras.sessionActions.rename != nil {
       actions.rename = {
         renameText = summary.title
@@ -331,6 +336,39 @@ extension ConversationScreen {
       }
     }
     return actions
+  }
+
+  /// ⌘Return sends the draft; with messages queued it sends them all now, the draft joining
+  /// them at the end (the composer's ⇧⌘Return when ⌘Return is the send chord).
+  private var sendCommand: @MainActor () -> Void {
+    let extras = composerActions.extras
+    guard !composer.submitWithCommandReturn, !composer.queue.isEmpty,
+      let sendAll = extras.history.sendAllQueued, let queueDraft = extras.queueDraft
+    else { return composerActions.send }
+    return {
+      queueDraft()
+      sendAll()
+    }
+  }
+
+  /// The composer with this screen's picker requests.
+  private var composerState: ComposerViewState {
+    var state = composer
+    state.modelPickerRequest = modelPickerRequest
+    return state
+  }
+
+  /// Choose Model, Next Model and Next Reasoning Effort, where the session offers them.
+  private func addModelCommands(
+    to actions: inout SessionCommandActions, configuration: ComposerConfiguration
+  ) {
+    if let selectModel = composerActions.selectModel, !configuration.visibleModels.isEmpty {
+      actions.chooseModel = { modelPickerRequest += 1 }
+      if let next = configuration.nextModelID { actions.cycleModel = { selectModel(next) } }
+    }
+    if let selectEffort = composerActions.selectEffort, let next = configuration.nextEffort {
+      actions.cycleEffort = { selectEffort(next) }
+    }
   }
 }
 

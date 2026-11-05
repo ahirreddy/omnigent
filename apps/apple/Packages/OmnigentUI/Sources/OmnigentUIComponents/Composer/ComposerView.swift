@@ -26,6 +26,10 @@ public struct ComposerView: View {
   @State private var attachmentError: String?
   @State private var modeHUD: ApprovalModeOption?
   @State private var dismissedCompletionsDraft: String?
+  @State private var highlightedCompletion = 0
+  @State private var recall = PromptRecall()
+  @State private var showsApprovalPicker = false
+  @State private var showsModelPicker = false
   @FocusState private var isFocused: Bool
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -74,30 +78,6 @@ public struct ComposerView: View {
     return !isCollapsed || state.context?.unavailableReason != nil
   }
 
-  private var cardPadding: EdgeInsets {
-    switch layout {
-    case .card:
-      EdgeInsets(
-        top: ComposerPillMetrics.padding, leading: ComposerPillMetrics.padding,
-        bottom: ComposerPillMetrics.padding, trailing: ComposerPillMetrics.padding)
-    case .touch where isCollapsed:
-      EdgeInsets(
-        top: ComposerBarMetrics.collapsedVerticalPadding,
-        leading: ComposerBarMetrics.collapsedHorizontalPadding,
-        bottom: ComposerBarMetrics.collapsedVerticalPadding,
-        trailing: ComposerBarMetrics.collapsedHorizontalPadding)
-    case .touch: ComposerBarMetrics.openPadding
-    }
-  }
-
-  private var completions: ComposerCompletions {
-    guard draft != dismissedCompletionsDraft else {
-      return ComposerCompletions(draft: draft, commands: [], mentions: [])
-    }
-    return ComposerCompletions(
-      draft: draft, commands: state.slashCommands, mentions: state.mentionCandidates)
-  }
-
   /// The composer.
   public var body: some View {
     if layout == .touch, state.isReadOnly {
@@ -133,9 +113,11 @@ public struct ComposerView: View {
         CommandNoticeView(text: notice, dismiss: actions.extras.dismissCommandNotice)
       }
       if !completions.items.isEmpty {
-        CompletionList(items: completions.items, note: state.slashCommandsNote) {
-          draft = completions.applying($0)
-        }
+        CompletionList(
+          items: completions.items, note: completionsNote, highlighted: highlightedCompletion
+        ) { keyboard.apply($0) }
+      } else if let note = failedMentionNote {
+        CompletionList(items: [], note: note) { _ in }
       }
       VStack(alignment: .leading, spacing: isCollapsed ? 0 : Theme.Spacing.small) {
         if let reason = state.availability.reason {
@@ -148,6 +130,9 @@ public struct ComposerView: View {
         }
         if !state.attachments.isEmpty {
           DraftAttachmentStrip(attachments: state.attachments, remove: actions.removeAttachment)
+        }
+        if !state.mentions.isEmpty {
+          MentionChips(paths: state.mentions, remove: actions.extras.removeMention)
         }
         if layout == .card {
           // One row; the controls stay at the bottom as the text grows.
@@ -221,6 +206,16 @@ public struct ComposerView: View {
     #endif
     .readingPostureFocus($isFocused, focusRequest: focusRequest)
     .task(id: modeHUD) { await clearHUD() }
+    .modifier(
+      ApprovalModePicker(
+        modes: state.approvalModes, request: state.approvalPickerRequest,
+        isPresented: $showsApprovalPicker, select: actions.extras.selectApprovalMode)
+    )
+    .modifier(
+      ModelPicker(
+        configuration: state.configuration, request: state.modelPickerRequest,
+        isPresented: $showsModelPicker, select: actions.selectModel)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("composer")
   }
@@ -240,10 +235,13 @@ public struct ComposerView: View {
     )
     .focused($isFocused)
     .disabled(!isEditable)
-    .onKeyPress(.return, phases: .down) { press in handleReturn(press) }
-    .onKeyPress(.tab, phases: .down) { press in handleTab(press) }
-    .onKeyPress(.escape, phases: .down) { _ in handleEscape() }
-    .onKeyPress(.upArrow, phases: .down) { _ in handleUpArrow() }
+    .onKeyPress(.return, phases: .down) { press in keyboard.handleReturn(press) }
+    .onKeyPress(.tab, phases: .down) { press in keyboard.handleTab(press) }
+    .onKeyPress(.escape, phases: .down) { _ in keyboard.handleEscape() }
+    .onKeyPress(keys: [.upArrow, .downArrow], phases: .down) { press in
+      keyboard.handleArrow(press)
+    }
+    .onChange(of: draft) { highlightedCompletion = 0 }
     .accessibilityLabel("Message")
     .accessibilityAction(named: isExpanded ? "Collapse Editor" : "Expand Editor") {
       isExpanded.toggle()
@@ -288,67 +286,15 @@ public struct ComposerView: View {
 }
 
 extension ComposerView {
-  // MARK: Keys (the editor's own; they act only while it has focus)
+  // MARK: Keys
 
-  private func handleReturn(_ press: KeyPress) -> KeyPress.Result {
-    if !completions.items.isEmpty, let first = completions.items.first {
-      draft = completions.applying(first)
-      return .handled
-    }
-    #if os(iOS)
-      // Touch keyboards always insert a newline, as on the web; hardware keyboards use ⌘Return.
-      if !press.modifiers.contains(.command) { return .ignored }
-    #endif
-    // A pending request's Approve owns Command-Return while there is nothing to send.
-    if press.modifiers == .command, commandReturnOwner == .approve { return .ignored }
-    if press.modifiers.contains(.command), press.modifiers.contains(.option) {
-      guard let alternative = rules.alternative else { return .ignored }
-      perform(alternative)
-      return .handled
-    }
-    if press.modifiers.contains(.shift) || press.modifiers.contains(.option) { return .ignored }
-    if state.submitWithCommandReturn, !press.modifiers.contains(.command) { return .ignored }
-    perform(rules.intent)
-    return .handled
-  }
-
-  private func handleTab(_ press: KeyPress) -> KeyPress.Result {
-    if press.modifiers.contains(.shift), let modes = state.approvalModes, let next = modes.next,
-      let select = actions.extras.selectApprovalMode
-    {
-      select(next)
-      modeHUD = next
-      AccessibilityNotification.Announcement(
-        "Approval mode \(next.label)\(next.detail.map { ", \($0)" } ?? "")"
-      ).post()
-      return .handled
-    }
-    if !press.modifiers.contains(.shift), let first = completions.items.first {
-      draft = completions.applying(first)
-      return .handled
-    }
-    return .ignored
-  }
-
-  /// Esc closes the completions first; only then does it stop the turn.
-  private func handleEscape() -> KeyPress.Result {
-    if !completions.items.isEmpty {
-      dismissedCompletionsDraft = draft
-      return .handled
-    }
-    guard state.isRunning, let interrupt = actions.interrupt, !state.isStopping else {
-      return .ignored
-    }
-    interrupt()
-    return .handled
-  }
-
-  private func handleUpArrow() -> KeyPress.Result {
-    guard draft.isEmpty, let recall = actions.extras.recallPrevious, let previous = recall() else {
-      return .ignored
-    }
-    draft = previous
-    return .handled
+  /// The editor's keys over the current draft, completions and send rules.
+  private var keyboard: ComposerKeyboard {
+    ComposerKeyboard(
+      state: state, actions: actions, rules: rules, completions: completions,
+      commandReturnOwner: commandReturnOwner, draft: $draft,
+      dismissedCompletionsDraft: $dismissedCompletionsDraft, highlighted: $highlightedCompletion,
+      recall: $recall, modeHUD: $modeHUD, perform: perform)
   }
 
   /// Hides the ⇧Tab HUD after a moment; a newer switch restarts the wait.
@@ -371,7 +317,8 @@ extension ComposerView {
   private var parts: ComposerControlParts {
     ComposerControlParts(
       state: state, actions: actions, rules: rules,
-      hasDraft: !draft.isEmpty || !state.attachments.isEmpty, isEditable: isEditable,
+      hasDraft: !draft.isEmpty || !state.attachments.isEmpty || !state.mentions.isEmpty,
+      isEditable: isEditable,
       canAttach: canAttach, layoutWidth: layoutWidth, layout: layout,
       isImporting: $isImporting, isPickingPhotos: $isPickingPhotos, isExpanded: $isExpanded,
       loadProviders: { providers in Task { await loadProviders(providers) } }, perform: perform,
@@ -393,4 +340,45 @@ extension ComposerView {
   private var toolbar: some View { parts.toolbar }
   private var collapsedLeading: some View { parts.collapsedLeading }
   private var collapsedTrailing: some View { parts.collapsedTrailing }
+}
+
+extension ComposerView {
+  // MARK: Layout and completions
+
+  private var cardPadding: EdgeInsets {
+    switch layout {
+    case .card:
+      EdgeInsets(
+        top: ComposerPillMetrics.padding, leading: ComposerPillMetrics.padding,
+        bottom: ComposerPillMetrics.padding, trailing: ComposerPillMetrics.padding)
+    case .touch where isCollapsed:
+      EdgeInsets(
+        top: ComposerBarMetrics.collapsedVerticalPadding,
+        leading: ComposerBarMetrics.collapsedHorizontalPadding,
+        bottom: ComposerBarMetrics.collapsedVerticalPadding,
+        trailing: ComposerBarMetrics.collapsedHorizontalPadding)
+    case .touch: ComposerBarMetrics.openPadding
+    }
+  }
+
+  private var completions: ComposerCompletions {
+    guard draft != dismissedCompletionsDraft else {
+      return ComposerCompletions(draft: draft, commands: [], mentions: [])
+    }
+    return ComposerCompletions(
+      draft: draft, commands: state.slashCommands, mentions: state.mentionCandidates)
+  }
+
+  /// A mention's note under its rows, or the skills note under commands.
+  private var completionsNote: String? {
+    ComposerCompletions.isTypingMention(draft) ? state.mentionsNote : state.slashCommandsNote
+  }
+
+  /// Why a mention being typed has no rows: the search failed.
+  private var failedMentionNote: String? {
+    guard draft != dismissedCompletionsDraft, ComposerCompletions.isTypingMention(draft) else {
+      return nil
+    }
+    return state.mentionsNote
+  }
 }

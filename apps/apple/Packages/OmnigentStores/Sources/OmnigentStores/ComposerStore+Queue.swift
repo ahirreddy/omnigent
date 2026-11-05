@@ -15,8 +15,9 @@ extension ComposerStore {
       return
     }
     do {
-      try queue.enqueue(text)
+      try queue.enqueue(mentionPreamble + text)
       text = ""
+      mentions = []
       lastError = nil
     } catch {
       lastError = Self.queueError(error)
@@ -59,6 +60,29 @@ extension ComposerStore {
     await deliver(id)
   }
 
+  /// Takes the newest queued message out of the queue to edit it in the field (Up in an empty
+  /// composer). A message being sent stays.
+  /// - Returns: Its text, or `nil` when nothing can be taken.
+  public func takeLastQueued() -> String? {
+    guard let last = queue.items.last, last.state != .sending else { return nil }
+    do {
+      try queue.remove(last.id)
+    } catch {
+      lastError = Self.queueError(error)
+      return nil
+    }
+    return last.text
+  }
+
+  /// Sends every queued message now, oldest first, steering the running turn (⌘Return). Stops
+  /// at the first that does not go out, so order is kept.
+  public func sendAllQueuedNow() async {
+    for item in queue.items where item.state == .queued {
+      await deliver(item.id)
+      guard queue.items.allSatisfy({ $0.id != item.id }) else { return }
+    }
+  }
+
   /// Sends the oldest queued message when no turn runs and nothing else is sending. Call it
   /// whenever the turn ends.
   /// - Parameter isRunning: A turn is running.
@@ -97,6 +121,12 @@ extension ComposerStore {
       queue.finish(id, failure: nil)
     } catch {
       let failure = coreError(error)
+      if failure.isHostOffline {
+        queue.waitForHost(id)
+        commandNotice = failure.message
+        scheduleHostRecheck()
+        return
+      }
       queue.finish(
         id,
         failure: failure.isDeliveryUncertain
@@ -105,7 +135,7 @@ extension ComposerStore {
     }
   }
 
-  private static func queueError(_ error: MessageQueue.Refusal) -> CoreError {
+  static func queueError(_ error: MessageQueue.Refusal) -> CoreError {
     switch error {
     case .empty: .InvalidState(message: "Type a message to queue.")
     case .missing: .InvalidState(message: "That message is no longer queued.")

@@ -35,7 +35,10 @@ enum ComposerAdapter {
       context: context(store, server: server), canSteer: composer.supportsSteering)
     state.isReadOnly = isReadOnly(store)
     state.commandNotice = composer.commandNotice
-    state.slashCommandsNote = composer.mentionProblem ?? composer.skillsProblem
+    state.slashCommandsNote = composer.skillsProblem
+    state.mentionsNote = composer.mentionProblem
+    state.mentions = composer.mentions
+    state.approvalPickerRequest = composer.approvalPickerRequests
     state.connection = connection(store)
     if let fraction = contextFraction(store.sections) {
       state.tray = ComposerTray(contextFraction: fraction)
@@ -76,12 +79,6 @@ enum ComposerAdapter {
     }
   }
 
-  /// The newest user message's text, for Up-arrow recall into an empty composer. Called on the
-  /// key press, never while rendering, so the composer does not observe the rows.
-  static func lastPrompt(_ store: ConversationStore) -> String? {
-    store.rows.last { $0.role == .user && !$0.text.isEmpty }?.text
-  }
-
   /// Whether the session can never take a message from this viewer (read-only, archived or
   /// closed), unlike a session still loading.
   static func isReadOnly(_ store: ConversationStore) -> Bool {
@@ -116,6 +113,7 @@ enum ComposerAdapter {
       switch item.state {
       case .queued: .queued
       case .sending: .sending
+      case .waitingForHost: .waitingForHost
       case .failed(let message): .failed(message: message)
       }
     return QueuedMessage(id: String(item.id), text: item.text, state: state)
@@ -145,16 +143,16 @@ enum ComposerAdapter {
       unavailableReason: composer.executionUnavailableReason)
   }
 
-  /// The composer's queue and approval-mode actions over the store. A queue change while no
-  /// turn runs drains it at once.
+  /// The composer's queue, approval-mode, history and mention actions over the store. A queue
+  /// change while no turn runs drains it at once.
   static func extras(
     _ composer: ComposerStore, isRunning: @escaping @MainActor () -> Bool,
-    recallPrevious: (@MainActor () -> String?)? = nil, reconnect: (@MainActor () -> Void)? = nil
+    reconnect: (@MainActor () -> Void)? = nil, prompts: (@MainActor () -> [String])? = nil
   ) -> ComposerExtraActions {
     let drain: @MainActor () -> Void = {
       Task { await composer.drainQueue(isRunning: isRunning()) }
     }
-    return ComposerExtraActions(
+    var extras = ComposerExtraActions(
       selectApprovalMode: { mode in Task { await composer.selectApprovalMode(mode.id) } },
       editQueued: { message, text in
         guard let id = Int(message.id) else { return }
@@ -173,13 +171,17 @@ enum ComposerAdapter {
       moveQueued: { offsets, destination in
         composer.moveQueued(fromOffsets: offsets, toOffset: destination)
       },
-      recallPrevious: recallPrevious,
+      recallPrevious: recall(prompts),
       queueDraft: {
         composer.queueDraft()
         drain()
       },
       reconnect: reconnect,
       dismissCommandNotice: { composer.dismissCommandNotice() })
+    extras.history = history(composer, prompts: prompts)
+    extras.attachMention = { composer.addMention($0) }
+    extras.removeMention = { composer.removeMention($0) }
+    return extras
   }
 
   static func availability(_ store: ConversationStore) -> ComposerAvailability {
@@ -297,5 +299,27 @@ extension OmnigentCoreFFI.ReportedValue {
   fileprivate var reportedID: String? {
     if case .value(let value) = self { return value }
     return nil
+  }
+}
+
+extension ComposerAdapter {
+  /// The newest prompt, for composers that recall one (the CLI style).
+  static func recall(_ prompts: (@MainActor () -> [String])?) -> (@MainActor () -> String?)? {
+    guard let prompts else { return nil }
+    return { prompts().last }
+  }
+
+  /// The user's messages, oldest first, for Up and Down recall; read on the key press only.
+  static func prompts(_ store: ConversationStore) -> [String] {
+    store.rows.compactMap { $0.role == .user && !$0.text.isEmpty ? $0.text : nil }
+  }
+
+  /// Up and Down recall, pulling back the last queued message, and ⌘Return's send-all.
+  static func history(
+    _ composer: ComposerStore, prompts: (@MainActor () -> [String])?
+  ) -> ComposerHistoryActions {
+    ComposerHistoryActions(
+      prompts: prompts, takeLastQueued: { composer.takeLastQueued() },
+      sendAllQueued: { Task { await composer.sendAllQueuedNow() } })
   }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import OmnigentCoreFFI
 
 extension ComposerStore {
   /// The query of the `@` mention being typed at the end of `draft`: an `@` at the start or
@@ -10,6 +11,25 @@ extension ComposerStore {
     if sign != draft.startIndex, !draft[draft.index(before: sign)].isWhitespace { return nil }
     let query = draft[draft.index(after: sign)...]
     return query.contains(where: \.isWhitespace) ? nil : String(query)
+  }
+
+  /// Tags `path` (a workspace file, or a folder ending in `/`) to go with the next message.
+  /// - Parameter path: The workspace-relative path.
+  public func addMention(_ path: String) {
+    guard !path.isEmpty, !mentions.contains(path) else { return }
+    mentions.append(path)
+  }
+
+  /// Untags `path`.
+  /// - Parameter path: The path.
+  public func removeMention(_ path: String) {
+    mentions.removeAll { $0 == path }
+  }
+
+  /// The marker lines the tagged paths put ahead of a message; empty without tags.
+  var mentionPreamble: String {
+    mentions.isEmpty
+      ? "" : OmnigentCoreFFI.mentionPreamble(harness: configuration?.harness, paths: mentions)
   }
 
   /// Searches the workspace when the typed mention changes, after a short pause, and clears

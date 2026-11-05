@@ -275,6 +275,12 @@ public struct ComposerExtraActions {
   public var importAgentBundle: (@MainActor () -> Void)?
   /// The tray's pull request, sub-agent and goal indicators.
   public var indicators = ComposerIndicatorActions()
+  /// Prompt history, the queue's last message, and sending the whole queue.
+  public var history = ComposerHistoryActions()
+  /// Tag a workspace path picked from the `@` menu as a chip; `nil` inserts `@path` as text.
+  public var attachMention: (@MainActor (String) -> Void)?
+  /// Untag a path (its chip's remove button).
+  public var removeMention: (@MainActor (String) -> Void)?
 
   /// Creates actions.
   /// - Parameters:

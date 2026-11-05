@@ -54,11 +54,12 @@ public final class ServerSession {
   /// - Parameter keychain: The Keychain choice, normally ``KeychainModeSelection/current()``.
   /// - Returns: The session.
   public static func live(keychain: KeychainModeSelection.Choice) -> ServerSession {
-    ServerSession(
-      connection: ConnectionStore(
-        services: .live(
-          keychainMode: keychain.mode, credentialDirectory: keychain.credentialDirectory),
-        config: .app(databricks: DatabricksOAuthSettings.bundled())))
+    let connection = ConnectionStore(
+      services: .live(
+        keychainMode: keychain.mode, credentialDirectory: keychain.credentialDirectory),
+      config: .app(databricks: DatabricksOAuthSettings.bundled()))
+    connection.draftArchive = ComposerDraftArchive.shared
+    return ServerSession(connection: connection)
   }
 
   /// A session over the core's offline demo server: sample sessions, approvals and replies that

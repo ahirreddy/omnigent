@@ -82,15 +82,33 @@ enum SessionToolsAdapter {
     return { startSideChat(store, routes: routes) }
   }
 
+  /// Sends the composer's draft and does what its command leaves to the screen: `/new` opens a
+  /// blank session and `/side` a side chat.
+  static func send(
+    _ store: ConversationStore, newSession: (@MainActor () -> Void)?, routes: Routes
+  ) async {
+    switch await store.composer.send() {
+    case .handled: break
+    case .newSession: newSession?()
+    case .sideChat(let question): startSideChat(store, routes: routes, question: question)
+    }
+  }
+
   /// Starts a side chat: a native `/side` fills the composer, a forked one opens next to this
-  /// chat.
-  static func startSideChat(_ store: ConversationStore, routes: Routes) {
+  /// chat with `question` (typed after `/side`) as its draft.
+  static func startSideChat(_ store: ConversationStore, routes: Routes, question: String = "") {
     let tools = store.tools
     guard !tools.isBusy else { return }
+    let composer = store.composer
+    let typed = composer.text
     Task {
       switch await tools.startSideChat() {
-      case .command(let prefix): store.composer.text = prefix
-      case .session(let sessionID): routes.openSession(sessionID)
+      case .command(let prefix): composer.text = prefix + question
+      case .session(let sessionID):
+        if !question.isEmpty { composer.seedDraft(question, forSession: sessionID) }
+        // The typed `/side` is done once its side chat exists.
+        if composer.text == typed, typed.hasPrefix("/side") { composer.text = "" }
+        routes.openSession(sessionID)
       case nil:
         let reason = tools.lastError?.message ?? "Unknown error."
         routes.report("Couldn't start a side chat for this session: \(reason)")

@@ -30,7 +30,8 @@ struct ConfigurationRules {
   init() {}
 
   init(
-    configuration: SessionConfiguration?, catalog: ConfigurationCatalog?, skills: [Skill]
+    configuration: SessionConfiguration?, catalog: ConfigurationCatalog?, skills: [Skill],
+    options: SlashOptions
   ) {
     guard let configuration else { return }
     let effective =
@@ -58,7 +59,8 @@ struct ConfigurationRules {
     approvalModeMenu = OmnigentCoreFFI.approvalModeMenu(configuration: configuration)
     executionUnavailableReason = OmnigentCoreFFI.executionUnavailableReason(
       configuration: configuration)
-    slashCommands = OmnigentCoreFFI.slashCommands(configuration: configuration, skills: skills)
+    slashCommands = OmnigentCoreFFI.slashCommands(
+      configuration: configuration, skills: skills, options: options)
   }
 }
 
@@ -104,7 +106,8 @@ extension ComposerStore {
 
   func refreshRules() {
     rules = ConfigurationRules(
-      configuration: configuration, catalog: configurationCatalog, skills: skills)
+      configuration: configuration, catalog: configurationCatalog, skills: skills,
+      options: slashOptions)
   }
 
   /// Reads the session's configuration and what it may switch to. Failures are kept in

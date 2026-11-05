@@ -146,3 +146,29 @@ struct ApprovalModeHUD: View {
     .accessibilityIdentifier("composer-approval-mode-hud")
   }
 }
+
+/// The approval-mode choice `/permissions` opens: one button per mode the harness can switch
+/// to, as in the chip's menu (which SwiftUI cannot open from code).
+struct ApprovalModePicker: ViewModifier {
+  let modes: ApprovalModes?
+  let request: Int
+  @Binding var isPresented: Bool
+  let select: (@MainActor (ApprovalModeOption) -> Void)?
+
+  func body(content: Content) -> some View {
+    content
+      .onChange(of: request) { isPresented = modes != nil && select != nil }
+      .confirmationDialog(
+        modes?.title ?? "Approvals", isPresented: $isPresented, titleVisibility: .visible
+      ) {
+        ForEach(modes?.options.filter(\.isSwitchable) ?? []) { option in
+          Button(option.id == modes?.selectedID ? "\(option.label) (current)" : option.label) {
+            select?(option)
+          }
+          .accessibilityIdentifier("composer-approval-picker-\(option.id)")
+        }
+      } message: {
+        Text("Shift-Tab also switches modes. The sandbox and model are separate.")
+      }
+  }
+}

@@ -182,8 +182,7 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **iOS sidebar:** the swipe actions still use system orange (Pin) and indigo (Archive).
 - [ ] **Mac sidebar:** "This Mac" in the Environment detail is a guess (the only online machine of a
   loopback server) until the app knows the host it runs; pass that id to `host_environments`.
-- [ ] **Mac sidebar:** composer drafts live only in the core's memory, so the draft marker covers
-  sessions opened since launch (the web keeps drafts in local storage).
+
 - [ ] **Palette:** add "Go to Automations" once the Mac app has an Automations page.
 - [ ] **CLI style:** the CLI composer has no host chip, and its status-line model menu duplicates
   `ConfigurationMenu`'s pickers (no agent switch).
@@ -288,13 +287,16 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   a member's role (the server has no role API: roles come from its admin list).
 - [ ] **Device preferences without a consumer yet** (keys as on the web): Always steer
   (`omnigent:always-steer`, composer), Always use a worktree and Default base branch
-  (`GitPreferences`, new-session form), Delete worktrees on archive (archive action), background
-  session titles (needs the core to send `X-Omnigent-Background-Session-Titles`), open links in
-  the in-app browser, open sub-agents in a panel, and the Appearance extras (harness picker
+  (`GitPreferences`, new-session form), Delete worktrees on archive (archive action), open links
+  in the in-app browser, open sub-agents in a panel, and the Appearance extras (harness picker
   visibility, fold narration, workspace panel defaults, UI and code typography).
-- [ ] **Inbox replies to an offline host:** the web sends `x-omnigent-hold-when-host-offline` and
-  shows a 503 `host_offline` as "the host is offline"; the core's write policy reads any 503 as an
-  uncertain delivery, so the Mac reply (and composer) does not send the header yet.
+- [ ] **Composer:** `/mcp` lists the agent's MCP servers as text; the web's panel also shows the
+  host's own MCP servers for the harness and signs in to registry services. Queued messages still
+  can't carry attachments (the core stages attachments per session draft, not per message).
+- [ ] **Composer:** Up and Down recall history only from an empty field or while browsing it
+  (SwiftUI's editor does not expose the caret, so the web's "caret on the first line" rule is out).
+- [ ] **Drafts:** a draft typed in the last half second before quitting can be lost; flush
+  `ComposerDraftArchive.shared` on termination.
 - [ ] **Inbox comments:** "Open file" opens the session, not the file with its comment, because the
   Mac app has no file comments view yet; seen comments are kept per device, as on the web.
 - [ ] **Automations editor:** no host/workspace pin, model, effort, permission mode, project, end
@@ -310,6 +312,16 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Done
 
+- [x] Composer commands and sends (2026-11-04): `/side`, `/clear` (when `/v1/info` lists the
+  `clear` control), `/context`, `/mcp` and `/permissions`; a failed `@` search shows its note
+  with no rows; message sends and Inbox replies send `x-omnigent-hold-when-host-offline`, a 503
+  `host_offline` is `SessionError::HostOffline` (a definite refusal) and the composer holds the
+  message until the host is back; drafts persist per account and session
+  (`ComposerDraftArchive`, which also seeds the sidebar's draft marker); Settings › General ›
+  Sessions "Automatically name new sessions" sends `X-Omnigent-Background-Session-Titles: off`.
+  Keyboard: Up/Down through completions and prompt history (Up first pulls back the last queued
+  message), ⌘Return sends with the whole queue, ⌃⇧M/⌃⌥M/⌃⌥E choose and cycle model and effort;
+  `@` paths become chips sent as `[Attached: path]` lines; queued messages reorder by drag.
 - [x] Host: after Back, the remote tab kept showing the old page (or a blank one) when many other
   tabs showed the same site. Windowless Chromium restored the page from the back/forward cache
   without painting it. The host now disables `BackForwardCache`; `browser-host/tools/back_test.py`

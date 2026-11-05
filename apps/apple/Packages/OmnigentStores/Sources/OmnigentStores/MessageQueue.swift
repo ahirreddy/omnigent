@@ -3,7 +3,8 @@ public import Foundation
 /// Messages the user queued to send after the running turn, in send order: the composer's queue
 /// state machine. A message is queued, then sending, then gone (sent) or failed. The queue drains
 /// one message at a time, oldest first, only while nothing runs or sends; a failed message holds
-/// its place until it is retried or removed, so order is never lost.
+/// its place until it is retried or removed, so order is never lost. A message the server refused
+/// because the session's host is offline waits for the host ahead of the rest.
 public struct MessageQueue: Equatable, Sendable {
   /// Where a queued message stands.
   public enum State: Equatable, Sendable {
@@ -11,6 +12,8 @@ public struct MessageQueue: Equatable, Sendable {
     case queued
     /// Being sent.
     case sending
+    /// Refused while the session's host was offline; sent once it is back.
+    case waitingForHost
     /// Not delivered; the reason. Retried only by the user.
     case failed(String)
   }
@@ -75,7 +78,7 @@ public struct MessageQueue: Equatable, Sendable {
     let index = try index(of: id)
     guard items[index].state != .sending else { throw .sending }
     items[index].text = trimmed
-    items[index].state = .queued
+    if items[index].state != .waitingForHost { items[index].state = .queued }
   }
 
   /// Removes a message.
@@ -109,6 +112,34 @@ public struct MessageQueue: Equatable, Sendable {
     guard !isRunning, !isBlocked, !isSending, let first = items.first, first.state == .queued
     else { return nil }
     return first
+  }
+
+  /// Whether a message waits for the session's host.
+  public var isHoldingForHost: Bool { items.contains { $0.state == .waitingForHost } }
+
+  /// Holds `text`, refused while the host was offline, ahead of the messages queued after it.
+  /// - Parameter text: The message.
+  /// - Throws: ``Refusal/empty`` for blank text.
+  public mutating func hold(_ text: String) throws(Refusal) {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { throw .empty }
+    lastID += 1
+    let index = items.firstIndex { $0.state != .waitingForHost } ?? items.endIndex
+    items.insert(Item(id: lastID, text: trimmed, state: .waitingForHost), at: index)
+  }
+
+  /// Ends a send the server refused because the host is offline: the message waits for it.
+  /// - Parameter id: The message.
+  public mutating func waitForHost(_ id: Int) {
+    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    items[index].state = .waitingForHost
+  }
+
+  /// The host is back: held messages queue again, in place.
+  public mutating func releaseHeld() {
+    for index in items.indices where items[index].state == .waitingForHost {
+      items[index].state = .queued
+    }
   }
 
   /// Marks a message as sending (drain, Send now, or Retry).

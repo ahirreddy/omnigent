@@ -50,7 +50,12 @@ public final class ConversationStore {
   /// Every row, in order: transcript and activity rows.
   public private(set) var rows: [Row] = []
   /// The session header, once known.
-  public private(set) var header: SessionHeader?
+  public private(set) var header: SessionHeader? {
+    didSet {
+      let online = header?.settings?.hostOnline
+      if online == true, online != oldValue?.settings?.hostOnline { composer.hostCameOnline() }
+    }
+  }
   /// Session sections (usage, plan, changed files, ...).
   public private(set) var sections: [EventSection] = []
   /// The revision of the applied state.
@@ -100,6 +105,21 @@ public final class ConversationStore {
     decisions = DecisionStore(sessionID: sessionID, core: core, listStatus: listStatus)
     composer = ComposerStore(sessionID: sessionID, core: core)
     tools = SessionToolsStore(sessionID: sessionID, core: core)
+    composer.conversationFacts = { [weak self] in self?.composerFacts }
+  }
+
+  /// What the composer's `/context`, `/mcp` and held sends read. Read on demand, never while
+  /// rendering.
+  private var composerFacts: ConversationFacts {
+    let usage = sections.first { $0.id == "usage" }
+    func number(_ id: String) -> UInt64? {
+      usage?.details.first { $0.id == id }.flatMap { UInt64($0.text) }
+    }
+    return ConversationFacts(
+      tokensUsed: number("context_tokens"), contextWindow: number("context_window"),
+      items: transcriptRows.count, mcpServers: agentInfo?.tools ?? [],
+      agentLoaded: agentInfo != nil, isRunning: isRunning,
+      hostOnline: header?.settings?.hostOnline ?? false)
   }
 
   /// Rows that belong in the transcript.

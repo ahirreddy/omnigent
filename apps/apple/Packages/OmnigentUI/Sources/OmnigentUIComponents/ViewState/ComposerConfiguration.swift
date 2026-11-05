@@ -109,6 +109,24 @@ nonisolated public struct ComposerConfiguration: Hashable, Sendable {
     selectedModel?.label ?? selectedModelId ?? resolvedDefaultModelName ?? "Agent default"
   }
 
+  /// The model after the current one in the picker, wrapping (Control-Option-M); `nil` with
+  /// fewer than two models.
+  public var nextModelID: String? {
+    let models = visibleModels
+    guard models.count > 1 else { return nil }
+    let current = (selectedModel ?? defaultModel).flatMap { model in
+      models.firstIndex { $0.id == model.id }
+    }
+    return models[current.map { ($0 + 1) % models.count } ?? 0].id
+  }
+
+  /// The effort after the current one, wrapping (Control-Option-E); `nil` with fewer than two.
+  public var nextEffort: String? {
+    guard efforts.count > 1 else { return nil }
+    let current = (selectedEffort ?? defaultEffort).flatMap { efforts.firstIndex(of: $0) }
+    return efforts[current.map { ($0 + 1) % efforts.count } ?? 0]
+  }
+
   /// The model is the agent's default rather than a choice (the chip dims it).
   public var isModelInherited: Bool { selectedModelId == nil }
 

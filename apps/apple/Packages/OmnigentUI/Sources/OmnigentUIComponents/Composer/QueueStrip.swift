@@ -3,7 +3,8 @@ import SwiftUI
 /// Messages waiting for the running turn to end, in send order, under "Queued · after this turn".
 /// Each has labelled Edit, Send now (steers the running turn; Retry after a failure) and Remove
 /// actions, always visible. Editing happens in place, so the draft below is never replaced; Esc
-/// cancels the edit only.
+/// cancels the edit only. The handle drags a message to another place in the order; the context
+/// menu moves it up or down.
 struct QueueStrip: View {
   let queue: [QueuedMessage]
   let isRunning: Bool
@@ -38,6 +39,10 @@ struct QueueStrip: View {
         .padding(.horizontal, Theme.Spacing.medium)
         .padding(.vertical, Theme.Spacing.small)
         .cardSurface(cornerRadius: Theme.Radius.medium)
+        .dropDestination(for: String.self) { ids, _ in
+          guard let id = ids.first else { return false }
+          return move(id, before: message.id)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("queued-\(message.id)")
       }
@@ -46,6 +51,16 @@ struct QueueStrip: View {
 
   private func row(_ message: QueuedMessage) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
+      if canReorder(message) {
+        Image(systemName: "line.3.horizontal")
+          .foregroundStyle(.tertiary)
+          .help("Drag to reorder")
+          .draggable(message.id) {
+            Text(message.text).lineLimit(1).padding(Theme.Spacing.small)
+          }
+          .accessibilityLabel("Reorder")
+          .accessibilityIdentifier("queued-handle-\(message.id)")
+      }
       Text(message.text)
         .font(.callout)
         .lineLimit(2)
@@ -60,7 +75,33 @@ struct QueueStrip: View {
     .buttonStyle(.borderless)
     .controlSize(.small)
     .tint(.secondary)
-    .contextMenu { buttons(message) }
+    .contextMenu {
+      buttons(message)
+      if canReorder(message), let index = queue.firstIndex(of: message) {
+        Button("Move Up", systemImage: "arrow.up.to.line") {
+          actions.moveQueued?(IndexSet([index]), index - 1)
+        }
+        .disabled(index == 0)
+        Button("Move Down", systemImage: "arrow.down.to.line") {
+          actions.moveQueued?(IndexSet([index]), index + 2)
+        }
+        .disabled(index == queue.count - 1)
+      }
+    }
+  }
+
+  private func canReorder(_ message: QueuedMessage) -> Bool {
+    actions.moveQueued != nil && queue.count > 1 && message.state != .sending
+  }
+
+  /// Moves the dragged message `id` to just before `target` (after it when dragged downward).
+  private func move(_ id: String, before target: String) -> Bool {
+    guard let move = actions.moveQueued, id != target,
+      let from = queue.firstIndex(where: { $0.id == id }),
+      let to = queue.firstIndex(where: { $0.id == target }), queue[from].state != .sending
+    else { return false }
+    move(IndexSet([from]), from < to ? to + 1 : to)
+    return true
   }
 
   @ViewBuilder

@@ -70,11 +70,16 @@ public final class ConnectionStore {
   public internal(set) var creationStore: CreationStore?
   /// Automations, Usage and the Inbox's comments and replies; `nil` when the core did not start.
   public let pages: PagesStore?
+  /// Keeps composer drafts across launches; `nil` keeps them in memory only.
+  public var draftArchive: ComposerDraftArchive? {
+    didSet { markSavedDrafts() }
+  }
 
   /// The core, or `nil` when it could not start (see ``issues``).
   public let core: ClientCore?
   private let relay = CoreEventRelay()
   private var pump: Task<Void, Never>?
+  private var preferenceWatch: Task<Void, Never>?
   private var attempt = 0
   private var nextIssueID = 0
 
@@ -88,6 +93,7 @@ public final class ConnectionStore {
     sessionList.core = core
     _ = core.subscribe(listener: relay)
     startPump()
+    preferenceWatch = Self.watchBackgroundTitles(core)
   }
 
   private init(startupError: CoreError) {
@@ -127,6 +133,7 @@ public final class ConnectionStore {
 
   isolated deinit {
     pump?.cancel()
+    preferenceWatch?.cancel()
     relay.finish()
     core?.shutdown()
   }
@@ -336,6 +343,7 @@ public final class ConnectionStore {
       sessionID: sessionID, core: core,
       listStatus: ListStatusExpectation(list: sessionList, sessionID: sessionID))
     store.composer.draftChanged = { [weak sessionList] in sessionList?.setDraft(sessionID, $0) }
+    keepDraft(of: store)
     conversations[sessionID] = store
     core.openSession(sessionId: sessionID)
     return store

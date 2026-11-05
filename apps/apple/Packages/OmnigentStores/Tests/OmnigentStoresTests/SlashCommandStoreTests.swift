@@ -73,6 +73,85 @@ struct SlashCommandStoreTests {
     #expect(await composer.send() == .handled)
     #expect(composer.commandNotice == "/new does not accept arguments")
   }
+
+  @Test(.timeLimit(.minutes(1))) func contextAndMcpAnswerLocally() async throws {
+    let (composer, close) = try await composer()
+    defer { close() }
+    let names = composer.slashCommands.map(\.name)
+    #expect(names.contains("context"))
+    #expect(names.contains("mcp"))
+    composer.text = "/context"
+    #expect(await composer.send() == .handled)
+    #expect(composer.commandNotice?.contains("Items in context:") == true)
+    #expect(composer.text == "/context")
+    composer.text = "/mcp"
+    #expect(await composer.send() == .handled)
+    #expect(composer.commandNotice?.contains("MCP servers") == true)
+    composer.text = "/mcp all"
+    #expect(await composer.send() == .handled)
+    #expect(composer.commandNotice == "Usage: /mcp")
+  }
+
+  @Test(.timeLimit(.minutes(1))) func mentionsGoAheadOfQueuedTextAndUpPullsItBack() async throws {
+    let (composer, close) = try await composer()
+    defer { close() }
+    composer.addMention("src/a.swift")
+    composer.addMention("src/a.swift")
+    composer.addMention("docs/")
+    #expect(composer.mentions == ["src/a.swift", "docs/"])
+    composer.removeMention("docs/")
+    composer.text = "look at this"
+    composer.queueDraft()
+    #expect(composer.mentions.isEmpty)
+    let queued = try #require(composer.queue.items.last?.text)
+    #expect(queued.hasPrefix("[Attached") && queued.hasSuffix("src/a.swift]\n\nlook at this"))
+    #expect(composer.takeLastQueued() == queued)
+    #expect(composer.queue.isEmpty)
+    #expect(composer.takeLastQueued() == nil)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func sideIsLeftToTheCallerWithItsQuestion() async throws {
+    let (composer, close) = try await composer()
+    defer { close() }
+    try #require(composer.slashCommands.contains { $0.name == "side" })
+    composer.text = "/side why is CI red?"
+    // Codex forks its own side chat from the typed command.
+    guard composer.configuration?.harness != "codex-native" else {
+      #expect(composer.slashAction() == .sendText)
+      return
+    }
+    #expect(await composer.send() == .sideChat(question: "why is CI red?"))
+    #expect(composer.text == "/side why is CI red?", "kept until the side chat exists")
+  }
+}
+
+/// Drafts kept in a file across launches, per account and session.
+@MainActor
+struct ComposerDraftArchiveTests {
+  @Test func draftsSurviveReopeningAndBlankTextForgetsThem() throws {
+    let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let file = folder.appending(path: "drafts.json")
+    let archive = ComposerDraftArchive(fileURL: file)
+    archive.record("half a thought", account: "server|alice", session: "conv_a")
+    archive.record("other", account: "server|bob", session: "conv_b")
+    archive.record("   ", account: "server|bob", session: "conv_b")
+    archive.flush()
+    #expect(archive.lastError == nil)
+    let reopened = ComposerDraftArchive(fileURL: file)
+    #expect(reopened.draft(account: "server|alice", session: "conv_a") == "half a thought")
+    #expect(reopened.sessions(account: "server|alice") == ["conv_a"])
+    #expect(reopened.sessions(account: "server|bob").isEmpty)
+  }
+
+  @Test func anUnreadableFileIsReported() throws {
+    let file = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: file) }
+    try Data("not json".utf8).write(to: file)
+    let archive = ComposerDraftArchive(fileURL: file)
+    #expect(archive.lastError?.contains("could not be read") == true)
+    #expect(archive.sessions(account: "a").isEmpty)
+  }
 }
 
 @Suite("Mention queries")

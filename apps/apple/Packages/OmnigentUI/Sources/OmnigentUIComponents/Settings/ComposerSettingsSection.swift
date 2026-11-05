@@ -33,3 +33,30 @@ public struct ComposerSettingsSection: View {
     }
   }
 }
+
+/// Settings > General > Sessions: automatic session titles. The connection applies it to the
+/// requests that start a session's turns (`SessionPreferences` in OmnigentStores, same key).
+public struct SessionSettingsSection: View {
+  /// The web's key; on unless turned off.
+  public static let backgroundTitlesKey = "omnigent:background-session-titles"
+
+  @AppStorage(Self.backgroundTitlesKey) private var backgroundTitles = true
+
+  /// Creates the section.
+  public init() {}
+
+  /// The section.
+  public var body: some View {
+    Section {
+      Toggle(isOn: $backgroundTitles) {
+        Text("Automatically name new sessions")
+        Text(
+          "Generate a concise title in the background after the first message. Turn this off "
+            + "to keep the default session name.")
+      }
+      .accessibilityIdentifier("settings.background-session-titles")
+    } header: {
+      Text("Sessions")
+    }
+  }
+}

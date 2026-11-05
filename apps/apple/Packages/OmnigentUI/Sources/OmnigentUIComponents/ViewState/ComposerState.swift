@@ -165,6 +165,15 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var commandNotice: String?
   /// Why the `/` menu may be incomplete (skill discovery failed or is partial).
   public var slashCommandsNote: String?
+  /// Why the `@` menu has no results (the workspace search failed); shown while a mention is
+  /// typed, even with no rows.
+  public var mentionsNote: String?
+  /// Bumped by `/permissions`: open the approval-mode picker.
+  public var approvalPickerRequest = 0
+  /// Bumped by Control-Shift-M: open the model picker.
+  public var modelPickerRequest = 0
+  /// Workspace paths tagged with `@`, shown as chips; they go with the next message.
+  public var mentions: [String] = []
   /// The stream is not live: shown under the composer with Reconnect.
   public var connection: ComposerConnectionNotice?
 
