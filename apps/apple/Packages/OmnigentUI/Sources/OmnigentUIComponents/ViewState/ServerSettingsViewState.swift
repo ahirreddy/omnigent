@@ -98,6 +98,8 @@ nonisolated public struct ServerSettingsViewState: Hashable, Sendable {
 public struct ServerSettingsActions {
   /// A pane was shown: load its data.
   public var load: (@MainActor (ServerSettingsPane) -> Void)?
+  /// The pane list was shown (iPhone and iPad): load which panes the server offers.
+  public var loadServer: (@MainActor () -> Void)?
   /// Enable or disable a harness.
   public var setHarnessEnabled: (@MainActor (ServerHarness, Bool) -> Void)?
   /// Connect an MCP service with a personal token; returns whether it connected.

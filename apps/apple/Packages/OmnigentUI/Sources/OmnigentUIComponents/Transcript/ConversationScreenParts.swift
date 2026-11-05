@@ -101,24 +101,16 @@ nonisolated public struct CreatingSession: Hashable, Sendable {
   }
 }
 
-/// The session's actions (Pin, Share, Fork, Archive, Copy Session ID) in the toolbar, where the
-/// tabs replace the title and its menu. On the Mac a menu; on iPad a dialog, because a `Menu` in
-/// the navigation bar beside the tab strip keeps the bar relaying out (a busy loop on open).
+/// The session's actions (Pin, Share, Fork, Move session, Archive, Copy Session ID) in the
+/// toolbar, where the tabs replace the title and its menu: a menu, so its submenus nest.
 struct SessionActionsButton<Actions: View>: View {
   @ViewBuilder let actions: () -> Actions
-  @State private var isPresented = false
 
   var body: some View {
-    #if os(macOS)
-      Menu("Session", systemImage: "ellipsis.circle", content: actions)
-        .menuIndicator(.hidden)
-        .help("Session actions")
-        .accessibilityIdentifier("header-session-menu")
-    #else
-      Button("Session", systemImage: "ellipsis.circle") { isPresented = true }
-        .confirmationDialog("Session", isPresented: $isPresented, actions: actions)
-        .accessibilityIdentifier("header-session-menu")
-    #endif
+    Menu("Session", systemImage: "ellipsis.circle", content: actions)
+      .menuIndicator(.hidden)
+      .help("Session actions")
+      .accessibilityIdentifier("header-session-menu")
   }
 }
 

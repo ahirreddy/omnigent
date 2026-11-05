@@ -58,6 +58,7 @@ private struct ServerSwitcherMenu: View {
   let actions: SidebarActions
   @Environment(\.openAppearanceSettings) private var openAppearance
   @Environment(\.openNotificationSettings) private var openNotificationSettings
+  @Environment(\.openSettingsScreen) private var openSettingsScreen
 
   private var serverName: String { state.currentServer?.name ?? "none" }
 
@@ -86,15 +87,12 @@ private struct ServerSwitcherMenu: View {
       if let settings = actions.openServerSettings {
         Button("Server Settings\u{2026}", systemImage: "gearshape", action: settings)
       }
-      if let openAppearance {
-        Button("Appearance\u{2026}", systemImage: "paintpalette") { openAppearance() }
-          .accessibilityIdentifier("sidebar-appearance")
-      }
-      if let openNotificationSettings {
-        Button("Notifications\u{2026}", systemImage: "bell.badge") {
-          openNotificationSettings()
-        }
-        .accessibilityIdentifier("sidebar-notifications")
+      // iPhone and iPad: one Settings screen holds Appearance and Notifications too.
+      if let openSettingsScreen {
+        Button("Settings\u{2026}", systemImage: "gearshape") { openSettingsScreen() }
+          .accessibilityIdentifier("sidebar-settings-screen")
+      } else {
+        appSettingsItems
       }
     } label: {
       HStack(spacing: Theme.Spacing.extraSmall) {
@@ -117,6 +115,19 @@ private struct ServerSwitcherMenu: View {
     .accessibilityValue(state.currentServer?.isConnected == false ? "Disconnected" : "Connected")
     .accessibilityHint("Switches the server, connects another, or opens server settings")
     .accessibilityIdentifier("server-switcher")
+  }
+
+  @ViewBuilder private var appSettingsItems: some View {
+    if let openAppearance {
+      Button("Appearance\u{2026}", systemImage: "paintpalette") { openAppearance() }
+        .accessibilityIdentifier("sidebar-appearance")
+    }
+    if let openNotificationSettings {
+      Button("Notifications\u{2026}", systemImage: "bell.badge") {
+        openNotificationSettings()
+      }
+      .accessibilityIdentifier("sidebar-notifications")
+    }
   }
 
   private func servers(_ servers: [ServerChoice]) -> some View {

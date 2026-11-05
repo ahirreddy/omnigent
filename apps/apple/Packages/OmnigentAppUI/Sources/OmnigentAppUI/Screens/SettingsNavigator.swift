@@ -36,6 +36,8 @@ public final class SettingsNavigator {
   public static let appearanceTab = "Appearance"
   /// Terminal.
   public static let terminalTab = "Terminal"
+  /// Notifications (iPhone and iPad; the Mac notifies through its own system settings).
+  public static let notificationsTab = "Notifications"
   /// Each signed-in server's settings.
   public static let serversTab = "Servers"
 

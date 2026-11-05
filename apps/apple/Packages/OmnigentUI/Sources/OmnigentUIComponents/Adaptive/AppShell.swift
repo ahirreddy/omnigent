@@ -23,6 +23,7 @@ public struct AppShell<Detail: View>: View {
   /// A tab dragged from the strip onto the content, for the split view's drop targets.
   @State private var tabDrag = TabDragTracker()
   @Environment(\.horizontalSizeClass) private var sizeClass
+  @Environment(\.sidebarToggle) private var sidebarToggle
 
   /// Creates the shell.
   /// - Parameters:
@@ -49,9 +50,16 @@ public struct AppShell<Detail: View>: View {
 
   /// The shell.
   public var body: some View {
-    NavigationSplitView(columnVisibility: $columns) {
+    let columns = $columns
+    sidebarToggle?.toggle = { columns.wrappedValue = SidebarToggle.toggled(columns.wrappedValue) }
+    return NavigationSplitView(columnVisibility: $columns) {
       SidebarView(state: sidebar, selection: $selection, searchText: $searchText, actions: actions)
         .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
+        #if os(iOS)
+          // The sidebar has no title (its header names the server), so a large-title bar
+          // drew an empty band above it on iPhone.
+          .navigationBarTitleDisplayMode(.inline)
+        #endif
     } detail: {
       NavigationStack {
         detail(selection)

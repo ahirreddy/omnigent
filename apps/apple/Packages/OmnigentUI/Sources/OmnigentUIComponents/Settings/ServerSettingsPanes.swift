@@ -75,6 +75,7 @@ struct MCPPane: View {
               Button("Disconnect") { actions.disconnectMCP?(service) }
             }
           }
+          .settingsRowButton()
         } label: {
           Text(service.name)
           Text(results[service.id] ?? detail(service))
@@ -99,7 +100,7 @@ struct MCPPane: View {
         }
       }
       .formStyle(.grouped)
-      .frame(width: 420)
+      .settingsSheetFrame(width: 420)
     }
   }
 
@@ -143,7 +144,7 @@ struct IntegrationsPane: View {
   }
 }
 
-/// Git: worktree defaults for new sessions on this Mac.
+/// Git: worktree defaults for new sessions on this device.
 struct GitSettingsPane: View {
   let archiveWorktreeCleanup: Bool
   @AppStorage(GitPreferences.alwaysUseWorktreeKey) private var alwaysUseWorktree = false
@@ -180,7 +181,7 @@ struct GitSettingsPane: View {
     } header: {
       Text("Worktrees")
     } footer: {
-      Text("Saved on this Mac.")
+      Text("Saved on this \(SettingsDevice.name).")
     }
   }
 }

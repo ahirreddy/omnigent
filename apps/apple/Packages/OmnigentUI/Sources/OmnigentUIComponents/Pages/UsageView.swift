@@ -10,6 +10,13 @@ public struct UsageView: View {
   @State private var start = Calendar.current.date(byAdding: .day, value: -29, to: .now) ?? .now
   @State private var end = Date.now
   @State private var sortOrder = [KeyPathComparator(\UsageSessionRow.updatedAt, order: .reverse)]
+  #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// iPhone width: the header, breakdowns and sessions stack instead of sitting side by side.
+    private var isCompact: Bool { sizeClass == .compact }
+  #else
+    private let isCompact = false
+  #endif
 
   /// Creates the page.
   public init(state: UsageViewState, actions: UsageActions) {
@@ -35,7 +42,11 @@ public struct UsageView: View {
         } else {
           total
           section("Daily cost") { dailyChart }
-          HStack(alignment: .top, spacing: Theme.Spacing.large) {
+          let breakdowns =
+            isCompact
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.section))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.large))
+          breakdowns {
             section("Cost by harness") { breakdown(state.byHarness) }
             section("Cost by model") { breakdown(state.byModel) }
           }
@@ -60,18 +71,20 @@ public struct UsageView: View {
 
   private var header: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-      HStack {
+      if isCompact {
         Text("Usage").font(.largeTitle.weight(.semibold))
-        Spacer()
-        Picker("Range", selection: $range) {
-          ForEach(UsageRange.allCases) { Text($0.title).tag($0) }
+        rangePicker
+      } else {
+        HStack {
+          Text("Usage").font(.largeTitle.weight(.semibold))
+          Spacer()
+          rangePicker.fixedSize()
         }
-        .pickerStyle(.segmented)
-        .fixedSize()
-        .accessibilityIdentifier("usage-range")
       }
       if range == .custom {
-        HStack {
+        let dates =
+          isCompact ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())
+        dates {
           DatePicker("From", selection: $start, in: ...end, displayedComponents: .date)
           DatePicker("to", selection: $end, in: start...Date.now, displayedComponents: .date)
         }
@@ -79,6 +92,14 @@ public struct UsageView: View {
         .accessibilityIdentifier("usage-custom-range")
       }
     }
+  }
+
+  private var rangePicker: some View {
+    Picker("Range", selection: $range) {
+      ForEach(UsageRange.allCases) { Text($0.title).tag($0) }
+    }
+    .pickerStyle(.segmented)
+    .accessibilityIdentifier("usage-range")
   }
 
   private var total: some View {
@@ -130,6 +151,11 @@ public struct UsageView: View {
   @ViewBuilder private var sessions: some View {
     if state.sessions.isEmpty {
       empty("No sessions in this range")
+    } else if isCompact {
+      // A table shows only its first column at iPhone width.
+      UsageSessionList(
+        sessions: state.sessions.sorted(using: sortOrder), sortOrder: $sortOrder,
+        openSession: actions.openSession)
     } else {
       Table(state.sessions.sorted(using: sortOrder), sortOrder: $sortOrder) {
         TableColumn("Session", value: \.title) { row in

@@ -31,8 +31,6 @@
     @Binding var selection: SidebarDestination?
     let scenePhase: ScenePhase
 
-    @State private var showsSettings = false
-    @State private var presenter = NotificationSettingsPresenter()
     @State private var pairing: PairingConfirmation?
     @State private var pairingProblem: String?
 
@@ -41,17 +39,11 @@
     }
 
     func body(content: Content) -> some View {
-      presenter.open = { showsSettings = true }
       let pending = connection?.notifications?.pending.count ?? 0
       let badge = connection?.notifications?.badgeCount ?? 0
       return
         content
-        .environment(
-          \.openNotificationSettings, OpenNotificationSettingsAction(presenter: presenter)
-        )
-        .sheet(isPresented: $showsSettings) {
-          PhoneNotificationSettingsView(supervision: supervision)
-        }
+        .phoneSettings(supervision: supervision, connection: connection, selection: $selection)
         .sheet(item: $pairing) { confirmation in
           ScrollView {
             PairingConfirmationView(
@@ -133,61 +125,51 @@
   /// Settings › Notifications on iPhone and iPad: permission, and a toggle per kind.
   struct PhoneNotificationSettingsView: View {
     let supervision: PhoneSupervision
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-      NavigationStack {
-        Form {
-          Section {
-            LabeledContent("Permission", value: permission)
-            switch supervision.authorization {
-            case .notDetermined:
-              Button("Allow Notifications") { Task { await supervision.requestAuthorization() } }
-                .accessibilityIdentifier("notifications.allow")
-            case .denied:
-              Button("Open Settings") {
-                if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
-                  openURL(url)
-                }
+      Form {
+        Section {
+          LabeledContent("Permission", value: permission)
+          switch supervision.authorization {
+          case .notDetermined:
+            Button("Allow Notifications") { Task { await supervision.requestAuthorization() } }
+              .accessibilityIdentifier("notifications.allow")
+          case .denied:
+            Button("Open Settings") {
+              if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                openURL(url)
               }
-            default:
-              EmptyView()
             }
-          }
-          Section {
-            toggle("Approval requests", .approval)
-            toggle("Questions", .question)
-            toggle("Finished turns", .completed)
-            toggle("Failed turns", .failed)
-          } header: {
-            Text("Notify when")
-          } footer: {
-            Text(
-              """
-              Approve needs Face ID, Touch ID or your passcode. Omnigent checks that a request \
-              is still waiting before it answers. Notifications arrive while Omnigent is open or \
-              recently used, and from periodic background checks; instant alerts while it is \
-              closed need server push.
-              """)
-          }
-          if let error = supervision.lastError {
-            Section("Last problem") {
-              Text(error).font(.callout).foregroundStyle(.secondary)
-                .accessibilityIdentifier("notifications.last-error")
-            }
+          default:
+            EmptyView()
           }
         }
-        .navigationTitle("Notifications")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-          ToolbarItem(placement: .confirmationAction) {
-            Button("Done") { dismiss() }
-              .accessibilityIdentifier("notifications-done")
+        Section {
+          toggle("Approval requests", .approval)
+          toggle("Questions", .question)
+          toggle("Finished turns", .completed)
+          toggle("Failed turns", .failed)
+        } header: {
+          Text("Notify when")
+        } footer: {
+          Text(
+            """
+            Approve needs Face ID, Touch ID or your passcode. Omnigent checks that a request \
+            is still waiting before it answers. Notifications arrive while Omnigent is open or \
+            recently used, and from periodic background checks; instant alerts while it is \
+            closed need server push.
+            """)
+        }
+        if let error = supervision.lastError {
+          Section("Last problem") {
+            Text(error).font(.callout).foregroundStyle(.secondary)
+              .accessibilityIdentifier("notifications.last-error")
           }
         }
-        .task { await supervision.refreshAuthorization() }
       }
+      .navigationTitle("Notifications")
+      .task { await supervision.refreshAuthorization() }
       .accessibilityIdentifier("notification-settings")
     }
 

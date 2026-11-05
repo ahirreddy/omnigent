@@ -68,6 +68,8 @@ let iOSApp = Target.target(
     extra: [
       "UILaunchScreen": [:],
       "UIApplicationSupportsIndirectInputEvents": true,
+      // iPad windows: each scene has its own server, tabs and session.
+      "UIApplicationSceneManifest": ["UIApplicationSupportsMultipleScenes": true],
       "UISupportedInterfaceOrientations": [
         "UIInterfaceOrientationPortrait",
         "UIInterfaceOrientationLandscapeLeft",

@@ -13,12 +13,16 @@ import SwiftUI
 struct PaletteAdapter: ViewModifier {
   let session: ServerSession
   @Binding var selection: SidebarDestination?
-  #if os(macOS)
-    @Environment(\.openSettingsAt) private var openSettingsAt
+  @Environment(\.openSettingsAt) private var openSettingsAt
+  #if os(iOS)
+    @State private var sidebarToggle = SidebarToggle()
   #endif
 
   func body(content: Content) -> some View {
-    content.commandPalette(
+    #if os(iOS)
+      let content = content.environment(\.sidebarToggle, sidebarToggle)
+    #endif
+    return content.commandPalette(
       state: state, actions: PaletteActions(perform: perform, search: searchServer))
   }
 
@@ -127,13 +131,13 @@ struct PaletteAdapter: ViewModifier {
       selection = nil
       session.signIn.connect(url)
     case .settings:
-      #if os(macOS)
-        openSettingsAt?(.tab(SettingsNavigator.generalTab))
-      #endif
+      openSettingsAt?(.tab(SettingsNavigator.generalTab))
     case .toggleSidebar:
       #if os(macOS)
         // The split view's own toggle, as View > Show Sidebar sends it.
         NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
+      #else
+        sidebarToggle()
       #endif
     case .newSession, .inbox, .automations, .usage, .session, .findSession, .switchServer,
       .changes, .composer, .toggleTerminal, .toggleInspector:

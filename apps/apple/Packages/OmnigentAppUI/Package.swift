@@ -17,7 +17,7 @@ let mainActorSwiftSettings = strictSwiftSettings + [.defaultIsolation(MainActor.
 // The app assembly: thin adapters from the core-backed stores (`OmnigentStores`,
 // `OmnigentTerminalStores`) to the components' view state (`OmnigentUIComponents`,
 // `OmnigentAuthUI`, `OmnigentWorkspaceUI`, `OmnigentTerminalUI`), the sign-in flow controller,
-// and the connected screen both apps show. The components stay free of the Rust core;
+// and the connected screen both apps show, and deep-link routing. The components stay free of the Rust core;
 // everything that knows both sides lives here. The macOS-only desktop bridges (notifications,
 // Dock badge, menu bar) build only for macOS.
 let package = Package(
@@ -55,6 +55,7 @@ let package = Package(
         .product(name: "OmnigentTerminalUI", package: "OmnigentTerminalUI"),
         .product(name: "OmnigentTerminalStores", package: "OmnigentTerminalStores"),
         .product(name: "OmnigentRemoteBrowser", package: "OmnigentRemoteBrowser"),
+        .product(name: "OmnigentDeepLinks", package: "OmnigentDesktop"),
         .product(
           name: "OmnigentDesktop", package: "OmnigentDesktop",
           condition: .when(platforms: [.macOS])),
@@ -80,6 +81,7 @@ let package = Package(
         .product(name: "OmnigentServices", package: "OmnigentServices"),
         .product(name: "OmnigentTestSupport", package: "OmnigentTestSupport"),
         .product(name: "OmnigentRemoteBrowser", package: "OmnigentRemoteBrowser"),
+        .product(name: "OmnigentDeepLinks", package: "OmnigentDesktop"),
       ],
       swiftSettings: mainActorSwiftSettings
     ),

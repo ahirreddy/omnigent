@@ -19,17 +19,11 @@ enum SidebarAdapter {
     list: SessionListStore, display: SessionDisplayOptions, server: ConnectedServer?,
     servers: [ServerChoice] = []
   ) -> SidebarViewState {
-    let all = Array(list.sessionsByID.values)
     let totals = list.attentionTotals
-    var counts: [OmnigentUIComponents.SessionFilter: Int] = [
+    // Only the quick filters show a count.
+    let counts: [OmnigentUIComponents.SessionFilter: Int] = [
       .running: Int(totals.working), .needsResponse: Int(totals.sessionsNeedingYou),
     ]
-    for filter in [OmnigentUIComponents.SessionFilter.all, .archived] {
-      counts[filter] =
-        filterSessions(
-          sessions: all, text: "", filter: OmnigentCoreFFI.SessionFilter(filter)
-        ).count
-    }
     let requests = list.attentionByID.compactMapValues { attention in
       attention.state == .needsYou ? Int(attention.requests) : nil
     }

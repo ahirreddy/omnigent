@@ -5,13 +5,15 @@ import OmnigentUIComponents
 public import SwiftUI
 
 /// Settings > Servers: the server settings of each signed-in server, with a server picker. Each
-/// server's ``ServerSettingsStore`` lives while the Settings window shows it. Other windows pick
-/// the server and pane through ``SettingsNavigator``.
+/// server's ``ServerSettingsStore`` lives while the Settings window (or the iPhone and iPad
+/// Settings screen) shows it. Other windows pick the server and pane through
+/// ``SettingsNavigator``.
 public struct ServerSettingsContainer: View {
   private let connections: @MainActor () -> [ConnectionStore]
   private let opener: ExternalURLOpener
   private let openSession: (@MainActor (URL, String) -> Void)?
   private let navigator: SettingsNavigator
+  private let leadingSections: AnyView?
   @State private var servers: [ConnectionStore] = []
   @State private var selected: String?
   @State private var pane: ServerSettingsPane?
@@ -24,17 +26,19 @@ public struct ServerSettingsContainer: View {
   ///   - opener: Opens the server's web settings for browser-only sign-ins.
   ///   - navigator: Where other windows ask for a server and pane.
   ///   - openSession: Opens a session of a server in a window (after Unarchive).
+  ///   - leadingSections: The app's own rows above the server panes (iPhone and iPad).
   public init(
     connections: @escaping @MainActor () -> [ConnectionStore] = {
       SupervisionConnections.shared.connections
     },
     opener: ExternalURLOpener = .system, navigator: SettingsNavigator = .shared,
-    openSession: (@MainActor (URL, String) -> Void)? = nil
+    openSession: (@MainActor (URL, String) -> Void)? = nil, leadingSections: AnyView? = nil
   ) {
     self.connections = connections
     self.opener = opener
     self.navigator = navigator
     self.openSession = openSession
+    self.leadingSections = leadingSections
   }
 
   /// The settings.
@@ -48,6 +52,7 @@ public struct ServerSettingsContainer: View {
     return ServerSettingsView(
       state: state, selectedServer: $selected, selectedPane: $pane,
       actions: store.map { actions($0, connection: connection) } ?? ServerSettingsActions(),
+      leadingSections: leadingSections,
       hostedPane: { pane in
         Self.hostedPane(
           pane, connection: connection, agentDetail: store?.info.value?.agentDetail ?? false)
@@ -120,6 +125,9 @@ public struct ServerSettingsContainer: View {
   {
     var actions = ServerSettingsActions()
     actions.load = { pane in Task { await load(pane, store) } }
+    actions.loadServer = {
+      Task { if store.info.value == nil, !store.info.isLoading { await store.loadInfo() } }
+    }
     actions.connectMCP = { await store.connectMCPService($0.id, token: $1) }
     actions.disconnectMCP = { service in Task { await store.disconnectMCPService(service.id) } }
     actions.testMCP = { service in

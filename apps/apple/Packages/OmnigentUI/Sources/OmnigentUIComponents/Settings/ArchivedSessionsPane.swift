@@ -83,6 +83,7 @@ struct ArchivedSessionsPane: View {
         Button("Delete Expired\u{2026}", role: .destructive) {
           pendingDelete = DeleteRequest(ids: expired)
         }
+        .settingsRowButton()
         .disabled(actions.delete == nil)
         .accessibilityIdentifier("settings.archived.delete-expired")
       }
@@ -107,6 +108,7 @@ struct ArchivedSessionsPane: View {
       .disabled(deletable.isEmpty || actions.delete == nil)
       .help(deletable.count < ids.count ? "Only your own sessions can be deleted." : "")
     }
+    .settingsRowButton()
     .confirmationDialog(
       pendingDelete.map { "Delete \(count($0.ids.count))?" } ?? "",
       isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
@@ -134,11 +136,9 @@ struct ArchivedSessionsPane: View {
         }
       }
       Spacer()
-      if let unarchive = actions.unarchive {
-        Button("Unarchive") {
-          unarchive([session.id])
-          actions.openSession?(session.id)
-        }
+      if actions.unarchive != nil {
+        Button("Unarchive") { unarchive(session) }
+          .settingsRowButton()
       }
       if canDelete(session.id), actions.delete != nil {
         Button(role: .destructive) {
@@ -150,6 +150,26 @@ struct ArchivedSessionsPane: View {
         .accessibilityLabel("Delete \(session.title)")
       }
     }
+    .swipeActions(edge: .trailing) { rowActions(session) }
+    .contextMenu { rowActions(session) }
+  }
+
+  /// Unarchive and Delete as a touch row's swipe actions and context menu.
+  @ViewBuilder private func rowActions(_ session: SessionSummary) -> some View {
+    if canDelete(session.id), actions.delete != nil {
+      Button("Delete\u{2026}", systemImage: "trash", role: .destructive) {
+        pendingDelete = DeleteRequest(ids: [session.id])
+      }
+    }
+    if actions.unarchive != nil {
+      Button("Unarchive", systemImage: "tray.and.arrow.up") { unarchive(session) }
+    }
+  }
+
+  /// Unarchives `session` and opens it.
+  private func unarchive(_ session: SessionSummary) {
+    actions.unarchive?([session.id])
+    actions.openSession?(session.id)
   }
 
   private var allSelected: Binding<Bool> {

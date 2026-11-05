@@ -200,6 +200,8 @@ struct NewSessionOptionsBar: View {
     .font(.callout)
     .menuStyle(.button)
     .buttonStyle(.borderless)
+    // The chips are settings, not links: neutral as the composer's, never system blue.
+    .tint(.secondary)
     .sheet(isPresented: $isBrowsing) {
       if let browse = actions.browse {
         FolderBrowserView(
@@ -224,6 +226,7 @@ struct NewSessionOptionsBar: View {
         Button("Set Up \(options.setUpName ?? "Agent")\u{2026}", action: setUp)
           .buttonStyle(.bordered)
           .controlSize(.small)
+          .tint(Theme.warning)
           .accessibilityIdentifier("new-session-harness-setup")
       }
     }
