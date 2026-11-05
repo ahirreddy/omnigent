@@ -32,19 +32,29 @@ struct TranscriptExport: FileDocument {
 }
 
 extension ConversationContainer {
-  /// The `@` menu's search over the session's workspace: files whose path contains the query.
+  /// The `@` menu over the session's workspace: the browsed folder's files and folders, then
+  /// deeper paths that contain the typed filter (`src/ma` browses `src` for `ma`).
   static func mentionSearch(_ workspace: WorkspaceBrowserModel)
     -> @MainActor (String) async throws -> [String]
   {
     let source = workspace.source
     return { query in
+      let slash = query.lastIndex(of: "/")
+      let folder = slash.map { String(query[..<$0]) } ?? ""
+      let filter = slash.map { String(query[query.index(after: $0)...]) } ?? query
       do throws(WorkspaceFailure) {
-        let result = try await source.searchPaths(query)
-        return result.entries.filter { $0.kind == .file }.prefix(20).map(\.path)
+        let listing = try await source.listDirectory(folder, after: nil).entries
+        let matches = filter.isEmpty ? [] : try await source.searchPaths(query).entries
+        return ComposerStore.mentionRows(
+          query: query, listing: listing.map(mentionEntry), matches: matches.map(mentionEntry))
       } catch {
         throw CoreError.InvalidState(message: error.message)
       }
     }
+  }
+
+  private static func mentionEntry(_ entry: OmnigentWorkspaceUI.WorkspaceEntry) -> MentionEntry {
+    MentionEntry(path: entry.path, name: entry.name, isDirectory: entry.kind == .directory)
   }
 
   /// The web's link to one message (`?message=<id>`): a user message by its item id, an answer

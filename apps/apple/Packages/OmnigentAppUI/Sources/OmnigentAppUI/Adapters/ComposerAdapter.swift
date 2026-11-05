@@ -40,6 +40,7 @@ enum ComposerAdapter {
     state.mentions = composer.mentions
     state.approvalPickerRequest = composer.approvalPickerRequests
     state.connection = connection(store)
+    state.statusPlaceholder = statusPlaceholder(store, connection: state.connection)
     if let fraction = contextFraction(store.sections) {
       state.tray = ComposerTray(contextFraction: fraction)
     }
@@ -181,6 +182,7 @@ enum ComposerAdapter {
     extras.history = history(composer, prompts: prompts)
     extras.attachMention = { composer.addMention($0) }
     extras.removeMention = { composer.removeMention($0) }
+    extras.setSmartRouting = { enabled in Task { await composer.setSmartRouting(enabled) } }
     return extras
   }
 
@@ -225,11 +227,13 @@ enum ComposerAdapter {
   static func configuration(_ settings: OmnigentCoreFFI.SessionSettings)
     -> ComposerConfiguration
   {
-    ComposerConfiguration(
+    var configuration = ComposerConfiguration(
       harness: settings.harness, selectedAgentId: settings.agentId,
       modelOptions: settings.modelOptions.map(OmnigentUIComponents.ModelOption.init),
       selectedModelId: settings.modelOverride.reportedID, baseModel: settings.baseModel,
       selectedEffort: settings.reasoningEffort.reportedID)
+    if settings.routingMode == "on" { configuration.smartRouting = .enabled }
+    return configuration
   }
 
   /// The model, effort and harness menus from the composer's loaded configuration (the
@@ -249,7 +253,7 @@ enum ComposerAdapter {
         builtin: option.choice.builtin,
         unavailableReason: option.isCurrent ? nil : option.unavailableReason)
     }
-    return ComposerConfiguration(
+    var configuration = ComposerConfiguration(
       harness: current?.harness, agentName: composer.configurationLabels?.harness,
       harnessChoices: harnesses, selectedAgentId: current?.agentId,
       modelOptions: composer.supportsModelChoice ? models : [],
@@ -257,6 +261,8 @@ enum ComposerAdapter {
       selectedEffort: composer.supportsEffortChoice ? current?.effort : nil,
       isApplying: composer.isApplyingConfiguration,
       errorMessage: composer.configurationError?.message)
+    configuration.smartRouting = smartRouting(composer)
+    return configuration
   }
 
   /// Stages each input and uploads it. Core failures stay on the composer's error; files that
@@ -321,5 +327,28 @@ extension ComposerAdapter {
     ComposerHistoryActions(
       prompts: prompts, takeLastQueued: { composer.takeLastQueued() },
       sendAllQueued: { Task { await composer.sendAllQueuedNow() } })
+  }
+}
+
+extension ComposerAdapter {
+  /// The web's placeholder while the user must act elsewhere first: a pending question or
+  /// form above, or a session whose stream failed.
+  static func statusPlaceholder(
+    _ store: ConversationStore, connection: ComposerConnectionNotice?
+  ) -> String? {
+    if store.decisions.pending.contains(where: { $0.kind != .approval }) {
+      return "Respond to the pending request above to continue"
+    }
+    if connection?.isFailure == true {
+      return "Session offline \u{2014} reconnect below to continue"
+    }
+    return nil
+  }
+
+  /// Smart Routing's toggle: shown where the core offers it, and while it is on so it can be
+  /// turned off.
+  static func smartRouting(_ composer: ComposerStore) -> SmartRoutingState {
+    if composer.isSmartRoutingOn { return .enabled }
+    return composer.offersSmartRouting ? .disabled : .unavailable
   }
 }

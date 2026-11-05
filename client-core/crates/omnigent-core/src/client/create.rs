@@ -27,9 +27,9 @@ use crate::auth::mode::error_text;
 use crate::config::session::ModelChoice;
 use crate::creation::{
     CreationAgent, CreationCapabilities, CreationCatalog, CreationError, CreationHost,
-    CreationReceipt, CreationSelection, CreationWorkspace, HostDirectoryListing, HostWorktree,
-    MAX_TITLE_CHARS, SandboxTarget, creation_body, creation_rejection, merge_user_agents,
-    parent_directory, sandbox_creation_body,
+    CreationReceipt, CreationSelection, CreationWorkspace, HostDirectoryListing, HostEntry,
+    HostWorktree, MAX_TITLE_CHARS, SandboxTarget, creation_body, creation_rejection,
+    merge_user_agents, parent_directory, sandbox_creation_body,
 };
 use crate::http::HttpTransport;
 
@@ -378,28 +378,7 @@ impl<T: HttpTransport> ClientCore<T> {
         directory: Option<&str>,
     ) -> Result<HostDirectoryListing, SessionError> {
         let result = async {
-            validate_identifier(host_id)?;
-            let route = match directory {
-                None => format!("/v1/hosts/{host_id}/filesystem"),
-                Some(path) => {
-                    let trimmed = path.trim();
-                    let trimmed = if trimmed.len() > 1 {
-                        trimmed.trim_end_matches('/')
-                    } else {
-                        trimmed
-                    };
-                    if !trimmed.starts_with('/') || trimmed.contains(['\0', '?', '#', '%']) {
-                        return Err(SessionError::InvalidIdentifier {
-                            value: path.to_owned(),
-                        });
-                    }
-                    if trimmed == "/" {
-                        format!("/v1/hosts/{host_id}/filesystem/")
-                    } else {
-                        format!("/v1/hosts/{host_id}/filesystem{trimmed}")
-                    }
-                }
-            };
+            let route = filesystem_route(host_id, directory)?;
             let (directories, first_entry) = self.directories(&route).await?;
             let path = directory
                 .map(|path| {
@@ -464,6 +443,33 @@ impl<T: HttpTransport> ClientCore<T> {
         result
     }
 
+    /// The files and folders in the absolute `directory` on `host_id`, for the new-session `@`
+    /// menu before a session exists.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request, also for a path that is not
+    /// absolute or cannot be sent; the read errors; [`SessionError::InvalidPagination`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn host_entries(
+        &self,
+        host_id: &str,
+        directory: &str,
+    ) -> Result<Vec<HostEntry>, SessionError> {
+        let result = async {
+            let route = filesystem_route(host_id, Some(directory))?;
+            self.filesystem_entries(&route)
+                .await
+                .map(|(entries, _)| entries)
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
     /// Every directory under the filesystem route `path`, following the cursor, and the first
     /// entry's path (to find the listed directory of the home route).
     #[allow(
@@ -474,6 +480,28 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         path: &str,
     ) -> Result<(Vec<CreationWorkspace>, Option<String>), SessionError> {
+        let (entries, first_entry) = self.filesystem_entries(path).await?;
+        let directories = entries
+            .into_iter()
+            .filter(|entry| entry.is_directory)
+            .map(|entry| CreationWorkspace {
+                path: entry.path,
+                name: entry.name,
+            })
+            .collect();
+        Ok((directories, first_entry))
+    }
+
+    /// Every entry with an absolute path under the filesystem route `path`, following the
+    /// cursor, and the first entry's path.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn filesystem_entries(
+        &self,
+        path: &str,
+    ) -> Result<(Vec<HostEntry>, Option<String>), SessionError> {
         let mut first_entry: Option<String> = None;
         let mut results = Vec::new();
         let mut seen = BTreeSet::new();
@@ -502,13 +530,11 @@ impl<T: HttpTransport> ClientCore<T> {
                 if first_entry.is_none() && entry_path.starts_with('/') {
                     first_entry = Some(entry_path.clone());
                 }
-                if kind.as_deref() == Some("directory")
-                    && entry_path.starts_with('/')
-                    && seen.insert(entry_path.clone())
-                {
-                    results.push(CreationWorkspace {
+                if entry_path.starts_with('/') && seen.insert(entry_path.clone()) {
+                    results.push(HostEntry {
                         path: entry_path.clone(),
                         name,
+                        is_directory: kind.as_deref() == Some("directory"),
                     });
                 }
                 last_path = Some(entry_path);
@@ -812,4 +838,33 @@ impl<T: HttpTransport> ClientCore<T> {
             summary,
         })
     }
+}
+
+/// The filesystem route for `directory` on `host_id` (the host's home when `None`).
+///
+/// # Errors
+///
+/// [`SessionError::InvalidIdentifier`] for a bad host id, or a path that is not absolute or
+/// cannot be sent.
+fn filesystem_route(host_id: &str, directory: Option<&str>) -> Result<String, SessionError> {
+    validate_identifier(host_id)?;
+    let Some(path) = directory else {
+        return Ok(format!("/v1/hosts/{host_id}/filesystem"));
+    };
+    let trimmed = path.trim();
+    let trimmed = if trimmed.len() > 1 {
+        trimmed.trim_end_matches('/')
+    } else {
+        trimmed
+    };
+    if !trimmed.starts_with('/') || trimmed.contains(['\0', '?', '#', '%']) {
+        return Err(SessionError::InvalidIdentifier {
+            value: path.to_owned(),
+        });
+    }
+    Ok(if trimmed == "/" {
+        format!("/v1/hosts/{host_id}/filesystem/")
+    } else {
+        format!("/v1/hosts/{host_id}/filesystem{trimmed}")
+    })
 }

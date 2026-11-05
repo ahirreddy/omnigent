@@ -124,7 +124,9 @@ public enum Omnigent {
     "NSCameraUsageDescription":
       "Web pages you open in Omnigent can use the camera when you allow it.",
     "NSMicrophoneUsageDescription":
-      "Web pages you open in Omnigent can use the microphone when you allow it.",
+      "Omnigent uses the microphone for dictation and for web pages you allow.",
+    "NSSpeechRecognitionUsageDescription":
+      "Omnigent turns what you dictate into the text of your message.",
     "NSLocationUsageDescription":
       "Web pages you open in Omnigent can use your location when you allow it.",
     "NSLocationWhenInUseUsageDescription":

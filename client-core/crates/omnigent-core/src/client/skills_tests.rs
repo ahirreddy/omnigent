@@ -27,6 +27,33 @@ fn session_skills_reads_the_session_catalog() {
 }
 
 #[test]
+fn host_skills_reads_the_catalog_for_a_folder_before_a_session_exists() {
+    let transport = RouteTransport::local();
+    transport.ok(
+        "/v1/skills",
+        r#"{"skills":[{"name":"triage","description":"Triage issues"}]}"#,
+    );
+    let core = connected(transport);
+    let catalog =
+        block_on(core.host_skills("host_a", "claude-native", "/work/repo", Some("agent_1")))
+            .unwrap();
+    assert_eq!(catalog.skills[0].name, "triage");
+    let requests = core.transport().taken();
+    let request = requests.last().unwrap();
+    assert_eq!(query_value(request, "host_id").as_deref(), Some("host_a"));
+    assert_eq!(
+        query_value(request, "harness").as_deref(),
+        Some("claude-native")
+    );
+    assert_eq!(query_value(request, "path").as_deref(), Some("/work/repo"));
+    assert_eq!(query_value(request, "agent_id").as_deref(), Some("agent_1"));
+    assert!(matches!(
+        block_on(core.host_skills("../x", "claude-native", "/work", None)),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}
+
+#[test]
 fn session_skills_surfaces_an_unready_host_and_a_malformed_reply() {
     let transport = RouteTransport::local();
     transport.enqueue(

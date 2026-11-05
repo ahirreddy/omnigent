@@ -26,6 +26,7 @@ struct ConfigurationRules {
   var approvalModeMenu: ApprovalModeMenu?
   var executionUnavailableReason: String?
   var slashCommands: [SlashCommand] = []
+  var offersSmartRouting = false
 
   init() {}
 
@@ -61,6 +62,8 @@ struct ConfigurationRules {
       configuration: configuration)
     slashCommands = OmnigentCoreFFI.slashCommands(
       configuration: configuration, skills: skills, options: options)
+    offersSmartRouting = OmnigentCoreFFI.offersSmartRouting(
+      configuration: configuration, options: options)
   }
 }
 
@@ -101,6 +104,12 @@ extension ComposerStore {
   /// The `/` menu: the built-ins this harness supports, then the session's skills.
   public var slashCommands: [SlashCommand] { rules.slashCommands }
 
+  /// Whether the model picker offers Smart Routing for this session (the core's rule).
+  public var offersSmartRouting: Bool { rules.offersSmartRouting }
+
+  /// Smart Routing is on: the router picks the model and effort each turn.
+  public var isSmartRoutingOn: Bool { configuration?.routingMode == "on" }
+
   /// The configuration with the host's model preview merged in when the runner reported none.
   var effectiveConfiguration: SessionConfiguration? { rules.effective }
 
@@ -128,6 +137,7 @@ extension ComposerStore {
   /// supports it. Never retried; an uncertain outcome is in ``configurationError``.
   /// - Parameter model: The model's value.
   public func selectModel(_ model: String?) async {
+    guard await stopRoutingForChoice() else { return }
     guard let baseline = effectiveConfiguration else {
       configurationError = .InvalidState(message: "Settings have not loaded yet.")
       return
@@ -139,6 +149,7 @@ extension ComposerStore {
   /// Chooses `effort` (`nil`: the harness default).
   /// - Parameter effort: The effort value.
   public func selectEffort(_ effort: String?) async {
+    guard await stopRoutingForChoice() else { return }
     guard let baseline = effectiveConfiguration else {
       configurationError = .InvalidState(message: "Settings have not loaded yet.")
       return
@@ -188,6 +199,28 @@ extension ComposerStore {
             "\(failure.message) The current mode could not be read: \(coreError(error).message)")
       }
     }
+  }
+
+  /// Turns Smart Routing on or off. Never retried; an uncertain outcome is in
+  /// ``configurationError``.
+  /// - Parameter enabled: Whether the router picks the model and effort.
+  public func setSmartRouting(_ enabled: Bool) async {
+    isApplyingConfiguration = true
+    defer { isApplyingConfiguration = false }
+    do {
+      adopt(try await core.setSmartRouting(sessionId: sessionID, enabled: enabled))
+      configurationError = nil
+    } catch {
+      configurationError = coreError(error)
+    }
+  }
+
+  /// A model or effort chosen while Smart Routing is on pins it, as on the web: routing turns
+  /// off first. Returns whether the choice can go ahead.
+  private func stopRoutingForChoice() async -> Bool {
+    guard isSmartRoutingOn else { return true }
+    await setSmartRouting(false)
+    return configurationError == nil
   }
 
   /// Clears ``configurationError`` after the user has seen it.

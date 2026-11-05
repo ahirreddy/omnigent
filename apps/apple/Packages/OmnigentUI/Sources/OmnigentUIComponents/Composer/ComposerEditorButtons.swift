@@ -44,18 +44,30 @@ struct ComposerEditorButtons: View {
   @Binding var isExpanded: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+  /// Touch dictation is listening (the Mac's own shows its own indicator).
+  private var isListening: Bool {
+    #if os(iOS)
+      SpeechDictation.shared.isListening
+    #else
+      false
+    #endif
+  }
+
   var body: some View {
     if let dictate {
-      Button("Dictate", systemImage: "mic", action: dictate)
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .composerChip()
-        .keyboardShortcut(AppShortcuts.dictate)
-        .help("Dictate (Option-Command-V)")
-        .accessibilityHint("Types what you say into the message")
-        .disabled(!isEditable)
-        .accessibilityIdentifier("composer-mic")
+      Button(
+        isListening ? "Stop Dictation" : "Dictate", systemImage: isListening ? "mic.fill" : "mic",
+        action: dictate
+      )
+      .labelStyle(.iconOnly)
+      .buttonStyle(.borderless)
+      .foregroundStyle(isListening ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+      .composerChip()
+      .keyboardShortcut(AppShortcuts.dictate)
+      .help("Dictate (Option-Command-V)")
+      .accessibilityHint("Types what you say into the message")
+      .disabled(!isEditable)
+      .accessibilityIdentifier("composer-mic")
     }
     if showsExpand {
       Button {

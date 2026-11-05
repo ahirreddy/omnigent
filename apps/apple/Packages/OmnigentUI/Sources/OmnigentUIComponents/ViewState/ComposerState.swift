@@ -176,6 +176,9 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var mentions: [String] = []
   /// The stream is not live: shown under the composer with Reconnect.
   public var connection: ComposerConnectionNotice?
+  /// Replaces the placeholder while something else needs the user first (a pending request,
+  /// an offline session), in the web's words.
+  public var statusPlaceholder: String?
 
   /// Creates composer state.
   /// - Parameters:

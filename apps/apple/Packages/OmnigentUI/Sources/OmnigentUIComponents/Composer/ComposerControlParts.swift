@@ -18,7 +18,7 @@ struct ComposerControlParts {
   @Binding var isExpanded: Bool
   let loadProviders: ([NSItemProvider]) -> Void
   let perform: (ComposerSendIntent) -> Void
-  /// The pill's Mic: the host's dictation, else the Mac's own.
+  /// Mic: the host's dictation, else the system's (speech recognition on touch).
   var pillDictate: (@MainActor () -> Void)?
 
   /// The touch bar's open row; the model name takes the free width and truncates first. The
@@ -72,7 +72,7 @@ struct ComposerControlParts {
         .tint(.primary)
     }
     ComposerEditorButtons(
-      dictate: actions.extras.dictate, isEditable: isEditable, showsExpand: false,
+      dictate: pillDictate, isEditable: isEditable, showsExpand: false,
       isExpanded: $isExpanded)
     send
   }
@@ -126,7 +126,7 @@ struct ComposerControlParts {
 
   private var editorButtons: some View {
     ComposerEditorButtons(
-      dictate: actions.extras.dictate, isEditable: isEditable,
+      dictate: pillDictate, isEditable: isEditable,
       showsExpand: layoutWidth == .regular, isExpanded: $isExpanded)
   }
 

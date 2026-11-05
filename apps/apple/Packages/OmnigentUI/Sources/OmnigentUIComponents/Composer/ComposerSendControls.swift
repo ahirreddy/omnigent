@@ -58,6 +58,7 @@ struct ComposerSendRules {
   /// The placeholder. The Mac's default one names the keys ("↵ to send now, ⌥⌘↵ to queue for
   /// later", ⌘↵ with the Command-Return setting); touch says what a send does while it runs.
   var placeholder: String {
+    if let status = state.statusPlaceholder { return status }
     let isDefault = state.placeholder == ComposerViewState().placeholder
     guard layout == .touch else { return isDefault ? keyHints : state.placeholder }
     let idle = isDefault && state.purpose == .session ? "Reply\u{2026}" : state.placeholder

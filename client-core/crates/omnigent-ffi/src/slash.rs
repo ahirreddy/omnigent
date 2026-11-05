@@ -30,17 +30,46 @@ pub struct SkillCatalog {
 
 /// What the server offers beyond the session's configuration ([`ClientCore::slash_options`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Record)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent server capability flags, mirrored one to one from /v1/info"
+)]
 pub struct SlashOptions {
     /// The server takes the `clear` control.
     pub server_clears: bool,
+    /// Sessions may turn Smart Routing on.
+    #[uniffi(default = false)]
+    pub smart_routing: bool,
+    /// A router can answer for a native Claude Code or Codex pane.
+    #[uniffi(default = false)]
+    pub routes_native_panes: bool,
 }
 
 impl From<SlashOptions> for core::SlashOptions {
     fn from(options: SlashOptions) -> Self {
         Self {
             server_clears: options.server_clears,
+            smart_routing: options.smart_routing,
+            routes_native_panes: options.routes_native_panes,
         }
     }
+}
+
+impl From<core::SlashOptions> for SlashOptions {
+    fn from(options: core::SlashOptions) -> Self {
+        Self {
+            server_clears: options.server_clears,
+            smart_routing: options.smart_routing,
+            routes_native_panes: options.routes_native_panes,
+        }
+    }
+}
+
+/// Whether the model picker offers Smart Routing for the session.
+#[must_use]
+#[uniffi::export]
+pub fn offers_smart_routing(configuration: SessionConfiguration, options: SlashOptions) -> bool {
+    core::offers_smart_routing(&configuration.into(), &options.into())
 }
 
 /// One entry of the `/` menu.
@@ -170,6 +199,16 @@ pub fn slash_commands(
         .collect()
 }
 
+/// `skills` as `/` menu rows for `harness` (`$` for Codex), for a composer with no session yet.
+#[must_use]
+#[uniffi::export]
+pub fn skill_commands(harness: Option<String>, skills: Vec<Skill>) -> Vec<SlashCommand> {
+    core::skill_commands(harness.as_deref(), &core_skills(skills))
+        .into_iter()
+        .map(Into::into)
+        .collect()
+}
+
 /// What sending `text` does; `None` sends it as an ordinary message.
 #[must_use]
 #[uniffi::export]
@@ -244,20 +283,61 @@ impl ClientCore {
         })
     }
 
+    /// The skills `harness` would see in `path` on `host_id`, before a session exists (the
+    /// new-session composer's `/` menu).
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`, the read errors (503 while the host is
+    /// offline) and `MalformedResponse`.
+    pub async fn host_skills(
+        &self,
+        host_id: String,
+        harness: String,
+        path: String,
+        agent_id: Option<String>,
+    ) -> Result<SkillCatalog, CoreError> {
+        let catalog = self
+            .sessions()
+            .host_skills(&host_id, &harness, &path, agent_id.as_deref())
+            .await
+            .map_err(CoreError::from)?;
+        Ok(SkillCatalog {
+            skills: catalog.skills.into_iter().map(Into::into).collect(),
+            warnings: catalog.warnings,
+        })
+    }
+
     /// Which server-backed commands the composer may offer.
     ///
     /// # Errors
     ///
     /// [`CoreError::Session`]: the read errors and `MalformedResponse`.
     pub async fn slash_options(&self) -> Result<SlashOptions, CoreError> {
-        let options = self
-            .sessions()
+        self.sessions()
             .slash_options()
             .await
-            .map_err(CoreError::from)?;
-        Ok(SlashOptions {
-            server_clears: options.server_clears,
-        })
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Turns Smart Routing on or off for `session_id`; the router then picks the model and
+    /// effort each turn.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `Busy`, the configuration guards, `DeliveryUncertain` when the
+    /// acknowledgement does not show the mode, and the read and write errors.
+    pub async fn set_smart_routing(
+        &self,
+        session_id: String,
+        enabled: bool,
+    ) -> Result<crate::sessions::SessionSummary, CoreError> {
+        self.sessions()
+            .set_smart_routing(enabled, &session_id)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
     }
 
     /// Runs the harness's own `/clear`; the view follows the session that supersedes this one.

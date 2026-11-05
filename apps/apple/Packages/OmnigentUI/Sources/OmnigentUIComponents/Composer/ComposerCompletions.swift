@@ -1,6 +1,10 @@
 import SwiftUI
 
 /// `/` command and `@` mention completions for the current draft.
+///
+/// `/` (or `$`) opens commands at the start of the draft and skills after other text, under
+/// "Commands" and "Skills" headers. `@` browses the workspace like the web: `@src/` lists `src`,
+/// `@src/ma` filters it, and a folder row opens the folder (Return) or attaches it whole (Tab).
 struct ComposerCompletions {
   struct Item: Identifiable, Hashable {
     let id: String
@@ -10,67 +14,121 @@ struct ComposerCompletions {
     let systemImage: String
     /// The workspace path of an `@` row.
     var mentionPath: String?
+    /// The header this row starts ("Commands", "Skills"), if any.
+    var section: String?
+
+    /// An `@` folder row: Return opens it, Tab or its button attaches it whole.
+    var isFolder: Bool { mentionPath?.hasSuffix("/") == true }
   }
 
+  /// The most `@` rows listed for one folder, as on the web.
+  static let mentionLimit = 50
+
   let items: [Item]
+  /// The folder an `@` mention is browsing (`""` for the workspace root); `nil` for commands.
+  let mentionFolder: String?
   private let prefixRange: Range<String.Index>?
   private let draft: String
 
   init(draft: String, commands: [SlashCommand], mentions: [String]) {
     self.draft = draft
-    if let typed = draft.first, typed == "/" || typed == "$",
-      !draft.contains(where: \.isWhitespace),
-      !commands.isEmpty
-    {
-      items = Self.commandItems(draft: draft, commands: commands)
-      prefixRange = draft.startIndex..<draft.endIndex
+    if let token = Self.commandToken(in: draft), !commands.isEmpty {
+      let isInline = !draft[..<token.lowerBound].allSatisfy(\.isWhitespace)
+      items = Self.commandItems(
+        token: String(draft[token]), commands: isInline ? commands.filter(\.isSkill) : commands)
+      prefixRange = token
+      mentionFolder = nil
       return
     }
-    if let mentionStart = draft.lastIndex(of: "@"), !mentions.isEmpty,
-      mentionStart == draft.startIndex || draft[draft.index(before: mentionStart)].isWhitespace,
-      !draft[mentionStart...].contains(" ")
-    {
-      let query = draft[draft.index(after: mentionStart)...].lowercased()
-      items = mentions.filter { query.isEmpty || $0.lowercased().contains(query) }
-        .prefix(8)
-        .map {
-          Item(
-            id: "@\($0)", title: $0, detail: "", replacement: "@\($0) ",
-            systemImage: $0.hasSuffix("/") ? "folder" : "doc", mentionPath: $0)
-        }
+    if let mentionStart = Self.mentionStart(in: draft), !mentions.isEmpty {
+      let query = String(draft[draft.index(after: mentionStart)...])
+      items = Self.mentionItems(query: query, candidates: mentions)
       prefixRange = mentionStart..<draft.endIndex
+      mentionFolder = query.lastIndex(of: "/").map { String(query[..<$0]) } ?? ""
       return
     }
     items = []
     prefixRange = nil
+    mentionFolder = nil
   }
 
-  /// Commands for the typed token, names that start with the query first. `/` lists every
-  /// command; `$` lists the ones typed with `$`. A token that already names its only match
-  /// offers nothing, so Return sends it.
-  private static func commandItems(draft: String, commands: [SlashCommand]) -> [Item] {
-    let typed = String(draft.prefix(1))
-    let query = draft.dropFirst().lowercased()
+  /// The `/` or `$` token being typed at the end of the draft: at the start or after
+  /// whitespace, made of letters, digits, `_`, `:` and `-`.
+  static func commandToken(in draft: String) -> Range<String.Index>? {
+    let start = draft.lastIndex(where: \.isWhitespace).map { draft.index(after: $0) }
+    let tokenStart = start ?? draft.startIndex
+    guard tokenStart < draft.endIndex, let typed = draft[tokenStart...].first,
+      typed == "/" || typed == "$"
+    else { return nil }
+    let name = draft[draft.index(after: tokenStart)...]
+    let allowed = name.allSatisfy { $0.isLetter || $0.isNumber || "_:-".contains($0) }
+    return allowed ? tokenStart..<draft.endIndex : nil
+  }
+
+  /// Commands for the typed token, names that start with the query first; built-ins, then
+  /// skills. `/` lists every command; `$` lists the ones typed with `$`. A token that already
+  /// names its only match offers nothing, so Return sends it.
+  private static func commandItems(token: String, commands: [SlashCommand]) -> [Item] {
+    let typed = String(token.prefix(1))
+    let query = token.dropFirst().lowercased()
     let offered = commands.filter { typed == "/" || $0.prefix == typed }
-    let leading = offered.filter { query.isEmpty || $0.name.lowercased().hasPrefix(query) }
-    let inner = offered.filter {
-      !query.isEmpty && !$0.name.lowercased().hasPrefix(query)
-        && $0.name.lowercased().contains(query)
+    func ranked(_ group: [SlashCommand]) -> [SlashCommand] {
+      let leading = group.filter { query.isEmpty || $0.name.lowercased().hasPrefix(query) }
+      let inner = group.filter {
+        !query.isEmpty && !$0.name.lowercased().hasPrefix(query)
+          && $0.name.lowercased().contains(query)
+      }
+      return leading + inner
     }
-    let matches = Array((leading + inner).prefix(8))
-    if matches.count == 1, matches[0].id == draft || draft == "/\(matches[0].name)" { return [] }
-    return matches.map {
-      Item(
-        id: $0.id, title: $0.id, detail: $0.description, replacement: "\($0.id) ",
-        systemImage: $0.isSkill ? "wand.and.sparkles" : "command")
+    let builtins = ranked(offered.filter { !$0.isSkill })
+    let skills = ranked(offered.filter(\.isSkill))
+    let matches = builtins + skills
+    if matches.count == 1, matches[0].id == token || token == "/\(matches[0].name)" { return [] }
+    func items(_ group: [SlashCommand], section: String) -> [Item] {
+      group.enumerated().map { index, command in
+        Item(
+          id: command.id, title: command.id, detail: command.description,
+          replacement: "\(command.id) ",
+          systemImage: command.isSkill ? "wand.and.sparkles" : "command",
+          section: index == 0 && !builtins.isEmpty && !skills.isEmpty ? section : nil)
+      }
     }
+    return items(builtins, section: "Commands") + items(skills, section: "Skills")
+  }
+
+  /// Rows for an `@` query: the candidates under the browsed folder whose path contains the
+  /// typed filter, as the store listed them (folders first).
+  private static func mentionItems(query: String, candidates: [String]) -> [Item] {
+    let lowered = query.lowercased()
+    let folder = lowered.lastIndex(of: "/").map { String(lowered[...$0]) } ?? ""
+    let filter =
+      lowered.lastIndex(of: "/").map { String(lowered[lowered.index(after: $0)...]) }
+      ?? lowered
+    return candidates.filter { candidate in
+      let path = candidate.lowercased()
+      guard path.hasPrefix(folder), path != folder else { return false }
+      return filter.isEmpty || path.dropFirst(folder.count).contains(filter)
+    }
+    .prefix(mentionLimit)
+    .map { path in
+      let isFolder = path.hasSuffix("/")
+      return Item(
+        id: "@\(path)", title: path, detail: "",
+        replacement: isFolder ? "@\(path)" : "@\(path) ",
+        systemImage: isFolder ? "folder" : "doc", mentionPath: path)
+    }
+  }
+
+  /// Where the `@` mention being typed at the end of `draft` starts.
+  private static func mentionStart(in draft: String) -> String.Index? {
+    guard let sign = draft.lastIndex(of: "@") else { return nil }
+    let follows = sign == draft.startIndex || draft[draft.index(before: sign)].isWhitespace
+    return follows && !draft[sign...].contains(where: \.isWhitespace) ? sign : nil
   }
 
   /// Whether `draft` ends in an `@` mention being typed.
   static func isTypingMention(_ draft: String) -> Bool {
-    guard let sign = draft.lastIndex(of: "@") else { return false }
-    let follows = sign == draft.startIndex || draft[draft.index(before: sign)].isWhitespace
-    return follows && !draft[sign...].contains(where: \.isWhitespace)
+    mentionStart(in: draft) != nil
   }
 
   /// The draft without the token being completed (a picked path becomes a chip instead).
@@ -129,69 +187,5 @@ struct MentionChips: View {
       .padding(Theme.Spacing.tiny)
     }
     .scrollIndicators(.never)
-  }
-}
-
-/// The completions over the composer. Up and Down move the highlighted row; Return and Tab
-/// apply it.
-struct CompletionList: View {
-  let items: [ComposerCompletions.Item]
-  /// Why the list may be incomplete.
-  var note: String?
-  /// The row Return and Tab apply.
-  var highlighted: Int?
-  let pick: (ComposerCompletions.Item) -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-        Button {
-          pick(item)
-        } label: {
-          HStack(spacing: Theme.Spacing.small) {
-            Image(systemName: item.systemImage)
-              .foregroundStyle(.secondary)
-              .frame(width: 16)
-              .accessibilityHidden(true)
-            Text(item.title).font(.callout.monospaced())
-            if !item.detail.isEmpty {
-              Text(item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer(minLength: 0)
-          }
-          .padding(.horizontal, Theme.Spacing.medium)
-          .padding(.vertical, Theme.Spacing.extraSmall)
-          .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-              .fill(ThemeColor.hover.opacity(index == highlighted ? 1 : 0))
-          )
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .hoverHighlight()
-        .accessibilityAddTraits(index == highlighted ? .isSelected : [])
-        .accessibilityIdentifier("composer-completion-\(item.id)")
-      }
-      if let note {
-        Label(note, systemImage: "exclamationmark.triangle")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .padding(.horizontal, Theme.Spacing.medium)
-          .padding(.vertical, Theme.Spacing.extraSmall)
-          .accessibilityIdentifier("composer-completion-note")
-      }
-      if !items.isEmpty {
-        Text("\u{2191}\u{2193} to choose, Tab or Return to complete, Esc to dismiss")
-          .font(.caption2)
-          .foregroundStyle(.tertiary)
-          .padding(.horizontal, Theme.Spacing.medium)
-          .padding(.vertical, Theme.Spacing.extraSmall)
-      }
-    }
-    .padding(.vertical, Theme.Spacing.extraSmall)
-    .glassSurface(in: RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous))
-    .padding(.horizontal, Theme.Spacing.small)
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("composer-completions")
   }
 }

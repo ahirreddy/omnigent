@@ -114,8 +114,9 @@ public struct ComposerView: View {
       }
       if !completions.items.isEmpty {
         CompletionList(
-          items: completions.items, note: completionsNote, highlighted: highlightedCompletion
-        ) { keyboard.apply($0) }
+          items: completions.items, note: completionsNote, highlighted: highlightedCompletion,
+          mentionFolder: completions.mentionFolder, attachFolder: { keyboard.attach($0) },
+          pick: { keyboard.apply($0) })
       } else if let note = failedMentionNote {
         CompletionList(items: [], note: note) { _ in }
       }
@@ -325,16 +326,27 @@ extension ComposerView {
       pillDictate: actions.extras.dictate ?? startSystemDictation)
   }
 
-  /// Focuses the editor, then starts the Mac's dictation in it.
+  /// Focuses the editor, then starts the Mac's dictation in it; touch dictates through speech
+  /// recognition into the draft.
   private func startSystemDictation() {
-    isFocused = true
-    Task { @MainActor in
-      await Task.yield()
-      if !SystemDictation.start() {
-        attachmentError =
-          "Dictation is unavailable. Turn it on in System Settings \u{203A} Keyboard."
+    #if os(iOS)
+      let base = draft
+      Task {
+        let problem = await SpeechDictation.shared.toggle { words in
+          draft = SpeechDictation.appending(words, to: base)
+        }
+        if let problem { attachmentError = problem }
       }
-    }
+    #else
+      isFocused = true
+      Task { @MainActor in
+        await Task.yield()
+        if !SystemDictation.start() {
+          attachmentError =
+            "Dictation is unavailable. Turn it on in System Settings \u{203A} Keyboard."
+        }
+      }
+    #endif
   }
 
   private var toolbar: some View { parts.toolbar }

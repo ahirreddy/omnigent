@@ -285,6 +285,8 @@ public struct ComposerExtraActions {
   public var attachMention: (@MainActor (String) -> Void)?
   /// Untag a path (its chip's remove button).
   public var removeMention: (@MainActor (String) -> Void)?
+  /// Turn Smart Routing on or off (the model picker's toggle).
+  public var setSmartRouting: (@MainActor (Bool) -> Void)?
 
   /// Creates actions.
   /// - Parameters:
