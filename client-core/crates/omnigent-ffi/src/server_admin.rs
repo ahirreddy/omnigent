@@ -29,6 +29,9 @@ pub struct ServerSettingsInfo {
     pub connections: Vec<String>,
     /// Archiving can remove a session's git worktree.
     pub archive_worktree_cleanup: bool,
+    /// Sign-in has a session to end (accounts or SSO): Settings shows the identity and Sign out.
+    #[uniffi(default)]
+    pub has_login_session: bool,
 }
 
 impl From<core::ServerSettingsInfo> for ServerSettingsInfo {
@@ -41,6 +44,7 @@ impl From<core::ServerSettingsInfo> for ServerSettingsInfo {
             mcp_registry: info.mcp_registry,
             connections: info.connections,
             archive_worktree_cleanup: info.archive_worktree_cleanup,
+            has_login_session: info.has_login_session,
         }
     }
 }
@@ -553,19 +557,22 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
-    /// Imports up to `limit` recent local sessions of `source` from `host_id`.
+    /// Imports up to `limit` recent local sessions of `source` from `host_id`, or with
+    /// `session_id` that one harness session (`source` must then name one harness).
     ///
     /// # Errors
     ///
-    /// [`CoreError::Session`]: `InvalidIdentifier`, `InvalidPageLimit`; the write errors.
+    /// [`CoreError::Session`]: `InvalidIdentifier`, `InvalidPageLimit`, `Rejected` for a bad
+    /// session id; the write errors.
     pub async fn import_local_sessions(
         &self,
         host_id: String,
         source: String,
         limit: u32,
+        session_id: Option<String>,
     ) -> Result<ImportResultRecord, CoreError> {
         self.sessions()
-            .import_local_sessions(&host_id, &source, limit)
+            .import_local_sessions(&host_id, &source, limit, session_id.as_deref())
             .await
             .map(|result| ImportResultRecord {
                 imported: result.imported,

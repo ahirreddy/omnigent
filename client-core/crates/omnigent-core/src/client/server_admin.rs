@@ -41,6 +41,9 @@ pub struct ServerSettingsInfo {
     pub connections: Vec<String>,
     /// Archiving can remove a session's git worktree (`archive_worktree_cleanup`).
     pub archive_worktree_cleanup: bool,
+    /// Sign-in has a session to end (accounts or SSO; `login_url` is set), so Settings shows
+    /// the caller's identity and Sign out.
+    pub has_login_session: bool,
 }
 
 impl ServerSettingsInfo {
@@ -64,6 +67,7 @@ impl ServerSettingsInfo {
                 .filter(|name| KNOWN_PROVIDERS.contains(&name.as_str()))
                 .collect(),
             archive_worktree_cleanup: opt_bool(info, "archive_worktree_cleanup")?.unwrap_or(false),
+            has_login_session: opt_str(info, "login_url")?.is_some_and(|url| !url.is_empty()),
         })
     }
 }
@@ -231,6 +235,8 @@ pub const IMPORT_SOURCES: [ImportSource; 8] = [
 
 /// The most recent sessions one import reads.
 pub const MAX_IMPORT_LIMIT: u32 = 1000;
+/// The longest harness session id an exact import accepts.
+pub const MAX_IMPORT_SESSION_ID_CHARS: usize = 128;
 
 /// What `POST /v1/imports/local` imported.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -404,6 +410,24 @@ fn user_segment(user_id: &str) -> Result<&str, SessionError> {
             value: user_id.to_owned(),
         })
     }
+}
+
+/// A harness session id for an exact import, trimmed: 1 to [`MAX_IMPORT_SESSION_ID_CHARS`]
+/// characters, within one harness's namespace (never `all`).
+fn import_session_id<'a>(session_id: &'a str, source: &str) -> Result<&'a str, SessionError> {
+    let trimmed = session_id.trim();
+    if trimmed.is_empty() {
+        return Err(invalid_input("Enter a session ID."));
+    }
+    if trimmed.chars().count() > MAX_IMPORT_SESSION_ID_CHARS {
+        return Err(invalid_input(&format!(
+            "A session ID has at most {MAX_IMPORT_SESSION_ID_CHARS} characters."
+        )));
+    }
+    if source == "all" {
+        return Err(invalid_input("Choose the harness the session belongs to."));
+    }
+    Ok(trimmed)
 }
 
 fn validate_provider(provider: &str) -> Result<(), SessionError> {
@@ -870,11 +894,13 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 
     /// Imports up to `limit` recent local sessions of `source` (an [`IMPORT_SOURCES`] id) from
-    /// `host_id`; sessions imported before are skipped.
+    /// `host_id`, or with `session_id` that one harness session; sessions imported before are
+    /// skipped.
     ///
     /// # Errors
     ///
-    /// `InvalidIdentifier`, or `InvalidPageLimit` outside 1 to [`MAX_IMPORT_LIMIT`], before any
+    /// `InvalidIdentifier`, `InvalidPageLimit` outside 1 to [`MAX_IMPORT_LIMIT`], or `Rejected`
+    /// (400) for a blank or overlong session id or one without a specific harness, before any
     /// request; the write errors; `DeliveryUncertain` for an unreadable tally.
     #[allow(
         clippy::future_not_send,
@@ -885,6 +911,7 @@ impl<T: HttpTransport> ClientCore<T> {
         host_id: &str,
         source: &str,
         limit: u32,
+        session_id: Option<&str>,
     ) -> Result<ImportResult, SessionError> {
         let result = async {
             validate_identifier(host_id)?;
@@ -896,7 +923,13 @@ impl<T: HttpTransport> ClientCore<T> {
             if !(1..=MAX_IMPORT_LIMIT).contains(&limit) {
                 return Err(SessionError::InvalidPageLimit { limit });
             }
-            let body = json!({"host_id": host_id, "source": source, "limit": limit});
+            let body = match session_id {
+                Some(session_id) => json!({
+                    "host_id": host_id, "source": source, "limit": limit,
+                    "session_id": import_session_id(session_id, source)?,
+                }),
+                None => json!({"host_id": host_id, "source": source, "limit": limit}),
+            };
             let reply = self.write_json("POST", "/v1/imports/local", &body).await?;
             import_result_from(&reply).map_err(|detail| SessionError::DeliveryUncertain {
                 detail: format!("unreadable /v1/imports/local tally: {detail}"),

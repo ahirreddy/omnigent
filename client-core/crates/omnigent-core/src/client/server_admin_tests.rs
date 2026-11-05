@@ -18,7 +18,7 @@ fn info_reads_admin_mode_and_known_connections() {
     core.transport().ok(
         "/v1/info",
         r#"{"single_user":false,"accounts_enabled":true,"archive_worktree_cleanup":true,
-            "enabled_connections":["mcp","github","slack","databricks"]}"#,
+            "login_url":"/login","enabled_connections":["mcp","github","slack","databricks"]}"#,
     );
     assert_eq!(
         block_on(core.server_settings_info()).unwrap(),
@@ -30,6 +30,7 @@ fn info_reads_admin_mode_and_known_connections() {
             mcp_registry: true,
             connections: vec!["github".into(), "databricks".into()],
             archive_worktree_cleanup: true,
+            has_login_session: true,
         }
     );
 
@@ -37,7 +38,28 @@ fn info_reads_admin_mode_and_known_connections() {
     let core = connected(RouteTransport::local());
     let info = block_on(core.server_settings_info()).unwrap();
     assert!(info.single_user && !info.mcp_registry && info.connections.is_empty());
-    assert!(!info.archive_worktree_cleanup);
+    assert!(!info.archive_worktree_cleanup && !info.has_login_session);
+}
+
+#[test]
+fn info_reads_an_sso_login_session_without_accounts() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/info",
+        r#"{"single_user":false,"accounts_enabled":false,"login_url":"/auth/oidc/login"}"#,
+    );
+    let info = block_on(core.server_settings_info()).unwrap();
+    assert!(info.has_login_session && !info.accounts_enabled);
+
+    // Header single-user mode reports a null login URL.
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok("/v1/info", r#"{"single_user":true,"login_url":null}"#);
+    assert!(
+        !block_on(core.server_settings_info())
+            .unwrap()
+            .has_login_session
+    );
 }
 
 #[test]
@@ -316,15 +338,15 @@ fn import_lists_online_hosts_and_reports_the_tally() {
         .collect();
     assert_eq!(names, ["alpha", "zeta"]);
     assert!(matches!(
-        block_on(core.import_local_sessions("h1", "vim", 10)),
+        block_on(core.import_local_sessions("h1", "vim", 10, None)),
         Err(SessionError::InvalidIdentifier { .. })
     ));
     assert_eq!(
-        block_on(core.import_local_sessions("h1", "all", 0)),
+        block_on(core.import_local_sessions("h1", "all", 0, None)),
         Err(SessionError::InvalidPageLimit { limit: 0 })
     );
     assert_eq!(
-        block_on(core.import_local_sessions("h1", "codex", 25)).unwrap(),
+        block_on(core.import_local_sessions("h1", "codex", 25, None)).unwrap(),
         ImportResult {
             imported: 2,
             already_imported: 1,
@@ -335,6 +357,38 @@ fn import_lists_online_hosts_and_reports_the_tally() {
     assert_eq!(
         body_json(&core.transport().writes()[0]),
         json!({"host_id": "h1", "source": "codex", "limit": 25})
+    );
+}
+
+#[test]
+fn import_by_session_id_sends_the_trimmed_id_for_one_harness() {
+    let transport = RouteTransport::local();
+    transport.ok(
+        "/v1/imports/local",
+        r#"{"imported":1,"already_imported":0,"failed":0}"#,
+    );
+    let core = connected(transport);
+    for (id, source) in [("  ", "claude"), ("abc", "all")] {
+        assert!(matches!(
+            block_on(core.import_local_sessions("h1", source, 1, Some(id))),
+            Err(SessionError::Rejected { status: 400, .. })
+        ));
+    }
+    let long = "x".repeat(129);
+    assert!(matches!(
+        block_on(core.import_local_sessions("h1", "claude", 1, Some(&long))),
+        Err(SessionError::Rejected { status: 400, .. })
+    ));
+    assert_eq!(core.transport().writes().len(), 0);
+    assert_eq!(
+        block_on(core.import_local_sessions("h1", "claude", 25, Some(" sess-1 ")))
+            .unwrap()
+            .imported,
+        1
+    );
+    assert_eq!(
+        body_json(&core.transport().writes()[0]),
+        json!({"host_id": "h1", "source": "claude", "limit": 25, "session_id": "sess-1"})
     );
 }
 
