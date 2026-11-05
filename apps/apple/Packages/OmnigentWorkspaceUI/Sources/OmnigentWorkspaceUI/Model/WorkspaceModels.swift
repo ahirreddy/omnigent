@@ -211,6 +211,7 @@ public final class WorkspaceBrowserModel {
     tree.onOpen = { [weak self] entry in
       Task { await self?.open(.file(path: entry.path, line: nil)) }
     }
+    UnsavedFileEdits.register(self)
   }
 
   /// Opens `document` as a tab (or in its existing tab) and shows it, reading it.

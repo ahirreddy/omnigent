@@ -90,6 +90,7 @@ struct ServerWindowRoot: View {
       in: services.menuBar
     )
     .windowFrameAutosave()
+    .background { UnsavedEditsWindowAccessor(session: session).frame(width: 0, height: 0) }
     .onDisappear { services.windowClosed(id.instance) }
     .task(id: id.serverURL) { await connectBoundServer(session, force: false) }
     .onChange(of: id.serverURL) { _, url in

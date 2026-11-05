@@ -320,14 +320,17 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   (SwiftUI's editor does not expose the caret, so the web's "caret on the first line" rule is out).
 - [ ] **Drafts:** a draft typed in the last half second before quitting can be lost; flush
   `ComposerDraftArchive.shared` on termination.
-- [ ] **File comments:** the file viewer marks commented lines, lists the file's open comments
-  and leaves new ones on a line or an editor selection, but cannot yet edit, delete, resolve or
-  "send to agent" a comment (web `CommentsPanel`). Seen comments are kept per device, as on the
-  web.
-- [ ] **File editor:** a plain monospaced editor (no highlighting while editing, no rich
-  Markdown editor as the web's); a selection comment in a CRLF file is not offered (its offsets
-  would skip the `\r`s); unsaved edits are not flushed or prompted for when the window closes
-  or the app quits (autosave runs 1.5 s after the last keystroke).
+- [ ] **File comments:** the Comments panel (Open/Sent, Edit, Resolve, Reopen, Delete, Address
+  All) is ported; per-comment "Copy link" and the web's inline thread popover on a marked line
+  are not (a marker opens the panel at that comment). Seen comments are kept per device, as on
+  the web.
+- [ ] **File editor:** highlighting while editing and the web's Markdown toolbar (Normal,
+  headings, quote, bold, italic, strikethrough, code, link, lists) are ported; the editor has no
+  line numbers, and the toolbar has no table insert, undo/redo or copy buttons (the system's
+  Undo and Copy work). Unsaved edits are asked about on window close and quit (Mac) and saved
+  on tab close and when the scene goes to the background (iOS). In 2 of about 12 simulator runs
+  of `FileCommentsUITests` the app trapped on a libdispatch main-queue assertion just after the
+  Comments switch was turned on; no report was written, so the cause is not yet known.
 - [ ] **List paging, left:** a list reload asks for every loaded row in one request, so past the
   server's 1,000-row page cap the rows beyond it fall out until Load more reads them again; a
   folder's pages are dropped on a reload (the folder reads its first page again); search and the
@@ -411,6 +414,12 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   store, no navigation) whose snapshots show as native images; KaTeX and Mermaid are package
   resources from `scripts/vendor-rich-render.sh` (Mermaid LZMA-compressed under the 1 MB file
   limit). Streaming blocks stay code or Unicode until they close. 2026-11-04.
+- [x] **File comments and editor:** comments edit, delete, resolve, reopen and Address All (one
+  agent message, reopened if it fails) through the server's comments API, open ones following
+  their moved anchor; the editor highlights as you type (one line per keystroke, large pastes
+  off the main actor) with the web's Markdown toolbar; CRLF selections comment with `\r`-aware
+  offsets; Save / Don't Save / Cancel on Mac window close and quit, save on iOS background and
+  tab close. 2026-11-05.
 - [x] Automations editor: host or sandbox pin with a folder, project, model, effort and
   permission mode (Claude Code), end conditions (date, and run counts on `automations_v2`),
   Jira/Slack/GitHub trigger templates (prompt rendered by the core, and the intro's "Watch for

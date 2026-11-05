@@ -70,7 +70,10 @@ struct IOSRootView: View {
         session?.connection.foreground()
       }
       // iOS may end a backgrounded app without notice: save the tabs now.
-      if phase == .background { Self.tabPersistence?.flush() }
+      if phase == .background {
+        Self.tabPersistence?.flush()
+        saveUnsavedFiles()
+      }
     }
     // Inside the supervision, so settings links reach its Settings screen.
     .phoneDeepLinks(
@@ -94,6 +97,18 @@ struct IOSRootView: View {
         }
       }
     #endif
+  }
+
+  /// iOS may end a backgrounded app: saves the scene's unsaved file edits, asking for the time
+  /// the saves need.
+  private func saveUnsavedFiles() {
+    guard let session, !session.unsavedFilePaths.isEmpty else { return }
+    let application = UIApplication.shared
+    let task = application.beginBackgroundTask(withName: "Save unsaved files")
+    Task {
+      await session.saveUnsavedFiles()
+      if task != .invalid { application.endBackgroundTask(task) }
+    }
   }
 
   private func start() async {

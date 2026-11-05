@@ -9,7 +9,7 @@ nonisolated public enum FileSaveResult: Hashable, Sendable {
   case conflict(latest: String?)
 }
 
-/// An open review comment on a file and the line it starts on.
+/// A review comment on a file and the line it starts on.
 nonisolated public struct FileCommentLine: Hashable, Sendable, Identifiable {
   /// The comment's id.
   public var id: String
@@ -23,6 +23,10 @@ nonisolated public struct FileCommentLine: Hashable, Sendable, Identifiable {
   public var author: String?
   /// When it was left.
   public var createdAt: Date
+  /// Open (the web's `draft`); `false` once sent to the agent or resolved (`addressed`).
+  public var isOpen: Bool
+  /// The viewer may edit and delete it: they wrote it, or nobody is recorded as its author.
+  public var canModify: Bool
 
   /// A comment.
   /// - Parameters:
@@ -32,9 +36,11 @@ nonisolated public struct FileCommentLine: Hashable, Sendable, Identifiable {
   ///   - anchor: The commented text.
   ///   - author: Who left it.
   ///   - createdAt: When.
+  ///   - isOpen: Not yet sent or resolved.
+  ///   - canModify: The viewer may edit and delete it.
   public init(
     id: String, line: UInt64?, body: String, anchor: String? = nil, author: String? = nil,
-    createdAt: Date = .now
+    createdAt: Date = .now, isOpen: Bool = true, canModify: Bool = true
   ) {
     self.id = id
     self.line = line
@@ -42,6 +48,8 @@ nonisolated public struct FileCommentLine: Hashable, Sendable, Identifiable {
     self.anchor = anchor
     self.author = author
     self.createdAt = createdAt
+    self.isOpen = isOpen
+    self.canModify = canModify
   }
 }
 
@@ -84,25 +92,25 @@ nonisolated public struct FileTextSpan: Hashable, Sendable {
   ///   - range: The selected range.
   ///   - text: The file's text, with `\n` line breaks.
   ///   - path: The file.
+  ///   - crlf: The file on disk breaks lines with `\r\n`: offsets and text count each `\r`.
   /// - Returns: The span.
-  public static func selection(_ range: Range<String.Index>, in text: String, path: String)
-    -> Self?
-  {
+  public static func selection(
+    _ range: Range<String.Index>, in text: String, path: String, crlf: Bool = false
+  ) -> Self? {
     let selected = String(text[range])
     guard !selected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
     let before = text[..<range.lowerBound].unicodeScalars
-    let start = UInt64(before.count)
-    let firstLine = UInt64(before.count { $0 == "\n" }) + 1
+    let breaksBefore = UInt64(before.count { $0 == "\n" })
+    let firstLine = breaksBefore + 1
     // A selection that ends with the line break stays on the line it breaks.
     let scalars = selected.unicodeScalars
-    let lastLine =
-      firstLine
-      + UInt64(
-        scalars.dropLast(scalars.last == "\n" ? 1 : 0)
-          .count { $0 == "\n" })
+    let selectedBreaks = UInt64(scalars.count { $0 == "\n" })
+    let lastLine = firstLine + selectedBreaks - (scalars.last == "\n" ? 1 : 0)
+    let start = UInt64(before.count) + (crlf ? breaksBefore : 0)
+    let length = UInt64(scalars.count) + (crlf ? selectedBreaks : 0)
     return Self(
-      path: path, start: start, end: start + UInt64(selected.unicodeScalars.count),
-      firstLine: firstLine, lastLine: lastLine, text: selected)
+      path: path, start: start, end: start + length, firstLine: firstLine, lastLine: lastLine,
+      text: crlf ? selected.replacingOccurrences(of: "\n", with: "\r\n") : selected)
   }
 
   /// The 1-based `line` of `text`, without its line break, or `nil` past the last line.

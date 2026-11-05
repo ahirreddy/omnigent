@@ -20,6 +20,8 @@ public final class WorkspaceStore: WorkspaceDataSource {
   public private(set) var lastChangedFiles: ChangedFilesUpdate?
   /// The last failure outside a data-source call (environment read, absolute location).
   public private(set) var lastError: CoreError?
+  /// The signed-in user, who may edit and delete their own comments.
+  @ObservationIgnored public var viewerID: () -> String? = { nil }
 
   private let core: ClientCore
 
@@ -201,7 +203,8 @@ public final class WorkspaceStore: WorkspaceDataSource {
     }
   }
 
-  /// The open review comments on `path`, each with the line of `text` it starts on.
+  /// The review comments on `path`, open and sent, each with the line of `text` it starts on.
+  /// The viewer may edit and delete their own comments and unattributed ones, as the server.
   /// - Parameters:
   ///   - path: The file.
   ///   - text: Its text.
@@ -211,11 +214,47 @@ public final class WorkspaceStore: WorkspaceDataSource {
     -> [OmnigentWorkspaceUI.FileCommentLine]
   {
     let comments = try await call { try await core.sessionComments(sessionId: sessionID) }
+    let viewer = viewerID()
     return fileCommentLines(comments: comments, path: path, text: text).map { line in
       OmnigentWorkspaceUI.FileCommentLine(
         id: line.comment.id, line: line.line, body: line.comment.body,
         anchor: line.comment.anchor, author: line.comment.author,
-        createdAt: Date(timeIntervalSince1970: TimeInterval(line.comment.createdAt)))
+        createdAt: Date(timeIntervalSince1970: TimeInterval(line.comment.createdAt)),
+        isOpen: line.comment.isOpen,
+        canModify: line.comment.author == nil || line.comment.author == viewer)
+    }
+  }
+
+  // swiftlint:disable discouraged_optional_boolean
+  /// Edits, resolves (`open` false) or reopens a comment.
+  /// - Parameters:
+  ///   - id: The comment.
+  ///   - body: The new text; `nil` keeps it.
+  ///   - open: The new state; `nil` keeps it.
+  /// - Throws: The failure to show.
+  public func updateComment(_ id: String, body: String?, open: Bool?)
+    async throws(WorkspaceFailure)
+  {
+    _ = try await call {
+      try await core.updateSessionComment(
+        sessionId: sessionID, commentId: id, body: body, open: open)
+    }
+  }
+  // swiftlint:enable discouraged_optional_boolean
+
+  /// Deletes a comment.
+  /// - Parameter id: The comment.
+  /// - Throws: The failure to show.
+  public func deleteComment(_ id: String) async throws(WorkspaceFailure) {
+    try await call { try await core.deleteSessionComment(sessionId: sessionID, commentId: id) }
+  }
+
+  /// Sends comments to the agent as one message; the core reopens them when it fails.
+  /// - Parameter ids: The comments.
+  /// - Throws: The failure to show.
+  public func sendCommentsToAgent(_ ids: [String]) async throws(WorkspaceFailure) {
+    _ = try await call {
+      try await core.sendCommentsToAgent(sessionId: sessionID, commentIds: ids)
     }
   }
 
