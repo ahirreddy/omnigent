@@ -9,6 +9,7 @@ permission. See apps/apple/docs/performance.md.
     perf.py open --app <Omnigent.app> <session-id> [--sample 6]
     perf.py stream --app <Omnigent.app> <session-id> [--seconds 12] [--sample 1]
     perf.py idle --app <Omnigent.app> [--seconds 5] [--sample 1]
+    perf.py type --app <Omnigent.app> [<session-id>] [--sample 1]  # 20 keystrokes, then deletes
     perf.py shot --app <Omnigent.app> [<file.png>]
     perf.py suite --app <Omnigent.app> [--runs 3]   # every scenario, medians
 """
@@ -131,12 +132,25 @@ def main_thread_busy(sample_text: str) -> tuple[int, int]:
     return total - waiting, total
 
 
-def build_tools() -> tuple[Path, Path]:
-    """The hitch monitor dylib and window probe, rebuilt when their sources change."""
+def build_tools() -> tuple[str, Path]:
+    """The injected libraries (hitch monitor and typist) and the window probe, rebuilt when
+    their sources change."""
     CACHE.mkdir(parents=True, exist_ok=True)
     dylib, probe = CACHE / "hitch-monitor.dylib", CACHE / "window-probe"
+    typist = CACHE / "typist.dylib"
     builds = {
         dylib: ["clang", "-dynamiclib", "-O2", "-o", dylib, HERE / "hitch-monitor.c"],
+        typist: [
+            "clang",
+            "-dynamiclib",
+            "-fobjc-arc",
+            "-O2",
+            "-framework",
+            "AppKit",
+            "-o",
+            typist,
+            HERE / "typist.m",
+        ],
         probe: [
             "clang",
             "-O2",
@@ -152,7 +166,7 @@ def build_tools() -> tuple[Path, Path]:
     for output, command in builds.items():
         if not output.exists() or output.stat().st_mtime < command[-1].stat().st_mtime:
             subprocess.run(command, check=True)
-    return dylib, probe
+    return f"{dylib}:{typist}", probe
 
 
 def app_pid(app: Path) -> int | None:
@@ -245,7 +259,7 @@ def tabs_file(bundle_id: str) -> Path:
 def launch(app: Path, session_id: str | None) -> dict[str, float]:
     """Quits the app, starts it with the hitch monitor on one window that opens ``session_id``
     (else a New Tab), and reports time to window and settle."""
-    dylib, probe = build_tools()
+    libraries, probe = build_tools()
     quit_app(app)
     bundle_id = subprocess.run(
         [
@@ -275,7 +289,7 @@ def launch(app: Path, session_id: str | None) -> dict[str, float]:
             "-o",
             CACHE / "stdout.log",
             "--env",
-            f"DYLD_INSERT_LIBRARIES={dylib}",
+            f"DYLD_INSERT_LIBRARIES={libraries}",
             "--env",
             f"OMNIGENT_HITCH_LOG={LOG}",
             target,
@@ -379,6 +393,26 @@ def stream(app: Path, session_id: str, seconds: int, sampled: bool = False) -> d
     return {"main_cpu_ms": cpu, **hitches.numbers}
 
 
+def type_burst(app: Path, sampled: bool = False, count: int = 20) -> dict[str, float]:
+    """Focuses the open session's composer and types ``count`` characters, one every 80 ms,
+    then deletes them (typist.m), and reports the main thread meanwhile."""
+    pid = require_monitored(app)
+    wait_settled(now_ms())
+    cpu = main_cpu_ms(pid)
+    start = now_ms()
+    subprocess.run(["kill", "-USR1", str(pid)], check=True)
+    seconds = 0.3 + 0.08 * 2 * count + 0.5
+    if sampled:
+        sample(pid, max(1, round(seconds)), "type")
+    else:
+        time.sleep(seconds)
+    wait_settled(now_ms())
+    hitches = parse_log(LOG.read_text(), start, now_ms())
+    cpu = main_cpu_ms(pid) - cpu
+    print(f"type {count} characters, then delete: main thread CPU {cpu:.0f}ms; {hitches.summary}")
+    return {"main_cpu_ms": cpu, **hitches.numbers}
+
+
 def idle(app: Path, seconds: int, sampled: bool) -> None:
     pid = require_monitored(app)
     start = now_ms()
@@ -395,6 +429,7 @@ def suite(app: Path, runs: int, sessions: list[str]) -> None:
     - launch: cold start to the first window and to a quiet main thread, on a New Tab;
     - open: a long session from that New Tab (deep link), until the main thread is quiet;
     - switch: back to the first long session's tab from a second one;
+    - type: 20 characters typed into its composer and deleted again;
     - stream: a mock-model reply streamed into the open long session, 12 s.
     """
     results: dict[str, list[dict[str, float]]] = {}
@@ -403,6 +438,7 @@ def suite(app: Path, runs: int, sessions: list[str]) -> None:
         results.setdefault("open long", []).append(open_session(app, sessions[0]))
         open_session(app, sessions[1])
         results.setdefault("switch tab", []).append(open_session(app, sessions[0]))
+        results.setdefault("type", []).append(type_burst(app))
         results.setdefault("stream", []).append(stream(app, sessions[0], 12))
     print(f"\nmedians of {runs} runs ({app}):")
     for scenario, rows in results.items():
@@ -428,7 +464,9 @@ def screenshot(app: Path, path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=["launch", "open", "stream", "idle", "shot", "suite"])
+    parser.add_argument(
+        "command", choices=["launch", "open", "stream", "idle", "type", "shot", "suite"]
+    )
     parser.add_argument("session", nargs="?")
     parser.add_argument("--app", type=Path, required=True, help="the Omnigent.app to measure")
     parser.add_argument("--seconds", type=int, default=10)
@@ -447,6 +485,8 @@ def main() -> None:
         suite(app, args.runs, [long_session(0), long_session(1)])
     elif args.command == "idle":
         idle(app, args.seconds, args.sample > 0)
+    elif args.command == "type":
+        type_burst(app, args.sample > 0)
     elif args.command == "shot":
         screenshot(app, Path(args.session or CACHE / "window.png"))
     elif args.session is None:

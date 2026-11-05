@@ -2,20 +2,37 @@ import PhotosUI
 public import SwiftUI
 import UniformTypeIdentifiers
 
-/// The composer for the window's transcript style: ``CLIComposer`` or ``ComposerView``.
+/// The composer for the window's transcript style: ``CLIComposer`` or ``ComposerView``. It reads
+/// the draft itself, so typing re-renders the composer and not the screen around it, and tells
+/// the screen only when the draft gains or loses text (what Send and ⌘Return depend on).
 struct TranscriptComposer: View {
-  @Binding var draft: String
+  let draft: ComposerDraft
   let state: ComposerViewState
   let actions: ComposerActions
   let focusRequest: Int
+  let hasTextChanged: @MainActor (Bool) -> Void
   @Environment(\.transcriptAppearance) private var appearance
 
   var body: some View {
-    if appearance.isCLI {
-      CLIComposer(draft: $draft, state: state, actions: actions, focusRequest: focusRequest)
-    } else {
-      ComposerView(draft: $draft, state: state, actions: actions, focusRequest: focusRequest)
+    let text = draft.binding
+    Group {
+      if appearance.isCLI {
+        CLIComposer(draft: text, state: state, actions: actions, focusRequest: focusRequest)
+      } else {
+        ComposerView(draft: text, state: state, actions: actions, focusRequest: focusRequest)
+      }
     }
+    .onChange(of: ComposerDraftText.hasText(text.wrappedValue), initial: true) { _, hasText in
+      hasTextChanged(hasText)
+    }
+  }
+}
+
+/// What the screen needs to know about the draft's text.
+nonisolated enum ComposerDraftText {
+  /// The draft has something to send besides whitespace.
+  static func hasText(_ text: String) -> Bool {
+    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 }
 

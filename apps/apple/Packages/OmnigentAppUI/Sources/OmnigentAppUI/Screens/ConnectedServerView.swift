@@ -241,13 +241,18 @@ extension ConnectedServerView {
   }
 
   /// The selected tab's content, or each pane's in a split window, and the new-tab page when no
-  /// tab is open.
+  /// tab is open. Without a split, recently shown chats stay built underneath (``KeptAliveTabs``)
+  /// so switching back to one is immediate.
   @ViewBuilder private var tabDetail: some View {
     let tabs = session.tabs
     let routes = windowTabs
-    if tabs.selected != nil {
+    if let selected = tabs.selected {
       TabSplitView(split: tabs.splitState, actions: routes.actions) { pane in
-        if let tab = paneTab(pane) {
+        if tabs.split == nil, sizeClass != .compact {
+          KeptAliveTabs(tabs.keptAlive(), shownID: selected.id) { tab in
+            tabContent(tab, routes: routes)
+          }
+        } else if let tab = paneTab(pane) {
           tabContent(tab, routes: routes)
         }
       }

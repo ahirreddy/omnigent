@@ -2,7 +2,8 @@ import SwiftUI
 
 extension View {
   /// The composer's focus rules: `focusRequest` focuses the editor (a menu command or the
-  /// palette), and on iPhone a run opens with the keyboard hidden until the user taps to edit.
+  /// palette), a hidden kept tab gives up focus, and on iPhone a run opens with the keyboard
+  /// hidden until the user taps to edit.
   /// - Parameters:
   ///   - isFocused: The editor's focus.
   ///   - focusRequest: Increments when the host asks for focus.
@@ -21,12 +22,17 @@ private struct ReadingPostureFocus: ViewModifier {
   @State private var refusesRestoredFocusUntil = Date.distantPast
   /// When focus was last refused, in case the tap that caused it is reported after the refusal.
   @State private var refusedAt = Date.distantPast
+  @Environment(\.isTabContentHidden) private var isHiddenTab
 
   func body(content: Content) -> some View {
     content
       .onChange(of: focusRequest) { _, _ in
         refusesRestoredFocusUntil = .distantPast
         isFocused.wrappedValue = true
+      }
+      // A kept tab leaving the screen gives up the keyboard, so typing reaches the shown tab.
+      .onChange(of: isHiddenTab) { _, hidden in
+        if hidden, isFocused.wrappedValue { isFocused.wrappedValue = false }
       }
       #if os(iOS)
         .onAppear {

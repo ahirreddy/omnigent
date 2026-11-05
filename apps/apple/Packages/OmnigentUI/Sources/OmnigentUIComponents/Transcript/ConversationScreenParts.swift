@@ -189,6 +189,38 @@ struct SessionMenuDialogs: ViewModifier {
   }
 }
 
+extension ConversationScreen {
+  /// Creates the screen over a draft binding, for previews and the gallery whose draft is view
+  /// state. The app passes a ``ComposerDraft`` so typing does not re-render the screen.
+  public init(
+    state: ConversationViewState, composer: ComposerViewState, draft: Binding<String>,
+    showsInspector: Binding<Bool>, inspectorTab: Binding<InspectorTab>? = nil,
+    mode: Binding<SessionViewMode>, fork: Binding<ForkViewState?> = .constant(nil),
+    actions: ConversationActions, composerActions: ComposerActions,
+    extras: ConversationExtras = ConversationExtras(), liveRows: LiveTranscriptRows? = nil,
+    @ViewBuilder terminal: () -> Terminal
+  ) {
+    self.init(
+      state: state, composer: composer, draft: ComposerDraft(draft),
+      showsInspector: showsInspector, inspectorTab: inspectorTab, mode: mode, fork: fork,
+      actions: actions, composerActions: composerActions, extras: extras, liveRows: liveRows,
+      terminal: terminal)
+  }
+
+  /// ⌘Return sends the draft; with messages queued it sends them all now, the draft joining
+  /// them at the end (the composer's ⇧⌘Return when ⌘Return is the send chord).
+  var sendCommand: @MainActor () -> Void {
+    let extras = composerActions.extras
+    guard !composer.submitWithCommandReturn, !composer.queue.isEmpty,
+      let sendAll = extras.history.sendAllQueued, let queueDraft = extras.queueDraft
+    else { return composerActions.send }
+    return {
+      queueDraft()
+      sendAll()
+    }
+  }
+}
+
 extension ConversationScreen where Terminal == EmptyView {
   /// Creates the screen without a terminal mode.
   /// - Parameters:
