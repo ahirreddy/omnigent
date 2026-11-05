@@ -38,15 +38,6 @@ struct SystemWakeMonitorTests {
 @Suite("Desktop preferences")
 @MainActor
 struct DesktopPreferencesTests {
-  private func freshDefaults() throws -> UserDefaults {
-    let suite = "ai.omnigent.desktop.tests.\(UUID().uuidString)"
-    guard let defaults = UserDefaults(suiteName: suite) else {
-      throw FixtureError(description: "no defaults suite \(suite)")
-    }
-    defaults.removePersistentDomain(forName: suite)
-    return defaults
-  }
-
   @Test("defaults: every notification on, sound off, connect screen")
   func defaults() throws {
     let preferences = DesktopPreferences(defaults: try freshDefaults())
@@ -79,6 +70,51 @@ struct DesktopPreferencesTests {
   func systemSounds() throws {
     #expect(try SystemSounds.names().contains(SystemSounds.defaultName))
   }
+}
+
+@Suite("Local server preferences")
+@MainActor
+struct LocalServerPreferencesTests {
+  @Test("changes persist; unchanged assignments leave the defaults alone")
+  func writesOnlyChanges() throws {
+    let defaults = try freshDefaults()
+    let preferences = LocalServerPreferences(defaults: defaults)
+    var notifications = 0
+    let observer = NotificationCenter.default.addObserver(
+      forName: UserDefaults.didChangeNotification, object: defaults, queue: nil
+    ) { _ in notifications += 1 }
+    defer { NotificationCenter.default.removeObserver(observer) }
+
+    // SwiftUI writes the menu bar extra's visibility back on every scene update.
+    preferences.showsMenuBarExtra = true
+    preferences.restartOnCrash = true
+    preferences.port = nil
+    #expect(notifications == 0)
+    #expect(defaults.object(forKey: LocalServerPreferences.Key.showsMenuBarExtra) == nil)
+
+    preferences.showsMenuBarExtra = false
+    preferences.port = 7000
+    preferences.cliPath = "/usr/local/bin/omnigent"
+    #expect(notifications == 3)
+    let reloaded = LocalServerPreferences(defaults: defaults)
+    #expect(!reloaded.showsMenuBarExtra)
+    #expect(reloaded.port == 7000)
+    #expect(reloaded.cliPath == "/usr/local/bin/omnigent")
+
+    reloaded.port = nil
+    reloaded.cliPath = nil
+    #expect(defaults.object(forKey: LocalServerPreferences.Key.port) == nil)
+    #expect(defaults.object(forKey: LocalServerPreferences.Key.cliPath) == nil)
+  }
+}
+
+private func freshDefaults() throws -> UserDefaults {
+  let suite = "ai.omnigent.desktop.tests.\(UUID().uuidString)"
+  guard let defaults = UserDefaults(suiteName: suite) else {
+    throw FixtureError(description: "no defaults suite \(suite)")
+  }
+  defaults.removePersistentDomain(forName: suite)
+  return defaults
 }
 
 @Suite("Server origin")

@@ -17,28 +17,28 @@ public final class LocalServerPreferences {
 
   /// The CLI chosen in Settings, or `nil` to find it automatically.
   public var cliPath: String? {
-    didSet { defaults.set(cliPath, forKey: Key.cliPath) }
+    didSet { persist(cliPath, oldValue, forKey: Key.cliPath) }
   }
   /// Start (or adopt) the local server when the app opens. Off by default.
   public var startOnLaunch: Bool {
-    didSet { defaults.set(startOnLaunch, forKey: Key.startOnLaunch) }
+    didSet { persist(startOnLaunch, oldValue, forKey: Key.startOnLaunch) }
   }
   /// A fixed port, or `nil` for automatic: the CLI's canonical server, which prefers 6767,
   /// falls back to a free port and is shared with `omnigent run` in Terminal.
   public var port: Int? {
-    didSet { defaults.set(port, forKey: Key.port) }
+    didSet { persist(port, oldValue, forKey: Key.port) }
   }
   /// The CLI data directory (`OMNIGENT_DATA_DIR`), or `nil` for `~/.omnigent`.
   public var dataDirectory: String? {
-    didSet { defaults.set(dataDirectory, forKey: Key.dataDirectory) }
+    didSet { persist(dataDirectory, oldValue, forKey: Key.dataDirectory) }
   }
   /// Restart a server or host the app started when it crashes. On by default.
   public var restartOnCrash: Bool {
-    didSet { defaults.set(restartOnCrash, forKey: Key.restartOnCrash) }
+    didSet { persist(restartOnCrash, oldValue, forKey: Key.restartOnCrash) }
   }
   /// Show the Omnigent menu bar extra. On by default.
   public var showsMenuBarExtra: Bool {
-    didSet { defaults.set(showsMenuBarExtra, forKey: Key.showsMenuBarExtra) }
+    didSet { persist(showsMenuBarExtra, oldValue, forKey: Key.showsMenuBarExtra) }
   }
 
   /// Loads settings.
@@ -53,6 +53,13 @@ public final class LocalServerPreferences {
     dataDirectory = defaults.string(forKey: Key.dataDirectory).flatMap { $0.isEmpty ? nil : $0 }
     restartOnCrash = defaults.object(forKey: Key.restartOnCrash) as? Bool ?? true
     showsMenuBarExtra = defaults.object(forKey: Key.showsMenuBarExtra) as? Bool ?? true
+  }
+
+  /// Writes a changed value (`nil` removes it). Writing an unchanged one still posts
+  /// `UserDefaults.didChangeNotification`, which re-renders every `@AppStorage` view.
+  private func persist<Value: Equatable>(_ value: Value?, _ oldValue: Value?, forKey key: String) {
+    guard value != oldValue else { return }
+    defaults.set(value, forKey: key)
   }
 
   /// The data directory in effect: the setting, else `OMNIGENT_DATA_DIR`, else `~/.omnigent`.

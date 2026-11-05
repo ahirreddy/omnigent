@@ -33,9 +33,12 @@ public struct OmnigentMenuBarExtra: Scene {
   /// The extra.
   public var body: some Scene {
     let preferences = desktop.localServerPreferences
+    // SwiftUI writes the status item's visibility back on every scene update, which follows
+    // every window's layout; only a real change may reach the preference and its observers.
     MenuBarExtra(
       isInserted: Binding(
-        get: { preferences.showsMenuBarExtra }, set: { preferences.showsMenuBarExtra = $0 })
+        get: { preferences.showsMenuBarExtra },
+        set: { if preferences.showsMenuBarExtra != $0 { preferences.showsMenuBarExtra = $0 } })
     ) {
       OmnigentMenuBarContent(desktop: desktop, sessions: sessions)
     } label: {
