@@ -90,8 +90,15 @@ private struct WindowTint: UIViewRepresentable {
 
     private func applyTint() {
       guard let window, tints.count == 2 else { return }
-      let (light, dark) = (tints[0], tints[1])
-      window.tintColor = UIColor { $0.userInterfaceStyle == .dark ? dark : light }
+      window.tintColor = .adaptive(light: tints[0], dark: tints[1])
     }
+  }
+}
+
+extension UIColor {
+  /// `light` or `dark` by the traits' interface style. Nonisolated, so its provider is too:
+  /// SwiftUI's async renderer resolves the window tint off the main thread mid-animation.
+  nonisolated static func adaptive(light: UIColor, dark: UIColor) -> UIColor {
+    UIColor { $0.userInterfaceStyle == .dark ? dark : light }
   }
 }

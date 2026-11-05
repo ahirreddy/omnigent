@@ -328,9 +328,7 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   headings, quote, bold, italic, strikethrough, code, link, lists) are ported; the editor has no
   line numbers, and the toolbar has no table insert, undo/redo or copy buttons (the system's
   Undo and Copy work). Unsaved edits are asked about on window close and quit (Mac) and saved
-  on tab close and when the scene goes to the background (iOS). In 2 of about 12 simulator runs
-  of `FileCommentsUITests` the app trapped on a libdispatch main-queue assertion just after the
-  Comments switch was turned on; no report was written, so the cause is not yet known.
+  on tab close and when the scene goes to the background (iOS).
 - [ ] **Inbox "Load more sessions":** the core's session list holds only its first page
   (`DEFAULT_PAGE_LIMIT`), so the Inbox cannot page further as the web does; needs list paging in
   the engine, shared with the sidebar's Show more.
@@ -413,6 +411,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   off the main actor) with the web's Markdown toolbar; CRLF selections comment with `\r`-aware
   offsets; Save / Don't Save / Cancel on Mac window close and quit, save on iOS background and
   tab close. 2026-11-05.
+- [x] **iOS window tint trap:** the window's light/dark tint provider was isolated to the main
+  actor, and SwiftUI's async renderer resolves it off the main thread mid-animation (a tinted
+  toggle such as the Comments switch), so the app hit a libdispatch main-queue assertion. The
+  provider is now built in a nonisolated function. 2026-11-05.
 - [x] Automations editor: host or sandbox pin with a folder, project, model, effort and
   permission mode (Claude Code), end conditions (date, and run counts on `automations_v2`),
   Jira/Slack/GitHub trigger templates (prompt rendered by the core, and the intro's "Watch for

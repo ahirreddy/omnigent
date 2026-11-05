@@ -73,11 +73,50 @@ final class FileCommentsUITests: XCTestCase {
     try shot("comment-sent")
   }
 
+  /// Turns the Comments switch on and off while the editor has the keyboard, the state in which
+  /// the panel once crashed the app. `TEST_RUNNER_FILES_TOGGLES` sets the count (default 20).
+  @MainActor
+  func testToggleCommentsWhileEditing() throws {
+    let app = try launch()
+    try open(try setting("OMNIGENT_EDIT_SESSION_ID"), in: app)
+    let file = app.buttons["main.rs"].firstMatch
+    if !file.waitForExistence(timeout: 5) {
+      tap(app.buttons["toggle-inspector"], "the right-panel toggle")
+    }
+    XCTAssertTrue(file.waitForExistence(timeout: 20), "the files panel shows no main.rs")
+    file.doubleTap()
+    XCTAssertTrue(app.descendants(matching: .any)["workspace.viewer"].waitForExistence(timeout: 15))
+    let grabber = app.buttons["Sheet Grabber"]
+    if isPhone, grabber.exists {
+      grabber.press(forDuration: 0.1, thenDragTo: app.navigationBars.firstMatch)
+    }
+    tap(app.segmentedControls.buttons["Edit"].firstMatch, "Edit")
+    let editor = app.textViews["workspace.editor"]
+    XCTAssertTrue(editor.waitForExistence(timeout: 10), "the editor did not open")
+    let toggle = app.descendants(matching: .any)["workspace.review.comments"]
+    // The panel's close button: the panel itself is a container, not an element of its own.
+    let panel = app.buttons["workspace.comments.close"]
+    XCTAssertTrue(toggle.waitForExistence(timeout: 10), "the Comments toggle is missing")
+    // Taps by coordinate: the header stays put, and element queries cost seconds a tap.
+    let origin = app.coordinate(withNormalizedOffset: .zero)
+    let switchPoint = origin.withOffset(CGVector(dx: toggle.frame.midX, dy: toggle.frame.midY))
+    let textPoint = editor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+    let count = Int(environment["FILES_TOGGLES"] ?? "") ?? 20
+    for round in 0..<count {
+      textPoint.tap()
+      switchPoint.tap()
+      XCTAssertTrue(panel.waitForExistence(timeout: 10), "round \(round): the panel did not open")
+      switchPoint.tap()
+      XCTAssertTrue(waitUntil { !panel.exists }, "round \(round): the panel did not close")
+      XCTAssertEqual(app.state, .runningForeground, "round \(round): the app stopped")
+    }
+  }
+
   // MARK: Helpers
 
   @MainActor
   private func showComments(in app: XCUIApplication) throws {
-    let panel = app.descendants(matching: .any)["workspace.comments"]
+    let panel = app.buttons["workspace.comments.close"]
     if panel.waitForExistence(timeout: 3) { return }
     tap(app.descendants(matching: .any)["workspace.review.comments"], "the Comments toggle")
     XCTAssertTrue(panel.waitForExistence(timeout: 10), "the comments panel did not open")
@@ -107,6 +146,10 @@ final class FileCommentsUITests: XCTestCase {
     let server = try setting("OMNIGENT_E2E_SERVER_URL")
     let app = XCUIApplication()
     app.launchArguments += ["-omnigent.lastServer", server, "-ApplePersistenceIgnoreState", "YES"]
+    // `TEST_RUNNER_APP_ENV_<NAME>` reaches the app as `<NAME>`, for runtime diagnostics.
+    for (name, value) in environment where name.hasPrefix("APP_ENV_") {
+      app.launchEnvironment[String(name.dropFirst("APP_ENV_".count))] = value
+    }
     app.launch()
     XCUIDevice.shared.orientation = isPhone ? .portrait : .landscapeLeft
     return app
