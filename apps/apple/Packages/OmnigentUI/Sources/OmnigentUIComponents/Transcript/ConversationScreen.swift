@@ -250,7 +250,9 @@ public struct ConversationScreen<Terminal: View>: View {
     if let summary = state.summary {
       sessionMenu(summary).items
     } else {
-      Button("Copy Session ID", systemImage: "number") { Pasteboard.copy(state.header.id) }
+      ConfirmedCopyButton(
+        title: "Copy Session ID", systemImage: "number", text: state.header.id,
+        confirmation: "Session ID copied")
     }
     if let exportTranscript = extras.exportTranscript {
       Button("Export\u{2026}", systemImage: "square.and.arrow.down", action: exportTranscript)

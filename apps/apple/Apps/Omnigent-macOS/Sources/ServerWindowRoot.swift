@@ -210,6 +210,9 @@ struct ServerWindowRoot: View {
     switch route {
     case .home: selection = nil
     case .conversation(let sessionID): selection = .session(sessionID)
+    case .message(let sessionID, let messageID):
+      session?.transcriptFocus.focus(messageID, in: sessionID)
+      selection = .session(sessionID)
     case .register(let invite):
       guard let session, let serverURL = id.serverURL,
         let link = SceneLinkPlan.inviteLink(server: serverURL, invite: invite)

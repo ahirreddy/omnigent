@@ -15,6 +15,7 @@ public struct TranscriptView: View {
   @State private var layout = TranscriptLayoutMemo()
   @State private var environmentRelay = TranscriptEnvironmentRelay()
   @State private var position = TranscriptReadingPosition()
+  @Environment(\.transcriptFocus) private var focus
   @Environment(\.transcriptAppearance) private var appearance
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -66,6 +67,7 @@ public struct TranscriptView: View {
               TurnSegmentView(entry: entry)
                 .equatable()
                 .id(entry.id)
+                .background { if focus?.flashedRowID == entry.id { MessageFlash() } }
             }
             InlineDecisions(state: state, actions: actions)
             SubagentGroupView(state: state, actions: actions)
@@ -152,6 +154,7 @@ public struct TranscriptView: View {
         if current != nil, previous != nil, current != previous { jumpToLatest(proxy) }
       }
       .onChange(of: scrollToLatestRequest) { _, _ in jumpToLatest(proxy) }
+      .modifier(messageFocus(proxy))
       .task(id: state.header.id) {
         follow.reset()
         position.reset()
@@ -201,12 +204,6 @@ public struct TranscriptView: View {
           .accessibilityIdentifier("load-older-messages")
         Spacer()
       }
-    }
-  }
-
-  private func hasErrorRow(matching failure: String) -> Bool {
-    state.rows.suffix(20).contains {
-      $0.activity?.isFailure == true && $0.activity?.summary == failure
     }
   }
 
@@ -303,6 +300,27 @@ public struct TranscriptView: View {
 }
 
 extension TranscriptView {
+  private func hasErrorRow(matching failure: String) -> Bool {
+    state.rows.suffix(20).contains {
+      $0.activity?.isFailure == true && $0.activity?.summary == failure
+    }
+  }
+
+  /// Scrolls to the message a `?message=` link points at; a page still landing must not put
+  /// the old top row back.
+  private func messageFocus(_ proxy: ScrollViewProxy) -> TranscriptMessageFocus {
+    TranscriptMessageFocus(
+      state: state, pages: actions.loadOlder != nil,
+      locate: {
+        TranscriptFocus.entryID(forMessage: $0, in: layout.entries(for: state).map(\.segment))
+      }, loadOlder: loadOlder,
+      show: { target in
+        position.prependAnchor = nil
+        follow.readEarlier()
+        proxy.scrollTo(target, anchor: .center)
+      })
+  }
+
   /// Opening a session frames its latest user message at the top, as the web does, so a long
   /// answer reads from its start. When the turn fits, the transcript keeps following.
   private func frameLatestTurn(_ proxy: ScrollViewProxy) async {

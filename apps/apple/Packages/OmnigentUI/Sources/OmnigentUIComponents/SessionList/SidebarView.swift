@@ -21,13 +21,14 @@ public struct SidebarView: View {
   @State private var inlineRenaming: SessionSummary?
   @State private var inlineText = ""
   /// Expanded project folders (they start collapsed), newline-separated, kept across launches.
-  @AppStorage("omnigent:sidebar-expanded-projects") private var expandedProjectIDs = ""
+  @AppStorage(SidebarNavigationOrder.expandedProjectsKey) private var expandedProjectIDs = ""
   @State private var showsAllInProject: Set<String> = []
   @State private var projectPrompt: ProjectPrompt?
   @State private var projectName = ""
   @State private var confirmingProjectDelete: SessionProject?
   /// Collapsed section titles, newline-separated, kept across launches.
-  @AppStorage("omnigent:sidebar-collapsed-sections") private var collapsedSections = ""
+  @AppStorage(SidebarNavigationOrder.collapsedSectionsKey) private var collapsedSections = ""
+  @State private var behavior = SidebarBehavior()
 
   /// Creates the sidebar.
   /// - Parameters:
@@ -50,11 +51,21 @@ public struct SidebarView: View {
   /// The sidebar.
   public var body: some View {
     List(selection: listSelection) {
-      navigation
-      ForEach(SidebarSections.sections(state)) { section in
+      SidebarNavigationRows(state: state, selection: selection, actions: actions)
+      ForEach(SidebarSections.sections(behavior.holding(state))) { section in
         sessionSection(section)
       }
       SidebarEmptyState(state: state, searchText: searchText)
+    }
+    .onHover { behavior.pointer(inside: $0, sessions: state.list.sessions) }
+    .onChange(of: searchText.isEmpty) { _, isEmpty in
+      if !isEmpty { behavior.searchCollapsed = [] }
+    }
+    .onChange(of: state.list.sessions.filter(\.isPinned).map(\.id)) { old, new in
+      // A new pin opens Pinned, so it can't hide in a collapsed section.
+      if SidebarBehavior.addsPin(old, new), !expansion(of: "Pinned").wrappedValue {
+        expansion(of: "Pinned").wrappedValue = true
+      }
     }
     .listStyle(.sidebar)
     .font(.callout)
@@ -112,66 +123,9 @@ public struct SidebarView: View {
 
   /// The session rows on screen, top to bottom, for a Shift-click range.
   private var visibleSessionIDs: [String] {
-    let collapsed = Set(collapsedSections.split(separator: "\n").map(String.init))
-    let open = SidebarSections.sections(state).filter { !collapsed.contains($0.title) }
-    return open.flatMap { (section: SidebarSections.Section) -> [String] in
-      guard section.isProjects else { return section.sessions.map(\.id) }
-      return state.projects.filter { expandedProjects.contains($0.id) }.flatMap { project in
-        showsAllInProject.contains(project.id)
-          ? project.sessionIds
-          : Array(project.sessionIds.prefix(ProjectFolder<EmptyView>.collapsedCount))
-      }
-    }
-  }
-
-  @ViewBuilder private var navigation: some View {
-    Label("New session", systemImage: "plus.bubble")
-      .neutralSidebarIcon()
-      .fontWeight(.medium)
-      .tag(SidebarDestination.newSession)
-      .sidebarSelection(selection == .newSession)
-      .accessibilityIdentifier("sidebar-new-session")
-    if state.showsAutomations {
-      Label("Automations", systemImage: "clock")
-        .neutralSidebarIcon()
-        .tag(SidebarDestination.automations)
-        .sidebarSelection(selection == .automations)
-        .accessibilityIdentifier("sidebar-automations")
-    }
-    Label("Inbox", systemImage: "tray")
-      .neutralSidebarIcon()
-      .badge(state.inboxCount)
-      .tag(SidebarDestination.inbox)
-      .sidebarSelection(selection == .inbox)
-      .accessibilityIdentifier("sidebar-inbox")
-    if state.showsCanvas {
-      Label("Canvas", systemImage: "square.grid.2x2")
-        .neutralSidebarIcon()
-        .tag(SidebarDestination.canvas)
-        .sidebarSelection(selection == .canvas)
-        .accessibilityIdentifier("sidebar-canvas")
-    }
-    if state.showsUsage {
-      Label("Usage", systemImage: "creditcard")
-        .neutralSidebarIcon()
-        .tag(SidebarDestination.usage)
-        .sidebarSelection(selection == .usage)
-        .accessibilityIdentifier("sidebar-usage")
-    }
-    if let setQuickFilter = actions.setQuickFilter {
-      QuickFilterRow(
-        filter: .running, isActive: state.quickFilter == .running,
-        count: state.list.filterCounts[.running]
-      ) {
-        setQuickFilter(state.quickFilter == .running ? nil : .running)
-      }
-      QuickFilterRow(
-        filter: .needsResponse, isActive: state.quickFilter == .needsResponse,
-        count: state.list.filterCounts[.needsResponse]
-      ) {
-        setQuickFilter(state.quickFilter == .needsResponse ? nil : .needsResponse)
-      }
-    }
+    SidebarNavigationOrder.sessionIDs(
+      behavior.holding(state), collapsed: collapsedTitles,
+      expandedProjects: expandedProjects, showsAllInProject: showsAllInProject)
   }
 
   @ViewBuilder
@@ -196,6 +150,9 @@ public struct SidebarView: View {
           .foregroundStyle(Theme.mutedText)
           .textCase(nil)
         Spacer()
+        if let marker = hiddenMarker(section) {
+          SidebarMarkerView(marker: marker)
+        }
         if section.isProjects, !bulk.isActive {
           projectsHeaderButtons
         }
@@ -243,16 +200,39 @@ public struct SidebarView: View {
       setExpanded: { setExpandedProjects($0) }, selectSessions: { bulk.begin() })
   }
 
-  /// Whether a section is expanded; collapsing one is remembered.
+  /// Collapsed sections: the saved ones, or while searching those collapsed during the search.
+  private var collapsedTitles: Set<String> {
+    searchText.isEmpty
+      ? SidebarNavigationOrder.lines(collapsedSections) : behavior.searchCollapsed
+  }
+
+  /// Whether a section is expanded; collapsing one is remembered (outside a search).
   private func expansion(of title: String) -> Binding<Bool> {
     Binding(
-      get: { !collapsedSections.split(separator: "\n").contains(Substring(title)) },
+      get: { !collapsedTitles.contains(title) },
       set: { expanded in
+        guard searchText.isEmpty else {
+          if expanded {
+            behavior.searchCollapsed.remove(title)
+          } else {
+            behavior.searchCollapsed.insert(title)
+          }
+          return
+        }
         var titles = collapsedSections.split(separator: "\n").map(String.init)
         titles.removeAll { $0 == title }
         if !expanded { titles.append(title) }
         collapsedSections = titles.joined(separator: "\n")
       })
+  }
+
+  /// The strongest state hidden under a collapsed section, for its header.
+  private func hiddenMarker(_ section: SidebarSections.Section) -> SidebarMarker? {
+    guard collapsedTitles.contains(section.title) else { return nil }
+    let sessions =
+      section.isProjects
+      ? state.projects.flatMap(\.sessionIds).compactMap(summary) : section.sessions
+    return SidebarMarker.strongest(sessions, list: state.list, rowInfo: state.rowInfo)
   }
 
   private func summary(_ id: String) -> SessionSummary? {
@@ -289,8 +269,12 @@ extension SidebarView {
   }
 
   private func projectGroup(_ project: SessionProject) -> some View {
-    ProjectFolder(
-      project: project, sessions: project.sessionIds.compactMap(summary),
+    let sessions = project.sessionIds.compactMap(summary)
+    let marker = { (rows: ArraySlice<SessionSummary>) in
+      SidebarMarker.strongest(rows, list: state.list, rowInfo: state.rowInfo)
+    }
+    return ProjectFolder(
+      project: project, sessions: sessions,
       isExpanded: Binding(
         get: { expandedProjects.contains(project.id) },
         set: { expanded in
@@ -315,7 +299,10 @@ extension SidebarView {
         },
         confirmDelete: { confirmingProjectDelete = project }),
       drop: { item in drop(item, on: .project(project)) },
-      row: { session in row(session, target: .project(project)) })
+      row: { session in row(session, target: .project(project)) },
+      folderMarker: expandedProjects.contains(project.id) ? nil : marker(sessions[...]),
+      moreMarker: showsAllInProject.contains(project.id)
+        ? nil : marker(sessions.dropFirst(ProjectFolder<EmptyView>.collapsedCount)))
   }
 
   private func row(_ session: SessionSummary, target: SidebarDropTarget?) -> some View {
@@ -323,10 +310,18 @@ extension SidebarView {
     // The open session's composer already shows its draft.
     info.hasDraft = info.hasDraft && selection != .session(session.id)
     let isUnread = state.list.unreadIds.contains(session.id)
+    var sessionActions = actions.sessions
+    if let move = sessionActions.moveToProject {
+      // The session shows in the folder it moved to, not hidden in a collapsed one.
+      sessionActions.moveToProject = { session, project in
+        move(session, project)
+        if let project { setExpandedProjects(expandedProjects.union([project.id])) }
+      }
+    }
     let menu = SessionRowMenu(
       session: session, isUnread: isUnread, isShared: info.isShared,
       pinLimitReached: state.pinnedCount >= state.pinLimit,
-      projects: state.projects, actions: actions.sessions,
+      projects: state.projects, actions: sessionActions,
       rename: {
         renameText = session.title
         renaming = session

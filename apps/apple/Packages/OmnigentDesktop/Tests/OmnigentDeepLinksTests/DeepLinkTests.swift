@@ -55,6 +55,17 @@ struct DeepLinkTests {
     #expect(link.acknowledgment == nil)
   }
 
+  @Test("keeps the web's ?message= so the transcript can show that message")
+  func messageLink() throws {
+    let link = try parse("omnigent://localhost:8000/c/conv_abc?reply=1&message=resp%5F9#frag")
+    #expect(link.route == .message(sessionID: "conv_abc", messageID: "resp_9"))
+    #expect(link.route.path == "/c/conv_abc")
+    #expect(link.route.sessionID == "conv_abc")
+    #expect(try parse("omnigent://localhost/c/x?message=").route == .conversation(sessionID: "x"))
+    // Only conversations take a message.
+    #expect(try parse("omnigent://localhost/?message=m").route == .home)
+  }
+
   @Test(
     "rejects a non-omnigent scheme",
     arguments: ["https://localhost:8000/c/x", "vscode://localhost/c/x"])

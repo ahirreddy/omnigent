@@ -1,7 +1,7 @@
 import Foundation
 
 /// Splits the core-ordered sessions into the sidebar's sections for the chosen grouping. The
-/// default is the web's: Pinned, Projects, Shared, Sessions.
+/// default is the web's: Pinned, Projects, Shared, Sessions; other groupings keep Pinned on top.
 nonisolated enum SidebarSections {
   struct Section: Identifiable, Hashable {
     let title: String
@@ -14,16 +14,18 @@ nonisolated enum SidebarSections {
 
   static func sections(_ state: SidebarViewState, calendar: Calendar = .current) -> [Section] {
     let sessions = sorted(state.list.sessions, state: state)
-    switch state.display.groupBy {
-    case .default:
-      return defaultSections(sessions, state: state)
-    case .status:
-      return statusSections(sessions, state: state)
-    case .harness:
-      return harnessSections(sessions, state: state)
-    case .created, .updated:
-      return dateSections(sessions, state: state, calendar: calendar)
-    }
+    guard state.display.groupBy != .default else { return defaultSections(sessions, state: state) }
+    // Grouped views keep Pinned on top and group the rest, as the web does.
+    let pinned = sessions.filter(\.isPinned)
+    let rest = sessions.filter { !$0.isPinned }
+    let groups: [Section] =
+      switch state.display.groupBy {
+      case .default, .status: statusSections(rest, state: state)
+      case .harness: harnessSections(rest, state: state)
+      case .created, .updated: dateSections(rest, state: state, calendar: calendar)
+      }
+    let pinnedSection = Section(title: "Pinned", sessions: pinned, isPinned: true)
+    return (pinned.isEmpty ? [] : [pinnedSection]) + groups
   }
 
   private static func sorted(_ sessions: [SessionSummary], state: SidebarViewState)
@@ -56,65 +58,86 @@ nonisolated enum SidebarSections {
     return result
   }
 
+  /// The web's status buckets, in its order.
+  static let statusTitles = ["Needs attention", "Unread", "Working", "Draft", "Done"]
+
   private static func statusSections(_ sessions: [SessionSummary], state: SidebarViewState)
     -> [Section]
   {
-    // One section per attention state, so a session sits where its row glyph says.
-    let needs = sessions.filter { $0.attention == .needsYou }
-    let running = sessions.filter { $0.attention == .working }
-    let failed = sessions.filter { $0.attention == .failed }
-    let idle = sessions.filter { $0.attention == .unread || $0.attention == .idle }
-    return withMenu([
-      Section(title: "Needs you", sessions: needs),
-      Section(title: "Running", sessions: running),
-      Section(title: "Error", sessions: failed),
-      Section(title: "Idle", sessions: idle),
-    ])
+    var buckets: [String: [SessionSummary]] = [:]
+    for session in sessions {
+      buckets[statusTitle(session, state: state), default: []].append(session)
+    }
+    // Working stays visible while empty, as on the web.
+    return withMenu(
+      statusTitles.map { Section(title: $0, sessions: buckets[$0] ?? []) }, keepEmpty: "Working")
+  }
+
+  /// The web's `statusBucket`: pending or failed first, then running, unread, draft, done.
+  static func statusTitle(_ session: SessionSummary, state: SidebarViewState) -> String {
+    switch session.attention {
+    case .needsYou, .failed: return "Needs attention"
+    case .working: return "Working"
+    case .unread, .idle:
+      if session.attention == .unread || state.list.unreadIds.contains(session.id) {
+        return "Unread"
+      }
+      return state.rowInfo[session.id]?.hasDraft == true ? "Draft" : "Done"
+    }
   }
 
   private static func harnessSections(_ sessions: [SessionSummary], state: SidebarViewState)
     -> [Section]
   {
-    var order: [String] = []
     var buckets: [String: [SessionSummary]] = [:]
     for session in sessions {
       let label = HarnessAppearance(harness: state.rowInfo[session.id]?.harness).label
-      if buckets[label] == nil { order.append(label) }
       buckets[label, default: []].append(session)
     }
+    let order = buckets.keys.sorted { $0.localizedCompare($1) == .orderedAscending }
     return withMenu(order.map { Section(title: $0, sessions: buckets[$0] ?? []) })
   }
+
+  /// The web's date buckets; titles read "Updated today", "Created in the last 7 days", ….
+  static let dateBuckets = [
+    "today", "yesterday", "in the last 7 days", "in the last 30 days", "earlier",
+  ]
 
   private static func dateSections(
     _ sessions: [SessionSummary], state: SidebarViewState, calendar: Calendar
   ) -> [Section] {
     let now = state.list.now ?? Date()
-    let titles = ["Today", "Yesterday", "Previous 7 days", "Previous 30 days", "Older"]
+    let prefix = state.display.groupBy.title
     var buckets: [String: [SessionSummary]] = [:]
-    let startOfToday = calendar.startOfDay(for: now)
     for session in sessions {
       let stamp =
         state.display.groupBy == .created
         ? (state.rowInfo[session.id]?.createdAt ?? session.updatedAt) : session.updatedAt
-      let day = calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(stamp)))
-      let days = calendar.dateComponents([.day], from: day, to: startOfToday).day ?? 0
-      let title: String =
-        switch days {
-        case ..<1: "Today"
-        case 1: "Yesterday"
-        case 2..<7: "Previous 7 days"
-        case 7..<30: "Previous 30 days"
-        default: "Older"
-        }
-      buckets[title, default: []].append(session)
+      let bucket = dateBucket(
+        Date(timeIntervalSince1970: TimeInterval(stamp)), now: now, calendar: calendar)
+      buckets[bucket, default: []].append(session)
     }
     return withMenu(
-      titles.compactMap { title in buckets[title].map { Section(title: title, sessions: $0) } })
+      dateBuckets.compactMap { bucket in
+        buckets[bucket].map { Section(title: "\(prefix) \(bucket)", sessions: $0) }
+      })
   }
 
-  /// Drops empty sections and puts the display menu on the first.
-  private static func withMenu(_ sections: [Section]) -> [Section] {
-    var result = sections.filter { !$0.sessions.isEmpty }
+  /// The web's `dateBucket`: by local calendar day relative to `now`.
+  static func dateBucket(_ date: Date, now: Date, calendar: Calendar) -> String {
+    let midnight = { (daysAgo: Int) in
+      calendar.date(byAdding: .day, value: -daysAgo, to: calendar.startOfDay(for: now)) ?? now
+    }
+    if date >= midnight(0) { return "today" }
+    if date >= midnight(1) { return "yesterday" }
+    if date >= midnight(7) { return "in the last 7 days" }
+    if date >= midnight(30) { return "in the last 30 days" }
+    return "earlier"
+  }
+
+  /// Drops empty sections (but `keepEmpty`) and puts the display menu on the first.
+  private static func withMenu(_ sections: [Section], keepEmpty: String? = nil) -> [Section] {
+    var result = sections.filter { !$0.sessions.isEmpty || $0.title == keepEmpty }
     if result.isEmpty { result = [Section(title: "Sessions", sessions: [])] }
     result[0].showsDisplayMenu = true
     return result

@@ -23,6 +23,9 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
   case home
   /// A conversation, `omnigent://host/c/<sessionID>`.
   case conversation(sessionID: String)
+  /// A message in a conversation, `omnigent://host/c/<sessionID>?message=<messageID>` (the web's
+  /// Copy link): a user message by its item id, an answer by its response id.
+  case message(sessionID: String, messageID: String)
   /// An invite, `omnigent://host/register?invite=<token>`: Create Account with it.
   case register(invite: String)
 
@@ -30,8 +33,16 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
   public var path: String {
     switch self {
     case .home: "/"
-    case .conversation(let sessionID): "/c/\(sessionID)"
+    case .conversation(let sessionID), .message(let sessionID, _): "/c/\(sessionID)"
     case .register: "/register"
+    }
+  }
+
+  /// The session the route shows, if any.
+  public var sessionID: String? {
+    switch self {
+    case .conversation(let sessionID), .message(let sessionID, _): sessionID
+    case .home, .register: nil
     }
   }
 
@@ -54,7 +65,7 @@ nonisolated public struct DeepLinkAcknowledgment: Hashable, Sendable {
   public var callbackPath: String { "/desktop-open/\(nonce)" }
 }
 
-/// A parsed `omnigent://<host>[:port]/c/<session>` link.
+/// A parsed `omnigent://<host>[:port]/c/<session>[?message=<id>]` link.
 ///
 /// The link names a server by host and carries no http/https. The scheme is inferred the way the
 /// connect screen does: `http` for loopback, `https` for anything else. Workspace mounts such as
@@ -70,7 +81,8 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
   /// The CLI handshake, when the link came from `omnigent start --open-in-desktop`.
   public let acknowledgment: DeepLinkAcknowledgment?
 
-  /// Parses a deep link. Queries other than `desktop_ack`, and fragments, are ignored.
+  /// Parses a deep link. Queries other than `desktop_ack`, `message` and `invite`, and fragments,
+  /// are ignored.
   /// - Parameter raw: For example `omnigent://localhost:8000/c/conv_abc`.
   /// - Throws: `DeepLinkError` describing the first problem found.
   public init(parsing raw: String) throws(DeepLinkError) {
@@ -111,8 +123,8 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
     acknowledgment = try Self.acknowledgment(query)
   }
 
-  /// `""` and `/` are home; `/c/<id>` and `/c/<id>/` are a conversation; `/register` with a
-  /// non-empty `invite` is an invite.
+  /// `""` and `/` are home; `/c/<id>` and `/c/<id>/` are a conversation, or one of its messages
+  /// with a non-empty `message`; `/register` with a non-empty `invite` is an invite.
   private static func route(_ path: Substring, query: Substring) throws(DeepLinkError)
     -> DeepLinkRoute
   {
@@ -129,6 +141,9 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
       let sessionID = percentDecoded(segments[2]), !sessionID.isEmpty,
       !sessionID.contains("/"), sessionID.unicodeScalars.allSatisfy({ $0.value >= 0x20 })
     else { throw .unsupportedPath(String(path)) }
+    if let messageID = queryValue("message", in: query), !messageID.isEmpty {
+      return .message(sessionID: sessionID, messageID: messageID)
+    }
     return .conversation(sessionID: sessionID)
   }
 

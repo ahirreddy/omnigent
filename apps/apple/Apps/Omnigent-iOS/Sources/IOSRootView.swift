@@ -218,6 +218,15 @@ extension IOSRootView {
       let signIn = session.signIn.actions
       actions.signOut = { signIn.signOut() }
     }
+    if session.isSignedIn {
+      let selection = $selection
+      actions.newSession = { selection.wrappedValue = .newSession }
+    }
+    if supportsMultipleWindows {
+      let openWindow = openWindow
+      let server = session.connectedURL?.absoluteString
+      actions.newWindow = { openWindow(value: PhoneWindowRequest(serverURL: server)) }
+    }
     return actions
   }
 

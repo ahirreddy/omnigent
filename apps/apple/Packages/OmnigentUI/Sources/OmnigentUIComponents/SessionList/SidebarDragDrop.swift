@@ -62,9 +62,9 @@ nonisolated public enum SidebarDropAction: Hashable, Sendable {
       if isShared || (destination.id == project?.id && !session.isPinned) { return .none }
       return .move(to: destination, unpin: session.isPinned)
     case .pinned:
-      return session.isPinned || !session.canPin ? .none : .pin(slotOf: nil)
+      return session.isPinned || !session.canPin || session.isArchived ? .none : .pin(slotOf: nil)
     case .pinSlot(let id):
-      return id == session.id || !session.canPin ? .none : .pin(slotOf: id)
+      return id == session.id || !session.canPin || session.isArchived ? .none : .pin(slotOf: id)
     case .sessions:
       if project != nil, !isShared { return .ungroup(unpin: session.isPinned) }
       return session.isPinned ? .unpin : .none
@@ -96,15 +96,15 @@ struct SidebarDropHandler {
   func rowTarget(_ session: SessionSummary, in section: SidebarSections.Section)
     -> SidebarDropTarget?
   {
-    guard state.display.groupBy == .default else { return nil }
     if session.isPinned { return .pinSlot(session.id) }
+    guard state.display.groupBy == .default else { return nil }
     return section.showsDisplayMenu ? .sessions : nil
   }
 
   /// Where a drop on `section`'s header goes.
   func sectionTarget(_ section: SidebarSections.Section) -> SidebarDropTarget? {
-    guard state.display.groupBy == .default else { return nil }
     if section.isPinned { return .pinned }
+    guard state.display.groupBy == .default else { return nil }
     return section.showsDisplayMenu ? .sessions : nil
   }
 

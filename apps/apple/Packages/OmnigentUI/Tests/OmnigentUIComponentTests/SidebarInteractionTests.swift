@@ -112,4 +112,57 @@ struct SidebarInteractionTests {
       StopSessionConfirmation.message(session, runsOnHost: true).contains(
         "and stops its runner, including side chats running on it."))
   }
+
+  @Test("Command-[ and ] wrap at the ends; off the list they enter at the top or bottom")
+  func sessionStep() {
+    #expect(SidebarNavigationOrder.step(from: "e", by: 1, in: order) == "a")
+    #expect(SidebarNavigationOrder.step(from: "a", by: -1, in: order) == "e")
+    #expect(SidebarNavigationOrder.step(from: "b", by: 1, in: order) == "c")
+    #expect(SidebarNavigationOrder.step(from: nil, by: 1, in: order) == "a")
+    #expect(SidebarNavigationOrder.step(from: "gone", by: -1, in: order) == "e")
+    #expect(SidebarNavigationOrder.step(from: "a", by: 1, in: ["a"]) == nil)
+    #expect(SidebarNavigationOrder.step(from: "a", by: 1, in: []) == nil)
+  }
+
+  @Test("Navigation follows the rows on screen: collapsed sections and folders drop out")
+  func navigationOrder() {
+    let state = PreviewData.sidebar
+    let all = SidebarNavigationOrder.sessionIDs(
+      state, collapsed: [], expandedProjects: ["proj_gitspoke"])
+    #expect(all.first == "sess_p1")
+    #expect(all.contains("sess_a2") && !all.contains("sess_w1"))
+    let collapsed = SidebarNavigationOrder.sessionIDs(
+      state, collapsed: ["Pinned", "Shared"], expandedProjects: [])
+    #expect(!collapsed.contains("sess_p1") && !collapsed.contains("sess_a4"))
+    #expect(!collapsed.contains("sess_a2"))
+  }
+
+  @Test("Rows hold their places under the pointer; pins keep the core's order; new rows go first")
+  func heldOrder() {
+    let sessions = ["p", "a", "b", "c"].map {
+      SessionSummary(id: $0, title: $0, isPinned: $0 == "p")
+    }
+    let order = ["p": 0, "a": 1, "b": 2, "c": 3]
+    // "c" updated and the core moved it up; "n" is new.
+    let live = [
+      sessions[0], SessionSummary(id: "n", title: "n"), sessions[3], sessions[1], sessions[2],
+    ]
+    #expect(SidebarBehavior.holding(live, order: order).map(\.id) == ["p", "n", "a", "b", "c"])
+    #expect(SidebarBehavior.addsPin(["p"], ["p", "a"]))
+    #expect(!SidebarBehavior.addsPin(["p", "a"], ["a"]))
+  }
+
+  @Test("A collapsed header shows its rows' strongest state, as the web's projectMarkerState")
+  func hiddenMarker() {
+    let list = PreviewData.sessionList
+    let rowInfo = PreviewData.rowInfo
+    #expect(
+      SidebarMarker.strongest(list.sessions, list: list, rowInfo: rowInfo)
+        == .needsYou(requests: 2))
+    let quiet = list.sessions.filter { $0.attention != .needsYou }
+    #expect(SidebarMarker.strongest(quiet, list: list, rowInfo: rowInfo) == .working)
+    let idle = list.sessions.filter { $0.id == "sess_m1" || $0.id == "sess_y1" }
+    #expect(SidebarMarker.strongest(idle, list: list, rowInfo: rowInfo) == .disconnected)
+    #expect(SidebarMarker.strongest(idle.suffix(0), list: list, rowInfo: rowInfo) == nil)
+  }
 }

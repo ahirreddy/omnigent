@@ -70,18 +70,24 @@ nonisolated public struct PaletteEntry: Hashable, Sendable, Identifiable {
 
 /// Server search matches for a palette query, in the web's two groups.
 nonisolated public struct PaletteSearchResults: Hashable, Sendable {
-  /// Sessions whose title matches, or a disabled row saying the search failed.
+  /// Sessions whose title matches.
   public var titles: [PaletteEntry]
   /// Sessions whose messages match ("In messages"), with the matching snippet.
   public var messages: [PaletteEntry]
+  /// Why the search failed; the palette offers Retry.
+  public var failure: String?
+  /// The server may have more matches than it returned; the palette offers Show more.
+  public var hasMore = false
 
   /// Creates results.
   /// - Parameters:
   ///   - titles: Title matches.
   ///   - messages: Message content matches.
-  public init(titles: [PaletteEntry] = [], messages: [PaletteEntry] = []) {
+  ///   - failure: Why the search failed.
+  public init(titles: [PaletteEntry] = [], messages: [PaletteEntry] = [], failure: String? = nil) {
     self.titles = titles
     self.messages = messages
+    self.failure = failure
   }
 }
 
@@ -117,8 +123,9 @@ public struct PaletteActions {
   /// Executes a destination after dismissing the palette.
   public var perform: @MainActor (PaletteTarget) -> Void
   /// Searches the server for sessions beyond the loaded list: title matches and message
-  /// content matches ("In messages"). `nil` searches only the loaded sessions.
-  public var search: (@MainActor (String) async -> PaletteSearchResults)?
+  /// content matches ("In messages"), up to a number of each. `nil` searches only the loaded
+  /// sessions.
+  public var search: (@MainActor (_ query: String, _ limit: Int) async -> PaletteSearchResults)?
 
   /// Creates navigation actions.
   /// - Parameters:
@@ -126,7 +133,7 @@ public struct PaletteActions {
   ///   - search: Server-side session search.
   public init(
     perform: @escaping @MainActor (PaletteTarget) -> Void,
-    search: (@MainActor (String) async -> PaletteSearchResults)? = nil
+    search: (@MainActor (_ query: String, _ limit: Int) async -> PaletteSearchResults)? = nil
   ) {
     self.perform = perform
     self.search = search

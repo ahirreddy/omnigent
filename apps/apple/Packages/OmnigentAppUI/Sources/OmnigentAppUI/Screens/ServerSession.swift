@@ -5,6 +5,7 @@ public import OmnigentRemoteBrowser
 import OmnigentServices
 public import OmnigentStores
 public import OmnigentTerminalStores
+public import OmnigentUIComponents
 public import OmnigentWorkspaceUI
 
 /// One server connection on screen: the core-backed ``ConnectionStore`` and the
@@ -24,6 +25,8 @@ public final class ServerSession {
   public private(set) var panels: [String: SessionPanelStore] = [:]
   /// The window's tabs.
   public let tabs = TabStore()
+  /// Messages that `?message=` links ask the transcript to scroll to.
+  public let transcriptFocus = TranscriptFocus()
   /// Sessions whose conversation, terminals and workspace are open.
   public private(set) var openSessionIDs: Set<String> = []
   /// The terminal names each session's agent declares, once read.
