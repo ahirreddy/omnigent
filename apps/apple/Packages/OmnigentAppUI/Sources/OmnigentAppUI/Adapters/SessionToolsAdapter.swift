@@ -115,6 +115,24 @@ enum SessionToolsAdapter {
   }
 
   /// "#1234", or "3 PRs"; `nil` without linked pull requests.
+  /// The composer chip's linked PRs with their live status, the ones that need the user first
+  /// (the web's order); equal statuses keep the server's order.
+  static func pullRequestPreview(_ panel: SessionPanelStore?) -> [PullRequestSummary] {
+    guard let panel, case .loaded(let rows, _) = PullRequestAdapter.state(panel) else { return [] }
+    return rows.enumerated()
+      .sorted { ($0.element.status.priority, $0.offset) < ($1.element.status.priority, $1.offset) }
+      .map(\.element)
+  }
+
+  /// Puts the linked PRs' label, top status and hover preview on the composer tray.
+  static func setPullRequests(
+    _ panel: SessionPanelStore?, label: String?, on tray: inout ComposerTray
+  ) {
+    tray.pullRequest = label
+    tray.pullRequestPreview = pullRequestPreview(panel)
+    tray.pullRequestStatus = tray.pullRequestPreview.first?.status
+  }
+
   static func pullRequestLabel(_ panel: SessionPanelStore?) -> String? {
     guard case .loaded(let list) = panel?.pullRequests else { return nil }
     switch list.pullRequests.count {

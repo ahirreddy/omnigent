@@ -163,9 +163,13 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Share:** the session Share control isn't wired in the real app yet; there's no share store
   or core API.
 - [ ] **Tabs:** the overview menu's "Recently Closed" entries are inert labels.
-- [ ] **Right panel, Pull Requests:** lists the server's stored PRs only. The web's PR view (the
-  runner's `/resources/github`: checks, reviewers, labels, the stacked diff, merge, comments,
-  linking and unlinking a PR) is not ported.
+- [ ] **Right panel, Pull Requests:** the PR detail (checks, reviewers, labels, stacked diff,
+  merge, comments, link/unlink) is ported. Not yet: inline review threads in the diff (read,
+  reply, start), editing the title and description (with attachment uploads), the provider
+  account and base-remote pickers, a resizable file tree beside the diff (a jump-to-file menu
+  stands in), split layout for the stacked diff, the offline fallback to the server's stored PR
+  with its "Host offline" hint, and periodic polling while checks run (it refreshes on open,
+  Refresh and turn end).
 - [ ] **Right panel, Agents:** a sub-agent's chat shows only its own children, not the root's
   tree (the web reads `GET /v1/sessions/{id}/child_sessions` from the root); no graph view or
   Add agent.

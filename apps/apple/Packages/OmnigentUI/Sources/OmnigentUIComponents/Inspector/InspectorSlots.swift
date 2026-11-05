@@ -202,6 +202,8 @@ public struct WorkspaceSlots {
   /// The "Open new" menu, read when the panel draws so its sources are observed there; `nil`
   /// or empty hides it.
   public var openNew: (@MainActor () -> [InspectorMenuSection])?
+  /// The Pull Requests tab's detail view, choices and actions.
+  public var pullRequestPanel = PullRequestPanelExtras()
 
   /// Creates slots.
   /// - Parameters:
@@ -226,4 +228,27 @@ public struct WorkspaceSlots {
     self.refreshPullRequests = refreshPullRequests
     self.openNew = openNew
   }
+}
+
+/// The panel's on-demand choices and the state of its changes.
+public struct PullRequestPanelExtras {
+  /// The PR shown in detail; `nil` shows the list.
+  public var detail: PullRequestDetailContent?
+  /// The Changes tab: the PR's files as a stacked diff.
+  public var changes: AnyView?
+  /// Labels the repository offers.
+  public var labelChoices: PullRequestChoices = .idle
+  /// Who a review can be requested from.
+  public var reviewerChoices: PullRequestChoices = .idle
+  /// Merge methods, the default first.
+  public var mergeMethods: PullRequestChoices = .idle
+  /// A change is in flight.
+  public var isBusy = false
+  /// The last change's failure.
+  public var error: String?
+  /// What the panel can do.
+  public var actions = PullRequestPanelActions()
+
+  /// Creates extras.
+  public init() {}
 }

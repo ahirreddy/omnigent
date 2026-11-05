@@ -81,7 +81,7 @@ struct UnifiedDiffBody: View {
   }
 }
 
-private struct UnifiedLineRow: View {
+struct UnifiedLineRow: View {
   let line: DiffLine
   let compactGutter: Bool
 

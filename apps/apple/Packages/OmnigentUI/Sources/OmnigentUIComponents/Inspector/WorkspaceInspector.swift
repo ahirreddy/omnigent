@@ -163,7 +163,8 @@ public struct WorkspaceInspector: View {
       case .pullRequests:
         if let pullRequests = slots.pullRequests {
           PullRequestsPanel(
-            state: pullRequests, open: actions.openURL, refresh: slots.refreshPullRequests)
+            state: pullRequests, extras: slots.pullRequestPanel, open: actions.openURL,
+            refresh: slots.refreshPullRequests)
         } else {
           PullRequestList(pullRequests: state.pullRequests, open: actions.openURL)
         }

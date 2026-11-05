@@ -16,6 +16,8 @@ struct WorkspacePanelSlots {
   let tabRoutes: ConversationTabRoutes?
   let terminalNames: DeclaredTerminals
   let permissionLevel: Int64?
+  /// The caller can change the session, so the Pull Requests tab offers its changes.
+  var canEdit = true
   /// Starts a side chat; `nil` hides it.
   var newSideChat: (@MainActor () -> Void)?
   /// Inserts a path reference into the composer.
@@ -28,6 +30,7 @@ struct WorkspacePanelSlots {
     if let panel {
       slots.pullRequests = PullRequestAdapter.state(panel)
       slots.refreshPullRequests = { Task { await panel.reloadPullRequests() } }
+      slots.pullRequestPanel = PullRequestPanelSlots.extras(panel, canEdit: canEdit)
     }
     guard let workspace else { return slots }
     let actions = WorkspaceActions(mention: mention)
