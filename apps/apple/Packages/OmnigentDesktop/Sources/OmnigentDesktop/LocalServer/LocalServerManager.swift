@@ -151,6 +151,8 @@ public final class LocalServerManager {
   public internal(set) var host: LocalHostStatus
   /// The CLI lookup.
   public internal(set) var cli: LocalCLIState = .notChecked
+  /// Installing the CLI from onboarding.
+  public internal(set) var cliInstall: LocalCLIInstallState = .idle
 
   /// Asks the user to allow host mode for a server. Defaults to declining; the desktop binds it
   /// to `HostModeConfirmation.confirm`.

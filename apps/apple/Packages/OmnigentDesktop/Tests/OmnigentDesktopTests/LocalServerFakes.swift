@@ -249,6 +249,7 @@ struct LocalServerHarness {
 
   init(
     capability: LocalServerCapability = .available,
+    executables: Set<String> = [Self.cliPath],
     configure: (LocalServerPreferences) -> Void = { _ in }
   ) throws {
     root = FileManager.default.temporaryDirectory
@@ -263,7 +264,7 @@ struct LocalServerHarness {
     configure(preferences)
     records = LocalServerRecordStore(directory: root.appending(path: "records"))
     let system = LocalCLIDiscovery.System(
-      homeDirectory: root, isExecutableFile: { $0 == Self.cliPath },
+      homeDirectory: root, isExecutableFile: { executables.contains($0) },
       loginShellPath: { "/fake/bin:/usr/bin:/bin" })
     var timing = LocalServerManager.Timing()
     timing.serverReadiness = .seconds(30)
