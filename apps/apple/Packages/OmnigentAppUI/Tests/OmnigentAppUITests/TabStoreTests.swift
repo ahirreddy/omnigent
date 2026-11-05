@@ -26,6 +26,24 @@ struct TabStoreTests {
     #expect(store.tabs.count { $0.content == .newTab } == 2)
   }
 
+  @Test("Closing a shell tab asks first and is not offered to Reopen; other tabs close at once")
+  func closeShell() {
+    let store = TabStore()
+    store.open(.chat(sessionID: "s1"))
+    let shell = store.open(.terminal(sessionID: "s1", terminalID: "t1"))
+    let side = store.open(.sideChat(sessionID: "s1", rowID: "r"))
+    store.requestClose(side.id)
+    #expect(store.tab(side.id) == nil)
+    store.requestClose(shell.id)
+    #expect(store.closingShell == shell.id)
+    #expect(store.tab(shell.id) != nil, "the shell waits for the confirmation")
+    let ended = store.closeShell(shell.id)
+    #expect(ended?.sessionID == "s1" && ended?.terminalID == "t1")
+    #expect(store.tab(shell.id) == nil)
+    #expect(store.closingShell == nil)
+    #expect(!store.closed.contains { $0.id == shell.id })
+  }
+
   @Test("Navigating from the new-tab page replaces it; a session open elsewhere is focused")
   func navigate() {
     let store = TabStore()

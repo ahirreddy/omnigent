@@ -13,6 +13,30 @@ extension TabStore {
     remove(at: index, remember: tabs[index].content != .newTab)
   }
 
+  /// Closes a tab the user asked to close. A shell tab asks first (``closingShell``), since
+  /// closing it ends the shell, as the web's "Close shell?".
+  /// - Parameter id: The tab.
+  public func requestClose(_ id: String) {
+    if case .terminal = tab(id)?.content {
+      if closingShell != id { closingShell = id }
+    } else {
+      close(id)
+    }
+  }
+
+  /// Closes a confirmed shell tab. Reopen Closed Tab does not offer it: its shell is gone.
+  /// - Parameter id: The tab.
+  /// - Returns: The shell's session and terminal, to end it.
+  @discardableResult
+  public func closeShell(_ id: String) -> (sessionID: String, terminalID: String)? {
+    closingShell = nil
+    guard let index = tabs.firstIndex(where: { $0.id == id }),
+      case .terminal(let sessionID, let terminalID) = tabs[index].content
+    else { return nil }
+    remove(at: index, remember: false)
+    return (sessionID, terminalID)
+  }
+
   /// Closes every unpinned tab except `id` and the primary chats.
   /// - Parameter id: The tab to keep.
   public func closeOthers(_ id: String) {
