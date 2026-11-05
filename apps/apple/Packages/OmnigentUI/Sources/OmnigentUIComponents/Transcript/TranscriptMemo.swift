@@ -80,16 +80,18 @@ final class TranscriptLayoutMemo {
     inputs = current
     computations += 1
     let lastAnswerID = current.isRunning ? nil : TranscriptView.lastAnswerID(state.rows)
-    cachedEntries = TranscriptView.segments(for: state).map { segment in
+    let segments = TranscriptView.segments(for: state)
+    let turnAnswers = Self.lastAnswerIDs(segments)
+    cachedEntries = segments.map { segment in
       var duration: TimeInterval?
       if case .worked(_, let responseID?, _, _) = segment {
         duration = state.turnDurations[responseID]
       }
       var decorations = Self.decorations(
         for: segment.items, state: state, lastAnswerID: lastAnswerID)
-      // A settled answer outside the fold carries its turn's "Worked for".
+      // A turn's last settled answer carries its "Worked for".
       if case .item(.message(let row)) = segment, row.role == .assistant, !row.isStreaming,
-        let responseID = row.responseId
+        let responseID = row.responseId, turnAnswers[responseID] == row.id
       {
         decorations[row.id]?.workedFor = state.turnDurations[responseID]
       }
@@ -97,6 +99,19 @@ final class TranscriptLayoutMemo {
     }
     cachedBlocks = []
     hasBlocks = false
+  }
+
+  /// The last visible assistant message of each response.
+  static func lastAnswerIDs(_ segments: [TurnSegment]) -> [String: String] {
+    var result: [String: String] = [:]
+    for segment in segments {
+      if case .item(.message(let row)) = segment, row.role == .assistant,
+        let responseID = row.responseId
+      {
+        result[responseID] = row.id
+      }
+    }
+    return result
   }
 
   private static func decorations(

@@ -122,8 +122,17 @@ public struct ConversationScreen<Terminal: View>: View {
     }
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .safeAreaInset(edge: .top, spacing: 0) {
-      if let creator = extras.menuContext.createdBy, let open = actions.openSession {
-        CreatedByBar(creator: creator, open: open)
+      if let open = actions.openSession {
+        if let parentID = parentSessionID {
+          let parent = extras.menuContext.parent
+          SessionOriginBar(
+            relation: .subagentOf,
+            origin: CreatingSession(
+              id: parentID, title: parent?.id == parentID ? parent?.title : nil),
+            open: open)
+        } else if let creator = extras.menuContext.createdBy {
+          SessionOriginBar(relation: .createdBy, origin: creator, open: open)
+        }
       }
     }
     .themeCanvas()
@@ -201,7 +210,7 @@ public struct ConversationScreen<Terminal: View>: View {
         SessionActionsButton { titleMenu }
       }
       // At compact width Share lives in the title menu; the top corner is out of thumb reach.
-      if extras.share != nil, layoutWidth == .regular, !tabsInTitlebar {
+      if extras.share != nil, layoutWidth == .regular {
         Button {
           showsShare = true
         } label: {

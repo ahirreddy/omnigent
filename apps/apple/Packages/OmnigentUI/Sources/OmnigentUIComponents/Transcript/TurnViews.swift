@@ -102,10 +102,11 @@ struct WorkingIndicator: View {
   }
 }
 
-/// The plan card at the top of the transcript: "Plan (x/y)", collapsible, scrolling past 150pt.
+/// The plan card pinned above the transcript: "Plan (x/y)", collapsed until opened, scrolling
+/// past 150pt.
 struct PlanCard: View {
   let section: EventSection
-  @State private var isExpanded = true
+  @State private var isExpanded = false
 
   var body: some View {
     let todos = SectionReading.todos(section)

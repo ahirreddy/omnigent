@@ -256,29 +256,3 @@ struct SubagentStatusGlyph: View {
     }
   }
 }
-
-/// Shown at the top of a child's transcript: the obvious route back to its parent.
-struct ParentSessionBanner: View {
-  let parentID: String
-  let open: (@MainActor (String) -> Void)?
-
-  var body: some View {
-    if let open {
-      Button {
-        open(parentID)
-      } label: {
-        Label("Back to the parent session", systemImage: "chevron.backward")
-          .font(Theme.Typography.label)
-          .padding(.horizontal, Theme.Spacing.medium)
-          .padding(.vertical, Theme.Spacing.small)
-          .frame(minHeight: Theme.Control.target)
-          .cardSurface(cornerRadius: Theme.Radius.large)
-          .contentShape(Capsule())
-      }
-      .buttonStyle(.plain)
-      .help("This is a subagent. Go back to the session that started it.")
-      .accessibilityHint("This session is a subagent")
-      .accessibilityIdentifier("session-open-parent")
-    }
-  }
-}

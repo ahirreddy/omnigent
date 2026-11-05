@@ -203,6 +203,30 @@ struct FailureBanner: View {
   }
 }
 
+/// The session's startup in the thread, from the core's `startup` section: the sandbox's launch
+/// stage or the MCP servers still starting as a spinner line, or a failed launch's banner.
+struct StartupLine: View {
+  let section: EventSection
+
+  var body: some View {
+    if section.details.first?.text == "failed" {
+      let error = section.details.first { $0.id == "error" }?.text ?? ""
+      StatusBanner(
+        kind: .failure, title: section.summary, detail: error, copyText: error,
+        identifier: "sandbox-failed")
+    } else {
+      TurnStatusRow {
+        ProgressView().controlSize(.small)
+      } label: {
+        Text(section.summary)
+      }
+      .frame(minHeight: Theme.Control.target)
+      .accessibilityAddTraits(.updatesFrequently)
+      .accessibilityIdentifier("startup-line")
+    }
+  }
+}
+
 /// A session-level error with optional dismiss and retry.
 struct ErrorBanner: View {
   let message: String

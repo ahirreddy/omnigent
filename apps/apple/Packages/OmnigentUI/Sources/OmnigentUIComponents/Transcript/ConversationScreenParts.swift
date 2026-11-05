@@ -59,6 +59,8 @@ nonisolated public struct SessionMenuContext: Hashable, Sendable {
   public var isShared: Bool
   /// The session that started this independent worker, as "Created by" links to it.
   public var createdBy: CreatingSession?
+  /// The session a sub-agent belongs to, as "Sub-agent of" links to it.
+  public var parent: CreatingSession?
 
   /// Creates a context.
   /// - Parameters:
@@ -66,21 +68,23 @@ nonisolated public struct SessionMenuContext: Hashable, Sendable {
   ///   - projectID: The current project.
   ///   - isShared: Someone else's session.
   ///   - createdBy: The session that started this worker.
+  ///   - parent: The session a sub-agent belongs to.
   public init(
     projects: [SessionProject] = [], projectID: String? = nil, isShared: Bool = false,
-    createdBy: CreatingSession? = nil
+    createdBy: CreatingSession? = nil, parent: CreatingSession? = nil
   ) {
     self.projects = projects
     self.projectID = projectID
     self.isShared = isShared
     self.createdBy = createdBy
+    self.parent = parent
   }
 
   /// The project the session is filed in.
   public var project: SessionProject? { projects.first { $0.id == projectID } }
 }
 
-/// The session that started an independent worker.
+/// The session that started an independent worker, or a sub-agent's parent.
 nonisolated public struct CreatingSession: Hashable, Sendable {
   /// Its id.
   public var id: String
