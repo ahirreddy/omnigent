@@ -274,7 +274,7 @@ final class CLICodeHighlightCache {
   func attributed(_ code: String, language: String?, palette: CLIPalette) -> AttributedString {
     entries.value(for: Key(code: code, language: language, palette: palette)) {
       var colored = CodeHighlighting.attributed(
-        code, spans: CodeHighlighting.spans(code, language: language)
+        code, spans: CodeSpanCache.shared.spans(code, language: language)
       ) { Self.color($0, palette).color }
       for run in colored.runs where run.foregroundColor == nil {
         colored[run.range].foregroundColor = palette.body.color

@@ -78,21 +78,33 @@ nonisolated enum CodeHighlighting {
     attributed(code, spans: spans) { color($0, scheme: scheme) }
   }
 
-  /// `code` with each span in the color `color` gives its token.
+  /// `code` with each span in the color `color` gives its token, built in one pass over the
+  /// code. Spans come in order without overlapping; one that overlaps or runs past the end, or
+  /// splits a character, is skipped.
   static func attributed(
     _ code: String, spans: [CodeSpan], color: (CodeToken) -> Color
   ) -> AttributedString {
-    var attributed = AttributedString(code)
+    guard !spans.isEmpty else { return AttributedString(code) }
     let utf16 = code.utf16
-    for span in spans {
-      let lower = utf16.index(utf16.startIndex, offsetBy: span.range.lowerBound)
-      let upper = utf16.index(utf16.startIndex, offsetBy: span.range.upperBound)
-      guard let start = AttributedString.Index(lower, within: attributed),
-        let end = AttributedString.Index(upper, within: attributed)
+    var result = AttributedString()
+    var position = code.startIndex
+    var offset = 0
+    for span in spans where span.range.lowerBound >= offset {
+      guard
+        let lower = utf16.index(
+          position, offsetBy: span.range.lowerBound - offset, limitedBy: utf16.endIndex),
+        let upper = utf16.index(lower, offsetBy: span.range.count, limitedBy: utf16.endIndex),
+        let start = String.Index(lower, within: code), let end = String.Index(upper, within: code)
       else { continue }
-      attributed[start..<end].foregroundColor = color(span.token)
+      result.append(AttributedString(code[position..<start]))
+      var piece = AttributedString(code[start..<end])
+      piece.foregroundColor = color(span.token)
+      result.append(piece)
+      position = end
+      offset = span.range.upperBound
     }
-    return attributed
+    result.append(AttributedString(code[position...]))
+    return result
   }
 
   @MainActor private static func color(_ token: CodeToken, scheme: ColorScheme) -> Color {
@@ -107,7 +119,8 @@ nonisolated enum CodeHighlighting {
 }
 
 /// Highlighted code, cached by code, language and scheme so a transcript's code blocks color
-/// once however often they redraw.
+/// once however often they redraw. The spans usually come tokenized already
+/// (``MarkdownWarmup``), so a miss here only colors them.
 @MainActor
 final class CodeHighlightCache {
   static let shared = CodeHighlightCache(limit: 256)
@@ -130,7 +143,7 @@ final class CodeHighlightCache {
     let key = Key(code: code, language: language, dark: scheme == .dark)
     return entries.value(for: key) {
       CodeHighlighting.attributed(
-        code, spans: CodeHighlighting.spans(code, language: language), scheme: scheme)
+        code, spans: CodeSpanCache.shared.spans(code, language: language), scheme: scheme)
     }
   }
 }

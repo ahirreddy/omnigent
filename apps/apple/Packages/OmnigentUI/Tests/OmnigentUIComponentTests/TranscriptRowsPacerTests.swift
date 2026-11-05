@@ -26,9 +26,10 @@ struct TranscriptRowsPacerTests {
   }
 
   /// Waits until `pacer` has published `count` updates, so a loaded test run doesn't fail on time.
+  /// It counts its own turns rather than the clock: while other suites hold the main actor for
+  /// minutes, the pacer's tasks cannot run either.
   private static func waitForPublished(_ pacer: TranscriptRowsPacer, _ count: Int) async throws {
-    let deadline = ContinuousClock.now + .seconds(10)
-    while pacer.published < count, ContinuousClock.now < deadline {
+    for _ in 0..<500 where pacer.published < count {
       try await Task.sleep(for: .milliseconds(20))
     }
   }
@@ -64,5 +65,22 @@ struct TranscriptRowsPacerTests {
     try await Self.waitForPublished(pacer, 1)
     #expect(pacer.published == 1)
     #expect(pacer.rows(from: Self.reader(store), isShown: true).revision == 2)
+  }
+
+  @Test("A first page of answers shows once their markdown is parsed; later rows do not wait")
+  func firstPageWaitsForMarkdown() async throws {
+    let store = Store()
+    let pacer = TranscriptRowsPacer(interval: .milliseconds(40), preparingLimit: .seconds(10))
+    _ = pacer.rows(from: Self.reader(store), isShown: true)
+    let texts = (0..<3).map { "First page answer \($0) with `code` \(UUID())" }
+    for text in texts { store.append(text) }
+    try await Self.waitForPublished(pacer, 1)
+    #expect(pacer.published == 1)
+    #expect(!pacer.isPreparing)
+    for text in texts { #expect(MarkdownCache.shared.contains(text)) }
+    #expect(pacer.rows(from: Self.reader(store), isShown: true).rows.count == 3)
+    store.append("A later answer")
+    try await Self.waitForPublished(pacer, 2)
+    #expect(pacer.published == 2, "only the first page waits")
   }
 }

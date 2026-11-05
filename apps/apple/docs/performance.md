@@ -252,6 +252,64 @@ Tried and dropped:
   re-renders the screen (it never reads them per keystroke), and every other pass re-renders the
   screen anyway for its closures, so there was nothing to cut.
 
+## Fourth pass: resize and markdown (November 2026)
+
+Two rounds of 3 interleaved runs each (old and new build alternating), Debug, load 300-990, so
+the absolute numbers are 2-5 times the quiet ones; medians, main-thread CPU unless a row says
+otherwise. Cells give round 1 / round 2. The driver's resize schedules its 60 steps a frame
+apart; a slow step lets the overdue ones run back to back, so the resize's "worst frame" is
+several steps and its CPU is the number to compare.
+
+| Scenario, chat style | Before | After |
+| --- | --- | --- |
+| Resize the window over 60 steps | 8.9 s / 16.2 s | 4.8 s / 10.7 s |
+| Open a 500-turn transcript: CPU | 2.38 s / 2.54 s | 1.91 s / 2.16 s |
+| Open it: settled | 3.8 s / 3.0 s | 2.1 s / 2.6 s |
+| Open it: worst frame | 1.10 s / 1.05 s | 0.76 s / 1.01 s |
+| Toggle the sidebar: CPU | 1.59 s / 2.42 s | 1.08 s / 2.26 s |
+| Toggle the sidebar: hitch time / worst frame | 865 ms/s, 470 ms / 738 ms/s, 605 ms | 740 ms/s, 234 ms / 885 ms/s, 451 ms |
+| Toggle the right panel: CPU | 1.21 s / 1.46 s | 1.17 s / 1.57 s |
+| Toggle the right panel: hitch time | 538 / 706 ms/s | 613 / 705 ms/s |
+| Scroll the transcript 90 steps down and back (round 2) | 1.27 s, 184 ms/s | 1.38 s, 197 ms/s |
+
+CLI style (`--style cli`), same conditions, round 1 / round 2:
+
+| Scenario, CLI style | Before | After |
+| --- | --- | --- |
+| Resize the window over 60 steps | 7.5 s / 8.4 s | 5.1 s / 4.7 s |
+| Open a 500-turn transcript: CPU | 2.15 s / 2.33 s | 2.83 s / 1.84 s |
+| Open it: settled / worst frame (round 2) | 3.5 s, 958 ms | 2.7 s, 814 ms |
+| Toggle the right panel: CPU (round 1) | 0.97 s | 0.65 s |
+
+The CLI round 1 ran while the machine's load swung (its new build's launch was also 0.3-2.9 s
+slower than the old one's in the same runs); round 2 repeats the open with steadier load.
+
+What changed:
+
+- **A resize step no longer re-renders the window.** `AppShell` kept the detail column's width
+  in its state for the titlebar's tab strip, so every step re-ran the shell, the sidebar's 650
+  rows, the conversation screen and composer. The width now lives in an observable box
+  (`DetailColumnWidth`) that only the strip reads. `TabSplitView` and the transcript's message
+  navigator likewise keep whether the width fits, not the width. In samples of a resize, view
+  bodies fell from 14% to 5% of each step and the sidebar's outline updates are gone.
+- **Markdown parses and code tokenizes off the main actor.** `MarkdownCache` and
+  `CodeSpanCache` are thread-safe (a `Mutex` around the bounded cache; a miss parses outside
+  the lock). `MarkdownWarmup` hands settled answers to a background task newest first, and a
+  conversation's first page of rows waits up to 0.4 s for the newest 12 (the transcript keeps
+  saying it is loading meanwhile), so the first frame finds them parsed. A row the warm-up has
+  not reached still parses in its body, so nothing shows unformatted and then reflows.
+- **Coloring code spans is linear** (`CodeHighlighting.attributed`): it appends the plain and
+  colored pieces in order instead of mapping each span's offsets from the start of the text.
+
+Tried and left out:
+
+- The open's worst frame (0.75-1 s) is still laying out the first screen of rows; parsing was
+  the smaller part of it.
+- Toggling the right panel animates the detail column, and each animation frame is a resize
+  step; it moved within noise. The sidebar toggle gained from the shell no longer re-rendering.
+- One selectable text view per message instead of one overlay per `Text` (3-5% of samples)
+  needs a TextKit view in place of SwiftUI `Text`, a larger change than this pass.
+
 ## Where the time still goes
 
 - Opening a long session (about 1 s quiet, 2-3 s under load) is SwiftUI building and laying
@@ -259,19 +317,18 @@ Tried and dropped:
   pass over each whole block) is the largest single cost, then view and attribute setup and
   the selectable-text overlays (one AppKit view per selectable `Text`, 3-5% of samples). App
   code stays under 2%.
-- **Resizing the window** is the worst interaction: each size step re-runs SwiftUI's update
-  over the whole window (90% of samples in `NSHostingView.layout`, spread over attribute
-  updates, hover updates, the toolbar and the text selection overlays), and single steps take
-  up to seconds after the transcript rewraps. Toggling the sidebar or the right panel animates
-  the same relayout (480 and 270 ms/s of hitch time). Next levers: a fixed-width transcript
-  column during live resize, and fewer selectable `Text` overlays per message.
+- **Resizing the window** is still the worst interaction, though no longer re-rendering view
+  bodies: each size step is SwiftUI's attribute-graph and layout pass over the whole window
+  (`NSHostingView.layout`, with the titlebar's toolbar layout about a tenth of it), 50-80 ms per
+  step in Debug under load. Toggling the sidebar or the right panel animates the same relayout.
+  Text measuring is under 1% of a resize, so a fixed-width transcript column would not help.
 - While a reply streams, each paced render still costs 10-15 ms in Debug, spread over SwiftUI's
   graph update, the lazy stack's layout and the text overlays.
 - A changed session-list row still sends every session through the core twice (filter and
   totals), about 22 ms with 650 sessions. A turn changes its session's row a few times, so it
   was not worth an incremental core API in this pass.
-- Markdown parsing and code highlighting still run on the main actor on a cache miss (a
-  visible row's first render).
+- Markdown parsing and code highlighting run on the main actor only on a warm-up miss: a row
+  scrolled to before the background task reached it, or a streaming row's open block.
 - Debug is several times slower than Release for this generic SwiftUI and value-type code;
   measure a Release build (`xcodebuild -configuration Release`) before chasing a Debug-only
   cost.

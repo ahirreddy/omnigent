@@ -43,6 +43,7 @@ struct TranscriptRowsContent<Header: View>: View {
   var body: some View {
     let state = rowsState
     current.state = state
+    pacer.warmup.warm(state.rows)
     return list(state)
   }
 
@@ -80,6 +81,7 @@ struct TranscriptRowsContent<Header: View>: View {
     let live = pacer.rows(from: liveRows, isShown: !isHidden)
     state.rows = live.rows
     state.revision = live.revision
+    if pacer.isPreparing { state.isHydrating = true }
     return state
   }
 
