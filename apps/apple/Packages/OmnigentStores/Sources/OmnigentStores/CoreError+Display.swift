@@ -56,6 +56,16 @@ extension CoreError {
     return false
   }
 
+  /// Whether a terminal or remote-browser read found the session's runner offline (HTTP 503
+  /// `runner_unavailable`): the runner sleeps until the next message relaunches it.
+  public var isRunnerUnavailable: Bool {
+    switch self {
+    case .Terminal(let kind, _, _): kind == .runnerUnavailable
+    case .RemoteBrowser(let kind, _, _): kind == .runnerUnavailable
+    default: false
+    }
+  }
+
   /// Whether a write may have landed; the user must review before sending again.
   public var isDeliveryUncertain: Bool {
     if case .Session(_, _, _, _, let deliveryUncertain) = self { return deliveryUncertain }

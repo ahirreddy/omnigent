@@ -55,6 +55,12 @@ public final class ConversationStore {
     didSet {
       let online = header?.settings?.hostOnline
       if online == true, online != oldValue?.settings?.hostOnline { composer.hostCameOnline() }
+      // A running turn or a reported runner means the runner is back.
+      if runnerUnavailable != nil,
+        header?.settings?.runnerOnline == true || header?.status == .running
+      {
+        runnerUnavailable = nil
+      }
     }
   }
   /// Session sections (usage, plan, changed files, ...).
@@ -69,6 +75,9 @@ public final class ConversationStore {
   public private(set) var lastFailure: String?
   /// Failures in this session, newest last. Never dropped silently.
   public private(set) var errors: [CoreError] = []
+  /// The last terminal or browser read found the runner offline: the agent is asleep until a
+  /// message relaunches it. A panel state, not a session error.
+  public private(set) var runnerUnavailable: CoreError?
   /// The core closed the session (removed or access lost).
   public private(set) var isClosed = false
   /// The session the conversation continues in, when superseded.
@@ -291,6 +300,10 @@ public final class ConversationStore {
   }
 
   func record(_ error: CoreError) {
+    if error.isRunnerUnavailable {
+      if error != runnerUnavailable { runnerUnavailable = error }
+      return
+    }
     errors.append(error)
     if errors.count > 50 { errors.removeFirst(errors.count - 50) }
   }

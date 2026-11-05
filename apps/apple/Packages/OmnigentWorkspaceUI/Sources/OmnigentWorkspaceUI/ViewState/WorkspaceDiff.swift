@@ -208,6 +208,12 @@ nonisolated public struct WorkspaceFailure: Error, Hashable, Sendable {
     self.message = message
   }
 
+  /// What the panels say: an offline runner relaunches on the next message, so they say that
+  /// (the web's "Agent is asleep") instead of the server's 503 text.
+  public var displayMessage: String {
+    kind == .runnerOffline ? "Send a message in the chat to reconnect." : message
+  }
+
   /// The SF Symbol for the kind.
   public var symbol: String {
     switch kind {

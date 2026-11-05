@@ -40,6 +40,7 @@ enum ComposerAdapter {
     state.mentions = composer.mentions
     state.approvalPickerRequest = composer.approvalPickerRequests
     state.connection = connection(store)
+    state.liveness = LivenessAdapter.notice(store, serverURL: server?.baseUrl)
     if let fraction = contextFraction(store.sections) {
       state.tray = ComposerTray(contextFraction: fraction)
     }
@@ -181,6 +182,7 @@ enum ComposerAdapter {
     extras.history = history(composer, prompts: prompts)
     extras.attachMention = { composer.addMention($0) }
     extras.removeMention = { composer.removeMention($0) }
+    extras.liveness.checkAgain = reconnect
     return extras
   }
 

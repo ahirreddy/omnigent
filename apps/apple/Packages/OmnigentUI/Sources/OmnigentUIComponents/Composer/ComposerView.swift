@@ -174,6 +174,8 @@ public struct ComposerView: View {
       }
       if let connection = state.connection {
         ConnectionNoticeRow(notice: connection, reconnect: actions.extras.reconnect)
+      } else if let liveness = state.liveness {
+        SessionLivenessRow(notice: liveness, actions: actions.extras.liveness)
       }
     }
     .padding(.vertical, layout == .touch ? ComposerBarMetrics.outerPadding : Theme.Spacing.medium)

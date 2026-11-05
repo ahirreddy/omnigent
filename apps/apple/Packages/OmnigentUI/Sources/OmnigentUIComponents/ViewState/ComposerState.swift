@@ -176,6 +176,8 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var mentions: [String] = []
   /// The stream is not live: shown under the composer with Reconnect.
   public var connection: ComposerConnectionNotice?
+  /// The agent is asleep, waking, or unreachable: shown under the composer.
+  public var liveness: SessionLivenessNotice?
 
   /// Creates composer state.
   /// - Parameters:

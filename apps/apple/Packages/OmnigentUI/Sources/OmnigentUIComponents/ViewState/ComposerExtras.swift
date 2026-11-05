@@ -285,6 +285,8 @@ public struct ComposerExtraActions {
   public var attachMention: (@MainActor (String) -> Void)?
   /// Untag a path (its chip's remove button).
   public var removeMention: (@MainActor (String) -> Void)?
+  /// The reconnect sheet's Check Again and Fork.
+  public var liveness = SessionLivenessActions()
 
   /// Creates actions.
   /// - Parameters:
