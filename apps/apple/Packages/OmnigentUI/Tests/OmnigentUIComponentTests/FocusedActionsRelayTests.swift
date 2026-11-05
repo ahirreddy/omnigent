@@ -1,3 +1,4 @@
+import SwiftUI
 import Testing
 
 @testable import OmnigentUIComponents
@@ -78,5 +79,39 @@ struct FocusedActionsRelayTests {
     #expect(relay.publications == 1)
     published.openPalette()
     #expect(opened == 1)
+  }
+
+  @Test("server commands forward to the latest and republish when Sign Out appears")
+  func serverCommandsForward() throws {
+    let relay = FocusedActionsRelay<ServerCommandActions>()
+    var calls: [String] = []
+    _ = relay.publish(ServerCommandActions(reconnect: { calls.append("old") }))
+    let published = try #require(
+      relay.publish(
+        ServerCommandActions(
+          reconnect: { calls.append("reconnect") }, changeServer: { calls.append("change") })))
+    #expect(relay.publications == 2)
+    published.reconnect?()
+    published.changeServer?()
+    #expect(published.signOut == nil)
+    #expect(calls == ["reconnect", "change"])
+
+    let signedIn = try #require(
+      relay.publish(ServerCommandActions(reconnect: {}, changeServer: {}, signOut: {})))
+    #expect(relay.publications == 3)
+    #expect(signedIn.signOut != nil)
+  }
+
+  @Test("the sidebar toggle hides a shown sidebar and shows a hidden one")
+  func sidebarToggle() {
+    #expect(SidebarToggle.toggled(.all) == .detailOnly)
+    #expect(SidebarToggle.toggled(.automatic) == .detailOnly)
+    #expect(SidebarToggle.toggled(.detailOnly) == .all)
+    let toggle = SidebarToggle()
+    var toggled = 0
+    toggle()
+    toggle.toggle = { toggled += 1 }
+    toggle()
+    #expect(toggled == 1)
   }
 }

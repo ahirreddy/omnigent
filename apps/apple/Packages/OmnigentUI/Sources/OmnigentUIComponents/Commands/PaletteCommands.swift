@@ -152,23 +152,20 @@ private struct ShortcutAliases: View {
   @FocusedValue(\.tabCommands) private var tabs
 
   var body: some View {
-    #if os(macOS)
-      Group {
-        Button("Toggle Sidebar") { perform(.toggleSidebar) }
-          .keyboardShortcut(AppShortcuts.toggleSidebarAlias)
-        // Shift turns [ into { on most layouts, so the shifted character is bound too; focusing
-        // a pane is idempotent if both match.
-        focus(.leading, AppShortcuts.previousPane)
-        focus(.leading, KeyboardShortcut("{", modifiers: [.command, .option]))
-        focus(.trailing, AppShortcuts.nextPane)
-        focus(.trailing, KeyboardShortcut("}", modifiers: [.command, .option]))
-      }
-      .opacity(0)
-      .frame(width: 0, height: 0)
-      .accessibilityHidden(true)
-    #else
-      Color.clear.accessibilityHidden(true)
-    #endif
+    // iPad binds them too, for a hardware keyboard.
+    Group {
+      Button("Toggle Sidebar") { perform(.toggleSidebar) }
+        .keyboardShortcut(AppShortcuts.toggleSidebarAlias)
+      // Shift turns [ into { on most layouts, so the shifted character is bound too; focusing
+      // a pane is idempotent if both match.
+      focus(.leading, AppShortcuts.previousPane)
+      focus(.leading, KeyboardShortcut("{", modifiers: [.command, .option]))
+      focus(.trailing, AppShortcuts.nextPane)
+      focus(.trailing, KeyboardShortcut("}", modifiers: [.command, .option]))
+    }
+    .opacity(0)
+    .frame(width: 0, height: 0)
+    .accessibilityHidden(true)
   }
 
   private func focus(_ pane: TabPane, _ shortcut: KeyboardShortcut) -> some View {

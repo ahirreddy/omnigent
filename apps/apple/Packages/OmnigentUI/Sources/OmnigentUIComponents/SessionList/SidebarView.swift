@@ -64,7 +64,7 @@ public struct SidebarView: View {
     .accessibilityIdentifier("sidebar")
     .scrollContentBackground(.hidden)
     .themeSidebar()
-    .searchable(text: $searchText, placement: .sidebar, prompt: "Search sessions")
+    .modifier(SidebarSearchField(text: $searchText))
     .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader(state: state, actions: actions) }
     .safeAreaInset(edge: .bottom, spacing: 0) { bottomBars }
     #if os(macOS)

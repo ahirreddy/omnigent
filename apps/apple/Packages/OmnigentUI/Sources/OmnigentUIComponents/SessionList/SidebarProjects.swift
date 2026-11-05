@@ -37,7 +37,8 @@ struct ProjectFolder<Row: View>: View {
           if let icon = project.icon {
             Text(icon)
           } else {
-            Image(systemName: "folder")
+            // The navigation rows' color, not the platform tint (system blue on iOS).
+            Image(systemName: "folder").foregroundStyle(ThemeColor.primary)
           }
         }
         Spacer(minLength: 4)

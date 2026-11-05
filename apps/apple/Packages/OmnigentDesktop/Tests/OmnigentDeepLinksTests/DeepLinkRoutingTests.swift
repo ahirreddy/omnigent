@@ -1,6 +1,6 @@
 import Testing
 
-@testable import OmnigentDesktop
+@testable import OmnigentDeepLinks
 
 // Decision table ported from web/electron/test/deepLink.test.js ("chooseDeepLinkStrategy").
 // Electron's "mid-auth, off-origin" window maps to a bound window that is not ready yet.

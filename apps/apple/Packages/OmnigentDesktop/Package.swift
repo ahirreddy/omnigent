@@ -17,9 +17,12 @@ let mainActorSwiftSettings = strictSwiftSettings + [.defaultIsolation(MainActor.
 
 let package = Package(
   name: "OmnigentDesktop",
-  platforms: [.macOS("26.0")],
+  // iOS builds only `OmnigentDeepLinks`; the desktop targets are macOS only.
+  platforms: [.iOS("26.0"), .macOS("26.0")],
   products: [
     .library(name: "OmnigentDesktop", targets: ["OmnigentDesktop"]),
+    // `omnigent://` link parsing and window routing, shared with the iOS app.
+    .library(name: "OmnigentDeepLinks", targets: ["OmnigentDeepLinks"]),
     // Sparkle updates, for the Developer ID edition only: the App Store edition must never link
     // Sparkle, so it is a separate product (see RELEASE.md, "Auto-update").
     .library(name: "OmnigentDesktopUpdate", targets: ["OmnigentDesktopUpdate"]),
@@ -30,7 +33,10 @@ let package = Package(
     .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
   ],
   targets: [
-    .target(name: "OmnigentDesktop", exclude: ["Update"], swiftSettings: mainActorSwiftSettings),
+    .target(name: "OmnigentDeepLinks", swiftSettings: mainActorSwiftSettings),
+    .target(
+      name: "OmnigentDesktop", dependencies: ["OmnigentDeepLinks"], exclude: ["Update"],
+      swiftSettings: mainActorSwiftSettings),
     .target(
       name: "OmnigentDesktopUpdate",
       dependencies: [.product(name: "Sparkle", package: "Sparkle")],
@@ -41,6 +47,11 @@ let package = Package(
       name: "OmnigentDesktopExample",
       dependencies: ["OmnigentDesktop"],
       swiftSettings: mainActorSwiftSettings
+    ),
+    .testTarget(
+      name: "OmnigentDeepLinksTests",
+      dependencies: ["OmnigentDeepLinks"],
+      swiftSettings: strictSwiftSettings
     ),
     .testTarget(
       name: "OmnigentDesktopTests",

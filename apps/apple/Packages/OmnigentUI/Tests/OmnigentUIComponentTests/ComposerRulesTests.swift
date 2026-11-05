@@ -110,24 +110,25 @@ struct ComposerRulesTests {
     #expect(
       ExecutionContext.serverDisplayName(name: "Team", baseURL: "http://127.0.0.1:6767")
         == "Team")
+    let mac = "This Mac"
+    func name(_ name: String?, _ baseURL: String?, loopback: String? = mac) -> String {
+      ExecutionContext.serverDisplayName(name: name, baseURL: baseURL, loopbackName: loopback)
+    }
+    #expect(name(nil, "http://127.0.0.1:6767") == mac)
+    #expect(name(" ", "http://[::1]:6767/omnigent") == mac)
+    #expect(name("localhost", "not a url") == mac)
+    #expect(name(nil, "https://omni.example.com:8443/x") == "omni.example.com:8443")
+    #expect(name(nil, nil) == "Connected server")
+    // On iPhone and iPad a loopback server shows its address, never "This device".
+    #expect(name(nil, "http://127.0.0.1:6767", loopback: nil) == "127.0.0.1:6767")
+    #expect(name("localhost", "http://localhost:6767", loopback: nil) == "localhost:6767")
+    #expect(name("localhost", "not a url", loopback: nil) == "localhost")
     #if os(macOS)
-      let thisDevice = "This Mac"
+      #expect(ExecutionContext.serverDisplayName(name: nil, baseURL: "http://[::1]:1") == mac)
+      #expect(ExecutionContext.hostDisplayName("127.0.0.1") == mac)
     #else
-      let thisDevice = "This device"
+      #expect(ExecutionContext.hostDisplayName("127.0.0.1") == "127.0.0.1")
     #endif
-    #expect(
-      ExecutionContext.serverDisplayName(name: nil, baseURL: "http://127.0.0.1:6767")
-        == thisDevice)
-    #expect(
-      ExecutionContext.serverDisplayName(name: " ", baseURL: "http://[::1]:6767/omnigent")
-        == thisDevice)
-    #expect(
-      ExecutionContext.serverDisplayName(name: "localhost", baseURL: "not a url") == thisDevice)
-    #expect(
-      ExecutionContext.serverDisplayName(name: nil, baseURL: "https://omni.example.com:8443/x")
-        == "omni.example.com:8443")
-    #expect(ExecutionContext.serverDisplayName(name: nil, baseURL: nil) == "Connected server")
-    #expect(ExecutionContext.hostDisplayName("127.0.0.1") == thisDevice)
     #expect(ExecutionContext.hostDisplayName("127.example.com") == "127.example.com")
     #expect(ExecutionContext.hostDisplayName("") == nil)
   }

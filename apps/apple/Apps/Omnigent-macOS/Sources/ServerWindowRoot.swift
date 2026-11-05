@@ -212,12 +212,9 @@ struct ServerWindowRoot: View {
     case .conversation(let sessionID): selection = .session(sessionID)
     case .register(let invite):
       guard let session, let serverURL = id.serverURL,
-        var components = URLComponents(url: serverURL, resolvingAgainstBaseURL: false)
+        let link = SceneLinkPlan.inviteLink(server: serverURL, invite: invite)
       else { return }
-      while components.path.hasSuffix("/") { components.path.removeLast() }
-      components.path += "/register"
-      components.queryItems = [URLQueryItem(name: "invite", value: invite)]
-      if let link = components.string { session.signIn.openInvite(link) }
+      session.signIn.openInvite(link)
     }
   }
 
@@ -271,26 +268,11 @@ struct ServerWindowRoot: View {
 
   /// Whether the core is already connected, connecting or signing in to `serverURL`.
   static func isConnecting(_ session: ServerSession, to serverURL: URL) -> Bool {
-    let phaseURL: String? =
-      switch session.connection.phase {
-      case .disconnected, .failed: nil
-      case .discovering(let url): url
-      case .signInRequired(let url, _, _, _, _), .signingIn(let url),
-        .awaitingBrowserLogin(let url, _), .connecting(let url):
-        url
-      case .connected(let server): server.baseUrl
-      }
-    return sameServer(phaseURL.flatMap(URL.init(string:)), serverURL)
+    sameServer(session.targetURL, serverURL)
   }
 
   /// Two server URLs name the same server, ignoring case and a trailing slash.
   static func sameServer(_ lhs: URL?, _ rhs: URL?) -> Bool {
-    func key(_ url: URL?) -> String? {
-      guard var text = url?.absoluteString.lowercased() else { return nil }
-      while text.hasSuffix("/") { text.removeLast() }
-      return text
-    }
-    guard let left = key(lhs) else { return false }
-    return left == key(rhs)
+    ServerSession.sameServer(lhs, rhs)
   }
 }
