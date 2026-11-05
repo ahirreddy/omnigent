@@ -24,8 +24,19 @@ public struct ComposerDraft {
     self.init(get: { binding.wrappedValue }, set: { binding.wrappedValue = $0 })
   }
 
+  /// Creates a draft whose binding the composer makes when it renders: a key-path projection of
+  /// an `@State` object (`$source.text`), which compares equal across updates. One made from
+  /// closures counts as changed on every update, which kept re-rendering iPad's composer.
+  /// - Parameter makeBinding: Makes the binding to the text.
+  public init(binding makeBinding: @escaping @MainActor () -> Binding<String>) {
+    self.init(get: { makeBinding().wrappedValue }, set: { makeBinding().wrappedValue = $0 })
+    self.makeBinding = makeBinding
+  }
+
+  private var makeBinding: (@MainActor () -> Binding<String>)?
+
   /// A binding to the text, for the view that shows it.
   var binding: Binding<String> {
-    Binding(get: get, set: set)
+    makeBinding?() ?? Binding(get: get, set: set)
   }
 }

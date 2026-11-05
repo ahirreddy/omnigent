@@ -34,6 +34,22 @@ struct ComposerDraftTests {
     #expect(model.text == "edited")
   }
 
+  @Test("A draft made from a binding factory reads nothing until the composer makes it")
+  @MainActor func bindingFactory() {
+    let model = Model()
+    var made = 0
+    let draft = ComposerDraft {
+      made += 1
+      return Binding(get: { model.text }, set: { model.text = $0 })
+    }
+    #expect(made == 0)
+    draft.binding.wrappedValue = "typed"
+    #expect(model.text == "typed")
+    #expect(draft.get() == "typed")
+    draft.set("edited")
+    #expect(model.text == "edited")
+  }
+
   @Test("Only text besides whitespace counts as something to send")
   func hasText() {
     #expect(!ComposerDraftText.hasText(""))

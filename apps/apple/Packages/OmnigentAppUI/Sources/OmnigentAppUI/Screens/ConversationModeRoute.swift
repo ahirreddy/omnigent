@@ -1,5 +1,6 @@
 import Observation
 import OmnigentUIComponents
+import SwiftUI
 
 /// A conversation's Chat/Terminal choice, for a key-path binding (`$route.mode`). With tabs,
 /// choosing Terminal opens the agent's TUI in its own tab and the chat stays on Chat.
@@ -10,7 +11,7 @@ import OmnigentUIComponents
 @Observable
 final class ConversationModeRoute {
   private var stored: SessionViewMode = .chat
-  /// Opens the harness tab; `nil` without tabs. The container sets it on each render.
+  /// Opens the harness tab; `nil` without tabs.
   @ObservationIgnored var openHarness: (@MainActor () -> Void)?
 
   /// The mode the screen shows.
@@ -23,5 +24,17 @@ final class ConversationModeRoute {
         stored = newValue
       }
     }
+  }
+
+  /// The screen's binding.
+  /// - Parameters:
+  ///   - openHarness: Opens the harness tab; `nil` without tabs.
+  ///   - source: This object's `@State` binding, whose `mode` projection compares equal.
+  /// - Returns: The binding.
+  func mode(
+    _ openHarness: (@MainActor () -> Void)?, _ source: Binding<ConversationModeRoute>
+  ) -> Binding<SessionViewMode> {
+    self.openHarness = openHarness
+    return source.mode
   }
 }

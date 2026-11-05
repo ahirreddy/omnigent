@@ -1,4 +1,5 @@
 import OmnigentUIComponents
+import SwiftUI
 import Testing
 
 @testable import OmnigentAppUI
@@ -23,6 +24,15 @@ struct ConversationModeRouteTests {
     #expect(route.mode == .chat)
     route.mode = .chat
     #expect(opened == 1)
+  }
+
+  @Test func modeBindingSetsTheHarnessOpener() {
+    let route = ConversationModeRoute()
+    var opened = 0
+    let binding = route.mode({ opened += 1 }, .constant(route))
+    binding.wrappedValue = .terminal
+    #expect(opened == 1)
+    #expect(binding.wrappedValue == .chat)
   }
 
   @Test func forkSheetBindingCancelsOnlyOnDismiss() {

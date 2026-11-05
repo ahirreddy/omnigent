@@ -42,6 +42,7 @@ struct ConversationContainer: View {
   @State private var inspectorTab: InspectorTab = DefaultWorkspaceTab.stored().inspectorTab
   @State private var showsGoal = false
   @State private var modeRoute = ConversationModeRoute()
+  @State private var textSource = ComposerTextSource()
   @State private var isStopping = false
   @State private var dismissedSendError: CoreError?
   @State private var failures: [String] = []
@@ -59,8 +60,9 @@ struct ConversationContainer: View {
     let screen = state
     ConversationScreen(
       state: screen, composer: composerState(screen),
-      draft: ComposerDraft(get: { composer.text }, set: { composer.text = $0 }),
-      showsInspector: $showsInspector, inspectorTab: $inspectorTab, mode: modeBinding,
+      draft: textSource.draft(conversation.composer, $textSource),
+      showsInspector: $showsInspector, inspectorTab: $inspectorTab,
+      mode: modeRoute.mode(tabRoutes?.openHarness, $modeRoute),
       fork: $forkFlow.sheet,
       actions: routed(forkable(actions)), composerActions: composerActions,
       extras: ConversationExtras(
@@ -218,13 +220,6 @@ struct ConversationContainer: View {
       mention: { [composer = conversation.composer] path in composer.addMention(path) },
       report: { failures.append($0) }
     ).slots
-  }
-
-  /// With tabs, choosing Terminal opens the agent's TUI in its own tab and this tab stays on
-  /// the chat. A key-path binding, so it compares equal across updates.
-  private var modeBinding: Binding<SessionViewMode> {
-    modeRoute.openHarness = tabRoutes?.openHarness
-    return $modeRoute.mode
   }
 
   /// Side questions open in their own tab; sub-agents and the "Back to the parent session"
