@@ -47,6 +47,7 @@ public struct ConversationScreen<Terminal: View>: View {
   @Environment(\.tabsInTitlebar) private var tabsInTitlebar
   @Environment(\.isActiveTabPane) private var isActivePane
   @Environment(\.offersTerminalView) private var offersTerminalView
+  @Environment(\.isTabContentHidden) private var isHiddenTab
 
   /// Creates the screen.
   /// - Parameters:
@@ -145,20 +146,14 @@ public struct ConversationScreen<Terminal: View>: View {
     .environment(\.commandReturnOwner, commandReturnOwner)
     .onPreferenceChange(ApproveShortcutCandidate.self) { approveCandidate = $0 }
     .workspaceInspector(
-      state: state, actions: actions, slots: extras.slots, isPresented: $showsInspector,
-      tab: inspectorTab
+      state: state, actions: actions, slots: extras.slots,
+      isPresented: isHiddenTab ? .constant(false) : $showsInspector, tab: inspectorTab
     )
     .navigationTitle(state.header.title)
     // The one status line ("Waiting for you · 2 requests"); the project shows in the sidebar.
     .navigationSubtitle(SessionStatusLine(state).text)
     .toolbarTitleMenu { titleMenu }
-    .preference(
-      key: TitlebarTrailingItems.self,
-      value: TitlebarTrailingItems.count(
-        state, hasShare: extras.share != nil, tabsInTitlebar: tabsInTitlebar,
-        isRegular: layoutWidth == .regular)
-        + (showsProjectTag ? 1 : 0)
-    )
+    .preference(key: TitlebarTrailingItems.self, value: isHiddenTab ? nil : trailingItems)
     .toolbar { toolbarContent }
     .sheet(isPresented: $showsShare) {
       if let share = extras.share {
@@ -304,6 +299,13 @@ extension ConversationScreen {
     !showsTerminal && composer.availability == .available && composer.delivery == .idle
       && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         || !composer.attachments.isEmpty || !composer.mentions.isEmpty)
+  }
+
+  private var trailingItems: Int {
+    TitlebarTrailingItems.count(
+      state, hasShare: extras.share != nil, tabsInTitlebar: tabsInTitlebar,
+      isRegular: layoutWidth == .regular)
+      + (showsProjectTag ? 1 : 0)
   }
 
   /// Send while the draft can go, else the active request's Approve.

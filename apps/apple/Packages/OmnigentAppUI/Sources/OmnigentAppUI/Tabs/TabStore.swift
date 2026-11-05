@@ -31,7 +31,11 @@ public final class TabStore {
   /// Tabs in strip order: per pane (left first), pinned first.
   public internal(set) var tabs: [AppTab]
   /// The selected tab: the focused pane's, when split.
-  public internal(set) var selectedID: String?
+  public internal(set) var selectedID: String? {
+    didSet { if let selectedID, selectedID != oldValue { noteShown(selectedID) } }
+  }
+  /// Tabs in the order they were last selected, the most recent first.
+  @ObservationIgnored public internal(set) var recentIDs: [String] = []
   /// Closed tabs, oldest first.
   public internal(set) var closed: [AppTab]
   /// Tabs whose content has been built: shown at least once since launch or restore.
