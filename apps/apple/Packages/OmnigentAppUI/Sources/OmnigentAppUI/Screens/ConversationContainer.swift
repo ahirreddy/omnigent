@@ -209,7 +209,7 @@ struct ConversationContainer: View {
       canEdit: !(conversation.header?.readOnly ?? false),
       newSideChat: SessionToolsAdapter.sideChat(conversation, routes: toolRoutes),
       agents: AgentTreeAdapter.panel(conversation, open: tabRoutes?.openSession ?? openSession),
-      mention: { [composer = conversation.composer] path in composer.addMention(path) },
+      composer: conversation.composer,
       report: { failures.append($0) }
     ).slots
   }

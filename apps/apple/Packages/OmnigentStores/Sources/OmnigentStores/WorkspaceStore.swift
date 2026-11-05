@@ -96,17 +96,22 @@ public final class WorkspaceStore: WorkspaceDataSource {
       path: file.path, data: file.bytes, truncated: file.truncated)
   }
 
-  /// Files whose name or path contains `query`.
-  /// - Parameter query: The text to find.
+  /// Files whose name or path contains `query`, anywhere in the environment.
+  /// - Parameters:
+  ///   - query: The text to find.
+  ///   - include: Comma-separated globs a match must match.
+  ///   - exclude: Comma-separated globs a match must not match.
   /// - Returns: The matches.
   /// - Throws: The failure to show.
-  public func searchPaths(_ query: String) async throws(WorkspaceFailure)
-    -> OmnigentWorkspaceUI.PathSearchResult
+  public func searchPaths(_ query: String, include: String, exclude: String)
+    async throws(WorkspaceFailure) -> OmnigentWorkspaceUI.PathSearchResult
   {
+    let search = OmnigentCoreFFI.PathSearchQuery(
+      query: query, include: splitWorkspaceGlobs(raw: include),
+      exclude: splitWorkspaceGlobs(raw: exclude))
     let result = try await call {
       try await core.searchWorkspacePaths(
-        sessionId: sessionID, environmentId: environmentID,
-        query: OmnigentCoreFFI.PathSearchQuery(query: query))
+        sessionId: sessionID, environmentId: environmentID, query: search)
     }
     return OmnigentWorkspaceUI.PathSearchResult(
       entries: result.entries.map(WorkspaceMapping.entry),
@@ -173,6 +178,58 @@ public final class WorkspaceStore: WorkspaceDataSource {
         sessionId: sessionID, environmentId: environmentID, path: path)
     }
     return WorkspaceMapping.fileDiff(diff)
+  }
+
+  /// Saves an edit of `path`; with `base` the core first checks nobody else changed the file.
+  /// - Parameters:
+  ///   - path: The file.
+  ///   - text: The new text.
+  ///   - base: The text the edit started from.
+  /// - Returns: Whether it was saved.
+  /// - Throws: The failure to show.
+  public func save(_ path: String, text: String, base: String?) async throws(WorkspaceFailure)
+    -> FileSaveResult
+  {
+    let result = try await call {
+      try await core.saveWorkspaceFile(
+        sessionId: sessionID, environmentId: environmentID, path: path, content: text,
+        base: base)
+    }
+    switch result {
+    case .saved: return .saved
+    case .conflict(let latest): return .conflict(latest: latest)
+    }
+  }
+
+  /// The open review comments on `path`, each with the line of `text` it starts on.
+  /// - Parameters:
+  ///   - path: The file.
+  ///   - text: Its text.
+  /// - Returns: The comments.
+  /// - Throws: The failure to show.
+  public func comments(on path: String, text: String) async throws(WorkspaceFailure)
+    -> [OmnigentWorkspaceUI.FileCommentLine]
+  {
+    let comments = try await call { try await core.sessionComments(sessionId: sessionID) }
+    return fileCommentLines(comments: comments, path: path, text: text).map { line in
+      OmnigentWorkspaceUI.FileCommentLine(
+        id: line.comment.id, line: line.line, body: line.comment.body,
+        anchor: line.comment.anchor, author: line.comment.author,
+        createdAt: Date(timeIntervalSince1970: TimeInterval(line.comment.createdAt)))
+    }
+  }
+
+  /// Leaves a review comment on `span`.
+  /// - Parameters:
+  ///   - body: The comment.
+  ///   - span: The commented range.
+  /// - Throws: The failure to show.
+  public func addComment(_ body: String, on span: FileTextSpan) async throws(WorkspaceFailure) {
+    _ = try await call {
+      try await core.addSessionComment(
+        sessionId: sessionID, path: span.path, body: body, startIndex: span.start,
+        endIndex: span.end, anchor: span.text)
+    }
   }
 
   /// The absolute location of `path` under the environment's root, once

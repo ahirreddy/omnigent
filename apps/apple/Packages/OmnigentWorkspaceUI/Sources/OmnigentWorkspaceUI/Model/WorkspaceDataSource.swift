@@ -23,11 +23,15 @@ public protocol WorkspaceDataSource: AnyObject {
   /// - Throws: The failure to show.
   func readFile(_ path: String) async throws(WorkspaceFailure) -> WorkspaceFile
 
-  /// Files whose name or path contains `query`.
-  /// - Parameter query: The text to find.
+  /// Files whose name or path contains `query`, anywhere in the workspace.
+  /// - Parameters:
+  ///   - query: The text to find.
+  ///   - include: Comma-separated globs a match must match; empty for any.
+  ///   - exclude: Comma-separated globs a match must not match.
   /// - Returns: The matches.
   /// - Throws: The failure to show.
-  func searchPaths(_ query: String) async throws(WorkspaceFailure) -> PathSearchResult
+  func searchPaths(_ query: String, include: String, exclude: String)
+    async throws(WorkspaceFailure) -> PathSearchResult
 
   /// Lines whose text matches `query`.
   /// - Parameter query: The search.
@@ -58,9 +62,44 @@ public protocol WorkspaceDataSource: AnyObject {
   /// - Returns: Its bytes.
   /// - Throws: The failure to show.
   func fileContents(_ path: String) async throws(WorkspaceFailure) -> WorkspaceFileContents
+
+  /// Saves an edit of a text file. With `base` (the text the edit started from) a change by
+  /// someone else since is a conflict and nothing is written; without it the file is overwritten.
+  /// - Parameters:
+  ///   - path: The file.
+  ///   - text: The whole new text.
+  ///   - base: The text the edit started from.
+  /// - Returns: Whether it was saved.
+  /// - Throws: The failure to show.
+  func save(_ path: String, text: String, base: String?) async throws(WorkspaceFailure)
+    -> FileSaveResult
+
+  /// The open review comments on a file, each with the line of `text` it starts on.
+  /// - Parameters:
+  ///   - path: The file.
+  ///   - text: The file's text.
+  /// - Returns: The comments, in file order.
+  /// - Throws: The failure to show.
+  func comments(on path: String, text: String) async throws(WorkspaceFailure)
+    -> [FileCommentLine]
+
+  /// Leaves a review comment on a span of a file.
+  /// - Parameters:
+  ///   - body: The comment.
+  ///   - span: What it is about.
+  /// - Throws: The failure to show.
+  func addComment(_ body: String, on span: FileTextSpan) async throws(WorkspaceFailure)
 }
 
 extension WorkspaceDataSource {
+  /// Files whose name or path contains `query`, without glob filters.
+  /// - Parameter query: The text to find.
+  /// - Returns: The matches.
+  /// - Throws: The failure to show.
+  public func searchPaths(_ query: String) async throws(WorkspaceFailure) -> PathSearchResult {
+    try await searchPaths(query, include: "", exclude: "")
+  }
+
   /// The content from the viewer's preview: complete text or a complete image. A source that
   /// can read raw bytes (the core's) overrides this, so binary files share too.
   /// - Parameter path: The file.
@@ -113,8 +152,13 @@ public struct WorkspaceActions {
   public var share: ((String) -> Void)?
   /// Preview an environment-relative file with Quick Look.
   public var quickLook: ((String) -> Void)?
-  /// Insert a path reference into the composer, for example `@src/main.rs`.
+  /// Insert a path reference into the composer, for example `@src/main.rs`; also attaches a
+  /// line range as `src/main.rs:3-7`.
   public var mention: ((String) -> Void)?
+  /// Quote a span of a file into the composer to ask the agent about it.
+  public var ask: ((FileTextSpan) -> Void)?
+  /// The viewer may edit files and leave review comments.
+  public var canEdit = false
 
   /// Hooks.
   /// - Parameters:

@@ -6,7 +6,8 @@ enum GalleryCatalog {
   static let entries: [CatalogEntry] =
     DesignSystemCatalog.entries + TranscriptCatalog.entries + ComposerCatalog.entries
     + DecisionCatalog.entries + InboxCatalog.entries + SessionListCatalog.entries
-    + InspectorCatalog.entries + TabsCatalog.entries + TabSplitCatalog.entries
+    + InspectorCatalog.entries + WorkspaceFilesCatalog.entries + TabsCatalog.entries
+    + TabSplitCatalog.entries
     + SettingsCatalog.entries
     + NewSessionCatalog.entries + PageCatalog.entries + ConversationFlowCatalog.entries
     + NavigationFlowCatalog.entries + SignInCatalog.entries + CLICatalog.entries

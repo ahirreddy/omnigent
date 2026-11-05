@@ -113,18 +113,29 @@ struct FileTreeModelTests {
     #expect(Array(source.requests.dropFirst(before)) == ["list ", "list src", "list src/util"])
   }
 
-  @Test("dot entries stay hidden until shown; a filter keeps matches and the folders to them")
+  @Test("dot entries stay hidden until shown; the filter searches folders never expanded")
   func hiddenAndFilter() async {
-    let tree = FileTreeModel(source: SampleWorkspaceDataSource())
+    let source = SampleWorkspaceDataSource()
+    let tree = FileTreeModel(source: source)
+    var opened: [String] = []
+    tree.onOpen = { opened.append($0.path) }
     await tree.loadRoot()
     #expect(!tree.rows.contains { $0.id == ".git" || $0.id == ".gitignore" })
     tree.showsHidden = true
     #expect(tree.rows.contains { $0.id == ".gitignore" })
-    await tree.expand("src")
-    tree.collapse("src")
-    tree.filter = "main"
-    #expect(tree.rows.map(\.id) == ["src", "src/main.rs"])
+    tree.filter = "mod"
+    await tree.searchNow()
+    #expect(tree.rows.map(\.id) == ["src/util/mod.rs"])
+    #expect(tree.rows.first?.directory == "src/util")
+    #expect(source.requests.last == "search-paths mod")
+    tree.selection = "src/util/mod.rs"
+    await tree.activateSelection()
+    #expect(opened == ["src/util/mod.rs"])
+    tree.filter = "nothing-matches"
+    await tree.searchNow()
+    #expect(tree.rows.map(\.id) == ["#search-none"])
     tree.filter = ""
+    await tree.searchNow()
     #expect(tree.rows.contains { $0.id == "README.md" })
     #expect(!tree.expanded.contains("src"))
   }

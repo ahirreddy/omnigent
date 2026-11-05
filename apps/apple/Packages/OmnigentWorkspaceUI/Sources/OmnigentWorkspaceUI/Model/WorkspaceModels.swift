@@ -193,6 +193,12 @@ public final class WorkspaceBrowserModel {
   public private(set) var file: LoadState<WorkspaceFile> = .idle
   /// The open diff, when `document` is a diff.
   public private(set) var diff: LoadState<FileDiff> = .idle
+  /// Edits of text files, by path; they outlive their tab until saved or discarded.
+  public internal(set) var editors: [String: FileEditor] = [:]
+  /// Review comments on opened files, by path.
+  public internal(set) var comments: [String: LoadState<[FileCommentLine]>] = [:]
+  /// A tab whose close waits for its unsaved edits to be saved or discarded.
+  public var pendingClose: WorkspaceDocument?
   private var generation = 0
 
   /// A browser over `source`.
@@ -228,7 +234,9 @@ public final class WorkspaceBrowserModel {
       } catch {
         result = .failed(error)
       }
+      if let loaded = result.value { prepareEditor(for: loaded) }
       if current == generation { file = result }
+      if let loaded = result.value { await loadComments(for: loaded) }
     case .diff(let path):
       file = .idle
       diff = .loading
@@ -265,6 +273,10 @@ public final class WorkspaceBrowserModel {
   /// - Parameter document: The document.
   public func close(_ document: WorkspaceDocument) async {
     guard let index = openDocuments.firstIndex(where: { $0.tabID == document.tabID }) else {
+      return
+    }
+    if case .file(let path, _) = document, editors[path]?.isDirty == true {
+      pendingClose = document
       return
     }
     openDocuments.remove(at: index)

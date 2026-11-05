@@ -14,6 +14,10 @@ public final class SampleWorkspaceDataSource: WorkspaceDataSource {
   public var searchFailure: WorkspaceFailure?
   /// Every request, as `"<operation> <path>"`.
   public private(set) var requests: [String] = []
+  /// Text saved by `save`, by path; reads return it.
+  public var savedTexts: [String: String] = [:]
+  /// Review comments left with `addComment`.
+  public private(set) var comments: [FileTextSpan: [String]] = [:]
 
   /// A sample source.
   /// - Parameters:
@@ -45,6 +49,12 @@ public final class SampleWorkspaceDataSource: WorkspaceDataSource {
   public func readFile(_ path: String) async throws(WorkspaceFailure) -> WorkspaceFile {
     requests.append("read \(path)")
     if let failure = failures[path] { throw failure }
+    if let saved = savedTexts[path] {
+      let lines = UInt64(saved.count { $0 == "\n" })
+      return WorkspaceFile(
+        path: path, byteCount: UInt64(saved.utf8.count),
+        preview: .text(TextPreview(text: saved, lineCount: lines)))
+    }
     if let file = WorkspaceSamples.files[path] { return file }
     let text = "// \(path)\n"
     return WorkspaceFile(
@@ -53,11 +63,15 @@ public final class SampleWorkspaceDataSource: WorkspaceDataSource {
   }
 
   /// See `WorkspaceDataSource`.
-  public func searchPaths(_ query: String) async throws(WorkspaceFailure) -> PathSearchResult {
+  public func searchPaths(_ query: String, include: String, exclude: String)
+    async throws(WorkspaceFailure) -> PathSearchResult
+  {
     requests.append("search-paths \(query)")
     let needle = query.lowercased()
-    let entries = WorkspaceSamples.directories.values.joined().filter {
-      !$0.kind.isDirectory && $0.path.lowercased().contains(needle)
+    let excluded = exclude.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+    let entries = WorkspaceSamples.directories.values.joined().filter { entry in
+      !entry.kind.isDirectory && entry.path.lowercased().contains(needle)
+        && !excluded.contains { !$0.isEmpty && entry.path.hasPrefix($0) }
     }
     return PathSearchResult(entries: entries.sorted { $0.path < $1.path })
   }
@@ -87,6 +101,43 @@ public final class SampleWorkspaceDataSource: WorkspaceDataSource {
       throw WorkspaceFailure(.notChanged, message: "This file has no changes in this session.")
     }
     return diff
+  }
+
+  /// See `WorkspaceDataSource`. Fails with `failures["#save"]` when set.
+  public func save(_ path: String, text: String, base: String?) async throws(WorkspaceFailure)
+    -> FileSaveResult
+  {
+    requests.append("save \(path)")
+    if let failure = failures["#save"] { throw failure }
+    let current = try await currentText(path)
+    if let base, current != base, current != text { return .conflict(latest: current) }
+    savedTexts[path] = text
+    return .saved
+  }
+
+  /// See `WorkspaceDataSource`.
+  public func comments(on path: String, text: String) async throws(WorkspaceFailure)
+    -> [FileCommentLine]
+  {
+    comments.filter { $0.key.path == path }
+      .sorted { $0.key.start < $1.key.start }
+      .flatMap { span, bodies in
+        bodies.enumerated().map { index, body in
+          FileCommentLine(
+            id: "\(span.start)-\(index)", line: span.firstLine, body: body, anchor: span.text)
+        }
+      }
+  }
+
+  /// See `WorkspaceDataSource`.
+  public func addComment(_ body: String, on span: FileTextSpan) async throws(WorkspaceFailure) {
+    requests.append("comment \(span.reference)")
+    comments[span, default: []].append(body)
+  }
+
+  private func currentText(_ path: String) async throws(WorkspaceFailure) -> String? {
+    guard case .text(let text) = try await readFile(path).preview else { return nil }
+    return text.text
   }
 
   /// See `WorkspaceDataSource`.

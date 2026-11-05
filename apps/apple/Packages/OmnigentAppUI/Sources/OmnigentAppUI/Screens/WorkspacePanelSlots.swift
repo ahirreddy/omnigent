@@ -22,8 +22,8 @@ struct WorkspacePanelSlots {
   var newSideChat: (@MainActor () -> Void)?
   /// The Agents tab; `nil` lists the conversation's own sub-agents.
   var agents: AnyView?
-  /// Inserts a path reference into the composer.
-  let mention: (@MainActor (String) -> Void)?
+  /// The conversation's composer, for path references and "Ask About This".
+  let composer: ComposerStore?
   /// Shows a failure, such as a path that would not open.
   var report: @MainActor (String) -> Void = { _ in }
 
@@ -38,7 +38,12 @@ struct WorkspacePanelSlots {
       slots.pullRequestPanel = PullRequestPanelSlots.extras(panel, canEdit: canEdit)
     }
     guard let workspace else { return slots }
-    let actions = WorkspaceActionsAdapter.actions(workspace, mention: mention, report: report)
+    let mention = composer.map { composer in { (path: String) in composer.addMention(path) } }
+    var actions = WorkspaceActionsAdapter.actions(workspace, mention: mention, report: report)
+    actions.canEdit = canEdit
+    if canEdit, let composer {
+      actions.ask = { span in WorkspaceReviewAdapter.ask(span, composer) }
+    }
     slots.files = AnyView(
       FileTreeView(model: workspace.tree, source: workspace.source, actions: actions))
     let openDiff: (ChangedFile) -> Void = { file in
