@@ -55,7 +55,7 @@ let unitTestDependencies: [TargetDependency] = [
 let macBrowser = BrowserTargets.Configuration(
   appTargetName: "OmnigentMac",
   appProductName: "Omnigent",
-  appBundleId: "ai.omnigent.mac",
+  appBundleId: Omnigent.bundleId("mac"),
   deploymentTarget: Omnigent.deploymentVersion
 )
 
@@ -63,7 +63,7 @@ let iOSApp = Target.target(
   name: "Omnigent",
   destinations: [.iPhone, .iPad],
   product: .app,
-  bundleId: "ai.omnigent.ios",
+  bundleId: Omnigent.bundleId("ios"),
   deploymentTargets: .iOS(Omnigent.deploymentVersion),
   infoPlist: Omnigent.infoPlist(
     extra: [
@@ -91,7 +91,7 @@ let iOSApp = Target.target(
   scripts: [Acknowledgements.script],
   dependencies: appDependencies,
   settings: Omnigent.appSettings(
-    releaseBundleId: "ai.omnigent.ios",
+    releaseBundleId: Omnigent.bundleId("ios"),
     displayName: "Omnigent",
     extraBase: [
       // libghostty's simulator slice is arm64 only.
@@ -126,7 +126,7 @@ let macApp = Target.target(
   destinations: [.mac],
   product: .app,
   productName: "Omnigent",
-  bundleId: "ai.omnigent.mac",
+  bundleId: Omnigent.bundleId("mac"),
   deploymentTargets: .macOS(Omnigent.deploymentVersion),
   infoPlist: Omnigent.infoPlist(
     extra: macInfoPlistShared.merging(sparkleInfoPlist) { _, new in new }),
@@ -140,7 +140,7 @@ let macApp = Target.target(
     .package(product: "OmnigentDesktopUpdate"),
   ] + BrowserTargets.appDependencies(macBrowser),
   settings: Omnigent.appSettings(
-    releaseBundleId: "ai.omnigent.mac",
+    releaseBundleId: Omnigent.bundleId("mac"),
     displayName: "Omnigent",
     extraBase: BrowserTargets.appSettings.merging(
       [
@@ -168,7 +168,7 @@ let macAppStoreApp = Target.target(
   destinations: [.mac],
   product: .app,
   productName: "OmnigentAppStore",
-  bundleId: "ai.omnigent.mac.appstore",
+  bundleId: Omnigent.bundleId("mac.appstore"),
   deploymentTargets: .macOS(Omnigent.deploymentVersion),
   infoPlist: Omnigent.infoPlist(
     extra: macInfoPlistShared.merging([
@@ -182,7 +182,7 @@ let macAppStoreApp = Target.target(
     .package(product: "OmnigentDesktop")
   ],
   settings: Omnigent.appSettings(
-    releaseBundleId: "ai.omnigent.mac.appstore",
+    releaseBundleId: Omnigent.bundleId("mac.appstore"),
     displayName: "Omnigent",
     extraBase: [
       "ENABLE_HARDENED_RUNTIME": "YES",
@@ -222,7 +222,7 @@ func unitTests(
     name: name,
     destinations: destinations,
     product: .unitTests,
-    bundleId: "ai.omnigent.\(name.lowercased())",
+    bundleId: Omnigent.bundleId(name.lowercased()),
     deploymentTargets: deployment,
     infoPlist: .default,
     sources: ["Tests/\(sourceDirectory ?? name)/**"],
@@ -240,7 +240,7 @@ func uiTests(
     name: name,
     destinations: destinations,
     product: .uiTests,
-    bundleId: "ai.omnigent.\(name.lowercased())",
+    bundleId: Omnigent.bundleId(name.lowercased()),
     deploymentTargets: deployment,
     infoPlist: .default,
     sources: ["Tests/\(sourceDirectory ?? name)/**"],

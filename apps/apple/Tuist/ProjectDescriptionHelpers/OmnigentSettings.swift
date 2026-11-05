@@ -2,8 +2,16 @@ import ProjectDescription
 
 /// Shared build configuration for the Omnigent Apple project.
 public enum Omnigent {
-  /// Apple Developer team that signs Release builds.
-  public static let developmentTeam = "8RMX4WU6F8"
+  /// Apple Developer team that signs builds; `TUIST_OMNIGENT_TEAM_ID` builds under another team
+  /// (Xcode Cloud on a personal account).
+  public static let developmentTeam = Environment.omnigentTeamId.getString(default: "8RMX4WU6F8")
+  /// Prefix of every bundle identifier; `TUIST_OMNIGENT_BUNDLE_ID_PREFIX` pairs with the team
+  /// override, since another team cannot register `ai.omnigent.*`.
+  public static let bundleIdPrefix = Environment.omnigentBundleIdPrefix.getString(
+    default: "ai.omnigent")
+
+  /// `<prefix>.<suffix>`, for example `ai.omnigent.ios`.
+  public static func bundleId(_ suffix: String) -> String { "\(bundleIdPrefix).\(suffix)" }
   /// Minimum iOS and macOS version.
   public static let deploymentVersion = "26.0"
   /// `CFBundleShortVersionString` for every app.
