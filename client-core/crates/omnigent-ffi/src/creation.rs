@@ -186,6 +186,9 @@ pub struct CreationSelection {
     /// Start a Codex session in Plan mode (see `creation_starts_in_plan_mode`).
     #[uniffi(default)]
     pub plan_mode: bool,
+    /// The first-class project the session is filed in from its creation.
+    #[uniffi(default)]
+    pub project_id: Option<String>,
 }
 
 /// The `git` block of a new external-host session.
@@ -377,6 +380,7 @@ impl From<CreationSelection> for core::CreationSelection {
                 existing_worktree: git.existing_worktree,
             }),
             plan_mode: selection.plan_mode,
+            project_id: selection.project_id,
         }
     }
 }

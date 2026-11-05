@@ -300,6 +300,8 @@ pub struct CreationSelection {
     pub git: Option<CreationGit>,
     /// Start a Codex session in Plan mode (see [`CreationCatalog::starts_in_plan_mode`]).
     pub plan_mode: bool,
+    /// The first-class project the session is filed in from its creation (`project_id`).
+    pub project_id: Option<String>,
 }
 
 /// The `git` block of a new external-host session.
@@ -790,13 +792,16 @@ pub(crate) fn creation_body(
     Value::Object(body)
 }
 
-/// The model, effort, approval launch flags and the native wrapper's labels of a new session.
-/// Codex's launch-only bypass rides a label instead of flags.
+/// The project, model, effort, approval launch flags and the native wrapper's labels of a new
+/// session. Codex's launch-only bypass rides a label instead of flags.
 pub(crate) fn insert_run_configuration(
     body: &mut Map<String, Value>,
     selection: &CreationSelection,
     agent: &CreationAgent,
 ) {
+    if let Some(project) = &selection.project_id {
+        body.insert("project_id".into(), Value::String(project.clone()));
+    }
     if let Some(model) = &selection.model {
         body.insert("model_override".into(), Value::String(model.clone()));
     }
@@ -869,6 +874,12 @@ pub(crate) fn sandbox_creation_body(
     }
     if !title.is_empty() {
         body.insert("title".into(), Value::String(title.to_owned()));
+    }
+    if selection.project_id.is_some() {
+        // A project's configured path workspace or git block would be filled in otherwise, and
+        // a managed create refuses both.
+        body.insert("workspace".into(), Value::Null);
+        body.insert("git".into(), Value::Null);
     }
     insert_run_configuration(&mut body, selection, agent);
     Value::Object(body)

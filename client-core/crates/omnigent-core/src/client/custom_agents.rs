@@ -342,6 +342,10 @@ impl<T: HttpTransport> ClientCore<T> {
             }
             let mut metadata = Map::new();
             metadata.insert("workspace".into(), Value::String(workspace.to_owned()));
+            if let Some(project) = &selection.project_id {
+                validate_identifier(project)?;
+                metadata.insert("project_id".into(), Value::String(project.clone()));
+            }
             let title = title.trim();
             if !title.is_empty() {
                 metadata.insert("title".into(), Value::String(title.to_owned()));

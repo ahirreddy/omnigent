@@ -664,6 +664,9 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<CreationReceipt, SessionError> {
         validate_identifier(&selection.host_id)?;
         validate_identifier(&selection.agent_id)?;
+        if let Some(project) = &selection.project_id {
+            validate_identifier(project)?;
+        }
         let name = title.trim();
         if name.chars().count() > MAX_TITLE_CHARS {
             return Err(CreationError::Unavailable(
@@ -711,6 +714,9 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<CreationReceipt, SessionError> {
         let result = async {
             validate_identifier(&selection.agent_id)?;
+            if let Some(project) = &selection.project_id {
+                validate_identifier(project)?;
+            }
             let name = title.trim();
             if name.chars().count() > MAX_TITLE_CHARS {
                 return Err(CreationError::Unavailable(

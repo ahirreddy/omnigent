@@ -87,7 +87,9 @@ extension NewSessionForm {
   }
 
   private func delivery(_ phase: OmnigentStores.CreationPhase) -> DeliveryState {
-    if let attachmentError, phase == .editing { return .failed(message: attachmentError) }
+    if let error = attachmentError ?? projectError, phase == .editing {
+      return .failed(message: error)
+    }
     return switch phase {
     case .editing: .idle
     case .creating: .sending

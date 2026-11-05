@@ -62,25 +62,20 @@ struct NewSessionContainer: View {
       draft: $draft,
       composer: form.composerState(
         creation, connection: connection, submitWithCommandReturn: submitWithCommandReturn),
-      actions: actions(creation), importSessions: importSessions(openURL, openSettingsAt),
-      options: form.options(creation), optionActions: optionActions(creation)
+      actions: actions(creation),
+      heading: form.project.map { "What should we work on in \($0.name)?" }
+        ?? "What should we work on?",
+      importSessions: importSessions(openURL, openSettingsAt),
+      options: form.options(creation, projects: connection.sessionList.projects),
+      optionActions: optionActions(creation)
     )
-    .onChange(of: creation.phase) { _, phase in
-      if case .created(let sessionID, nil) = phase {
+    .modifier(
+      NewSessionLifecycle(form: form, creation: creation, connection: connection) {
         draft = ""
-        creation.reset()
-        open(sessionID)
+        open($0)
       }
-    }
+    )
     .onChange(of: creation.worktrees, initial: true) { form.seedWorktree(creation) }
-    .task(id: form.selection.hostId) {
-      await form.seedFolder(creation, sessions: connection.sessionList.visible)
-    }
-    .task(id: form.isSandbox ? form.sandbox.provider ?? "" : nil) {
-      if form.isSandbox, let sandboxes = form.sandboxes {
-        await form.sandbox.load(creation.catalog.value, sandboxes: sandboxes)
-      }
-    }
     .onChange(of: alwaysUseWorktree) { form.seedWorktree(creation) }
     .sheet(
       item: $setupTarget, onDismiss: { Task { await form.reloadCatalog(creation) } },
@@ -145,6 +140,7 @@ struct NewSessionContainer: View {
       acknowledgeUncertainDelivery: { creation.acknowledgeUncertain() },
       dismissDeliveryError: {
         form.attachmentError = nil
+        form.projectError = nil
         if case .created(let sessionID, .some) = creation.phase {
           // The session exists; open it so the user can send again there.
           creation.reset()
@@ -197,7 +193,8 @@ struct NewSessionContainer: View {
 
   private func optionActions(_ creation: CreationStore) -> NewSessionOptionActions {
     let form = form
-    return NewSessionOptionActions(
+    let list = connection.sessionList
+    var actions = NewSessionOptionActions(
       selectFolder: { path in form.selectFolder(creation, path) },
       browse: { path in
         let hostID = form.selection.hostId
@@ -220,5 +217,13 @@ struct NewSessionContainer: View {
         Task { await harnessSetup?.load() }
         setupTarget = HarnessSetupTarget(harness: harness, hostID: form.selection.hostId)
       })
+    actions.selectProject = { name in
+      guard let project = name.flatMap({ name in list.projects.first { $0.name == name } }) else {
+        form.project = nil
+        return
+      }
+      Task { await form.applyProject(project, creation) }
+    }
+    return actions
   }
 }

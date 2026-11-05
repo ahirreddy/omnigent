@@ -139,7 +139,9 @@ extension LiveWorkspaceTests {
     let agent = try #require(
       creation.catalog.value?.agents.first { $0.name == agentName }, "no agent \(agentName)")
     await creation.createInSandbox(
-      agentID: agent.id, title: "Omnigent native client test (safe to delete)", workspaces: [])
+      CreationSelection(hostId: "", agentId: agent.id, workspace: "", model: nil),
+      target: SandboxTarget(provider: nil, profile: nil, workspaces: []),
+      title: "Omnigent native client test (safe to delete)")
     guard case .created(let sessionID, nil) = creation.phase else {
       throw LiveWorkspaceError("the sandbox session was not created: \(creation.phase)")
     }

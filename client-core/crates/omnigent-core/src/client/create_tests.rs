@@ -365,6 +365,33 @@ fn create_and_send_reports_the_first_message() {
     assert_eq!(sent.submission.item_id.as_deref(), Some("item_1"));
 }
 
+#[test]
+fn a_session_in_a_project_is_filed_from_its_creation() {
+    let transport = stub();
+    with_agent_install(&transport);
+    let core = connected(transport);
+    let filed = CreationSelection {
+        project_id: Some("proj_1".into()),
+        ..selection()
+    };
+    block_on(core.create_session(&filed, "")).unwrap();
+    block_on(core.create_sandbox_session(&filed, &sandbox(&[]), "")).unwrap();
+    let bodies = core.transport().write_bodies();
+    assert_eq!(bodies[0]["project_id"], "proj_1");
+    assert_eq!(bodies[0]["workspace"], "/work/project");
+    assert_eq!(bodies[1]["project_id"], "proj_1");
+    assert_eq!(bodies[1]["workspace"], serde_json::Value::Null);
+    assert_eq!(bodies[1]["git"], serde_json::Value::Null);
+    let bad = CreationSelection {
+        project_id: Some("../x".into()),
+        ..selection()
+    };
+    assert!(matches!(
+        block_on(core.create_session(&bad, "")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}
+
 fn sandbox(workspaces: &[&str]) -> SandboxTarget {
     SandboxTarget {
         workspaces: workspaces.iter().map(|w| (*w).to_owned()).collect(),

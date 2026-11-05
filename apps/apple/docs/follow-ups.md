@@ -262,7 +262,9 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   server has `sandbox_profiles` off.
 - [ ] **New-session composer:** no `/` commands, `@` mentions or skill pills before the session
   exists (the web reads the agent's bundled skills and the host's catalog; the core reads skills
-  only per session); no project choice (`CreationSelection` has no `project_id`).
+  only per session).
+- [ ] **Share sheet:** people search (the web's comes from an embedder-provided directory, not a
+  server API), the public access level picker and a QR code are not native yet.
 - [ ] **Archive Undo and worktrees:** after the server's grace the worktree is gone and Undo
   only warns; recreating it needs a runner launch with `existing_branch` for the unarchived
   session.

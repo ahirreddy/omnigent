@@ -30,6 +30,12 @@ final class NewSessionForm {
   @ObservationIgnored var sandboxes: SandboxStore?
   /// A custom agent created on this page and not saved: it uploads with the session.
   var pendingAgent: OmnigentCoreFFI.AgentDraft?
+  /// The project the session is filed in.
+  var project: ProjectSummary?
+  /// Why the project's defaults could not be read.
+  var projectError: String?
+  /// The session last filed in a label-only project, so a retried send does not move it again.
+  @ObservationIgnored var filedSessionID: String?
   /// A picked file that could not be read.
   var attachmentError: String?
 
@@ -107,17 +113,17 @@ final class NewSessionForm {
   /// Creates the session on the chosen host or a new sandbox and sends `text`.
   func start(_ creation: CreationStore, text: String) {
     rememberChoices()
+    var selection = selection
+    // A first-class project files the session at creation; a label-only one is moved after.
+    selection.projectId = project?.id
     if isSandbox {
-      let selection = selection
       let target = sandbox.target(creation.catalog.value)
       Task {
         await creation.createInSandbox(selection, target: target, title: "", firstMessage: text)
       }
     } else if let draft = pendingAgent, selection.agentId == Self.pendingAgentID {
-      let selection = selection
       Task { await creation.create(agent: draft, selection, firstMessage: text) }
     } else {
-      let selection = selection
       Task { await creation.create(selection, title: "", firstMessage: text) }
     }
   }
@@ -196,10 +202,10 @@ final class NewSessionForm {
   }
 
   /// The folder, worktree, repository, notice and Plan mode chips under the composer.
-  func options(_ creation: CreationStore) -> NewSessionOptions {
+  func options(_ creation: CreationStore, projects: [ProjectSummary] = []) -> NewSessionOptions {
     let worktrees = NewSessionAdapter.worktrees(creation.worktrees.value ?? [])
     let notice = harnessNotice(creation)
-    return NewSessionOptions(
+    var options = NewSessionOptions(
       folder: folder.isEmpty ? nil : folder,
       recentFolders: (creation.workspaces.value ?? []).map(\.path),
       isSandbox: isSandbox,
@@ -208,5 +214,16 @@ final class NewSessionForm {
       offersWorktrees: !(creation.worktrees.value ?? []).isEmpty, worktrees: worktrees,
       worktree: worktree, harnessNotice: notice?.text, setUpName: notice?.name,
       isPlanMode: isPlanOn, defaultBaseBranch: worktreeDefaults.base)
+    options.project = project?.name
+    options.projects = projects.map(\.name)
+    return options
+  }
+
+  /// Files a just-created session in a label-only project, which the create cannot name.
+  func fileInLabelProject(_ sessionID: String, list: SessionListStore) {
+    guard let project, project.id == nil, filedSessionID != sessionID else { return }
+    filedSessionID = sessionID
+    // The move reports its own failure in the list's edit error.
+    Task { _ = await list.move(sessionID, to: project) }
   }
 }

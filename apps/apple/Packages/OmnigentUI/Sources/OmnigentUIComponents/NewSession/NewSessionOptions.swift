@@ -58,6 +58,10 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   public var isPlanMode: Bool
   /// Settings › Git's default base branch, pre-filled when naming a new worktree branch.
   public var defaultBaseBranch: String
+  /// The project the session is filed in; `nil` for none.
+  public var project: String?
+  /// The caller's projects, by name.
+  public var projects: [String] = []
 
   /// Creates options.
   /// - Parameters:
@@ -121,6 +125,8 @@ public struct NewSessionOptionActions {
   public var profiles: SandboxProfilesActions?
   /// Open the harness setup sheet from the not-ready notice.
   public var setUpHarness: (@MainActor () -> Void)?
+  /// Choose the project by name (`nil` for none).
+  public var selectProject: (@MainActor (String?) -> Void)?
 
   /// Creates actions.
   /// - Parameters:
@@ -177,6 +183,12 @@ struct NewSessionOptionsBar: View {
           if options.offersWorktrees, actions.selectWorktree != nil {
             worktreeMenu
           }
+        }
+        if let selectProject = actions.selectProject,
+          !options.projects.isEmpty || options.project != nil
+        {
+          NewSessionProjectMenu(
+            project: options.project, projects: options.projects, select: selectProject)
         }
         if options.isPlanMode {
           Label("Plan mode", systemImage: "doc.text")
