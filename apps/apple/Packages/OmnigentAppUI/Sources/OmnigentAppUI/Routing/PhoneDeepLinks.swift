@@ -173,10 +173,10 @@
       case .home:
         selection = nil
       case .conversation(let sessionID):
-        selection = .session(sessionID)
+        showChat(sessionID)
       case .message(let sessionID, let messageID):
         session?.transcriptFocus.focus(messageID, in: sessionID)
-        selection = .session(sessionID)
+        showChat(sessionID)
       case .page(let page):
         selection = DeepLinkDestinations.selection(for: page)
       case .settings(let section):
@@ -187,6 +187,13 @@
         else { return }
         session?.signIn.openInvite(link)
       }
+    }
+
+    /// Shows the session's chat. A side chat or terminal of the session already selects it at
+    /// compact widths, so the selection alone would not change; its chat tab is focused too.
+    private func showChat(_ sessionID: String) {
+      session?.tabs.open(.chat(sessionID: sessionID))
+      selection = .session(sessionID)
     }
 
     /// Pairing codes, valid or not, belong to the pairing confirmation.

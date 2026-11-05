@@ -37,15 +37,8 @@ final class SideChatUITests: XCTestCase {
     if hold > 0 { sleep(hold) }
 
     let question = "Side question \(Int(Date().timeIntervalSince1970))"
-    let focused = app.textViews.matching(
-      NSPredicate(format: "identifier == 'composer-input' AND hasFocus == true")
-    ).firstMatch
-    for _ in 0..<3 where !focused.exists {
-      tap(shown(app.textViews, "composer-input", timeout: 10), "the side chat's composer")
-      _ = focused.waitForExistence(timeout: 3)
-    }
-    XCTAssertTrue(focused.exists, "the side chat's composer did not take focus")
-    focused.typeText(question)
+    let field = focusedComposer(app)
+    field.typeText(question)
     log("send")
     tap(shown(app.buttons, "composer-send", timeout: 10), "Send")
 
@@ -90,6 +83,24 @@ final class SideChatUITests: XCTestCase {
     shownMatch(query, identifier, timeout: timeout)
       ?? query.matching(identifier: identifier)
       .firstMatch
+  }
+
+  /// The shown composer once a tap gives it the keyboard; a tap while the new side chat still
+  /// lays out can miss, so it taps again.
+  @MainActor
+  private func focusedComposer(_ app: XCUIApplication) -> XCUIElement {
+    var field = shown(app.textViews, "composer-input", timeout: 10)
+    for _ in 0..<3 {
+      tap(field, "the side chat's composer")
+      let deadline = Date().addingTimeInterval(3)
+      repeat {
+        if field.value(forKey: "hasKeyboardFocus") as? Bool == true { return field }
+        usleep(250_000)
+      } while Date() < deadline
+      field = shown(app.textViews, "composer-input", timeout: 10)
+    }
+    XCTFail("the side chat's composer did not take the keyboard")
+    return field
   }
 
   /// Whether the shown tab stops showing an `identifier` element within `timeout`.
