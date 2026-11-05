@@ -9,7 +9,7 @@ nonisolated public enum DeepLinkError: Error, Equatable, Sendable {
   case missingHost
   /// The host or port is invalid.
   case invalidOrigin(ServerOriginError)
-  /// The path is neither `/` nor `/c/<session>`.
+  /// The path is not `/`, `/c/<session>`, a page, `/settings[/<section>]` or an invite.
   case unsupportedPath(String)
   /// The link contains whitespace or control characters.
   case invalidCharacters
@@ -28,13 +28,21 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
   case message(sessionID: String, messageID: String)
   /// An invite, `omnigent://host/register?invite=<token>`: Create Account with it.
   case register(invite: String)
+  /// One of the web app's top-level pages, `omnigent://host/usage` and the others.
+  case page(DeepLinkPage)
+  /// Settings, `omnigent://host/settings` or `/settings/<section>` with the web's section ids
+  /// (`appearance`, `mcp`, `archived`...).
+  case settings(section: String?)
 
-  /// The basename-less SPA path for this route, `/`, `/c/<id>` or `/register`.
+  /// The basename-less SPA path for this route, `/`, `/c/<id>`, `/register`, a page's path or
+  /// `/settings[/<section>]`.
   public var path: String {
     switch self {
     case .home: "/"
     case .conversation(let sessionID), .message(let sessionID, _): "/c/\(sessionID)"
     case .register: "/register"
+    case .page(let page): "/\(page.rawValue)"
+    case .settings(let section): section.map { "/settings/\($0)" } ?? "/settings"
     }
   }
 
@@ -42,7 +50,7 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
   public var sessionID: String? {
     switch self {
     case .conversation(let sessionID), .message(let sessionID, _): sessionID
-    case .home, .register: nil
+    case .home, .register, .page, .settings: nil
     }
   }
 
@@ -51,6 +59,21 @@ nonisolated public enum DeepLinkRoute: Hashable, Sendable {
     if case .register = self { return true }
     return false
   }
+}
+
+/// A top-level page a link can open, by the web app's path. `new` is the app's own New Session
+/// page (the web's launcher is its root).
+nonisolated public enum DeepLinkPage: String, Hashable, Sendable, CaseIterable {
+  /// `/new`.
+  case newSession = "new"
+  /// `/inbox`.
+  case inbox
+  /// `/tasks`, the automations.
+  case automations = "tasks"
+  /// `/usage`.
+  case usage
+  /// `/canvas`.
+  case canvas
 }
 
 /// A one-time CLI handshake: `omnigent start --open-in-desktop` waits for
@@ -124,7 +147,9 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
   }
 
   /// `""` and `/` are home; `/c/<id>` and `/c/<id>/` are a conversation, or one of its messages
-  /// with a non-empty `message`; `/register` with a non-empty `invite` is an invite.
+  /// with a non-empty `message`; `/register` with a non-empty `invite` is an invite; `/new`,
+  /// `/inbox`, `/tasks`, `/usage` and `/canvas` are pages; `/settings` with an optional section
+  /// (and a harness, dropped) is Settings.
   private static func route(_ path: Substring, query: Substring) throws(DeepLinkError)
     -> DeepLinkRoute
   {
@@ -137,6 +162,22 @@ nonisolated public struct OmnigentDeepLink: Hashable, Sendable {
     }
     var segments = path.split(separator: "/", omittingEmptySubsequences: false)
     if segments.last?.isEmpty == true { segments.removeLast() }
+    if segments.count == 2, segments[0].isEmpty,
+      let page = DeepLinkPage(rawValue: String(segments[1]))
+    {
+      return .page(page)
+    }
+    if segments.count >= 2, segments.count <= 4, segments[0].isEmpty, segments[1] == "settings" {
+      // `/settings/harnesses/<harness>` opens the section; the harness is not addressable.
+      guard segments.count == 2 else {
+        let section = String(segments[2])
+        guard !section.isEmpty, section.allSatisfy({ $0.isLetter || $0 == "-" }) else {
+          throw .unsupportedPath(String(path))
+        }
+        return .settings(section: section)
+      }
+      return .settings(section: nil)
+    }
     guard segments.count == 3, segments[0].isEmpty, segments[1] == "c", !segments[2].isEmpty,
       let sessionID = percentDecoded(segments[2]), !sessionID.isEmpty,
       !sessionID.contains("/"), sessionID.unicodeScalars.allSatisfy({ $0.value >= 0x20 })

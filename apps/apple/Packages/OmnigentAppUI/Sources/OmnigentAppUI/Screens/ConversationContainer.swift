@@ -238,7 +238,7 @@ struct ConversationContainer: View {
   }
 
   /// The session's forkable summary, when this app can fork it.
-  private var forkSource: OmnigentCoreFFI.SessionSummary? {
+  var forkSource: OmnigentCoreFFI.SessionSummary? {
     guard makeForkStore != nil, let summary, forkUnavailableReason(source: summary) == nil else {
       return nil
     }
@@ -262,15 +262,11 @@ struct ConversationContainer: View {
   /// The session menu's Fork copies the whole session.
   private func forkable(_ actions: SessionListActions) -> SessionListActions {
     var actions = actions
-    if let source = forkSource {
-      actions.fork = { _ in
-        beginFork(ForkContext(source: source, upToResponseID: nil, kind: .session))
-      }
-    }
+    if let fork = forkSession { actions.fork = { _ in fork() } }
     return actions
   }
 
-  private func beginFork(_ context: ForkContext) {
+  func beginFork(_ context: ForkContext) {
     guard let makeForkStore else { return }
     Task { await forkFlow.begin(context, makeStore: makeForkStore) }
   }
@@ -380,6 +376,7 @@ extension ConversationContainer {
       conversation.composer, isRunning: { conversation.isRunning }, reconnect: retry,
       prompts: { ComposerAdapter.prompts(conversation) })
     SessionToolsAdapter.add(to: &extras, store: conversation, summary: summary, routes: toolRoutes)
+    extras.liveness.fork = forkSession
     return extras
   }
 

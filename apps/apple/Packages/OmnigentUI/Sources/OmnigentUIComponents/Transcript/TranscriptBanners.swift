@@ -8,14 +8,25 @@ struct EmptyTranscriptView: View {
   @Environment(\.isActiveTabPane) private var isActivePane
 
   var body: some View {
-    // While the first page loads, the history header's progress is the whole story: the empty
-    // state would flash "What should we work on?" before the messages arrive.
-    if Self.isEmpty(state) { content }
+    // While the first read is in flight the empty state would flash "What should we work on?"
+    // before the messages arrive: say the conversation is loading instead.
+    if state.isHydrating {
+      loading
+    } else if Self.isEmpty(state) {
+      content
+    }
   }
 
   /// Whether the conversation is known to be empty, not still loading its history.
   static func isEmpty(_ state: ConversationViewState) -> Bool {
-    !state.isLoadingHistory
+    !state.isLoadingHistory && !state.isHydrating
+  }
+
+  private var loading: some View {
+    ProgressView("Loading conversation\u{2026}")
+      .frame(maxWidth: .infinity)
+      .padding(.vertical, Theme.Spacing.section * 2)
+      .accessibilityIdentifier("transcript-loading")
   }
 
   private var content: some View {

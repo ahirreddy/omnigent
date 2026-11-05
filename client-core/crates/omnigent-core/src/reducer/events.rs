@@ -15,6 +15,8 @@ use omnigent_protocol::events::{
 use omnigent_protocol::sessions::{McpStartupStatus, SandboxStage, SandboxStatus};
 use serde_json::{Map, Value};
 
+use crate::failure_copy::failure_headline;
+
 use super::live::{Effects, LiveReducer};
 use super::ops::ChangeSet;
 use super::presentation::{
@@ -740,10 +742,11 @@ impl LiveReducer {
                 false,
             ));
         }
+        let headline = failure_headline(None, code.unwrap_or(""), false);
         let mut preview = Row::text(id.clone(), RowRole::Tool, message);
         preview.activity = Some(Activity {
             kind: ActivityKind::Error,
-            title: "Response error".to_owned(),
+            title: headline.clone(),
             summary: bounded(message, SUMMARY_CHARS),
             status: Some("failed".to_owned()),
             details: details.clone(),
@@ -758,7 +761,7 @@ impl LiveReducer {
             return;
         }
         self.upsert_activity(
-            ActivityUpdate::new(id, ActivityKind::Error, "Response error", message)
+            ActivityUpdate::new(id, ActivityKind::Error, &headline, message)
                 .status("failed")
                 .details(details),
         );

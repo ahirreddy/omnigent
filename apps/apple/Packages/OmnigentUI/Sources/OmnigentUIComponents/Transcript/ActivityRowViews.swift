@@ -129,52 +129,6 @@ extension FailureRecovery {
   }
 }
 
-private struct ErrorRowView: View {
-  let row: Row
-  let activity: Activity
-  @State private var isExpanded = false
-  @Environment(\.conversationActions) private var actions
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
-        Image(systemName: "exclamationmark.octagon.fill")
-          .foregroundStyle(Theme.failure)
-          .accessibilityHidden(true)
-        VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-          Text(activity.title).font(.callout.weight(.semibold))
-          Text(activity.summary)
-            .font(.callout)
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        Spacer(minLength: 0)
-        if let recovery = activity.recovery, let retry = actions.retryFailedTurn {
-          Button(recovery.title) { retry(row) }
-            .buttonStyle(.bordered)
-            .help(recovery.help)
-            .accessibilityIdentifier("error-retry-\(row.id)")
-        }
-        CopyButton(text: row.text.isEmpty ? activity.summary : row.text, label: "Copy error")
-      }
-      if !activity.details.isEmpty {
-        DisclosureGroup("Details", isExpanded: $isExpanded) {
-          DetailSectionsView(sections: activity.details, rowID: row.id)
-            .padding(.top, Theme.Spacing.small)
-        }
-        .font(.caption)
-      }
-    }
-    .padding(Theme.Spacing.medium)
-    .cardSurface(
-      cornerRadius: Theme.Radius.medium, tint: Theme.failure, stroke: Theme.failure.opacity(0.35)
-    )
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("Error: \(activity.summary)")
-    .accessibilityIdentifier("error-\(row.id)")
-  }
-}
-
 private struct RetryRowView: View {
   let row: Row
   let activity: Activity

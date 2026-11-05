@@ -163,6 +163,40 @@ fn all_sixteen_persisted_families_have_meaningful_typed_presentation() {
 }
 
 #[test]
+fn error_rows_read_like_the_web_card() {
+    let titled = decode(
+        "error",
+        json!({"code":"runner_error","message":"boom","title":"Sign-in needed",
+            "cause":"The token expired.","remediation":"omnigent login"}),
+    );
+    let activity = titled.activity.expect("activity");
+    assert_eq!(activity.title, "Sign-in needed");
+    assert_eq!(activity.detail("cause"), Some("The token expired."));
+    assert_eq!(activity.detail("remediation"), Some("omnigent login"));
+    assert_eq!(activity.status.as_deref(), Some("failed"));
+
+    let coded = decode(
+        "error",
+        json!({"code":"rate_limit_exceeded","message":"429 from the provider"}),
+    );
+    let activity = coded.activity.expect("activity");
+    assert_eq!(
+        activity.title,
+        "The model's rate limit was reached. You can retry this turn."
+    );
+    assert_eq!(activity.summary, "429 from the provider");
+
+    let notice = decode(
+        "error",
+        json!({"code":"budget_exhausted","message":"Budget spent","level":"info"}),
+    );
+    assert_eq!(
+        notice.activity.expect("activity").status.as_deref(),
+        Some("info")
+    );
+}
+
+#[test]
 fn routing_distinguishes_applied_from_suggestion() {
     let applied = decode(
         "routing_decision",

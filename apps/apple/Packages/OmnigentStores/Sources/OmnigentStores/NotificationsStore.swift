@@ -11,6 +11,8 @@ public final class NotificationsStore {
   public private(set) var badgeSessionIDs: [String] = []
   /// Whether the app may show notifications.
   public private(set) var isAllowed = false
+  /// Hosts that went offline, for the runner-offline notification.
+  public let offlineHosts = OfflineHosts()
 
   private let core: ClientCore
   /// The session list whose attention totals are the badge.

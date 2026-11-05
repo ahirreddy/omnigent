@@ -213,6 +213,11 @@ struct ServerWindowRoot: View {
     case .message(let sessionID, let messageID):
       session?.transcriptFocus.focus(messageID, in: sessionID)
       selection = .session(sessionID)
+    case .page(let page): selection = DeepLinkDestinations.selection(for: page)
+    case .settings(let section):
+      OpenSettingsDestinationAction.settingsWindow(openSettings: openSettings)(
+        DeepLinkDestinations.settings(
+          section: section, server: session?.connection.supervisedServerURL))
     case .register(let invite):
       guard let session, let serverURL = id.serverURL,
         let link = SceneLinkPlan.inviteLink(server: serverURL, invite: invite)

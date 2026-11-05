@@ -179,6 +179,8 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   /// Replaces the placeholder while something else needs the user first (a pending request,
   /// an offline session), in the web's words.
   public var statusPlaceholder: String?
+  /// The agent is asleep, waking, or unreachable: shown under the composer.
+  public var liveness: SessionLivenessNotice?
 
   /// Creates composer state.
   /// - Parameters:

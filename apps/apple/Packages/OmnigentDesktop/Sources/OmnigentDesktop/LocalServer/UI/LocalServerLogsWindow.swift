@@ -28,6 +28,9 @@ public struct LocalServerLogsWindow: Scene {
     }
     .defaultSize(width: 860, height: 520)
     .restorationBehavior(.disabled)
+    // A cold launch by an `omnigent://` link otherwise opens this window for the URL too;
+    // links go to `DesktopRouter`.
+    .handlesExternalEvents(matching: [])
   }
 }
 

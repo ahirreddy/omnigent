@@ -30,6 +30,9 @@ struct StatesAndCopyTests {
     #expect(!EmptyTranscriptView.isEmpty(state))
     state.isLoadingHistory = false
     #expect(EmptyTranscriptView.isEmpty(state))
+    // The first read says it is loading instead of offering an empty session.
+    state.isHydrating = true
+    #expect(!EmptyTranscriptView.isEmpty(state))
   }
 
   @Test("The live turn counts from the store's start, else the prompt's timestamp")

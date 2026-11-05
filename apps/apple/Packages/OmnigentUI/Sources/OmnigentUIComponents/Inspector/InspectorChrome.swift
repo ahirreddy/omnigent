@@ -21,6 +21,75 @@ extension View {
   }
 }
 
+/// The right panel: the inspector column on the Mac. iOS lays out its own column (regular
+/// width) or sheet (compact): SwiftUI's `.inspector` there kept a pushed conversation in a
+/// layout loop (main thread at 100%, the screen frozen on its previous frame) even while hidden.
+private struct InspectorColumn<Panel: View>: ViewModifier {
+  @Binding var isPresented: Bool
+  @ViewBuilder let panel: () -> Panel
+  #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+  #endif
+
+  func body(content: Content) -> some View {
+    #if os(iOS)
+      if sizeClass == .compact {
+        content.sheet(isPresented: $isPresented) {
+          panel().presentationDetents([.medium, .large])
+        }
+      } else {
+        PanelColumnLayout {
+          content
+          if isPresented {
+            HStack(spacing: 0) {
+              Divider().ignoresSafeArea()
+              panel()
+            }
+            .transition(.move(edge: .trailing))
+          }
+        }
+      }
+    #else
+      content.inspector(isPresented: $isPresented) {
+        panel().inspectorColumnWidth(min: 260, ideal: 360, max: 600)
+      }
+    #endif
+  }
+}
+
+/// The iPad's conversation and right panel side by side: the panel takes the Mac inspector's
+/// ideal width, narrowing to keep the conversation readable in a tight split.
+struct PanelColumnLayout: Layout {
+  /// The panel's widest and narrowest widths.
+  static let panelWidth: ClosedRange<CGFloat> = 260...360
+  /// The share of the width the panel may take before it narrows.
+  static let panelShare: CGFloat = 0.45
+
+  /// The panel's width in `width`.
+  static func panelWidth(in width: CGFloat) -> CGFloat {
+    min(panelWidth.upperBound, max(panelWidth.lowerBound, (width * panelShare).rounded(.down)))
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    proposal.replacingUnspecifiedDimensions()
+  }
+
+  func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+  ) {
+    guard let content = subviews.first else { return }
+    let panel = subviews.count > 1 ? Self.panelWidth(in: bounds.width) : 0
+    content.place(
+      at: bounds.origin,
+      proposal: ProposedViewSize(width: bounds.width - panel, height: bounds.height))
+    for subview in subviews.dropFirst() {
+      subview.place(
+        at: CGPoint(x: bounds.maxX - panel, y: bounds.minY),
+        proposal: ProposedViewSize(width: panel, height: bounds.height))
+    }
+  }
+}
+
 private struct WorkspaceInspectorPresentation: ViewModifier {
   let state: ConversationViewState
   let actions: ConversationActions
@@ -41,9 +110,7 @@ private struct WorkspaceInspectorPresentation: ViewModifier {
       .overlay {
         if isPresented, maximized { panel }
       }
-      .inspector(isPresented: sideColumnPresented) {
-        panel.inspectorColumnWidth(min: 260, ideal: 360, max: 600)
-      }
+      .modifier(InspectorColumn(isPresented: sideColumnPresented) { panel })
       .onChange(of: isPresented) { _, shows in
         if !shows { maximized = false }
       }

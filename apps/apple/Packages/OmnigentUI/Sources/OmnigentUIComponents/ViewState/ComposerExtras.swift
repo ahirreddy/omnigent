@@ -289,6 +289,8 @@ public struct ComposerExtraActions {
   public var removeMention: (@MainActor (String) -> Void)?
   /// Turn Smart Routing on or off (the model picker's toggle).
   public var setSmartRouting: (@MainActor (Bool) -> Void)?
+  /// The reconnect sheet's Check Again and Fork.
+  public var liveness = SessionLivenessActions()
 
   /// Creates actions.
   /// - Parameters:

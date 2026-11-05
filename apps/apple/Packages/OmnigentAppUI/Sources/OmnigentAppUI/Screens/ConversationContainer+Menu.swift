@@ -94,3 +94,13 @@ extension ConversationContainer {
       createdBy: creator, parent: parent, branch: session.configuration?.gitBranch)
   }
 }
+
+extension ConversationContainer {
+  /// Forks the whole session (the session menu's Fork, the reconnect sheet's way out); `nil`
+  /// when this app cannot fork it.
+  var forkSession: (@MainActor () -> Void)? {
+    guard let source = forkSource else { return nil }
+    let context = ForkContext(source: source, upToResponseID: nil, kind: .session)
+    return { beginFork(context) }
+  }
+}

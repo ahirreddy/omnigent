@@ -41,6 +41,7 @@ enum ComposerAdapter {
     state.approvalPickerRequest = composer.approvalPickerRequests
     state.connection = connection(store)
     state.statusPlaceholder = statusPlaceholder(store, connection: state.connection)
+    state.liveness = LivenessAdapter.notice(store, serverURL: server?.baseUrl)
     if let fraction = contextFraction(store.sections) {
       var tray = ComposerTray(contextFraction: fraction)
       tray.contextTokens = contextTokens(store.sections)
@@ -191,6 +192,7 @@ enum ComposerAdapter {
     extras.attachMention = { composer.addMention($0) }
     extras.removeMention = { composer.removeMention($0) }
     extras.setSmartRouting = { enabled in Task { await composer.setSmartRouting(enabled) } }
+    extras.liveness.checkAgain = reconnect
     return extras
   }
 

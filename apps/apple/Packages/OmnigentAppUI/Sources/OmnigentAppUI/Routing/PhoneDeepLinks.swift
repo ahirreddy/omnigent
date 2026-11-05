@@ -7,30 +7,35 @@
   public import SwiftUI
 
   extension View {
-    /// Opens `omnigent://host/c/<id>`, `omnigent://host` and `…/register?invite=` links in this
-    /// scene: in place on its server, after moving to a recent server, or after the user agrees
-    /// to connect to a new one. Pairing codes are left to ``phoneSupervision(_:session:selection:scenePhase:)``.
+    /// Opens `omnigent://host/c/<id>`, `omnigent://host`, page (`/usage`), `/settings` and
+    /// `…/register?invite=` links in this scene: in place on its server, after moving to a
+    /// recent server, or after the user agrees to connect to a new one. A link to another server
+    /// supersedes a launch reconnect still in flight. Apply it inside `phoneSupervision`, whose
+    /// Settings screen settings links open; pairing codes are left to
+    /// ``phoneSupervision(_:session:selection:scenePhase:)``.
     /// - Parameters:
-    ///   - session: The scene's session, once it finished its launch connect.
+    ///   - session: The scene's session.
+    ///   - restoringServer: The server the launch is reconnecting to, before the core reports it.
     ///   - selection: The scene's destination.
     ///   - knownServers: Servers the user connected to before.
     ///   - switchServer: Moves the scene to a server.
     ///   - launchLink: A link to open once the scene is ready, as if the system had opened it.
     /// - Returns: The view.
     public func phoneDeepLinks(
-      session: ServerSession?, selection: Binding<SidebarDestination?>,
-      knownServers: [URL], switchServer: @escaping @MainActor (URL) -> Void,
-      launchLink: URL? = nil
+      session: ServerSession?, restoringServer: URL? = nil,
+      selection: Binding<SidebarDestination?>, knownServers: [URL],
+      switchServer: @escaping @MainActor (URL) -> Void, launchLink: URL? = nil
     ) -> some View {
       modifier(
         PhoneDeepLinks(
-          session: session, selection: selection, knownServers: knownServers,
-          switchServer: switchServer, launchLink: launchLink))
+          session: session, restoringServer: restoringServer, selection: selection,
+          knownServers: knownServers, switchServer: switchServer, launchLink: launchLink))
     }
   }
 
   struct PhoneDeepLinks: ViewModifier {
     let session: ServerSession?
+    let restoringServer: URL?
     @Binding var selection: SidebarDestination?
     let knownServers: [URL]
     let switchServer: @MainActor (URL) -> Void
@@ -45,6 +50,8 @@
     /// A link to a never-used server, while the user decides.
     @State private var consent: OmnigentDeepLink?
     @State private var problem: String?
+    /// The scene's Settings screen, for `/settings` links.
+    @Environment(\.openSettingsAt) private var openSettingsAt
 
     /// The scene's server while it is signed in.
     private var readyServer: URL? {
@@ -114,7 +121,7 @@
     private func route(_ link: OmnigentDeepLink) {
       guard let session else { return }
       let plan = SceneLinkPlan.plan(
-        link, sceneServer: session.targetURL, isReady: readyServer != nil,
+        link, sceneServer: session.targetURL ?? restoringServer, isReady: readyServer != nil,
         knownServers: knownServers)
       switch plan {
       case .apply(let route):
@@ -170,6 +177,11 @@
       case .message(let sessionID, let messageID):
         session?.transcriptFocus.focus(messageID, in: sessionID)
         selection = .session(sessionID)
+      case .page(let page):
+        selection = DeepLinkDestinations.selection(for: page)
+      case .settings(let section):
+        // The screen shows the scene's own server.
+        openSettingsAt?(DeepLinkDestinations.settings(section: section, server: nil))
       case .register(let invite):
         guard let server, let link = SceneLinkPlan.inviteLink(server: server, invite: invite)
         else { return }

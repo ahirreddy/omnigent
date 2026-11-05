@@ -136,7 +136,7 @@ struct FailureView: View {
     ContentUnavailableView {
       Label(title, systemImage: failure.symbol)
     } description: {
-      Text(failure.message)
+      Text(failure.displayMessage)
         .textSelection(.enabled)
     } actions: {
       if let retry {
@@ -153,7 +153,7 @@ struct FailureView: View {
     case .notChanged: "No Changes"
     case .unavailable: "No Workspace"
     case .forbidden: "No Access"
-    case .runnerOffline: "Runner Offline"
+    case .runnerOffline: "Agent Is Asleep"
     case .searchDisabled: "Search Unavailable"
     case .searchFailed: "Search Failed"
     case .server: "Could Not Load"
@@ -171,7 +171,7 @@ struct InlineFailure: View {
       Image(systemName: failure.symbol)
         .foregroundStyle(.orange)
         .accessibilityHidden(true)
-      Text(failure.message)
+      Text(failure.displayMessage)
         .lineLimit(2)
         .foregroundStyle(.secondary)
       if let retry {
