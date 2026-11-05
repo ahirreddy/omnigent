@@ -34,9 +34,8 @@ struct OmnigentApp: App {
 
   private func root(_ request: PhoneWindowRequest?) -> some View {
     IOSRootView(request: request)
-      // Sheets, pickers, toggles and bar buttons take the theme accent, as the web's controls
-      // do; the window's tint carries it to alerts and menus UIKit presents.
-      .tint(ThemeColor.controlTint)
+      // The window's tint is SwiftUI's default accent and UIKit's: sheets, pickers, links,
+      // alerts and menus take the theme's instead of system blue. Toolbar glyphs stay neutral.
       .background { WindowTint() }
       .appearanceSettings(theme)
       .omnigentTheme(theme.theme, appearance: theme.mode)
@@ -60,8 +59,9 @@ struct OmnigentApp: App {
   #endif
 }
 
-/// Sets the hosting window's tint to the theme's control tint, so alerts, confirmation dialogs
-/// and menus that UIKit presents outside the SwiftUI tree match the app.
+/// Sets the hosting window's tint to the theme's control tint, which SwiftUI controls without
+/// their own tint and the alerts, dialogs and menus UIKit presents all follow. The color carries
+/// both schemes, so a dark-mode switch restyles them without a SwiftUI update.
 private struct WindowTint: UIViewRepresentable {
   func makeUIView(context: Context) -> TintView {
     let view = TintView()
@@ -70,12 +70,17 @@ private struct WindowTint: UIViewRepresentable {
   }
 
   func updateUIView(_ view: TintView, context: Context) {
-    view.tint = UIColor(ThemeColor.controlTint.resolve(in: context.environment))
+    view.tints = [ColorScheme.light, .dark].map { scheme in
+      var environment = context.environment
+      environment.colorScheme = scheme
+      return UIColor(ThemeColor.controlTint.resolve(in: environment))
+    }
   }
 
   final class TintView: UIView {
-    var tint: UIColor? {
-      didSet { applyTint() }
+    /// The tint in light and dark mode; setting the same pair again changes nothing.
+    var tints: [UIColor] = [] {
+      didSet { if tints != oldValue { applyTint() } }
     }
 
     override func didMoveToWindow() {
@@ -84,8 +89,9 @@ private struct WindowTint: UIViewRepresentable {
     }
 
     private func applyTint() {
-      guard let window, let tint, window.tintColor != tint else { return }
-      window.tintColor = tint
+      guard let window, tints.count == 2 else { return }
+      let (light, dark) = (tints[0], tints[1])
+      window.tintColor = UIColor { $0.userInterfaceStyle == .dark ? dark : light }
     }
   }
 }

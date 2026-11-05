@@ -44,9 +44,9 @@ nonisolated public struct ThemeColor: ShapeStyle, Hashable, Sendable {
   /// else. Toolbar items, chips, links, selection and decoration use the other roles. Darkened
   /// where needed so its label (``onAccent``) reads at WCAG AA, or AAA under Increase Contrast.
   public static let accent = Self(role: .accent)
-  /// `--primary` as the tint of system controls on iOS (toggles, bar buttons, sheet and alert
-  /// actions), as the web draws its switches and checkboxes: the theme accent, its lightness
-  /// moved until it reads as text on the canvas and the sidebar.
+  /// `--primary` as the tint of system controls on iOS (links, pickers, sheet and alert
+  /// actions), as the web draws its controls: the theme accent, its lightness moved until it
+  /// reads as text on the canvas and the sidebar.
   public static let controlTint = Self(role: .controlTint)
   /// `--brand-accent` exactly as the palette defines it, for swatches. Draw "needs you" with
   /// ``attention``.
