@@ -55,6 +55,11 @@ public struct AppShell<Detail: View>: View {
     return NavigationSplitView(columnVisibility: $columns) {
       SidebarView(state: sidebar, selection: $selection, searchText: $searchText, actions: actions)
         .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
+        #if os(iOS)
+          // The sidebar has no title (its header names the server), so a large-title bar
+          // drew an empty band above it on iPhone.
+          .navigationBarTitleDisplayMode(.inline)
+        #endif
     } detail: {
       NavigationStack {
         detail(selection)

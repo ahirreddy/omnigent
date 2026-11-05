@@ -45,4 +45,34 @@ struct MessageActionRowTests {
     let row = Row(id: "a1", role: .assistant, text: "", responseId: "resp_1")
     #expect(kinds(row, forking) == [.fork, .link])
   }
+
+  @Test("Reply and Ask in side chat quote the whole trimmed message, when the host offers them")
+  func quoteItems() {
+    var replied: [String] = []
+    var asked: [String] = []
+    var actions = ConversationActions()
+    actions.replyWithSelection = { replied.append($0) }
+    actions.askInSideChat = { asked.append($0) }
+    let row = Row(id: "a1", role: .assistant, text: "  Done.\n", responseId: "resp_1")
+    let items = MessageActionItem.quoteItems(for: row, actions: actions)
+    #expect(items.map(\.kind) == [.reply, .askSideChat])
+    #expect(items.map(\.identifier) == ["message-reply-a1", "message-side-chat-a1"])
+    for item in items { item.perform() }
+    #expect(replied == ["Done."] && asked == ["Done."])
+    // Read-only viewers get neither; Reply alone when side chats are off.
+    #expect(MessageActionItem.quoteItems(for: row, actions: ConversationActions()).isEmpty)
+    actions.askInSideChat = nil
+    #expect(MessageActionItem.quoteItems(for: row, actions: actions).map(\.kind) == [.reply])
+  }
+
+  @Test("An empty or streaming message has nothing to quote")
+  func quoteNeedsSettledText() {
+    var actions = ConversationActions()
+    actions.replyWithSelection = { _ in }
+    let empty = Row(id: "a1", role: .assistant, text: " ", responseId: "resp_1")
+    var streaming = Row(id: "a2", role: .assistant, text: "Partial", responseId: "resp_2")
+    streaming.isStreaming = true
+    #expect(MessageActionItem.quoteItems(for: empty, actions: actions).isEmpty)
+    #expect(MessageActionItem.quoteItems(for: streaming, actions: actions).isEmpty)
+  }
 }

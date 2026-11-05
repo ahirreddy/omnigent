@@ -246,7 +246,7 @@ extension ConversationActions: FocusedActions {
       loadOlder != nil, openSession != nil, openAttachment != nil, openURL != nil,
       respond != nil, validateForm != nil, dismissError != nil, retry != nil, forkFrom != nil,
       messageURL != nil, resume != nil, share != nil, openSideChat != nil, openChild != nil,
-      retryFailedTurn != nil,
+      retryFailedTurn != nil, replyWithSelection != nil, askInSideChat != nil,
     ]
   }
 
@@ -270,6 +270,15 @@ extension ConversationActions: FocusedActions {
     if openSideChat != nil { copy.openSideChat = { latest()?.openSideChat?($0) } }
     if openChild != nil { copy.openChild = { latest()?.openChild?($0) } }
     if retryFailedTurn != nil { copy.retryFailedTurn = { latest()?.retryFailedTurn?($0) } }
+    forwardQuotes(into: &copy, to: latest)
     return copy
+  }
+
+  /// Reply and Ask in side chat, which quote text from the transcript.
+  private func forwardQuotes(into copy: inout Self, to latest: @escaping @MainActor () -> Self?) {
+    if replyWithSelection != nil {
+      copy.replyWithSelection = { latest()?.replyWithSelection?($0) }
+    }
+    if askInSideChat != nil { copy.askInSideChat = { latest()?.askInSideChat?($0) } }
   }
 }

@@ -98,6 +98,9 @@ struct CLIStyleTests {
     let first = TranscriptWindowControls(style: .chat, preferences: preferences, window: store)
     let second = TranscriptWindowControls(style: .chat, preferences: preferences, window: store)
     #expect(first == second)
+    // A reference: SwiftUI compares an environment class by identity, while it saw a struct of
+    // these change on every iPad bar update and re-rendered the conversation in a loop.
+    #expect((TranscriptWindowControls.self as Any.Type) is AnyClass)
     let otherWindow = TranscriptWindowControls(
       style: .chat, preferences: preferences, window: TranscriptWindowStyleStore())
     #expect(first != otherWindow)

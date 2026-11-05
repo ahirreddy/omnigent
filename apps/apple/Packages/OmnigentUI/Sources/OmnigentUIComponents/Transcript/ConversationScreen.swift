@@ -43,7 +43,8 @@ public struct ConversationScreen<Terminal: View>: View {
   @State private var decisionSurfaces = DecisionSurfaces()
   @State private var commandRelay = FocusedActionsRelay<SessionCommandActions>()
   @Environment(\.layoutWidth) private var layoutWidth
-  @Environment(\.transcriptTitleMenu) private var transcriptTitleMenu
+  @Environment(\.transcriptWindow) private var transcriptWindow
+  @Environment(\.openAppearanceSettings) private var openAppearanceSettings
   @Environment(\.tabsInTitlebar) private var tabsInTitlebar
   @Environment(\.isActiveTabPane) private var isActivePane
   @Environment(\.offersTerminalView) private var offersTerminalView
@@ -259,7 +260,8 @@ public struct ConversationScreen<Terminal: View>: View {
         Button("Go to Creating Session", systemImage: "arrow.up.backward") { open(creator.id) }
       }
     }
-    transcriptTitleMenuItems(transcriptTitleMenu)
+    transcriptTitleMenuItems(
+      TranscriptTitleMenu(window: transcriptWindow, openAppearance: openAppearanceSettings))
   }
 
   /// The sidebar row's menu for this session (as the web's header menu mirrors its row), with
