@@ -124,7 +124,40 @@ struct SignInAccountsTests {
     #expect(signIn.actions.inviteToken("not an invite") == nil)
   }
 
+  @Test("A pasted or opened invite link opens Create Account with it")
+  func inviteLinks() throws {
+    #expect(
+      SignInController.inviteServer("https://h.example.com/omnigent/register?invite=abc")
+        == "https://h.example.com/omnigent")
+    #expect(
+      SignInController.inviteServer("https://h.example.com/register?invite=abc#x")
+        == "https://h.example.com")
+    #expect(SignInController.inviteServer("https://h.example.com/omnigent") == nil)
+    #expect(SignInController.inviteServer("https://h.example.com/login?invite=abc") == nil)
+
+    let suite = "ai.omnigent.appui.tests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let signIn = try controller(FakeHttpTransport(routes: [:]), defaults: defaults)
+    signIn.openInvite("https://h.example.com/register?invite=abc")
+    #expect(signIn.state.accountForm == .register)
+    #expect(signIn.state.inviteLink == "https://h.example.com/register?invite=abc")
+    signIn.connect("https://h.example.com/register?invite=xyz")
+    #expect(signIn.lastServerUrl == "https://h.example.com")
+    #expect(signIn.inviteLink == "https://h.example.com/register?invite=xyz")
+    signIn.connect("https://other.example.com")
+    #expect(signIn.inviteLink == nil)
+    #expect(signIn.accountForm == .signIn)
+  }
+
   #if os(macOS)
+    @Test("The install screen follows the manager's installer")
+    func installState() {
+      #expect(LocalServerSetup.install(.idle) == .idle)
+      #expect(LocalServerSetup.install(.installing) == .installing)
+      #expect(LocalServerSetup.install(.failed("no uv")) == .failed("no uv"))
+    }
+
     @Test("The local setup screens follow the manager's CLI and server")
     func localSetupState() throws {
       let endpoint = try #require(LocalServerEndpoint(port: 6767, pid: 1, manifest: nil))

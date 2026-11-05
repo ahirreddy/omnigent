@@ -72,6 +72,15 @@ struct ServerWindowRegistryTests {
     #expect(registry.takePendingRoute(for: workspace.instance) == nil)
   }
 
+  @Test("an invite reaches a window that is still signing in")
+  func pendingInvite() {
+    let registry = ServerWindowRegistry()
+    registry.deliver(.register(invite: "t1"), to: workspace.instance)
+    #expect(registry.takePendingRoute(for: workspace.instance) == nil, "no window yet")
+    registry.update(workspace, isReady: false, viewedSessionID: nil, unreadCount: 0)
+    #expect(registry.takePendingRoute(for: workspace.instance) == .register(invite: "t1"))
+  }
+
   @Test("closing a window drops its pending route and key status")
   func removal() {
     let registry = ServerWindowRegistry()

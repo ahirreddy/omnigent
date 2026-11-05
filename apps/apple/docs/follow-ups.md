@@ -144,15 +144,14 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   1 s of opening a session.
 - [ ] **iPhone:** transcript content shows briefly under the dock and composer while the layout
   settles.
-- [ ] **Onboarding (Mac):** install the `omnigent` CLI from "Get started locally" as Electron's
-  `onInstallCli` does; today the step links to the install guide and checks again.
-- [ ] **Onboarding (Mac):** "Where do you work today?" connects this Mac with
-  `omnigent host --non-interactive`, which refuses when the CLI is not signed in to that server
-  (for example "Run `omnigent login …`" on a Databricks-fronted one). Electron first runs
-  `ensureServerAuth` (CLI login, browser if needed); port it, and offer the
-  remote (Arca) runner where Electron does.
-- [ ] **Invite links:** open `…/register?invite=` links in the app (deep link) with the invite
-  prefilled; today the user pastes the link into Create an Account.
+- [ ] **Onboarding (Mac):** offer the remote (Arca) runner in "Where do you work today?" where
+  Electron does (Databricks-managed servers only).
+- [ ] **Invite links:** `https://…/register?invite=` links open in the browser; only
+  `omnigent://host/register?invite=` links and pasted links reach the app. Opening the https form
+  needs associated domains on the server.
+- [ ] **Harnesses:** Settings does not probe harness accounts on open
+  (`POST /v1/hosts/{id}/harnesses/accounts/refresh`), lacks the Isaac/personal credential cards
+  of the web's Authenticate step, and has no MCP servers / skills / plugins tabs on the details.
 - [ ] **Tabs:** drag-to-reorder on iPad.
 - [ ] **Split view:** in iPad portrait the right pane's tab-strip section is narrow and clips titles.
 - [ ] **Split view on the unfolded Duo:** the hinge layout applies only when both sides of the
@@ -180,8 +179,6 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Mac sidebar:** with the window inactive, the Running and Needs you rows don't dim like the
   other rows (`QuickFilterRow` forces the primary color).
 - [ ] **iOS sidebar:** the swipe actions still use system orange (Pin) and indigo (Archive).
-- [ ] **Mac sidebar:** "This Mac" in the Environment detail is a guess (the only online machine of a
-  loopback server) until the app knows the host it runs; pass that id to `host_environments`.
 - [ ] **Mac sidebar:** composer drafts live only in the core's memory, so the draft marker covers
   sessions opened since launch (the web keeps drafts in local storage).
 - [ ] **Palette:** add "Go to Automations" once the Mac app has an Automations page.
@@ -309,6 +306,18 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] Reusing the iOS bundle ID requires a version above 0.3.2.
 
 ## Done
+
+- [x] Harnesses: Settings opens a harness's details (account, Switch Account / Sign In Again /
+  Reconfigure, Update, the startup command, environment and arguments), with Codex's device
+  sign-in and Check Again after a login command. 2026-11-04.
+- [x] Onboarding (Mac): Install runs uv's installer when needed, then the published
+  `install_oss.sh --non-interactive`, as Electron's `cli_install.js` does. 2026-11-04.
+- [x] Hosting: the CLI signs in to a remote server (`GET /v1/me`, then `omnigent login`) before
+  `omnigent host` starts, as Electron's `ensureServerAuth` does. 2026-11-04.
+- [x] Mac sidebar: "This Mac" is the host id in the CLI's `config.yaml`, passed to
+  `host_environments`. 2026-11-04.
+- [x] Invite links: `omnigent://host/register?invite=` deep links and pasted invite links open
+  Create Account with the invite. 2026-11-04.
 
 - [x] Host: after Back, the remote tab kept showing the old page (or a blank one) when many other
   tabs showed the same site. Windowless Chromium restored the page from the back/forward cache

@@ -28,16 +28,18 @@ public struct CreateAccountView: View {
   ///   - form: ``AccountForm/createAdmin`` or ``AccountForm/register``.
   ///   - banner: The last failure.
   ///   - isSubmitting: Whether the account is being created.
+  ///   - inviteLink: The invite link that opened the app, prefilled.
   ///   - actions: The store's actions.
   public init(
     server: ServerIdentity, form: AccountForm, banner: AuthBanner?, isSubmitting: Bool,
-    actions: AuthActions
+    inviteLink: String? = nil, actions: AuthActions
   ) {
     self.server = server
     self.form = form
     self.banner = banner
     self.isSubmitting = isSubmitting
     self.actions = actions
+    _inviteLink = State(initialValue: inviteLink ?? "")
   }
 
   private var isInvited: Bool { form == .register }

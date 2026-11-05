@@ -56,7 +56,8 @@ struct AuthScreenView: View {
         server: server, banner: banner, isSubmitting: isSubmitting, actions: actions)
     case .createAccount(let server, let form, let banner, let isSubmitting):
       CreateAccountView(
-        server: server, form: form, banner: banner, isSubmitting: isSubmitting, actions: actions)
+        server: server, form: form, banner: banner, isSubmitting: isSubmitting,
+        inviteLink: state.inviteLink, actions: actions)
     case .browserSignIn(let server, let option, let alternatives, let banner):
       BrowserSignInView(
         server: server, option: option, alternatives: alternatives, banner: banner,

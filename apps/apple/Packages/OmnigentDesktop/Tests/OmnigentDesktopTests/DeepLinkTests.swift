@@ -194,4 +194,20 @@ struct DeepLinkAcknowledgmentTests {
       try parse("omnigent://localhost/settings?desktop_ack=123:\(Self.token)")
     }
   }
+
+  @Test("an invite opens before sign-in; one without a token is rejected")
+  func invites() throws {
+    let link = try parse("omnigent://omni.example.com/register?invite=a%2Bb_1&x=y")
+    #expect(link.route == .register(invite: "a+b_1"))
+    #expect(link.route.appliesBeforeSignIn)
+    #expect(!DeepLinkRoute.home.appliesBeforeSignIn)
+    #expect(
+      try parse("omnigent://omni.example.com/register/?invite=t").route == .register(invite: "t"))
+    #expect(throws: DeepLinkError.unsupportedPath("/register")) {
+      try parse("omnigent://omni.example.com/register?invite=")
+    }
+    #expect(throws: DeepLinkError.unsupportedPath("/register")) {
+      try parse("omnigent://omni.example.com/register")
+    }
+  }
 }

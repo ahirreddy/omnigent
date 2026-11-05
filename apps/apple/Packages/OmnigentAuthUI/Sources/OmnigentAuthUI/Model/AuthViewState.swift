@@ -20,6 +20,8 @@ public nonisolated struct AuthViewState: Hashable, Sendable {
   public var accountForm: AccountForm
   /// This Mac's local setup; `nil` where the platform cannot run a local server.
   public var localSetup: LocalSetupState?
+  /// An invite link that opened the app, prefilled in Create Account.
+  public var inviteLink: String?
 
   /// Creates a state.
   /// - Parameters:
@@ -30,10 +32,12 @@ public nonisolated struct AuthViewState: Hashable, Sendable {
   ///   - notice: A one-off informational message.
   ///   - accountForm: Which accounts form to show.
   ///   - localSetup: This Mac's local setup.
+  ///   - inviteLink: An invite link to prefill.
   public init(
     phase: SignInPhase = .disconnected, server: ServerIdentity? = nil,
     directory: ServerDirectory = ServerDirectory(), lastServerUrl: String? = nil,
-    notice: String? = nil, accountForm: AccountForm = .signIn, localSetup: LocalSetupState? = nil
+    notice: String? = nil, accountForm: AccountForm = .signIn, localSetup: LocalSetupState? = nil,
+    inviteLink: String? = nil
   ) {
     self.phase = phase
     self.server = server
@@ -42,6 +46,7 @@ public nonisolated struct AuthViewState: Hashable, Sendable {
     self.notice = notice
     self.accountForm = accountForm
     self.localSetup = localSetup
+    self.inviteLink = inviteLink
   }
 
   /// The screen to show.

@@ -57,6 +57,9 @@ public final class SessionListStore {
   public internal(set) var viewerID: String?
   /// Where a session on each host runs, by host id (the sidebar's Environment detail).
   public internal(set) var hostEnvironments: [String: SessionEnvironment] = [:]
+  /// This device's host id, read each time the hosts load; `nil` when it is not a host (or
+  /// the app cannot tell), and a local server's only online machine stands in for it.
+  @ObservationIgnored public var thisMachineHostID: () -> String? = { nil }
   /// The last host list failure, until the next successful read.
   public internal(set) var hostsError: CoreError?
   /// Sessions whose composer holds an unsent draft.
