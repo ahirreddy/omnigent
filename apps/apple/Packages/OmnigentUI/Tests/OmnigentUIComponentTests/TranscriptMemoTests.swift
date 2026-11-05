@@ -74,6 +74,24 @@ struct TranscriptMemoTests {
     #expect(relay.publications == 2)
   }
 
+  @Test("Reply and Ask in side chat survive the relay and call the latest actions")
+  func selectionActionsForwarded() {
+    let relay = TranscriptEnvironmentRelay()
+    var quoted: [String] = []
+    var first = ConversationActions()
+    first.replyWithSelection = { quoted.append("old reply \($0)") }
+    _ = relay.publish(first)
+    var second = ConversationActions()
+    second.replyWithSelection = { quoted.append("reply \($0)") }
+    second.askInSideChat = { quoted.append("ask \($0)") }
+    let published = relay.publish(second)
+    // Ask appearing is a new signature, so the menus and the popup see it.
+    #expect(relay.publications == 2)
+    published.replyWithSelection?("a")
+    published.askInSideChat?("b")
+    #expect(quoted == ["reply a", "ask b"])
+  }
+
   @Test("the link action is built once and opens through the latest actions")
   func openURLStable() throws {
     let relay = TranscriptEnvironmentRelay()

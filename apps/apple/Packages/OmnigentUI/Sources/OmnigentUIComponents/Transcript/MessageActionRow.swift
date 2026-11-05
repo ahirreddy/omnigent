@@ -12,7 +12,7 @@ extension EnvironmentValues {
 struct MessageActionItem: Identifiable {
   /// Which action.
   enum Kind: String {
-    case copy, fork, link
+    case copy, fork, link, reply, askSideChat
   }
 
   let kind: Kind
@@ -50,6 +50,28 @@ struct MessageActionItem: Identifiable {
         Self(
           kind: .link, title: "Copy link", menuTitle: "Copy Link", systemImage: "link",
           identifier: "message-link-\(row.id)", perform: { Pasteboard.copy(url.absoluteString) }))
+    }
+    return items
+  }
+
+  /// Reply and Ask in side chat with the whole message quoted: touch has no selection popup,
+  /// so the message's context menu offers them (the web's selection popup actions).
+  static func quoteItems(for row: Row, actions: ConversationActions) -> [Self] {
+    let text = row.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty, !row.isStreaming else { return [] }
+    var items: [Self] = []
+    if let reply = actions.replyWithSelection {
+      items.append(
+        Self(
+          kind: .reply, title: "Reply", menuTitle: "Reply", systemImage: "arrowshape.turn.up.left",
+          identifier: "message-reply-\(row.id)", perform: { reply(text) }))
+    }
+    if let ask = actions.askInSideChat {
+      items.append(
+        Self(
+          kind: .askSideChat, title: "Ask in side chat", menuTitle: "Ask in Side Chat",
+          systemImage: "bubble.left.and.bubble.right",
+          identifier: "message-side-chat-\(row.id)", perform: { ask(text) }))
     }
     return items
   }
@@ -183,6 +205,11 @@ private struct MessageActionsHost: ViewModifier {
         ForEach(MessageActionItem.items(for: row, actions: actions)) { item in
           Button(item.title, action: item.perform)
         }
+        #if !os(macOS)
+          ForEach(MessageActionItem.quoteItems(for: row, actions: actions)) { item in
+            Button(item.title, action: item.perform)
+          }
+        #endif
       }
   }
 }
@@ -212,6 +239,16 @@ struct MessageContextMenu: View {
   let actions: ConversationActions
 
   var body: some View {
+    #if !os(macOS)
+      // The Mac quotes a selection from its popup; touch quotes the whole message here.
+      let quotes = MessageActionItem.quoteItems(for: row, actions: actions)
+      if !quotes.isEmpty {
+        ForEach(quotes) { item in
+          Button(item.menuTitle, systemImage: item.systemImage, action: item.perform)
+        }
+        Divider()
+      }
+    #endif
     ForEach(MessageActionItem.items(for: row, actions: actions)) { item in
       Button(item.menuTitle, systemImage: item.systemImage, action: item.perform)
     }
