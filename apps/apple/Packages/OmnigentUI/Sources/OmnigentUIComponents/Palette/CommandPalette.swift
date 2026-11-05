@@ -55,7 +55,10 @@ public struct CommandPalette: View {
 
   /// Search, scoped results and keyboard help.
   public var body: some View {
-    VStack(spacing: 0) {
+    // One search per update: the list, the empty state and the selection share it.
+    let sections = self.sections
+    let results = sections.flatMap(\.entries)
+    return VStack(spacing: 0) {
       HStack(spacing: Theme.Spacing.small) {
         Image(systemName: "magnifyingglass").accessibilityHidden(true)
         TextField(placeholder, text: $query)
@@ -118,16 +121,18 @@ public struct CommandPalette: View {
       selection = results.first(where: \.isEnabled)?.id
     }
     .onChange(of: results) {
-      if !results.contains(where: { $0.id == selection && $0.isEnabled }) { resetSelection() }
+      if !results.contains(where: { $0.id == selection && $0.isEnabled }) {
+        resetSelection(results)
+      }
     }
     .onChange(of: query) {
-      resetSelection()
+      resetSelection(results)
       searchLimit = PaletteResults.searchPageSize
     }
     .task(id: PaletteSearchRequest(query: query, limit: searchLimit, attempt: searchAttempt)) {
       await searchServer()
     }
-    .onChange(of: scope) { resetSelection() }
+    .onChange(of: scope) { resetSelection(results) }
     .onKeyPress(.downArrow) {
       move(1)
       return .handled
@@ -197,7 +202,9 @@ public struct CommandPalette: View {
     isSearching = false
   }
 
-  private func resetSelection() { selection = results.first(where: \.isEnabled)?.id }
+  private func resetSelection(_ results: [PaletteEntry]) {
+    selection = results.first(where: \.isEnabled)?.id
+  }
 
   private func move(_ offset: Int) {
     let enabled = results.filter(\.isEnabled)

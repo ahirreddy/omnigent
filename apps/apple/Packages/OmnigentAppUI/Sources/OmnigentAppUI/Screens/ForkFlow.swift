@@ -88,6 +88,13 @@ final class ForkFlow {
   }
 
   /// Closes the sheet. An uncertain fork's warning has been seen, so another may start.
+  /// The sheet, for a key-path binding (`$flow.sheet`): dismissing it cancels. Unlike a closure
+  /// binding it compares equal across updates, so it does not re-render the screen on its own.
+  var sheet: ForkViewState? {
+    get { viewState }
+    set { if newValue == nil { cancel() } }
+  }
+
   func cancel() {
     // A sheet binding can write `nil` while nothing shows; writing state then would loop.
     guard context != nil else { return }

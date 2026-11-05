@@ -41,6 +41,7 @@ let package = Package(
     .package(path: "../OmnigentTestSupport"),
     .package(path: "../OmnigentRemoteBrowser"),
     .package(path: "../OmnigentBrowser"),
+    .package(path: "../OmnigentPlatform"),
   ],
   targets: [
     .target(
@@ -56,6 +57,7 @@ let package = Package(
         .product(name: "OmnigentTerminalStores", package: "OmnigentTerminalStores"),
         .product(name: "OmnigentRemoteBrowser", package: "OmnigentRemoteBrowser"),
         .product(name: "OmnigentDeepLinks", package: "OmnigentDesktop"),
+        .product(name: "OmnigentPlatform", package: "OmnigentPlatform"),
         .product(
           name: "OmnigentDesktop", package: "OmnigentDesktop",
           condition: .when(platforms: [.macOS])),

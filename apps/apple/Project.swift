@@ -38,6 +38,7 @@ let appDependencies: [TargetDependency] = [
   .package(product: "OmnigentStores"),
   .package(product: "OmnigentServices"),
   .package(product: "OmnigentCoreFFI"),
+  .package(product: "OmnigentPlatform"),
   // The in-app browser (WebKit) and its tabs; Chromium is the Developer ID edition's addition.
   .package(product: "OmnigentBrowser"),
   .package(product: "OmnigentAppBrowser"),

@@ -31,6 +31,8 @@ public struct ConversationScreen<Terminal: View>: View {
   @State private var draftHasText = false
   @State private var modelPickerRequest = 0
   @State private var localInspectorTab: InspectorTab = .files
+  /// A hidden tab's panel stays closed (`.constant` counts as changed on every update).
+  @State private var hiddenInspector = false
   private let externalInspectorTab: Binding<InspectorTab>?
   @State private var showsShare = false
   @State private var showsInfo = false
@@ -112,6 +114,7 @@ public struct ConversationScreen<Terminal: View>: View {
           add: composerActions.addAttachments)
       }
     }
+    .countsRenders("screen")
     // A bar: the transcript fades under the dock and composer, its inset following them.
     .safeAreaBar(edge: .bottom, spacing: 0) {
       VStack(spacing: 0) {
@@ -153,7 +156,7 @@ public struct ConversationScreen<Terminal: View>: View {
     .onPreferenceChange(ApproveShortcutCandidate.self) { approveCandidate = $0 }
     .workspaceInspector(
       state: state, actions: actions, slots: extras.slots,
-      isPresented: isHiddenTab ? .constant(false) : $showsInspector, tab: inspectorTab
+      isPresented: isHiddenTab ? $hiddenInspector : $showsInspector, tab: inspectorTab
     )
     .navigationTitle(state.header.title)
     // The one status line ("Waiting for you · 2 requests"); the project shows in the sidebar.

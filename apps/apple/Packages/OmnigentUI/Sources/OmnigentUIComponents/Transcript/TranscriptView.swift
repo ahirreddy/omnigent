@@ -186,6 +186,7 @@ public struct TranscriptView: View {
     .background { if appearance.isCLI { CLICanvas() } }
     .cliPalette()
     .accessibilityIdentifier("transcript-\(state.header.id)")
+    .countsRenders("transcript")
   }
 
   @ViewBuilder private var historyHeader: some View {
