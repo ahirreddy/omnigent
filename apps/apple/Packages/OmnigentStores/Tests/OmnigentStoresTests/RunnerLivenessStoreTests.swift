@@ -48,12 +48,12 @@ struct RunnerLivenessStoreTests {
       config: HostConfig(urlPolicy: .development, oidcRedirect: .none))
     let conversation = ConversationStore(sessionID: "s1", core: core)
     let asleep = CoreError.Terminal(
-      kind: .runnerUnavailable, requiresSignIn: false,
-      message: "the session's runner is unavailable (HTTP 503): offline")
+      kind: .runnerUnavailable,
+      message: "the session's runner is unavailable (HTTP 503): offline", requiresSignIn: false)
     conversation.record(asleep)
     #expect(conversation.errors.isEmpty)
     #expect(conversation.runnerUnavailable == asleep)
-    conversation.record(.Terminal(kind: .forbidden, requiresSignIn: false, message: "no"))
+    conversation.record(.Terminal(kind: .forbidden, message: "no", requiresSignIn: false))
     #expect(conversation.errors.count == 1)
   }
 }
