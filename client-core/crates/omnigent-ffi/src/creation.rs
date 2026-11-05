@@ -416,16 +416,22 @@ impl From<omnigent_core::events::MessageSent> for MessageSent {
     }
 }
 
+impl From<core_create::FirstMessage> for FirstMessage {
+    fn from(first: core_create::FirstMessage) -> Self {
+        match first {
+            core_create::FirstMessage::Sent(sent) => Self::Sent { sent: sent.into() },
+            core_create::FirstMessage::Failed(error) => Self::Failed {
+                error: error.into(),
+            },
+        }
+    }
+}
+
 impl From<core_create::CreatedSession> for CreatedSession {
     fn from(created: core_create::CreatedSession) -> Self {
         Self {
             receipt: created.receipt.into(),
-            first_message: match created.first_message {
-                core_create::FirstMessage::Sent(sent) => FirstMessage::Sent { sent: sent.into() },
-                core_create::FirstMessage::Failed(error) => FirstMessage::Failed {
-                    error: error.into(),
-                },
-            },
+            first_message: created.first_message.into(),
         }
     }
 }

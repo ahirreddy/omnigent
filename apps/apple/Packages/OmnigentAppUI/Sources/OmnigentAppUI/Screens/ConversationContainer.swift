@@ -118,7 +118,7 @@ struct ConversationContainer: View {
       .modifier(
         PerfConversationHooks(
           showsInspector: $showsInspector, inspectorTab: $inspectorTab,
-          openBrowser: tabRoutes?.openBrowser))
+          openBrowser: tabRoutes?.openBrowser, openSideChat: tabRoutes?.openNewSideChat))
     #endif
     .onChange(of: changedFilesRevision) {
       guard let workspace else { return }
@@ -140,6 +140,9 @@ struct ConversationContainer: View {
       conversation, isStopping: isStopping, dismissedError: dismissedSendError, server: server,
       submitWithCommandReturn: submitWithCommandReturn)
     composer.prefersSteer = alwaysSteer
+    if conversation.header?.settings?.sideChatSourceId != nil {
+      composer.placeholder = SideChatCopy.placeholder
+    }
     let indicators = SessionToolsAdapter.indicators(conversation, screen: screen)
     let pullRequest = SessionToolsAdapter.pullRequestLabel(panel)
     if !indicators.isEmpty || pullRequest != nil {
@@ -155,6 +158,7 @@ struct ConversationContainer: View {
   private var toolRoutes: SessionToolsAdapter.Routes {
     SessionToolsAdapter.Routes(
       openSession: tabRoutes?.openSession ?? openSession,
+      openNewSideChat: tabRoutes?.openNewSideChat,
       showPullRequests: {
         inspectorTab = .pullRequests
         showsInspector = true

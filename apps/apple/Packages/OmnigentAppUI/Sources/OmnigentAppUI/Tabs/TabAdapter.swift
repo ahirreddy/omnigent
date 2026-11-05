@@ -20,11 +20,15 @@ enum TabAdapter {
   static func state(
     _ tabs: TabStore, session: ServerSession, browser: (any BrowserTabHosting)?, issue: String?
   ) -> TabsState {
-    TabsState(
+    var sideChats = SideChatNumbers()
+    return TabsState(
       tabs: tabs.tabs.map {
         var entry = item($0, session: session, browser: browser)
         entry.pane = tabs.pane(of: $0.id)
         entry.status = status(entry.status, isUnread: tabs.unread.contains($0.id))
+        if case .sideChatSession(let parentID, _) = $0.content {
+          entry.title = sideChats.next(parentID)
+        }
         return entry
       },
       selectedID: tabs.selectedID,
@@ -47,7 +51,7 @@ enum TabAdapter {
     case .newTab, .newSession, .inbox, .canvas, .automations, .usage:
       item.title = tab.content.kind == .newTab ? "New Tab" : tab.content.kind.label.capitalized
       item.canDuplicate = false
-    case .chat, .harness, .agentBrowser, .sideChat:
+    case .chat, .harness, .agentBrowser, .sideChat, .sideChatSession:
       sessionItem(&item, tab: tab, session: session)
     case .terminal(let sessionID, let terminalID):
       let store = session.terminalStores[sessionID]
@@ -131,6 +135,13 @@ enum TabAdapter {
         activity.map { SideChatTabContainer.detail("question", in: $0) ?? $0.summary }
         ?? tab.title ?? "Side Chat"
       item.subtitle = summary?.title
+    case .sideChatSession(_, let childID):
+      item.title = TabKind.sideChat.label
+      item.subtitle = summary?.title
+      item.canDuplicate = false
+      if let childID, connection.conversations[childID]?.isRunning == true {
+        item.status = .running
+      }
     default:
       item.title = "Agent Browser"
       item.subtitle = summary?.title
@@ -164,7 +175,7 @@ enum TabAdapter {
   ) -> String? {
     switch tab.content {
     case .newTab, .newSession, .inbox, .canvas, .automations, .usage, .agentBrowser: nil
-    case .chat, .terminal, .harness, .sideChat, .browser, .remoteBrowser:
+    case .chat, .terminal, .harness, .sideChat, .sideChatSession, .browser, .remoteBrowser:
       item(tab, session: session, browser: browser).title
     }
   }

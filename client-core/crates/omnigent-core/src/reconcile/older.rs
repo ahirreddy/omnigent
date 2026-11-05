@@ -5,6 +5,9 @@
 //! transcript to the newest page. They are kept only while the new newest page still reaches the
 //! oldest item it had when they were loaded; otherwise the gap cannot be filled and they are
 //! dropped (the reader can load them again).
+//!
+//! A server-forked side chat shows only its own turns (web `SideChatPane`): the history it copied
+//! from its parent, created before the side chat was, is left out and never paged in.
 
 use std::collections::BTreeSet;
 
@@ -45,6 +48,27 @@ pub(super) struct OlderHistory {
     /// The ticket of the read in flight.
     loading: Option<u64>,
     next_ticket: u64,
+    /// A side chat's start: items created before it were copied from its parent.
+    pub(super) inherited_before: Option<i64>,
+}
+
+/// `items` (oldest first) without those created before `inherited_before`, and the cursor for
+/// older items, which is dropped once a page reaches the copied history.
+pub(super) fn own_items<'a>(
+    items: &[ConversationItem],
+    cursor: Option<&'a str>,
+    inherited_before: Option<i64>,
+) -> (Vec<ConversationItem>, Option<&'a str>) {
+    let Some(start) = inherited_before else {
+        return (items.to_vec(), cursor);
+    };
+    let own: Vec<ConversationItem> = items
+        .iter()
+        .filter(|item| item.created_at.is_none_or(|created| created >= start))
+        .cloned()
+        .collect();
+    let reached_parent = own.len() < items.len();
+    (own, if reached_parent { None } else { cursor })
 }
 
 impl OlderHistory {
@@ -152,6 +176,7 @@ impl ConversationSync {
             return Ok(SyncUpdate::default());
         }
         self.older.loading = None;
+        let (items, next_cursor) = own_items(items, next_cursor, self.older.inherited_before);
         let known: BTreeSet<&str> = self
             .older
             .items

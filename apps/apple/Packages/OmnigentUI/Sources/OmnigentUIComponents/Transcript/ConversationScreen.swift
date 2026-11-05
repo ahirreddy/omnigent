@@ -137,7 +137,14 @@ public struct ConversationScreen<Terminal: View>: View {
     .scrollEdgeEffectStyle(.soft, for: .bottom)
     .safeAreaInset(edge: .top, spacing: 0) {
       if let open = actions.openSession {
-        if let parentID = parentSessionID {
+        if let sourceID = sideChatSourceID {
+          let parent = extras.menuContext.parent
+          SessionOriginBar(
+            relation: .sideChatOf,
+            origin: CreatingSession(
+              id: sourceID, title: parent?.id == sourceID ? parent?.title : nil),
+            open: open)
+        } else if let parentID = parentSessionID {
           let parent = extras.menuContext.parent
           SessionOriginBar(
             relation: .subagentOf,
@@ -219,7 +226,7 @@ public struct ConversationScreen<Terminal: View>: View {
         .accessibilityIdentifier("header-export-conversation")
     }
     if let open = actions.openSession {
-      if let parentID = parentSessionID {
+      if let parentID = parentSessionID ?? sideChatSourceID {
         Button("Go to Parent Session", systemImage: "chevron.backward") { open(parentID) }
       }
       if let creator = extras.menuContext.createdBy {

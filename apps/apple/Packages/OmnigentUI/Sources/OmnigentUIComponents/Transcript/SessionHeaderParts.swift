@@ -73,13 +73,38 @@ struct HeaderProjectTag: View {
   }
 }
 
-/// "Created by <session>" under the header for an independent worker, or "Sub-agent of
-/// <session>" for a sub-agent, linking to that session (the web's `CreatedBySession` and
-/// breadcrumb).
+/// "Created by <session>" under the header for an independent worker, "Sub-agent of <session>"
+/// for a sub-agent, or "Side chat of <session>" for a side chat, linking to that session (the
+/// web's `CreatedBySession` and breadcrumb).
 struct SessionOriginBar: View {
   enum Relation {
     case createdBy
     case subagentOf
+    case sideChatOf
+
+    var label: String {
+      switch self {
+      case .createdBy: "Created by"
+      case .subagentOf: "Sub-agent of"
+      case .sideChatOf: "Side chat of"
+      }
+    }
+
+    var help: String {
+      switch self {
+      case .createdBy: "Open the session that created this worker"
+      case .subagentOf: "Go back to the session that started this sub-agent"
+      case .sideChatOf: "Go back to the conversation this side chat is about"
+      }
+    }
+
+    var identifier: String {
+      switch self {
+      case .createdBy: "session-created-by"
+      case .subagentOf: "session-open-parent"
+      case .sideChatOf: "sidechat-open-parent"
+      }
+    }
   }
 
   let relation: Relation
@@ -88,19 +113,14 @@ struct SessionOriginBar: View {
 
   var body: some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
-      Text(relation == .createdBy ? "Created by" : "Sub-agent of")
+      Text(relation.label)
         .foregroundStyle(.secondary)
       Button(origin.title ?? "another session") { open(origin.id) }
         .buttonStyle(.plain)
         .foregroundStyle(.tint)
         .lineLimit(1)
-        .help(
-          relation == .createdBy
-            ? "Open the session that created this worker"
-            : "Go back to the session that started this sub-agent"
-        )
-        .accessibilityIdentifier(
-          relation == .createdBy ? "session-created-by" : "session-open-parent")
+        .help(relation.help)
+        .accessibilityIdentifier(relation.identifier)
       Spacer(minLength: 0)
     }
     .font(.caption)

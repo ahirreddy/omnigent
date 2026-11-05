@@ -122,7 +122,7 @@ nonisolated extension OmnigentUIComponents.SessionSettings {
       hostId: settings.hostId, hostOnline: settings.hostOnline,
       runnerOnline: settings.runnerOnline, runnerBound: settings.runnerBound,
       hostResumable: settings.hostResumable, parentId: settings.parentId,
-      routingMode: settings.routingMode)
+      sideChatSourceId: settings.sideChatSourceId, routingMode: settings.routingMode)
   }
 }
 

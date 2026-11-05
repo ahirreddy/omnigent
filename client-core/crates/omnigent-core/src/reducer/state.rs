@@ -397,6 +397,8 @@ pub struct SessionSettings {
     pub host_resumable: Option<bool>,
     /// The parent session of a child.
     pub parent_id: Option<String>,
+    /// The session a side chat was forked from (its labels); `None` for other sessions.
+    pub side_chat_source_id: Option<String>,
     /// `cost_control_mode_override` (for example `on` for smart routing).
     pub routing_mode: Option<String>,
 }

@@ -9,6 +9,13 @@ extension ConversationScreen {
     state.header.settings?.parentId.flatMap { $0.isEmpty || $0 == state.header.id ? nil : $0 }
   }
 
+  /// The session a side chat was forked from.
+  var sideChatSourceID: String? {
+    state.header.settings?.sideChatSourceId.flatMap {
+      $0.isEmpty || $0 == state.header.id ? nil : $0
+    }
+  }
+
   /// The header's project tag: the viewer's own top-level session.
   var showsProjectTag: Bool {
     state.summary != nil

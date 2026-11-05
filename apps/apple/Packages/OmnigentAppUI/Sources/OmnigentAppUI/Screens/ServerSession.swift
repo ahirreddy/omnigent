@@ -25,6 +25,8 @@ public final class ServerSession {
   public private(set) var panels: [String: SessionPanelStore] = [:]
   /// The window's tabs.
   public let tabs = TabStore()
+  /// The drafts of new side chats, by tab.
+  let sideChatDrafts = SideChatDrafts()
   /// Messages that `?message=` links ask the transcript to scroll to.
   public let transcriptFocus = TranscriptFocus()
   /// Sessions whose conversation, terminals and workspace are open.
