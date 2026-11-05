@@ -5,10 +5,10 @@ extension ConnectionStore {
     eventsApplied += 1
     switch event {
     case .connectionChanged(let phase):
-      self.phase = phase
+      if phase != self.phase { self.phase = phase }
       if case .awaitingBrowserLogin(_, let login) = phase {
         browserLogin = login
-      } else {
+      } else if browserLogin != nil {
         browserLogin = nil
       }
       if case .connected(let server) = phase {
@@ -22,7 +22,7 @@ extension ConnectionStore {
         }
       }
     case .updatesLinkChanged(let state):
-      updatesLink = state
+      if state != updatesLink { updatesLink = state }
     case .sessionListChanged(let change):
       sessionList.apply(change)
     case .sessionListLoaded:
@@ -68,7 +68,8 @@ extension ConnectionStore {
       credentialExpiresAtMs = expiresAt
       credentialRotations += 1
     case .unreadChanged(let ids):
-      sessionList.unreadIDs = Set(ids)
+      let unread = Set(ids)
+      if unread != sessionList.unreadIDs { sessionList.unreadIDs = unread }
     case .terminalsChanged(let id, let rows, let harness):
       terminals(id)?.apply(terminals: rows, harness: harness)
     case .browserActionRequested(let id, let actionID, let action, let args):

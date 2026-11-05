@@ -26,7 +26,7 @@ public final class SessionListStore {
   /// the server's per-viewer read state, with this device's marks as the fallback. Opening or
   /// focusing a session (`ConnectionStore.setView`) marks it seen.
   public var unreadIDs: Set<String> = [] {
-    didSet { recompute() }
+    didSet { if unreadIDs != oldValue { recompute() } }
   }
   /// The sessions matching ``searchText`` and ``filter``: pinned first, then most recent.
   public private(set) var visible: [SessionSummary] = []
@@ -34,11 +34,11 @@ public final class SessionListStore {
   public private(set) var isLoaded = false
   /// Search text, matched by the core.
   public var searchText = "" {
-    didSet { recompute() }
+    didSet { if searchText != oldValue { recompute() } }
   }
   /// Which sessions show.
   public var filter: SessionFilter = .all {
-    didSet { recompute() }
+    didSet { if filter != oldValue { recompute() } }
   }
   /// The last list failure, until the next successful load.
   public private(set) var lastError: CoreError?
@@ -268,12 +268,17 @@ public final class SessionListStore {
       // An answered decision clears its request now; the next server row confirms the count.
       if expectation.status != .needsResponse { sessions[id]?.pendingRequests = 0 }
     }
-    sessionsByID = sessions
+    // Each property is set only when it changes: a set notifies every view that reads it, and
+    // the sidebar rebuilds every row from them.
+    if sessions != sessionsByID { sessionsByID = sessions }
     let all = Array(sessions.values)
-    visible = filterSessions(sessions: all, text: searchText, filter: filter)
-    attentionByID = sessions.mapValues {
+    let visible = filterSessions(sessions: all, text: searchText, filter: filter)
+    if visible != self.visible { self.visible = visible }
+    let attention = sessions.mapValues {
       sessionAttention(session: $0, isUnread: unreadIDs.contains($0.id))
     }
-    attentionTotals = OmnigentCoreFFI.attentionTotals(sessions: all, unreadIds: Array(unreadIDs))
+    if attention != attentionByID { attentionByID = attention }
+    let totals = OmnigentCoreFFI.attentionTotals(sessions: all, unreadIds: Array(unreadIDs))
+    if totals != attentionTotals { attentionTotals = totals }
   }
 }
