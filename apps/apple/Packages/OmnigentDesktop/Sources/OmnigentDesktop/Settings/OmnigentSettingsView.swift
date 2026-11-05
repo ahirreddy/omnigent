@@ -79,7 +79,7 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
           preferences: desktop.preferences, managed: desktop.managedPreferences,
           recentServers: recentServers, browserSettings: browserSettings
         )
-        .frame(width: Self.formWidth, height: Self.formHeight)
+        .frame(width: Self.formWidth)
       }
       Tab(
         SettingsTabID.notifications, systemImage: "bell.badge", value: SettingsTabID.notifications
@@ -87,36 +87,36 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
         NotificationSettingsTab(
           preferences: desktop.preferences, notifications: desktop.notifications
         )
-        .frame(width: Self.formWidth, height: Self.formHeight)
+        .frame(width: Self.formWidth)
       }
       ForEach(extraTabs) { item in
         Tab(item.title, systemImage: item.systemImage, value: item.id) {
-          item.content.frame(
-            width: item.isWide ? nil : Self.formWidth, height: item.isWide ? nil : Self.formHeight)
+          item.content.frame(width: item.isWide ? nil : Self.formWidth)
         }
       }
       Tab(SettingsTabID.localServer, systemImage: "server.rack", value: SettingsTabID.localServer) {
         LocalServerSettingsTab(
           manager: desktop.localServer, preferences: desktop.localServerPreferences
         )
-        .frame(width: Self.formWidth, height: Self.formHeight)
+        .frame(width: Self.formWidth)
       }
       Tab(SettingsTabID.advanced, systemImage: "gearshape.2", value: SettingsTabID.advanced) {
         AdvancedSettingsTab(
           managed: desktop.managedPreferences, exportDiagnostics: exportDiagnostics
         )
-        .frame(width: Self.formWidth, height: Self.formHeight)
+        .frame(width: Self.formWidth)
       }
     }
     .scenePadding()
-    .frame(minHeight: 320)
+    // The window takes the content's minimum, so this keeps General and Appearance unclipped.
+    .frame(minHeight: Self.formHeight)
   }
 
   /// The width of the form tabs; a wide tab (``SettingsTabItem/isWide``) sizes itself.
   static var formWidth: CGFloat { 580 }
 
-  /// The form tabs' height: tall enough that General and Appearance show their groups without
-  /// clipping; each form scrolls within it.
+  /// The tabs' least height: tall enough that General and Appearance show their groups; each
+  /// form scrolls within it.
   static var formHeight: CGFloat { 680 }
 }
 
