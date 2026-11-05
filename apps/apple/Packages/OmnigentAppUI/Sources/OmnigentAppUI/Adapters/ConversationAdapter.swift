@@ -16,7 +16,7 @@ enum ConversationAdapter {
     _ store: ConversationStore, summary: OmnigentCoreFFI.SessionSummary?
   ) -> ConversationViewState {
     let header = Self.header(store, summary: summary)
-    return ConversationViewState(
+    var state = ConversationViewState(
       revision: store.revision, header: header,
       rows: store.rows.map(OmnigentUIComponents.Row.init),
       decisions: store.decisions.cards.map(OmnigentUIComponents.DecisionCard.init),
@@ -28,6 +28,8 @@ enum ConversationAdapter {
       turnDurations: store.turnTimer.durations,
       summary: summary.map(OmnigentUIComponents.SessionSummary.init),
       turnStartedAt: store.turnTimer.startedAt)
+    state.isHydrating = isHydrating(store)
+    return state
   }
 
   /// The conversation's state without its rows, for the screen around the transcript. It reads
@@ -56,6 +58,7 @@ enum ConversationAdapter {
     state.transcriptStatus = TranscriptStatus(
       isEmpty: digest.isEmpty, lastInterrupted: digest.lastInterrupted,
       activityTitle: digest.activityTitle)
+    state.isHydrating = isHydrating(store)
     return state
   }
 
@@ -91,9 +94,15 @@ enum ConversationAdapter {
         id: store.sessionID, title: summary?.title ?? "Loading\u{2026}")
   }
 
-  /// The first history read, or a page of older history, is in flight.
+  /// A page of older history is in flight.
   static func isLoadingHistory(_ store: ConversationStore) -> Bool {
-    store.isLoadingOlderHistory || (!store.isHydrated && !store.isClosed)
+    store.isLoadingOlderHistory
+  }
+
+  /// The first read is in flight and no row has arrived: the transcript says it is loading
+  /// rather than offering an empty session.
+  static func isHydrating(_ store: ConversationStore) -> Bool {
+    !store.isHydrated && !store.isClosed && store.transcriptDigest.isEmpty
   }
 
   /// Reads the store's rows inside the transcript's body.

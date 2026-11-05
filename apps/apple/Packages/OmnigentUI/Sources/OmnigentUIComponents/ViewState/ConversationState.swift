@@ -18,8 +18,10 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
   public var sections: [EventSection]
   /// Older history can be loaded.
   public var hasMoreHistory: Bool
-  /// Older history is loading.
+  /// A page of older history is loading.
   public var isLoadingHistory: Bool
+  /// The first read of the conversation is in flight: no row is known yet to be all there is.
+  public var isHydrating = false
   /// A session-level error to show (load, stream or send failure). Never swallowed.
   public var errorMessage: String?
   /// Live stream status, for example `Connected` or `Reconnecting in 4 s`.
