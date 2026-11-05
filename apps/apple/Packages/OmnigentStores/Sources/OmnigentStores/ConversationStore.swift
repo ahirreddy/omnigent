@@ -258,8 +258,8 @@ public final class ConversationStore {
   }
 
   func linkChanged(_ state: LinkState) {
-    link = state
-    if state != .live { isHydrated = false }
+    if state != link { link = state }
+    if state != .live, isHydrated { isHydrated = false }
     switch state {
     case .reconnecting(let reason, _, _): record(reason)
     case .failed(let error): record(error)
@@ -268,7 +268,7 @@ public final class ConversationStore {
   }
 
   func hydrated() {
-    isHydrated = true
+    if !isHydrated { isHydrated = true }
     composer.streamReady()
   }
 
@@ -278,16 +278,16 @@ public final class ConversationStore {
   }
 
   func failure(_ message: String) {
-    lastFailure = message
+    if message != lastFailure { lastFailure = message }
   }
 
   func closed() {
-    isClosed = true
-    isHydrated = false
+    if !isClosed { isClosed = true }
+    if isHydrated { isHydrated = false }
   }
 
   func superseded(by target: String) {
-    supersededBy = target
+    if target != supersededBy { supersededBy = target }
   }
 
   func record(_ error: CoreError) {
