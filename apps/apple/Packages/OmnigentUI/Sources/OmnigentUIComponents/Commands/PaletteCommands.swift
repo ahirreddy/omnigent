@@ -59,13 +59,28 @@ extension View {
   public func commandPalette(
     state: PaletteViewState, actions: PaletteActions, initiallyPresented: Bool = false
   ) -> some View {
+    commandPalette(
+      state: { state }, actions: actions, initiallyPresented: initiallyPresented)
+  }
+
+  /// Adds the palette and shortcut sheet to a window's root, making its state only while the
+  /// palette shows, so the root does not rebuild every session's entry on each list change.
+  /// - Parameters:
+  ///   - state: Makes the loaded sessions and configured servers.
+  ///   - actions: Window-local navigation.
+  ///   - initiallyPresented: Show the palette immediately, for component scenarios.
+  /// - Returns: The root with scene commands and presentation attached.
+  public func commandPalette(
+    state: @escaping @MainActor () -> PaletteViewState, actions: PaletteActions,
+    initiallyPresented: Bool = false
+  ) -> some View {
     modifier(
       PalettePresentation(state: state, actions: actions, initiallyPresented: initiallyPresented))
   }
 }
 
 private struct PalettePresentation: ViewModifier {
-  let state: PaletteViewState
+  let state: @MainActor () -> PaletteViewState
   let actions: PaletteActions
   let initiallyPresented: Bool
   /// The shown palette's starting scope; an item, so the sheet opens with the requested one.
@@ -97,8 +112,9 @@ private struct PalettePresentation: ViewModifier {
             findSession: { open(.sessions) }))
       )
       .sheet(item: $palette, onDismiss: executePending) { scope in
+        let state = state()
         CommandPalette(
-          state: state, commands: entries, findsSessions: scope == .sessions,
+          state: state, commands: entries(state), findsSessions: scope == .sessions,
           search: actions.search
         ) { target in
           pendingTarget = target
@@ -127,7 +143,7 @@ private struct PalettePresentation: ViewModifier {
     }
   }
 
-  private var entries: [PaletteEntry] {
+  private func entries(_ state: PaletteViewState) -> [PaletteEntry] {
     PaletteCatalog.entries(state: state, commands: capturedCommands)
   }
 }

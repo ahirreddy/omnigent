@@ -23,7 +23,7 @@ struct PaletteAdapter: ViewModifier {
       let content = content.environment(\.sidebarToggle, sidebarToggle)
     #endif
     return content.commandPalette(
-      state: state, actions: PaletteActions(perform: perform, search: searchServer))
+      state: { state }, actions: PaletteActions(perform: perform, search: searchServer))
   }
 
   private var state: PaletteViewState {
