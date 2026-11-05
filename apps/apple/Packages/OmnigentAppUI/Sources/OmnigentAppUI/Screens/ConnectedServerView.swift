@@ -31,6 +31,7 @@ public struct ConnectedServerView: View {
   @State private var renamingFromTab: OmnigentUIComponents.SessionSummary?
   @State private var renameText = ""
   @Environment(\.horizontalSizeClass) private var sizeClass
+  @Environment(\.openSettingsAt) private var openSettingsAt
   @AppStorage(InterfacePreferences.openLinksInAppKey) private var openLinksInApp = false
   @AppStorage(InterfacePreferences.openSubagentsInPanelKey) private var openSubagentsBeside = false
 
@@ -183,7 +184,8 @@ public struct ConnectedServerView: View {
           panel: session.panels[id],
           changedFilesRevision: connection.changedFilesRevision,
           navigation: navigation(from: id),
-          opener: windowTabs.linkOpener(opener, inApp: openLinksInApp),
+          opener: serverLinkOpener(
+            windowTabs.linkOpener(opener, inApp: openLinksInApp), openSettings: openSettingsAt),
           openSession: { selection = .session($0) },
           retry: { connection.foreground() },
           server: connection.connectedServer,

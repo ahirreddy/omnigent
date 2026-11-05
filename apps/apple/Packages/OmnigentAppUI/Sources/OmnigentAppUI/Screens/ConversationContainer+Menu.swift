@@ -108,6 +108,7 @@ extension ConversationContainer {
   /// disabled with the reason, as on the web.
   func forkable(_ actions: ConversationActions) -> ConversationActions {
     var actions = actions
+    addRecoveryFork(to: &actions)
     guard makeForkStore != nil, let source = summary else { return actions }
     if let reason = forkUnavailableReason(source: source) {
       actions.forkUnavailableReason = reason

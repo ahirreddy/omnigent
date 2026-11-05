@@ -19,6 +19,11 @@ struct ErrorRowView: View {
     }
   }
 
+  /// The workspace is gone: the fork continues in another directory.
+  static func isWorkspaceMissing(_ activity: Activity) -> Bool {
+    activity.detail("code") == "workspace_missing"
+  }
+
   private var isNeutral: Bool { activity.status == "info" }
   private var tint: ThemeColor { isNeutral ? Theme.secondary : Theme.failure }
   /// The message under the headline, unless the headline already says it.
@@ -78,7 +83,13 @@ struct ErrorRowView: View {
     let retry = activity.recovery.flatMap { recovery in
       actions.retryFailedTurn.map { (recovery, $0) }
     }
-    if retry != nil || (forkLabel != nil && actions.forkFrom != nil) || remediation != nil {
+    if let openSignIn = actions.openSignIn,
+      ErrorSignInActions.pendingCodes.contains(activity.detail("code") ?? "")
+    {
+      ErrorSignInActions(rowID: row.id, openSignIn: openSignIn)
+        .padding(.leading, Theme.Spacing.large)
+    }
+    if retry != nil || (forkLabel != nil && actions.forkToRecover != nil) || remediation != nil {
       HStack(spacing: Theme.Spacing.small) {
         if let (recovery, retry) = retry {
           Button(recovery.title) { retry(row) }
@@ -86,10 +97,13 @@ struct ErrorRowView: View {
             .help(recovery.help)
             .accessibilityIdentifier("error-retry-\(row.id)")
         }
-        if let forkLabel, let fork = actions.forkFrom {
-          Button(forkLabel, systemImage: "arrow.triangle.branch") { fork(row) }
-            .buttonStyle(.bordered)
-            .accessibilityIdentifier("error-fork-\(row.id)")
+        if let forkLabel, let fork = actions.forkToRecover {
+          let elsewhere = Self.isWorkspaceMissing(activity)
+          Button(forkLabel, systemImage: elsewhere ? "folder" : "arrow.triangle.branch") {
+            fork(elsewhere)
+          }
+          .buttonStyle(.bordered)
+          .accessibilityIdentifier("error-fork-\(row.id)")
         }
         if let remediation {
           CopyButton(

@@ -311,6 +311,12 @@ public struct ConversationActions {
   public var replyWithSelection: (@MainActor (String) -> Void)?
   /// Ask about text selected in the transcript in a new side chat; `nil` hides that choice.
   public var askInSideChat: (@MainActor (String) -> Void)?
+  /// Fork the whole session past a failure only a new session gets past, in another directory
+  /// when `true` ("Continue in Another Directory…"); `nil` hides the error card's fork.
+  public var forkToRecover: (@MainActor (_ inAnotherDirectory: Bool) -> Void)?
+  /// Fetch the sign-in the session's terminal waits on and open it; `nil` hides the error
+  /// card's Open Sign-In Link.
+  public var openSignIn: (@MainActor () async -> SignInOutcome)?
 
   /// Creates actions.
   /// - Parameters:

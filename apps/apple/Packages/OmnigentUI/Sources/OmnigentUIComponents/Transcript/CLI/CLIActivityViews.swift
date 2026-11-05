@@ -31,6 +31,9 @@ struct CLIActivityLine: View, Equatable {
           line: line(activity), marker: activity.isFailure ? palette.failure : nil,
           isLive: row.isStreaming)
         if let recovery = recovery(activity) { recoveryButton(recovery, help: activity) }
+        if activity.kind == .error {
+          ErrorRecoveryLinks(row: row, activity: activity).padding(.leading, size.character * 2)
+        }
         if isExpanded { details(activity) }
       }
       .transcriptColumn()

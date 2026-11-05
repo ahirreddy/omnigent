@@ -39,6 +39,7 @@ pub mod events;
 mod export;
 pub mod fork;
 mod harness_setup;
+pub mod host_switch;
 mod hydration;
 pub mod inbox;
 pub mod items;
