@@ -29,6 +29,7 @@ public struct ThemeSettingsView: View {
       .accessibilityIdentifier("settings.terminal-theme")
     }
     TranscriptSettingsSection(preferences: preferences.transcript)
+    InterfaceAppearanceSections()
     Section {
       Picker("Theme palette", selection: $preferences.paletteID) {
         ForEach(preferences.themes) { theme in

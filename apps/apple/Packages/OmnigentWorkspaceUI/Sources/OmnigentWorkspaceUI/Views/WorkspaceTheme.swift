@@ -2,12 +2,12 @@ public import SwiftUI
 
 /// Colors and metrics for the workspace views, matching the web UI's diff and file panels.
 public enum WorkspaceTheme {
-  /// The monospaced body font.
-  public static let code = Font.system(size: 12, design: .monospaced)
+  /// The monospaced body font, sized by Settings › Appearance › Code typography.
+  public static var code: Font { CodeTypography.shared.font(size: 12) }
   /// The line-number gutter font.
-  public static let gutter = Font.system(size: 11, design: .monospaced)
+  public static var gutter: Font { CodeTypography.shared.font(size: 11) }
   /// Row height for one code line.
-  public static let lineHeight: CGFloat = 17
+  public static var lineHeight: CGFloat { (17 * CodeTypography.shared.scale).rounded() }
 
   /// Background of added lines.
   /// - Parameter scheme: The color scheme.

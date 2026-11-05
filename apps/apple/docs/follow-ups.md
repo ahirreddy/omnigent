@@ -301,13 +301,18 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   `--gallery-capture window` shows the real thing.
 - [ ] **Settings › Servers, not yet native:** connecting GitHub, Databricks and OAuth MCP services
   opens the server's web settings, because `/v1/connections/*/connect` needs the browser's
-  cookie session; adding default policies from the policy registry; inviting members; changing
-  a member's role (the server has no role API: roles come from its admin list).
+  cookie session; changing a member's role (the server has no role API: roles come from its
+  admin list). Add Policy lists registry parameters by name (the core's JSON is unordered) and
+  takes a models list as text (the web fills `x-enum-source: models` from its Claude models).
 - [ ] **Device preferences without a consumer yet** (keys as on the web): Always steer
   (`omnigent:always-steer`, composer), Always use a worktree and Default base branch
-  (`GitPreferences`, new-session form), Delete worktrees on archive (archive action), open links
-  in the in-app browser, open sub-agents in a panel, and the Appearance extras (harness picker
-  visibility, fold narration, workspace panel defaults, UI and code typography).
+  (`GitPreferences`, new-session form), Delete worktrees on archive (archive action), and "Show
+  only the final answer" (`omnigent:fold-assistant-narration`): `TurnLayout` always folds a settled
+  turn's progress messages, and the toggle needs a `TranscriptMemo` input plus a Codex
+  final-answer marker the rows lack. Interface typography (size and family) has no native
+  setting: the Mac app follows the system's text sizes, and Chat text size is under Transcript.
+- [ ] **Preferences, partly native:** in-app links open a new browser tab rather than reusing one
+  showing the same URL; the right panel has no pinned-tabs setting (its tabs are fixed).
 - [ ] **Composer:** `/mcp` lists the agent's MCP servers as text; the web's panel also shows the
   host's own MCP servers for the harness and signs in to registry services. Queued messages still
   can't carry attachments (the core stages attachments per session draft, not per message).
@@ -315,8 +320,9 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   (SwiftUI's editor does not expose the caret, so the web's "caret on the first line" rule is out).
 - [ ] **Drafts:** a draft typed in the last half second before quitting can be lost; flush
   `ComposerDraftArchive.shared` on termination.
-- [ ] **Inbox comments:** "Open file" opens the session, not the file with its comment, because the
-  Mac app has no file comments view yet; seen comments are kept per device, as on the web.
+- [ ] **Inbox comments:** "Open file" opens the file at the commented line, but the Mac app has no
+  file comments view to show the comment beside it; seen comments are kept per device, as on
+  the web.
 - [ ] **Inbox "Load more sessions":** the core's session list holds only its first page
   (`DEFAULT_PAGE_LIMIT`), so the Inbox cannot page further as the web does; needs list paging in
   the engine, shared with the sidebar's Show more.
@@ -391,7 +397,9 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   permission mode (Claude Code), end conditions (date, and run counts on `automations_v2`),
   Jira/Slack/GitHub trigger templates (prompt rendered by the core, and the intro's "Watch for
   new work" step), and the `automations_v2` run-history page. 2026-11-04.
-
+- [x] Settings: Invite Member (accounts servers), Add Policy from the policy registry, Links and
+  Sub-agents (in-app links, sub-agents beside the chat), Appearance › Chat defaults (hide
+  unconfigured harnesses), Workspace (panel and first tab) and Code typography. 2026-11-04.
 - [x] Host: after Back, the remote tab kept showing the old page (or a blank one) when many other
   tabs showed the same site. Windowless Chromium restored the page from the back/forward cache
   without painting it. The host now disables `BackForwardCache`; `browser-host/tools/back_test.py`

@@ -30,6 +30,8 @@ public struct ConnectedServerView: View {
   @State private var renamingFromTab: OmnigentUIComponents.SessionSummary?
   @State private var renameText = ""
   @Environment(\.horizontalSizeClass) private var sizeClass
+  @AppStorage(InterfacePreferences.openLinksInAppKey) private var openLinksInApp = false
+  @AppStorage(InterfacePreferences.openSubagentsInPanelKey) private var openSubagentsBeside = false
 
   /// Creates the view.
   /// - Parameters:
@@ -175,11 +177,12 @@ public struct ConnectedServerView: View {
           terminals: session.terminalStores[id], workspace: session.workspaces[id],
           panel: session.panels[id],
           changedFilesRevision: connection.changedFilesRevision,
-          navigation: navigation(from: id), opener: opener,
+          navigation: navigation(from: id),
+          opener: windowTabs.linkOpener(opener, inApp: openLinksInApp),
           openSession: { selection = .session($0) },
           retry: { connection.foreground() },
           server: connection.connectedServer,
-          tabRoutes: windowTabs.routes(for: id),
+          tabRoutes: windowTabs.routes(for: id, subagentsBeside: openSubagentsBeside),
           terminalNames: session.declaredTerminalNames(in: id),
           sessionActions: sidebarActions.sessions,
           makeForkStore: { connection.makeForkStore() },
@@ -195,7 +198,9 @@ public struct ConnectedServerView: View {
     case .newSession:
       NewSessionContainer(connection: connection) { showCreated($0) }
     case .inbox:
-      InboxTriageAdapter(connection: connection) { selection = .session($0) }
+      InboxTriageAdapter(
+        connection: connection, open: { selection = .session($0) },
+        openFile: { session.openFile($0, at: $1, in: $2) })
     case .canvas:
       CanvasAdapter(
         connection: connection, open: { selection = .session($0) },

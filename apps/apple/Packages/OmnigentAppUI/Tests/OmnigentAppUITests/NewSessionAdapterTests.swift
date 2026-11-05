@@ -41,6 +41,23 @@ struct NewSessionAdapterTests {
     #expect(result.groups["mock-model"] == .custom)
   }
 
+  @Test func hidingUnconfiguredKeepsAgentsAndTheSelectedHarness() {
+    var limited = catalog()
+    limited.hosts[0].configuredHarnesses = [
+      HarnessStatus(harness: "claude-native", readiness: .ready),
+      HarnessStatus(harness: "codex-native", readiness: .notReady),
+      HarnessStatus(harness: "pi-native", readiness: .notReady),
+    ]
+    let badged = NewSessionAdapter.agents(limited, hostID: "host_a").choices
+    let unconfigured = badged.filter { $0.unavailableReason != nil }.map(\.id)
+    #expect(unconfigured.contains("codex") && unconfigured.contains("pi"))
+    let hidden = NewSessionAdapter.agents(limited, hostID: "host_a", hidingUnconfigured: "pi")
+    let shown = hidden.choices.map(\.id)
+    #expect(!shown.contains("codex"), "an unconfigured harness is hidden")
+    #expect(shown.contains("pi"), "the selected harness stays")
+    #expect(shown.contains("claude") && shown.contains("polly") && shown.contains("mock-model"))
+  }
+
   @Test func newSandboxIsOfferedOnlyWhenTheServerProvisionsThem() {
     #expect(
       !NewSessionAdapter.hosts(catalog()).contains { $0.id == NewSessionAdapter.newSandboxHostID })

@@ -1,4 +1,5 @@
 import OmnigentPlatform
+import OmnigentWorkspaceUI
 import SwiftUI
 
 /// Layout metrics and semantic styles for the components. Colors come from the system (so they
@@ -42,7 +43,8 @@ enum Theme {
     static let title = Font.title2.weight(.semibold)
     static let label = Font.callout.weight(.medium)
     static let section = Font.caption.weight(.medium)
-    static let code = Font.system(.callout, design: .monospaced)
+    /// Code, sized by Settings › Appearance › Code typography (callout size by default).
+    static var code: Font { CodeTypography.shared.font(size: 12) }
   }
 
   enum Control {
@@ -69,7 +71,7 @@ enum Theme {
     static let disclosure = Animation.easeInOut(duration: 0.2)
   }
 
-  static let codeFont = Typography.code
+  static var codeFont: Font { Typography.code }
 
   static var codeBackground: Color { Color.secondary.opacity(0.1) }
 

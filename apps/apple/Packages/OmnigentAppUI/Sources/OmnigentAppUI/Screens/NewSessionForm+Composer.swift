@@ -12,7 +12,13 @@ extension NewSessionForm {
     let hostID =
       isSandbox
       ? NewSessionAdapter.sandboxHostID(sandbox.option(catalog)?.provider) : selection.hostId
-    let agents = catalog.map { NewSessionAdapter.agents($0, hostID: hostID) }
+    let agents = catalog.map {
+      NewSessionAdapter.agents(
+        $0, hostID: hostID,
+        hidingUnconfigured: InterfacePreferences.read(
+          InterfacePreferences.hideUnconfiguredHarnessesKey)
+          ? selection.agentId : nil)
+    }
     let agent = selectedAgent(creation)
     var configuration = ComposerConfiguration(
       harness: agent?.harness, agentName: agent?.name,

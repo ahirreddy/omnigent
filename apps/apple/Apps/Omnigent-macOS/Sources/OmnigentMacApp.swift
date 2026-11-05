@@ -194,6 +194,7 @@ struct AppSettingsView: View {
     ) {
       ComposerSettingsSection()
       SessionSettingsSection()
+      LinksAndSessionsSettingsSection()
       BrowserEngineSettingsView(
         preferences: services.browserPreferences, provider: services.browserProvider)
       BrowserSettingsView(environment: services.browser)

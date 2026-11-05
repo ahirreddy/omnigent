@@ -251,6 +251,20 @@ struct WorkspaceModelTests {
     #expect(browser.openDocuments.isEmpty)
   }
 
+  @Test("revealing a line marks it in the shown file without reading it again")
+  func revealLine() async {
+    let browser = WorkspaceBrowserModel(source: SampleWorkspaceDataSource())
+    await browser.open(.file(path: "README.md", line: nil))
+    let read = browser.file.value
+    browser.reveal(line: 3)
+    #expect(browser.document == .file(path: "README.md", line: 3))
+    #expect(browser.openDocuments == [.file(path: "README.md", line: 3)])
+    #expect(browser.file.value == read)
+    await browser.open(.diff(path: "src/lib.rs"))
+    browser.reveal(line: 5)
+    #expect(browser.document == .diff(path: "src/lib.rs"), "a diff has no line")
+  }
+
   @Test("opening a file from the tree opens it in the browser")
   func treeOpens() async {
     let browser = WorkspaceBrowserModel(source: SampleWorkspaceDataSource())
@@ -371,5 +385,27 @@ struct SyntaxHighlighterTests {
     #expect(SyntaxLanguage(fenceName: "sh") == .bash)
     #expect(SyntaxLanguage(fenceName: "rust") == .rust)
     #expect(SyntaxLanguage(fenceName: "brainfuck") == nil)
+  }
+}
+
+@Suite("Code typography")
+struct CodeTypographyTests {
+  @Test("reads the web's keys, rejects out-of-range sizes and writes only changes")
+  func preferences() throws {
+    let defaults = try #require(UserDefaults(suiteName: "code-typography-\(UUID())"))
+    defaults.set(99.0, forKey: CodeTypography.sizeKey)
+    defaults.set(500, forKey: CodeTypography.weightKey)
+    let typography = CodeTypography(defaults: defaults)
+    #expect(typography.size == CodeTypography.defaultSize, "99 pt is out of range")
+    #expect(typography.isHeavier && typography.family.isEmpty)
+    typography.size = 13
+    #expect(
+      defaults.double(forKey: CodeTypography.sizeKey) == 99, "an unchanged size is not written")
+    typography.size = 16
+    #expect(typography.scale == 16.0 / 13)
+    #expect(defaults.double(forKey: CodeTypography.sizeKey) == 16)
+    typography.family = "Menlo"
+    typography.family = ""
+    #expect(defaults.object(forKey: CodeTypography.familyKey) == nil)
   }
 }

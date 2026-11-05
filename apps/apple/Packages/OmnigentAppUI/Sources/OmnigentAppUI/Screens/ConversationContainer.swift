@@ -38,8 +38,8 @@ struct ConversationContainer: View {
   /// The server shares sessions (multi-user, sharing not off); `false` hides Share.
   var offersShare = true
 
-  @State private var showsInspector = false
-  @State private var inspectorTab: InspectorTab = .files
+  @State private var showsInspector = WorkspacePanelDefault.stored() == .open
+  @State private var inspectorTab: InspectorTab = DefaultWorkspaceTab.stored().inspectorTab
   @State private var showsGoal = false
   @State private var mode: SessionViewMode = .chat
   @State private var isStopping = false
@@ -111,6 +111,7 @@ struct ConversationContainer: View {
       if !running { Task { await panel?.refreshPullRequestsIfShown() } }
     }
     .onChange(of: terminals?.terminals.harness, initial: true) { attachHarness() }
+    .modifier(WorkspacePanelDefaults(workspace: workspace, showsInspector: $showsInspector))
     .onChange(of: changedFilesRevision) {
       guard let workspace else { return }
       Task { await workspace.changedFilesInvalidated() }
@@ -229,7 +230,7 @@ struct ConversationContainer: View {
       actions.openSideChat = { row in
         tabRoutes.openSideChat(row.id, row.activity?.detail("question"))
       }
-      actions.openChild = tabRoutes.openSession
+      actions.openChild = tabRoutes.openChild ?? tabRoutes.openSession
       actions.openSession = tabRoutes.openSession
     }
     SessionToolsAdapter.addSelectionActions(to: &actions, store: conversation, routes: toolRoutes)

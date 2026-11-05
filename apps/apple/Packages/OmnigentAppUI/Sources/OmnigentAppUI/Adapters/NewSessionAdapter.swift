@@ -44,9 +44,12 @@ enum NewSessionAdapter {
   /// - Parameters:
   ///   - catalog: The creation catalog.
   ///   - hostID: The selected host, for readiness.
+  ///   - selectedID: With Settings' "Hide unconfigured harnesses", the selected agent: harnesses
+  ///     not set up on the host are left out, except this one. `nil` badges them instead.
   /// - Returns: The rows and their groups.
   static func agents(
-    _ catalog: OmnigentCoreFFI.CreationCatalog, hostID: String
+    _ catalog: OmnigentCoreFFI.CreationCatalog, hostID: String,
+    hidingUnconfigured selectedID: String? = nil
   ) -> (choices: [OmnigentUIComponents.HarnessChoice], groups: [String: AgentPickerGroup]) {
     let creatable = catalog.agents.filter(\.supportsCreation)
     let grouped = creatable.enumerated().map { index, agent in
@@ -66,7 +69,12 @@ enum NewSessionAdapter {
           : creationUnavailableReason(catalog: catalog, agentId: entry.agent.id, hostId: hostID))
     }
     let groups = Dictionary(uniqueKeysWithValues: sorted.map { ($0.agent.id, $0.group) })
-    return (choices, groups)
+    guard let selectedID else { return (choices, groups) }
+    let shown = choices.filter { choice in
+      let isHarness = [.harness, .otherHarness].contains(groups[choice.id])
+      return !isHarness || choice.unavailableReason == nil || choice.id == selectedID
+    }
+    return (shown, groups)
   }
 
   static func group(_ agent: OmnigentCoreFFI.CreationAgent) -> AgentPickerGroup {

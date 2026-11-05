@@ -1,3 +1,4 @@
+import OmnigentWorkspaceUI
 public import SwiftUI
 
 /// Renders markdown text: paragraphs, headings, lists and task lists, block quotes, GFM tables,
@@ -127,7 +128,7 @@ private struct MarkdownBlockView: View {
       Divider().padding(.vertical, Theme.Spacing.extraSmall)
     case .html(let raw):
       Text(verbatim: raw)
-        .font(.system(size: ramp.code, design: .monospaced))
+        .font(CodeTypography.shared.font(size: ramp.code))
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
@@ -318,7 +319,7 @@ struct CodeBlockView: View {
     let highlighted =
       isOpen ? nil : CodeHighlightCache.shared.attributed(code, language: language, scheme: scheme)
     return Text(highlighted ?? AttributedString(code))
-      .font(.system(size: ramp.code, design: .monospaced))
+      .font(CodeTypography.shared.font(size: ramp.code))
       .lineHeight(.exact(points: ramp.codeLineHeight))
       .textSelection(.enabled)
       .fixedSize(horizontal: false, vertical: true)

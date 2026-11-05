@@ -366,6 +366,8 @@ struct ConversationTabRoutes {
   /// Another session's chat (a sub-agent or the parent), focused when already open, else
   /// opened right after this tab.
   var openSession: @MainActor (String) -> Void
+  /// A sub-agent's chat, when it opens elsewhere than `openSession` (beside the chat).
+  var openChild: (@MainActor (String) -> Void)?
   /// Starts a terminal (a declared name, or the default) and opens it in a tab.
   var newTerminal: (@MainActor (String?) -> Void)?
   /// Opens a browser tab; `nil` when the window has no browser.

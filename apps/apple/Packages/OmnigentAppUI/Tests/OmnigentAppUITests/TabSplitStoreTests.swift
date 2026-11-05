@@ -323,3 +323,29 @@ struct SessionTabsLifecycleTests {
     #expect(gone == ["deleted", "archived"])
   }
 }
+
+@Suite("Sub-agents beside the chat")
+struct OpenBesideTests {
+  @Test("A sub-agent opens in the pane beside the selected chat, splitting the window")
+  func opensBeside() {
+    let store = TabStore()
+    let parent = store.open(.chat(sessionID: "parent"))
+    store.openBeside(.chat(sessionID: "child"))
+    let child = store.tabs.first { $0.content == .chat(sessionID: "child") }
+    #expect(store.pane(of: parent.id) == .leading)
+    #expect(child.map { store.pane(of: $0.id) } == .trailing)
+    #expect(store.selected?.id == child?.id)
+    // From the right pane, the next one opens on the left.
+    store.openBeside(.chat(sessionID: "grandchild"))
+    let grandchild = store.tabs.first { $0.content == .chat(sessionID: "grandchild") }
+    #expect(grandchild.map { store.pane(of: $0.id) } == .leading)
+  }
+
+  @Test("Only web pages open in the in-app browser")
+  func inAppLinks() throws {
+    #expect(WindowTabs.opensInApp(try #require(URL(string: "https://example.com/a"))))
+    #expect(WindowTabs.opensInApp(try #require(URL(string: "HTTP://example.com"))))
+    #expect(!WindowTabs.opensInApp(try #require(URL(string: "mailto:a@example.com"))))
+    #expect(!WindowTabs.opensInApp(try #require(URL(string: "file:///tmp/a"))))
+  }
+}
