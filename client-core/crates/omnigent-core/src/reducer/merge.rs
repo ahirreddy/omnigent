@@ -16,6 +16,22 @@ use super::ops::{ChangeSet, diff_rows};
 use super::state::{ConversationSnapshot, LIVE_PREFIX, Row, TurnStatus};
 
 impl LiveReducer {
+    /// Puts older history `rows` (chronological) above the transcript. Rows already shown keep
+    /// their content and place.
+    pub fn prepend_history(&mut self, rows: Vec<Row>) -> ChangeSet {
+        let checkpoint = self.checkpoint();
+        let shown: HashSet<String> = self.snap.rows.iter().map(|row| row.id.clone()).collect();
+        let older: Vec<Row> = rows
+            .into_iter()
+            .filter(|row| !shown.contains(&row.id))
+            .collect();
+        if !older.is_empty() {
+            self.journal.structural(&self.snap.rows);
+            self.snap.rows.splice(0..0, older);
+        }
+        self.finish(&checkpoint)
+    }
+
     /// Replaces committed state with `authoritative` (a hydration or reconnect read) while keeping
     /// live previews that history does not contain yet.
     pub fn reconcile(&mut self, authoritative: ConversationSnapshot) -> ChangeSet {

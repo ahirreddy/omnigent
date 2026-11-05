@@ -26,6 +26,10 @@ use omnigent_protocol::{
 };
 use serde_json::Value;
 
+mod older;
+
+pub use older::{HistoryPaging, OlderHistoryRequest};
+
 use crate::reducer::{
     ChangeSet, ConversationSnapshot, Decision, Effects, LiveReducer, ProjectionError, ReducerError,
     ReportedValue, Row, SessionEventState, SessionHeader, SessionSettings, TurnStatus,
@@ -635,6 +639,8 @@ pub struct ConversationSync {
     revision: u64,
     /// Browser actions already handed to the host, oldest first; survives reconnects.
     browser_actions: std::collections::VecDeque<String>,
+    /// History loaded above the newest page; survives rehydrations and reconnects.
+    older: older::OlderHistory,
 }
 
 impl ConversationSync {
@@ -654,6 +660,7 @@ impl ConversationSync {
             ledger: MetadataLedger::default(),
             revision: 0,
             browser_actions: std::collections::VecDeque::new(),
+            older: older::OlderHistory::default(),
         }
     }
 
@@ -801,6 +808,7 @@ impl ConversationSync {
         self.generation += 1;
         self.reducer = None;
         self.displaced = None;
+        self.older.clear();
     }
 
     fn new_request(&mut self) -> HydrationRequest {
@@ -898,7 +906,23 @@ impl ConversationSync {
         Ok(update)
     }
 
-    /// The history read for `request` finished with `session` and its `items` (chronological).
+    /// [`Self::finish_hydration_page`] for a read that holds the whole history.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::finish_hydration_page`].
+    pub fn finish_hydration(
+        &mut self,
+        request: &HydrationRequest,
+        session: &SessionSnapshot,
+        items: &[ConversationItem],
+    ) -> Result<SyncUpdate, SyncError> {
+        self.finish_hydration_page(request, session, items, None)
+    }
+
+    /// The history read for `request` finished with `session`, its newest `items`
+    /// (chronological) and the cursor for older items. Older pages loaded earlier are shown above
+    /// the items while the page still reaches them.
     ///
     /// The read is merged into the live state: committed rows replace their previews, previews not
     /// in history yet keep their slot, buffered events are replayed onto the history (so a
@@ -909,11 +933,12 @@ impl ConversationSync {
     ///
     /// The read cannot be shown or a buffered event no longer applies. The sync is unchanged;
     /// call [`ConversationSync::hydration_failed`] and reconnect.
-    pub fn finish_hydration(
+    pub fn finish_hydration_page(
         &mut self,
         request: &HydrationRequest,
         session: &SessionSnapshot,
         items: &[ConversationItem],
+        older_cursor: Option<&str>,
     ) -> Result<SyncUpdate, SyncError> {
         if !self.is_current(request) || session.id != self.session_id {
             return Ok(SyncUpdate::default());
@@ -922,7 +947,10 @@ impl ConversationSync {
             Some(newer) => newer.clone(),
             None => header_from_snapshot(session, self.ledger.header(&session.id))?,
         };
-        let authoritative = history_snapshot(session, items, header)?;
+        // Composed on a copy so a read that cannot be shown leaves paging as it was.
+        let mut older = self.older.clone();
+        let items = older.compose(items, older_cursor);
+        let authoritative = history_snapshot(session, &items, header)?;
         let mut current = self.baseline.clone().map_or_else(
             || LiveReducer::new(authoritative.clone()),
             |mut baseline| {
@@ -940,6 +968,7 @@ impl ConversationSync {
         self.buffered.clear();
         self.baseline = None;
         self.hydration = Hydration::Idle;
+        self.older = older;
         let changes = match self.reducer.as_mut() {
             Some(live) => {
                 let mut reconciled = current.into_snapshot();

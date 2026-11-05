@@ -40,6 +40,8 @@ struct ConversationContainer: View {
   var makeShareStore: (@MainActor () -> ShareStore?)?
 
   @State private var showsInspector = false
+  @State private var inspectorTab: InspectorTab = .files
+  @State private var showsGoal = false
   @State private var mode: SessionViewMode = .chat
   @State private var isStopping = false
   @State private var dismissedSendError: CoreError?
@@ -54,10 +56,12 @@ struct ConversationContainer: View {
 
   var body: some View {
     let composer = conversation.composer
+    let screen = state
     ConversationScreen(
-      state: state, composer: composerState,
+      state: screen, composer: composerState(screen),
       draft: Binding(get: { composer.text }, set: { composer.text = $0 }),
-      showsInspector: $showsInspector, mode: modeBinding, fork: forkSheet,
+      showsInspector: $showsInspector, inspectorTab: $inspectorTab, mode: modeBinding,
+      fork: forkSheet,
       actions: routed(forkable(actions)), composerActions: composerActions,
       extras: ConversationExtras(
         sessionActions: forkable(sessionActions), slots: workspaceSlots,
@@ -95,7 +99,13 @@ struct ConversationContainer: View {
       }
       await composer.loadSkills()
     }
-    .task { await panel?.loadFeatures() }
+    // Reads the features too; the composer tray links the session's pull requests.
+    .task { await panel?.reloadPullRequests() }
+    .modifier(
+      SessionGoalPresenter(
+        conversation: conversation, summary: summary, isPresented: $showsGoal,
+        report: { failures.append($0) })
+    )
     .onChange(of: conversation.isRunning) { _, running in
       Task { await composer.drainQueue(isRunning: running) }
       if !running { Task { await panel?.refreshPullRequestsIfShown() } }
@@ -116,10 +126,34 @@ struct ConversationContainer: View {
     return state
   }
 
-  private var composerState: ComposerViewState {
-    ComposerAdapter.state(
+  private func composerState(_ screen: ConversationViewState) -> ComposerViewState {
+    var composer = ComposerAdapter.state(
       conversation, isStopping: isStopping, dismissedError: dismissedSendError, server: server,
       submitWithCommandReturn: submitWithCommandReturn)
+    let indicators = SessionToolsAdapter.indicators(conversation, screen: screen)
+    let pullRequest = SessionToolsAdapter.pullRequestLabel(panel)
+    if !indicators.isEmpty || pullRequest != nil {
+      var tray = composer.tray ?? ComposerTray()
+      tray.indicators = indicators
+      tray.pullRequest = pullRequest
+      composer.tray = tray
+    }
+    return composer
+  }
+
+  /// What the Add menu and the tray's indicators open.
+  private var toolRoutes: SessionToolsAdapter.Routes {
+    SessionToolsAdapter.Routes(
+      openSession: tabRoutes?.openSession ?? openSession,
+      showPullRequests: {
+        inspectorTab = .pullRequests
+        showsInspector = true
+      },
+      showGoal: {
+        showsGoal = true
+        Task { await conversation.tools.loadGoal() }
+      },
+      report: { failures.append($0) })
   }
 
   /// The Share sheet over the session's grants, once its store exists.
@@ -171,6 +205,7 @@ struct ConversationContainer: View {
     return WorkspacePanelSlots(
       workspace: workspace, panel: panel, terminals: terminals, tabRoutes: tabRoutes,
       terminalNames: terminalNames, permissionLevel: conversation.header?.permissionLevel,
+      newSideChat: SessionToolsAdapter.sideChat(conversation, routes: toolRoutes),
       mention: { path in
         let separator = composer.text.isEmpty || composer.text.hasSuffix(" ") ? "" : " "
         composer.text += "\(separator)@\(path) "
@@ -283,6 +318,7 @@ extension ConversationContainer {
       dismissError: { conversation.dismissErrors() },
       retry: retry,
       resume: { Task { await conversation.recoverTurn(.resume) } })
+    actions.loadOlder = { conversation.loadOlderHistory() }
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
     actions.messageURL = { row in Self.messageURL(row, in: link) }
     actions.retryFailedTurn = { row in
@@ -338,9 +374,17 @@ extension ConversationContainer {
         dismissedSendError = composer.lastError
         composer.dismissConfigurationError()
       },
-      extras: ComposerAdapter.extras(
-        composer, isRunning: { conversation.isRunning },
-        recallPrevious: { ComposerAdapter.lastPrompt(conversation) }, reconnect: retry))
+      extras: extras)
+  }
+
+  private var extras: ComposerExtraActions {
+    let conversation = conversation
+    var extras = ComposerAdapter.extras(
+      conversation.composer, isRunning: { conversation.isRunning },
+      recallPrevious: { ComposerAdapter.lastPrompt(conversation) }, reconnect: retry)
+    SessionToolsAdapter.add(
+      to: &extras, store: conversation, summary: summary, routes: toolRoutes)
+    return extras
   }
 
   /// Switches the harness when the core allows it; otherwise says why.

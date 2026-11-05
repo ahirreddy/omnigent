@@ -428,7 +428,10 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 
     /// Records the fork's snapshot. An acknowledgement without a usable id is uncertain.
-    fn accept_fork(&self, acknowledgement: Value) -> Result<CreationReceipt, SessionError> {
+    pub(super) fn accept_fork(
+        &self,
+        acknowledgement: Value,
+    ) -> Result<CreationReceipt, SessionError> {
         let id = acknowledgement
             .get("id")
             .and_then(Value::as_str)

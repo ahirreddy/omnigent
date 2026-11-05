@@ -37,6 +37,8 @@ extension ConnectionStore {
       conversations[id]?.linkChanged(state)
     case .sessionHydrated(let id):
       conversations[id]?.hydrated()
+    case .historyPagingChanged(let id, let hasOlder, let isLoading):
+      conversations[id]?.historyPagingChanged(hasOlder: hasOlder, isLoading: isLoading)
     case .transcriptReset(let id, let revision, let rows, let header, let sections, let decisions):
       conversations[id]?.reset(
         revision: revision, rows: rows, header: header, sections: sections,

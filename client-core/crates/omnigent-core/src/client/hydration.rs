@@ -12,7 +12,7 @@ use super::events::ChangedFilesUpdate;
 use super::sessions::DEFAULT_PAGE_LIMIT;
 use super::{ClientCore, SessionError, lock};
 use crate::http::HttpTransport;
-use crate::reconcile::{ConversationSync, HydrationRequest, SyncUpdate};
+use crate::reconcile::{ConversationSync, HydrationRequest, OlderHistoryRequest, SyncUpdate};
 use crate::reducer::{ChangedFile, ChangedFiles};
 
 impl From<ChangedFilesUpdate> for ChangedFiles {
@@ -71,11 +71,50 @@ impl<T: HttpTransport> ClientCore<T> {
         let page = self
             .conversation(&request.session_id, DEFAULT_PAGE_LIMIT)
             .await?;
-        let update = sync.finish_hydration(request, &page.snapshot, &page.items)?;
+        let update = sync.finish_hydration_page(
+            request,
+            &page.snapshot,
+            &page.items,
+            page.next_cursor.as_deref(),
+        )?;
         lock(&self.state)
             .live_sessions
             .insert(request.session_id.clone());
         Ok(update)
+    }
+
+    /// Reads the page of history above what `sync` holds and prepends it.
+    ///
+    /// # Errors
+    ///
+    /// The read errors, or [`SessionError::Sync`] when the page cannot be shown. Either way
+    /// `sync` stops loading and the reader can try again.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn load_older_history(
+        &self,
+        sync: &mut ConversationSync,
+        request: &OlderHistoryRequest,
+    ) -> Result<SyncUpdate, SessionError> {
+        let result = match self
+            .history_page(
+                &request.session_id,
+                Some(&request.cursor),
+                DEFAULT_PAGE_LIMIT,
+            )
+            .await
+        {
+            Ok(page) => sync
+                .finish_older_history(request, &page.items, page.next_cursor.as_deref())
+                .map_err(SessionError::from),
+            Err(error) => Err(error),
+        };
+        if result.is_err() {
+            sync.older_history_failed(request);
+        }
+        result
     }
 
     /// [`ClientCore::invalidate_changed_files`] for the watched session, folded into `sync`.
@@ -114,8 +153,10 @@ mod tests {
     use futures::executor::block_on;
 
     use super::*;
-    use crate::client::test_support::{RouteTransport, connected};
+    use crate::client::test_support::{Reply, RouteTransport, connected};
     use crate::http::TransportError;
+    use crate::reconcile::HistoryPaging;
+    use omnigent_protocol::{ConversationItem, FromWire};
 
     fn transport() -> RouteTransport {
         let transport = RouteTransport::local();
@@ -161,6 +202,122 @@ mod tests {
         assert_eq!(core.transport().writes(), []);
     }
 
+    fn message(id: &str) -> String {
+        format!(r#"{{"id":"{id}","type":"message","role":"assistant","content":"{id}"}}"#)
+    }
+
+    /// A newest-first `/items` page.
+    fn page(ids: &[&str], has_more: bool) -> String {
+        let data: Vec<String> = ids.iter().map(|id| message(id)).collect();
+        let last = ids
+            .last()
+            .map_or(String::new(), |id| format!(r#","last_id":"{id}""#));
+        format!(
+            r#"{{"data":[{}],"has_more":{has_more}{last}}}"#,
+            data.join(",")
+        )
+    }
+
+    fn row_ids(sync: &ConversationSync) -> Vec<String> {
+        sync.published()
+            .map(|snapshot| snapshot.rows.iter().map(|row| row.id.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    fn paged_transport() -> RouteTransport {
+        let transport = transport();
+        transport.ok("/v1/sessions/conv_a/items", page(&["msg_3", "msg_2"], true));
+        transport.respond(
+            None,
+            "/v1/sessions/conv_a/items",
+            Some("msg_2"),
+            Reply::json(200, page(&["msg_1"], false)),
+        );
+        transport
+    }
+
+    #[test]
+    fn older_history_prepends_and_survives_rehydration_and_reconnect() {
+        let core = connected(paged_transport());
+        let mut sync = ConversationSync::new("conv_a");
+        let request = sync.open_stream();
+        block_on(core.hydrate(&mut sync, &request)).unwrap();
+        assert_eq!(row_ids(&sync), ["msg_2", "msg_3"]);
+        assert!(sync.history_paging().has_older);
+
+        let older = sync.begin_older_history().unwrap();
+        assert_eq!(older.cursor, "msg_2");
+        assert!(sync.history_paging().is_loading);
+        assert_eq!(sync.begin_older_history(), None);
+        let update = block_on(core.load_older_history(&mut sync, &older)).unwrap();
+        assert_eq!(update.changes.rows.len(), 1);
+        assert_eq!(row_ids(&sync), ["msg_1", "msg_2", "msg_3"]);
+        assert_eq!(sync.history_paging(), HistoryPaging::default());
+
+        let again = sync.request_hydration().unwrap();
+        block_on(core.hydrate(&mut sync, &again)).unwrap();
+        assert_eq!(row_ids(&sync), ["msg_1", "msg_2", "msg_3"]);
+        let reconnect = sync.open_stream();
+        block_on(core.hydrate(&mut sync, &reconnect)).unwrap();
+        assert_eq!(row_ids(&sync), ["msg_1", "msg_2", "msg_3"]);
+        assert!(!sync.history_paging().has_older);
+    }
+
+    #[test]
+    fn a_newest_page_that_no_longer_reaches_older_history_restarts_paging() {
+        let core = connected(paged_transport());
+        let mut sync = ConversationSync::new("conv_a");
+        let request = sync.open_stream();
+        block_on(core.hydrate(&mut sync, &request)).unwrap();
+        let older = sync.begin_older_history().unwrap();
+        block_on(core.load_older_history(&mut sync, &older)).unwrap();
+
+        core.transport()
+            .ok("/v1/sessions/conv_a/items", page(&["msg_9", "msg_8"], true));
+        let again = sync.request_hydration().unwrap();
+        block_on(core.hydrate(&mut sync, &again)).unwrap();
+        assert_eq!(row_ids(&sync), ["msg_8", "msg_9"]);
+        assert_eq!(sync.begin_older_history().unwrap().cursor, "msg_8");
+    }
+
+    #[test]
+    fn a_failed_or_superseded_older_read_changes_nothing() {
+        let transport = paged_transport();
+        transport.respond(
+            None,
+            "/v1/sessions/conv_a/items",
+            Some("msg_2"),
+            Reply::Fail(TransportError::Offline {
+                message: "lost".into(),
+            }),
+        );
+        let core = connected(transport);
+        let mut sync = ConversationSync::new("conv_a");
+        let request = sync.open_stream();
+        block_on(core.hydrate(&mut sync, &request)).unwrap();
+        let older = sync.begin_older_history().unwrap();
+        assert!(block_on(core.load_older_history(&mut sync, &older)).is_err());
+        assert_eq!(
+            sync.history_paging(),
+            HistoryPaging {
+                has_older: true,
+                is_loading: false
+            }
+        );
+
+        // Paging restarted by a rehydration makes the read in flight stale.
+        let stale = sync.begin_older_history().unwrap();
+        core.transport()
+            .ok("/v1/sessions/conv_a/items", page(&["msg_9", "msg_8"], true));
+        let again = sync.request_hydration().unwrap();
+        block_on(core.hydrate(&mut sync, &again)).unwrap();
+        let items = [ConversationItem::from_json(message("msg_1").as_bytes()).unwrap()];
+        let update = sync.finish_older_history(&stale, &items, None).unwrap();
+        assert!(update.changes.is_empty());
+        assert_eq!(row_ids(&sync), ["msg_8", "msg_9"]);
+        assert!(!sync.older_history_failed(&stale));
+    }
+
     #[test]
     fn failed_hydration_reports_to_the_sync_and_keeps_sends_blocked() {
         let transport = transport();
@@ -168,7 +325,7 @@ mod tests {
             None,
             "/v1/sessions/conv_a/items",
             None,
-            crate::client::test_support::Reply::Fail(TransportError::Offline {
+            Reply::Fail(TransportError::Offline {
                 message: "lost".into(),
             }),
         );

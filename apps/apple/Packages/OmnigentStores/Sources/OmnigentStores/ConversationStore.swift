@@ -77,6 +77,12 @@ public final class ConversationStore {
   public let decisions: DecisionStore
   /// The composer.
   public let composer: ComposerStore
+  /// The Add (+) menu's side chat, plan mode and goal.
+  public let tools: SessionToolsStore
+  /// Older history exists above ``rows``; ``loadOlderHistory()`` reads the next page.
+  public private(set) var hasOlderHistory = false
+  /// A page of older history is loading.
+  public private(set) var isLoadingOlderHistory = false
   /// The agent's MCP servers and the session's policies, once ``loadAgentInfo(agentID:)`` read
   /// them.
   public private(set) var agentInfo: AgentInfo?
@@ -93,6 +99,7 @@ public final class ConversationStore {
     self.listStatus = listStatus
     decisions = DecisionStore(sessionID: sessionID, core: core, listStatus: listStatus)
     composer = ComposerStore(sessionID: sessionID, core: core)
+    tools = SessionToolsStore(sessionID: sessionID, core: core)
   }
 
   /// Rows that belong in the transcript.
@@ -154,6 +161,13 @@ public final class ConversationStore {
     } catch {
       record(coreError(error))
     }
+  }
+
+  /// Reads the page of history above ``rows``; it arrives as rows inserted at the top. Does
+  /// nothing without older history or while a page is loading.
+  public func loadOlderHistory() {
+    guard hasOlderHistory, !isLoadingOlderHistory else { return }
+    core.loadOlderHistory(sessionId: sessionID)
   }
 
   /// Clears ``errors`` after the user has seen them.
@@ -223,6 +237,11 @@ public final class ConversationStore {
   func hydrated() {
     isHydrated = true
     composer.streamReady()
+  }
+
+  func historyPagingChanged(hasOlder: Bool, isLoading: Bool) {
+    if hasOlder != hasOlderHistory { hasOlderHistory = hasOlder }
+    if isLoading != isLoadingOlderHistory { isLoadingOlderHistory = isLoading }
   }
 
   func failure(_ message: String) {
