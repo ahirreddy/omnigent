@@ -41,6 +41,10 @@ public final class PagesStore {
   public private(set) var latestOutputs: [String: LatestOutput] = [:]
   /// Sessions whose latest output could not be read.
   public private(set) var outputErrors: [String: CoreError] = [:]
+  /// Inbox comment and reply reads in flight.
+  public private(set) var inboxReads = 0
+  /// The Inbox is still reading comments or latest replies.
+  public var isReadingInbox: Bool { inboxReads > 0 }
 
   private let core: ClientCore
   private let defaults: UserDefaults
@@ -173,8 +177,13 @@ public final class PagesStore {
     for id in comments.keys where counts[id] == nil { comments[id] = nil }
     for id in commentErrors.keys where counts[id] == nil { commentErrors[id] = nil }
     commentCounts = commentCounts.filter { counts[$0.key] != nil }
-    for (id, count) in counts.sorted(by: { $0.key < $1.key })
-    where commentCounts[id] != count || commentErrors[id] != nil {
+    let stale = counts.sorted(by: { $0.key < $1.key }).filter { id, count in
+      commentCounts[id] != count || commentErrors[id] != nil
+    }
+    if stale.isEmpty { return }
+    inboxReads += 1
+    defer { inboxReads -= 1 }
+    for (id, count) in stale {
       commentCounts[id] = count
       do {
         comments[id] = try await core.sessionComments(sessionId: id)
@@ -194,8 +203,13 @@ public final class PagesStore {
     for id in latestOutputs.keys where wanted[id] == nil { latestOutputs[id] = nil }
     for id in outputErrors.keys where wanted[id] == nil { outputErrors[id] = nil }
     outputStamps = outputStamps.filter { wanted[$0.key] != nil }
-    for (id, updatedAt) in wanted.sorted(by: { $0.key < $1.key })
-    where outputStamps[id] != updatedAt || outputErrors[id] != nil {
+    let stale = wanted.sorted(by: { $0.key < $1.key }).filter { id, updatedAt in
+      outputStamps[id] != updatedAt || outputErrors[id] != nil
+    }
+    if stale.isEmpty { return }
+    inboxReads += 1
+    defer { inboxReads -= 1 }
+    for (id, updatedAt) in stale {
       outputStamps[id] = updatedAt
       do {
         latestOutputs[id] = try await core.latestOutput(sessionId: id)

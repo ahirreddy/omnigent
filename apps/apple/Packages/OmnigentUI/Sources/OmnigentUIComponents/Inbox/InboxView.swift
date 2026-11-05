@@ -34,6 +34,16 @@ public struct InboxView: View {
               ForEach(group.items) { item in row(item).id(item.id) }
             }
           }
+          if state.isAssembling, !filtered.isEmpty {
+            Label {
+              Text("Checking remaining sessions\u{2026}")
+            } icon: {
+              ProgressView().controlSize(.small)
+            }
+            .font(.callout).foregroundStyle(.secondary)
+            .listRowSeparator(.hidden)
+            .accessibilityIdentifier("inbox-checking")
+          }
         }
         .accessibilityIdentifier("inbox")
         .listStyle(.plain)
@@ -72,11 +82,7 @@ public struct InboxView: View {
           if let id { proxy.scrollTo(id) }
         }
         .overlay {
-          if filtered.isEmpty {
-            ContentUnavailableView(
-              search.isEmpty ? emptyTitle : "No matching items", systemImage: "tray",
-              description: Text(emptyDescription))
-          }
+          if filtered.isEmpty { emptyState }
         }
       }
       #if os(macOS)
@@ -99,8 +105,42 @@ public struct InboxView: View {
     }
   }
 
+  /// Loading until the items are read; the empty state only once nothing is left to read and
+  /// nothing failed, so it never claims "nothing waiting" too early.
+  @ViewBuilder private var emptyState: some View {
+    if state.isAssembling, search.isEmpty {
+      ProgressView("Loading inbox\u{2026}")
+        .controlSize(.small)
+        .accessibilityIdentifier("inbox-loading")
+    } else if state.failedSessionCount == 0 || !search.isEmpty {
+      ContentUnavailableView(
+        search.isEmpty ? emptyTitle : "No matching items", systemImage: "tray",
+        description: Text(emptyDescription))
+    }
+  }
+
+  private var heading: some View {
+    HStack(spacing: Theme.Spacing.small) {
+      Text("Inbox").font(.title2)
+        .accessibilityAddTraits(.isHeader)
+      if !state.items.isEmpty {
+        let summary = InboxTriage.summary(state.items)
+        Text("\(state.items.count)")
+          .font(.callout.weight(.medium)).monospacedDigit()
+          .foregroundStyle(.background)
+          .padding(.horizontal, Theme.Spacing.small)
+          .padding(.vertical, 2)
+          .background(.primary, in: Capsule())
+          .help(summary)
+          .accessibilityLabel(summary)
+          .accessibilityIdentifier("inbox-count")
+      }
+    }
+  }
+
   private var header: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      heading
       HStack {
         Picker("Filter", selection: $filter) {
           ForEach(InboxFilter.allCases) { Text($0.title).tag($0) }
@@ -184,85 +224,5 @@ public struct InboxView: View {
         get: { expanded.contains(item.id) },
         set: { if $0 { expanded.insert(item.id) } else { expanded.remove(item.id) } }),
       reply: Binding(get: { replies[item.id, default: ""] }, set: { replies[item.id] = $0 }))
-  }
-}
-
-/// The Canvas: a board of session cards (one per project plus Main). Cards can be dragged; their
-/// positions are local to this device.
-public struct CanvasView: View {
-  private let sessions: [SessionSummary]
-  private let open: (@MainActor (String) -> Void)?
-  @State private var offsets: [String: CGSize] = [:]
-  @State private var board = "Main"
-
-  /// Creates the canvas.
-  /// - Parameters:
-  ///   - sessions: Sessions to place.
-  ///   - open: Open a session.
-  public init(sessions: [SessionSummary], open: (@MainActor (String) -> Void)? = nil) {
-    self.sessions = sessions
-    self.open = open
-  }
-
-  /// The board.
-  public var body: some View {
-    ScrollView([.horizontal, .vertical]) {
-      ZStack(alignment: .topLeading) {
-        Canvas { context, size in
-          for column in stride(from: 0.0, through: size.width, by: 32) {
-            for row in stride(from: 0.0, through: size.height, by: 32) {
-              context.fill(
-                Path(ellipseIn: CGRect(x: column, y: row, width: 2, height: 2)),
-                with: .color(.secondary.opacity(0.3)))
-            }
-          }
-        }
-        .frame(width: 1_400, height: 900)
-        ForEach(Array(sessions.prefix(12).enumerated()), id: \.element.id) { index, session in
-          card(session)
-            .offset(
-              x: CGFloat(32 + (index % 4) * 320) + (offsets[session.id]?.width ?? 0),
-              y: CGFloat(32 + (index / 4) * 164) + (offsets[session.id]?.height ?? 0)
-            )
-            .gesture(
-              DragGesture().onChanged { value in offsets[session.id] = value.translation })
-        }
-      }
-    }
-    // On the board, not the screen: the toolbar's picker would otherwise take it too.
-    .accessibilityIdentifier("canvas")
-    .themeCanvas()
-    .navigationTitle("Canvas")
-    .toolbar {
-      ToolbarItem(placement: .principal) {
-        Picker("Board", selection: $board) {
-          Text("Main").tag("Main")
-        }
-        .fixedSize()
-        .accessibilityIdentifier("canvas-board")
-      }
-    }
-  }
-
-  private func card(_ session: SessionSummary) -> some View {
-    Button {
-      open?(session.id)
-    } label: {
-      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-        Text(session.title).font(.headline).lineLimit(2)
-        Text(session.preview).font(.callout).foregroundStyle(.secondary).lineLimit(2)
-        Spacer(minLength: 0)
-        HStack {
-          Text(session.agentName).font(.caption).foregroundStyle(.secondary)
-          Spacer()
-          if session.status == .running { ProgressView().controlSize(.mini) }
-        }
-      }
-      .padding(Theme.Spacing.medium)
-      .frame(width: 280, height: 132, alignment: .topLeading)
-      .cardSurface(cornerRadius: Theme.Radius.large)
-    }
-    .buttonStyle(.plain)
-    .accessibilityIdentifier("canvas-card-\(session.id)")
   }
 }

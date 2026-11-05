@@ -48,7 +48,12 @@
       _ notifications: NotificationsStore, list: SessionListStore, serverURL: URL,
       desktop: DesktopController, source: (any SupervisionDecisionSource)? = nil
     ) async {
-      for notification in notifications.take() {
+      let (taken, failures) = await notifications.takeWithReplyPreviews()
+      // Those turn ends still notify, with the default body.
+      for failure in failures {
+        desktop.onIssue(.supervision("Reply preview not read: \(failure.message)"))
+      }
+      for notification in taken {
         let event: DesktopNotificationEvent
         do {
           event = try Self.event(

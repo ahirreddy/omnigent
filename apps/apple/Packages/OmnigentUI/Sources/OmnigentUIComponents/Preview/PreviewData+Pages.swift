@@ -47,3 +47,34 @@ extension PreviewData {
   /// Formats a sample cost.
   static func cost(_ value: Double) -> String { value.formatted(.currency(code: "USD")) }
 }
+
+extension PreviewData {
+  /// A Canvas board of `sessions` on a grid, with one project board.
+  static func canvas(_ sessions: [SessionSummary]) -> CanvasViewState {
+    let cards = sessions.prefix(12).enumerated().map { index, session in
+      CanvasCard(
+        id: session.id, title: session.title, state: CanvasCard.State(session.attention),
+        workspace: session.workspace.isEmpty ? "No working directory" : session.workspace,
+        left: (index % 4) * 320, top: (index / 4) * 160)
+    }
+    return CanvasViewState(
+      boards: [
+        CanvasBoard(id: "main", name: "Main"),
+        CanvasBoard(id: "p1", name: "Docs", icon: "\u{1F4DA}"),
+      ],
+      activeBoard: "main", cards: Array(cards))
+  }
+}
+
+extension CanvasCard.State {
+  /// The card state for a sidebar attention state.
+  public init(_ attention: SessionAttentionState) {
+    switch attention {
+    case .needsYou: self = .needsYou
+    case .failed: self = .failed
+    case .working: self = .running
+    case .unread: self = .unread
+    case .idle: self = .idle
+    }
+  }
+}

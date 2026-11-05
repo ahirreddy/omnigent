@@ -133,4 +133,60 @@ struct PagesStoreTests {
     pages.settleReplies(["conv_a": later])
     #expect(pages.replies["conv_a"] == nil)
   }
+
+  @Test(.timeLimit(.minutes(1)))
+  func finishedTurnsNotifyWithTheReplyPreview() async throws {
+    let server = PagesServer()
+    server.route(
+      "/v1/sessions/conv_a/items",
+      .json(
+        #"{"data":[{"id":"i1","type":"message","role":"assistant","content":[{"type":"output_text","text":"Fixed the badge.\nAll tests pass."}]}],"has_more":false}"#
+      ))
+    let store = try await connected(server)
+    let notifications = try #require(store.notifications)
+    let idle = "Agent finished and is ready for your input."
+    notifications.notify(
+      AttentionNotification(sessionId: "conv_a", kind: .completed, title: nil, body: idle))
+    notifications.notify(
+      AttentionNotification(
+        sessionId: "conv_a", kind: .approval, title: nil, body: "Agent is asking for your input."))
+    notifications.notify(
+      AttentionNotification(sessionId: "conv_gone", kind: .completed, title: nil, body: idle))
+    let (taken, failures) = await notifications.takeWithReplyPreviews()
+    #expect(
+      taken.map(\.body) == [
+        "Fixed the badge.\nAll tests pass.", "Agent is asking for your input.", idle,
+      ])
+    // The unreadable one still notifies, with the default body.
+    #expect(failures.count == 1)
+    #expect(notifications.pending.isEmpty)
+  }
+
+  @Test(.timeLimit(.minutes(1)))
+  func canvasLaysOutSavesAndResetsCards() async throws {
+    let server = PagesServer()
+    let store = try await connected(server)
+    let canvas = try #require(store.canvas)
+    let key = "PagesStoreTests.canvas.\(UUID().uuidString)"
+    defer {
+      UserDefaults.standard.removeObject(forKey: "\(key).positions")
+      UserDefaults.standard.removeObject(forKey: "\(key).board")
+    }
+    canvas.bind(key: key)
+    await canvas.load(viewerID: "local")
+    #expect(canvas.sessions.value?.map(\.id) == ["conv_a"])
+    canvas.relayout(projects: [], viewerID: "local")
+    #expect(canvas.positions["conv_a"] == CanvasPosition(x: 0, y: 0))
+    #expect(canvas.boardOf["conv_a"] == mainCanvasId())
+    // A drop snaps to the grid and survives a new store on the same key.
+    canvas.move("conv_a", left: 70, top: 50)
+    #expect(canvas.positions["conv_a"] == CanvasPosition(x: 64, y: 64))
+    let reopened = try #require(try await connected(server).canvas)
+    reopened.bind(key: key)
+    #expect(reopened.saved["conv_a"] == CanvasPosition(x: 64, y: 64))
+    canvas.select(board: "p1")
+    canvas.select(board: mainCanvasId())
+    canvas.resetLayout()
+    #expect(canvas.positions["conv_a"] == CanvasPosition(x: 0, y: 0))
+  }
 }

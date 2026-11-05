@@ -82,7 +82,9 @@ public struct PlaygroundView: View {
     case .inbox:
       InboxView(state: model.inbox, actions: model.inboxActions)
     case .canvas:
-      CanvasView(sessions: model.sidebar.list.sessions) { id in model.selection = .session(id) }
+      CanvasView(
+        state: PreviewData.canvas(model.sidebar.list.sessions),
+        actions: CanvasActions { id in model.selection = .session(id) })
     case .automations:
       AutomationsView(state: PreviewData.automations, actions: AutomationsActions())
     case .usage:

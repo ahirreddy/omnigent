@@ -53,6 +53,14 @@ nonisolated public struct UsageAmount: Hashable, Sendable, Identifiable {
     self.label = label
     self.costUSD = costUSD
   }
+
+  /// A daily amount's day, as the start of that calendar day in `calendar`, so the chart's date
+  /// axis labels it as the same day; `nil` for a label that is not `YYYY-MM-DD`.
+  func day(in calendar: Calendar = .current) -> Date? {
+    let parts = label.split(separator: "-").compactMap { Int($0) }
+    guard parts.count == 3, label.count == 10 else { return nil }
+    return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+  }
 }
 
 /// One session in the Usage table.

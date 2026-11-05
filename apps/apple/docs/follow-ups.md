@@ -314,6 +314,16 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Automations editor:** no host/workspace pin, model, effort, permission mode, project, end
   condition (COUNT/UNTIL, kept as is when present), Jira/Slack/GitHub trigger templates or the
   `automations_v2` run-history page.
+- [ ] **Inbox "Load more sessions":** the core's session list holds only its first page
+  (`DEFAULT_PAGE_LIMIT`), so the Inbox cannot page further as the web does; needs list paging in
+  the engine, shared with the sidebar's Show more.
+- [ ] **Canvas:** cards show no pull request (summaries carry no `pull_request`), every card is
+  drawn (the web draws only visible ones, which matters past a few hundred sessions), the board
+  pans with scrolling but not by dragging the background, and there is no "+" to create a project
+  from the board tabs.
+- [ ] **Automations intro:** the "Watch for new work" step is left out until the Mac editor has the
+  Jira, Slack and GitHub templates it describes.
+- [ ] **Toasts:** fork's "Session created [Open]" should use `TransientBanner` (fork flow).
 
 ## Product decisions
 

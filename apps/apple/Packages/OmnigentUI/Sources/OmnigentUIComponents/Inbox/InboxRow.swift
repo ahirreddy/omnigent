@@ -9,6 +9,8 @@ struct InboxRow: View {
   @Binding var isExpanded: Bool
   @Binding var reply: String
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
+    false
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
@@ -56,6 +58,13 @@ struct InboxRow: View {
   }
 
   private var summary: some View {
+    HStack(alignment: .top, spacing: Theme.Spacing.medium) {
+      InboxKindTile(item: item)
+      summaryText
+    }
+  }
+
+  private var summaryText: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
       HStack {
         Text(kindLabel)
@@ -158,6 +167,7 @@ struct InboxRow: View {
         .accessibilityIdentifier("inbox-reply-sent-\(item.id)")
         .onAppear { reply = "" }
     case .idle, .sending, .failed:
+      if let fullText = item.fullText { FullReplyButton(text: fullText, itemID: item.id) }
       if item.canReply, let send = actions.reply {
         replyField(send)
         if case .failed(let message) = item.reply {
@@ -176,7 +186,8 @@ struct InboxRow: View {
         .lineLimit(1...6)
         .textFieldStyle(.roundedBorder)
         .disabled(sending)
-        .onSubmit { submit(send) }
+        .onSubmit { if !submitWithCommandReturn { submit(send) } }
+        .onKeyPress(.return, phases: .down) { press in returnKey(press, send) }
         .onChange(of: reply) {
           if case .failed = item.reply { actions.editReply?(item) }
         }
@@ -190,6 +201,20 @@ struct InboxRow: View {
       .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
       .accessibilityIdentifier("inbox-send-\(item.id)")
     }
+  }
+
+  /// The send shortcut setting, as the composer: Command-Return always sends; with the setting
+  /// on, a plain Return starts a new line instead.
+  private func returnKey(_ press: KeyPress, _ send: @MainActor (InboxItem, String) -> Void)
+    -> KeyPress.Result
+  {
+    if press.modifiers == .command {
+      submit(send)
+      return .handled
+    }
+    guard submitWithCommandReturn, press.modifiers.isEmpty else { return .ignored }
+    reply += "\n"
+    return .handled
   }
 
   private func submit(_ send: @MainActor (InboxItem, String) -> Void) {

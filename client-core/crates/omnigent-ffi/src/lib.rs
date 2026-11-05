@@ -37,6 +37,7 @@ pub mod approval;
 pub mod attention;
 pub mod automations;
 pub mod browser;
+pub mod canvas;
 pub mod config;
 pub mod configuration;
 pub mod creation;

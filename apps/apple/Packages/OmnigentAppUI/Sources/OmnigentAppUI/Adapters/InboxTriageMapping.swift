@@ -58,19 +58,29 @@ enum InboxTriageMapping {
     state.needsYouCount = Int(connection.sessionList.attentionTotals.sessionsNeedingYou)
     state.failedSessionCount =
       (connection.pages?.commentErrors.count ?? 0) + (connection.pages?.outputErrors.count ?? 0)
+    state.isAssembling = isAssembling(connection)
     return state
   }
 
-  /// A session without a loaded request: waiting on the user, pinned, or with unseen output (the
-  /// sidebar's unread dot), which can be answered in place.
+  /// The list, a waiting session's requests, comments or replies are still being read.
+  static func isAssembling(_ connection: ConnectionStore) -> Bool {
+    if !connection.sessionList.isLoaded || connection.pages?.isReadingInbox == true { return true }
+    return connection.sessionList.needsResponse.contains { summary in
+      guard let conversation = connection.conversations[summary.id] else { return false }
+      return !conversation.isHydrated && conversation.errors.isEmpty
+    }
+  }
+
+  /// A session without a loaded request: waiting on the user, or with unseen output (the
+  /// sidebar's unread dot), which can be answered in place. As the web, pinning alone does not
+  /// list a session.
   private static func sessionItem(
     _ summary: OmnigentCoreFFI.SessionSummary, connection: ConnectionStore, unread: Set<String>
   ) -> InboxItem? {
     let reply = connection.pages?.replies[summary.id]
     let unseen = connection.sessionList.unreadIDs.contains(summary.id) && !summary.isArchived
     guard
-      summary.status == .needsResponse || unread.contains(summary.id) || summary.isPinned
-        || unseen || reply != nil
+      summary.status == .needsResponse || unread.contains(summary.id) || unseen || reply != nil
     else { return nil }
     var item = item(
       summary, serverName: connection.connectedServer?.serverName, unread: unread)
@@ -78,7 +88,10 @@ enum InboxTriageMapping {
       item.preview = failure.message
     }
     if summary.status != .needsResponse {
-      if let output = connection.pages?.latestOutputs[summary.id] { item.preview = output.preview }
+      if let output = connection.pages?.latestOutputs[summary.id] {
+        item.preview = output.preview
+        item.fullText = output.fullText
+      }
       item.isUnread = item.isUnread || unseen || reply != nil
       item.isError = summary.failureMessage != nil
       if let failure = summary.failureMessage, item.preview == "Failed" { item.preview = failure }

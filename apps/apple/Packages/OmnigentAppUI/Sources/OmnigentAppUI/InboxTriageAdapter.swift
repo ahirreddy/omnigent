@@ -10,6 +10,7 @@ struct InboxTriageAdapter: View {
   let open: (String) -> Void
   @State private var ownedSessions: Set<String> = []
   @State private var readRevisions: [String: Double] = [:]
+  @State private var banner: TransientBanner?
 
   private var readKey: String {
     "omnigent.inbox.read.\(connection.connectedServer?.baseUrl ?? "").\(connection.connectedServer?.userId ?? "")"
@@ -49,6 +50,7 @@ struct InboxTriageAdapter: View {
       state: InboxTriageMapping.state(connection: connection, readRevisions: readRevisions),
       actions: actions
     )
+    .transientBanner($banner)
     .onAppear {
       readRevisions = UserDefaults.standard.dictionary(forKey: readKey) as? [String: Double] ?? [:]
       connection.pages?.bindSeenComments(key: seenCommentsKey)
@@ -87,7 +89,11 @@ struct InboxTriageAdapter: View {
         guard let pages, let session = connection.sessionList.session(item.sessionId) else {
           return
         }
-        Task { await pages.reply(text, to: session) }
+        Task {
+          if await pages.reply(text, to: session) {
+            banner = TransientBanner(message: "Reply sent to \(session.title)")
+          }
+        }
       },
       respond: { card, response in resolve(card, response) })
     actions.editReply = { item in pages?.clearReply(item.sessionId) }

@@ -5,16 +5,24 @@ import Testing
 
 @Suite("Inbox triage and palette")
 struct InboxPaletteTests {
-  @Test("Reading does not resolve a request, and pinned updates survive either filter")
+  @Test("Reading does not resolve a request, and pinning alone does not keep an item, as the web")
   func filters() {
     let items = InboxTriageSamples.state.items
     let awaiting = InboxTriage.items(items, filter: .awaiting, search: "")
     #expect(awaiting.contains { $0.id == "in2" && !$0.isUnread && $0.isUnresolved })
-    #expect(awaiting.contains { $0.id == "in4" && $0.isPinned })
+    #expect(!awaiting.contains { $0.id == "in4" })
     let unread = InboxTriage.items(items, filter: .unread, search: "")
     #expect(!unread.contains { $0.id == "in2" })
-    #expect(unread.contains { $0.id == "in4" })
+    // Read and pinned: neither unread nor waiting.
+    #expect(!unread.contains { $0.id == "in4" })
     #expect(InboxTriage.items(items, filter: .all, search: "Build Mac").map(\.id) == ["in5"])
+  }
+
+  @Test("The count pill describes approvals, comments and unread sessions")
+  func countSummary() {
+    let items = InboxTriageSamples.state.items
+    #expect(InboxTriage.summary(items) == "3 approvals \u{00B7} 1 comment \u{00B7} 1 unread")
+    #expect(InboxTriage.summary([]).isEmpty)
   }
 
   @Test("Items group newest first under the web's recency headers")
