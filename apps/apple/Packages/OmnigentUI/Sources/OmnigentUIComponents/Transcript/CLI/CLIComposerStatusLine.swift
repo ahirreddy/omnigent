@@ -144,10 +144,11 @@ private struct CLIModelMenu: View {
 
   var body: some View {
     Menu {
+      SmartRoutingToggle(configuration: configuration, set: actions.extras.setSmartRouting)
       if let selectModel = actions.selectModel, !configuration.visibleModels.isEmpty {
         Picker(
           "Model",
-          selection: Binding(get: { configuration.selectedModelId }, set: { selectModel($0) })
+          selection: Binding(get: { configuration.pickedModelId }, set: { selectModel($0) })
         ) {
           Text(configuration.defaultModelTitle).tag(String?.none)
           ForEach(configuration.visibleModels) { Text($0.label).tag(Optional($0.id)) }
@@ -158,7 +159,7 @@ private struct CLIModelMenu: View {
         Picker(
           "Effort",
           selection: Binding<String?>(
-            get: { configuration.selectedEffort }, set: { selectEffort($0) })
+            get: { configuration.pickedEffort }, set: { selectEffort($0) })
         ) {
           Text(configuration.defaultEffortTitle).tag(String?.none)
           ForEach(configuration.efforts, id: \.self) { (effort: String) in

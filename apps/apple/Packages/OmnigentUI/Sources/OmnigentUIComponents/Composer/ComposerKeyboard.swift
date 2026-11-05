@@ -29,9 +29,18 @@ struct ComposerKeyboard {
     return press.modifiers == chord
   }
 
-  /// Applies a completion: a command fills the field; a path becomes a chip when the composer
-  /// takes them (else `@path` stays in the text).
+  /// Applies a completion: a command fills the field; a folder opens (`@folder/`); a file
+  /// becomes a chip when the composer takes them (else `@path` stays in the text).
   func apply(_ item: ComposerCompletions.Item) {
+    if item.isFolder {
+      draft = completions.applying(item)
+    } else {
+      attach(item)
+    }
+  }
+
+  /// Attaches a path row (a folder whole) as a chip; a command fills the field.
+  func attach(_ item: ComposerCompletions.Item) {
     if let path = item.mentionPath, let attach = actions.extras.attachMention {
       draft = completions.removingToken()
       attach(path)
@@ -82,7 +91,7 @@ struct ComposerKeyboard {
       return .handled
     }
     if !press.modifiers.contains(.shift), let item = completions.item(at: highlighted) {
-      apply(item)
+      attach(item)
       return .handled
     }
     return .ignored

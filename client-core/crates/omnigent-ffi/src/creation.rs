@@ -226,6 +226,17 @@ pub struct HostDirectoryListing {
     pub directories: Vec<CreationWorkspace>,
 }
 
+/// A file or folder on a host, for the new-session `@` menu.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct HostEntry {
+    /// Absolute path.
+    pub path: String,
+    /// Display name.
+    pub name: String,
+    /// A folder rather than a file.
+    pub is_directory: bool,
+}
+
 /// What a successful `POST /v1/sessions` returned.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct CreationReceipt {
@@ -543,6 +554,33 @@ impl ClientCore {
                         name: workspace.name,
                     })
                     .collect(),
+            })
+            .map_err(CoreError::from)
+    }
+
+    /// The files and folders in the absolute `path` on `host_id`, for the new-session `@` menu.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier` before any request (also for a path that is
+    /// not absolute), the read errors and `InvalidPagination`.
+    pub async fn host_entries(
+        &self,
+        host_id: String,
+        path: String,
+    ) -> Result<Vec<HostEntry>, CoreError> {
+        self.sessions()
+            .host_entries(&host_id, &path)
+            .await
+            .map(|entries| {
+                entries
+                    .into_iter()
+                    .map(|entry| HostEntry {
+                        path: entry.path,
+                        name: entry.name,
+                        is_directory: entry.is_directory,
+                    })
+                    .collect()
             })
             .map_err(CoreError::from)
     }

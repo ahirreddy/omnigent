@@ -109,8 +109,8 @@ public struct ComposerView: View {
       }
       ComposerSuggestions(
         state: state, actions: actions, draft: draft, dismissedDraft: dismissedCompletionsDraft,
-        highlighted: highlightedCompletion
-      ) { keyboard.apply($0) }
+        highlighted: highlightedCompletion, attachFolder: { keyboard.attach($0) },
+        apply: { keyboard.apply($0) })
       VStack(alignment: .leading, spacing: isCollapsed ? 0 : Theme.Spacing.small) {
         if let reason = state.availability.reason {
           Label(reason, systemImage: "lock")
@@ -302,16 +302,27 @@ extension ComposerView {
       pillDictate: actions.extras.dictate ?? startSystemDictation)
   }
 
-  /// Focuses the editor, then starts the Mac's dictation in it.
+  /// Focuses the editor, then starts the Mac's dictation in it; touch dictates through speech
+  /// recognition into the draft.
   private func startSystemDictation() {
-    isFocused = true
-    Task { @MainActor in
-      await Task.yield()
-      if !SystemDictation.start() {
-        attachmentError =
-          "Dictation is unavailable. Turn it on in System Settings \u{203A} Keyboard."
+    #if os(iOS)
+      let base = draft
+      Task {
+        let problem = await SpeechDictation.shared.toggle { words in
+          draft = SpeechDictation.appending(words, to: base)
+        }
+        if let problem { attachmentError = problem }
       }
-    }
+    #else
+      isFocused = true
+      Task { @MainActor in
+        await Task.yield()
+        if !SystemDictation.start() {
+          attachmentError =
+            "Dictation is unavailable. Turn it on in System Settings \u{203A} Keyboard."
+        }
+      }
+    #endif
   }
 
   private var toolbar: some View { parts.toolbar }

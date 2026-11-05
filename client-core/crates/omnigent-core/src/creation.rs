@@ -356,6 +356,17 @@ impl HostWorktree {
     }
 }
 
+/// A file or folder on a host, for the new-session `@` menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostEntry {
+    /// Absolute path.
+    pub path: String,
+    /// Display name.
+    pub name: String,
+    /// A folder rather than a file.
+    pub is_directory: bool,
+}
+
 /// A directory on a host and the directories in it, for the folder browser.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostDirectoryListing {

@@ -66,8 +66,11 @@ public final class ComposerStore {
   public internal(set) var mentions: [String] = []
   /// Why the `@` menu has no results (the workspace search failed); `nil` otherwise.
   public internal(set) var mentionProblem: String?
-  /// Finds workspace paths for an `@` query; `nil` turns mentions off.
-  public var searchMentions: (@MainActor (String) async throws -> [String])?
+  /// Finds workspace paths for an `@` query; `nil` turns mentions off. A draft restored before
+  /// it was set lists its mention once it is.
+  public var searchMentions: (@MainActor (String) async throws -> [String])? {
+    didSet { mentionTextChanged() }
+  }
   var mentionQuery: String?
   var mentionTask: Task<Void, Never>?
   /// A configuration change is in flight.

@@ -31,6 +31,41 @@ impl<T: HttpTransport> ClientCore<T> {
         })
     }
 
+    /// The skills `harness` would see in `path` on `host_id` (`GET /v1/skills?host_id=`), for
+    /// the new-session composer before a session exists.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request; the read errors (503 while the
+    /// host is offline); [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn host_skills(
+        &self,
+        host_id: &str,
+        harness: &str,
+        path: &str,
+        agent_id: Option<&str>,
+    ) -> Result<SkillCatalog, SessionError> {
+        validate_identifier(host_id)?;
+        let route = "/v1/skills";
+        let mut query = vec![
+            ("host_id", host_id.to_owned()),
+            ("harness", harness.to_owned()),
+            ("path", path.to_owned()),
+        ];
+        if let Some(agent_id) = agent_id.filter(|id| !id.is_empty()) {
+            query.push(("agent_id", agent_id.to_owned()));
+        }
+        let value = self.get_json(route, &query).await;
+        self.dispatch();
+        SkillCatalog::from_value(&value?).map_err(|detail| SessionError::MalformedResponse {
+            detail: format!("{route}: {detail}"),
+        })
+    }
+
     /// Which server-backed commands the composer may offer (`GET /v1/info`). Older servers
     /// reject the `clear` control, so `/clear` stays plain text there.
     ///

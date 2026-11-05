@@ -93,6 +93,8 @@ extension PreviewData {
   ]
 
   static let mentionPaths = [
+    "apps/",
+    "client-core/",
     "client-core/crates/omnigent-core/src/auth/refresh.rs",
     "client-core/crates/omnigent-core/src/auth/tests.rs",
     "apps/apple/README.md",

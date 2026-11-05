@@ -21,6 +21,7 @@ struct NewSessionContainer: View {
   @State private var setupTarget: HarnessSetupTarget?
   @State private var harnessSetup: HarnessSetupStore?
   @State private var customAgents: CustomAgentsStore?
+  @State private var launch: LaunchCompletionsStore?
   @State private var isCreatingAgent = false
   @State private var isImportingBundle = false
   @State private var isConnectingHost = false
@@ -52,6 +53,7 @@ struct NewSessionContainer: View {
       }
       self.creation = creation
       customAgents = connection.customAgents()
+      launch = connection.launchCompletions()
       form.sandboxes = connection.sandboxes()
       await form.load(creation)
     }
@@ -61,7 +63,8 @@ struct NewSessionContainer: View {
     NewSessionPage(
       draft: $draft,
       composer: form.composerState(
-        creation, connection: connection, submitWithCommandReturn: submitWithCommandReturn),
+        creation, connection: connection, launch: launch,
+        submitWithCommandReturn: submitWithCommandReturn),
       actions: actions(creation),
       heading: form.project.map { "What should we work on in \($0.name)?" }
         ?? "What should we work on?",
@@ -72,9 +75,15 @@ struct NewSessionContainer: View {
     .modifier(
       NewSessionLifecycle(form: form, creation: creation, connection: connection) {
         draft = ""
+        launch?.clearMentions()
         open($0)
       }
     )
+    .onChange(of: draft) { launch?.draftChanged(draft, target: form.mentionTarget(creation)) }
+    .task(id: form.skillsRequest(creation)) {
+      let request = form.skillsRequest(creation)
+      await launch?.loadSkills(request.target, unavailable: request.unavailable)
+    }
     .onChange(of: creation.worktrees, initial: true) { form.seedWorktree(creation) }
     .onChange(of: alwaysUseWorktree) { form.seedWorktree(creation) }
     .sheet(
@@ -121,7 +130,10 @@ struct NewSessionContainer: View {
   private func actions(_ creation: CreationStore) -> ComposerActions {
     let form = form
     return ComposerActions(
-      send: { form.start(creation, text: draft) },
+      send: {
+        let harness = form.selectedAgent(creation)?.harness
+        form.start(creation, text: launch?.message(draft, harness: harness) ?? draft)
+      },
       addAttachments: { form.stage($0, in: creation) },
       removeAttachment: { chip in
         if let id = UUID(uuidString: chip.id) { creation.removeAttachment(id) }
@@ -164,7 +176,7 @@ struct NewSessionContainer: View {
         importBundle = { isImportingBundle = true }
       }
     }
-    return ComposerExtraActions(
+    var extras = ComposerExtraActions(
       selectHost: { host in
         if let provider = NewSessionAdapter.sandboxProvider(hostID: host.id) {
           if form.sandbox.provider != provider { form.sandbox.profile = nil }
@@ -183,6 +195,11 @@ struct NewSessionContainer: View {
       },
       togglePlan: form.planToggle(creation), isPlanOn: form.isPlanOn,
       createAgent: createAgent, importAgentBundle: importBundle)
+    if let launch {
+      extras.attachMention = { launch.addMention($0) }
+      extras.removeMention = { launch.removeMention($0) }
+    }
+    return extras
   }
 
   /// "Use This Mac" for this server, where the edition can run hosts.

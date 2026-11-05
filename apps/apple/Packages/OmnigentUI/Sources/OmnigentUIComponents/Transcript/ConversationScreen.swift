@@ -107,6 +107,9 @@ public struct ConversationScreen<Terminal: View>: View {
           scrollToLatestRequest: scrollRequest
         )
         .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
+        .chatDropTarget(
+          isEnabled: composerState.acceptsAttachments && composerState.availability == .available,
+          add: composerActions.addAttachments)
       }
     }
     // A bar: the transcript fades under the dock and composer, its inset following them.

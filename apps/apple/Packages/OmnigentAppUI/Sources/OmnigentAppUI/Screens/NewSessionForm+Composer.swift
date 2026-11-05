@@ -6,7 +6,8 @@ extension NewSessionForm {
   /// The composer in start mode: the agent grouped as on the web, the model and effort, the
   /// host (or a new sandbox), the approval mode, attachments and where it will run.
   func composerState(
-    _ creation: CreationStore, connection: ConnectionStore, submitWithCommandReturn: Bool = false
+    _ creation: CreationStore, connection: ConnectionStore,
+    launch: LaunchCompletionsStore? = nil, submitWithCommandReturn: Bool = false
   ) -> ComposerViewState {
     let catalog = creation.catalog.value
     let hostID =
@@ -38,6 +39,7 @@ extension NewSessionForm {
       approvalModes: NewSessionAdapter.approvalModes(agent, selected: selection.approvalMode),
       purpose: .start, context: context(creation, connection: connection))
     state.submitWithCommandReturn = submitWithCommandReturn
+    applyCompletions(launch, to: &state)
     return state
   }
 

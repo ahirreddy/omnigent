@@ -135,8 +135,8 @@ public struct CLIComposer: View {
         }
         ComposerSuggestions(
           state: state, actions: actions, draft: draft, dismissedDraft: dismissedCompletionsDraft,
-          highlighted: highlightedCompletion
-        ) { keyboard.apply($0) }
+          highlighted: highlightedCompletion, attachFolder: { keyboard.attach($0) },
+          apply: { keyboard.apply($0) })
         if !state.attachments.isEmpty {
           DraftAttachmentStrip(attachments: state.attachments, remove: actions.removeAttachment)
         }

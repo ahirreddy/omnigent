@@ -19,6 +19,8 @@ fn skill(name: &str) -> Skill {
 
 const NO_OPTIONS: SlashOptions = SlashOptions {
     server_clears: false,
+    smart_routing: false,
+    routes_native_panes: false,
 };
 
 fn act(
@@ -217,6 +219,7 @@ fn builtins_map_to_their_actions() {
 fn clear_needs_the_server_control_and_a_native_terminal() {
     let clears = SlashOptions {
         server_clears: true,
+        ..NO_OPTIONS
     };
     let claude = session("claude-native");
     assert!(!names(&slash_commands(&claude, &[], &NO_OPTIONS)).contains(&"/clear".to_owned()));
@@ -356,4 +359,65 @@ fn effort_accepts_the_models_levels_and_default() {
         act("/effort extreme", false, &codex, &[]),
         Some(SlashAction::Show { text }) if text.starts_with("Usage: /effort")
     ));
+}
+
+#[test]
+fn skill_commands_use_the_harness_prefix_and_no_builtins() {
+    let skills = [skill("triage")];
+    assert_eq!(
+        names(&skill_commands(Some("native-codex"), &skills)),
+        ["$triage"]
+    );
+    let claude = skill_commands(Some("claude-native"), &skills);
+    assert_eq!(names(&claude), ["/triage"]);
+    assert!(claude[0].is_skill);
+    assert_eq!(names(&skill_commands(None, &skills)), ["/triage"]);
+}
+
+#[test]
+fn info_reports_smart_routing_and_its_routers() {
+    let info = |body: Value| SlashOptions::from_info(&body).expect("decodes");
+    let off = info(json!({"smart_routing_enabled": false}));
+    assert!(!off.smart_routing && !off.routes_native_panes);
+    let older = info(json!({"smart_routing_enabled": true}));
+    assert!(older.smart_routing && older.routes_native_panes);
+    let judge_only = info(json!({
+        "smart_routing_enabled": true,
+        "smart_routing_sources": {"external": false, "oss": true}
+    }));
+    assert!(judge_only.routes_native_panes);
+    let none = info(json!({
+        "smart_routing_enabled": true,
+        "smart_routing_sources": {"external": false, "oss": false}
+    }));
+    assert!(!none.routes_native_panes);
+}
+
+#[test]
+fn smart_routing_needs_the_server_flag_and_a_top_level_agent_session() {
+    let routes = SlashOptions {
+        smart_routing: true,
+        routes_native_panes: true,
+        ..NO_OPTIONS
+    };
+    let agent = |harness: &str| SessionConfiguration {
+        agent_id: Some("agent_1".to_owned()),
+        ..session(harness)
+    };
+    assert!(offers_smart_routing(&agent("openai-agents"), &routes));
+    assert!(offers_smart_routing(&agent("native-codex"), &routes));
+    assert!(!offers_smart_routing(&agent("openai-agents"), &NO_OPTIONS));
+    assert!(!offers_smart_routing(&session("openai-agents"), &routes));
+    let child = SessionConfiguration {
+        parent_id: Some("parent".to_owned()),
+        ..agent("openai-agents")
+    };
+    assert!(!offers_smart_routing(&child, &routes));
+    assert!(!offers_smart_routing(&agent("pi-native"), &routes));
+    let no_router = SlashOptions {
+        routes_native_panes: false,
+        ..routes
+    };
+    assert!(!offers_smart_routing(&agent("claude-native"), &no_router));
+    assert!(offers_smart_routing(&agent("openai-agents"), &no_router));
 }

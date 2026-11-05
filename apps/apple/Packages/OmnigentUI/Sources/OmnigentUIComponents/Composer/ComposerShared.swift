@@ -47,6 +47,8 @@ struct ComposerSuggestions: View {
   let draft: String
   let dismissedDraft: String?
   let highlighted: Int
+  /// Attaches an `@` folder row whole.
+  var attachFolder: ((ComposerCompletions.Item) -> Void)?
   let apply: (ComposerCompletions.Item) -> Void
 
   var body: some View {
@@ -58,7 +60,8 @@ struct ComposerSuggestions: View {
     if !completions.items.isEmpty {
       CompletionList(
         items: completions.items, note: ComposerCompletions.note(draft: draft, state: state),
-        highlighted: highlighted, pick: apply)
+        highlighted: highlighted, mentionFolder: completions.mentionFolder,
+        attachFolder: attachFolder, pick: apply)
     } else if let note = ComposerCompletions.failedMentionNote(
       draft: draft, dismissed: dismissedDraft, state: state)
     {

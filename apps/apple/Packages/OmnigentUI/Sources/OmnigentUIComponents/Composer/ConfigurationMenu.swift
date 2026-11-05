@@ -29,11 +29,13 @@ struct ConfigurationMenu: View {
           groupedAgentRows(selectAgent)
         }
       }
+      SmartRoutingToggle(configuration: configuration, set: actions.extras.setSmartRouting)
       if let selectModel = actions.selectModel, !configuration.visibleModels.isEmpty {
         Section("Model") { modelPicker(selectModel) }
       }
       if let selectEffort = actions.selectEffort, !configuration.efforts.isEmpty {
         Section("Effort") { effortPicker(selectEffort) }
+          .disabled(configuration.isSmartRoutingOn)
       }
       if let error = configuration.errorMessage {
         Section {
@@ -210,7 +212,7 @@ struct ConfigurationMenu: View {
   private func modelPicker(_ select: @escaping @MainActor (String?) -> Void) -> some View {
     Picker(
       "Model",
-      selection: Binding(get: { configuration.selectedModelId }, set: { select($0) })
+      selection: Binding(get: { configuration.pickedModelId }, set: { select($0) })
     ) {
       Text(configuration.defaultModelTitle).tag(String?.none)
       ForEach(configuration.visibleModels) { option in
@@ -223,7 +225,7 @@ struct ConfigurationMenu: View {
   private func effortPicker(_ select: @escaping @MainActor (String?) -> Void) -> some View {
     Picker(
       "Effort",
-      selection: Binding<String?>(get: { configuration.selectedEffort }, set: { select($0) })
+      selection: Binding<String?>(get: { configuration.pickedEffort }, set: { select($0) })
     ) {
       Text(configuration.defaultEffortTitle).tag(String?.none)
       ForEach(configuration.efforts, id: \.self) { (effort: String) in

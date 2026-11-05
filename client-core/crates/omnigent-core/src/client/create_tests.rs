@@ -681,6 +681,26 @@ fn host_directory_lists_home_then_absolute_paths_with_parents() {
 }
 
 #[test]
+fn host_entries_list_files_and_folders_of_an_absolute_directory() {
+    let transport = stub();
+    transport.ok(
+        "/v1/hosts/host_a/filesystem/work/repo",
+        r#"{"data":[{"name":"README.md","path":"/work/repo/README.md","type":"file"},
+            {"name":"src","path":"/work/repo/src","type":"directory"}],"has_more":false}"#,
+    );
+    let core = connected(transport);
+    let entries = block_on(core.host_entries("host_a", "/work/repo/")).unwrap();
+    assert_eq!(entries.len(), 2);
+    assert!(!entries[0].is_directory);
+    assert!(entries[1].is_directory);
+    assert_eq!(entries[1].path, "/work/repo/src");
+    assert!(matches!(
+        block_on(core.host_entries("host_a", "relative")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}
+
+#[test]
 fn host_worktrees_read_rows_and_treat_non_git_as_empty() {
     let transport = stub();
     transport.enqueue(

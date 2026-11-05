@@ -7,7 +7,7 @@
 
 use serde_json::Value;
 
-use crate::client::json::{as_object, opt_array, opt_str, req_str};
+use crate::client::json::{as_object, opt_array, opt_bool, opt_object, opt_str, req_str};
 use crate::config::approval::approval_mode_menu;
 use crate::config::session::{SessionConfiguration, canonical_harness};
 
@@ -65,9 +65,18 @@ impl SkillCatalog {
 
 /// What the server offers beyond the session's configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent server capability flags, mirrored one to one from /v1/info"
+)]
 pub struct SlashOptions {
     /// The server takes the `clear` control (`/v1/info.session_event_types` lists `clear`).
     pub server_clears: bool,
+    /// `smart_routing_enabled`: sessions may turn Smart Routing (cost routing) on.
+    pub smart_routing: bool,
+    /// A router can answer for a native Claude Code or Codex pane (`smart_routing_sources`
+    /// reports the external or the built-in router; older servers imply both).
+    pub routes_native_panes: bool,
 }
 
 impl SlashOptions {
@@ -80,8 +89,42 @@ impl SlashOptions {
         let object = as_object(value, "/v1/info")?;
         let server_clears = opt_array(object, "session_event_types")?
             .is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str() == Some("clear")));
-        Ok(Self { server_clears })
+        let smart_routing = opt_bool(object, "smart_routing_enabled")?.unwrap_or(false);
+        let routes_native_panes =
+            opt_object(object, "smart_routing_sources")?.map_or(smart_routing, |sources| {
+                ["external", "oss"]
+                    .iter()
+                    .any(|source| sources.get(*source).and_then(Value::as_bool) == Some(true))
+            });
+        Ok(Self {
+            server_clears,
+            smart_routing,
+            routes_native_panes,
+        })
     }
+}
+
+/// The native harnesses Smart Routing picks between.
+const ROUTED_NATIVE_HARNESSES: [&str; 2] = ["claude-native", "codex-native"];
+
+/// Whether the model picker offers Smart Routing for the session (the web's
+/// `isCostRoutingEligible`).
+///
+/// The server routes, the session is a top-level agent session, and a native pane is one Smart
+/// Routing can drive with a router that answers for it.
+#[must_use]
+pub fn offers_smart_routing(configuration: &SessionConfiguration, options: &SlashOptions) -> bool {
+    if !options.smart_routing || configuration.agent_id.is_none() {
+        return false;
+    }
+    if configuration.parent_id.is_some() {
+        return false;
+    }
+    let harness = canonical_harness(configuration.harness.as_deref());
+    if !harness.ends_with("-native") {
+        return true;
+    }
+    ROUTED_NATIVE_HARNESSES.contains(&harness.as_str()) && options.routes_native_panes
 }
 
 /// One entry of the `/` menu.
@@ -230,16 +273,24 @@ pub fn slash_commands(
         commands.push(builtin("side", SIDE));
     }
     commands.push(builtin("help", HELP));
-    let prefix = skill_prefix(&harness);
-    for skill in skills {
-        commands.push(SlashCommand {
+    commands.extend(skill_commands(Some(&harness), skills));
+    commands
+}
+
+/// `skills` as `/` menu rows for `harness` (`$` for Codex), as the new-session composer offers
+/// them before a session exists; built-ins need a live session.
+#[must_use]
+pub fn skill_commands(harness: Option<&str>, skills: &[Skill]) -> Vec<SlashCommand> {
+    let prefix = skill_prefix(&canonical_harness(harness));
+    skills
+        .iter()
+        .map(|skill| SlashCommand {
             name: skill.name.clone(),
             prefix: prefix.to_owned(),
             description: skill_description(skill),
             is_skill: true,
-        });
-    }
-    commands
+        })
+        .collect()
 }
 
 fn skill_description(skill: &Skill) -> String {

@@ -12,6 +12,17 @@ nonisolated public enum AgentPickerGroup: Hashable, Sendable {
   case custom
 }
 
+/// Smart Routing (cost routing) in the model picker: the router picks the model and effort each
+/// turn while it is on.
+nonisolated public enum SmartRoutingState: Hashable, Sendable {
+  /// The server or the session does not offer it; the picker hides the toggle.
+  case unavailable
+  /// Offered and off.
+  case disabled
+  /// Offered and on.
+  case enabled
+}
+
 /// The agent, model and reasoning picker the composer shows, in that order. Defaults are always
 /// shown as what they resolve to ("Default (GPT-5.2 Codex)"), or "Agent default" when unknown.
 nonisolated public struct ComposerConfiguration: Hashable, Sendable {
@@ -37,6 +48,25 @@ nonisolated public struct ComposerConfiguration: Hashable, Sendable {
   public var errorMessage: String?
   /// Picker groups by agent id; empty lists the agents flat under "Agent".
   public var agentGroups: [String: AgentPickerGroup] = [:]
+  /// Smart Routing's toggle in the picker.
+  public var smartRouting = SmartRoutingState.unavailable
+
+  /// The web's name for Smart Routing, which the chip shows while it is on.
+  public static let smartRoutingTitle = "Smart Routing"
+
+  /// Smart Routing is on: the router picks the model and effort.
+  public var isSmartRoutingOn: Bool { smartRouting == .enabled }
+
+  /// The model the picker checks: none while Smart Routing picks it.
+  public var pickedModelId: String? {
+    isSmartRoutingOn ? Self.routedSelection : selectedModelId
+  }
+
+  /// The effort the picker checks: none while Smart Routing picks it.
+  public var pickedEffort: String? { isSmartRoutingOn ? Self.routedSelection : selectedEffort }
+
+  /// A picker selection no row has, so no row is checked while routing.
+  private static let routedSelection = "\u{0}smart-routing"
 
   /// Creates a configuration.
   /// - Parameters:
@@ -106,7 +136,8 @@ nonisolated public struct ComposerConfiguration: Hashable, Sendable {
 
   /// The model the chip names: the choice, else what the default resolves to.
   public var modelTitle: String {
-    selectedModel?.label ?? selectedModelId ?? resolvedDefaultModelName ?? "Agent default"
+    if isSmartRoutingOn { return Self.smartRoutingTitle }
+    return selectedModel?.label ?? selectedModelId ?? resolvedDefaultModelName ?? "Agent default"
   }
 
   /// The model after the current one in the picker, wrapping (Control-Option-M); `nil` with
@@ -128,7 +159,7 @@ nonisolated public struct ComposerConfiguration: Hashable, Sendable {
   }
 
   /// The model is the agent's default rather than a choice (the chip dims it).
-  public var isModelInherited: Bool { selectedModelId == nil }
+  public var isModelInherited: Bool { selectedModelId == nil && !isSmartRoutingOn }
 
   /// The selected model, else the default one: the row whose efforts apply.
   public var effectiveModel: ModelOption? { selectedModel ?? defaultModel }
@@ -146,6 +177,7 @@ nonisolated public struct ComposerConfiguration: Hashable, Sendable {
 
   /// The effort the chip names, or `nil` when the model has no effort choice.
   public var effortTitle: String? {
+    if isSmartRoutingOn { return nil }
     if let selectedEffort { return Self.effortLabel(selectedEffort) }
     guard !efforts.isEmpty else { return nil }
     return defaultEffort.map(Self.effortLabel)

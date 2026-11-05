@@ -43,6 +43,9 @@ impl<T> Drop for MutationGuard<'_, T> {
     }
 }
 
+/// The session field that holds the Smart Routing mode.
+const ROUTING_FIELD: &str = "cost_control_mode_override";
+
 fn unavailable(text: &str) -> SessionError {
     ConfigurationError::Unavailable(text.to_owned()).into()
 }
@@ -395,17 +398,52 @@ impl<T: HttpTransport> ClientCore<T> {
                 .await
                 .map_err(|error| uncertain(format!("re-read after a crossing event: {error}")))?
         };
-        let acknowledged = summary.configuration.as_ref().is_some_and(|actual| {
-            if field == "model_override" {
-                model_acknowledged(value, actual)
-            } else {
-                actual.effort.as_deref() == value
-            }
-        });
+        let acknowledged = summary
+            .configuration
+            .as_ref()
+            .is_some_and(|actual| match field {
+                "model_override" => model_acknowledged(value, actual),
+                ROUTING_FIELD => actual.routing_mode.as_deref() == value,
+                _ => actual.effort.as_deref() == value,
+            });
         if !acknowledged {
             return Err(uncertain(format!("the server did not acknowledge {field}")));
         }
         Ok(Self::accept_configuration(&mut lock(&self.state), summary))
+    }
+
+    /// Turns Smart Routing (the session's `cost_control_mode_override`) on or off. While it is
+    /// on, the router picks the model and effort each turn.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::Busy`] while another change is in flight; the guards (see
+    /// [`Self::apply_configuration`]); [`SessionError::DeliveryUncertain`] when the
+    /// acknowledgement does not show the mode; the read and write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn set_smart_routing(
+        &self,
+        enabled: bool,
+        session_id: &str,
+    ) -> Result<SessionSummary, SessionError> {
+        let result = async {
+            validate_identifier(session_id)?;
+            let _guard = self.begin_mutation(session_id)?;
+            let summary = self.config_snapshot(session_id).await?;
+            self.mutation_allowed(&summary)?;
+            let value = if enabled { "on" } else { "off" };
+            let result = self
+                .patch_configuration(session_id, ROUTING_FIELD, Some(value))
+                .await;
+            lock(&self.state).request_rehydration(session_id);
+            result
+        }
+        .await;
+        self.dispatch();
+        result
     }
 
     /// Switches `session_id` in place to the built-in agent `target_id`, keeping the session and

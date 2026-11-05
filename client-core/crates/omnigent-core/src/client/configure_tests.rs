@@ -513,3 +513,41 @@ fn approval_mode_without_an_acknowledged_mode_is_uncertain() {
         vec![json!({"approval_mode": "full-access"})]
     );
 }
+
+#[test]
+fn smart_routing_patches_the_cost_control_mode_and_checks_the_acknowledgement() {
+    let transport = RouteTransport::local();
+    stub_session(&transport, &fields());
+    let routed = merged(&json!({"cost_control_mode_override": "on"}));
+    transport.respond(
+        Some("PATCH"),
+        PATH,
+        None,
+        Reply::json(200, wire(&routed, true).to_string()),
+    );
+    let core = live(transport);
+    let saved = block_on(core.set_smart_routing(true, "conv_a")).unwrap();
+    assert_eq!(
+        saved.configuration.unwrap().routing_mode.as_deref(),
+        Some("on")
+    );
+    assert_eq!(
+        mutation_bodies(core.transport()),
+        vec![json!({"cost_control_mode_override": "on"})]
+    );
+
+    let transport = RouteTransport::local();
+    stub_session(&transport, &routed);
+    transport.respond(
+        Some("PATCH"),
+        PATH,
+        None,
+        Reply::json(200, wire(&routed, true).to_string()),
+    );
+    let core = live(transport);
+    let error = block_on(core.set_smart_routing(false, "conv_a")).unwrap_err();
+    assert!(
+        matches!(error, SessionError::DeliveryUncertain { .. }),
+        "{error:?}"
+    );
+}
