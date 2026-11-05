@@ -164,7 +164,7 @@ public struct ConversationScreen<Terminal: View>: View {
           state, hasShare: extras.share != nil, tabsInTitlebar: tabsInTitlebar,
           isRegular: layoutWidth == .regular, projectTag: showsProjectTag)
     )
-    .toolbar { toolbarContent }
+    .conversationToolbar(toolbarItems)
     .sheet(isPresented: $showsShare) {
       if let share = extras.share {
         ShareSheet(state: share.state, actions: share.actions) { showsShare = false }
@@ -186,64 +186,15 @@ public struct ConversationScreen<Terminal: View>: View {
     .focusedSceneValue(\.sessionCommands, commandRelay.publish(isActivePane ? commands : nil))
   }
 
-  @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
-    // A split window's other pane leaves the toolbar to the focused one.
-    if isActivePane {
-      paneToolbar
-    }
-  }
-
-  @ToolbarContentBuilder private var paneToolbar: some ToolbarContent {
-    // With tabs in the titlebar, the agent's TUI is its own tab (Option-Command-\\ opens it).
-    if offersTerminal, !tabsInTitlebar {
-      ToolbarItem(placement: .principal) {
-        ViewModePicker(mode: $mode, status: state.terminal)
-      }
-    }
-    ToolbarItemGroup(placement: .primaryAction) {
-      if let presence = state.section("presence"), layoutWidth == .regular {
-        ViewerStack(viewers: SectionReading.viewers(presence))
-      }
-      if let info = state.agentInfo, !(info.tools.isEmpty && info.policies.isEmpty) {
-        Button("Agent info", systemImage: "info.circle") { showsInfo.toggle() }
-          .popover(isPresented: $showsInfo) { AgentInfoPopover(info: info) }
-          .help("Agent info")
-          .accessibilityIdentifier("header-agent-info")
-      }
-      if let summary = state.summary, showsProjectTag,
-        let move = extras.sessionActions.moveToProject
-      {
-        HeaderProjectTag(session: summary, context: extras.menuContext, move: move)
-      }
-      // The title menu's commands, Share among them, when the titlebar holds the tabs.
-      if tabsInTitlebar {
-        SessionActionsButton { titleMenu }
-      }
-      // At compact width Share lives in the title menu; the top corner is out of thumb reach.
-      if extras.share != nil, layoutWidth == .regular {
-        Button {
-          showsShare = true
-        } label: {
-          Label("Share", systemImage: "person.badge.plus")
-            .labelStyle(HeaderShareLabelStyle(isCompact: layoutWidth == .compact))
-        }
-        .buttonStyle(.bordered)
-        .disabled(state.shareUnavailableReason != nil)
-        .help(state.shareUnavailableReason ?? "Share this session")
-        .accessibilityIdentifier("header-share")
-      }
-      Button {
-        showsInspector.toggle()
-      } label: {
-        Label("Right panel", systemImage: "sidebar.trailing")
-      }
-      .keyboardShortcut(AppShortcuts.rightPanel)
-      .help(
-        showsInspector
-          ? "Hide the right panel (Option-Command-])" : "Show the right panel (Option-Command-])"
-      )
-      .accessibilityIdentifier("toggle-inspector")
-    }
+  /// The trailing toolbar items; a split window's other pane leaves the toolbar to the focused
+  /// one, and a hidden tab shows none.
+  private var toolbarItems: ConversationToolbarItems? {
+    guard isActivePane else { return nil }
+    return ConversationToolbarItems(
+      state: state, extras: extras, offersTerminal: offersTerminal,
+      tabsInTitlebar: tabsInTitlebar, isRegular: layoutWidth == .regular,
+      showsProjectTag: showsProjectTag, mode: $mode, showsInspector: $showsInspector,
+      showsInfo: $showsInfo, showShare: { showsShare = true }, titleMenu: AnyView(titleMenu))
   }
 
   @ViewBuilder private var titleMenu: some View {

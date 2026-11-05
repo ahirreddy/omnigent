@@ -49,6 +49,7 @@ struct TabItemView: View {
 
   @State private var isHovered = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.tabStatusDetails) private var statusDetails
 
   var body: some View {
     HStack(spacing: Theme.Spacing.small - 2) {
@@ -148,7 +149,9 @@ struct TabItemView: View {
   private var help: String {
     var parts = [tab.displayTitle]
     if let subtitle = tab.subtitle { parts.append(subtitle) }
-    if let status = tab.statusDetail ?? tab.status.label { parts.append(status) }
+    // The selected tab carries its session's status line: the titlebar has none of its own.
+    let live = isSelected ? statusDetails?.detail(of: tab.id) : nil
+    if let status = tab.statusDetail ?? live ?? tab.status.label { parts.append(status) }
     return parts.joined(separator: " \u{00B7} ")
   }
 
