@@ -134,7 +134,8 @@ public struct UsageView: View {
       Table(state.sessions.sorted(using: sortOrder), sortOrder: $sortOrder) {
         TableColumn("Session", value: \.title) { row in
           Button(row.title) { actions.openSession?(row.id) }
-            .buttonStyle(.link)
+            .buttonStyle(.plain)
+            .foregroundStyle(.tint)
             .disabled(actions.openSession == nil)
         }
         TableColumn("Model", value: \.model)
