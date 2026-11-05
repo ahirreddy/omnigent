@@ -39,9 +39,9 @@ enum ServerSettingsAdapter {
     let loads: [CoreError?] = [
       store.info.error, store.members.error, store.policies.error, store.sharing.error,
       store.mcpServices.error, store.connections.error, store.importHosts.error,
-      store.archived.error,
+      store.archived.error, store.policyRegistry.error,
     ]
-    return ServerSettingsViewState(
+    var state = ServerSettingsViewState(
       servers: servers, panes: panes(info),
       mcpServices: store.mcpServices.value?.map(mcpRow) ?? [],
       connections: store.connections.value?.map(connectionRow) ?? [],
@@ -58,6 +58,38 @@ enum ServerSettingsAdapter {
       isLoading: store.info.isLoading || store.archived.isLoading,
       isSaving: store.isSaving,
       errorMessage: (store.error ?? loads.compactMap(\.self).first)?.message)
+    state.policyTemplates = store.policyRegistry.value?.map(policyTemplate) ?? []
+    return state
+  }
+
+  static func policyTemplate(_ entry: PolicyRegistryEntry) -> PolicyTemplate {
+    PolicyTemplate(
+      id: entry.handler, name: entry.name, detail: entry.description,
+      suggestedName: entry.suggestedName,
+      params: entry.params.map {
+        PolicyTemplate.Param(
+          id: $0.key, kind: paramKind($0.kind), detail: $0.description,
+          defaultValue: $0.defaultValue, options: $0.options)
+      })
+  }
+
+  static func paramKind(_ kind: PolicyParamKind) -> PolicyTemplate.ParamKind {
+    switch kind {
+    case .text: .text
+    case .integer: .integer
+    case .number: .number
+    case .boolean: .boolean
+    case .choice: .choice
+    case .list: .list
+    case .multiChoice: .multiChoice
+    case .object: .object
+    }
+  }
+
+  static func inviteLink(_ invite: MemberInvite) -> MemberInviteLink {
+    MemberInviteLink(
+      url: invite.url,
+      expiresAt: invite.expiresAt.map { Date(timeIntervalSince1970: TimeInterval($0)) })
   }
 
   /// The panes `info` offers, in order.

@@ -142,6 +142,16 @@ public struct ServerSettingsContainer: View {
     actions.changePassword = { await store.changePassword(current: $0, new: $1) }
     actions.resetPassword = { await store.resetPassword($0.id) }
     actions.removeMember = { member in Task { await store.removeMember(member.id) } }
+    if store.info.value?.accountsEnabled == true {
+      actions.invite = { isAdmin in
+        await store.invite(isAdmin: isAdmin).map(ServerSettingsAdapter.inviteLink)
+      }
+    }
+    actions.addPolicy = { template, name, values in
+      guard let entry = store.policyRegistry.value?.first(where: { $0.handler == template.id })
+      else { return false }
+      return await store.addPolicy(entry, name: name, values: values)
+    }
     actions.setPolicyEnabled = { row, enabled in
       Task { await store.setPolicyEnabled(row.id, enabled) }
     }
@@ -179,7 +189,9 @@ public struct ServerSettingsContainer: View {
     case .integrations: await store.loadConnections(store.info.value?.connections ?? [])
     case .importSessions: await store.loadImportHosts()
     case .members: await store.loadMembers()
-    case .policies: await store.loadPolicies()
+    case .policies:
+      await store.loadPolicies()
+      await store.loadPolicyRegistry()
     case .sharing: await store.loadSharing()
     case .archived: await store.loadArchived()
     case .account, .harnesses, .customAgents, .git: break

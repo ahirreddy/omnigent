@@ -53,6 +53,7 @@ pub mod harness_setup;
 pub mod host;
 pub mod http;
 pub mod inbox;
+pub mod policy_registry;
 pub mod pull_request_detail;
 pub mod pull_requests;
 pub mod remote_browser;

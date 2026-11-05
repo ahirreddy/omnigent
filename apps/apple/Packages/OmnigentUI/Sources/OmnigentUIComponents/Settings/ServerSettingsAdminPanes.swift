@@ -5,11 +5,20 @@ import SwiftUI
 struct MembersPane: View {
   let members: [ServerMember]
   let actions: ServerSettingsActions
+  var errorMessage: String?
   @State private var removing: ServerMember?
   @State private var newPassword: (member: String, password: String)?
+  @State private var isInviting = false
 
   var body: some View {
     Section {
+      if let invite = actions.invite {
+        Button("Invite Member\u{2026}", systemImage: "person.badge.plus") { isInviting = true }
+          .accessibilityIdentifier("settings.invite-member")
+          .sheet(isPresented: $isInviting) {
+            InviteMemberSheet(invite: invite, errorMessage: errorMessage)
+          }
+      }
       if members.isEmpty { Text("No members.").foregroundStyle(.secondary) }
       ForEach(members) { member in
         LabeledContent {
@@ -84,12 +93,22 @@ struct MembersPane: View {
 /// Policies: server-wide defaults applied to new sessions.
 struct PoliciesPane: View {
   let policies: [ServerSettingRow]
+  var templates: [PolicyTemplate] = []
   let actions: ServerSettingsActions
+  var errorMessage: String?
+  @State private var isAdding = false
   /// The policy whose removal is being confirmed.
   @State private var deleting: ServerSettingRow?
 
   var body: some View {
     Section {
+      if let add = actions.addPolicy {
+        Button("Add Policy\u{2026}", systemImage: "plus") { isAdding = true }
+          .accessibilityIdentifier("settings.add-policy")
+          .sheet(isPresented: $isAdding) {
+            AddPolicySheet(templates: templates, add: add, errorMessage: errorMessage)
+          }
+      }
       if policies.isEmpty { Text("No default policies.").foregroundStyle(.secondary) }
       ForEach(policies) { policy in
         HStack {

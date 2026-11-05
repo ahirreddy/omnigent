@@ -16,6 +16,8 @@ nonisolated public struct ServerSettingsViewState: Hashable, Sendable {
   public var members: [ServerMember]
   /// Default policies.
   public var policies: [ServerSettingRow]
+  /// Handlers a default policy can be added from.
+  public var policyTemplates: [PolicyTemplate] = []
   /// Sharing; `nil` until loaded.
   public var sharing: SharingViewState?
   /// Archived sessions loaded so far.
@@ -121,6 +123,10 @@ public struct ServerSettingsActions {
   public var resetPassword: (@MainActor (ServerMember) async -> String?)?
   /// Remove a member.
   public var removeMember: (@MainActor (ServerMember) -> Void)?
+  /// Mint an invite link (as an admin or not); `nil` on failure. `nil` hides Invite.
+  public var invite: (@MainActor (Bool) async -> MemberInviteLink?)?
+  /// Add a default policy (template, name, parameter values); returns whether it was added.
+  public var addPolicy: (@MainActor (PolicyTemplate, String, [String: String]) async -> Bool)?
   /// Enable or disable a policy.
   public var setPolicyEnabled: (@MainActor (ServerSettingRow, Bool) -> Void)?
   /// Delete a policy.

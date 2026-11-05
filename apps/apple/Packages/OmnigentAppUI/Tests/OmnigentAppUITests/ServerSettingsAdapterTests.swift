@@ -73,6 +73,26 @@ struct ServerSettingsAdapterTests {
         == "Imported 3, 1 already imported, 1 failed. x: unreadable")
   }
 
+  @Test("registry handlers become add-policy templates; invites keep their expiry")
+  func policyTemplates() {
+    let entry = PolicyRegistryEntry(
+      handler: "p.loop", name: "Detect Loop", description: "Stops loops", isFactory: true,
+      params: [
+        PolicyParam(
+          key: "pii", kind: .multiChoice, description: "Kinds", defaultValue: "ssn",
+          options: ["ssn", "email"], required: false)
+      ],
+      suggestedName: "detect_loop")
+    let template = ServerSettingsAdapter.policyTemplate(entry)
+    #expect(template.id == "p.loop" && template.suggestedName == "detect_loop")
+    #expect(template.params.first?.kind == .multiChoice)
+    #expect(template.params.first?.options == ["ssn", "email"])
+    #expect(template.matches("LOOP") && template.matches("stops") && !template.matches("ssh"))
+    let link = ServerSettingsAdapter.inviteLink(
+      MemberInvite(url: "https://x/register?invite=t", expiresAt: 60, isAdmin: false))
+    #expect(link.expiresAt == Date(timeIntervalSince1970: 60))
+  }
+
   @Test("an SSO sign-in shows Account, with Sign out but no password change")
   func ssoAccount() {
     var sso = info(admin: false)

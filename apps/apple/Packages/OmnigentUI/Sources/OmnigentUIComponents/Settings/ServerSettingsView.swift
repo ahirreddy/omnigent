@@ -112,8 +112,12 @@ public struct ServerSettingsView: View {
     case .git: GitSettingsPane(archiveWorktreeCleanup: state.archiveWorktreeCleanup)
     case .importSessions:
       ImportSessionsPane(hosts: state.importHosts, sources: state.importSources, actions: actions)
-    case .members: MembersPane(members: state.members, actions: actions)
-    case .policies: PoliciesPane(policies: state.policies, actions: actions)
+    case .members:
+      MembersPane(members: state.members, actions: actions, errorMessage: state.errorMessage)
+    case .policies:
+      PoliciesPane(
+        policies: state.policies, templates: state.policyTemplates, actions: actions,
+        errorMessage: state.errorMessage)
     case .sharing: SharingPane(sharing: state.sharing, actions: actions)
     case .archived:
       ArchivedSessionsPane(

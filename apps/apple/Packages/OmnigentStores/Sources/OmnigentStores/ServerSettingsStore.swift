@@ -13,6 +13,8 @@ public final class ServerSettingsStore {
   public private(set) var members: CreationLoad<[ServerMemberRecord]> = .idle
   /// Default policies.
   public private(set) var policies: CreationLoad<[DefaultPolicyRecord]> = .idle
+  /// The built-in policy handlers a default policy can be added from.
+  public private(set) var policyRegistry: CreationLoad<[PolicyRegistryEntry]> = .idle
   /// Server-wide sharing (admins only).
   public private(set) var sharing: CreationLoad<SharingSettingsRecord> = .idle
   /// MCP registry services.
@@ -56,6 +58,39 @@ public final class ServerSettingsStore {
   public func loadPolicies() async {
     policies = .loading
     policies = await read { try await $0.defaultPolicies() }
+  }
+
+  /// Reads the policy registry, unless it is loaded.
+  public func loadPolicyRegistry() async {
+    if policyRegistry.value != nil { return }
+    policyRegistry = .loading
+    policyRegistry = await read { try await $0.policyRegistry() }
+  }
+
+  /// Adds a default policy from the registry, then reloads the list.
+  /// - Parameters:
+  ///   - entry: The handler.
+  ///   - name: The policy's name.
+  ///   - values: The form's parameter values, by name.
+  /// - Returns: Whether it was added; a failure is in ``error``.
+  @discardableResult
+  public func addPolicy(_ entry: PolicyRegistryEntry, name: String, values: [String: String])
+    async -> Bool
+  {
+    let added = await write {
+      _ = try await $0.addDefaultPolicy(entry: entry, name: name, values: values)
+    }
+    if added { await loadPolicies() }
+    return added
+  }
+
+  /// Mints a single-use invite link for a new account.
+  /// - Parameter isAdmin: The account is an administrator.
+  /// - Returns: The invite, to show once; `nil` on failure (see ``error``).
+  public func invite(isAdmin: Bool) async -> MemberInvite? {
+    var invite: MemberInvite?
+    await write { invite = try await $0.inviteMember(isAdmin: isAdmin) }
+    return invite
   }
 
   /// Reads sharing.

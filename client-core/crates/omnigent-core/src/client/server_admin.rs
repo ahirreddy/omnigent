@@ -306,7 +306,7 @@ fn member_from(value: &Value) -> Result<Member, String> {
     })
 }
 
-fn policy_from(value: &Value) -> Result<DefaultPolicy, String> {
+pub(super) fn policy_from(value: &Value) -> Result<DefaultPolicy, String> {
     let object = as_object(value, "policy")?;
     Ok(DefaultPolicy {
         id: opt_str(object, "id")?.filter(|id| !id.is_empty()),

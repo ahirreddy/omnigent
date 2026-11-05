@@ -44,6 +44,7 @@ pub mod inbox;
 pub mod items;
 pub(crate) mod json;
 pub mod pin_order;
+pub mod policy_registry;
 pub mod project_settings;
 pub mod projects;
 pub mod pull_request_detail;
