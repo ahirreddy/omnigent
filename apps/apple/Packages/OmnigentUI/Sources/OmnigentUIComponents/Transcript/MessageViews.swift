@@ -64,11 +64,7 @@ struct MessageRowView: View, Equatable {
         Spacer(
           minLength: layoutWidth == .compact ? Theme.Spacing.extraLarge : Theme.Spacing.section)
         VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-          if !row.text.isEmpty {
-            MarkdownView(row.text, isStreaming: false)
-              .environment(\.markdownFillsWidth, false)
-              .fixedSize(horizontal: false, vertical: true)
-          }
+          if !row.text.isEmpty { UserPromptBody(text: row.text) }
           AttachmentStrip(attachments: row.attachments)
           if let activity = row.activity {
             UnsupportedContentView(activity: activity, rowID: row.id)

@@ -300,6 +300,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Automations editor:** no host/workspace pin, model, effort, permission mode, project, end
   condition (COUNT/UNTIL, kept as is when present), Jira/Slack/GitHub trigger templates or the
   `automations_v2` run-history page.
+- [ ] **Session view parity left:** shared sessions' author badges (`ConversationViewState`
+  `isShared`/`viewerName` need the signed-in user's identity, which no store exposes); the turn
+  rail; Download in the Files panel; the error card's Continue in another directory, Fork session
+  and sign-in link / Copy code; the approval card naming its sub-agent; per-session right-panel
+  state; hiding the Pull Requests tab without git.
 
 ## Product decisions
 

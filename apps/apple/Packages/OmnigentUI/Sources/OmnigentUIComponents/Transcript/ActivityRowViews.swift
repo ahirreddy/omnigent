@@ -29,34 +29,6 @@ struct ActivityRowView: View, Equatable {
   }
 }
 
-private struct ReasoningRowView: View {
-  let row: Row
-  let activity: Activity
-  @State private var isExpanded = false
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      ExpandableHeader(
-        isExpanded: $isExpanded, systemImage: "brain",
-        title: row.isStreaming ? "Thinking" : "Thought",
-        subtitle: isExpanded ? nil : activity.summary, identifier: "reasoning-toggle-\(row.id)"
-      ) {
-        if row.isStreaming { LiveIndicator(color: .secondary) }
-      }
-      if isExpanded {
-        MarkdownView(activity.detail("summary") ?? activity.summary, isStreaming: row.isStreaming)
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .padding(.leading, Theme.Spacing.section)
-          .padding(.trailing, Theme.Spacing.small)
-          .padding(.bottom, Theme.Spacing.small)
-      }
-    }
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("reasoning-\(row.id)")
-  }
-}
-
 private struct TerminalRowView: View {
   let row: Row
   let activity: Activity
