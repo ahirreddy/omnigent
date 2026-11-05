@@ -139,6 +139,7 @@ enum ComposerCatalog {
         states: [
           completion("slash", "Slash commands", draft: "/"),
           completion("mention", "Mentions", draft: "Look at @"),
+          completion("folder", "Mentions in a folder", draft: "Look at @client-core/"),
         ]),
       .component(
         .composer, "chips", "Model and Host Chips",
@@ -156,9 +157,21 @@ enum ComposerCatalog {
                 }
               }
             }
-          }
+          },
+          CatalogState("routing", "Smart Routing on") {
+            CatalogStack {
+              ConfigurationMenu(configuration: routed, actions: GalleryActions.composer)
+            }
+          },
         ]),
     ]
+  }
+
+  /// The sample configuration while Smart Routing picks the model.
+  private static var routed: ComposerConfiguration {
+    var configuration = PreviewData.configuration
+    configuration.smartRouting = .enabled
+    return configuration
   }
 
   /// A file-name-safe id from a title.
@@ -199,10 +212,11 @@ enum ComposerCatalog {
   private static func completion(_ id: String, _ title: String, draft: String) -> CatalogState {
     CatalogState(id, title) {
       CatalogStack {
+        let completions = ComposerCompletions(
+          draft: draft, commands: PreviewData.slashCommands, mentions: PreviewData.mentionPaths)
         CompletionList(
-          items: ComposerCompletions(
-            draft: draft, commands: PreviewData.slashCommands, mentions: PreviewData.mentionPaths
-          ).items, pick: { _ in }
+          items: completions.items, mentionFolder: completions.mentionFolder,
+          attachFolder: { _ in }, pick: { _ in }
         )
         .cardSurface(cornerRadius: Theme.Radius.medium)
       }

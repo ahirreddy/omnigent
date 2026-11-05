@@ -25,17 +25,17 @@ struct CompletionList: View {
       if let mentionFolder, !items.isEmpty {
         mentionHeader(mentionFolder)
       }
-      ViewThatFits(in: .vertical) {
-        rows
+      // As tall as the rows, up to the cap; past it the rows scroll.
+      EditorHeightLayout(minHeight: 0, maxHeight: Self.maxHeight) {
         ScrollViewReader { proxy in
           ScrollView { rows }
+            .scrollBounceBehavior(.basedOnSize)
             .onChange(of: highlighted) { _, index in
               guard let index, items.indices.contains(index) else { return }
               proxy.scrollTo(items[index].id)
             }
         }
       }
-      .frame(maxHeight: Self.maxHeight)
       if let note {
         Label(note, systemImage: "exclamationmark.triangle")
           .font(.caption)
