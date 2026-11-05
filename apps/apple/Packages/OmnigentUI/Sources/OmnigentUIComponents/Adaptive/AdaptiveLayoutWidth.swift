@@ -36,3 +36,37 @@ private struct AdaptiveLayoutWidth: ViewModifier {
     #endif
   }
 }
+
+#if os(iOS)
+  extension View {
+    /// Keeps a short window (a phone in landscape: compact vertical size class) at compact
+    /// width, as every iPhone but the largest already is. Rotating a large iPhone then keeps the
+    /// stack instead of rebuilding the conversation into split-view columns; tall windows (iPad,
+    /// an unfolded Duo) keep their own size class.
+    /// - Returns: The view with the horizontal size class it lays out by.
+    public func shortWindowsStayCompact() -> some View {
+      modifier(ShortWindowsStayCompact())
+    }
+  }
+
+  struct ShortWindowsStayCompact: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var horizontal
+    @Environment(\.verticalSizeClass) private var vertical
+
+    func body(content: Content) -> some View {
+      content.environment(
+        \.horizontalSizeClass,
+        ShortWindowLayout.horizontalClass(horizontal: horizontal, vertical: vertical))
+    }
+  }
+#endif
+
+/// How a short window lays out (``View/shortWindowsStayCompact()`` on iOS).
+nonisolated enum ShortWindowLayout {
+  /// The horizontal size class to lay out by: compact whenever the window is short.
+  static func horizontalClass(
+    horizontal: UserInterfaceSizeClass?, vertical: UserInterfaceSizeClass?
+  ) -> UserInterfaceSizeClass? {
+    vertical == .compact ? .compact : horizontal
+  }
+}

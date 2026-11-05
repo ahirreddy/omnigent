@@ -29,25 +29,27 @@ private struct InspectorColumn<Panel: View>: ViewModifier {
   @ViewBuilder let panel: () -> Panel
   #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
+    /// The sheet's binding at regular width (`.constant` counts as changed on every update).
+    @State private var sheetHidden = false
   #endif
 
   func body(content: Content) -> some View {
     #if os(iOS)
-      if sizeClass == .compact {
-        content.sheet(isPresented: $isPresented) {
-          panel().presentationDetents([.medium, .large])
-        }
-      } else {
-        PanelColumnLayout {
-          content
-          if isPresented {
-            HStack(spacing: 0) {
-              Divider().ignoresSafeArea()
-              panel()
-            }
-            .transition(.move(edge: .trailing))
+      // One structure for both size classes: rotating a large iPhone or resizing an iPad window
+      // across them must not rebuild the conversation (its whole transcript) underneath.
+      let isCompact = sizeClass == .compact
+      PanelColumnLayout {
+        content
+        if isPresented, !isCompact {
+          HStack(spacing: 0) {
+            Divider().ignoresSafeArea()
+            panel()
           }
+          .transition(.move(edge: .trailing))
         }
+      }
+      .sheet(isPresented: isCompact ? $isPresented : $sheetHidden) {
+        panel().presentationDetents([.medium, .large])
       }
     #else
       content.inspector(isPresented: $isPresented) {

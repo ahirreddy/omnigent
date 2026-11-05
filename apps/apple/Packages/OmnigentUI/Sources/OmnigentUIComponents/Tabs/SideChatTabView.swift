@@ -63,6 +63,7 @@ public struct SideChatTabView: View {
     .themeCanvas()
     .navigationTitle("Side Chat")
     .accessibilityIdentifier("sidechat-tab")
+    .countsRenders("sidechat")
   }
 
   private func content(question: String, answer: String?) -> some View {

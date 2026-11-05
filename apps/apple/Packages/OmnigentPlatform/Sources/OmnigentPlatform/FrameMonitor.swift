@@ -36,6 +36,8 @@
       let name: String
       var stats = FrameStats()
       var counts: [String: Int] = [:]
+      /// The main thread's CPU time when the interval began.
+      let startCPU = FrameMonitor.mainThreadCPU()
     }
 
     private var interval: Interval?
@@ -73,9 +75,29 @@
     public static func end() {
       guard let shared, let interval = shared.interval else { return }
       shared.interval = nil
+      let cpu = Int(((mainThreadCPU() - interval.startCPU) * 1000).rounded())
       logger.notice(
-        "interval \(interval.name, privacy: .public): \(interval.stats.summary, privacy: .public)\(Self.describe(interval.counts), privacy: .public)"
+        "interval \(interval.name, privacy: .public): \(interval.stats.summary, privacy: .public) cpu=\(cpu)ms\(Self.describe(interval.counts), privacy: .public)"
       )
+    }
+
+    /// The CPU time the calling (main) thread has used, in seconds.
+    nonisolated private static func mainThreadCPU() -> TimeInterval {
+      var info = thread_basic_info()
+      var count = mach_msg_type_number_t(
+        MemoryLayout<thread_basic_info>.size / MemoryLayout<natural_t>.size)
+      let thread = mach_thread_self()
+      defer { unsafe mach_port_deallocate(mach_task_self_, thread) }
+      let status = withUnsafeMutablePointer(to: &info) { pointer in
+        unsafe pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+          unsafe thread_info(thread, thread_flavor_t(THREAD_BASIC_INFO), $0, &count)
+        }
+      }
+      guard status == KERN_SUCCESS else { return 0 }
+      func seconds(_ value: time_value_t) -> TimeInterval {
+        TimeInterval(value.seconds) + TimeInterval(value.microseconds) / 1e6
+      }
+      return seconds(info.user_time) + seconds(info.system_time)
     }
 
     private func start() {

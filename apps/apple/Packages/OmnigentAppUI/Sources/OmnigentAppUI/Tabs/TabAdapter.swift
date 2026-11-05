@@ -126,7 +126,7 @@ enum TabAdapter {
       item.status = attention
       item.canDuplicate = false
     case .sideChat(_, let rowID):
-      let activity = connection.conversations[id]?.rows.first { $0.id == rowID }?.activity
+      let activity = connection.conversations[id]?.watchRow(rowID).row?.activity
       item.title =
         activity.map { SideChatTabContainer.detail("question", in: $0) ?? $0.summary }
         ?? tab.title ?? "Side Chat"

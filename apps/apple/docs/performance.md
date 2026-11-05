@@ -525,8 +525,90 @@ changed here. The Mac app does not start the frame monitor yet: calling
   the transcript at the new width: about 1.5 s and frames of 0.5 s.
 - **Idle CPU is not zero** while other sessions on the server change: each session event
   updates `SessionListStore` and the sidebar (3-7% here, with other agents' sessions busy).
-- The side-chat tab reads its parent conversation's rows in its body, so it re-renders on every
-  streamed delta of the parent.
 - iPhone apps may draw above 60 Hz on ProMotion devices only with
   `CADisableMinimumFrameDurationOnPhone` in Info.plist; without it SwiftUI animations there
   are capped at 60 Hz (UIKit scrolling is not). Not changed: the simulator can't measure it.
+
+## iPhone and iPad, motion (round 5)
+
+Instruments (`xcrun xctrace record --template 'Time Profiler' --device <udid> --attach <pid>`)
+and iOS XCUITests now run on the build machine; the SwiftUI and Animation Hitches templates do
+not (the simulator does not support hitch recording).
+
+### Tools
+
+- The frame monitor's interval line also reports the main thread's CPU time (`cpu=`), read from
+  `thread_info`, so a step measured from a UI test needs no `ps`.
+- **`Tests/OmnigentUITests/PerfMotionUITests.swift`** drives the motion `PerfDriver` could not:
+  the keyboard through the composer and an interactive swipe, iPad's split view (opens a second
+  long session, splits, drags the divider ±15%, rotates through `XCUIDevice`) and the sidebar
+  button. Each step posts `ai.omnigent.perf.begin`/`.end`, attaches a screenshot and fails if
+  no transcript shows rows afterwards. Run it with the large seed and read the stats lines:
+
+```sh
+xcrun simctl spawn <udid> log stream --style compact --predicate 'subsystem == "ai.omnigent.perf"' &
+TEST_RUNNER_OMNIGENT_STYLE=cli xcodebuild test -workspace apps/apple/Omnigent.xcworkspace \
+  -scheme Omnigent -destination 'platform=iOS Simulator,id=<udid>' \
+  -only-testing:OmnigentUITests/PerfMotionUITests/testPadSplitWithLongTranscripts
+```
+
+  `XCUIDevice` orientation changes did not reach the iPhone app on these simulators, so the
+  iPhone rotation step posts `ai.omnigent.perf.rotate` to the perf driver instead.
+
+### Results (November 2026)
+
+Debug builds, iOS 27.2 simulators, large seed, long transcript 2 open; medians of 3 runs.
+Each cell is main-thread CPU, frames per second, hitch-time ratio (ms/s) and the worst frame.
+"Before" is `apple-native-scaffold` at a63e29785. The machine's load average swung between 15
+and 960 during these runs, so only differences well over 50% mean anything.
+
+| Scenario | Before | After |
+| --- | --- | --- |
+| iPhone 18 Pro Max, chat: rotate once | 1.51 s, 27 fps, 550, 1157 ms | 0.64 s, 45 fps, 247, 316 ms |
+| iPhone 18 Pro Max, CLI: rotate once | 1.53 s, 19 fps, 684, 1215 ms | 0.41 s, 51 fps, 153, 399 ms |
+| iPhone 17e, chat: rotate once | 0.94 s, 38 fps, 373, 948 ms | 0.71 s, 44 fps, 271, 284 ms |
+| iPhone 17e, CLI: rotate once | 0.42 s, 51 fps, 150, 391 ms | 0.41 s, 49 fps, 189, 496 ms |
+| iPhone 18 Pro Max, chat: keyboard show and hide | 1.26 s, 32 fps, 472, 845 ms | 1.32 s, 36 fps, 399, 783 ms |
+| iPhone 18 Pro Max, CLI: keyboard show and hide | 0.85 s, 43 fps, 274, 453 ms | 0.72 s, 46 fps, 242, 465 ms |
+| iPhone 17e, chat: keyboard show and hide | 1.07 s, 37 fps, 387, 774 ms | 1.30 s, 38 fps, 363, 700 ms |
+| iPhone 17e, CLI: keyboard show and hide | 0.73 s, 48 fps, 207, 393 ms | 0.80 s, 38 fps, 374, 706 ms |
+| iPad Pro 11, chat: stream a reply beside a side-chat tab, 12 s (side-chat renders) | every row change (read `rows`) | 1.90 s, 37 fps, 388, 2112 ms (4 renders, transcript 17) |
+| iPad Pro 11, chat: drag the split divider 15% (UI test) | - | 2.76 s, 15 fps, 748, 3851 ms |
+| iPad Pro 11, chat: rotate the split to portrait (UI test) | - | 3.00 s, 27 fps, 557, 2984 ms |
+| iPad Pro 11, CLI: drag the split divider 15% (UI test, 1 run) | - | 2.26 s, 25 fps, 583, 996 ms |
+| iPad (A16), chat: drag the split divider 15% (UI test, 1 run) | - | 3.50 s, 21 fps, 643, 1969 ms |
+| iPad (A16), chat: rotate the split to portrait (UI test, 1 run) | - | 2.84 s, 30 fps, 493, 2597 ms |
+| iPhone 18 Pro Max, chat: rotate once (UI test, 1 run, 4 rotations) | - | 0.50-0.99 s, 40-60 fps, worst 441-970 ms |
+
+What changed:
+
+- **Rotating a large iPhone rebuilt the conversation.** Landscape on the Pro Max sizes is
+  regular width, so the split view expanded from a stack into columns and `InspectorColumn` and
+  the tab container switched branches: the conversation screen and its transcript were
+  destroyed and built again (render counters showed both views leave and appear). Short windows
+  (compact vertical size class) now lay out at compact width like every other iPhone
+  (`shortWindowsStayCompact()`), and `InspectorColumn` and the tab container keep one structure
+  for both size classes (also for iPad windows resized across them). What remains is the
+  transcript laying out at the new width.
+- **The side-chat tab read its parent's `rows`.** It now reads one `RowWatch`
+  (`ConversationStore.watchRow`), updated only when a delta touches that row, so the parent's
+  streamed deltas no longer invalidate it; it still renders when its container does (4 times
+  in 12 s against the transcript's 17).
+
+### Where the time still goes (round 5)
+
+- **Width changes on iPad** (divider drag, rotation, sidebar) re-lay out every visible row of
+  both panes at the new width; each costs 2-4 s of main-thread CPU on this loaded machine, with
+  frames over a second. Dragging the divider re-lays out on every drag event.
+- **Keyboard show and hide** stay at 0.7-1.3 s of main-thread CPU on iPhone, unchanged: UIKit's
+  input-view machinery and the safe-area change re-laying out the visible rows. Driven by the UI
+  test (a real tap, then an interactive drag into the keyboard) each costs 1.8-2.8 s on the
+  loaded machine.
+- **Cold launch with a deep link** signs in once (`.well-known`, `/v1/info` twice, `/v1/me`,
+  the list, updates), then resolves the link with a second `.well-known` and `/v1/info` 0.4 s
+  later and fetches the session's header three times; no second sign-in was seen. Launch to the
+  first request took 7-15 s on the loaded simulator.
+- iPad's transcripts going blank during a turn did not reproduce (opening and switching long
+  transcripts while a reply streams; divider drags and rotation in a
+  split); after a rotation back to landscape the transcript can come back scrolled away from
+  the bottom.
