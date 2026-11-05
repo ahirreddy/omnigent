@@ -33,11 +33,12 @@ private final class ShownRows {
 
 extension TitlebarTrailingItems {
   /// The conversation screen's trailing toolbar items, in button widths: viewers (two), Agent
-  /// info, the session menu, Share (titled, two) and the right-panel toggle.
+  /// info, the session menu, Share (titled, two), the right-panel toggle and the project tag.
   static func count(
-    _ state: ConversationViewState, hasShare: Bool, tabsInTitlebar: Bool, isRegular: Bool
+    _ state: ConversationViewState, hasShare: Bool, tabsInTitlebar: Bool, isRegular: Bool,
+    projectTag: Bool = false
   ) -> Int {
-    var items = 1
+    var items = projectTag ? 2 : 1
     if state.section("presence") != nil, isRegular { items += 2 }
     if let info = state.agentInfo, !(info.tools.isEmpty && info.policies.isEmpty) { items += 1 }
     if tabsInTitlebar { items += 1 }

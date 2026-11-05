@@ -59,7 +59,7 @@ struct ConversationContainer: View {
     let screen = state
     ConversationScreen(
       state: screen, composer: composerState(screen),
-      draft: Binding(get: { composer.text }, set: { composer.text = $0 }),
+      draft: ComposerDraft(get: { composer.text }, set: { composer.text = $0 }),
       showsInspector: $showsInspector, inspectorTab: $inspectorTab, mode: modeBinding,
       fork: forkSheet,
       actions: routed(forkable(actions)), composerActions: composerActions,

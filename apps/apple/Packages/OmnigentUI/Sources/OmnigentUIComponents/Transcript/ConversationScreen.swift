@@ -15,19 +15,20 @@ nonisolated public enum SessionViewMode: String, Hashable, Sendable, CaseIterabl
 /// panel with Files, Changes, Pull Requests, Agents and Info.
 public struct ConversationScreen<Terminal: View>: View {
   private let state: ConversationViewState
-  private let composer: ComposerViewState
-  @Binding private var draft: String
+  let composer: ComposerViewState
+  private let draft: ComposerDraft
   @Binding private var showsInspector: Bool
   @Binding private var mode: SessionViewMode
   @Binding private var fork: ForkViewState?
   private let actions: ConversationActions
-  private let composerActions: ComposerActions
+  let composerActions: ComposerActions
   private let extras: ConversationExtras
   private let liveRows: LiveTranscriptRows?
   private let terminal: Terminal
 
   @State private var scrollRequest = 0
   @State private var focusRequest = 0
+  @State private var draftHasText = false
   @State private var modelPickerRequest = 0
   @State private var localInspectorTab: InspectorTab = .files
   private let externalInspectorTab: Binding<InspectorTab>?
@@ -54,7 +55,7 @@ public struct ConversationScreen<Terminal: View>: View {
   /// - Parameters:
   ///   - state: The conversation.
   ///   - composer: The composer state.
-  ///   - draft: The draft text.
+  ///   - draft: The draft text, read only by the composer.
   ///   - showsInspector: Whether the right panel shows.
   ///   - inspectorTab: The right panel's tab; `nil` keeps it in the screen (Files first).
   ///   - mode: Chat or Terminal.
@@ -66,7 +67,7 @@ public struct ConversationScreen<Terminal: View>: View {
   ///     transcript; `nil` uses `state.rows`.
   ///   - terminal: The terminal surface the app supplies (for example the libghostty view).
   public init(
-    state: ConversationViewState, composer: ComposerViewState, draft: Binding<String>,
+    state: ConversationViewState, composer: ComposerViewState, draft: ComposerDraft,
     showsInspector: Binding<Bool>, inspectorTab: Binding<InspectorTab>? = nil,
     mode: Binding<SessionViewMode>, fork: Binding<ForkViewState?> = .constant(nil),
     actions: ConversationActions, composerActions: ComposerActions,
@@ -75,7 +76,7 @@ public struct ConversationScreen<Terminal: View>: View {
   ) {
     self.state = state
     self.composer = composer
-    _draft = draft
+    self.draft = draft
     _showsInspector = showsInspector
     externalInspectorTab = inspectorTab
     _mode = mode
@@ -114,8 +115,9 @@ public struct ConversationScreen<Terminal: View>: View {
         DecisionDock(state: state, actions: actions)
         if !showsTerminal {
           TranscriptComposer(
-            draft: $draft, state: composerState, actions: composerActions,
-            focusRequest: focusRequest)
+            draft: draft, state: composerState, actions: composerActions,
+            focusRequest: focusRequest
+          ) { hasText in if hasText != draftHasText { draftHasText = hasText } }
         } else if !state.decisions.isEmpty {
           Spacer().frame(height: 10)
         }
@@ -154,7 +156,14 @@ public struct ConversationScreen<Terminal: View>: View {
     // The one status line ("Waiting for you · 2 requests"); the project shows in the sidebar.
     .navigationSubtitle(SessionStatusLine(state).text)
     .toolbarTitleMenu { titleMenu }
-    .preference(key: TitlebarTrailingItems.self, value: isHiddenTab ? nil : trailingItems)
+    .preference(
+      key: TitlebarTrailingItems.self,
+      value: isHiddenTab
+        ? nil
+        : TitlebarTrailingItems.count(
+          state, hasShare: extras.share != nil, tabsInTitlebar: tabsInTitlebar,
+          isRegular: layoutWidth == .regular, projectTag: showsProjectTag)
+    )
     .toolbar { toolbarContent }
     .sheet(isPresented: $showsShare) {
       if let share = extras.share {
@@ -299,15 +308,7 @@ extension ConversationScreen {
 
   private var canSendDraft: Bool {
     !showsTerminal && composer.availability == .available && composer.delivery == .idle
-      && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        || !composer.attachments.isEmpty || !composer.mentions.isEmpty)
-  }
-
-  private var trailingItems: Int {
-    TitlebarTrailingItems.count(
-      state, hasShare: extras.share != nil, tabsInTitlebar: tabsInTitlebar,
-      isRegular: layoutWidth == .regular)
-      + (showsProjectTag ? 1 : 0)
+      && (draftHasText || !composer.attachments.isEmpty || !composer.mentions.isEmpty)
   }
 
   /// Send while the draft can go, else the active request's Approve.
@@ -365,19 +366,6 @@ extension ConversationScreen {
       }
     }
     return actions
-  }
-
-  /// ⌘Return sends the draft; with messages queued it sends them all now, the draft joining
-  /// them at the end (the composer's ⇧⌘Return when ⌘Return is the send chord).
-  private var sendCommand: @MainActor () -> Void {
-    let extras = composerActions.extras
-    guard !composer.submitWithCommandReturn, !composer.queue.isEmpty,
-      let sendAll = extras.history.sendAllQueued, let queueDraft = extras.queueDraft
-    else { return composerActions.send }
-    return {
-      queueDraft()
-      sendAll()
-    }
   }
 
   /// The composer with this screen's picker requests.
