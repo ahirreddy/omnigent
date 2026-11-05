@@ -1,6 +1,6 @@
 /// A destination or action offered by the command palette.
 nonisolated public enum PaletteTarget: Hashable, Sendable {
-  /// Search only sessions.
+  /// Search only sessions, by name.
   case findSession
   /// Start a session.
   case newSession
@@ -46,13 +46,16 @@ nonisolated public struct PaletteEntry: Hashable, Sendable, Identifiable {
   public var shortcut: String
   /// Whether the action is available in the current scope.
   public var isEnabled: Bool
+  /// Other words that find it, unseen (an action's other names).
+  public var keywords: [String]
   /// Destination to execute.
   public var target: PaletteTarget
 
   /// Creates a palette entry.
   public init(
     id: String, title: String, detail: String = "", symbol: String,
-    shortcut: String = "", isEnabled: Bool = true, target: PaletteTarget
+    shortcut: String = "", isEnabled: Bool = true, keywords: [String] = [],
+    target: PaletteTarget
   ) {
     self.id = id
     self.title = title
@@ -60,7 +63,25 @@ nonisolated public struct PaletteEntry: Hashable, Sendable, Identifiable {
     self.symbol = symbol
     self.shortcut = shortcut
     self.isEnabled = isEnabled
+    self.keywords = keywords
     self.target = target
+  }
+}
+
+/// Server search matches for a palette query, in the web's two groups.
+nonisolated public struct PaletteSearchResults: Hashable, Sendable {
+  /// Sessions whose title matches, or a disabled row saying the search failed.
+  public var titles: [PaletteEntry]
+  /// Sessions whose messages match ("In messages"), with the matching snippet.
+  public var messages: [PaletteEntry]
+
+  /// Creates results.
+  /// - Parameters:
+  ///   - titles: Title matches.
+  ///   - messages: Message content matches.
+  public init(titles: [PaletteEntry] = [], messages: [PaletteEntry] = []) {
+    self.titles = titles
+    self.messages = messages
   }
 }
 
@@ -95,9 +116,9 @@ nonisolated public struct PaletteViewState: Hashable, Sendable {
 public struct PaletteActions {
   /// Executes a destination after dismissing the palette.
   public var perform: @MainActor (PaletteTarget) -> Void
-  /// Searches the server for sessions beyond the loaded list: title matches, then message
+  /// Searches the server for sessions beyond the loaded list: title matches and message
   /// content matches ("In messages"). `nil` searches only the loaded sessions.
-  public var search: (@MainActor (String) async -> [PaletteEntry])?
+  public var search: (@MainActor (String) async -> PaletteSearchResults)?
 
   /// Creates navigation actions.
   /// - Parameters:
@@ -105,7 +126,7 @@ public struct PaletteActions {
   ///   - search: Server-side session search.
   public init(
     perform: @escaping @MainActor (PaletteTarget) -> Void,
-    search: (@MainActor (String) async -> [PaletteEntry])? = nil
+    search: (@MainActor (String) async -> PaletteSearchResults)? = nil
   ) {
     self.perform = perform
     self.search = search

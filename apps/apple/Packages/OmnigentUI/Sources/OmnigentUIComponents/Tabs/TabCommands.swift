@@ -39,6 +39,8 @@ public struct TabCommandActions {
   public var focusPane: (@MainActor (TabPane) -> Void)?
   /// Move the selected tab to the other pane, splitting the window when it is not.
   public var moveTabToOtherPane: (@MainActor () -> Void)?
+  /// Start a shell in the selected session and show it (Option-Command-T).
+  public var newShell: (@MainActor () -> Void)?
 
   /// Creates the actions.
   /// - Parameters:
@@ -108,46 +110,49 @@ public struct OmnigentTabCommands: Commands {
   public var body: some Commands {
     CommandGroup(after: .newItem) {
       Button("New Tab") { actions?.newTab() }
-        .keyboardShortcut("t", modifiers: .command)
+        .keyboardShortcut(AppShortcuts.newTab)
         .disabled(actions == nil)
     }
     CommandGroup(replacing: .saveItem) {
       Button("Close Tab") {
         if let close = actions?.closeTab { close() } else { closeWindow?() }
       }
-      .keyboardShortcut("w", modifiers: .command)
+      .keyboardShortcut(AppShortcuts.closeTab)
       .disabled(actions?.closeTab == nil && (closeWindow == nil || (actions?.count ?? 0) > 0))
       if let closeWindow {
         Button("Close Window", action: closeWindow)
-          .keyboardShortcut("w", modifiers: [.command, .shift])
+          .keyboardShortcut(AppShortcuts.closeWindow)
       }
     }
     CommandMenu("Tab") {
       Button("Reopen Closed Tab") { actions?.reopenClosedTab?() }
-        .keyboardShortcut("t", modifiers: [.command, .shift])
+        .keyboardShortcut(AppShortcuts.reopenClosedTab)
         .disabled(actions?.reopenClosedTab == nil)
       Divider()
       Button("Show Next Tab") { actions?.selectNextTab?() }
-        .keyboardShortcut(.tab, modifiers: .control)
+        .keyboardShortcut(AppShortcuts.nextTab)
         .disabled(actions?.selectNextTab == nil)
       Button("Show Previous Tab") { actions?.selectPreviousTab?() }
-        .keyboardShortcut(.tab, modifiers: [.control, .shift])
+        .keyboardShortcut(AppShortcuts.previousTab)
         .disabled(actions?.selectPreviousTab == nil)
       Button("Show All Tabs") { actions?.showAllTabs?() }
-        .keyboardShortcut("\\", modifiers: [.command, .shift])
+        .keyboardShortcut(AppShortcuts.showAllTabs)
         .disabled(actions?.showAllTabs == nil)
       Divider()
       ForEach(0..<9, id: \.self) { index in
         Button(index == 8 ? "Select Last Tab" : "Select Tab \(index + 1)") {
           actions?.selectTab(index)
         }
-        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+        .keyboardShortcut(AppShortcuts.selectTab(index))
         .disabled((actions?.count ?? 0) <= (index == 8 ? 0 : index))
       }
       Divider()
       Button("Show Terminal") { actions?.toggleTerminal?() }
-        .keyboardShortcut("`", modifiers: .control)
+        .keyboardShortcut(AppShortcuts.showTerminal)
         .disabled(actions?.toggleTerminal == nil)
+      Button("New Shell") { actions?.newShell?() }
+        .keyboardShortcut(AppShortcuts.newShell)
+        .disabled(actions?.newShell == nil)
       Button("Pin or Unpin Tab") { actions?.togglePinned?() }
         .disabled(actions?.togglePinned == nil)
       Button("Duplicate Tab") { actions?.duplicateTab?() }
@@ -170,13 +175,13 @@ public struct OmnigentTabCommands: Commands {
     Button(actions?.isSplit == true ? "Hide Split View" : "Show Split View") {
       actions?.toggleSplit?()
     }
-    .keyboardShortcut("\\", modifiers: .command)
+    .keyboardShortcut(AppShortcuts.toggleSplit)
     .disabled(actions?.toggleSplit == nil)
     Button("Focus Left Pane") { actions?.focusPane?(.leading) }
-      .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+      .keyboardShortcut(AppShortcuts.focusLeftPane)
       .disabled(actions?.focusPane == nil)
     Button("Focus Right Pane") { actions?.focusPane?(.trailing) }
-      .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+      .keyboardShortcut(AppShortcuts.focusRightPane)
       .disabled(actions?.focusPane == nil)
   }
 }

@@ -79,12 +79,12 @@ struct TranscriptNavigator: View {
         "Previous message", shortcut: "\u{2318}\u{2325}\u{2191}", symbol: "chevron.up",
         id: "transcript-previous-message", action: previous
       )
-      .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+      .keyboardShortcut(AppShortcuts.previousMessage)
       button(
         "Next message", shortcut: "\u{2318}\u{2325}\u{2193}", symbol: "chevron.down",
         id: "transcript-next-message", action: next
       )
-      .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+      .keyboardShortcut(AppShortcuts.nextMessage)
     }
     .font(Theme.Typography.label)
     .glassSurface(in: Capsule(), isInteractive: true)

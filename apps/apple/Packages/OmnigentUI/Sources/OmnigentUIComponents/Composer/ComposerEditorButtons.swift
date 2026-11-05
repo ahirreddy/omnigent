@@ -26,7 +26,7 @@ struct ComposerExpandShortcut: View {
     Button(isExpanded ? "Collapse Editor" : "Expand Editor") {
       withAnimation(reduceMotion ? nil : .snappy) { isExpanded.toggle() }
     }
-    .keyboardShortcut("e", modifiers: [.command, .shift])
+    .keyboardShortcut(AppShortcuts.expandEditor)
     .buttonStyle(.plain)
     .opacity(0)
     .frame(width: 0, height: 0)
@@ -51,7 +51,7 @@ struct ComposerEditorButtons: View {
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
         .composerChip()
-        .keyboardShortcut("v", modifiers: [.command, .option])
+        .keyboardShortcut(AppShortcuts.dictate)
         .help("Dictate (Option-Command-V)")
         .accessibilityHint("Types what you say into the message")
         .disabled(!isEditable)
@@ -70,7 +70,7 @@ struct ComposerEditorButtons: View {
       .buttonStyle(.borderless)
       .foregroundStyle(.secondary)
       .composerChip()
-      .keyboardShortcut("e", modifiers: [.command, .shift])
+      .keyboardShortcut(AppShortcuts.expandEditor)
       .help(
         isExpanded
           ? "Collapse the editor (Shift-Command-E)" : "Expand the editor (Shift-Command-E)"

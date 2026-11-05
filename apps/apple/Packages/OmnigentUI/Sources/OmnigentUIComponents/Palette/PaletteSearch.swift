@@ -8,13 +8,22 @@ nonisolated enum PaletteSearch {
     let entry: PaletteEntry
   }
 
-  static func results(_ entries: [PaletteEntry], query: String) -> [PaletteEntry] {
+  /// Matching entries, best first.
+  /// - Parameters:
+  ///   - entries: The candidates.
+  ///   - query: The typed text.
+  ///   - titlesOnly: Match names only, not details or keywords.
+  /// - Returns: The matches.
+  static func results(
+    _ entries: [PaletteEntry], query: String, titlesOnly: Bool = false
+  ) -> [PaletteEntry] {
     let query = normalize(query.trimmingCharacters(in: .whitespacesAndNewlines))
     guard !query.isEmpty else { return entries }
     return entries.enumerated().compactMap { index, entry -> Match? in
-      guard let rank = score(query, in: normalize(entry.title + " " + entry.detail)) else {
-        return nil
-      }
+      let text =
+        titlesOnly
+        ? entry.title : ([entry.title, entry.detail] + entry.keywords).joined(separator: " ")
+      guard let rank = score(query, in: normalize(text)) else { return nil }
       return Match(score: rank, index: index, entry: entry)
     }.sorted { lhs, rhs in
       lhs.score == rhs.score ? lhs.index < rhs.index : lhs.score > rhs.score

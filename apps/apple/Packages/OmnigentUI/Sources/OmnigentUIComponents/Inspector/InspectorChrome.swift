@@ -2,7 +2,8 @@ import SwiftUI
 
 extension View {
   /// Presents the right panel beside the view, or over it while full screen (the web's
-  /// maximized rail), and handles Shift-Command-F for the panel's Search in the focused pane.
+  /// maximized rail), and handles Shift-Command-F for the panel's Search and Option-Command-1
+  /// onward for its tabs in the focused pane.
   /// - Parameters:
   ///   - state: The conversation.
   ///   - actions: Host actions.
@@ -45,7 +46,7 @@ private struct WorkspaceInspectorPresentation: ViewModifier {
       .onChange(of: isPresented) { _, shows in
         if !shows { maximized = false }
       }
-      .background { searchShortcut }
+      .background { shortcuts }
   }
 
   /// The side column, hidden while the panel fills the screen.
@@ -53,18 +54,30 @@ private struct WorkspaceInspectorPresentation: ViewModifier {
     Binding(get: { isPresented && !maximized }, set: { isPresented = $0 })
   }
 
-  @ViewBuilder private var searchShortcut: some View {
-    if handlesShortcuts, slots.search != nil {
-      Button("Search Files") {
-        tab = .search
-        slots.documents?.showPanel()
-        isPresented = true
+  /// Shift-Command-F for Search and Option-Command-1 onward for the shown tabs, in order.
+  @ViewBuilder private var shortcuts: some View {
+    if handlesShortcuts {
+      Group {
+        if slots.search != nil {
+          Button("Search Files") { show(.search) }
+            .keyboardShortcut(AppShortcuts.searchWorkspace)
+        }
+        let panels = InspectorTab.shown(hasSearch: slots.search != nil)
+        ForEach(panels.indices, id: \.self) { index in
+          Button(panels[index].title) { show(panels[index]) }
+            .keyboardShortcut(AppShortcuts.rightPanelTab(index))
+        }
       }
-      .keyboardShortcut("f", modifiers: [.command, .shift])
       .opacity(0)
       .frame(width: 0, height: 0)
       .accessibilityHidden(true)
     }
+  }
+
+  private func show(_ panel: InspectorTab) {
+    tab = panel
+    slots.documents?.showPanel()
+    isPresented = true
   }
 }
 

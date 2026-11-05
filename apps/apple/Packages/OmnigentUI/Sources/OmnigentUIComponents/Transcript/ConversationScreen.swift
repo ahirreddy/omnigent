@@ -218,7 +218,7 @@ public struct ConversationScreen<Terminal: View>: View {
       } label: {
         Label("Right panel", systemImage: "sidebar.trailing")
       }
-      .keyboardShortcut("]", modifiers: [.command, .option])
+      .keyboardShortcut(AppShortcuts.rightPanel)
       .help(
         showsInspector
           ? "Hide the right panel (Option-Command-])" : "Show the right panel (Option-Command-])"

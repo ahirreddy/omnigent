@@ -95,7 +95,7 @@ extension SessionCommandActions: FocusedActions {
 }
 
 extension PaletteCommandActions: FocusedActions {
-  /// Both actions always exist.
+  /// Every action always exists.
   public var menuSignature: Bool { true }
 
   /// A copy whose actions call `latest`'s.
@@ -103,7 +103,8 @@ extension PaletteCommandActions: FocusedActions {
   /// - Returns: The forwarding copy.
   public func forwarding(to latest: @escaping @MainActor () -> Self?) -> Self {
     Self(
-      openPalette: { latest()?.openPalette() }, openShortcuts: { latest()?.openShortcuts() })
+      openPalette: { latest()?.openPalette() }, openShortcuts: { latest()?.openShortcuts() },
+      findSession: { latest()?.findSession() })
   }
 }
 
@@ -124,6 +125,7 @@ extension TabCommandActions: FocusedActions {
         selectPreviousTab != nil, togglePinned != nil, duplicateTab != nil,
         moveTabToNewWindow != nil, showAllTabs != nil, openBrowser != nil,
         toggleTerminal != nil, toggleSplit != nil, focusPane != nil, moveTabToOtherPane != nil,
+        newShell != nil,
       ], count: count, supportsSplit: supportsSplit, isSplit: isSplit)
   }
 
@@ -152,6 +154,7 @@ extension TabCommandActions: FocusedActions {
       copy.focusPane = { latest()?.focusPane?($0) }
     }
     copy.moveTabToOtherPane = Self.forward(moveTabToOtherPane, \.moveTabToOtherPane, to: latest)
+    copy.newShell = Self.forward(newShell, \.newShell, to: latest)
     return copy
   }
 }

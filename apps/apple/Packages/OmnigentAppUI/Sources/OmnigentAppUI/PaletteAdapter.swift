@@ -56,27 +56,27 @@ struct PaletteAdapter: ViewModifier {
     return state
   }
 
-  /// Server matches: titles first, then message content ("In messages") with its snippet.
-  private func searchServer(_ query: String) async -> [PaletteEntry] {
+  /// Server matches: titles, and message content ("In messages") with its snippet.
+  private func searchServer(_ query: String) async -> PaletteSearchResults {
     let list = session.connection.sessionList
     do {
       let titles = try await list.search(query, inMessages: false)
       let content = try await list.search(query, inMessages: true)
-      let titleEntries = titles.map { summary in
-        entry(OmnigentUIComponents.SessionSummary(summary), detail: nil, prefix: "found")
-      }
-      let contentEntries = content.map { summary in
-        entry(
-          OmnigentUIComponents.SessionSummary(summary), detail: "In messages: \(summary.preview)",
-          prefix: "message")
-      }
-      return titleEntries + contentEntries
+      return PaletteSearchResults(
+        titles: titles.map { summary in
+          entry(OmnigentUIComponents.SessionSummary(summary), detail: nil, prefix: "found")
+        },
+        messages: content.map { summary in
+          entry(
+            OmnigentUIComponents.SessionSummary(summary), detail: summary.preview,
+            prefix: "message")
+        })
     } catch {
-      return [
+      return PaletteSearchResults(titles: [
         PaletteEntry(
           id: "search-failed", title: "Could not search the server", detail: error.message,
           symbol: "exclamationmark.triangle", isEnabled: false, target: .findSession)
-      ]
+      ])
     }
   }
 
