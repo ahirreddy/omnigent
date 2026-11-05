@@ -3,23 +3,27 @@ import OmnigentCoreFFI
 
 /// The queue: messages held until the running turn ends, then sent oldest first. "Send now"
 /// sends one into the running turn instead (steering, where the harness takes mid-turn input).
-/// Every send goes through the core's submission ledger, like a typed one, and is never retried
-/// on its own.
+/// A queued message keeps the draft's uploaded files (held in the core) and `@` paths, as on the
+/// web. Every send goes through the core's submission ledger, like a typed one, and is never
+/// retried on its own.
 extension ComposerStore {
-  /// Queues the draft text to send after the running turn, and clears the draft. Attachments
-  /// cannot be queued; they stay in the draft.
+  /// Queues the draft (text, quotes, uploaded files and `@` paths) to send after the running
+  /// turn, and clears it. Files still uploading keep everything in the draft.
   public func queueDraft() {
-    guard attachments.items.isEmpty else {
-      lastError = .InvalidState(
-        message: "Queued messages can't carry attachments. Steer now, or send after this turn.")
+    let message = draftMessage
+    let extras: MessageQueue.Extras
+    do {
+      extras = try takeExtras()
+    } catch {
+      lastError = coreError(error)
       return
     }
     do {
-      try queue.enqueue(mentionPreamble + text)
-      text = ""
-      mentions = []
+      try queue.enqueue(message, extras: extras)
+      clearDraft()
       lastError = nil
     } catch {
+      restore(extras)
       lastError = Self.queueError(error)
     }
   }
@@ -36,13 +40,21 @@ extension ComposerStore {
     }
   }
 
-  /// Removes a queued message.
+  /// Removes a queued message and forgets its files.
   /// - Parameter id: The message.
   public func removeQueued(_ id: Int) {
+    let holdID = queue.items.first { $0.id == id }?.extras.holdID
     do {
       try queue.remove(id)
     } catch {
       lastError = Self.queueError(error)
+      return
+    }
+    guard let holdID else { return }
+    do {
+      try core.discardHeldAttachments(sessionId: sessionID, hold: holdID)
+    } catch {
+      lastError = coreError(error)
     }
   }
 
@@ -61,16 +73,26 @@ extension ComposerStore {
   }
 
   /// Takes the newest queued message out of the queue to edit it in the field (Up in an empty
-  /// composer). A message being sent stays.
+  /// composer); its files and `@` paths go back to the draft. A message being sent stays.
   /// - Returns: Its text, or `nil` when nothing can be taken.
   public func takeLastQueued() -> String? {
     guard let last = queue.items.last, last.state != .sending else { return nil }
+    if let holdID = last.extras.holdID {
+      do {
+        try core.restoreHeldAttachments(sessionId: sessionID, hold: holdID)
+      } catch {
+        lastError = coreError(error)
+        return nil
+      }
+      refreshAttachments()
+    }
     do {
       try queue.remove(last.id)
     } catch {
       lastError = Self.queueError(error)
       return nil
     }
+    for path in last.extras.mentions { addMention(path) }
     return last.text
   }
 
@@ -87,9 +109,30 @@ extension ComposerStore {
   /// whenever the turn ends.
   /// - Parameter isRunning: A turn is running.
   public func drainQueue(isRunning: Bool) async {
-    let blocked = isSending || isBlocked || !attachments.items.isEmpty
-    guard let next = queue.next(isRunning: isRunning, isBlocked: blocked) else { return }
+    guard let next = queue.next(isRunning: isRunning, isBlocked: isSending || isBlocked)
+    else { return }
     await deliver(next.id)
+  }
+
+  /// Takes the draft's uploaded files (into a core hold) and `@` paths for a queued message.
+  func takeExtras() throws -> MessageQueue.Extras {
+    let held = try core.holdAttachments(sessionId: sessionID)
+    if held != nil { refreshAttachments() }
+    return MessageQueue.Extras(
+      holdID: held?.id,
+      files: held?.items.map { MessageQueue.File(name: $0.filename, isImage: $0.isImage) } ?? [],
+      mentions: mentions)
+  }
+
+  /// Puts extras taken for a message that was not queued back in the draft.
+  func restore(_ extras: MessageQueue.Extras) {
+    guard let holdID = extras.holdID else { return }
+    do {
+      try core.restoreHeldAttachments(sessionId: sessionID, hold: holdID)
+    } catch {
+      lastError = coreError(error)
+    }
+    refreshAttachments()
   }
 
   private func deliver(_ id: Int) async {
@@ -97,12 +140,7 @@ extension ComposerStore {
       lastError = .InvalidState(message: "Wait for the current send to finish.")
       return
     }
-    guard attachments.items.isEmpty else {
-      lastError = .InvalidState(
-        message: "Send or remove the attached files first; they would go with this message.")
-      return
-    }
-    let message: String
+    let message: MessageQueue.Item
     do {
       message = try queue.begin(id)
     } catch {
@@ -116,7 +154,9 @@ extension ComposerStore {
       refreshBlocked()
     }
     do {
-      let sent = try await core.sendMessage(sessionId: sessionID, text: message)
+      let sent = try await core.sendQueuedMessage(
+        sessionId: sessionID, text: message.text, hold: message.extras.holdID,
+        harness: configuration?.harness, paths: message.extras.mentions)
       setText(fromCore: sent.draft)
       queue.finish(id, failure: nil)
     } catch {

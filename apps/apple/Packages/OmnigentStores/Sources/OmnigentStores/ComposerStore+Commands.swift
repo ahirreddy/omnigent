@@ -111,10 +111,11 @@ extension ComposerStore {
 
   /// What sending the draft would do, when it is a command this session knows.
   func slashAction() -> SlashAction? {
-    let trimmed = text.drop { $0.isWhitespace }
+    let message = draftMessage
+    let trimmed = message.drop { $0.isWhitespace }
     guard trimmed.hasPrefix("/") || trimmed.hasPrefix("$"), let configuration else { return nil }
     return OmnigentCoreFFI.slashAction(
-      text: text, hasAttachments: !attachments.items.isEmpty || !mentions.isEmpty,
+      text: message, hasAttachments: !attachments.items.isEmpty || !mentions.isEmpty,
       configuration: configuration,
       skills: skills, options: slashOptions)
   }
@@ -155,8 +156,8 @@ extension ComposerStore {
   }
 
   private func deliverMessage() async {
-    let draft = text
-    let (paths, preamble, harness) = (mentions, mentionPreamble, configuration?.harness)
+    let draft = draftMessage
+    let (paths, harness) = (mentions, configuration?.harness)
     await deliver { core, session, text in
       guard !paths.isEmpty else {
         return try await core.sendMessage(sessionId: session, text: text)
@@ -165,17 +166,25 @@ extension ComposerStore {
         sessionId: session, text: text, harness: harness, paths: paths)
     }
     if lastError == nil, !paths.isEmpty { mentions.removeAll { paths.contains($0) } }
-    guard let failure = lastError, failure.isHostOffline, attachments.items.isEmpty else { return }
+    guard let failure = lastError, failure.isHostOffline else { return }
+    let extras: MessageQueue.Extras
     do {
-      try queue.hold(preamble + draft)
-      mentions = []
+      extras = try takeExtras()
     } catch {
+      // A file still uploading keeps the message in the draft, with the failure shown.
+      return
+    }
+    do {
+      try queue.hold(draft, extras: extras)
+    } catch {
+      restore(extras)
       lastError = Self.queueError(error)
       return
     }
+    mentions = []
     lastError = nil
     commandNotice = failure.message
-    if text == draft { text = "" }
+    if draftMessage == draft { clearDraft() }
     scheduleHostRecheck()
   }
 

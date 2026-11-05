@@ -50,7 +50,7 @@ struct SessionToolsAdapterTests {
     #expect(SessionToolsAdapter.goalSheet(conversation, summary: nil)?.isReadOnly == true)
   }
 
-  @Test("Selected text is quoted under the draft; a read-only viewer gets no selection popup")
+  @Test("Selected text becomes a quote block after the draft; a read-only viewer gets no popup")
   func selectionActions() async throws {
     let store = try await PreviewData.connectedDemoStore()
     let conversation = try await loaded("demo-design", in: store)
@@ -59,7 +59,14 @@ struct SessionToolsAdapterTests {
     #expect(actions.askInSideChat != nil)
     conversation.composer.text = "Look at this:"
     actions.replyWithSelection?("first\nsecond")
-    #expect(conversation.composer.text == "Look at this:\n\n> first\n> second\n\n")
+    #expect(conversation.composer.quotes.map(\.text) == ["first\nsecond"])
+    #expect(conversation.composer.quotes.map(\.before) == ["Look at this:"])
+    #expect(conversation.composer.text.isEmpty)
+    conversation.composer.text = "Why?"
+    #expect(conversation.composer.draftMessage == "Look at this:\n\n> first\n> second\n\nWhy?")
+    conversation.composer.removeQuote(at: 0)
+    #expect(conversation.composer.quotes.isEmpty)
+    #expect(conversation.composer.text == "Look at this:\n\nWhy?")
 
     var readOnly = ConversationActions()
     let notes = try await loaded("demo-notes", in: store)

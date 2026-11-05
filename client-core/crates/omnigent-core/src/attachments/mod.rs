@@ -18,7 +18,7 @@ use url::Url;
 
 pub use draft::{
     AttachmentDraft, AttachmentDraftStore, AttachmentSubmission, DraftError, DraftItem,
-    DraftItemId, DraftKey, UploadAttempt, UploadState,
+    DraftItemId, DraftKey, HoldId, UploadAttempt, UploadState,
 };
 pub use policy::{FileProbe, UploadFile, UploadFileReader, byte_limit, resolve_media_type};
 pub use preview::{

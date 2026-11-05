@@ -4,7 +4,8 @@ public import Foundation
 /// state machine. A message is queued, then sending, then gone (sent) or failed. The queue drains
 /// one message at a time, oldest first, only while nothing runs or sends; a failed message holds
 /// its place until it is retried or removed, so order is never lost. A message the server refused
-/// because the session's host is offline waits for the host ahead of the rest.
+/// because the session's host is offline waits for the host ahead of the rest. A message keeps
+/// the files and `@` paths it was queued with (the files are held in the core until it is sent).
 public struct MessageQueue: Equatable, Sendable {
   /// Where a queued message stands.
   public enum State: Equatable, Sendable {
@@ -18,19 +19,62 @@ public struct MessageQueue: Equatable, Sendable {
     case failed(String)
   }
 
+  /// A file that goes with a queued message.
+  public struct File: Equatable, Sendable {
+    /// The file name.
+    public let name: String
+    /// An image rather than a document.
+    public let isImage: Bool
+
+    /// Creates a file.
+    /// - Parameters:
+    ///   - name: The file name.
+    ///   - isImage: An image.
+    public init(name: String, isImage: Bool) {
+      self.name = name
+      self.isImage = isImage
+    }
+  }
+
+  /// What a message carries besides its text.
+  public struct Extras: Equatable, Sendable {
+    /// The core's hold of its files, or `nil` without files.
+    public var holdID: UInt64?
+    /// Its files, in order.
+    public var files: [File] = []
+    /// Workspace paths tagged with `@`, sent as marker lines ahead of the text.
+    public var mentions: [String] = []
+
+    /// Creates extras.
+    /// - Parameters:
+    ///   - holdID: The core's hold of the files.
+    ///   - files: The files.
+    ///   - mentions: The tagged paths.
+    public init(holdID: UInt64? = nil, files: [File] = [], mentions: [String] = []) {
+      self.holdID = holdID
+      self.files = files
+      self.mentions = mentions
+    }
+
+    /// Nothing besides the text.
+    public var isEmpty: Bool { holdID == nil && files.isEmpty && mentions.isEmpty }
+  }
+
   /// One queued message.
   public struct Item: Equatable, Sendable, Identifiable {
     /// Stable id.
     public let id: Int
-    /// The text.
+    /// The text; empty when the files or paths are the message.
     public internal(set) var text: String
     /// Where it stands.
     public internal(set) var state: State
+    /// Its files and tagged paths.
+    public internal(set) var extras = Extras()
   }
 
   /// Why a queue operation was refused.
   public enum Refusal: Error, Equatable, Sendable {
-    /// The text is blank.
+    /// The text is blank and nothing else goes with it.
     case empty
     /// No message has that id.
     case missing
@@ -53,29 +97,35 @@ public struct MessageQueue: Equatable, Sendable {
   /// A message is being sent.
   public var isSending: Bool { items.contains { $0.state == .sending } }
 
-  /// Appends `text`.
-  /// - Parameter text: The message.
+  /// Appends `text` with `extras`.
+  /// - Parameters:
+  ///   - text: The message.
+  ///   - extras: Its files and tagged paths.
   /// - Returns: The new message.
-  /// - Throws: ``Refusal/empty`` for blank text.
+  /// - Throws: ``Refusal/empty`` for blank text without extras.
   @discardableResult
-  public mutating func enqueue(_ text: String) throws(Refusal) -> Item {
-    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { throw .empty }
-    lastID += 1
-    let item = Item(id: lastID, text: trimmed, state: .queued)
+  public mutating func enqueue(_ text: String, extras: Extras = Extras()) throws(Refusal) -> Item {
+    let item = try make(text, extras: extras, state: .queued)
     items.append(item)
     return item
+  }
+
+  private mutating func make(_ text: String, extras: Extras, state: State) throws(Refusal) -> Item {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty || !extras.isEmpty else { throw .empty }
+    lastID += 1
+    return Item(id: lastID, text: trimmed, state: state, extras: extras)
   }
 
   /// Replaces a message's text. A failed message becomes queued again.
   /// - Parameters:
   ///   - id: The message.
   ///   - text: The new text.
-  /// - Throws: ``Refusal`` when blank, missing or sending.
+  /// - Throws: ``Refusal`` when missing, sending, or blank without extras.
   public mutating func edit(_ id: Int, text: String) throws(Refusal) {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { throw .empty }
     let index = try index(of: id)
+    guard !trimmed.isEmpty || !items[index].extras.isEmpty else { throw .empty }
     guard items[index].state != .sending else { throw .sending }
     items[index].text = trimmed
     if items[index].state != .waitingForHost { items[index].state = .queued }
@@ -118,14 +168,14 @@ public struct MessageQueue: Equatable, Sendable {
   public var isHoldingForHost: Bool { items.contains { $0.state == .waitingForHost } }
 
   /// Holds `text`, refused while the host was offline, ahead of the messages queued after it.
-  /// - Parameter text: The message.
-  /// - Throws: ``Refusal/empty`` for blank text.
-  public mutating func hold(_ text: String) throws(Refusal) {
-    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { throw .empty }
-    lastID += 1
+  /// - Parameters:
+  ///   - text: The message.
+  ///   - extras: Its files and tagged paths.
+  /// - Throws: ``Refusal/empty`` for blank text without extras.
+  public mutating func hold(_ text: String, extras: Extras = Extras()) throws(Refusal) {
+    let item = try make(text, extras: extras, state: .waitingForHost)
     let index = items.firstIndex { $0.state != .waitingForHost } ?? items.endIndex
-    items.insert(Item(id: lastID, text: trimmed, state: .waitingForHost), at: index)
+    items.insert(item, at: index)
   }
 
   /// Ends a send the server refused because the host is offline: the message waits for it.
@@ -144,13 +194,13 @@ public struct MessageQueue: Equatable, Sendable {
 
   /// Marks a message as sending (drain, Send now, or Retry).
   /// - Parameter id: The message.
-  /// - Returns: Its text.
+  /// - Returns: The message.
   /// - Throws: ``Refusal`` when missing or already sending.
-  public mutating func begin(_ id: Int) throws(Refusal) -> String {
+  public mutating func begin(_ id: Int) throws(Refusal) -> Item {
     let index = try index(of: id)
     guard items[index].state != .sending else { throw .sending }
     items[index].state = .sending
-    return items[index].text
+    return items[index]
   }
 
   /// Ends a send: a delivered message leaves the queue, a failed one keeps its place.

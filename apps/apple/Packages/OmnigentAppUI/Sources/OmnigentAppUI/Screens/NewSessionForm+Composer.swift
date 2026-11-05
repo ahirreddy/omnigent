@@ -31,6 +31,7 @@ extension NewSessionForm {
         ? [] : NewSessionAdapter.models(creation.models.value ?? []),
       selectedModelId: selection.model, selectedEffort: selection.reasoningEffort)
     configuration.agentGroups = agents?.groups ?? [:]
+    configuration.smartRouting = smartRouting(catalog)
     if pendingChoice != nil { configuration.agentGroups[Self.pendingAgentID] = .custom }
     var state = ComposerViewState(
       availability: availability(creation), delivery: delivery(creation.phase),
@@ -44,6 +45,15 @@ extension NewSessionForm {
     state.submitWithCommandReturn = submitWithCommandReturn
     applyCompletions(launch, to: &state)
     return state
+  }
+
+  /// Smart Routing's toggle, where the server routes the chosen agent's native pane (the web's
+  /// per-harness eligibility). A new sandbox or an agent not yet registered has none.
+  func smartRouting(_ catalog: OmnigentCoreFFI.CreationCatalog?) -> SmartRoutingState {
+    guard !isSandbox, !startsPendingAgent, let catalog,
+      creationOffersSmartRouting(catalog: catalog, agentId: selection.agentId)
+    else { return .unavailable }
+    return selection.smartRouting ? .enabled : .disabled
   }
 
   /// Where the session will run, and why it cannot, before the first send.

@@ -13,6 +13,11 @@
 //! uploaded references, and [`AttachmentDraftStore::finish_submission`] applies the outcome to
 //! exactly the files captured. Uploaded files are reused across explicit retries; uncertain uploads
 //! and uncertain sends are never retried automatically.
+//!
+//! A queued message takes its draft's uploaded files with it: [`AttachmentDraftStore::hold`]
+//! moves them into a hold that [`AttachmentDraftStore::begin_held_submission`] sends later,
+//! [`AttachmentDraftStore::restore`] puts back in the draft, or [`AttachmentDraftStore::discard`]
+//! drops.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -48,6 +53,24 @@ impl DraftItemId {
     #[must_use]
     pub const fn get(self) -> u64 {
         self.0
+    }
+}
+
+/// Identifies the files held for one queued message. Unique within one store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HoldId(u64);
+
+impl HoldId {
+    /// The raw id, for FFI mirrors.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+
+    /// The id with raw value `id`, as an FFI mirror passes it back.
+    #[must_use]
+    pub const fn new(id: u64) -> Self {
+        Self(id)
     }
 }
 
@@ -125,9 +148,7 @@ impl AttachmentDraft {
     }
 
     fn bytes(&self) -> usize {
-        self.items.iter().fold(0, |total, item| {
-            total.saturating_add(item.file.data().len())
-        })
+        bytes_of(&self.items)
     }
 
     fn item(&self, id: DraftItemId) -> Option<&DraftItem> {
@@ -137,6 +158,12 @@ impl AttachmentDraft {
     fn item_mut(&mut self, id: DraftItemId) -> Option<&mut DraftItem> {
         self.items.iter_mut().find(|item| item.id == id)
     }
+}
+
+fn bytes_of(items: &[DraftItem]) -> usize {
+    items.iter().fold(0, |total, item| {
+        total.saturating_add(item.file.data().len())
+    })
 }
 
 /// An upload the store admitted. Pass it back to report progress and the result.
@@ -168,6 +195,8 @@ pub struct AttachmentSubmission {
     key: DraftKey,
     attachments: Vec<UploadedAttachment>,
     item_ids: BTreeSet<DraftItemId>,
+    /// The hold the files were sent from, rather than the draft.
+    hold: Option<HoldId>,
 }
 
 impl AttachmentSubmission {
@@ -232,6 +261,7 @@ pub struct AttachmentDraftStore {
     submissions: BTreeMap<DraftKey, AttachmentSubmission>,
     uncertain_submissions: BTreeSet<DraftKey>,
     in_flight: BTreeMap<DraftItemId, u64>,
+    held: BTreeMap<HoldId, (DraftKey, Vec<DraftItem>)>,
 }
 
 const EMPTY_DRAFT: &AttachmentDraft = &AttachmentDraft {
@@ -270,7 +300,11 @@ impl AttachmentDraftStore {
         let stored = self
             .drafts
             .values()
-            .fold(0, |total: usize, draft| total.saturating_add(draft.bytes()));
+            .map(|draft| draft.items.as_slice())
+            .chain(self.held.values().map(|(_, items)| items.as_slice()))
+            .fold(0, |total: usize, items| {
+                total.saturating_add(bytes_of(items))
+            });
         if draft.items.len() >= MAX_FILES_PER_DRAFT
             || draft.bytes().saturating_add(size) > MAX_DRAFT_BYTES
             || stored.saturating_add(size) > MAX_STORED_BYTES
@@ -475,6 +509,7 @@ impl AttachmentDraftStore {
                 })
                 .collect(),
             item_ids: items.iter().map(|item| item.id).collect(),
+            hold: None,
         };
         self.submissions.insert(key.clone(), batch.clone());
         Ok(batch)
@@ -496,6 +531,9 @@ impl AttachmentDraftStore {
         }
         self.submissions.remove(&batch.key);
         match outcome {
+            SubmissionOutcome::Accepted if batch.hold.is_some() => {
+                self.held.retain(|id, _| Some(*id) != batch.hold);
+            }
             SubmissionOutcome::Accepted => {
                 if let Some(draft) = self.drafts.get_mut(&batch.key) {
                     draft
@@ -511,12 +549,133 @@ impl AttachmentDraftStore {
         Ok(())
     }
 
+    /// Moves every file of `key`'s draft into a new hold, for a message queued to send later.
+    /// `None` when the draft has no files.
+    ///
+    /// # Errors
+    ///
+    /// [`DraftError::NotReady`] unless [`Self::can_submit`]: every file must be uploaded first.
+    pub fn hold(&mut self, key: &DraftKey) -> Result<Option<HoldId>, DraftError> {
+        if !self.draft(key).has_attachments() {
+            return Ok(None);
+        }
+        if !self.can_submit(key) {
+            return Err(DraftError::NotReady);
+        }
+        let id = HoldId(self.allocate()?);
+        let items = self
+            .drafts
+            .get_mut(key)
+            .map(|draft| std::mem::take(&mut draft.items))
+            .unwrap_or_default();
+        self.held.insert(id, (key.clone(), items));
+        Ok(Some(id))
+    }
+
+    /// The files of `key`'s hold `id`, in the order they were added.
+    ///
+    /// # Errors
+    ///
+    /// [`DraftError::UnknownItem`] when `key` has no such hold.
+    pub fn held(&self, key: &DraftKey, id: HoldId) -> Result<&[DraftItem], DraftError> {
+        match self.held.get(&id) {
+            Some((owner, items)) if owner == key => Ok(items),
+            _ => Err(DraftError::UnknownItem),
+        }
+    }
+
+    /// Puts hold `id`'s files back at the end of `key`'s draft (a queued message pulled back to
+    /// edit).
+    ///
+    /// # Errors
+    ///
+    /// [`DraftError::UnknownItem`], [`DraftError::Locked`] while the hold is being sent, and
+    /// [`DraftError::DraftLimit`] when the draft has no room for them; the hold then stays.
+    pub fn restore(&mut self, key: &DraftKey, id: HoldId) -> Result<(), DraftError> {
+        let items = self.held(key, id)?;
+        if self.is_sending_hold(key, id) {
+            return Err(DraftError::Locked);
+        }
+        let draft = self.draft(key);
+        if draft.items.len() + items.len() > MAX_FILES_PER_DRAFT
+            || draft.bytes().saturating_add(bytes_of(items)) > MAX_DRAFT_BYTES
+        {
+            return Err(DraftError::DraftLimit);
+        }
+        let (_, items) = self.held.remove(&id).ok_or(DraftError::UnknownItem)?;
+        self.drafts
+            .entry(key.clone())
+            .or_default()
+            .items
+            .extend(items);
+        Ok(())
+    }
+
+    /// Drops hold `id` (its queued message was removed). Files stay stored on the server.
+    ///
+    /// # Errors
+    ///
+    /// [`DraftError::UnknownItem`] and [`DraftError::Locked`] while the hold is being sent.
+    pub fn discard(&mut self, key: &DraftKey, id: HoldId) -> Result<(), DraftError> {
+        self.held(key, id)?;
+        if self.is_sending_hold(key, id) {
+            return Err(DraftError::Locked);
+        }
+        self.held.remove(&id);
+        Ok(())
+    }
+
+    fn is_sending_hold(&self, key: &DraftKey, id: HoldId) -> bool {
+        self.submissions
+            .get(key)
+            .is_some_and(|batch| batch.hold == Some(id))
+    }
+
+    /// Captures hold `id`'s files for one send. An accepted send drops the hold; a rejected or
+    /// uncertain one keeps it, as [`Self::finish_submission`] says.
+    ///
+    /// # Errors
+    ///
+    /// [`DraftError::UnknownItem`]; [`DraftError::NotReady`] while a send to `key` is in flight
+    /// or unreviewed.
+    pub fn begin_held_submission(
+        &mut self,
+        key: &DraftKey,
+        id: HoldId,
+    ) -> Result<AttachmentSubmission, DraftError> {
+        let items = self.held(key, id)?;
+        if self.submissions.contains_key(key) || self.uncertain_submissions.contains(key) {
+            return Err(DraftError::NotReady);
+        }
+        let attachments = items
+            .iter()
+            .filter_map(|item| match &item.state {
+                UploadState::Uploaded(uploaded) => Some(uploaded.clone()),
+                _ => None,
+            })
+            .collect();
+        let item_ids = items.iter().map(|item| item.id).collect();
+        let batch = AttachmentSubmission {
+            id: self.allocate()?,
+            key: key.clone(),
+            attachments,
+            item_ids,
+            hold: Some(id),
+        };
+        self.submissions.insert(key.clone(), batch.clone());
+        Ok(batch)
+    }
+
     /// Records that the user reviewed `key`'s uncertain send. Returns whether it was uncertain.
     /// Uncertain uploads stay uncertain; only sends are acknowledged here.
     pub fn acknowledge_uncertainty(&mut self, key: &DraftKey) -> bool {
         self.uncertain_submissions.remove(key)
     }
 }
+
+#[cfg(test)]
+#[path = "draft_hold_tests.rs"]
+mod hold_tests;
 
 #[cfg(test)]
 mod tests {

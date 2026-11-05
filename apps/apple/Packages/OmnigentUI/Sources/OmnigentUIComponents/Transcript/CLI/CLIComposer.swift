@@ -137,12 +137,7 @@ public struct CLIComposer: View {
           state: state, actions: actions, draft: draft, dismissedDraft: dismissedCompletionsDraft,
           highlighted: highlightedCompletion, attachFolder: { keyboard.attach($0) },
           apply: { keyboard.apply($0) })
-        if !state.attachments.isEmpty {
-          DraftAttachmentStrip(attachments: state.attachments, remove: actions.removeAttachment)
-        }
-        if !state.mentions.isEmpty {
-          MentionChips(paths: state.mentions, remove: actions.extras.removeMention)
-        }
+        ComposerDraftAccessories(state: state, actions: actions)
       }
       .transcriptColumn()
       .padding(.bottom, Theme.Spacing.small)
@@ -267,7 +262,7 @@ public struct CLIComposer: View {
   private var controls: some View {
     let parts = ComposerControlParts(
       state: state, actions: actions, rules: rules,
-      hasDraft: !draft.isEmpty || !state.attachments.isEmpty || !state.mentions.isEmpty,
+      hasDraft: rules.hasContent,
       isEditable: isEditable,
       canAttach: canAttach, layoutWidth: layoutWidth, layout: layout,
       isImporting: $isImporting, isPickingPhotos: $isPickingPhotos, isExpanded: $isExpanded,

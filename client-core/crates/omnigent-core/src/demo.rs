@@ -46,8 +46,44 @@ use crate::workspace_store::{Workspace, WorkspaceError, WorkspaceSession, append
 pub const DEMO_SERVER_URL: &str = "http://127.0.0.1:6767";
 /// The demo host's id.
 pub const DEMO_HOST_ID: &str = "demo-host";
-/// The sample reply the demo streams for every message.
+/// The sample reply the demo streams for a message.
 pub const DEMO_REPLY_TEXT: &str = "Got it. This is a sample reply from the offline demo. Your message stayed in this conversation. You can try another message or create a new session.";
+/// The reply to a message that asks for detail: long and slow enough to queue follow-ups, with
+/// files, while it streams.
+pub const DEMO_DETAILED_REPLY_TEXT: &str = "Here is the detailed version. The offline demo streams this answer one word at a time so there \
+is time to try what a running turn allows: type a follow-up and queue it for after this turn, \
+attach a file or an image to it, steer the agent with Send now, or stop the reply. Queued \
+messages wait in the strip above the composer, keep their files and paths, and send in order as \
+soon as the turn ends. You can edit a queued message before it goes, move it back into the \
+composer, or remove it, and the queue keeps the rest in the order you added them. The open \
+questions in the sample sessions fall into three groups. The first is the approval flow: \
+whether a reviewer must approve every change or only those that touch shared settings, and who \
+can approve when the usual reviewer is away. The second is the rollout: whether the new layout \
+ships to everyone at once or to a small group first, and what the team watches before widening \
+it. The third is the cleanup: which old screens can go once the new ones are in place, and how \
+long the old links keep working for people who saved them. Each question has a draft answer in \
+the design notes, but none is settled yet, so the next step is to pick an owner for each one \
+and agree on a date to decide. Until then the work can continue on the parts that do not depend \
+on the answers, such as the layout of the review screen and the wording of the notices people \
+see when something changes. For the approval flow, the draft suggests that changes to shared \
+settings always need a second reviewer, while changes that stay inside one project need only \
+the owner. When the usual reviewer is away, anyone listed as a backup for that project can \
+approve, and the session notes who did. The open part is whether a backup can approve their own \
+change, which the draft leaves to each team for now. For the rollout, the draft starts with the \
+people who asked for the new layout, then widens to each team in turn over two weeks. The team \
+watches how often people switch back to the old layout, how long reviews take, and how many \
+questions come in about where things moved. If any of those get worse, the rollout pauses until \
+the cause is understood and fixed. For the cleanup, the draft keeps the old screens for one \
+release after everyone has moved, then removes them. Saved links to old screens open the \
+matching new screen, with a short notice that explains the move, for at least six months. The \
+open part is what to do with reports that only exist on the old screens, which may need to be \
+rebuilt or retired. If you want, I can turn these into a short checklist with an owner and a \
+date for each item, or draft the message that asks each owner to confirm. Either way, the \
+decisions are small enough to make in one meeting if the owners read the notes beforehand. \
+Nothing here reaches a real agent or host, and every session stays on this device until you \
+connect to a server.";
+/// Ticks per word of [`DEMO_DETAILED_REPLY_TEXT`].
+const DETAILED_REPLY_TICKS_PER_WORD: usize = 3;
 /// The text appended to a reply the user stopped.
 pub const REPLY_STOPPED: &str = "Reply stopped.";
 /// The title of a session created without one.
@@ -349,6 +385,10 @@ pub fn sample_workspace() -> Result<Workspace, WorkspaceError> {
 struct ActiveReply {
     item_id: String,
     words_sent: usize,
+    text: &'static str,
+    /// Ticks between words, and the ticks since the last one.
+    ticks_per_word: usize,
+    idle_ticks: usize,
 }
 
 #[derive(Debug)]
@@ -458,7 +498,6 @@ impl DemoTransport {
             now,
             ..
         } = &mut *guard;
-        let words: Vec<&str> = DEMO_REPLY_TEXT.split(' ').collect();
         let mut changed = Vec::new();
         replies.retain(|session_id, reply| {
             let Some(session) = sessions
@@ -475,7 +514,12 @@ impl DemoTransport {
             else {
                 return false;
             };
-            let streaming = if let Some(word) = words.get(reply.words_sent) {
+            reply.idle_ticks = reply.idle_ticks.saturating_add(1);
+            if reply.idle_ticks < reply.ticks_per_word {
+                return true;
+            }
+            reply.idle_ticks = 0;
+            let streaming = if let Some(word) = reply.text.split(' ').nth(reply.words_sent) {
                 append_word(item, word);
                 reply.words_sent = reply.words_sent.saturating_add(1);
                 true
@@ -538,6 +582,12 @@ impl DemoTransport {
             ("POST", ["v1", "sessions", id, "events"]) => state.event(id, &body()?),
             ("POST", ["v1", "sessions", id, "switch-agent"]) => state.switch_agent(id, &body()?),
             ("PUT", ["v1", "sessions", id, "read-state"]) => state.read_state(id, &body()?),
+            // Files are accepted but not kept: the sample transcript shows only their names.
+            ("POST", ["v1", "sessions", id, "resources", "files"]) => {
+                state.find(id)?;
+                let file_id = format!("demo-file-{}", state.allocate());
+                Ok((201, json!({"id": file_id, "session_id": id})))
+            }
             ("POST", ["v1", "sessions", id, "elicitations", decision, "resolve"]) => {
                 state.resolve(id, decision, &body()?)
             }
@@ -942,11 +992,19 @@ impl DemoState {
         session.snapshot.status = SessionStatus::Running;
         session.snapshot.updated_at = Field::Present(now);
         session.revision = session.revision.saturating_add(1);
+        let (reply_text, ticks_per_word) = if text.to_lowercase().contains("in detail") {
+            (DEMO_DETAILED_REPLY_TEXT, DETAILED_REPLY_TICKS_PER_WORD)
+        } else {
+            (DEMO_REPLY_TEXT, 1)
+        };
         self.replies.insert(
             id.to_owned(),
             ActiveReply {
                 item_id: reply_id,
                 words_sent: 0,
+                text: reply_text,
+                ticks_per_word,
+                idle_ticks: 0,
             },
         );
         Ok((202, json!({"queued": true, "item_id": user_id})))

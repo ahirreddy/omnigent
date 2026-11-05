@@ -26,12 +26,6 @@ extension ComposerStore {
     mentions.removeAll { $0 == path }
   }
 
-  /// The marker lines the tagged paths put ahead of a message; empty without tags.
-  var mentionPreamble: String {
-    mentions.isEmpty
-      ? "" : OmnigentCoreFFI.mentionPreamble(harness: configuration?.harness, paths: mentions)
-  }
-
   /// Searches the workspace when the typed mention changes, after a short pause, and clears
   /// the results when no mention is being typed.
   func mentionTextChanged() {

@@ -11,6 +11,6 @@ enum WorkspaceReviewAdapter {
   ///   - composer: The conversation's composer.
   static func ask(_ span: FileTextSpan, _ composer: ComposerStore) {
     composer.addMention(span.reference)
-    composer.text = replyQuote(draft: composer.text, selection: span.text)
+    composer.quote(span.text)
   }
 }

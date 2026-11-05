@@ -195,6 +195,7 @@ struct NewSessionContainer: View {
       },
       togglePlan: form.planToggle(creation), isPlanOn: form.isPlanOn,
       createAgent: createAgent, importAgentBundle: importBundle)
+    extras.setSmartRouting = { form.selection.smartRouting = $0 }
     if let launch {
       extras.attachMention = { launch.addMention($0) }
       extras.removeMention = { launch.removeMention($0) }

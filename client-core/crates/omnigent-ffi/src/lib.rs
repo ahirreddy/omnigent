@@ -57,6 +57,7 @@ pub mod inbox;
 pub mod policy_registry;
 pub mod pull_request_detail;
 pub mod pull_requests;
+pub mod queue;
 pub mod remote_browser;
 pub mod sandbox;
 pub mod server_admin;
@@ -92,6 +93,8 @@ mod read_tests;
 mod remote_browser_tests;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod upload_tests;
 
 uniffi::setup_scaffolding!();
 

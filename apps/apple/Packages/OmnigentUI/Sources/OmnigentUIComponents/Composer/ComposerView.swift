@@ -65,8 +65,8 @@ public struct ComposerView: View {
   /// The touch bar at rest: one row until the user focuses it or there is something to send. A
   /// new session stays open: the agent and model are chosen before the first send.
   private var isCollapsed: Bool {
-    layout == .touch && state.purpose == .session && !isFocused && !isExpanded && draft.isEmpty
-      && state.attachments.isEmpty
+    layout == .touch && state.purpose == .session && !isFocused && !isExpanded
+      && !rules.hasContent
   }
 
   /// The context tray: whenever the bar is open (always on the Mac and on a new session), or
@@ -120,12 +120,7 @@ public struct ComposerView: View {
             .padding(.top, Theme.Spacing.extraSmall)
             .accessibilityIdentifier("composer-unavailable")
         }
-        if !state.attachments.isEmpty {
-          DraftAttachmentStrip(attachments: state.attachments, remove: actions.removeAttachment)
-        }
-        if !state.mentions.isEmpty {
-          MentionChips(paths: state.mentions, remove: actions.extras.removeMention)
-        }
+        ComposerDraftAccessories(state: state, actions: actions)
         if layout == .card {
           // One row; the controls stay at the bottom as the text grows.
           HStack(alignment: .bottom, spacing: Theme.Spacing.extraSmall) {
@@ -296,7 +291,7 @@ extension ComposerView {
   private var parts: ComposerControlParts {
     ComposerControlParts(
       state: state, actions: actions, rules: rules,
-      hasDraft: !draft.isEmpty || !state.attachments.isEmpty || !state.mentions.isEmpty,
+      hasDraft: rules.hasContent,
       isEditable: isEditable,
       canAttach: canAttach, layoutWidth: layoutWidth, layout: layout,
       isImporting: $isImporting, isPickingPhotos: $isPickingPhotos, isExpanded: $isExpanded,

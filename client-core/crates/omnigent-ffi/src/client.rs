@@ -178,35 +178,37 @@ pub struct AttachmentDraft {
     pub selection_error: Option<String>,
 }
 
+impl From<&core::attachments::DraftItem> for DraftAttachment {
+    fn from(item: &core::attachments::DraftItem) -> Self {
+        Self {
+            id: item.id().get(),
+            filename: item.file().filename().to_owned(),
+            media_type: item.file().media_type().to_owned(),
+            byte_count: u64::try_from(item.file().data().len()).unwrap_or(u64::MAX),
+            is_image: item.file().is_image(),
+            status: match item.state() {
+                UploadState::Staged => UploadStatus::Staged,
+                UploadState::Uploading { progress } => UploadStatus::Uploading {
+                    progress: *progress,
+                },
+                UploadState::Uploaded(attachment) => UploadStatus::Uploaded {
+                    file_id: attachment.id.clone(),
+                },
+                UploadState::Failed(error) => UploadStatus::Failed {
+                    message: error.to_string(),
+                },
+                UploadState::Uncertain(error) => UploadStatus::Uncertain {
+                    message: error.to_string(),
+                },
+            },
+        }
+    }
+}
+
 impl From<core::attachments::AttachmentDraft> for AttachmentDraft {
     fn from(draft: core::attachments::AttachmentDraft) -> Self {
         Self {
-            items: draft
-                .items()
-                .iter()
-                .map(|item| DraftAttachment {
-                    id: item.id().get(),
-                    filename: item.file().filename().to_owned(),
-                    media_type: item.file().media_type().to_owned(),
-                    byte_count: u64::try_from(item.file().data().len()).unwrap_or(u64::MAX),
-                    is_image: item.file().is_image(),
-                    status: match item.state() {
-                        UploadState::Staged => UploadStatus::Staged,
-                        UploadState::Uploading { progress } => UploadStatus::Uploading {
-                            progress: *progress,
-                        },
-                        UploadState::Uploaded(attachment) => UploadStatus::Uploaded {
-                            file_id: attachment.id.clone(),
-                        },
-                        UploadState::Failed(error) => UploadStatus::Failed {
-                            message: error.to_string(),
-                        },
-                        UploadState::Uncertain(error) => UploadStatus::Uncertain {
-                            message: error.to_string(),
-                        },
-                    },
-                })
-                .collect(),
+            items: draft.items().iter().map(Into::into).collect(),
             selection_error: draft.selection_error().map(str::to_owned),
         }
     }
@@ -277,6 +279,17 @@ impl Inner {
 
     pub(crate) fn entropy(&self) -> Result<&ForeignEntropy, CoreError> {
         self.entropy.as_ref().ok_or_else(demo_only_error)
+    }
+
+    /// A multipart boundary for uploading `item_id`: random, or fixed in the offline demo,
+    /// which has no entropy source and ignores upload bodies.
+    pub(crate) fn upload_boundary(&self, item_id: u64) -> Result<String, CoreError> {
+        let Some(entropy) = self.entropy.as_ref() else {
+            return Ok(format!("omnigent-demo-{item_id}"));
+        };
+        let bytes =
+            core::auth::EntropySource::random_bytes(entropy, 16).map_err(CoreError::from)?;
+        Ok(format!("omnigent-{}", core::auth::pkce::base64url(&bytes)))
     }
 
     fn oidc(&self) -> Result<&OidcCredentials<CoreTransport, ForeignStore>, CoreError> {
@@ -1344,9 +1357,7 @@ impl ClientCore {
         item_id: u64,
     ) -> Result<(), CoreError> {
         let item = self.inner.draft_item(&session_id, item_id)?;
-        let bytes = core::auth::EntropySource::random_bytes(self.inner.entropy()?, 16)
-            .map_err(CoreError::from)?;
-        let boundary = format!("omnigent-{}", core::auth::pkce::base64url(&bytes));
+        let boundary = self.inner.upload_boundary(item_id)?;
         self.inner
             .sessions
             .upload_attachment(&session_id, item, &boundary)
@@ -1367,9 +1378,7 @@ impl ClientCore {
         item_id: u64,
     ) -> Result<(), CoreError> {
         let item = self.inner.draft_item(&session_id, item_id)?;
-        let bytes = core::auth::EntropySource::random_bytes(self.inner.entropy()?, 16)
-            .map_err(CoreError::from)?;
-        let boundary = format!("omnigent-{}", core::auth::pkce::base64url(&bytes));
+        let boundary = self.inner.upload_boundary(item_id)?;
         self.inner
             .sessions
             .upload_first_attachment(&session_id, item, &boundary)
