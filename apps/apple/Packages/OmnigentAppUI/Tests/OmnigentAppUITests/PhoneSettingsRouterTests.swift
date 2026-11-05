@@ -1,4 +1,5 @@
 import OmnigentUIComponents
+import SwiftUI
 import Testing
 
 @testable import OmnigentAppUI

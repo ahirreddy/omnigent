@@ -35,6 +35,9 @@
         content
         .environment(\.openSettingsAt, router.openAt)
         .environment(\.openSettingsScreen, OpenSettingsScreenAction(presenter: router.screen))
+        .focusedSceneValue(
+          \.openSettingsScreen, OpenSettingsScreenAction(presenter: router.screen)
+        )
         .environment(
           \.openAppearanceSettings, OpenAppearanceSettingsAction(presenter: router.appearance)
         )
