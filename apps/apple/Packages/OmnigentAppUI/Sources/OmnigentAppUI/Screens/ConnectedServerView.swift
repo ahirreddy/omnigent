@@ -311,6 +311,10 @@ extension ConnectedServerView {
       case .browser(let browserID):
         BrowserTabContainer(
           host: tabContext.browser, tab: tab, browserID: browserID,
+          // On iPhone the page hides the navigation bar and shows these beside its address.
+          navigation: BrowserTabNavigation(
+            showSessions: { selection = nil },
+            tabsButton: AnyView(TabSwitcherButton(state: routes.state, actions: routes.actions))),
           changed: { tabs.contentChanged() })
       case .agentBrowser(let sessionID):
         AgentBrowserTabContainer(

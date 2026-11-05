@@ -1,4 +1,5 @@
 #if os(iOS)
+  import OmnigentBrowser
   import OmnigentCoreFFI
   import SwiftUI
 

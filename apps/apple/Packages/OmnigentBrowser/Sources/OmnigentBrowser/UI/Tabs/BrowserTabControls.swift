@@ -21,38 +21,6 @@ extension View {
 }
 
 #if os(iOS)
-  /// The browser tab's controls on iPad and iPhone, sized for touch. On iPad (regular width) one
-  /// bar holds back, forward, reload, the address field, share, the profile and the tab menu,
-  /// like Safari's iPad toolbar. On iPhone the address field and reload stay on top, and the
-  /// rest moves to ``BrowserTouchBottomBar`` within thumb reach.
-  struct BrowserTouchTopBar: View {
-    let model: BrowserTabModel
-    let environment: BrowserEnvironment
-    @Binding var sheet: BrowserTabSheet?
-    let isCompact: Bool
-
-    var body: some View {
-      HStack(spacing: isCompact ? 8 : 14) {
-        if !isCompact {
-          BrowserBackButton(model: model)
-          BrowserForwardButton(model: model)
-        }
-        BrowserReloadButton(model: model)
-        BrowserOmniboxField(model: model, environment: environment)
-        if !isCompact {
-          BrowserShareButton(model: model)
-          BrowserProfileMenu(model: model, environment: environment, sheet: $sheet)
-          BrowserTabMenu(model: model, environment: environment, sheet: $sheet)
-        }
-      }
-      .labelStyle(.iconOnly)
-      .buttonStyle(.borderless)
-      .font(.title3)
-      .padding(.horizontal, isCompact ? 12 : 16)
-      .padding(.vertical, 6)
-    }
-  }
-
   /// The iPhone's bottom toolbar: back, forward, share, bookmarks and the tab menu, as in
   /// Safari, floating over the page.
   struct BrowserTouchBottomBar: View {
@@ -83,26 +51,25 @@ extension View {
       .accessibilityIdentifier("browser.bottomBar")
     }
   }
+#endif
 
-  /// Shares the page's address (Messages, Mail, Copy, Add to Reading List...).
-  struct BrowserShareButton: View {
-    let model: BrowserTabModel
+/// Shares the page's address (Messages, Mail, Copy, Add to Reading List...).
+struct BrowserShareButton: View {
+  let model: BrowserTabModel
 
-    var body: some View {
-      if let url = model.url, BrowserHistoryStore.isRecordable(url) {
-        ShareLink(item: url, subject: Text(model.title), preview: SharePreview(model.displayTitle))
-        {
-          Label("Share", systemImage: "square.and.arrow.up")
-        }
-        .accessibilityIdentifier("browser.share")
-      } else {
-        Button("Share", systemImage: "square.and.arrow.up") {}
-          .disabled(true)
-          .accessibilityIdentifier("browser.share")
+  var body: some View {
+    if let url = model.url, BrowserHistoryStore.isRecordable(url) {
+      ShareLink(item: url, subject: Text(model.title), preview: SharePreview(model.displayTitle)) {
+        Label("Share", systemImage: "square.and.arrow.up")
       }
+      .accessibilityIdentifier("browser.share")
+    } else {
+      Button("Share", systemImage: "square.and.arrow.up") {}
+        .disabled(true)
+        .accessibilityIdentifier("browser.share")
     }
   }
-#endif
+}
 
 /// Goes back a page.
 struct BrowserBackButton: View {
