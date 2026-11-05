@@ -96,6 +96,31 @@ extension ConversationContainer {
 }
 
 extension ConversationContainer {
+  /// The session's forkable summary, when this app can fork it.
+  var forkSource: OmnigentCoreFFI.SessionSummary? {
+    guard makeForkStore != nil, let summary, forkUnavailableReason(source: summary) == nil else {
+      return nil
+    }
+    return summary
+  }
+
+  /// "Fork from here" on settled assistant messages; when the session can't be forked it stays,
+  /// disabled with the reason, as on the web.
+  func forkable(_ actions: ConversationActions) -> ConversationActions {
+    var actions = actions
+    guard makeForkStore != nil, let source = summary else { return actions }
+    if let reason = forkUnavailableReason(source: source) {
+      actions.forkUnavailableReason = reason
+      return actions
+    }
+    actions.forkFrom = { row in
+      guard let responseID = ForkAdapter.forkPoint(row) else { return }
+      beginFork(
+        ForkContext(source: source, upToResponseID: responseID, kind: .fromMessage(rowID: row.id)))
+    }
+    return actions
+  }
+
   /// Forks the whole session (the session menu's Fork, the reconnect sheet's way out); `nil`
   /// when this app cannot fork it.
   var forkSession: (@MainActor () -> Void)? {

@@ -184,9 +184,25 @@ fn a_recorded_turn_streams_into_rows() {
         harness.pump();
     }
     let events = harness.events.all();
-    assert!(events.contains(&CoreEvent::SessionHydrated {
-        session_id: SESSION.into()
-    }));
+    let hydrated = events
+        .iter()
+        .position(|event| {
+            *event
+                == CoreEvent::SessionHydrated {
+                    session_id: SESSION.into(),
+                }
+        })
+        .expect("the session hydrated");
+    // The history lands before "hydrated", so an app never shows the session empty in between.
+    let before = events[..hydrated]
+        .iter()
+        .rev()
+        .find(|event| !matches!(event, CoreEvent::DecisionsChanged { .. }));
+    assert!(
+        matches!(before, Some(CoreEvent::TranscriptChanged { .. })),
+        "{:#?}",
+        &events[hydrated.saturating_sub(3)..=hydrated]
+    );
     let rows = rows_from(&events, SESSION);
     assert!(rows.iter().all(|row| !row.is_ephemeral), "{rows:#?}");
     let summary: Vec<(RowRole, &str)> = rows

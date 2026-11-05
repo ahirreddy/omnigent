@@ -283,6 +283,7 @@ extension ConversationActions: FocusedActions {
       respond != nil, validateForm != nil, dismissError != nil, retry != nil, forkFrom != nil,
       messageURL != nil, resume != nil, share != nil, openSideChat != nil, openChild != nil,
       retryFailedTurn != nil, replyWithSelection != nil, askInSideChat != nil,
+      forkUnavailableReason != nil,
     ]
   }
 
@@ -302,6 +303,7 @@ extension ConversationActions: FocusedActions {
     if respond != nil { copy.respond = { latest()?.respond?($0, $1) } }
     if validateForm != nil { copy.validateForm = { latest()?.validateForm?($0, $1) } }
     if forkFrom != nil { copy.forkFrom = { latest()?.forkFrom?($0) } }
+    copy.forkUnavailableReason = forkUnavailableReason
     if messageURL != nil { copy.messageURL = { latest()?.messageURL?($0) } }
     if openSideChat != nil { copy.openSideChat = { latest()?.openSideChat?($0) } }
     if openChild != nil { copy.openChild = { latest()?.openChild?($0) } }

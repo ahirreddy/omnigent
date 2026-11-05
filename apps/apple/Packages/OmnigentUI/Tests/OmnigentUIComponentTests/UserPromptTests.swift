@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import OmnigentUIComponents
@@ -29,6 +30,9 @@ struct UserPromptTests {
     #expect(UserPrompt.collapsed(String(repeating: "a", count: 12_000)) == nil)
     let long = String(repeating: "b", count: 12_001)
     #expect(UserPrompt.collapsed(long)?.count == 12_000)
+    // The web's wording, with the whole prompt's length.
+    #expect(
+      UserPrompt.expandTitle(long) == "Show full prompt (\(12_001.formatted()) chars)")
   }
 
   @Test("Share counts two button widths in the titlebar beside the session menu")

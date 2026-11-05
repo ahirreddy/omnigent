@@ -66,8 +66,8 @@ struct NewSessionContainer: View {
         creation, connection: connection, launch: launch,
         submitWithCommandReturn: submitWithCommandReturn),
       actions: actions(creation),
-      heading: form.project.map { "What should we work on in \($0.name)?" }
-        ?? "What should we work on?",
+      // The web's hero: the project's name, else "What should we build?".
+      heading: form.project?.name ?? NewSessionPage.defaultHeading,
       importSessions: importSessions(openURL, openSettingsAt),
       options: form.options(creation, projects: connection.sessionList.projects),
       optionActions: optionActions(creation)

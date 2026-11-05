@@ -87,6 +87,24 @@
       #expect(difference(try render(.chat, none), try render(.chat, all)) > 0)
     }
 
+    @Test("a message link flashes its CLI row")
+    @MainActor
+    func linkedMessageFlashes() throws {
+      let state = CLIPreviewData.conversation(.markdown)
+      let target = try #require(state.rows.first { $0.role == .user }?.id)
+      let focus = TranscriptFocus()
+      func render() throws -> RenderSupport.Rendered {
+        try RenderSupport.render(
+          transcript(.cli, actions: ConversationActions()).environment(\.transcriptFocus, focus),
+          width: 900, height: 900, scheme: .dark, layout: .regular)
+      }
+      let plain = try render()
+      focus.flash(target)
+      let flashed = try render()
+      try RenderSupport.write(flashed, name: "cli-message-flash")
+      #expect(difference(plain, flashed) > 0.005, "the linked CLI row did not flash")
+    }
+
     @Test("the touch composer and the Appearance screen render at phone width")
     func touch() throws {
       for scenario in [CLIPreviewScenario.markdown, .streaming] {

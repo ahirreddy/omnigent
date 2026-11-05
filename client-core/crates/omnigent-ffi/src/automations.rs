@@ -22,6 +22,9 @@ pub struct ServerPages {
     /// Sessions can be shared with other users.
     #[uniffi(default)]
     pub sharing: bool,
+    /// A multi-user server turned sharing off: Share shows disabled with the reason.
+    #[uniffi(default)]
+    pub sharing_disabled: bool,
     /// The Canvas page.
     #[uniffi(default)]
     pub canvas: bool,
@@ -584,6 +587,7 @@ impl ClientCore {
             usage: pages.usage,
             archive_worktree_cleanup: pages.archive_worktree_cleanup,
             sharing: pages.sharing,
+            sharing_disabled: pages.sharing_disabled,
             canvas: pages.canvas,
             automations_v2: pages.automations_v2,
             automation_projects: pages.automation_projects,

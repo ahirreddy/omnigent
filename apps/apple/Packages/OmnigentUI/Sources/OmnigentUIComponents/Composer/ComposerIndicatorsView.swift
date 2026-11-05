@@ -5,6 +5,9 @@ import SwiftUI
 struct ComposerIndicatorsView: View {
   let indicators: ComposerTaskIndicators
   let actions: ComposerIndicatorActions
+  /// The goal's objective beside its glyph; the CLI status line shows the glyph alone, as the web
+  /// does, with the objective in the tooltip.
+  var showsGoalObjective = true
 
   var body: some View {
     HStack(spacing: Theme.Spacing.small) {
@@ -61,6 +64,7 @@ struct ComposerIndicatorsView: View {
       } icon: {
         Image(systemName: goal.canResume ? "pause.circle" : "target")
       }
+      .labelStyle(GoalLabelStyle(showsTitle: showsGoalObjective))
       .foregroundStyle(.secondary)
     }
     .disabled(actions.openGoal == nil)
@@ -140,5 +144,14 @@ private struct BackgroundTasksButton: View {
       }
     }
     .padding(Theme.Spacing.medium)
+  }
+}
+
+/// The goal pill's glyph with or without its objective.
+private struct GoalLabelStyle: LabelStyle {
+  let showsTitle: Bool
+
+  @ViewBuilder func makeBody(configuration: Configuration) -> some View {
+    if showsTitle { Label(configuration) } else { configuration.icon }
   }
 }

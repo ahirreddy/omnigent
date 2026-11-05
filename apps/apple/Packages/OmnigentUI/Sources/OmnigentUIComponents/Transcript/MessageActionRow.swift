@@ -23,6 +23,8 @@ struct MessageActionItem: Identifiable {
   let systemImage: String
   /// The row button's accessibility identifier.
   let identifier: String
+  /// Why the action does not apply; it then shows disabled with this as its tooltip and subtitle.
+  var unavailableReason: String?
   let perform: @MainActor () -> Void
 
   var id: Kind { kind }
@@ -40,12 +42,15 @@ struct MessageActionItem: Identifiable {
           kind: .copy, title: "Copy", menuTitle: "Copy", systemImage: "doc.on.doc",
           identifier: "message-copy-\(row.id)", perform: { Pasteboard.copy(text) }))
     }
-    if let fork = actions.forkFrom, isForkPoint(row) {
+    // A session that can't be forked keeps the action, disabled with the reason (as the web).
+    let reason = actions.forkFrom == nil ? actions.forkUnavailableReason : nil
+    if actions.forkFrom != nil || reason != nil, isForkPoint(row) {
+      let fork = actions.forkFrom
       items.append(
         Self(
           kind: .fork, title: "Fork from here", menuTitle: "Fork from Here\u{2026}",
           systemImage: "arrow.triangle.branch", identifier: "message-fork-\(row.id)",
-          perform: { fork(row) }))
+          unavailableReason: reason, perform: { fork?(row) }))
     }
     if let url = actions.messageURL?(row) {
       items.append(
@@ -156,7 +161,9 @@ struct MessageActionRow: View {
             .contentShape(Rectangle())
             .hoverHighlight()
             .focused(focus)
-            .help(item.title)
+            .disabled(item.unavailableReason != nil)
+            .help(item.unavailableReason ?? item.title)
+            .accessibilityHint(item.unavailableReason ?? "")
             .accessibilityIdentifier(item.identifier)
         }
       }
@@ -207,7 +214,10 @@ private struct MessageActionsHost: ViewModifier {
       .animation(reduceMotion ? nil : Theme.Motion.feedback, value: revealed)
       .contextMenu { MessageContextMenu(row: row, actions: actions) }
       .accessibilityActions {
-        ForEach(MessageActionItem.items(for: row, actions: actions, copy: copy)) { item in
+        ForEach(
+          MessageActionItem.items(for: row, actions: actions, copy: copy)
+            .filter { $0.unavailableReason == nil }
+        ) { item in
           Button(item.title, action: item.perform)
         }
         #if !os(macOS)
@@ -256,7 +266,9 @@ struct MessageContextMenu: View {
       }
     #endif
     ForEach(MessageActionItem.items(for: row, actions: actions, copy: copy)) { item in
-      Button(item.menuTitle, systemImage: item.systemImage, action: item.perform)
+      ReasonedMenuButton(
+        item.menuTitle, systemImage: item.systemImage, unavailableReason: item.unavailableReason,
+        action: item.perform)
     }
     ShareLink(item: row.text) { Label("Share", systemImage: "square.and.arrow.up") }
       .disabled(row.text.isEmpty)

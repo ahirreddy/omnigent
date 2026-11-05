@@ -40,6 +40,24 @@ struct MessageActionRowTests {
     }
   }
 
+  @Test("A session that can't be forked keeps Fork from here, disabled with the reason")
+  func forkUnavailable() {
+    var actions = ConversationActions()
+    actions.forkUnavailableReason = "Only the owner can fork this session"
+    let answer = Row(id: "a1", role: .assistant, text: "Done.", responseId: "resp_1")
+    let fork = MessageActionItem.items(for: answer, actions: actions).first { $0.kind == .fork }
+    #expect(fork?.unavailableReason == "Only the owner can fork this session")
+    // Still only on fork points, and a host that forks has no reason.
+    let user = Row(id: "u1", role: .user, text: "Hi", responseId: "turn_1")
+    #expect(!kinds(user, actions).contains(.fork))
+    actions.forkFrom = { _ in }
+    #expect(MessageActionItem.items(for: answer, actions: actions)[1].unavailableReason == nil)
+    // The relay republishes when the reason appears, so rows redraw.
+    var reasonOnly = ConversationActions()
+    reasonOnly.forkUnavailableReason = "No"
+    #expect(ConversationActions().menuSignature != reasonOnly.menuSignature)
+  }
+
   @Test("An empty message has nothing to copy")
   func emptyText() {
     let row = Row(id: "a1", role: .assistant, text: "", responseId: "resp_1")

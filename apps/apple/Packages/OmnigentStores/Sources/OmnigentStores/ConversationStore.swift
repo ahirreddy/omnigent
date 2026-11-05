@@ -223,6 +223,7 @@ public final class ConversationStore {
   ) {
     self.revision = revision
     self.rows = rows
+    let header = Self.known(header)
     if header != self.header { self.header = header }
     if sections != self.sections { self.sections = sections }
     decisions.replace(cards)
@@ -240,11 +241,17 @@ public final class ConversationStore {
       return
     }
     // Setting an observed property notifies even when the value is unchanged.
-    if let header = change.header, header != self.header { self.header = header }
+    if let header = Self.known(change.header), header != self.header { self.header = header }
     if let sections = change.sections, sections != self.sections { self.sections = sections }
     self.revision = revision
     timeTurn(observed: true)
     digestRows()
+  }
+
+  /// The core's stand-in header, shown until the server's metadata loads, is no header: the
+  /// session is still loading, not an empty read-only one titled "Conversation".
+  private static func known(_ header: SessionHeader?) -> SessionHeader? {
+    header?.isPlaceholder == true ? nil : header
   }
 
   private func digestRows() {

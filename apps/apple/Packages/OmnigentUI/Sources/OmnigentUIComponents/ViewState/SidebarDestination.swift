@@ -2,7 +2,7 @@ import Foundation
 
 /// What the sidebar selects; the detail column shows it.
 nonisolated public enum SidebarDestination: Hashable, Sendable {
-  /// The new-session page ("What should we work on?").
+  /// The new-session page ("What should we build?").
   case newSession
   /// The Inbox.
   case inbox

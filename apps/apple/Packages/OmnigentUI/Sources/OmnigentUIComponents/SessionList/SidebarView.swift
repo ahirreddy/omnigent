@@ -335,7 +335,7 @@ extension SidebarView {
           projectName = ""
           projectPrompt = .create(moving: session)
         }
-      })
+      }, shareUnavailableReason: sessionActions.shareUnavailableReason)
     return SessionRow(
       session: session, info: info, isUnread: isUnread,
       attention: state.list.attentionCounts[session.id] ?? 0, details: state.display.details,

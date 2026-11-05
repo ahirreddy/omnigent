@@ -34,9 +34,11 @@ struct OmnigentApp: App {
 
   private func root(_ request: PhoneWindowRequest?) -> some View {
     IOSRootView(request: request)
-      // The window's tint is SwiftUI's default accent and UIKit's: sheets, pickers, links,
-      // alerts and menus take the theme's instead of system blue. Toolbar glyphs stay neutral.
-      .background { WindowTint() }
+      // SwiftUI controls, sheets, pickers and links take the theme's tint instead of system blue,
+      // and so do UIKit's alerts. The window keeps the system tint, so the keyboard focus ring
+      // stays neutral as the web's does, not the primary pink.
+      .tint(ThemeColor.controlTint)
+      .background { AlertTint() }
       .appearanceSettings(theme)
       .omnigentTheme(theme.theme, appearance: theme.mode)
   }
@@ -59,10 +61,10 @@ struct OmnigentApp: App {
   #endif
 }
 
-/// Sets the hosting window's tint to the theme's control tint, which SwiftUI controls without
-/// their own tint and the alerts, dialogs and menus UIKit presents all follow. The color carries
-/// both schemes, so a dark-mode switch restyles them without a SwiftUI update.
-private struct WindowTint: UIViewRepresentable {
+/// Gives the alerts UIKit presents the theme's control tint (SwiftUI's `.tint` doesn't reach
+/// them). The color carries both schemes, so a dark-mode switch restyles them without a SwiftUI
+/// update; a theme change applies to the next alert.
+private struct AlertTint: UIViewRepresentable {
   func makeUIView(context: Context) -> TintView {
     let view = TintView()
     view.isUserInteractionEnabled = false
@@ -89,9 +91,10 @@ private struct WindowTint: UIViewRepresentable {
     }
 
     private func applyTint() {
-      guard let window, tints.count == 2 else { return }
+      guard tints.count == 2 else { return }
       let (light, dark) = (tints[0], tints[1])
-      window.tintColor = UIColor { $0.userInterfaceStyle == .dark ? dark : light }
+      UIView.appearance(whenContainedInInstancesOf: [UIAlertController.self]).tintColor =
+        UIColor { $0.userInterfaceStyle == .dark ? dark : light }
     }
   }
 }

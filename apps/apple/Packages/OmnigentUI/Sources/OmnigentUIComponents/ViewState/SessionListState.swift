@@ -200,6 +200,8 @@ public struct SessionListActions {
   public var setUnread: (@MainActor (SessionSummary, Bool) -> Void)?
   /// Open the Share sheet.
   public var share: (@MainActor (SessionSummary) -> Void)?
+  /// Why Share is unavailable on this server (sharing turned off); it then shows disabled.
+  public var shareUnavailableReason: String?
   /// Fork (clone) the whole session.
   public var fork: (@MainActor (SessionSummary) -> Void)?
   /// Why a session cannot be forked; Fork then shows disabled with the reason.

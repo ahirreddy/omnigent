@@ -10,6 +10,17 @@ enum ShareAdapter {
   static let restricted = "Restricted"
   static let anyoneWithLink = "Anyone with the link can view"
 
+  /// Why Share shows disabled: the web's wording for a server whose admin turned sharing off;
+  /// `nil` where Share works or is hidden (single-user servers, pages not read yet).
+  static func unavailableReason(_ pages: ServerPages?) -> String? {
+    pages?.sharingDisabled == true ? "Sharing has been disabled for this Omnigent server." : nil
+  }
+
+  /// Whether Share appears at all: on a server that shares, or one that turned sharing off.
+  static func offered(_ pages: ServerPages?) -> Bool {
+    pages.map { $0.sharing || $0.sharingDisabled } ?? false
+  }
+
   /// The sheet's state.
   /// - Parameters:
   ///   - store: The session's sharing.

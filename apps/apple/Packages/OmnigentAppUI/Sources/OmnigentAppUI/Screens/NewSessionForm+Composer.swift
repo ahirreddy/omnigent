@@ -36,7 +36,8 @@ extension NewSessionForm {
       availability: availability(creation), delivery: delivery(creation.phase),
       attachments: attachmentChips(creation), acceptsAttachments: !isSandbox,
       configuration: configuration,
-      placeholder: "Describe what to build\u{2026}",
+      placeholder: project.map { "Start a new session in \($0.name)" }
+        ?? "Describe a task to start a new session\u{2026}",
       hosts: ComposerHosts(hosts: NewSessionAdapter.hosts(catalog), selectedID: hostID),
       approvalModes: NewSessionAdapter.approvalModes(agent, selected: selection.approvalMode),
       purpose: .start, context: context(creation, connection: connection))

@@ -44,7 +44,8 @@ struct ComposerTouchTests {
     // A new session keeps its own prompt.
     #expect(!rules(ComposerSamples.start, layout: .touch).placeholder.contains("Reply"))
     #expect(
-      rules(ComposerSamples.start, layout: .card).placeholder == "Describe what to build\u{2026}")
+      rules(ComposerSamples.start, layout: .card).placeholder
+        == "Describe a task to start a new session\u{2026}")
   }
 
   #if os(macOS)

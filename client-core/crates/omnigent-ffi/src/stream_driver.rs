@@ -424,11 +424,15 @@ impl Engine {
                     let current = attempt.is_none() || driver.live_attempt == attempt;
                     if current {
                         self.sessions.set_live_session(session_id, true);
+                    }
+                    // The rows first: an app told "hydrated" before they land shows an empty
+                    // session for a moment.
+                    self.publish(session_id, applied);
+                    if current {
                         self.emit(CoreEvent::SessionHydrated {
                             session_id: session_id.to_owned(),
                         });
                     }
-                    self.publish(session_id, applied);
                     self.emit_paging(session_id);
                     self.terminals_after_hydration(session_id);
                     return;
