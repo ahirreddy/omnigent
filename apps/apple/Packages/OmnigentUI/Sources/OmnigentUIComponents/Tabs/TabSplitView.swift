@@ -20,8 +20,12 @@ public struct TabSplitView<Content: View>: View {
   private let actions: TabActions
   private let content: (TabPane) -> Content
 
-  /// The content's width; assumed wide enough until measured, so a split never starts single.
-  @State private var width = CGFloat.greatestFiniteMagnitude
+  /// Whether the content is wide enough for both panes; assumed so until measured, so a split
+  /// never starts single. A flag, not the width, so resizing re-renders only when it flips.
+  @State private var fitsBoth = true
+  #if os(iOS)
+    @State private var measured = MeasuredWidth()
+  #endif
   @State private var liveFraction: Double?
   @Environment(\.horizontalSizeClass) private var sizeClass
   @Environment(TabDragTracker.self) private var tracker: TabDragTracker?
@@ -42,7 +46,7 @@ public struct TabSplitView<Content: View>: View {
 
   /// Whether both panes show: split, not compact, and wide enough for both.
   var showsBoth: Bool {
-    split != nil && sizeClass != .compact && TabSplitState.fits(width: width)
+    split != nil && sizeClass != .compact && fitsBoth
   }
 
   /// The view.
@@ -80,14 +84,18 @@ public struct TabSplitView<Content: View>: View {
         guard let showInPane = actions.showInPane,
           let id = items.lazy.compactMap(TabDropPayload.tabID(in:)).first
         else { return false }
-        showInPane(id, location.x < width / 2 ? .leading : .trailing)
+        showInPane(id, location.x < measured.value / 2 ? .leading : .trailing)
         return true
       }
     #endif
     .onGeometryChange(for: CGFloat.self) {
       $0.size.width
-    } action: {
-      width = $0
+    } action: { width in
+      #if os(iOS)
+        measured.value = width
+      #endif
+      let fits = TabSplitState.fits(width: width)
+      if fitsBoth != fits { fitsBoth = fits }
     }
     .onGeometryChange(for: CGRect.self) {
       $0.frame(in: .global)
@@ -334,3 +342,11 @@ private struct TabDropPreview: View {
     .animation(reduceMotion ? nil : Theme.Motion.feedback, value: tracker?.target)
   }
 }
+
+#if os(iOS)
+  /// The content's latest width, read only when a tab drops, so it never re-renders the view.
+  @MainActor
+  private final class MeasuredWidth {
+    var value = CGFloat.greatestFiniteMagnitude
+  }
+#endif

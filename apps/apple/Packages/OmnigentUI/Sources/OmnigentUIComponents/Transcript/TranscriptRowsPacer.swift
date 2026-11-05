@@ -7,7 +7,8 @@ import os
 /// rows for every delta (30 or more a second), and each change costs a whole SwiftUI update of
 /// the transcript; the first change after a quiet spell shows at once, the rest of a burst
 /// together on the next tick. While the transcript is out of view (a kept tab) it stops reading
-/// until it shows again.
+/// until it shows again. A conversation's first page of rows waits (briefly) until its newest
+/// answers are parsed off the main actor (``MarkdownWarmup``), so its first frame only lays out.
 @MainActor
 @Observable
 final class TranscriptRowsPacer {
@@ -18,6 +19,11 @@ final class TranscriptRowsPacer {
 
   /// Counts published updates; the transcript reads it to be told about the next one.
   private(set) var published = 0
+  /// A first page of rows waits for its markdown; the transcript still says it is loading.
+  private(set) var isPreparing = false
+  /// Parses the rows' markdown in the background, ahead of their first render.
+  @ObservationIgnored let warmup = MarkdownWarmup()
+  @ObservationIgnored private var hasPrepared = false
   @ObservationIgnored private var latest: Rows = ([], 0)
   @ObservationIgnored private var reader: LiveTranscriptRows?
   @ObservationIgnored private var isShown = true
@@ -25,12 +31,16 @@ final class TranscriptRowsPacer {
   @ObservationIgnored private var lastPublished: ContinuousClock.Instant?
   @ObservationIgnored private var pending: Task<Void, Never>?
   @ObservationIgnored private let interval: Duration
+  @ObservationIgnored private let preparingLimit: Duration
   @ObservationIgnored private let clock = ContinuousClock()
 
   /// Creates a pacer.
-  /// - Parameter interval: The shortest time between two updates.
-  init(interval: Duration = defaultInterval) {
+  /// - Parameters:
+  ///   - interval: The shortest time between two updates.
+  ///   - preparingLimit: The longest a first page of rows waits for its markdown.
+  init(interval: Duration = defaultInterval, preparingLimit: Duration = .milliseconds(400)) {
     self.interval = interval
+    self.preparingLimit = preparingLimit
   }
 
   /// The rows to render. Call it from the transcript's body: while shown, the body is told
@@ -95,9 +105,51 @@ final class TranscriptRowsPacer {
       isStale = true
       return
     }
+    if latest.rows.isEmpty, !hasPrepared, let ready = warmup.warm(reader.read().rows) {
+      hasPrepared = true
+      isPreparing = true
+      let limit = preparingLimit
+      pending = Task { [weak self] in
+        await Self.wait(for: ready, atMost: limit)
+        guard let self else { return }
+        isPreparing = false
+        if !Task.isCancelled { publish() }
+      }
+      return
+    }
     latest = track(reader)
     lastPublished = clock.now
     published += 1
     PerformanceSignposts.transcript.emitEvent("rows published")
+  }
+
+  /// Returns when `task` ends or `limit` passes, whichever comes first.
+  private static func wait(for task: Task<Void, Never>, atMost limit: Duration) async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      let once = ResumeOnce(continuation)
+      Task { @MainActor in
+        await task.value
+        once.resume()
+      }
+      Task { @MainActor in
+        try? await Task.sleep(for: limit)
+        once.resume()
+      }
+    }
+  }
+}
+
+/// Resumes a continuation the first time it is asked to.
+@MainActor
+private final class ResumeOnce {
+  private var continuation: CheckedContinuation<Void, Never>?
+
+  init(_ continuation: CheckedContinuation<Void, Never>) {
+    self.continuation = continuation
+  }
+
+  func resume() {
+    continuation?.resume()
+    continuation = nil
   }
 }
