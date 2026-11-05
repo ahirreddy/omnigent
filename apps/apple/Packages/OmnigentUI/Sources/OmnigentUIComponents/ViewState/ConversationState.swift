@@ -291,6 +291,8 @@ public struct ConversationActions {
   public var retry: (@MainActor () -> Void)?
   /// Fork the conversation after a settled assistant message ("Fork from here").
   public var forkFrom: (@MainActor (Row) -> Void)?
+  /// Why the session can't be forked; "Fork from here" then shows disabled with the reason.
+  public var forkUnavailableReason: String?
   /// A message's deep link (`?message=<id>`), for Copy Link.
   public var messageURL: (@MainActor (Row) -> URL?)?
   /// Resume the sandbox or the harness (terminal and offline states).

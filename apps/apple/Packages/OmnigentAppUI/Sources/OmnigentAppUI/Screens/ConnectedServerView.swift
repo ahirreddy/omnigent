@@ -194,7 +194,8 @@ public struct ConnectedServerView: View {
           menuContext: ConversationContainer.menuContext(
             connection.sessionList, session: connection.sessionList.session(id)),
           makeShareStore: { connection.share(sessionID: id) },
-          offersShare: connection.pages?.offered?.sharing == true
+          offersShare: ShareAdapter.offered(connection.pages?.offered),
+          shareUnavailableReason: ShareAdapter.unavailableReason(connection.pages?.offered)
         )
         .id(id)
       } else {

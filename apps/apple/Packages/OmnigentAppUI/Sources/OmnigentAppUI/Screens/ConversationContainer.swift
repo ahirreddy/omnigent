@@ -35,8 +35,10 @@ struct ConversationContainer: View {
   var menuContext = SessionMenuContext()
   /// Creates the Share sheet's store; `nil` hides Share.
   var makeShareStore: (@MainActor () -> ShareStore?)?
-  /// The server shares sessions (multi-user, sharing not off); `false` hides Share.
+  /// The server shares sessions, or turned sharing off (multi-user); `false` hides Share.
   var offersShare = true
+  /// Why Share shows disabled (sharing turned off on this server).
+  var shareUnavailableReason: String?
 
   @State private var showsInspector = WorkspacePanelDefault.stored() == .open
   @State private var inspectorTab: InspectorTab = DefaultWorkspaceTab.stored().inspectorTab
@@ -128,6 +130,7 @@ struct ConversationContainer: View {
 
   private var state: ConversationViewState {
     var state = ConversationAdapter.screenState(conversation, summary: summary)
+    state.shareUnavailableReason = shareUnavailableReason
     if let terminals { state.terminal = TerminalAdapter.status(terminals.terminals.harness) }
     state.agentInfo = conversation.agentInfo.map {
       OmnigentUIComponents.AgentInfo(name: $0.name, tools: $0.tools, policies: $0.policies)
@@ -234,28 +237,6 @@ struct ConversationContainer: View {
       actions.openSession = tabRoutes.openSession
     }
     SessionToolsAdapter.addSelectionActions(to: &actions, store: conversation, routes: toolRoutes)
-    return actions
-  }
-
-  /// The session's forkable summary, when this app can fork it.
-  var forkSource: OmnigentCoreFFI.SessionSummary? {
-    guard makeForkStore != nil, let summary, forkUnavailableReason(source: summary) == nil else {
-      return nil
-    }
-    return summary
-  }
-
-  /// "Fork from here" on settled assistant messages.
-  private func forkable(_ actions: ConversationActions) -> ConversationActions {
-    var actions = actions
-    if let source = forkSource {
-      actions.forkFrom = { row in
-        guard let responseID = ForkAdapter.forkPoint(row) else { return }
-        beginFork(
-          ForkContext(source: source, upToResponseID: responseID, kind: .fromMessage(rowID: row.id))
-        )
-      }
-    }
     return actions
   }
 

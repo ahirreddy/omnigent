@@ -99,6 +99,7 @@ struct CLITranscriptRows<Header: View>: View {
   /// The folded blocks, from ``TranscriptLayoutMemo``.
   let blocks: [CLIBlockEntry]
   let header: Header
+  @Environment(\.transcriptFocus) private var focus
 
   var body: some View {
     header
@@ -117,6 +118,8 @@ struct CLITranscriptRows<Header: View>: View {
       CLIBlockView(block: entry.block, decorations: entry.decorations)
         .equatable()
         .id(entry.id)
+        // Over the row, since a user message's band is opaque.
+        .overlay { if focus?.flashedRowID == entry.id { MessageFlash(isBand: true) } }
     }
     InlineDecisions(state: state, actions: actions).transcriptColumn()
     CLISubagentLines(state: state, actions: actions)

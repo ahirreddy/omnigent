@@ -296,6 +296,10 @@ pub struct SessionHeader {
     pub failure_message: Option<String>,
     /// Settings, once reported.
     pub settings: Option<SessionSettings>,
+    /// A stand-in until the server's metadata loads (titled "Conversation", read-only): show
+    /// the session as loading, not as an empty read-only session.
+    #[uniffi(default)]
+    pub is_placeholder: bool,
 }
 
 /// One session-metadata section (usage, plan, children, changed files, ...).
@@ -515,6 +519,7 @@ impl From<core::SessionHeader> for SessionHeader {
             permission_level: header.permission_level,
             failure_message: header.failure_message,
             settings: header.settings.map(Into::into),
+            is_placeholder: header.metadata_revision.is_none(),
         }
     }
 }

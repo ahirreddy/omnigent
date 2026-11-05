@@ -63,6 +63,57 @@
       RenderSupport.inkCoverage(rendered) * rendered.size.width * rendered.size.height
     }
 
+    /// Pixels in the code role's green, which only the folder draws on the status line.
+    private static func greenInk(_ rendered: RenderSupport.Rendered) -> Int {
+      let image = rendered.image
+      var count = 0
+      for row in 0..<image.pixelsHigh {
+        for column in 0..<image.pixelsWide {
+          guard let color = image.colorAt(x: column, y: row) else { continue }
+          let green = color.greenComponent
+          if green > 0.4, green > color.redComponent + 0.15, green > color.blueComponent + 0.15 {
+            count += 1
+          }
+        }
+      }
+      return count
+    }
+
+    private func renderStatusLine(directory: String?, width: CGFloat) throws
+      -> RenderSupport.Rendered
+    {
+      var state = Self.busyState
+      state.commandNotice = nil
+      state.mentions = []
+      state.connection = nil
+      state.isRunning = true
+      state.context?.directory = directory
+      state.tray?.directory = directory
+      let view = CLIStatusLine(
+        state: state, actions: ComposerActions(send: {}), warnings: [],
+        showsWarnings: .constant(false)
+      )
+      .cliPalette()
+      .transcriptAppearance(TranscriptAppearance(style: .cli, outputRendering: .styled))
+      return try RenderSupport.render(view, width: width, scheme: .dark, layout: .regular)
+    }
+
+    @Test("the CLI status line keeps the folder's name when every indicator shows")
+    func statusLineKeepsTheFolder() throws {
+      func folderInk(width: CGFloat) throws -> Int {
+        let with = try renderStatusLine(directory: "/Users/ahir/src/omnigent", width: width)
+        try RenderSupport.write(with, name: "cli-status-line-\(Int(width))")
+        let without = try renderStatusLine(directory: nil, width: width)
+        return Self.greenInk(with) - Self.greenInk(without)
+      }
+      let roomy = try folderInk(width: 1400)
+      let narrow = try folderInk(width: 760)
+      // "…/omnigent" is about 10 of the path's 24 characters; a lone separator draws no green.
+      #expect(narrow > roomy / 4, "the folder was squeezed away (\(narrow) of \(roomy))")
+      #expect(CLIDirectoryText.minimumText("/Users/ahir/src/omnigent") == "\u{2026}/omnigent")
+      #expect(CLIDirectoryText.minimumText("omnigent") == "omnigent")
+    }
+
     @Test("a recoverable error offers Retry in both styles")
     func errorRowsOfferRetry() throws {
       for style in TranscriptStyle.allCases {

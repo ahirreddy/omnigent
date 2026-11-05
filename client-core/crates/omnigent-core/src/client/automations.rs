@@ -27,6 +27,9 @@ pub struct ServerPages {
     pub archive_worktree_cleanup: bool,
     /// Sessions can be shared: `single_user` is not `true` and `sharing_mode` is not `off`.
     pub sharing: bool,
+    /// A multi-user server whose admin turned sharing off (`sharing_mode` `off`): Share stays
+    /// visible but disabled, with the reason.
+    pub sharing_disabled: bool,
     /// The `canvas` feature: the Canvas page.
     pub canvas: bool,
     /// The `automations_v2` feature: custom schedules, run-count endings and run history.
@@ -55,6 +58,8 @@ impl ServerPages {
             })
         };
         let session_modes = opt_bool(object, "scheduled_task_session_modes")?.unwrap_or(false);
+        let single_user = opt_bool(object, "single_user")?.unwrap_or(false);
+        let sharing_off = opt_str(object, "sharing_mode")?.as_deref() == Some("off");
         Ok(Self {
             automations: opt_bool(object, "automations_enabled")?.unwrap_or(false),
             automation_session_modes: session_modes,
@@ -65,8 +70,8 @@ impl ServerPages {
             automation_triggers: session_modes && feature("session_orchestration")?,
             archive_worktree_cleanup: opt_bool(object, "archive_worktree_cleanup")?
                 .unwrap_or(false),
-            sharing: !opt_bool(object, "single_user")?.unwrap_or(false)
-                && opt_str(object, "sharing_mode")?.as_deref() != Some("off"),
+            sharing: !single_user && !sharing_off,
+            sharing_disabled: !single_user && sharing_off,
             canvas: feature("canvas")?,
         })
     }

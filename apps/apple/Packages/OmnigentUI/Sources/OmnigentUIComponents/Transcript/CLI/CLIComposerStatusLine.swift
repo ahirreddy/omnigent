@@ -27,8 +27,9 @@ struct CLIStatusLine: View {
 
   private var statusRow: some View {
     HStack(alignment: .firstTextBaseline, spacing: 0) {
-      // One row whose texts truncate (the directory first, the model last). No ViewThatFits:
-      // measuring several copies of the menus keeps UIKit relaying out on iPhone.
+      // One row whose texts truncate (the branch first, the folder down to its name, the model
+      // never). No ViewThatFits: measuring several copies of the menus keeps UIKit relaying out
+      // on iPhone.
       leading
       Spacer(minLength: Theme.Spacing.medium)
       if layoutWidth != .compact {
@@ -62,7 +63,7 @@ struct CLIStatusLine: View {
       if layoutWidth == .regular, let directory = state.tray?.directory ?? state.context?.directory
       {
         separator
-        Text(verbatim: directory).foregroundStyle(palette.code.color).truncationMode(.head)
+        CLIDirectoryText(directory: directory).foregroundStyle(palette.code.color)
       }
       if let branch = state.tray?.branch ?? state.context?.branch {
         separator
@@ -82,6 +83,29 @@ struct CLIStatusLine: View {
 
   private var separator: some View {
     Text(verbatim: " \u{00B7} ").fixedSize().accessibilityHidden(true)
+  }
+}
+
+/// The working directory, truncated at its head but never narrower than its last component, as
+/// the web's folder chip shows the folder's name: the branch and the goal give way first.
+struct CLIDirectoryText: View {
+  let directory: String
+
+  /// The shortest form shown: "…/name", the name capped at 24 characters.
+  static func minimumText(_ directory: String) -> String {
+    let name =
+      directory.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last
+      .map(String.init) ?? directory
+    let shown = name.count > 24 ? "\u{2026}" + name.suffix(23) : name
+    return shown == directory ? shown : "\u{2026}/" + shown
+  }
+
+  var body: some View {
+    // The hidden copy sets the minimum width; the visible text fills whatever it is given.
+    ZStack(alignment: .leading) {
+      Text(verbatim: Self.minimumText(directory)).fixedSize().hidden()
+      Text(verbatim: directory).truncationMode(.head)
+    }
   }
 }
 
@@ -110,9 +134,13 @@ private struct CLIStatusIndicators: View {
           .accessibilityIdentifier("composer-plan-mode")
       }
       if !tray.indicators.isEmpty {
-        ComposerIndicatorsView(indicators: tray.indicators, actions: actions.extras.indicators)
-          .buttonStyle(.plain)
-          .menuStyle(.button)
+        // The goal as its glyph alone, as the web's bar shows it; the objective is its tooltip.
+        ComposerIndicatorsView(
+          indicators: tray.indicators, actions: actions.extras.indicators,
+          showsGoalObjective: false
+        )
+        .buttonStyle(.plain)
+        .menuStyle(.button)
       }
       if let pullRequest = tray.pullRequest {
         ComposerPullRequestChip(
@@ -218,7 +246,7 @@ private struct CLIApprovalModeMenu: View {
       .accessibilityLabel("\(modes.title), \(mode.label)")
       .accessibilityIdentifier("composer-approval-mode")
     } else {
-      label
+      label.fixedSize()
     }
   }
 
