@@ -70,8 +70,38 @@ final class TranscriptReadingPosition {
 struct TranscriptNavigator: View {
   let previous: () -> Void
   let next: () -> Void
+  @Environment(\.layoutWidth) private var layoutWidth
+  @Environment(\.composerLayoutStyle) private var composerLayout
+  @Environment(\.transcriptAppearance) private var appearance
+  @State private var width: CGFloat = 0
 
   var body: some View {
+    if composerLayout == .touch {
+      // On touch it shows only in the margin beside the column: over the column it would cover
+      // the last row's trailing actions (a banner's Retry). The web leaves it out on phones.
+      let column = layoutWidth == .compact ? .infinity : appearance.contentWidth.maxWidth
+      Group { if Self.fitsBesideColumn(width: width, column: column) { navigator } }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .onGeometryChange(for: CGFloat.self) {
+          $0.size.width
+        } action: {
+          width = $0
+        }
+    } else {
+      navigator
+    }
+  }
+
+  /// Whether the pill fits in the margin beside a centered column of at most `column` points.
+  /// - Parameters:
+  ///   - width: The width the pill is laid out in.
+  ///   - column: The transcript column's maximum width.
+  /// - Returns: Whether the margin is at least the pill's width.
+  static func fitsBesideColumn(width: CGFloat, column: CGFloat) -> Bool {
+    width - column >= 2 * Theme.Control.target
+  }
+
+  private var navigator: some View {
     VStack(spacing: 0) {
       button(
         "Previous message", shortcut: "\u{2318}\u{2325}\u{2191}", symbol: "chevron.up",

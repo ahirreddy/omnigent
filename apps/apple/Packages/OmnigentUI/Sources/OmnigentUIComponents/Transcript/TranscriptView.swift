@@ -124,6 +124,13 @@ public struct TranscriptView: View {
           proxy.scrollTo(Self.bottomID, anchor: .bottom)
         }
       }
+      // The dock growing after layout (the composer replacing the loading notice, a request,
+      // the keyboard) would cover the newest rows of a following reader.
+      .onScrollGeometryChange(for: CGFloat.self) {
+        $0.contentInsets.bottom
+      } action: { old, new in
+        if new > old, follow.layoutGrew() { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+      }
       .onChange(of: state.revision) { _, _ in
         _ = follow.contentChanged()
       }
