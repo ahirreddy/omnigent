@@ -78,6 +78,9 @@ struct ComposerFooter: View {
 
   private var trailing: some View {
     HStack(spacing: Theme.Spacing.small) {
+      if actions.extras.isPlanOn, state.purpose == .session {
+        PlanModeBadge(exit: actions.extras.togglePlan)
+      }
       if let configuration = state.configuration {
         ConfigurationMenu(
           configuration: configuration, actions: actions, showsAgent: state.purpose == .start
@@ -96,6 +99,23 @@ struct ComposerFooter: View {
       }
     }
     .fixedSize()
+  }
+}
+
+/// "Plan mode" while Codex plans instead of editing (web `composer-plan-mode`); its context
+/// menu leaves plan mode when the viewer may.
+struct PlanModeBadge: View {
+  let exit: (@MainActor () -> Void)?
+
+  var body: some View {
+    Label("Plan mode", systemImage: "doc.text")
+      .font(.caption.weight(.medium))
+      .foregroundStyle(.primary)
+      .help("The agent plans and asks before making changes")
+      .contextMenu {
+        if let exit { Button("Exit Plan mode", action: exit) }
+      }
+      .accessibilityIdentifier("composer-plan-mode")
   }
 }
 

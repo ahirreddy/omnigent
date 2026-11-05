@@ -287,6 +287,11 @@ public struct ConversationActions {
   /// Open a sub-agent's transcript; `nil` falls back to ``openSession``. The one route for
   /// children, so a host can send them somewhere else (a tab) without touching the views.
   public var openChild: (@MainActor (String) -> Void)?
+  /// Quote text selected in the transcript in the composer ("Reply"); `nil` hides the
+  /// selection popup.
+  public var replyWithSelection: (@MainActor (String) -> Void)?
+  /// Ask about text selected in the transcript in a new side chat; `nil` hides that choice.
+  public var askInSideChat: (@MainActor (String) -> Void)?
 
   /// Creates actions.
   /// - Parameters:

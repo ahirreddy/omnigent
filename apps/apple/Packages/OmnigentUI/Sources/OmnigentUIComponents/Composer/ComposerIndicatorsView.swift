@@ -9,15 +9,7 @@ struct ComposerIndicatorsView: View {
   var body: some View {
     HStack(spacing: Theme.Spacing.small) {
       if indicators.backgroundTasks > 0 {
-        let label =
-          "\(indicators.backgroundTasks) background task"
-          + (indicators.backgroundTasks == 1 ? "" : "s")
-        Label("\(indicators.backgroundTasks)", systemImage: "apple.terminal")
-          .monospacedDigit()
-          .foregroundStyle(.secondary)
-          .help("\(label) still running")
-          .accessibilityLabel("\(label) still running")
-          .accessibilityIdentifier("composer-background-tasks")
+        BackgroundTasksButton(indicators: indicators)
       }
       if !indicators.subagents.isEmpty {
         subagents
@@ -76,5 +68,77 @@ struct ComposerIndicatorsView: View {
     .accessibilityLabel("Goal, \(goal.status)")
     .accessibilityValue(goal.objective)
     .accessibilityIdentifier("composer-goal")
+  }
+}
+
+/// The running background shells: the count, opening a list of what each one runs (web
+/// `BackgroundTaskIndicator`).
+private struct BackgroundTasksButton: View {
+  let indicators: ComposerTaskIndicators
+  @State private var isShown = false
+
+  private var label: String {
+    let count = indicators.backgroundTasks
+    return "\(count) background task\(count == 1 ? "" : "s")"
+  }
+
+  var body: some View {
+    Button {
+      isShown.toggle()
+    } label: {
+      Label("\(indicators.backgroundTasks)", systemImage: "apple.terminal")
+        .monospacedDigit()
+        .foregroundStyle(.secondary)
+    }
+    .help("\(label) still running")
+    .accessibilityLabel("\(label) still running")
+    .accessibilityIdentifier("composer-background-tasks")
+    .popover(isPresented: $isShown, arrowEdge: .top) { list }
+    .onChange(of: indicators.backgroundTasks) { _, count in
+      if count <= 0, isShown { isShown = false }
+    }
+  }
+
+  /// Grows with the list up to a cap, then scrolls.
+  private var list: some View {
+    ViewThatFits(in: .vertical) {
+      rows
+      ScrollView { rows }
+    }
+    .frame(width: 360)
+    .frame(maxHeight: 380)
+    .accessibilityLabel(label)
+  }
+
+  private var rows: some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+      ForEach(indicators.backgroundTaskList) { task in
+        HStack(alignment: .top, spacing: Theme.Spacing.small) {
+          Image(systemName: "apple.terminal").foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+          VStack(alignment: .leading, spacing: Theme.Spacing.tiny) {
+            Text(task.title).font(.callout)
+            if let command = task.command {
+              Text(command).font(.caption.monospaced()).foregroundStyle(.secondary)
+                .lineLimit(3)
+                .textSelection(.enabled)
+            }
+          }
+          Spacer(minLength: Theme.Spacing.small)
+          HStack(spacing: Theme.Spacing.extraSmall) {
+            ProgressView().controlSize(.mini)
+            Text("Running")
+          }
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+      }
+      if let note = indicators.backgroundTaskNote {
+        if !indicators.backgroundTaskList.isEmpty { Divider() }
+        Text(note).font(.callout).foregroundStyle(.secondary)
+      }
+    }
+    .padding(Theme.Spacing.medium)
   }
 }

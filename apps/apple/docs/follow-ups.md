@@ -166,9 +166,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Right panel, Pull Requests:** lists the server's stored PRs only. The web's PR view (the
   runner's `/resources/github`: checks, reviewers, labels, the stacked diff, merge, comments,
   linking and unlinking a PR) is not ported.
-- [ ] **Right panel, Agents:** a sub-agent's chat shows only its own children, not the root's
-  tree (the web reads `GET /v1/sessions/{id}/child_sessions` from the root); no graph view or
-  Add agent.
+- [ ] **Right panel, Agents:** no Add agent (the web renders its button hidden, so it is not
+  offered); the agent rows show role icons, not each native harness's logo.
+- [ ] **Transcript selection popup:** SwiftUI selects within one text block, so Reply and Ask in
+  side chat quote at most one paragraph or code block (the web can select across messages).
 - [ ] **Right panel, Open new:** no Side chat item; starting a new side chat has no route yet.
 - [ ] **Tabs:** the titlebar tab row reserves a fixed estimated width for the trailing controls. An
   account chip or four viewers may leave a gap or push items into overflow; measure it instead.
@@ -310,6 +311,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 
 ## Done
 
+- [x] Right panel, Agents: the whole spawn tree from the top-level session (core
+  `agent_tree`, `GET /v1/sessions/{id}/child_sessions` three levels deep), a list with folding and
+  a graph view; the composer's background-task list, a Plan mode badge, the hover-revealed jump to
+  top and the Reply / Ask in side chat selection popup. 2026-11-04.
 - [x] Host: after Back, the remote tab kept showing the old page (or a blank one) when many other
   tabs showed the same site. Windowless Chromium restored the page from the back/forward cache
   without painting it. The host now disables `BackForwardCache`; `browser-host/tools/back_test.py`

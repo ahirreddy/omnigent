@@ -199,6 +199,8 @@ public struct WorkspaceSlots {
   public var pullRequests: PullRequestsPanelState?
   /// Re-reads the pull requests; called when the tab shows.
   public var refreshPullRequests: (@MainActor () -> Void)?
+  /// The Agents tab; `nil` lists the conversation's own sub-agents.
+  public var agents: AnyView?
   /// The "Open new" menu, read when the panel draws so its sources are observed there; `nil`
   /// or empty hides it.
   public var openNew: (@MainActor () -> [InspectorMenuSection])?
@@ -211,11 +213,12 @@ public struct WorkspaceSlots {
   ///   - documents: Open file and diff tabs.
   ///   - pullRequests: Pull requests.
   ///   - refreshPullRequests: Re-reads the pull requests.
+  ///   - agents: The Agents tab.
   ///   - openNew: The "Open new" menu.
   public init(
     files: AnyView? = nil, changes: AnyView? = nil, search: AnyView? = nil,
     documents: InspectorDocuments? = nil, pullRequests: PullRequestsPanelState? = nil,
-    refreshPullRequests: (@MainActor () -> Void)? = nil,
+    refreshPullRequests: (@MainActor () -> Void)? = nil, agents: AnyView? = nil,
     openNew: (@MainActor () -> [InspectorMenuSection])? = nil
   ) {
     self.files = files
@@ -224,6 +227,7 @@ public struct WorkspaceSlots {
     self.documents = documents
     self.pullRequests = pullRequests
     self.refreshPullRequests = refreshPullRequests
+    self.agents = agents
     self.openNew = openNew
   }
 }

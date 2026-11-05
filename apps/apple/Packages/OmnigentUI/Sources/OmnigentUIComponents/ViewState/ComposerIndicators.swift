@@ -50,11 +50,36 @@ nonisolated public struct ComposerGoal: Hashable, Sendable {
   }
 }
 
+/// One running background shell, as the background-task list names it.
+nonisolated public struct ComposerBackgroundTask: Hashable, Sendable, Identifiable {
+  /// Stable id.
+  public var id: String
+  /// Its description, or its command.
+  public var title: String
+  /// Its command, when the title is its description.
+  public var command: String?
+
+  /// Creates a task.
+  /// - Parameters:
+  ///   - id: Id.
+  ///   - title: Description or command.
+  ///   - command: Command under a description.
+  public init(id: String, title: String, command: String? = nil) {
+    self.id = id
+    self.title = title
+    self.command = command
+  }
+}
+
 /// The composer tray's task indicators (web `composer-task-indicators`): background tasks,
 /// sub-agents still in play, and the goal.
 nonisolated public struct ComposerTaskIndicators: Hashable, Sendable {
   /// Background tasks still running.
   public var backgroundTasks: Int
+  /// The running tasks the session named; it may name fewer than ``backgroundTasks``.
+  public var backgroundTaskList: [ComposerBackgroundTask]
+  /// "+1 more — details unavailable", when some tasks are not named.
+  public var backgroundTaskNote: String?
   /// Sub-agents still in play (everything but Ready).
   public var subagents: [SubagentChild]
   /// The goal, when the session has one.
@@ -63,11 +88,17 @@ nonisolated public struct ComposerTaskIndicators: Hashable, Sendable {
   /// Creates indicators.
   /// - Parameters:
   ///   - backgroundTasks: Running background tasks.
+  ///   - backgroundTaskList: The named tasks.
+  ///   - backgroundTaskNote: What is said about unnamed ones.
   ///   - subagents: Sub-agents in play.
   ///   - goal: The goal.
-  public init(backgroundTasks: Int = 0, subagents: [SubagentChild] = [], goal: ComposerGoal? = nil)
-  {
+  public init(
+    backgroundTasks: Int = 0, backgroundTaskList: [ComposerBackgroundTask] = [],
+    backgroundTaskNote: String? = nil, subagents: [SubagentChild] = [], goal: ComposerGoal? = nil
+  ) {
     self.backgroundTasks = backgroundTasks
+    self.backgroundTaskList = backgroundTaskList
+    self.backgroundTaskNote = backgroundTaskNote
     self.subagents = subagents
     self.goal = goal
   }
