@@ -38,6 +38,9 @@ let appDependencies: [TargetDependency] = [
   .package(product: "OmnigentStores"),
   .package(product: "OmnigentServices"),
   .package(product: "OmnigentCoreFFI"),
+  // The in-app browser (WebKit) and its tabs; Chromium is the Developer ID edition's addition.
+  .package(product: "OmnigentBrowser"),
+  .package(product: "OmnigentAppBrowser"),
 ]
 
 let unitTestDependencies: [TargetDependency] = [
@@ -130,7 +133,6 @@ let macApp = Target.target(
   scripts: BrowserTargets.appScripts(macBrowser) + [Acknowledgements.script],
   dependencies: appDependencies + [
     .package(product: "OmnigentDesktop"),
-    .package(product: "OmnigentBrowser"),
     .package(product: "OmnigentBrowserChromium"),
     .package(product: "OmnigentDesktopUpdate"),
   ] + BrowserTargets.appDependencies(macBrowser),
@@ -174,8 +176,7 @@ let macAppStoreApp = Target.target(
   entitlements: .file(path: "Apps/Omnigent-macOS/OmnigentMacAppStore.entitlements"),
   scripts: [Acknowledgements.script] + BrowserTargets.appStoreGuardScripts(),
   dependencies: appDependencies + [
-    .package(product: "OmnigentDesktop"),
-    .package(product: "OmnigentBrowser"),
+    .package(product: "OmnigentDesktop")
   ],
   settings: Omnigent.appSettings(
     releaseBundleId: "ai.omnigent.mac.appstore",

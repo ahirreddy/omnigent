@@ -23,7 +23,11 @@ let mainActorSwiftSettings = strictSwiftSettings + [.defaultIsolation(MainActor.
 let package = Package(
   name: "OmnigentAppUI",
   platforms: [.iOS("26.0"), .macOS("26.0")],
-  products: [.library(name: "OmnigentAppUI", targets: ["OmnigentAppUI"])],
+  products: [
+    .library(name: "OmnigentAppUI", targets: ["OmnigentAppUI"]),
+    // Browser tabs over OmnigentBrowser, for the apps that ship a browser.
+    .library(name: "OmnigentAppBrowser", targets: ["OmnigentAppBrowser"]),
+  ],
   dependencies: [
     .package(path: "../OmnigentStores"),
     .package(path: "../OmnigentServices"),
@@ -36,6 +40,7 @@ let package = Package(
     .package(path: "../OmnigentTerminalStores"),
     .package(path: "../OmnigentTestSupport"),
     .package(path: "../OmnigentRemoteBrowser"),
+    .package(path: "../OmnigentBrowser"),
   ],
   targets: [
     .target(
@@ -56,6 +61,14 @@ let package = Package(
       ],
       swiftSettings: mainActorSwiftSettings
     ),
+    .target(
+      name: "OmnigentAppBrowser",
+      dependencies: [
+        "OmnigentAppUI",
+        .product(name: "OmnigentBrowser", package: "OmnigentBrowser"),
+      ],
+      swiftSettings: mainActorSwiftSettings
+    ),
     .testTarget(
       name: "OmnigentAppUITests",
       dependencies: [
@@ -67,6 +80,15 @@ let package = Package(
         .product(name: "OmnigentServices", package: "OmnigentServices"),
         .product(name: "OmnigentTestSupport", package: "OmnigentTestSupport"),
         .product(name: "OmnigentRemoteBrowser", package: "OmnigentRemoteBrowser"),
+      ],
+      swiftSettings: mainActorSwiftSettings
+    ),
+    .testTarget(
+      name: "OmnigentAppBrowserTests",
+      dependencies: [
+        "OmnigentAppBrowser",
+        "OmnigentAppUI",
+        .product(name: "OmnigentBrowser", package: "OmnigentBrowser"),
       ],
       swiftSettings: mainActorSwiftSettings
     ),

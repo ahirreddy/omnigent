@@ -60,7 +60,9 @@ public struct FileTreeView: View {
             }
             .contextMenu {
               if let entry = row.entry {
-                PathMenu(path: entry.path, source: source, actions: actions)
+                PathMenu(
+                  path: entry.path, source: source, actions: actions,
+                  isFile: !entry.kind.isDirectory)
               }
             }
           }

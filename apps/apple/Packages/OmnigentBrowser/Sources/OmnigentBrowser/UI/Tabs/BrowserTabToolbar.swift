@@ -9,21 +9,9 @@ struct BrowserTabToolbar: View {
 
   var body: some View {
     HStack(spacing: 6) {
-      Button("Back", systemImage: "chevron.backward") { model.goBack() }
-        .disabled(!model.canGoBack)
-        .accessibilityIdentifier("browser.back")
-      Button("Forward", systemImage: "chevron.forward") { model.goForward() }
-        .disabled(!model.canGoForward)
-        .accessibilityIdentifier("browser.forward")
-      if model.isLoading {
-        Button("Stop", systemImage: "xmark") { model.stopLoading() }
-          .accessibilityIdentifier("browser.stop")
-      } else {
-        Button("Reload", systemImage: "arrow.clockwise") { model.reload() }
-          .disabled(model.tab == nil)
-          .help("Reload (⇧⌘R reloads without the cache)")
-          .accessibilityIdentifier("browser.reload")
-      }
+      BrowserBackButton(model: model)
+      BrowserForwardButton(model: model)
+      BrowserReloadButton(model: model)
       BrowserOmniboxField(model: model, environment: environment)
       if model.isAudible || model.isMuted {
         Button(
@@ -78,6 +66,7 @@ struct BrowserOmniboxField: View {
       TextField("Search or enter address", text: $text)
         .textFieldStyle(.plain)
         .autocorrectionDisabled()
+        .addressInput()
         .focused($focused)
         .onSubmit { submit(suggestions) }
         .onKeyPress(.downArrow) {
@@ -109,7 +98,7 @@ struct BrowserOmniboxField: View {
       }
     }
     .padding(.horizontal, 10)
-    .padding(.vertical, 5)
+    .padding(.vertical, Self.verticalPadding)
     .background(.quaternary.opacity(focused ? 0.9 : 0.6), in: Capsule())
     .overlay {
       if focused { Capsule().strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 1.5) }
@@ -119,7 +108,7 @@ struct BrowserOmniboxField: View {
         BrowserOmniboxSuggestionList(suggestions: suggestions, selected: selected) { suggestion in
           choose(suggestion)
         }
-        .offset(y: 34)
+        .offset(y: Self.suggestionsOffset)
       }
     }
     .zIndex(10)
@@ -134,8 +123,18 @@ struct BrowserOmniboxField: View {
       isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })
     ) {
       Text(error?.localizedDescription ?? "").padding()
+        .presentationCompactAdaptation(.popover)
     }
   }
+
+  #if os(iOS)
+    /// A taller field for touch.
+    private static let verticalPadding: CGFloat = 9
+    private static let suggestionsOffset: CGFloat = 44
+  #else
+    private static let verticalPadding: CGFloat = 5
+    private static let suggestionsOffset: CGFloat = 34
+  #endif
 
   private var currentSuggestions: [BrowserOmniboxSuggestion] {
     guard editing else { return [] }
@@ -216,7 +215,7 @@ struct BrowserOmniboxSuggestionList: View {
       }
     }
     .padding(4)
-    .frame(minWidth: 420, maxWidth: 640, alignment: .leading)
+    .suggestionListWidth()
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
     .shadow(radius: 8, y: 4)
     .accessibilityIdentifier("browser.omnibox.suggestions")
@@ -334,25 +333,16 @@ struct BrowserTabMenu: View {
       Divider()
       Button("Print…") { model.printPage() }
       Button("View Source") { model.viewSource() }
-      Button("Developer Tools") { model.showDevTools() }
+      #if os(macOS)
+        // WebKit on iOS has no in-app inspector; Safari's Develop menu reaches the page.
+        Button("Developer Tools") { model.showDevTools() }
+      #endif
       Divider()
       Button("Downloads") { sheet = .downloads }
       Button("Site Permissions…") { sheet = .siteSettings }
       Button("Clear Browsing Data…") { sheet = .clearData }
       Button("Profiles…") { sheet = .profiles }
-      Menu("Browser Engine") {
-        ForEach(model.controller.offeredEngines) { kind in
-          Button {
-            model.controller.switchEngine(to: kind)
-          } label: {
-            if model.controller.activeEngine == kind {
-              Label(kind.displayName, systemImage: "checkmark")
-            } else {
-              Text(kind.displayName)
-            }
-          }
-        }
-      }
+      if model.controller.offeredEngines.count > 1 { engineMenu }
     } label: {
       Label("More", systemImage: "ellipsis.circle")
     }
@@ -360,5 +350,43 @@ struct BrowserTabMenu: View {
     .menuIndicator(.hidden)
     .fixedSize()
     .accessibilityIdentifier("browser.tabMenu")
+  }
+
+  private var engineMenu: some View {
+    Menu("Browser Engine") {
+      ForEach(model.controller.offeredEngines) { kind in
+        Button {
+          model.controller.switchEngine(to: kind)
+        } label: {
+          if model.controller.activeEngine == kind {
+            Label(kind.displayName, systemImage: "checkmark")
+          } else {
+            Text(kind.displayName)
+          }
+        }
+      }
+    }
+  }
+}
+
+extension View {
+  /// The address keyboard on iPhone and iPad: no capitalization, `.` and `/` keys, and Go.
+  fileprivate func addressInput() -> some View {
+    #if os(iOS)
+      textInputAutocapitalization(.never)
+        .keyboardType(.webSearch)
+        .submitLabel(.go)
+    #else
+      self
+    #endif
+  }
+
+  /// Suggestions as wide as the field on iPhone and iPad, a wider panel on the Mac.
+  fileprivate func suggestionListWidth() -> some View {
+    #if os(iOS)
+      frame(maxWidth: .infinity, alignment: .leading)
+    #else
+      frame(minWidth: 420, maxWidth: 640, alignment: .leading)
+    #endif
   }
 }

@@ -208,8 +208,19 @@ struct PathMenu: View {
   let path: String
   let source: any WorkspaceDataSource
   let actions: WorkspaceActions
+  /// A file, which can be shared and previewed; folders cannot.
+  var isFile = true
 
   var body: some View {
+    if isFile {
+      if let quickLook = actions.quickLook {
+        Button("Quick Look", systemImage: "eye") { quickLook(path) }
+      }
+      if let share = actions.share {
+        Button("Share\u{2026}", systemImage: "square.and.arrow.up") { share(path) }
+      }
+      if actions.quickLook != nil || actions.share != nil { Divider() }
+    }
     Button("Copy Path") { WorkspacePlatform.copy(path) }
     if let absolute = source.absoluteLocation(of: path) {
       Button("Copy Absolute Path") { WorkspacePlatform.copy(absolute) }

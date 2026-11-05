@@ -65,7 +65,7 @@ public struct BrowserClearDataView: View {
       }
     }
     .padding(20)
-    .frame(width: 440)
+    .browserSheetFrame(width: 440)
     .accessibilityIdentifier("browser.clearData")
   }
 
@@ -137,7 +137,7 @@ public struct BrowserSiteSettingsView: View {
       }
       .padding(12)
     }
-    .frame(minWidth: 480, minHeight: 320)
+    .browserSheetFrame(minWidth: 480, minHeight: 320)
     .onAppear { decisions = store.decisions(for: profile) }
   }
 

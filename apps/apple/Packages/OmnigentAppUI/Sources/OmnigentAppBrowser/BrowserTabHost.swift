@@ -1,24 +1,8 @@
-import AppKit
-import Foundation
-import OSLog
-import OmnigentAppUI
-import OmnigentBrowser
-import OmnigentUIComponents
-import SwiftUI
-
-/// View > Show Browser (Option-Command-B): a browser tab in the key server window. The browser
-/// used to be its own window; it is now a tab like any other.
-struct BrowserCommands: Commands {
-  @FocusedValue(\.tabCommands) private var tabs
-
-  var body: some Commands {
-    CommandGroup(after: .sidebar) {
-      Button("Show Browser") { tabs?.openBrowser?() }
-        .keyboardShortcut("b", modifiers: [.command, .option])
-        .disabled(tabs?.openBrowser == nil)
-    }
-  }
-}
+public import Foundation
+public import OSLog
+public import OmnigentAppUI
+public import OmnigentBrowser
+public import SwiftUI
 
 /// The app's browser tabs over `OmnigentBrowser`: one `BrowserTabModel` per tab, app-wide, so a
 /// tab torn off into another window keeps its page. Pages build when their tab is first shown,
@@ -26,34 +10,45 @@ struct BrowserCommands: Commands {
 ///
 /// Pages a page opens (popups, "Open Link in New Tab") become tabs in the opener's window.
 @MainActor
-final class BrowserTabHost: BrowserTabHosting {
-  let environment: BrowserEnvironment
+public final class BrowserTabHost: BrowserTabHosting {
+  /// The browser's profiles, history and prompts.
+  public let environment: BrowserEnvironment
   private let agent: AgentBrowserController?
   private let logger: Logger
+  private let keyboardShortcuts: Bool
   private var models: [UUID: BrowserTabModel] = [:]
   private var windows: [UUID: TabStore] = [:]
 
   /// Creates the host.
   /// - Parameters:
   ///   - environment: The browser's profiles, history and prompts.
-  ///   - agent: The agent browser, for read-only agent tabs; `nil` in the App Store edition.
+  ///   - agent: The agent browser, for read-only agent tabs; `nil` where the app runs no agent
+  ///     browser (the App Store edition, iOS).
   ///   - logger: The app log.
-  init(environment: BrowserEnvironment, agent: AgentBrowserController?, logger: Logger) {
+  ///   - keyboardShortcuts: Pages install their own shortcuts (iPad keyboards); off where a menu
+  ///     bar's Browser menu (`BrowserTabCommands`) owns them.
+  public init(
+    environment: BrowserEnvironment, agent: AgentBrowserController?, logger: Logger,
+    keyboardShortcuts: Bool = false
+  ) {
     self.environment = environment
     self.agent = agent
     self.logger = logger
+    self.keyboardShortcuts = keyboardShortcuts
     environment.onOpenTab = { [weak self] model, context in self?.adopt(model, context) }
     environment.onSwitchToTab = { [weak self] id in self?.switchTo(modelID: id) }
     environment.onCloseTab = { [weak self] model in self?.pageClosed(model) }
   }
 
-  func makePage(url: URL?) -> (id: UUID, state: Data?) {
+  /// See ``BrowserTabHosting``.
+  public func makePage(url: URL?) -> (id: UUID, state: Data?) {
     let model = environment.makeTab(url: url)
     models[model.id] = model
     return (model.id, encode(model))
   }
 
-  func content(
+  /// See ``BrowserTabHosting``.
+  public func content(
     for id: UUID, restoring state: Data?, onChange: @escaping @MainActor () -> Void
   ) -> AnyView {
     let model: BrowserTabModel
@@ -72,12 +67,14 @@ final class BrowserTabHost: BrowserTabHosting {
       }
     }
     return AnyView(
-      // The menu bar's Browser menu (`BrowserTabCommands`) owns the shortcuts.
-      BrowserTabContentView(model: model, environment: environment, keyboardShortcuts: false)
-        .onChange(of: model.restoreRevision) { onChange() })
+      BrowserTabContentView(
+        model: model, environment: environment, keyboardShortcuts: keyboardShortcuts
+      )
+      .onChange(of: model.restoreRevision) { onChange() })
   }
 
-  func status(of id: UUID) -> BrowserTabStatus? {
+  /// See ``BrowserTabHosting``.
+  public func status(of id: UUID) -> BrowserTabStatus? {
     guard let model = models[id] else { return nil }
     let error = model.pageError.map { !$0.isCancellation } ?? false
     // The profile dot only tells profiles apart, so it shows once there is more than one.
@@ -89,12 +86,14 @@ final class BrowserTabHost: BrowserTabHosting {
       favicon: model.favicon?.pngData, profileColor: profileColor)
   }
 
-  func snapshot(of id: UUID) throws -> Data? {
+  /// See ``BrowserTabHosting``.
+  public func snapshot(of id: UUID) throws -> Data? {
     guard let model = models[id] else { return nil }
     return try JSONEncoder().encode(model.snapshotForRestore())
   }
 
-  func close(_ id: UUID) throws -> Data? {
+  /// See ``BrowserTabHosting``.
+  public func close(_ id: UUID) throws -> Data? {
     guard let model = models.removeValue(forKey: id) else { return nil }
     return try JSONEncoder().encode(closeOwned(model))
   }
@@ -102,26 +101,29 @@ final class BrowserTabHost: BrowserTabHosting {
   /// The live page of a browser tab, for menu commands routed to it.
   /// - Parameter id: The page.
   /// - Returns: The page, or `nil` before it is built.
-  func page(_ id: UUID) -> BrowserTabModel? {
+  public func page(_ id: UUID) -> BrowserTabModel? {
     models[id]
   }
 
-  func agentContent(for sessionID: String) -> AnyView? {
+  /// See ``BrowserTabHosting``.
+  public func agentContent(for sessionID: String) -> AnyView? {
     guard let agent, let tab = agent.activeTab(conversationID: sessionID) else { return nil }
     return AnyView(AgentBrowserMirror(tab: tab))
   }
 
-  func attach(window: UUID, tabs: TabStore) {
+  /// See ``BrowserTabHosting``.
+  public func attach(window: UUID, tabs: TabStore) {
     windows[window] = tabs
   }
 
-  func detach(window: UUID) {
+  /// See ``BrowserTabHosting``.
+  public func detach(window: UUID) {
     windows[window] = nil
   }
 
   /// A window closed for good: its browser pages close with it.
   /// - Parameter window: The window.
-  func windowClosed(_ window: UUID) {
+  public func windowClosed(_ window: UUID) {
     guard let tabs = windows.removeValue(forKey: window) else { return }
     for tab in tabs.tabs {
       guard case .browser(let id) = tab.content, let model = models.removeValue(forKey: id) else {
@@ -212,63 +214,5 @@ final class BrowserTabHost: BrowserTabHosting {
       return
     }
     location.tabs.close(location.tab.id)
-  }
-}
-
-/// The page an agent drives, mirrored read-only: a screenshot refreshed every second, so the
-/// agent's page never leaves its off-screen panel and no input can reach it.
-private struct AgentBrowserMirror: View {
-  let tab: any BrowserTab
-
-  @State private var image: NSImage?
-  @State private var failure: String?
-
-  var body: some View {
-    VStack(spacing: 0) {
-      HStack(spacing: 8) {
-        Label("The agent is browsing. This view is read-only.", systemImage: "eye")
-        Spacer()
-        Text(tab.state.url?.absoluteString ?? "")
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-          .truncationMode(.middle)
-      }
-      .font(.callout)
-      .padding(8)
-      Divider()
-      Group {
-        if let image {
-          Image(nsImage: image).resizable().scaledToFit()
-            .accessibilityLabel("The page the agent is on")
-        } else if let failure {
-          ContentUnavailableView(
-            "No Picture of the Page", systemImage: "exclamationmark.triangle",
-            description: Text(failure))
-        } else {
-          ProgressView()
-        }
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    .navigationTitle(tab.state.title.isEmpty ? "Agent Browser" : tab.state.title)
-    .accessibilityIdentifier("agent-browser-tab")
-    .task { await refresh() }
-  }
-
-  private func refresh() async {
-    while !Task.isCancelled {
-      do {
-        let data = try await tab.takeSnapshotPNG()
-        image = NSImage(data: data)
-        failure = nil
-      } catch {
-        failure = error.localizedDescription
-      }
-      do {
-        try await Task.sleep(for: .seconds(1))
-      } catch {
-        return
-      }
-    }
   }
 }
