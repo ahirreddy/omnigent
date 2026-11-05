@@ -36,6 +36,32 @@ struct FocusedActionsRelayTests {
     #expect(approving.approveOwnsCommandReturn)
   }
 
+  @Test("model, effort and rename commands survive forwarding")
+  func sessionMenuCommandsForward() throws {
+    let relay = FocusedActionsRelay<SessionCommandActions>()
+    var calls: [String] = []
+    func actions(_ tag: String) -> SessionCommandActions {
+      var actions = SessionCommandActions()
+      actions.rename = { calls.append("rename \(tag)") }
+      actions.chooseModel = { calls.append("model \(tag)") }
+      actions.cycleModel = { calls.append("cycle model \(tag)") }
+      actions.cycleEffort = { calls.append("cycle effort \(tag)") }
+      return actions
+    }
+    _ = relay.publish(actions("first"))
+    let published = try #require(relay.publish(actions("second")))
+    #expect(relay.publications == 1)
+    published.rename?()
+    published.chooseModel?()
+    published.cycleModel?()
+    published.cycleEffort?()
+    #expect(
+      calls == ["rename second", "model second", "cycle model second", "cycle effort second"])
+
+    _ = relay.publish(SessionCommandActions())
+    #expect(relay.publications == 2)
+  }
+
   @Test("nil clears the published value")
   func nilClears() {
     let relay = FocusedActionsRelay<SessionCommandActions>()

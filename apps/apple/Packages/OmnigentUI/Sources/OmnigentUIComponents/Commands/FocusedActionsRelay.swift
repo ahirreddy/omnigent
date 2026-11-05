@@ -71,7 +71,8 @@ extension SessionCommandActions: FocusedActions {
     [
       send != nil, interrupt != nil, jumpToLatest != nil, focusComposer != nil,
       toggleInspector != nil, previousSession != nil, nextSession != nil,
-      toggleViewMode != nil, openChanges != nil, approveOwnsCommandReturn,
+      toggleViewMode != nil, openChanges != nil, rename != nil, chooseModel != nil,
+      cycleModel != nil, cycleEffort != nil, approveOwnsCommandReturn,
     ]
   }
 
@@ -89,6 +90,10 @@ extension SessionCommandActions: FocusedActions {
       nextSession: Self.forward(nextSession, \.nextSession, to: latest),
       toggleViewMode: Self.forward(toggleViewMode, \.toggleViewMode, to: latest),
       openChanges: Self.forward(openChanges, \.openChanges, to: latest))
+    copy.rename = Self.forward(rename, \.rename, to: latest)
+    copy.chooseModel = Self.forward(chooseModel, \.chooseModel, to: latest)
+    copy.cycleModel = Self.forward(cycleModel, \.cycleModel, to: latest)
+    copy.cycleEffort = Self.forward(cycleEffort, \.cycleEffort, to: latest)
     copy.approveOwnsCommandReturn = approveOwnsCommandReturn
     return copy
   }
