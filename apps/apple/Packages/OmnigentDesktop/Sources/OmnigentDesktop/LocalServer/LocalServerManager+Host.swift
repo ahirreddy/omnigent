@@ -20,6 +20,11 @@ extension LocalServerManager {
       return
     }
     hostCrashes = 0
+    host = .connecting(serverURL: target)
+    if case .failure(let error) = await signInCLI(to: target) {
+      failHost(error)
+      return
+    }
     await launchHost(target, restartAttempt: nil)
   }
 

@@ -79,6 +79,13 @@ nonisolated public protocol LocalServerProbing: Sendable {
   /// - Parameter baseURL: For example `http://127.0.0.1:6767`.
   /// - Returns: The outcome.
   func probe(_ baseURL: URL) async -> LocalServerProbeResult
+
+  /// Whether the CLI's `bearer` is signed in to `serverURL`, before hosting for it.
+  /// - Parameters:
+  ///   - serverURL: The remote server.
+  ///   - bearer: The CLI's stored token for it, if any.
+  /// - Returns: The answer.
+  func signInProbe(_ serverURL: URL, bearer: String?) async -> CLISignInProbe
 }
 
 /// Probes with an ephemeral `URLSession` that ignores system proxies and refuses redirects, so
@@ -145,6 +152,15 @@ nonisolated public struct URLSessionLocalServerProbe: LocalServerProbing {
       return "/health did not answer {\"status\": \"ok\"}"
     }
     return nil
+  }
+
+  /// The status `request` answers with, redirects unfollowed.
+  func statusCode(for request: URLRequest) async throws -> Int {
+    let (_, response) = try await session.data(for: request, delegate: RefuseRedirects())
+    guard let http = response as? HTTPURLResponse else {
+      throw ProbeProblem("\(request.url?.path() ?? "") did not return an HTTP response")
+    }
+    return http.statusCode
   }
 
   private func get(_ url: URL) async throws(ProbeProblem) -> (Data, Int) {

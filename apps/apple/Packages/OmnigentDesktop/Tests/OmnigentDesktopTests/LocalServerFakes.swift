@@ -186,6 +186,21 @@ final class FakeProbe: LocalServerProbing {
 
   func count(_ url: URL) -> Int { counts.withLock { $0[url] ?? 0 } }
 
+  /// What `signInProbe` answers, and the bearers it was asked with.
+  private let signIn = Mutex((answer: CLISignInProbe.unreachable, bearers: [String?]()))
+
+  func answerSignIn(_ answer: CLISignInProbe) { signIn.withLock { $0.answer = answer } }
+
+  var signInBearers: [String?] { signIn.withLock(\.bearers) }
+
+  func signInProbe(_ serverURL: URL, bearer: String?) async -> CLISignInProbe {
+    await Task.yield()  // A real probe suspends on the network.
+    return signIn.withLock { state in
+      state.bearers.append(bearer)
+      return state.answer
+    }
+  }
+
   func probe(_ baseURL: URL) async -> LocalServerProbeResult {
     await Task.yield()  // A real probe suspends on the network.
     counts.withLock { $0[baseURL, default: 0] += 1 }
