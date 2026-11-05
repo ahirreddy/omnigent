@@ -219,15 +219,9 @@ struct ComposerTrayView: View {
           .accessibilityLabel("Branch, \(branch)")
       }
       if let pullRequest = tray.pullRequest {
-        Button {
-          actions.indicators.openPullRequests?()
-        } label: {
-          Label(pullRequest, systemImage: "arrow.triangle.pull").foregroundStyle(.secondary)
-        }
-        .disabled(actions.indicators.openPullRequests == nil)
-        .help("Pull requests: \(pullRequest)")
-        .accessibilityLabel("Pull requests, \(pullRequest)")
-        .accessibilityIdentifier("composer-pull-requests")
+        ComposerPullRequestChip(
+          label: pullRequest, status: tray.pullRequestStatus, preview: tray.pullRequestPreview,
+          open: actions.indicators.openPullRequests)
       }
     }
   }

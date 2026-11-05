@@ -122,6 +122,10 @@ nonisolated public struct ComposerTray: Hashable, Sendable {
   public var branch: String?
   /// A linked pull request label, for example "#1234".
   public var pullRequest: String?
+  /// The status the chip's icon shows: the linked PR that most needs the user.
+  public var pullRequestStatus: PullRequestSummary.Status?
+  /// The linked PRs for the chip's hover preview, the ones that need the user first.
+  public var pullRequestPreview: [PullRequestSummary] = []
   /// Context window used, 0 to 1.
   public var contextFraction: Double?
   /// Background tasks, sub-agents and the goal.

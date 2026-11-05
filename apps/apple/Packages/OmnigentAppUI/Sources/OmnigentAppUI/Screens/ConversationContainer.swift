@@ -136,7 +136,7 @@ struct ConversationContainer: View {
     if !indicators.isEmpty || pullRequest != nil {
       var tray = composer.tray ?? ComposerTray()
       tray.indicators = indicators
-      tray.pullRequest = pullRequest
+      SessionToolsAdapter.setPullRequests(panel, label: pullRequest, on: &tray)
       composer.tray = tray
     }
     return composer
@@ -206,6 +206,7 @@ struct ConversationContainer: View {
     return WorkspacePanelSlots(
       workspace: workspace, panel: panel, terminals: terminals, tabRoutes: tabRoutes,
       terminalNames: terminalNames, permissionLevel: conversation.header?.permissionLevel,
+      canEdit: !(conversation.header?.readOnly ?? false),
       newSideChat: SessionToolsAdapter.sideChat(conversation, routes: toolRoutes),
       mention: { path in
         let separator = composer.text.isEmpty || composer.text.hasSuffix(" ") ? "" : " "
@@ -292,7 +293,6 @@ struct ConversationContainer: View {
       },
       cancel: { flow.cancel() })
   }
-
 }
 
 extension ConversationContainer {

@@ -176,6 +176,21 @@ nonisolated public struct PullRequestSummary: Hashable, Sendable, Identifiable {
     /// The host has not fetched the state yet.
     case unknown
 
+    /// Sort order, as the web ranks statuses: what needs the user first.
+    public var priority: Int {
+      switch self {
+      case .conflicts: 0
+      case .failing: 1
+      case .ready: 2
+      case .running: 3
+      case .open: 4
+      case .draft: 5
+      case .unknown: 6
+      case .merged: 7
+      case .closed: 8
+      }
+    }
+
     /// The label.
     public var title: String {
       switch self {

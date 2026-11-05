@@ -18,7 +18,7 @@ enum PullRequestAdapter {
   static func state(_ panel: SessionPanelStore, now: Date = .now) -> PullRequestsPanelState {
     state(
       features: panel.features, featuresError: panel.featuresError,
-      pullRequests: panel.pullRequests, now: now)
+      pullRequests: panel.pullRequests, live: panel.liveConditions, now: now)
   }
 
   /// The tab's state from the store's values.
@@ -26,11 +26,13 @@ enum PullRequestAdapter {
   ///   - features: The server's panel features, once read.
   ///   - featuresError: Why they could not be read.
   ///   - pullRequests: The stored pull requests.
+  ///   - live: Each PR's condition as its host last read it.
   ///   - now: The current time.
   /// - Returns: The state.
   static func state(
     features: PanelFeatures?, featuresError: CoreError?,
-    pullRequests: CreationLoad<SessionPullRequests>, now: Date = .now
+    pullRequests: CreationLoad<SessionPullRequests>,
+    live: [String: PullRequestCondition] = [:], now: Date = .now
   ) -> PullRequestsPanelState {
     guard let features else { return featuresError.map { .failed($0.message) } ?? .loading }
     guard features.pullRequests else { return .unsupported }
@@ -38,19 +40,21 @@ enum PullRequestAdapter {
     case .idle, .loading: return .loading
     case .failed(let error): return .failed(error.message)
     case .loaded(let list):
-      return .loaded(list.pullRequests.map { summary($0, now: now) }, synced: list.synced)
+      return .loaded(
+        list.pullRequests.map { summary($0, live: live[$0.url], now: now) }, synced: list.synced)
     }
   }
 
   /// One row.
   /// - Parameters:
   ///   - pullRequest: The stored PR.
+  ///   - live: Its condition as the host last read it; a stored merge or close wins.
   ///   - now: The current time.
   /// - Returns: The row.
-  static func summary(_ pullRequest: SessionPullRequest, now: Date = .now)
-    -> PullRequestSummary
-  {
-    let status: PullRequestSummary.Status =
+  static func summary(
+    _ pullRequest: SessionPullRequest, live: PullRequestCondition? = nil, now: Date = .now
+  ) -> PullRequestSummary {
+    let stored: PullRequestSummary.Status =
       switch pullRequest.status {
       case .open: .open
       case .draft: .draft
@@ -58,6 +62,8 @@ enum PullRequestAdapter {
       case .closed: .closed
       case .unknown: .unknown
       }
+    let settled = stored == .merged || stored == .closed
+    let status = live.map(PullRequestDetailAdapter.status).flatMap { settled ? nil : $0 } ?? stored
     let detail = [relationship(pullRequest.relationship), checked(pullRequest, now: now)]
       .compactMap(\.self).joined(separator: " \u{00B7} ")
     return PullRequestSummary(
