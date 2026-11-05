@@ -123,7 +123,7 @@ private struct MarkdownBlockView: View {
     case .list(let ordered, let start, let items):
       MarkdownListView(ordered: ordered, start: start, items: items)
     case .table(let table):
-      MarkdownTableView(table: table)
+      MarkdownTableBlock(table: table)
     case .rule:
       Divider().padding(.vertical, Theme.Spacing.extraSmall)
     case .html(let raw):
@@ -182,7 +182,7 @@ private struct MarkdownListView: View {
   }
 }
 
-private struct MarkdownTableView: View {
+struct MarkdownTableView: View {
   let table: MarkdownTable
   @Environment(\.workspaceFileLinks) private var links
 
@@ -279,6 +279,7 @@ struct CodeBlockView: View {
         .foregroundStyle(.secondary)
         .help(wrapsLines ? "Scroll long lines" : "Wrap long lines")
         .accessibilityLabel("Wrap code lines")
+        CodeBlockDownloadButton(code: code, language: language)
         CopyButton(text: code, label: "Copy code", showsLabel: true)
       }
       .padding(.horizontal, Theme.Spacing.medium)
