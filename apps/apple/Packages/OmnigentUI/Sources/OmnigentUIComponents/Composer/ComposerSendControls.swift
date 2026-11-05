@@ -53,18 +53,37 @@ struct ComposerSendRules {
     return nil
   }
 
-  /// The placeholder: while the agent works, the default one says what a send does. Only the
-  /// Mac mentions Esc; touch has the Stop button beside the field.
+  /// The placeholder. The Mac's default one names the keys ("↵ to send now, ⌥⌘↵ to queue for
+  /// later", ⌘↵ with the Command-Return setting); touch says what a send does while it runs.
   var placeholder: String {
     let isDefault = state.placeholder == ComposerViewState().placeholder
-    let touch = layout == .touch
-    let idle = touch && isDefault && state.purpose == .session ? "Reply\u{2026}" : state.placeholder
+    guard layout == .touch else { return isDefault ? keyHints : state.placeholder }
+    let idle = isDefault && state.purpose == .session ? "Reply\u{2026}" : state.placeholder
     guard state.isRunning, isDefault else { return idle }
-    let stop = touch ? "\u{2026}" : " \u{2014} Esc to stop"
     switch intent {
-    case .steer: return "Steer the agent" + stop
-    case .queue: return "Queue a follow-up" + stop
+    case .steer: return "Steer the agent\u{2026}"
+    case .queue: return "Queue a follow-up\u{2026}"
     case .send: return idle
+    }
+  }
+
+  /// What Return does, then Option-Command-Return's alternative (or the newline key while idle).
+  private var keyHints: String {
+    let send = state.submitWithCommandReturn ? "\u{2318}\u{21B5}" : "\u{21B5}"
+    let primary = "\(send) to \(Self.verb(intent))"
+    if let alternative {
+      return "\(primary), \u{2325}\u{2318}\u{21B5} to \(Self.verb(alternative))"
+    }
+    guard intent == .send else { return primary }
+    let newline = state.submitWithCommandReturn ? "\u{21B5}" : "\u{21E7}\u{21B5}"
+    return "\(primary), \(newline) for a new line"
+  }
+
+  private static func verb(_ intent: ComposerSendIntent) -> String {
+    switch intent {
+    case .send: "send"
+    case .steer: "send now"
+    case .queue: "queue for later"
     }
   }
 
@@ -79,7 +98,8 @@ struct ComposerSendRules {
 }
 
 /// Stop and Send. While the agent works Stop is always there, and Send says what it will do
-/// ("Send now · steer" or "Queued · after this turn"); its menu offers the other choice.
+/// ("Send now · steer" or "Queued · after this turn"); its menu offers the other choice. The
+/// Mac's pill draws them as rounded squares and shows Send only when there is something to send.
 struct ComposerSendControls: View {
   let state: ComposerViewState
   let rules: ComposerSendRules
@@ -88,6 +108,7 @@ struct ComposerSendControls: View {
   let interrupt: (@MainActor () -> Void)?
   @Environment(\.commandReturnOwner) private var commandReturnOwner
   @Environment(\.composerLayoutStyle) private var layout
+  @Environment(\.colorScheme) private var colorScheme
 
   /// A pending request's Approve has Command-Return; Send gives it up and says so.
   private var approveOwnsCommandReturn: Bool { commandReturnOwner == .approve }
@@ -97,7 +118,7 @@ struct ComposerSendControls: View {
       if state.isRunning {
         stop
       }
-      if !state.isRunning || hasDraft {
+      if layout == .card ? hasDraft || state.delivery == .sending : !state.isRunning || hasDraft {
         // The touch bar has no room for the words; Send's label and hint say it.
         if state.isRunning, layout == .card, let label = rules.intent.label {
           Text(label)
@@ -113,6 +134,10 @@ struct ComposerSendControls: View {
     }
   }
 
+  private var stopColors: (fill: Color, glyph: Color) {
+    colorScheme == .dark ? (Color(white: 0.92), .black) : (Color(white: 0.1), .white)
+  }
+
   private var stop: some View {
     Button {
       interrupt?()
@@ -125,15 +150,13 @@ struct ComposerSendControls: View {
             .accessibilityHidden(true)
         }
       }
-      // Touch: a filled circle with a square, always in reach while the agent works.
-      .foregroundStyle(layout == .touch ? AnyShapeStyle(.background) : AnyShapeStyle(.primary))
+      // A filled shape with a square, always in reach while the agent works. Fixed colors, as
+      // glass would draw hierarchical styles vibrant (a washed-out gray).
+      .foregroundStyle(stopColors.glyph)
       .frame(width: layout.sendCircle, height: layout.sendCircle)
-      .background(
-        layout == .touch ? AnyShapeStyle(.primary) : AnyShapeStyle(.primary.opacity(0.12)),
-        in: Circle()
-      )
+      .background(stopColors.fill, in: layout.sendShape)
       .frame(width: layout.sendTarget, height: layout.sendTarget)
-      .contentShape(Circle())
+      .contentShape(layout.sendShape)
     }
     .buttonStyle(.plain)
     .keyboardShortcut(".", modifiers: .command)
@@ -161,9 +184,9 @@ struct ComposerSendControls: View {
       }
       .foregroundStyle(blocked == nil ? ThemeColor.onAccent : ThemeColor.secondary)
       .frame(width: layout.sendCircle, height: layout.sendCircle)
-      .background(blocked == nil ? Theme.accent : ThemeColor.hover, in: Circle())
+      .background(blocked == nil ? Theme.accent : ThemeColor.hover, in: layout.sendShape)
       .frame(width: layout.sendTarget, height: layout.sendTarget)
-      .contentShape(Circle())
+      .contentShape(layout.sendShape)
     }
     .buttonStyle(.plain)
     .keyboardShortcut(

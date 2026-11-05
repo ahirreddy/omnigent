@@ -41,14 +41,33 @@ enum ComposerBarMetrics {
   static let modeWidth: CGFloat = 96
 }
 
+/// Metrics for the Mac's pill: one 48 pt row (32 pt controls in 8 pt padding) that grows with
+/// the text, and a row of plain controls under it.
+enum ComposerPillMetrics {
+  static let padding: CGFloat = 8
+  /// The editor's single line and the buttons share this height.
+  static let row: CGFloat = 32
+  /// Send and Stop: a 28 pt rounded square in the row's height.
+  static let button: CGFloat = 28
+  static let buttonRadius: CGFloat = 8
+}
+
 extension ComposerLayoutStyle {
-  /// Send and Stop's visible circle.
+  /// Send and Stop's visible size.
   var sendCircle: CGFloat {
-    self == .touch ? ComposerBarMetrics.sendCircle : Theme.Control.send
+    self == .touch ? ComposerBarMetrics.sendCircle : ComposerPillMetrics.button
   }
 
   /// Send and Stop's hit area.
   var sendTarget: CGFloat {
-    self == .touch ? max(Theme.Control.target, ComposerBarMetrics.sendCircle) : Theme.Control.send
+    self == .touch
+      ? max(Theme.Control.target, ComposerBarMetrics.sendCircle) : ComposerPillMetrics.row
+  }
+
+  /// Send and Stop's shape: a circle on touch, a rounded square in the Mac's pill.
+  var sendShape: RoundedRectangle {
+    self == .touch
+      ? RoundedRectangle(cornerRadius: sendCircle / 2, style: .circular)
+      : RoundedRectangle(cornerRadius: ComposerPillMetrics.buttonRadius, style: .continuous)
   }
 }

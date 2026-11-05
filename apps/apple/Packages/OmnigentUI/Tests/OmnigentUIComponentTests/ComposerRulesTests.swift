@@ -171,7 +171,8 @@ struct ComposerRulesTests {
     #expect(rules.intent == .steer)
     #expect(rules.blockedReason(for: .steer) == nil)
     #expect(rules.blockedReason(for: .queue) != nil)
-    #expect(rules.placeholder == "Steer the agent \u{2014} Esc to stop")
+    #expect(
+      rules.placeholder == "\u{21B5} to send now, \u{2325}\u{2318}\u{21B5} to queue for later")
     let empty = ComposerSendRules(state: ComposerSamples.idle, draft: " ", canQueue: true)
     #expect(empty.sendBlockedReason == "Type a message.")
   }

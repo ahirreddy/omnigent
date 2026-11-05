@@ -140,7 +140,7 @@ struct ComposerTrayView: View {
   }
 
   /// Whether anything shows before the context gauge.
-  private var hasLeadingItems: Bool {
+  var hasLeadingItems: Bool {
     context != nil || (tray.directory != nil && (canPickDirectory || context == nil))
       || tray.worktree != nil || (tray.branch != nil && context?.branch == nil)
       || tray.pullRequest != nil
@@ -169,7 +169,7 @@ struct ComposerTrayView: View {
     .accessibilityIdentifier("composer-tray")
   }
 
-  private var leadingItems: some View {
+  var leadingItems: some View {
     HStack(spacing: Theme.Spacing.medium) {
       if let context {
         // A folder picker already names the workspace.
@@ -232,18 +232,22 @@ struct ComposerTrayView: View {
     }
   }
 
-  /// A gauge with its number, so it never reads as a spinner and needs no hover.
-  private func contextUsage(_ fraction: Double) -> some View {
+  /// A gauge with its number, so it never reads as a spinner and needs no hover. The Mac's row
+  /// under the pill shows the ring alone; its tooltip and VoiceOver give the number.
+  func contextUsage(_ fraction: Double, showsPercent: Bool = true) -> some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
       ProgressRing(fraction: fraction, size: 13, warnsNearFull: true)
-      Text("\(Int((fraction * 100).rounded()))% context")
-        .monospacedDigit()
-        .foregroundStyle(
-          fraction > 0.85 ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(.secondary)
-        )
-        .lineLimit(1)
-        .fixedSize()
+      if showsPercent {
+        Text("\(Int((fraction * 100).rounded()))% context")
+          .monospacedDigit()
+          .foregroundStyle(
+            fraction > 0.85 ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(.secondary)
+          )
+          .lineLimit(1)
+          .fixedSize()
+      }
     }
+    .contentShape(Rectangle())
     .help("Context used: \(Int((fraction * 100).rounded()))% of the context window")
     .accessibilityElement()
     .accessibilityLabel("Context used")

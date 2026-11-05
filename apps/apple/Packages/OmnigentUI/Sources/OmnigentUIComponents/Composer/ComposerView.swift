@@ -2,9 +2,9 @@ import PhotosUI
 public import SwiftUI
 import UniformTypeIdentifiers
 
-/// The composer, laid out like the web's: the queue strip, a context tray (where it runs), then
-/// one card with a growing editor and an action row (Add, Host, approval mode; agent, model and
-/// effort, Mic, Stop and Send). Return sends and Shift- or Option-Return inserts a newline (or
+/// The composer. On the Mac: the queue strip, then one pill (Add, a growing editor, Stop or
+/// Send, Mic) over a row of plain controls (where it runs; model and effort, approval mode,
+/// context ring). Touch keeps a context tray over a bar that opens into an action row. Return sends and Shift- or Option-Return inserts a newline (or
 /// ⌘Return sends with the "Submit with ⌘ + Enter" setting). While the agent works, Send says
 /// what it will do ("Send now · steer" or "Queued · after this turn"), ⌥⌘Return does the other,
 /// and Stop stays available. ⇧Tab cycles the approval mode with a brief HUD. Esc closes the
@@ -78,8 +78,8 @@ public struct ComposerView: View {
     switch layout {
     case .card:
       EdgeInsets(
-        top: Theme.Spacing.medium, leading: Theme.Spacing.medium, bottom: Theme.Spacing.medium,
-        trailing: Theme.Spacing.medium)
+        top: ComposerPillMetrics.padding, leading: ComposerPillMetrics.padding,
+        bottom: ComposerPillMetrics.padding, trailing: ComposerPillMetrics.padding)
     case .touch where isCollapsed:
       EdgeInsets(
         top: ComposerBarMetrics.collapsedVerticalPadding,
@@ -122,7 +122,7 @@ public struct ComposerView: View {
           queue: state.queue, isRunning: state.isRunning, canSteer: state.canSteer,
           actions: actions.extras)
       }
-      if showsTray {
+      if showsTray, layout == .touch {
         ComposerTrayView(
           tray: state.tray ?? ComposerTray(), context: state.context, actions: actions.extras,
           showsContextDetails: showsContextDetails
@@ -149,17 +149,30 @@ public struct ComposerView: View {
         if !state.attachments.isEmpty {
           DraftAttachmentStrip(attachments: state.attachments, remove: actions.removeAttachment)
         }
-        // The editor keeps one place in the tree whether the bar is collapsed or open, so
-        // focusing it (which opens the bar) never recreates it.
-        HStack(alignment: .center, spacing: Theme.Spacing.tiny) {
-          if isCollapsed { collapsedLeading }
-          editor
-          if isCollapsed { collapsedTrailing }
+        if layout == .card {
+          // One row; the controls stay at the bottom as the text grows.
+          HStack(alignment: .bottom, spacing: Theme.Spacing.extraSmall) {
+            parts.pillLeading.frame(height: ComposerPillMetrics.row)
+            editor
+              .padding(.vertical, Theme.Spacing.small - Theme.Spacing.tiny)
+              .frame(minHeight: ComposerPillMetrics.row)
+            parts.pillTrailing.frame(height: ComposerPillMetrics.row)
+          }
+        } else {
+          // The editor keeps one place in the tree whether the bar is collapsed or open, so
+          // focusing it (which opens the bar) never recreates it.
+          HStack(alignment: .center, spacing: Theme.Spacing.tiny) {
+            if isCollapsed { collapsedLeading }
+            editor
+            if isCollapsed { collapsedTrailing }
+          }
+          if !isCollapsed { toolbar }
         }
-        if !isCollapsed { toolbar }
       }
       .padding(cardPadding)
-      .composerSurface(isTargeted: isDropTargeted, isFocused: isFocused)
+      .modifier(
+        ComposerCardSurface(layout: layout, isTargeted: isDropTargeted, isFocused: isFocused)
+      )
       .overlay(alignment: .top) {
         if let modeHUD {
           ApprovalModeHUD(option: modeHUD)
@@ -169,6 +182,11 @@ public struct ComposerView: View {
         }
       }
       .animation(reduceMotion ? nil : Theme.Motion.feedback, value: modeHUD)
+      if layout == .card {
+        ComposerFooter(
+          state: state, actions: actions, isEditable: isEditable,
+          showsContextDetails: showsContextDetails)
+      }
       if let connection = state.connection {
         ConnectionNoticeRow(notice: connection, reconnect: actions.extras.reconnect)
       }
@@ -216,7 +234,7 @@ public struct ComposerView: View {
   private var editor: some View {
     GrowingTextEditor(
       text: $draft, placeholder: rules.placeholder,
-      minLines: layout == .touch && !isExpanded ? 1 : (isExpanded ? 10 : 2),
+      minLines: isExpanded ? 10 : 1,
       maxLines: isExpanded ? 28 : (layout == .touch ? ComposerBarMetrics.maxLines : 8),
       identifier: "composer-input"
     )
@@ -227,6 +245,9 @@ public struct ComposerView: View {
     .onKeyPress(.escape, phases: .down) { _ in handleEscape() }
     .onKeyPress(.upArrow, phases: .down) { _ in handleUpArrow() }
     .accessibilityLabel("Message")
+    .accessibilityAction(named: isExpanded ? "Collapse Editor" : "Expand Editor") {
+      isExpanded.toggle()
+    }
     .accessibilityHint(
       isEditable
         ? (state.submitWithCommandReturn ? "Command-Return sends" : "Return sends")
@@ -353,7 +374,20 @@ extension ComposerView {
       hasDraft: !draft.isEmpty || !state.attachments.isEmpty, isEditable: isEditable,
       canAttach: canAttach, layoutWidth: layoutWidth, layout: layout,
       isImporting: $isImporting, isPickingPhotos: $isPickingPhotos, isExpanded: $isExpanded,
-      loadProviders: { providers in Task { await loadProviders(providers) } }, perform: perform)
+      loadProviders: { providers in Task { await loadProviders(providers) } }, perform: perform,
+      pillDictate: actions.extras.dictate ?? startSystemDictation)
+  }
+
+  /// Focuses the editor, then starts the Mac's dictation in it.
+  private func startSystemDictation() {
+    isFocused = true
+    Task { @MainActor in
+      await Task.yield()
+      if !SystemDictation.start() {
+        attachmentError =
+          "Dictation is unavailable. Turn it on in System Settings \u{203A} Keyboard."
+      }
+    }
   }
 
   private var toolbar: some View { parts.toolbar }
