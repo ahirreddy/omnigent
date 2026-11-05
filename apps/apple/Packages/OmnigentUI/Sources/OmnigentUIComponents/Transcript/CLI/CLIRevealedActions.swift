@@ -106,9 +106,8 @@ struct CLITouchActionsButton: View {
 
   var body: some View {
     if actions.count == 1, let action = actions.first {
-      Button(action: action.perform) { glyph(action.systemImage) }
+      Button(action: action.perform) { glyph(action.systemImage, label: action.title) }
         .buttonStyle(.plain)
-        .accessibilityLabel(action.title)
         .accessibilityIdentifier("\(action.identifier)-touch")
     } else {
       Menu {
@@ -116,18 +115,18 @@ struct CLITouchActionsButton: View {
           Button(action.title, systemImage: action.systemImage, action: action.perform)
         }
       } label: {
-        glyph("ellipsis")
+        glyph("ellipsis", label: "Actions")
       }
       .menuStyle(.button)
       .buttonStyle(.plain)
       .menuIndicator(.hidden)
-      .accessibilityLabel("Actions")
       .accessibilityIdentifier("\(actions.first?.identifier ?? "cli")-more")
     }
   }
 
-  private func glyph(_ systemImage: String) -> some View {
+  private func glyph(_ systemImage: String, label: String) -> some View {
     Image(systemName: systemImage)
+      .accessibilityLabel(label)
       .font(.footnote.weight(.semibold))
       .foregroundStyle(palette.dim.color)
       .frame(width: Self.width, height: CLIFontSize().line)

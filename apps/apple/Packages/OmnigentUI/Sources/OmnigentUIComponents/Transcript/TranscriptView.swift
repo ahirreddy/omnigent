@@ -159,13 +159,11 @@ public struct TranscriptView: View {
         await Task.yield()
         await frameLatestTurn(proxy)
       }
-      .overlay(alignment: .bottomTrailing) {
-        if state.rows.contains(where: { $0.role == .user }) {
-          TranscriptNavigator(previous: { step(.previous, proxy) }, next: { step(.next, proxy) })
-            .padding(Theme.Spacing.medium)
-        }
-      }
-      .modifier(TranscriptNavigatorClearance(isShown: state.rows.contains { $0.role == .user }))
+      .modifier(
+        TranscriptNavigatorOverlay(
+          isShown: state.rows.contains { $0.role == .user },
+          previous: { step(.previous, proxy) }, next: { step(.next, proxy) })
+      )
       .modifier(
         JumpToTopReveal(
           hasMoreHistory: state.hasMoreHistory && actions.loadOlder != nil,

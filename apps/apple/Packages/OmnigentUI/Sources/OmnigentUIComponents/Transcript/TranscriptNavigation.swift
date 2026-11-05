@@ -151,10 +151,14 @@ struct TranscriptNavigator: View {
   }
 }
 
-/// Keeps ``TranscriptNavigator/bottomClearance(layout:width:column:)`` under the transcript's
-/// scroll content while the pill shows.
-struct TranscriptNavigatorClearance: ViewModifier {
+/// The transcript's ``TranscriptNavigator`` at its bottom-trailing corner, with
+/// ``TranscriptNavigator/bottomClearance(layout:width:column:)`` kept under the scroll content
+/// while the pill shows.
+struct TranscriptNavigatorOverlay: ViewModifier {
+  /// There is a user message to move between.
   let isShown: Bool
+  let previous: () -> Void
+  let next: () -> Void
   @State private var width: CGFloat = 0
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.composerLayoutStyle) private var composerLayout
@@ -167,6 +171,11 @@ struct TranscriptNavigatorClearance: ViewModifier {
       ? TranscriptNavigator.bottomClearance(layout: composerLayout, width: width, column: column)
       : 0
     content
+      .overlay(alignment: .bottomTrailing) {
+        if isShown {
+          TranscriptNavigator(previous: previous, next: next).padding(Theme.Spacing.medium)
+        }
+      }
       .onGeometryChange(for: CGFloat.self) {
         $0.size.width
       } action: {
