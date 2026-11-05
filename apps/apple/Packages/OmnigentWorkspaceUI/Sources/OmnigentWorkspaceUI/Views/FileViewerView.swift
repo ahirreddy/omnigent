@@ -2,13 +2,18 @@ public import SwiftUI
 
 /// A file: monospaced text with line numbers and light syntax highlighting, an image with its
 /// size, or a note for binary files. Notices say when the core clipped the text or the server
-/// truncated the file. `line` scrolls to and marks a 1-based line, for search results.
+/// truncated the file. `line` scrolls to and marks a 1-based line, for search results. With an
+/// editor the text can be edited (the Edit mode), and with a review context lines and
+/// selections offer comments and agent actions.
 public struct FileViewerView: View {
   private let file: WorkspaceFile
   private let line: UInt64?
   private let source: any WorkspaceDataSource
   private let actions: WorkspaceActions
+  private let editor: FileEditor?
+  private let review: FileReviewContext?
   @AppStorage("workspace.fileViewMode") private var viewMode = FileViewMode.preview
+  @State private var commenting: FileTextSpan?
 
   /// A viewer.
   /// - Parameters:
@@ -16,33 +21,34 @@ public struct FileViewerView: View {
   ///   - line: A 1-based line to scroll to and mark.
   ///   - source: Used for absolute paths.
   ///   - actions: Host hooks for reveal and open.
+  ///   - editor: Edits the file's text; `nil` keeps it read-only.
+  ///   - review: Comments and agent actions; `nil` hides them.
   public init(
     file: WorkspaceFile, line: UInt64? = nil, source: any WorkspaceDataSource,
-    actions: WorkspaceActions = .none
+    actions: WorkspaceActions = .none, editor: FileEditor? = nil,
+    review: FileReviewContext? = nil
   ) {
     self.file = file
     self.line = line
     self.source = source
     self.actions = actions
+    self.editor = editor
+    self.review = review
   }
 
   /// The view.
   public var body: some View {
     VStack(spacing: 0) {
       FileHeader(
-        file: file, source: source, actions: actions,
-        viewMode: previewKind == nil ? nil : $viewMode)
+        file: file, source: source, actions: actions, modes: modes,
+        viewMode: modes.count > 1 ? modeBinding : nil, review: review)
       Divider()
       switch file.preview {
       case .text(let text):
         if text.serverTruncated || text.clipped {
           NoticeBar(symbol: "scissors", text: notice(for: text))
         }
-        if let previewKind, viewMode == .preview {
-          FilePreviewView(kind: previewKind, text: text.text)
-        } else {
-          CodeTextView(preview: text, markedLine: line)
-        }
+        content(text)
       case .image(let format, let data):
         ImagePreview(format: format, data: data, byteCount: file.byteCount)
       case .binary(let reason):
@@ -53,7 +59,49 @@ public struct FileViewerView: View {
         }
       }
     }
+    .sheet(item: $commenting) { span in
+      if let review { CommentComposer(span: span, add: review.add) }
+    }
     .accessibilityIdentifier("workspace.viewer")
+  }
+
+  @ViewBuilder private func content(_ text: TextPreview) -> some View {
+    let mode = shownMode
+    if let editor, mode == .edit {
+      FileEditorView(editor: editor, review: review) { commenting = $0 }
+    } else if let previewKind, mode == .preview {
+      FilePreviewView(kind: previewKind, text: editor?.text ?? text.text)
+    } else if let editor, editor.isDirty {
+      // Unsaved edits show as source; comments wait until they are saved.
+      CodeTextView(preview: edited(text, editor.text), markedLine: line)
+    } else {
+      CodeTextView(
+        preview: text, markedLine: line, path: file.path, review: review
+      ) { commenting = $0 }
+    }
+  }
+
+  /// Preview for a previewable file, Source, and Edit when the viewer may edit it.
+  private var modes: [FileViewMode] {
+    var modes: [FileViewMode] = previewKind == nil ? [] : [.preview]
+    if case .text = file.preview { modes.append(.source) }
+    if editor != nil, actions.canEdit { modes.append(.edit) }
+    return modes
+  }
+
+  /// The chosen mode when this file offers it, else the first it offers.
+  private var shownMode: FileViewMode {
+    modes.contains(viewMode) ? viewMode : (modes.first ?? .source)
+  }
+
+  private var modeBinding: Binding<FileViewMode> {
+    Binding(get: { shownMode }, set: { if $0 != viewMode { viewMode = $0 } })
+  }
+
+  private func edited(_ preview: TextPreview, _ text: String) -> TextPreview {
+    var preview = preview
+    preview.text = text
+    return preview
   }
 
   private var previewKind: FilePreviewKind? {
@@ -74,8 +122,11 @@ private struct FileHeader: View {
   let file: WorkspaceFile
   let source: any WorkspaceDataSource
   let actions: WorkspaceActions
-  /// Preview or Source, for a previewable file.
+  /// The modes the picker offers.
+  let modes: [FileViewMode]
+  /// The chosen mode, when there is a choice.
   let viewMode: Binding<FileViewMode>?
+  let review: FileReviewContext?
 
   var body: some View {
     HStack(spacing: 8) {
@@ -94,9 +145,12 @@ private struct FileHeader: View {
           .textSelection(.enabled)
       }
       Spacer(minLength: 8)
+      if let review, !review.comments.isEmpty {
+        FileCommentsMenu(review: review)
+      }
       if let viewMode {
         Picker("View", selection: viewMode) {
-          ForEach(FileViewMode.allCases) { Text($0.title).tag($0) }
+          ForEach(modes) { Text($0.title).tag($0) }
         }
         .pickerStyle(.segmented)
         .labelsHidden()
@@ -132,119 +186,6 @@ private struct FileHeader: View {
     }
     parts.append(file.byteCount.formatted(.byteCount(style: .file)))
     return parts.joined(separator: "  ")
-  }
-}
-
-/// Lines with a gutter, rendered lazily so a long file scrolls smoothly.
-struct CodeTextView: View {
-  let preview: TextPreview
-  let markedLine: UInt64?
-
-  @Environment(\.colorScheme) private var scheme
-
-  private var lines: [Substring] {
-    var lines = preview.text.split(separator: "\n", omittingEmptySubsequences: false)
-    if preview.text.hasSuffix("\n") { lines.removeLast() }
-    return lines
-  }
-
-  var body: some View {
-    let lines = lines
-    let digits = max(String(lines.count).count, 2)
-    let highlighter =
-      preview.skipHighlighting ? nil : preview.language.map { SyntaxHighlighter(language: $0) }
-    GeometryReader { geometry in
-      ScrollViewReader { proxy in
-        ScrollView([.vertical, .horizontal]) {
-          LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-              CodeLine(
-                number: index + 1, digits: digits, text: line, highlighter: highlighter,
-                isMarked: markedLine == UInt64(index + 1)
-              )
-              .id(index + 1)
-            }
-          }
-          .padding(.vertical, 6)
-          .frame(minWidth: geometry.size.width, alignment: .leading)
-          .textSelection(.enabled)
-        }
-        .defaultScrollAnchor(.topLeading, for: .alignment)
-        .background(scheme == .dark ? Color.black.opacity(0.15) : Color.white)
-        .onAppear {
-          if let markedLine { proxy.scrollTo(Int(markedLine), anchor: .center) }
-        }
-        .onChange(of: markedLine) { _, line in
-          if let line { proxy.scrollTo(Int(line), anchor: .center) }
-        }
-      }
-    }
-  }
-}
-
-private struct CodeLine: View {
-  let number: Int
-  let digits: Int
-  let text: Substring
-  let highlighter: SyntaxHighlighter?
-  let isMarked: Bool
-
-  @Environment(\.colorScheme) private var scheme
-
-  var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 0) {
-      Text(String(number))
-        .font(WorkspaceTheme.gutter)
-        .foregroundStyle(.tertiary)
-        .frame(width: CGFloat(digits) * 7.5 + 12, alignment: .trailing)
-        .padding(.trailing, 10)
-        .accessibilityHidden(true)
-      Text(highlighted)
-        .font(WorkspaceTheme.code)
-        .fixedSize(horizontal: true, vertical: false)
-        .padding(.trailing, 16)
-    }
-    .frame(maxWidth: .infinity, minHeight: WorkspaceTheme.lineHeight, alignment: .leading)
-    .background(isMarked ? WorkspaceTheme.matchBackground(scheme) : .clear)
-  }
-
-  private var highlighted: AttributedString {
-    let line = String(text.hasSuffix("\r") ? text.dropLast() : text)
-    return Highlighting.attributed(line, highlighter: highlighter, scheme: scheme)
-  }
-}
-
-/// Builds `AttributedString`s for code lines.
-enum Highlighting {
-  static func attributed(
-    _ line: String, highlighter: SyntaxHighlighter?, scheme: ColorScheme
-  ) -> AttributedString {
-    var attributed = AttributedString(line)
-    guard let highlighter else { return attributed }
-    for span in highlighter.spans(in: line) {
-      guard
-        let range = TextRange(start: span.range.lowerBound, end: span.range.upperBound)
-          .utf16Range(in: line),
-        let lower = AttributedString.Index(range.lowerBound, within: attributed),
-        let upper = AttributedString.Index(range.upperBound, within: attributed)
-      else { continue }
-      attributed[lower..<upper].foregroundColor = WorkspaceTheme.tokenColor(span.token, scheme)
-    }
-    return attributed
-  }
-
-  /// `text` with `range` (UTF-16 or UTF-8 offsets) given `background`.
-  static func marked(
-    _ text: String, range: Range<String.Index>?, background: Color
-  ) -> AttributedString {
-    var attributed = AttributedString(text)
-    guard let range,
-      let lower = AttributedString.Index(range.lowerBound, within: attributed),
-      let upper = AttributedString.Index(range.upperBound, within: attributed)
-    else { return attributed }
-    attributed[lower..<upper].backgroundColor = background
-    attributed[lower..<upper].inlinePresentationIntent = .stronglyEmphasized
-    return attributed
   }
 }
 

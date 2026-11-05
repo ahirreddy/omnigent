@@ -101,8 +101,9 @@ public struct FileTreeView: View {
   }
 }
 
-/// The tree's header, as the web's Files panel: a name filter, show hidden files, refresh, and
-/// the working folder's path actions.
+/// The tree's header, as the web's Files panel: a workspace-wide file search with include and
+/// exclude globs, the sort order, show hidden files, refresh, and the working folder's path
+/// actions.
 private struct FileTreeToolbar: View {
   @Bindable var model: FileTreeModel
   let source: any WorkspaceDataSource
@@ -110,11 +111,51 @@ private struct FileTreeToolbar: View {
   @State private var isRefreshing = false
 
   var body: some View {
+    VStack(spacing: 4) {
+      buttons
+      if model.showsSearchFilters {
+        TextField("Files to include, e.g. src/**, *.ts", text: $model.include)
+          .accessibilityIdentifier("workspace.tree.include")
+        TextField("Files to exclude, e.g. **/test/**", text: $model.exclude)
+          .accessibilityIdentifier("workspace.tree.exclude")
+      }
+    }
+    .textFieldStyle(.roundedBorder)
+    .controlSize(.small)
+    .autocorrectionDisabled()
+    .padding(.horizontal, 8)
+    .padding(.vertical, 6)
+  }
+
+  private var buttons: some View {
     HStack(spacing: 4) {
-      TextField("Filter files", text: $model.filter)
-        .textFieldStyle(.roundedBorder)
-        .controlSize(.small)
+      TextField("Find files by name", text: $model.filter)
+        .onSubmit { Task { await model.searchNow() } }
         .accessibilityIdentifier("workspace.tree.filter")
+      Button {
+        model.showsSearchFilters.toggle()
+      } label: {
+        Image(systemName: "line.3.horizontal.decrease.circle")
+          .symbolVariant(model.showsSearchFilters ? .fill : .none)
+      }
+      .help(model.showsSearchFilters ? "Hide search filters" : "Show search filters")
+      .accessibilityLabel("Search filters")
+      .accessibilityIdentifier("workspace.tree.searchFilters")
+      Menu {
+        Picker("Sort Files", selection: $model.sort) {
+          ForEach(FileTreeSort.allCases) { sort in
+            Label(sort.title, systemImage: sort.symbol).tag(sort)
+          }
+        }
+        .pickerStyle(.inline)
+      } label: {
+        Image(systemName: "arrow.up.arrow.down")
+      }
+      .menuIndicator(.hidden)
+      .fixedSize()
+      .help("Sort files: \(model.sort.title)")
+      .accessibilityLabel("Sort files: \(model.sort.title)")
+      .accessibilityIdentifier("workspace.tree.sort")
       Button {
         model.showsHidden.toggle()
       } label: {
@@ -156,8 +197,6 @@ private struct FileTreeToolbar: View {
       }
     }
     .buttonStyle(.borderless)
-    .padding(.horizontal, 8)
-    .padding(.vertical, 6)
   }
 }
 
@@ -230,6 +269,25 @@ private struct FileTreeRow: View {
         .foregroundStyle(.tertiary)
     case .failure(let failure):
       InlineFailure(failure: failure) { onRetry(row.directory) }
+    case .match(let entry):
+      Color.clear.frame(width: 12)
+      Image(systemName: icon(for: entry, isExpanded: false))
+        .foregroundStyle(entry.kind.isDirectory ? Color.accentColor : .secondary)
+        .frame(width: 16)
+        .accessibilityHidden(true)
+      Text(entry.name)
+        .lineLimit(1)
+        .font(.system(size: 12))
+        .layoutPriority(1)
+      Text(row.directory)
+        .lineLimit(1)
+        .truncationMode(.head)
+        .font(.system(size: 10))
+        .foregroundStyle(.secondary)
+    case .note(let text):
+      Text(text)
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
   }
 

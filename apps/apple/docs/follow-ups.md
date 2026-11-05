@@ -320,9 +320,14 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   (SwiftUI's editor does not expose the caret, so the web's "caret on the first line" rule is out).
 - [ ] **Drafts:** a draft typed in the last half second before quitting can be lost; flush
   `ComposerDraftArchive.shared` on termination.
-- [ ] **Inbox comments:** "Open file" opens the file at the commented line, but the Mac app has no
-  file comments view to show the comment beside it; seen comments are kept per device, as on
-  the web.
+- [ ] **File comments:** the file viewer marks commented lines, lists the file's open comments
+  and leaves new ones on a line or an editor selection, but cannot yet edit, delete, resolve or
+  "send to agent" a comment (web `CommentsPanel`). Seen comments are kept per device, as on the
+  web.
+- [ ] **File editor:** a plain monospaced editor (no highlighting while editing, no rich
+  Markdown editor as the web's); a selection comment in a CRLF file is not offered (its offsets
+  would skip the `\r`s); unsaved edits are not flushed or prompted for when the window closes
+  or the app quits (autosave runs 1.5 s after the last keystroke).
 - [ ] **Inbox "Load more sessions":** the core's session list holds only its first page
   (`DEFAULT_PAGE_LIMIT`), so the Inbox cannot page further as the web does; needs list paging in
   the engine, shared with the sidebar's Show more.

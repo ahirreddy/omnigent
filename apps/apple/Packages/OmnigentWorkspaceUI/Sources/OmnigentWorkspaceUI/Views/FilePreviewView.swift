@@ -27,15 +27,23 @@ nonisolated public enum FilePreviewKind: Hashable, Sendable {
   }
 }
 
-/// Whether a previewable file opens rendered or as its source; kept across files, as the web.
+/// Whether a file opens rendered, as its source, or in the editor; kept across files, as the
+/// web.
 public enum FileViewMode: String, CaseIterable, Identifiable, Sendable {
   case preview
   case source
+  case edit
 
   /// The mode itself.
   public var id: Self { self }
 
-  var title: String { self == .preview ? "Preview" : "Source" }
+  var title: String {
+    switch self {
+    case .preview: "Preview"
+    case .source: "Source"
+    case .edit: "Edit"
+    }
+  }
 }
 
 /// Renders Markdown for the file viewer's preview with the host's Markdown view. Renderers with

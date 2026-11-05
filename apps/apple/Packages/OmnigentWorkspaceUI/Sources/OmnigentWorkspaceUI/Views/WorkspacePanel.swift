@@ -77,6 +77,31 @@ public struct WorkspaceDocumentView: View {
 
   /// The view.
   public var body: some View {
+    document
+      .alert(
+        closeTitle, isPresented: closeConfirmation, presenting: model.pendingClose
+      ) { _ in
+        Button("Save") { Task { await model.finishPendingClose(saving: true) } }
+        Button("Don't Save", role: .destructive) {
+          Task { await model.finishPendingClose(saving: false) }
+        }
+        Button("Cancel", role: .cancel) { model.pendingClose = nil }
+      } message: { _ in
+        Text("Your changes will be lost if you don't save them.")
+      }
+  }
+
+  private var closeTitle: String {
+    "Save changes to \(model.pendingClose.map { WorkspacePaths.name(of: $0.path) } ?? "the file")?"
+  }
+
+  private var closeConfirmation: Binding<Bool> {
+    Binding(
+      get: { model.pendingClose != nil },
+      set: { presented in if !presented, model.pendingClose != nil { model.pendingClose = nil } })
+  }
+
+  @ViewBuilder private var document: some View {
     switch model.document {
     case nil:
       ContentUnavailableView(
@@ -89,7 +114,9 @@ public struct WorkspaceDocumentView: View {
       case .failed(let failure):
         FailureView(failure: failure) { reopen() }
       case .loaded(let file):
-        FileViewerView(file: file, line: line, source: model.source, actions: actions)
+        FileViewerView(
+          file: file, line: line, source: model.source, actions: actions,
+          editor: actions.canEdit ? model.editors[file.path] : nil, review: review(for: file))
       }
     case .diff:
       switch model.diff {
@@ -107,6 +134,20 @@ public struct WorkspaceDocumentView: View {
   private func reopen() {
     guard let document = model.document else { return }
     Task { await model.open(document) }
+  }
+
+  /// Comments, and handing spans to the agent through the host's hooks.
+  private func review(for file: WorkspaceFile) -> FileReviewContext? {
+    guard actions.canEdit || actions.mention != nil || actions.ask != nil else { return nil }
+    let model = model
+    let mention = actions.mention
+    let ask = actions.ask
+    return FileReviewContext(
+      comments: model.comments[file.path]?.value ?? [], canComment: actions.canEdit,
+      add: { body, span throws(WorkspaceFailure) in try await model.addComment(body, on: span) },
+      reveal: { line in model.reveal(line: line) },
+      attach: mention.map { mention in { span in mention(span.reference) } },
+      ask: ask)
   }
 }
 

@@ -1,7 +1,9 @@
 import Foundation
 public import Observation
 
-/// The file tree: directories load lazily, one page at a time, when first expanded.
+/// The file tree: directories load lazily, one page at a time, when first expanded. A name
+/// filter searches the whole workspace on the server (with optional include and exclude globs)
+/// and lists the matches flat, as the web's Files panel does.
 ///
 /// `rows` is the flattened visible tree (entries plus loading, "load more", empty and error
 /// placeholders), recomputed after every change so a long tree scrolls without re-walking it.
@@ -21,6 +23,10 @@ public final class FileTreeModel {
     case empty
     /// The directory could not be read.
     case failure(WorkspaceFailure)
+    /// A search match, shown with its folder.
+    case match(WorkspaceEntry)
+    /// A note under the search results.
+    case note(String)
   }
 
   /// One visible row.
@@ -36,8 +42,10 @@ public final class FileTreeModel {
 
     /// The entry, for entry rows.
     public var entry: WorkspaceEntry? {
-      if case .entry(let entry, _) = content { return entry }
-      return nil
+      switch content {
+      case .entry(let entry, _), .match(let entry): entry
+      default: nil
+      }
     }
   }
 
@@ -47,11 +55,13 @@ public final class FileTreeModel {
     case failed(WorkspaceFailure)
   }
 
-  private let source: any WorkspaceDataSource
+  let source: any WorkspaceDataSource
   private var children: [String: [WorkspaceEntry]] = [:]
   private var cursors: [String: String] = [:]
   private var listings: [String: Listing] = [:]
   private var loadingMore: Set<String> = []
+  var searchGeneration = 0
+  var pendingSearch: Task<Void, Never>?
 
   /// Expanded directories.
   public private(set) var expanded: Set<String> = []
@@ -65,10 +75,28 @@ public final class FileTreeModel {
   public var showsHidden = false {
     didSet { if showsHidden != oldValue { rebuild() } }
   }
-  /// Keeps loaded entries whose name contains this text, and the folders leading to them.
+  /// Finds files whose name or path contains this text, anywhere in the workspace.
   public var filter = "" {
-    didSet { if filter != oldValue { rebuild() } }
+    didSet { if filter != oldValue { searchChanged() } }
   }
+  /// Comma-separated globs a match must match ("files to include").
+  public var include = "" {
+    didSet { if include != oldValue { searchChanged() } }
+  }
+  /// Comma-separated globs a match must not match ("files to exclude").
+  public var exclude = "" {
+    didSet { if exclude != oldValue { searchChanged() } }
+  }
+  /// Whether the include and exclude fields are shown.
+  public var showsSearchFilters = false
+  /// How entries are ordered.
+  public var sort = FileTreeSort.name {
+    didSet { if sort != oldValue { rebuild() } }
+  }
+  /// The last search of `filter`.
+  public internal(set) var search: LoadState<PathSearchResult> = .idle
+  /// The pause after typing before searching.
+  public var searchDelay: Duration = .milliseconds(250)
 
   /// A tree over `source`. Call `loadRoot()` to read the first page.
   /// - Parameter source: Where entries come from.
@@ -142,8 +170,8 @@ public final class FileTreeModel {
   }
 
   /// Re-reads the root and every expanded directory from their first page, for example after
-  /// `session.changed_files.invalidated`. Collapsed directories are forgotten and reload when
-  /// expanded again.
+  /// `session.changed_files.invalidated`, and runs a search again. Collapsed directories are
+  /// forgotten and reload when expanded again.
   public func refresh() async {
     let directories = [""] + expanded.sorted()
     for directory in children.keys where !directories.contains(directory) {
@@ -154,6 +182,7 @@ public final class FileTreeModel {
     for directory in directories {
       await load(directory, after: nil)
     }
+    if isSearching { await searchNow() }
   }
 
   /// Expands every ancestor of `path` and selects it.
@@ -203,10 +232,15 @@ public final class FileTreeModel {
     if !parent.isEmpty { self.selection = parent }
   }
 
-  /// Return: opens a file or toggles a directory.
+  /// Return: opens a file or toggles a directory; a folder found by a search is shown in the
+  /// tree.
   public func activateSelection() async {
     guard let entry = selectedEntry else { return }
-    if entry.kind.isDirectory {
+    if entry.kind.isDirectory, isSearching {
+      filter = ""
+      await reveal(entry.path)
+      await expand(entry.path)
+    } else if entry.kind.isDirectory {
       await toggle(entry.path)
     } else {
       onOpen?(entry)
@@ -239,23 +273,17 @@ public final class FileTreeModel {
     rebuild()
   }
 
-  private func isShown(_ entry: WorkspaceEntry) -> Bool {
+  func isShown(_ entry: WorkspaceEntry) -> Bool {
     showsHidden || !entry.name.hasPrefix(".")
   }
 
-  /// The entry's name matches, or a loaded entry below it does.
-  private func matches(_ entry: WorkspaceEntry, _ query: String) -> Bool {
-    entry.name.localizedCaseInsensitiveContains(query) || hasMatch(below: entry, query)
-  }
-
-  private func hasMatch(below entry: WorkspaceEntry, _ query: String) -> Bool {
-    guard entry.kind.isDirectory, let entries = children[entry.path] else { return false }
-    return entries.contains { isShown($0) && matches($0, query) }
-  }
-
-  private func rebuild() {
+  func rebuild() {
     var result: [Row] = []
-    append(directory: "", depth: 0, into: &result)
+    if isSearching {
+      appendMatches(into: &result)
+    } else {
+      append(directory: "", depth: 0, into: &result)
+    }
     rows = result
   }
 
@@ -276,19 +304,13 @@ public final class FileTreeModel {
     case .loaded:
       break
     }
-    let query = filter.trimmingCharacters(in: .whitespaces)
-    let entries = (children[directory] ?? []).filter {
-      isShown($0) && (query.isEmpty || matches($0, query))
-    }
-    if entries.isEmpty, !directory.isEmpty, query.isEmpty {
+    let entries = sort.sorted((children[directory] ?? []).filter(isShown))
+    if entries.isEmpty, !directory.isEmpty {
       result.append(
         Row(id: directory + "#empty", directory: directory, depth: depth, content: .empty))
     }
     for entry in entries {
-      // A filter opens the folders that lead to a match.
-      let isExpanded =
-        entry.kind.isDirectory
-        && (expanded.contains(entry.path) || (!query.isEmpty && hasMatch(below: entry, query)))
+      let isExpanded = entry.kind.isDirectory && expanded.contains(entry.path)
       result.append(
         Row(
           id: entry.path, directory: directory, depth: depth,
@@ -297,7 +319,7 @@ public final class FileTreeModel {
         append(directory: entry.path, depth: depth + 1, into: &result)
       }
     }
-    if cursors[directory] != nil, query.isEmpty {
+    if cursors[directory] != nil {
       result.append(
         Row(id: directory + "#more", directory: directory, depth: depth, content: .loadMore))
     }

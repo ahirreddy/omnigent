@@ -807,6 +807,32 @@ fn parse(path: &str) -> Result<core::WorkspacePath, CoreError> {
     core::WorkspacePath::parse(path).map_err(path_error)
 }
 
+/// What saving an edited file did.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum WorkspaceSave {
+    /// The new content was written.
+    Saved {
+        /// The save created the file.
+        created: bool,
+    },
+    /// The file changed since it was read, so nothing was written.
+    Conflict {
+        /// Its text now; `None` when it was deleted or is no longer readable text.
+        latest: Option<String>,
+    },
+}
+
+impl From<core::FileSave> for WorkspaceSave {
+    fn from(save: core::FileSave) -> Self {
+        match save {
+            core::FileSave::Saved(written) => Self::Saved {
+                created: written.created,
+            },
+            core::FileSave::Conflict { latest } => Self::Conflict { latest },
+        }
+    }
+}
+
 fn parse_file(path: &str) -> Result<core::WorkspacePath, CoreError> {
     core::WorkspacePath::parse_file(path).map_err(path_error)
 }
@@ -991,6 +1017,34 @@ impl ClientCore {
                 core::FileBody::Binary(bytes) => bytes,
             },
         })
+    }
+
+    /// Saves `content` as the file `path`. With `base` (the text the edit started from), the
+    /// file is read first and a change by someone else since is returned as a conflict, with
+    /// nothing written; without it the file is overwritten.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Workspace`]; kind `Forbidden` without edit access.
+    pub async fn save_workspace_file(
+        &self,
+        session_id: String,
+        environment_id: String,
+        path: String,
+        content: String,
+        base: Option<String>,
+    ) -> Result<WorkspaceSave, CoreError> {
+        self.sessions()
+            .save_workspace_file(
+                &session_id,
+                &environment_id,
+                parse_file(&path)?,
+                content,
+                base.as_deref(),
+            )
+            .await
+            .map(Into::into)
+            .map_err(workspace_error)
     }
 
     /// Files whose name or path contains the query.
