@@ -1,26 +1,19 @@
 import SwiftUI
 
-/// The transcript with its rows read in its own body, so row changes re-render only this view.
-/// The rows arrive paced (``TranscriptRowsPacer``), and a kept tab out of view keeps the rows it
-/// last showed, so streaming into it costs nothing until it shows again.
+/// The transcript over live rows. Its row list reads them in its own body
+/// (``TranscriptRowsContent``), so row changes re-render only the list. The rows arrive paced
+/// (``TranscriptRowsPacer``), and a kept tab out of view keeps the rows it last showed, so
+/// streaming into it costs nothing until it shows again.
 struct LiveTranscript: View {
   let state: ConversationViewState
   let liveRows: LiveTranscriptRows?
   let actions: ConversationActions
   let scrollToLatestRequest: Int
 
-  @Environment(\.isTabContentHidden) private var isHidden
-  @State private var pacer = TranscriptRowsPacer()
-
   var body: some View {
-    var current = state
-    if let liveRows {
-      let live = pacer.rows(from: liveRows, isShown: !isHidden)
-      current.rows = live.rows
-      current.revision = live.revision
-    }
-    return TranscriptView(
-      state: current, actions: actions, scrollToLatestRequest: scrollToLatestRequest)
+    TranscriptView(
+      state: state, liveRows: liveRows, actions: actions,
+      scrollToLatestRequest: scrollToLatestRequest)
   }
 }
 
