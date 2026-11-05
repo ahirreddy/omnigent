@@ -72,6 +72,53 @@ pub fn this_machine_host_id<'a>(
     }
 }
 
+/// This machine's host id in the CLI's `config.yaml`.
+///
+/// The `host: host_id:` key, written by `omnigent/host/identity.py`, normalized as `/v1/hosts`
+/// reports it: 32 lowercase hex characters, without the legacy `host_` prefix or a UUID's
+/// dashes. `None` before the CLI generated one, or when it is not a UUID.
+#[must_use]
+pub fn host_id_from_config(config_yaml: &str) -> Option<String> {
+    let mut in_host = false;
+    let mut child_indent = None;
+    let mut raw = None;
+    for line in config_yaml.lines() {
+        let content = line.split(" #").next().unwrap_or_default().trim_end();
+        if content.trim().is_empty() || content.trim_start().starts_with('#') {
+            continue;
+        }
+        let indent = content.len() - content.trim_start().len();
+        if in_host && indent > 0 && *child_indent.get_or_insert(indent) != indent {
+            continue;
+        }
+        if indent == 0 {
+            in_host = false;
+            child_indent = None;
+            let Some(rest) = content.strip_prefix("host:") else {
+                continue;
+            };
+            let rest = rest.trim();
+            if let Some(flow) = rest.strip_prefix('{').and_then(|r| r.strip_suffix('}')) {
+                raw = flow
+                    .split(',')
+                    .find_map(|pair| pair.trim().strip_prefix("host_id:").map(str::to_owned));
+                break;
+            }
+            in_host = rest.is_empty();
+        } else if in_host && let Some(value) = content.trim_start().strip_prefix("host_id:") {
+            raw = Some(value.to_owned());
+            break;
+        }
+    }
+    let value = raw?.trim().trim_matches(['"', '\'']).to_owned();
+    let bare = value
+        .strip_prefix("host_")
+        .unwrap_or(&value)
+        .replace('-', "");
+    (bare.len() == 32 && bare.chars().all(|c| c.is_ascii_hexdigit()))
+        .then(|| bare.to_ascii_lowercase())
+}
+
 /// Where the session on `host_id` runs.
 #[must_use]
 pub fn session_environment(
@@ -98,6 +145,24 @@ pub fn session_environment(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_the_cli_host_id_from_config_yaml() {
+        let id = "ab12cd34ef56ab12cd34ef56ab12cd34";
+        let block = format!("server: x\nhost:\n  name: my-mac\n  host_id: {id}\nother: 1\n");
+        assert_eq!(host_id_from_config(&block).as_deref(), Some(id));
+        let legacy = "host:\n  host_id: 'host_AB12CD34-EF56-AB12-CD34-EF56AB12CD34' # old\n";
+        assert_eq!(host_id_from_config(legacy).as_deref(), Some(id));
+        let flow = format!("host: {{name: box, host_id: \"{id}\"}}\n");
+        assert_eq!(host_id_from_config(&flow).as_deref(), Some(id));
+        assert_eq!(host_id_from_config("host:\n  name: my-mac\n"), None);
+        assert_eq!(host_id_from_config("other:\n  host_id: abc\n"), None);
+        assert_eq!(host_id_from_config("host:\n  host_id: not-a-uuid\n"), None);
+        let nested = format!("x:\n  host:\n    host_id: {id}\n");
+        assert_eq!(host_id_from_config(&nested), None);
+        let deeper = format!("host:\n  name: a\n  extra:\n    host_id: {id}\n");
+        assert_eq!(host_id_from_config(&deeper), None);
+    }
 
     fn host(id: &str, status: &str, sandbox: Option<&str>) -> CreationHost {
         CreationHost {

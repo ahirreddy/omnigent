@@ -11,7 +11,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
-use crate::client::json::{as_object, opt_array, opt_object, opt_str, req_str};
+use crate::client::json::{as_object, opt_array, opt_bool, opt_object, opt_str, req_str};
+use crate::harness_accounts::{HarnessAccount, account_key, account_map, gateway_map};
 
 /// What a host reports for one harness in `configured_harnesses`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -220,7 +221,7 @@ impl SetupFeatures {
 }
 
 /// A host as the setup sheet and the Settings inventory see it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SetupHost {
     /// Host id.
     pub host_id: String,
@@ -232,6 +233,12 @@ pub struct SetupHost {
     pub sandbox_provider: Option<String>,
     /// Per-harness readiness; `None` when the host does not report it.
     pub harnesses: Option<BTreeMap<String, HarnessAvailability>>,
+    /// The accounts harnesses are signed in with, by account key; `None` when not reported.
+    pub accounts: Option<BTreeMap<String, HarnessAccount>>,
+    /// Whether each harness's inference goes through a gateway; `None` when not reported.
+    pub gateway_inference: Option<BTreeMap<String, bool>>,
+    /// The host signs harnesses in and out from the app (`harness_login_supported`).
+    pub login_supported: bool,
 }
 
 impl SetupHost {
@@ -248,6 +255,9 @@ impl SetupHost {
             status: opt_str(object, "status")?.unwrap_or_default(),
             sandbox_provider: opt_str(object, "sandbox_provider")?,
             harnesses: availability_map(object)?,
+            accounts: account_map(object)?,
+            gateway_inference: gateway_map(object)?,
+            login_supported: opt_bool(object, "harness_login_supported")?.unwrap_or(false),
         })
     }
 
@@ -261,6 +271,18 @@ impl SetupHost {
     #[must_use]
     pub fn availability(&self, harness: &str) -> Option<&HarnessAvailability> {
         self.harnesses.as_ref()?.get(harness)
+    }
+
+    /// The account `harness` is signed in with.
+    #[must_use]
+    pub fn account(&self, harness: &str) -> Option<&HarnessAccount> {
+        self.accounts.as_ref()?.get(&account_key(harness))
+    }
+
+    /// Whether `harness`'s inference goes through a gateway; `None` when unknown.
+    #[must_use]
+    pub fn gateway(&self, harness: &str) -> Option<bool> {
+        self.gateway_inference.as_ref()?.get(harness).copied()
     }
 }
 

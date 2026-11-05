@@ -239,7 +239,7 @@ fn hosts_order_online_first_and_sandboxes_last() {
         name: id.into(),
         status: status.into(),
         sandbox_provider: sandbox.map(str::to_owned),
-        harnesses: None,
+        ..SetupHost::default()
     };
     let ordered = ordered_hosts(vec![
         row("a", "offline", None),

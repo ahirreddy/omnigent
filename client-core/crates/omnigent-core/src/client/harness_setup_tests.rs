@@ -4,7 +4,8 @@ use futures::executor::block_on;
 use serde_json::json;
 
 use super::super::SessionError;
-use super::super::test_support::{RouteTransport, body_json, connected, path_of};
+use super::super::test_support::{Reply, RouteTransport, body_json, connected, path_of};
+use crate::harness_accounts::{LoginStartOutcome, LoginState, StartupRead};
 use crate::harness_setup::{CredentialInput, HarnessAvailability};
 
 const HOSTS: &str = r#"{"hosts":[
@@ -102,4 +103,133 @@ fn detected_credentials_are_decoded() {
     );
     let detected = block_on(core.detected_credentials("h1")).unwrap();
     assert_eq!(detected[0].env_var.as_deref(), Some("OPENAI_API_KEY"));
+}
+
+#[test]
+fn device_login_starts_polls_and_cancels_on_the_account_key() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok(
+            "/v1/hosts/h1/harnesses/codex/login",
+            r#"{"login_id":"l1","verification_url":"https://auth.openai.com/device",
+                "user_code":"AB-12","expires_at":1700000000}"#,
+        )
+        .ok(
+            "/v1/hosts/h1/harnesses/codex/login/l1",
+            r#"{"status":"succeeded","error":null,"expired":false,
+                "configured_harnesses":{"codex-native":true}}"#,
+        );
+    let LoginStartOutcome::Started(start) =
+        block_on(core.start_harness_login("h1", "codex-native")).unwrap()
+    else {
+        panic!("expected a new sign-in");
+    };
+    assert_eq!(start.user_code, "AB-12");
+    let status = block_on(core.harness_login_status("h1", "native-codex", "l1")).unwrap();
+    assert_eq!(status.state, LoginState::Succeeded);
+    assert!(status.snapshot.is_ready("codex-native"));
+    block_on(core.cancel_harness_login("h1", "codex-native", "l1")).unwrap();
+    let writes = core.transport().writes();
+    assert_eq!(writes[1].method, "DELETE");
+    assert_eq!(path_of(&writes[1]), "/v1/hosts/h1/harnesses/codex/login/l1");
+}
+
+#[test]
+fn a_busy_login_resumes_and_an_unsupported_one_is_rejected() {
+    let core = connected(RouteTransport::local());
+    core.transport().respond(
+        None,
+        "/v1/hosts/h1/harnesses/codex/login",
+        None,
+        Reply::json(409, r#"{"code":"login_busy","login_id":"l9"}"#),
+    );
+    assert_eq!(
+        block_on(core.start_harness_login("h1", "codex-native")).unwrap(),
+        LoginStartOutcome::Busy {
+            login_id: "l9".into()
+        }
+    );
+    core.transport().respond(
+        None,
+        "/v1/hosts/h1/harnesses/codex/login",
+        None,
+        Reply::json(
+            409,
+            r#"{"error":{"code":"login_unsupported","message":"no harness login here"}}"#,
+        ),
+    );
+    assert_eq!(
+        block_on(core.start_harness_login("h1", "codex-native")),
+        Err(SessionError::Rejected {
+            status: 409,
+            message: "no harness login here".into()
+        })
+    );
+}
+
+#[test]
+fn sign_out_returns_the_refreshed_accounts() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/hosts/h1/harnesses/claude/logout",
+        r#"{"configured_harnesses":{"claude-native":"needs-auth"},"harness_accounts":null}"#,
+    );
+    let snapshot = block_on(core.sign_out_harness("h1", "claude-native")).unwrap();
+    assert_eq!(
+        snapshot.harnesses.unwrap().get("claude-native"),
+        Some(&HarnessAvailability::NeedsAuth)
+    );
+    assert_eq!(snapshot.accounts, None);
+}
+
+#[test]
+fn refresh_falls_back_to_the_last_reported_readiness() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .respond(
+            None,
+            "/v1/hosts/h1/harnesses/refresh",
+            None,
+            Reply::json(409, r#"{"error":{"code":"refresh_unsupported"}}"#),
+        )
+        .ok(
+            "/v1/hosts/h1",
+            r#"{"host_id":"h1","configured_harnesses":{"codex-native":true}}"#,
+        );
+    let snapshot = block_on(core.refresh_harnesses("h1")).unwrap();
+    assert!(snapshot.is_ready("codex-native"));
+}
+
+#[test]
+fn install_reports_the_version_and_startup_reads_or_is_absent() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok(
+            "/v1/hosts/h1/harnesses/codex-native/install",
+            r#"{"configured_harnesses":{"codex-native":true},"version":"0.50.0",
+                "gateway_inference":{"codex-native":false}}"#,
+        )
+        .ok(
+            "/v1/hosts/h1/harnesses/claude-native/startup",
+            r#"{"command":"claude","resolved_path":null,"command_source":"default","arg_count":0}"#,
+        )
+        .respond(
+            None,
+            "/v1/hosts/h1/harnesses/pi-native/startup",
+            None,
+            Reply::json(404, "{}"),
+        );
+    let outcome = block_on(core.install_harness_reporting("h1", "codex-native")).unwrap();
+    assert_eq!(outcome.version.as_deref(), Some("0.50.0"));
+    assert!(outcome.snapshot.is_ready("codex-native"));
+    let StartupRead::Loaded(startup) =
+        block_on(core.harness_startup("h1", "claude-native", "Mac")).unwrap()
+    else {
+        panic!("expected a startup command");
+    };
+    assert_eq!(startup.source, "Default command on Mac.");
+    assert_eq!(
+        block_on(core.harness_startup("h1", "pi-native", "Mac")).unwrap(),
+        StartupRead::NotReported
+    );
 }

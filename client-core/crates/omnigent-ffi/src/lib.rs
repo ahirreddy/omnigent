@@ -45,6 +45,7 @@ pub mod deeplink;
 pub mod errors;
 pub mod events;
 pub mod fork;
+pub mod harness_accounts;
 pub mod harness_setup;
 pub mod host;
 pub mod http;

@@ -8,9 +8,13 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use super::json::{as_object, opt_array};
-use super::requests::validate_identifier;
+use super::json::{as_object, opt_array, opt_str};
+use super::requests::{rejection_message, validate_identifier};
 use super::{ClientCore, SessionError};
+use crate::harness_accounts::{
+    HarnessStartup, HostSnapshot, InstallOutcome, LoginStart, LoginStartOutcome, LoginStatus,
+    StartupRead, account_key, busy_login_id,
+};
 use crate::harness_setup::{
     CredentialInput, DetectedCredential, HarnessAvailability, HarnessSetupCatalog, SetupFeatures,
     SetupHost, acknowledged_availability, credential_body, harness_definitions, ordered_hosts,
@@ -163,6 +167,267 @@ impl<T: HttpTransport> ClientCore<T> {
         self.dispatch();
         result
     }
+}
+
+impl<T: HttpTransport> ClientCore<T> {
+    /// Installs (or updates) `harness` on `host_id`, keeping the version and accounts the host
+    /// reported. Never retried.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request, and the write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn install_harness_reporting(
+        &self,
+        host_id: &str,
+        harness: &str,
+    ) -> Result<InstallOutcome, SessionError> {
+        let result = async {
+            validate_identifier(host_id)?;
+            validate_identifier(harness)?;
+            let path = format!("/v1/hosts/{host_id}/harnesses/{harness}/install");
+            let value = self
+                .write_json("POST", &path, &Value::Object(serde_json::Map::new()))
+                .await?;
+            let harnesses = acknowledged(&value, &path)?;
+            let object = as_object(&value, &path).map_err(uncertain(&path))?;
+            let mut snapshot = HostSnapshot::from_object(object).map_err(uncertain(&path))?;
+            snapshot.harnesses = Some(harnesses);
+            Ok(InstallOutcome {
+                snapshot,
+                version: opt_str(object, "version").map_err(uncertain(&path))?,
+            })
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Starts Codex's device-code sign-in on `host_id`; another one in progress is `Busy`.
+    /// Never retried.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::Rejected`] when
+    /// the host cannot sign in from the app (`409 login_unsupported`); the write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn start_harness_login(
+        &self,
+        host_id: &str,
+        harness: &str,
+    ) -> Result<LoginStartOutcome, SessionError> {
+        let result = async {
+            let path = login_path(host_id, harness, "login", None)?;
+            let empty = Value::Object(serde_json::Map::new());
+            match self.write_json_or_conflict("POST", &path, &empty).await? {
+                Ok(value) => LoginStart::from_value(&value)
+                    .map(LoginStartOutcome::Started)
+                    .map_err(|detail| SessionError::MalformedResponse {
+                        detail: format!("{path}: {detail}"),
+                    }),
+                Err(body) => busy_login_id(&body).map_or_else(
+                    || {
+                        Err(SessionError::Rejected {
+                            status: 409,
+                            message: rejection_message(body.to_string().as_bytes(), 409),
+                        })
+                    },
+                    |login_id| Ok(LoginStartOutcome::Busy { login_id }),
+                ),
+            }
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// A device sign-in's status.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`], the read errors and `MalformedResponse`.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn harness_login_status(
+        &self,
+        host_id: &str,
+        harness: &str,
+        login_id: &str,
+    ) -> Result<LoginStatus, SessionError> {
+        let result = async {
+            let path = login_path(host_id, harness, "login", Some(login_id))?;
+            let value = self.get_json(&path, &[]).await?;
+            LoginStatus::from_value(&value).map_err(|detail| SessionError::MalformedResponse {
+                detail: format!("{path}: {detail}"),
+            })
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Cancels a device sign-in.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] and the write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn cancel_harness_login(
+        &self,
+        host_id: &str,
+        harness: &str,
+        login_id: &str,
+    ) -> Result<(), SessionError> {
+        let result = async {
+            let path = login_path(host_id, harness, "login", Some(login_id))?;
+            self.write(self.prepare("DELETE", &path, &[], None)?)
+                .await?;
+            Ok(())
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Signs Codex or Claude out on `host_id`; returns the refreshed readiness and accounts.
+    /// Never retried.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`] before any request, and the write errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn sign_out_harness(
+        &self,
+        host_id: &str,
+        harness: &str,
+    ) -> Result<HostSnapshot, SessionError> {
+        let result = async {
+            let path = login_path(host_id, harness, "logout", None)?;
+            let value = self
+                .write_json("POST", &path, &Value::Object(serde_json::Map::new()))
+                .await?;
+            snapshot(&value, &path)
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// Asks `host_id` to check its harnesses now. When the host or server cannot, answers with
+    /// the readiness the host last reported (`GET /v1/hosts/{id}`).
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`], the write errors and the read errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn refresh_harnesses(&self, host_id: &str) -> Result<HostSnapshot, SessionError> {
+        let result = async {
+            validate_identifier(host_id)?;
+            let path = format!("/v1/hosts/{host_id}/harnesses/refresh");
+            let empty = Value::Object(serde_json::Map::new());
+            match self.write_json_or_conflict("POST", &path, &empty).await {
+                Ok(Ok(value)) => snapshot(&value, &path),
+                // 409 refresh_unsupported, another refusal, or a host too slow to answer (504).
+                Ok(Err(_))
+                | Err(SessionError::Rejected { .. } | SessionError::DeliveryUncertain { .. }) => {
+                    let host_path = format!("/v1/hosts/{host_id}");
+                    let value = self.get_json(&host_path, &[]).await?;
+                    snapshot(&value, &host_path)
+                }
+                Err(error) => Err(error),
+            }
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
+    /// `harness`'s startup command on `host_id` (named `host_name`), or why the host does not
+    /// report it: `404` (not reported) or `501` (an older host).
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`], the read errors and `MalformedResponse`.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn harness_startup(
+        &self,
+        host_id: &str,
+        harness: &str,
+        host_name: &str,
+    ) -> Result<StartupRead, SessionError> {
+        let result = async {
+            validate_identifier(host_id)?;
+            validate_identifier(harness)?;
+            let path = format!("/v1/hosts/{host_id}/harnesses/{harness}/startup");
+            match self.get_json(&path, &[]).await {
+                Ok(value) => HarnessStartup::from_value(&value, harness, host_name)
+                    .map(StartupRead::Loaded)
+                    .map_err(|detail| SessionError::MalformedResponse {
+                        detail: format!("{path}: {detail}"),
+                    }),
+                Err(SessionError::HttpStatus { status: 404 }) => Ok(StartupRead::NotReported),
+                Err(SessionError::HttpStatus { status: 501 }) => Ok(StartupRead::HostOutdated),
+                Err(error) => Err(error),
+            }
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+}
+
+/// `/v1/hosts/{host}/harnesses/{account key}/{operation}[/{login}]`.
+fn login_path(
+    host_id: &str,
+    harness: &str,
+    operation: &str,
+    login_id: Option<&str>,
+) -> Result<String, SessionError> {
+    validate_identifier(host_id)?;
+    let key = account_key(harness);
+    validate_identifier(&key)?;
+    let base = format!("/v1/hosts/{host_id}/harnesses/{key}/{operation}");
+    match login_id {
+        Some(id) => {
+            validate_identifier(id)?;
+            Ok(format!("{base}/{id}"))
+        }
+        None => Ok(base),
+    }
+}
+
+fn uncertain(path: &str) -> impl Fn(String) -> SessionError + '_ {
+    move |detail| SessionError::DeliveryUncertain {
+        detail: format!("unreadable acknowledgement from {path}: {detail}"),
+    }
+}
+
+fn snapshot(value: &Value, path: &str) -> Result<HostSnapshot, SessionError> {
+    as_object(value, path)
+        .and_then(HostSnapshot::from_object)
+        .map_err(|detail| SessionError::MalformedResponse {
+            detail: format!("{path}: {detail}"),
+        })
 }
 
 fn acknowledged(

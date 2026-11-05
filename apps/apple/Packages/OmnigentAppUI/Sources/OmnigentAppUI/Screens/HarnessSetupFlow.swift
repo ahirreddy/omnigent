@@ -63,8 +63,10 @@ struct HarnessSetupContainer: View {
 public struct HarnessesSettingsView: View {
   private let connection: ConnectionStore
   @State private var store: HarnessSetupStore?
+  @State private var fix: HarnessFixStore?
   @State private var hostID: String?
   @State private var target: HarnessSetupTarget?
+  @State private var detail: HarnessesSettingsRow?
 
   /// Creates the section.
   /// - Parameter connection: The server whose hosts show.
@@ -75,7 +77,11 @@ public struct HarnessesSettingsView: View {
   /// The section, as a grouped form.
   public var body: some View {
     Form {
-      if let store {
+      if let store, let fix, let detail, let host = selectedHost(store) {
+        HarnessDetailContainer(
+          setup: store, fix: fix, harness: detail.id, name: detail.name, hostID: host,
+          back: { self.detail = nil }, setupTarget: $target)
+      } else if let store {
         HarnessesSettingsSection(state: state(store), actions: actions(store))
       } else {
         Text("Connect to this server to manage its harnesses.").foregroundStyle(.secondary)
@@ -85,6 +91,7 @@ public struct HarnessesSettingsView: View {
     .task(id: ObjectIdentifier(connection)) {
       guard let store = connection.harnessSetup() else { return }
       self.store = store
+      fix = connection.harnessFix(setup: store)
       await store.load()
     }
     .sheet(item: $target) { target in
@@ -122,6 +129,7 @@ public struct HarnessesSettingsView: View {
         guard let host = selectedHost(store) else { return }
         target = HarnessSetupTarget(harness: row.id, hostID: host)
       },
-      refresh: { Task { await store.load() } })
+      refresh: { Task { await store.load() } },
+      open: { detail = $0 })
   }
 }

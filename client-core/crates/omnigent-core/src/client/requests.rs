@@ -371,6 +371,19 @@ impl<T: HttpTransport> ClientCore<T> {
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     pub(crate) async fn write(&self, prepared: Prepared) -> Result<HttpResponse, SessionError> {
+        self.write_allowing(prepared, None).await
+    }
+
+    /// [`Self::write`], but an `allowed` status returns its response for the caller to read.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn write_allowing(
+        &self,
+        prepared: Prepared,
+        allowed: Option<u16>,
+    ) -> Result<HttpResponse, SessionError> {
         let path = prepared.request.url.clone();
         // A `wrong_replica` refusal did not deliver, so re-addressing it cannot duplicate a write.
         let result = self
@@ -386,6 +399,7 @@ impl<T: HttpTransport> ClientCore<T> {
         }
         match response.status {
             200..=202 | 204 => Ok(response),
+            status if Some(status) == allowed => Ok(response),
             status @ 300..=399 => Err(uncertain(format!(
                 "the server redirected the write (HTTP {status})"
             ))),
@@ -424,6 +438,32 @@ impl<T: HttpTransport> ClientCore<T> {
         serde_json::from_slice(&response.body).map_err(|error| SessionError::DeliveryUncertain {
             detail: format!("unreadable acknowledgement from {path}: {error}"),
         })
+    }
+}
+
+impl<T: HttpTransport> ClientCore<T> {
+    /// [`Self::write_json`], but a `409` answer is `Ok(Err(body))` for the caller to read.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(crate) async fn write_json_or_conflict(
+        &self,
+        method: &str,
+        path: &str,
+        body: &Value,
+    ) -> Result<Result<Value, Value>, SessionError> {
+        let prepared = self.prepare(method, path, &[], Some(body))?;
+        let response = self.write_allowing(prepared, Some(409)).await?;
+        let parsed = serde_json::from_slice(&response.body);
+        if response.status == 409 {
+            return Ok(Err(parsed.unwrap_or(Value::Null)));
+        }
+        parsed
+            .map(Ok)
+            .map_err(|error| SessionError::DeliveryUncertain {
+                detail: format!("unreadable acknowledgement from {path}: {error}"),
+            })
     }
 }
 

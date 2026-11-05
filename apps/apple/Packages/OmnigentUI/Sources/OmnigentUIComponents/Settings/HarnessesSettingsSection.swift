@@ -80,16 +80,20 @@ public struct HarnessesSettingsActions {
   public var setUp: @MainActor (HarnessesSettingsRow) -> Void
   /// Reads the hosts' readiness again.
   public var refresh: @MainActor () -> Void
+  /// Opens a harness's details; `nil` hides the Details buttons.
+  public var open: (@MainActor (HarnessesSettingsRow) -> Void)?
 
   /// Creates the actions.
   public init(
     selectHost: @escaping @MainActor (String) -> Void,
     setUp: @escaping @MainActor (HarnessesSettingsRow) -> Void,
-    refresh: @escaping @MainActor () -> Void
+    refresh: @escaping @MainActor () -> Void,
+    open: (@MainActor (HarnessesSettingsRow) -> Void)? = nil
   ) {
     self.selectHost = selectHost
     self.setUp = setUp
     self.refresh = refresh
+    self.open = open
   }
 }
 
@@ -162,6 +166,13 @@ public struct HarnessesSettingsSection: View {
           if row.needsSetup {
             Button("Set Up\u{2026}") { actions.setUp(row) }
               .accessibilityIdentifier("harness-settings-setup-\(row.id)")
+          }
+          if let open = actions.open, row.status != nil {
+            Button("Details", systemImage: "chevron.right") { open(row) }
+              .labelStyle(.iconOnly)
+              .buttonStyle(.borderless)
+              .help("Show \(row.name)\u{2019}s account and startup settings")
+              .accessibilityIdentifier("harness-settings-open-\(row.id)")
           }
         }
         .accessibilityElement(children: .combine)
