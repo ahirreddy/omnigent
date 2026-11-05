@@ -32,6 +32,9 @@ playground can't show. Every polish pass ends with this check, in the apps thems
    - Dragging a tab reorders it and never moves the window.
    - Dragging the strip's empty space moves the window, and a double-click there zooms it.
    - Overflowing tabs fade at the edge, and the selected tab scrolls into view.
+   - On iPhone (and iPad's Show All Tabs), the tab-count button zooms the shown tab out into a
+     grid with one card per tab of this session; the chat's card has no close button, and a tap
+     zooms back into that tab.
 4. **Names.** The server reads as its display name, and "This Mac" for a loopback server. Never
    `127.0.0.1`: check the window title, sidebar switcher, composer context and menu bar.
 5. **Shortcuts.** In a browser tab, Command-R reloads the page. Reconnect is Shift-Option-Command-R, and Option-Command-R renames the session. Each

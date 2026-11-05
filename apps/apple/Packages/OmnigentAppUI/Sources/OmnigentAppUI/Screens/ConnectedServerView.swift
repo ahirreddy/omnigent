@@ -100,11 +100,10 @@ public struct ConnectedServerView: View {
     .task(id: connection.connectedServer?.baseUrl) {
       if connection.connectedServer != nil { await connection.loadOfferedPages() }
     }
-    .sheet(isPresented: $showsTabOverview) {
-      if let strip {
-        TabOverviewSheet(state: strip.state, actions: strip.actions) { showsTabOverview = false }
-      }
-    }
+    .tabOverview(
+      isPresented: $showsTabOverview, state: strip?.state ?? TabsState(),
+      actions: strip?.actions ?? TabActions()
+    )
     .alert("Could Not Open the Tab", isPresented: tabFailurePresented) {
       Button("OK") { tabFailure = nil }
     } message: {

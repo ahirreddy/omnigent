@@ -239,6 +239,9 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   values (only conversations and terminals defer to the focused pane).
 - [ ] **Browser identifiers on iOS:** `BrowserTabContentView`'s `browser.tab` identifier replaces
   the omnibox's and other children's, so UI tests can't find `browser.omnibox` on iPhone.
+- [ ] **Tab grid:** cards picture a tab only after the overview has opened over it (others show
+  the icon and title), and the grid can't reorder or search tabs yet; the Mac's list sheet can.
+  `TabGridOverviewUITests` has not run yet: simulators were paused when it landed.
 
 - [ ] **iPhone Duo unfolded:** the Xcode 27.2 simulator can't unfold, so the unfolded posture
   (safe areas, size classes, the `.division` region, camera position, `ArrangementView`'s axis)

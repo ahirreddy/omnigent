@@ -43,8 +43,6 @@ public struct TabStripControls: View {
           .accessibilityIdentifier("tab-issue")
       }
     }
-    .sheet(isPresented: $showsOverview) {
-      TabOverviewSheet(state: state, actions: actions) { showsOverview = false }
-    }
+    .tabOverview(isPresented: $showsOverview, state: state, actions: actions)
   }
 }

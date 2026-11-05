@@ -54,7 +54,7 @@ struct TabOverviewMenu: View {
 }
 
 /// Every tab as a list: select, close (swipe or the close button), reorder, and open a new tab.
-/// iPhone switches tabs here; iPad shows it on narrow widths, and the Mac from Show All Tabs.
+/// The Mac shows it from Show All Tabs; iPhone and iPad show ``TabGridOverview`` instead.
 public struct TabOverviewSheet: View {
   private let state: TabsState
   private let actions: TabActions
@@ -205,8 +205,8 @@ public struct TabOverviewSheet: View {
   }
 }
 
-/// A toolbar button that opens ``TabOverviewSheet``, with the tab count, for widths without a
-/// strip.
+/// A toolbar button that opens the tab overview (``View/tabOverview(isPresented:state:actions:)``),
+/// with the tab count, for widths without a strip.
 public struct TabSwitcherButton: View {
   private let state: TabsState
   private let actions: TabActions
@@ -234,9 +234,7 @@ public struct TabSwitcherButton: View {
     }
     .help("Show all tabs")
     .accessibilityIdentifier("tab-switcher")
-    .sheet(isPresented: $isPresented) {
-      TabOverviewSheet(state: state, actions: actions) { isPresented = false }
-    }
+    .tabOverview(isPresented: $isPresented, state: state, actions: actions)
   }
 
   /// `3.square` for 1 to 50 tabs, else the generic tabs symbol.
