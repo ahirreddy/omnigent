@@ -46,7 +46,8 @@ public final class GhosttyRuntime {
   /// - Throws: ``GhosttyError`` when libghostty cannot start or the configuration is invalid.
   public static func shared() throws(GhosttyError) -> GhosttyRuntime {
     if let instance { return instance }
-    let runtime = try GhosttyRuntime(appearance: TerminalAppearance.system())
+    let runtime = try GhosttyRuntime(
+      appearance: TerminalPreferences.load(over: TerminalAppearance.system()))
     instance = runtime
     return runtime
   }

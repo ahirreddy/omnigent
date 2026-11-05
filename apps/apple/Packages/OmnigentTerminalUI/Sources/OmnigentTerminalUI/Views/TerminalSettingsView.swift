@@ -1,10 +1,11 @@
 public import SwiftUI
 
-/// Terminal appearance settings: font size, scrollback, Option as Alt and cursor blink. Colors
-/// follow the system light or dark mode.
+/// Terminal settings: font, scrollback, Option as Alt and cursor blink, kept across launches
+/// (``TerminalPreferences``). Colors follow the app, or Settings › Appearance's terminal theme.
 public struct TerminalSettingsView: View {
   @State private var appearance: TerminalAppearance
   @State private var error: String?
+  @State private var families: [String] = []
   @AppStorage(TerminalClipboardPolicy.key) private var clipboard = TerminalClipboardPolicy.ask
 
   /// Settings for the shared runtime's current appearance.
@@ -13,7 +14,7 @@ public struct TerminalSettingsView: View {
       _appearance = State(initialValue: try GhosttyRuntime.shared().appearance)
       _error = State(initialValue: nil)
     } catch {
-      _appearance = State(initialValue: TerminalAppearance.system())
+      _appearance = State(initialValue: TerminalPreferences.load(over: .system()))
       _error = State(initialValue: error.description)
     }
   }
@@ -22,11 +23,19 @@ public struct TerminalSettingsView: View {
   public var body: some View {
     Form {
       Section("Font") {
-        Stepper(value: $appearance.fontSize, in: 8...32, step: 1) {
+        Stepper(value: $appearance.fontSize, in: TerminalPreferences.fontSizes, step: 1) {
           LabeledContent("Size", value: "\(Int(appearance.fontSize)) pt")
         }
-        LabeledContent(
-          "Family", value: appearance.fontFamily ?? TerminalFonts.systemFamily ?? "Default")
+        if families.isEmpty {
+          LabeledContent(
+            "Family", value: appearance.fontFamily ?? TerminalFonts.systemFamily ?? "Default")
+        } else {
+          Picker("Family", selection: $appearance.fontFamily) {
+            Text("System (\(TerminalFonts.systemFamily ?? "Default"))").tag(String?.none)
+            ForEach(families, id: \.self) { Text($0).tag(Optional($0)) }
+          }
+          .accessibilityIdentifier("settings.terminal-font-family")
+        }
       }
       Section("Behavior") {
         Picker("Scrollback", selection: $appearance.scrollback) {
@@ -58,12 +67,16 @@ public struct TerminalSettingsView: View {
       }
     }
     .formStyle(.grouped)
+    .task { families = TerminalFonts.monospacedFamilies() }
     .onChange(of: appearance) { _, value in apply(value) }
   }
 
+  /// Applies `value` to every terminal, and keeps it only once libghostty accepts it.
   private func apply(_ value: TerminalAppearance) {
     do {
-      try GhosttyRuntime.shared().update(appearance: value)
+      let runtime = try GhosttyRuntime.shared()
+      try runtime.update(appearance: TerminalPreferences.merge(value, into: runtime.appearance))
+      TerminalPreferences.save(value)
       error = nil
     } catch let failure {
       error = failure.description

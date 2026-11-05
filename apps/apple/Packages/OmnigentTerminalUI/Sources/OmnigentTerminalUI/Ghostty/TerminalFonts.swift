@@ -30,6 +30,21 @@ enum TerminalFonts {
     let resolved = CTFontCopyFamilyName(font) as String
     return resolved.caseInsensitiveCompare(family) == .orderedSame
   }
+
+  /// Installed fixed-pitch families discovery can find by name, sorted; empty where the
+  /// platform does not list them (iOS).
+  static func monospacedFamilies() -> [String] {
+    #if os(macOS)
+      let manager = NSFontManager.shared
+      let names = manager.availableFontNames(with: .fixedPitchFontMask) ?? []
+      let families = Set(names.compactMap { NSFont(name: $0, size: 13)?.familyName })
+      return families.filter { !$0.hasPrefix(".") }.sorted {
+        $0.localizedStandardCompare($1) == .orderedAscending
+      }
+    #else
+      return []
+    #endif
+  }
 }
 
 extension TerminalAppearance {
