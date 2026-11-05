@@ -6,7 +6,7 @@
 // apps/apple/RELEASE.md ("Auto-update") for the package wiring and the Info.plist keys
 // (`SUFeedURL`, `SUPublicEDKey`) this reads.
 #if canImport(Sparkle)
-  import Foundation
+  public import Foundation
   import Sparkle
 
   /// A problem the updater reported. Sparkle's standard UI has already shown it to the user when
@@ -65,6 +65,28 @@
     /// `DesktopCommandActions.checkForUpdates`.
     public func checkForUpdates() {
       updater.checkForUpdates()
+    }
+
+    /// Scheduled background checks (Sparkle keeps the choice in the app's defaults).
+    public var automaticallyChecksForUpdates: Bool {
+      get { updater.automaticallyChecksForUpdates }
+      set { updater.automaticallyChecksForUpdates = newValue }
+    }
+
+    /// Found updates download in the background and install when the app quits.
+    public var automaticallyDownloadsUpdates: Bool {
+      get { updater.automaticallyDownloadsUpdates }
+      set { updater.automaticallyDownloadsUpdates = newValue }
+    }
+
+    /// The feed and signing allow silent installs (``automaticallyDownloadsUpdates``).
+    public var allowsAutomaticUpdates: Bool {
+      updater.allowsAutomaticUpdates
+    }
+
+    /// When the last check ran, if one has.
+    public var lastUpdateCheckDate: Date? {
+      updater.lastUpdateCheckDate
     }
 
     /// The `SPUUpdaterDelegate`; private so `Sparkle` stays an internal import.

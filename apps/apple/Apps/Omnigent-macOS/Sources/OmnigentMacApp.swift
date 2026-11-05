@@ -56,8 +56,13 @@ struct OmnigentMacApp: App {
     OmnigentMenuBarExtra(desktop: desktop, sessions: services.menuBar)
 
     Settings {
-      AppSettingsView(services: services)
-        .omnigentTheme(services.theme.theme, appearance: services.theme.mode)
+      #if OMNIGENT_CHROMIUM
+        AppSettingsView(services: services, updater: appDelegate.updater)
+          .omnigentTheme(services.theme.theme, appearance: services.theme.mode)
+      #else
+        AppSettingsView(services: services)
+          .omnigentTheme(services.theme.theme, appearance: services.theme.mode)
+      #endif
     }
   }
 }
@@ -82,7 +87,7 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   private(set) lazy var services = AppServices(desktop: desktop)
 
   #if OMNIGENT_CHROMIUM
-    private lazy var updater = SparkleUpdater { [weak self] issue in
+    private(set) lazy var updater = SparkleUpdater { [weak self] issue in
       self?.reportUpdater(issue)
     }
   #endif
@@ -154,23 +159,38 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
 /// Servers, with the composer's send shortcut and this edition's browser engines on General.
 struct AppSettingsView: View {
   let services: AppServices
+  #if OMNIGENT_CHROMIUM
+    /// Backs General › Updates.
+    let updater: SparkleUpdater
+  #endif
+  /// Other windows open Settings at a tab or server pane through it.
+  @Bindable private var navigator = SettingsNavigator.shared
 
   var body: some View {
     OmnigentSettingsView(
       desktop: services.desktop, recentServers: services.recentServers.urls,
       extraTabs: [
-        SettingsTabItem("Appearance", systemImage: "paintpalette") {
-          Form { ThemeSettingsView(preferences: services.theme) }.formStyle(.grouped)
+        SettingsTabItem(SettingsNavigator.appearanceTab, systemImage: "paintpalette") {
+          Form {
+            ThemeSettingsView(preferences: services.theme)
+            SettingsDataSection(theme: services.theme)
+          }
+          .formStyle(.grouped)
         },
-        SettingsTabItem("Terminal", systemImage: "apple.terminal") { TerminalSettingsView() },
+        SettingsTabItem(SettingsNavigator.terminalTab, systemImage: "apple.terminal") {
+          TerminalSettingsView()
+        },
         SettingsTabItem("Phone", systemImage: "iphone") {
           PairingSettingsView(servers: services.pairingServers())
         },
         // Each signed-in server's settings, as the web's /settings server sections.
-        SettingsTabItem("Servers", systemImage: "network", isWide: true) {
-          ServerSettingsContainer()
+        SettingsTabItem(SettingsNavigator.serversTab, systemImage: "network", isWide: true) {
+          ServerSettingsContainer(openSession: { [desktop = services.desktop] server, session in
+            desktop.router.open(.conversation(sessionID: session), onServer: server)
+          })
         },
-      ]
+      ],
+      selection: $navigator.tab
     ) {
       ComposerSettingsSection()
       BrowserEngineSettingsView(
@@ -179,13 +199,9 @@ struct AppSettingsView: View {
       Section("Downloads") {
         BrowserDownloadSettingsView(settings: BrowserPromptPresenter.shared.downloadSettings)
       }
-      if let issue = services.updaterIssue {
-        Section("Updates") {
-          Label(issue, systemImage: "exclamationmark.triangle")
-            .foregroundStyle(.secondary)
-            .accessibilityIdentifier("settings.updater-issue")
-        }
-      }
+      #if OMNIGENT_CHROMIUM
+        UpdateSettingsSection(updater: updater, issue: services.updaterIssue)
+      #endif
     }
   }
 }

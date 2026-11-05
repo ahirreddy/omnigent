@@ -178,3 +178,10 @@ struct AccountScreenTests {
     #expect(state.screen.isBusy)
   }
 }
+
+struct LandingFooterTests {
+  @Test func linksMatchTheWebLandingInOrder() {
+    #expect(LandingLink.all.map(\.id) == ["ios", "android", "github", "discord"])
+    #expect(LandingLink.all.allSatisfy { $0.url.scheme == "https" })
+  }
+}

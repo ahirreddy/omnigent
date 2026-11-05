@@ -300,6 +300,12 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Automations editor:** no host/workspace pin, model, effort, permission mode, project, end
   condition (COUNT/UNTIL, kept as is when present), Jira/Slack/GitHub trigger templates or the
   `automations_v2` run-history page.
+- [ ] **Host import review (Mac):** the web's `ImportReviewGate` (behind the `import_review`
+  feature) opens the import modal for a newly connected host's MCPs, skills and plugins; the Mac
+  app has no harness-inventory read or modal yet.
+- [ ] **Settings › Archived (Mac):** retention uses a session's last change, not the server's
+  `omnigent.archived_at` label (the core's session summary does not carry it), and the project
+  filter covers loaded pages only (the web pages through every archived session).
 
 ## Product decisions
 
