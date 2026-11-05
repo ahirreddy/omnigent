@@ -144,9 +144,8 @@ struct SideChatTabContainer: View {
     guard let conversation = session.connection.conversations[sessionID] else {
       return SideChatTabState(phase: .loading, sessionTitle: title)
     }
-    guard let row = conversation.rows.first(where: { $0.id == rowID }),
-      let activity = row.activity
-    else {
+    // The watched row alone: reading `rows` would re-render this tab for every streamed delta.
+    guard let activity = conversation.watchRow(rowID).row?.activity else {
       return SideChatTabState(
         phase: conversation.header == nil ? .loading : .unavailable, sessionTitle: title)
     }

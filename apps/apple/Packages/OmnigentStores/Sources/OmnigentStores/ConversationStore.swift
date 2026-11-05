@@ -104,6 +104,7 @@ public final class ConversationStore {
 
   private let core: ClientCore
   private let listStatus: ListStatusExpectation
+  @ObservationIgnored private var rowWatches = RowWatches()
 
   init(
     sessionID: String, core: ClientCore,
@@ -130,6 +131,15 @@ public final class ConversationStore {
       items: transcriptRows.count, mcpServers: agentInfo?.tools ?? [],
       agentLoaded: agentInfo != nil, isRunning: isRunning,
       hostOnline: header?.settings?.hostOnline ?? false)
+  }
+
+  /// Observes the row `rowID` on its own, for a view that shows only that row (see
+  /// ``RowWatch``). Reading it does not subscribe to ``rows``.
+  /// - Parameter rowID: The row.
+  /// - Returns: The watch, the same object on every call.
+  public func watchRow(_ rowID: String) -> RowWatch {
+    // `_rows` is the untracked storage: a body calling this must not depend on every row.
+    rowWatches.watch(rowID) { _rows }
   }
 
   /// Rows that belong in the transcript.
@@ -226,6 +236,7 @@ public final class ConversationStore {
     if header != self.header { self.header = header }
     if sections != self.sections { self.sections = sections }
     decisions.replace(cards)
+    rowWatches.refreshAll(from: rows)
     timeTurn(observed: false)
     digestRows()
   }
@@ -243,6 +254,7 @@ public final class ConversationStore {
     if let header = change.header, header != self.header { self.header = header }
     if let sections = change.sections, sections != self.sections { self.sections = sections }
     self.revision = revision
+    rowWatches.refresh(touchedBy: change.rows, in: rows)
     timeTurn(observed: true)
     digestRows()
   }

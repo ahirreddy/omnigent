@@ -62,6 +62,7 @@ struct IOSRootView: View {
         ProgressView()
       }
     }
+    .shortWindowsStayCompact()
     .task { await start() }
     .onChange(of: scenePhase) { previous, phase in
       // Back from the background: streams reopen and reconcile. Launch (inactive to active)

@@ -252,8 +252,13 @@ extension ConnectedServerView {
     let routes = windowTabs
     if let selected = tabs.selected {
       TabSplitView(split: tabs.splitState, actions: routes.actions) { pane in
-        if tabs.split == nil, sizeClass != .compact {
-          KeptAliveTabs(tabs.keptAlive(), shownID: selected.id) { tab in
+        // Compact keeps only the shown tab, in the same container, so a size-class change
+        // (rotating a large iPhone, resizing an iPad window) does not rebuild it.
+        if tabs.split == nil {
+          KeptAliveTabs(
+            tabs.keptAlive(limit: sizeClass == .compact ? 1 : TabStore.keptAliveLimit),
+            shownID: selected.id
+          ) { tab in
             tabContent(tab, routes: routes)
           }
         } else if let tab = paneTab(pane) {
