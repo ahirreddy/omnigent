@@ -24,6 +24,14 @@ struct StatesAndCopyTests {
     #expect(EmptyTranscriptView.title(state) == "No messages on this page")
   }
 
+  @Test("The empty state waits for the history to load instead of flashing before it")
+  func emptyStateWhileLoading() {
+    var state = ConversationViewState(header: header(.idle), isLoadingHistory: true)
+    #expect(!EmptyTranscriptView.isEmpty(state))
+    state.isLoadingHistory = false
+    #expect(EmptyTranscriptView.isEmpty(state))
+  }
+
   @Test("The live turn counts from the store's start, else the prompt's timestamp")
   func elapsedStart() {
     let sent = Date(timeIntervalSince1970: 1_000)

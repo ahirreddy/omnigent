@@ -8,6 +8,17 @@ struct EmptyTranscriptView: View {
   @Environment(\.isActiveTabPane) private var isActivePane
 
   var body: some View {
+    // While the first page loads, the history header's progress is the whole story: the empty
+    // state would flash "What should we work on?" before the messages arrive.
+    if Self.isEmpty(state) { content }
+  }
+
+  /// Whether the conversation is known to be empty, not still loading its history.
+  static func isEmpty(_ state: ConversationViewState) -> Bool {
+    !state.isLoadingHistory
+  }
+
+  private var content: some View {
     VStack(spacing: Theme.Spacing.small) {
       if !state.hasMoreHistory {
         OttoView()
