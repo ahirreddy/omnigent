@@ -75,6 +75,13 @@ nonisolated enum CodeHighlighting {
   @MainActor static func attributed(_ code: String, spans: [CodeSpan], scheme: ColorScheme)
     -> AttributedString
   {
+    attributed(code, spans: spans) { color($0, scheme: scheme) }
+  }
+
+  /// `code` with each span in the color `color` gives its token.
+  static func attributed(
+    _ code: String, spans: [CodeSpan], color: (CodeToken) -> Color
+  ) -> AttributedString {
     var attributed = AttributedString(code)
     let utf16 = code.utf16
     for span in spans {
@@ -83,7 +90,7 @@ nonisolated enum CodeHighlighting {
       guard let start = AttributedString.Index(lower, within: attributed),
         let end = AttributedString.Index(upper, within: attributed)
       else { continue }
-      attributed[start..<end].foregroundColor = color(span.token, scheme: scheme)
+      attributed[start..<end].foregroundColor = color(span.token)
     }
     return attributed
   }

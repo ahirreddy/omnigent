@@ -207,6 +207,8 @@ pub struct WorkspaceEnvironment {
     pub environment_type: Option<String>,
     /// The absolute root on the machine that runs the environment, when reported.
     pub root: Option<String>,
+    /// The home directory on that machine, to expand `~` in cited paths, when reported.
+    pub home: Option<String>,
     /// Paths outside the root are reachable.
     pub unconfined: Option<bool>,
     /// The session's primary environment.
@@ -729,6 +731,7 @@ fn environment(environment: core::WorkspaceEnvironment) -> WorkspaceEnvironment 
         role: environment.role,
         environment_type: environment.environment_type,
         root: environment.root,
+        home: environment.home,
         unconfined: environment.unconfined,
     }
 }

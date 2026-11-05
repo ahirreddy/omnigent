@@ -206,20 +206,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   `ConfigurationMenu`'s pickers (no agent switch).
 - [ ] **CLI style:** fold the non-message hover host (`cliActions`) into the shared
   `messageActionsHost` once it takes arbitrary actions.
-- [ ] **CLI style:** Styled renders fenced code without syntax highlighting (the rich renderer
-  colors it with `CodeHighlighting`; the CLI palette has no token colors yet).
-- [ ] **Markdown: Mermaid.** ```` ```mermaid ```` blocks render as code. Diagrams need a WebKit
-  renderer (non-persistent `WKWebsiteDataStore`, as for other inline HTML) and a vendored
-  `mermaid.min.js` (~3 MB) as a package resource; it must not be loaded from a CDN.
-- [ ] **Markdown: math** draws TeX as Unicode text (`MathText`): fractions are `a/b` and matrices,
-  `\begin{cases}` and over/under-sets are flattened. Typeset math (KaTeX in WebKit, or a native
-  TeX layout) would match the web exactly.
-- [ ] **Markdown: message attachments.** Uploaded images in a message are chips; inline
-  thumbnails need the core's attachment preview (`attachments::preview`,
-  `GET …/resources/files/{id}/content`) exported over FFI. Markdown images from the workspace and
-  `data:` URLs already render inline with a lightbox.
-- [ ] **Markdown: file links** check existence by listing the cited file's folder; links to
-  folders (the web opens them in the Files tree) and paths outside the workspace are not linked.
+- [ ] **Markdown: message attachments** whose bytes were inline (`data:` image blocks) stay
+  "Embedded, not kept" chips: the core drops embedded bytes from rows (the web shows them).
+- [ ] **Markdown: file links** to paths outside the workspace are not linked: the web opens them
+  in its viewer through `?base=host` reads, which the core's workspace paths refuse by design
+  (`workspace/path.rs`). Needs host-absolute list and read in the core and the file viewer.
 - [ ] **CLI style on iOS:** the request review sheet opened from the dock keeps the system sheet
   background instead of the terminal canvas.
 - [ ] **CLI style on iOS:** the unfolded iPhone Duo is untested; the Xcode 27.2 simulator has no
@@ -372,6 +363,18 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   Keyboard: Up/Down through completions and prompt history (Up first pulls back the last queued
   message), ⌘Return sends with the whole queue, ⌃⇧M/⌃⌥M/⌃⌥E choose and cycle model and effort;
   `@` paths become chips sent as `[Attached: path]` lines; queued messages reorder by drag.
+- [x] **Markdown: uploaded images, CLI code colors, folder and `~/` links.** Images uploaded with a
+  message show inline above its text (click to enlarge) through the core's
+  `attachment_preview` (session files only, preview MIME and size limits); the CLI Styled
+  rendering colors fenced code with the terminal palette; an explicit link to a folder shows it
+  in the Files tree, and `~/` paths expand with the environment's `home`. 2026-11-04.
+
+- [x] **Markdown: Mermaid and math.** ```` ```mermaid ```` blocks draw as diagrams and TeX is
+  typeset by KaTeX, both in one offscreen WebKit view (`RichBlockRenderer`, non-persistent data
+  store, no navigation) whose snapshots show as native images; KaTeX and Mermaid are package
+  resources from `scripts/vendor-rich-render.sh` (Mermaid LZMA-compressed under the 1 MB file
+  limit). Streaming blocks stay code or Unicode until they close. 2026-11-04.
+
 - [x] Host: after Back, the remote tab kept showing the old page (or a blank one) when many other
   tabs showed the same site. Windowless Chromium restored the page from the back/forward cache
   without painting it. The host now disables `BackForwardCache`; `browser-host/tools/back_test.py`

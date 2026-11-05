@@ -85,6 +85,7 @@ pub enum SessionErrorKind {
     Auth,
     Sync,
     BrowserAction,
+    Preview,
 }
 
 /// [`HostedAuthError`]'s variants.
@@ -617,6 +618,7 @@ const fn session_kind(error: &SessionError) -> SessionErrorKind {
         SessionError::Auth(_) => SessionErrorKind::Auth,
         SessionError::Sync(_) => SessionErrorKind::Sync,
         SessionError::BrowserAction(_) => SessionErrorKind::BrowserAction,
+        SessionError::Preview(_) => SessionErrorKind::Preview,
     }
 }
 

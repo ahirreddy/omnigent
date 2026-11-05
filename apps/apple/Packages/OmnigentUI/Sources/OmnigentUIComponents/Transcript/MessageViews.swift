@@ -64,12 +64,13 @@ struct MessageRowView: View, Equatable {
         Spacer(
           minLength: layoutWidth == .compact ? Theme.Spacing.extraLarge : Theme.Spacing.section)
         VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+          // Attachments lead the message, as on the web.
+          AttachmentStrip(attachments: row.attachments)
           if !row.text.isEmpty {
             MarkdownView(row.text, isStreaming: false)
               .environment(\.markdownFillsWidth, false)
               .fixedSize(horizontal: false, vertical: true)
           }
-          AttachmentStrip(attachments: row.attachments)
           if let activity = row.activity {
             UnsupportedContentView(activity: activity, rowID: row.id)
           }
@@ -218,16 +219,27 @@ private struct InterruptedLabel: View {
   }
 }
 
-/// Attachment chips. Nothing is fetched; Open asks the host explicitly.
+/// A message's attachments: uploaded images inline (``AttachmentPreviews``, click to enlarge),
+/// everything else, and an image that cannot be shown, as a chip that Open asks the host about.
 struct AttachmentStrip: View {
   let attachments: [Attachment]
   @Environment(\.conversationActions) private var actions
+  @Environment(\.attachmentPreviews) private var previews
 
   var body: some View {
     if !attachments.isEmpty {
       FlowLayout(spacing: Theme.Spacing.small) {
         ForEach(attachments) { attachment in
-          AttachmentChip(attachment: attachment, open: actions.openAttachment)
+          if let previews, let reference = attachment.previewableImage {
+            LoadedImageView(id: reference, alt: attachment.title) {
+              try await previews.data(for: reference)
+            } unavailable: { reason in
+              AttachmentChip(attachment: attachment, open: actions.openAttachment)
+                .help(reason)
+            }
+          } else {
+            AttachmentChip(attachment: attachment, open: actions.openAttachment)
+          }
         }
       }
     }

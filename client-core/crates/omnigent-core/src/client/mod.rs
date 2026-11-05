@@ -26,6 +26,7 @@
 
 pub mod agent_info;
 pub mod agent_tree;
+mod attachment_previews;
 pub mod automations;
 pub mod browser;
 pub mod comments;
@@ -561,6 +562,10 @@ mod skills_tests;
 #[cfg(test)]
 #[path = "export_tests.rs"]
 mod export_tests;
+
+#[cfg(test)]
+#[path = "attachment_previews_tests.rs"]
+mod attachment_previews_tests;
 
 #[cfg(test)]
 #[path = "recovery_tests.rs"]

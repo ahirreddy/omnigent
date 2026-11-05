@@ -59,6 +59,8 @@ let package = Package(
         .product(name: "OmnigentWorkspaceUI", package: "OmnigentWorkspaceUI"),
         .product(name: "Markdown", package: "swift-markdown"),
       ],
+      // KaTeX and Mermaid for typeset math and diagrams (scripts/vendor-rich-render.sh).
+      resources: [.copy("Resources/RichRender")],
       swiftSettings: mainActorSwiftSettings
     ),
     .executableTarget(

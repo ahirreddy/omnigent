@@ -44,6 +44,9 @@ pub struct AttachmentPreview {
 /// Why an attachment cannot be previewed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PreviewError {
+    /// The reference is not a file of this session on the connected server. Nothing was sent.
+    #[error("this attachment is not a file of this session")]
+    NotASessionFile,
     /// A session or file id is not an identifier. Nothing was sent.
     #[error("invalid identifier {value:?}")]
     InvalidIdentifier {

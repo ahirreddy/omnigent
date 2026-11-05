@@ -1,3 +1,4 @@
+import OmnigentWorkspaceUI
 import SwiftUI
 
 /// Styled output: the shared markdown parse (``MarkdownParser``) drawn the way a terminal UI
@@ -86,8 +87,8 @@ private struct CLIMarkdownBlockView: View {
         .fixedSize(horizontal: false, vertical: true)
     case .heading(let level, let text):
       heading(level: level, text: text)
-    case .code(_, let code):
-      Text(withCursor(colored(code, palette.code)))
+    case .code(let language, let code):
+      Text(withCursor(highlighted(code, language: language)))
         .fixedSize(horizontal: false, vertical: true)
         .padding(.leading, size.character * 2)
         .accessibilityLabel("Code: \(code)")
@@ -135,6 +136,13 @@ private struct CLIMarkdownBlockView: View {
       .italic(minor)
       .fixedSize(horizontal: false, vertical: true)
       .accessibilityAddTraits(.isHeader)
+  }
+
+  /// Fenced code in the terminal's colors once its block closes; plain code color until then
+  /// and for languages the highlighter does not know.
+  private func highlighted(_ code: String, language: String?) -> AttributedString {
+    guard !cursor, CodeHighlighting.supports(language) else { return colored(code, palette.code) }
+    return CLICodeHighlightCache.shared.attributed(code, language: language, palette: palette)
   }
 
   private func colored(_ text: String, _ color: SRGB) -> AttributedString {
@@ -240,6 +248,51 @@ private struct CLITableView: View {
     case .leading: .leading
     case .center: .center
     case .trailing: .trailing
+    }
+  }
+}
+
+/// Fenced code colored with the CLI palette, as a terminal theme colors it: keywords in the
+/// emphasis color, strings green, comments dim, numbers in the heading color and types cyan;
+/// diffs add green and remove red. Cached by code, language and palette.
+@MainActor
+final class CLICodeHighlightCache {
+  static let shared = CLICodeHighlightCache(limit: 128)
+
+  private struct Key: Hashable {
+    var code: String
+    var language: String?
+    var palette: CLIPalette
+  }
+
+  private var entries: BoundedCache<Key, AttributedString>
+
+  init(limit: Int) {
+    entries = BoundedCache(limit: limit)
+  }
+
+  func attributed(_ code: String, language: String?, palette: CLIPalette) -> AttributedString {
+    entries.value(for: Key(code: code, language: language, palette: palette)) {
+      var colored = CodeHighlighting.attributed(
+        code, spans: CodeHighlighting.spans(code, language: language)
+      ) { Self.color($0, palette).color }
+      for run in colored.runs where run.foregroundColor == nil {
+        colored[run.range].foregroundColor = palette.body.color
+      }
+      return colored
+    }
+  }
+
+  static func color(_ token: CodeToken, _ palette: CLIPalette) -> SRGB {
+    switch token {
+    case .syntax(.keyword): palette.italic
+    case .syntax(.string): palette.code
+    case .syntax(.comment): palette.dim
+    case .syntax(.number): palette.heading
+    case .syntax(.type): palette.marker
+    case .inserted: palette.added
+    case .deleted: palette.failure
+    case .header: palette.strong
     }
   }
 }

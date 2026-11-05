@@ -569,6 +569,7 @@ fn environments_and_session_files() {
         panic!()
     };
     assert_eq!(default.root.as_deref(), Some("/workspace/fixture"));
+    assert_eq!(default.home.as_deref(), Some("/home/fixture"));
     assert_eq!(default.unconfined, Some(true));
     assert_eq!(
         absolute_location(default.root.as_deref().unwrap(), &path("src/main.rs")),

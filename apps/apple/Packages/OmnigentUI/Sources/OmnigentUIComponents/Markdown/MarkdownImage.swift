@@ -55,13 +55,46 @@ nonisolated enum MarkdownImageError: LocalizedError {
   }
 }
 
-/// An image in a message, sized to fit the column; click to open it in ``ImageLightbox``.
-/// While it loads it holds a placeholder; when it cannot be shown it is a compact labelled
-/// chip that says why on hover, as on the web.
+/// An image in a message from the workspace or a `data:` URL (``LoadedImageView``); when it
+/// cannot be shown it is a compact labelled chip that says why on hover, as on the web.
 struct MarkdownImageView: View {
   let source: String
   let alt: String
   @Environment(\.workspaceFileLinks) private var links
+
+  var body: some View {
+    LoadedImageView(id: source, alt: alt, load: load) { reason in
+      Label(alt.isEmpty ? "Image" : alt, systemImage: "photo")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, Theme.Spacing.medium)
+        .padding(.vertical, Theme.Spacing.small)
+        .background(ThemeColor.hover, in: .rect(cornerRadius: Theme.Radius.small))
+        .help(reason)
+        .accessibilityLabel("\(alt.isEmpty ? "Image" : alt), not shown: \(reason)")
+    }
+  }
+
+  private func load() async throws -> Data {
+    switch MarkdownImageSource(source) {
+    case .data(_, let base64): return try MarkdownImageSource.decode(base64)
+    case .workspace(let path):
+      guard let links, links.readsImages else { throw MarkdownImageError.unavailable }
+      return try await links.image(at: path)
+    case nil: throw MarkdownImageError.undecodable
+    }
+  }
+}
+
+/// An image whose bytes `load` reads, sized to fit the column (at most 256 points tall, as on
+/// the web); click to open it in ``ImageLightbox``. It holds a placeholder while it loads and
+/// draws `unavailable` with the reason when it cannot be shown.
+struct LoadedImageView<Unavailable: View>: View {
+  /// Identifies the bytes: a new id loads again.
+  let id: String
+  let alt: String
+  let load: @MainActor () async throws -> Data
+  @ViewBuilder let unavailable: (String) -> Unavailable
   @State private var phase = Phase.loading
   @State private var showsLightbox = false
 
@@ -73,7 +106,7 @@ struct MarkdownImageView: View {
 
   var body: some View {
     content
-      .task(id: source) { await load() }
+      .task(id: id) { await read() }
   }
 
   @ViewBuilder private var content: some View {
@@ -100,31 +133,19 @@ struct MarkdownImageView: View {
         ImageLightbox(image: image, size: size, title: alt)
       }
     case .failed(let reason):
-      Label(alt.isEmpty ? "Image" : alt, systemImage: "photo")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, Theme.Spacing.medium)
-        .padding(.vertical, Theme.Spacing.small)
-        .background(ThemeColor.hover, in: .rect(cornerRadius: Theme.Radius.small))
-        .help(reason)
-        .accessibilityLabel("\(alt.isEmpty ? "Image" : alt), not shown: \(reason)")
+      unavailable(reason)
     }
   }
 
-  private func load() async {
+  private func read() async {
     do {
-      let data: Data
-      switch MarkdownImageSource(source) {
-      case .data(_, let base64): data = try MarkdownImageSource.decode(base64)
-      case .workspace(let path):
-        guard let links, links.readsImages else { throw MarkdownImageError.unavailable }
-        data = try await links.image(at: path)
-      case nil: throw MarkdownImageError.undecodable
-      }
+      let data = try await load()
       guard let decoded = WorkspacePlatform.image(from: data) else {
         throw WorkspaceImageError.notAnImage
       }
       phase = .loaded(decoded.image, decoded.size)
+    } catch is CancellationError {
+      // Scrolled away mid-read; the next appearance reads again.
     } catch {
       phase = .failed(error.localizedDescription)
     }

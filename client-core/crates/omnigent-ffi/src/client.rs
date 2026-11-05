@@ -160,6 +160,15 @@ pub struct DraftAttachment {
     pub status: UploadStatus,
 }
 
+/// A message attachment's bytes, for an inline preview.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AttachmentPreview {
+    /// The exact bytes the server returned.
+    pub data: Vec<u8>,
+    /// The safe extension for its media type (`png`, `pdf`, ...).
+    pub file_extension: String,
+}
+
 /// A session's composer attachments.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct AttachmentDraft {
@@ -1290,6 +1299,29 @@ impl ClientCore {
             .sessions
             .attachment_draft(&session_id)
             .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// The bytes of a message attachment: `reference` is the file id or a path or URL of one of
+    /// `session_id`'s files on this server; nothing else is fetched.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`] (kind `Preview` for a reference that is not a session file, a
+    /// refused media type or size, or a refused status; or the read errors).
+    pub async fn attachment_preview(
+        &self,
+        session_id: String,
+        reference: String,
+    ) -> Result<AttachmentPreview, CoreError> {
+        self.inner
+            .sessions
+            .attachment_preview(&session_id, &reference)
+            .await
+            .map(|preview| AttachmentPreview {
+                data: preview.data,
+                file_extension: preview.file_extension.to_owned(),
+            })
             .map_err(CoreError::from)
     }
 

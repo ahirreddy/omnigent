@@ -160,6 +160,9 @@ pub enum SessionError {
     /// An agent browser action call failed.
     #[error("{0}")]
     BrowserAction(crate::client::browser::BrowserActionError),
+    /// An attachment cannot be previewed.
+    #[error("{0}")]
+    Preview(crate::attachments::PreviewError),
 }
 
 impl SessionError {

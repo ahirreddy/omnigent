@@ -2,23 +2,43 @@ public import Foundation
 public import Observation
 public import SwiftUI
 
+/// What a workspace folder holds, by name.
+nonisolated public struct WorkspaceFolderListing: Hashable, Sendable {
+  /// The names of its files.
+  public var files: Set<String>
+  /// The names of its subfolders.
+  public var folders: Set<String>
+
+  /// A listing.
+  /// - Parameters:
+  ///   - files: The names of its files.
+  ///   - folders: The names of its subfolders.
+  public init(files: Set<String>, folders: Set<String> = []) {
+    self.files = files
+    self.folders = folders
+  }
+}
+
 /// Turns workspace file paths in a session's messages into links that open the file in the app,
-/// as the web's chat does. A path links only once a listing of its folder shows the file, and
-/// each folder is listed once. The host supplies the listing, the image reads and opening.
+/// as the web's chat does; an explicit link to a folder shows it in the Files tree. A path links
+/// only once a listing of its parent shows it, and each folder is listed once. Absolute and `~/`
+/// paths link when they are inside the workspace root. The host supplies the listing, the image
+/// reads and opening.
 @MainActor
 @Observable
 public final class WorkspaceFileLinks {
   /// What a folder listing found.
   private enum Listing {
     case loading
-    case files(Set<String>)
+    case entries(WorkspaceFolderListing)
     /// The listing failed; its paths stay plain text (``failures`` keeps why).
     case failed
   }
 
   @ObservationIgnored private let root: @MainActor () -> String?
-  @ObservationIgnored private let home: String?
-  @ObservationIgnored private let listFiles: @MainActor (String) async throws -> Set<String>
+  @ObservationIgnored private let home: @MainActor () -> String?
+  @ObservationIgnored private let listFolder:
+    @MainActor (String) async throws -> WorkspaceFolderListing
   @ObservationIgnored private let readImage: (@MainActor (String) async throws -> Data)?
   @ObservationIgnored private let openFile: @MainActor (WorkspaceFileTarget) -> Void
   @ObservationIgnored private var images = BoundedCache<String, Data>(limit: 32)
@@ -29,31 +49,33 @@ public final class WorkspaceFileLinks {
   /// Links over one session workspace.
   /// - Parameters:
   ///   - root: The workspace's absolute root once known, to recognize absolute paths inside it.
-  ///   - home: The home directory, to expand `~/`.
-  ///   - listFiles: The names of the files (not folders) in a workspace-relative folder, `""`
-  ///     for the root.
+  ///   - home: The home directory once known, to expand `~/`.
+  ///   - listFolder: The files and subfolders of a workspace-relative folder, `""` for the root.
   ///   - readImage: An image file's bytes; `nil` shows workspace images as their alt text.
   ///   - open: Opens a file in the app.
   public init(
-    root: @escaping @MainActor () -> String?, home: String?,
-    listFiles: @escaping @MainActor (String) async throws -> Set<String>,
+    root: @escaping @MainActor () -> String?, home: @escaping @MainActor () -> String?,
+    listFolder: @escaping @MainActor (String) async throws -> WorkspaceFolderListing,
     readImage: (@MainActor (String) async throws -> Data)? = nil,
     open: @escaping @MainActor (WorkspaceFileTarget) -> Void
   ) {
     self.root = root
     self.home = home
-    self.listFiles = listFiles
+    self.listFolder = listFolder
     self.readImage = readImage
     openFile = open
   }
 
-  /// The file a cited path opens, when its folder listing shows it.
+  /// The file a cited path opens, or the folder an explicit link shows (as on the web), when
+  /// its parent's listing shows it.
   func target(for cited: String, explicit: Bool) -> WorkspaceFileTarget? {
     guard let target = candidate(cited, explicit: explicit),
-      case .files(let names)? = listings[Self.folder(of: target.path)],
-      names.contains(Self.name(of: target.path))
+      case .entries(let listing)? = listings[Self.folder(of: target.path)]
     else { return nil }
-    return target
+    let name = Self.name(of: target.path)
+    if listing.files.contains(name) { return target }
+    guard explicit, listing.folders.contains(name) else { return nil }
+    return WorkspaceFileTarget(path: target.path, isFolder: true)
   }
 
   /// Lists the folders of `cited` paths not listed yet.
@@ -66,7 +88,7 @@ public final class WorkspaceFileLinks {
     for folder in folders.sorted() where listings[folder] == nil {
       listings[folder] = .loading
       do {
-        listings[folder] = .files(try await listFiles(folder))
+        listings[folder] = .entries(try await listFolder(folder))
       } catch is CancellationError {
         // The message scrolled away; the next view that cites the folder lists it again.
         listings[folder] = nil
@@ -89,7 +111,8 @@ public final class WorkspaceFileLinks {
 
   /// An image's bytes, read once per path.
   func image(at cited: String) async throws -> Data {
-    guard let readImage, let path = WorkspacePaths.resolve(cited, root: root(), home: home) else {
+    guard let readImage, let path = WorkspacePaths.resolve(cited, root: root(), home: home())
+    else {
       throw WorkspaceImageError.notInWorkspace
     }
     if let cached = images.cached(path) { return cached }
@@ -98,7 +121,7 @@ public final class WorkspaceFileLinks {
   }
 
   private func candidate(_ cited: String, explicit: Bool) -> WorkspaceFileTarget? {
-    WorkspacePaths.target(cited, explicit: explicit, root: root(), home: home)
+    WorkspacePaths.target(cited, explicit: explicit, root: root(), home: home())
   }
 
   private static func folder(of path: String) -> String {

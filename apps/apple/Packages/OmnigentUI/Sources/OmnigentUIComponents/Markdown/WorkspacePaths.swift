@@ -1,6 +1,7 @@
 public import Foundation
 
-/// A workspace file a message cites, with the position it names (`src/app.ts:12:5`).
+/// A workspace file a message cites, with the position it names (`src/app.ts:12:5`), or a
+/// folder an explicit link names.
 nonisolated public struct WorkspaceFileTarget: Hashable, Sendable {
   /// Workspace-relative path.
   public var path: String
@@ -8,16 +9,20 @@ nonisolated public struct WorkspaceFileTarget: Hashable, Sendable {
   public var line: Int?
   /// 1-based column, when cited.
   public var column: Int?
+  /// The path is a folder, to show in the Files tree.
+  public var isFolder: Bool
 
   /// A target.
   /// - Parameters:
   ///   - path: Workspace-relative path.
   ///   - line: 1-based line.
   ///   - column: 1-based column.
-  public init(path: String, line: Int? = nil, column: Int? = nil) {
+  ///   - isFolder: The path is a folder.
+  public init(path: String, line: Int? = nil, column: Int? = nil, isFolder: Bool = false) {
     self.path = path
     self.line = line
     self.column = column
+    self.isFolder = isFolder
   }
 
   static let scheme = "omnigent-file"
@@ -31,6 +36,7 @@ nonisolated public struct WorkspaceFileTarget: Hashable, Sendable {
       [URLQueryItem(name: "path", value: path)]
       + [line.map { URLQueryItem(name: "line", value: String($0)) }].compactMap(\.self)
       + [column.map { URLQueryItem(name: "column", value: String($0)) }].compactMap(\.self)
+      + (isFolder ? [URLQueryItem(name: "folder", value: "1")] : [])
     return components.url
   }
 
@@ -43,6 +49,7 @@ nonisolated public struct WorkspaceFileTarget: Hashable, Sendable {
     self.path = path
     line = items.first(where: { $0.name == "line" })?.value.flatMap { Int($0) }
     column = items.first(where: { $0.name == "column" })?.value.flatMap { Int($0) }
+    isFolder = items.contains { $0.name == "folder" && $0.value == "1" }
   }
 }
 
@@ -114,7 +121,9 @@ nonisolated enum WorkspacePaths {
   static func target(_ text: String, explicit: Bool, root: String?, home: String?)
     -> WorkspaceFileTarget?
   {
-    let cited = citation(text)
+    var cited = citation(text)
+    // A link may name a folder with a trailing slash (`[src](src/)`).
+    if explicit, cited.path.count > 1, cited.path.hasSuffix("/") { cited.path.removeLast() }
     let isAbsolute = cited.path.hasPrefix("/") || cited.path.hasPrefix("~")
     guard explicit || isAbsolute || looksLikeRelativePath(cited.path),
       let path = resolve(cited.path, root: root, home: home)

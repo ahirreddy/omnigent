@@ -45,6 +45,15 @@ pub(crate) enum Reply {
         /// Body.
         body: String,
     },
+    /// A response with another media type, such as file content.
+    Typed {
+        /// Status.
+        status: u16,
+        /// The `Content-Type` header.
+        content_type: String,
+        /// Body.
+        body: Vec<u8>,
+    },
     /// A transport failure.
     Fail(TransportError),
 }
@@ -348,6 +357,15 @@ impl HttpTransport for RouteTransport {
                 status,
                 headers: vec![HttpHeader::new("Content-Type", "application/json")],
                 body: body.into_bytes(),
+            }),
+            Reply::Typed {
+                status,
+                content_type,
+                body,
+            } => Ok(HttpResponse {
+                status,
+                headers: vec![HttpHeader::new("Content-Type", content_type)],
+                body,
             }),
             Reply::Fail(error) => Err(error),
         };
