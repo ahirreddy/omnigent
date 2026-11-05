@@ -9,6 +9,9 @@ struct ConfigurationMenu: View {
   var isCompact = false
   /// The agent's symbol only, for the tightest touch row; the name is in the label and menu.
   var showsModel = true
+  /// The Mac's row names the agent only on a new session, where it is the first choice; a
+  /// session's agent is in its context line and in the menu.
+  var showsAgent = false
   @Environment(\.composerLayoutStyle) private var layout
 
   /// The card caps the model name; the touch bar lets it take the row's free width.
@@ -38,12 +41,12 @@ struct ConfigurationMenu: View {
         }
       }
     } label: {
-      label
+      if layout == .card { footerLabel } else { label }
     }
     .menuStyle(.button)
     .buttonStyle(.plain)
     .menuIndicator(.hidden)
-    .composerChip()
+    .modifier(ComposerControlChrome())
     // On touch the model name gives way to the row's other controls.
     .fixedSize(horizontal: layout != .touch, vertical: true)
     .disabled(configuration.isApplying)
@@ -92,6 +95,32 @@ struct ConfigurationMenu: View {
     .padding(.horizontal, Theme.Spacing.extraSmall)
     .contentShape(Rectangle())
     // One element: otherwise the glyph and the text each become a menu button.
+    .accessibilityElement(children: .combine)
+  }
+
+  /// The Mac's row under the pill: plain text, "Opus 5.5 High".
+  private var footerLabel: some View {
+    HStack(spacing: Theme.Spacing.small) {
+      if showsAgent {
+        Text(configuration.agentTitle).foregroundStyle(.secondary).lineLimit(1)
+      }
+      Text(configuration.modelTitle)
+        .lineLimit(1)
+        .truncationMode(.middle)
+        .frame(maxWidth: Theme.Control.modelWidth)
+      if let effort = configuration.effortTitle {
+        Text(effort).foregroundStyle(.secondary).lineLimit(1)
+      }
+      if configuration.isApplying {
+        ProgressView().controlSize(.mini)
+      } else if configuration.errorMessage != nil {
+        Image(systemName: "exclamationmark.triangle.fill")
+          .foregroundStyle(Theme.warning)
+          .imageScale(.small)
+          .accessibilityLabel("Model list unavailable")
+      }
+    }
+    .contentShape(Rectangle())
     .accessibilityElement(children: .combine)
   }
 

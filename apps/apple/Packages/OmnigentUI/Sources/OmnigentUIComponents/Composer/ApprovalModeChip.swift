@@ -57,37 +57,55 @@ struct ApprovalModeChip: View {
         Text("Shift-Tab switches modes. The sandbox and model are separate.")
       }
     } label: {
-      HStack(spacing: Theme.Spacing.extraSmall) {
-        Image(systemName: risk.systemImage)
-          .foregroundStyle(risk.tint)
-          .accessibilityHidden(true)
-        // Compact widths keep a one-word label: a bare glyph does not say which mode.
-        Text(isCompact ? Self.shortName(name) : name)
-          .lineLimit(1)
-          // Its ideal width, capped on touch so one row fits.
-          .frame(
-            maxWidth: layout == .touch ? ComposerBarMetrics.modeWidth : nil, alignment: .leading
-          )
-          .fixedSize(horizontal: layout == .touch, vertical: false)
-          .foregroundStyle(
-            risk == .fullAccess ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(.primary))
-        Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
-          .foregroundStyle(.secondary)
-          .accessibilityHidden(true)
-      }
-      .font(.callout)
-      .accessibilityElement(children: .combine)
+      if layout == .card { footerLabel } else { label }
     }
     .menuStyle(.button)
     .buttonStyle(.plain)
     .menuIndicator(.hidden)
-    .composerChip()
+    .modifier(ComposerControlChrome())
     .disabled(select == nil)
     .help(help)
     .accessibilityLabel("Approval mode, \(name)")
     .accessibilityValue(modes.selected.map(\.risk.accessibilityDescription) ?? "not reported")
     .accessibilityHint("Shift-Tab switches modes")
     .accessibilityIdentifier("composer-approval-mode")
+  }
+
+  /// The Mac's row under the pill: the mode's name as plain text; full access keeps its warning
+  /// symbol and color.
+  private var footerLabel: some View {
+    HStack(spacing: Theme.Spacing.extraSmall) {
+      if risk == .fullAccess {
+        Image(systemName: risk.systemImage).accessibilityHidden(true)
+      }
+      Text(name).lineLimit(1)
+    }
+    .foregroundStyle(risk == .fullAccess ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(.primary))
+    .contentShape(Rectangle())
+    .accessibilityElement(children: .combine)
+  }
+
+  private var label: some View {
+    HStack(spacing: Theme.Spacing.extraSmall) {
+      Image(systemName: risk.systemImage)
+        .foregroundStyle(risk.tint)
+        .accessibilityHidden(true)
+      // Compact widths keep a one-word label: a bare glyph does not say which mode.
+      Text(isCompact ? Self.shortName(name) : name)
+        .lineLimit(1)
+        // Its ideal width, capped on touch so one row fits.
+        .frame(
+          maxWidth: layout == .touch ? ComposerBarMetrics.modeWidth : nil, alignment: .leading
+        )
+        .fixedSize(horizontal: layout == .touch, vertical: false)
+        .foregroundStyle(
+          risk == .fullAccess ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(.primary))
+      Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+    }
+    .font(.callout)
+    .accessibilityElement(children: .combine)
   }
 
   private var help: String {
