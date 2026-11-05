@@ -336,6 +336,23 @@ fn workspace_reads_decode_preview_and_diff_in_the_core() {
     let FilePreview::Text { preview } = file.preview else {
         panic!("{:?}", file.preview);
     };
+    let core = Arc::clone(&harness.core);
+    let bytes = harness
+        .run(async move {
+            core.read_workspace_file_bytes(
+                WORKSPACE_SESSION.into(),
+                "default".into(),
+                "src/main.rs".into(),
+            )
+            .await
+        })
+        .unwrap();
+    assert_eq!(bytes.path, "src/main.rs");
+    assert!(!bytes.truncated);
+    assert_eq!(
+        String::from_utf8(bytes.bytes).unwrap().trim_end(),
+        preview.text.trim_end()
+    );
     assert_eq!(
         preview.language,
         Some(crate::workspace::SyntaxLanguage::Rust)

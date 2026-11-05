@@ -343,6 +343,19 @@ pub struct WorkspaceFile {
     pub preview: FilePreview,
 }
 
+/// A file's bytes as the server returned them, for sharing or previewing outside the app.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct WorkspaceFileBytes {
+    /// Environment-relative path.
+    pub path: String,
+    /// The media type the server reported.
+    pub content_type: Option<String>,
+    /// The server returned only part of the file.
+    pub truncated: bool,
+    /// The content: UTF-8 text re-encoded, or the bytes of a binary file.
+    pub bytes: Vec<u8>,
+}
+
 /// A half-open range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct TextRange {
@@ -950,6 +963,33 @@ impl ClientCore {
             content_type: content.content_type,
             byte_count: content.byte_count,
             truncated: content.truncated,
+        })
+    }
+
+    /// The file `path`'s content as bytes, for sharing it or opening it in another app.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Workspace`]; kind `InvalidInput` for the root, `Server` for a directory.
+    pub async fn read_workspace_file_bytes(
+        &self,
+        session_id: String,
+        environment_id: String,
+        path: String,
+    ) -> Result<WorkspaceFileBytes, CoreError> {
+        let content = self
+            .sessions()
+            .read_workspace_file(&session_id, &environment_id, parse_file(&path)?)
+            .await
+            .map_err(workspace_error)?;
+        Ok(WorkspaceFileBytes {
+            path: content.path.as_str().to_owned(),
+            content_type: content.content_type,
+            truncated: content.truncated,
+            bytes: match content.body {
+                core::FileBody::Text(text) => text.into_bytes(),
+                core::FileBody::Binary(bytes) => bytes,
+            },
         })
     }
 
