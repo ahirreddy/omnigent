@@ -58,18 +58,18 @@ struct OmnigentMenuBarLabel: View {
   let state: MenuBarLabelState
 
   var body: some View {
-    let icon = Image(nsImage: Self.icon(isServerRunning: state.isServerRunning))
+    let image = Self.icon(isServerRunning: state.isServerRunning)
     let unreadCount = state.unreadCount
     if unreadCount > 0 {
       Label {
         Text("Omnigent, \(unreadCount) need you")
       } icon: {
-        icon
+        Image(nsImage: image).accessibilityHidden(true)
       }
       .labelStyle(.titleAndIcon)
       .accessibilityLabel("Omnigent, \(unreadCount) need you")
     } else {
-      icon.accessibilityLabel("Omnigent")
+      Image(nsImage: image).accessibilityLabel("Omnigent")
     }
   }
 
