@@ -65,6 +65,10 @@ struct SidebarAdapterTests {
     #expect(info.isShared)
     #expect(info.repo == "repo")
     #expect(info.createdAt == 5)
+    #expect(info.createdBy == "other")
+    #expect(SidebarAdapter.rowInfo(session("b", owner: "me"), isOwned: true).createdBy == "You")
+    // Without permissions there is no owner to name.
+    #expect(SidebarAdapter.rowInfo(session("c"), isOwned: true).createdBy == nil)
     #expect(SidebarAdapter.repoName("Local server") == nil)
   }
 
@@ -90,6 +94,8 @@ struct SidebarAdapterTests {
     #expect(environment("box") == "Modal Sandbox")
     #expect(environment("elsewhere") == "Remote")
     #expect(environment(nil) == "Local machine")
+    #expect(SidebarAdapter.rowInfo(hosted("mac"), isOwned: true).runsOnHost)
+    #expect(!SidebarAdapter.rowInfo(hosted(nil), isOwned: true).runsOnHost)
     // Unknown until the hosts are read.
     #expect(SidebarAdapter.rowInfo(hosted("mac"), isOwned: true).environment == nil)
     #expect(SidebarAdapter.rowInfo(session("s"), isOwned: true, hasDraft: true).hasDraft)
@@ -127,7 +133,10 @@ struct SidebarAdapterTests {
         try #require(URL(string: "http://127.0.0.1:6767")),
         try #require(URL(string: "https://omni.example.com")),
       ],
+      organizationServers: [try #require(URL(string: "https://OMNI.example.com/"))],
       switchTo: { _ in }, addServer: {})
     #expect(switching.choices.map(\.id) == ["http://127.0.0.1:6767", "https://omni.example.com"])
+    // The organization's servers are grouped apart from recents.
+    #expect(switching.choices.map(\.isOrganization) == [false, true])
   }
 }

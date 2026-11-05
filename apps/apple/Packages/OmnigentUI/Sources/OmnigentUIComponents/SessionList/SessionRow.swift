@@ -160,10 +160,7 @@ struct SessionRow: View {
   }
 
   private var tooltip: String {
-    var lines = [session.title, "Updated \(RelativeTime.short(session.updatedDate, now: now)) ago"]
-    if let harness = info.harness { lines.append(HarnessAppearance(harness: harness).label) }
-    if let environment = info.environment { lines.append(environment) }
-    return lines.joined(separator: "\n")
+    SessionRowTooltip.text(session, info: info, now: now)
   }
 
   private var accessibilityLabel: String {
@@ -266,6 +263,8 @@ struct SessionRowMenu {
   let rename: () -> Void
   let confirmDelete: () -> Void
   let confirmLeave: () -> Void
+  /// Asks before stopping the session.
+  let confirmStop: () -> Void
   /// The project it is filed in, if any.
   var project: SessionProject?
   /// Asks for a name and moves the session into a new project; `nil` hides the item.
@@ -333,7 +332,8 @@ struct SessionRowMenu {
     }
     // Filing is owner-only, as on the web.
     if let move = actions.moveToProject, !isShared, !projects.isEmpty || newProject != nil {
-      Menu("Move session", systemImage: "folder") {
+      // "Add to project" until it is filed, then "Move session", as the web.
+      Menu(project == nil ? "Add to project" : "Move session", systemImage: "folder") {
         ForEach(projects) { target in
           Button(target.name) { move(session, target) }
             .disabled(target.id == project?.id)
@@ -348,8 +348,10 @@ struct SessionRowMenu {
         }
       }
     }
-    if let stop = actions.stop, session.canStop {
-      Button("Stop session", systemImage: "stop.circle") { stop(session) }
+    // Stop, Archive and Delete end the session's life, below a divider.
+    Divider()
+    if actions.stop != nil, session.canStop {
+      Button("Stop session", systemImage: "stop.circle", action: confirmStop)
         .disabled(isShared)
         .help(isShared ? "Only the owner can stop this session" : "")
     }

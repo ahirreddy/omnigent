@@ -141,7 +141,7 @@ struct ServerWindowRoot: View {
   /// another server (the server picker) and Settings.
   private func serverSwitching(_ session: ServerSession) -> ServerSwitching {
     ServerSwitching(
-      servers: services.knownServers(),
+      servers: services.knownServers(), organizationServers: services.organizationServers(),
       switchTo: { url in
         guard !Self.sameServer(id.serverURL, url) else { return }
         session.connection.disconnect()

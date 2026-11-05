@@ -70,4 +70,46 @@ struct SidebarInteractionTests {
     #expect(SessionProject.reordered(projects, moving: "a", onto: "a").isEmpty)
     #expect(SessionProject.reordered(projects, moving: "x", onto: "a").isEmpty)
   }
+
+  @Test("Move up, down, to top and to bottom, as the web's moveProject")
+  func projectMoves() {
+    let projects = ["a", "b", "c"].map { SessionProject(id: $0, name: $0, sessionIds: []) }
+    func moved(_ id: String, _ move: ProjectMove) -> [String] {
+      SessionProject.moved(projects, id: id, move).map(\.id)
+    }
+    #expect(moved("b", .upOne) == ["b", "a", "c"])
+    #expect(moved("b", .downOne) == ["a", "c", "b"])
+    #expect(moved("c", .top) == ["c", "a", "b"])
+    #expect(moved("a", .bottom) == ["b", "c", "a"])
+    // Nothing to do at either end, or for a project that is not there.
+    #expect(moved("a", .upOne).isEmpty && moved("a", .top).isEmpty)
+    #expect(moved("c", .downOne).isEmpty && moved("c", .bottom).isEmpty)
+    #expect(moved("x", .top).isEmpty)
+  }
+
+  @Test("The row tooltip adds Created by, Repo and Branch below the summary")
+  func rowTooltip() {
+    let session = SessionSummary(id: "s", title: "Fix the build")
+    let now = session.updatedDate.addingTimeInterval(120)
+    #expect(
+      SessionRowTooltip.text(session, info: SessionRowInfo(), now: now)
+        == "Fix the build\nUpdated 2m ago")
+    var info = SessionRowInfo(repo: "omnigent", branch: "main")
+    info.createdBy = "You"
+    #expect(
+      SessionRowTooltip.text(session, info: info, now: now)
+        == "Fix the build\nUpdated 2m ago\n\nCreated by: You\nRepo: omnigent\nBranch: main")
+  }
+
+  @Test("Stop session explains that a host session's runner stops too")
+  func stopMessage() {
+    let session = SessionSummary(id: "s", title: "Deploy")
+    #expect(
+      StopSessionConfirmation.message(session, runsOnHost: false)
+        == "This terminates the running session for \u{201C}Deploy\u{201D}. Conversation histories are kept."
+    )
+    #expect(
+      StopSessionConfirmation.message(session, runsOnHost: true).contains(
+        "and stops its runner, including side chats running on it."))
+  }
 }

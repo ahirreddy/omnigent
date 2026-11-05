@@ -132,14 +132,20 @@ final class AppServices {
   /// The default server, recent servers and the organization's servers.
   /// - Returns: Servers deep links may open without a prompt.
   func knownServers() -> [URL] {
-    var servers = [desktop.preferences.defaultServerURL].compactMap(\.self) + recentServers.urls
+    [desktop.preferences.defaultServerURL].compactMap(\.self) + recentServers.urls
+      + organizationServers()
+  }
+
+  /// The servers the organization provides (managed preferences).
+  /// - Returns: Their URLs; none when the preferences cannot be read (logged).
+  func organizationServers() -> [URL] {
     do {
-      servers += try desktop.managedPreferences.servers().servers.map(\.url)
+      return try desktop.managedPreferences.servers().servers.map(\.url)
     } catch {
       logger.error(
         "Organization servers ignored: \(error.localizedSummary, privacy: .public)")
+      return []
     }
-    return servers
   }
 
   /// Servers for Settings › Phone's pairing code: those with a signed-in window, then recents.

@@ -106,6 +106,34 @@ struct SessionListActionsTests {
   }
 
   @Test(.timeLimit(.minutes(1)))
+  func projectSortModeAndIcon() async throws {
+    let server = ListServer()
+    server.route(
+      "/v1/projects/order", method: "GET",
+      .json(#"{"sort_mode":"manual","ordered_project_ids":["p1"]}"#))
+    server.route(
+      "/v1/projects/order", method: "PUT",
+      .json(#"{"sort_mode":"alphabetical","ordered_project_ids":null}"#))
+    server.route(
+      "/v1/projects/p1", method: "GET",
+      .json(#"{"id":"p1","name":"Alpha","config":{"agent_id":"a1"}}"#))
+    server.route(
+      "/v1/projects/p1", method: "PATCH",
+      .json(#"{"id":"p1","name":"Alpha","config":{"agent_id":"a1","icon":"🔥"}}"#))
+    let store = try await connected(server)
+    let list = store.sessionList
+    await list.loadProjects()
+    #expect(list.projectSortMode == .manual)
+
+    #expect(await list.setProjectSortMode(.alphabetical, projects: list.projects))
+    #expect(server.writes == ["PUT /v1/projects/order"])
+
+    // An unchanged name is not renamed; only the icon is written.
+    #expect(await list.editProject(list.projects[0], name: "Alpha", icon: "🔥"))
+    #expect(server.writes == ["PUT /v1/projects/order", "PATCH /v1/projects/p1"])
+  }
+
+  @Test(.timeLimit(.minutes(1)))
   func failuresLandInEditError() async throws {
     let server = ListServer()
     server.route(

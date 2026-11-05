@@ -36,6 +36,7 @@ public struct ConversationScreen<Terminal: View>: View {
   @State private var renameText = ""
   @State private var confirmingDelete: SessionSummary?
   @State private var confirmingLeave: SessionSummary?
+  @State private var confirmingStop: SessionSummary?
   @State private var drafts = DecisionDrafts()
   @State private var approveCandidate: DecisionShortcutTarget?
   @State private var decisionSurfaces = DecisionSurfaces()
@@ -161,7 +162,8 @@ public struct ConversationScreen<Terminal: View>: View {
     .modifier(
       SessionMenuDialogs(
         renaming: $renaming, renameText: $renameText, confirmingDelete: $confirmingDelete,
-        confirmingLeave: $confirmingLeave, actions: extras.sessionActions)
+        confirmingLeave: $confirmingLeave, confirmingStop: $confirmingStop,
+        actions: extras.sessionActions)
     )
     // In a split window only the focused pane's conversation drives the menus.
     .focusedSceneValue(\.sessionCommands, commandRelay.publish(isActivePane ? commands : nil))
@@ -267,6 +269,7 @@ public struct ConversationScreen<Terminal: View>: View {
       },
       confirmDelete: { confirmingDelete = summary },
       confirmLeave: { confirmingLeave = summary },
+      confirmStop: { confirmingStop = summary },
       project: context.projects.first { $0.id == context.projectID })
   }
 }

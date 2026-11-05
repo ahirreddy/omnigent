@@ -53,6 +53,8 @@ public final class SessionListStore {
   public internal(set) var projects: [ProjectSummary] = []
   /// The last project list failure, until the next successful read.
   public internal(set) var projectsError: CoreError?
+  /// How projects are sorted; `nil` until read.
+  public internal(set) var projectSortMode: ProjectSortMode?
   /// The connected user, for ownership (Shared, Mine, project membership).
   public internal(set) var viewerID: String?
   /// Where a session on each host runs, by host id (the sidebar's Environment detail).

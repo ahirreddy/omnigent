@@ -15,11 +15,13 @@ public struct SidebarView: View {
   @State private var confirmingDelete: SessionSummary?
   @State private var confirmingBulkDelete: [SessionSummary] = []
   @State private var confirmingLeave: SessionSummary?
+  @State private var confirmingStop: SessionSummary?
   @State private var bulk = SidebarBulkSelection()
   /// The session whose title is edited in place, and the text.
   @State private var inlineRenaming: SessionSummary?
   @State private var inlineText = ""
-  @State private var expandedProjects: Set<String> = []
+  /// Expanded project folders (they start collapsed), newline-separated, kept across launches.
+  @AppStorage("omnigent:sidebar-expanded-projects") private var expandedProjectIDs = ""
   @State private var showsAllInProject: Set<String> = []
   @State private var projectPrompt: ProjectPrompt?
   @State private var projectName = ""
@@ -79,7 +81,8 @@ public struct SidebarView: View {
       SessionDialogs(
         renaming: $renaming, renameText: $renameText, confirmingDelete: $confirmingDelete,
         confirmingBulkDelete: $confirmingBulkDelete, confirmingLeave: $confirmingLeave,
-        actions: actions.sessions, deletedMany: { bulk.clear() })
+        confirmingStop: $confirmingStop, rowInfo: state.rowInfo, actions: actions.sessions,
+        deletedMany: { bulk.clear() })
     )
     .modifier(
       ProjectDialogs(
@@ -115,7 +118,8 @@ public struct SidebarView: View {
       guard section.isProjects else { return section.sessions.map(\.id) }
       return state.projects.filter { expandedProjects.contains($0.id) }.flatMap { project in
         showsAllInProject.contains(project.id)
-          ? project.sessionIds : Array(project.sessionIds.prefix(5))
+          ? project.sessionIds
+          : Array(project.sessionIds.prefix(ProjectFolder<EmptyView>.collapsedCount))
       }
     }
   }
@@ -192,18 +196,14 @@ public struct SidebarView: View {
           .foregroundStyle(Theme.mutedText)
           .textCase(nil)
         Spacer()
-        if section.isProjects, actions.createProject != nil {
-          Button("New project", systemImage: "plus") {
-            projectName = ""
-            projectPrompt = .create(moving: nil)
-          }
-          .help("New project")
-          .accessibilityIdentifier("sidebar-new-project")
+        if section.isProjects, !bulk.isActive {
+          projectsHeaderButtons
         }
         if section.showsDisplayMenu {
           sessionsHeaderButtons
           if let setDisplay = actions.setDisplay {
-            DisplayMenu(options: state.display, set: setDisplay)
+            DisplayMenu(
+              options: state.display, showsShared: state.showsSharedScope, set: setDisplay)
           }
         }
       }
@@ -226,6 +226,21 @@ public struct SidebarView: View {
         .help("Select sessions")
         .accessibilityIdentifier("toggle-selection-mode")
     }
+  }
+
+  /// New project and the project list's menu, on the Projects header.
+  @ViewBuilder private var projectsHeaderButtons: some View {
+    if actions.createProject != nil {
+      Button("New project", systemImage: "plus") {
+        projectName = ""
+        projectPrompt = .create(moving: nil)
+      }
+      .help("New project")
+      .accessibilityIdentifier("sidebar-new-project")
+    }
+    ProjectsHeaderMenu(
+      state: state, actions: actions, expanded: expandedProjects,
+      setExpanded: { setExpandedProjects($0) }, selectSessions: { bulk.begin() })
   }
 
   /// Whether a section is expanded; collapsing one is remembered.
@@ -264,66 +279,43 @@ public struct SidebarView: View {
 }
 
 extension SidebarView {
+  private var expandedProjects: Set<String> {
+    Set(expandedProjectIDs.split(separator: "\n").map(String.init))
+  }
+
+  private func setExpandedProjects(_ ids: Set<String>) {
+    let text = ids.sorted().joined(separator: "\n")
+    if text != expandedProjectIDs { expandedProjectIDs = text }
+  }
+
   private func projectGroup(_ project: SessionProject) -> some View {
-    let sessions = project.sessionIds.compactMap(summary)
-    let showsAll = showsAllInProject.contains(project.id)
-    return DisclosureGroup(
+    ProjectFolder(
+      project: project, sessions: project.sessionIds.compactMap(summary),
       isExpanded: Binding(
         get: { expandedProjects.contains(project.id) },
         set: { expanded in
-          if expanded {
-            expandedProjects.insert(project.id)
-          } else {
-            expandedProjects.remove(project.id)
-          }
-        })
-    ) {
-      if sessions.isEmpty {
-        Text("No sessions").foregroundStyle(.secondary)
-      }
-      ForEach(showsAll ? sessions : Array(sessions.prefix(5))) { session in
-        row(session, target: .project(project))
-      }
-      if sessions.count > 5 {
-        Button(showsAll ? "Show less" : "Show more") {
+          var ids = expandedProjects
+          if expanded { ids.insert(project.id) } else { ids.remove(project.id) }
+          setExpandedProjects(ids)
+        }),
+      showsAll: Binding(
+        get: { showsAllInProject.contains(project.id) },
+        set: { showsAll in
           if showsAll {
-            showsAllInProject.remove(project.id)
-          } else {
             showsAllInProject.insert(project.id)
+          } else {
+            showsAllInProject.remove(project.id)
           }
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-      }
-    } label: {
-      Label {
-        Text(project.name)
-      } icon: {
-        if let icon = project.icon {
-          Text(icon)
-        } else {
-          Image(systemName: "folder")
-        }
-      }
-      .contextMenu { projectMenu(project) }
-      .draggable(SidebarDragItem.project(project.id).payload)
-      .sidebarDropTarget { item in drop(item, on: .project(project)) }
-      .accessibilityIdentifier("sidebar-project-\(project.id)")
-    }
-  }
-
-  @ViewBuilder private func projectMenu(_ project: SessionProject) -> some View {
-    if actions.renameProject != nil {
-      Button("Rename\u{2026}", systemImage: "pencil") {
-        projectName = project.name
-        projectPrompt = .rename(project)
-      }
-    }
-    if actions.deleteProject != nil {
-      Button("Delete project\u{2026}", systemImage: "trash", role: .destructive) {
-        confirmingProjectDelete = project
-      }
-    }
+        }),
+      menu: ProjectMenu(
+        project: project, projects: state.projects, actions: actions,
+        rename: {
+          projectName = project.name
+          projectPrompt = .rename(project)
+        },
+        confirmDelete: { confirmingProjectDelete = project }),
+      drop: { item in drop(item, on: .project(project)) },
+      row: { session in row(session, target: .project(project)) })
   }
 
   private func row(_ session: SessionSummary, target: SidebarDropTarget?) -> some View {
@@ -341,6 +333,7 @@ extension SidebarView {
       },
       confirmDelete: { confirmingDelete = session },
       confirmLeave: { confirmingLeave = session },
+      confirmStop: { confirmingStop = session },
       project: state.projects.first { $0.sessionIds.contains(session.id) },
       newProject: actions.createProject.map { _ in
         {

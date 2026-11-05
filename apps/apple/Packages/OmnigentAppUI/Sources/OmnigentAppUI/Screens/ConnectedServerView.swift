@@ -106,6 +106,7 @@ public struct ConnectedServerView: View {
       }
     }
     .sheet(isPresented: sidebarSharePresented) { sidebarShareSheet }
+    .sheet(item: $sidebar.projectSettings) { flow in projectSettingsSheet(flow) }
     .archiveWorktreePrompt($sidebar.archiveRequest) { request, delete, remember in
       archiveAnswered(request, delete: delete, remember: remember)
     }
@@ -137,6 +138,11 @@ public struct ConnectedServerView: View {
     state.undo = sidebar.undo?.banner
     state.showsAutomations = connection.pages?.offered?.automations == true
     state.showsUsage = connection.pages?.offered?.usage == true
+    state.showsCanvas = connection.pages?.offered?.canvas == true
+    state.showsSharedScope = connection.pages?.offered?.sharing ?? true
+    state.projectSort = connection.sessionList.projectSortMode.map {
+      $0 == .manual ? .manual : .alphabetical
+    }
     return state
   }
 

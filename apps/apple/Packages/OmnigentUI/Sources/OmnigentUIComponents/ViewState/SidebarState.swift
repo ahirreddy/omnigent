@@ -162,6 +162,10 @@ nonisolated public struct SessionRowInfo: Hashable, Sendable {
   public var hasDraft: Bool
   /// The runner or host is disconnected.
   public var isDisconnected: Bool
+  /// Who created it ("You" for the viewer), for the hover tooltip.
+  public var createdBy: String?
+  /// It runs on a host, whose runner Stop session also stops.
+  public var runsOnHost = false
 
   /// Creates row info.
   /// - Parameters:
@@ -186,67 +190,6 @@ nonisolated public struct SessionRowInfo: Hashable, Sendable {
     self.isShared = isShared
     self.hasDraft = hasDraft
     self.isDisconnected = isDisconnected
-  }
-}
-
-/// One server this window can switch to (native multi-server windows).
-nonisolated public struct ServerChoice: Hashable, Sendable, Identifiable {
-  /// Stable id (the origin).
-  public var id: String
-  /// Display name.
-  public var name: String
-  /// The server URL.
-  public var url: String
-  /// Signed in or reachable.
-  public var isConnected: Bool
-
-  /// Creates a server choice.
-  /// - Parameters:
-  ///   - id: Id.
-  ///   - name: Name.
-  ///   - url: URL.
-  ///   - isConnected: Connected.
-  public init(id: String, name: String, url: String, isConnected: Bool = true) {
-    self.id = id
-    self.name = name
-    self.url = url
-    self.isConnected = isConnected
-  }
-}
-
-/// A transient banner offering Undo after pin, unpin or archive (the web's toasts).
-nonisolated public struct UndoBanner: Hashable, Sendable, Identifiable {
-  /// What the banner undoes.
-  public enum Kind: Hashable, Sendable {
-    /// "Unpinned session".
-    case unpinned
-    /// "Pinned session".
-    case pinned
-    /// "Archived N session(s)", with View archived.
-    case archived(count: Int)
-  }
-
-  /// Stable id.
-  public var id: String
-  /// What happened.
-  public var kind: Kind
-
-  /// Creates a banner.
-  /// - Parameters:
-  ///   - id: Id.
-  ///   - kind: What happened.
-  public init(id: String, kind: Kind) {
-    self.id = id
-    self.kind = kind
-  }
-
-  /// The banner text, in the web's words.
-  public var message: String {
-    switch kind {
-    case .unpinned: "Unpinned session"
-    case .pinned: "Pinned session"
-    case .archived(let count): count == 1 ? "Archived 1 session" : "Archived \(count) sessions"
-    }
   }
 }
 
@@ -278,6 +221,10 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var undo: UndoBanner?
   /// The pin cap (the web's 30).
   public var pinLimit: Int
+  /// How projects are sorted; `nil` until known (the sort choice is disabled).
+  public var projectSort: ProjectSort?
+  /// The Display menu offers Shared sessions (a server with sharing).
+  public var showsSharedScope = true
 
   /// Creates sidebar state.
   /// - Parameters:
@@ -341,18 +288,27 @@ public struct SidebarActions {
   public var dismissUndo: (@MainActor () -> Void)?
   /// Show archived sessions (from the archive banner).
   public var viewArchived: (@MainActor () -> Void)?
-  /// Create a project with the given name, moving the session into it when one is given.
-  public var createProject: (@MainActor (String, SessionSummary?) -> Void)?
-  /// Rename a project.
-  public var renameProject: (@MainActor (SessionProject, String) -> Void)?
+  /// Create a project with a name and optional emoji icon, moving the session into it when one
+  /// is given.
+  public var createProject: (@MainActor (String, String?, SessionSummary?) -> Void)?
+  /// Rename a project and set or clear its emoji icon.
+  public var renameProject: (@MainActor (SessionProject, String, String?) -> Void)?
   /// Delete a project (its sessions are archived, never deleted).
   public var deleteProject: (@MainActor (SessionProject) -> Void)?
   /// Archive or restore several sessions at once, with one Undo (bulk selection).
   public var setArchivedMany: (@MainActor ([SessionSummary], Bool) -> Void)?
   /// Carry out a session drag (pin into a slot, file into or out of a project).
   public var dropSession: (@MainActor (SessionSummary, SidebarDropAction) -> Void)?
-  /// Save a new project order (a project dragged onto another).
+  /// Save a new project order (a project dragged onto another, or Move).
   public var reorderProjects: (@MainActor ([SessionProject]) -> Void)?
+  /// Start a new session in a project (its hover + and New session).
+  public var newSessionInProject: (@MainActor (SessionProject) -> Void)?
+  /// Open a project's settings (its new-session defaults).
+  public var openProjectSettings: (@MainActor (SessionProject) -> Void)?
+  /// Sort projects by name or keep the current order as the manual one.
+  public var setProjectSort: (@MainActor (ProjectSort) -> Void)?
+  /// Sign out of the current server.
+  public var signOut: (@MainActor () -> Void)?
 
   /// Creates actions.
   /// - Parameters:

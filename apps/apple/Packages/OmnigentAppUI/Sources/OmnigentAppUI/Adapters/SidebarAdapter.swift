@@ -113,7 +113,7 @@ enum SidebarAdapter {
     environments: [String: SessionEnvironment] = [:], hasDraft: Bool = false
   ) -> SessionRowInfo {
     let configuration = session.configuration
-    return SessionRowInfo(
+    var info = SessionRowInfo(
       harness: configuration?.harness,
       environment: environments.isEmpty
         ? nil
@@ -123,6 +123,9 @@ enum SidebarAdapter {
       hasDraft: hasDraft,
       isDisconnected: configuration.map { executionUnavailableReason(configuration: $0) != nil }
         ?? false)
+    info.createdBy = isOwned ? (session.owner == nil ? nil : "You") : session.owner
+    info.runsOnHost = configuration?.hostId != nil
+    return info
   }
 
   /// The Environment detail: a session without a host runs on the server's own machine.
