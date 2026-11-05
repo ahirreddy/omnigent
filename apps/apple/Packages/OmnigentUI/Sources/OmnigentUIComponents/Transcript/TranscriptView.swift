@@ -53,9 +53,6 @@ public struct TranscriptView: View {
               header: historyHeader)
           } else {
             historyHeader
-            if let todos = state.section("todos"), !todos.details.isEmpty {
-              PlanCard(section: todos)
-            }
             if let superseded = state.section("superseded"), let target = superseded.sessionId,
               target != state.header.id
             {
@@ -72,6 +69,9 @@ public struct TranscriptView: View {
             }
             InlineDecisions(state: state, actions: actions)
             SubagentGroupView(state: state, actions: actions)
+            if let startup = state.section("startup") {
+              StartupLine(section: startup)
+            }
             if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
               WorkingIndicator(
                 isBlocked: !state.pendingDecisions.isEmpty, startedAt: TurnElapsed.start(in: state))
@@ -91,11 +91,10 @@ public struct TranscriptView: View {
         .transcriptStackColumn()
       }
       .safeAreaBar(edge: .top, spacing: 0) {
-        // A sub-agent's transcript keeps the way back to its parent in view.
-        if let parentID = state.header.settings?.parentId, parentID != state.header.id {
-          ParentSessionBanner(parentID: parentID, open: actions.openSession)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Theme.Spacing.medium)
+        // The plan stays pinned above the thread, collapsed, as the web's tracker.
+        if !appearance.isCLI, let todos = state.section("todos"), !todos.details.isEmpty {
+          PlanCard(section: todos)
+            .transcriptColumn()
             .padding(.top, Theme.Spacing.small)
         }
       }
@@ -151,7 +150,7 @@ public struct TranscriptView: View {
         position.reset()
         // Lazy rows size themselves after the first layout; anchor once they have.
         await Task.yield()
-        proxy.scrollTo(Self.bottomID, anchor: .bottom)
+        await frameLatestTurn(proxy)
       }
       .overlay(alignment: .bottomTrailing) {
         if state.rows.contains(where: { $0.role == .user }) {
@@ -294,6 +293,24 @@ public struct TranscriptView: View {
   /// The last settled assistant answer, whose actions stay visible while idle.
   static func lastAnswerID(_ rows: [Row]) -> String? {
     rows.last { $0.role == .assistant && !$0.isStreaming && !$0.text.isEmpty }?.id
+  }
+}
+
+extension TranscriptView {
+  /// Opening a session frames its latest user message at the top, as the web does, so a long
+  /// answer reads from its start. When the turn fits, the transcript keeps following.
+  private func frameLatestTurn(_ proxy: ScrollViewProxy) async {
+    let entries = layout.entries(for: state)
+    let userMessages = TranscriptNavigation.userMessages(entries)
+    guard !appearance.isCLI, let latest = entries.last(where: { userMessages.contains($0.id) })
+    else {
+      proxy.scrollTo(Self.bottomID, anchor: .bottom)
+      return
+    }
+    follow.readEarlier()
+    proxy.scrollTo(latest.id, anchor: .top)
+    await Task.yield()
+    if follow.isNearBottom { follow.jumpToLatest() }
   }
 }
 

@@ -66,4 +66,47 @@ struct ToolInputPreviewTests {
     #expect(ToolInputPreview.diff(in: "just some text") == nil)
     #expect(ToolInputPreview.unescaped("no strings here") == "no strings here")
   }
+
+  @Test("an edit keeps the lines both sides share as context and counts only the change")
+  func editContext() {
+    let lines = ToolInputPreview.pairLines(
+      old: "a\nb\nc\nd\nold\ne\nf\ng", new: "a\nb\nc\nd\nnew\ne\nf\ng")
+    #expect(lines == [" c", " d", "-old", "+new", " e", " f"])
+    #expect(ToolInputPreview.pairLines(old: "", new: "x") == ["+x"])
+  }
+
+  @Test("edit tools read each harness's keys, and MultiEdit's edits under one file")
+  func editHarnessKeys() throws {
+    let piArguments = #"{"path": "a.ts", "oldText": "x", "newText": "y"}"#
+    let piDiff = try #require(ToolEditDiff.diff(tool: "edit", arguments: piArguments, output: nil))
+    #expect(piDiff.files == ["a.ts"])
+    #expect(piDiff.added == 1 && piDiff.removed == 1)
+    let multi = #"""
+      {"file_path": "b.swift", "edits": [
+        {"old_string": "1", "new_string": "2"}, {"old_string": "3", "new_string": "4\n5"}]}
+      """#
+    let multiDiff = try #require(
+      ToolEditDiff.diff(tool: "MultiEdit", arguments: multi, output: nil))
+    #expect(multiDiff.added == 3 && multiDiff.removed == 2)
+    #expect(
+      ToolEditDiff.diff(
+        tool: "Edit", arguments: #"{"old_string": "s", "new_string": "s"}"#, output: nil) == nil)
+  }
+
+  @Test("a write counts its lines as added only when it created the file")
+  func writeContent() throws {
+    let arguments = #"{"file_path": "/tmp/n.md", "content": "one\ntwo"}"#
+    let created = try #require(
+      ToolEditDiff.diff(
+        tool: "Write", arguments: arguments,
+        output: "File created successfully at: /tmp/n.md"))
+    #expect(created.files == ["/tmp/n.md"])
+    #expect(created.added == 2)
+    #expect(created.lines.last == DiffSummary.Line(kind: .added, text: "+two"))
+    let overwritten = try #require(
+      ToolEditDiff.diff(tool: "sys_os_write", arguments: arguments, output: nil))
+    #expect(overwritten.added == 0)
+    #expect(overwritten.lines.last == DiffSummary.Line(kind: .context, text: "two"))
+    #expect(ToolEditDiff.diff(tool: "Write", arguments: "{\"content\": \"tr", output: nil) == nil)
+  }
 }

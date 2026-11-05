@@ -208,7 +208,8 @@ struct ConversationContainer: View {
       canEdit: !(conversation.header?.readOnly ?? false),
       newSideChat: SessionToolsAdapter.sideChat(conversation, routes: toolRoutes),
       agents: AgentTreeAdapter.panel(conversation, open: tabRoutes?.openSession ?? openSession),
-      mention: { [composer = conversation.composer] path in composer.addMention(path) }
+      mention: { [composer = conversation.composer] path in composer.addMention(path) },
+      report: { failures.append($0) }
     ).slots
   }
 

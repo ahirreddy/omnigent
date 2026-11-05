@@ -41,6 +41,8 @@ public final class TabStore {
   /// Tabs whose work settled while they were out of view, as Warp's unread dot; showing a tab
   /// clears it. Not saved: a restored window starts read.
   public private(set) var unread: Set<String> = []
+  /// A shell tab whose close waits for "Close shell?": closing it ends the shell.
+  public var closingShell: String?
   /// The tabs that were busy at the last ``noteBusy(_:)``.
   @ObservationIgnored private var busy: Set<String> = []
 

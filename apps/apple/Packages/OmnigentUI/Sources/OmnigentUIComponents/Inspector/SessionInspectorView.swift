@@ -20,7 +20,7 @@ public struct SessionInspectorView: View {
   private static let knownPrefixes = ["child-", "files-", "resource-"]
   private static let knownIDs: Set<String> = [
     "status", "collaboration", "permission", "approval", "usage", "todos", "presence",
-    "superseded", "sandbox", "mcp", "terminal-pending",
+    "superseded", "sandbox", "mcp", "terminal-pending", "startup",
   ]
 
   /// The inspector.

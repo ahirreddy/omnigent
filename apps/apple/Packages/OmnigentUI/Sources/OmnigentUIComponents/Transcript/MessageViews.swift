@@ -66,11 +66,7 @@ struct MessageRowView: View, Equatable {
         VStack(alignment: .leading, spacing: Theme.Spacing.small) {
           // Attachments lead the message, as on the web.
           AttachmentStrip(attachments: row.attachments)
-          if !row.text.isEmpty {
-            MarkdownView(row.text, isStreaming: false)
-              .environment(\.markdownFillsWidth, false)
-              .fixedSize(horizontal: false, vertical: true)
-          }
+          if !row.text.isEmpty { UserPromptBody(text: row.text) }
           if let activity = row.activity {
             UnsupportedContentView(activity: activity, rowID: row.id)
           }

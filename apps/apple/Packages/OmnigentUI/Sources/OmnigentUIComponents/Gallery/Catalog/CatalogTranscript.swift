@@ -134,7 +134,12 @@ enum TranscriptCatalog {
           },
           CatalogState("rows", "Child rows") { SubagentRowSample() },
           CatalogState("parent", "Route back to the parent") {
-            CatalogStack { ParentSessionBanner(parentID: PreviewData.sessionID) { _ in } }
+            CatalogStack {
+              SessionOriginBar(
+                relation: .subagentOf,
+                origin: CreatingSession(id: PreviewData.sessionID, title: "Plan the release")
+              ) { _ in }
+            }
           },
         ],
         live: { _ in AnyView(SubagentPlayground()) }),

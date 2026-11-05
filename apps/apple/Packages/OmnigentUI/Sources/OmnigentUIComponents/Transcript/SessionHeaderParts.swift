@@ -73,22 +73,34 @@ struct HeaderProjectTag: View {
   }
 }
 
-/// "Created by <session>" under the header for an independent worker, linking back to the
-/// session that started it (the web's `CreatedBySession`).
-struct CreatedByBar: View {
-  let creator: CreatingSession
+/// "Created by <session>" under the header for an independent worker, or "Sub-agent of
+/// <session>" for a sub-agent, linking to that session (the web's `CreatedBySession` and
+/// breadcrumb).
+struct SessionOriginBar: View {
+  enum Relation {
+    case createdBy
+    case subagentOf
+  }
+
+  let relation: Relation
+  let origin: CreatingSession
   let open: @MainActor (String) -> Void
 
   var body: some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
-      Text("Created by")
+      Text(relation == .createdBy ? "Created by" : "Sub-agent of")
         .foregroundStyle(.secondary)
-      Button(creator.title ?? "another session") { open(creator.id) }
+      Button(origin.title ?? "another session") { open(origin.id) }
         .buttonStyle(.plain)
         .foregroundStyle(.tint)
         .lineLimit(1)
-        .help("Open the session that created this worker")
-        .accessibilityIdentifier("session-created-by")
+        .help(
+          relation == .createdBy
+            ? "Open the session that created this worker"
+            : "Go back to the session that started this sub-agent"
+        )
+        .accessibilityIdentifier(
+          relation == .createdBy ? "session-created-by" : "session-open-parent")
       Spacer(minLength: 0)
     }
     .font(.caption)

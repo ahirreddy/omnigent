@@ -61,6 +61,14 @@ public final class FileTreeModel {
   public var selection: String?
   /// Called when a file is opened (return, double click).
   public var onOpen: ((WorkspaceEntry) -> Void)?
+  /// Shows entries whose name starts with a dot; hidden by default, as the web.
+  public var showsHidden = false {
+    didSet { if showsHidden != oldValue { rebuild() } }
+  }
+  /// Keeps loaded entries whose name contains this text, and the folders leading to them.
+  public var filter = "" {
+    didSet { if filter != oldValue { rebuild() } }
+  }
 
   /// A tree over `source`. Call `loadRoot()` to read the first page.
   /// - Parameter source: Where entries come from.
@@ -231,6 +239,20 @@ public final class FileTreeModel {
     rebuild()
   }
 
+  private func isShown(_ entry: WorkspaceEntry) -> Bool {
+    showsHidden || !entry.name.hasPrefix(".")
+  }
+
+  /// The entry's name matches, or a loaded entry below it does.
+  private func matches(_ entry: WorkspaceEntry, _ query: String) -> Bool {
+    entry.name.localizedCaseInsensitiveContains(query) || hasMatch(below: entry, query)
+  }
+
+  private func hasMatch(below entry: WorkspaceEntry, _ query: String) -> Bool {
+    guard entry.kind.isDirectory, let entries = children[entry.path] else { return false }
+    return entries.contains { isShown($0) && matches($0, query) }
+  }
+
   private func rebuild() {
     var result: [Row] = []
     append(directory: "", depth: 0, into: &result)
@@ -254,13 +276,19 @@ public final class FileTreeModel {
     case .loaded:
       break
     }
-    let entries = children[directory] ?? []
-    if entries.isEmpty, !directory.isEmpty {
+    let query = filter.trimmingCharacters(in: .whitespaces)
+    let entries = (children[directory] ?? []).filter {
+      isShown($0) && (query.isEmpty || matches($0, query))
+    }
+    if entries.isEmpty, !directory.isEmpty, query.isEmpty {
       result.append(
         Row(id: directory + "#empty", directory: directory, depth: depth, content: .empty))
     }
     for entry in entries {
-      let isExpanded = entry.kind.isDirectory && expanded.contains(entry.path)
+      // A filter opens the folders that lead to a match.
+      let isExpanded =
+        entry.kind.isDirectory
+        && (expanded.contains(entry.path) || (!query.isEmpty && hasMatch(below: entry, query)))
       result.append(
         Row(
           id: entry.path, directory: directory, depth: depth,
@@ -269,7 +297,7 @@ public final class FileTreeModel {
         append(directory: entry.path, depth: depth + 1, into: &result)
       }
     }
-    if cursors[directory] != nil {
+    if cursors[directory] != nil, query.isEmpty {
       result.append(
         Row(id: directory + "#more", directory: directory, depth: depth, content: .loadMore))
     }

@@ -327,6 +327,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Settings › Archived (Mac):** retention uses a session's last change, not the server's
   `omnigent.archived_at` label (the core's session summary does not carry it), and the project
   filter covers loaded pages only (the web pages through every archived session).
+- [ ] **Session view parity left:** shared sessions' author badges (`ConversationViewState`
+  `isShared`/`viewerName` need the signed-in user's identity, which no store exposes); the turn
+  rail; Download in the Files panel; the error card's Continue in another directory, Fork session
+  and sign-in link / Copy code; the approval card naming its sub-agent; per-session right-panel
+  state; hiding the Pull Requests tab without git.
 
 ## Product decisions
 

@@ -76,8 +76,11 @@ extension ConversationContainer {
     let creator = session.createdBySessionId.map {
       CreatingSession(id: $0, title: list.session($0)?.title)
     }
+    let parent = list.parent(of: session.id).map {
+      CreatingSession(id: $0, title: list.session($0)?.title)
+    }
     return SessionMenuContext(
       projects: projects, projectID: current?.id, isShared: !list.isOwned(session),
-      createdBy: creator)
+      createdBy: creator, parent: parent)
   }
 }

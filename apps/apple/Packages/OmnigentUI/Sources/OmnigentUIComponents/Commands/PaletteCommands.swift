@@ -77,7 +77,7 @@ private struct PalettePresentation: ViewModifier {
   @State private var presenter = PalettePresenter()
 
   func body(content: Content) -> some View {
-    presenter.open = open
+    presenter.open = { open(.all) }
     return
       content
       .environment(\.openCommandPalette, OpenCommandPaletteAction(presenter: presenter))

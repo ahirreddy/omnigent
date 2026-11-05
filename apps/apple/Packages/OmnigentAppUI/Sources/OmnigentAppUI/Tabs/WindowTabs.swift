@@ -65,7 +65,7 @@ struct WindowTabs {
     let store = store
     var actions = TabActions(
       select: { store.select($0) },
-      close: { store.close($0) },
+      close: { store.requestClose($0) },
       newTab: { store.open(.newTab) },
       move: { store.move($0, to: $1) },
       setPinned: { store.setPinned($0, $1) },
@@ -123,7 +123,7 @@ struct WindowTabs {
     if let selected {
       // A primary chat leaves only with its session, so Close Tab is disabled on it.
       if store.canClose(selected.id) {
-        commands.closeTab = { store.close(selected.id) }
+        commands.closeTab = { store.requestClose(selected.id) }
       }
       commands.togglePinned = { store.setPinned(selected.id, !selected.isPinned) }
       if TabAdapter.item(selected, session: session, browser: nil).canDuplicate {

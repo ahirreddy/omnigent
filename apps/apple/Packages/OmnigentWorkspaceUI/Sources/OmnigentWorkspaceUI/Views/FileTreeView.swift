@@ -22,7 +22,9 @@ public struct FileTreeView: View {
 
   /// The view.
   public var body: some View {
-    Group {
+    VStack(spacing: 0) {
+      FileTreeToolbar(model: model, source: source, actions: actions)
+      Divider()
       if let failure = model.rootFailure {
         FailureView(failure: failure) { Task { await model.retry("") } }
       } else {
@@ -94,6 +96,66 @@ public struct FileTreeView: View {
       }
       .accessibilityIdentifier("workspace.tree")
     }
+  }
+}
+
+/// The tree's header, as the web's Files panel: a name filter, show hidden files, refresh, and
+/// the working folder's path actions.
+private struct FileTreeToolbar: View {
+  @Bindable var model: FileTreeModel
+  let source: any WorkspaceDataSource
+  let actions: WorkspaceActions
+  @State private var isRefreshing = false
+
+  var body: some View {
+    HStack(spacing: 4) {
+      TextField("Filter files", text: $model.filter)
+        .textFieldStyle(.roundedBorder)
+        .controlSize(.small)
+        .accessibilityIdentifier("workspace.tree.filter")
+      Button {
+        model.showsHidden.toggle()
+      } label: {
+        Image(systemName: model.showsHidden ? "eye.slash" : "eye")
+      }
+      .help(model.showsHidden ? "Hide hidden files" : "Show hidden files")
+      .accessibilityLabel(model.showsHidden ? "Hide hidden files" : "Show hidden files")
+      .accessibilityIdentifier("workspace.tree.hidden")
+      Button {
+        isRefreshing = true
+        Task {
+          await model.refresh()
+          isRefreshing = false
+        }
+      } label: {
+        Image(systemName: "arrow.clockwise")
+      }
+      .disabled(isRefreshing)
+      .help("Refresh files")
+      .accessibilityLabel("Refresh files")
+      .accessibilityIdentifier("workspace.tree.refresh")
+      if let root = source.absoluteLocation(of: "") {
+        Menu {
+          Button("Copy Folder Path") { WorkspacePlatform.copy(root) }
+          if let reveal = actions.reveal {
+            Button("Reveal in \(WorkspacePlatform.fileManagerName)") { reveal(root) }
+          }
+          if let open = actions.openExternally {
+            Button("Open in Editor") { open(root) }
+          }
+        } label: {
+          Image(systemName: "folder")
+        }
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(root)
+        .accessibilityLabel("Folder actions")
+        .accessibilityIdentifier("workspace.tree.folder")
+      }
+    }
+    .buttonStyle(.borderless)
+    .padding(.horizontal, 8)
+    .padding(.vertical, 6)
   }
 }
 

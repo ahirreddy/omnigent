@@ -1,8 +1,7 @@
 import Foundation
 
-/// One block of the transcript after turn folding, as the web renders it: user messages, a
-/// per-turn "Worked for …" fold holding the turn's tool work, and the items that stay visible
-/// (the turn's final answer, errors and side questions).
+/// One block of the transcript after turn folding, as the web renders it: messages, a Worked
+/// fold for each run of tool work, and the items that stay visible (errors and side questions).
 nonisolated enum TurnSegment: Hashable, Sendable, Identifiable {
   case item(TranscriptItem)
   case worked(id: String, responseID: String?, items: [TranscriptItem], isLive: Bool)
@@ -16,8 +15,10 @@ nonisolated enum TurnSegment: Hashable, Sendable, Identifiable {
 }
 
 nonisolated enum TurnLayout {
-  /// Folds each assistant turn (everything between user messages) into one Worked group, except
-  /// its final answer, errors and side questions. The live turn's fold stays open.
+  /// Folds each run of tool work and reasoning between assistant messages into its own Worked
+  /// group, as the web does: every message, error and side question stays visible. A settled
+  /// turn with no message stays unfolded; trailing reasoning joins the turn's last run. The live
+  /// turn's folds stay open.
   static func segments(_ items: [TranscriptItem], isRunning: Bool) -> [TurnSegment] {
     var result: [TurnSegment] = []
     var turn: [TranscriptItem] = []
@@ -25,25 +26,7 @@ nonisolated enum TurnLayout {
     func flush(isLast: Bool) {
       guard !turn.isEmpty else { return }
       let isLive = isLast && (isRunning || turn.contains(where: \.isStreaming))
-      let finalIndex = isLive ? nil : turn.lastIndex(where: \.isFinalAnswerCandidate)
-      var worked: [TranscriptItem] = []
-      var foldPosition: Int?
-      var outside: [(Int, TranscriptItem)] = []
-      for (index, item) in turn.enumerated() {
-        if index == finalIndex || item.staysVisible || (isLive && item.isStreamingAnswer) {
-          outside.append((index, item))
-        } else {
-          if foldPosition == nil { foldPosition = index }
-          worked.append(item)
-        }
-      }
-      var ordered: [(Int, TurnSegment)] = outside.map { ($0.0, .item($0.1)) }
-      if let foldPosition, let first = worked.first {
-        let fold = TurnSegment.worked(
-          id: first.id, responseID: first.responseID, items: worked, isLive: isLive)
-        ordered.append((foldPosition, fold))
-      }
-      result += ordered.sorted { $0.0 < $1.0 }.map(\.1)
+      result += fold(turn, isLive: isLive)
       turn.removeAll(keepingCapacity: true)
     }
 
@@ -57,6 +40,46 @@ nonisolated enum TurnLayout {
     }
     flush(isLast: true)
     return result
+  }
+
+  private enum Piece {
+    case visible(TranscriptItem)
+    case work([TranscriptItem])
+  }
+
+  private static func fold(_ turn: [TranscriptItem], isLive: Bool) -> [TurnSegment] {
+    let hasMessage = turn.contains(where: \.isVisibleMessage)
+    guard isLive || hasMessage else { return turn.map(TurnSegment.item) }
+    var pieces: [Piece] = []
+    for item in turn {
+      if item.isVisibleMessage || item.staysVisible {
+        pieces.append(.visible(item))
+      } else if case .work(let run) = pieces.last {
+        pieces[pieces.count - 1] = .work(run + [item])
+      } else {
+        pieces.append(.work([item]))
+      }
+    }
+    mergeTrailingReasoning(&pieces)
+    return pieces.map { piece in
+      switch piece {
+      case .visible(let item): .item(item)
+      case .work(let run):
+        .worked(id: run[0].id, responseID: run[0].responseID, items: run, isLive: isLive)
+      }
+    }
+  }
+
+  /// Reasoning after the last message joins the previous run, so live and reloaded turns agree.
+  private static func mergeTrailingReasoning(_ pieces: inout [Piece]) {
+    guard case .work(let trailing) = pieces.last, trailing.allSatisfy(\.isReasoning),
+      let earlier = pieces.dropLast().lastIndex(where: {
+        if case .work = $0 { true } else { false }
+      }),
+      case .work(let run) = pieces[earlier]
+    else { return }
+    pieces[earlier] = .work(run + trailing)
+    pieces.removeLast()
   }
 
   /// "8s", "1m 46s", "1m", "1h 2m".
@@ -141,15 +164,16 @@ extension TranscriptItem {
     return false
   }
 
-  nonisolated var isFinalAnswerCandidate: Bool {
+  /// An assistant message with text, or one still streaming: it never folds.
+  nonisolated var isVisibleMessage: Bool {
     if case .message(let row) = self {
-      return row.role == .assistant && !row.text.isEmpty && !row.isStreaming
+      return row.role == .assistant && (!row.text.isEmpty || row.isStreaming)
     }
     return false
   }
 
-  nonisolated var isStreamingAnswer: Bool {
-    if case .message(let row) = self { return row.role == .assistant && row.isStreaming }
+  nonisolated var isReasoning: Bool {
+    if case .activity(let row) = self { return row.activity?.kind == .reasoning }
     return false
   }
 

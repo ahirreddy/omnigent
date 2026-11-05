@@ -21,14 +21,15 @@ struct LiveTranscript: View {
 
 extension TitlebarTrailingItems {
   /// The conversation screen's trailing toolbar items, in button widths: viewers (two), Agent
-  /// info, the session menu or Share, and the right-panel toggle.
+  /// info, the session menu, Share (titled, two) and the right-panel toggle.
   static func count(
     _ state: ConversationViewState, hasShare: Bool, tabsInTitlebar: Bool, isRegular: Bool
   ) -> Int {
     var items = 1
     if state.section("presence") != nil, isRegular { items += 2 }
     if let info = state.agentInfo, !(info.tools.isEmpty && info.policies.isEmpty) { items += 1 }
-    if tabsInTitlebar || (hasShare && isRegular) { items += 1 }
+    if tabsInTitlebar { items += 1 }
+    if hasShare, isRegular { items += 2 }
     return items
   }
 }
