@@ -24,12 +24,23 @@ pub struct FileComment {
     pub is_open: bool,
     /// The commented text when it was left.
     pub anchor: Option<String>,
+    /// Where the commented range starts, a character offset in the file.
+    #[uniffi(default)]
+    pub start_index: Option<u64>,
     /// Who left it; `None` in single-user mode.
     pub author: Option<String>,
     /// Created, Unix seconds.
     pub created_at: i64,
     /// Last change, Unix microseconds.
     pub updated_at_micros: u64,
+}
+
+/// The 1-based line of `text` holding the character (code point) at `offset`, as a comment's
+/// `start_index` counts; `None` past the end of `text`.
+#[must_use]
+#[uniffi::export]
+pub fn line_at_character(text: String, offset: u64) -> Option<u64> {
+    comments_core::line_at_character(&text, offset)
 }
 
 impl From<comments_core::FileComment> for FileComment {
@@ -41,6 +52,7 @@ impl From<comments_core::FileComment> for FileComment {
             body: comment.body,
             is_open: comment.is_open,
             anchor: comment.anchor,
+            start_index: comment.start_index,
             author: comment.author,
             created_at: comment.created_at,
             updated_at_micros: comment.updated_at_micros,
@@ -57,6 +69,7 @@ impl From<FileComment> for comments_core::FileComment {
             body: comment.body,
             is_open: comment.is_open,
             anchor: comment.anchor,
+            start_index: comment.start_index,
             author: comment.author,
             created_at: comment.created_at,
             updated_at_micros: comment.updated_at_micros,

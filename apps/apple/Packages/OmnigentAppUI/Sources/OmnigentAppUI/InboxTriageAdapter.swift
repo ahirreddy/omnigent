@@ -8,6 +8,8 @@ import SwiftUI
 struct InboxTriageAdapter: View {
   let connection: ConnectionStore
   let open: (String) -> Void
+  /// Shows a comment's file in its session's right panel: path, character offset, session.
+  var openFile: ((String, UInt64?, String) -> Void)?
   @State private var ownedSessions: Set<String> = []
   @State private var readRevisions: [String: Double] = [:]
   @State private var banner: TransientBanner?
@@ -80,7 +82,12 @@ struct InboxTriageAdapter: View {
     var actions = InboxActions(
       open: { item in
         ownedSessions.remove(item.sessionId)
-        if let comment = InboxTriageMapping.commentID(item) { pages?.markCommentSeen(comment) }
+        if let id = InboxTriageMapping.commentID(item) {
+          pages?.markCommentSeen(id)
+          if let comment = pages?.comments[item.sessionId]?.first(where: { $0.id == id }) {
+            openFile?(comment.path, comment.startIndex, item.sessionId)
+          }
+        }
         pages?.clearReply(item.sessionId)
         open(item.sessionId)
       },

@@ -28,6 +28,8 @@ pub struct FileComment {
     pub is_open: bool,
     /// The commented text when it was left.
     pub anchor: Option<String>,
+    /// Where the commented range starts: a 0-based character (code point) offset in the file.
+    pub start_index: Option<u64>,
     /// Who left it; `None` in single-user mode and for legacy comments.
     pub author: Option<String>,
     /// Created, Unix seconds.
@@ -66,6 +68,20 @@ pub fn comment_inbox(
     items
 }
 
+/// The 1-based line of `text` holding the character (code point) at `offset`, as a comment's
+/// `start_index` counts; `None` past the end of `text`.
+#[must_use]
+pub fn line_at_character(text: &str, offset: u64) -> Option<u64> {
+    let mut line = 1_u64;
+    let mut characters = text.chars();
+    for _ in 0..offset {
+        if characters.next()? == '\n' {
+            line += 1;
+        }
+    }
+    Some(line)
+}
+
 fn comment_from(value: &Value) -> Result<FileComment, String> {
     let object = as_object(value, "a comment")?;
     Ok(FileComment {
@@ -75,6 +91,7 @@ fn comment_from(value: &Value) -> Result<FileComment, String> {
         body: req_str(object, "body")?,
         is_open: req_str(object, "status")? == "draft",
         anchor: opt_str(object, "anchor_content")?.filter(|anchor| !anchor.trim().is_empty()),
+        start_index: opt_u64(object, "start_index")?,
         author: opt_str(object, "created_by")?.filter(|author| !author.is_empty()),
         created_at: object
             .get("created_at")
@@ -132,11 +149,21 @@ mod tests {
     ]"#;
 
     #[test]
+    fn lines_count_characters_not_bytes() {
+        assert_eq!(line_at_character("a\nb\nc", 0), Some(1));
+        assert_eq!(line_at_character("a\nb\nc", 2), Some(2));
+        assert_eq!(line_at_character("é\nñ\nc", 4), Some(3));
+        assert_eq!(line_at_character("ab", 2), Some(1));
+        assert_eq!(line_at_character("ab", 3), None);
+    }
+
+    #[test]
     fn lists_others_open_unseen_comments_newest_first() {
         let transport = RouteTransport::local();
         transport.ok("/v1/sessions/s1/comments", COMMENTS);
         let comments = block_on(connected(transport).session_comments("s1")).unwrap();
         assert_eq!(comments[0].anchor.as_deref(), Some("fn "));
+        assert_eq!(comments[0].start_index, Some(0));
         let seen = BTreeSet::from(["c1".to_owned()]);
         let inbox = comment_inbox(&comments, &seen, Some("me@x"));
         let ids: Vec<&str> = inbox.iter().map(|comment| comment.id.as_str()).collect();

@@ -242,6 +242,18 @@ public final class WorkspaceBrowserModel {
     }
   }
 
+  /// Marks `line` in the shown file without reading it again (a file comment's position, once
+  /// the file's text is known).
+  /// - Parameter line: A 1-based line.
+  public func reveal(line: UInt64) {
+    guard case .file(let path, let shown) = document, shown != line else { return }
+    let revealed = WorkspaceDocument.file(path: path, line: line)
+    if let index = openDocuments.firstIndex(where: { $0.tabID == revealed.tabID }) {
+      openDocuments[index] = revealed
+    }
+    document = revealed
+  }
+
   /// Closes the shown document's tab and shows the panel.
   public func close() {
     if let document { openDocuments.removeAll { $0.tabID == document.tabID } }

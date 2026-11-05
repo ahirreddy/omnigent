@@ -32,6 +32,8 @@ public final class ServerSession {
   public let remoteBrowsers: RemoteBrowserTabs?
   /// Runs on the core's offline demo server (``demo()``).
   public private(set) var isDemo = false
+  /// Files to show once their session's workspace opens: path and character offset.
+  @ObservationIgnored private var pendingFiles: [String: (path: String, offset: UInt64?)] = [:]
 
   /// Wraps an existing store.
   /// - Parameters:
@@ -88,8 +90,32 @@ public final class ServerSession {
     if workspaces[sessionID] == nil, let workspace = connection.workspace(sessionID) {
       workspaces[sessionID] = WorkspaceBrowserModel(source: workspace)
     }
+    if let pending = pendingFiles.removeValue(forKey: sessionID) {
+      openFile(pending.path, at: pending.offset, in: sessionID)
+    }
     if panels[sessionID] == nil { panels[sessionID] = connection.makePanelStore(sessionID) }
     Task { await loadDeclaredTerminalNames([sessionID]) }
+  }
+
+  /// Shows a workspace file in `sessionID`'s right panel, now or once the session opens, and
+  /// marks the line holding the character at `offset` (a file comment's start).
+  /// - Parameters:
+  ///   - path: The workspace-relative path.
+  ///   - offset: A 0-based character offset in the file.
+  ///   - sessionID: The session.
+  public func openFile(_ path: String, at offset: UInt64?, in sessionID: String) {
+    guard let workspace = workspaces[sessionID] else {
+      pendingFiles[sessionID] = (path, offset)
+      return
+    }
+    Task {
+      await workspace.open(.file(path: path, line: nil))
+      guard let offset, case .loaded(let file) = workspace.file, file.path == path,
+        case .text(let preview) = file.preview,
+        let line = lineAtCharacter(text: preview.text, offset: offset)
+      else { return }
+      workspace.reveal(line: line)
+    }
   }
 
   /// Closes `sessionID`: its stream, terminal attaches and workspace browser.
