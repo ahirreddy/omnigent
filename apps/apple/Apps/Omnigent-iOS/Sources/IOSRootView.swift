@@ -122,7 +122,11 @@ struct IOSRootView: View {
     let server =
       session.isDemo
       ? ServerSession.demoServerURL
-      : request?.serverURL ?? defaults.string(forKey: Self.lastServerKey)
+      // An empty value (`-omnigent.lastServer ""` at launch) means none.
+      : request?.serverURL
+        ?? defaults.string(forKey: Self.lastServerKey).flatMap {
+          $0.isEmpty ? nil : $0
+        }
     // Chosen before connecting: the connected app opens with it, however late the core
     // reports the sign-in.
     if isNewWindow, let sessionID = request?.sessionID { selection = .session(sessionID) }

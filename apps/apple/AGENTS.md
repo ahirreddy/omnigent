@@ -100,12 +100,37 @@ action, and takes over the machine. Test the Mac app without it:
 - What needs the app process (its sandbox, entitlements, real transports) in the hosted tests
   (`Tests/OmnigentMacTests`, run inside each edition's app; `LiveServerStreamingTests`). Hosting
   tests, the app opens no windows and never becomes active (`OmnigentMacAppDelegate.isTestHost`).
-- `Tests/OmnigentMacUITests` keeps only the launch smoke and the titlebar drags, which need the
-  window server. Run them on an idle machine or before a release, not on every change.
+- `Tests/OmnigentMacUITests` keeps only the launch smoke, the titlebar drags and the sidebar
+  search's section expansion, which need the window server. Run them on an idle machine or
+  before a release, not on every change.
 
 When a UI test is unavoidable: build once and run every test in one `test-without-building`;
 paste long text instead of `typeText`; wait for state (`waitForExistence`,
 `waitForNonExistence`), not time.
+
+## Running the UI tests
+
+iOS UI tests run inside the simulator (Developer Mode on, no mouse or keyboard taken); Mac UI
+tests take the real mouse and keyboard and need automation mode
+(`sudo automationmodetool enable-automationmode-without-authentication` once per machine).
+
+```sh
+just apple-uitest-ios "iPad Air 13-inch (M4)"                    # every iOS UI test
+just apple-uitest-ios "iPhone 17 Pro" TranscriptActionsUITests   # one class
+just apple-uitest-ios <UDID> WorkspaceUITests/testFileOpensInEditAndSaves
+just apple-uitest-mac WindowChromeUITests                        # Mac (OmnigentMac)
+just apple-test-ui                                               # both Mac editions, every test
+```
+
+The iOS recipe needs the local server on 127.0.0.1:6767 with the mock-model agent
+(`just apple-services start`, `just apple-mock-agent`; `just apple-seed-large` for the palette
+paging test). It first runs `Tools/seed-ui-test-fixtures.py`, which writes the "UI test fixture"
+session (an exchange with a tool call and a link, bound to a small workspace) into the server's
+database; set `OMNIGENT_LAB_RUNTIME` to the server's `.native-lab-server` when it runs from
+another checkout. The session id and workspace reach the tests as `TEST_RUNNER_OMNIGENT_UITEST_*`.
+Tests that need it share `Tests/OmnigentUITests/LiveServerUITestSupport.swift` (launch on a
+session link, identifiers, waits); write new ones against it and accessibility identifiers.
+iOS menu items do not carry SwiftUI identifiers, so tests find them by label.
 
 ## Follow-ups
 

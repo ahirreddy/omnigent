@@ -4,6 +4,8 @@ final class OmnigentUITests: XCTestCase {
   @MainActor
   func testLaunchShowsConnectForm() {
     let app = XCUIApplication()
+    // No server to reconnect to, whatever the simulator last used.
+    app.launchArguments = ["-omnigent.lastServer", "", "-ApplePersistenceIgnoreState", "YES"]
     app.launch()
 
     XCTAssertTrue(app.buttons["auth.connect"].waitForExistence(timeout: 10))
@@ -25,7 +27,7 @@ final class OmnigentUITests: XCTestCase {
     showSidebar(app, until: newSession)
     XCTAssertTrue(newSession.waitForExistence(timeout: 15))
     newSession.tap()
-    let input = app.textViews["composer-input"]
+    let input = app.textViews["composer-input"].firstMatch
     XCTAssertTrue(input.waitForExistence(timeout: 10))
     try shot(app, "new")
 
@@ -38,12 +40,12 @@ final class OmnigentUITests: XCTestCase {
     let stop = app.buttons["composer-stop"]
     if stop.waitForExistence(timeout: 10) {
       try shot(app, "running")
-      let running = app.textViews["composer-input"]
+      let running = app.textViews["composer-input"].firstMatch
       running.tap()
       running.typeText("Also list the risks")
       try shot(app, "running-draft")
-      XCTAssertTrue(stop.exists)
-      XCTAssertTrue(app.buttons["composer-send"].exists)
+      // The demo reply may finish while typing; Send joins Stop only while it runs.
+      if stop.exists { XCTAssertTrue(app.buttons["composer-send"].exists) }
       XCTAssertTrue(stop.waitForNonExistence(timeout: 60))
     }
     try shot(app, "idle")
@@ -52,7 +54,7 @@ final class OmnigentUITests: XCTestCase {
     showSidebar(app, until: design)
     XCTAssertTrue(design.waitForExistence(timeout: 10))
     design.tap()
-    XCTAssertTrue(app.textViews["composer-input"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.textViews["composer-input"].firstMatch.waitForExistence(timeout: 10))
     try shot(app, "pending")
   }
 

@@ -60,12 +60,13 @@ final class GlassBarsPhoneUITests: XCTestCase {
     app.launchArguments += [
       "-omnigent.lastServer", server, "-ApplePersistenceIgnoreState", "YES",
       "-web-theme", appearance, "-omnigent:ui-theme-palette", #""\"\#(palette)\"""#,
+      "-OmnigentOpenURL",
+      try XCTUnwrap(LiveServerUITestSupport.sessionLink(server: server, sessionID: sessionID)),
     ]
     app.launch()
     defer { app.terminate() }
     XCUIDevice.shared.orientation = .portrait
     let name = "\(palette)-\(appearance)"
-    try open(sessionID, in: app)
     let transcript = app.scrollViews
       .matching(NSPredicate(format: "identifier BEGINSWITH 'transcript-'")).firstMatch
     XCTAssertTrue(transcript.waitForExistence(timeout: 20), "the conversation did not open")
@@ -75,7 +76,7 @@ final class GlassBarsPhoneUITests: XCTestCase {
     transcript.swipeDown(velocity: .slow)
     sleep(1)
     shot("\(name)-scrolled")
-    let input = app.textViews["composer-input"]
+    let input = app.textViews["composer-input"].firstMatch
     if input.waitForExistence(timeout: 5) {
       input.tap()
       _ = app.keyboards.firstMatch.waitForExistence(timeout: 5)
@@ -84,7 +85,7 @@ final class GlassBarsPhoneUITests: XCTestCase {
     }
   }
 
-  /// Opens a session from the sidebar, going back until its row shows.
+  /// Opens a demo session from the sidebar, going back until its row shows.
   @MainActor
   private func open(_ sessionID: String, in app: XCUIApplication) throws {
     let row = app.descendants(matching: .any)["session-row-\(sessionID)"]

@@ -6,8 +6,9 @@ import XCTest
 /// for in-app links, and a workspace file opens in Quick Look and the share sheet.
 ///
 /// Skipped unless the runner gets `OMNIGENT_E2E_SERVER_URL`, `OMNIGENT_LINK_SESSION_ID` (a
-/// session whose transcript has a web link) and `OMNIGENT_FILES_SESSION_ID` (a session whose
-/// workspace has `notes.md` and `notes.pdf`), with the `TEST_RUNNER_` prefix. Set
+/// session whose transcript links "Example Domain" to example.com) and
+/// `OMNIGENT_FILES_SESSION_ID` (a session whose workspace has `notes.md` and `notes.pdf`), with
+/// the `TEST_RUNNER_` prefix; `just apple-uitest-ios` passes its seeded fixture for both. Set
 /// `TEST_RUNNER_BROWSER_SHOTS_DIR` to also write each state as `<device>-<state>.png` there.
 final class BrowserTabsUITests: XCTestCase {
   private var environment: [String: String] { ProcessInfo.processInfo.environment }
@@ -15,8 +16,7 @@ final class BrowserTabsUITests: XCTestCase {
 
   @MainActor
   func testNewTabOpensABrowserThatLoadsAPage() throws {
-    let app = try launch()
-    try open(try setting("OMNIGENT_LINK_SESSION_ID"), in: app)
+    let app = try launch(opening: try setting("OMNIGENT_LINK_SESSION_ID"))
     if isPhone {
       tap(app.buttons["tab-switcher"], "the tab switcher")
       tap(app.buttons["tab-overview-new"], "New Tab in the overview")
@@ -50,9 +50,10 @@ final class BrowserTabsUITests: XCTestCase {
 
   @MainActor
   func testTranscriptLinkOpensInABrowserTab() throws {
-    let app = try launch(extra: ["-omnigent:open-links-in-app", "YES"])
-    try open(try setting("OMNIGENT_LINK_SESSION_ID"), in: app)
-    let link = app.links["link"].firstMatch
+    let app = try launch(
+      opening: try setting("OMNIGENT_LINK_SESSION_ID"),
+      extra: ["-omnigent:open-links-in-app", "YES"])
+    let link = app.links["Example Domain"].firstMatch
     XCTAssertTrue(link.waitForExistence(timeout: 20), "the transcript shows no link")
     link.tap()
     let omnibox = app.textFields["browser.omnibox"]
@@ -66,8 +67,7 @@ final class BrowserTabsUITests: XCTestCase {
 
   @MainActor
   func testWorkspaceFileOpensInQuickLookAndShare() throws {
-    let app = try launch()
-    try open(try setting("OMNIGENT_FILES_SESSION_ID"), in: app)
+    let app = try launch(opening: try setting("OMNIGENT_FILES_SESSION_ID"))
     tap(app.buttons["toggle-inspector"], "the right-panel toggle")
     let pdf = app.staticTexts["notes.pdf"].firstMatch
     XCTAssertTrue(pdf.waitForExistence(timeout: 20), "the files panel shows no notes.pdf")
@@ -105,30 +105,24 @@ final class BrowserTabsUITests: XCTestCase {
     return value
   }
 
-  /// The app connected to the live server, with no restored tabs.
+  /// The app connected to the live server with no restored tabs, showing `sessionID`.
   @MainActor
-  private func launch(extra: [String] = []) throws -> XCUIApplication {
+  private func launch(opening sessionID: String, extra: [String] = []) throws -> XCUIApplication {
     let server = try setting("OMNIGENT_E2E_SERVER_URL")
+    let link = try XCTUnwrap(
+      LiveServerUITestSupport.sessionLink(server: server, sessionID: sessionID))
     let app = XCUIApplication()
     app.launchArguments +=
-      ["-omnigent.lastServer", server, "-ApplePersistenceIgnoreState", "YES"] + extra
+      [
+        "-omnigent.lastServer", server, "-ApplePersistenceIgnoreState", "YES",
+        "-OmnigentNoNotificationPrompt", "YES", "-OmnigentOpenURL", link,
+      ] + extra
     app.launch()
     XCUIDevice.shared.orientation = isPhone ? .portrait : .landscapeLeft
+    XCTAssertTrue(
+      app.descendants(matching: .any)["transcript-\(sessionID)"].waitForExistence(timeout: 30),
+      "the session did not open")
     return app
-  }
-
-  /// Opens a session from the sidebar, going back until its row shows.
-  @MainActor
-  private func open(_ sessionID: String, in app: XCUIApplication) throws {
-    let row = app.descendants(matching: .any)["session-row-\(sessionID)"]
-    for _ in 0..<3 where !row.waitForExistence(timeout: 8) {
-      let back = app.navigationBars.buttons["BackButton"]
-      guard back.exists else { break }
-      back.tap()
-    }
-    XCTAssertTrue(row.exists, "no row for \(sessionID)")
-    row.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.15)).tap()
-    sleep(2)
   }
 
   @MainActor

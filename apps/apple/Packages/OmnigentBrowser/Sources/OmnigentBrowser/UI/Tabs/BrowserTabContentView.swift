@@ -68,6 +68,8 @@ public struct BrowserTabContentView: View {
     .focusedSceneValue(\.browserTab, model)
     .focusedSceneValue(\.browserTabSheet, $sheet)
     .sheet(item: $sheet) { sheet in sheetContent(sheet) }
+    // A container, so the tab's identifier does not replace its controls' own.
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("browser.tab")
   }
 

@@ -104,16 +104,18 @@ final class PhoneSettingsUITests: XCTestCase {
   }
 
   /// The row `identifier`, scrolling the list down for it; `nil` when the server doesn't offer it.
+  /// Rows are visited top to bottom, so it never scrolls back up: on iPad a swipe down on the
+  /// short list would dismiss the sheet.
   @MainActor
   private func find(_ identifier: String, in app: XCUIApplication) -> XCUIElement? {
     let cell = app.descendants(matching: .any)[identifier]
+    // The Settings list, not the sidebar behind the iPad sheet.
+    let list = screen(app).collectionViews.firstMatch
     for _ in 0..<3 {
       if cell.exists, cell.isHittable { return cell }
-      app.collectionViews.firstMatch.swipeUp()
+      list.swipeUp()
     }
-    if cell.exists, cell.isHittable { return cell }
-    for _ in 0..<3 { app.collectionViews.firstMatch.swipeDown() }
-    return nil
+    return cell.exists && cell.isHittable ? cell : nil
   }
 
   @MainActor
