@@ -50,14 +50,17 @@ struct SessionRow: View {
         }
       }
       Spacer(minLength: 4)
-      if isHovered, menu.canHoverPin, !isSelecting, inlineRename == nil {
+      if isHovered, menu.showsHoverActions, !isSelecting, inlineRename == nil {
         HStack(spacing: Theme.Spacing.tiny) {
-          Button(
-            session.isPinned ? "Unpin" : "Pin", systemImage: session.isPinned ? "pin.slash" : "pin"
-          ) {
-            menu.togglePin()
+          if menu.offersPin {
+            Button(
+              session.isPinned ? "Unpin" : "Pin",
+              systemImage: session.isPinned ? "pin.slash" : "pin"
+            ) {
+              menu.togglePin()
+            }
+            .help(session.isPinned ? "Unpin" : "Pin")
           }
-          .help(session.isPinned ? "Unpin" : "Pin")
           if let setArchived = menu.actions.setArchived, session.canArchive {
             Button(
               session.isArchived ? "Unarchive" : "Archive",
@@ -249,135 +252,5 @@ nonisolated enum RelativeTime {
     case days < 365: return "\(max(1, days / 30))mo"
     default: return "\(days / 365)y"
     }
-  }
-}
-
-/// The row menu in the web's order, shared by the context menu and the hover menu.
-struct SessionRowMenu {
-  let session: SessionSummary
-  let isUnread: Bool
-  let isShared: Bool
-  let pinLimitReached: Bool
-  let projects: [SessionProject]
-  let actions: SessionListActions
-  let rename: () -> Void
-  let confirmDelete: () -> Void
-  let confirmLeave: () -> Void
-  /// Asks before stopping the session.
-  let confirmStop: () -> Void
-  /// The project it is filed in, if any.
-  var project: SessionProject?
-  /// Asks for a name and moves the session into a new project; `nil` hides the item.
-  var newProject: (() -> Void)?
-
-  var canHoverPin: Bool {
-    #if os(macOS)
-      actions.setPinned != nil && session.canPin
-    #else
-      false
-    #endif
-  }
-
-  func togglePin() {
-    guard let setPinned = actions.setPinned, session.canPin else { return }
-    if !session.isPinned, pinLimitReached { return }
-    setPinned(session, !session.isPinned)
-  }
-
-  /// The most used row actions as VoiceOver actions; the rest stay in the context menu.
-  @ViewBuilder var accessibilityItems: some View {
-    if actions.setPinned != nil, session.canPin, session.isPinned || !pinLimitReached {
-      Button(session.isPinned ? "Unpin" : "Pin") { togglePin() }
-    }
-    if let setUnread = actions.setUnread {
-      Button(isUnread ? "Mark as read" : "Mark as unread") { setUnread(session, !isUnread) }
-    }
-    if let setArchived = actions.setArchived, session.canArchive {
-      Button(session.isArchived ? "Unarchive" : "Archive") {
-        setArchived(session, !session.isArchived)
-      }
-    }
-    if actions.rename != nil, session.canRename {
-      Button("Rename", action: rename)
-    }
-  }
-
-  @ViewBuilder var items: some View {
-    if actions.setPinned != nil, session.canPin {
-      Button(
-        session.isPinned ? "Unpin" : "Pin", systemImage: session.isPinned ? "pin.slash" : "pin"
-      ) {
-        togglePin()
-      }
-      .disabled(!session.isPinned && pinLimitReached)
-      .help(!session.isPinned && pinLimitReached ? "Unpin a session first" : "")
-    }
-    // Sharing is the owner's, as on the web.
-    if let share = actions.share, !isShared {
-      Button("Share", systemImage: "person.badge.plus") { share(session) }
-    }
-    if let fork = actions.fork {
-      Button("Fork", systemImage: "arrow.triangle.branch") { fork(session) }
-    }
-    if actions.rename != nil, session.canRename {
-      Button("Rename\u{2026}", systemImage: "pencil", action: rename)
-    }
-    if let setUnread = actions.setUnread {
-      Button(
-        isUnread ? "Mark as read" : "Mark as unread",
-        systemImage: isUnread ? "envelope.open" : "envelope.badge"
-      ) {
-        setUnread(session, !isUnread)
-      }
-    }
-    // Filing is owner-only, as on the web.
-    if let move = actions.moveToProject, !isShared, !projects.isEmpty || newProject != nil {
-      // "Add to project" until it is filed, then "Move session", as the web.
-      Menu(project == nil ? "Add to project" : "Move session", systemImage: "folder") {
-        ForEach(projects) { target in
-          Button(target.name) { move(session, target) }
-            .disabled(target.id == project?.id)
-        }
-        if let newProject {
-          if !projects.isEmpty { Divider() }
-          Button("New project\u{2026}", systemImage: "folder.badge.plus", action: newProject)
-        }
-        if project != nil {
-          Divider()
-          Button("Remove from project") { move(session, nil) }
-        }
-      }
-    }
-    // Stop, Archive and Delete end the session's life, below a divider.
-    Divider()
-    if actions.stop != nil, session.canStop {
-      Button("Stop session", systemImage: "stop.circle", action: confirmStop)
-        .disabled(isShared)
-        .help(isShared ? "Only the owner can stop this session" : "")
-    }
-    if let setArchived = actions.setArchived, session.canArchive {
-      Button(
-        session.isArchived ? "Unarchive" : "Archive",
-        systemImage: session.isArchived ? "tray.and.arrow.up" : "archivebox"
-      ) {
-        setArchived(session, !session.isArchived)
-      }
-    }
-    if actions.delete != nil, !isShared {
-      Button("Delete\u{2026}", systemImage: "trash", role: .destructive, action: confirmDelete)
-    }
-    if actions.leave != nil, isShared {
-      Button(
-        "Leave session\u{2026}", systemImage: "rectangle.portrait.and.arrow.right",
-        role: .destructive, action: confirmLeave)
-    }
-    Divider()
-    if let open = actions.openInNewWindow {
-      Button("Open in New Window", systemImage: "macwindow.badge.plus") { open(session) }
-    }
-    if let webURL = actions.webURL?(session) {
-      Button("Copy Link", systemImage: "link") { Pasteboard.copy(webURL.absoluteString) }
-    }
-    Button("Copy Session ID", systemImage: "number") { Pasteboard.copy(session.id) }
   }
 }

@@ -50,6 +50,10 @@ enum ShortcutGuide {
         rows: [
           row("Previous session", AppShortcuts.previousSession),
           row("Next session", AppShortcuts.nextSession),
+          ShortcutRow(
+            "Open pinned session 1–9 / 10",
+            "\(AppShortcuts.text(AppShortcuts.pinnedSession(0)))–9 / "
+              + AppShortcuts.text(AppShortcuts.pinnedSession(9))),
         ]),
       view(isMac: isMac),
       tabs,

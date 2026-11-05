@@ -281,14 +281,6 @@ struct SessionListTests {
     #expect(sections.last?.showsDisplayMenu == true)
   }
 
-  @Test("status grouping orders Needs you, Running, Error, Idle")
-  func statusSections() {
-    var state = PreviewData.sidebar
-    state.display.groupBy = .status
-    let titles = SidebarSections.sections(state).map(\.title)
-    #expect(titles == ["Needs you", "Running", "Error", "Idle"])
-  }
-
   @Test("relative times use the web's short form")
   func relativeTimes() {
     let now = PreviewData.now

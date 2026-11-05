@@ -19,6 +19,15 @@ public enum AppShortcuts {
   /// The next session in the sidebar.
   public static let nextSession = KeyboardShortcut("]", modifiers: .command)
 
+  /// The pinned session at a position, 0-based; 9 is the tenth (the 0 key). Command-digit selects
+  /// tabs, so pins take Control-Command-digit (the web's browser build moves them off it too).
+  /// - Parameter index: The position, 0 to 9.
+  /// - Returns: Control-Command and the digit.
+  public static func pinnedSession(_ index: Int) -> KeyboardShortcut {
+    KeyboardShortcut(
+      KeyEquivalent(Character("\((index + 1) % 10)")), modifiers: [.command, .control])
+  }
+
   // MARK: Conversation
 
   /// Send while Return inserts a newline, or the Send button's equivalent.

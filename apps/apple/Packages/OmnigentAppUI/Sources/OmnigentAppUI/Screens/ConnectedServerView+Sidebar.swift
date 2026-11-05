@@ -206,6 +206,10 @@ extension ConnectedServerView {
     actions.deleteWithBranch = { summary, deleteBranch in
       removeSession(summary.id) { await list.delete($0, deleteBranch: deleteBranch) }
     }
+    if windowTabs.supportsSplit {
+      let tabs = session.tabs
+      actions.openInSplit = { summary in tabs.openBeside(.chat(sessionID: summary.id)) }
+    }
     return actions
   }
 
@@ -277,20 +281,28 @@ extension ConnectedServerView {
     }
   }
 
-  /// Previous and next session in the sidebar's order.
+  /// Previous and next session in the sidebar's order, wrapping at the ends as on the web. The
+  /// order is read when the key is pressed, so a list update doesn't republish the menus.
   func navigation(from id: String) -> SessionCommandActions {
-    let ids = connection.sessionList.visible.map(\.id)
-    guard let index = ids.firstIndex(of: id) else { return SessionCommandActions() }
-    let previous = index > ids.startIndex ? ids[index - 1] : nil
-    let next = index + 1 < ids.endIndex ? ids[index + 1] : nil
+    guard connection.sessionList.visible.count > 1 else { return SessionCommandActions() }
     var actions = SessionCommandActions()
-    if let previous {
-      actions.previousSession = { showInPlace(previous) }
-    }
-    if let next {
-      actions.nextSession = { showInPlace(next) }
-    }
+    actions.previousSession = { stepSession(from: id, by: -1) }
+    actions.nextSession = { stepSession(from: id, by: 1) }
     return actions
+  }
+
+  private func stepSession(from id: String, by offset: Int) {
+    let order = SidebarNavigationOrder.sessionIDs(sidebarState)
+    if let target = SidebarNavigationOrder.step(from: id, by: offset, in: order) {
+      showInPlace(target)
+    }
+  }
+
+  /// Control-Command-digit: the pinned session at `index`, in the Pinned section's order.
+  func openPinnedSession(_ index: Int) {
+    let pinned = SidebarNavigationOrder.pinnedIDs(sidebarState)
+    guard pinned.indices.contains(index) else { return }
+    showInPlace(pinned[index])
   }
 
   func report() {

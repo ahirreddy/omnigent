@@ -78,6 +78,9 @@ public struct ConnectedServerView: View {
         }
     }
     .modifier(PaletteAdapter(session: session, selection: $selection))
+    .background { PinnedSessionShortcuts(open: openPinnedSession) }
+    .copyConfirmations()
+    .environment(\.transcriptFocus, session.transcriptFocus)
     .toolbar { accountToolbar }
     .focusedSceneValue(\.tabCommands, tabCommandRelay.publish(tabs.commands))
     .modifier(TabRestoration(session: session, context: tabContext) { route(selection) })
@@ -134,7 +137,7 @@ public struct ConnectedServerView: View {
     return actions
   }
 
-  private var sidebarState: SidebarViewState {
+  var sidebarState: SidebarViewState {
     var state = sidebarMemo.state(
       list: connection.sessionList, display: sidebar.display,
       server: connection.connectedServer,
@@ -224,7 +227,7 @@ public struct ConnectedServerView: View {
 // MARK: Tabs
 
 extension ConnectedServerView {
-  private var windowTabs: WindowTabs {
+  var windowTabs: WindowTabs {
     WindowTabs(
       session: session, context: tabContext, showAll: { showsTabOverview = true },
       fail: { tabFailure = $0 }, supportsSplit: sizeClass != .compact)

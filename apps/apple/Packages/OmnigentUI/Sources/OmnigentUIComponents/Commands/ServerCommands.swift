@@ -10,6 +10,10 @@ public struct ServerCommandActions {
   public var changeServer: (@MainActor () -> Void)?
   /// Sign out of a server with accounts.
   public var signOut: (@MainActor () -> Void)?
+  /// Start a new session (Command-N).
+  public var newSession: (@MainActor () -> Void)?
+  /// Open another window on this server (Shift-Command-N), where the platform has windows.
+  public var newWindow: (@MainActor () -> Void)?
 
   /// Creates the actions.
   /// - Parameters:
@@ -28,16 +32,21 @@ public struct ServerCommandActions {
 
 extension ServerCommandActions: FocusedActions {
   /// Which commands are enabled.
-  public var menuSignature: [Bool] { [reconnect != nil, changeServer != nil, signOut != nil] }
+  public var menuSignature: [Bool] {
+    [reconnect != nil, changeServer != nil, signOut != nil, newSession != nil, newWindow != nil]
+  }
 
   /// A copy whose commands call `latest`'s.
   /// - Parameter latest: The newest actions.
   /// - Returns: The forwarding copy.
   public func forwarding(to latest: @escaping @MainActor () -> Self?) -> Self {
-    Self(
+    var copy = Self(
       reconnect: Self.forward(reconnect, \.reconnect, to: latest),
       changeServer: Self.forward(changeServer, \.changeServer, to: latest),
       signOut: Self.forward(signOut, \.signOut, to: latest))
+    copy.newSession = Self.forward(newSession, \.newSession, to: latest)
+    copy.newWindow = Self.forward(newWindow, \.newWindow, to: latest)
+    return copy
   }
 }
 
@@ -59,6 +68,15 @@ public struct OmnigentServerCommands: Commands {
 
   /// The menus.
   public var body: some Commands {
+    // File: New Session and New Window, as the Mac's desktop File menu.
+    CommandGroup(replacing: .newItem) {
+      Button("New Session") { actions?.newSession?() }
+        .keyboardShortcut(AppShortcuts.newSession)
+        .disabled(actions?.newSession == nil)
+      Button("New Window") { actions?.newWindow?() }
+        .keyboardShortcut(AppShortcuts.newWindow)
+        .disabled(actions?.newWindow == nil)
+    }
     // iPad's app menu: the Settings screen (Command-comma), as the Mac's Settings window.
     CommandGroup(replacing: .appSettings) {
       Button("Settings\u{2026}") { openSettings?() }

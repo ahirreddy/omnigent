@@ -38,6 +38,7 @@ struct ShortcutGuideTests {
     let numbered =
       (0..<9).map(AppShortcuts.selectTab)
       + (0..<InspectorTab.allCases.count).map(AppShortcuts.rightPanelTab)
+      + (0..<10).map(AppShortcuts.pinnedSession)
     let texts = (all + numbered).map(AppShortcuts.text)
     #expect(Set(texts).count == texts.count)
   }
@@ -52,6 +53,7 @@ struct ShortcutGuideTests {
     #expect(rows["Paste as attachment"] == nil)
     #expect(rows["Find a session by name"] == "⌥⌘S")
     #expect(rows["Rename current session"] == "⌥⌘R")
+    #expect(rows["Open pinned session 1–9 / 10"] == "⌃⌘1–9 / ⌃⌘0")
     #expect(rows["Reconnect"] == "⌥⇧⌘R")
     #expect(rows["Search workspace contents"] == "⇧⌘F")
     #expect(rows["Select a right panel tab"] == "⌥⌘1–\(InspectorTab.allCases.count)")
@@ -129,6 +131,15 @@ struct ShortcutGuideTests {
       scope: .sessions, query: "deploy", commands: [],
       state: PaletteViewState(scope: "Studio", sessions: [detailed]), found: PaletteSearchResults())
     #expect(byName.isEmpty)
+  }
+
+  @Test("Palette titles mark the query's first match, ignoring case and accents")
+  func highlight() {
+    let marked = PaletteSearch.highlighted("Déploy the Deploy bot", query: " deploy ")
+    let strong = marked.runs.filter { $0.inlinePresentationIntent == .stronglyEmphasized }
+    #expect(strong.map { String(marked[$0.range].characters) } == ["Déploy"])
+    let plain = PaletteSearch.highlighted("Deploy", query: "xyz")
+    #expect(plain.runs.allSatisfy { $0.inlinePresentationIntent == nil })
   }
 
   private func session(_ id: String, title: String? = nil, prefix: String? = nil) -> PaletteEntry {

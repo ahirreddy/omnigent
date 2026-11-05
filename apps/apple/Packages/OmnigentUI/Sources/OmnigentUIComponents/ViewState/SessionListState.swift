@@ -215,6 +215,8 @@ public struct SessionListActions {
   public var leave: (@MainActor (SessionSummary) -> Void)?
   /// Open in a new window or tab.
   public var openInNewWindow: (@MainActor (SessionSummary) -> Void)?
+  /// Open beside the selected tab, splitting the window (where it can split).
+  public var openInSplit: (@MainActor (SessionSummary) -> Void)?
   /// The session's shareable web link, for Copy Link.
   public var webURL: (@MainActor (SessionSummary) -> URL?)?
   /// Start a new session.

@@ -70,7 +70,7 @@ struct SessionSwipeActions: ViewModifier {
             }
             .tint(Theme.unread)
           }
-          if menu.actions.setPinned != nil, session.canPin {
+          if menu.offersPin {
             Button(session.isPinned ? "Unpin" : "Pin", systemImage: "pin") { menu.togglePin() }
               .tint(.orange)
           }

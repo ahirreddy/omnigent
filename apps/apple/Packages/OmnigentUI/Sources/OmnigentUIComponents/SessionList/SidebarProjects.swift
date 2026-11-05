@@ -10,6 +10,10 @@ struct ProjectFolder<Row: View>: View {
   let menu: ProjectMenu
   let drop: (SidebarDragItem) -> Bool
   @ViewBuilder let row: (SessionSummary) -> Row
+  /// The strongest state of its sessions, while it is collapsed.
+  var folderMarker: SidebarMarker?
+  /// The strongest state of the sessions under Show more.
+  var moreMarker: SidebarMarker?
 
   @State private var isHovered = false
 
@@ -25,9 +29,17 @@ struct ProjectFolder<Row: View>: View {
         row(session)
       }
       if sessions.count > Self.collapsedCount {
-        Button(showsAll ? "Show less" : "Show more") { showsAll.toggle() }
-          .buttonStyle(.borderless)
-          .foregroundStyle(.secondary)
+        Button {
+          showsAll.toggle()
+        } label: {
+          HStack {
+            Text(showsAll ? "Show less" : "Show more")
+            Spacer(minLength: 4)
+            if let moreMarker { SidebarMarkerView(marker: moreMarker) }
+          }
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
       }
     } label: {
       HStack(spacing: Theme.Spacing.tiny) {
@@ -44,6 +56,8 @@ struct ProjectFolder<Row: View>: View {
         Spacer(minLength: 4)
         if isHovered {
           hoverButtons
+        } else if let folderMarker {
+          SidebarMarkerView(marker: folderMarker)
         }
       }
       .contentShape(Rectangle())
