@@ -73,15 +73,29 @@ extension TranscriptSettingsSection {
   }
 }
 
-/// The key window's transcript controls, for the View menu and the session title menu. It holds
-/// no closures, so a value published on every update compares equal to the last one; a fresh
-/// closure each update kept the iPhone title menu rebuilding (a busy loop).
-public struct TranscriptWindowControls: Equatable {
+/// The key window's transcript controls, for the View menu and the session title menu. A class
+/// that holds no closures: SwiftUI compares it by identity, so readers update only when the host
+/// makes a new one. As a struct the environment saw it change on every bar update, which kept
+/// iPad's conversation toolbar relaying out (a busy loop).
+public final class TranscriptWindowControls: Equatable {
   /// The window's style.
-  public var style: TranscriptStyle
+  public let style: TranscriptStyle
   /// The device preferences (output rendering, width).
   public let preferences: TranscriptPreferences
   let window: TranscriptWindowStyleStore
+
+  /// Creates the controls.
+  /// - Parameters:
+  ///   - style: The window's style.
+  ///   - preferences: The device preferences.
+  ///   - window: The window's style store.
+  init(
+    style: TranscriptStyle, preferences: TranscriptPreferences, window: TranscriptWindowStyleStore
+  ) {
+    self.style = style
+    self.preferences = preferences
+    self.window = window
+  }
 
   /// Sets the window's style without changing the device default.
   /// - Parameter style: The style.
@@ -90,7 +104,7 @@ public struct TranscriptWindowControls: Equatable {
   }
 
   /// Equal when they show the same style for the same window and preferences.
-  public static func == (lhs: Self, rhs: Self) -> Bool {
+  public static func == (lhs: TranscriptWindowControls, rhs: TranscriptWindowControls) -> Bool {
     lhs.style == rhs.style && lhs.preferences === rhs.preferences && lhs.window === rhs.window
   }
 }
@@ -279,13 +293,6 @@ private struct AppearanceSettingsHost: ViewModifier {
 struct TranscriptTitleMenu: Equatable {
   let window: TranscriptWindowControls?
   let openAppearance: OpenAppearanceSettingsAction?
-}
-
-extension EnvironmentValues {
-  /// This window's transcript controls and Appearance action, for the session title menu.
-  var transcriptTitleMenu: TranscriptTitleMenu {
-    TranscriptTitleMenu(window: transcriptWindow, openAppearance: openAppearanceSettings)
-  }
 }
 
 /// The session title menu's Transcript Style switch and Appearance item, as plain buttons in
