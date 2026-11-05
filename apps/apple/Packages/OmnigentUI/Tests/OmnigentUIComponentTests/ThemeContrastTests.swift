@@ -99,6 +99,24 @@ struct ThemeContrastTests {
     }
   }
 
+  @Test("the control tint reads as text on the canvas and the sidebar, and stays the accent")
+  func controlTint() {
+    for variant in Self.variants {
+      let tint = variant.resolve(.controlTint)
+      for surface in ThemeContrast.surfaces(variant.key) {
+        let strongest = SRGB.contrast(variant.scheme == .dark ? .white : .black, surface)
+        let ratio = SRGB.contrast(tint, surface)
+        #expect(
+          ratio >= min(variant.textMinimum, strongest - 0.01),
+          "\(variant) on \(surface): \(ratio)")
+      }
+    }
+    // Omnigent's pink darkens in light mode to read on the sidebar, and stays pink.
+    let light = Variant(theme: .omni, scheme: .light, increased: false).resolve(.controlTint)
+    #expect(light.luminance < SRGB(hex: 0xDF3C85).luminance)
+    #expect(light.red > 0.6 && light.red > light.green * 2, "still pink: \(light)")
+  }
+
   @Test("the Omnigent light pink darkens only as far as it must")
   func omniLight() {
     let variant = Variant(theme: .omni, scheme: .light, increased: false)

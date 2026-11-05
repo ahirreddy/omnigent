@@ -2,6 +2,7 @@ import OSLog
 import OmnigentAppUI
 import OmnigentUIComponents
 import SwiftUI
+import UIKit
 
 @main
 struct OmnigentApp: App {
@@ -33,6 +34,10 @@ struct OmnigentApp: App {
 
   private func root(_ request: PhoneWindowRequest?) -> some View {
     IOSRootView(request: request)
+      // Sheets, pickers, toggles and bar buttons take the theme accent, as the web's controls
+      // do; the window's tint carries it to alerts and menus UIKit presents.
+      .tint(ThemeColor.controlTint)
+      .background { WindowTint() }
       .appearanceSettings(theme)
       .omnigentTheme(theme.theme, appearance: theme.mode)
   }
@@ -53,4 +58,34 @@ struct OmnigentApp: App {
       }
     }()
   #endif
+}
+
+/// Sets the hosting window's tint to the theme's control tint, so alerts, confirmation dialogs
+/// and menus that UIKit presents outside the SwiftUI tree match the app.
+private struct WindowTint: UIViewRepresentable {
+  func makeUIView(context: Context) -> TintView {
+    let view = TintView()
+    view.isUserInteractionEnabled = false
+    return view
+  }
+
+  func updateUIView(_ view: TintView, context: Context) {
+    view.tint = UIColor(ThemeColor.controlTint.resolve(in: context.environment))
+  }
+
+  final class TintView: UIView {
+    var tint: UIColor? {
+      didSet { applyTint() }
+    }
+
+    override func didMoveToWindow() {
+      super.didMoveToWindow()
+      applyTint()
+    }
+
+    private func applyTint() {
+      guard let window, let tint, window.tintColor != tint else { return }
+      window.tintColor = tint
+    }
+  }
 }
