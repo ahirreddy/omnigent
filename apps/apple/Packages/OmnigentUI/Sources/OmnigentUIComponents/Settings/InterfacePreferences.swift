@@ -93,3 +93,35 @@ nonisolated public enum DefaultWorkspaceTab: String, Hashable, Sendable, CaseIte
       ?? .files
   }
 }
+
+/// Which view a terminal-backed chat opens in (`omnigent:default-transcript-view`): its chat, or
+/// the agent's terminal. A view chosen in a window stays as its tab.
+nonisolated public enum TranscriptViewDefault: String, Hashable, Sendable, CaseIterable,
+  Identifiable
+{
+  /// The chat transcript (the web's default).
+  case chat
+  /// The agent's terminal.
+  case terminal
+
+  /// The `UserDefaults` key.
+  public static let key = "omnigent:default-transcript-view"
+
+  /// The value itself.
+  public var id: Self { self }
+
+  /// The label.
+  public var title: String {
+    switch self {
+    case .chat: "Chat"
+    case .terminal: "Terminal"
+    }
+  }
+
+  /// The stored value, or Chat for a missing or unknown one.
+  /// - Parameter defaults: The store.
+  /// - Returns: The value.
+  public static func stored(in defaults: UserDefaults = .standard) -> Self {
+    defaults.string(forKey: key).flatMap(Self.init) ?? .chat
+  }
+}

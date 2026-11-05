@@ -271,7 +271,8 @@ enum TranscriptSamples {
     CatalogSampleItem(
       "compaction", "Compaction",
       PreviewData.activity(
-        "c", .compaction, title: "Context compacted", summary: "Summarized 182 earlier messages.")
+        "c", .compaction, title: "Conversation compacted",
+        summary: "Summarized 182 earlier messages.")
     ),
     CatalogSampleItem(
       "sidechat", "Side chat",

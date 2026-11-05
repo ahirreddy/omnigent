@@ -14,7 +14,7 @@ nonisolated public enum SessionViewMode: String, Hashable, Sendable, CaseIterabl
 /// terminal on the theme canvas, pending decisions docked above the composer, and the right
 /// panel with Files, Changes, Pull Requests, Agents and Info.
 public struct ConversationScreen<Terminal: View>: View {
-  private let state: ConversationViewState
+  let state: ConversationViewState
   let composer: ComposerViewState
   private let draft: ComposerDraft
   @Binding private var showsInspector: Bool
@@ -22,7 +22,7 @@ public struct ConversationScreen<Terminal: View>: View {
   @Binding private var fork: ForkViewState?
   private let actions: ConversationActions
   let composerActions: ComposerActions
-  private let extras: ConversationExtras
+  let extras: ConversationExtras
   private let liveRows: LiveTranscriptRows?
   private let terminal: Terminal
 
@@ -186,7 +186,7 @@ public struct ConversationScreen<Terminal: View>: View {
       SessionMenuDialogs(
         renaming: $renaming, renameText: $renameText, confirmingDelete: $confirmingDelete,
         confirmingLeave: $confirmingLeave, confirmingStop: $confirmingStop,
-        actions: extras.sessionActions)
+        actions: extras.sessionActions, branch: extras.menuContext.branch)
     )
     // In a split window only the focused pane's conversation drives the menus.
     .focusedSceneValue(\.sessionCommands, commandRelay.publish(isActivePane ? commands : nil))
@@ -204,6 +204,9 @@ public struct ConversationScreen<Terminal: View>: View {
   }
 
   @ViewBuilder private var titleMenu: some View {
+    if offersTerminal, layoutWidth == .compact {
+      CompactViewModeItems(mode: $mode)
+    }
     if let summary = state.summary {
       sessionMenu(summary).items
     } else {
@@ -223,21 +226,30 @@ public struct ConversationScreen<Terminal: View>: View {
         Button("Go to Creating Session", systemImage: "arrow.up.backward") { open(creator.id) }
       }
     }
+    if layoutWidth == .compact {
+      CompactPanelItems(labels: InspectorTabLabels(state: state, slots: extras.slots)) { tab in
+        inspectorTab.wrappedValue = tab
+        extras.slots.documents?.showPanel()
+        showsInspector = true
+      }
+    }
     transcriptTitleMenuItems(
       TranscriptTitleMenu(window: transcriptWindow, openAppearance: openAppearanceSettings))
   }
+}
 
+extension ConversationScreen {
   /// The sidebar row's menu for this session (as the web's header menu mirrors its row), with
   /// Share opening this screen's sheet.
   private func sessionMenu(_ summary: SessionSummary) -> SessionRowMenu {
     var actions = extras.sessionActions
     actions.share = nil
-    if extras.share != nil, state.shareUnavailableReason == nil {
+    if extras.share != nil {
       let present: @MainActor (SessionSummary) -> Void = { _ in showsShare = true }
       actions.share = present
     }
     let context = extras.menuContext
-    return SessionRowMenu(
+    var menu = SessionRowMenu(
       session: summary, isUnread: false, isShared: context.isShared, pinLimitReached: false,
       projects: context.projects, actions: actions,
       rename: {
@@ -248,21 +260,8 @@ public struct ConversationScreen<Terminal: View>: View {
       confirmLeave: { confirmingLeave = summary },
       confirmStop: { confirmingStop = summary },
       project: context.projects.first { $0.id == context.projectID })
-  }
-}
-
-extension ConversationScreen {
-  /// A sub-agent's parent session.
-  private var parentSessionID: String? {
-    state.header.settings?.parentId.flatMap { $0.isEmpty || $0 == state.header.id ? nil : $0 }
-  }
-
-  /// The header's project tag: the viewer's own top-level session.
-  private var showsProjectTag: Bool {
-    state.summary != nil
-      && HeaderProjectTag.applies(
-        extras.menuContext, isSubagent: parentSessionID != nil,
-        canMove: extras.sessionActions.moveToProject != nil)
+    menu.shareUnavailableReason = state.shareUnavailableReason
+    return menu
   }
 
   private var canSendDraft: Bool {

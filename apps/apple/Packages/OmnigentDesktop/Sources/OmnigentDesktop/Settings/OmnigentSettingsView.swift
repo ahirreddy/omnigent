@@ -108,11 +108,16 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
       }
     }
     .scenePadding()
-    .frame(minHeight: 320)
+    // The window takes the content's minimum, so this keeps General and Appearance unclipped.
+    .frame(minHeight: Self.formHeight)
   }
 
   /// The width of the form tabs; a wide tab (``SettingsTabItem/isWide``) sizes itself.
-  static var formWidth: CGFloat { 520 }
+  static var formWidth: CGFloat { 580 }
+
+  /// The tabs' least height: tall enough that General and Appearance show their groups; each
+  /// form scrolls within it.
+  static var formHeight: CGFloat { 680 }
 }
 
 extension OmnigentSettingsView where BrowserSettings == EmptyView {

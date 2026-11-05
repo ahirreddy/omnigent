@@ -42,7 +42,9 @@ enum ComposerAdapter {
     state.connection = connection(store)
     state.statusPlaceholder = statusPlaceholder(store, connection: state.connection)
     if let fraction = contextFraction(store.sections) {
-      state.tray = ComposerTray(contextFraction: fraction)
+      var tray = ComposerTray(contextFraction: fraction)
+      tray.contextTokens = contextTokens(store.sections)
+      state.tray = tray
     }
     return state
   }
@@ -50,13 +52,19 @@ enum ComposerAdapter {
   /// How full the context window is, from the core's usage section; `nil` until both the
   /// tokens in context and the window are reported.
   static func contextFraction(_ sections: [OmnigentCoreFFI.EventSection]) -> Double? {
+    guard let tokens = contextTokens(sections) else { return nil }
+    return min(1, max(0, Double(tokens.used) / Double(tokens.window)))
+  }
+
+  /// The tokens in context and the window, from the core's usage section.
+  static func contextTokens(_ sections: [OmnigentCoreFFI.EventSection]) -> ContextTokens? {
     guard let usage = sections.first(where: { $0.id == "usage" }) else { return nil }
     func value(_ id: String) -> Double? {
       usage.details.first { $0.id == id }.flatMap { Double($0.text) }
     }
     guard let tokens = value("context_tokens"), let window = value("context_window"), window > 0
     else { return nil }
-    return min(1, max(0, tokens / window))
+    return ContextTokens(used: Int(tokens.rounded()), window: Int(window.rounded()))
   }
 
   static func slashCommand(_ command: OmnigentCoreFFI.SlashCommand)
@@ -264,7 +272,16 @@ enum ComposerAdapter {
     configuration.smartRouting = smartRouting(composer)
     return configuration
   }
+}
 
+extension OmnigentCoreFFI.ReportedValue {
+  fileprivate var reportedID: String? {
+    if case .value(let value) = self { return value }
+    return nil
+  }
+}
+
+extension ComposerAdapter {
   /// Stages each input and uploads it. Core failures stay on the composer's error; files that
   /// could not be read are returned for the caller to show.
   /// - Parameters:
@@ -299,16 +316,7 @@ enum ComposerAdapter {
     }
     return failures
   }
-}
 
-extension OmnigentCoreFFI.ReportedValue {
-  fileprivate var reportedID: String? {
-    if case .value(let value) = self { return value }
-    return nil
-  }
-}
-
-extension ComposerAdapter {
   /// The newest prompt, for composers that recall one (the CLI style).
   static func recall(_ prompts: (@MainActor () -> [String])?) -> (@MainActor () -> String?)? {
     guard let prompts else { return nil }

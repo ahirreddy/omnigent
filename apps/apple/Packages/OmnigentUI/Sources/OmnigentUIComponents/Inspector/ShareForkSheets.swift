@@ -188,7 +188,7 @@ public struct ForkSheet: View {
         .accessibilityIdentifier("fork-agent")
         ForkOptionsSections(
           options: state.options, actions: actions, startsOnHost: startsInDirectory,
-          choices: $choices)
+          harness: state.agents.first { $0.id == choices.agentID }?.harness, choices: $choices)
         // The directory is where "Clone & start" runs, so it shows only when that can.
         if startsInDirectory {
           directoryField

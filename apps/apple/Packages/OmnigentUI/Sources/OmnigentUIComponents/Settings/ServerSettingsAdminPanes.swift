@@ -148,53 +148,97 @@ struct PoliciesPane: View {
   }
 }
 
-/// Sharing: who can share sessions, public links and which new sessions start public.
+/// Sharing, with the web's labels and explanations: who can share sessions (each tier
+/// described), public access, its maximum permission and whether new sessions start shared.
+/// A control another setting overrides is disabled with the reason.
 struct SharingPane: View {
   let sharing: SharingViewState?
   let actions: ServerSettingsActions
 
   var body: some View {
     if let sharing {
-      Section {
+      let sharingOff = sharing.mode == "off"
+      Section("Session sharing") {
         picker(
-          "Who can share", sharing.mode, sharing.modeChoices, editable: sharing.modeEditable,
-          change: SharingChange.mode)
-      } footer: {
-        Text("Applies to sessions people share with others on this server.")
+          ("Who can share", Self.tierDescription(sharing.mode)), sharing.mode,
+          sharing.modeChoices, editable: sharing.modeEditable, change: SharingChange.mode)
       }
-      Section {
+      Section("Public sharing") {
         Toggle(
-          "Allow public links",
           isOn: Binding(
-            get: { sharing.publicSharing }, set: { actions.changeSharing?(.publicSharing($0)) })
-        )
-        .disabled(!sharing.publicSharingEditable || actions.changeSharing == nil)
+            get: { sharing.publicSharing && !sharingOff },
+            set: { actions.changeSharing?(.publicSharing($0)) })
+        ) {
+          Text("Public access")
+          Text(
+            sharingOff
+              ? "Turn sharing on to use public access."
+              : "Allow sharing a session with anyone who has the link and can sign in. When off, "
+                + "new public grants are rejected; existing ones stay accessible and can be "
+                + "revoked." + managedNote(sharing.publicSharingEditable))
+        }
+        .disabled(sharingOff || !sharing.publicSharingEditable || actions.changeSharing == nil)
         if let level = sharing.publicLevel, !sharing.publicLevelChoices.isEmpty {
           picker(
-            "Public links grant", level, sharing.publicLevelChoices,
-            editable: sharing.publicLevelEditable, change: SharingChange.publicLevel)
+            (
+              "Maximum public permission",
+              "The maximum access a public link can grant. Lowering this to Read also limits "
+                + "existing public Edit grants. Raising it does not upgrade Read grants."
+                + managedNote(sharing.publicLevelEditable)
+            ), level, sharing.publicLevelChoices, editable: sharing.publicLevelEditable,
+            change: SharingChange.publicLevel)
         }
         if let defaultPublic = sharing.defaultPublic, !sharing.defaultPublicChoices.isEmpty {
+          let blocked =
+            sharingOff
+            ? "Turn sharing on to change the default visibility."
+            : sharing.publicSharing
+              ? nil : "Turn on public access to change the default visibility."
           picker(
-            "New sessions start public", defaultPublic, sharing.defaultPublicChoices,
-            editable: sharing.defaultPublicEditable, change: SharingChange.defaultPublic)
+            (
+              "Share new sessions by default",
+              blocked
+                ?? "New sessions start with public read access for anyone with the link who "
+                + "can sign in. Owners can revoke it in Share. Existing sessions are unchanged."
+                + managedNote(sharing.defaultPublicEditable)
+            ), defaultPublic, sharing.defaultPublicChoices,
+            editable: sharing.defaultPublicEditable && blocked == nil,
+            change: SharingChange.defaultPublic)
         }
-      } header: {
-        Text("Public access")
-      } footer: {
-        Text("Settings this deployment manages itself can't be changed here.")
       }
     }
   }
 
+  /// The web's explanation of each sharing tier.
+  static func tierDescription(_ mode: String) -> String? {
+    switch mode {
+    case "on":
+      "Anyone with manage access can share a session at any level (read, edit, or manage) and "
+        + "toggle public / workspace read."
+    case "read_only":
+      "New shares are capped at read (view) access. Edit and manage grants are rejected."
+    case "restricted_read_only":
+      "Read-only, and sessions whose working directory is a home directory or the filesystem "
+        + "root cannot be shared at all, not even read."
+    case "off":
+      "Sharing is disabled. No new grants can be created and the Share control is hidden."
+    default: nil
+    }
+  }
+
+  private func managedNote(_ editable: Bool) -> String {
+    editable ? "" : " Managed by this deployment and can't be changed here."
+  }
+
   private func picker(
-    _ title: String, _ value: String, _ choices: [SettingChoice], editable: Bool,
-    change: @escaping (String) -> SharingChange
+    _ label: (title: String, detail: String?), _ value: String, _ choices: [SettingChoice],
+    editable: Bool, change: @escaping (String) -> SharingChange
   ) -> some View {
-    Picker(
-      title, selection: Binding(get: { value }, set: { actions.changeSharing?(change($0)) })
-    ) {
+    Picker(selection: Binding(get: { value }, set: { actions.changeSharing?(change($0)) })) {
       ForEach(choices) { Text($0.title).tag($0.id) }
+    } label: {
+      Text(label.title)
+      if let detail = label.detail { Text(detail) }
     }
     .disabled(!editable || actions.changeSharing == nil)
   }

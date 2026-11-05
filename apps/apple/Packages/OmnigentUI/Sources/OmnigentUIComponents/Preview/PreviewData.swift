@@ -226,7 +226,7 @@ enum PreviewData {
           id: "output", title: "Output", text: "No blocking issues found.", isCode: true),
       ]),
     activity(
-      "item_cmp", .compaction, title: "Context compacted",
+      "item_cmp", .compaction, title: "Conversation compacted",
       summary: "Earlier context was summarized for this session.",
       details: [
         DetailSection(

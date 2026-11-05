@@ -202,6 +202,8 @@ public struct SessionListActions {
   public var share: (@MainActor (SessionSummary) -> Void)?
   /// Fork (clone) the whole session.
   public var fork: (@MainActor (SessionSummary) -> Void)?
+  /// Why a session cannot be forked; Fork then shows disabled with the reason.
+  public var forkUnavailableReason: (@MainActor (SessionSummary) -> String?)?
   /// Move to a project (`nil` removes it from its project).
   public var moveToProject: (@MainActor (SessionSummary, SessionProject?) -> Void)?
   /// Stop the running session.

@@ -43,7 +43,7 @@ enum AutomationEditorMapping {
     let catalog = pages.automationCatalog.value
     let draft = inputs.draft
     var context = AutomationEditorContext(
-      agents: AutomationsMapping.agents(catalog),
+      agents: AutomationsMapping.agents(catalog, selectedID: draft.agentID),
       supportsSessionModes: offered?.automationSessionModes == true,
       describe: { AutomationsMapping.describe($0) }, isEditing: inputs.saved != nil,
       isSaving: inputs.isSaving,

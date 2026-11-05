@@ -210,6 +210,9 @@ extension ConnectedServerView {
       let tabs = session.tabs
       actions.openInSplit = { summary in tabs.openBeside(.chat(sessionID: summary.id)) }
     }
+    actions.forkUnavailableReason = { summary in
+      list.session(summary.id).flatMap { forkUnavailableReason(source: $0) }
+    }
     return actions
   }
 

@@ -186,7 +186,8 @@ public struct ServerSettingsView: View {
     case .account: AccountSettingsPane(account: state.account, actions: actions)
     case .harnesses: harnesses
     case .customAgents: Text("Custom agents are not available here.").foregroundStyle(.secondary)
-    case .mcp: MCPPane(services: state.mcpServices, actions: actions)
+    case .mcp:
+      MCPPane(services: state.mcpServices, actions: actions, errorMessage: state.errorMessage)
     case .integrations: IntegrationsPane(connections: state.connections, actions: actions)
     case .git: GitSettingsPane(archiveWorktreeCleanup: state.archiveWorktreeCleanup)
     case .importSessions:

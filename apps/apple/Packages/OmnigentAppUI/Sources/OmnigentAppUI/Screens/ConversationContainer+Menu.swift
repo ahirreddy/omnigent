@@ -91,6 +91,6 @@ extension ConversationContainer {
     }
     return SessionMenuContext(
       projects: projects, projectID: current?.id, isShared: !list.isOwned(session),
-      createdBy: creator, parent: parent)
+      createdBy: creator, parent: parent, branch: session.configuration?.gitBranch)
   }
 }

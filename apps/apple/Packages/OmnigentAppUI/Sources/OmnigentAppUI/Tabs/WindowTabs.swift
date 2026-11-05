@@ -372,6 +372,8 @@ struct ConversationTabRoutes {
   var newTerminal: (@MainActor (String?) -> Void)?
   /// Opens a browser tab; `nil` when the window has no browser.
   var openBrowser: (@MainActor () -> Void)?
+  /// A terminal-backed chat showed: opens its terminal the first time, per Settings.
+  var applyDefaultView: (@MainActor () -> Void)?
 }
 
 extension WindowTabs {

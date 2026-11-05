@@ -33,9 +33,13 @@ enum AutomationsMapping {
     return state
   }
 
-  /// The agents the editor offers: those this app can start sessions for.
-  static func agents(_ catalog: OmnigentCoreFFI.CreationCatalog?) -> [AutomationOption] {
-    (catalog?.agents ?? []).filter(\.supportsCreation).map {
+  /// The agents the editor offers: those this app can start sessions for and the user has not
+  /// hidden from the pickers, keeping `selectedID`.
+  static func agents(
+    _ catalog: OmnigentCoreFFI.CreationCatalog?, selectedID: String? = nil
+  ) -> [AutomationOption] {
+    let creatable = (catalog?.agents ?? []).filter(\.supportsCreation)
+    return PickerVisibilityAdapter.shown(creatable, selectedID: selectedID).map {
       AutomationOption(id: $0.id, name: $0.name)
     }
   }

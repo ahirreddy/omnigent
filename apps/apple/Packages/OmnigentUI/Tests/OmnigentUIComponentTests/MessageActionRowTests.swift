@@ -14,13 +14,13 @@ struct MessageActionRowTests {
     MessageActionItem.items(for: row, actions: actions).map(\.kind)
   }
 
-  @Test("A settled answer offers Copy, Fork chat from here and Copy link, in that order")
+  @Test("A settled answer offers Copy, Fork from here and Copy link, in that order")
   func answer() {
     let row = Row(id: "a1", role: .assistant, text: "Done.", responseId: "resp_1")
     let items = MessageActionItem.items(for: row, actions: forking)
     #expect(items.map(\.kind) == [.copy, .fork, .link])
     #expect(items.map(\.identifier) == ["message-copy-a1", "message-fork-a1", "message-link-a1"])
-    #expect(items[1].title == "Fork chat from here")
+    #expect(items[1].title == "Fork from here")
     #expect(items[1].systemImage == "arrow.triangle.branch")
   }
 

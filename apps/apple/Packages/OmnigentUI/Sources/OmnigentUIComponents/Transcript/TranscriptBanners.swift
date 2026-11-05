@@ -50,7 +50,7 @@ struct EmptyTranscriptView: View {
   static func detail(_ state: ConversationViewState) -> String {
     if state.hasMoreHistory { return "Load earlier messages to continue." }
     if state.header.readOnly { return "This session has no messages yet." }
-    return "Send a message to start this session."
+    return "Send a message to get started."
   }
 }
 

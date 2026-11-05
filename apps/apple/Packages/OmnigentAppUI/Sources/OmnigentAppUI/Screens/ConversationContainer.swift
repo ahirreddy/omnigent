@@ -185,10 +185,10 @@ struct ConversationContainer: View {
     }
   }
 
-  /// Attaches the harness TUI once the core reports it ready. The store keeps the surface, so
-  /// switching between Chat and Terminal keeps the screen and scrollback.
+  /// Attaches the harness TUI once ready (the store keeps it), applying the default view.
   private func attachHarness() {
     guard let terminals else { return }
+    if terminals.terminals.harness != .notTerminalFirst { tabRoutes?.applyDefaultView?() }
     harnessSurface = terminals.harnessController(
       permissionLevel: conversation.header?.permissionLevel,
       hostID: conversation.header?.settings?.hostId)
@@ -245,7 +245,7 @@ struct ConversationContainer: View {
     return summary
   }
 
-  /// "Fork chat from here" on settled assistant messages.
+  /// "Fork from here" on settled assistant messages.
   private func forkable(_ actions: ConversationActions) -> ConversationActions {
     var actions = actions
     if let source = forkSource {

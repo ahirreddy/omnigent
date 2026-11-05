@@ -61,6 +61,8 @@ nonisolated public struct SessionMenuContext: Hashable, Sendable {
   public var createdBy: CreatingSession?
   /// The session a sub-agent belongs to, as "Sub-agent of" links to it.
   public var parent: CreatingSession?
+  /// The session's worktree branch, which Delete offers to remove too.
+  public var branch: String?
 
   /// Creates a context.
   /// - Parameters:
@@ -69,15 +71,17 @@ nonisolated public struct SessionMenuContext: Hashable, Sendable {
   ///   - isShared: Someone else's session.
   ///   - createdBy: The session that started this worker.
   ///   - parent: The session a sub-agent belongs to.
+  ///   - branch: The worktree branch.
   public init(
     projects: [SessionProject] = [], projectID: String? = nil, isShared: Bool = false,
-    createdBy: CreatingSession? = nil, parent: CreatingSession? = nil
+    createdBy: CreatingSession? = nil, parent: CreatingSession? = nil, branch: String? = nil
   ) {
     self.projects = projects
     self.projectID = projectID
     self.isShared = isShared
     self.createdBy = createdBy
     self.parent = parent
+    self.branch = branch
   }
 
   /// The project the session is filed in.
@@ -121,8 +125,9 @@ struct ViewModePicker: View {
 
   var body: some View {
     Picker("View", selection: $mode) {
-      Label("Chat", systemImage: "bubble.left.and.text.bubble.right").tag(SessionViewMode.chat)
-      Label("Terminal", systemImage: "apple.terminal").tag(SessionViewMode.terminal)
+      ForEach(SessionViewMode.allCases, id: \.self) { mode in
+        Label(mode.title, systemImage: mode.systemImage).tag(mode)
+      }
     }
     .pickerStyle(.segmented)
     .labelStyle(.iconOnly)
@@ -161,6 +166,10 @@ struct SessionMenuDialogs: ViewModifier {
   @Binding var confirmingLeave: SessionSummary?
   @Binding var confirmingStop: SessionSummary?
   let actions: SessionListActions
+  /// The session's worktree branch: Delete then offers to remove it too, as the sidebar's.
+  var branch: String?
+
+  private var offersBranch: Bool { branch != nil && actions.deleteWithBranch != nil }
 
   func body(content: Content) -> some View {
     content
@@ -169,12 +178,25 @@ struct SessionMenuDialogs: ViewModifier {
       .confirmationDialog(
         "Delete this session?",
         isPresented: Binding(
-          get: { confirmingDelete != nil }, set: { if !$0 { confirmingDelete = nil } }),
+          get: { confirmingDelete != nil && !offersBranch },
+          set: { if !$0 { confirmingDelete = nil } }),
         presenting: confirmingDelete
       ) { session in
         Button("Delete", role: .destructive) { actions.delete?(session) }
       } message: { _ in
         Text("This permanently deletes the session and its history.")
+      }
+      .sheet(
+        item: Binding(
+          get: { offersBranch ? confirmingDelete : nil }, set: { confirmingDelete = $0 })
+      ) { session in
+        DeleteSessionsSheet(
+          sessions: [session], branches: branch.map { [session.id: $0] } ?? [:],
+          delete: { branchIDs in
+            actions.deleteWithBranch?(session, branchIDs.contains(session.id))
+            confirmingDelete = nil
+          },
+          cancel: { confirmingDelete = nil })
       }
       .confirmationDialog(
         "Leave this session?",

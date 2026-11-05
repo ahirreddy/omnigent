@@ -43,17 +43,21 @@ enum ForkAdapter {
   /// The host, model and approval choices: Continue keeps the source's host and agent setup.
   static func options(_ plan: ForkPlan, models: [ModelChoice]) -> ForkOptions {
     var modes: [String: [OmnigentUIComponents.ApprovalModeOption]] = [:]
+    var harnessNames: [String: String] = [:]
     for agent in plan.agents {
       if let menu = creationApprovalModeMenu(agent: agent) {
         modes[agent.id] = ComposerAdapter.approvalModes(menu).options
+        harnessNames[agent.id] = menu.harness
       }
     }
-    return ForkOptions(
+    var options = ForkOptions(
       hosts: plan.hosts.map {
         ForkHostOption(id: $0.hostId, name: $0.name, unavailableReason: $0.unavailableReason)
       },
       offersSandbox: plan.offersSandbox, models: NewSessionAdapter.models(models),
       approvalModes: modes)
+    options.harnessNames = harnessNames
+    return options
   }
 
   /// The request for the sheet's choices. Keeping the source's agent sends no agent, and a
@@ -96,7 +100,7 @@ enum ForkAdapter {
       agent: choices.approvalMode == nil ? nil : plan.agents.first { $0.id == choices.agentID })
   }
 
-  /// The row a "Fork chat from here" cuts after: a settled assistant message with a response.
+  /// The row a "Fork from here" cuts after: a settled assistant message with a response.
   /// - Parameter row: The transcript row.
   /// - Returns: Its response id, or `nil` when it cannot be a fork point.
   static func forkPoint(_ row: OmnigentUIComponents.Row) -> String? {

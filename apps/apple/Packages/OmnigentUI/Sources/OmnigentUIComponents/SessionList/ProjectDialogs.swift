@@ -47,7 +47,9 @@ struct ProjectDialogs: ViewModifier {
       ) { project in
         Button("Delete Project", role: .destructive) { actions.deleteProject?(project) }
       } message: { _ in
-        Text("Its sessions are archived and removed from the project; none are deleted.")
+        Text(
+          "Its sessions are archived and removed from the project; their history is kept. You "
+            + "can find and restore them anytime from Settings.")
       }
   }
 

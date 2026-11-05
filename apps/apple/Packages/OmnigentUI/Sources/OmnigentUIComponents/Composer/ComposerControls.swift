@@ -242,11 +242,23 @@ struct ComposerTrayView: View {
       }
     }
     .contentShape(Rectangle())
-    .help("Context used: \(Int((fraction * 100).rounded()))% of the context window")
+    .help(Self.contextHelp(fraction, tokens: tray.contextTokens))
     .accessibilityElement()
     .accessibilityLabel("Context used")
     .accessibilityValue("\(Int((fraction * 100).rounded())) percent")
     .accessibilityIdentifier("composer-context-usage")
+  }
+}
+
+extension ComposerTrayView {
+  /// "38% context used · 76K / 200K tokens", as the web's context ring tooltip.
+  static func contextHelp(_ fraction: Double, tokens: ContextTokens?) -> String {
+    let percent = "\(Int((fraction * 100).rounded()))% context used"
+    guard let tokens else { return percent }
+    let compact = IntegerFormatStyle<Int>.number.notation(.compactName)
+      .precision(.fractionLength(0...1)).locale(Locale(identifier: "en_US"))
+    return "\(percent) \u{00B7} \(tokens.used.formatted(compact)) / "
+      + "\(tokens.window.formatted(compact)) tokens"
   }
 }
 

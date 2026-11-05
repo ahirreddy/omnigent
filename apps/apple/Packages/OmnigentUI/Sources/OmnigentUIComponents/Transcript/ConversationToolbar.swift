@@ -38,8 +38,9 @@ struct ConversationToolbar: ToolbarContent {
   let items: ConversationToolbarItems
 
   var body: some ToolbarContent {
-    // With tabs in the titlebar, the agent's TUI is its own tab (Option-Command-\\ opens it).
-    if items.offersTerminal, !items.tabsInTitlebar {
+    // With tabs in the titlebar, the agent's TUI is its own tab (Option-Command-\\ opens it);
+    // at compact width the switch leads the title menu, so the title stays.
+    if items.offersTerminal, !items.tabsInTitlebar, items.isRegular {
       ToolbarItem(placement: .principal) {
         ViewModePicker(mode: items.mode, status: items.state.terminal)
       }
@@ -55,7 +56,8 @@ struct ConversationToolbar: ToolbarContent {
           .help("Agent info")
           .accessibilityIdentifier("header-agent-info")
       }
-      if let summary = state.summary, items.showsProjectTag,
+      // At compact width the title menu's Move session files it, so the title keeps its room.
+      if let summary = state.summary, items.showsProjectTag, items.isRegular,
         let move = items.extras.sessionActions.moveToProject
       {
         HeaderProjectTag(session: summary, context: items.extras.menuContext, move: move)

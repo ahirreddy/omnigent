@@ -136,7 +136,8 @@ public struct UsageView: View {
     if amounts.isEmpty {
       empty("No data")
     } else {
-      Chart(amounts.prefix(8)) { amount in
+      // Every entry, as the web's chart grows with its data, so the bars add up to the total.
+      Chart(amounts) { amount in
         BarMark(x: .value("Cost", amount.costUSD), y: .value("Name", amount.label))
           .foregroundStyle(Theme.accent)
           .annotation(position: .trailing) {
@@ -144,7 +145,7 @@ public struct UsageView: View {
           }
       }
       .chartXAxis(.hidden)
-      .frame(height: CGFloat(min(amounts.count, 8)) * 28 + 16)
+      .frame(height: CGFloat(amounts.count) * 28 + 16)
     }
   }
 
