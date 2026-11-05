@@ -19,6 +19,7 @@ pub mod deeplink;
 pub mod demo;
 mod discovery;
 mod error;
+pub mod failure_copy;
 pub mod harness_accounts;
 pub mod harness_setup;
 pub mod http;

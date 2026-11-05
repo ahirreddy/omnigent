@@ -8,13 +8,15 @@
 use omnigent_protocol::content::{self, ContentPart};
 use omnigent_protocol::display;
 use omnigent_protocol::items::{
-    CompactionData, ErrorData, FunctionCallData, FunctionCallOutputData, MessageData,
+    CompactionData, ErrorData, ErrorLevel, FunctionCallData, FunctionCallOutputData, MessageData,
     ReasoningData, ResourceAction, ResourceEventData, RoutingDecisionData, SlashCommandData,
     SlashCommandKind, TerminalCommandData, TerminalCommandKind,
 };
 use omnigent_protocol::native_tools::{NativeToolItem, NativeToolKind};
 use omnigent_protocol::{ConversationItem, ItemData, MessageRole};
 use serde_json::Value;
+
+use crate::failure_copy::{failure_headline, is_neutral_failure};
 
 use super::presentation::{SUMMARY_CHARS, TITLE_CHARS, bounded, capitalized, type_title};
 use super::state::{
@@ -274,13 +276,33 @@ impl Projector<'_> {
     fn error(&self, error: &ErrorData) -> Row {
         let message = bounded(&error.message, MESSAGE_DETAIL_CHARS);
         let source = error.source.as_ref().map_or("", |source| source.as_str());
+        let is_info = error.level == Some(ErrorLevel::Info);
+        let headline = failure_headline(error.title.as_deref(), &error.code, is_info);
+        // An informational notice or a spent budget reads neutral, not as a failure.
+        let status = if is_info || is_neutral_failure(&error.code) {
+            "info"
+        } else {
+            "failed"
+        };
         self.activity(
             ActivityKind::Error,
-            "Response error",
+            &headline,
             &error.message,
-            Some("failed"),
+            Some(status),
             sections(&[
                 ("message", "Error", &message, false),
+                (
+                    "cause",
+                    "Cause",
+                    error.cause.as_deref().unwrap_or(""),
+                    false,
+                ),
+                (
+                    "remediation",
+                    "Next step",
+                    error.remediation.as_deref().unwrap_or(""),
+                    true,
+                ),
                 ("code", "Code", &error.code, true),
                 ("source", "Source", source, false),
             ]),
