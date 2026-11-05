@@ -70,8 +70,16 @@ final class TranscriptReadingPosition {
 struct TranscriptNavigator: View {
   let previous: () -> Void
   let next: () -> Void
+  @Environment(\.layoutWidth) private var layoutWidth
+  @Environment(\.composerLayoutStyle) private var composerLayout
 
   var body: some View {
+    // A phone has no room for it: it would cover the last row's trailing actions (a banner's
+    // Retry), and the web leaves it out at phone width too.
+    if !(layoutWidth == .compact && composerLayout == .touch) { navigator }
+  }
+
+  private var navigator: some View {
     VStack(spacing: 0) {
       button(
         "Previous message", shortcut: "\u{2318}\u{2325}\u{2191}", symbol: "chevron.up",
