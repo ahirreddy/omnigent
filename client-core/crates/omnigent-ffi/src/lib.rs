@@ -49,6 +49,7 @@ pub mod harness_setup;
 pub mod host;
 pub mod http;
 pub mod inbox;
+pub mod pull_request_detail;
 pub mod pull_requests;
 pub mod remote_browser;
 pub mod server_admin;
