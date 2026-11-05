@@ -95,18 +95,19 @@ struct MessageFlash: View {
 /// Scrolls a transcript to its session's linked message and flashes it, loading older history
 /// until the message is there. It waits for the transcript to frame its latest turn on open.
 struct TranscriptMessageFocus: ViewModifier {
-  let sessionID: String
-  let revision: UInt64
-  /// Older history is loading; the next page can be asked for once it lands.
-  let isLoadingHistory: Bool
+  let state: ConversationViewState
+  /// The host can load older history.
+  let pages: Bool
   /// The scroll id of the row that shows a message, if it is loaded.
   let locate: (String) -> String?
-  let canLoadOlder: Bool
-  let hasRows: Bool
   let loadOlder: () -> Void
-  /// Scrolls to and flashes a row.
+  /// Scrolls to a row.
   let show: (String) -> Void
   @Environment(\.transcriptFocus) private var focus
+
+  private var sessionID: String { state.header.id }
+  /// Older history is loading; the next page is asked for once it lands.
+  private var isLoadingHistory: Bool { state.isLoadingHistory }
 
   func body(content: Content) -> some View {
     content
@@ -119,7 +120,7 @@ struct TranscriptMessageFocus: ViewModifier {
         }
         attempt()
       }
-      .onChange(of: revision) {
+      .onChange(of: state.revision) {
         if focus?.messageID(in: sessionID) != nil { attempt() }
       }
       .onChange(of: isLoadingHistory) { _, isLoading in
@@ -133,10 +134,10 @@ struct TranscriptMessageFocus: ViewModifier {
       focus.clear(sessionID)
       show(target)
       focus.flash(target)
-    } else if canLoadOlder {
+    } else if pages, state.hasMoreHistory {
       // While a page is loading, the next one is asked for when it lands.
       if !isLoadingHistory { loadOlder() }
-    } else if hasRows {
+    } else if !state.rows.isEmpty {
       // The whole history is loaded and the message isn't in it: stay at the latest.
       focus.clear(sessionID)
     }

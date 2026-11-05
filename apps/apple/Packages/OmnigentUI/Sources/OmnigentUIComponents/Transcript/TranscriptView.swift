@@ -307,19 +307,15 @@ extension TranscriptView {
     }
   }
 
-  /// Scrolls to and flashes the message a `?message=` link points at.
+  /// Scrolls to the message a `?message=` link points at; a page still landing must not put
+  /// the old top row back.
   private func messageFocus(_ proxy: ScrollViewProxy) -> TranscriptMessageFocus {
     TranscriptMessageFocus(
-      sessionID: state.header.id, revision: state.revision,
-      isLoadingHistory: state.isLoadingHistory,
-      locate: { message in
-        TranscriptFocus.entryID(
-          forMessage: message, in: layout.entries(for: state).map(\.segment))
-      },
-      canLoadOlder: state.hasMoreHistory && actions.loadOlder != nil,
-      hasRows: !state.rows.isEmpty, loadOlder: loadOlder,
+      state: state, pages: actions.loadOlder != nil,
+      locate: {
+        TranscriptFocus.entryID(forMessage: $0, in: layout.entries(for: state).map(\.segment))
+      }, loadOlder: loadOlder,
       show: { target in
-        // A page still landing must not put the old top row back.
         position.prependAnchor = nil
         follow.readEarlier()
         proxy.scrollTo(target, anchor: .center)
