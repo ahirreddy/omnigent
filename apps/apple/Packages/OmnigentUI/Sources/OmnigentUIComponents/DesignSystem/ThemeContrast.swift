@@ -17,6 +17,9 @@ nonisolated enum ThemeContrast {
     /// The primary action's fill and its label.
     let primaryFill: SRGB
     let onPrimary: SRGB
+    /// The accent as a control tint (toggles, bar buttons, alert actions), legible as text on
+    /// the canvas and the sidebar.
+    let controlTint: SRGB
     /// "Needs you" text and glyphs, legible on the canvas, the sidebar and their own capsule.
     let attention: SRGB
     /// How much of ``attention`` tints its capsule.
@@ -162,7 +165,8 @@ nonisolated enum ThemeContrast {
   private static func derive(_ key: Key) -> Roles {
     let minimum = textMinimum(increased: key.increased)
     let canvas = surfaces(key)[0]
-    let primary = primaryAction(composite(key.palette.accent, over: canvas), minimum: minimum)
+    let accent = composite(key.palette.accent, over: canvas)
+    let primary = primaryAction(accent, minimum: minimum)
     let brand = composite(key.palette.brandAccent, over: canvas)
     let muted = SRGB(
       key.dark ? DesignTokens.darkMutedForeground : DesignTokens.lightMutedForeground)
@@ -171,6 +175,7 @@ nonisolated enum ThemeContrast {
     let attention = attention(brand, key: key, minimum: minimum)
     return Roles(
       primaryFill: primary.fill, onPrimary: primary.label,
+      controlTint: accent.ensuringContrast(minimum, against: surfaces(key)),
       attention: attention.color, capsuleOpacity: attention.capsuleOpacity,
       mutedText: muted.ensuringContrast(minimum, against: backgrounds),
       rowSelectionOpacity: selection)

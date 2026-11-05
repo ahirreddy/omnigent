@@ -1,3 +1,4 @@
+import CoreFoundation
 import Testing
 
 @testable import OmnigentUIComponents
@@ -43,5 +44,16 @@ struct TranscriptNavigationTests {
     let scrolls = follow.contentChanged()
     #expect(!scrolls)
     #expect(follow.hasUnseenOutput)
+  }
+
+  @Test("on touch the message pill shows only in the margin beside the column")
+  func pillMargin() {
+    // A phone's column is the full width.
+    #expect(!TranscriptNavigator.fitsBesideColumn(width: 390, column: .infinity))
+    // An iPad mini beside the sidebar: the reading column reaches the pill.
+    #expect(!TranscriptNavigator.fitsBesideColumn(width: 520, column: 720))
+    #expect(!TranscriptNavigator.fitsBesideColumn(width: 740, column: 720))
+    // A wide iPad leaves room on either side.
+    #expect(TranscriptNavigator.fitsBesideColumn(width: 1_000, column: 720))
   }
 }

@@ -32,6 +32,8 @@ struct IOSRootView: View {
   @State private var selection: SidebarDestination?
   /// The launch connect finished, so links route against the scene's real connection.
   @State private var hasStarted = false
+  /// The launch is reconnecting to the last server and the core has not reported progress yet.
+  @State private var isRestoring = false
   /// Tabs torn off from another window into this one.
   @State private var adopting: [AppTab] = []
   @State private var serverCommandRelay = FocusedActionsRelay<ServerCommandActions>()
@@ -43,7 +45,8 @@ struct IOSRootView: View {
 
   var body: some View {
     Group {
-      if let session {
+      // Until a launch reconnect reports progress, the server list would flash before the app.
+      if let session, !(isRestoring && session.signIn.state.phase == .disconnected) {
         // Read state marks a session seen only while the scene is on screen.
         ServerRootView(
           session: session, selection: $selection, isWindowFocused: scenePhase == .active,
@@ -108,7 +111,11 @@ struct IOSRootView: View {
     // Chosen before connecting: the connected app opens with it, however late the core
     // reports the sign-in.
     if isNewWindow, let sessionID = request?.sessionID { selection = .session(sessionID) }
-    if let server { await session.signIn.connectNow(server) }
+    if let server {
+      isRestoring = true
+      await session.signIn.connectNow(server)
+      isRestoring = false
+    }
     hasStarted = true
     #if DEBUG
       if request == nil { runLaunchChecks(session) }

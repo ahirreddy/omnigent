@@ -21,10 +21,20 @@ struct ComposerControlParts {
   /// The pill's Mic: the host's dictation, else the Mac's own.
   var pillDictate: (@MainActor () -> Void)?
 
-  /// The touch bar's open row; the model name takes the free width and truncates first.
+  /// The touch bar's open row; the model name takes the free width and truncates first. The
+  /// host's name (also in the context row) gives way first where the row can't fit it, as on an
+  /// iPad mini beside the sidebar, so the row never runs past the composer's edge.
   var toolbar: some View {
+    ViewThatFits(in: .horizontal) {
+      if layoutWidth == .regular { row(showsHostName: true) }
+      row(showsHostName: false)
+    }
+  }
+
+  private func row(showsHostName: Bool) -> some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
-      HStack(spacing: Theme.Spacing.extraSmall) { leading }.fixedSize()
+      HStack(spacing: Theme.Spacing.extraSmall) { leading(showsHostName: showsHostName) }
+        .fixedSize()
       Spacer(minLength: Theme.Spacing.small)
       trailing
       send
@@ -80,11 +90,11 @@ struct ComposerControlParts {
     }
   }
 
-  @ViewBuilder private var leading: some View {
+  @ViewBuilder private func leading(showsHostName: Bool) -> some View {
     addMenu
     // A locked host is already named in the context row.
     if let hosts = state.hosts, !hosts.isLocked {
-      HostChip(hosts: hosts, actions: actions.extras, showsName: layoutWidth == .regular)
+      HostChip(hosts: hosts, actions: actions.extras, showsName: showsHostName)
         .tint(.secondary)
     }
     if let modes = state.approvalModes {
