@@ -92,7 +92,10 @@ fn parsing_round_trips_and_names_the_preset() {
 #[test]
 fn rules_the_editor_cannot_make_are_left_alone() {
     for rule in [
-        "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;COUNT=3",
+        "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;COUNT=1",
+        "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;COUNT=3;UNTIL=20261231T235959Z",
+        "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;UNTIL=20260230T000000Z",
+        "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;UNTIL=2026-12-31",
         "FREQ=DAILY;BYHOUR=8",
         "FREQ=SECONDLY;BYMINUTE=0",
         "FREQ=WEEKLY;BYDAY=XX;BYHOUR=8;BYMINUTE=0",
@@ -169,4 +172,50 @@ fn iso_timestamps_with_zones() {
     );
     assert_eq!(parse_iso8601("2026-11-05T08:00:00"), None);
     assert_eq!(parse_iso8601("tomorrow"), None);
+}
+
+#[test]
+fn end_conditions_round_trip() {
+    let count = parse_rrule("FREQ=DAILY;BYHOUR=8;BYMINUTE=0;COUNT=3").unwrap();
+    assert_eq!(count.end, ScheduleEnd::Count(3));
+    assert_eq!(
+        build_rrule(&count),
+        "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;COUNT=3"
+    );
+    let until = parse_rrule("FREQ=HOURLY;BYMINUTE=15;UNTIL=20261231T235959Z").unwrap();
+    assert_eq!(until.end, ScheduleEnd::Until(1_798_761_599));
+    assert_eq!(
+        build_rrule(&until),
+        "FREQ=HOURLY;BYMINUTE=15;UNTIL=20261231T235959Z"
+    );
+    assert_eq!(format_until(0), "19700101T000000Z");
+    assert_eq!(parse_until("20000229T120000Z"), Some(951_825_600));
+}
+
+#[test]
+fn validation_matches_the_web() {
+    let now = 1_793_865_600;
+    let mut daily = model(SchedulePreset::Daily);
+    assert_eq!(validate_schedule(&daily, now, false), None);
+    daily.end = ScheduleEnd::Count(1);
+    assert!(
+        validate_schedule(&daily, now, false)
+            .unwrap()
+            .contains("at least 2")
+    );
+    daily.end = ScheduleEnd::Until(now - 1);
+    assert_eq!(
+        validate_schedule(&daily, now, false).as_deref(),
+        Some("Choose an end date in the future.")
+    );
+    assert_eq!(validate_schedule(&daily, now, true), None);
+    let weekly = ScheduleModel {
+        weekdays: Vec::new(),
+        ..model(SchedulePreset::Weekly)
+    };
+    assert!(validate_schedule(&weekly, now, false).is_some());
+    assert!(!needs_anchored_scheduling(&daily));
+    daily.end = ScheduleEnd::Count(4);
+    assert!(needs_anchored_scheduling(&daily));
+    assert!(needs_anchored_scheduling(&model(SchedulePreset::Custom)));
 }

@@ -115,6 +115,18 @@ impl ScheduleFrequency {
     }
 }
 
+/// When a schedule stops firing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ScheduleEnd {
+    /// It never ends.
+    #[default]
+    Never,
+    /// After this many runs, 2 or more (`COUNT`).
+    Count(u32),
+    /// At this instant, Unix seconds (`UNTIL`, written in UTC).
+    Until(i64),
+}
+
 /// What the schedule editor holds. [`build_rrule`] and [`parse_rrule`] convert it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ScheduleModel {
@@ -134,6 +146,8 @@ pub struct ScheduleModel {
     pub month_days: Vec<u8>,
     /// The yearly month, 1-12.
     pub month: u8,
+    /// When it stops.
+    pub end: ScheduleEnd,
 }
 
 impl Default for ScheduleModel {
@@ -148,6 +162,7 @@ impl Default for ScheduleModel {
             interval: 1,
             month_days: vec![1],
             month: 1,
+            end: ScheduleEnd::Never,
         }
     }
 }
@@ -199,6 +214,87 @@ fn join_month_days(days: &[u8]) -> String {
 /// The rule body (no `RRULE:` prefix) for `model`, as the web builds it.
 #[must_use]
 pub fn build_rrule(model: &ScheduleModel) -> String {
+    let rule = build_recurrence(model);
+    match model.end {
+        ScheduleEnd::Never => rule,
+        ScheduleEnd::Count(count) => format!("{rule};COUNT={}", count.max(MIN_COUNT)),
+        ScheduleEnd::Until(until) => format!("{rule};UNTIL={}", format_until(until)),
+    }
+}
+
+/// The fewest runs an end condition can name, as the web's form.
+const MIN_COUNT: u32 = 2;
+
+/// The most runs an end condition can name: the server's 32-bit limit.
+const MAX_COUNT: u32 = 2_147_483_647;
+
+/// `UNTIL`'s form of Unix second `seconds`: `20261231T235959Z`.
+#[must_use]
+pub fn format_until(seconds: i64) -> String {
+    let day = crate::client::usage::utc_day(seconds).replace('-', "");
+    let time = seconds.rem_euclid(86_400);
+    format!(
+        "{day}T{:02}{:02}{:02}Z",
+        time / 3600,
+        time % 3600 / 60,
+        time % 60
+    )
+}
+
+/// Unix seconds of an `UNTIL` value in the form [`format_until`] writes, or `None`.
+#[must_use]
+pub fn parse_until(value: &str) -> Option<i64> {
+    let (date, time) = value.strip_suffix('Z')?.split_once('T')?;
+    let digits = |part: &str, len: usize| {
+        part.len() == len && part.bytes().all(|byte| byte.is_ascii_digit())
+    };
+    if !digits(date, 8) || !digits(time, 6) {
+        return None;
+    }
+    // Every byte is an ASCII digit, so these splits fall on character boundaries.
+    let (year, month_day) = date.split_at_checked(4)?;
+    let (month, day) = month_day.split_at_checked(2)?;
+    let (hour, minute_second) = time.split_at_checked(2)?;
+    let (minute, second) = minute_second.split_at_checked(2)?;
+    let iso = format!("{year}-{month}-{day}T{hour}:{minute}:{second}Z");
+    // A date like February 30 parses but does not round-trip.
+    parse_iso8601(&iso).filter(|&seconds| format_until(seconds) == value)
+}
+
+/// Why the editor cannot save `model`, in the web's words, or `None`. `now` is Unix seconds; an
+/// unchanged schedule may keep an end in the past (`allow_past_end`).
+#[must_use]
+pub fn validate_schedule(model: &ScheduleModel, now: i64, allow_past_end: bool) -> Option<String> {
+    let custom = |frequency| model.preset == SchedulePreset::Custom && model.frequency == frequency;
+    if (model.preset == SchedulePreset::Weekly || custom(ScheduleFrequency::Weekly))
+        && model.weekdays.is_empty()
+    {
+        return Some("Pick at least one day of the week.".to_owned());
+    }
+    if (custom(ScheduleFrequency::Monthly) || custom(ScheduleFrequency::Yearly))
+        && sorted_month_days(&model.month_days).is_empty()
+    {
+        return Some("Pick at least one day of the month.".to_owned());
+    }
+    match model.end {
+        ScheduleEnd::Count(count) if !(MIN_COUNT..=MAX_COUNT).contains(&count) => {
+            Some("Enter at least 2 occurrences (at most 2,147,483,647).".to_owned())
+        }
+        ScheduleEnd::Until(until) if !allow_past_end && until <= now => {
+            Some("Choose an end date in the future.".to_owned())
+        }
+        ScheduleEnd::Never | ScheduleEnd::Count(_) | ScheduleEnd::Until(_) => None,
+    }
+}
+
+/// Whether `model` needs a server with anchored scheduling (`automations_v2`): custom schedules
+/// and run-count endings.
+#[must_use]
+pub fn needs_anchored_scheduling(model: &ScheduleModel) -> bool {
+    model.preset == SchedulePreset::Custom || matches!(model.end, ScheduleEnd::Count(_))
+}
+
+fn build_recurrence(model: &ScheduleModel) -> String {
     let (hour, minute) = (model.hour.min(23), model.minute.min(59));
     let time = format!("BYHOUR={hour};BYMINUTE={minute}");
     match model.preset {
@@ -276,13 +372,13 @@ fn month_days_part(value: &str) -> Option<Vec<u8>> {
     Some(sorted_month_days(&days))
 }
 
-/// The editor model for a rule the editor can produce, or `None` (end conditions, other parts or
-/// malformed rules), in which case the editor keeps the rule as it is.
+/// The editor model for a rule the editor can produce, or `None` (other parts or malformed
+/// rules), in which case the editor keeps the rule as it is.
 #[must_use]
 pub fn parse_rrule(rrule: &str) -> Option<ScheduleModel> {
     let parts = rule_parts(rrule)?;
     let frequency = ScheduleFrequency::from_code(parts.get("FREQ")?)?;
-    let mut allowed = vec!["FREQ", "INTERVAL", "BYMINUTE"];
+    let mut allowed = vec!["FREQ", "INTERVAL", "BYMINUTE", "COUNT", "UNTIL"];
     match frequency {
         ScheduleFrequency::Hourly => {}
         ScheduleFrequency::Daily => allowed.push("BYHOUR"),
@@ -324,6 +420,12 @@ pub fn parse_rrule(rrule: &str) -> Option<ScheduleModel> {
     if frequency == ScheduleFrequency::Yearly {
         model.month = number(parts.get("BYMONTH")?, &(1_u8..=12))?;
     }
+    model.end = match (parts.get("COUNT"), parts.get("UNTIL")) {
+        (None, None) => ScheduleEnd::Never,
+        (Some(count), None) => ScheduleEnd::Count(number(count, &(MIN_COUNT..=MAX_COUNT))?),
+        (None, Some(until)) => ScheduleEnd::Until(parse_until(until)?),
+        (Some(_), Some(_)) => return None,
+    };
     if interval == 1 {
         model.preset = match frequency {
             ScheduleFrequency::Hourly => SchedulePreset::Hourly,

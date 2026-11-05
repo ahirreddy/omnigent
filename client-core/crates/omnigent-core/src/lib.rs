@@ -8,6 +8,7 @@
 
 pub mod attachments;
 pub mod auth;
+pub mod automation_triggers;
 pub mod canvas;
 mod client;
 pub mod config;

@@ -35,6 +35,7 @@ pub mod accounts;
 pub mod agent_tree;
 pub mod approval;
 pub mod attention;
+pub mod automation_triggers;
 pub mod automations;
 pub mod browser;
 pub mod canvas;

@@ -25,6 +25,18 @@ pub struct ServerPages {
     /// The Canvas page.
     #[uniffi(default)]
     pub canvas: bool,
+    /// Custom schedules, run-count endings and the run history page (`automations_v2`).
+    #[uniffi(default)]
+    pub automations_v2: bool,
+    /// An automation can file its sessions into a project.
+    #[uniffi(default)]
+    pub automation_projects: bool,
+    /// An automation can run in a new sandbox each time.
+    #[uniffi(default)]
+    pub managed_sandboxes: bool,
+    /// The Jira, Slack and GitHub trigger templates.
+    #[uniffi(default)]
+    pub automation_triggers: bool,
 }
 
 /// Whether an automation fires.
@@ -72,10 +84,112 @@ pub struct Automation {
     pub last_run_session_id: Option<String>,
     /// Last edit, Unix seconds.
     pub updated_at: i64,
+    /// The model each run uses instead of the agent's.
+    #[uniffi(default)]
+    pub model_override: Option<String>,
+    /// The reasoning effort each run uses instead of the agent's.
+    #[uniffi(default)]
+    pub reasoning_effort: Option<String>,
+    /// The permission mode each run launches in instead of the agent's.
+    #[uniffi(default)]
+    pub permission_mode: Option<String>,
+    /// The session a continuing automation sends to.
+    #[uniffi(default)]
+    pub session_id: Option<String>,
+    /// The pinned host; `None` runs on the host used most recently.
+    #[uniffi(default)]
+    pub host_id: Option<String>,
+    /// The pinned folder; `None` is the host's home.
+    #[uniffi(default)]
+    pub workspace: Option<String>,
+    /// Each run starts in a new managed sandbox.
+    #[uniffi(default)]
+    pub runs_in_sandbox: bool,
+    /// The project every run's session is filed into.
+    #[uniffi(default)]
+    pub project_id: Option<String>,
 }
 
-/// What the automation editor saves.
+/// What one run of an automation did.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum AutomationRunStatus {
+    /// Waiting to fire.
+    Scheduled,
+    /// Its host or sandbox is starting.
+    Starting,
+    /// The agent is working.
+    Running,
+    /// It finished.
+    Succeeded,
+    /// It failed.
+    Failed,
+    /// It did not fire.
+    Skipped,
+    /// The agent stopped reporting before it finished.
+    Incomplete,
+    /// A status this app does not know.
+    Unknown {
+        /// The server's value.
+        value: String,
+    },
+}
+
+/// One run in an automation's history.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct AutomationRun {
+    /// Id.
+    pub id: String,
+    /// What it did.
+    pub status: AutomationRunStatus,
+    /// `Queued`, `Starting` or `Running` while it has not finished.
+    pub in_flight_label: Option<String>,
+    /// When it fired, else when it was due, Unix seconds.
+    pub started_at: i64,
+    /// How long it ran (`1m 42s`), once it finished.
+    pub duration: Option<String>,
+    /// The session it started or continued.
+    pub session_id: Option<String>,
+    /// Where it stopped (`Host`).
+    pub failure_stage: Option<String>,
+    /// Why it did not succeed.
+    pub failure_reason: Option<String>,
+    /// Its session has news the caller has not seen.
+    pub unread: bool,
+}
+
+impl From<core::AutomationRun> for AutomationRun {
+    fn from(run: core::AutomationRun) -> Self {
+        use core::AutomationRunStatus as Status;
+        Self {
+            id: run.id,
+            in_flight_label: run.status.in_flight_label().map(str::to_owned),
+            status: match run.status {
+                Status::Scheduled => AutomationRunStatus::Scheduled,
+                Status::Starting => AutomationRunStatus::Starting,
+                Status::Running => AutomationRunStatus::Running,
+                Status::Succeeded => AutomationRunStatus::Succeeded,
+                Status::Failed => AutomationRunStatus::Failed,
+                Status::Skipped => AutomationRunStatus::Skipped,
+                Status::Incomplete => AutomationRunStatus::Incomplete,
+                Status::Unknown { value } => AutomationRunStatus::Unknown { value },
+            },
+            started_at: run.started_at,
+            duration: run.duration,
+            session_id: run.session_id,
+            failure_stage: run.failure_stage,
+            failure_reason: run.failure_reason,
+            unread: run.unread,
+        }
+    }
+}
+
+/// What the automation editor saves. On create, `None` fields are left out; an edit sends what
+/// differs from the saved automation.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent editor switches, as the web's dialog"
+)]
 pub struct AutomationDraft {
     /// Name.
     pub name: String,
@@ -89,6 +203,70 @@ pub struct AutomationDraft {
     pub timezone: String,
     /// Continue one session across runs; `None` on servers without session modes.
     pub continues_session: Option<bool>,
+    /// The pinned host; required on create unless it runs in a sandbox.
+    #[uniffi(default)]
+    pub host_id: Option<String>,
+    /// The pinned folder on the host; `None` or blank is its home.
+    #[uniffi(default)]
+    pub workspace: Option<String>,
+    /// Run each time in a new managed sandbox.
+    #[uniffi(default)]
+    pub runs_in_sandbox: bool,
+    /// The project to file sessions into.
+    #[uniffi(default)]
+    pub project_id: Option<String>,
+    /// The agent takes the model, effort and permission overrides (Claude Code).
+    #[uniffi(default)]
+    pub sends_overrides: bool,
+    /// The model; `None` is the agent's.
+    #[uniffi(default)]
+    pub model_override: Option<String>,
+    /// The reasoning effort; `None` is the agent's.
+    #[uniffi(default)]
+    pub reasoning_effort: Option<String>,
+    /// The permission mode; `None` is the agent's.
+    #[uniffi(default)]
+    pub permission_mode: Option<String>,
+    /// A continuing automation's next run starts a new session.
+    #[uniffi(default)]
+    pub start_new_session: bool,
+}
+
+/// When a schedule stops firing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum ScheduleEnd {
+    /// It never ends.
+    Never,
+    /// After this many runs, 2 or more.
+    Count {
+        /// Runs.
+        count: u32,
+    },
+    /// At this instant, Unix seconds.
+    Until {
+        /// Unix seconds.
+        at: i64,
+    },
+}
+
+impl From<ScheduleEnd> for rules::ScheduleEnd {
+    fn from(end: ScheduleEnd) -> Self {
+        match end {
+            ScheduleEnd::Never => Self::Never,
+            ScheduleEnd::Count { count } => Self::Count(count),
+            ScheduleEnd::Until { at } => Self::Until(at),
+        }
+    }
+}
+
+impl From<rules::ScheduleEnd> for ScheduleEnd {
+    fn from(end: rules::ScheduleEnd) -> Self {
+        match end {
+            rules::ScheduleEnd::Never => Self::Never,
+            rules::ScheduleEnd::Count(count) => Self::Count { count },
+            rules::ScheduleEnd::Until(at) => Self::Until { at },
+        }
+    }
 }
 
 /// The automations page filter.
@@ -170,6 +348,8 @@ pub struct ScheduleModel {
     pub month_days: Vec<u16>,
     /// The yearly month, 1-12.
     pub month: u8,
+    /// When it stops.
+    pub end: ScheduleEnd,
 }
 
 macro_rules! mirror_enum {
@@ -225,6 +405,7 @@ impl From<ScheduleModel> for rules::ScheduleModel {
                 .filter_map(|day| u8::try_from(day).ok())
                 .collect(),
             month: model.month,
+            end: model.end.into(),
         }
     }
 }
@@ -240,57 +421,60 @@ impl From<rules::ScheduleModel> for ScheduleModel {
             interval: model.interval,
             month_days: model.month_days.into_iter().map(u16::from).collect(),
             month: model.month,
+            end: model.end.into(),
         }
     }
 }
 
+/// Builds `Self` from `$source`, moving the fields both automation records share.
+macro_rules! automation_record {
+    ($source:ident, $state:expr) => {
+        Self {
+            state: $state,
+            id: $source.id,
+            name: $source.name,
+            prompt: $source.prompt,
+            rrule: $source.rrule,
+            schedule_text: $source.schedule_text,
+            agent_id: $source.agent_id,
+            timezone: $source.timezone,
+            continues_session: $source.continues_session,
+            next_run_at: $source.next_run_at,
+            last_run_at: $source.last_run_at,
+            last_run_status: $source.last_run_status,
+            last_run_session_id: $source.last_run_session_id,
+            updated_at: $source.updated_at,
+            model_override: $source.model_override,
+            reasoning_effort: $source.reasoning_effort,
+            permission_mode: $source.permission_mode,
+            session_id: $source.session_id,
+            host_id: $source.host_id,
+            workspace: $source.workspace,
+            runs_in_sandbox: $source.runs_in_sandbox,
+            project_id: $source.project_id,
+        }
+    };
+}
+
 impl From<core::Automation> for Automation {
     fn from(automation: core::Automation) -> Self {
-        Self {
-            id: automation.id,
-            name: automation.name,
-            prompt: automation.prompt,
-            rrule: automation.rrule,
-            schedule_text: automation.schedule_text,
-            agent_id: automation.agent_id,
-            timezone: automation.timezone,
-            continues_session: automation.continues_session,
-            state: match automation.state {
-                core::AutomationState::Active => AutomationState::Active,
-                core::AutomationState::Paused => AutomationState::Paused,
-                core::AutomationState::Unknown { value } => AutomationState::Unknown { value },
-            },
-            next_run_at: automation.next_run_at,
-            last_run_at: automation.last_run_at,
-            last_run_status: automation.last_run_status,
-            last_run_session_id: automation.last_run_session_id,
-            updated_at: automation.updated_at,
-        }
+        let state = match automation.state {
+            core::AutomationState::Active => AutomationState::Active,
+            core::AutomationState::Paused => AutomationState::Paused,
+            core::AutomationState::Unknown { value } => AutomationState::Unknown { value },
+        };
+        automation_record!(automation, state)
     }
 }
 
 impl From<Automation> for core::Automation {
     fn from(automation: Automation) -> Self {
-        Self {
-            id: automation.id,
-            name: automation.name,
-            prompt: automation.prompt,
-            rrule: automation.rrule,
-            schedule_text: automation.schedule_text,
-            agent_id: automation.agent_id,
-            timezone: automation.timezone,
-            continues_session: automation.continues_session,
-            state: match automation.state {
-                AutomationState::Active => core::AutomationState::Active,
-                AutomationState::Paused => core::AutomationState::Paused,
-                AutomationState::Unknown { value } => core::AutomationState::Unknown { value },
-            },
-            next_run_at: automation.next_run_at,
-            last_run_at: automation.last_run_at,
-            last_run_status: automation.last_run_status,
-            last_run_session_id: automation.last_run_session_id,
-            updated_at: automation.updated_at,
-        }
+        let state = match automation.state {
+            AutomationState::Active => core::AutomationState::Active,
+            AutomationState::Paused => core::AutomationState::Paused,
+            AutomationState::Unknown { value } => core::AutomationState::Unknown { value },
+        };
+        automation_record!(automation, state)
     }
 }
 
@@ -303,8 +487,32 @@ impl From<AutomationDraft> for core::AutomationDraft {
             agent_id: draft.agent_id,
             timezone: draft.timezone,
             continues_session: draft.continues_session,
+            host_id: draft.host_id,
+            workspace: draft.workspace,
+            runs_in_sandbox: draft.runs_in_sandbox,
+            project_id: draft.project_id,
+            sends_overrides: draft.sends_overrides,
+            model_override: draft.model_override,
+            reasoning_effort: draft.reasoning_effort,
+            permission_mode: draft.permission_mode,
+            start_new_session: draft.start_new_session,
         }
     }
+}
+
+/// Why the editor cannot save `model`, or `None`. `now` is Unix seconds; an unchanged schedule
+/// may keep an end in the past.
+#[must_use]
+#[uniffi::export]
+pub fn validate_schedule(model: ScheduleModel, now: i64, allow_past_end: bool) -> Option<String> {
+    rules::validate_schedule(&model.into(), now, allow_past_end)
+}
+
+/// Whether `model` needs a server with `automations_v2`: custom schedules and run-count endings.
+#[must_use]
+#[uniffi::export]
+pub fn schedule_needs_anchored_scheduling(model: ScheduleModel) -> bool {
+    rules::needs_anchored_scheduling(&model.into())
 }
 
 /// `automations` filtered and in the page's order: active soonest first, then paused by name.
@@ -377,6 +585,10 @@ impl ClientCore {
             archive_worktree_cleanup: pages.archive_worktree_cleanup,
             sharing: pages.sharing,
             canvas: pages.canvas,
+            automations_v2: pages.automations_v2,
+            automation_projects: pages.automation_projects,
+            managed_sandboxes: pages.managed_sandboxes,
+            automation_triggers: pages.automation_triggers,
         })
     }
 
@@ -406,20 +618,33 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
-    /// Saves an edited automation.
+    /// Saves the edits of `saved`, sending only what changed.
     ///
     /// # Errors
     ///
     /// As `create_automation`, plus `InvalidIdentifier`.
     pub async fn update_automation(
         &self,
-        id: String,
+        saved: Automation,
         draft: AutomationDraft,
     ) -> Result<Automation, CoreError> {
         self.sessions()
-            .update_automation(&id, &draft.into())
+            .update_automation(&saved.into(), &draft.into())
             .await
             .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// An automation's runs, newest first.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`; the read errors and `MalformedResponse`.
+    pub async fn automation_runs(&self, id: String) -> Result<Vec<AutomationRun>, CoreError> {
+        self.sessions()
+            .automation_runs(&id)
+            .await
+            .map(|runs| runs.into_iter().map(Into::into).collect())
             .map_err(CoreError::from)
     }
 
