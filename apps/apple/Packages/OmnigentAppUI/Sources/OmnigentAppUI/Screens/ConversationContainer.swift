@@ -72,7 +72,7 @@ struct ConversationContainer: View {
     ) {
       harnessTerminal
     }
-    .environment(\.workspaceFileLinks, fileLinks)
+    .modifier(MessageMediaEnvironment(fileLinks: fileLinks, conversation: conversation))
     .task(id: workspace.map(ObjectIdentifier.init)) {
       fileLinks = workspace.map(MarkdownLinksAdapter.links)
     }

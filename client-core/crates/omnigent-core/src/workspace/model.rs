@@ -240,6 +240,8 @@ pub struct WorkspaceEnvironment {
     pub environment_type: Option<String>,
     /// The absolute root on the machine that runs it, when reported.
     pub root: Option<String>,
+    /// The home directory on that machine, to expand `~` in cited paths, when reported.
+    pub home: Option<String>,
     /// Whether the environment is unconfined (`sandbox.type: none`), when reported.
     pub unconfined: Option<bool>,
 }
@@ -475,6 +477,7 @@ fn environment(value: &Value) -> Result<WorkspaceEnvironment, String> {
         role: opt_str(metadata, "role")?,
         environment_type: opt_str(metadata, "environment_type")?,
         root: opt_str(metadata, "root")?,
+        home: opt_str(metadata, "home")?,
         unconfined: reachable
             .map(|reachable| opt_bool(reachable, "unconfined"))
             .transpose()?

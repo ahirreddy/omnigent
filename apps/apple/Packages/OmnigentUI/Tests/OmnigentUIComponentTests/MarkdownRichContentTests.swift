@@ -34,6 +34,20 @@ struct CodeHighlightingTests {
     #expect(found.map(\.1) == ["--- a/x", "+++ b/x", "@@ -1 +1 @@", "-old", "+new"])
   }
 
+  @Test("the CLI style colors fences with the terminal palette")
+  func cliColors() throws {
+    let palette = CLIPalette.fallback
+    let colored = CLICodeHighlightCache(limit: 4).attributed(
+      "let x = 1 // hi", language: "swift", palette: palette)
+    let colors = colored.runs.map { run in
+      (String(colored[run.range].characters), run.foregroundColor)
+    }
+    #expect(colors.first { $0.0 == "let" }?.1 == palette.italic.color)
+    #expect(colors.first { $0.0 == "// hi" }?.1 == palette.dim.color)
+    #expect(colors.first { $0.0 == " x = " }?.1 == palette.body.color)
+    #expect(CLICodeHighlightCache.color(.inserted, palette) == palette.added)
+  }
+
   @Test("the cache colors known languages and leaves others plain")
   func cache() throws {
     let cache = CodeHighlightCache(limit: 4)
@@ -129,13 +143,15 @@ struct WorkspaceFileLinksTests {
     var opened: [WorkspaceFileTarget] = []
   }
 
-  private func links(_ probe: Probe, files: [String: Set<String>]) -> WorkspaceFileLinks {
+  private func links(
+    _ probe: Probe, files: [String: Set<String>], folders: [String: Set<String>] = [:]
+  ) -> WorkspaceFileLinks {
     WorkspaceFileLinks(
-      root: { "/ws" }, home: nil,
-      listFiles: { folder in
+      root: { "/home/u/ws" }, home: { "/home/u" },
+      listFolder: { folder in
         probe.listed.append(folder)
         guard let names = files[folder] else { throw URLError(.fileDoesNotExist) }
-        return names
+        return WorkspaceFolderListing(files: names, folders: folders[folder] ?? [])
       },
       open: { probe.opened.append($0) })
   }
@@ -154,12 +170,25 @@ struct WorkspaceFileLinksTests {
     await links.check(cited)
     #expect(probe.listed == ["", "lib", "src"])
     #expect(links.target(for: "src/a.ts:3", explicit: false) == .init(path: "src/a.ts", line: 3))
-    #expect(links.target(for: "/ws/src/b.ts", explicit: false)?.path == "src/b.ts")
+    #expect(links.target(for: "/home/u/ws/src/b.ts", explicit: false)?.path == "src/b.ts")
+    #expect(links.target(for: "~/ws/src/b.ts", explicit: false)?.path == "src/b.ts")
+    #expect(links.target(for: "~/other/b.ts", explicit: false) == nil, "outside the workspace")
     #expect(links.target(for: "src/missing.ts", explicit: false) == nil)
     #expect(links.target(for: "README.md", explicit: true)?.path == "README.md")
     #expect(links.target(for: "README.md", explicit: false) == nil, "bare names need a link")
     #expect(links.target(for: "lib/x.rs", explicit: false) == nil)
     #expect(links.failures["lib"] != nil, "a failed listing is kept, not dropped")
+  }
+
+  @Test("an explicit link to a folder shows it; inline code naming a folder stays text")
+  func folders() async throws {
+    let probe = Probe()
+    let links = links(probe, files: ["": ["README.md"]], folders: ["": ["src"]])
+    await links.check([CitedPath(text: "src/", explicit: true)])
+    let folder = try #require(links.target(for: "src/", explicit: true))
+    #expect(folder == WorkspaceFileTarget(path: "src", isFolder: true))
+    #expect(try WorkspaceFileTarget(url: #require(folder.url)) == folder)
+    #expect(links.target(for: "src", explicit: false) == nil)
   }
 
   @Test("linking sets in-app URLs, and the open action routes them to the host")

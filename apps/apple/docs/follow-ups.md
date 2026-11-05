@@ -189,14 +189,11 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   `ConfigurationMenu`'s pickers (no agent switch).
 - [ ] **CLI style:** fold the non-message hover host (`cliActions`) into the shared
   `messageActionsHost` once it takes arbitrary actions.
-- [ ] **CLI style:** Styled renders fenced code without syntax highlighting (the rich renderer
-  colors it with `CodeHighlighting`; the CLI palette has no token colors yet).
-- [ ] **Markdown: message attachments.** Uploaded images in a message are chips; inline
-  thumbnails need the core's attachment preview (`attachments::preview`,
-  `GET …/resources/files/{id}/content`) exported over FFI. Markdown images from the workspace and
-  `data:` URLs already render inline with a lightbox.
-- [ ] **Markdown: file links** check existence by listing the cited file's folder; links to
-  folders (the web opens them in the Files tree) and paths outside the workspace are not linked.
+- [ ] **Markdown: message attachments** whose bytes were inline (`data:` image blocks) stay
+  "Embedded, not kept" chips: the core drops embedded bytes from rows (the web shows them).
+- [ ] **Markdown: file links** to paths outside the workspace are not linked: the web opens them
+  in its viewer through `?base=host` reads, which the core's workspace paths refuse by design
+  (`workspace/path.rs`). Needs host-absolute list and read in the core and the file viewer.
 - [ ] **CLI style on iOS:** the request review sheet opened from the dock keeps the system sheet
   background instead of the terminal canvas.
 - [ ] **CLI style on iOS:** the unfolded iPhone Duo is untested; the Xcode 27.2 simulator has no
@@ -303,6 +300,12 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] Reusing the iOS bundle ID requires a version above 0.3.2.
 
 ## Done
+
+- [x] **Markdown: uploaded images, CLI code colors, folder and `~/` links.** Images uploaded with a
+  message show inline above its text (click to enlarge) through the core's
+  `attachment_preview` (session files only, preview MIME and size limits); the CLI Styled
+  rendering colors fenced code with the terminal palette; an explicit link to a folder shows it
+  in the Files tree, and `~/` paths expand with the environment's `home`. 2026-11-04.
 
 - [x] **Markdown: Mermaid and math.** ```` ```mermaid ```` blocks draw as diagrams and TeX is
   typeset by KaTeX, both in one offscreen WebKit view (`RichBlockRenderer`, non-persistent data

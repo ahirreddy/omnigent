@@ -1,3 +1,4 @@
+public import Foundation
 public import Observation
 public import OmnigentCoreFFI
 
@@ -129,6 +130,18 @@ public final class ConversationStore {
   public func exportTranscript() async throws(CoreError) -> String {
     do {
       return try await core.exportTranscript(sessionId: sessionID)
+    } catch {
+      throw coreError(error)
+    }
+  }
+
+  /// The bytes of one of the session's uploaded files, for an inline preview.
+  /// - Parameter reference: The attachment's file id, or a path or URL of the session's file.
+  /// - Returns: The file's bytes.
+  /// - Throws: The core's error: not a session file, a refused type or size, or the read error.
+  public func attachmentPreview(reference: String) async throws(CoreError) -> Data {
+    do {
+      return try await core.attachmentPreview(sessionId: sessionID, reference: reference).data
     } catch {
       throw coreError(error)
     }
