@@ -9,12 +9,11 @@ public final class ComposerStore {
   /// The draft text. Changes are recorded in the core, so a late send result keeps newer text.
   public var text = "" {
     didSet {
-      guard text != oldValue else { return }
-      let nonBlank = Self.isNonBlank(text)
-      if nonBlank != hasDraft {
-        hasDraft = nonBlank
-        draftChanged?(nonBlank)
+      let hasDraft = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      if hasDraft != !oldValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        draftChanged?(hasDraft)
       }
+      guard text != oldValue else { return }
       draftStored?(text)
       mentionTextChanged()
       guard !applyingCoreText else { return }
@@ -25,9 +24,6 @@ public final class ComposerStore {
       }
     }
   }
-  /// The draft holds more than whitespace. It changes only when that flips, so a view that
-  /// needs to know whether there is something to send does not re-render on every keystroke.
-  public private(set) var hasDraft = false
   /// Staged attachments.
   public private(set) var attachments = AttachmentDraft(items: [], selectionError: nil)
   /// A send is in flight.
@@ -85,7 +81,7 @@ public final class ComposerStore {
 
   let sessionID: String
   let core: ClientCore
-  @ObservationIgnored private var applyingCoreText = false
+  private var applyingCoreText = false
   /// Told when the draft becomes empty or not (the sidebar's draft marker).
   @ObservationIgnored var draftChanged: ((Bool) -> Void)?
   /// Told the new draft text, to keep it across launches.
@@ -200,14 +196,6 @@ public final class ComposerStore {
     }
     refreshAttachments()
     refreshBlocked()
-  }
-
-  /// Whether `text` holds anything but whitespace and newlines; stops at the first such
-  /// character instead of trimming the whole draft.
-  /// - Parameter text: The draft.
-  /// - Returns: Whether it is worth sending.
-  nonisolated static func isNonBlank(_ text: String) -> Bool {
-    text.unicodeScalars.contains { !CharacterSet.whitespacesAndNewlines.contains($0) }
   }
 
   func setText(fromCore value: String) {

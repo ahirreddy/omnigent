@@ -123,19 +123,6 @@ struct ComposerAdapterTests {
     #expect(readOnly.availability.reason != nil)
     #expect(!ComposerAdapter.state(question, isStopping: false, dismissedError: nil).isReadOnly)
   }
-
-  @Test("The screen learns whether there is a draft without reading the text")
-  func hasDraft() async throws {
-    let store = try await PreviewData.connectedDemoStore()
-    let question = try #require(store.conversation("demo-question"))
-    func reported(_ text: String) -> ComposerViewState {
-      question.composer.text = text
-      return ComposerAdapter.state(question, isStopping: false, dismissedError: nil)
-    }
-    #expect(reported("  ").hasDraft == false)
-    #expect(reported("Ship it").hasDraft == true)
-    question.composer.text = ""
-  }
 }
 
 @Suite("Message links")
