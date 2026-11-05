@@ -17,21 +17,27 @@ public struct ThemeSettingsView: View {
   /// The section.
   public var body: some View {
     Section("Theme") {
-      Picker("Mode", selection: $preferences.mode) {
+      Picker(selection: $preferences.mode) {
         ForEach(AppearancePreference.allCases) { Text($0.title).tag($0) }
+      } label: {
+        Text("Mode")
+        Text("Follow your system, or force light or dark.")
       }
       .pickerStyle(.segmented)
       .tint(Theme.secondary)
       .accessibilityIdentifier("settings.appearance")
-      Picker("Terminal theme", selection: $preferences.terminal) {
+      Picker(selection: $preferences.terminal) {
         ForEach(TerminalThemePreference.allCases) { Text($0.title).tag($0) }
+      } label: {
+        Text("Terminal theme")
+        Text("Use a light or dark terminal, or match the app.")
       }
       .accessibilityIdentifier("settings.terminal-theme")
     }
     TranscriptSettingsSection(preferences: preferences.transcript)
     InterfaceAppearanceSections()
     Section {
-      Picker("Theme palette", selection: $preferences.paletteID) {
+      Picker(selection: $preferences.paletteID) {
         ForEach(preferences.themes) { theme in
           HStack(spacing: 8) {
             ThemeSwatch(theme: theme)
@@ -39,20 +45,35 @@ public struct ThemeSettingsView: View {
           }
           .tag(theme.id)
         }
+      } label: {
+        Text("Theme palette")
+        Text(paletteDescription)
       }
       .accessibilityIdentifier("settings.theme")
       ColorPicker("Accent", selection: colorBinding(accent: true), supportsOpacity: false)
       ColorPicker("Background tint", selection: colorBinding(accent: false), supportsOpacity: false)
-      LabeledContent("Contrast") {
-        Slider(value: customBinding(\.contrast), in: 0...100)
-          .frame(maxWidth: 200)
+      LabeledContent {
+        HStack {
+          Slider(value: customBinding(\.contrast), in: 0...100)
+            .frame(maxWidth: 200)
+            .accessibilityLabel("Theme contrast")
+          Text("\(Int(preferences.custom.contrast.rounded()))")
+            .monospacedDigit()
+            .frame(minWidth: 28, alignment: .trailing)
+            .accessibilityIdentifier("settings.theme-contrast-value")
+        }
+      } label: {
+        Text("Contrast")
+        Text("Separates text, borders, and surfaces.")
       }
-      Toggle("Translucent sidebars", isOn: customBinding(\.translucentSidebar))
+      Toggle(isOn: customBinding(\.translucentSidebar)) {
+        Text("Translucent sidebars")
+        Text("Lets the canvas show through the conversation and workspace rails.")
+      }
     } header: {
       Text("Color theme")
     } footer: {
       VStack(alignment: .leading, spacing: 4) {
-        Text(preferences.theme.blurb)
         Text(
           "Accent and Background tint edit the \(colorScheme == .dark ? "dark" : "light") variant.")
         ForEach(preferences.readErrors, id: \.description) { error in
@@ -61,6 +82,12 @@ public struct ThemeSettingsView: View {
         }
       }
     }
+  }
+
+  /// The preset's blurb, or what Custom is based on, as the web's palette description.
+  private var paletteDescription: String {
+    guard preferences.paletteID == "custom" else { return preferences.theme.blurb }
+    return "Based on \(OmnigentTheme.named(preferences.custom.basePalette).name)"
   }
 
   /// Edits the custom theme, first basing it on the current preset when one is selected.

@@ -41,7 +41,9 @@ enum ComposerAdapter {
     state.approvalPickerRequest = composer.approvalPickerRequests
     state.connection = connection(store)
     if let fraction = contextFraction(store.sections) {
-      state.tray = ComposerTray(contextFraction: fraction)
+      var tray = ComposerTray(contextFraction: fraction)
+      tray.contextTokens = contextTokens(store.sections)
+      state.tray = tray
     }
     return state
   }
@@ -49,13 +51,19 @@ enum ComposerAdapter {
   /// How full the context window is, from the core's usage section; `nil` until both the
   /// tokens in context and the window are reported.
   static func contextFraction(_ sections: [OmnigentCoreFFI.EventSection]) -> Double? {
+    guard let tokens = contextTokens(sections) else { return nil }
+    return min(1, max(0, Double(tokens.used) / Double(tokens.window)))
+  }
+
+  /// The tokens in context and the window, from the core's usage section.
+  static func contextTokens(_ sections: [OmnigentCoreFFI.EventSection]) -> ContextTokens? {
     guard let usage = sections.first(where: { $0.id == "usage" }) else { return nil }
     func value(_ id: String) -> Double? {
       usage.details.first { $0.id == id }.flatMap { Double($0.text) }
     }
     guard let tokens = value("context_tokens"), let window = value("context_window"), window > 0
     else { return nil }
-    return min(1, max(0, tokens / window))
+    return ContextTokens(used: Int(tokens.rounded()), window: Int(window.rounded()))
   }
 
   static func slashCommand(_ command: OmnigentCoreFFI.SlashCommand)

@@ -64,6 +64,8 @@ struct OmnigentMacApp: App {
           .omnigentTheme(services.theme.theme, appearance: services.theme.mode)
       #endif
     }
+    // Each tab sets its size, so a saved smaller frame never clips a pane.
+    .windowResizability(.contentSize)
   }
 }
 
@@ -176,6 +178,7 @@ struct AppSettingsView: View {
             SettingsDataSection(theme: services.theme)
           }
           .formStyle(.grouped)
+          .environment(\.pickerVisibilitySource, PickerVisibilityAdapter.source())
         },
         SettingsTabItem(SettingsNavigator.terminalTab, systemImage: "apple.terminal") {
           TerminalSettingsView()

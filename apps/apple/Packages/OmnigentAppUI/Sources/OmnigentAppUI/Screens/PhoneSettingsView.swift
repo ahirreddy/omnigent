@@ -148,6 +148,10 @@
             SettingsDataSection(theme: theme)
           }
           .formStyle(.grouped)
+          .environment(
+            \.pickerVisibilitySource,
+            PickerVisibilityAdapter.source(
+              connection.map { [$0] } ?? SupervisionConnections.shared.connections))
         }
       case .notifications:
         PhoneNotificationSettingsView(supervision: supervision)

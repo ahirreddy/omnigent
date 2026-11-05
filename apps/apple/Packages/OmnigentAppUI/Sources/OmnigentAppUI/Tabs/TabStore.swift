@@ -47,6 +47,8 @@ public final class TabStore {
   public private(set) var unread: Set<String> = []
   /// A shell tab whose close waits for "Close shell?": closing it ends the shell.
   public var closingShell: String?
+  /// Sessions whose chat has shown in this window, so the default transcript view applies once.
+  @ObservationIgnored var transcriptDefaultApplied: Set<String> = []
   /// The tabs that were busy at the last ``noteBusy(_:)``.
   @ObservationIgnored private var busy: Set<String> = []
 

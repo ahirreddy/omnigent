@@ -27,7 +27,7 @@ struct MessageActionItem: Identifiable {
 
   var id: Kind { kind }
 
-  /// Copy (when the message has text), Fork chat from here (a settled assistant message with a
+  /// Copy (when the message has text), Fork from here (a settled assistant message with a
   /// response, when the host can fork) and Copy link (when the host has links), in row order.
   static func items(for row: Row, actions: ConversationActions) -> [Self] {
     var items: [Self] = []
@@ -41,7 +41,7 @@ struct MessageActionItem: Identifiable {
     if let fork = actions.forkFrom, isForkPoint(row) {
       items.append(
         Self(
-          kind: .fork, title: "Fork chat from here", menuTitle: "Fork Chat from Here\u{2026}",
+          kind: .fork, title: "Fork from here", menuTitle: "Fork from Here\u{2026}",
           systemImage: "arrow.triangle.branch", identifier: "message-fork-\(row.id)",
           perform: { fork(row) }))
     }
@@ -82,7 +82,7 @@ struct MessageActionItem: Identifiable {
   }
 }
 
-/// A message's action buttons (Copy, Fork chat from here, Copy link) and its timestamp. While a
+/// A message's action buttons (Copy, Fork from here, Copy link) and its timestamp. While a
 /// ``View/messageActionsHost(row:actions:pinned:showsOnTouch:focus:)`` hides them, it renders no
 /// controls. With `overlaysGap` on Mac it takes no space at all: the controls hang into the gap
 /// below the message at its trailing edge, so a hidden row leaves no blank lane and revealing it

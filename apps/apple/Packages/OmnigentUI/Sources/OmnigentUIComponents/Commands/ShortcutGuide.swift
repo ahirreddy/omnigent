@@ -95,7 +95,7 @@ enum ShortcutGuide {
         ShortcutRow("Send message", send),
         row("Send now or queue, while the agent works", AppShortcuts.sendAlternative),
         ShortcutRow("New line in message", newline),
-        row("Approve the pending request", AppShortcuts.send),
+        row("Accept approval prompt", AppShortcuts.send),
         row("Open model picker", AppShortcuts.chooseModel),
         row("Cycle model", AppShortcuts.cycleModel),
         row("Cycle reasoning effort", AppShortcuts.cycleEffort),

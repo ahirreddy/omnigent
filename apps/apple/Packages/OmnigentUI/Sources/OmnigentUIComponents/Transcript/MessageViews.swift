@@ -29,7 +29,7 @@ nonisolated struct MessageDecoration: Hashable, Sendable {
 }
 
 /// A user or assistant message, as on the web: user messages in a neutral bubble on the right,
-/// assistant prose without a bubble or name. Copy, Fork chat from here (assistant), Copy link and
+/// assistant prose without a bubble or name. Copy, Fork from here (assistant), Copy link and
 /// the timestamp appear on hover or keyboard focus on Mac (always on the last answer while idle),
 /// under the last answer on touch, and always in the context menu and as VoiceOver actions.
 struct MessageRowView: View, Equatable {

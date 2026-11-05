@@ -22,7 +22,9 @@ extension NewSessionForm {
     let agent = selectedAgent(creation)
     var configuration = ComposerConfiguration(
       harness: agent?.harness, agentName: agent?.name,
-      harnessChoices: (agents?.choices ?? []) + (pendingChoice.map { [$0] } ?? []),
+      harnessChoices: PickerVisibility.shown(
+        agents?.choices ?? [], name: \.name, id: \.id, selectedID: selection.agentId,
+        hidden: PickerVisibility.hidden()) + (pendingChoice.map { [$0] } ?? []),
       selectedAgentId: selection.agentId,
       modelOptions: isSandbox || startsPendingAgent
         ? [] : NewSessionAdapter.models(creation.models.value ?? []),

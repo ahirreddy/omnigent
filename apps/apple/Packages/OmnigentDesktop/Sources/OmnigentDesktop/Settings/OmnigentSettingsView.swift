@@ -79,7 +79,7 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
           preferences: desktop.preferences, managed: desktop.managedPreferences,
           recentServers: recentServers, browserSettings: browserSettings
         )
-        .frame(width: Self.formWidth)
+        .frame(width: Self.formWidth, height: Self.formHeight)
       }
       Tab(
         SettingsTabID.notifications, systemImage: "bell.badge", value: SettingsTabID.notifications
@@ -87,24 +87,25 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
         NotificationSettingsTab(
           preferences: desktop.preferences, notifications: desktop.notifications
         )
-        .frame(width: Self.formWidth)
+        .frame(width: Self.formWidth, height: Self.formHeight)
       }
       ForEach(extraTabs) { item in
         Tab(item.title, systemImage: item.systemImage, value: item.id) {
-          item.content.frame(width: item.isWide ? nil : Self.formWidth)
+          item.content.frame(
+            width: item.isWide ? nil : Self.formWidth, height: item.isWide ? nil : Self.formHeight)
         }
       }
       Tab(SettingsTabID.localServer, systemImage: "server.rack", value: SettingsTabID.localServer) {
         LocalServerSettingsTab(
           manager: desktop.localServer, preferences: desktop.localServerPreferences
         )
-        .frame(width: Self.formWidth)
+        .frame(width: Self.formWidth, height: Self.formHeight)
       }
       Tab(SettingsTabID.advanced, systemImage: "gearshape.2", value: SettingsTabID.advanced) {
         AdvancedSettingsTab(
           managed: desktop.managedPreferences, exportDiagnostics: exportDiagnostics
         )
-        .frame(width: Self.formWidth)
+        .frame(width: Self.formWidth, height: Self.formHeight)
       }
     }
     .scenePadding()
@@ -112,7 +113,11 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
   }
 
   /// The width of the form tabs; a wide tab (``SettingsTabItem/isWide``) sizes itself.
-  static var formWidth: CGFloat { 520 }
+  static var formWidth: CGFloat { 580 }
+
+  /// The form tabs' height: tall enough that General and Appearance show their groups without
+  /// clipping; each form scrolls within it.
+  static var formHeight: CGFloat { 680 }
 }
 
 extension OmnigentSettingsView where BrowserSettings == EmptyView {

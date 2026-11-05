@@ -28,9 +28,17 @@ extension WindowTabs {
   /// the other pane of a split window.
   func routes(for sessionID: String, subagentsBeside: Bool) -> ConversationTabRoutes {
     var routes = routes(for: sessionID)
+    let store = store
     if subagentsBeside, supportsSplit {
-      let store = store
       routes.openChild = { store.openBeside(.chat(sessionID: $0)) }
+    }
+    // Settings › Default transcript view: Terminal opens the agent's TUI tab the first time
+    // the session's chat shows in this window; after that the tabs are the user's.
+    routes.applyDefaultView = {
+      guard store.transcriptDefaultApplied.insert(sessionID).inserted,
+        TranscriptViewDefault.stored() == .terminal
+      else { return }
+      openHarness(sessionID)
     }
     return routes
   }

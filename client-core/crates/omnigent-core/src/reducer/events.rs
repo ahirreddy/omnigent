@@ -561,7 +561,7 @@ impl LiveReducer {
                 "in_progress",
             ),
             Compaction::Completed => (
-                "Context compacted",
+                "Conversation compacted",
                 "Earlier context was summarized.",
                 "completed",
             ),

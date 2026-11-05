@@ -128,6 +128,8 @@ nonisolated public struct ComposerTray: Hashable, Sendable {
   public var pullRequestPreview: [PullRequestSummary] = []
   /// Context window used, 0 to 1.
   public var contextFraction: Double?
+  /// The tokens in context and the window's size, for the context ring's tooltip.
+  public var contextTokens: ContextTokens?
   /// Background tasks, sub-agents and the goal.
   public var indicators = ComposerTaskIndicators()
 
@@ -351,5 +353,22 @@ public struct ComposerExtraActions {
     self.dismissCommandNotice = dismissCommandNotice
     self.createAgent = createAgent
     self.importAgentBundle = importAgentBundle
+  }
+}
+
+/// The tokens in a session's context and its context window.
+nonisolated public struct ContextTokens: Hashable, Sendable {
+  /// Tokens in context.
+  public var used: Int
+  /// The window's size.
+  public var window: Int
+
+  /// Creates counts.
+  /// - Parameters:
+  ///   - used: Tokens in context.
+  ///   - window: Window size.
+  public init(used: Int, window: Int) {
+    self.used = used
+    self.window = window
   }
 }

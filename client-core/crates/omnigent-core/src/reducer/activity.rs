@@ -318,7 +318,7 @@ impl Projector<'_> {
             .unwrap_or_default();
         self.activity(
             ActivityKind::Compaction,
-            "Context compacted",
+            "Conversation compacted",
             shown,
             None,
             sections(&[

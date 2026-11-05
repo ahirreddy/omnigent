@@ -13,10 +13,10 @@ struct StatesAndCopyTests {
   func emptyState() {
     var state = ConversationViewState(header: header(.idle))
     #expect(EmptyTranscriptView.title(state) == "What should we work on?")
-    #expect(EmptyTranscriptView.detail(state) == "Send a message to start this session.")
+    #expect(EmptyTranscriptView.detail(state) == "Send a message to get started.")
     state.rows = [Row(id: "l", role: .tool, text: "", isActivityOnly: true)]
     #expect(
-      EmptyTranscriptView.detail(state) == "Send a message to start this session.",
+      EmptyTranscriptView.detail(state) == "Send a message to get started.",
       "lifecycle rows are not the user's business")
     state.header.readOnly = true
     #expect(EmptyTranscriptView.detail(state) == "This session has no messages yet.")

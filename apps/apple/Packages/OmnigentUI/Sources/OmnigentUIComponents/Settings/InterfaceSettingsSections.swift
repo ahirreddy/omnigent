@@ -22,7 +22,9 @@ public struct LinksAndSessionsSettingsSection: View {
       .accessibilityIdentifier("settings.open-links-in-app")
       Toggle(isOn: $openSubagentsInPanel) {
         Text("Open sub-agents beside the chat")
-        Text("A sub-agent's chat opens in a split pane next to the main chat instead of a tab.")
+        Text(
+          "On: a sub-agent's chat opens in a split pane next to the main chat. Off: it opens as a "
+            + "tab beside the chat. On iPhone, sub-agents always open as a tab.")
       }
       .accessibilityIdentifier("settings.open-subagents-in-panel")
     }
@@ -38,6 +40,8 @@ public struct InterfaceAppearanceSections: View {
     WorkspacePanelDefault.collapsed
   @AppStorage(InterfacePreferences.defaultWorkspaceTabKey) private var workspaceTab =
     DefaultWorkspaceTab.files
+  @AppStorage(TranscriptViewDefault.key) private var transcriptView = TranscriptViewDefault.chat
+  @Environment(\.pickerVisibilitySource) private var pickerSource
   @Bindable private var code = CodeTypography.shared
 
   /// Creates the sections.
@@ -53,6 +57,18 @@ public struct InterfaceAppearanceSections: View {
             + "badging the others.")
       }
       .accessibilityIdentifier("settings.hide-unconfigured-harnesses")
+      if let pickerSource {
+        PickerVisibilitySetting(source: pickerSource)
+      }
+      Picker(selection: $transcriptView) {
+        ForEach(TranscriptViewDefault.allCases) { Text($0.title).tag($0) }
+      } label: {
+        Text("Default transcript view")
+        Text(
+          "Whether terminal-backed chats open in Chat or Terminal. A terminal you open in a "
+            + "window stays open as its tab.")
+      }
+      .accessibilityIdentifier("settings.default-transcript-view")
     }
     Section {
       Picker("Workspace panel", selection: $workspacePanel) {

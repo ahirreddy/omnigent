@@ -62,7 +62,8 @@ enum ProjectSettingsAdapter {
     }
     state.hosts = keeping(draft.hostID, in: hosts, unavailable: true)
     state.hostTakesFolder = draft.hostID.map { !$0.hasPrefix(sandbox) } ?? false
-    let agents = (catalog.value?.agents ?? []).filter(\.supportsCreation).map {
+    let creatable = (catalog.value?.agents ?? []).filter(\.supportsCreation)
+    let agents = PickerVisibilityAdapter.shown(creatable, selectedID: draft.agentID).map {
       ProjectSettingsChoice(id: $0.id, title: $0.name)
     }
     state.agents = keeping(draft.agentID, in: agents, unavailable: true)

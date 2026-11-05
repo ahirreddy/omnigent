@@ -50,9 +50,13 @@ struct ChangePasswordPane: View {
 struct MCPPane: View {
   let services: [MCPServiceRow]
   let actions: ServerSettingsActions
+  /// The last failed change, shown in the token sheet when Connect fails.
+  var errorMessage: String?
   @State private var tokenFor: MCPServiceRow?
   @State private var token = ""
   @State private var results: [String: String] = [:]
+  @State private var isConnecting = false
+  @State private var connectFailed = false
 
   var body: some View {
     Section {
@@ -86,17 +90,29 @@ struct MCPPane: View {
     }
     .sheet(item: $tokenFor) { service in
       Form {
-        Section("Connect \(service.name)") {
+        Section {
           SecureField("Personal access token", text: $token)
+            .onChange(of: token) { if connectFailed { connectFailed = false } }
+        } header: {
+          Text("Connect \(service.name)")
+        } footer: {
+          // The failure shows here, beside the token, not behind the sheet.
+          if connectFailed {
+            Label(
+              errorMessage ?? "The token was not accepted.",
+              systemImage: "exclamationmark.triangle.fill"
+            )
+            .foregroundStyle(Theme.failure)
+            .accessibilityIdentifier("mcp-token-error")
+          }
         }
         HStack {
+          if isConnecting { ProgressView().controlSize(.small) }
           Spacer()
           Button("Cancel", role: .cancel) { close() }
-          Button("Connect") {
-            Task { if await actions.connectMCP?(service, token) == true { close() } }
-          }
-          .keyboardShortcut(.defaultAction)
-          .disabled(token.trimmingCharacters(in: .whitespaces).isEmpty)
+          Button("Connect") { connect(service) }
+            .keyboardShortcut(.defaultAction)
+            .disabled(token.trimmingCharacters(in: .whitespaces).isEmpty || isConnecting)
         }
       }
       .formStyle(.grouped)
@@ -110,9 +126,20 @@ struct MCPPane: View {
     return service.detail.isEmpty ? status + tools : "\(service.detail) \u{00B7} \(status)\(tools)"
   }
 
+  private func connect(_ service: MCPServiceRow) {
+    isConnecting = true
+    connectFailed = false
+    Task {
+      let connected = await actions.connectMCP?(service, token) == true
+      isConnecting = false
+      if connected { close() } else { connectFailed = true }
+    }
+  }
+
   private func close() {
     tokenFor = nil
     token = ""
+    connectFailed = false
   }
 }
 
