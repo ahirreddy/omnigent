@@ -153,6 +153,9 @@ public struct AutomationEditorSheet: View {
         Text(sandbox).tag(Self.sandboxTag)
       }
       ForEach(context.hosts) { Text($0.name).tag($0.id) }
+      if !draft.hostID.isEmpty, !context.hosts.contains(where: { $0.id == draft.hostID }) {
+        Text(draft.hostID).tag(draft.hostID)
+      }
     }
     .accessibilityIdentifier("automation-host")
     Text(hostNote).font(.callout).foregroundStyle(.secondary)
