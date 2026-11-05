@@ -1,4 +1,5 @@
 import OSLog
+import OmnigentAppBrowser
 import OmnigentAppUI
 import OmnigentAuthUI
 import OmnigentBrowser

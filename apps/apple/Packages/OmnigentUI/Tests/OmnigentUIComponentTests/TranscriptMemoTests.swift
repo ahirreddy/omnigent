@@ -59,6 +59,47 @@ struct TranscriptMemoTests {
     #expect(updated.first { $0.id == "a2" }?.decorations["a2"]?.timestamp != nil)
   }
 
+  @Test("a streamed delta folds only the open turn, and matches a full rebuild")
+  func deltaReusesSettledTurns() {
+    var rows = TranscriptBenchmarks.rows(turns: 12)
+    rows[rows.count - 1].isStreaming = true
+    let memo = TranscriptLayoutMemo()
+    var state = Self.conversation(rows: rows)
+    _ = memo.entries(for: state)
+    for word in ["more", "words", "here"] {
+      state.rows[state.rows.count - 1].text += " \(word)"
+      #expect(memo.entries(for: state).map(\.segment) == TranscriptView.segments(for: state))
+    }
+    #expect(memo.prefixReuses == 3)
+
+    // A change above the last user message folds everything again.
+    state.rows[1].activity?.status = "failed"
+    #expect(memo.entries(for: state).map(\.segment) == TranscriptView.segments(for: state))
+    #expect(memo.prefixReuses == 3)
+    // So does settling the turn: the last answer's actions move.
+    state.rows[state.rows.count - 1].isStreaming = false
+    state.header.status = .idle
+    let settled = memo.entries(for: state)
+    #expect(settled.map(\.segment) == TranscriptView.segments(for: state))
+    let lastID = state.rows[state.rows.count - 1].id
+    #expect(settled.last?.decorations[lastID]?.showsActions == true)
+  }
+
+  @Test("a steer inside a response keeps its Worked for on the answer after it")
+  func steerDecoratesAcrossTheMessage() {
+    let rows = [
+      Row(id: "u1", role: .user, text: "Fix it"),
+      Row(id: "a1", role: .assistant, text: "Starting", responseId: "r1"),
+      Row(id: "u2", role: .user, text: "Also the tests"),
+      Row(id: "a2", role: .assistant, text: "Done", responseId: "r1"),
+    ]
+    var state = Self.conversation(rows: rows, status: .idle)
+    state.turnDurations = ["r1": 30]
+    let entries = TranscriptLayoutMemo().entries(for: state)
+    #expect(entries.first { $0.id == "a1" }?.decorations["a1"]?.workedFor == nil)
+    #expect(entries.first { $0.id == "a2" }?.decorations["a2"]?.workedFor == 30)
+  }
+
   @Test("fresh conversation actions publish one environment value that calls the latest")
   func actionsKeepIdentity() throws {
     let relay = TranscriptEnvironmentRelay()

@@ -81,6 +81,21 @@ public final class WorkspaceStore: WorkspaceDataSource {
       path: file.path, byteCount: file.byteCount, preview: WorkspaceMapping.preview(file.preview))
   }
 
+  /// The file `path`'s bytes as the server returned them, binary files included.
+  /// - Parameter path: The file.
+  /// - Returns: The content.
+  /// - Throws: The failure to show.
+  public func fileContents(_ path: String) async throws(WorkspaceFailure)
+    -> OmnigentWorkspaceUI.WorkspaceFileContents
+  {
+    let file = try await call {
+      try await core.readWorkspaceFileBytes(
+        sessionId: sessionID, environmentId: environmentID, path: path)
+    }
+    return OmnigentWorkspaceUI.WorkspaceFileContents(
+      path: file.path, data: file.bytes, truncated: file.truncated)
+  }
+
   /// Files whose name or path contains `query`.
   /// - Parameter query: The text to find.
   /// - Returns: The matches.
