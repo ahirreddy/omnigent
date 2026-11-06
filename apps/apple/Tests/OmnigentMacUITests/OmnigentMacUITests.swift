@@ -18,11 +18,14 @@ final class OmnigentMacUITests: XCTestCase {
     super.tearDown()
   }
 
-  /// The app launches (with its helper processes) and shows the connect form.
+  /// The app launches (with its helper processes) and, with no default server and no restored
+  /// windows, shows the connect form.
   @MainActor
   func testLaunchShowsConnectForm() {
     let app = XCUIApplication()
+    app.launchArguments = ["-desktop.defaultServerURL", "", "-ApplePersistenceIgnoreState", "YES"]
     app.launch()
+    defer { app.terminate() }
 
     XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
     XCTAssertTrue(app.buttons["auth.connect"].waitForExistence(timeout: 10))

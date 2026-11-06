@@ -50,6 +50,7 @@ struct BrowserOmniboxField: View {
   @State private var editing = false
   @State private var selected = 0
   @State private var error: BrowserError?
+  @State private var selection: TextSelection?
   @FocusState private var focused: Bool
 
   var body: some View {
@@ -63,7 +64,7 @@ struct BrowserOmniboxField: View {
           .frame(width: 16, height: 16)
           .accessibilityLabel(model.url?.scheme == "https" ? "Secure" : "Page")
       }
-      TextField("Search or enter address", text: $text)
+      TextField("Search or enter address", text: $text, selection: $selection)
         .textFieldStyle(.plain)
         .autocorrectionDisabled()
         .addressInput()
@@ -114,7 +115,10 @@ struct BrowserOmniboxField: View {
     .zIndex(10)
     .onChange(of: model.url, initial: true) { revert() }
     .onChange(of: focused) { _, isFocused in
-      if !isFocused { revert() }
+      guard isFocused else { return revert() }
+      // As in Safari, focusing selects the whole address, so typing replaces it. After the
+      // tap that focused the field places its caret.
+      Task { selection = TextSelection(range: text.startIndex..<text.endIndex) }
     }
     .onChange(of: model.omniboxFocusRequest, initial: true) { _, request in
       if request > 0 { focused = true }

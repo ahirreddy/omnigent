@@ -52,7 +52,8 @@ public struct OnboardingFlowView: View {
 
   /// The current step.
   public var body: some View {
-    Group {
+    // A container, so the identifier names the flow without replacing its controls' own.
+    ZStack {
       switch step {
       case .landing:
         LandingView(
@@ -108,6 +109,7 @@ public struct OnboardingFlowView: View {
           })
       }
     }
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("auth.onboarding")
   }
 
