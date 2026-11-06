@@ -44,6 +44,7 @@ struct BrowserTouchTopBar: View {
         BrowserForwardButton(model: model)
       }
       .buttonStyle(.borderless)
+      .tint(.primary)
       .font(.title3)
     }
   }
@@ -58,6 +59,7 @@ struct BrowserTouchTopBar: View {
         BrowserTabMenu(model: model, environment: environment, sheet: $sheet)
       }
       .buttonStyle(.borderless)
+      .tint(.primary)
       .font(.title3)
     }
   }

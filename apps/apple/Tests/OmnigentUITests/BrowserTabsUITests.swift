@@ -26,7 +26,11 @@ final class BrowserTabsUITests: XCTestCase {
     tap(app.descendants(matching: .any)["newtab-browser"], "Browser on the new-tab page")
     let omnibox = app.textFields["browser.omnibox"]
     XCTAssertTrue(omnibox.waitForExistence(timeout: 10), "the browser tab did not open")
-    sleep(3)
+    // Reload replaces Stop once the server's page has loaded. A navigation typed before then
+    // replaces the uncommitted load, which leaves nothing to go back to.
+    XCTAssertTrue(
+      app.buttons["browser.reload"].waitForExistence(timeout: 30),
+      "the server's page did not finish loading")
     if isPhone { assertOneAddressRow(in: app, omnibox: omnibox) }
     try shot("browser-server-page")
 
