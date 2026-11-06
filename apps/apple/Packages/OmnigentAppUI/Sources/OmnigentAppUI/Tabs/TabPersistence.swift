@@ -95,16 +95,25 @@ public final class TabPersistence {
     self.debounce = debounce
   }
 
-  /// The store under `Application Support/<bundle id>/Tabs`.
-  /// - Parameter bundleID: The app's bundle id.
+  /// The store under `Application Support/<bundle id>`.
+  /// - Parameters:
+  ///   - bundleID: The app's bundle id.
+  ///   - isDemo: The app runs the offline demo server.
   /// - Returns: The store.
   /// - Throws: When Application Support cannot be located.
-  public static func applicationSupport(bundleID: String) throws -> TabPersistence {
+  public static func applicationSupport(bundleID: String, isDemo: Bool = false) throws
+    -> TabPersistence
+  {
     let base = try FileManager.default.url(
       for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-    return TabPersistence(
-      directory: base.appending(path: bundleID, directoryHint: .isDirectory)
-        .appending(path: "Tabs", directoryHint: .isDirectory))
+    return TabPersistence(directory: directory(in: base, bundleID: bundleID, isDemo: isDemo))
+  }
+
+  /// `<base>/<bundle id>/Tabs`, or `Demo Tabs` for the demo: its server URL is the local
+  /// server's, whose saved tabs it must neither restore nor overwrite.
+  static func directory(in base: URL, bundleID: String, isDemo: Bool) -> URL {
+    base.appending(path: bundleID, directoryHint: .isDirectory)
+      .appending(path: isDemo ? "Demo Tabs" : "Tabs", directoryHint: .isDirectory)
   }
 
   /// Claims a saved window for `window` on `server`: its own record if there is one, otherwise
