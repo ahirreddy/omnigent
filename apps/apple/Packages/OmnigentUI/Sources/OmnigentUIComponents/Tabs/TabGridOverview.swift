@@ -44,13 +44,13 @@
       .background(Color(uiColor: .systemGroupedBackground))
       .safeAreaInset(edge: .bottom) { bottomBar }
       .overlay { zoomedTab }
-      .background {
-        Color.clear.ignoresSafeArea()
-          .onGeometryChange(for: CGFloat.self) {
-            $0.size.width / max($0.size.height, 1)
-          } action: {
-            aspectRatio = $0
-          }
+      // The whole screen's shape, safe areas included, as the pictures are.
+      .onGeometryChange(for: CGFloat.self) { proxy in
+        let insets = proxy.safeAreaInsets
+        let width = proxy.size.width + insets.leading + insets.trailing
+        return width / max(proxy.size.height + insets.top + insets.bottom, 1)
+      } action: {
+        aspectRatio = $0
       }
       .task {
         withAnimation(.snappy(duration: 0.35)) { zoomedID = nil }
@@ -179,10 +179,10 @@
     var body: some View {
       ZStack {
         if let image = TabThumbnails.shared.image(for: tab.id) {
-          Image(decorative: image, scale: 1)
-            .resizable()
-            .scaledToFill()
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+          // Filled from the top within the card's own size, which a flexible frame would outgrow.
+          Color.clear.overlay(alignment: .top) {
+            Image(decorative: image, scale: 1).resizable().scaledToFill()
+          }
         } else {
           Rectangle().fill(ThemeColor.surface)
           VStack(spacing: Theme.Spacing.small) {

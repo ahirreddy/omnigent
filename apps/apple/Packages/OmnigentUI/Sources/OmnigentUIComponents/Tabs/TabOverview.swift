@@ -210,9 +210,9 @@ public struct TabOverviewSheet: View {
 public struct TabSwitcherButton: View {
   private let state: TabsState
   private let actions: TabActions
-  /// UI tests and screenshots pass `-OmnigentShowTabOverview` to open it at launch.
-  @State private var isPresented = ProcessInfo.processInfo.arguments.contains(
-    "-OmnigentShowTabOverview")
+  /// Shown by the button itself where no window presenter is set (the gallery).
+  @State private var isPresented = false
+  @Environment(\.tabOverviewPresenter) private var presenter
 
   /// Creates the button.
   /// - Parameters:
@@ -226,7 +226,7 @@ public struct TabSwitcherButton: View {
   /// The button.
   public var body: some View {
     Button {
-      isPresented = true
+      if let open = presenter?.open { open() } else { isPresented = true }
     } label: {
       // The count in the symbol, so the bar keeps it visible instead of folding it away.
       Label("Tabs (\(state.tabs.count))", systemImage: Self.symbol(count: state.tabs.count))

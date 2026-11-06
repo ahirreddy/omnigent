@@ -19,6 +19,22 @@ extension View {
   }
 }
 
+/// Opens a window's tab overview from any tab-count button in it. The window presents the
+/// overview above its tabs, so closing the tab whose button opened it keeps the overview open.
+@MainActor
+public final class TabOverviewPresenter {
+  /// Shows the overview; the window sets it.
+  public var open: (@MainActor () -> Void)?
+
+  /// Creates a presenter.
+  public init() {}
+}
+
+extension EnvironmentValues {
+  /// The window's tab overview; `nil` lets ``TabSwitcherButton`` present its own.
+  @Entry public var tabOverviewPresenter: TabOverviewPresenter?
+}
+
 struct TabOverviewPresentation: ViewModifier {
   @Binding var isPresented: Bool
   let state: TabsState
