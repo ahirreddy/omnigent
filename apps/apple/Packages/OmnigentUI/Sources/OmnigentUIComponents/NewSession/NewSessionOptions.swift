@@ -236,18 +236,19 @@ struct NewSessionOptionsBar: View {
 
   private var folderMenu: some View {
     Menu {
+      // First, so a host with many folders cannot scroll it out of the menu.
+      if actions.browse != nil {
+        Button("Browse Folders\u{2026}", systemImage: "folder.badge.gearshape") {
+          isBrowsing = true
+        }
+        .accessibilityIdentifier("new-session-browse-folders")
+      }
       if !options.recentFolders.isEmpty {
         Section("Folders") {
           ForEach(options.recentFolders, id: \.self) { path in
             Button(path) { actions.selectFolder?(path) }
           }
         }
-      }
-      if actions.browse != nil {
-        Button("Browse Folders\u{2026}", systemImage: "folder.badge.gearshape") {
-          isBrowsing = true
-        }
-        .accessibilityIdentifier("new-session-browse-folders")
       }
     } label: {
       Label(

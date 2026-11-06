@@ -1,8 +1,8 @@
 import UIKit
 import XCTest
 
-/// Taps through the sheets, alerts and keyboard states against the local server
-/// (`TEST_RUNNER_OMNIGENT_SERVER`, default http://127.0.0.1:6767) on iPhone and iPad: the rename
+/// Taps through the sheets, alerts and keyboard states against the local server and its seeded
+/// fixture session (`LiveServerUITestSupport`) on iPhone and iPad: the rename
 /// alert, the delete confirmation, the model picker, the composer above the keyboard, the server
 /// chip's full name and the keyboard focus ring.
 ///
@@ -11,12 +11,10 @@ final class PolishSheetsUITests: XCTestCase {
   private var server: String {
     ProcessInfo.processInfo.environment["OMNIGENT_SERVER"] ?? "http://127.0.0.1:6767"
   }
-  private var sessionID: String {
-    ProcessInfo.processInfo.environment["OMNIGENT_SESSION"] ?? "efb05e5b065c42f78ff2271c7c97fa9b"
-  }
 
   @MainActor
   func testRenameAndDeleteAlertsAnswerTaps() throws {
+    let sessionID = try LiveServerUITestSupport(self).fixtureSession()
     let app = try launch()
     let row = app.descendants(matching: .any)["session-row-\(sessionID)"].firstMatch
     try showSidebar(app, until: row)
@@ -61,7 +59,7 @@ final class PolishSheetsUITests: XCTestCase {
   /// The core's stand-in header and empty rows never show while history loads.
   @MainActor
   func testOpeningASessionShowsNoEmptyState() throws {
-    // The launch reopens the last session cold; then the fixture opens from the sidebar.
+    let sessionID = try LiveServerUITestSupport(self).fixtureSession()
     let app = try launch()
     assertNoStandIn(app)
     let row = app.descendants(matching: .any)["session-row-\(sessionID)"].firstMatch
@@ -75,8 +73,9 @@ final class PolishSheetsUITests: XCTestCase {
 
   @MainActor
   func testModelPickerAndKeyboardOverTheComposer() throws {
+    let sessionID = try LiveServerUITestSupport(self).fixtureSession()
     let app = try launch()
-    try openSession(app)
+    try openSession(sessionID, in: app)
     let input = app.textViews["composer-input"]
     XCTAssertTrue(input.waitForExistence(timeout: 10))
     input.tap()
@@ -98,8 +97,11 @@ final class PolishSheetsUITests: XCTestCase {
     let onScreen =
       pickers.allElementsBoundByIndex.first(where: \.isHittable) ?? pickers.firstMatch
     let closed = app.collectionViews.count
-    onScreen.tap()
-    sleep(2)
+    // A tap while the session's host and folder still load can be lost to the re-render.
+    for _ in 0..<3 where app.collectionViews.count <= closed {
+      onScreen.tap()
+      sleep(2)
+    }
     try shot(app, "model-picker")
     XCTAssertGreaterThan(app.collectionViews.count, closed, "the model picker did not open")
     app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.3)).tap()
@@ -127,8 +129,9 @@ final class PolishSheetsUITests: XCTestCase {
   @MainActor
   func testKeyboardFocusRingIsNotThePrimaryTint() throws {
     guard UIDevice.current.userInterfaceIdiom == .pad else { throw XCTSkip("iPad keyboard only") }
+    let sessionID = try LiveServerUITestSupport(self).fixtureSession()
     let app = try launch()
-    try openSession(app)
+    try openSession(sessionID, in: app)
     // Tab moves keyboard focus between groups; the ring follows it.
     for _ in 0..<3 { app.typeKey(XCUIKeyboardKey.tab, modifierFlags: []) }
     sleep(1)
@@ -146,10 +149,13 @@ final class PolishSheetsUITests: XCTestCase {
       decline.tap()
       return true
     }
+    // Tabs saved apart: other tests leave the fixture on a browser tab, which it would reopen.
+    let tabs = FileManager.default.temporaryDirectory
+      .appendingPathComponent("polish-tabs-\(UUID().uuidString)")
     let app = XCUIApplication()
     app.launchArguments += [
       "-omnigent.lastServer", server, "-ApplePersistenceIgnoreState", "YES",
-      "-OmnigentNoNotificationPrompt", "YES",
+      "-OmnigentNoNotificationPrompt", "YES", "-OmnigentTabsDirectory", tabs.path,
     ]
     app.launch()
     XCUIDevice.shared.orientation = .portrait
@@ -158,7 +164,7 @@ final class PolishSheetsUITests: XCTestCase {
 
   /// Opens the seeded session from the sidebar.
   @MainActor
-  private func openSession(_ app: XCUIApplication) throws {
+  private func openSession(_ sessionID: String, in app: XCUIApplication) throws {
     let row = app.descendants(matching: .any)["session-row-\(sessionID)"].firstMatch
     try showSidebar(app, until: row)
     row.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.15)).tap()
