@@ -153,7 +153,9 @@ Under heavy load (load average 200-700) the same switch went from 1.35 s to 1.07
 
 What changed:
 
-- **Recent chats stay built** (`KeptAliveTabs`, `TabStore.keptAlive`): the selected tab and the
+- **Recent chats stay built** (`KeptAliveTabs`, now `SessionTabGroups.keptAlive`, across the
+  three most recently shown sessions, and under a session-less page; their kept views are frozen
+  at their last size so a window resize does not lay them out): the selected tab and the
   two most recently shown chats or side chats stay mounted, hidden and inert, so switching back
   shows them as they were, scroll position included. A hidden tab publishes no toolbar,
   commands or right panel, gives up the composer's focus, ignores the window's redraws and stops

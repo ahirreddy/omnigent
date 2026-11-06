@@ -62,8 +62,8 @@ public struct BrowserTabNavigation {
 /// The app's browser, for browser tabs. The Mac app implements it over `OmnigentBrowser`; builds
 /// without a browser pass `nil` and the tab system offers no Browser.
 ///
-/// Pages are keyed by the tab's browser id and live app-wide, so a tab torn off into another
-/// window keeps its page. A page is built only when its tab is first shown.
+/// Pages are keyed by the tab's browser id and live app-wide; each is in one window's tabs. A
+/// page is built only when its tab is first shown.
 @MainActor
 public protocol BrowserTabHosting: AnyObject {
   /// A new page at `url` (the server's web app when `nil`), returning its id and initial state.
@@ -107,11 +107,18 @@ public protocol BrowserTabHosting: AnyObject {
   func agentContent(for sessionID: String) -> AnyView?
 
   /// Connects a window's tabs, so pages a page opens (popups, "Open Link in New Tab") become tabs
-  /// in the opener's window, and the omnibox's "Switch to tab" selects one.
+  /// beside the opener, in its session, and the omnibox's "Switch to tab" selects one.
   /// - Parameters:
   ///   - window: The window.
-  ///   - tabs: Its tabs.
-  func attach(window: UUID, tabs: TabStore)
+  ///   - tabs: Its sessions' tabs.
+  func attach(window: UUID, tabs: SessionTabGroups)
+
+  /// Whether a window other than `window` has a tab for the page, so `window` must not show it.
+  /// - Parameters:
+  ///   - id: The page.
+  ///   - window: The window asking.
+  /// - Returns: `true` when another window holds it.
+  func isPageShown(_ id: UUID, outside window: UUID) -> Bool
 
   /// Disconnects a window.
   /// - Parameter window: The window.

@@ -23,8 +23,8 @@ public final class ServerSession {
   public private(set) var workspaces: [String: WorkspaceBrowserModel] = [:]
   /// The right panel's server data (panel features, pull requests) of open sessions.
   public private(set) var panels: [String: SessionPanelStore] = [:]
-  /// The window's tabs.
-  public let tabs = TabStore()
+  /// The window's tabs, per session, and the page it shows.
+  public let tabs = SessionTabGroups()
   /// The drafts of new side chats, by tab.
   let sideChatDrafts = SideChatDrafts()
   /// Messages that `?message=` links ask the transcript to scroll to.
@@ -147,8 +147,8 @@ public final class ServerSession {
     panels[sessionID] = nil
   }
 
-  /// Opens and closes sessions so exactly `wanted` are open: the sessions the window's built
-  /// tabs show.
+  /// Opens and closes sessions so exactly `wanted` are open: the sessions the window showed
+  /// most recently (``SessionTabGroups/liveSessionIDs``).
   /// - Parameter wanted: The sessions to keep open.
   public func keepOpen(_ wanted: Set<String>) {
     for id in openSessionIDs.subtracting(wanted) { close(id) }

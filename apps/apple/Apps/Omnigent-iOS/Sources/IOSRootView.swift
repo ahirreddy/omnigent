@@ -14,9 +14,14 @@ struct IOSRootView: View {
   static let lastServerKey = "omnigent.lastServer"
   static let recentServersKey = "omnigent.recentServers"
 
-  /// Saves each scene's tabs; `nil` when Application Support is unavailable.
+  /// Saves each session's tabs and each scene's page; `nil` when Application Support is
+  /// unavailable.
   static let tabPersistence: TabPersistence? = {
     do {
+      // UI tests pass `-OmnigentTabsDirectory <path>` to start without saved tabs.
+      if let directory = UserDefaults.standard.string(forKey: "OmnigentTabsDirectory") {
+        return TabPersistence(directory: URL(filePath: directory))
+      }
       return try TabPersistence.applicationSupport(
         bundleID: Bundle.main.bundleIdentifier ?? "ai.omnigent.ios")
     } catch {
@@ -38,10 +43,8 @@ struct IOSRootView: View {
   @State private var isRestoring = false
   /// The scene has been on screen, so leaving the background later is a return.
   @State private var hasBeenActive = false
-  /// Tabs torn off from another window into this one.
-  @State private var adopting: [AppTab] = []
   @State private var serverCommandRelay = FocusedActionsRelay<ServerCommandActions>()
-  /// The scene's stable id, so iPad windows each restore their own tabs.
+  /// The scene's stable id, so iPad windows each restore their own page.
   @SceneStorage("omnigent.tabs.window") private var windowID = ""
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.openWindow) private var openWindow
@@ -57,8 +60,7 @@ struct IOSRootView: View {
           openInNewWindow: openInNewWindow(session),
           tabContext: TabWindowContext(
             window: UUID(uuidString: windowID) ?? UUID(), persistence: Self.tabPersistence,
-            browser: IOSBrowser.tabs,
-            moveToNewWindow: moveToNewWindow(session), adopting: adopting),
+            browser: IOSBrowser.tabs),
           serverSwitching: serverSwitching(session))
       } else {
         ProgressView()
@@ -122,7 +124,6 @@ struct IOSRootView: View {
     let isNewWindow = UUID(uuidString: windowID) == nil
     if isNewWindow {
       windowID = (request?.window ?? UUID()).uuidString
-      adopting = request?.tabs ?? []
     }
     let session: ServerSession
     if ProcessInfo.processInfo.arguments.contains("-OmnigentDemo") {
@@ -279,16 +280,6 @@ extension IOSRootView {
       openWindow(
         value: PhoneWindowRequest(
           serverURL: session.connectedURL?.absoluteString, sessionID: sessionID))
-    }
-  }
-
-  /// iPad's Move Tab to New Window. `nil` on iPhone.
-  func moveToNewWindow(_ session: ServerSession) -> (@MainActor ([AppTab]) -> Void)? {
-    guard supportsMultipleWindows else { return nil }
-    let openWindow = openWindow
-    return { tabs in
-      openWindow(
-        value: PhoneWindowRequest(serverURL: session.connectedURL?.absoluteString, tabs: tabs))
     }
   }
 }

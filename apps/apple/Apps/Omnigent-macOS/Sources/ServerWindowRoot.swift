@@ -22,8 +22,6 @@ struct ServerWindowRoot: View {
   @State private var session: ServerSession?
   @State private var selection: SidebarDestination?
   @State private var showsCoreDebug = false
-  /// Tabs torn off from another window into this one.
-  @State private var adopting: [AppTab] = []
   @Environment(\.openWindow) private var openWindow
   @Environment(\.openSettings) private var openSettings
   @Environment(\.appearsActive) private var appearsActive
@@ -60,8 +58,7 @@ struct ServerWindowRoot: View {
       session: session, selection: $selection, isWindowFocused: appearsActive,
       openInNewWindow: { sessionID in openNewWindow(on: sessionID) },
       tabContext: TabWindowContext(
-        window: id.instance, persistence: services.tabPersistence, browser: services.browserTabs,
-        moveToNewWindow: { tabs in moveToNewWindow(tabs) }, adopting: adopting),
+        window: id.instance, persistence: services.tabPersistence, browser: services.browserTabs),
       serverSwitching: serverSwitching(session)
     )
     .environment(\.useThisMachine, useThisMachine)
@@ -103,7 +100,6 @@ struct ServerWindowRoot: View {
   /// Creates the window's session once and binds its sign-in to the window.
   private func start() {
     guard session == nil else { return }
-    adopting = services.takeHandoff(for: id.instance)
     let session = services.makeServerSession()
     session.signIn.directory = services.serverDirectory()
     session.signIn.localSetup = LocalServerSetup(
@@ -210,9 +206,13 @@ struct ServerWindowRoot: View {
   private func apply(_ route: OmnigentDesktop.DeepLinkRoute) {
     switch route {
     case .home: selection = nil
-    case .conversation(let sessionID): selection = .session(sessionID)
+    case .conversation(let sessionID):
+      // A link to a conversation shows its chat, whichever of its tabs was selected.
+      session?.tabs.showChat(sessionID)
+      selection = .session(sessionID)
     case .message(let sessionID, let messageID):
       session?.transcriptFocus.focus(messageID, in: sessionID)
+      session?.tabs.showChat(sessionID)
       selection = .session(sessionID)
     case .page(let page): selection = DeepLinkDestinations.selection(for: page)
     case .settings(let section):
@@ -255,13 +255,6 @@ struct ServerWindowRoot: View {
       }
     }
     monitor.stop()
-  }
-
-  /// Tear-off: a new window on this server that adopts `tabs`.
-  private func moveToNewWindow(_ tabs: [AppTab]) {
-    let window = ServerWindowID.newWindow(serverURL: id.serverURL)
-    services.handOff(tabs, to: window.instance)
-    openWindow(value: window)
   }
 
   private func openNewWindow(on sessionID: String) {

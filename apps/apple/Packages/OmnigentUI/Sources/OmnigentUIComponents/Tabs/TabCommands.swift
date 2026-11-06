@@ -157,8 +157,10 @@ public struct OmnigentTabCommands: Commands {
         .disabled(actions?.togglePinned == nil)
       Button("Duplicate Tab") { actions?.duplicateTab?() }
         .disabled(actions?.duplicateTab == nil)
-      Button("Move Tab to New Window") { actions?.moveTabToNewWindow?() }
-        .disabled(actions?.moveTabToNewWindow == nil)
+      // A session's tabs stay together; another window shows a session, not a tab.
+      if let move = actions?.moveTabToNewWindow {
+        Button("Move Tab to New Window", action: move)
+      }
       if actions?.supportsSplit == true {
         Button("Move Tab to Other Pane") { actions?.moveTabToOtherPane?() }
           .disabled(actions?.moveTabToOtherPane == nil)

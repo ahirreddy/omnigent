@@ -23,10 +23,19 @@ playground can't show. Every polish pass ends with this check, in the apps thems
    - Nothing folds into the toolbar's overflow menu at a normal window width.
    - Scrolled text never shows through the row.
    - With the sidebar collapsed, the strip starts after the traffic lights and the sidebar toggle.
-3. **Tabs.**
+3. **Tabs.** Tabs are scoped per session.
+   - Selecting another session swaps the whole strip; coming back shows its tabs and the tab
+     that was selected (a terminal stays selected, not the chat). The chat tab can't be closed.
+   - New side chats open as tabs of their parent session and leave with it.
+   - New Session, Inbox, Canvas, Automations and Usage show full size with no strip.
+   - Split view pairs two tabs of the same session; another session goes in another window.
+   - Quit and relaunch: the window comes back on its page and each session on its tabs.
    - Dragging a tab reorders it and never moves the window.
    - Dragging the strip's empty space moves the window, and a double-click there zooms it.
    - Overflowing tabs fade at the edge, and the selected tab scrolls into view.
+   - On iPhone (and iPad's Show All Tabs), the tab-count button zooms the shown tab out into a
+     grid with one card per tab of this session; the chat's card has no close button, and a tap
+     zooms back into that tab.
 4. **Names.** The server reads as its display name, and "This Mac" for a loopback server. Never
    `127.0.0.1`: check the window title, sidebar switcher, composer context and menu bar.
 5. **Shortcuts.** In a browser tab, Command-R reloads the page. Reconnect is Shift-Option-Command-R, and Option-Command-R renames the session. Each

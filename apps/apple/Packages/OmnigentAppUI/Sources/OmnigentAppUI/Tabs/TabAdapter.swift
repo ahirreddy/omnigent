@@ -156,7 +156,7 @@ enum TabAdapter {
   /// - Returns: The reader.
   static func statusDetails(_ session: ServerSession) -> TabStatusDetails {
     TabStatusDetails(owner: session) { tabID in
-      guard case .chat(let id) = session.tabs.tab(tabID)?.content,
+      guard case .chat(let id) = session.tabs.tab(tabID)?.tab.content,
         let conversation = session.connection.conversations[id]
       else { return nil }
       let summary = session.connection.sessionList.session(id)

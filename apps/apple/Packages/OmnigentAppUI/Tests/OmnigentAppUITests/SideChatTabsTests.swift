@@ -21,7 +21,8 @@ struct SideChatTabsTests {
     #expect(first.content == .sideChatSession(parentID: "s1", childID: nil))
     #expect(session.sideChatDrafts.draft(first.id).text == "> why?\n\n")
     #expect(!session.sideChatDrafts.draft(first.id).isStarting)
-    let strip = TabAdapter.state(session.tabs, session: session, browser: nil, issue: nil).tabs
+    let group = try #require(session.tabs.current)
+    let strip = TabAdapter.state(group, session: session, browser: nil, issue: nil).tabs
     #expect(strip.map(\.title).suffix(2) == ["Side chat 1", "Side chat 2"])
     #expect(strip.suffix(2).allSatisfy { $0.isClosable && $0.groupID == "s1" })
     #expect(strip.suffix(2).allSatisfy { $0.kind == .sideChat })
@@ -43,5 +44,16 @@ struct SideChatTabsTests {
     // The side chat leaves with its session.
     store.removeSessions(["s1"])
     #expect(store.tabs.isEmpty)
+  }
+
+  @Test("A started side chat groups under its parent and keeps its own session open")
+  func liveWithParent() throws {
+    let groups = SessionTabGroups()
+    groups.showChat("s1")
+    let pending = try #require(groups.open(.sideChatSession(parentID: "s1", childID: nil)))
+    groups.replace(pending.id, with: .sideChatSession(parentID: "s1", childID: "side"))
+    #expect(groups.currentSessionID == "s1")
+    #expect(groups.current?.selectedID == pending.id)
+    #expect(groups.liveSessionIDs == ["s1", "side"])
   }
 }

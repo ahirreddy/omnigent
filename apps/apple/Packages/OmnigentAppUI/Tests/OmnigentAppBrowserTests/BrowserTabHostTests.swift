@@ -3,6 +3,7 @@ import OSLog
 import OmnigentAppBrowser
 import OmnigentAppUI
 import OmnigentBrowser
+import OmnigentUIComponents
 import Testing
 
 /// The browser host both apps share: pages keyed by tab, the window's ``TabStore`` as the only
@@ -27,11 +28,12 @@ struct BrowserTabHostTests {
         logger: Logger(subsystem: "tests", category: "tabs"))
     }
 
-    /// A window's tabs whose closed browser tabs keep the page's final state, as the app's.
-    func window() -> TabStore {
-      let tabs = TabStore()
+    /// A window showing `session`, whose closed browser tabs keep the page's final state, as
+    /// the app's. Returns the window and the session's tabs.
+    func window(session: String = "s") -> (groups: SessionTabGroups, tabs: TabStore) {
+      let groups = SessionTabGroups()
       let host = host
-      tabs.willClose = { tab in
+      groups.willClose = { tab in
         guard case .browser(let id) = tab.content else { return tab }
         var closed = tab
         do {
@@ -41,8 +43,9 @@ struct BrowserTabHostTests {
         }
         return closed
       }
-      host.attach(window: UUID(), tabs: tabs)
-      return tabs
+      host.attach(window: UUID(), tabs: groups)
+      groups.show(.session(session))
+      return (groups, groups.group(session))
     }
 
     func removeDefaults() {
@@ -55,7 +58,7 @@ struct BrowserTabHostTests {
     defer { fixture.removeDefaults() }
     let host = fixture.host
     let environment = fixture.environment
-    let tabs = fixture.window()
+    let tabs = fixture.window().tabs
 
     let page = host.makePage(url: URL(string: "https://example.com/docs"))
     let tab = tabs.open(.browser(browserID: page.id), browserState: page.state)
@@ -109,8 +112,8 @@ struct BrowserTabHostTests {
     let fixture = try Fixture()
     defer { fixture.removeDefaults() }
     let host = fixture.host
-    let first = fixture.window()
-    let second = fixture.window()
+    let first = fixture.window(session: "one").tabs
+    let second = fixture.window(session: "two").tabs
     let page = host.makePage(url: URL(string: "https://example.com/a"))
     let openerTab = second.open(.browser(browserID: page.id), browserState: page.state)
     second.open(.newTab)
@@ -118,7 +121,7 @@ struct BrowserTabHostTests {
 
     let popup = fixture.environment.openTab(
       url: URL(string: "https://example.com/b"), profileID: opener.profileID, opener: opener)
-    #expect(first.tabs.isEmpty)
+    #expect(first.tabs.count == 1, "the other window keeps just its chat")
     let adopted = try #require(second.selected)
     #expect(adopted.content == .browser(browserID: popup.id))
     #expect(adopted.browserState != nil)
@@ -137,7 +140,7 @@ struct BrowserTabHostTests {
     let fixture = try Fixture()
     defer { fixture.removeDefaults() }
     let host = fixture.host
-    let tabs = fixture.window()
+    let tabs = fixture.window().tabs
     let page = host.makePage(url: URL(string: "https://example.com/a"))
     let tab = tabs.open(.browser(browserID: page.id), browserState: page.state)
     tabs.open(.newTab)
@@ -156,11 +159,13 @@ struct BrowserTabHostTests {
     let fixture = try Fixture()
     defer { fixture.removeDefaults() }
     let host = fixture.host
-    let tabs = TabStore()
+    let groups = SessionTabGroups()
     let window = UUID()
-    host.attach(window: window, tabs: tabs)
+    host.attach(window: window, tabs: groups)
     let page = host.makePage(url: URL(string: "https://example.com/a"))
-    tabs.open(.browser(browserID: page.id), browserState: page.state)
+    groups.group("s").open(.browser(browserID: page.id), browserState: page.state)
+    #expect(host.isPageShown(page.id, outside: UUID()))
+    #expect(!host.isPageShown(page.id, outside: window))
 
     host.windowClosed(window)
     #expect(host.page(page.id) == nil)

@@ -9,12 +9,15 @@ extension EnvironmentValues {
 /// Shows one tab and keeps a few recently shown ones built underneath, hidden, so switching back
 /// to them shows their views as they were (scroll position included) instead of building them
 /// again. Hidden tabs take no clicks, are hidden from accessibility, show no toolbar, commands
-/// or right panel (see ``EnvironmentValues/isTabContentHidden``). The shown conversation's
-/// toolbar items are placed here, so switching tabs updates them instead of replacing them.
+/// or right panel (see ``EnvironmentValues/isTabContentHidden``). Hidden tabs keep the size they
+/// last showed at, so a window resize or rotation lays out only the shown one. The shown
+/// conversation's toolbar items are placed here, so switching tabs updates them instead of
+/// replacing them.
 public struct KeptAliveTabs<Item: Identifiable, Content: View>: View {
   private let items: [Item]
   private let shownID: Item.ID
   private let content: (Item) -> Content
+  @State private var sizes = KeptAliveSizes()
 
   /// Creates the view.
   /// - Parameters:
@@ -31,15 +34,61 @@ public struct KeptAliveTabs<Item: Identifiable, Content: View>: View {
 
   /// The view.
   public var body: some View {
-    ZStack {
+    KeptAliveLayout(sizes: sizes) {
       ForEach(items) { item in
         let isHidden = item.id != shownID
         HeldWhileHidden(content: content(item), isHidden: isHidden)
           .equatable()
           .modifier(HiddenTabContent(isHidden: isHidden))
+          .layoutValue(key: KeptAliveKey.self, value: isHidden ? String(describing: item.id) : nil)
       }
     }
     .hostsConversationToolbar()
+  }
+}
+
+/// Each hidden tab's last shown size, kept outside observation: layout reads and writes it, on
+/// the main thread only.
+nonisolated private final class KeptAliveSizes: @unchecked Sendable {
+  var byID: [String: CGSize] = [:]
+  var shownSize: CGSize?
+}
+
+/// A hidden tab's id, so the layout can hold its size; `nil` for the shown tab.
+nonisolated private struct KeptAliveKey: LayoutValueKey {
+  static let defaultValue: String? = nil
+}
+
+/// A `ZStack` that proposes the shown tab the whole space and each hidden tab the size it had
+/// when it was last shown: an unchanged proposal, so resizing does not lay hidden tabs out again.
+private struct KeptAliveLayout: Layout {
+  let sizes: KeptAliveSizes
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let shown = subviews.filter { $0[KeptAliveKey.self] == nil }
+    let sizes = shown.map { $0.sizeThatFits(proposal) }
+    return CGSize(
+      width: sizes.map(\.width).max() ?? proposal.replacingUnspecifiedDimensions().width,
+      height: sizes.map(\.height).max() ?? proposal.replacingUnspecifiedDimensions().height)
+  }
+
+  func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+  ) {
+    for subview in subviews {
+      guard let id = subview[KeptAliveKey.self] else {
+        subview.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+        sizes.shownSize = bounds.size
+        continue
+      }
+      // A tab hidden since before it was measured takes the size the shown tab last had.
+      let size = sizes.byID[id] ?? sizes.shownSize ?? bounds.size
+      sizes.byID[id] = size
+      subview.place(at: bounds.origin, proposal: ProposedViewSize(size))
+    }
+    // A shown tab's frozen size is dropped, so it freezes at its newest size when hidden again.
+    let hidden = Set(subviews.compactMap { $0[KeptAliveKey.self] })
+    sizes.byID = sizes.byID.filter { hidden.contains($0.key) }
   }
 }
 

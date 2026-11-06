@@ -165,10 +165,8 @@ public struct ConversationScreen<Terminal: View>: View {
       state: state, actions: actions, slots: extras.slots,
       isPresented: isHiddenTab ? $hiddenInspector : $showsInspector, tab: inspectorTab
     )
-    .navigationTitle(state.header.title)
-    // The one status line ("Waiting for you · 2 requests"); the project shows in the sidebar.
-    .navigationSubtitle(SessionStatusLine(state).text)
-    .toolbarTitleMenu { titleMenu }
+    // A hidden tab publishes no title, so the shown tab or full page keeps the window's.
+    .background { if !isHiddenTab { windowTitle } }
     .preference(
       key: TitlebarTrailingItems.self,
       value: isHiddenTab
@@ -208,6 +206,15 @@ public struct ConversationScreen<Terminal: View>: View {
       tabsInTitlebar: tabsInTitlebar, isRegular: layoutWidth == .regular,
       showsProjectTag: showsProjectTag, mode: $mode, showsInspector: $showsInspector,
       showsInfo: $showsInfo, showShare: { showsShare = true }, titleMenu: AnyView(titleMenu))
+  }
+
+  /// The window title with the one status line ("Waiting for you · 2 requests"); the project
+  /// shows in the sidebar.
+  private var windowTitle: some View {
+    Color.clear
+      .navigationTitle(state.header.title)
+      .navigationSubtitle(SessionStatusLine(state).text)
+      .toolbarTitleMenu { titleMenu }
   }
 
   @ViewBuilder private var titleMenu: some View {

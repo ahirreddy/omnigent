@@ -106,15 +106,6 @@ struct EditionTests {
     #expect(host.status(of: page.id) == nil)
     #expect(try host.close(page.id) == nil)
   }
-
-  @Test func tornOffTabsAreHandedToTheNewWindowOnce() throws {
-    let services = AppServices(desktop: DesktopController(), defaults: try isolatedDefaults())
-    let window = UUID()
-    let tab = AppTab(content: .chat(sessionID: "s1"))
-    services.handOff([tab], to: window)
-    #expect(services.takeHandoff(for: window) == [tab])
-    #expect(services.takeHandoff(for: window).isEmpty)
-  }
 }
 
 @MainActor

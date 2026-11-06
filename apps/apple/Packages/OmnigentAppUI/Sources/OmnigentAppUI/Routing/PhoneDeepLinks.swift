@@ -192,7 +192,7 @@
     /// Shows the session's chat. A side chat or terminal of the session already selects it at
     /// compact widths, so the selection alone would not change; its chat tab is focused too.
     private func showChat(_ sessionID: String) {
-      session?.tabs.open(.chat(sessionID: sessionID))
+      session?.tabs.showChat(sessionID)
       selection = .session(sessionID)
     }
 

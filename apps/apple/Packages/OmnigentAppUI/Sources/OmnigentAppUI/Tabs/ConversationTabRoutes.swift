@@ -1,4 +1,5 @@
 import Foundation
+import OmnigentUIComponents
 
 /// How a conversation opens its session's other tabs.
 struct ConversationTabRoutes {
@@ -11,10 +12,9 @@ struct ConversationTabRoutes {
   /// A new side chat with a draft, sent at once when the flag is set; `nil` where side chats
   /// open as plain sessions.
   var openNewSideChat: (@MainActor (String, Bool) -> Void)?
-  /// Another session's chat (a sub-agent or the parent), focused when already open, else
-  /// opened right after this tab.
+  /// Another session (a sub-agent or the parent): the window shows it with its tabs.
   var openSession: @MainActor (String) -> Void
-  /// A sub-agent's chat, when it opens elsewhere than `openSession` (beside the chat).
+  /// A sub-agent's chat, when it opens elsewhere than `openSession` (a window of its own).
   var openChild: (@MainActor (String) -> Void)?
   /// Starts a terminal (a declared name, or the default) and opens it in a tab.
   var newTerminal: (@MainActor (String?) -> Void)?
@@ -25,24 +25,20 @@ struct ConversationTabRoutes {
 }
 
 extension WindowTabs {
-  /// The routes for `sessionID`'s conversation.
+  /// The routes for `sessionID`'s conversation: its tabs open in its own group.
   func routes(for sessionID: String) -> ConversationTabRoutes {
-    let store = store
+    let groups = groups
     var routes = ConversationTabRoutes(
-      openHarness: { openHarness(sessionID) },
-      openTerminal: { openTerminal(sessionID, $0) },
-      openSideChat: { openSideChat(sessionID, rowID: $0, title: $1) },
-      openSession: { store.open(.chat(sessionID: $0)) })
+      openHarness: { groups.open(.harness(sessionID: sessionID)) },
+      openTerminal: { groups.open(.terminal(sessionID: sessionID, terminalID: $0)) },
+      openSideChat: { groups.open(.sideChat(sessionID: sessionID, rowID: $0), title: $1) },
+      openSession: { groups.show(.session($0)) })
     routes.openNewSideChat = { openPendingSideChat(sessionID, draft: $0, sendNow: $1) }
     routes.newTerminal = { name in
       Task { await newTerminal(in: sessionID, named: name, replacing: nil) }
     }
-    if let browser {
-      let session = session
-      routes.openBrowser = {
-        let page = browser.makePage(url: session.connectedURL)
-        store.open(.browser(browserID: page.id), browserState: page.state)
-      }
+    if browser != nil {
+      routes.openBrowser = { openBrowser(in: sessionID) }
     }
     return routes
   }

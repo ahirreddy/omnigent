@@ -4,11 +4,11 @@ public import OmnigentAppUI
 public import OmnigentBrowser
 public import SwiftUI
 
-/// The app's browser tabs over `OmnigentBrowser`: one `BrowserTabModel` per tab, app-wide, so a
-/// tab torn off into another window keeps its page. Pages build when their tab is first shown,
-/// restoring from the tab's saved `BrowserTabRestoreState`.
+/// The app's browser tabs over `OmnigentBrowser`: one `BrowserTabModel` per tab, app-wide. Pages
+/// build when their tab is first shown, restoring from the tab's saved `BrowserTabRestoreState`.
 ///
-/// Pages a page opens (popups, "Open Link in New Tab") become tabs in the opener's window.
+/// Pages a page opens (popups, "Open Link in New Tab") become tabs beside the opener, in the
+/// opener's session; without an opener, in the first window's shown session.
 @MainActor
 public final class BrowserTabHost: BrowserTabHosting {
   /// The browser's profiles, history and prompts.
@@ -17,7 +17,7 @@ public final class BrowserTabHost: BrowserTabHosting {
   private let logger: Logger
   private let keyboardShortcuts: Bool
   private var models: [UUID: BrowserTabModel] = [:]
-  private var windows: [UUID: TabStore] = [:]
+  private var windows: [UUID: SessionTabGroups] = [:]
 
   /// Creates the host.
   /// - Parameters:
@@ -114,8 +114,18 @@ public final class BrowserTabHost: BrowserTabHosting {
   }
 
   /// See ``BrowserTabHosting``.
-  public func attach(window: UUID, tabs: TabStore) {
+  public func attach(window: UUID, tabs: SessionTabGroups) {
     windows[window] = tabs
+  }
+
+  /// See ``BrowserTabHosting``.
+  public func isPageShown(_ id: UUID, outside window: UUID) -> Bool {
+    windows.contains { other, tabs in
+      other != window
+        && tabs.groups.values.contains { group in
+          group.tabs.contains { $0.content == .browser(browserID: id) }
+        }
+    }
   }
 
   /// See ``BrowserTabHosting``.
@@ -127,7 +137,7 @@ public final class BrowserTabHost: BrowserTabHosting {
   /// - Parameter window: The window.
   public func windowClosed(_ window: UUID) {
     guard let tabs = windows.removeValue(forKey: window) else { return }
-    for tab in tabs.tabs {
+    for tab in tabs.groups.values.flatMap(\.tabs) {
       guard case .browser(let id) = tab.content, let model = models.removeValue(forKey: id) else {
         continue
       }
@@ -179,11 +189,13 @@ public final class BrowserTabHost: BrowserTabHosting {
     models.first { $0.value === model }?.key
   }
 
-  /// The window showing `pageID`, and its tab.
-  private func location(of pageID: UUID) -> (tabs: TabStore, tab: AppTab)? {
+  /// The window and session group holding `pageID`, and its tab.
+  private func location(of pageID: UUID) -> (window: SessionTabGroups, tab: AppTab)? {
     for tabs in windows.values {
-      if let tab = tabs.tabs.first(where: { $0.content == .browser(browserID: pageID) }) {
-        return (tabs, tab)
+      for group in tabs.groups.values {
+        if let tab = group.tabs.first(where: { $0.content == .browser(browserID: pageID) }) {
+          return (tabs, tab)
+        }
       }
     }
     return nil
@@ -191,12 +203,13 @@ public final class BrowserTabHost: BrowserTabHosting {
 
   private func adopt(_ model: BrowserTabModel, _ context: BrowserTabOpenContext) {
     let opener = context.opener.flatMap(pageID(of:)).flatMap(location(of:))
-    guard let tabs = opener?.tabs ?? windows.values.first else {
-      logger.error("A page opened a tab, but no window can show it; it was closed.")
+    guard let tabs = opener?.window ?? windows.values.first(where: { $0.current != nil }) else {
+      logger.error("A page opened a tab, but no session can show it; it was closed.")
       model.close()
       return
     }
     models[model.id] = model
+    // The opener's session is shown, so the new tab joins it.
     if let opener { tabs.select(opener.tab.id) }
     tabs.open(
       .browser(browserID: model.id), select: context.disposition != .backgroundTab,
@@ -207,7 +220,7 @@ public final class BrowserTabHost: BrowserTabHosting {
     guard let pageID = models.first(where: { $0.value.id == modelID })?.key,
       let location = location(of: pageID)
     else { return }
-    location.tabs.select(location.tab.id)
+    location.window.select(location.tab.id)
   }
 
   private func pageClosed(_ model: BrowserTabModel) {
@@ -215,6 +228,6 @@ public final class BrowserTabHost: BrowserTabHosting {
       model.close()
       return
     }
-    location.tabs.close(location.tab.id)
+    location.window.close(location.tab.id)
   }
 }

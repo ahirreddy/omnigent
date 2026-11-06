@@ -211,10 +211,8 @@ extension ConnectedServerView {
     actions.deleteWithBranch = { summary, deleteBranch in
       removeSession(summary.id) { await list.delete($0, deleteBranch: deleteBranch) }
     }
-    if windowTabs.supportsSplit {
-      let tabs = session.tabs
-      actions.openInSplit = { summary in tabs.openBeside(.chat(sessionID: summary.id)) }
-    }
+    // Split view holds two tabs of one session; another session goes beside it in a window
+    // (Open in New Window), so the rows offer no Open in Split View.
     actions.shareUnavailableReason = shareUnavailableReason
     actions.forkUnavailableReason = { summary in
       list.session(summary.id).flatMap { forkUnavailableReason(source: $0) }
@@ -327,7 +325,7 @@ extension ConnectedServerView {
     return Binding(get: { flow.viewState != nil }, set: { if !$0 { flow.cancel() } })
   }
 
-  /// The fork opens as a chat tab, focused.
+  /// The fork shows in the window, with its chat.
   var sidebarForkActions: ForkActions {
     let flow = sidebarModel.fork
     let tabs = session.tabs
@@ -337,7 +335,7 @@ extension ConnectedServerView {
         forkWith: { choices in
           Task {
             await flow.fork(
-              choices, open: { tabs.open(.chat(sessionID: $0)) },
+              choices, open: { tabs.showChat($0) },
               report: { message in
                 list.reportFailure(.InvalidState(message: message))
               })

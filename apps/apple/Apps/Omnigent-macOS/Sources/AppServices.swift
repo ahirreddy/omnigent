@@ -37,8 +37,6 @@ final class AppServices {
   let browserTabs: BrowserTabHost
   /// Saves and restores each window's tabs; `nil` when Application Support is unavailable.
   let tabPersistence: TabPersistence?
-  /// Tabs torn off into a window that is still opening, by window instance.
-  @ObservationIgnored private var tabHandoff: [UUID: [AppTab]] = [:]
   /// Set when the app starts quitting, so closing windows keep their saved tabs.
   @ObservationIgnored private(set) var isTerminating = false
   /// Why automatic updates are off, when the updater could not start.
@@ -82,22 +80,8 @@ final class AppServices {
     tabPersistence?.flush()
   }
 
-  /// Hands torn-off tabs to a window about to open.
-  /// - Parameters:
-  ///   - tabs: The tabs.
-  ///   - window: The new window's instance.
-  func handOff(_ tabs: [AppTab], to window: UUID) {
-    tabHandoff[window] = tabs
-  }
-
-  /// The torn-off tabs waiting for `window`, once.
-  /// - Parameter window: The window's instance.
-  /// - Returns: The tabs.
-  func takeHandoff(for window: UUID) -> [AppTab] {
-    tabHandoff.removeValue(forKey: window) ?? []
-  }
-
-  /// A server window closed: unless the app is quitting, its tabs and pages go with it.
+  /// A server window closed: unless the app is quitting, its page is forgotten and its browser
+  /// pages close (sessions keep their saved tabs).
   /// - Parameter window: The window's instance.
   func windowClosed(_ window: UUID) {
     guard !isTerminating else { return }

@@ -62,7 +62,7 @@ struct PendingSideChatTab: View {
       isStarting: draft.isStarting, failure: draft.failure,
       send: { Self.start(session: session, tabID: tabID, parentID: parentID, fail: fail) },
       dismissFailure: { drafts.update(tabID) { $0.failure = nil } },
-      openParent: { session.tabs.open(.chat(sessionID: $0)) })
+      openParent: { session.tabs.showChat($0) })
   }
 
   /// Creates the side chat with the tab's draft as its first message, then shows it in the tab.
@@ -111,7 +111,7 @@ extension WindowTabs {
   /// Opens a new side chat of `sessionID` with `draft` in its composer. With `sendNow` (a typed
   /// `/side <question>`), the draft is sent at once.
   func openPendingSideChat(_ sessionID: String, draft: String, sendNow: Bool) {
-    let tab = store.open(.sideChatSession(parentID: sessionID, childID: nil))
+    guard let tab = groups.open(.sideChatSession(parentID: sessionID, childID: nil)) else { return }
     session.sideChatDrafts.update(tab.id) { $0.text = draft }
     if sendNow {
       PendingSideChatTab.start(session: session, tabID: tab.id, parentID: sessionID, fail: fail)
