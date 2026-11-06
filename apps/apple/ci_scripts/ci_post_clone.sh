@@ -39,8 +39,10 @@ export MISE_YES=1
 
 bash "$apple/scripts/build-core.sh" debug || die "Rust core build failed"
 
-# libghostty (terminals, both platforms) needs the Metal toolchain.
+# libghostty (terminals, both platforms) needs the Metal toolchain, and msgfmt (gettext) for
+# its translations.
 xcodebuild -downloadComponent MetalToolchain || die "Metal toolchain download failed"
+command -v msgfmt >/dev/null || brew install gettext || die "gettext install failed"
 bash "$apple/scripts/fetch-ghostty.sh" || die "libghostty fetch failed"
 
 # CEF (the Mac's Chromium engine) builds its wrapper with cmake.
