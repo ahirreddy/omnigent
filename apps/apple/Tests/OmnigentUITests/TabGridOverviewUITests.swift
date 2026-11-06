@@ -5,7 +5,7 @@ import XCTest
 /// per tab of the shown session, a close button on every card but the primary chat's, and a tap
 /// that zooms back into the chosen tab.
 ///
-/// Set `TEST_RUNNER_SESSION_TABS_SHOTS_DIR` to also write each state as `<device>-grid-<state>.png`.
+/// Set `TEST_RUNNER_SESSION_TABS_SHOTS_DIR` to also write each state as `<model>-grid-<state>.png`.
 final class TabGridOverviewUITests: XCTestCase {
   private var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
 
@@ -27,6 +27,14 @@ final class TabGridOverviewUITests: XCTestCase {
     XCTAssertEqual(cards.count, 2, "one card each for the chat and the browser")
     XCTAssertEqual(closeButtons.count, 1, "the primary chat's card offers a close button")
     try shot("overview")
+    if !isPhone {
+      // The grid refits its columns to the narrower width.
+      XCUIDevice.shared.orientation = .portrait
+      sleep(1)
+      try shot("overview-portrait")
+      XCUIDevice.shared.orientation = .landscapeLeft
+      sleep(1)
+    }
 
     // Closing the browser leaves the chat's card, which cannot be closed.
     closeButtons.firstMatch.tap()
@@ -102,7 +110,9 @@ final class TabGridOverviewUITests: XCTestCase {
   @MainActor
   private func shot(_ state: String) throws {
     let screenshot = XCUIScreen.main.screenshot()
-    let device = isPhone ? "iphone" : "ipad"
+    // The model, so each simulator's shots keep their own names ("ipad-pro-11-inch-m5").
+    let device = UIDevice.current.name.lowercased()
+      .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).joined(separator: "-")
     let attachment = XCTAttachment(screenshot: screenshot)
     attachment.name = "\(device)-grid-\(state)"
     attachment.lifetime = .keepAlways

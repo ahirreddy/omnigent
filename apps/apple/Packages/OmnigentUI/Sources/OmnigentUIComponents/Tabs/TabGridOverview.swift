@@ -14,8 +14,10 @@
     /// The tab drawn over the whole screen: the shown tab as the overview opens, the chosen one
     /// as it closes, and none while the grid shows.
     @State private var zoomedID: String?
-    /// The screen's width over its height, so a card has the shape of the tab it pictures.
+    /// The window's width over its height, so a card has the shape of the tab it pictures.
     @State private var aspectRatio: CGFloat = 0.5
+    /// The width the grid lays its columns in (``TabGridLayout``).
+    @State private var gridWidth: CGFloat = 0
     @State private var isClosing = false
 
     private static let corner: CGFloat = 16
@@ -30,12 +32,11 @@
     var body: some View {
       ScrollViewReader { proxy in
         ScrollView {
-          LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 150, maximum: 280), spacing: 16)], spacing: 20
-          ) {
+          LazyVGrid(columns: columns, spacing: 20) {
             ForEach(state.tabs) { tab in card(tab).id(tab.id) }
           }
-          .padding(16)
+          .frame(maxWidth: .infinity)
+          .padding(.vertical, TabGridLayout.spacing)
         }
         .onAppear {
           if let selected = state.selectedID { proxy.scrollTo(selected, anchor: .center) }
@@ -44,13 +45,9 @@
       .background(Color(uiColor: .systemGroupedBackground))
       .safeAreaInset(edge: .bottom) { bottomBar }
       .overlay { zoomedTab }
-      // The whole screen's shape, safe areas included, as the pictures are.
-      .onGeometryChange(for: CGFloat.self) { proxy in
-        let insets = proxy.safeAreaInsets
-        let width = proxy.size.width + insets.leading + insets.trailing
-        return width / max(proxy.size.height + insets.top + insets.bottom, 1)
-      } action: {
-        aspectRatio = $0
+      .onGeometryChange(for: GridGeometry.self, of: GridGeometry.init) { geometry in
+        aspectRatio = geometry.aspectRatio
+        gridWidth = geometry.width
       }
       .task {
         withAnimation(.snappy(duration: 0.35)) { zoomedID = nil }
@@ -58,6 +55,13 @@
       // A container element, so the cards keep their own identifiers.
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("tab-overview-sheet")
+    }
+
+    /// Two columns on iPhone, three or four on iPad, as wide as the window allows.
+    private var columns: [GridItem] {
+      let item = GridItem(
+        .fixed(TabGridLayout.cardWidth(width: gridWidth)), spacing: TabGridLayout.spacing)
+      return Array(repeating: item, count: TabGridLayout.columns(width: gridWidth))
     }
 
     @ViewBuilder private var zoomedTab: some View {
@@ -85,7 +89,8 @@
             }
             .overlay {
               RoundedRectangle(cornerRadius: Self.corner)
-                .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 3)
+                .strokeBorder(
+                  isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.clear), lineWidth: 3)
             }
           HStack(spacing: Theme.Spacing.extraSmall) {
             TabIcon(tab: tab, isSelected: isSelected)
@@ -168,6 +173,19 @@
       } completion: {
         dismiss()
       }
+    }
+  }
+
+  /// The grid's width, and the window's shape with its safe areas, as the pictures are taken.
+  nonisolated private struct GridGeometry: Equatable {
+    var width: CGFloat
+    var aspectRatio: CGFloat
+
+    init(_ proxy: GeometryProxy) {
+      let insets = proxy.safeAreaInsets
+      width = proxy.size.width
+      let fullWidth = proxy.size.width + insets.leading + insets.trailing
+      aspectRatio = fullWidth / max(proxy.size.height + insets.top + insets.bottom, 1)
     }
   }
 

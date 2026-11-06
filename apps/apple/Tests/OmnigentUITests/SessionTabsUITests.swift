@@ -5,7 +5,7 @@ import XCTest
 /// opened in one session leaves the strip (or the iPhone tab overview) when another session
 /// shows, and comes back selected when the first session shows again.
 ///
-/// Set `TEST_RUNNER_SESSION_TABS_SHOTS_DIR` to also write each state as `<device>-<state>.png`.
+/// Set `TEST_RUNNER_SESSION_TABS_SHOTS_DIR` to also write each state as `<model>-<state>.png`.
 final class SessionTabsUITests: XCTestCase {
   private var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
 
@@ -107,7 +107,9 @@ final class SessionTabsUITests: XCTestCase {
   @MainActor
   private func shot(_ state: String) throws {
     let screenshot = XCUIScreen.main.screenshot()
-    let device = isPhone ? "iphone" : "ipad"
+    // The model, so each simulator's shots keep their own names ("ipad-pro-11-inch-m5").
+    let device = UIDevice.current.name.lowercased()
+      .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).joined(separator: "-")
     let attachment = XCTAttachment(screenshot: screenshot)
     attachment.name = "\(device)-\(state)"
     attachment.lifetime = .keepAlways

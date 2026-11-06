@@ -50,6 +50,8 @@ struct TabOverviewPresentation: ViewModifier {
         .onChange(of: isPresented, initial: true) { _, shows in present(shows) }
         .fullScreenCover(isPresented: Binding(get: { showsGrid }, set: { if !$0 { close() } })) {
           TabGridOverview(state: state, actions: actions, dismiss: close)
+            // The theme's control tint, set here: a full-screen cover does not inherit it.
+            .tint(ThemeColor.controlTint)
         }
     }
 
