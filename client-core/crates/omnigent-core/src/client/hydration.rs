@@ -263,6 +263,62 @@ mod tests {
         assert!(!sync.history_paging().has_older);
     }
 
+    /// A newest-first `/items` page of messages created at the given times.
+    fn dated_page(items: &[(&str, i64)], has_more: bool) -> String {
+        let data: Vec<String> = items
+            .iter()
+            .map(|(id, created)| {
+                format!(
+                    r#"{{"id":"{id}","type":"message","role":"assistant","content":"{id}","created_at":{created}}}"#
+                )
+            })
+            .collect();
+        let last = items.last().map_or("", |(id, _)| id);
+        format!(
+            r#"{{"data":[{}],"has_more":{has_more},"last_id":"{last}"}}"#,
+            data.join(",")
+        )
+    }
+
+    #[test]
+    fn a_side_chat_shows_only_its_own_turns() {
+        let transport = RouteTransport::local();
+        transport.ok(
+            "/v1/sessions/conv_a",
+            r#"{"id":"conv_a","status":"idle","created_at":10,"permission_level":4,
+                "harness":"claude-native","labels":{"omnigent.side_chat":"1"}}"#,
+        );
+        // The newest page holds only the side chat's turns; the next reaches the parent's.
+        transport.ok(
+            "/v1/sessions/conv_a/items",
+            dated_page(&[("msg_4", 13), ("msg_3", 12)], true),
+        );
+        transport.respond(
+            None,
+            "/v1/sessions/conv_a/items",
+            Some("msg_3"),
+            Reply::json(200, dated_page(&[("msg_2", 11), ("msg_1", 5)], true)),
+        );
+        let core = connected(transport);
+        let mut sync = ConversationSync::new("conv_a");
+        let request = sync.open_stream();
+        block_on(core.hydrate(&mut sync, &request)).unwrap();
+        assert_eq!(row_ids(&sync), ["msg_3", "msg_4"]);
+        let older = sync.begin_older_history().unwrap();
+        block_on(core.load_older_history(&mut sync, &older)).unwrap();
+        assert_eq!(row_ids(&sync), ["msg_2", "msg_3", "msg_4"]);
+        assert!(!sync.history_paging().has_older);
+
+        core.transport().ok(
+            "/v1/sessions/conv_a/items",
+            dated_page(&[("msg_2", 11), ("msg_1", 5)], true),
+        );
+        let reconnect = sync.open_stream();
+        block_on(core.hydrate(&mut sync, &reconnect)).unwrap();
+        assert_eq!(row_ids(&sync), ["msg_2"]);
+        assert!(!sync.history_paging().has_older);
+    }
+
     #[test]
     fn a_newest_page_that_no_longer_reaches_older_history_restarts_paging() {
         let core = connected(paged_transport());

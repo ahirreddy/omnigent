@@ -174,7 +174,10 @@ public struct ConnectedServerView: View {
     }
   }
 
-  @ViewBuilder private func detail(_ destination: SidebarDestination?) -> some View {
+  /// A destination's content; `sideChatOf` names the session a side chat was forked from.
+  @ViewBuilder private func detail(
+    _ destination: SidebarDestination?, sideChatOf source: String? = nil
+  ) -> some View {
     switch destination {
     case .session(let id):
       if let conversation = connection.conversations[id] {
@@ -194,9 +197,10 @@ public struct ConnectedServerView: View {
           sessionActions: sidebarActions.sessions,
           makeForkStore: { connection.makeForkStore() },
           menuContext: ConversationContainer.menuContext(
-            connection.sessionList, session: connection.sessionList.session(id)),
+            connection.sessionList, session: connection.sessionList.session(id),
+            sideChatOf: source),
           makeShareStore: { connection.share(sessionID: id) },
-          offersShare: ShareAdapter.offered(connection.pages?.offered),
+          offersShare: source == nil && ShareAdapter.offered(connection.pages?.offered),
           shareUnavailableReason: ShareAdapter.unavailableReason(connection.pages?.offered)
         )
         .id(id)
@@ -308,6 +312,8 @@ extension ConnectedServerView {
         SideChatTabContainer(
           session: session, sessionID: sessionID, rowID: rowID,
           showChat: { tabs.open(.chat(sessionID: sessionID)) })
+      case .sideChatSession(let parentID, let childID):
+        sideChat(tab, parentID: parentID, childID: childID, routes: routes)
       case .browser(let browserID):
         BrowserTabContainer(
           host: tabContext.browser, tab: tab, browserID: browserID,
@@ -332,6 +338,17 @@ extension ConnectedServerView {
       }
     }
     .id(tab.id)
+  }
+
+  /// A side chat's tab: its session once its first message created it, else the unsent one.
+  @ViewBuilder private func sideChat(
+    _ tab: AppTab, parentID: String, childID: String?, routes: WindowTabs
+  ) -> some View {
+    if let childID {
+      detail(.session(childID), sideChatOf: parentID)
+    } else {
+      PendingSideChatTab(session: session, tabID: tab.id, parentID: parentID, fail: routes.fail)
+    }
   }
 
   /// The sidebar row for a tab. Session terminals and side chats select their session only at

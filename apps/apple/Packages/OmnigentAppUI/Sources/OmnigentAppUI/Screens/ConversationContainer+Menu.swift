@@ -71,10 +71,16 @@ extension ConversationContainer {
   }
 
   /// The session menu's context from the session list: the viewer's projects, the one the
-  /// session is in, whether someone else shared it, and the session that created it.
-  static func menuContext(_ list: SessionListStore, session: OmnigentCoreFFI.SessionSummary?)
-    -> SessionMenuContext
-  {
+  /// session is in, whether someone else shared it, and the session that created it. A side
+  /// chat, which the list leaves out, links to the session it was forked from.
+  static func menuContext(
+    _ list: SessionListStore, session: OmnigentCoreFFI.SessionSummary?,
+    sideChatOf source: String? = nil
+  ) -> SessionMenuContext {
+    if let source {
+      let title = list.session(source)?.title
+      return SessionMenuContext(parent: CreatingSession(id: source, title: title))
+    }
     guard let session else { return SessionMenuContext() }
     let groups = list.members(of: [session])
     let projects = list.projects.map { project in

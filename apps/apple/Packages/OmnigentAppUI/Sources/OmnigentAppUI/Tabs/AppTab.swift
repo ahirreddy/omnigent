@@ -23,6 +23,9 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   case harness(sessionID: String)
   /// A side question from a session's transcript.
   case sideChat(sessionID: String, rowID: String)
+  /// A side chat forked from `parentID`, showing only its own turns; `childID` is `nil` until
+  /// its first message creates it.
+  case sideChatSession(parentID: String, childID: String?)
   /// A web page; the browser host keeps the page under `browserID`.
   case browser(browserID: UUID)
   /// The page an agent drives for a session, read-only.
@@ -35,6 +38,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     switch self {
     case .chat(let id), .harness(let id), .agentBrowser(let id): id
     case .terminal(let id, _), .sideChat(let id, _), .remoteBrowser(let id, _): id
+    case .sideChatSession(let id, _): id
     case .newTab, .newSession, .inbox, .canvas, .automations, .usage, .browser: nil
     }
   }
@@ -51,7 +55,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .chat: .chat
     case .terminal: .terminal
     case .harness: .agentTerminal
-    case .sideChat: .sideChat
+    case .sideChat, .sideChatSession: .sideChat
     case .browser: .browser
     case .agentBrowser: .agentBrowser
     case .remoteBrowser: .remoteBrowser
@@ -66,7 +70,17 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .inbox, .canvas, .automations, .usage, .chat, .terminal, .harness, .sideChat,
       .agentBrowser, .remoteBrowser:
       true
+    // Every new side chat is a tab of its own until it has a session.
+    case .sideChatSession(_, let childID): childID != nil
     }
+  }
+
+  /// The sessions a built tab keeps open: its session's, and a side chat's own.
+  public var openSessionIDs: [String] {
+    if case .sideChatSession(let parentID, let childID) = self {
+      return [parentID] + (childID.map { [$0] } ?? [])
+    }
+    return sessionID.map { [$0] } ?? []
   }
 
   /// The sidebar row that shows this content, when there is one.
@@ -78,7 +92,9 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .canvas: .canvas
     case .automations: .automations
     case .usage: .usage
-    case .newTab, .terminal, .harness, .sideChat, .browser, .agentBrowser, .remoteBrowser: nil
+    case .newTab, .terminal, .harness, .sideChat, .sideChatSession, .browser, .agentBrowser,
+      .remoteBrowser:
+      nil
     }
   }
 

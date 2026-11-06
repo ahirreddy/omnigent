@@ -273,6 +273,8 @@ pub struct SessionSettings {
     pub host_resumable: Option<bool>,
     /// The parent session of a child.
     pub parent_id: Option<String>,
+    /// The session a side chat was forked from; `None` for other sessions.
+    pub side_chat_source_id: Option<String>,
     /// `cost_control_mode_override`.
     pub routing_mode: Option<String>,
 }
@@ -503,6 +505,7 @@ impl From<core::SessionSettings> for SessionSettings {
             runner_bound: settings.runner_bound,
             host_resumable: settings.host_resumable,
             parent_id: settings.parent_id,
+            side_chat_source_id: settings.side_chat_source_id,
             routing_mode: settings.routing_mode,
         }
     }

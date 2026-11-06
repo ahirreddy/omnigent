@@ -4,8 +4,11 @@
 use futures::executor::block_on;
 use serde_json::{Value, json};
 
+use std::collections::BTreeMap;
+
 use super::*;
-use crate::client::test_support::{Reply, RouteTransport, body_json, connected, path_of};
+use crate::client::ClientEvent;
+use crate::client::test_support::{Reply, RouteTransport, body_json, connected, path_of, record};
 
 const SESSION: &str = "/v1/sessions/conv_a";
 
@@ -26,43 +29,91 @@ fn side_chat_transport(source: &Value) -> RouteTransport {
         None,
         Reply::json(200, session(source)),
     );
+    let side = r#"{"id":"conv_side","status":"idle","created_at":2,"permission_level":4,
+        "runner_id":"run_1","labels":{"omnigent.side_chat":"1"}}"#;
     transport.respond(
         Some("POST"),
         "/v1/sessions/conv_a/fork",
         None,
-        Reply::json(200, r#"{"id":"conv_side","status":"idle","created_at":2}"#),
+        Reply::json(200, side),
     );
     transport.respond(
         Some("PATCH"),
         "/v1/sessions/conv_side",
         None,
-        Reply::json(200, r#"{"id":"conv_side","status":"idle","created_at":2}"#),
+        Reply::json(200, side),
+    );
+    transport.respond(
+        Some("GET"),
+        "/v1/sessions/conv_side",
+        None,
+        Reply::json(200, side),
+    );
+    transport.respond(
+        Some("POST"),
+        "/v1/sessions/conv_side/events",
+        None,
+        Reply::json(202, r#"{"queued":true,"item_id":"item_1"}"#),
     );
     transport
 }
 
 #[test]
-fn a_side_chat_forks_and_binds_the_parents_runner() {
+fn a_side_chat_forks_on_its_first_message_and_binds_the_parents_runner() {
     let core = connected(side_chat_transport(
         &json!({"runner_id": "run_1", "runner_online": true, "host_id": "host_1"}),
     ));
-    assert_eq!(
-        block_on(core.start_side_chat("conv_a", None)),
-        Ok(SideChatStart::Session {
-            session_id: "conv_side".into()
-        })
-    );
+    let created = block_on(core.create_side_chat("conv_a", "Why?")).unwrap();
+    assert_eq!(created.session_id, "conv_side");
+    let FirstMessage::Sent(sent) = created.first_message else {
+        panic!("first message not sent");
+    };
+    assert_eq!(sent.submission.item_id.as_deref(), Some("item_1"));
     let writes = core.transport().writes();
     let paths: Vec<String> = writes.iter().map(path_of).collect();
     assert_eq!(
         paths,
-        ["/v1/sessions/conv_a/fork", "/v1/sessions/conv_side"]
+        [
+            "/v1/sessions/conv_a/fork",
+            "/v1/sessions/conv_side",
+            "/v1/sessions/conv_side/events"
+        ]
     );
     assert_eq!(
         body_json(&writes[0]),
         json!({"title": "Side chat", "side_chat": true})
     );
     assert_eq!(body_json(&writes[1]), json!({"runner_id": "run_1"}));
+    assert_eq!(body_json(&writes[2])["data"]["content"][0]["text"], "Why?");
+}
+
+#[test]
+fn a_blank_first_message_creates_nothing() {
+    let core = connected(side_chat_transport(
+        &json!({"runner_id": "run_1", "runner_online": true, "host_id": "host_1"}),
+    ));
+    assert_eq!(
+        block_on(core.create_side_chat("conv_a", "  \n")),
+        Err(SessionError::EmptyMessage)
+    );
+    assert_eq!(core.transport().writes(), []);
+}
+
+#[test]
+fn a_failed_first_message_still_returns_the_side_chat() {
+    let transport = side_chat_transport(
+        &json!({"runner_id": "run_1", "runner_online": true, "host_id": "host_1"}),
+    );
+    transport.respond(
+        Some("POST"),
+        "/v1/sessions/conv_side/events",
+        None,
+        Reply::json(500, "{}"),
+    );
+    let core = connected(transport);
+    let created = block_on(core.create_side_chat("conv_a", "Why?")).unwrap();
+    assert_eq!(created.session_id, "conv_side");
+    assert!(matches!(created.first_message, FirstMessage::Failed(_)));
 }
 
 #[test]
@@ -78,7 +129,7 @@ fn a_stopped_runner_is_relaunched_and_a_lost_one_refuses() {
     );
     // The relaunch did not bring the runner back: nothing is forked.
     assert!(matches!(
-        block_on(core.start_side_chat("conv_a", None)),
+        block_on(core.create_side_chat("conv_a", "Why?")),
         Err(SessionError::ExecutionUnavailable { .. })
     ));
     let writes = core.transport().writes();
@@ -90,15 +141,84 @@ fn a_stopped_runner_is_relaunched_and_a_lost_one_refuses() {
 }
 
 #[test]
-fn codex_native_side_chats_start_from_the_command() {
-    let core = connected(side_chat_transport(&json!({"harness": "codex-native"})));
+fn side_chats_start_as_drafts_and_codex_native_ones_from_the_command() {
     assert_eq!(
-        block_on(core.start_side_chat("conv_a", None)),
-        Ok(SideChatStart::Command {
-            prefix: SIDE_CHAT_COMMAND_PREFIX.into()
-        })
+        side_chat_start(Some("claude-native"), None),
+        SideChatStart::Draft {
+            draft: String::new()
+        }
     );
-    assert_eq!(core.transport().writes(), []);
+    assert_eq!(
+        side_chat_start(Some("codex-native"), None),
+        SideChatStart::Command {
+            prefix: SIDE_CHAT_COMMAND_PREFIX.into()
+        }
+    );
+}
+
+#[test]
+fn a_side_chat_names_its_source_from_its_labels() {
+    let labels = |pairs: &[(&str, &str)]| -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect()
+    };
+    assert_eq!(
+        side_chat_source_id(&labels(&[(SIDE_CHAT_SOURCE_LABEL, "conv_a")])),
+        Some("conv_a")
+    );
+    let forked = labels(&[
+        (SIDE_CHAT_LABEL, "1"),
+        ("omnigent.fork.source_id", "conv_b"),
+    ]);
+    assert_eq!(side_chat_source_id(&forked), Some("conv_b"));
+    // An ordinary fork is not a side chat.
+    assert_eq!(
+        side_chat_source_id(&labels(&[("omnigent.fork.source_id", "conv_b")])),
+        None
+    );
+    assert_eq!(
+        side_chat_inherited_before(Some(&forked), Some("claude-native"), 7),
+        Some(7)
+    );
+    assert_eq!(
+        side_chat_inherited_before(Some(&forked), Some("codex-native"), 7),
+        None
+    );
+    assert_eq!(side_chat_inherited_before(None, None, 7), None);
+}
+
+#[test]
+fn a_side_chat_from_the_updates_stream_stays_out_of_the_list() {
+    let core = connected(RouteTransport::local());
+    let row = |id: &str, labels: Value| {
+        json!({"id": id, "agent_id": "agent", "status": "idle", "created_at": 1,
+            "updated_at": 2, "title": "Side chat", "labels": labels})
+    };
+    let recorder = record(&core);
+    core.apply_session_rows(vec![
+        row(
+            "conv_side",
+            json!({SIDE_CHAT_LABEL: "1", SIDE_CHAT_SOURCE_LABEL: "conv_a"}),
+        ),
+        row("conv_fork", json!({"omnigent.fork.source_id": "conv_a"})),
+    ])
+    .unwrap();
+    // A later row without its labels (a status update) still stays out.
+    core.apply_session_rows(vec![row("conv_side", Value::Null)])
+        .unwrap();
+    let listed: Vec<String> = recorder
+        .take()
+        .into_iter()
+        .filter_map(|event| match event {
+            ClientEvent::SessionsChanged { sessions } => Some(sessions),
+            _ => None,
+        })
+        .flatten()
+        .map(|summary| summary.id)
+        .collect();
+    assert_eq!(listed, ["conv_fork"]);
 }
 
 #[test]
@@ -231,25 +351,16 @@ fn a_reply_quote_follows_the_draft_after_a_blank_line() {
 
 #[test]
 fn a_quoted_side_chat_starts_with_the_quote_as_its_draft() {
-    let core = connected(side_chat_transport(
-        &json!({"runner_id": "run_1", "runner_online": true, "host_id": "host_1"}),
-    ));
     assert_eq!(
-        block_on(core.start_side_chat("conv_a", Some("why this?"))),
-        Ok(SideChatStart::Session {
-            session_id: "conv_side".into()
-        })
+        side_chat_start(Some("claude-native"), Some("why this?")),
+        SideChatStart::Draft {
+            draft: "> why this?\n\n".into()
+        }
     );
     assert_eq!(
-        core.composer_text("conv_side").as_deref(),
-        Ok("> why this?\n\n")
-    );
-
-    let native = connected(side_chat_transport(&json!({"harness": "codex-native"})));
-    assert_eq!(
-        block_on(native.start_side_chat("conv_a", Some("why this?"))),
-        Ok(SideChatStart::Command {
+        side_chat_start(Some("codex-native"), Some("why this?")),
+        SideChatStart::Command {
             prefix: "/side > why this?\n\n".into()
-        })
+        }
     );
 }

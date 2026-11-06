@@ -290,6 +290,14 @@ pub(crate) struct SessionProjection {
 }
 
 impl SessionProjection {
+    /// A side chat, which belongs to its session's tab rather than the list.
+    pub(crate) fn is_side_chat(&self) -> bool {
+        self.labels
+            .value()
+            .and_then(|labels| labels.get(super::session_tools::SIDE_CHAT_LABEL))
+            .is_some_and(|value| value == "1")
+    }
+
     /// Records the session's host and routing parent for replica routing.
     pub(crate) fn record_routing(&self, routing: &mut super::routing::ReplicaRouting) {
         fn reported(field: &Field<String>) -> super::routing::Reported<'_> {
@@ -758,6 +766,9 @@ impl State {
             .summary(self.summaries.get(&projection.id))
             .map_err(|detail| SessionError::MalformedResponse { detail })?;
         projection.record_routing(&mut self.routing);
+        if projection.is_side_chat() {
+            self.side_chats.insert(projection.id.clone());
+        }
         let summary = self.record_summary(summary);
         self.cache_summary(&summary);
         Ok(summary)
@@ -1321,6 +1332,9 @@ impl<T: HttpTransport> ClientCore<T> {
                 && !projection.has_configuration_identity()
             {
                 hydrate.push(projection.id.clone());
+            }
+            if projection.is_side_chat() {
+                state.side_chats.insert(projection.id.clone());
             }
             changed.push(summary);
         }

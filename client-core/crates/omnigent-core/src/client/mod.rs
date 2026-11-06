@@ -172,6 +172,8 @@ struct State {
     events: Vec<ClientEvent>,
     /// Where sessions run, for replica routing on host-sharded servers.
     routing: routing::ReplicaRouting,
+    /// Side chats seen so far: they belong to their session's tab, never the session list.
+    side_chats: BTreeSet<String>,
     /// The user turned off automatic session titles (a device preference, kept across connects).
     background_titles_off: bool,
 }
@@ -194,6 +196,24 @@ impl State {
         self.changed_files.clear();
         self.live_sessions.clear();
         self.routing = routing::ReplicaRouting::default();
+        self.side_chats.clear();
+    }
+
+    /// Drops side chats from list changes (the server's `GET /v1/sessions` leaves them out, but
+    /// its updates stream and per-session reads do not).
+    fn take_events(&mut self) -> Vec<ClientEvent> {
+        let mut events = std::mem::take(&mut self.events);
+        if !self.side_chats.is_empty() {
+            for event in &mut events {
+                if let ClientEvent::SessionsChanged { sessions } = event {
+                    sessions.retain(|summary| !self.side_chats.contains(&summary.id));
+                }
+            }
+            events.retain(|event| {
+                !matches!(event, ClientEvent::SessionsChanged { sessions } if sessions.is_empty())
+            });
+        }
+        events
     }
 
     /// Whether the connected server shards replicas by host (a Databricks workspace).
@@ -353,7 +373,7 @@ impl<T: HttpTransport> ClientCore<T> {
 
     /// Delivers queued events to every listener, outside the state lock.
     fn dispatch(&self) {
-        let events = std::mem::take(&mut lock(&self.state).events);
+        let events = lock(&self.state).take_events();
         if events.is_empty() {
             return;
         }
