@@ -25,7 +25,10 @@ public struct ConnectedServerView: View {
 
   @State private var sidebar = SidebarModel()
   @State private var sidebarMemo = SidebarStateMemo()
-  @State private var showsTabOverview = false
+  /// UI tests and screenshots pass `-OmnigentShowTabOverview` to open it at launch.
+  @State private var showsTabOverview = ProcessInfo.processInfo.arguments.contains(
+    "-OmnigentShowTabOverview")
+  @State private var overviewPresenter = TabOverviewPresenter()
   @State private var tabFailure: String?
   @State private var tabCommandRelay = FocusedActionsRelay<TabCommandActions>()
   /// The session a chat tab's Rename Session is renaming.
@@ -81,6 +84,8 @@ public struct ConnectedServerView: View {
         }
     }
     .environment(\.tabStatusDetails, TabAdapter.statusDetails(session))
+    .environment(\.tabOverviewPresenter, overviewPresenter)
+    .onAppear { overviewPresenter.open = { showsTabOverview = true } }
     .modifier(PaletteAdapter(session: session, selection: $selection))
     .background { PinnedSessionShortcuts(open: openPinnedSession) }
     .copyConfirmations()

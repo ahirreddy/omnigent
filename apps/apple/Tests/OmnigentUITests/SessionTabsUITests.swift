@@ -14,9 +14,8 @@ final class SessionTabsUITests: XCTestCase {
     let app = launch()
     try open("demo-design", in: app)
     openBrowserTab(in: app)
-    // The browser's address field, by its placeholder: the page's identifier hides the field's.
-    let browser = app.textFields
-      .matching(NSPredicate(format: "placeholderValue == 'Search or enter address'")).firstMatch
+    // The page itself: its address bar draws a label, not a field, until it is tapped.
+    let browser = app.descendants(matching: .any)["browser.tab"]
     XCTAssertTrue(browser.waitForExistence(timeout: 10), "the browser tab did not open")
     XCTAssertEqual(otherTabs(in: app), 1, "the first session has no browser tab")
     try shot("first-session-browser")
@@ -83,13 +82,20 @@ final class SessionTabsUITests: XCTestCase {
   private func open(_ sessionID: String, in app: XCUIApplication) throws {
     let row = app.descendants(matching: .any)["session-row-\(sessionID)"]
     for _ in 0..<3 where !row.waitForExistence(timeout: 8) {
-      let back = app.navigationBars.buttons["BackButton"]
-      guard back.exists else { break }
+      guard let back = backButton(in: app) else { break }
       back.tap()
     }
     XCTAssertTrue(row.exists, "no row for \(sessionID)")
     row.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.15)).tap()
     sleep(2)
+  }
+
+  /// The way back to the session list: the navigation bar's back button, or on iPhone the
+  /// browser's own, since a browser page hides the navigation bar.
+  @MainActor
+  private func backButton(in app: XCUIApplication) -> XCUIElement? {
+    let candidates = [app.navigationBars.buttons["BackButton"], app.buttons["browser.sessions"]]
+    return candidates.first(where: \.exists)
   }
 
   @MainActor

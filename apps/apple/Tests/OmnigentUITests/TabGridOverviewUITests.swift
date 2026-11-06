@@ -77,8 +77,9 @@ final class TabGridOverviewUITests: XCTestCase {
   private func open(_ sessionID: String, in app: XCUIApplication) throws {
     let row = app.descendants(matching: .any)["session-row-\(sessionID)"]
     for _ in 0..<3 where !row.waitForExistence(timeout: 8) {
-      let back = app.navigationBars.buttons["BackButton"]
-      guard back.exists else { break }
+      let back = [app.navigationBars.buttons["BackButton"], app.buttons["browser.sessions"]]
+        .first(where: \.exists)
+      guard let back else { break }
       back.tap()
     }
     XCTAssertTrue(row.exists, "no row for \(sessionID)")
