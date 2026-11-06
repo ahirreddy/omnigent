@@ -16,7 +16,7 @@ private func header(
       agentId: "ag_a", harness: harness, wrapper: nil, modelOverride: .notReported,
       baseModel: nil, reasoningEffort: .notReported, modelOptions: [], hostId: hostID,
       hostOnline: hostOnline, runnerOnline: runnerOnline, runnerBound: hostID != nil,
-      hostResumable: nil, parentId: nil, routingMode: nil))
+      hostResumable: nil, parentId: nil, sideChatSourceId: nil, routingMode: nil))
 }
 
 @Suite("Liveness adapter")
