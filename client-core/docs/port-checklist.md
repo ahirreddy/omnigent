@@ -3,11 +3,12 @@
 This file tracks porting every NativeLab core test and every web/ios logic test to the Rust
 client core in `client-core/`. It is the parity checklist the plan's Verification section
 asks for. A ported test needs a named Rust counterpart running against the same fixtures.
-The Swift suite under `apps/apple/Reference/NativeLab` stays the oracle until its cases all pass in Rust.
+NativeLab is the native prototype on `ankit-db/omnigent`, branch `feature/mobile-native-core`;
+its paths below are relative to `web/ios/NativeLab/` on that branch.
 
 Sources:
 
-- `apps/apple/Reference/NativeLab/Tests/NativeLabCoreTests/*.swift`: 22 suites, 288 tests.
+- `Tests/NativeLabCoreTests/*.swift` (NativeLab): 22 suites, 288 tests.
 - `web/ios/OmnigentTests/*.swift`: 25 suites, 310 XCTest methods. `MockHTTPServer.swift` is a
   helper with no tests. `grep -c 'func test'` reports 312 because it also counts two top-level
   helpers, `testSessionCookie` and `testWebSession`.
@@ -88,7 +89,7 @@ separately if needed:
 
 ### Swift sources each package must read
 
-All NativeLab paths are under `apps/apple/Reference/NativeLab/Sources/NativeLabCore/`; all
+All NativeLab paths are under `Sources/NativeLabCore/` on that branch; all
 web/ios paths are under `web/ios/Omnigent/`.
 
 - **WP1:**
@@ -124,7 +125,7 @@ web/ios paths are under `web/ios/Omnigent/`.
     - `Models.swift`
     - `LocalServerStreaming.swift` (`finishHydration`, `rehydrateAfterMutation`)
     - `EventGalleryFixtures.swift`
-  - Ground truth: `web/src/lib/blocks.ts` and `designs/ios-native/event-coverage.md`.
+  - Ground truth: `web/src/lib/blocks.ts`.
 - **WP4:** all NativeLab:
   - `DecisionForm.swift`
   - `LocalServerLiveModels.swift` (`ElicitationWire`)

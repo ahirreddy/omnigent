@@ -150,7 +150,7 @@ jobs:
           working_directory: apps/apple
 
       # Strict over the whole tree, packages included (config excludes
-      # Reference/, Tools/, Vendor/ and generated bindings).
+      # Tools/, Vendor/ and generated bindings).
       - name: SwiftLint
         working-directory: apps/apple
         run: mise exec -- swiftlint lint --strict --config .swiftlint.yml

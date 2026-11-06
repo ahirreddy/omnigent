@@ -68,12 +68,8 @@ versions. Missing fields mean "unsupported". Test against an older-shaped
 response as well as the current one. See `web/electron/AGENTS.md` for the same
 rule on the desktop shell.
 
-## Reference and tools
+## Tools
 
-- `Reference/NativeLab` is a read-only parity oracle for the Rust port and will be
-  deleted. Don't edit or run anything in it, or build on it. Port behavior and tests
-  into `client-core` and the packages, and name each ported test's Rust
-  counterpart.
 - `Tools/` (local services, seeding, smoke tests) touches only the gitignored
   `.native-lab-server/`. `just apple-smoke-stream` is a strict real-model gate
   that is currently expected to fail. Report its result honestly. Never fake

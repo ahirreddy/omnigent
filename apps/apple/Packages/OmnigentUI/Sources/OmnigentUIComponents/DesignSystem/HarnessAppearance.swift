@@ -1,8 +1,8 @@
 public import SwiftUI
 
 /// The label, tint and glyph for a harness id. Glyphs are SF Symbols and monograms, not brand
-/// logos; brand vectors (MIT, `@lobehub/icons`) can replace the monogram later with the
-/// attribution in `Reference/NativeLab/App/HarnessBranding-NOTICE.md`.
+/// logos; brand vectors (MIT, `@lobehub/icons`) can replace the monogram later, with that
+/// package's license notice.
 nonisolated public struct HarnessAppearance: Hashable, Sendable {
   /// A stable identifier, for example `codex` or `claude`.
   public let identifier: String

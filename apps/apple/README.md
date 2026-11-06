@@ -155,24 +155,14 @@ apps/apple/
   Packages/                            local Swift packages (see Architecture)
   Tests/                               app UI tests
   Tools/                               local API/host services, seeding, smoke tests
-  Reference/NativeLab/                 parity oracle (see below)
 ```
 
-## NativeLab reference
+## Origins
 
-`Reference/NativeLab` is Ankit's working native iPhone client, imported from
-`ankit-db/omnigent@feature/mobile-native-core`. Its Swift core logic and tests are
-the **specification and parity oracle** for the Rust port. Its URLSession code
-becomes the Swift transport adapters, and its views become the starting UI. It is
-kept as-is and **deleted once the port is complete**. Don't modify it or build
-features on it. Until it is deleted, its own suite should stay green:
-
-```sh
-swift test --package-path apps/apple/Reference/NativeLab
-```
-
-Its `README.md`, `HANDOFF.md` and `PUSH_SETUP.md` hold the full history. The
-design and validation notes are in `designs/ios-native/`.
+The Rust core and the first native views were ported from Ankit's NativeLab
+prototype (`ankit-db/omnigent`, branch `feature/mobile-native-core`), whose Swift
+tests served as the parity oracle; comments that say "ported from `NativeLab`"
+refer to it. `designs/ios-native/` keeps the scope and server-contract notes.
 
 ## Local services (`Tools/`)
 
@@ -239,5 +229,5 @@ client-side framing is verified separately from this end-to-end gate.
 - iOS simulator build and test, which is non-blocking for now.
 
 Pre-commit runs swift-format and SwiftLint (`scripts/swiftlint.sh`, a no-op without
-swiftlint) on `apps/apple` (excluding `Reference/`), and `cargo fmt`/clippy on
+swiftlint) on `apps/apple`, and `cargo fmt`/clippy on
 `client-core`.

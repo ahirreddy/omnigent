@@ -22,11 +22,9 @@ Baseline: `76281b94`, source inspected on 2026-10-16. `S` below means
 **source-only**: a path and related tests were inspected, but its behavior has
 not been observed on an iPhone. `U` means runtime/deployment behavior is
 **unknown**. No rows claim observed device behavior. Test names identify existing
-coverage, not a passing test result from this audit. The coordinator's executed
-checks and environment limits are in [validation-baseline.md](validation-baseline.md).
+coverage, not a passing test result from this audit.
 The CUJ documents informed the search; the code cited here determines current
-behavior. See [native-shell.md](native-shell.md) for Swift lifecycle/bridge detail
-and [server-contracts.md](server-contracts.md) for wire contracts.
+behavior. See [server-contracts.md](server-contracts.md) for wire contracts.
 
 ## Routes and current mobile navigation
 
@@ -392,8 +390,7 @@ uv run playwright install --with-deps chromium
 uv run pytest tests/e2e_ui/mobile/test_mobile_workflow.py
 ```
 
-For a device baseline, follow [validation-baseline.md](validation-baseline.md)
-and the existing app's Mac build instructions. Record exact app/server revision,
+For a device baseline, follow the existing app's Mac build instructions. Record exact app/server revision,
 device/OS, deployment/auth mode and selected harness. Use a controlled test
 server with an existing host and these inputs:
 

@@ -3,7 +3,8 @@
 This is the server contract that `omnigent-protocol` and `omnigent-core` implement. It
 merges three sources:
 
-- NativeLab's Swift client: `apps/apple/Reference/NativeLab/Sources/NativeLabCore/`;
+- NativeLab's Swift client: `web/ios/NativeLab/Sources/NativeLabCore/` on `ankit-db/omnigent`,
+  branch `feature/mobile-native-core` (the native prototype this core was ported from);
 - the web/ios auth code: `web/ios/Omnigent/`;
 - the current server source in this repo, which is the **ground truth**. Where a doc and the
   source disagree, the source wins. Disagreements are listed under "Divergences" at the end.

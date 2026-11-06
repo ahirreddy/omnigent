@@ -303,9 +303,7 @@ SSE stream or provide background push notifications.
 
 The coordinator ran 527 existing web unit tests across ten files, including
 all five web files listed below; all passed. These tests use mocks and do not
-prove native transport or live deployment compatibility. See
-[`validation-baseline.md`](validation-baseline.md) for the recorded commands
-and results. The backend checks below are suggested and **unexecuted** in this
+prove native transport or live deployment compatibility. The backend checks below are suggested and **unexecuted** in this
 discovery pass. Run from the repository root after installing the contributor
 dependencies:
 

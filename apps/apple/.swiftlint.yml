@@ -15,13 +15,11 @@ included:
   - Tuist.swift
 
 excluded:
-  - Reference
   - Tools
   - Vendor
   - Derived
   - build
   - Tuist/.build
-  - Tests/NativeLabUITests
   - Packages/OmnigentCoreFFI/Sources
   - Packages/*/.build
   - Packages/*/.swiftpm

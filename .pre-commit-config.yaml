@@ -165,21 +165,20 @@ repos:
 
       # Native Apple client Swift (apps/apple). Same guarded wrapper as above, so
       # it no-ops without a Swift toolchain (Ubuntu CI); config is the nearest
-      # .swift-format above each file. Reference/ is the frozen NativeLab
-      # oracle and is never reformatted; build output and any Generated/ dir
-      # (UniFFI bindings) are excluded too.
+      # .swift-format above each file. Build output and any Generated/ dir
+      # (UniFFI bindings) are excluded.
       - id: apps-apple-swift-format
         name: apps/apple swift-format
         language: system
         entry: web/ios/bin/swift-format.sh format --in-place --parallel
-        files: ^apps/apple/(?!Reference/).*\.swift$
+        files: ^apps/apple/.*\.swift$
         exclude: ^apps/apple/(.*/)?(build|Derived|\.build|Generated)/
 
       - id: apps-apple-swift-lint
         name: apps/apple swift format lint
         language: system
         entry: web/ios/bin/swift-format.sh format lint --strict --parallel
-        files: ^apps/apple/(?!Reference/).*\.swift$
+        files: ^apps/apple/.*\.swift$
         exclude: ^apps/apple/(.*/)?(build|Derived|\.build|Generated)/
 
       # SwiftLint (config: apps/apple/.swiftlint.yml, which also owns the
@@ -190,7 +189,7 @@ repos:
         name: apps/apple swiftlint
         language: system
         entry: apps/apple/scripts/swiftlint.sh
-        files: ^apps/apple/(?!Reference/).*\.swift$
+        files: ^apps/apple/.*\.swift$
         exclude: ^apps/apple/(.*/)?(build|Derived|\.build|Generated)/
 
       # Rust client core (client-core). Skips cleanly only when cargo is absent;
