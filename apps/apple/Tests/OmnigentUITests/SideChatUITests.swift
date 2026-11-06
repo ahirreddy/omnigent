@@ -5,8 +5,8 @@ import XCTest
 /// chat that exists only on the device, and the first send creates it on the server and shows
 /// it as a side chat (its own empty transcript, "Side chat of <session>", "Side chat 1" tab).
 ///
-/// Needs `TEST_RUNNER_OMNIGENT_E2E_SERVER_URL` and `TEST_RUNNER_SIDE_CHAT_PARENT` (a session the
-/// server's host runs). The test logs `SIDECHAT <state> <epoch>` so a caller can compare the
+/// Needs `TEST_RUNNER_SIDE_CHAT_PARENT` (a session the server's host runs) on the server
+/// ``LiveServerUITestSupport`` uses. The test logs `SIDECHAT <state> <epoch>` so a caller can compare the
 /// server's sessions before and after the send; `TEST_RUNNER_SIDE_CHAT_HOLD` seconds (default 0)
 /// keeps the unsent side chat open for that check. `TEST_RUNNER_SIDE_CHAT_SHOTS_DIR` also writes
 /// screenshots there.
@@ -124,37 +124,12 @@ final class SideChatUITests: XCTestCase {
     return value
   }
 
-  /// The app on the live server, showing the parent session.
+  /// The app on the live server with no restored state (no right panel or notification prompt
+  /// over the composer), showing the parent session.
   @MainActor
   private func launch() throws -> XCUIApplication {
-    let server = try setting("OMNIGENT_E2E_SERVER_URL")
     let parent = try setting("SIDE_CHAT_PARENT")
-    let host = URL(string: server)?.host(percentEncoded: false) ?? "127.0.0.1"
-    let port = URL(string: server)?.port.map { ":\($0)" } ?? ""
-    // A first launch asks for notifications; the prompt would cover the composer.
-    addUIInterruptionMonitor(withDescription: "Notifications") { alert in
-      let decline = alert.buttons["Don\u{2019}t Allow"]
-      guard decline.exists else { return false }
-      decline.tap()
-      return true
-    }
-    let app = XCUIApplication()
-    app.launchArguments += [
-      "-omnigent.lastServer", server, "-ApplePersistenceIgnoreState", "YES",
-    ]
-    app.launch()
-    XCUIDevice.shared.orientation = isPhone ? .portrait : .landscapeLeft
-    try openURL("omnigent://\(host)\(port)/c/\(parent)")
-    return app
-  }
-
-  /// Opens `link` as the system does, accepting its "Open in" prompt.
-  @MainActor
-  private func openURL(_ link: String) throws {
-    XCUIDevice.shared.system.open(try XCTUnwrap(URL(string: link), "bad link \(link)"))
-    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-    let open = springboard.buttons["Open"]
-    if open.waitForExistence(timeout: 5) { open.tap() }
+    return LiveServerUITestSupport(self).launch(opening: parent)
   }
 
   /// The strip (iPad) or the tab overview (iPhone) lists the side chat's tab.

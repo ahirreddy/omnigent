@@ -53,6 +53,14 @@ nonisolated public enum WorkspacePanelDefault: String, Hashable, Sendable, CaseI
   public static func stored(in defaults: UserDefaults = .standard) -> Self {
     defaults.string(forKey: InterfacePreferences.workspacePanelKey).flatMap(Self.init) ?? .collapsed
   }
+
+  /// Whether a chat that has not shown or hidden the panel itself shows it. Where the panel is a
+  /// sheet (compact width) it would cover the chat and its composer, so it stays closed there.
+  /// - Parameter isSheet: The panel shows as a sheet rather than a column.
+  /// - Returns: Whether the panel shows.
+  public func showsPanel(isSheet: Bool) -> Bool {
+    self == .open && !isSheet
+  }
 }
 
 /// The right panel's first tab, under the web's values (`files`, `changes`, `github`,
