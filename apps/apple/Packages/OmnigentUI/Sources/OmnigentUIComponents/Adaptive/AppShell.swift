@@ -17,7 +17,8 @@ public struct AppShell<Detail: View>: View {
   private let tabs: (state: TabsState, actions: TabActions)?
   private let detail: (SidebarDestination?) -> Detail
 
-  @State private var columns: NavigationSplitViewVisibility = .all
+  @State private var columns: NavigationSplitViewVisibility =
+    SidebarLaunchState.current == nil ? .all : .detailOnly
   @State private var detailWidth = DetailColumnWidth()
   @State private var trailingItems: Int?
   /// A tab dragged from the strip onto the content, for the split view's drop targets.
@@ -54,7 +55,10 @@ public struct AppShell<Detail: View>: View {
     sidebarToggle?.toggle = { columns.wrappedValue = SidebarToggle.toggled(columns.wrappedValue) }
     return NavigationSplitView(columnVisibility: $columns) {
       SidebarView(state: sidebar, selection: $selection, searchText: $searchText, actions: actions)
-        .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 320)
+        .navigationSplitViewColumnWidth(
+          min: AppShellMetrics.sidebarMinWidth, ideal: AppShellMetrics.sidebarIdealWidth,
+          max: AppShellMetrics.sidebarMaxWidth
+        )
         #if os(iOS)
           // The sidebar has no title (its header names the server), so a large-title bar
           // drew an empty band above it on iPhone.
@@ -70,6 +74,8 @@ public struct AppShell<Detail: View>: View {
           .onPreferenceChange(TitlebarTrailingItems.self) { trailingItems = $0 }
       }
       .unmeasuredMinimum(UnmeasuredMinimum.column)
+      // A shown sidebar takes its width from the content (split panes too) on Mac.
+      .detailBesideSidebar()
       .environment(tabDrag)
       .onGeometryChange(for: CGFloat.self) {
         $0.size.width
@@ -78,7 +84,34 @@ public struct AppShell<Detail: View>: View {
       }
     }
     .adaptiveLayoutWidth()
+    #if os(macOS)
+      .modifier(
+        SidebarPeekOverlay(
+          isCollapsed: columns.wrappedValue == .detailOnly,
+          startsShown: SidebarLaunchState.current == .peek
+        ) {
+          SidebarView(
+            state: sidebar, selection: $selection, searchText: $searchText, actions: actions)
+        })
+    #endif
   }
+}
+
+/// How the sidebar starts, for UI tests and screenshots: `-OmnigentSidebar collapsed` or
+/// `-OmnigentSidebar peek` (collapsed, peeking until the pointer moves over the window).
+enum SidebarLaunchState: String {
+  case collapsed
+  case peek
+
+  static let current = UserDefaults.standard.string(forKey: "OmnigentSidebar")
+    .flatMap(Self.init(rawValue:))
+}
+
+/// The shell's column sizes.
+enum AppShellMetrics {
+  static let sidebarMinWidth: CGFloat = 220
+  static let sidebarIdealWidth: CGFloat = 248
+  static let sidebarMaxWidth: CGFloat = 320
 }
 
 extension AppShell {
