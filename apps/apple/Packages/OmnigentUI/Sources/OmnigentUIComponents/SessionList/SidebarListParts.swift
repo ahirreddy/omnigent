@@ -107,10 +107,12 @@ nonisolated enum SessionRowTooltip {
 
 /// The sidebar's search field. iPhone and iPad keep one search entry point: where the header's
 /// Search opens the palette (titles and message content), the field is left out, so a compact
-/// width does not also float a search button beside the list.
+/// width does not also float a search button beside the list. A sidebar peeking over the
+/// content on Mac is outside the split view, so it draws its own field.
 struct SidebarSearchField: ViewModifier {
   @Binding var text: String
   @Environment(\.openCommandPalette) private var openPalette
+  @Environment(\.isSidebarPeek) private var isPeek
 
   func body(content: Content) -> some View {
     #if os(iOS)
@@ -120,9 +122,23 @@ struct SidebarSearchField: ViewModifier {
         content.searchable(text: $text, placement: .sidebar, prompt: "Search sessions")
       }
     #else
-      content.searchable(text: $text, placement: .sidebar, prompt: "Search sessions")
+      if isPeek {
+        content.safeAreaInset(edge: .top, spacing: 0) {
+          TextField("Search sessions", text: $text)
+            .textFieldStyle(.roundedBorder)
+            .padding(.horizontal, Theme.Spacing.medium)
+            .padding(.vertical, Theme.Spacing.small)
+        }
+      } else {
+        content.searchable(text: $text, placement: .sidebar, prompt: "Search sessions")
+      }
     #endif
   }
+}
+
+extension EnvironmentValues {
+  /// The sidebar is peeking over the content, outside the split view (Mac).
+  @Entry var isSidebarPeek = false
 }
 
 /// How many pages the Load more row read by itself in the current scope: the web loads up to
