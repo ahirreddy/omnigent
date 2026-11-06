@@ -152,13 +152,13 @@ struct ComposerDraftArchiveTests {
     defer { try? FileManager.default.removeItem(at: folder) }
     let file = folder.appending(path: "drafts.json")
     let archive = ComposerDraftArchive(fileURL: file)
-    archive.record("half a thought", account: "server|alice", session: "conv_a")
-    archive.record("other", account: "server|bob", session: "conv_b")
-    archive.record("   ", account: "server|bob", session: "conv_b")
+    archive.record(SavedDraft(text: "half a thought"), account: "server|alice", session: "conv_a")
+    archive.record(SavedDraft(text: "other"), account: "server|bob", session: "conv_b")
+    archive.record(SavedDraft(text: "   "), account: "server|bob", session: "conv_b")
     archive.flush()
     #expect(archive.lastError == nil)
     let reopened = ComposerDraftArchive(fileURL: file)
-    #expect(reopened.draft(account: "server|alice", session: "conv_a") == "half a thought")
+    #expect(reopened.draft(account: "server|alice", session: "conv_a")?.text == "half a thought")
     #expect(reopened.sessions(account: "server|alice") == ["conv_a"])
     #expect(reopened.sessions(account: "server|bob").isEmpty)
   }

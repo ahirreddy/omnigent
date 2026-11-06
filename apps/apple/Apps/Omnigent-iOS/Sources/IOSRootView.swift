@@ -77,9 +77,10 @@ struct IOSRootView: View {
         session?.connection.foreground()
       }
       if phase == .active, !hasBeenActive { hasBeenActive = true }
-      // iOS may end a backgrounded app without notice: save the tabs now.
+      // iOS may end a backgrounded app without notice: save the tabs and drafts now.
       if phase == .background, previous != .background {
         Self.tabPersistence?.flush()
+        ComposerDraftArchive.shared?.flush()
         saveUnsavedFiles()
       }
     }
