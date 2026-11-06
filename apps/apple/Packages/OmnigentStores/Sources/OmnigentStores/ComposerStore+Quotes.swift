@@ -32,6 +32,24 @@ extension ComposerStore {
     quotes[index].before = text
   }
 
+  /// The draft to keep across launches: text, quotes and `@` paths.
+  var savedDraft: SavedDraft {
+    SavedDraft(
+      text: text, quotes: quotes.map { SavedDraft.Quote(before: $0.before, text: $0.text) },
+      mentions: mentions)
+  }
+
+  /// Puts a kept draft back, recording it once (the core's text, the sidebar marker, the file).
+  /// - Parameter draft: The draft.
+  func restore(_ draft: SavedDraft) {
+    isRestoring = true
+    quotes = draft.replyQuotes
+    text = draft.text
+    mentions = draft.mentions
+    isRestoring = false
+    draftDidChange()
+  }
+
   /// Empties the draft: text, quotes and `@` paths.
   func clearDraft() {
     quotes = []

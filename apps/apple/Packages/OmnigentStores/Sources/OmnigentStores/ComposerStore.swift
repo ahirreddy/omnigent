@@ -59,7 +59,9 @@ public final class ComposerStore {
   /// Workspace paths matching the draft's `@` mention, for the `@` menu.
   public internal(set) var mentionCandidates: [String] = []
   /// Workspace paths tagged with `@`, shown as chips and sent as marker lines ahead of the text.
-  public internal(set) var mentions: [String] = []
+  public internal(set) var mentions: [String] = [] {
+    didSet { if mentions != oldValue, !isRestoring { draftStored?(savedDraft) } }
+  }
   /// Why the `@` menu has no results (the workspace search failed); `nil` otherwise.
   public internal(set) var mentionProblem: String?
   /// Finds workspace paths for an `@` query; `nil` turns mentions off. A draft restored before
@@ -81,12 +83,14 @@ public final class ComposerStore {
   let sessionID: String
   let core: ClientCore
   private var applyingCoreText = false
+  /// ``restore(_:)`` is setting the fields one by one; it records the draft once at the end.
+  @ObservationIgnored var isRestoring = false
   /// The draft had something to send, at the last change.
   @ObservationIgnored private var hadDraft = false
   /// Told when the draft becomes empty or not (the sidebar's draft marker).
   @ObservationIgnored var draftChanged: ((Bool) -> Void)?
-  /// Told the new draft text, to keep it across launches.
-  @ObservationIgnored var draftStored: ((String) -> Void)?
+  /// Told the new draft, to keep it across launches.
+  @ObservationIgnored var draftStored: ((SavedDraft) -> Void)?
   /// What `/context`, `/mcp` and held sends read from the conversation.
   @ObservationIgnored var conversationFacts: (@MainActor () -> ConversationFacts?)?
   /// Retries messages held for the host while it already reads online.
@@ -105,14 +109,15 @@ public final class ComposerStore {
   }
 
   /// Records a changed draft: the sidebar's marker, the saved copy and the core's text.
-  private func draftDidChange() {
+  func draftDidChange() {
+    guard !isRestoring else { return }
     let message = draftMessage
     let hasDraft = !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     if hasDraft != hadDraft {
       hadDraft = hasDraft
       draftChanged?(hasDraft)
     }
-    draftStored?(message)
+    draftStored?(savedDraft)
     guard !applyingCoreText else { return }
     do {
       try core.updateComposer(sessionId: sessionID, text: message)

@@ -215,6 +215,7 @@ public struct ComposerView: View {
     )
     .focused($isFocused)
     .disabled(!isEditable)
+    .imagePaste(isActive: isFocused) { providers in Task { await loadProviders(providers) } }
     .onKeyPress(.return, phases: .down) { press in keyboard.handleReturn(press) }
     .onKeyPress(.tab, phases: .down) { press in keyboard.handleTab(press) }
     .onKeyPress(.escape, phases: .down) { _ in keyboard.handleEscape() }
@@ -252,7 +253,10 @@ public struct ComposerView: View {
   }
 
   private func loadProviders(_ providers: [NSItemProvider]) async {
-    guard canAttach else { return }
+    guard canAttach else {
+      attachmentError = AttachmentLoading.unavailable(state.availability.reason)
+      return
+    }
     let result = await AttachmentLoading.providers(providers)
     add(result.inputs)
     if !result.failures.isEmpty { attachmentError = result.failures.joined(separator: "\n") }

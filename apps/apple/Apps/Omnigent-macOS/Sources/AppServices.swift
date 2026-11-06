@@ -74,10 +74,11 @@ final class AppServices {
     }
   }
 
-  /// The app is quitting: save every window's tabs now and keep them.
+  /// The app is quitting: save every window's tabs and the composer drafts now.
   func willTerminate() {
     isTerminating = true
     tabPersistence?.flush()
+    ComposerDraftArchive.shared?.flush()
   }
 
   /// A server window closed: unless the app is quitting, its page is forgotten and its browser

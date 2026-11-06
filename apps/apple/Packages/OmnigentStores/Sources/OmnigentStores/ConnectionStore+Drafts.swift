@@ -31,10 +31,10 @@ extension ConnectionStore {
   /// Restores `store`'s saved draft into an empty composer and keeps its later changes.
   func keepDraft(of store: ConversationStore) {
     let sessionID = store.sessionID
-    store.composer.draftStored = { [weak self] text in
+    store.composer.draftStored = { [weak self] draft in
       guard let self, let archive = draftArchive, let account = connectedServer?.accountId
       else { return }
-      archive.record(text, account: account, session: sessionID) { [weak self] message in
+      archive.record(draft, account: account, session: sessionID) { [weak self] message in
         self?.record(scope: .session(sessionId: sessionID), .InvalidState(message: message))
       }
     }
@@ -42,10 +42,11 @@ extension ConnectionStore {
       let saved = draftArchive?.draft(account: account, session: sessionID)
     else { return }
     do {
-      // Text the core already holds is newer than the file.
-      if try core.composerText(sessionId: sessionID).isEmpty {
-        try core.updateComposer(sessionId: sessionID, text: saved)
-        store.composer.setText(fromCore: saved)
+      // Other text the core already holds is newer than the file; the saved draft flattened
+      // (a session reopened in this launch) gets its quote blocks back.
+      let current = try core.composerText(sessionId: sessionID)
+      if current.isEmpty || current == saved.message {
+        store.composer.restore(saved)
       }
     } catch {
       record(scope: .session(sessionId: sessionID), coreError(error))

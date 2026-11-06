@@ -1,8 +1,8 @@
 public import Foundation
 
-/// Unsent composer text per account and session, kept in one JSON file so drafts survive
-/// relaunches (the web keeps them in local storage). Writes are coalesced: typing changes the
-/// in-memory copy at once and the file shortly after.
+/// Unsent composer drafts (text, quote blocks and `@` paths) per account and session, kept in
+/// one JSON file so drafts survive relaunches (the web keeps them in local storage). Writes are
+/// coalesced: typing changes the in-memory copy at once and the file shortly after.
 @MainActor
 public final class ComposerDraftArchive {
   /// The archive under `Application Support/<bundle id>/composer-drafts.json`, or `nil` when
@@ -24,7 +24,7 @@ public final class ComposerDraftArchive {
 
   private let fileURL: URL
   private let saveDelay: Duration
-  private var drafts: [String: [String: String]]
+  private var drafts: [String: [String: SavedDraft]]
   private var pendingSave: Task<Void, Never>?
   private var reportFailure: (@MainActor (String) -> Void)?
 
@@ -39,7 +39,7 @@ public final class ComposerDraftArchive {
     guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
     do {
       drafts = try JSONDecoder().decode(
-        [String: [String: String]].self, from: Data(contentsOf: fileURL))
+        [String: [String: SavedDraft]].self, from: Data(contentsOf: fileURL))
     } catch {
       lastError = "Saved drafts could not be read: \(error.localizedDescription)"
     }
@@ -49,8 +49,8 @@ public final class ComposerDraftArchive {
   /// - Parameters:
   ///   - account: The account scope (server plus user).
   ///   - sessionID: The session.
-  /// - Returns: Its text, or `nil`.
-  public func draft(account: String, session sessionID: String) -> String? {
+  /// - Returns: The draft, or `nil`.
+  public func draft(account: String, session sessionID: String) -> SavedDraft? {
     drafts[account]?[sessionID]
   }
 
@@ -61,23 +61,23 @@ public final class ComposerDraftArchive {
     Set(drafts[account].map { Array($0.keys) } ?? [])
   }
 
-  /// Keeps `text` as `sessionID`'s draft; blank text forgets it.
+  /// Keeps `draft` as `sessionID`'s draft; an empty draft forgets it.
   /// - Parameters:
-  ///   - text: The composer text.
+  ///   - draft: The composer draft.
   ///   - account: The account scope.
   ///   - sessionID: The session.
   ///   - report: Shows a failure to write the file.
   public func record(
-    _ text: String, account: String, session sessionID: String,
+    _ draft: SavedDraft, account: String, session sessionID: String,
     report: (@MainActor (String) -> Void)? = nil
   ) {
-    let blank = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    guard drafts[account]?[sessionID] != (blank ? nil : text) else { return }
-    if blank {
+    let kept = draft.isEmpty ? nil : draft
+    guard drafts[account]?[sessionID] != kept else { return }
+    if let kept {
+      drafts[account, default: [:]][sessionID] = kept
+    } else {
       drafts[account]?[sessionID] = nil
       if drafts[account]?.isEmpty == true { drafts[account] = nil }
-    } else {
-      drafts[account, default: [:]][sessionID] = text
     }
     if let report { reportFailure = report }
     scheduleSave()
