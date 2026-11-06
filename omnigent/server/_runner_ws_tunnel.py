@@ -77,6 +77,17 @@ class WrongReplicaWSError(RuntimeError):
     """
 
 
+class RunnerUnavailableWSError(RuntimeError):
+    """Raised by the tunnel factory when the pinned runner's tunnel is not connected.
+
+    The session is bound to a runner whose tunnel is absent
+    (``RUNNER_UNAVAILABLE``), e.g. while it reconnects after a server or
+    runner restart. The terminal-attach route maps it to WS close code
+    ``1013`` so the client re-dials with backoff instead of dead-ending on
+    the generic ``4500``.
+    """
+
+
 # The only runner WS paths the relay opens: terminal and remote browser
 # attach, each optionally followed by a query string. Nothing else (CDP in
 # particular) can be routed through the server:
@@ -169,12 +180,14 @@ def make_tunnel_ws_factory(
         except OmnigentError as exc:
             if exc.code == ErrorCode.WRONG_REPLICA:
                 raise WrongReplicaWSError(str(exc)) from exc
+            if exc.code == ErrorCode.RUNNER_UNAVAILABLE:
+                raise RunnerUnavailableWSError(str(exc)) from exc
             raise RuntimeError(str(exc)) from exc
         if routed is None:
             raise RuntimeError(f"no runner pinned for conversation {conversation_id!r}")
         session = registry.get(routed.runner_id)
         if session is None:
-            raise RuntimeError(
+            raise RunnerUnavailableWSError(
                 f"runner {routed.runner_id!r} is offline for conversation {conversation_id!r}"
             )
         return _TunneledWSConn(
