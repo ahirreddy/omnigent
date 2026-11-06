@@ -22,6 +22,10 @@ public struct MarkdownView: View {
 
   /// The rendered blocks, or agent output in its Plain or Styled rendering.
   public var body: some View {
+    rendered.countsRenders("markdown")
+  }
+
+  @ViewBuilder private var rendered: some View {
     switch rendering {
     case .plain: CLISourceText(text: text, isStreaming: isStreaming)
     case .styled: CLIStyledMarkdown(text: text, isStreaming: isStreaming)

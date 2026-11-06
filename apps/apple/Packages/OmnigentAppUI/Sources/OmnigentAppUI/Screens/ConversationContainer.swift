@@ -41,7 +41,7 @@ struct ConversationContainer: View {
   var shareUnavailableReason: String?
 
   /// The right panel once this chat shows or hides it; until then the default it opened with.
-  @State private var panelChoice: WorkspacePanelDefault?
+  @State private var panelRoute = ConversationPanelRoute()
   @State private var panelDefault = WorkspacePanelDefault.stored()
   #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -122,7 +122,7 @@ struct ConversationContainer: View {
       if !running { Task { await panel?.refreshPullRequestsIfShown() } }
     }
     .onChange(of: terminals?.terminals.harness, initial: true) { attachHarness() }
-    .modifier(WorkspacePanelDefaults(workspace: workspace, choice: $panelChoice))
+    .modifier(WorkspacePanelDefaults(workspace: workspace, choice: $panelRoute.choice))
     #if DEBUG
       .modifier(
         PerfConversationHooks(
@@ -142,8 +142,7 @@ struct ConversationContainer: View {
     #else
       let isSheet = false
     #endif
-    let shown = panelChoice.map { $0 == .open } ?? panelDefault.showsPanel(isSheet: isSheet)
-    return Binding(get: { shown }, set: { panelChoice = $0 ? .open : .collapsed })
+    return panelRoute.isShown(default: panelDefault, isSheet: isSheet, $panelRoute)
   }
 
   private var state: ConversationViewState {
@@ -182,7 +181,7 @@ struct ConversationContainer: View {
       openNewSideChat: tabRoutes?.openNewSideChat,
       showPullRequests: {
         inspectorTab = .pullRequests
-        panelChoice = .open
+        panelRoute.choice = .open
       },
       showGoal: {
         showsGoal = true

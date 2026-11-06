@@ -107,6 +107,7 @@ struct TranscriptRowsContent<Header: View>: View {
       TurnSegmentView(entry: entry)
         .equatable()
         .id(entry.id)
+        .reportsReadingAnchor(entry.id)
         .background { if focus?.flashedRowID == entry.id { MessageFlash() } }
     }
     InlineDecisions(state: state, actions: actions)
@@ -140,6 +141,10 @@ struct TurnSegmentView: View, Equatable {
   let entry: SegmentEntry
 
   var body: some View {
+    segment.countsRenders("row")
+  }
+
+  @ViewBuilder private var segment: some View {
     switch entry.segment {
     case .item(let item):
       TranscriptItemView(item: item, decorations: entry.decorations)

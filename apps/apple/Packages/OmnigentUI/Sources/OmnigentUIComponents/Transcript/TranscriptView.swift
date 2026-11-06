@@ -12,7 +12,9 @@ public struct TranscriptView: View {
   private let actions: ConversationActions
   private let scrollToLatestRequest: Int
 
-  @State private var follow = TranscriptFollow()
+  @State private var scroll = TranscriptScrollState()
+  /// The one part of the follow rules the body shows.
+  @State private var pill = TranscriptFollow.Pill()
   @State private var layout = TranscriptLayoutMemo()
   @State private var environmentRelay = TranscriptEnvironmentRelay()
   @State private var position = TranscriptReadingPosition()
@@ -61,6 +63,15 @@ public struct TranscriptView: View {
     _current = State(initialValue: TranscriptCurrentState(state))
   }
 
+  /// The follow rules; writing them publishes only a change of the pill.
+  private var follow: TranscriptFollow {
+    get { scroll.follow }
+    nonmutating set {
+      scroll.follow = newValue
+      if pill != newValue.pill { pill = newValue.pill }
+    }
+  }
+
   /// The rows as the list last showed them, for scroll actions outside a body.
   private var shown: ConversationViewState { current.state }
 
@@ -83,6 +94,7 @@ public struct TranscriptView: View {
       }
       .environment(\.conversationActions, actions)
       .environment(\.openURL, environmentRelay.openURL)
+      .environment(\.transcriptScrollState, scroll)
       .defaultScrollAnchor(.bottom, for: .initialOffset)
       .scrollDismissesKeyboard(.interactively)
       .onScrollPhaseChange { _, phase in
@@ -91,12 +103,20 @@ public struct TranscriptView: View {
           proxy.scrollTo(Self.bottomID, anchor: .bottom)
         }
       }
-      .onScrollGeometryChange(for: Bool.self) { geometry in
-        // The composer and dock inset the bottom; rows under them are not being read.
-        geometry.visibleRect.maxY - geometry.contentInsets.bottom
-          >= geometry.contentSize.height - 80
-      } action: { _, isNearBottom in
-        follow.geometryChanged(isNearBottom: isNearBottom)
+      .onScrollGeometryChange(for: TranscriptViewport.self) { geometry in
+        TranscriptViewport(geometry)
+      } action: { old, new in
+        if old.isNearBottom != new.isNearBottom {
+          follow.geometryChanged(isNearBottom: new.isNearBottom)
+        }
+        // A rotation or resize lays the rows out again: a reader at the bottom stays there, one
+        // reading earlier keeps what was at the middle of the screen on screen.
+        if new.keepsBottom(after: old) {
+          scroll.cancelRestore()
+          proxy.scrollTo(Self.bottomID, anchor: .bottom)
+        } else if old.width > 0, old.width != new.width {
+          scroll.restoreReading(from: old.width, to: new.width)
+        }
       }
       // The one scroll path while following: new output and late-sizing rows both grow the
       // content. A revision only updates the follow state.
@@ -149,12 +169,10 @@ public struct TranscriptView: View {
       )
       .transcriptSelectionPopup(reply: actions.replyWithSelection, ask: actions.askInSideChat)
       .overlay(alignment: .bottom) {
-        if follow.showsJumpToLatest {
-          JumpToLatestPill(title: follow.jumpTitle, hasUnseenOutput: follow.hasUnseenOutput) {
-            jumpToLatest(proxy)
-          }
-          .padding(.bottom, Theme.Spacing.medium)
-          .transition(.opacity.combined(with: .move(edge: .bottom)))
+        if pill.isShown {
+          JumpToLatestPill(pill: pill) { jumpToLatest(proxy) }
+            .padding(.bottom, Theme.Spacing.medium)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
         }
       }
     }
@@ -166,7 +184,9 @@ public struct TranscriptView: View {
 
   /// The row list's changes, acted on here.
   private func rowEvents(_ proxy: ScrollViewProxy) -> TranscriptRowEvents {
-    TranscriptRowEvents(
+    // Rows reporting the reading anchor restore it through this body's proxy.
+    scroll.scrollToRow = { proxy.scrollTo($0, anchor: $1) }
+    return TranscriptRowEvents(
       revisionChanged: { _ = follow.contentChanged() },
       firstRowChanged: { holdReadingPosition(proxy) },
       ownMessageChanged: { previous, latest in
@@ -349,35 +369,6 @@ extension TranscriptView {
     proxy.scrollTo(latest.id, anchor: .top)
     await Task.yield()
     if follow.isNearBottom { follow.jumpToLatest() }
-  }
-}
-
-/// "Jump to latest", with a dot when output arrived while the user was reading.
-private struct JumpToLatestPill: View {
-  let title: String
-  let hasUnseenOutput: Bool
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      HStack(spacing: Theme.Spacing.small) {
-        if hasUnseenOutput {
-          Circle().fill(Theme.running).frame(width: 6, height: 6).accessibilityHidden(true)
-        }
-        Label(title, systemImage: "arrow.down")
-      }
-      .font(Theme.Typography.label)
-      .padding(.horizontal, Theme.Spacing.medium)
-      .padding(.vertical, Theme.Spacing.small)
-      .frame(minHeight: Theme.Control.target)
-      .contentShape(Capsule())
-    }
-    .buttonStyle(.plain)
-    .glassSurface(in: Capsule(), isInteractive: true)
-    .glassTransition()
-    .accessibilityLabel("Jump to latest message")
-    .accessibilityValue(hasUnseenOutput ? "New output" : "")
-    .accessibilityIdentifier("jump-to-latest")
   }
 }
 
