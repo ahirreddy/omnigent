@@ -101,9 +101,10 @@ final class PadNewSessionUITests: XCTestCase {
     project.tap()
     let noProject = app.buttons["No Project"]
     XCTAssertTrue(noProject.waitForExistence(timeout: 5), "the project menu did not open")
+    // Hittable: the hidden keyboard-shortcut buttons have no identifier either.
     let named = app.buttons.matching(
       NSPredicate(format: "label != 'No Project' AND identifier == ''")
-    ).allElementsBoundByIndex.first { $0.frame.minY > noProject.frame.minY }
+    ).allElementsBoundByIndex.first { $0.frame.minY > noProject.frame.minY && $0.isHittable }
     guard let named else {
       noProject.tap()
       return

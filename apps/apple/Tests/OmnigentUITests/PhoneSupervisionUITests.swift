@@ -30,9 +30,11 @@ final class PhoneSupervisionUITests: XCTestCase {
     let approval = notification(containing: "Native mobile design")
     XCTAssertTrue(approval.waitForExistence(timeout: 60), "No approval notification")
     try shot("banner")
-    // Long-press the banner while it shows to reveal its actions.
+    // Long-press the banner while it shows to reveal its actions. On iPad the question's
+    // banner can replace it first; the approval then waits in Notification Center.
     approval.press(forDuration: 1.5)
     let approve = springboard.buttons["Approve"]
+    if !approve.waitForExistence(timeout: 5) { try pressInNotificationCenter(approval) }
     XCTAssertTrue(approve.waitForExistence(timeout: 10), "No Approve action")
     XCTAssertTrue(springboard.buttons["Deny"].exists)
     try shot("approval-actions")
@@ -78,6 +80,23 @@ final class PhoneSupervisionUITests: XCTestCase {
     springboard.typeText(text)
     try shot("question-reply")
     springboard.buttons["Send"].tap()
+  }
+
+  /// Long-presses `target` in Notification Center, first expanding the app's stack, where
+  /// only the newest notification has an element.
+  @MainActor
+  private func pressInNotificationCenter(_ target: XCUIElement) throws {
+    let newest = notification(containing: "Choose the first release")
+    for _ in 0..<3 where !target.exists && !newest.waitForExistence(timeout: 3) {
+      openNotificationCenter()
+    }
+    if !target.exists, newest.exists {
+      newest.tap()
+      _ = target.waitForExistence(timeout: 5)
+    }
+    XCTAssertTrue(target.exists, "No approval in Notification Center")
+    try shot("notification-center-approval")
+    target.press(forDuration: 1.5)
   }
 
   @MainActor
