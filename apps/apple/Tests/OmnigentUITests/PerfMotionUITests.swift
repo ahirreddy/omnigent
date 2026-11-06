@@ -12,7 +12,7 @@ import notify
 /// transcript must still show rows (a screenshot is attached).
 ///
 /// `TEST_RUNNER_OMNIGENT_STYLE` picks the transcript style (chat or cli) and
-/// `TEST_RUNNER_OMNIGENT_LONG` the long transcript (0-2, default 1).
+/// `TEST_RUNNER_OMNIGENT_LONG` the long transcript (0-2); without it or a seeded run, it skips.
 final class PerfMotionUITests: XCTestCase {
   private var server: String {
     ProcessInfo.processInfo.environment["OMNIGENT_SERVER"] ?? "http://127.0.0.1:6767"
@@ -213,6 +213,11 @@ final class PerfMotionUITests: XCTestCase {
   /// The app on the local server with the frame monitor, the long transcript open and settled.
   @MainActor
   private func launch() throws -> XCUIApplication {
+    let environment = ProcessInfo.processInfo.environment
+    guard environment["OMNIGENT_LONG"] != nil || environment["OMNIGENT_UITEST_SESSION"] != nil
+    else {
+      throw XCTSkip("Seed with `just apple-seed-large` and set TEST_RUNNER_OMNIGENT_LONG.")
+    }
     let style = ProcessInfo.processInfo.environment["OMNIGENT_STYLE"] ?? "chat"
     let app = XCUIApplication()
     app.launchArguments += [

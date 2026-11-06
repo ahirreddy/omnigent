@@ -1,9 +1,10 @@
 import UIKit
 import XCTest
 
-/// The sidebar's Load more and the transcript's turn rail, against the local server
+/// The sidebar's Load more and the transcript's turn rail, against the seeded local server
 /// (`TEST_RUNNER_OMNIGENT_SERVER`, default http://127.0.0.1:6767) with more sessions than one
-/// page. Set `TEST_RUNNER_PHONE_SHOTS_DIR` to also write each state as `rail-<state>.png`.
+/// page; the rail needs `TEST_RUNNER_OMNIGENT_SESSION`, a session with two or more turns. Set
+/// `TEST_RUNNER_PHONE_SHOTS_DIR` to also write each state as `rail-<state>.png`.
 final class RailPagingUITests: XCTestCase {
   private var server: String {
     ProcessInfo.processInfo.environment["OMNIGENT_SERVER"] ?? "http://127.0.0.1:6767"
@@ -11,6 +12,7 @@ final class RailPagingUITests: XCTestCase {
 
   @MainActor
   func testLoadMoreAddsTheNextPageOfSessions() throws {
+    _ = try LiveServerUITestSupport(self).fixtureSession()
     let app = launch()
     let sidebar = app.descendants(matching: .any)["sidebar"].firstMatch
     XCTAssertTrue(sidebar.waitForExistence(timeout: 30), "the server did not connect")
@@ -38,12 +40,13 @@ final class RailPagingUITests: XCTestCase {
 
   @MainActor
   func testTurnRailTickScrollsToItsTurn() throws {
+    guard let sessionID = ProcessInfo.processInfo.environment["OMNIGENT_SESSION"] else {
+      throw XCTSkip("Set TEST_RUNNER_OMNIGENT_SESSION to a session with two or more turns.")
+    }
     let app = launch()
     XCTAssertTrue(
       app.descendants(matching: .any)["sidebar"].firstMatch.waitForExistence(timeout: 30),
       "the server did not connect")
-    let sessionID =
-      ProcessInfo.processInfo.environment["OMNIGENT_SESSION"] ?? "efb05e5b065c42f78ff2271c7c97fa9b"
     let host = try XCTUnwrap(URL(string: server)?.host(), "no host in \(server)")
     let port = URL(string: server)?.port.map { ":\($0)" } ?? ""
     try openURL("omnigent://\(host)\(port)/c/\(sessionID)")

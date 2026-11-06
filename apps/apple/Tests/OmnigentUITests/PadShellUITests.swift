@@ -35,6 +35,9 @@ final class PadShellUITests: XCTestCase {
 
   @MainActor
   func testDeepLinkOpensTheSessionAndPairingCodesStillConfirm() throws {
+    let sessionID =
+      try ProcessInfo.processInfo.environment["OMNIGENT_SESSION"]
+      ?? LiveServerUITestSupport(self).fixtureSession()
     // iPhone and the folded Duo too: links are not iPad-only.
     let app = try launchPad(padOnly: false)
     // The session list, or a chat tab an iPhone restored from its last run.
@@ -42,10 +45,6 @@ final class PadShellUITests: XCTestCase {
       NSPredicate(format: "identifier == 'server-switcher' OR identifier BEGINSWITH 'transcript-'")
     ).firstMatch
     XCTAssertTrue(connected.waitForExistence(timeout: 30), "the server did not connect")
-    let environment = ProcessInfo.processInfo.environment
-    let sessionID =
-      environment["OMNIGENT_SESSION"] ?? environment["OMNIGENT_UITEST_SESSION"]
-      ?? "efb05e5b065c42f78ff2271c7c97fa9b"
     let host = try XCTUnwrap(URL(string: server)?.host(), "no host in \(server)")
     let port = URL(string: server)?.port.map { ":\($0)" } ?? ""
     try openURL("omnigent://\(host)\(port)/c/\(sessionID)")

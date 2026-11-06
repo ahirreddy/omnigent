@@ -5,6 +5,7 @@ import XCTest
 final class PaletteAndSettingsUITests: XCTestCase {
   @MainActor
   func testPaletteSearchShowsMore() throws {
+    _ = try LiveServerUITestSupport(self).fixtureSession()
     let support = LiveServerUITestSupport(self)
     let app = support.launch()
     support.showSessionList(app)
@@ -34,6 +35,7 @@ final class PaletteAndSettingsUITests: XCTestCase {
 
   @MainActor
   func testSettingsHidesAnAgentFromThePickers() throws {
+    _ = try LiveServerUITestSupport(self).fixtureSession()
     let support = LiveServerUITestSupport(self)
     // Not set by a launch argument, which would shadow what the toggles store.
     let app = support.launch(extra: ["-OmnigentOpenSettings", "appearance"])

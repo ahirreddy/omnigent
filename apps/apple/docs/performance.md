@@ -549,7 +549,7 @@ not (the simulator does not support hitch recording).
 
 ```sh
 xcrun simctl spawn <udid> log stream --style compact --predicate 'subsystem == "ai.omnigent.perf"' &
-TEST_RUNNER_OMNIGENT_STYLE=cli xcodebuild test -workspace apps/apple/Omnigent.xcworkspace \
+TEST_RUNNER_OMNIGENT_LONG=1 TEST_RUNNER_OMNIGENT_STYLE=cli xcodebuild test -workspace apps/apple/Omnigent.xcworkspace \
   -scheme Omnigent -destination 'platform=iOS Simulator,id=<udid>' \
   -only-testing:OmnigentUITests/PerfMotionUITests/testPadSplitWithLongTranscripts
 ```

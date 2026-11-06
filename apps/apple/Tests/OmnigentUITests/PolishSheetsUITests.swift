@@ -111,6 +111,7 @@ final class PolishSheetsUITests: XCTestCase {
 
   @MainActor
   func testServerChipShowsTheWholeHost() throws {
+    _ = try LiveServerUITestSupport(self).fixtureSession()
     let app = try launch()
     let switcher = app.descendants(matching: .any)["server-switcher"].firstMatch
     try showSidebar(app, until: switcher)
