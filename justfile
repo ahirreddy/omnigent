@@ -411,8 +411,8 @@ apple-run: apple-build
 
 alias apple-run-mac := apple-run
 
-# flags: --skip-prereqs, --no-launch, --full-priority.
-# Build the Mac app (Debug, ad hoc signed) and install it as ~/Applications/Omnigent Native.app.
+# flags: --release (optimized, for daily use), --skip-prereqs, --no-launch, --full-priority.
+# Build the Mac app (Debug by default, ad hoc signed) and install it as ~/Applications/Omnigent Native.app.
 [group('client')]
 apple-install-local *flags:
     bash apps/apple/scripts/install-local.sh {{ flags }}
