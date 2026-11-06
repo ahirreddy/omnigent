@@ -41,6 +41,7 @@ extension View {
       }
       .labelStyle(.iconOnly)
       .buttonStyle(.borderless)
+      .tint(.primary)
       .font(.title3)
       .frame(height: 50)
       .padding(.horizontal, 6)
