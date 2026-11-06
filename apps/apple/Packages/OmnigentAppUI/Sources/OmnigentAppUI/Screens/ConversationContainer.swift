@@ -40,7 +40,12 @@ struct ConversationContainer: View {
   /// Why Share shows disabled (sharing turned off on this server).
   var shareUnavailableReason: String?
 
-  @State private var showsInspector = WorkspacePanelDefault.stored() == .open
+  /// The right panel once this chat shows or hides it; until then the default it opened with.
+  @State private var panelChoice: WorkspacePanelDefault?
+  @State private var panelDefault = WorkspacePanelDefault.stored()
+  #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+  #endif
   @State private var inspectorTab: InspectorTab = DefaultWorkspaceTab.stored().inspectorTab
   @State private var showsGoal = false
   @State private var modeRoute = ConversationModeRoute()
@@ -65,7 +70,7 @@ struct ConversationContainer: View {
     ConversationScreen(
       state: screen, composer: composerState(screen),
       draft: textSource.draft(conversation.composer, $textSource),
-      showsInspector: $showsInspector, inspectorTab: $inspectorTab,
+      showsInspector: showsInspector, inspectorTab: $inspectorTab,
       mode: modeRoute.mode(tabRoutes?.openHarness, $modeRoute),
       fork: $forkFlow.sheet,
       actions: routed(forkable(actions)), composerActions: composerActions,
@@ -117,17 +122,28 @@ struct ConversationContainer: View {
       if !running { Task { await panel?.refreshPullRequestsIfShown() } }
     }
     .onChange(of: terminals?.terminals.harness, initial: true) { attachHarness() }
-    .modifier(WorkspacePanelDefaults(workspace: workspace, showsInspector: $showsInspector))
+    .modifier(WorkspacePanelDefaults(workspace: workspace, choice: $panelChoice))
     #if DEBUG
       .modifier(
         PerfConversationHooks(
-          showsInspector: $showsInspector, inspectorTab: $inspectorTab,
+          showsInspector: showsInspector, inspectorTab: $inspectorTab,
           openBrowser: tabRoutes?.openBrowser, openSideChat: tabRoutes?.openNewSideChat))
     #endif
     .onChange(of: changedFilesRevision) {
       guard let workspace else { return }
       Task { await workspace.changedFilesInvalidated() }
     }
+  }
+
+  /// Whether the right panel shows: the chat's choice, else the default where it is a column.
+  private var showsInspector: Binding<Bool> {
+    #if os(iOS)
+      let isSheet = sizeClass == .compact
+    #else
+      let isSheet = false
+    #endif
+    let shown = panelChoice.map { $0 == .open } ?? panelDefault.showsPanel(isSheet: isSheet)
+    return Binding(get: { shown }, set: { panelChoice = $0 ? .open : .collapsed })
   }
 
   private var state: ConversationViewState {
@@ -166,7 +182,7 @@ struct ConversationContainer: View {
       openNewSideChat: tabRoutes?.openNewSideChat,
       showPullRequests: {
         inspectorTab = .pullRequests
-        showsInspector = true
+        panelChoice = .open
       },
       showGoal: {
         showsGoal = true
