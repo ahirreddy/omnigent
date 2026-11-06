@@ -42,4 +42,14 @@ struct WindowTintTests {
     #expect(light == .white)
     #expect(dark == .black)
   }
+
+  /// Opening the share sheet encodes the host's traits, tint included, for its scene on a
+  /// background queue; encoding a dynamic color calls its provider there.
+  @Test func adaptiveColorEncodesOffTheMainThread() async throws {
+    let color = UIColor.adaptive(light: .white, dark: .black)
+    let data = try await Task.detached {
+      try NSKeyedArchiver.archivedData(withRootObject: color, requiringSecureCoding: true)
+    }.value
+    #expect(!data.isEmpty)
+  }
 }

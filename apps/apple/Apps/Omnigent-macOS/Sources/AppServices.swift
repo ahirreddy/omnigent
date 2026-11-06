@@ -66,7 +66,8 @@ final class AppServices {
         tabPersistence = TabPersistence(directory: URL(filePath: directory))
       } else {
         tabPersistence = try TabPersistence.applicationSupport(
-          bundleID: Bundle.main.bundleIdentifier ?? "ai.omnigent.mac")
+          bundleID: Bundle.main.bundleIdentifier ?? "ai.omnigent.mac",
+          isDemo: ProcessInfo.processInfo.arguments.contains("-OmnigentDemo"))
       }
     } catch {
       tabPersistence = nil

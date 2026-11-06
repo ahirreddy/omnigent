@@ -23,7 +23,8 @@ struct IOSRootView: View {
         return TabPersistence(directory: URL(filePath: directory))
       }
       return try TabPersistence.applicationSupport(
-        bundleID: Bundle.main.bundleIdentifier ?? "ai.omnigent.ios")
+        bundleID: Bundle.main.bundleIdentifier ?? "ai.omnigent.ios",
+        isDemo: ProcessInfo.processInfo.arguments.contains("-OmnigentDemo"))
     } catch {
       Logger(subsystem: "ai.omnigent.ios", category: "app").error(
         "Tabs will not be saved: \(error.localizedDescription, privacy: .public)")

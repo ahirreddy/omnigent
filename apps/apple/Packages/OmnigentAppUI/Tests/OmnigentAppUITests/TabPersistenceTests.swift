@@ -169,6 +169,15 @@ struct TabPersistenceTests {
     #expect(reader.claim(window: window, server: "https://OTHER.example/") == .inbox)
   }
 
+  @Test("The demo saves its tabs apart from the local server it shares a URL with")
+  func demoDirectory() {
+    let base = URL(filePath: "/Library/Application Support", directoryHint: .isDirectory)
+    let live = TabPersistence.directory(in: base, bundleID: "app", isDemo: false)
+    let demo = TabPersistence.directory(in: base, bundleID: "app", isDemo: true)
+    #expect(live.path(percentEncoded: false) == "/Library/Application Support/app/Tabs/")
+    #expect(demo.path(percentEncoded: false) == "/Library/Application Support/app/Demo Tabs/")
+  }
+
   @Test("Closing a window drops its page, not its sessions' tabs; quitting keeps both")
   func windowClose() throws {
     let folder = directory()
