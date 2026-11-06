@@ -63,6 +63,12 @@ enum AttachmentLoading {
     return result
   }
 
+  /// Why a paste attached nothing: the composer takes no attachments now.
+  static func unavailable(_ reason: String?) -> String {
+    ["This conversation can't take attachments right now.", reason]
+      .compactMap { $0 }.joined(separator: " ")
+  }
+
   static func providers(_ providers: [NSItemProvider]) async -> Result {
     var result = Result()
     for (offset, provider) in providers.enumerated() {
@@ -73,52 +79,6 @@ enum AttachmentLoading {
       }
     }
     return result
-  }
-}
-
-/// Reads pasted or dropped item providers into attachment inputs.
-enum ItemProviderLoader {
-  enum LoadError: LocalizedError {
-    case unsupported(String)
-    case empty(String)
-
-    var errorDescription: String? {
-      switch self {
-      case .unsupported(let name): "\(name) is not a file or an image."
-      case .empty(let name): "\(name) had no data."
-      }
-    }
-  }
-
-  static func load(_ provider: NSItemProvider, index: Int) async throws -> ComposerAttachmentInput {
-    let name = provider.suggestedName ?? "Pasted item \(index + 1)"
-    if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-      let data = try await data(from: provider, type: .fileURL)
-      guard let url = URL(dataRepresentation: data, relativeTo: nil) else {
-        throw LoadError.empty(name)
-      }
-      return .file(url: url)
-    }
-    guard let type = provider.registeredContentTypes.first(where: { $0.conforms(to: .image) })
-    else { throw LoadError.unsupported(name) }
-    let data = try await data(from: provider, type: type)
-    let fileName = "\(name).\(type.preferredFilenameExtension ?? "png")"
-    return .data(data, suggestedName: fileName, contentType: type)
-  }
-
-  private static func data(from provider: NSItemProvider, type: UTType) async throws -> Data {
-    let name = provider.suggestedName ?? "The item"
-    return try await withCheckedThrowingContinuation { continuation in
-      _ = provider.loadDataRepresentation(for: type) { data, error in
-        if let error {
-          continuation.resume(throwing: error)
-        } else if let data {
-          continuation.resume(returning: data)
-        } else {
-          continuation.resume(throwing: LoadError.empty(name))
-        }
-      }
-    }
   }
 }
 
