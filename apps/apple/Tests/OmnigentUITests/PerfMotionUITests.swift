@@ -41,6 +41,10 @@ final class PerfMotionUITests: XCTestCase {
         input.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "no keyboard")
       }
+      // With a hardware keyboard the on-screen one has no height: nothing to drag it away.
+      guard app.keyboards.firstMatch.frame.height > 0 else {
+        throw XCTSkip("the simulator shows no on-screen keyboard (hardware keyboard connected)")
+      }
       measureStep("keyboard hide") {
         // The transcript dismisses the keyboard interactively: drag from it into the keyboard.
         let start = transcript(app).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
