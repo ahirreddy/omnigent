@@ -64,7 +64,8 @@ struct GalleryDeviceTests {
     #expect(folded.displayScale == 3)
     #expect(
       folded.cornerRadii
-        == RectangleCornerRadii(topLeading: 8, bottomLeading: 8, bottomTrailing: 59, topTrailing: 59))
+        == RectangleCornerRadii(
+          topLeading: 8, bottomLeading: 8, bottomTrailing: 59, topTrailing: 59))
     #expect(folded.crease == nil)
     #expect(!folded.showsSidebar)
     let unfolded = CatalogScreen(.duo, unfolded: true)

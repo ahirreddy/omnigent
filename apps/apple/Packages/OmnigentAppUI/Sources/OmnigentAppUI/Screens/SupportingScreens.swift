@@ -21,7 +21,8 @@ struct ConnectionIssuesBanner: View {
             text: connection.issues.count > 1
               ? "\(issue.error.message) (\(connection.issues.count) problems)"
               : issue.error.message,
-            isError: true)
+            isError: true
+          )
           .accessibilityIdentifier("connection.issue")
           Button("Dismiss") { connection.dismissIssues() }
             .controlSize(.small)
