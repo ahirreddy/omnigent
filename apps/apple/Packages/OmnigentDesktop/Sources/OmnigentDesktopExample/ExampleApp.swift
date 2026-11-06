@@ -14,14 +14,17 @@ struct OmnigentDesktopExampleApp: App {
 
   var body: some Scene {
     let desktop = appDelegate.desktop
+    let defaultServerURL = {
+      desktop.router.requestedServerURL ?? desktop.preferences.defaultServerURL
+    }
     ServerWindowScene(
-      defaultServerURL: { desktop.preferences.defaultServerURL },
+      defaultServerURL: defaultServerURL,
       content: { id in ExampleWindow(id: id, desktop: desktop) }
     )
     .commands {
       OmnigentDesktopCommands(
         actions: DesktopCommandActions(
-          defaultServerURL: { desktop.preferences.defaultServerURL },
+          defaultServerURL: defaultServerURL,
           helpURL: URL(string: "https://github.com/omnigent-ai/omnigent"),
           exportDiagnostics: { print("export diagnostics") },
           checkForUpdates: { print("check for updates") },

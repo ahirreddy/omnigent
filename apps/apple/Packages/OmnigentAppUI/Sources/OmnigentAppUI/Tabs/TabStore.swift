@@ -114,7 +114,7 @@ public final class TabStore {
 
   /// Sessions that a built tab needs open (their conversation, terminals and workspace).
   public var liveSessionIDs: Set<String> {
-    Set(tabs.filter { materialized.contains($0.id) }.compactMap(\.content.sessionID))
+    Set(tabs.filter { materialized.contains($0.id) }.flatMap(\.content.openSessionIDs))
   }
 
   /// The tab with `id`.

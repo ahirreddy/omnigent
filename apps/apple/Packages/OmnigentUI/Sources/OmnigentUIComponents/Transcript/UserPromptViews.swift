@@ -36,13 +36,18 @@ nonisolated enum UserPrompt {
     return String(text.prefix(collapseThreshold))
   }
 
+  /// The web's expand button: "Show full prompt (12,345 chars)".
+  static func expandTitle(_ text: String) -> String {
+    "Show full prompt (\(text.count.formatted()) chars)"
+  }
+
   private static func isAbsolute(_ path: String) -> Bool {
     path.hasPrefix("/") || path.hasPrefix("\\\\")
       || path.wholeMatch(of: /[A-Za-z]:[\\\/].*/) != nil
   }
 }
 
-/// The text of a user bubble: mention chips above Markdown, collapsed with Show more when long.
+/// The text of a user bubble: mention chips above Markdown, collapsed with "Show full prompt" when long, as the web.
 struct UserPromptBody: View {
   let text: String
   @State private var isExpanded = false
@@ -60,12 +65,12 @@ struct UserPromptBody: View {
           .fixedSize(horizontal: false, vertical: true)
       }
       if collapsed != nil {
-        Button("Show more") { isExpanded = true }
+        Button(UserPrompt.expandTitle(prompt.text)) { isExpanded = true }
           .buttonStyle(.borderless)
           .font(.callout)
           .accessibilityIdentifier("user-prompt-show-more")
       } else if UserPrompt.collapsed(prompt.text) != nil {
-        Button("Show less") { isExpanded = false }
+        Button("Collapse prompt") { isExpanded = false }
           .buttonStyle(.borderless)
           .font(.callout)
       }

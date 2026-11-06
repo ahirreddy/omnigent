@@ -13,7 +13,12 @@ struct EmptyTranscriptView: View {
     if state.isHydrating {
       loading
     } else if Self.isEmpty(state) {
-      content
+      // A side chat hides the history it copied, so it starts empty like a new one.
+      if state.header.settings?.sideChatSourceId != nil, !state.hasMoreHistory {
+        SideChatIntro()
+      } else {
+        content
+      }
     }
   }
 

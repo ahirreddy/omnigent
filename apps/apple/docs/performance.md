@@ -254,6 +254,64 @@ Tried and dropped:
   re-renders the screen (it never reads them per keystroke), and every other pass re-renders the
   screen anyway for its closures, so there was nothing to cut.
 
+## Fourth pass: resize and markdown (November 2026)
+
+Two rounds of 3 interleaved runs each (old and new build alternating), Debug, load 300-990, so
+the absolute numbers are 2-5 times the quiet ones; medians, main-thread CPU unless a row says
+otherwise. Cells give round 1 / round 2. The driver's resize schedules its 60 steps a frame
+apart; a slow step lets the overdue ones run back to back, so the resize's "worst frame" is
+several steps and its CPU is the number to compare.
+
+| Scenario, chat style | Before | After |
+| --- | --- | --- |
+| Resize the window over 60 steps | 8.9 s / 16.2 s | 4.8 s / 10.7 s |
+| Open a 500-turn transcript: CPU | 2.38 s / 2.54 s | 1.91 s / 2.16 s |
+| Open it: settled | 3.8 s / 3.0 s | 2.1 s / 2.6 s |
+| Open it: worst frame | 1.10 s / 1.05 s | 0.76 s / 1.01 s |
+| Toggle the sidebar: CPU | 1.59 s / 2.42 s | 1.08 s / 2.26 s |
+| Toggle the sidebar: hitch time / worst frame | 865 ms/s, 470 ms / 738 ms/s, 605 ms | 740 ms/s, 234 ms / 885 ms/s, 451 ms |
+| Toggle the right panel: CPU | 1.21 s / 1.46 s | 1.17 s / 1.57 s |
+| Toggle the right panel: hitch time | 538 / 706 ms/s | 613 / 705 ms/s |
+| Scroll the transcript 90 steps down and back (round 2) | 1.27 s, 184 ms/s | 1.38 s, 197 ms/s |
+
+CLI style (`--style cli`), same conditions, round 1 / round 2:
+
+| Scenario, CLI style | Before | After |
+| --- | --- | --- |
+| Resize the window over 60 steps | 7.5 s / 8.4 s | 5.1 s / 4.7 s |
+| Open a 500-turn transcript: CPU | 2.15 s / 2.33 s | 2.83 s / 1.84 s |
+| Open it: settled / worst frame (round 2) | 3.5 s, 958 ms | 2.7 s, 814 ms |
+| Toggle the right panel: CPU (round 1) | 0.97 s | 0.65 s |
+
+The CLI round 1 ran while the machine's load swung (its new build's launch was also 0.3-2.9 s
+slower than the old one's in the same runs); round 2 repeats the open with steadier load.
+
+What changed:
+
+- **A resize step no longer re-renders the window.** `AppShell` kept the detail column's width
+  in its state for the titlebar's tab strip, so every step re-ran the shell, the sidebar's 650
+  rows, the conversation screen and composer. The width now lives in an observable box
+  (`DetailColumnWidth`) that only the strip reads. `TabSplitView` and the transcript's message
+  navigator likewise keep whether the width fits, not the width. In samples of a resize, view
+  bodies fell from 14% to 5% of each step and the sidebar's outline updates are gone.
+- **Markdown parses and code tokenizes off the main actor.** `MarkdownCache` and
+  `CodeSpanCache` are thread-safe (a `Mutex` around the bounded cache; a miss parses outside
+  the lock). `MarkdownWarmup` hands settled answers to a background task newest first, and a
+  conversation's first page of rows waits up to 0.4 s for the newest 12 (the transcript keeps
+  saying it is loading meanwhile), so the first frame finds them parsed. A row the warm-up has
+  not reached still parses in its body, so nothing shows unformatted and then reflows.
+- **Coloring code spans is linear** (`CodeHighlighting.attributed`): it appends the plain and
+  colored pieces in order instead of mapping each span's offsets from the start of the text.
+
+Tried and left out:
+
+- The open's worst frame (0.75-1 s) is still laying out the first screen of rows; parsing was
+  the smaller part of it.
+- Toggling the right panel animates the detail column, and each animation frame is a resize
+  step; it moved within noise. The sidebar toggle gained from the shell no longer re-rendering.
+- One selectable text view per message instead of one overlay per `Text` (3-5% of samples)
+  needs a TextKit view in place of SwiftUI `Text`, a larger change than this pass.
+
 ## Where the time still goes
 
 - Opening a long session (about 1 s quiet, 2-3 s under load) is SwiftUI building and laying
@@ -261,19 +319,18 @@ Tried and dropped:
   pass over each whole block) is the largest single cost, then view and attribute setup and
   the selectable-text overlays (one AppKit view per selectable `Text`, 3-5% of samples). App
   code stays under 2%.
-- **Resizing the window** is the worst interaction: each size step re-runs SwiftUI's update
-  over the whole window (90% of samples in `NSHostingView.layout`, spread over attribute
-  updates, hover updates, the toolbar and the text selection overlays), and single steps take
-  up to seconds after the transcript rewraps. Toggling the sidebar or the right panel animates
-  the same relayout (480 and 270 ms/s of hitch time). Next levers: a fixed-width transcript
-  column during live resize, and fewer selectable `Text` overlays per message.
+- **Resizing the window** is still the worst interaction, though no longer re-rendering view
+  bodies: each size step is SwiftUI's attribute-graph and layout pass over the whole window
+  (`NSHostingView.layout`, with the titlebar's toolbar layout about a tenth of it), 50-80 ms per
+  step in Debug under load. Toggling the sidebar or the right panel animates the same relayout.
+  Text measuring is under 1% of a resize, so a fixed-width transcript column would not help.
 - While a reply streams, each paced render still costs 10-15 ms in Debug, spread over SwiftUI's
   graph update, the lazy stack's layout and the text overlays.
 - A changed session-list row still sends every session through the core twice (filter and
   totals), about 22 ms with 650 sessions. A turn changes its session's row a few times, so it
   was not worth an incremental core API in this pass.
-- Markdown parsing and code highlighting still run on the main actor on a cache miss (a
-  visible row's first render).
+- Markdown parsing and code highlighting run on the main actor only on a warm-up miss: a row
+  scrolled to before the background task reached it, or a streaming row's open block.
 - Debug is several times slower than Release for this generic SwiftUI and value-type code;
   measure a Release build (`xcodebuild -configuration Release`) before chasing a Debug-only
   cost.
@@ -470,8 +527,90 @@ changed here. The Mac app does not start the frame monitor yet: calling
   the transcript at the new width: about 1.5 s and frames of 0.5 s.
 - **Idle CPU is not zero** while other sessions on the server change: each session event
   updates `SessionListStore` and the sidebar (3-7% here, with other agents' sessions busy).
-- The side-chat tab reads its parent conversation's rows in its body, so it re-renders on every
-  streamed delta of the parent.
 - iPhone apps may draw above 60 Hz on ProMotion devices only with
   `CADisableMinimumFrameDurationOnPhone` in Info.plist; without it SwiftUI animations there
   are capped at 60 Hz (UIKit scrolling is not). Not changed: the simulator can't measure it.
+
+## iPhone and iPad, motion (round 5)
+
+Instruments (`xcrun xctrace record --template 'Time Profiler' --device <udid> --attach <pid>`)
+and iOS XCUITests now run on the build machine; the SwiftUI and Animation Hitches templates do
+not (the simulator does not support hitch recording).
+
+### Tools
+
+- The frame monitor's interval line also reports the main thread's CPU time (`cpu=`), read from
+  `thread_info`, so a step measured from a UI test needs no `ps`.
+- **`Tests/OmnigentUITests/PerfMotionUITests.swift`** drives the motion `PerfDriver` could not:
+  the keyboard through the composer and an interactive swipe, iPad's split view (opens a second
+  long session, splits, drags the divider ±15%, rotates through `XCUIDevice`) and the sidebar
+  button. Each step posts `ai.omnigent.perf.begin`/`.end`, attaches a screenshot and fails if
+  no transcript shows rows afterwards. Run it with the large seed and read the stats lines:
+
+```sh
+xcrun simctl spawn <udid> log stream --style compact --predicate 'subsystem == "ai.omnigent.perf"' &
+TEST_RUNNER_OMNIGENT_STYLE=cli xcodebuild test -workspace apps/apple/Omnigent.xcworkspace \
+  -scheme Omnigent -destination 'platform=iOS Simulator,id=<udid>' \
+  -only-testing:OmnigentUITests/PerfMotionUITests/testPadSplitWithLongTranscripts
+```
+
+  `XCUIDevice` orientation changes did not reach the iPhone app on these simulators, so the
+  iPhone rotation step posts `ai.omnigent.perf.rotate` to the perf driver instead.
+
+### Results (November 2026)
+
+Debug builds, iOS 27.2 simulators, large seed, long transcript 2 open; medians of 3 runs.
+Each cell is main-thread CPU, frames per second, hitch-time ratio (ms/s) and the worst frame.
+"Before" is `apple-native-scaffold` at a63e29785. The machine's load average swung between 15
+and 960 during these runs, so only differences well over 50% mean anything.
+
+| Scenario | Before | After |
+| --- | --- | --- |
+| iPhone 18 Pro Max, chat: rotate once | 1.51 s, 27 fps, 550, 1157 ms | 0.64 s, 45 fps, 247, 316 ms |
+| iPhone 18 Pro Max, CLI: rotate once | 1.53 s, 19 fps, 684, 1215 ms | 0.41 s, 51 fps, 153, 399 ms |
+| iPhone 17e, chat: rotate once | 0.94 s, 38 fps, 373, 948 ms | 0.71 s, 44 fps, 271, 284 ms |
+| iPhone 17e, CLI: rotate once | 0.42 s, 51 fps, 150, 391 ms | 0.41 s, 49 fps, 189, 496 ms |
+| iPhone 18 Pro Max, chat: keyboard show and hide | 1.26 s, 32 fps, 472, 845 ms | 1.32 s, 36 fps, 399, 783 ms |
+| iPhone 18 Pro Max, CLI: keyboard show and hide | 0.85 s, 43 fps, 274, 453 ms | 0.72 s, 46 fps, 242, 465 ms |
+| iPhone 17e, chat: keyboard show and hide | 1.07 s, 37 fps, 387, 774 ms | 1.30 s, 38 fps, 363, 700 ms |
+| iPhone 17e, CLI: keyboard show and hide | 0.73 s, 48 fps, 207, 393 ms | 0.80 s, 38 fps, 374, 706 ms |
+| iPad Pro 11, chat: stream a reply beside a side-chat tab, 12 s (side-chat renders) | every row change (read `rows`) | 1.90 s, 37 fps, 388, 2112 ms (4 renders, transcript 17) |
+| iPad Pro 11, chat: drag the split divider 15% (UI test) | - | 2.76 s, 15 fps, 748, 3851 ms |
+| iPad Pro 11, chat: rotate the split to portrait (UI test) | - | 3.00 s, 27 fps, 557, 2984 ms |
+| iPad Pro 11, CLI: drag the split divider 15% (UI test, 1 run) | - | 2.26 s, 25 fps, 583, 996 ms |
+| iPad (A16), chat: drag the split divider 15% (UI test, 1 run) | - | 3.50 s, 21 fps, 643, 1969 ms |
+| iPad (A16), chat: rotate the split to portrait (UI test, 1 run) | - | 2.84 s, 30 fps, 493, 2597 ms |
+| iPhone 18 Pro Max, chat: rotate once (UI test, 1 run, 4 rotations) | - | 0.50-0.99 s, 40-60 fps, worst 441-970 ms |
+
+What changed:
+
+- **Rotating a large iPhone rebuilt the conversation.** Landscape on the Pro Max sizes is
+  regular width, so the split view expanded from a stack into columns and `InspectorColumn` and
+  the tab container switched branches: the conversation screen and its transcript were
+  destroyed and built again (render counters showed both views leave and appear). Short windows
+  (compact vertical size class) now lay out at compact width like every other iPhone
+  (`shortWindowsStayCompact()`), and `InspectorColumn` and the tab container keep one structure
+  for both size classes (also for iPad windows resized across them). What remains is the
+  transcript laying out at the new width.
+- **The side-chat tab read its parent's `rows`.** It now reads one `RowWatch`
+  (`ConversationStore.watchRow`), updated only when a delta touches that row, so the parent's
+  streamed deltas no longer invalidate it; it still renders when its container does (4 times
+  in 12 s against the transcript's 17).
+
+### Where the time still goes (round 5)
+
+- **Width changes on iPad** (divider drag, rotation, sidebar) re-lay out every visible row of
+  both panes at the new width; each costs 2-4 s of main-thread CPU on this loaded machine, with
+  frames over a second. Dragging the divider re-lays out on every drag event.
+- **Keyboard show and hide** stay at 0.7-1.3 s of main-thread CPU on iPhone, unchanged: UIKit's
+  input-view machinery and the safe-area change re-laying out the visible rows. Driven by the UI
+  test (a real tap, then an interactive drag into the keyboard) each costs 1.8-2.8 s on the
+  loaded machine.
+- **Cold launch with a deep link** signs in once (`.well-known`, `/v1/info` twice, `/v1/me`,
+  the list, updates), then resolves the link with a second `.well-known` and `/v1/info` 0.4 s
+  later and fetches the session's header three times; no second sign-in was seen. Launch to the
+  first request took 7-15 s on the loaded simulator.
+- iPad's transcripts going blank during a turn did not reproduce (opening and switching long
+  transcripts while a reply streams; divider drags and rotation in a
+  split); after a rotation back to landscape the transcript can come back scrolled away from
+  the bottom.

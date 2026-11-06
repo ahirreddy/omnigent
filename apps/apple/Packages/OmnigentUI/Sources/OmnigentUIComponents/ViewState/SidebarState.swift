@@ -225,6 +225,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var projectSort: ProjectSort?
   /// The Display menu offers Shared sessions (a server with sharing).
   public var showsSharedScope = true
+  /// Load more and the folders' pages.
+  public var paging = SidebarPaging()
 
   /// Creates sidebar state.
   /// - Parameters:
@@ -309,6 +311,10 @@ public struct SidebarActions {
   public var setProjectSort: (@MainActor (ProjectSort) -> Void)?
   /// Sign out of the current server.
   public var signOut: (@MainActor () -> Void)?
+  /// Load the page of sessions after the loaded ones.
+  public var loadMoreSessions: (@MainActor () -> Void)?
+  /// Load a folder's first page, or its next one.
+  public var loadProjectPage: (@MainActor (SessionProject) -> Void)?
 
   /// Creates actions.
   /// - Parameters:

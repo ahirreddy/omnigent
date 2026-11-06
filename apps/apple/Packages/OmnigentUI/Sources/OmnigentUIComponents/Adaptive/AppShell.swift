@@ -18,7 +18,7 @@ public struct AppShell<Detail: View>: View {
   private let detail: (SidebarDestination?) -> Detail
 
   @State private var columns: NavigationSplitViewVisibility = .all
-  @State private var detailWidth: CGFloat = 0
+  @State private var detailWidth = DetailColumnWidth()
   @State private var trailingItems: Int?
   /// A tab dragged from the strip onto the content, for the split view's drop targets.
   @State private var tabDrag = TabDragTracker()
@@ -73,8 +73,8 @@ public struct AppShell<Detail: View>: View {
       .environment(tabDrag)
       .onGeometryChange(for: CGFloat.self) {
         $0.size.width
-      } action: {
-        detailWidth = $0
+      } action: { width in
+        if detailWidth.value != width { detailWidth.value = width }
       }
     }
     .adaptiveLayoutWidth()
@@ -86,10 +86,9 @@ extension AppShell {
     if let tabs {
       if showsStrip {
         ToolbarItem(placement: .navigation) {
-          TabStrip(
-            state: tabs.state, actions: tabs.actions, isInTitlebar: true, includesControls: false
-          )
-          .frame(width: stripWidth)
+          TitlebarTabStrip(
+            tabs: tabs, detailWidth: detailWidth, isSidebarHidden: columns == .detailOnly,
+            trailingItems: trailingItems)
         }
         .sharedBackgroundVisibility(.hidden)
         ToolbarSpacer(.flexible)
@@ -114,16 +113,39 @@ extension AppShell {
       .automatic
     #endif
   }
+}
+
+/// The detail column's width. Only the titlebar's tab strip reads it, so resizing the window or
+/// animating a column re-renders the strip instead of the shell and everything it builds.
+@MainActor
+@Observable
+final class DetailColumnWidth {
+  var value: CGFloat = 0
+}
+
+/// The tab strip at the width the titlebar has for it.
+private struct TitlebarTabStrip: View {
+  let tabs: (state: TabsState, actions: TabActions)
+  let detailWidth: DetailColumnWidth
+  let isSidebarHidden: Bool
+  let trailingItems: Int?
+
+  var body: some View {
+    TabStrip(
+      state: tabs.state, actions: tabs.actions, isInTitlebar: true, includesControls: false
+    )
+    .frame(width: stripWidth)
+  }
 
   /// Toolbar items take their ideal width, so the strip is given the detail column's width less
   /// what sits around it: the traffic lights and sidebar toggle when the sidebar is hidden, and
   /// the screen's trailing items (as many as it reports, else room for all of them).
   private var stripWidth: CGFloat {
-    let leading = columns == .detailOnly ? TitlebarMetrics.collapsedLeading : 0
+    let leading = isSidebarHidden ? TitlebarMetrics.collapsedLeading : 0
     let trailing =
       trailingItems.map { TitlebarMetrics.trailingWidth(items: $0) }
       ?? TitlebarMetrics.trailingReserve
-    let width = detailWidth - leading - trailing - TitlebarMetrics.newTabControls
+    let width = detailWidth.value - leading - trailing - TitlebarMetrics.newTabControls
     return max(TitlebarMetrics.minimumStrip, width.rounded(.down))
   }
 }

@@ -163,10 +163,11 @@ impl SettingsPatch {
         self.agent_id.apply_to(&mut settings.agent_id);
         self.harness.apply_to(&mut settings.harness);
         if self.labels.is_reported() {
-            settings.wrapper = self
-                .labels
-                .value()
-                .and_then(|labels| labels.get(WRAPPER_LABEL).cloned());
+            let labels = self.labels.value();
+            settings.wrapper = labels.and_then(|labels| labels.get(WRAPPER_LABEL).cloned());
+            settings.side_chat_source_id = labels
+                .and_then(crate::session_tools::side_chat_source_id)
+                .map(str::to_owned);
         }
         reported(&self.model_override, &mut settings.model_override);
         self.base_model.apply_to(&mut settings.base_model);
@@ -957,7 +958,14 @@ impl ConversationSync {
         };
         // Composed on a copy so a read that cannot be shown leaves paging as it was.
         let mut older = self.older.clone();
-        let items = older.compose(items, older_cursor);
+        let inherited_before = crate::session_tools::side_chat_inherited_before(
+            session.labels.value(),
+            session.harness.value().map(String::as_str),
+            session.created_at,
+        );
+        let (own, older_cursor) = older::own_items(items, older_cursor, inherited_before);
+        let items = older.compose(&own, older_cursor);
+        older.inherited_before = inherited_before;
         let authoritative = history_snapshot(session, &items, header)?;
         let mut current = self.baseline.clone().map_or_else(
             || LiveReducer::new(authoritative.clone()),

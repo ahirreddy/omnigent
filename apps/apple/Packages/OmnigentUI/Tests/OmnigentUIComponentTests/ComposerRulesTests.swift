@@ -163,7 +163,7 @@ struct ComposerRulesTests {
     #expect(Intent.send.alternative(canSteer: true, canQueue: true) == nil)
   }
 
-  @Test("Queued messages cannot carry attachments; steering them in still can")
+  @Test("Queued messages carry attachments, as steered ones do; uploads must finish first")
   func blockedReasons() {
     var state = ComposerSamples.running
     state.queue = []
@@ -171,11 +171,20 @@ struct ComposerRulesTests {
     let rules = ComposerSendRules(state: state, draft: "see attached", canQueue: true)
     #expect(rules.intent == .steer)
     #expect(rules.blockedReason(for: .steer) == nil)
-    #expect(rules.blockedReason(for: .queue) != nil)
+    #expect(rules.blockedReason(for: .queue) == nil)
+    state.attachments[0].state = .uploading(progress: nil)
+    let uploading = ComposerSendRules(state: state, draft: "see attached", canQueue: true)
+    #expect(uploading.blockedReason(for: .queue) == "Waiting for attachments to upload.")
     #expect(
-      rules.placeholder == "\u{21B5} to send now, \u{2325}\u{2318}\u{21B5} to queue for later")
+      rules.placeholder
+        == "Steer the agent \u{2014} \u{21B5} to send now, \u{2325}\u{2318}\u{21B5} to queue for later, "
+        + "Esc to stop")
     let empty = ComposerSendRules(state: ComposerSamples.idle, draft: " ", canQueue: true)
     #expect(empty.sendBlockedReason == "Type a message.")
+    var quoting = ComposerSamples.idle
+    quoting.quotes = [ComposerQuote(text: "the error above")]
+    let quoted = ComposerSendRules(state: quoting, draft: "", canQueue: true)
+    #expect(quoted.sendBlockedReason == nil && quoted.hasContent)
   }
 
   @Test("With Always steer off, a mid-turn send queues and steering is the alternative")

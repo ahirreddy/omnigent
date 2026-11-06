@@ -1,12 +1,17 @@
 import SwiftUI
 
-/// Edits a text file: a monospaced editor with the save status and Save (Command-S), a banner
-/// for a change made elsewhere under unsaved edits, and review actions for the selection.
+/// Edits a text file: a highlighted code editor with the save status and Save (Command-S), a
+/// banner for a change made elsewhere under unsaved edits, review actions for the selection,
+/// and for Markdown the web's formatting toolbar.
 struct FileEditorView: View {
-  @Bindable var editor: FileEditor
+  let editor: FileEditor
+  let language: SyntaxLanguage?
+  let isMarkdown: Bool
   let review: FileReviewContext?
   let comment: (FileTextSpan) -> Void
-  @State private var selection: TextSelection?
+  /// The selected characters, in UTF-16 offsets; `nil` for a caret.
+  @State private var selection: NSRange?
+  @State private var controller = CodeEditorController()
 
   var body: some View {
     VStack(spacing: 0) {
@@ -16,41 +21,105 @@ struct FileEditorView: View {
       }
       SaveBar(editor: editor)
       Divider()
-      TextEditor(text: $editor.text, selection: $selection)
-        .font(WorkspaceTheme.code)
-        .autocorrectionDisabled()
-        #if os(iOS)
-          .textInputAutocapitalization(.never)
-        #endif
-        .scrollContentBackground(.hidden)
-        .padding(.horizontal, 6)
-        .accessibilityIdentifier("workspace.editor")
-      if let review, let span = selectedSpan {
+      if isMarkdown {
+        MarkdownToolbar(controller: controller)
         Divider()
-        HStack(spacing: 12) {
-          Text(span.linesTitle.capitalized)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          Spacer(minLength: 0)
-          FileSpanActions(
-            span: span, review: review, commentDisabled: editor.isDirty || editor.usesCRLF,
-            comment: comment)
-        }
-        .labelStyle(.titleAndIcon)
-        .buttonStyle(.borderless)
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .accessibilityIdentifier("workspace.editor.selection")
       }
+      #if os(iOS)
+        // Above the text, where the keyboard never covers it.
+        selectionBar
+      #endif
+      CodeEditorTextView(
+        editor: editor, language: language, controller: controller
+      ) { range in
+        if range != selection { selection = range }
+      }
+      #if os(macOS)
+        selectionBar
+      #endif
+    }
+  }
+
+  /// The selection's lines and review actions.
+  @ViewBuilder private var selectionBar: some View {
+    if let review, let span = selectedSpan {
+      #if os(macOS)
+        Divider()
+      #endif
+      HStack(spacing: 12) {
+        Text(span.linesTitle.capitalized)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Spacer(minLength: 0)
+        FileSpanActions(
+          span: span, review: review, commentDisabled: editor.isDirty, comment: comment)
+      }
+      .labelStyle(.titleAndIcon)
+      .buttonStyle(.borderless)
+      .font(.callout)
+      .padding(.horizontal, 12)
+      .padding(.vertical, 6)
+      .accessibilityElement(children: .contain)
+      .accessibilityIdentifier("workspace.editor.selection")
+      #if os(iOS)
+        Divider()
+      #endif
     }
   }
 
   private var selectedSpan: FileTextSpan? {
-    guard let selection, case .selection(let range) = selection.indices, !range.isEmpty,
-      range.upperBound <= editor.text.endIndex
-    else { return nil }
-    return FileTextSpan.selection(range, in: editor.text, path: editor.path)
+    guard let selection, let range = Range(selection, in: editor.text) else { return nil }
+    return FileTextSpan.selection(
+      range, in: editor.text, path: editor.path, crlf: editor.usesCRLF)
+  }
+}
+
+/// The web's Markdown formatting buttons over the source: inline marks and block markers.
+private struct MarkdownToolbar: View {
+  let controller: CodeEditorController
+
+  private static let groups: [[MarkdownFormat]] = [
+    [.paragraph, .heading1, .heading2, .heading3, .quote],
+    [.bold, .italic, .strikethrough, .code, .link],
+    [.bulletList, .numberedList, .taskList],
+  ]
+
+  var body: some View {
+    ScrollView(.horizontal) {
+      HStack(spacing: 2) {
+        ForEach(Array(Self.groups.enumerated()), id: \.offset) { index, group in
+          if index > 0 { Divider().frame(height: 16).padding(.horizontal, 4) }
+          ForEach(group) { format in button(format) }
+        }
+      }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 4)
+    }
+    .scrollIndicators(.hidden)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("workspace.editor.markdownToolbar")
+  }
+
+  @ViewBuilder private func button(_ format: MarkdownFormat) -> some View {
+    let button = Button(format.title, systemImage: format.systemImage) { controller.apply(format) }
+      .labelStyle(.iconOnly)
+      .buttonStyle(.borderless)
+      .frame(minWidth: 26, minHeight: 24)
+      .help(help(format))
+      .accessibilityIdentifier("workspace.editor.format.\(format.rawValue)")
+    switch format {
+    case .bold: button.keyboardShortcut("b", modifiers: .command)
+    case .italic: button.keyboardShortcut("i", modifiers: .command)
+    default: button
+    }
+  }
+
+  private func help(_ format: MarkdownFormat) -> String {
+    switch format {
+    case .bold: "Bold (Command-B)"
+    case .italic: "Italic (Command-I)"
+    default: format.title
+    }
   }
 }
 

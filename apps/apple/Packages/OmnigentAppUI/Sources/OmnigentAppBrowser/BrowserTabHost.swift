@@ -49,7 +49,8 @@ public final class BrowserTabHost: BrowserTabHosting {
 
   /// See ``BrowserTabHosting``.
   public func content(
-    for id: UUID, restoring state: Data?, onChange: @escaping @MainActor () -> Void
+    for id: UUID, restoring state: Data?, navigation: BrowserTabNavigation?,
+    onChange: @escaping @MainActor () -> Void
   ) -> AnyView {
     let model: BrowserTabModel
     if let existing = models[id] {
@@ -68,7 +69,8 @@ public final class BrowserTabHost: BrowserTabHosting {
     }
     return AnyView(
       BrowserTabContentView(
-        model: model, environment: environment, keyboardShortcuts: keyboardShortcuts
+        model: model, environment: environment, keyboardShortcuts: keyboardShortcuts,
+        showSessions: navigation?.showSessions, tabsButton: navigation?.tabsButton
       )
       .onChange(of: model.restoreRevision) { onChange() })
   }

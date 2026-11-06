@@ -10,7 +10,8 @@ import Testing
 @Suite("Session tools adapter")
 struct SessionToolsAdapterTests {
   private let routes = SessionToolsAdapter.Routes(
-    openSession: { _ in }, showPullRequests: {}, showGoal: {}, report: { _ in })
+    openSession: { _ in }, openNewSideChat: { _, _ in }, showPullRequests: {}, showGoal: {},
+    report: { _ in })
 
   private func loaded(_ id: String, in store: ConnectionStore) async throws -> ConversationStore {
     let conversation = try #require(store.conversation(id))
@@ -50,7 +51,7 @@ struct SessionToolsAdapterTests {
     #expect(SessionToolsAdapter.goalSheet(conversation, summary: nil)?.isReadOnly == true)
   }
 
-  @Test("Selected text is quoted under the draft; a read-only viewer gets no selection popup")
+  @Test("Selected text becomes a quote block after the draft; a read-only viewer gets no popup")
   func selectionActions() async throws {
     let store = try await PreviewData.connectedDemoStore()
     let conversation = try await loaded("demo-design", in: store)
@@ -59,7 +60,14 @@ struct SessionToolsAdapterTests {
     #expect(actions.askInSideChat != nil)
     conversation.composer.text = "Look at this:"
     actions.replyWithSelection?("first\nsecond")
-    #expect(conversation.composer.text == "Look at this:\n\n> first\n> second\n\n")
+    #expect(conversation.composer.quotes.map(\.text) == ["first\nsecond"])
+    #expect(conversation.composer.quotes.map(\.before) == ["Look at this:"])
+    #expect(conversation.composer.text.isEmpty)
+    conversation.composer.text = "Why?"
+    #expect(conversation.composer.draftMessage == "Look at this:\n\n> first\n> second\n\nWhy?")
+    conversation.composer.removeQuote(at: 0)
+    #expect(conversation.composer.quotes.isEmpty)
+    #expect(conversation.composer.text == "Look at this:\n\nWhy?")
 
     var readOnly = ConversationActions()
     let notes = try await loaded("demo-notes", in: store)
@@ -75,6 +83,24 @@ struct SessionToolsAdapterTests {
     SessionToolsAdapter.add(to: &extras, store: conversation, summary: nil, routes: routes)
     #expect(extras.isPlanOn == SessionToolsAdapter.planMode(conversation)?.isOn)
     #expect(extras.togglePlan != nil)
+  }
+
+  @Test("Asking in a Codex-native side chat types the quoted /side command, never over a draft")
+  func codexSideChatFromSelection() async throws {
+    let store = try await PreviewData.connectedDemoStore()
+    let conversation = try await loaded("demo-design", in: store)
+    var opened: [String] = []
+    var reports: [String] = []
+    let routes = SessionToolsAdapter.Routes(
+      openSession: { _ in }, openNewSideChat: { draft, _ in opened.append(draft) },
+      showPullRequests: {}, showGoal: {}, report: { reports.append($0) })
+    conversation.composer.text = ""
+    SessionToolsAdapter.startSideChat(conversation, routes: routes, quote: "why?")
+    #expect(conversation.composer.text == "/side > why?\n\n")
+    SessionToolsAdapter.startSideChat(conversation, routes: routes, quote: "again")
+    #expect(conversation.composer.text == "/side > why?\n\n")
+    #expect(reports.count == 1)
+    #expect(opened.isEmpty)
   }
 
   @Test("A goal maps to the tray pill with its usage")

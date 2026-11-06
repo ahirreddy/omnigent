@@ -245,27 +245,6 @@ nonisolated enum MarkdownParser {
   }
 }
 
-/// A bounded cache of parsed markdown, so scrolling a long transcript re-parses nothing.
-/// A view asks it once per text (``MarkdownRenderMemo``); the oldest entry goes first.
-@MainActor
-final class MarkdownCache {
-  static let shared = MarkdownCache(limit: 512)
-
-  private var entries: BoundedCache<String, [MarkdownBlock]>
-
-  init(limit: Int) {
-    entries = BoundedCache(limit: limit)
-  }
-
-  func blocks(for text: String) -> [MarkdownBlock] {
-    entries.value(for: text) {
-      PerformanceSignposts.measure(PerformanceSignposts.transcript, "markdown parse") {
-        MarkdownParser.parse(text)
-      }
-    }
-  }
-}
-
 /// A dictionary that forgets its oldest entries past `limit`, in amortized constant time.
 nonisolated struct BoundedCache<Key: Hashable, Value> {
   private let limit: Int
@@ -279,11 +258,21 @@ nonisolated struct BoundedCache<Key: Hashable, Value> {
 
   var count: Int { entries.count }
 
+  /// How many entries it keeps.
+  var capacity: Int { limit }
+
   func cached(_ key: Key) -> Value? { entries[key] }
 
   mutating func value(for key: Key, make: () -> Value) -> Value {
     if let cached = entries[key] { return cached }
     let value = make()
+    store(value, for: key)
+    return value
+  }
+
+  /// Keeps `value` for `key`, unless `key` has one already.
+  mutating func store(_ value: Value, for key: Key) {
+    guard entries[key] == nil else { return }
     entries[key] = value
     order.append(key)
     if order.count - head > limit {
@@ -294,7 +283,6 @@ nonisolated struct BoundedCache<Key: Hashable, Value> {
         head = 0
       }
     }
-    return value
   }
 }
 

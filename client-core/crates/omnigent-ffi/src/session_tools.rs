@@ -5,6 +5,7 @@
 use omnigent_core::session_tools as core;
 
 use crate::client::ClientCore;
+use crate::creation::FirstMessage;
 use crate::errors::CoreError;
 
 /// How a side chat starts.
@@ -15,10 +16,11 @@ pub enum SideChatStart {
         /// The command prefix.
         prefix: String,
     },
-    /// The side chat session exists; open it.
-    Session {
-        /// The new session.
-        session_id: String,
+    /// Open an empty side chat with `draft` in its composer; its session is created when the
+    /// first message is sent (`create_side_chat`).
+    Draft {
+        /// The composer's starting text, empty or a quote.
+        draft: String,
     },
 }
 
@@ -26,9 +28,34 @@ impl From<core::SideChatStart> for SideChatStart {
     fn from(start: core::SideChatStart) -> Self {
         match start {
             core::SideChatStart::Command { prefix } => Self::Command { prefix },
-            core::SideChatStart::Session { session_id } => Self::Session { session_id },
+            core::SideChatStart::Draft { draft } => Self::Draft { draft },
         }
     }
+}
+
+/// A side chat created by its first message.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CreatedSideChat {
+    /// The side chat session.
+    pub session_id: String,
+    /// The first message's outcome. The session exists either way: retry the send to it.
+    pub first_message: FirstMessage,
+}
+
+impl From<core::CreatedSideChat> for CreatedSideChat {
+    fn from(created: core::CreatedSideChat) -> Self {
+        Self {
+            session_id: created.session_id,
+            first_message: created.first_message.into(),
+        }
+    }
+}
+
+/// How a side chat of a session on `harness` starts, with a `quote` (selected transcript text)
+/// quoted in its composer. Makes no request.
+#[uniffi::export]
+pub fn side_chat_start(harness: Option<String>, quote: Option<String>) -> SideChatStart {
+    core::side_chat_start(harness.as_deref(), quote.as_deref()).into()
 }
 
 /// How a session takes a goal.
@@ -126,20 +153,21 @@ pub fn reply_quote(draft: String, selection: String) -> String {
 
 #[uniffi::export]
 impl ClientCore {
-    /// Starts a side chat of `session_id`; a `quote` (selected transcript text) starts its
-    /// composer quoted.
+    /// Creates a side chat of `session_id` and sends `text` as its first message. A failed first
+    /// message is reported in the result once the side chat exists.
     ///
     /// # Errors
     ///
-    /// [`CoreError::Session`]: the read and write errors, `ExecutionUnavailable` when the
-    /// session's runner is gone, `DeliveryUncertain` when the fork may exist.
-    pub async fn start_side_chat(
+    /// [`CoreError::Session`]: `EmptyMessage`, the read and write errors,
+    /// `ExecutionUnavailable` when the session's runner is gone, `DeliveryUncertain` when the
+    /// fork may exist.
+    pub async fn create_side_chat(
         &self,
         session_id: String,
-        quote: Option<String>,
-    ) -> Result<SideChatStart, CoreError> {
+        text: String,
+    ) -> Result<CreatedSideChat, CoreError> {
         self.sessions()
-            .start_side_chat(&session_id, quote.as_deref())
+            .create_side_chat(&session_id, &text)
             .await
             .map(Into::into)
             .map_err(CoreError::from)

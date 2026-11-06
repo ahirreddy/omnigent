@@ -106,4 +106,20 @@ struct NewSessionAdapterTests {
     ])
     #expect(rows == [NewSessionWorktreeOption(path: "/r-wt", branch: "wt")])
   }
+
+  @Test func smartRoutingIsOfferedForRoutedNativeAgentsOnAHost() {
+    let form = NewSessionForm()
+    form.selection.agentId = "codex"
+    #expect(form.smartRouting(catalog()) == .unavailable, "the server routes nothing")
+    var routed = catalog()
+    routed.smartRouting = true
+    #expect(form.smartRouting(routed) == .disabled)
+    form.selection.smartRouting = true
+    #expect(form.smartRouting(routed) == .enabled)
+    form.selection.agentId = "polly"
+    #expect(form.smartRouting(routed) == .unavailable, "an SDK agent picks its own model")
+    form.selection.agentId = "claude"
+    form.isSandbox = true
+    #expect(form.smartRouting(routed) == .unavailable)
+  }
 }

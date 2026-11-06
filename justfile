@@ -347,6 +347,33 @@ apple-test-ui: _ensure-apple
             -only-testing:"${pair##*:}"
     done
 
+# device: simulator name or UDID; filter: a class or Class/testMethod (default: all).
+# iOS/iPad UI tests on a simulator against the local server, seeding their fixture session first.
+[group('client')]
+apple-uitest-ios device=APPLE_SIMULATOR filter="": _ensure-apple
+    #!/usr/bin/env bash
+    set -euo pipefail
+    read -r session workspace < <(.venv/bin/python apps/apple/Tools/seed-ui-test-fixtures.py)
+    if [[ "{{ device }}" =~ ^[0-9A-Fa-f-]{36}$ ]]; then key=id; else key=name; fi
+    TEST_RUNNER_OMNIGENT_UITEST_SESSION="$session" \
+    TEST_RUNNER_OMNIGENT_UITEST_WORKSPACE="$workspace" \
+    TEST_RUNNER_OMNIGENT_E2E_SERVER_URL="http://127.0.0.1:6767" \
+    TEST_RUNNER_OMNIGENT_LINK_SESSION_ID="$session" \
+    TEST_RUNNER_OMNIGENT_FILES_SESSION_ID="$session" \
+    TEST_RUNNER_OMNIGENT_GLASS_SESSION_ID="$session" \
+    xcodebuild test -workspace {{ APPLE_WORKSPACE }} -scheme Omnigent \
+        -destination "platform=iOS Simulator,$key={{ device }}" \
+        -derivedDataPath {{ APPLE_DERIVED_DATA }}-iOS \
+        -only-testing:"OmnigentUITests{{ if filter == "" { "" } else { "/" + filter } }}"
+
+# filter: a class or Class/testMethod (default: all). Takes the real mouse and keyboard.
+# The Developer ID app's UI tests, or some of them (`apple-test-ui` runs both editions').
+[group('client')]
+apple-uitest-mac filter="": _ensure-apple
+    xcodebuild test -workspace {{ APPLE_WORKSPACE }} -scheme OmnigentMac \
+        -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }} \
+        -only-testing:"OmnigentMacUITests{{ if filter == "" { "" } else { "/" + filter } }}"
+
 # Strict SwiftLint over apps/apple (config: apps/apple/.swiftlint.yml).
 [group('client')]
 apple-lint:

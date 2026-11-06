@@ -32,6 +32,7 @@ public struct ConnectedServerView: View {
   @State private var renamingFromTab: OmnigentUIComponents.SessionSummary?
   @State private var renameText = ""
   @Environment(\.horizontalSizeClass) private var sizeClass
+  @Environment(\.openSettingsAt) private var openSettingsAt
   @AppStorage(InterfacePreferences.openLinksInAppKey) private var openLinksInApp = false
   @AppStorage(InterfacePreferences.openSubagentsInPanelKey) private var openSubagentsApart = false
 
@@ -179,7 +180,17 @@ public struct ConnectedServerView: View {
     }
   }
 
-  @ViewBuilder private func detail(_ destination: SidebarDestination?) -> some View {
+  /// Links from a session's chat: server links in the app, others in a browser tab or outside.
+  private func linkOpener(in sessionID: String) -> ExternalURLOpener {
+    serverLinkOpener(
+      windowTabs.linkOpener(opener, inApp: openLinksInApp, in: sessionID),
+      openSettings: openSettingsAt)
+  }
+
+  /// A destination's content; `sideChatOf` names the session a side chat was forked from.
+  @ViewBuilder private func detail(
+    _ destination: SidebarDestination?, sideChatOf source: String? = nil
+  ) -> some View {
     switch destination {
     case .session(let id):
       if let conversation = connection.conversations[id] {
@@ -189,7 +200,7 @@ public struct ConnectedServerView: View {
           panel: session.panels[id],
           changedFilesRevision: connection.changedFilesRevision,
           navigation: navigation(from: id),
-          opener: windowTabs.linkOpener(opener, inApp: openLinksInApp, in: id),
+          opener: linkOpener(in: id),
           openSession: { selection = .session($0) },
           retry: { connection.foreground() },
           server: connection.connectedServer,
@@ -198,9 +209,11 @@ public struct ConnectedServerView: View {
           sessionActions: sidebarActions.sessions,
           makeForkStore: { connection.makeForkStore() },
           menuContext: ConversationContainer.menuContext(
-            connection.sessionList, session: connection.sessionList.session(id)),
+            connection.sessionList, session: connection.sessionList.session(id),
+            sideChatOf: source),
           makeShareStore: { connection.share(sessionID: id) },
-          offersShare: connection.pages?.offered?.sharing == true
+          offersShare: source == nil && ShareAdapter.offered(connection.pages?.offered),
+          shareUnavailableReason: ShareAdapter.unavailableReason(connection.pages?.offered)
         )
         .id(id)
       } else {
@@ -274,7 +287,7 @@ extension ConnectedServerView {
     let tabs = session.tabs
     let routes = windowTabs
     let store = tabs.current
-    let keepsAlive = store?.split == nil && sizeClass != .compact
+    let keepsAlive = store?.split == nil
     // A session-less page shows among the kept-alive tabs, which stay built underneath it.
     let page = store == nil && keepsAlive ? tabs.page.map(Self.pageTab) : nil
     ZStack {
@@ -282,8 +295,10 @@ extension ConnectedServerView {
         split: store?.splitState, actions: store.map(routes.actions) ?? TabActions()
       ) { pane in
         if keepsAlive {
-          let kept = tabs.keptAlive() + (page.map { [$0] } ?? [])
-          KeptAliveTabs(kept, shownID: store?.selectedID ?? page?.id ?? "") { tab in
+          KeptAliveTabs(
+            keptAlive(page: page, isCompact: sizeClass == .compact),
+            shownID: store?.selectedID ?? page?.id ?? ""
+          ) { tab in
             tabContent(tab, routes: routes)
           }
         } else if let store, let tab = paneTab(pane, in: store) {
@@ -297,17 +312,6 @@ extension ConnectedServerView {
     }
   }
 
-  /// A session-less page as a tab of the kept-alive stack, under one stable id.
-  private static func pageTab(_ destination: SidebarDestination) -> AppTab {
-    AppTab(id: "page", content: AppTabContent(destination))
-  }
-
-  /// The tab a pane shows: the selected tab when the session is not split.
-  private func paneTab(_ pane: TabPane, in tabs: TabStore) -> AppTab? {
-    guard let split = tabs.splitState else { return tabs.selected }
-    return split.activeID(pane).flatMap(tabs.tab)
-  }
-
   /// A tab's content: a session's chat through ``detail(_:)``, the other kinds through their
   /// tab views.
   private func tabContent(_ tab: AppTab, routes: WindowTabs) -> some View {
@@ -317,13 +321,7 @@ extension ConnectedServerView {
       case .chat, .newSession, .inbox, .canvas, .automations, .usage:
         detail(tab.content.destination)
       case .newTab:
-        NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: tab.id))
-          .task(id: routes.newTabState.recentSessions.map(\.id)) {
-            let recent = routes.newTabState.recentSessions.map(\.id)
-            async let profiles: Void = session.loadRemoteBrowserProfiles(recent.first)
-            await session.loadDeclaredTerminalNames(recent)
-            await profiles
-          }
+        newTabPage(tab, routes: routes)
       case .terminal(let sessionID, let terminalID):
         TerminalTabView(
           session: session, sessionID: sessionID, terminalID: terminalID,
@@ -335,9 +333,14 @@ extension ConnectedServerView {
         SideChatTabContainer(
           session: session, sessionID: sessionID, rowID: rowID,
           showChat: { tabs.showChat(sessionID) })
+      case .sideChatSession(let parentID, let childID):
+        sideChat(tab, parentID: parentID, childID: childID, routes: routes)
       case .browser(let browserID):
         BrowserTabContainer(
           host: tabContext.browser, tab: tab, browserID: browserID,
+          // On iPhone the page hides the navigation bar and shows these beside its address.
+          navigation: BrowserTabNavigation(
+            showSessions: { selection = nil }, tabsButton: AnyView(tabsButton(routes))),
           changed: { tabs.tab(tab.id).flatMap { tabs.groups[$0.sessionID] }?.contentChanged() })
       case .agentBrowser(let sessionID):
         AgentBrowserTabContainer(
@@ -349,25 +352,15 @@ extension ConnectedServerView {
     .id(tab.id)
   }
 
-  private func remoteBrowser(
-    _ tab: AppTab, sessionID: String, tabID: String, routes: WindowTabs
+  /// A side chat's tab: its session once its first message created it, else the unsent one.
+  @ViewBuilder private func sideChat(
+    _ tab: AppTab, parentID: String, childID: String?, routes: WindowTabs
   ) -> some View {
-    RemoteBrowserTabContainer(
-      session: session, tab: tab, sessionID: sessionID, tabID: tabID,
-      reopen: { url, record in
-        Task {
-          await routes.openRemoteBrowser(
-            in: sessionID, profile: record.profile, url: url, replacing: tab.id)
-        }
-      },
-      // On iPhone the remote tab hides the navigation bar (Safari's layout), so it offers
-      // the session list and the tab overview itself.
-      showSessions: { selection = nil },
-      tabsButton: {
-        let strip = routes.strip
-        return TabSwitcherButton(
-          state: strip?.state ?? TabsState(tabs: []), actions: strip?.actions ?? TabActions())
-      })
+    if let childID {
+      detail(.session(childID), sideChatOf: parentID)
+    } else {
+      PendingSideChatTab(session: session, tabID: tab.id, parentID: parentID, fail: routes.fail)
+    }
   }
 
   /// The window's saved page applies unless the host already chose one (a deep link, a new

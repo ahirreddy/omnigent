@@ -24,15 +24,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
+#[cfg(test)]
+use super::session_tools::SIDE_CHAT_SOURCE_LABEL;
+use super::session_tools::side_chat_source_id;
+
 /// The header that carries the host id on REST and event-stream requests.
 pub const SLICE_KEY_HEADER: &str = "X-Databricks-Omnigent-Slice-Key";
 /// The query parameter that carries the host id on WebSocket URLs.
 pub const SLICE_KEY_QUERY: &str = "omnigent_slice_key";
 /// The label a managed create records the host id it chose in, until that host binds.
 const REQUESTED_HOST_LABEL: &str = "omnigent.sandbox.requested_host_id";
-const SIDE_CHAT_SOURCE_LABEL: &str = "omnigent.side_chat.source_id";
-const SIDE_CHAT_LABEL: &str = "omnigent.side_chat";
-const FORK_SOURCE_LABEL: &str = "omnigent.fork.source_id";
 const WRONG_REPLICA: &str = "wrong_replica";
 
 /// What the client knows about where sessions run. Reset with the connection.
@@ -102,13 +103,7 @@ impl ReplicaRouting {
             }
             (Reported::Unsaid, None) => {}
         }
-        let label_parent = labels.and_then(|labels| {
-            labels.get(SIDE_CHAT_SOURCE_LABEL).cloned().or_else(|| {
-                (labels.get(SIDE_CHAT_LABEL).map(String::as_str) == Some("1"))
-                    .then(|| labels.get(FORK_SOURCE_LABEL).cloned())
-                    .flatten()
-            })
-        });
+        let label_parent = labels.and_then(side_chat_source_id).map(str::to_owned);
         let parent = match parent {
             Reported::Value(parent) if !parent.is_empty() => Some(parent.to_owned()),
             Reported::Unsaid if label_parent.is_none() => return,

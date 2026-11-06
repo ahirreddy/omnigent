@@ -2,23 +2,18 @@ import OmnigentPlatform
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// A Markdown table with the web's controls above it: Copy (as Markdown, CSV or TSV), Download
-/// (CSV or Markdown) and Expand, which shows the table on its own, scrolling both ways.
+/// A Markdown table sitting in the text, with its controls in a row under it: Copy (as
+/// Markdown, CSV or TSV), Download (CSV or Markdown) and Expand, which shows the table on its
+/// own, scrolling both ways.
 struct MarkdownTableBlock: View {
   let table: MarkdownTable
   @State private var isExpanded = false
 
   var body: some View {
-    // A card as the web's table wrapper, with the controls in its top corner.
-    VStack(alignment: .trailing, spacing: Theme.Spacing.extraSmall) {
-      MarkdownTableControls(table: table, isExpanded: $isExpanded)
+    VStack(alignment: .leading, spacing: 0) {
       MarkdownTableView(table: table)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .padding(Theme.Spacing.small)
-    .background(ThemeColor.hover, in: RoundedRectangle(cornerRadius: Theme.Radius.large))
-    .overlay {
-      RoundedRectangle(cornerRadius: Theme.Radius.large).strokeBorder(ThemeColor.border)
+      MarkdownTableControls(table: table, isExpanded: $isExpanded)
     }
     .expandedPresentation(isPresented: $isExpanded) {
       ExpandedTable(table: table)

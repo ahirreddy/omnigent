@@ -37,7 +37,7 @@ public struct NewSessionPage: View {
   ///   - optionActions: Their actions.
   public init(
     draft: Binding<String>, composer: ComposerViewState, actions: ComposerActions,
-    heading: String = "What should we work on?",
+    heading: String = Self.defaultHeading,
     importSessions: (@MainActor () -> Void)? = nil, showsContextDetails: Bool = false,
     options: NewSessionOptions? = nil, optionActions: NewSessionOptionActions = .init()
   ) {
@@ -50,6 +50,9 @@ public struct NewSessionPage: View {
     self.importSessions = importSessions
     self.showsContextDetails = showsContextDetails
   }
+
+  /// The web's new-session heading, when the server's branding sets none.
+  public static let defaultHeading = "What should we build?"
 
   /// The page.
   public var body: some View {

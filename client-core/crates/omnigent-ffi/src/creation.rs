@@ -140,6 +140,9 @@ pub struct CreationCatalog {
     /// `agent_detail`: an agent's configuration can be read.
     #[uniffi(default)]
     pub agent_detail: bool,
+    /// `smart_routing_enabled` with a router for native Claude Code and Codex panes.
+    #[uniffi(default)]
+    pub smart_routing: bool,
 }
 
 /// A new sandbox for a session.
@@ -189,6 +192,10 @@ pub struct CreationSelection {
     /// The first-class project the session is filed in from its creation.
     #[uniffi(default)]
     pub project_id: Option<String>,
+    /// Smart Routing picks the model and effort each turn (see
+    /// `creation_offers_smart_routing`); the model and effort are not sent with it.
+    #[uniffi(default)]
+    pub smart_routing: bool,
 }
 
 /// The `git` block of a new external-host session.
@@ -348,6 +355,7 @@ impl From<core::CreationCatalog> for CreationCatalog {
             github_connection: catalog.capabilities.github_connection,
             fork_workspaces: catalog.capabilities.fork_workspaces,
             agent_detail: catalog.capabilities.agent_detail,
+            smart_routing: catalog.capabilities.smart_routing,
         }
     }
 }
@@ -371,6 +379,7 @@ impl From<CreationCatalog> for core::CreationCatalog {
                 // Already combined with `agent_install` on the way out.
                 custom_agents_settings: catalog.custom_agents_settings,
                 agent_detail: catalog.agent_detail,
+                smart_routing: catalog.smart_routing,
             },
         }
     }
@@ -392,6 +401,7 @@ impl From<CreationSelection> for core::CreationSelection {
             }),
             plan_mode: selection.plan_mode,
             project_id: selection.project_id,
+            smart_routing: selection.smart_routing,
         }
     }
 }
@@ -416,16 +426,22 @@ impl From<omnigent_core::events::MessageSent> for MessageSent {
     }
 }
 
+impl From<core_create::FirstMessage> for FirstMessage {
+    fn from(first: core_create::FirstMessage) -> Self {
+        match first {
+            core_create::FirstMessage::Sent(sent) => Self::Sent { sent: sent.into() },
+            core_create::FirstMessage::Failed(error) => Self::Failed {
+                error: error.into(),
+            },
+        }
+    }
+}
+
 impl From<core_create::CreatedSession> for CreatedSession {
     fn from(created: core_create::CreatedSession) -> Self {
         Self {
             receipt: created.receipt.into(),
-            first_message: match created.first_message {
-                core_create::FirstMessage::Sent(sent) => FirstMessage::Sent { sent: sent.into() },
-                core_create::FirstMessage::Failed(error) => FirstMessage::Failed {
-                    error: error.into(),
-                },
-            },
+            first_message: created.first_message.into(),
         }
     }
 }
@@ -472,6 +488,14 @@ pub fn creation_approval_mode_menu(agent: CreationAgent) -> Option<ApprovalModeM
 #[uniffi::export]
 pub fn creation_starts_in_plan_mode(catalog: CreationCatalog, agent_id: String) -> bool {
     core::CreationCatalog::from(catalog).starts_in_plan_mode(&agent_id)
+}
+
+/// Whether a new session of `agent_id` can turn Smart Routing on: the server routes native
+/// panes and the agent runs Claude Code or Codex natively.
+#[must_use]
+#[uniffi::export]
+pub fn creation_offers_smart_routing(catalog: CreationCatalog, agent_id: String) -> bool {
+    core::CreationCatalog::from(catalog).offers_smart_routing(&agent_id)
 }
 
 /// Whether `name` is a branch name a new worktree can use.
@@ -674,6 +698,26 @@ impl ClientCore {
         };
         self.sessions()
             .create_sandbox_session(&selection.into(), &target, &title)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Creates a session whose first message, `text`, the caller sends next with
+    /// `send_first_message` (after uploading attachments to it). Smart Routing picks a native
+    /// pane's model from `text` at creation.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::create_session`].
+    pub async fn create_session_for_message(
+        &self,
+        selection: CreationSelection,
+        title: String,
+        text: String,
+    ) -> Result<CreationReceipt, CoreError> {
+        self.sessions()
+            .create_session_for_message(&selection.into(), &title, &text)
             .await
             .map(Into::into)
             .map_err(CoreError::from)

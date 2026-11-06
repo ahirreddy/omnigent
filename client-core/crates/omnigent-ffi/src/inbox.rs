@@ -85,7 +85,7 @@ pub fn line_character_range(text: String, line: u64) -> Option<Vec<u64>> {
     comments_core::line_character_range(&text, line).map(|(start, end)| vec![start, end])
 }
 
-/// An open comment on a file and the line it starts on.
+/// A comment on a file and the line it starts on.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct FileCommentLine {
     /// The 1-based line; `None` when the comment has no position in the current text.
@@ -94,7 +94,8 @@ pub struct FileCommentLine {
     pub comment: FileComment,
 }
 
-/// The open comments on `path`, each with the line of `text` it starts on, in file order.
+/// The comments on `path`, open and sent, each with the line of `text` it starts on (an open
+/// one follows its moved anchor), in file order.
 #[must_use]
 #[uniffi::export]
 pub fn file_comment_lines(
@@ -365,6 +366,68 @@ impl ClientCore {
             .await
             .map(Into::into)
             .map_err(CoreError::from)
+    }
+
+    /// Edits a comment's text (`body`), resolves it (`open` false) or reopens it (`open` true).
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`; `InvalidInput` for an empty comment or no
+    /// change; the write errors (only the author may edit the text).
+    pub async fn update_session_comment(
+        &self,
+        session_id: String,
+        comment_id: String,
+        body: Option<String>,
+        open: Option<bool>,
+    ) -> Result<FileComment, CoreError> {
+        let update = comments_core::CommentUpdate { body, open };
+        self.sessions()
+            .update_session_comment(&session_id, &comment_id, &update)
+            .await
+            .map(Into::into)
+            .map_err(CoreError::from)
+    }
+
+    /// Deletes a comment.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`; the write errors (only the author may).
+    pub async fn delete_session_comment(
+        &self,
+        session_id: String,
+        comment_id: String,
+    ) -> Result<(), CoreError> {
+        self.sessions()
+            .delete_session_comment(&session_id, &comment_id)
+            .await
+            .map_err(CoreError::from)
+    }
+
+    /// Sends comments to the agent as one message (the web's "Address All"), marking them
+    /// sent; when the message fails they are reopened.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`; `InvalidInput` without comments; the write
+    /// and send errors.
+    pub async fn send_comments_to_agent(
+        &self,
+        session_id: String,
+        comment_ids: Vec<String>,
+    ) -> Result<MessageSent, CoreError> {
+        let sent = self
+            .sessions()
+            .send_comments_to_agent(&session_id, &comment_ids)
+            .await
+            .map_err(CoreError::from)?;
+        Ok(MessageSent {
+            queued: sent.submission.queued,
+            item_id: sent.submission.item_id,
+            pending_id: sent.submission.pending_id,
+            draft: sent.draft,
+        })
     }
 
     /// Every comment on `session_id`'s files.

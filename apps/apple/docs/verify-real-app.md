@@ -26,6 +26,7 @@ playground can't show. Every polish pass ends with this check, in the apps thems
 3. **Tabs.** Tabs are scoped per session.
    - Selecting another session swaps the whole strip; coming back shows its tabs and the tab
      that was selected (a terminal stays selected, not the chat). The chat tab can't be closed.
+   - New side chats open as tabs of their parent session and leave with it.
    - New Session, Inbox, Canvas, Automations and Usage show full size with no strip.
    - Split view pairs two tabs of the same session; another session goes in another window.
    - Quit and relaunch: the window comes back on its page and each session on its tabs.

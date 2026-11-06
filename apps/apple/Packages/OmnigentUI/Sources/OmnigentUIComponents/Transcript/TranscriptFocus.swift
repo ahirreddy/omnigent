@@ -71,14 +71,17 @@ extension EnvironmentValues {
 
 /// The web's message highlight: a warning-color tint behind the linked message that fades out.
 struct MessageFlash: View {
+  /// A CLI row is a full-width band: square, flush with the row. A chat message gets a rounded
+  /// tint a little larger than itself.
+  var isBand = false
   @State private var isVisible = true
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.colorScheme) private var colorScheme
 
   var body: some View {
-    RoundedRectangle(cornerRadius: Theme.Radius.medium)
+    RoundedRectangle(cornerRadius: isBand ? 0 : Theme.Radius.medium)
       .fill(Theme.warning.opacity(isVisible ? (colorScheme == .dark ? 0.24 : 0.16) : 0))
-      .padding(-Theme.Spacing.small)
+      .padding(isBand ? 0 : -Theme.Spacing.small)
       .allowsHitTesting(false)
       .accessibilityHidden(true)
       .task {

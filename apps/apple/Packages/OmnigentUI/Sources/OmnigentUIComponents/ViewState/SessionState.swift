@@ -102,6 +102,8 @@ nonisolated public struct SessionSettings: Hashable, Sendable {
   public var hostResumable: Bool?
   /// The parent session of a child.
   public var parentId: String?
+  /// The session a side chat was forked from; `nil` for other sessions.
+  public var sideChatSourceId: String?
   /// `cost_control_mode_override`.
   public var routingMode: String?
 
@@ -120,6 +122,7 @@ nonisolated public struct SessionSettings: Hashable, Sendable {
   ///   - runnerBound: Runner bound.
   ///   - hostResumable: Host can be woken.
   ///   - parentId: Parent session.
+  ///   - sideChatSourceId: The session a side chat was forked from.
   ///   - routingMode: Routing mode.
   public init(
     agentId: String? = nil, harness: String? = nil, wrapper: String? = nil,
@@ -127,7 +130,7 @@ nonisolated public struct SessionSettings: Hashable, Sendable {
     reasoningEffort: ReportedValue = .notReported, modelOptions: [ModelOption] = [],
     hostId: String? = nil, hostOnline: Bool? = nil, runnerOnline: Bool? = nil,
     runnerBound: Bool? = nil, hostResumable: Bool? = nil, parentId: String? = nil,
-    routingMode: String? = nil
+    sideChatSourceId: String? = nil, routingMode: String? = nil
   ) {
     self.agentId = agentId
     self.harness = harness
@@ -142,6 +145,7 @@ nonisolated public struct SessionSettings: Hashable, Sendable {
     self.runnerBound = runnerBound
     self.hostResumable = hostResumable
     self.parentId = parentId
+    self.sideChatSourceId = sideChatSourceId
     self.routingMode = routingMode
   }
 

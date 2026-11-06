@@ -53,12 +53,21 @@ enum InboxTriageMapping {
         items[index].isUnread = false
       }
     }
+    return viewState(items, connection: connection)
+  }
+
+  /// The items with the header's counts and the list's loading and paging.
+  private static func viewState(_ items: [InboxItem], connection: ConnectionStore)
+    -> InboxViewState
+  {
     var state = InboxViewState(items: items)
     // Sessions, not requests: the header matches the sidebar, Dock and menu bar.
     state.needsYouCount = Int(connection.sessionList.attentionTotals.sessionsNeedingYou)
     state.failedSessionCount =
       (connection.pages?.commentErrors.count ?? 0) + (connection.pages?.outputErrors.count ?? 0)
     state.isAssembling = isAssembling(connection)
+    state.hasMoreSessions = connection.sessionList.paging.hasMore
+    state.isLoadingMoreSessions = connection.sessionList.paging.isLoading
     return state
   }
 

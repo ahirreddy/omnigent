@@ -38,6 +38,7 @@ enum ComposerAdapter {
     state.slashCommandsNote = composer.skillsProblem
     state.mentionsNote = composer.mentionProblem
     state.mentions = composer.mentions
+    state.quotes = composer.quotes.map { ComposerQuote(before: $0.before, text: $0.text) }
     state.approvalPickerRequest = composer.approvalPickerRequests
     state.connection = connection(store)
     state.statusPlaceholder = statusPlaceholder(store, connection: state.connection)
@@ -126,7 +127,10 @@ enum ComposerAdapter {
       case .waitingForHost: .waitingForHost
       case .failed(let message): .failed(message: message)
       }
-    return QueuedMessage(id: String(item.id), text: item.text, state: state)
+    return QueuedMessage(
+      id: String(item.id), text: item.text, state: state,
+      files: item.extras.files.map { QueuedMessage.File(name: $0.name, isImage: $0.isImage) },
+      mentions: item.extras.mentions)
   }
 
   /// Where the session runs: agent, host, workspace, server and sandbox, and why nothing can
@@ -191,6 +195,9 @@ enum ComposerAdapter {
     extras.history = history(composer, prompts: prompts)
     extras.attachMention = { composer.addMention($0) }
     extras.removeMention = { composer.removeMention($0) }
+    extras.quotes = ComposerQuoteActions(
+      remove: { composer.removeQuote(at: $0) },
+      editLead: { composer.editQuoteLead(at: $0, text: $1) })
     extras.setSmartRouting = { enabled in Task { await composer.setSmartRouting(enabled) } }
     extras.liveness.checkAgain = reconnect
     return extras

@@ -1,16 +1,20 @@
 //! The composer's session tools, as the web's Add (+) menu has them: side chats, Codex plan
 //! mode and the session goal.
 //!
-//! - A side chat forks the conversation into its own session (`POST …/fork` with
-//!   `side_chat: true`) bound to the parent's live runner, relaunching the parent first when its
-//!   runner stopped. Codex forks natively from a typed `/side`, so for it the composer is
-//!   prefilled instead (web `createSideChat`, `usesNativeSideChatFork`).
+//! - A side chat opens as a draft and forks the conversation into its own session (`POST …/fork`
+//!   with `side_chat: true`) only when its first message is sent, bound to the parent's live
+//!   runner, relaunching the parent first when its runner stopped. Codex forks natively from a
+//!   typed `/side`, so for it the composer is prefilled instead (web `createSideChat`,
+//!   `usesNativeSideChatFork`).
 //! - Plan mode is Codex-native's collaboration mode (`PATCH` `collaboration_mode`).
 //! - The goal is Codex-native's `…/codex_goal`; top-level Polly sessions on the Claude SDK or
 //!   Codex take a `/goal <condition>` command instead (web `shouldShow*GoalControl`).
 
+use std::collections::BTreeMap;
+
 use serde_json::{Map, Value, json};
 
+use super::create::FirstMessage;
 use super::json::{as_object, opt_str};
 use super::requests::validate_identifier;
 use super::sessions::decode_snapshot_value;
@@ -26,6 +30,11 @@ pub const SIDE_CHAT_TITLE: &str = "Side chat";
 const SIDE_CHAT_DISCONNECTED: &str =
     "This session is disconnected. Reconnect it before starting a side chat.";
 const CODEX_NATIVE_HARNESS: &str = "codex-native";
+/// Marks a session forked as a side chat (`"1"`); the server hides it from the session list.
+pub const SIDE_CHAT_LABEL: &str = "omnigent.side_chat";
+/// The session a side chat was forked from.
+pub const SIDE_CHAT_SOURCE_LABEL: &str = "omnigent.side_chat.source_id";
+const FORK_SOURCE_LABEL: &str = "omnigent.fork.source_id";
 const CODEX_NATIVE_WRAPPER: &str = "codex-native-ui";
 const COLLABORATION_LABEL: &str = "omnigent.codex_native.collaboration_mode";
 const PLAN: &str = "plan";
@@ -38,11 +47,64 @@ pub enum SideChatStart {
         /// The command prefix, [`SIDE_CHAT_COMMAND_PREFIX`].
         prefix: String,
     },
-    /// The side chat session exists; open it.
-    Session {
-        /// The new session.
-        session_id: String,
+    /// Open an empty side chat with `draft` in its composer; its session is created when the
+    /// first message is sent ([`ClientCore::create_side_chat`]).
+    Draft {
+        /// The composer's starting text, empty or a quote.
+        draft: String,
     },
+}
+
+/// A side chat created by its first message.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CreatedSideChat {
+    /// The side chat session.
+    pub session_id: String,
+    /// The first message's outcome. The session exists either way: retry the send to it.
+    pub first_message: FirstMessage,
+}
+
+/// How a side chat of a session on `harness` starts, with a `quote` (text selected in the
+/// transcript) quoted in its composer. Makes no request.
+#[must_use]
+pub fn side_chat_start(harness: Option<&str>, quote: Option<&str>) -> SideChatStart {
+    let draft = quote
+        .map(|quote| reply_quote("", quote))
+        .unwrap_or_default();
+    if harness == Some(CODEX_NATIVE_HARNESS) {
+        SideChatStart::Command {
+            prefix: format!("{SIDE_CHAT_COMMAND_PREFIX}{draft}"),
+        }
+    } else {
+        SideChatStart::Draft { draft }
+    }
+}
+
+/// The session a side chat was forked from, from its labels; `None` for any other session.
+#[must_use]
+pub fn side_chat_source_id(labels: &BTreeMap<String, String>) -> Option<&str> {
+    labels
+        .get(SIDE_CHAT_SOURCE_LABEL)
+        .or_else(|| {
+            (labels.get(SIDE_CHAT_LABEL).map(String::as_str) == Some("1"))
+                .then(|| labels.get(FORK_SOURCE_LABEL))
+                .flatten()
+        })
+        .map(String::as_str)
+        .filter(|id| !id.is_empty())
+}
+
+/// When a server-forked side chat began: the history it copied from its parent was created
+/// before it. `None` for other sessions, and for Codex's native fork, which copies nothing.
+#[must_use]
+pub fn side_chat_inherited_before(
+    labels: Option<&BTreeMap<String, String>>,
+    harness: Option<&str>,
+    created_at: i64,
+) -> Option<i64> {
+    let forked =
+        labels.is_some_and(|labels| labels.get(SIDE_CHAT_LABEL).map(String::as_str) == Some("1"));
+    (forked && harness != Some(CODEX_NATIVE_HARNESS)).then_some(created_at)
 }
 
 /// How a session takes a goal.
@@ -175,38 +237,43 @@ fn decode_goal(value: &Value) -> Result<Option<SessionGoal>, String> {
 }
 
 impl<T: HttpTransport> ClientCore<T> {
-    /// Starts a side chat of `source_id`. With a `quote` (text selected in the transcript), the
-    /// side chat's composer starts with it quoted: a forked session's draft, or after the command
-    /// prefix for a harness that forks from a typed command.
+    /// Creates a side chat of `source_id` and sends `text` as its first message (web
+    /// `startPendingSideChat`). Once the side chat exists the result is `Ok`: a failed first
+    /// message is reported in [`CreatedSideChat::first_message`], to be sent again to the side
+    /// chat, never by creating another.
     ///
     /// # Errors
     ///
-    /// [`SessionError::InvalidIdentifier`] before any request; the read and write errors;
-    /// [`SessionError::ExecutionUnavailable`] when the session's runner is gone and cannot be
-    /// relaunched; [`SessionError::DeliveryUncertain`] when the fork may exist. A failed runner
-    /// binding is returned as its write error: the side chat exists but is unbound.
+    /// [`SessionError::EmptyMessage`] and [`SessionError::InvalidIdentifier`] before any request;
+    /// the read and write errors; [`SessionError::ExecutionUnavailable`] when the session's runner
+    /// is gone and cannot be relaunched; [`SessionError::DeliveryUncertain`] when the fork may
+    /// exist. A failed runner binding is returned as its write error: the side chat exists but is
+    /// unbound.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    pub async fn start_side_chat(
+    pub async fn create_side_chat(
         &self,
         source_id: &str,
-        quote: Option<&str>,
-    ) -> Result<SideChatStart, SessionError> {
-        let result = self.side_chat(source_id).await.and_then(|start| {
-            let Some(quote) = quote else { return Ok(start) };
-            let draft = reply_quote("", quote);
-            match start {
-                SideChatStart::Command { prefix } => Ok(SideChatStart::Command {
-                    prefix: format!("{prefix}{draft}"),
-                }),
-                SideChatStart::Session { session_id } => {
-                    self.update_composer(&session_id, &draft)?;
-                    Ok(SideChatStart::Session { session_id })
-                }
+        text: &str,
+    ) -> Result<CreatedSideChat, SessionError> {
+        let result = async {
+            if text.trim().is_empty() {
+                return Err(SessionError::EmptyMessage);
             }
-        });
+            validate_identifier(source_id)?;
+            let session_id = self.fork_side_chat(source_id).await?;
+            let first_message = match self.send(&session_id, text, false).await {
+                Ok(sent) => FirstMessage::Sent(sent),
+                Err(error) => FirstMessage::Failed(error),
+            };
+            Ok(CreatedSideChat {
+                session_id,
+                first_message,
+            })
+        }
+        .await;
         self.dispatch();
         result
     }
@@ -215,13 +282,8 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    async fn side_chat(&self, source_id: &str) -> Result<SideChatStart, SessionError> {
+    async fn fork_side_chat(&self, source_id: &str) -> Result<String, SessionError> {
         let (mut decoded, _) = self.fetch_snapshot(source_id).await?;
-        if decoded.snapshot.harness.value().map(String::as_str) == Some(CODEX_NATIVE_HARNESS) {
-            return Ok(SideChatStart::Command {
-                prefix: SIDE_CHAT_COMMAND_PREFIX.to_owned(),
-            });
-        }
         let source = &decoded.snapshot;
         let has_host = source.host_id.value().is_some_and(|id| !id.is_empty());
         let relaunchable = source.host_online.value() != Some(&false)
@@ -252,14 +314,15 @@ impl<T: HttpTransport> ClientCore<T> {
         let body = json!({"title": SIDE_CHAT_TITLE, "side_chat": true});
         let acknowledgement = self.write_json("POST", &fork, &body).await?;
         let receipt = self.accept_fork(acknowledgement)?;
+        lock(&self.state)
+            .side_chats
+            .insert(receipt.session_id.clone());
         if let Some(runner_id) = runner_id {
             let path = format!("/v1/sessions/{}", receipt.session_id);
             self.write_json("PATCH", &path, &json!({"runner_id": runner_id}))
                 .await?;
         }
-        Ok(SideChatStart::Session {
-            session_id: receipt.session_id,
-        })
+        Ok(receipt.session_id)
     }
 
     /// Turns Codex plan mode on or off for `session_id`. Returns whether it is on afterwards.

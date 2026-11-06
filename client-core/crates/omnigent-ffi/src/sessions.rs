@@ -93,6 +93,18 @@ pub struct SessionSummary {
     pub created_by_session_id: Option<String>,
 }
 
+/// How many sessions one project folder page reads, as the web's folder.
+const PROJECT_PAGE_LIMIT: u32 = 20;
+
+/// One page of a project folder's sessions.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ProjectSessionPage {
+    /// The project's sessions, most recently updated first.
+    pub sessions: Vec<SessionSummary>,
+    /// The cursor of the next page, if any.
+    pub next_cursor: Option<String>,
+}
+
 /// One of the caller's projects (a sidebar folder).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct ProjectSummary {
@@ -429,6 +441,28 @@ impl ClientCore {
             .projects()
             .await
             .map(|projects| projects.into_iter().map(Into::into).collect())
+            .map_err(CoreError::from)
+    }
+
+    /// One page of the caller's unarchived sessions in `project`, most recently updated first
+    /// (a sidebar folder's Show more). The sessions also reach the list as a
+    /// `SessionListChanged` upsert.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidPagination`; the read errors.
+    pub async fn project_sessions(
+        &self,
+        project: ProjectSummary,
+        after: Option<String>,
+    ) -> Result<ProjectSessionPage, CoreError> {
+        self.sessions()
+            .project_session_page(&project.name, after.as_deref(), PROJECT_PAGE_LIMIT)
+            .await
+            .map(|page| ProjectSessionPage {
+                sessions: page.sessions.into_iter().map(Into::into).collect(),
+                next_cursor: page.next_cursor,
+            })
             .map_err(CoreError::from)
     }
 

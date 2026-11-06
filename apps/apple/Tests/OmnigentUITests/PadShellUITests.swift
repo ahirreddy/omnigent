@@ -2,47 +2,13 @@ import UIKit
 import XCTest
 
 /// iPad shell journeys against the local server (`TEST_RUNNER_OMNIGENT_SERVER`, default
-/// http://127.0.0.1:6767): the New Session page's controls answer taps, and the sidebar's server
-/// menu can leave a no-auth server for the server list and come back.
+/// http://127.0.0.1:6767): the sidebar's server menu can leave a no-auth server for the server
+/// list and come back, and links open sessions. `PadNewSessionUITests` taps the New Session page.
 ///
 /// Set `TEST_RUNNER_PHONE_SHOTS_DIR` to also write each state as `pad-<state>.png` there.
 final class PadShellUITests: XCTestCase {
   private var server: String {
     ProcessInfo.processInfo.environment["OMNIGENT_SERVER"] ?? "http://127.0.0.1:6767"
-  }
-
-  @MainActor
-  func testNewSessionControlsAnswerTaps() throws {
-    let app = try launchPad()
-    let newSession = app.descendants(matching: .any)["sidebar-new-session"].firstMatch
-    XCTAssertTrue(newSession.waitForExistence(timeout: 30), "the server did not connect")
-    newSession.tap()
-
-    let approval = app.descendants(matching: .any)["composer-approval-mode"].firstMatch
-    XCTAssertTrue(approval.waitForExistence(timeout: 15), "no approval chip")
-    approval.tap()
-    let mode = app.descendants(matching: .any)
-      .matching(NSPredicate(format: "identifier BEGINSWITH 'composer-approval-mode-'")).firstMatch
-    XCTAssertTrue(mode.waitForExistence(timeout: 5), "the approval menu did not open")
-    try shot(app, "approval-menu")
-    dismissMenu(app)
-
-    let agents = app.descendants(matching: .any)["composer-configuration"].firstMatch
-    XCTAssertTrue(agents.waitForExistence(timeout: 5), "no agent picker")
-    agents.tap()
-    let agent = app.descendants(matching: .any)
-      .matching(NSPredicate(format: "identifier BEGINSWITH 'composer-agent-'")).firstMatch
-    XCTAssertTrue(agent.waitForExistence(timeout: 5), "the agent picker did not open")
-    try shot(app, "agent-picker")
-    dismissMenu(app)
-
-    let setUp = app.buttons["new-session-harness-setup"]
-    if setUp.exists {
-      setUp.tap()
-      let sheet = app.descendants(matching: .any)["harness-setup-sheet"].firstMatch
-      XCTAssertTrue(sheet.waitForExistence(timeout: 10), "Set Up did not open its sheet")
-      try shot(app, "harness-setup")
-    }
   }
 
   @MainActor
@@ -71,10 +37,14 @@ final class PadShellUITests: XCTestCase {
   func testDeepLinkOpensTheSessionAndPairingCodesStillConfirm() throws {
     // iPhone and the folded Duo too: links are not iPad-only.
     let app = try launchPad(padOnly: false)
-    let switcher = app.descendants(matching: .any)["server-switcher"].firstMatch
-    XCTAssertTrue(switcher.waitForExistence(timeout: 30), "the server did not connect")
+    // The session list, or a chat tab an iPhone restored from its last run.
+    let connected = app.descendants(matching: .any).matching(
+      NSPredicate(format: "identifier == 'server-switcher' OR identifier BEGINSWITH 'transcript-'")
+    ).firstMatch
+    XCTAssertTrue(connected.waitForExistence(timeout: 30), "the server did not connect")
+    let environment = ProcessInfo.processInfo.environment
     let sessionID =
-      ProcessInfo.processInfo.environment["OMNIGENT_SESSION"]
+      environment["OMNIGENT_SESSION"] ?? environment["OMNIGENT_UITEST_SESSION"]
       ?? "efb05e5b065c42f78ff2271c7c97fa9b"
     let host = try XCTUnwrap(URL(string: server)?.host(), "no host in \(server)")
     let port = URL(string: server)?.port.map { ":\($0)" } ?? ""
@@ -115,18 +85,11 @@ final class PadShellUITests: XCTestCase {
       return true
     }
     let app = XCUIApplication()
-    app.launchArguments += [
-      "-omnigent.lastServer", server, "-ApplePersistenceIgnoreState", "YES",
-    ]
+    app.launchArguments +=
+      ["-omnigent.lastServer", server] + LiveServerUITestSupport.freshStateArguments
     app.launch()
     XCUIDevice.shared.orientation = isPad ? .landscapeLeft : .portrait
     return app
-  }
-
-  /// Closes an open menu by tapping outside it, near the window's bottom-trailing corner.
-  @MainActor
-  private func dismissMenu(_ app: XCUIApplication) {
-    app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.95)).tap()
   }
 
   @MainActor

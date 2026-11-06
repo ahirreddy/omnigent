@@ -619,7 +619,29 @@ impl<T: HttpTransport> ClientCore<T> {
         selection: &CreationSelection,
         title: &str,
     ) -> Result<CreationReceipt, SessionError> {
-        let result = self.create(selection, title).await;
+        let result = self.create(selection, title, None).await;
+        self.dispatch();
+        result
+    }
+
+    /// Creates a session whose first message, `text`, the caller sends next (with attachments
+    /// uploaded to it in between). Otherwise as [`Self::create_session`]; Smart Routing picks
+    /// a native pane's model from `text` at creation.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::create_session`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn create_session_for_message(
+        &self,
+        selection: &CreationSelection,
+        title: &str,
+        text: &str,
+    ) -> Result<CreationReceipt, SessionError> {
+        let result = self.create(selection, title, Some(text)).await;
         self.dispatch();
         result
     }
@@ -643,7 +665,7 @@ impl<T: HttpTransport> ClientCore<T> {
         text: &str,
     ) -> Result<CreatedSession, SessionError> {
         let result = async {
-            let receipt = self.create(selection, title).await?;
+            let receipt = self.create(selection, title, Some(text)).await?;
             let first_message = match self.send(&receipt.session_id, text, false).await {
                 Ok(sent) => FirstMessage::Sent(sent),
                 Err(error) => FirstMessage::Failed(error),
@@ -687,6 +709,7 @@ impl<T: HttpTransport> ClientCore<T> {
         &self,
         selection: &CreationSelection,
         title: &str,
+        first_message: Option<&str>,
     ) -> Result<CreationReceipt, SessionError> {
         validate_identifier(&selection.host_id)?;
         validate_identifier(&selection.agent_id)?;
@@ -708,13 +731,13 @@ impl<T: HttpTransport> ClientCore<T> {
             .agent(&selection.agent_id)
             .ok_or_else(|| CreationError::Unavailable("Choose a registered agent.".into()))?
             .clone();
-        let models = if selection.model.is_some() {
+        let models = if selection.model.is_some() && !selection.smart_routing {
             self.models_for(&agent, &selection.host_id).await?
         } else {
             Vec::new()
         };
         catalog.validate(selection, &models)?;
-        let body = creation_body(selection, name, &agent);
+        let body = creation_body(selection, name, &agent, first_message);
         self.submit_creation(&body).await
     }
 

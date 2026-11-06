@@ -1,12 +1,53 @@
 import SwiftUI
 
+/// The paging of one folder: its members are read from the server a page at a time (the web's
+/// `?project=` read), and listed five more per Show more.
+struct ProjectFolderPages {
+  /// Rows listed.
+  let visibleCount: Int
+  /// Members left on the server.
+  let hasMore: Bool
+  let isLoading: Bool
+  /// The first page was read.
+  let isLoaded: Bool
+  /// Reveal five more rows, reading the next page when the loaded ones run out.
+  let showMore: () -> Void
+  /// Read the folder's first page, or its next.
+  let load: (() -> Void)?
+}
+
+extension ProjectFolderPages {
+  /// A folder's rows and pages: Show more lists five more and reads the next server page once
+  /// the loaded rows run out.
+  @MainActor init(
+    project: SessionProject, sessions: [SessionSummary], paging: SidebarPaging, shown: Int,
+    selectedID: String?, load: (@MainActor (SessionProject) -> Void)?,
+    setShown: @escaping (Int) -> Void
+  ) {
+    let selectedIndex = selectedID.flatMap { id in sessions.firstIndex { $0.id == id } }
+    let visible = ProjectFolderPaging.visibleCount(
+      count: sessions.count, shown: shown, selectedIndex: selectedIndex)
+    let loadPage = load.map { load in { load(project) } }
+    self.init(
+      visibleCount: visible, hasMore: paging.projectsWithMore.contains(project.id),
+      isLoading: paging.loadingProjects.contains(project.id),
+      isLoaded: paging.loadedProjects.contains(project.id),
+      showMore: {
+        let next = visible + ProjectFolderPaging.pageSize
+        setShown(next)
+        if next > sessions.count { loadPage?() }
+      },
+      load: loadPage)
+  }
+}
+
 /// One project folder, as the web's: the label with New session in project and the project
 /// menu on hover (and in the context menu), then its sessions, five until Show more.
 struct ProjectFolder<Row: View>: View {
   let project: SessionProject
   let sessions: [SessionSummary]
   @Binding var isExpanded: Bool
-  @Binding var showsAll: Bool
+  let pages: ProjectFolderPages
   let menu: ProjectMenu
   let drop: (SidebarDragItem) -> Bool
   @ViewBuilder let row: (SessionSummary) -> Row
@@ -17,29 +58,20 @@ struct ProjectFolder<Row: View>: View {
 
   @State private var isHovered = false
 
-  /// Sessions shown before Show more.
-  static var collapsedCount: Int { 5 }
-
   var body: some View {
     DisclosureGroup(isExpanded: $isExpanded) {
       if sessions.isEmpty {
-        Text("No sessions").foregroundStyle(.secondary)
+        if pages.isLoading || (pages.load != nil && !pages.isLoaded) {
+          ProgressView().controlSize(.small)
+        } else {
+          Text("No sessions").foregroundStyle(.secondary)
+        }
       }
-      ForEach(showsAll ? sessions : Array(sessions.prefix(Self.collapsedCount))) { session in
+      ForEach(sessions.prefix(pages.visibleCount)) { session in
         row(session)
       }
-      if sessions.count > Self.collapsedCount {
-        Button {
-          showsAll.toggle()
-        } label: {
-          HStack {
-            Text(showsAll ? "Show less" : "Show more")
-            Spacer(minLength: 4)
-            if let moreMarker { SidebarMarkerView(marker: moreMarker) }
-          }
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
+      if pages.visibleCount < sessions.count || (pages.hasMore && !sessions.isEmpty) {
+        showMore
       }
     } label: {
       HStack(spacing: Theme.Spacing.tiny) {
@@ -71,7 +103,27 @@ struct ProjectFolder<Row: View>: View {
         }
       }
       .accessibilityIdentifier("sidebar-project-\(project.id)")
+      // An expanded folder reads its own first page, as the web's (collapsed ones cost nothing).
+      .task(id: isExpanded && !pages.isLoaded) {
+        if isExpanded, !pages.isLoaded { pages.load?() }
+      }
     }
+  }
+
+  private var showMore: some View {
+    // Waiting on the next server page, with no loaded rows left to reveal.
+    let isWaiting = pages.isLoading && pages.visibleCount >= sessions.count
+    return Button(action: pages.showMore) {
+      HStack {
+        Text(isWaiting ? "Loading\u{2026}" : "Show more")
+        Spacer(minLength: 4)
+        if let moreMarker { SidebarMarkerView(marker: moreMarker) }
+      }
+    }
+    .buttonStyle(.borderless)
+    .foregroundStyle(.secondary)
+    .disabled(isWaiting)
+    .accessibilityIdentifier("project-show-more-\(project.id)")
   }
 
   @ViewBuilder private var hoverButtons: some View {

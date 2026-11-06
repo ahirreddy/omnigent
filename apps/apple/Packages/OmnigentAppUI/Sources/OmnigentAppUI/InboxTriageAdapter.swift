@@ -110,6 +110,8 @@ struct InboxTriageAdapter: View {
         await pages?.refreshLatestOutputs(unreadSessions)
       }
     }
+    let paging = connection.sessionList.paging
+    actions.loadMoreSessions = { paging.loadMore() }
     return actions
   }
 

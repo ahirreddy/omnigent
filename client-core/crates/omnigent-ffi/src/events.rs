@@ -308,6 +308,14 @@ pub enum CoreEvent {
     },
     /// The session list finished loading (or reloading).
     SessionListLoaded,
+    /// Whether more sessions can load after the list's rows, and whether a page of them is
+    /// loading. Sent after a list load and whenever either changes.
+    SessionListPagingChanged {
+        /// Sessions exist after the loaded rows.
+        has_more: bool,
+        /// A page of them is loading.
+        is_loading: bool,
+    },
     /// An open session's stream changed state.
     SessionLinkChanged {
         /// The session.

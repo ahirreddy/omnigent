@@ -24,9 +24,11 @@ struct OmnigentMacApp: App {
   var body: some Scene {
     let services = appDelegate.services
     let desktop = services.desktop
-    // The demo's windows open on its offline server, whatever the default server is.
+    // The demo's windows open on its offline server, whatever the default server is; a window
+    // opened for a link that launched the app opens on the link's server.
     let defaultServerURL = {
-      OmnigentMacAppDelegate.demoServerURL ?? desktop.preferences.defaultServerURL
+      OmnigentMacAppDelegate.demoServerURL ?? desktop.router.requestedServerURL
+        ?? desktop.preferences.defaultServerURL
     }
     ServerWindowScene(
       defaultServerURL: defaultServerURL,
@@ -126,6 +128,10 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   override func applicationShouldTerminate(_ sender: NSApplication)
     -> NSApplication.TerminateReply
   {
+    askAboutUnsavedEdits(sender) { [self] in finishTerminating(sender) }
+  }
+
+  private func finishTerminating(_ sender: NSApplication) -> NSApplication.TerminateReply {
     services.willTerminate()
     return super.applicationShouldTerminate(sender)
   }
@@ -207,6 +213,30 @@ struct AppSettingsView: View {
       #if OMNIGENT_CHROMIUM
         UpdateSettingsSection(updater: updater, issue: services.updaterIssue)
       #endif
+    }
+    // A link that moves to a wide tab rebuilds the toolbar with the old tab highlighted.
+    .onChange(of: navigator.tab, initial: true) { _, tab in
+      Task { @MainActor in
+        SettingsToolbarHighlight.select(tab)
+        try? await Task.sleep(for: .milliseconds(150))
+        SettingsToolbarHighlight.select(tab)
+      }
+    }
+  }
+}
+
+/// Keeps the Settings toolbar's highlighted item on the shown tab.
+enum SettingsToolbarHighlight {
+  /// Highlights the toolbar item titled `tab` in the window that shows the Settings tabs.
+  @MainActor static func select(_ tab: String) {
+    for window in NSApp.windows where window.isVisible {
+      // The Settings toolbar is the one with a General item.
+      guard let toolbar = window.toolbar,
+        toolbar.items.contains(where: { $0.label == SettingsNavigator.generalTab }),
+        let item = toolbar.items.first(where: { $0.label == tab }),
+        toolbar.selectedItemIdentifier != item.itemIdentifier
+      else { continue }
+      toolbar.selectedItemIdentifier = item.itemIdentifier
     }
   }
 }

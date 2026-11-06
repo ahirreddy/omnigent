@@ -141,8 +141,8 @@ public enum BrowserTargets {
         path: .relativeToRoot("\(webHostPath)/Scripts/check-no-chromium.sh"),
         arguments: [],
         name: "Check that Chromium is absent",
-        // Declared so the check runs with user script sandboxing on: the script itself and the
-        // bundle it searches.
+        // Declared for user script sandboxing. The sandbox denies listing the bundle, so the build
+        // checks the embed paths; the release check walks the whole bundle.
         inputPaths: [
           "$(SRCROOT)/\(webHostPath)/Scripts/check-no-chromium.sh",
           "$(TARGET_BUILD_DIR)/$(WRAPPER_NAME)",

@@ -73,19 +73,20 @@ struct TranscriptNavigator: View {
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.composerLayoutStyle) private var composerLayout
   @Environment(\.transcriptAppearance) private var appearance
-  @State private var width: CGFloat = 0
+  @State private var fitsBeside = false
 
   var body: some View {
     if composerLayout == .touch {
       // On touch it shows only in the margin beside the column: over the column it would cover
       // the last row's trailing actions (a banner's Retry). The web leaves it out on phones.
       let column = layoutWidth == .compact ? .infinity : appearance.contentWidth.maxWidth
-      Group { if Self.fitsBesideColumn(width: width, column: column) { navigator } }
+      let pill = Self.pillWidth
+      Group { if fitsBeside { navigator } }
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .onGeometryChange(for: CGFloat.self) {
-          $0.size.width
+        .onGeometryChange(for: Bool.self) {
+          Self.fits(width: $0.size.width, column: column, pill: pill)
         } action: {
-          width = $0
+          fitsBeside = $0
         }
     } else {
       navigator
@@ -98,7 +99,15 @@ struct TranscriptNavigator: View {
   ///   - column: The transcript column's maximum width.
   /// - Returns: Whether the margin is at least the pill's width.
   static func fitsBesideColumn(width: CGFloat, column: CGFloat) -> Bool {
-    width - column >= 2 * Theme.Control.target
+    fits(width: width, column: column, pill: pillWidth)
+  }
+
+  /// The pill's width.
+  static var pillWidth: CGFloat { 2 * Theme.Control.target }
+
+  /// Whether a margin beside the column holds `pill`; geometry callbacks run off the main actor.
+  nonisolated static func fits(width: CGFloat, column: CGFloat, pill: CGFloat) -> Bool {
+    width - column >= pill
   }
 
   /// The room the transcript keeps under its last row while the pill floats over the column (the
@@ -111,7 +120,12 @@ struct TranscriptNavigator: View {
   static func bottomClearance(layout: ComposerLayoutStyle, width: CGFloat, column: CGFloat)
     -> CGFloat
   {
-    guard layout == .card, !fitsBesideColumn(width: width, column: column) else { return 0 }
+    bottomClearance(layout: layout, fits: fitsBesideColumn(width: width, column: column))
+  }
+
+  /// The bottom content margin for a pill that does or does not fit beside the column.
+  static func bottomClearance(layout: ComposerLayoutStyle, fits: Bool) -> CGFloat {
+    guard layout == .card, !fits else { return 0 }
     return Theme.Control.target * 2 + Theme.Spacing.medium
   }
 
@@ -159,27 +173,28 @@ struct TranscriptNavigatorOverlay: ViewModifier {
   let isShown: Bool
   let previous: () -> Void
   let next: () -> Void
-  @State private var width: CGFloat = 0
+  /// Whether the pill fits beside the column; kept instead of the width, so resizing re-renders
+  /// only when it flips.
+  @State private var fitsBeside = false
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.composerLayoutStyle) private var composerLayout
   @Environment(\.transcriptAppearance) private var appearance
 
   func body(content: Content) -> some View {
     let column = layoutWidth == .compact ? .infinity : appearance.contentWidth.maxWidth
+    let pill = TranscriptNavigator.pillWidth
     let inset =
-      isShown
-      ? TranscriptNavigator.bottomClearance(layout: composerLayout, width: width, column: column)
-      : 0
+      isShown ? TranscriptNavigator.bottomClearance(layout: composerLayout, fits: fitsBeside) : 0
     content
       .overlay(alignment: .bottomTrailing) {
         if isShown {
           TranscriptNavigator(previous: previous, next: next).padding(Theme.Spacing.medium)
         }
       }
-      .onGeometryChange(for: CGFloat.self) {
-        $0.size.width
+      .onGeometryChange(for: Bool.self) {
+        TranscriptNavigator.fits(width: $0.size.width, column: column, pill: pill)
       } action: {
-        width = $0
+        fitsBeside = $0
       }
       .contentMargins(.bottom, inset, for: .scrollContent)
   }

@@ -5,6 +5,10 @@ public import Observation
 /// pause (or at once with Save), a save first checks that nobody else changed the file, and a
 /// change made elsewhere under unsaved edits raises a conflict to resolve (keep mine or load
 /// the latest). The text is edited with `\n` line breaks; a CRLF file is saved with CRLF again.
+///
+/// Typing only marks the edit (``textEdited(_:)``): the text is read from the text view when
+/// needed (a save, a selection), so a keystroke in a long file never copies or compares it, and
+/// the observable state views draw (``isDirty``, ``status``) is written only when it changes.
 @Observable
 public final class FileEditor {
   /// Where the edit stands, for the toolbar's status.
@@ -29,28 +33,49 @@ public final class FileEditor {
 
   /// The file.
   public let path: String
-  /// The text being edited.
+  /// The text being edited. Text views read it once and again only when ``textRevision``
+  /// changes, so typing never observes it.
   public var text: String {
-    didSet { if text != oldValue { edited() } }
+    get {
+      if let typed = typedText {
+        typedText = nil
+        storedText = typed()
+      }
+      return storedText
+    }
+    set {
+      typedText = nil
+      guard newValue != storedText else { return }
+      storedText = newValue
+      edited(dirty: newValue != base)
+    }
   }
+  @ObservationIgnored private var storedText: String
+  /// Reads the text view's text after typing, until ``text`` reads it.
+  @ObservationIgnored private var typedText: (() -> String)?
+  /// Bumped when ``text`` is replaced other than by typing (revert, load latest, a clean edit
+  /// following the file), so a text view showing it reloads.
+  public private(set) var textRevision = 0
   /// The saved text this edit started from.
   public private(set) var base: String
+  /// Whether there are edits not yet saved.
+  public private(set) var isDirty = false
   /// Where the edit stands.
   public private(set) var status = Status.clean
   /// Set while a change made elsewhere waits to be resolved; saving waits too.
   public private(set) var conflict: Conflict?
   /// The pause after the last keystroke before saving; `nil` saves only on request.
-  public var autosaveDelay: Duration? = .milliseconds(1_500)
+  @ObservationIgnored public var autosaveDelay: Duration? = .milliseconds(1_500)
 
   private let crlf: Bool
   private let write: (String, String?) async throws(WorkspaceFailure) -> FileSaveResult
   /// The file's text on the server as last read or written, with its own line breaks.
-  private var serverText: String
+  @ObservationIgnored private var serverText: String
   /// The server text behind `conflict`.
-  private var conflictServerText: String?
-  private var pendingSave: Task<Void, Never>?
-  private var clearSaved: Task<Void, Never>?
-  private var isSaving = false
+  @ObservationIgnored private var conflictServerText: String?
+  @ObservationIgnored private var pendingSave: Task<Void, Never>?
+  @ObservationIgnored private var clearSaved: Task<Void, Never>?
+  @ObservationIgnored private var isSaving = false
 
   /// An editor over `text` as read from the server.
   /// - Parameters:
@@ -66,16 +91,21 @@ public final class FileEditor {
     crlf = lineEnding == .crlf
     serverText = text
     let editable = crlf ? text.replacingOccurrences(of: "\r\n", with: "\n") : text
-    self.text = editable
+    storedText = editable
     base = editable
     self.write = write
   }
 
-  /// Whether there are edits not yet saved.
-  public var isDirty: Bool { text != base }
-
   /// The file has CRLF line breaks, which the editor shows as `\n`.
   public var usesCRLF: Bool { crlf }
+
+  /// The text view changed the text: the edit counts as unsaved and autosave restarts, without
+  /// reading the text, which `current` returns when it is needed.
+  /// - Parameter current: The text view's text now.
+  public func textEdited(_ current: @escaping () -> String) {
+    typedText = current
+    edited(dirty: true)
+  }
 
   /// Saves now. `force` overwrites a change made elsewhere ("Keep mine").
   /// - Parameter force: Skip the check for changes made elsewhere.
@@ -83,9 +113,15 @@ public final class FileEditor {
     pendingSave?.cancel()
     pendingSave = nil
     guard !isSaving, isDirty || force, conflict == nil || force else { return }
-    isSaving = true
-    status = .saving
     let content = text
+    guard content != base || force else {
+      // Typed back to the saved text.
+      updateDirty()
+      setStatus(.clean)
+      return
+    }
+    isSaving = true
+    setStatus(.saving)
     let raw = crlf ? content.replacingOccurrences(of: "\n", with: "\r\n") : content
     do {
       switch try await write(raw, force ? nil : serverText) {
@@ -93,13 +129,14 @@ public final class FileEditor {
         serverText = raw
         base = content
         conflict = nil
-        status = isDirty ? .unsaved : .saved
+        updateDirty()
+        setStatus(isDirty ? .unsaved : .saved)
       case .conflict(let latest):
         raiseConflict(latest)
-        status = .unsaved
+        setStatus(.unsaved)
       }
     } catch {
-      status = .failed(error.message)
+      setStatus(.failed(error.message))
     }
     isSaving = false
     if status == .saved {
@@ -119,15 +156,19 @@ public final class FileEditor {
     }
     conflict = nil
     conflictServerText = nil
-    text = base
-    status = .clean
+    replaceText(base)
+    setStatus(.clean)
   }
 
-  /// Discards the edits, keeping the last saved text.
+  /// Discards the edits, keeping the last saved text; under a conflict, takes the latest.
   public func revert() {
+    guard conflict == nil else {
+      loadLatest()
+      return
+    }
     pendingSave?.cancel()
-    text = base
-    status = .clean
+    replaceText(base)
+    setStatus(.clean)
   }
 
   /// The file was read again (for example after the agent changed it): clean edits take the new
@@ -141,11 +182,16 @@ public final class FileEditor {
     } else {
       serverText = raw
       base = editable(raw)
-      text = base
+      replaceText(base)
     }
   }
 
   // MARK: Private
+
+  private func replaceText(_ new: String) {
+    text = new
+    textRevision += 1
+  }
 
   private func raiseConflict(_ raw: String?) {
     conflictServerText = raw
@@ -156,9 +202,19 @@ public final class FileEditor {
     crlf ? raw.replacingOccurrences(of: "\r\n", with: "\n") : raw
   }
 
-  private func edited() {
+  private func updateDirty() {
+    let dirty = text != base
+    if dirty != isDirty { isDirty = dirty }
+  }
+
+  private func setStatus(_ new: Status) {
+    if new != status { status = new }
+  }
+
+  private func edited(dirty: Bool) {
+    if dirty != isDirty { isDirty = dirty }
     guard !isSaving else { return }
-    status = isDirty ? .unsaved : .clean
+    setStatus(isDirty ? .unsaved : .clean)
     if isDirty, conflict == nil { scheduleSave() }
   }
 

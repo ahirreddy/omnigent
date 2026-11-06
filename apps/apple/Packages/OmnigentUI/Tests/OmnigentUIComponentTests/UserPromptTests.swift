@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import OmnigentUIComponents
@@ -29,6 +30,21 @@ struct UserPromptTests {
     #expect(UserPrompt.collapsed(String(repeating: "a", count: 12_000)) == nil)
     let long = String(repeating: "b", count: 12_001)
     #expect(UserPrompt.collapsed(long)?.count == 12_000)
+    // The web's wording, with the whole prompt's length.
+    #expect(
+      UserPrompt.expandTitle(long) == "Show full prompt (\(12_001.formatted()) chars)")
+  }
+
+  @Test("a reply's quote blocks split from the text around them; fenced code never quotes")
+  func quoteRuns() {
+    let text = "Before\n\n> first line\n>\n> second\n\nReply\n```\n> not a quote\n```"
+    #expect(
+      UserPrompt.runs(text) == [
+        UserPrompt.Run(text: "Before", isQuote: false),
+        UserPrompt.Run(text: "first line\n\nsecond", isQuote: true),
+        UserPrompt.Run(text: "Reply\n```\n> not a quote\n```", isQuote: false),
+      ])
+    #expect(UserPrompt.runs("a -> b") == [UserPrompt.Run(text: "a -> b", isQuote: false)])
   }
 
   @Test("Share counts two button widths in the titlebar beside the session menu")

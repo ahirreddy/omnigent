@@ -202,39 +202,6 @@ nonisolated public struct ComposerConnectionNotice: Hashable, Sendable {
   }
 }
 
-/// A message queued (or steering) while the agent works.
-nonisolated public struct QueuedMessage: Hashable, Sendable, Identifiable {
-  /// Its state.
-  public enum State: Hashable, Sendable {
-    /// Waiting for the turn to end.
-    case queued
-    /// Being sent.
-    case sending
-    /// "Waiting for host".
-    case waitingForHost
-    /// "Send failed".
-    case failed(message: String)
-  }
-
-  /// Stable id.
-  public var id: String
-  /// The text.
-  public var text: String
-  /// State.
-  public var state: State
-
-  /// Creates a queued message.
-  /// - Parameters:
-  ///   - id: Id.
-  ///   - text: Text.
-  ///   - state: State.
-  public init(id: String, text: String, state: State = .queued) {
-    self.id = id
-    self.text = text
-    self.state = state
-  }
-}
-
 /// Composer actions beyond send and stop. `nil` hides the control.
 public struct ComposerExtraActions {
   /// Choose a host.
@@ -287,6 +254,8 @@ public struct ComposerExtraActions {
   public var attachMention: (@MainActor (String) -> Void)?
   /// Untag a path (its chip's remove button).
   public var removeMention: (@MainActor (String) -> Void)?
+  /// Remove a quote or edit the text typed before it.
+  public var quotes = ComposerQuoteActions()
   /// Turn Smart Routing on or off (the model picker's toggle).
   public var setSmartRouting: (@MainActor (Bool) -> Void)?
   /// The reconnect sheet's Check Again and Fork.

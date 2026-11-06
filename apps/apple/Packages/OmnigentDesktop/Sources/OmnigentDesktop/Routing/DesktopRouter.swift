@@ -22,6 +22,15 @@ public final class DesktopRouter {
   public var confirmUnknownServer: (ServerOrigin) async -> Bool = { origin in
     DeepLinkConsentAlert.confirm(origin)
   }
+  /// Opens a server window. A launch by a link opens none, so queued links ask for one when no
+  /// window attached in `windowRequestDelay`. Defaults to File > New Window.
+  public var requestWindow: () -> Void = { NewWindowMenuItem.perform() }
+  /// The first waiting link's server while `requestWindow` runs, so the window it opens is the
+  /// one the link routes to. The scene's default server should prefer it.
+  public private(set) var requestedServerURL: URL?
+  /// How long launch gets to restore or open a window before the router asks for one.
+  var windowRequestDelay: Duration = .milliseconds(500)
+  private(set) var windowRequest: Task<Void, Never>?
 
   private let registry: ServerWindowRegistry
   private let acknowledger: any DeepLinkAcknowledging
@@ -83,6 +92,7 @@ public final class DesktopRouter {
     guard drainTask == nil, !queue.isEmpty else { return }
     guard openWindow != nil else {
       reportIssue(.awaitingWindowOpener(pending: queue.count))
+      scheduleWindowRequest()
       return
     }
     drainTask = Task {
@@ -90,6 +100,33 @@ public final class DesktopRouter {
         await process(queue.removeFirst())
       }
       drainTask = nil
+    }
+  }
+
+  /// Asks for a window once the delay passes with links still waiting and no window attached.
+  private func scheduleWindowRequest() {
+    guard windowRequest == nil else { return }
+    let delay = windowRequestDelay
+    windowRequest = Task { [weak self] in
+      do {
+        try await Task.sleep(for: delay)
+      } catch {
+        return
+      }
+      guard let self else { return }
+      windowRequest = nil
+      guard openWindow == nil, let first = queue.first else { return }
+      requestedServerURL = knownServerURL(for: first)
+      requestWindow()
+      requestedServerURL = nil
+    }
+  }
+
+  /// The server a request opens without asking, `nil` when it needs consent.
+  private func knownServerURL(for request: Request) -> URL? {
+    switch request {
+    case .link(let link): knownServerURLs()[link.origin]
+    case .trusted(_, let serverURL, _): serverURL
     }
   }
 

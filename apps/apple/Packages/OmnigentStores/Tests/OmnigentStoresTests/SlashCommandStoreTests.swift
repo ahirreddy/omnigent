@@ -103,11 +103,30 @@ struct SlashCommandStoreTests {
     composer.text = "look at this"
     composer.queueDraft()
     #expect(composer.mentions.isEmpty)
-    let queued = try #require(composer.queue.items.last?.text)
-    #expect(queued.hasPrefix("[Attached") && queued.hasSuffix("src/a.swift]\n\nlook at this"))
-    #expect(composer.takeLastQueued() == queued)
+    let queued = try #require(composer.queue.items.last)
+    #expect(queued.text == "look at this")
+    #expect(queued.extras.mentions == ["src/a.swift"])
+    #expect(composer.takeLastQueued() == "look at this")
+    #expect(composer.mentions == ["src/a.swift"], "Up brings the paths back too")
     #expect(composer.queue.isEmpty)
     #expect(composer.takeLastQueued() == nil)
+  }
+
+  @Test(.timeLimit(.minutes(1))) func repliesQuoteAsBlocksAndQueueAsMarkdown() async throws {
+    let (composer, close) = try await composer()
+    defer { close() }
+    composer.text = "About this:"
+    composer.quote("line one\nline two")
+    #expect(composer.quotes == [ReplyQuote(before: "About this:", text: "line one\nline two")])
+    #expect(composer.text.isEmpty)
+    composer.text = "Why?"
+    #expect(composer.draftMessage == "About this:\n\n> line one\n> line two\n\nWhy?")
+    composer.queueDraft()
+    #expect(composer.queue.items.last?.text == "About this:\n\n> line one\n> line two\n\nWhy?")
+    #expect(composer.quotes.isEmpty && composer.text.isEmpty)
+    composer.quote("again")
+    composer.removeQuote(at: 0)
+    #expect(composer.quotes.isEmpty)
   }
 
   @Test(.timeLimit(.minutes(1))) func sideIsLeftToTheCallerWithItsQuestion() async throws {

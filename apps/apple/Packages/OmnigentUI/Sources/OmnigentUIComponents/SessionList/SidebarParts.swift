@@ -11,9 +11,8 @@ struct SidebarHeader: View {
   #endif
 
   var body: some View {
-    HStack(spacing: Theme.Spacing.small) {
-      wordmark.layoutPriority(1)
-      Spacer(minLength: 4)
+    SidebarHeaderLayout(spacing: Theme.Spacing.small) {
+      wordmark
       if !state.servers.isEmpty || actions.addServer != nil {
         ServerSwitcherMenu(state: state, actions: actions)
       }

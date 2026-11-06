@@ -4,24 +4,10 @@ import Testing
 
 @testable import OmnigentRemoteBrowser
 
-/// The iOS bars' models: the address pill's domain, collapse on scroll, and the top edge's
-/// colour sampled from a decoded frame.
+/// The iOS bars' models: collapse on scroll and the top edge's colour sampled from a decoded
+/// frame.
 @Suite("Remote browser chrome state")
 struct ChromeStateTests {
-  // MARK: Address display
-
-  @Test func theAddressShowsTheDomainOnly() {
-    let page = RemoteAddressDisplay(url: "https://www.example.com/path?q=1")
-    #expect(page.domain == "example.com")
-    #expect(page.isSecure)
-    let plain = RemoteAddressDisplay(url: "http://127.0.0.1:6816/index.html")
-    #expect(plain.domain == "127.0.0.1")
-    #expect(!plain.isSecure)
-    #expect(RemoteAddressDisplay(url: "").isEmpty)
-    #expect(RemoteAddressDisplay(url: "about:blank").isEmpty)
-    #expect(RemoteAddressDisplay(url: "data:text/html,hi").domain == "data:text/html,hi")
-  }
-
   // MARK: Collapse on scroll
 
   private func metrics(_ offset: Double, viewport: Double = 700, content: Double = 5000)

@@ -102,8 +102,9 @@ public final class ConversationStore {
   /// them.
   public private(set) var agentInfo: AgentInfo?
 
-  private let core: ClientCore
+  let core: ClientCore
   private let listStatus: ListStatusExpectation
+  @ObservationIgnored private var rowWatches = RowWatches()
 
   init(
     sessionID: String, core: ClientCore,
@@ -130,6 +131,15 @@ public final class ConversationStore {
       items: transcriptRows.count, mcpServers: agentInfo?.tools ?? [],
       agentLoaded: agentInfo != nil, isRunning: isRunning,
       hostOnline: header?.settings?.hostOnline ?? false)
+  }
+
+  /// Observes the row `rowID` on its own, for a view that shows only that row (see
+  /// ``RowWatch``). Reading it does not subscribe to ``rows``.
+  /// - Parameter rowID: The row.
+  /// - Returns: The watch, the same object on every call.
+  public func watchRow(_ rowID: String) -> RowWatch {
+    // `_rows` is the untracked storage: a body calling this must not depend on every row.
+    rowWatches.watch(rowID) { _rows }
   }
 
   /// Rows that belong in the transcript.
@@ -223,9 +233,11 @@ public final class ConversationStore {
   ) {
     self.revision = revision
     self.rows = rows
+    let header = Self.known(header)
     if header != self.header { self.header = header }
     if sections != self.sections { self.sections = sections }
     decisions.replace(cards)
+    rowWatches.refreshAll(from: rows)
     timeTurn(observed: false)
     digestRows()
   }
@@ -240,11 +252,18 @@ public final class ConversationStore {
       return
     }
     // Setting an observed property notifies even when the value is unchanged.
-    if let header = change.header, header != self.header { self.header = header }
+    if let header = Self.known(change.header), header != self.header { self.header = header }
     if let sections = change.sections, sections != self.sections { self.sections = sections }
     self.revision = revision
+    rowWatches.refresh(touchedBy: change.rows, in: rows)
     timeTurn(observed: true)
     digestRows()
+  }
+
+  /// The core's stand-in header, shown until the server's metadata loads, is no header: the
+  /// session is still loading, not an empty read-only one titled "Conversation".
+  private static func known(_ header: SessionHeader?) -> SessionHeader? {
+    header?.isPlaceholder == true ? nil : header
   }
 
   private func digestRows() {

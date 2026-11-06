@@ -6,8 +6,9 @@ import XCTest
 /// for in-app links, and a workspace file opens in Quick Look and the share sheet.
 ///
 /// Skipped unless the runner gets `OMNIGENT_E2E_SERVER_URL`, `OMNIGENT_LINK_SESSION_ID` (a
-/// session whose transcript has a web link) and `OMNIGENT_FILES_SESSION_ID` (a session whose
-/// workspace has `notes.md` and `notes.pdf`), with the `TEST_RUNNER_` prefix. Set
+/// session whose transcript links "Example Domain" to example.com) and
+/// `OMNIGENT_FILES_SESSION_ID` (a session whose workspace has `notes.md` and `notes.pdf`), with
+/// the `TEST_RUNNER_` prefix; `just apple-uitest-ios` passes its seeded fixture for both. Set
 /// `TEST_RUNNER_BROWSER_SHOTS_DIR` to also write each state as `<device>-<state>.png` there.
 final class BrowserTabsUITests: XCTestCase {
   private var environment: [String: String] { ProcessInfo.processInfo.environment }
@@ -15,8 +16,7 @@ final class BrowserTabsUITests: XCTestCase {
 
   @MainActor
   func testNewTabOpensABrowserThatLoadsAPage() throws {
-    let app = try launch()
-    try open(try setting("OMNIGENT_LINK_SESSION_ID"), in: app)
+    let app = try launch(opening: try setting("OMNIGENT_LINK_SESSION_ID"))
     if isPhone {
       tap(app.buttons["tab-switcher"], "the tab switcher")
       tap(app.buttons["tab-overview-new"], "New Tab in the overview")
@@ -27,12 +27,13 @@ final class BrowserTabsUITests: XCTestCase {
     let omnibox = app.textFields["browser.omnibox"]
     XCTAssertTrue(omnibox.waitForExistence(timeout: 10), "the browser tab did not open")
     sleep(3)
+    if isPhone { assertOneAddressRow(in: app, omnibox: omnibox) }
     try shot("browser-server-page")
 
-    omnibox.tap()
-    omnibox.typeText("example.com\n")
+    // The server's page can take the keyboard as it finishes loading.
+    LiveServerUITestSupport(self).type("example.com\n", into: omnibox)
     XCTAssertTrue(
-      app.webViews.staticTexts["Example Domain"].waitForExistence(timeout: 20),
+      examplePage(app).waitForExistence(timeout: 20),
       "example.com did not load")
     XCTAssertTrue(app.buttons["browser.back"].isEnabled, "Back stays off after a navigation")
     if isPhone {
@@ -50,15 +51,16 @@ final class BrowserTabsUITests: XCTestCase {
 
   @MainActor
   func testTranscriptLinkOpensInABrowserTab() throws {
-    let app = try launch(extra: ["-omnigent:open-links-in-app", "YES"])
-    try open(try setting("OMNIGENT_LINK_SESSION_ID"), in: app)
-    let link = app.links["link"].firstMatch
+    let app = try launch(
+      opening: try setting("OMNIGENT_LINK_SESSION_ID"),
+      extra: ["-omnigent:open-links-in-app", "YES"])
+    let link = app.links["Example Domain"].firstMatch
     XCTAssertTrue(link.waitForExistence(timeout: 20), "the transcript shows no link")
     link.tap()
     let omnibox = app.textFields["browser.omnibox"]
     XCTAssertTrue(omnibox.waitForExistence(timeout: 10), "the link did not open a browser tab")
     XCTAssertTrue(
-      app.webViews.staticTexts["Example Domain"].waitForExistence(timeout: 20),
+      examplePage(app).waitForExistence(timeout: 20),
       "the linked page did not load")
     XCTAssertTrue((omnibox.value as? String ?? "").contains("example.com"))
     try shot("transcript-link")
@@ -66,24 +68,22 @@ final class BrowserTabsUITests: XCTestCase {
 
   @MainActor
   func testWorkspaceFileOpensInQuickLookAndShare() throws {
-    let app = try launch()
-    try open(try setting("OMNIGENT_FILES_SESSION_ID"), in: app)
+    let app = try launch(opening: try setting("OMNIGENT_FILES_SESSION_ID"))
     tap(app.buttons["toggle-inspector"], "the right-panel toggle")
-    let pdf = app.staticTexts["notes.pdf"].firstMatch
+    let pdf = app.descendants(matching: .any)["notes.pdf"].firstMatch
     XCTAssertTrue(pdf.waitForExistence(timeout: 20), "the files panel shows no notes.pdf")
     try shot("files-panel")
 
     pdf.press(forDuration: 1.2)
     tap(app.buttons["Quick Look"], "Quick Look in the file's menu")
-    let preview = app.navigationBars.matching(
-      NSPredicate(format: "identifier CONTAINS 'QL' OR identifier CONTAINS 'notes'")
-    ).firstMatch
-    XCTAssertTrue(preview.waitForExistence(timeout: 15), "Quick Look did not open")
+    let preview = app.otherElements["QLPreviewControllerView"]
+    XCTAssertTrue(preview.waitForExistence(timeout: 30), "Quick Look did not open")
     sleep(2)
     try shot("files-quicklook")
-    tap(app.buttons["Done"].firstMatch, "Done in Quick Look")
+    // iOS 26's Quick Look closes with an X, not Done.
+    tap(app.buttons["QLOverlayDoneButtonAccessibilityIdentifier"], "Close in Quick Look")
 
-    let markdown = app.staticTexts["notes.md"].firstMatch
+    let markdown = app.descendants(matching: .any)["notes.md"].firstMatch
     XCTAssertTrue(markdown.waitForExistence(timeout: 10))
     markdown.press(forDuration: 1.2)
     tap(app.buttons["Share\u{2026}"], "Share in the file's menu")
@@ -97,6 +97,28 @@ final class BrowserTabsUITests: XCTestCase {
 
   // MARK: Helpers
 
+  /// Text of example.com's page, whose wording changes ("Example Domain", "examples").
+  @MainActor
+  private func examplePage(_ app: XCUIApplication) -> XCUIElement {
+    app.webViews.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'example'"))
+      .firstMatch
+  }
+
+  /// On iPhone the address pill shares one row with Sessions and the tab overview, in place of
+  /// the app's navigation bar.
+  @MainActor
+  private func assertOneAddressRow(in app: XCUIApplication, omnibox: XCUIElement) {
+    let row = app.descendants(matching: .any)["browser.addressBar"]
+    let sessions = row.buttons["browser.sessions"]
+    let tabs = row.buttons["tab-switcher"]
+    XCTAssertTrue(sessions.exists, "the address row has no Sessions button")
+    XCTAssertTrue(tabs.exists, "the address row has no tab overview button")
+    XCTAssertEqual(sessions.frame.midY, omnibox.frame.midY, accuracy: 4)
+    XCTAssertEqual(tabs.frame.midY, omnibox.frame.midY, accuracy: 4)
+    let navigationBack = app.navigationBars.buttons["BackButton"]
+    XCTAssertFalse(navigationBack.exists && navigationBack.isHittable, "the navigation bar shows")
+  }
+
   @MainActor
   private func setting(_ name: String) throws -> String {
     guard let value = environment[name] else {
@@ -105,30 +127,22 @@ final class BrowserTabsUITests: XCTestCase {
     return value
   }
 
-  /// The app connected to the live server, with no restored tabs.
+  /// The app connected to the live server with no restored tabs, showing `sessionID`.
   @MainActor
-  private func launch(extra: [String] = []) throws -> XCUIApplication {
+  private func launch(opening sessionID: String, extra: [String] = []) throws -> XCUIApplication {
     let server = try setting("OMNIGENT_E2E_SERVER_URL")
+    let link = try XCTUnwrap(
+      LiveServerUITestSupport.sessionLink(server: server, sessionID: sessionID))
     let app = XCUIApplication()
     app.launchArguments +=
-      ["-omnigent.lastServer", server, "-ApplePersistenceIgnoreState", "YES"] + extra
+      ["-omnigent.lastServer", server, "-OmnigentOpenURL", link]
+      + LiveServerUITestSupport.freshStateArguments + extra
     app.launch()
     XCUIDevice.shared.orientation = isPhone ? .portrait : .landscapeLeft
+    XCTAssertTrue(
+      app.descendants(matching: .any)["transcript-\(sessionID)"].waitForExistence(timeout: 30),
+      "the session did not open")
     return app
-  }
-
-  /// Opens a session from the sidebar, going back until its row shows.
-  @MainActor
-  private func open(_ sessionID: String, in app: XCUIApplication) throws {
-    let row = app.descendants(matching: .any)["session-row-\(sessionID)"]
-    for _ in 0..<3 where !row.waitForExistence(timeout: 8) {
-      let back = app.navigationBars.buttons["BackButton"]
-      guard back.exists else { break }
-      back.tap()
-    }
-    XCTAssertTrue(row.exists, "no row for \(sessionID)")
-    row.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.15)).tap()
-    sleep(2)
   }
 
   @MainActor

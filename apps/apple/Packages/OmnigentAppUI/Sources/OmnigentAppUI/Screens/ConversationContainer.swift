@@ -35,8 +35,10 @@ struct ConversationContainer: View {
   var menuContext = SessionMenuContext()
   /// Creates the Share sheet's store; `nil` hides Share.
   var makeShareStore: (@MainActor () -> ShareStore?)?
-  /// The server shares sessions (multi-user, sharing not off); `false` hides Share.
+  /// The server shares sessions, or turned sharing off (multi-user); `false` hides Share.
   var offersShare = true
+  /// Why Share shows disabled (sharing turned off on this server).
+  var shareUnavailableReason: String?
 
   @State private var showsInspector = WorkspacePanelDefault.stored() == .open
   @State private var inspectorTab: InspectorTab = DefaultWorkspaceTab.stored().inspectorTab
@@ -54,6 +56,8 @@ struct ConversationContainer: View {
     false
   @AppStorage(ComposerPreferences.alwaysSteerKey) private var alwaysSteer = true
   @State private var fileLinks: WorkspaceFileLinks?
+  /// The liveness row's open sheet; a send can open Resume on a Machine.
+  @State private var livenessSheets = SessionLivenessSheets()
 
   var body: some View {
     let composer = conversation.composer
@@ -118,7 +122,7 @@ struct ConversationContainer: View {
       .modifier(
         PerfConversationHooks(
           showsInspector: $showsInspector, inspectorTab: $inspectorTab,
-          openBrowser: tabRoutes?.openBrowser))
+          openBrowser: tabRoutes?.openBrowser, openSideChat: tabRoutes?.openNewSideChat))
     #endif
     .onChange(of: changedFilesRevision) {
       guard let workspace else { return }
@@ -128,6 +132,7 @@ struct ConversationContainer: View {
 
   private var state: ConversationViewState {
     var state = ConversationAdapter.screenState(conversation, summary: summary)
+    state.shareUnavailableReason = shareUnavailableReason
     if let terminals { state.terminal = TerminalAdapter.status(terminals.terminals.harness) }
     state.agentInfo = conversation.agentInfo.map {
       OmnigentUIComponents.AgentInfo(name: $0.name, tools: $0.tools, policies: $0.policies)
@@ -140,6 +145,9 @@ struct ConversationContainer: View {
       conversation, isStopping: isStopping, dismissedError: dismissedSendError, server: server,
       submitWithCommandReturn: submitWithCommandReturn)
     composer.prefersSteer = alwaysSteer
+    if conversation.header?.settings?.sideChatSourceId != nil {
+      composer.placeholder = SideChatCopy.placeholder
+    }
     let indicators = SessionToolsAdapter.indicators(conversation, screen: screen)
     let pullRequest = SessionToolsAdapter.pullRequestLabel(panel)
     if !indicators.isEmpty || pullRequest != nil {
@@ -155,6 +163,7 @@ struct ConversationContainer: View {
   private var toolRoutes: SessionToolsAdapter.Routes {
     SessionToolsAdapter.Routes(
       openSession: tabRoutes?.openSession ?? openSession,
+      openNewSideChat: tabRoutes?.openNewSideChat,
       showPullRequests: {
         inspectorTab = .pullRequests
         showsInspector = true
@@ -237,28 +246,6 @@ struct ConversationContainer: View {
     return actions
   }
 
-  /// The session's forkable summary, when this app can fork it.
-  var forkSource: OmnigentCoreFFI.SessionSummary? {
-    guard makeForkStore != nil, let summary, forkUnavailableReason(source: summary) == nil else {
-      return nil
-    }
-    return summary
-  }
-
-  /// "Fork from here" on settled assistant messages.
-  private func forkable(_ actions: ConversationActions) -> ConversationActions {
-    var actions = actions
-    if let source = forkSource {
-      actions.forkFrom = { row in
-        guard let responseID = ForkAdapter.forkPoint(row) else { return }
-        beginFork(
-          ForkContext(source: source, upToResponseID: responseID, kind: .fromMessage(rowID: row.id))
-        )
-      }
-    }
-    return actions
-  }
-
   /// The session menu's Fork copies the whole session.
   private func forkable(_ actions: SessionListActions) -> SessionListActions {
     var actions = actions
@@ -312,6 +299,7 @@ extension ConversationContainer {
       retry: retry,
       resume: { Task { await conversation.recoverTurn(.resume) } })
     actions.loadOlder = { conversation.loadOlderHistory() }
+    actions.openSignIn = openSignIn
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
     actions.messageURL = { row in Self.messageURL(row, in: link) }
     actions.retryFailedTurn = { row in
@@ -335,13 +323,7 @@ extension ConversationContainer {
     let conversation = conversation
     let composer = conversation.composer
     return ComposerActions(
-      send: {
-        dismissedSendError = nil
-        let (newSession, routes) = (sessionActions.newSession, toolRoutes)
-        Task {
-          await SessionToolsAdapter.send(conversation, newSession: newSession, routes: routes)
-        }
-      },
+      send: { [livenessSheets] in if !holdsSendForResume(livenessSheets) { sendDraft() } },
       interrupt: {
         isStopping = true
         Task {
@@ -377,7 +359,17 @@ extension ConversationContainer {
       prompts: { ComposerAdapter.prompts(conversation) })
     SessionToolsAdapter.add(to: &extras, store: conversation, summary: summary, routes: toolRoutes)
     extras.liveness.fork = forkSession
+    addHostMoves(to: &extras.liveness, sheets: livenessSheets)
     return extras
+  }
+
+  /// Sends the composer's draft.
+  func sendDraft() {
+    dismissedSendError = nil
+    let (conversation, newSession, routes) = (conversation, sessionActions.newSession, toolRoutes)
+    Task {
+      await SessionToolsAdapter.send(conversation, newSession: newSession, routes: routes)
+    }
   }
 
   /// Switches the harness when the core allows it; otherwise says why.

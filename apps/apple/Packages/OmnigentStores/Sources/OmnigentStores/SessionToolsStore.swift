@@ -12,7 +12,7 @@ public final class SessionToolsStore {
   public private(set) var goal: SessionGoal?
   /// The goal has been read at least once.
   public private(set) var isGoalLoaded = false
-  /// A goal, plan or side chat request is in flight.
+  /// A goal or plan request is in flight.
   public private(set) var isBusy = false
   /// The latest failure.
   public private(set) var lastError: CoreError?
@@ -71,14 +71,18 @@ public final class SessionToolsStore {
     await run { core in _ = try await core.setPlanMode(sessionId: sessionID, on: enabled) }
   }
 
-  /// Starts a side chat; a `quote` (selected transcript text) starts its composer quoted.
-  /// - Returns: How it starts, or `nil` after a failure (kept in ``lastError``).
-  public func startSideChat(quote: String? = nil) async -> SideChatStart? {
-    var start: SideChatStart?
-    await run { core in
-      start = try await core.startSideChat(sessionId: sessionID, quote: quote)
+  /// Creates a side chat of this session with `text` as its first message. Each side chat
+  /// being started keeps its own failure, so this neither marks the store busy nor sets
+  /// ``lastError``.
+  /// - Parameter text: The first message.
+  /// - Returns: The side chat and how its first message went.
+  /// - Throws: The core's error when the side chat could not be created.
+  public func createSideChat(text: String) async throws(CoreError) -> CreatedSideChat {
+    do {
+      return try await core.createSideChat(sessionId: sessionID, text: text)
+    } catch {
+      throw coreError(error)
     }
-    return start
   }
 
   /// Reads the spawn tree. A read already in flight is not repeated.

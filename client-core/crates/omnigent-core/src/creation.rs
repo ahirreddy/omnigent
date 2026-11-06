@@ -302,6 +302,9 @@ pub struct CreationSelection {
     pub plan_mode: bool,
     /// The first-class project the session is filed in from its creation (`project_id`).
     pub project_id: Option<String>,
+    /// Smart Routing picks the model and effort each turn (see
+    /// [`CreationCatalog::offers_smart_routing`]); no model or effort is pinned with it.
+    pub smart_routing: bool,
 }
 
 /// The `git` block of a new external-host session.
@@ -443,6 +446,9 @@ pub struct CreationCapabilities {
     pub custom_agents_settings: bool,
     /// `agent_detail`: an agent's configuration can be read.
     pub agent_detail: bool,
+    /// `smart_routing_enabled`, with a router that answers for native Claude Code and Codex
+    /// panes (`smart_routing_sources`).
+    pub smart_routing: bool,
 }
 
 impl CreationCapabilities {
@@ -539,6 +545,10 @@ impl CreationCapabilities {
             fork_workspaces: opt_bool(object, "session_fork_workspaces")?.unwrap_or(false),
             custom_agents_settings: feature("custom_agents_settings_ui"),
             agent_detail: opt_bool(object, "agent_detail")?.unwrap_or(false),
+            smart_routing: {
+                let options = crate::slash::SlashOptions::from_info(value)?;
+                options.smart_routing && options.routes_native_panes
+            },
         })
     }
 }
@@ -615,6 +625,17 @@ impl CreationCatalog {
                 .is_some_and(|agent| agent.harness_id() == CODEX_NATIVE)
     }
 
+    /// Whether a new session of `agent_id` can turn Smart Routing on (the web's per-harness
+    /// `smartRoutingEligible`): the server routes native panes and the agent runs Claude Code or
+    /// Codex natively.
+    #[must_use]
+    pub fn offers_smart_routing(&self, agent_id: &str) -> bool {
+        self.capabilities.smart_routing
+            && self.agent(agent_id).is_some_and(|agent| {
+                crate::slash::ROUTED_NATIVE_HARNESSES.contains(&agent.harness_id().as_str())
+            })
+    }
+
     /// The agent with `agent_id`.
     #[must_use]
     pub fn agent(&self, agent_id: &str) -> Option<&CreationAgent> {
@@ -682,7 +703,16 @@ impl CreationCatalog {
             ));
         }
         self.approval_mode_offered(selection)?;
-        if let Some(model) = &selection.model {
+        if selection.smart_routing && !self.offers_smart_routing(&selection.agent_id) {
+            return Err(CreationError::Unavailable(
+                "Smart Routing is not available for this agent.".to_owned(),
+            ));
+        }
+        if let Some(model) = selection
+            .model
+            .as_ref()
+            .filter(|_| !selection.smart_routing)
+        {
             let previewable = self
                 .agent(&selection.agent_id)
                 .is_some_and(CreationAgent::supports_model_preview);
@@ -772,6 +802,7 @@ pub(crate) fn creation_body(
     selection: &CreationSelection,
     title: &str,
     agent: &CreationAgent,
+    first_message: Option<&str>,
 ) -> Value {
     let mut body = Map::new();
     body.insert("agent_id".into(), Value::String(selection.agent_id.clone()));
@@ -785,6 +816,16 @@ pub(crate) fn creation_body(
         body.insert("title".into(), Value::String(title.to_owned()));
     }
     insert_run_configuration(&mut body, selection, agent);
+    // A native pane launches with the row, so Smart Routing picks its model from the first
+    // message at creation or not at all.
+    if let Some(message) =
+        first_message.filter(|text| selection.smart_routing && !text.trim().is_empty())
+    {
+        body.insert(
+            "smart_routing_message".into(),
+            Value::String(message.to_owned()),
+        );
+    }
     if let Some(git) = &selection.git {
         let mut block = Map::new();
         block.insert(
@@ -813,11 +854,19 @@ pub(crate) fn insert_run_configuration(
     if let Some(project) = &selection.project_id {
         body.insert("project_id".into(), Value::String(project.clone()));
     }
-    if let Some(model) = &selection.model {
-        body.insert("model_override".into(), Value::String(model.clone()));
-    }
-    if let Some(effort) = &selection.reasoning_effort {
-        body.insert("reasoning_effort".into(), Value::String(effort.clone()));
+    if selection.smart_routing {
+        // The router owns the model: a pinned one would turn routing off for the session.
+        body.insert(
+            "cost_control_mode_override".into(),
+            Value::String("on".into()),
+        );
+    } else {
+        if let Some(model) = &selection.model {
+            body.insert("model_override".into(), Value::String(model.clone()));
+        }
+        if let Some(effort) = &selection.reasoning_effort {
+            body.insert("reasoning_effort".into(), Value::String(effort.clone()));
+        }
     }
     let wrapper = agent.wrapper();
     if let Some(args) = selection
@@ -1019,17 +1068,70 @@ mod tests {
             ..selection()
         };
         let codex = agent("ag_codex", Some("codex-native"));
-        let body = creation_body(&planned, "", &codex);
+        let body = creation_body(&planned, "", &codex, None);
         assert_eq!(
             body["labels"][CODEX_COLLABORATION_MODE_LABEL],
             Value::String("plan".into())
         );
         let claude = agent("ag_claude", Some("claude-native"));
         assert!(
-            creation_body(&planned, "", &claude)["labels"]
+            creation_body(&planned, "", &claude, None)["labels"]
                 .get(CODEX_COLLABORATION_MODE_LABEL)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn smart_routing_is_offered_for_native_panes_and_owns_the_model() {
+        let mut catalog = catalog();
+        catalog
+            .agents
+            .push(agent("ag_claude", Some("claude-native")));
+        catalog.agents.push(agent("ag_sdk", Some("claude-sdk")));
+        assert!(!catalog.offers_smart_routing("ag_codex"));
+        catalog.capabilities = CreationCapabilities::from_value(&serde_json::json!({
+            "smart_routing_enabled": true,
+            "smart_routing_sources": {"external": false, "oss": false}
+        }))
+        .unwrap();
+        assert!(
+            !catalog.offers_smart_routing("ag_codex"),
+            "no router answers"
+        );
+        catalog.capabilities = CreationCapabilities::from_value(&serde_json::json!({
+            "smart_routing_enabled": true
+        }))
+        .unwrap();
+        assert!(catalog.offers_smart_routing("ag_codex"));
+        assert!(catalog.offers_smart_routing("ag_claude"));
+        assert!(!catalog.offers_smart_routing("ag_sdk"));
+        let routed = CreationSelection {
+            smart_routing: true,
+            model: Some("gpt-5".into()),
+            reasoning_effort: Some("high".into()),
+            ..selection()
+        };
+        // A routed session pins no model, so a stale one is not checked.
+        assert_eq!(catalog.validate(&routed, &[]), Ok(()));
+        let mut unrouted = catalog.clone();
+        unrouted.capabilities = CreationCapabilities::from_value(&serde_json::json!({})).unwrap();
+        assert_eq!(
+            unrouted.validate(&routed, &[]),
+            Err(CreationError::Unavailable(
+                "Smart Routing is not available for this agent.".into()
+            ))
+        );
+        let codex = agent("ag_codex", Some("codex-native"));
+        let body = creation_body(&routed, "", &codex, Some("Fix the build"));
+        assert_eq!(body["cost_control_mode_override"], "on");
+        assert_eq!(body["smart_routing_message"], "Fix the build");
+        assert!(body.get("model_override").is_none());
+        assert!(body.get("reasoning_effort").is_none());
+        let blank = creation_body(&routed, "", &codex, Some("  "));
+        assert!(blank.get("smart_routing_message").is_none());
+        let pinned = creation_body(&selection(), "", &codex, Some("Fix the build"));
+        assert!(pinned.get("cost_control_mode_override").is_none());
+        assert!(pinned.get("smart_routing_message").is_none());
     }
 
     #[test]

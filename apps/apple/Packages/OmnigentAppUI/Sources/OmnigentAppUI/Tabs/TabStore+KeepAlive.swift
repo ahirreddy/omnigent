@@ -38,7 +38,7 @@ extension AppTabContent {
   /// other kinds keep their live content (pages, terminals) in their own stores.
   var staysBuiltWhileHidden: Bool {
     switch self {
-    case .chat, .sideChat: true
+    case .chat, .sideChat, .sideChatSession: true
     case .newTab, .newSession, .inbox, .canvas, .automations, .usage, .terminal, .harness,
       .browser, .agentBrowser, .remoteBrowser:
       false

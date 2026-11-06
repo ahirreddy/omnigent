@@ -12,7 +12,7 @@ use omnigent_protocol::sessions::SessionList;
 use serde_json::{Value, json};
 
 use super::requests::{page_query, validate_identifier};
-use super::sessions::{PROJECT_LABEL, SessionSummary, decode_snapshot_value};
+use super::sessions::{PROJECT_LABEL, SessionPage, SessionSummary, decode_snapshot_value};
 use super::{ClientCore, ClientEvent, SessionError, lock};
 use crate::http::HttpTransport;
 
@@ -92,6 +92,49 @@ fn validate_name(name: &str) -> Result<String, SessionError> {
 }
 
 impl<T: HttpTransport> ClientCore<T> {
+    /// One page of the caller's unarchived sessions filed under `name`, most recently updated
+    /// first (the web folder's `?project=` read, which matches ids and legacy labels). The rows
+    /// are published as a `SessionsChanged`, so the list holds them too.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidPageLimit`] and [`SessionError::InvalidPagination`] before any
+    /// request; the read errors; [`SessionError::MalformedResponse`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn project_session_page(
+        &self,
+        name: &str,
+        after: Option<&str>,
+        limit: u32,
+    ) -> Result<SessionPage, SessionError> {
+        let result = async {
+            let mut query = page_query(after, limit)?;
+            query.push(("sort_by", "updated_at".to_owned()));
+            query.push(("visibility", "mine".to_owned()));
+            query.push(("project", name.to_owned()));
+            self.read_list(&query, after).await
+        }
+        .await;
+        if let Ok((sessions, _)) = &result
+            && !sessions.is_empty()
+        {
+            lock(&self.state).events.push(ClientEvent::SessionsChanged {
+                sessions: sessions.clone(),
+            });
+        }
+        self.dispatch();
+        result.map(|(sessions, next_cursor)| SessionPage {
+            sessions: sessions
+                .into_iter()
+                .filter(|session| !session.is_archived)
+                .collect(),
+            next_cursor,
+        })
+    }
+
     /// The caller's projects in their display order (`GET /v1/sessions/projects`). A server
     /// without projects (404) has none.
     ///

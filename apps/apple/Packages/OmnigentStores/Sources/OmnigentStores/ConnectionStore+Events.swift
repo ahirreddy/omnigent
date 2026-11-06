@@ -65,6 +65,8 @@ extension ConnectionStore {
     case .unreadChanged(let ids):
       let unread = Set(ids)
       if unread != sessionList.unreadIDs { sessionList.unreadIDs = unread }
+    case .sessionListPagingChanged(let hasMore, let isLoading):
+      sessionList.paging.pagingChanged(hasMore: hasMore, isLoading: isLoading)
     case .terminalsChanged(let id, let rows, let harness):
       terminals(id)?.apply(terminals: rows, harness: harness)
     case .browserActionRequested(let id, let actionID, let action, let args):

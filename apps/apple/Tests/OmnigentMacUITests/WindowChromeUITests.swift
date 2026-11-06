@@ -31,24 +31,25 @@ final class WindowChromeUITests: XCTestCase {
     defer { app.terminate() }
     let window = app.windows.firstMatch
 
-    // A demo session's chat tab, from the sidebar.
-    let row = window.descendants(matching: .any)["session-row-demo-design"]
+    // A demo session's chat tab, from the New Tab page. An open right after launch is sometimes
+    // lost (the window still settling on its server), so it is retried.
+    let recent = window.buttons["newtab-recent-demo-notes"]
     XCTAssertTrue(
-      row.waitForExistence(timeout: 30), "no demo session in\n\(app.debugDescription)")
+      recent.waitForExistence(timeout: 30), "no demo session in\n\(app.debugDescription)")
     let input = app.textViews["composer-input"]
-    for _ in 0..<5 where !input.exists {
-      row.click()
-      _ = input.waitForExistence(timeout: 4)
+    for _ in 0..<3 where !input.exists && recent.exists {
+      recent.click()
+      _ = input.waitForExistence(timeout: 10)
     }
-    XCTAssertTrue(input.waitForExistence(timeout: 20), "the conversation did not open")
+    XCTAssertTrue(input.exists, "the conversation did not open")
 
     // The tab strip shares the titlebar row with the trailing toolbar items.
     let strip = window.descendants(matching: .any)["tab-strip"]
-    let inspector = window.descendants(matching: .any)["toggle-inspector"]
-    XCTAssertTrue(strip.waitForExistence(timeout: 10) && inspector.exists)
+    let newTab = window.descendants(matching: .any)["tab-new"]
+    XCTAssertTrue(strip.waitForExistence(timeout: 10) && newTab.exists)
     XCTAssertLessThan(
-      abs(strip.frame.midY - inspector.frame.midY), 8,
-      "strip \(strip.frame) and toolbar \(inspector.frame) are on different rows")
+      abs(strip.frame.midY - newTab.frame.midY), 8,
+      "strip \(strip.frame) and toolbar \(newTab.frame) are on different rows")
     XCTAssertLessThan(strip.frame.minY - window.frame.minY, 40, "the strip is below the titlebar")
 
     // With one tab the strip has empty space.

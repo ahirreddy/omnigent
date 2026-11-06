@@ -44,6 +44,9 @@ public struct InboxView: View {
             .listRowSeparator(.hidden)
             .accessibilityIdentifier("inbox-checking")
           }
+          if state.hasMoreSessions, let loadMore = actions.loadMoreSessions {
+            loadMoreRow(loadMore)
+          }
         }
         .accessibilityIdentifier("inbox")
         .listStyle(.plain)
@@ -179,8 +182,21 @@ public struct InboxView: View {
     .padding(Theme.Spacing.medium)
   }
 
+  /// The web's "Load more sessions": items of older sessions show once they load.
+  private func loadMoreRow(_ loadMore: @escaping @MainActor () -> Void) -> some View {
+    let title = state.isLoadingMoreSessions ? "Loading\u{2026}" : "Load more sessions"
+    return Button(title, action: loadMore)
+      .buttonStyle(.bordered)
+      .disabled(state.isLoadingMoreSessions)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .listRowSeparator(.hidden)
+      .accessibilityIdentifier("inbox-load-more")
+  }
+
   private var emptyTitle: String {
-    switch filter {
+    // Older sessions may still hold items, as the web words it.
+    if state.hasMoreSessions { return "Nothing waiting in these sessions" }
+    return switch filter {
     case .all: "Nothing waiting on you"
     case .unread: "You’re all caught up"
     case .awaiting: "No approvals waiting"

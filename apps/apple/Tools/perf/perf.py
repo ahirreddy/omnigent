@@ -352,8 +352,6 @@ def launch(app: Path, session_id: str | None) -> dict[str, float]:
     LOG.write_text("")
     FRAMES.write_text("")
     start = now_ms()
-    # Without SwiftUI's saved windows every launch opens one window; the link connects it to the
-    # local server and shows the session.
     target = (
         f"omnigent://127.0.0.1:6767/c/{session_id}" if session_id else "omnigent://127.0.0.1:6767"
     )
@@ -372,7 +370,6 @@ def launch(app: Path, session_id: str | None) -> dict[str, float]:
             f"OMNIGENT_FRAME_LOG={FRAMES}",
             "--env",
             f"OMNIGENT_DRIVE_FILE={DRIVE}",
-            target,
             "--args",
             "-ApplePersistenceIgnoreState",
             "YES",
@@ -385,6 +382,9 @@ def launch(app: Path, session_id: str | None) -> dict[str, float]:
     shown = float(
         subprocess.run([probe, str(pid)], capture_output=True, text=True, check=True).stdout
     )
+    # A cold start by link waits for a window that never opens, so the link follows the first
+    # window; it opens the local server's window (and the session) beside it.
+    subprocess.run(["open", "-a", app, target], check=True)
     settled = wait_settled(start)
     cpu = main_cpu_ms(pid)
     hitches = parse_log(LOG.read_text(), start, start + settled + 1)

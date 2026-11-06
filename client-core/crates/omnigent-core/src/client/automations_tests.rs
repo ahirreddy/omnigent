@@ -364,7 +364,16 @@ fn pages_follow_what_the_server_advertises() {
     );
     // Sharing is on unless the server turns it off.
     assert!(ServerPages::from_value(&json!({})).is_ok_and(|pages| pages.sharing));
-    assert!(ServerPages::from_value(&json!({"sharing_mode": "off"})).is_ok_and(|p| !p.sharing));
+    let off = ServerPages::from_value(&json!({"sharing_mode": "off"})).unwrap();
+    assert!(!off.sharing && off.sharing_disabled);
+    // A single-user server never shares, so Share is hidden rather than disabled.
+    let single = json!({"single_user": true, "sharing_mode": "off"});
+    assert!(!ServerPages::from_value(&single).unwrap().sharing_disabled);
+    assert!(
+        !ServerPages::from_value(&json!({}))
+            .unwrap()
+            .sharing_disabled
+    );
     assert!(ServerPages::from_value(&json!({"features": {"usage_page": "yes"}})).is_err());
     assert!(ServerPages::from_value(&json!({"features": {"canvas": "yes"}})).is_err());
     assert!(ServerPages::from_value(&json!({"sharing_mode": 1})).is_err());

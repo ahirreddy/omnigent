@@ -41,9 +41,10 @@ extension ConnectedServerView {
       deletingWorktrees: delete ? request.worktreeSessionIDs : [])
   }
 
-  /// Share for the viewer's own sessions on a server with sharing; `nil` hides it.
+  /// Share for the viewer's own sessions on a server with sharing; `nil` hides it. A server that
+  /// turned sharing off keeps it, disabled with ``shareUnavailableReason``, as the web does.
   var shareAction: (@MainActor (OmnigentUIComponents.SessionSummary) -> Void)? {
-    guard connection.pages?.offered?.sharing == true else { return nil }
+    guard ShareAdapter.offered(connection.pages?.offered) else { return nil }
     let connection = connection
     let model = sidebarModel
     return { summary in
@@ -51,6 +52,11 @@ extension ConnectedServerView {
       model.share = store
       Task { await store.load() }
     }
+  }
+
+  /// Why Share shows disabled: the server's admin turned sharing off.
+  var shareUnavailableReason: String? {
+    ShareAdapter.unavailableReason(connection.pages?.offered)
   }
 
   /// The Share sheet a sidebar row opened.

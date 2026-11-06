@@ -52,9 +52,13 @@ public final class SessionTabGroups {
   /// The selected tab of the shown session.
   public var selected: AppTab? { current?.selected }
 
-  /// Sessions to keep open: the shown one and the most recently shown others.
+  /// Sessions to keep open: the shown one and the most recently shown others, with the side
+  /// chats their built tabs show.
   public var liveSessionIDs: Set<String> {
-    Set(recentSessions.prefix(Self.liveLimit))
+    let recent = recentSessions.prefix(Self.liveLimit)
+    return recent.reduce(into: Set(recent)) { live, sessionID in
+      live.formUnion(groups[sessionID]?.liveSessionIDs ?? [])
+    }
   }
 
   /// A tab of any session, with its session.
@@ -116,6 +120,16 @@ public final class SessionTabGroups {
     guard let (sessionID, _) = tab(id) else { return }
     groups[sessionID]?.select(id)
     show(.session(sessionID))
+  }
+
+  /// Shows other content in a tab of any session, in place (a new side chat's tab once the side
+  /// chat exists).
+  /// - Parameters:
+  ///   - id: The tab.
+  ///   - content: What it shows now.
+  public func replace(_ id: String, with content: AppTabContent) {
+    guard let (sessionID, _) = tab(id) else { return }
+    groups[sessionID]?.replace(id, with: content)
   }
 
   /// Closes a tab of any session.
@@ -207,7 +221,8 @@ extension SessionTabGroups {
   nonisolated static func belongsInGroup(_ content: AppTabContent) -> Bool {
     switch content {
     case .newSession, .inbox, .canvas, .automations, .usage: false
-    case .newTab, .chat, .terminal, .harness, .sideChat, .browser, .agentBrowser, .remoteBrowser:
+    case .newTab, .chat, .terminal, .harness, .sideChat, .sideChatSession, .browser,
+      .agentBrowser, .remoteBrowser:
       true
     }
   }

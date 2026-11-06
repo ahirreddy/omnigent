@@ -16,8 +16,9 @@ public final class SampleWorkspaceDataSource: WorkspaceDataSource {
   public private(set) var requests: [String] = []
   /// Text saved by `save`, by path; reads return it.
   public var savedTexts: [String: String] = [:]
-  /// Review comments left with `addComment`.
-  public private(set) var comments: [FileTextSpan: [String]] = [:]
+  /// Review comments, as left with `addComment`, in the order they were left.
+  public var comments: [SampleComment] = []
+  private var nextCommentID = 0
 
   /// A sample source.
   /// - Parameters:
@@ -119,20 +120,51 @@ public final class SampleWorkspaceDataSource: WorkspaceDataSource {
   public func comments(on path: String, text: String) async throws(WorkspaceFailure)
     -> [FileCommentLine]
   {
-    comments.filter { $0.key.path == path }
-      .sorted { $0.key.start < $1.key.start }
-      .flatMap { span, bodies in
-        bodies.enumerated().map { index, body in
-          FileCommentLine(
-            id: "\(span.start)-\(index)", line: span.firstLine, body: body, anchor: span.text)
-        }
-      }
+    comments.filter { $0.path == path }.map(\.comment)
+      .sorted { ($0.line ?? .max, $0.id) < ($1.line ?? .max, $1.id) }
   }
 
   /// See `WorkspaceDataSource`.
   public func addComment(_ body: String, on span: FileTextSpan) async throws(WorkspaceFailure) {
     requests.append("comment \(span.reference)")
-    comments[span, default: []].append(body)
+    if let failure = failures["#comment"] { throw failure }
+    nextCommentID += 1
+    comments.append(
+      SampleComment(
+        comment: FileCommentLine(
+          id: "c\(nextCommentID)", line: span.firstLine, body: body, anchor: span.text),
+        path: span.path))
+  }
+
+  // swiftlint:disable discouraged_optional_boolean
+  /// See `WorkspaceDataSource`.
+  public func updateComment(_ id: String, body: String?, open: Bool?)
+    async throws(WorkspaceFailure)
+  {
+    requests.append("update-comment \(id)")
+    if let failure = failures["#comment"] { throw failure }
+    guard let index = comments.firstIndex(where: { $0.comment.id == id }) else {
+      throw WorkspaceFailure(.notFound, message: "Comment not found")
+    }
+    if let body { comments[index].comment.body = body }
+    if let open { comments[index].comment.isOpen = open }
+  }
+  // swiftlint:enable discouraged_optional_boolean
+
+  /// See `WorkspaceDataSource`.
+  public func deleteComment(_ id: String) async throws(WorkspaceFailure) {
+    requests.append("delete-comment \(id)")
+    if let failure = failures["#comment"] { throw failure }
+    comments.removeAll { $0.comment.id == id }
+  }
+
+  /// See `WorkspaceDataSource`.
+  public func sendCommentsToAgent(_ ids: [String]) async throws(WorkspaceFailure) {
+    requests.append("send-comments \(ids.joined(separator: ","))")
+    if let failure = failures["#send"] { throw failure }
+    for index in comments.indices where ids.contains(comments[index].comment.id) {
+      comments[index].comment.isOpen = false
+    }
   }
 
   private func currentText(_ path: String) async throws(WorkspaceFailure) -> String? {
@@ -143,6 +175,23 @@ public final class SampleWorkspaceDataSource: WorkspaceDataSource {
   /// See `WorkspaceDataSource`.
   public func absoluteLocation(of path: String) -> String? {
     path.isEmpty ? WorkspaceSamples.root : "\(WorkspaceSamples.root)/\(path)"
+  }
+}
+
+/// A comment the sample source keeps, with its file.
+public struct SampleComment: Hashable, Sendable {
+  /// The comment.
+  public var comment: FileCommentLine
+  /// Its file.
+  public var path: String
+
+  /// A comment.
+  /// - Parameters:
+  ///   - comment: The comment.
+  ///   - path: Its file.
+  public init(comment: FileCommentLine, path: String) {
+    self.comment = comment
+    self.path = path
   }
 }
 

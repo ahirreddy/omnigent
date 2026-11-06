@@ -14,6 +14,8 @@ enum WorkspaceFilesCatalog {
           CatalogState("review", "Review") { WorkspaceFileSample(stage: .review) },
           CatalogState("edit", "Unsaved edit") { WorkspaceFileSample(stage: .edit) },
           CatalogState("conflict", "Conflict") { WorkspaceFileSample(stage: .conflict) },
+          CatalogState("comments", "Comments panel") { WorkspaceFileSample(stage: .comments) },
+          CatalogState("markdown", "Markdown editor") { WorkspaceFileSample(stage: .markdown) },
           CatalogState("search", "File search") { WorkspaceFileSample(stage: .search) },
         ])
     ]
@@ -22,7 +24,7 @@ enum WorkspaceFilesCatalog {
 
 /// One stage of the sample workspace, prepared on appear.
 private struct WorkspaceFileSample: View {
-  enum Stage { case review, edit, conflict, search }
+  enum Stage { case review, edit, conflict, comments, markdown, search }
 
   let stage: Stage
   @State private var source = SampleWorkspaceDataSource()
@@ -55,7 +57,9 @@ private struct WorkspaceFileSample: View {
   /// The view mode the stage opens in, kept apart from the app's own setting.
   private var defaults: UserDefaults {
     let defaults = UserDefaults(suiteName: "gallery.workspace-files") ?? .standard
-    defaults.set(stage == .review ? "source" : "edit", forKey: "workspace.fileViewMode")
+    let mode = [.review, .comments].contains(stage) ? "source" : "edit"
+    defaults.set(mode, forKey: "workspace.fileViewMode")
+    defaults.set(stage == .comments, forKey: "workspace.showsComments")
     return defaults
   }
 
@@ -69,11 +73,13 @@ private struct WorkspaceFileSample: View {
         assertionFailure("The sample source does not fail comments: \(error)")
       }
     }
-    await browser.open(.file(path: path, line: nil))
-    let editor = browser.editors[path]
+    if stage == .comments { await addSentComment(on: path) }
+    let shown = stage == .markdown ? WorkspaceSamples.readmeFile.path : path
+    await browser.open(.file(path: shown, line: nil))
+    let editor = browser.editors[shown]
     editor?.autosaveDelay = nil
     switch stage {
-    case .review:
+    case .review, .comments, .markdown:
       break
     case .edit:
       editor?.text = WorkspaceSamples.mainText + "\n// TODO: handle --verbose\n"
@@ -87,5 +93,16 @@ private struct WorkspaceFileSample: View {
       await browser.tree.searchNow()
     }
     self.browser = browser
+  }
+
+  /// A second comment, already sent to the agent, so the panel's Sent tab has one.
+  private func addSentComment(on path: String) async {
+    guard let span = FileTextSpan.line(1, in: WorkspaceSamples.mainText, path: path) else { return }
+    do {
+      try await source.addComment("Name the binary after the crate.", on: span)
+      try await source.updateComment("c2", body: nil, open: false)
+    } catch {
+      assertionFailure("The sample source does not fail comments: \(error)")
+    }
   }
 }

@@ -10,8 +10,11 @@ import SwiftUI
 enum SessionToolsAdapter {
   /// What the Add menu and the tray need from the screen around the composer.
   struct Routes {
-    /// Opens a session's chat (a side chat or a sub-agent) next to this one.
+    /// Opens a session's chat (a sub-agent) next to this one.
     var openSession: @MainActor (String) -> Void
+    /// Opens a new side chat with a draft, sending it at once when the flag is set; `nil` where
+    /// the window has no tabs to open it in.
+    var openNewSideChat: (@MainActor (String, Bool) -> Void)?
     /// Shows the right panel's Pull Requests tab.
     var showPullRequests: @MainActor () -> Void
     /// Opens the goal sheet.
@@ -78,9 +81,11 @@ enum SessionToolsAdapter {
   }
 
   /// Side chat, for a session the viewer can write to whose harness is known (web
-  /// `supportsSideChat`); `nil` hides it.
+  /// `supportsSideChat`) and that is not itself a side chat; `nil` hides it.
   static func sideChat(_ store: ConversationStore, routes: Routes) -> (@MainActor () -> Void)? {
-    guard !ComposerAdapter.isReadOnly(store), store.header?.settings?.harness?.isEmpty == false
+    let settings = store.header?.settings
+    guard !ComposerAdapter.isReadOnly(store), settings?.harness?.isEmpty == false,
+      settings?.sideChatSourceId == nil
     else { return nil }
     return { startSideChat(store, routes: routes) }
   }
@@ -97,40 +102,31 @@ enum SessionToolsAdapter {
     }
   }
 
-  /// Starts a side chat: a native `/side` fills the composer, a forked one opens next to this
-  /// chat. A `quote` (selected transcript text) starts its draft quoted; `question` (typed after
-  /// `/side`) becomes its draft.
+  /// Starts a side chat: a native `/side` fills the composer; any other opens a new side chat
+  /// next to this chat, created by its first message. A `quote` (selected transcript text)
+  /// starts its draft quoted; a `question` typed after `/side` is sent at once.
   static func startSideChat(
     _ store: ConversationStore, routes: Routes, quote: String? = nil, question: String = ""
   ) {
-    let tools = store.tools
-    guard !tools.isBusy else { return }
-    // A native side chat is typed here, so a draft in progress is never replaced by a quote.
-    if quote != nil, !store.composer.text.isEmpty, case .command = sideChatKind(store) {
-      routes.report("Send or clear the message you are writing before asking in a side chat.")
-      return
-    }
     let composer = store.composer
-    let typed = composer.text
-    Task {
-      switch await tools.startSideChat(quote: quote) {
-      case .command(let prefix): composer.text = prefix + question
-      case .session(let sessionID):
-        if !question.isEmpty { composer.seedDraft(question, forSession: sessionID) }
-        // The typed `/side` is done once its side chat exists.
-        if composer.text == typed, typed.hasPrefix("/side") { composer.text = "" }
-        routes.openSession(sessionID)
-      case nil:
-        let reason = tools.lastError?.message ?? "Unknown error."
-        routes.report("Couldn't start a side chat for this session: \(reason)")
+    let harness = store.header?.settings?.harness
+    switch OmnigentCoreFFI.sideChatStart(harness: harness, quote: quote) {
+    case .command(let prefix):
+      // A native side chat is typed here, so a draft in progress is never replaced by a quote.
+      if quote != nil, !composer.text.isEmpty {
+        routes.report("Send or clear the message you are writing before asking in a side chat.")
+        return
       }
+      composer.text = prefix + question
+    case .draft(let draft):
+      guard let open = routes.openNewSideChat else {
+        routes.report("Side chats open in tabs, which this window doesn't have.")
+        return
+      }
+      // A typed `/side` is done once its side chat opens.
+      if quote == nil, composer.text.hasPrefix("/side") { composer.text = "" }
+      open(question.isEmpty ? draft : question, !question.isEmpty)
     }
-  }
-
-  /// How a side chat of this session starts, as far as the screen knows before asking the core:
-  /// Codex-native forks from a typed command.
-  private static func sideChatKind(_ store: ConversationStore) -> SideChatStart? {
-    store.header?.settings?.harness == "codex-native" ? .command(prefix: "") : nil
   }
 
   /// "Reply" and "Ask in side chat" for text selected in the transcript, for a viewer who can
@@ -140,11 +136,14 @@ enum SessionToolsAdapter {
   ) {
     guard !ComposerAdapter.isReadOnly(store) else { return }
     let composer = store.composer
-    actions.replyWithSelection = { text in
-      composer.text = replyQuote(draft: composer.text, selection: text)
-    }
+    actions.replyWithSelection = { text in composer.quote(text) }
     if sideChat(store, routes: routes) != nil {
       actions.askInSideChat = { text in startSideChat(store, routes: routes, quote: text) }
+    } else if store.header?.settings?.sideChatSourceId != nil {
+      // In a side chat, asking quotes into its own composer (web `sideChatSelectionTarget`).
+      actions.askInSideChat = { text in
+        composer.text = replyQuote(draft: composer.text, selection: text)
+      }
     }
   }
 

@@ -105,7 +105,7 @@ impl SlashOptions {
 }
 
 /// The native harnesses Smart Routing picks between.
-const ROUTED_NATIVE_HARNESSES: [&str; 2] = ["claude-native", "codex-native"];
+pub(crate) const ROUTED_NATIVE_HARNESSES: [&str; 2] = ["claude-native", "codex-native"];
 
 /// Whether the model picker offers Smart Routing for the session (the web's
 /// `isCostRoutingEligible`).

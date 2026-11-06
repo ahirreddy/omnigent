@@ -273,6 +273,8 @@ pub struct SessionSettings {
     pub host_resumable: Option<bool>,
     /// The parent session of a child.
     pub parent_id: Option<String>,
+    /// The session a side chat was forked from; `None` for other sessions.
+    pub side_chat_source_id: Option<String>,
     /// `cost_control_mode_override`.
     pub routing_mode: Option<String>,
 }
@@ -296,6 +298,10 @@ pub struct SessionHeader {
     pub failure_message: Option<String>,
     /// Settings, once reported.
     pub settings: Option<SessionSettings>,
+    /// A stand-in until the server's metadata loads (titled "Conversation", read-only): show
+    /// the session as loading, not as an empty read-only session.
+    #[uniffi(default)]
+    pub is_placeholder: bool,
 }
 
 /// One session-metadata section (usage, plan, children, changed files, ...).
@@ -499,6 +505,7 @@ impl From<core::SessionSettings> for SessionSettings {
             runner_bound: settings.runner_bound,
             host_resumable: settings.host_resumable,
             parent_id: settings.parent_id,
+            side_chat_source_id: settings.side_chat_source_id,
             routing_mode: settings.routing_mode,
         }
     }
@@ -515,6 +522,7 @@ impl From<core::SessionHeader> for SessionHeader {
             permission_level: header.permission_level,
             failure_message: header.failure_message,
             settings: header.settings.map(Into::into),
+            is_placeholder: header.metadata_revision.is_none(),
         }
     }
 }

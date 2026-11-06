@@ -147,6 +147,11 @@ extension ConnectedServerView {
       requestArchive(sessions.map(\.id), archived: archived)
     }
     actions.dropSession = { session, action in drop(session, action) }
+    let paging = connection.sessionList.paging
+    actions.loadMoreSessions = { paging.loadMore() }
+    actions.loadProjectPage = { project in
+      Task { await paging.loadProject(ProjectSummary(project), id: project.id) }
+    }
     return withProjectActions(actions)
   }
 
@@ -208,6 +213,7 @@ extension ConnectedServerView {
     }
     // Split view holds two tabs of one session; another session goes beside it in a window
     // (Open in New Window), so the rows offer no Open in Split View.
+    actions.shareUnavailableReason = shareUnavailableReason
     actions.forkUnavailableReason = { summary in
       list.session(summary.id).flatMap { forkUnavailableReason(source: $0) }
     }
