@@ -22,7 +22,19 @@ nonisolated struct TranscriptFollow: Equatable {
   var showsJumpToLatest: Bool { !follows }
 
   /// The pill's title.
-  var jumpTitle: String { hasUnseenOutput ? "New output" : "Jump to latest" }
+  var jumpTitle: String { pill.title }
+
+  /// What the "Jump to latest" pill shows. The transcript re-renders only when this changes,
+  /// not for every change of the rules' other state.
+  struct Pill: Equatable {
+    var isShown = false
+    var hasUnseenOutput = false
+
+    var title: String { hasUnseenOutput ? "New output" : "Jump to latest" }
+  }
+
+  /// The pill's look now.
+  var pill: Pill { Pill(isShown: showsJumpToLatest, hasUnseenOutput: hasUnseenOutput) }
 
   /// The scroll phase changed.
   /// - Parameter isUserScrolling: The user is dragging, interacting or decelerating.

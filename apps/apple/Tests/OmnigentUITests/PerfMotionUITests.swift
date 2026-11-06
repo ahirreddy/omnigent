@@ -97,7 +97,90 @@ final class PerfMotionUITests: XCTestCase {
     }
   }
 
+  /// Rotating keeps a transcript at the bottom there, and one scrolled up on the same heading.
+  @MainActor
+  func testPadRotationKeepsReadingPosition() throws {
+    guard isPad else { throw XCTSkip("iPad layout only") }
+    let app = try launch()
+    let jump = app.buttons["jump-to-latest"]
+    if jump.exists {
+      jump.tap()
+      sleep(2)
+    }
+    XCTAssertTrue(isAtBottom(app), "not at the bottom before rotating")
+    for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+      measureStep("rotate at the bottom") { XCUIDevice.shared.orientation = orientation }
+      XCTAssertTrue(isAtBottom(app), "left the bottom rotating to \(orientation.rawValue)")
+    }
+    // Past the mock model's identical replies into the seeded turns, whose headings are unique.
+    var heading: String?
+    for _ in 0..<25 where heading == nil {
+      transcript(app).swipeDown()
+      sleep(1)
+      heading = middleHeading(app)
+    }
+    let anchor = try XCTUnwrap(heading, "no step heading near the middle of the screen")
+    for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+      measureStep("rotate scrolled up") { XCUIDevice.shared.orientation = orientation }
+      XCTAssertTrue(isVisible(anchor, in: app), "\(anchor) left the screen")
+    }
+  }
+
   // MARK: Helpers
+
+  /// The transcript's visible band: under the navigation bar and above the composer.
+  @MainActor
+  private func readingBand(_ app: XCUIApplication) -> (frame: CGRect, texts: [ShownText]) {
+    guard let snapshot = try? transcript(app).snapshot() else { return (.zero, []) }
+    var frame = snapshot.frame
+    let composer = app.descendants(matching: .any)["composer"].firstMatch
+    if composer.exists { frame.size.height = composer.frame.minY - frame.minY }
+    let bar = app.navigationBars.firstMatch
+    if bar.exists, bar.frame.maxY > frame.minY {
+      frame = frame.divided(atDistance: bar.frame.maxY - frame.minY, from: .minYEdge).remainder
+    }
+    var texts: [ShownText] = []
+    Self.collectTexts(snapshot, into: &texts)
+    return (frame, texts)
+  }
+
+  private struct ShownText {
+    let frame: CGRect
+    let label: String
+  }
+
+  private static func collectTexts(_ node: any XCUIElementSnapshot, into texts: inout [ShownText]) {
+    if node.elementType == .staticText, !node.frame.isEmpty {
+      texts.append(ShownText(frame: node.frame, label: node.label))
+    }
+    for child in node.children { collectTexts(child, into: &texts) }
+  }
+
+  /// Whether the transcript's last text ends above the composer: nothing is left below it.
+  @MainActor
+  private func isAtBottom(_ app: XCUIApplication) -> Bool {
+    let band = readingBand(app)
+    guard let lowest = band.texts.map(\.frame.maxY).max() else { return false }
+    return lowest <= band.frame.maxY + 2
+  }
+
+  /// The seeded step heading (unique per turn) nearest the middle of the visible band.
+  @MainActor
+  private func middleHeading(_ app: XCUIApplication) -> String? {
+    let band = readingBand(app)
+    return band.texts
+      .filter {
+        $0.label.hasPrefix("Step ")
+          && band.frame.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY))
+      }
+      .min { abs($0.frame.midY - band.frame.midY) < abs($1.frame.midY - band.frame.midY) }?.label
+  }
+
+  @MainActor
+  private func isVisible(_ label: String, in app: XCUIApplication) -> Bool {
+    let band = readingBand(app)
+    return band.texts.contains { $0.label == label && band.frame.intersects($0.frame) }
+  }
 
   private var longIndex: Int {
     ProcessInfo.processInfo.environment["OMNIGENT_LONG"].flatMap(Int.init) ?? 1

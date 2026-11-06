@@ -35,6 +35,20 @@ struct ConversationModeRouteTests {
     #expect(binding.wrappedValue == .chat)
   }
 
+  @Test func panelFollowsTheDefaultUntilTheChatChooses() {
+    let route = ConversationPanelRoute()
+    let shown = route.isShown(default: .open, isSheet: false, .constant(route))
+    #expect(shown.wrappedValue)
+    // A sheet (compact width) starts closed.
+    #expect(!route.isShown(default: .open, isSheet: true, .constant(route)).wrappedValue)
+    route.isShown = true
+    #expect(route.choice == .open)
+    #expect(route.isShown(default: .collapsed, isSheet: true, .constant(route)).wrappedValue)
+    route.isShown = false
+    #expect(route.choice == .collapsed)
+    #expect(!route.isShown(default: .open, isSheet: false, .constant(route)).wrappedValue)
+  }
+
   @Test func forkSheetBindingCancelsOnlyOnDismiss() {
     let flow = ForkFlow()
     #expect(flow.sheet == nil)

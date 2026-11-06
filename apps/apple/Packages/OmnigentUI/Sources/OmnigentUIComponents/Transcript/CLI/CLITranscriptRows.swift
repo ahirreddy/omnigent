@@ -118,6 +118,7 @@ struct CLITranscriptRows<Header: View>: View {
       CLIBlockView(block: entry.block, decorations: entry.decorations)
         .equatable()
         .id(entry.id)
+        .reportsReadingAnchor(entry.id)
         // Over the row, since a user message's band is opaque.
         .overlay { if focus?.flashedRowID == entry.id { MessageFlash(isBand: true) } }
     }
@@ -149,6 +150,10 @@ private struct CLIBlockView: View, Equatable {
   let decorations: [String: MessageDecoration]
 
   var body: some View {
+    content.countsRenders("row")
+  }
+
+  @ViewBuilder private var content: some View {
     switch block {
     case .segment(.item(let item)):
       CLIItemView(item: item, decorations: decorations)
