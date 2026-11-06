@@ -80,7 +80,12 @@ public struct ConnectedServerView: View {
     ) { _ in
       tabDetail
         .safeAreaInset(edge: .top, spacing: 0) {
-          ConnectionIssuesBanner(connection: connection)
+          VStack(spacing: 0) {
+            ConnectionIssuesBanner(connection: connection)
+            if let tabFailure {
+              TabFailureBanner(message: tabFailure) { self.tabFailure = nil }
+            }
+          }
         }
     }
     .environment(\.tabStatusDetails, TabAdapter.statusDetails(session))
@@ -110,11 +115,6 @@ public struct ConnectedServerView: View {
       isPresented: $showsTabOverview, state: strip?.state ?? TabsState(),
       actions: strip?.actions ?? TabActions()
     )
-    .alert("Could Not Open the Tab", isPresented: tabFailurePresented) {
-      Button("OK") { tabFailure = nil }
-    } message: {
-      Text(tabFailure ?? "")
-    }
     .alert(
       "Could Not Update the Session", isPresented: editErrorPresented,
       actions: { Button("OK") { connection.sessionList.dismissEditError() } },
@@ -257,10 +257,6 @@ extension ConnectedServerView {
       session: session, context: tabContext, showAll: { showsTabOverview = true },
       fail: { tabFailure = $0 }, supportsSplit: sizeClass != .compact,
       openInNewWindow: openInNewWindow)
-  }
-
-  private var tabFailurePresented: Binding<Bool> {
-    Binding(get: { tabFailure != nil }, set: { if !$0 { tabFailure = nil } })
   }
 
   /// The sidebar's selection: the window's page. A choice shows its page at once, before the

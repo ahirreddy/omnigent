@@ -11,12 +11,12 @@ struct ConnectionIssuesBanner: View {
   var body: some View {
     VStack(spacing: 0) {
       if let status = Self.describe(connection.updatesLink) {
-        bannerRow(systemImage: "arrow.triangle.2.circlepath", text: status, isError: false)
+        Self.bannerRow(systemImage: "arrow.triangle.2.circlepath", text: status, isError: false)
           .accessibilityIdentifier("connection.status")
       }
       if let issue = connection.issues.last {
         HStack {
-          bannerRow(
+          Self.bannerRow(
             systemImage: "exclamationmark.triangle",
             text: connection.issues.count > 1
               ? "\(issue.error.message) (\(connection.issues.count) problems)"
@@ -37,7 +37,7 @@ struct ConnectionIssuesBanner: View {
     .accessibilityIdentifier("connection.issues")
   }
 
-  private func bannerRow(systemImage: String, text: String, isError: Bool) -> some View {
+  static func bannerRow(systemImage: String, text: String, isError: Bool) -> some View {
     Label(text, systemImage: systemImage)
       .font(.callout)
       .foregroundStyle(isError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
@@ -58,5 +58,27 @@ struct ConnectionIssuesBanner: View {
     case .closed: return "Live updates closed."
     case .failed(let error): return "Live updates failed: \(error.message)"
     }
+  }
+}
+
+/// A tab that could not open, such as a terminal the session's runner refused, until dismissed.
+/// A banner rather than an alert: a modal opened as a Mac menu closes can stop answering clicks.
+struct TabFailureBanner: View {
+  let message: String
+  let dismiss: () -> Void
+
+  var body: some View {
+    HStack {
+      ConnectionIssuesBanner.bannerRow(
+        systemImage: "exclamationmark.triangle", text: message, isError: true)
+      Button("Dismiss", action: dismiss)
+        .controlSize(.small)
+        .padding(.trailing, 10)
+        .accessibilityIdentifier("tab-failure.dismiss")
+    }
+    .background(.red.opacity(0.08))
+    .background(.bar)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("tab-failure")
   }
 }
