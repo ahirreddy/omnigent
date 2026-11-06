@@ -7,6 +7,8 @@ public struct BrowserTabContentView: View {
   private let model: BrowserTabModel
   private let environment: BrowserEnvironment
   private let keyboardShortcuts: Bool
+  private let showSessions: (@MainActor () -> Void)?
+  private let tabsButton: AnyView?
   @State private var sheet: BrowserTabSheet?
   #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -18,12 +20,18 @@ public struct BrowserTabContentView: View {
   ///   - environment: The shared browser environment.
   ///   - keyboardShortcuts: Installs ⌘L, ⌘F, ⌘G, ⌘+/−/0, ⌘R, ⇧⌘R, ⌥⌘I, ⌘P, ⌥⌘U, ⌘D and ⌘Y
   ///     while the view is in a window. Turn off when `BrowserTabCommands` provides them.
+  ///   - showSessions: Shows the app's session list. With `tabsButton`, the iPhone layout hides
+  ///     the app's navigation bar and shows both beside the address instead, in one row.
+  ///   - tabsButton: The app's tab overview button.
   public init(
-    model: BrowserTabModel, environment: BrowserEnvironment, keyboardShortcuts: Bool = true
+    model: BrowserTabModel, environment: BrowserEnvironment, keyboardShortcuts: Bool = true,
+    showSessions: (@MainActor () -> Void)? = nil, tabsButton: AnyView? = nil
   ) {
     self.model = model
     self.environment = environment
     self.keyboardShortcuts = keyboardShortcuts
+    self.showSessions = showSessions
+    self.tabsButton = tabsButton
   }
 
   /// The view body.
@@ -31,7 +39,9 @@ public struct BrowserTabContentView: View {
     VStack(spacing: 0) {
       toolbar
         .zIndex(1)  // Omnibox suggestions draw over the page below.
-      progress
+      #if os(macOS)
+        progress
+      #endif
       if environment.settings.showsBookmarksBar,
         !(environment.bookmarks(for: model.profileID).bar.children ?? []).isEmpty
       {
@@ -70,25 +80,40 @@ public struct BrowserTabContentView: View {
     .sheet(item: $sheet) { sheet in sheetContent(sheet) }
     // A container, so the tab's identifier does not replace its controls' own.
     .accessibilityElement(children: .contain)
+    #if os(iOS)
+      .toolbarVisibility(replacesNavigationBar ? .hidden : .automatic, for: .navigationBar)
+    #endif
     .accessibilityIdentifier("browser.tab")
   }
+
+  #if os(iOS)
+    /// On iPhone the address row stands in for the app's navigation bar.
+    private var replacesNavigationBar: Bool {
+      sizeClass == .compact && showSessions != nil && tabsButton != nil
+    }
+  #endif
 
   @ViewBuilder private var toolbar: some View {
     #if os(iOS)
       BrowserTouchTopBar(
-        model: model, environment: environment, sheet: $sheet, isCompact: sizeClass == .compact)
+        model: model, environment: environment, sheet: $sheet, isCompact: sizeClass == .compact,
+        showSessions: replacesNavigationBar ? showSessions : nil,
+        tabsButton: replacesNavigationBar ? tabsButton : nil)
     #else
       BrowserTabToolbar(model: model, environment: environment, sheet: $sheet)
     #endif
   }
 
-  @ViewBuilder private var progress: some View {
-    ProgressView(value: model.isLoading ? max(0.05, model.estimatedProgress) : 0)
-      .progressViewStyle(.linear)
-      .frame(height: 2)
-      .opacity(model.isLoading ? 1 : 0)
-      .accessibilityIdentifier("browser.progress")
-  }
+  #if os(macOS)
+    /// The Mac's load progress under the toolbar; the touch pill draws its own.
+    private var progress: some View {
+      ProgressView(value: model.isLoading ? max(0.05, model.estimatedProgress) : 0)
+        .progressViewStyle(.linear)
+        .frame(height: 2)
+        .opacity(model.isLoading ? 1 : 0)
+        .accessibilityIdentifier("browser.progress")
+    }
+  #endif
 
   private func open(_ url: URL, newTab: Bool) {
     if newTab {

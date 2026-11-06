@@ -165,12 +165,15 @@ struct BrowserTabContainer: View {
   let host: (any BrowserTabHosting)?
   let tab: AppTab
   let browserID: UUID
+  let navigation: BrowserTabNavigation
   let changed: @MainActor () -> Void
 
   var body: some View {
     if let host {
-      host.content(for: browserID, restoring: tab.browserState, onChange: changed)
-        .id(browserID)
+      host.content(
+        for: browserID, restoring: tab.browserState, navigation: navigation, onChange: changed
+      )
+      .id(browserID)
     } else {
       ContentUnavailableView(
         "Browser Unavailable", systemImage: "globe",

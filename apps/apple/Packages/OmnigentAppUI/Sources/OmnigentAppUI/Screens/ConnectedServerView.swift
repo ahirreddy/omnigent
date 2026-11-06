@@ -293,13 +293,7 @@ extension ConnectedServerView {
       case .chat, .newSession, .inbox, .canvas, .automations, .usage:
         detail(tab.content.destination)
       case .newTab:
-        NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: tab.id))
-          .task(id: routes.newTabState.recentSessions.map(\.id)) {
-            let recent = routes.newTabState.recentSessions.map(\.id)
-            async let profiles: Void = session.loadRemoteBrowserProfiles(recent.first)
-            await session.loadDeclaredTerminalNames(recent)
-            await profiles
-          }
+        newTabPage(tab, routes: routes)
       case .terminal(let sessionID, let terminalID):
         TerminalTabView(
           session: session, sessionID: sessionID, terminalID: terminalID,
@@ -317,24 +311,17 @@ extension ConnectedServerView {
       case .browser(let browserID):
         BrowserTabContainer(
           host: tabContext.browser, tab: tab, browserID: browserID,
+          // On iPhone the page hides the navigation bar and shows these beside its address.
+          navigation: BrowserTabNavigation(
+            showSessions: { selection = nil },
+            tabsButton: AnyView(TabSwitcherButton(state: routes.state, actions: routes.actions))),
           changed: { tabs.contentChanged() })
       case .agentBrowser(let sessionID):
         AgentBrowserTabContainer(
           host: tabContext.browser, sessionID: sessionID,
           showChat: { tabs.open(.chat(sessionID: sessionID)) })
       case .remoteBrowser(let sessionID, let tabID):
-        RemoteBrowserTabContainer(
-          session: session, tab: tab, sessionID: sessionID, tabID: tabID,
-          reopen: { url, record in
-            Task {
-              await routes.openRemoteBrowser(
-                in: sessionID, profile: record.profile, url: url, replacing: tab.id)
-            }
-          },
-          // On iPhone the remote tab hides the navigation bar (Safari's layout), so it offers
-          // the session list and the tab overview itself.
-          showSessions: { selection = nil },
-          tabsButton: { TabSwitcherButton(state: routes.state, actions: routes.actions) })
+        remoteBrowser(tab, sessionID: sessionID, tabID: tabID, routes: routes)
       }
     }
     .id(tab.id)

@@ -27,6 +27,7 @@ final class BrowserTabsUITests: XCTestCase {
     let omnibox = app.textFields["browser.omnibox"]
     XCTAssertTrue(omnibox.waitForExistence(timeout: 10), "the browser tab did not open")
     sleep(3)
+    if isPhone { assertOneAddressRow(in: app, omnibox: omnibox) }
     try shot("browser-server-page")
 
     // The server's page can take the keyboard as it finishes loading.
@@ -101,6 +102,21 @@ final class BrowserTabsUITests: XCTestCase {
   private func examplePage(_ app: XCUIApplication) -> XCUIElement {
     app.webViews.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'example'"))
       .firstMatch
+  }
+
+  /// On iPhone the address pill shares one row with Sessions and the tab overview, in place of
+  /// the app's navigation bar.
+  @MainActor
+  private func assertOneAddressRow(in app: XCUIApplication, omnibox: XCUIElement) {
+    let row = app.descendants(matching: .any)["browser.addressBar"]
+    let sessions = row.buttons["browser.sessions"]
+    let tabs = row.buttons["tab-switcher"]
+    XCTAssertTrue(sessions.exists, "the address row has no Sessions button")
+    XCTAssertTrue(tabs.exists, "the address row has no tab overview button")
+    XCTAssertEqual(sessions.frame.midY, omnibox.frame.midY, accuracy: 4)
+    XCTAssertEqual(tabs.frame.midY, omnibox.frame.midY, accuracy: 4)
+    let navigationBack = app.navigationBars.buttons["BackButton"]
+    XCTAssertFalse(navigationBack.exists && navigationBack.isHittable, "the navigation bar shows")
   }
 
   @MainActor

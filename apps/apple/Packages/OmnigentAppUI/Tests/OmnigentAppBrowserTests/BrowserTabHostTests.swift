@@ -68,7 +68,7 @@ struct BrowserTabHostTests {
     let reopened = try #require(tabs.reopenClosed())
     #expect(reopened.content == .browser(browserID: page.id))
     #expect(tabs.closed.isEmpty)
-    _ = host.content(for: page.id, restoring: reopened.browserState) {}
+    _ = host.content(for: page.id, restoring: reopened.browserState, navigation: nil) {}
     #expect(host.status(of: page.id)?.url?.host() == "example.com")
     tabs.close(reopened.id)
     #expect(tabs.closed.count == 1)

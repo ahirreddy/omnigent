@@ -41,201 +41,6 @@ struct BrowserTabToolbar: View {
   }
 }
 
-/// The address and search field. Shows the page URL; while editing, suggestions from history,
-/// bookmarks and open tabs, plus go or search for what was typed.
-struct BrowserOmniboxField: View {
-  let model: BrowserTabModel
-  let environment: BrowserEnvironment
-  @State private var text = ""
-  @State private var editing = false
-  @State private var selected = 0
-  @State private var error: BrowserError?
-  @State private var selection: TextSelection?
-  @FocusState private var focused: Bool
-
-  var body: some View {
-    let suggestions = currentSuggestions
-    HStack(spacing: 6) {
-      if let image = model.favicon?.image {
-        image.resizable().frame(width: 16, height: 16)
-      } else {
-        Image(systemName: model.url?.scheme == "https" ? "lock.fill" : "globe")
-          .foregroundStyle(.secondary)
-          .frame(width: 16, height: 16)
-          .accessibilityLabel(model.url?.scheme == "https" ? "Secure" : "Page")
-      }
-      TextField("Search or enter address", text: $text, selection: $selection)
-        .textFieldStyle(.plain)
-        .autocorrectionDisabled()
-        .addressInput()
-        .focused($focused)
-        .onSubmit { submit(suggestions) }
-        .onKeyPress(.downArrow) {
-          selected = min(selected + 1, max(0, suggestions.count - 1))
-          return .handled
-        }
-        .onKeyPress(.upArrow) {
-          selected = max(selected - 1, 0)
-          return .handled
-        }
-        .onKeyPress(.escape) {
-          revert()
-          return .handled
-        }
-        .onChange(of: text) {
-          if focused { editing = true }
-          selected = 0
-        }
-        .accessibilityIdentifier("browser.omnibox")
-      if let url = model.url, BrowserHistoryStore.isRecordable(url) {
-        Button(
-          model.isBookmarked ? "Remove Bookmark" : "Bookmark This Page",
-          systemImage: model.isBookmarked ? "star.fill" : "star"
-        ) {
-          model.toggleBookmark()
-        }
-        .foregroundStyle(model.isBookmarked ? Color.accentColor : Color.secondary)
-        .accessibilityIdentifier("browser.bookmarkStar")
-      }
-    }
-    .padding(.horizontal, 10)
-    .padding(.vertical, Self.verticalPadding)
-    .background(.quaternary.opacity(focused ? 0.9 : 0.6), in: Capsule())
-    .overlay {
-      if focused { Capsule().strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 1.5) }
-    }
-    .overlay(alignment: .topLeading) {
-      if focused, editing, !suggestions.isEmpty {
-        BrowserOmniboxSuggestionList(suggestions: suggestions, selected: selected) { suggestion in
-          choose(suggestion)
-        }
-        .offset(y: Self.suggestionsOffset)
-      }
-    }
-    .zIndex(10)
-    .onChange(of: model.url, initial: true) { revert() }
-    .onChange(of: focused) { _, isFocused in
-      guard isFocused else { return revert() }
-      // As in Safari, focusing selects the whole address, so typing replaces it. After the
-      // tap that focused the field places its caret.
-      Task { selection = TextSelection(range: text.startIndex..<text.endIndex) }
-    }
-    .onChange(of: model.omniboxFocusRequest, initial: true) { _, request in
-      if request > 0 { focused = true }
-    }
-    .popover(
-      isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })
-    ) {
-      Text(error?.localizedDescription ?? "").padding()
-        .presentationCompactAdaptation(.popover)
-    }
-  }
-
-  #if os(iOS)
-    /// A taller field for touch.
-    private static let verticalPadding: CGFloat = 9
-    private static let suggestionsOffset: CGFloat = 44
-  #else
-    private static let verticalPadding: CGFloat = 5
-    private static let suggestionsOffset: CGFloat = 34
-  #endif
-
-  private var currentSuggestions: [BrowserOmniboxSuggestion] {
-    guard editing else { return [] }
-    return BrowserOmnibox.suggestions(
-      for: text, searchEngine: environment.settings.searchEngine,
-      history: environment.history(for: model.profileID),
-      bookmarks: environment.bookmarks(for: model.profileID),
-      openTabs: environment.openTabSummaries(excluding: model.id).filter {
-        $0.profileID == model.profileID
-      })
-  }
-
-  private func revert() {
-    editing = false
-    selected = 0
-    let url = model.url
-    text = url.map { $0.absoluteString == "about:blank" ? "" : $0.absoluteString } ?? ""
-  }
-
-  private func submit(_ suggestions: [BrowserOmniboxSuggestion]) {
-    if editing, suggestions.indices.contains(selected), selected > 0 {
-      choose(suggestions[selected])
-      return
-    }
-    do {
-      try model.submitOmnibox(text)
-      editing = false
-      focused = false
-    } catch let failure {
-      error = failure
-    }
-  }
-
-  private func choose(_ suggestion: BrowserOmniboxSuggestion) {
-    editing = false
-    focused = false
-    if case .openTab(let id) = suggestion.kind, let switchTo = environment.onSwitchToTab {
-      switchTo(id)
-      revert()
-      return
-    }
-    model.load(suggestion.url, typed: suggestion.kind == .navigate)
-  }
-}
-
-struct BrowserOmniboxSuggestionList: View {
-  let suggestions: [BrowserOmniboxSuggestion]
-  let selected: Int
-  let choose: (BrowserOmniboxSuggestion) -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      ForEach(Array(suggestions.enumerated()), id: \.element.id) { index, suggestion in
-        Button {
-          choose(suggestion)
-        } label: {
-          HStack(spacing: 8) {
-            Image(systemName: Self.icon(suggestion.kind))
-              .frame(width: 16)
-              .foregroundStyle(.secondary)
-              .accessibilityHidden(true)
-            Text(suggestion.title).lineLimit(1)
-            Text(suggestion.subtitle)
-              .lineLimit(1)
-              .foregroundStyle(.secondary)
-              .font(.caption)
-            Spacer(minLength: 0)
-          }
-          .padding(.horizontal, 10)
-          .padding(.vertical, 5)
-          .contentShape(Rectangle())
-          .background(
-            index == selected ? Color.accentColor.opacity(0.18) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("browser.omnibox.suggestion.\(index)")
-      }
-    }
-    .padding(4)
-    .suggestionListWidth()
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-    .shadow(radius: 8, y: 4)
-    .accessibilityIdentifier("browser.omnibox.suggestions")
-  }
-
-  private static func icon(_ kind: BrowserOmniboxSuggestion.Kind) -> String {
-    switch kind {
-    case .navigate: "globe"
-    case .search: "magnifyingglass"
-    case .history: "clock"
-    case .bookmark: "star"
-    case .openTab: "square.on.square"
-    }
-  }
-}
-
 /// The profile chip; it opens a list of profiles for "New Tab in Profile" and "Manage
 /// Profiles…". A button with a popover, because menu labels cannot draw the chip.
 struct BrowserProfileMenu: View {
@@ -347,6 +152,12 @@ struct BrowserTabMenu: View {
       Button("Clear Browsing Data…") { sheet = .clearData }
       Button("Profiles…") { sheet = .profiles }
       if model.controller.offeredEngines.count > 1 { engineMenu }
+      #if os(iOS)
+        // Touch layouts have no ⌘W, and the iPhone has no tab strip.
+        Divider()
+        Button("Close Tab") { environment.pageClosed(model) }
+          .accessibilityIdentifier("browser.closeTab")
+      #endif
     } label: {
       Label("More", systemImage: "ellipsis.circle")
     }
@@ -370,27 +181,5 @@ struct BrowserTabMenu: View {
         }
       }
     }
-  }
-}
-
-extension View {
-  /// The address keyboard on iPhone and iPad: no capitalization, `.` and `/` keys, and Go.
-  fileprivate func addressInput() -> some View {
-    #if os(iOS)
-      textInputAutocapitalization(.never)
-        .keyboardType(.webSearch)
-        .submitLabel(.go)
-    #else
-      self
-    #endif
-  }
-
-  /// Suggestions as wide as the field on iPhone and iPad, a wider panel on the Mac.
-  fileprivate func suggestionListWidth() -> some View {
-    #if os(iOS)
-      frame(maxWidth: .infinity, alignment: .leading)
-    #else
-      frame(minWidth: 420, maxWidth: 640, alignment: .leading)
-    #endif
   }
 }

@@ -41,6 +41,24 @@ nonisolated public struct BrowserTabStatus: Hashable, Sendable {
   }
 }
 
+/// The app's controls a browser page shows beside its address field where it hides the app's
+/// navigation bar (iPhone): back to the session list and the tab overview.
+public struct BrowserTabNavigation {
+  /// Shows the session list.
+  public var showSessions: @MainActor () -> Void
+  /// The tab overview button, with the tab count.
+  public var tabsButton: AnyView
+
+  /// Creates the controls.
+  /// - Parameters:
+  ///   - showSessions: Shows the session list.
+  ///   - tabsButton: The tab overview button.
+  public init(showSessions: @escaping @MainActor () -> Void, tabsButton: AnyView) {
+    self.showSessions = showSessions
+    self.tabsButton = tabsButton
+  }
+}
+
 /// The app's browser, for browser tabs. The Mac app implements it over `OmnigentBrowser`; builds
 /// without a browser pass `nil` and the tab system offers no Browser.
 ///
@@ -57,10 +75,14 @@ public protocol BrowserTabHosting: AnyObject {
   /// - Parameters:
   ///   - id: The page.
   ///   - state: Its saved restore state.
+  ///   - navigation: The app's controls for the page's address row, where it hides the
+  ///     navigation bar (iPhone).
   ///   - onChange: Called when the page's title, URL or history changes, to save the tab.
   /// - Returns: The view.
-  func content(for id: UUID, restoring state: Data?, onChange: @escaping @MainActor () -> Void)
-    -> AnyView
+  func content(
+    for id: UUID, restoring state: Data?, navigation: BrowserTabNavigation?,
+    onChange: @escaping @MainActor () -> Void
+  ) -> AnyView
 
   /// The strip's status of a live page, or `nil` before it is built.
   /// - Parameter id: The page.
