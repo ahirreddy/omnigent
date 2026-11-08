@@ -41,10 +41,9 @@
     static func act(in window: NSWindow, pick: (Int) -> Int, log: (String) -> Void) {
       let controls = ChaosTargets.controls(in: window)
       guard !controls.isEmpty else {
-        let children = window.accessibilityChildren()?.count ?? 0
         log(
           "accessibility: no controls in \(ChaosLog.describe(window)), visible \(window.isVisible), "
-            + "minimized \(window.isMiniaturized), \(children) children")
+            + ChaosTargets.census(of: window))
         return
       }
       for _ in 0..<10 {

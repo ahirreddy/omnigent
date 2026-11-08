@@ -193,6 +193,24 @@
       return found
     }
 
+    /// How many elements the tree under `window` has, and its commonest roles, for a run that
+    /// finds no controls in it.
+    static func census(of window: NSWindow, limit: Int = 4000) -> String {
+      var queue: [Any] = window.accessibilityChildren() ?? []
+      var roles: [String: Int] = [:]
+      var visited = 0
+      while visited < queue.count, visited < limit {
+        let element = queue[visited] as? any NSAccessibilityProtocol
+        visited += 1
+        guard let element else { continue }
+        queue += element.accessibilityChildren() ?? []
+        roles[element.accessibilityRole()?.rawValue ?? "none", default: 0] += 1
+      }
+      let common = roles.sorted { $0.value > $1.value }.prefix(6)
+      return "\(visited) elements: "
+        + common.map { "\($0.key) \($0.value)" }.joined(separator: ", ")
+    }
+
     private static func describe(_ element: any NSAccessibilityProtocol, role: NSAccessibility.Role)
       -> String
     {

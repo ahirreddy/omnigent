@@ -1,5 +1,6 @@
 #if DEBUG
   import AppKit
+  import SwiftUI
   import Testing
 
   #if OMNIGENT_CHROMIUM
@@ -119,6 +120,23 @@
 
       #expect(window.frame.size == CGSize(width: 320, height: 330))
       #expect(window.frame.maxY == top)
+    }
+
+    /// Clicks and VoiceOver actions find a SwiftUI window's controls in its own accessibility tree.
+    @Test func aSwiftUIWindowsControlsAreFound() {
+      let window = NSWindow(
+        contentRect: CGRect(x: 0, y: 0, width: 300, height: 200), styleMask: .titled,
+        backing: .buffered, defer: false)
+      window.contentView = NSHostingView(
+        rootView: VStack {
+          Button("Send") {}
+          Toggle("Notify", isOn: .constant(true))
+        }.frame(width: 300, height: 200))
+      window.contentView?.layoutSubtreeIfNeeded()
+      let names = ChaosTargets.controls(in: window).map(\.name)
+      #expect(
+        names.contains { $0.hasPrefix("AXButton") && $0.hasSuffix("Send") },
+        "\(ChaosTargets.census(of: window))")
     }
   }
 #endif
