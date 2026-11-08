@@ -51,9 +51,7 @@
       request.shouldReportPartialResults = true
       let input = engine.inputNode
       let format = input.outputFormat(forBus: 0)
-      input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-        request.append(buffer)
-      }
+      input.installTap(onBus: 0, bufferSize: 1024, format: format, block: Self.tap(request))
       engine.prepare()
       try engine.start()
       self.engine = engine
@@ -93,9 +91,20 @@
       return base + " " + words
     }
 
+    /// The microphone tap, which runs on the audio thread, so it must not be main-actor
+    /// isolated.
+    nonisolated private static func tap(
+      _ request: SFSpeechAudioBufferRecognitionRequest
+    ) -> AVAudioNodeTapBlock {
+      { buffer, _ in request.append(buffer) }
+    }
+
     private static func authorized() async -> Bool {
       let speech = await withCheckedContinuation { continuation in
-        SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
+        // The system answers on a queue of its own.
+        SFSpeechRecognizer.requestAuthorization { @Sendable status in
+          continuation.resume(returning: status)
+        }
       }
       guard speech == .authorized else { return false }
       return await AVAudioApplication.requestRecordPermission()

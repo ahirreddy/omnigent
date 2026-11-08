@@ -18,7 +18,8 @@
   final class PerfDriver: NSObject {
     static let launchArgument = "OmnigentPerfDriver"
     private static var shared: PerfDriver?
-    private static let logger = Logger(subsystem: FrameMonitor.subsystem, category: "driver")
+    nonisolated private static let logger = Logger(
+      subsystem: FrameMonitor.subsystem, category: "driver")
 
     private struct Scroll {
       let view: UIScrollView
@@ -200,7 +201,8 @@
       guard let scene = keyWindow?.windowScene else { return }
       let isLandscape = scene.effectiveGeometry.interfaceOrientation.isLandscape
       let target: UIInterfaceOrientationMask = isLandscape ? .portrait : .landscapeRight
-      scene.requestGeometryUpdate(.iOS(interfaceOrientations: target)) { error in
+      // UIKit reports a refusal on a background queue, so the handler is not main-actor isolated.
+      scene.requestGeometryUpdate(.iOS(interfaceOrientations: target)) { @Sendable error in
         Self.logger.error("Rotation refused: \(error.localizedDescription, privacy: .public)")
       }
     }

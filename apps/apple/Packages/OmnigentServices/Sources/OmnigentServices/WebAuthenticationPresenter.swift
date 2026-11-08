@@ -79,7 +79,8 @@ public final class WebAuthenticationPresenter: NSObject,
     let outcome = await withCheckedContinuation { (continuation: OutcomeContinuation) in
       let session = ASWebAuthenticationSession(
         url: url, callback: callback.sessionCallback
-      ) { callbackURL, error in
+      ) { @Sendable callbackURL, error in
+        // The completion's queue is undocumented, so it must not assume the main actor.
         continuation.resume(returning: Self.outcome(callbackURL: callbackURL, error: error))
       }
       session.presentationContextProvider = self
@@ -110,7 +111,7 @@ public final class WebAuthenticationPresenter: NSObject,
   }
 
   /// Maps the session's completion values onto a typed outcome.
-  static func outcome(
+  nonisolated static func outcome(
     callbackURL: URL?, error: (any Error)?
   ) -> Result<URL, WebAuthenticationError> {
     if let error {

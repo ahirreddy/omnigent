@@ -54,7 +54,10 @@ enum UnsavedEditsAlert {
 @MainActor
 final class UnsavedEditsWindowGuard: NSObject, NSWindowDelegate {
   /// SwiftUI's delegate, set on the main actor; also read by the nonisolated forwarding methods.
-  nonisolated(unsafe) private weak var original: (any NSWindowDelegate)?
+  /// Held strongly: the window subscribes this guard to every delegate notification the original
+  /// answers, and one forwarded to a released original is an unrecognized selector.
+  nonisolated(unsafe) private var original: (any NSWindowDelegate)?
+  private weak var window: NSWindow?
   private let unsaved: () -> [String]
   private let save: () async -> [String]
   private let discard: () -> Void
@@ -68,11 +71,26 @@ final class UnsavedEditsWindowGuard: NSObject, NSWindowDelegate {
     self.discard = discard
   }
 
-  /// Stands in front of `window`'s delegate, again whenever SwiftUI replaced it.
+  /// Stands in front of `window`'s delegate, again whenever SwiftUI replaced it. A guard left by
+  /// an earlier view of the window is replaced, not wrapped, so guards never chain.
   func install(on window: NSWindow) {
+    if let installed = self.window, installed !== window { uninstall() }
     guard window.delegate !== self else { return }
-    unsafe original = window.delegate
+    let current = window.delegate
+    if let earlier = current as? UnsavedEditsWindowGuard {
+      unsafe original = unsafe earlier.original
+      earlier.window = nil
+    } else {
+      unsafe original = current
+    }
+    self.window = window
     window.delegate = self
+  }
+
+  /// Hands the window back to the delegate this guard stood in front of.
+  func uninstall() {
+    if let window, window.delegate === self { window.delegate = unsafe original }
+    window = nil
   }
 
   func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -128,6 +146,10 @@ struct UnsavedEditsWindowAccessor: NSViewRepresentable {
 
   func updateNSView(_ view: NSView, context: Context) {
     if let window = unsafe view.window { context.coordinator.install(on: window) }
+  }
+
+  static func dismantleNSView(_ view: NSView, coordinator: UnsavedEditsWindowGuard) {
+    coordinator.uninstall()
   }
 
   private final class WindowWatcher: NSView {

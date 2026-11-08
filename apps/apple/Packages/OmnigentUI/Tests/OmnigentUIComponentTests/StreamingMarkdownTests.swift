@@ -110,6 +110,17 @@ struct StreamingMarkdownTests {
     #expect(stream.closedCount == 1)
   }
 
+  @Test("text that shrinks or changes before any block closes parses like a whole parse")
+  func shrinkingTextBeforeAnyClosedBlock() {
+    // Math rewriting makes a growing reply's text shrink: "$$x$$" alone is a fenced block,
+    // "$$x$$ is" inline math.
+    let steps = ["```math\nx\n```", "`x` is", "`x", "[a]: https://example.com", "[a] b"]
+    var stream = MarkdownStream(convert: MarkdownParser.blocks)
+    for text in steps {
+      #expect(stream.elements(for: text) == MarkdownParser.parse(text), "\(text)")
+    }
+  }
+
   @Test("an unfinished line keeps the block before it open: \"3\" becomes the item \"3.\"")
   func unfinishedLineKeepsListOpen() {
     var stream = MarkdownStream(convert: MarkdownParser.blocks)

@@ -229,10 +229,11 @@ public final class TerminalSurfaceController {
 
   /// The view's size changed: `points` in view coordinates at `scale` pixels per point.
   func resize(points: CGSize, scale: CGFloat) {
-    guard let surface = unsafe surface, points.width > 0, points.height > 0 else { return }
+    guard let surface = unsafe surface, let width = Self.pixels(points.width, scale),
+      let height = Self.pixels(points.height, scale)
+    else { return }
     unsafe ghostty_surface_set_content_scale(surface, Double(scale), Double(scale))
-    unsafe ghostty_surface_set_size(
-      surface, UInt32((points.width * scale).rounded()), UInt32((points.height * scale).rounded()))
+    unsafe ghostty_surface_set_size(surface, width, height)
     let size = unsafe ghostty_surface_size(surface)
     guard let grid = TerminalGridSize(columns: Int(size.columns), rows: Int(size.rows)),
       grid != gridSize
@@ -240,6 +241,14 @@ public final class TerminalSurfaceController {
     gridSize = grid
     connection.resize(grid)
     view.requestRender()
+  }
+
+  /// `points` at `scale` in whole pixels; `nil` for an empty or non-finite size, which
+  /// `UInt32(_:)` would trap on.
+  static func pixels(_ points: CGFloat, _ scale: CGFloat) -> UInt32? {
+    let pixels = (points * scale).rounded()
+    guard pixels.isFinite, pixels > 0 else { return nil }
+    return pixels < CGFloat(UInt32.max) ? UInt32(pixels) : UInt32.max
   }
 
   /// The view gained or lost keyboard focus.

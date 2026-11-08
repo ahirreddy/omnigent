@@ -17,7 +17,8 @@ nonisolated struct MarkdownStream<Element> {
   private let convert: Convert
   private var closedSource = ""
   private var closed: [Element] = []
-  private var scanned = 0
+  /// The text `scanForDefinitions` last read.
+  private var scannedSource = ""
   private var hasDefinitions = false
 
   /// Creates a stream.
@@ -38,6 +39,11 @@ nonisolated struct MarkdownStream<Element> {
   /// - Returns: What a parse of the whole text would give.
   mutating func elements(for text: String) -> [Element] {
     if !text.utf8.starts(with: closedSource.utf8) { reset() }
+    // Math rewriting can shrink or change the open block's text; scan it again from the start.
+    if !text.utf8.starts(with: scannedSource.utf8) {
+      scannedSource = ""
+      hasDefinitions = false
+    }
     scanForDefinitions(text)
     if hasDefinitions {
       return convert(Self.topLevelBlocks(text), text[...], 0)
@@ -67,7 +73,7 @@ nonisolated struct MarkdownStream<Element> {
   private mutating func reset() {
     closedSource = ""
     closed = []
-    scanned = 0
+    scannedSource = ""
     hasDefinitions = false
   }
 
@@ -76,7 +82,8 @@ nonisolated struct MarkdownStream<Element> {
     guard !hasDefinitions else { return }
     let utf8 = text.utf8
     var previous: UInt8 = 0
-    var index = utf8.index(utf8.startIndex, offsetBy: max(scanned - 1, 0))
+    // `text` extends `scannedSource`, so resuming one byte before its end stays in bounds.
+    var index = utf8.index(utf8.startIndex, offsetBy: max(scannedSource.utf8.count - 1, 0))
     while index < utf8.endIndex {
       let byte = utf8[index]
       if previous == UInt8(ascii: "]"), byte == UInt8(ascii: ":") {
@@ -86,7 +93,7 @@ nonisolated struct MarkdownStream<Element> {
       previous = byte
       utf8.formIndex(after: &index)
     }
-    scanned = utf8.count
+    scannedSource = text
   }
 
   static func topLevelBlocks(_ text: String) -> [any Markup] {

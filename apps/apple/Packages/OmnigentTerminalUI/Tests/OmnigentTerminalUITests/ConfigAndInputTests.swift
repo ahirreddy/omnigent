@@ -1,3 +1,4 @@
+import CoreGraphics
 import Testing
 
 @testable import OmnigentTerminalUI
@@ -100,5 +101,19 @@ struct FakeConnectionTests {
     let replay = try ReplayTerminalConnection.recordedReplTUI()
     replay.start()
     #expect(replay.state == .attached(readOnly: true))
+  }
+}
+
+@MainActor
+@Suite("Surface pixel sizes")
+struct SurfacePixelSizeTests {
+  @Test("sizes round to whole pixels; empty, non-finite and huge sizes never trap")
+  func pixelSizes() {
+    #expect(TerminalSurfaceController.pixels(100.4, 2) == 201)
+    #expect(TerminalSurfaceController.pixels(0, 2) == nil)
+    #expect(TerminalSurfaceController.pixels(100, 0) == nil)
+    #expect(TerminalSurfaceController.pixels(.infinity, 2) == nil)
+    #expect(TerminalSurfaceController.pixels(.nan, 2) == nil)
+    #expect(TerminalSurfaceController.pixels(1e12, 2) == UInt32.max)
   }
 }

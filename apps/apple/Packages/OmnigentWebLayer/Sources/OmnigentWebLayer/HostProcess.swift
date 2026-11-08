@@ -60,6 +60,10 @@ final class HostProcess {
 private final class ExitSink {
   var handler: ((Int32, Bool) -> Void)?
 
+  // The termination handler can drop the last reference on Process's queue; run deinit on the
+  // main actor instead of trapping there.
+  isolated deinit {}
+
   func fire(status: Int32, signaled: Bool) {
     let handler = handler
     self.handler = nil

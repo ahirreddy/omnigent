@@ -166,7 +166,7 @@ struct BrowserOmniboxField: View {
       if !focused {
         BrowserReloadButton(model: model).foregroundStyle(.primary)
       } else if !text.isEmpty {
-        Button("Clear", systemImage: "xmark.circle.fill") { text = "" }
+        Button("Clear", systemImage: "xmark.circle.fill") { replaceText("") }
           .foregroundStyle(.secondary)
           .accessibilityIdentifier("browser.omnibox.clear")
       } else {
@@ -194,7 +194,13 @@ struct BrowserOmniboxField: View {
     editing = false
     selected = 0
     let url = model.url
-    text = url.map { $0.absoluteString == "about:blank" ? "" : $0.absoluteString } ?? ""
+    replaceText(url.map { $0.absoluteString == "about:blank" ? "" : $0.absoluteString } ?? "")
+  }
+
+  /// Sets the field's text and drops the selection, whose indices belong to the old text.
+  private func replaceText(_ newText: String) {
+    selection = nil
+    text = newText
   }
 
   private func submit(_ suggestions: [BrowserOmniboxSuggestion]) {

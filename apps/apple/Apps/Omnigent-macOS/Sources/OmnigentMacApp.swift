@@ -138,6 +138,12 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
     super.applicationDidFinishLaunching(notification)
+    #if DEBUG
+      let desktop = services.desktop
+      ChaosDriver.startIfRequested(router: desktop.router) {
+        Self.demoServerURL ?? desktop.preferences.defaultServerURL
+      }
+    #endif
     #if OMNIGENT_CHROMIUM
       do {
         try updater.start()
