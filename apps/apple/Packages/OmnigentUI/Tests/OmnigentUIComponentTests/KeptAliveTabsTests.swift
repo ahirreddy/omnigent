@@ -5,9 +5,9 @@
 
   @testable import OmnigentUIComponents
 
-  /// Hidden tabs keep the size they last showed at. The split view lays its column out at a
-  /// placeholder minimum while it sizes it; a tab mounted hidden then must not freeze there, or its
-  /// right panel lays out smaller than its content and the window's constraint passes never settle.
+  /// Hidden tabs take the column's size. The split view lays its column out at a placeholder
+  /// minimum while it sizes it; a hidden tab then must not freeze there, or at any other size than
+  /// the column's, or its right panel's constraint passes never settle.
   @MainActor
   @Suite("Kept-alive tabs")
   struct KeptAliveTabsTests {
@@ -67,16 +67,17 @@
       #expect(sizes.byID["hidden"] == CGSize(width: 768, height: 716))
     }
 
-    @Test func aHiddenTabKeepsTheSizeItLastShowedAt() {
+    /// A tab shown during a new window's first passes, then hidden as the window grows.
+    @Test func aHiddenTabFollowsTheColumn() {
       _ = NSApplication.shared
       let sizes = Sizes()
       let view = NSHostingView(rootView: tabs(["a", "b"], shown: "a", sizes: sizes))
-      layOut(view, at: CGSize(width: 800, height: 600))
+      layOut(view, at: CGSize(width: 600, height: 304))
       view.rootView = tabs(["a", "b"], shown: "b", sizes: sizes)
-      layOut(view, at: CGSize(width: 900, height: 700))
+      layOut(view, at: CGSize(width: 588, height: 665))
 
-      #expect(sizes.byID["b"] == CGSize(width: 900, height: 700))
-      #expect(sizes.byID["a"] == CGSize(width: 800, height: 600))
+      #expect(sizes.byID["b"] == CGSize(width: 588, height: 665))
+      #expect(sizes.byID["a"] == CGSize(width: 588, height: 665))
     }
   }
 #endif
