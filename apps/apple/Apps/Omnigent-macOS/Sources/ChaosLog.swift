@@ -130,6 +130,33 @@
         .joined(separator: "\n")
     }
 
+    @MainActor private static var lastEditedField: String?
+
+    /// ``editedField()`` when it differs from the last call's.
+    @MainActor
+    static func changedEditedField() -> String? {
+      let field = editedField()
+      defer { lastEditedField = field }
+      return field == lastEditedField ? nil : field
+    }
+
+    /// The key window's field being edited when its text has line breaks or runs past what a
+    /// paste into a single-line field leaves (``SingleLinePasteGuard``): what a stall clicking
+    /// in it needs.
+    @MainActor
+    private static func editedField() -> String? {
+      guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.isFieldEditor,
+        let field = editor.delegate as? NSTextField
+      else { return nil }
+      let text = editor.string
+      let lines = text.reduce(1) { $1.isNewline ? $0 + 1 : $0 }
+      guard lines > 1 || text.utf16.count > SingleLinePasteGuard.maximumLength else { return nil }
+      let cell = field.cell
+      return "FIELD \(Swift.type(of: field)) editor=\(Swift.type(of: editor)) "
+        + "lines=\(lines) length=\(text.utf16.count) singleLine=\(cell?.usesSingleLineMode ?? false) "
+        + "scrollable=\(cell?.isScrollable ?? false) id=\(field.identifier?.rawValue ?? "")"
+    }
+
     /// Appends `text` to the chaos log, or says on standard error why it could not.
     nonisolated private static func append(_ text: String) {
       guard let path = UserDefaults.standard.string(forKey: "OmnigentChaosLog") else { return }

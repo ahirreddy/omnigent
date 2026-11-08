@@ -150,6 +150,22 @@ struct SingleLinePasteGuardTests {
     }
   }
 
+  /// A field with tokens edits in an `NSTokenTextView`, whose own paste method calls the guarded one.
+  @Test func aTokenFieldJoinsPastedLines() throws {
+    #expect(SingleLinePasteGuard.install())
+    let field = NSTokenField()
+    field.cell?.isScrollable = true
+    let editor = try Self.editor(for: field)
+    #expect(String(describing: type(of: editor)) == "NSTokenTextView")
+
+    let line = String(repeating: "مرحبا hello 🙂 ", count: 1200)
+    #expect(editor.readSelection(from: Self.pasteboard("first\nsecond\n" + line), type: .string))
+
+    #expect(!editor.string.contains { $0.isNewline })
+    #expect(editor.string.hasPrefix("first second مرحبا"))
+    #expect(editor.string.utf16.count <= SingleLinePasteGuard.maximumLength)
+  }
+
   /// One long line of mixed-direction text past about 9,000 characters crashes CoreText.
   @Test func aLongPasteIsCutToFit() throws {
     #expect(SingleLinePasteGuard.install())

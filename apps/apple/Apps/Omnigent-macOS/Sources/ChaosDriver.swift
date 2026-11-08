@@ -109,6 +109,7 @@
         write("DONE steps=\(step) windows=\(visibleWindows.count)")
         exit(0)
       }
+      if let field = ChaosLog.changedEditedField() { write(field) }
       step += 1
       performStep()
     }
