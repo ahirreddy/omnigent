@@ -3,6 +3,7 @@
   import ObjectiveC
   import OSLog
   import OmnigentDesktop
+  import OmnigentUIComponents
 
   /// Debug builds launched with `-OmnigentChaos <seed>` drive themselves through a seeded random
   /// walk of everyday input to find crashes and hangs: menu commands, the app's shortcuts,
@@ -62,6 +63,7 @@
         driver.write("TOOLBAR probe not installed")
       }
       ChaosLog.recordExceptions()
+      LoopProbe.sink = { [driver] line in driver.write(line) }
       Task { await driver.run() }
     }
 

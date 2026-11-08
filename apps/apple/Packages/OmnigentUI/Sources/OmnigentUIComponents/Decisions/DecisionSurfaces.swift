@@ -81,6 +81,11 @@ public final class DecisionSurfaces {
   /// Records the top of the dock and composer in global coordinates.
   func setBottomBarTop(_ top: CGFloat?) {
     if bottomBarTop == top { return }
+    #if DEBUG
+      LoopProbe.record(
+        "decision bottom bar",
+        "top \(String(describing: bottomBarTop)) -> \(String(describing: top))")
+    #endif
     bottomBarTop = top
     update()
   }
@@ -94,7 +99,14 @@ public final class DecisionSurfaces {
       next.onScreen.insert(id)
       if placement.showsApprove { next.approvable.insert(id) }
     }
-    if next != visibility { visibility = next }
+    guard next != visibility else { return }
+    #if DEBUG
+      LoopProbe.record(
+        "decision visibility",
+        "on screen \(next.onScreen.sorted()), bar top \(String(describing: bottomBarTop)), "
+          + "placements \(placements)")
+    #endif
+    visibility = next
   }
 }
 
