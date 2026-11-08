@@ -6,8 +6,9 @@
 # in use. It needs no Accessibility or automation mode: the driver's input stays in the process.
 #
 # Usage: chaos-mac.sh --app PATH [--seeds FIRST-LAST or A,B,C] [--steps N] [--interval S]
-#                     [--server URL --sessions id,id] [--out DIR]
-# Without --server it runs on the app's offline demo server (-OmnigentDemo).
+#                     [--server URL --sessions id,id [--outages]] [--out DIR]
+# Without --server it runs on the app's offline demo server (-OmnigentDemo). --outages pauses the
+# server (SIGSTOP) for a few seconds now and then, so requests hang and streams stall.
 set -euo pipefail
 
 app=""
@@ -16,6 +17,7 @@ steps=400
 interval=0.2
 server=""
 sessions=""
+outages=0
 out="${TMPDIR:-/tmp}/omnigent-chaos-$(date +%Y%m%d-%H%M%S)"
 while (($#)); do
   case "$1" in
@@ -25,13 +27,19 @@ while (($#)); do
     --interval) interval="$2"; shift 2 ;;
     --server) server="$2"; shift 2 ;;
     --sessions) sessions="$2"; shift 2 ;;
+    --outages) outages=1; shift ;;
     --out) out="$2"; shift 2 ;;
     *) echo "unknown option $1" >&2; exit 64 ;;
   esac
 done
 [[ -d "$app" ]] || { echo "error: --app must be the built Omnigent.app" >&2; exit 64; }
-binary="$app/Contents/MacOS/Omnigent"
+binary="$app/Contents/MacOS/$(defaults read "$app/Contents/Info" CFBundleExecutable)"
 [[ -x "$binary" ]] || { echo "error: no executable at $binary" >&2; exit 64; }
+# A sandboxed edition (the Mac App Store one) writes its log and tabs in its container.
+container=""
+if codesign -d --entitlements - "$app" 2>/dev/null | grep -q app-sandbox; then
+  container="$HOME/Library/Containers/$(defaults read "$app/Contents/Info" CFBundleIdentifier)/Data"
+fi
 if [[ "$seeds" == *-* ]]; then
   seed_list=$(seq "${seeds%-*}" "${seeds#*-}")
 else
@@ -45,15 +53,48 @@ stall_after=60
 
 running_pid() { pgrep -n -f "^$binary" || true; }
 
+server_pid() { lsof -nP -iTCP:"${server##*:}" -sTCP:LISTEN -t 2>/dev/null | head -1 || true; }
+
+# Resumes the server if a pause left it stopped.
+resume_server() {
+  local pid
+  pid="$(server_pid)"
+  [[ -z "$pid" ]] || kill -CONT "$pid" 2>/dev/null || true
+}
+
+# Pauses the server every 10 to 40 seconds for 3 to 22 seconds, logging the step each followed.
+pause_server_now_and_then() {
+  local log="$1" chaos_log="$2" pid hold
+  trap 'resume_server; exit 0' TERM
+  while true; do
+    sleep $((10 + RANDOM % 30)) & wait $!
+    pid="$(server_pid)"
+    if [[ -z "$pid" ]]; then
+      echo "no server listening to pause" >> "$log"
+      continue
+    fi
+    hold=$((3 + RANDOM % 20))
+    echo "pause ${hold}s after: $(tail -1 "$chaos_log" 2>/dev/null)" >> "$log"
+    kill -STOP "$pid"
+    sleep "$hold" & wait $!
+    kill -CONT "$pid"
+  done
+}
+
 # One seed: launch, wait for DONE, a crash or a stall, and keep what explains it.
 run_seed() {
-  local seed="$1" dir="$out/seed-$seed" pid="" size=0 last_size=-1 still=0
+  local seed="$1" dir="$out/seed-$seed" pid=""
   mkdir -p "$dir"
-  local log="$dir/chaos.log" marker="$dir/.started"
-  touch "$marker"
+  local log="$dir/chaos.log" tabs="$dir/tabs" marker="$dir/.started"
+  if [[ -n "$container" ]]; then
+    log="$container/tmp/chaos-$seed.log"
+    tabs="$container/tmp/chaos-tabs-$seed"
+    rm -rf "$log" "$tabs"
+  fi
+  touch "$marker" "$log"
   local args=(-OmnigentChaos "$seed" -OmnigentChaosSteps "$steps" -OmnigentChaosInterval "$interval"
     -OmnigentChaosLog "$log" -ApplePersistenceIgnoreState YES -OmnigentNoNotificationPrompt YES
-    -OmnigentTabsDirectory "$dir/tabs" -NSQuitAlwaysKeepsWindows NO)
+    -OmnigentTabsDirectory "$tabs" -NSQuitAlwaysKeepsWindows NO)
   if [[ -n "$server" ]]; then
     args+=(-desktop.defaultServerURL "$server")
     [[ -z "$sessions" ]] || args+=(-OmnigentChaosSessions "$sessions")
@@ -67,6 +108,26 @@ run_seed() {
     sleep 1
   done
   [[ -n "$pid" ]] || { echo "seed $seed: the app never started" | tee "$dir/result"; return; }
+  local pauser=""
+  if ((outages)) && [[ -n "$server" ]]; then
+    pause_server_now_and_then "$dir/outages.log" "$log" &
+    pauser=$!
+  fi
+  watch_seed "$seed" "$dir" "$log" "$marker" "$pid"
+  if [[ -n "$container" ]]; then
+    cp "$log" "$dir/chaos.log"
+    [[ ! -d "$tabs" ]] || cp -R "$tabs" "$dir/tabs"
+  fi
+  if [[ -n "$pauser" ]]; then
+    kill -TERM "$pauser" 2>/dev/null || true
+    wait "$pauser" 2>/dev/null || true
+    resume_server
+  fi
+}
+
+# Waits for one seed's run to finish, crash or stall, and writes its result.
+watch_seed() {
+  local seed="$1" dir="$2" log="$3" marker="$4" pid="$5" size=0 last_size=-1 still=0
   while kill -0 "$pid" 2>/dev/null; do
     sleep 2
     size=$(stat -f %z "$log" 2>/dev/null || echo 0)
@@ -104,6 +165,16 @@ run_seed() {
     | tee "$dir/result"
 }
 
+if [[ -n "$container" && ! -d "$container/tmp" ]]; then
+  # The system makes the container on the first launch.
+  open -n -g "$app" --args -OmnigentDemo YES -ApplePersistenceIgnoreState YES
+  for _ in $(seq 1 30); do
+    [[ ! -d "$container/tmp" ]] || break
+    sleep 1
+  done
+  pkill -9 -f "^$binary" || true
+  [[ -d "$container/tmp" ]] || { echo "error: no container at $container" >&2; exit 1; }
+fi
 for seed in $seed_list; do
   run_seed "$seed"
   pid="$(running_pid)"
