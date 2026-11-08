@@ -87,9 +87,25 @@
         lines.append("NEEDS CONSTRAINTS in \(describe(window))")
         deepest = nil
         if let frame = unsafe window.contentView?.superview { visit(frame, depth: 0) }
-        if let deepest { lines.append(placement(of: deepest)) }
+        if let deepest {
+          lines.append(placement(of: deepest))
+          lines += owningToolbarItems(of: deepest)
+        }
       }
       return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// The toolbar items, in any window, whose view holds `view`: a full-screen window's items
+    /// sit in a window of their own.
+    @MainActor
+    private static func owningToolbarItems(of view: NSView) -> [String] {
+      NSApp.windows.compactMap(\.toolbar).flatMap(\.items).compactMap { item in
+        guard let itemView = item.view, view === itemView || view.isDescendant(of: itemView)
+        else { return nil }
+        let label = item.value(forKey: "label").map { "\($0)" } ?? "nil"
+        return "  toolbar item \(item.itemIdentifier.rawValue) label=\"\(label)\" "
+          + "tip=\"\(item.toolTip ?? "")\" view=\(Swift.type(of: itemView))"
+      }
     }
 
     /// Where `view` sits: its ancestors' types and frames, its safe area and its children.

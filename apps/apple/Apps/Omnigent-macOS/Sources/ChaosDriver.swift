@@ -316,9 +316,10 @@
       return (randomPoint(in: window), "")
     }
 
-    /// Minimizes and restores, zooms, enters or leaves full screen, or opens a new window.
+    /// Minimizes and restores, zooms, enters or leaves full screen, opens a new window, shrinks
+    /// the window to its minimum or switches the app between light, dark and the system's look.
     fileprivate func changeWindow(_ window: NSWindow) {
-      switch random.int(below: 4) {
+      switch random.int(below: 6) {
       case 0:
         write("\(step) window minimize and restore")
         window.miniaturize(nil)
@@ -329,6 +330,14 @@
       case 2:
         write("\(step) window full screen")
         window.toggleFullScreen(nil)
+      case 3:
+        write("\(step) window smallest")
+        window.setFrame(CGRect(origin: window.frame.origin, size: window.minSize), display: true)
+      case 4:
+        let looks: [NSAppearance.Name?] = [nil, .aqua, .darkAqua]
+        let look = looks[random.int(below: looks.count)]
+        write("\(step) appearance \(look?.rawValue ?? "system")")
+        NSApp.appearance = look.flatMap(NSAppearance.init(named:))
       default:
         write("\(step) window new")
         ChaosInput.press(.shortcut("n"), [.command, .shift], in: window)

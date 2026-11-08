@@ -46,6 +46,21 @@ struct DecisionSurfaceTests {
         Self.placement(minY: 520, height: 160), bottomBarTop: nil, wasOnScreen: false))
   }
 
+  @Test("A sliver of a card over a short viewport is not on screen")
+  func shortViewport() {
+    // A tall dock leaves the transcript 60 points; the card fills them.
+    let short = InlineDecisionPlacement(
+      card: CGRect(x: 0, y: 90, width: 400, height: 205),
+      viewport: CGRect(x: 0, y: 100, width: 400, height: 60), showsApprove: true)
+    #expect(!InlineDecisionVisibility.isOnScreen(short, bottomBarTop: 160, wasOnScreen: false))
+    // Ten points of it: one already on screen leaves.
+    #expect(!InlineDecisionVisibility.isOnScreen(short, bottomBarTop: 110, wasOnScreen: true))
+    // A card shorter than the minimum counts once enough of it shows.
+    #expect(
+      InlineDecisionVisibility.isOnScreen(
+        Self.placement(minY: 200, height: 40), bottomBarTop: 500, wasOnScreen: false))
+  }
+
   @Test("The tracker publishes only entries and exits")
   func tracker() {
     let surfaces = DecisionSurfaces()

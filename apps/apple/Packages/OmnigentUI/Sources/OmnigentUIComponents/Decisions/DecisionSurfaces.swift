@@ -33,7 +33,9 @@ nonisolated struct InlineDecisionVisibility: Hashable, Sendable {
 
   /// Whether a card counts as on screen. It enters once half of it (or half the viewport, for a
   /// card taller than that) is visible above the bottom bar, and leaves below a fifth, so the
-  /// dock resizing as a card crosses the line never makes it flicker.
+  /// dock resizing as a card crosses the line never makes it flicker. A sliver never counts
+  /// (``minimumVisible``): over a short viewport the dock collapsing would scroll the card away
+  /// and bring it back, without end.
   /// - Parameters:
   ///   - placement: The card and its viewport.
   ///   - bottomBarTop: The top of the dock and composer, which cover the viewport's bottom.
@@ -48,8 +50,13 @@ nonisolated struct InlineDecisionVisibility: Hashable, Sendable {
     let visible = min(placement.card.maxY, bottom) - max(placement.card.minY, top)
     guard visible > 0 else { return false }
     let fraction = wasOnScreen ? 0.2 : 0.5
-    return visible >= min(placement.card.height, bottom - top) * fraction
+    let sliver = min(placement.card.height, wasOnScreen ? minimumVisible / 4 : minimumVisible)
+    return visible >= max(min(placement.card.height, bottom - top) * fraction, sliver)
   }
+
+  /// Points of a card that must show before it counts as on screen: its title and a row of
+  /// actions. A quarter as many keep it there.
+  static let minimumVisible: CGFloat = 88
 }
 
 /// Tracks which inline decision cards are on screen for one conversation. The transcript's
