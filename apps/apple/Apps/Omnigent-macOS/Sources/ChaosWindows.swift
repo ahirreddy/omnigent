@@ -9,6 +9,14 @@
     /// The ways ``change(_:choice:look:log:)`` changes a window.
     static let changes = 7
 
+    /// The visible windows' frames and their screens' visible frames, for a loop report.
+    static func frames() -> String {
+      NSApp.windows.filter(\.isVisible).map { window in
+        let screen = window.screen.map { "\($0.visibleFrame)" } ?? "none"
+        return "\(ChaosLog.describe(window)) \(window.frame) min \(window.minSize) on \(screen)"
+      }.joined(separator: "; ")
+    }
+
     /// Records each window's frame for ``LoopProbe``, so a loop report shows a window something
     /// outside the app keeps resizing.
     static func probeFrames() {

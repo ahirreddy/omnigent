@@ -63,7 +63,7 @@
       }
       ChaosLog.recordExceptions()
       ChaosWindows.probeFrames()
-      LoopProbe.sink = { [driver] line in driver.write(line) }
+      LoopProbe.sink = { [driver] line in driver.write("\(line)\n  \(ChaosWindows.frames())") }
       Task { await driver.run() }
     }
 
