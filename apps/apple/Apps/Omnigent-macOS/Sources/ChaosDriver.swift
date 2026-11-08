@@ -54,15 +54,15 @@
     /// Starts the walk when the launch asks for one.
     static func startIfRequested(router: DesktopRouter, serverURL: @escaping () -> URL?) {
       let defaults = UserDefaults.standard
-      guard shared == nil, let text = defaults.string(forKey: "OmnigentChaos"),
-        let seed = UInt64(text)
-      else { return }
+      let seed = defaults.string(forKey: "OmnigentChaos").flatMap { UInt64($0) }
+      guard shared == nil, let seed else { return }
       let driver = ChaosDriver(seed: seed, defaults: defaults, router: router, serverURL: serverURL)
       shared = driver
       if !ChaosToolbarProbe.install(write: { [driver] line in driver.write(line) }) {
         driver.write("TOOLBAR probe not installed")
       }
       ChaosLog.recordExceptions()
+      ChaosWindows.probeFrames()
       LoopProbe.sink = { [driver] line in driver.write(line) }
       Task { await driver.run() }
     }

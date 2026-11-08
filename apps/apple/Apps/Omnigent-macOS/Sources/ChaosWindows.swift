@@ -1,5 +1,6 @@
 #if DEBUG
   import AppKit
+  import OmnigentUIComponents
 
   /// Window changes ``ChaosDriver`` makes: the system's window commands, sizes no person drags
   /// to, and a look change. Each says what it does through `log` before doing it.
@@ -7,6 +8,19 @@
   enum ChaosWindows {
     /// The ways ``change(_:choice:look:log:)`` changes a window.
     static let changes = 7
+
+    /// Records each window's frame for ``LoopProbe``, so a loop report shows a window something
+    /// outside the app keeps resizing.
+    static func probeFrames() {
+      _ = NotificationCenter.default.addObserver(
+        forName: NSWindow.didResizeNotification, object: nil, queue: .main
+      ) { notification in
+        guard let window = notification.object as? NSWindow else { return }
+        MainActor.assumeIsolated {
+          LoopProbe.record("window frame \(window.windowNumber)", "\(window.frame)")
+        }
+      }
+    }
 
     /// Minimizes and restores, zooms, enters or leaves full screen, shrinks the window to its
     /// minimum, switches the app between light, dark and the system's look, moves the window off

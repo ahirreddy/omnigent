@@ -38,7 +38,9 @@
     }
 
     /// Records that `name` changed; `detail` describes its state for the report.
-    static func record(_ name: String, at now: Date = Date(), _ detail: @autoclosure () -> String) {
+    public static func record(
+      _ name: String, at now: Date = Date(), _ detail: @autoclosure () -> String
+    ) {
       guard let sink else { return }
       if let quietUntil, now < quietUntil {
         windows[name] = nil
