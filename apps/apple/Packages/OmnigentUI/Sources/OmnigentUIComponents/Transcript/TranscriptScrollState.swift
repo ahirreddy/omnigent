@@ -46,6 +46,13 @@ final class TranscriptScrollState {
     }
   }
 
+  /// Records a scroll geometry change for ``LoopProbe``, in Debug builds.
+  func probe(_ name: String, _ detail: @autoclosure () -> String) {
+    #if DEBUG
+      LoopProbe.record(name, detail())
+    #endif
+  }
+
   /// A resize that pins the bottom drops a pending restore.
   func cancelRestore() {
     #if DEBUG

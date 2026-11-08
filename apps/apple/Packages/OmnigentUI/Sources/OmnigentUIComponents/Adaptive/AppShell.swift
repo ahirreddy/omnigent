@@ -80,6 +80,9 @@ public struct AppShell<Detail: View>: View {
       .onGeometryChange(for: CGFloat.self) {
         $0.size.width
       } action: { width in
+        #if DEBUG
+          LoopProbe.record("detail width", "\(detailWidth.value) -> \(width)")
+        #endif
         if detailWidth.value != width { detailWidth.value = width }
       }
     }

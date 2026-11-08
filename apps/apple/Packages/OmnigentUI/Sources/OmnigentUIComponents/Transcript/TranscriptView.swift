@@ -106,6 +106,7 @@ public struct TranscriptView: View {
       .onScrollGeometryChange(for: TranscriptViewport.self) { geometry in
         TranscriptViewport(geometry)
       } action: { old, new in
+        scroll.probe("transcript viewport", "\(old) -> \(new)")
         if old.isNearBottom != new.isNearBottom {
           follow.geometryChanged(isNearBottom: new.isNearBottom)
         }
@@ -123,6 +124,7 @@ public struct TranscriptView: View {
       .onScrollGeometryChange(for: CGFloat.self) { geometry in
         geometry.contentSize.height
       } action: { previous, current in
+        scroll.probe("transcript content height", "\(previous) -> \(current), \(follow)")
         if current > previous, follow.layoutGrew() {
           proxy.scrollTo(Self.bottomID, anchor: .bottom)
         }
@@ -132,15 +134,18 @@ public struct TranscriptView: View {
       .onScrollGeometryChange(for: CGFloat.self) {
         $0.contentInsets.bottom
       } action: { old, new in
+        scroll.probe("transcript dock inset", "\(old) -> \(new)")
         if new > old, follow.layoutGrew() { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
       }
       .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.01) { ids in
+        scroll.probe("transcript visible rows", "\(ids.count): \(ids.prefix(3)) ...")
         position.visible = Set(ids)
         updateActiveTurn()
       }
       .onScrollGeometryChange(for: Bool.self) { geometry in
         geometry.visibleRect.minY - geometry.contentInsets.top < Self.olderHistoryReach
       } action: { _, isNearTop in
+        scroll.probe("transcript near top", "\(isNearTop), \(follow)")
         // Only a reader moving up asks for more, not a short transcript that fits.
         if isNearTop, follow.isUserScrolling || !follow.follows { loadOlder() }
       }
