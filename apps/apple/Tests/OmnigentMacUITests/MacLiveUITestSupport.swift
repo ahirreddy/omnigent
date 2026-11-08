@@ -58,6 +58,35 @@ struct MacLiveUITestSupport {
     return app
   }
 
+  /// Launches the app on the core's offline demo server (`-OmnigentDemo`), with tabs saved apart.
+  func launchDemo() -> XCUIApplication {
+    let tabs = FileManager.default.temporaryDirectory.appending(
+      path: "omnigent-mac-uitest-\(UUID().uuidString)", directoryHint: .isDirectory)
+    let app = XCUIApplication()
+    app.launchArguments = [
+      "-OmnigentDemo", "YES", "-desktop.defaultServerURL", "http://127.0.0.1:6767",
+      "-ApplePersistenceIgnoreState", "YES", "-OmnigentTabsDirectory", tabs.path,
+      "-OmnigentNoNotificationPrompt", "YES",
+    ]
+    app.launch()
+    XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 30), "no window")
+    return app
+  }
+
+  /// Opens a demo session (demo-notes, demo-design, demo-question) from the sidebar and waits for
+  /// its composer.
+  func openDemo(_ sessionID: String, in app: XCUIApplication) {
+    let row = element("session-row-\(sessionID)", in: app)
+    let transcript = element("transcript-\(sessionID)", in: app)
+    // Right after launch the window can still be settling on its server; a click can be lost.
+    for _ in 0..<3 where !transcript.exists {
+      click(row, "the \(sessionID) row", timeout: 30)
+      _ = transcript.waitForExistence(timeout: 10)
+    }
+    XCTAssertTrue(transcript.exists, "\(sessionID) did not open\n\(app.debugDescription)")
+    assertRunning(app, "after opening \(sessionID)")
+  }
+
   /// Opens a session by its link, as the system would, and waits for its transcript.
   func open(_ sessionID: String, in app: XCUIApplication) {
     let transcript = element("transcript-\(sessionID)", in: app)

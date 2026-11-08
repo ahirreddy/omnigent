@@ -21,7 +21,8 @@
     private var random: SplitMix
     private let seed: UInt64
     private let steps: Int
-    private let interval: Duration
+    /// Seconds between steps.
+    private let interval: TimeInterval
     private let sessions: [String]
     private let serverURL: () -> URL?
     private let router: DesktopRouter
@@ -39,7 +40,7 @@
       let seconds =
         defaults.object(forKey: "OmnigentChaosInterval") == nil
         ? 0.2 : defaults.double(forKey: "OmnigentChaosInterval")
-      interval = .milliseconds(Int(max(0.01, seconds) * 1000))
+      interval = max(0.01, seconds)
       let listed = (defaults.string(forKey: "OmnigentChaosSessions") ?? "")
         .split(separator: ",").map(String.init)
       sessions = listed.isEmpty ? Self.demoSessions : listed
@@ -84,17 +85,25 @@
       do {
         try await waitForWindow()
         try await Task.sleep(for: .seconds(2))
-        while step < steps {
-          step += 1
-          performStep()
-          try await Task.sleep(for: interval)
-        }
       } catch {
-        write("STOPPED step=\(step): \(error)")
+        write("STOPPED before the first step: \(error)")
         exit(2)
       }
-      write("DONE steps=\(step) windows=\(visibleWindows.count)")
-      exit(0)
+      // A timer in the common modes keeps stepping inside modal loops (an alert's runModal, a
+      // menu's tracking), which hold the main actor; later steps then dismiss them.
+      let timer = Timer(timeInterval: interval, repeats: true) { [self] _ in
+        MainActor.assumeIsolated { tick() }
+      }
+      RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func tick() {
+      guard step < steps else {
+        write("DONE steps=\(step) windows=\(visibleWindows.count)")
+        exit(0)
+      }
+      step += 1
+      performStep()
     }
 
     private struct NoWindow: Error {}
