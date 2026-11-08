@@ -191,32 +191,65 @@
       NSApp.postEvent(event, atStart: false)
     }
 
-    /// A trackpad-style scroll gesture at `point` (window coordinates): a began phase, `ticks`
-    /// changes of `delta` points each and an ended phase, sent to the view under the point.
+    /// A trackpad-style scroll gesture at `point` (window coordinates), sent to the view under
+    /// the point a frame apart as a trackpad sends it: a began phase, `ticks` changes of `delta`
+    /// points each and an ended phase, then, with `momentum`, a deceleration that slows to rest.
     /// - Returns: Whether a view was under the point.
     @discardableResult
-    static func scroll(at point: CGPoint, by delta: CGVector, ticks: Int, in window: NSWindow)
-      -> Bool
-    {
+    static func scroll(
+      at point: CGPoint, by delta: CGVector, ticks: Int, momentum: Bool = false,
+      in window: NSWindow
+    ) -> Bool {
       guard let view = window.contentView?.hitTest(point) else { return false }
       let screenPoint = window.convertPoint(toScreen: point)
       let screenHeight = NSScreen.screens.first?.frame.height ?? 0
-      // Scroll phases: 1 began, 2 changed, 4 ended.
-      let phases = [1] + Array(repeating: 2, count: max(1, ticks)) + [4]
-      for phase in phases {
-        let moves = phase == 2
-        guard
-          let cgEvent = CGEvent(
-            scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
-            wheel1: moves ? Int32(delta.dy) : 0, wheel2: moves ? Int32(delta.dx) : 0, wheel3: 0)
-        else { continue }
-        cgEvent.location = CGPoint(x: screenPoint.x, y: screenHeight - screenPoint.y)
-        cgEvent.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
-        cgEvent.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(phase))
-        guard let event = NSEvent(cgEvent: cgEvent) else { continue }
-        view.scrollWheel(with: event)
+      let location = CGPoint(x: screenPoint.x, y: screenHeight - screenPoint.y)
+      for (index, step) in scrollSteps(ticks: ticks, momentum: momentum).enumerated() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.016 * Double(index)) {
+          guard
+            let event = scrollEvent(
+              CGVector(dx: delta.dx * step.scale, dy: delta.dy * step.scale), step: step,
+              at: location)
+          else { return }
+          view.scrollWheel(with: event)
+        }
       }
       return true
+    }
+
+    /// One event of a scroll gesture: its phase or momentum phase and its share of the delta.
+    struct ScrollStep: Equatable {
+      var phase: Int64 = 0
+      var momentum: Int64 = 0
+      var scale: CGFloat
+    }
+
+    /// The events of a gesture of `ticks` changes. Scroll phases: 1 began, 2 changed, 4 ended;
+    /// momentum phases: 1 began, 2 continued, 3 ended.
+    nonisolated static func scrollSteps(ticks: Int, momentum: Bool) -> [ScrollStep] {
+      var steps = [ScrollStep(phase: 1, scale: 0)]
+      steps += Array(repeating: ScrollStep(phase: 2, scale: 1), count: max(1, ticks))
+      steps.append(ScrollStep(phase: 4, scale: 0))
+      guard momentum else { return steps }
+      steps.append(ScrollStep(momentum: 1, scale: 0.9))
+      steps += (1...12).map { ScrollStep(momentum: 2, scale: pow(0.75, CGFloat($0))) }
+      steps.append(ScrollStep(momentum: 3, scale: 0))
+      return steps
+    }
+
+    private static func scrollEvent(_ delta: CGVector, step: ScrollStep, at location: CGPoint)
+      -> NSEvent?
+    {
+      guard
+        let cgEvent = CGEvent(
+          scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: Int32(delta.dy),
+          wheel2: Int32(delta.dx), wheel3: 0)
+      else { return nil }
+      cgEvent.location = location
+      cgEvent.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+      cgEvent.setIntegerValueField(.scrollWheelEventScrollPhase, value: step.phase)
+      cgEvent.setIntegerValueField(.scrollWheelEventMomentumPhase, value: step.momentum)
+      return NSEvent(cgEvent: cgEvent)
     }
   }
 #endif

@@ -135,7 +135,7 @@
 
     private enum Action: CaseIterable {
       case menu, shortcut, click, doubleClick, rightClick, drag, type, paste, key, scroll, resize
-      case session, window, hover, compose, sweep
+      case session, window, hover, compose, sweep, accessibility
 
       var weight: Int {
         switch self {
@@ -144,7 +144,7 @@
         case .menu, .type, .scroll: 11
         case .key: 9
         case .drag, .session, .hover: 4
-        case .doubleClick, .rightClick, .paste, .resize, .compose, .sweep: 3
+        case .doubleClick, .rightClick, .paste, .resize, .compose, .sweep, .accessibility: 3
         case .window: 1
         }
       }
@@ -160,7 +160,8 @@
       switch action {
       case .menu: invokeMenuItem()
       case .shortcut, .key: pressKeys(action, in: window)
-      case .click, .doubleClick, .rightClick, .drag, .hover: point(action, in: window)
+      case .click, .doubleClick, .rightClick, .drag, .hover, .accessibility:
+        point(action, in: window)
       case .type, .paste, .compose: enterText(action, in: window)
       case .scroll: scroll(in: window)
       case .resize, .session, .window, .sweep: arrange(action, window)
@@ -222,13 +223,18 @@
       }
     }
 
-    private func drag(in window: NSWindow) {
+    /// A drag, or with `hovers` the pointer moving with no button down.
+    private func drag(in window: NSWindow, hovers: Bool = false) {
       let start = randomPoint(in: window)
       let end = randomPoint(in: window)
-      write("\(step) drag \(Int(start.x)),\(Int(start.y)) to \(Int(end.x)),\(Int(end.y))")
-      // A drag on a divider resizes the columns beside it while it moves.
-      LoopProbe.quiet(for: 1)
-      ChaosInput.drag(from: start, to: end, steps: 4 + random.int(below: 12), in: window)
+      let path = "\(Int(start.x)),\(Int(start.y)) to \(Int(end.x)),\(Int(end.y))"
+      write("\(step) \(hovers ? "hover" : "drag") \(path)")
+      if hovers {
+        ChaosInput.hover(from: start, to: end, steps: 4 + random.int(below: 20), in: window)
+      } else {
+        LoopProbe.quiet(for: 1)  // A divider drag resizes the columns beside it.
+        ChaosInput.drag(from: start, to: end, steps: 4 + random.int(below: 12), in: window)
+      }
     }
 
     private func type(in window: NSWindow) {
@@ -263,12 +269,14 @@
       let upward = random.int(below: 3) != 0
       let speed = CGFloat(20 + random.int(below: 400))
       let ticks = 1 + random.int(below: 30)
+      let momentum = random.int(below: 2) == 0
       write(
-        "\(step) scroll \(upward ? "up" : "down") \(Int(speed))x\(ticks) at \(Int(point.x)),\(Int(point.y))"
-          + " in \(ChaosLog.describe(window))"
+        "\(step) scroll \(upward ? "up" : "down") \(Int(speed))x\(ticks)\(momentum ? " coasting" : "")"
+          + " at \(Int(point.x)),\(Int(point.y)) in \(ChaosLog.describe(window))"
       )
       ChaosInput.scroll(
-        at: point, by: CGVector(dx: 0, dy: upward ? speed : -speed), ticks: ticks, in: window)
+        at: point, by: CGVector(dx: 0, dy: upward ? speed : -speed), ticks: ticks,
+        momentum: momentum, in: window)
     }
 
     private func resize(_ window: NSWindow) {
@@ -297,7 +305,10 @@
     private func point(_ action: Action, in window: NSWindow) {
       switch action {
       case .drag: drag(in: window)
-      case .hover: hover(in: window)
+      case .hover: drag(in: window, hovers: true)
+      case .accessibility:
+        ChaosAccessibility.act(
+          in: window, pick: { random.int(below: $0) }, log: { write("\(step) \($0)") })
       default: click(action, in: window)
       }
     }
@@ -329,13 +340,6 @@
         }
       }
       return (randomPoint(in: window), "")
-    }
-
-    fileprivate func hover(in window: NSWindow) {
-      let start = randomPoint(in: window)
-      let end = randomPoint(in: window)
-      write("\(step) hover \(Int(start.x)),\(Int(start.y)) to \(Int(end.x)),\(Int(end.y))")
-      ChaosInput.hover(from: start, to: end, steps: 4 + random.int(below: 20), in: window)
     }
 
     /// Input-method text, a stage every few tenths of a second; a fifth of it abandoned. With

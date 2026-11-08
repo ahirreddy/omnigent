@@ -154,6 +154,8 @@
     struct Control {
       let point: CGPoint
       let name: String
+      /// The control's accessibility element, for actions VoiceOver performs.
+      let element: any NSAccessibilityProtocol
     }
 
     private static let roles: Set<NSAccessibility.Role> = [
@@ -186,7 +188,7 @@
         guard frame.width > 1, frame.height > 1 else { continue }
         let center = window.convertPoint(fromScreen: CGPoint(x: frame.midX, y: frame.midY))
         guard bounds.contains(center) else { continue }
-        found.append(Control(point: center, name: describe(element, role: role)))
+        found.append(Control(point: center, name: describe(element, role: role), element: element))
       }
       return found
     }

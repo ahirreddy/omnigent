@@ -55,6 +55,42 @@
       #expect(!ChaosInput.compose("かんじ", abandons: false, pause: 0, in: window))
     }
 
+    @Test func aCoastingScrollSlowsToRestAfterTheGesture() {
+      let steps = ChaosInput.scrollSteps(ticks: 2, momentum: true)
+      #expect(steps.prefix(4).map(\.phase) == [1, 2, 2, 4])
+      let coasting = steps.dropFirst(4)
+      #expect(coasting.first?.momentum == 1)
+      #expect(coasting.last?.momentum == 3)
+      let scales = coasting.dropFirst().dropLast().map(\.scale)
+      #expect(zip(scales, scales.dropFirst()).allSatisfy { $0 > $1 })
+      #expect(ChaosInput.scrollSteps(ticks: 2, momentum: false).count == 4)
+    }
+
+    /// Counts what VoiceOver's actions reach.
+    private final class Presses: NSObject {
+      var count = 0
+      @objc func press(_ sender: Any?) { count += 1 }
+    }
+
+    @Test func voiceOverActionsReachTheControl() {
+      let presses = Presses()
+      let button = NSButton(title: "Go", target: presses, action: #selector(Presses.press(_:)))
+      button.setAccessibilityCustomActions([
+        NSAccessibilityCustomAction(name: "Again") {
+          presses.count += 10
+          return true
+        }
+      ])
+      let actions = ChaosAccessibility.actions(of: button)
+      #expect(actions.map(\.name) == ["press", "custom \"Again\""])
+      for action in actions { action.perform() }
+      #expect(presses.count == 11)
+      let slider = NSAccessibilityElement()
+      slider.setAccessibilityRole(.slider)
+      let sliderActions = Set(ChaosAccessibility.actions(of: slider).map(\.name))
+      #expect(sliderActions.isSuperset(of: ["increment", "decrement"]))
+    }
+
     @Test func aSweepVisitsEveryHeightBetweenItsEnds() {
       #expect(ChaosWindows.sweepHeights(from: 300, to: 400, steps: 4) == [300, 325, 350, 375, 400])
       #expect(ChaosWindows.sweepHeights(from: 400, to: 301, steps: 2) == [400, 351, 301])
