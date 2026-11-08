@@ -182,6 +182,13 @@
       }
     }
 
+    /// A window's title, or its class and level when it has none (sheets, panels, popovers).
+    private static func describe(_ window: NSWindow) -> String {
+      let kind =
+        "\(Swift.type(of: window)) level=\(window.level.rawValue) screen=\(window.screen != nil)"
+      return window.title.isEmpty ? "<\(kind)>" : "\"\(window.title)\""
+    }
+
     private func pickAction() -> Action {
       let total = Action.allCases.reduce(0) { $0 + $1.weight }
       var roll = random.int(below: total)
@@ -222,7 +229,7 @@
     private func click(_ action: Action, in window: NSWindow) {
       let (point, target) = clickTarget(in: window)
       let name = "\(action)".lowercased()
-      write("\(step) \(name) \(Int(point.x)),\(Int(point.y)) \(target) in \(window.title)")
+      write("\(step) \(name) \(Int(point.x)),\(Int(point.y)) \(target) in \(Self.describe(window))")
       switch action {
       case .doubleClick: ChaosInput.click(at: point, in: window, count: 2)
       case .rightClick: ChaosInput.click(at: point, in: window, right: true)
@@ -273,6 +280,7 @@
       let ticks = 1 + random.int(below: 30)
       write(
         "\(step) scroll \(upward ? "up" : "down") \(Int(speed))x\(ticks) at \(Int(point.x)),\(Int(point.y))"
+          + " in \(Self.describe(window))"
       )
       ChaosInput.scroll(
         at: point, by: CGVector(dx: 0, dy: upward ? speed : -speed), ticks: ticks, in: window)

@@ -5,7 +5,7 @@
 # It opens real windows and activates the app, so run it in a VM or on an idle Mac, not on a Mac
 # in use. It needs no Accessibility or automation mode: the driver's input stays in the process.
 #
-# Usage: chaos-mac.sh --app PATH [--seeds FIRST-LAST] [--steps N] [--interval S]
+# Usage: chaos-mac.sh --app PATH [--seeds FIRST-LAST or A,B,C] [--steps N] [--interval S]
 #                     [--server URL --sessions id,id] [--out DIR]
 # Without --server it runs on the app's offline demo server (-OmnigentDemo).
 set -euo pipefail
@@ -32,8 +32,11 @@ done
 [[ -d "$app" ]] || { echo "error: --app must be the built Omnigent.app" >&2; exit 64; }
 binary="$app/Contents/MacOS/Omnigent"
 [[ -x "$binary" ]] || { echo "error: no executable at $binary" >&2; exit 64; }
-first="${seeds%-*}"
-last="${seeds#*-}"
+if [[ "$seeds" == *-* ]]; then
+  seed_list=$(seq "${seeds%-*}" "${seeds#*-}")
+else
+  seed_list=${seeds//,/ }
+fi
 mkdir -p "$out"
 reports="$HOME/Library/Logs/DiagnosticReports"
 
@@ -101,7 +104,7 @@ run_seed() {
     | tee "$dir/result"
 }
 
-for seed in $(seq "$first" "$last"); do
+for seed in $seed_list; do
   run_seed "$seed"
   pid="$(running_pid)"
   [[ -z "$pid" ]] || kill -9 "$pid" 2>/dev/null || true
