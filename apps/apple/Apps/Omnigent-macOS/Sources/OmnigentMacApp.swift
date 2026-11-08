@@ -136,6 +136,10 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
       services.logger.error(
         "AppKit lacks the table row methods; drags and menus on removed rows quit.")
     }
+    if !WindowsMenuGuard.install() {
+      services.logger.error(
+        "AppKit lacks the Windows menu methods; arranging while a window changes quits.")
+    }
     if !SingleLinePasteGuard.install() {
       services.logger.error("AppKit lacks the text view paste method; pasted lines stay unjoined.")
     }
