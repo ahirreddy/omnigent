@@ -132,8 +132,9 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
     if !MenuTitleGuard.install() {
       services.logger.error("AppKit lacks the menu item title setter; nil titles are unguarded.")
     }
-    if !TableDragGuard.install() {
-      services.logger.error("AppKit lacks the table drag methods; drags of removed rows quit.")
+    if !TableRowGuard.install() {
+      services.logger.error(
+        "AppKit lacks the table row methods; drags and menus on removed rows quit.")
     }
     if !SingleLinePasteGuard.install() {
       services.logger.error("AppKit lacks the text view paste method; pasted lines stay unjoined.")
