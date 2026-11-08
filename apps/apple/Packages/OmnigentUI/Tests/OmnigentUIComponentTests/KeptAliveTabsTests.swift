@@ -36,15 +36,20 @@
       RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     }
 
-    @Test func aTabMountedAfterAPlaceholderPassTakesTheColumnsSize() {
+    /// The placeholder pass can keep the column's width and take only the minimum height.
+    @Test(arguments: [
+      UnmeasuredMinimum.column, CGSize(width: 800, height: UnmeasuredMinimum.column.height),
+    ])
+    func aTabMountedDuringAPlaceholderPassTakesTheColumnsSize(placeholder: CGSize) {
       _ = NSApplication.shared
       let sizes = Sizes()
       let column = CGSize(width: 800, height: 600)
       let view = NSHostingView(rootView: tabs(["shown"], sizes: sizes))
-      layOut(view, at: .zero)
-      layOut(view, at: UnmeasuredMinimum.column)
-      // Another session's tabs take over, one kept hidden ahead of the shown one.
+      layOut(view, at: column)
+      // Another session's tabs take over, one kept hidden ahead of the shown one, and the split
+      // view lays the column out at its placeholder before its size again.
       view.rootView = tabs(["hidden", "shown"], sizes: sizes)
+      layOut(view, at: placeholder)
       layOut(view, at: column)
 
       #expect(sizes.byID["shown"] == column)

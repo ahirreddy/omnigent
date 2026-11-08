@@ -93,11 +93,12 @@ private struct KeptAliveLayout: Layout {
   }
 
   /// Whether `size` is the column's, not that of a pass made while the split view sized the
-  /// column at its placeholder minimum (``UnmeasuredMinimum``) or before it had a size. A tab
+  /// column at its placeholder minimum (``UnmeasuredMinimum``) in either dimension, or before it
+  /// had a size. A tab
   /// frozen at that minimum lays its right panel out smaller than its content.
   static func isMeasured(_ size: CGSize) -> Bool {
     let placeholder = UnmeasuredMinimum.column
-    return size.width > placeholder.width || size.height > placeholder.height
+    return size.width > placeholder.width && size.height > placeholder.height
   }
 }
 
