@@ -91,3 +91,26 @@ struct WindowLaunchSettingsTests {
     #expect(ToolbarSwapGuard.install(), "a second install reports the first")
   }
 }
+
+/// A narrow toolbar's overflow menu can title an item from a SwiftUI item with no label; a nil
+/// title throws, and the throw quits the app.
+@MainActor
+struct MenuTitleGuardTests {
+  @Test func aNilTitleBecomesEmpty() {
+    #expect(MenuTitleGuard.install())
+    let item = NSMenuItem(title: "Session", action: nil, keyEquivalent: "")
+
+    _ = unsafe item.perform(#selector(setter: NSMenuItem.title), with: nil)
+
+    #expect(item.title.isEmpty)
+  }
+
+  @Test func otherTitlesAreUnchanged() {
+    #expect(MenuTitleGuard.install())
+    let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+
+    item.title = "Right panel"
+
+    #expect(item.title == "Right panel")
+  }
+}

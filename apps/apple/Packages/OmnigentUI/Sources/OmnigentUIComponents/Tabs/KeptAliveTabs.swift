@@ -78,17 +78,23 @@ private struct KeptAliveLayout: Layout {
     for subview in subviews {
       guard let id = subview[KeptAliveKey.self] else {
         subview.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
-        sizes.shownSize = bounds.size
+        if Self.isMeasured(bounds.size) { sizes.shownSize = bounds.size }
         continue
       }
-      // A tab hidden since before it was measured takes the size the shown tab last had.
+      // A tab hidden since before it was measured takes the size the shown tab last had. A pass
+      // before the window has a size freezes nothing.
       let size = sizes.byID[id] ?? sizes.shownSize ?? bounds.size
-      sizes.byID[id] = size
+      if Self.isMeasured(size) { sizes.byID[id] = size }
       subview.place(at: bounds.origin, proposal: ProposedViewSize(size))
     }
     // A shown tab's frozen size is dropped, so it freezes at its newest size when hidden again.
     let hidden = Set(subviews.compactMap { $0[KeptAliveKey.self] })
     sizes.byID = sizes.byID.filter { hidden.contains($0.key) }
+  }
+
+  /// Whether `size` came from a laid-out window rather than a pass before it had a size.
+  static func isMeasured(_ size: CGSize) -> Bool {
+    size.width > 0 && size.height > 0
   }
 }
 

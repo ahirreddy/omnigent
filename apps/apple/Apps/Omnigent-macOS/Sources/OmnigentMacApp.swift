@@ -129,6 +129,9 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
       services.logger.error(
         "AppKit lacks the toolbar methods to guard; toolbar swaps are unguarded.")
     }
+    if !MenuTitleGuard.install() {
+      services.logger.error("AppKit lacks the menu item title setter; nil titles are unguarded.")
+    }
     services.bind()
     super.applicationWillFinishLaunching(notification)
   }
