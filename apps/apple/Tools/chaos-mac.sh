@@ -89,9 +89,9 @@ run_seed() {
     echo "seed $seed: done ($(tail -1 "$log"))" | tee "$dir/result"
     return
   fi
-  # The crash report lands a few seconds after the process ends.
+  # The crash report can land up to half a minute after the process ends.
   local report=""
-  for _ in $(seq 1 20); do
+  for _ in $(seq 1 60); do
     report="$(find "$reports" -maxdepth 1 -name 'Omnigent*.ips' -newer "$marker" | head -1)"
     [[ -z "$report" ]] || break
     sleep 1
@@ -99,7 +99,7 @@ run_seed() {
   [[ -z "$report" ]] || cp "$report" "$dir/"
   log show --last 3m --style compact \
     --predicate 'process == "Omnigent" AND (messageType == error OR messageType == fault)' \
-    >"$dir/app-errors.log" 2>/dev/null || true
+    >"$dir/app-errors.log" 2>>"$dir/notes" || echo "log show failed" >> "$dir/notes"
   echo "seed $seed: CRASH after $(tail -1 "$log")${report:+ ($(basename "$report"))}" \
     | tee "$dir/result"
 }

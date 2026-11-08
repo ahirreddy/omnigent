@@ -83,8 +83,8 @@ struct TranscriptNavigator: View {
       let pill = Self.pillWidth
       Group { if fitsBeside { navigator } }
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .onGeometryChange(for: Bool.self) {
-          Self.fits(width: $0.size.width, column: column, pill: pill)
+        .onGeometryChange(for: Bool.self) { [fitsBeside] in
+          Self.fits(width: $0.size.width, column: column, pill: pill, wasFitting: fitsBeside)
         } action: {
           fitsBeside = $0
         }
@@ -105,9 +105,21 @@ struct TranscriptNavigator: View {
   /// The pill's width.
   static var pillWidth: CGFloat { 2 * Theme.Control.target }
 
+  /// Points a fitting pill may lose before it stops fitting: more than a legacy scroll bar, which
+  /// the pill's own bottom margin can show or hide, so the answer cannot flip on every pass.
+  nonisolated static let fitSlack: CGFloat = 20
+
   /// Whether a margin beside the column holds `pill`; geometry callbacks run off the main actor.
-  nonisolated static func fits(width: CGFloat, column: CGFloat, pill: CGFloat) -> Bool {
-    width - column >= pill
+  /// - Parameters:
+  ///   - width: The width the pill is laid out in.
+  ///   - column: The transcript column's maximum width.
+  ///   - pill: The pill's width.
+  ///   - wasFitting: Whether it fit before; a fitting pill keeps fitting within ``fitSlack``.
+  /// - Returns: Whether the margin holds the pill.
+  nonisolated static func fits(
+    width: CGFloat, column: CGFloat, pill: CGFloat, wasFitting: Bool = false
+  ) -> Bool {
+    width - column >= pill - (wasFitting ? fitSlack : 0)
   }
 
   /// The room the transcript keeps under its last row while the pill floats over the column (the
@@ -191,8 +203,9 @@ struct TranscriptNavigatorOverlay: ViewModifier {
           TranscriptNavigator(previous: previous, next: next).padding(Theme.Spacing.medium)
         }
       }
-      .onGeometryChange(for: Bool.self) {
-        TranscriptNavigator.fits(width: $0.size.width, column: column, pill: pill)
+      .onGeometryChange(for: Bool.self) { [fitsBeside] in
+        TranscriptNavigator.fits(
+          width: $0.size.width, column: column, pill: pill, wasFitting: fitsBeside)
       } action: {
         fitsBeside = $0
       }

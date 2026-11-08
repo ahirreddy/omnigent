@@ -88,3 +88,35 @@ struct ScrollTopRevealTests {
     }
   }
 }
+
+/// Width measurers whose answer changes the width they measure settle instead of flipping on
+/// every layout pass.
+struct LayoutThresholdHysteresisTests {
+  @Test("a fitting pill keeps fitting until it loses more than a scroll bar")
+  func thePillFitsWithSlack() {
+    let pill = TranscriptNavigator.pillWidth
+    let edge = 720 + pill
+    #expect(TranscriptNavigator.fits(width: edge, column: 720, pill: pill))
+    #expect(!TranscriptNavigator.fits(width: edge - 15, column: 720, pill: pill))
+    #expect(TranscriptNavigator.fits(width: edge - 15, column: 720, pill: pill, wasFitting: true))
+    #expect(
+      !TranscriptNavigator.fits(
+        width: edge - TranscriptNavigator.fitSlack - 1, column: 720, pill: pill, wasFitting: true))
+  }
+
+  @Test("a compact layout grows past the threshold by the slack before it is regular")
+  func theWidthClassHasSlack() {
+    #expect(LayoutWidth.measuring(559, compactBelow: 560, previous: .regular) == .compact)
+    #expect(LayoutWidth.measuring(560, compactBelow: 560, previous: .regular) == .regular)
+    #expect(LayoutWidth.measuring(570, compactBelow: 560, previous: .compact) == .compact)
+    #expect(
+      LayoutWidth.measuring(560 + LayoutWidth.regularSlack, compactBelow: 560, previous: .compact)
+        == .regular)
+    // A scroll bar showing and hiding across the threshold settles on one class.
+    var width = LayoutWidth.regular
+    for measured: CGFloat in [559, 574, 559, 574] {
+      width = LayoutWidth.measuring(measured, compactBelow: 560, previous: width)
+      #expect(width == .compact)
+    }
+  }
+}

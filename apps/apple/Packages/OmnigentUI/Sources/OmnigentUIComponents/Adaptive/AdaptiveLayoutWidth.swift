@@ -17,6 +17,20 @@ extension View {
   }
 }
 
+extension LayoutWidth {
+  /// Points past the threshold a compact layout must grow before it is regular again: the
+  /// compact layout can be a little narrower (a scroll bar, a column's minimum), and without
+  /// the slack the class would flip on every layout pass at the threshold.
+  nonisolated static let regularSlack: CGFloat = 24
+
+  /// The class of a container `width` points wide, after `previous`.
+  nonisolated static func measuring(_ width: CGFloat, compactBelow: CGFloat, previous: Self) -> Self
+  {
+    let threshold = previous == .compact ? compactBelow + regularSlack : compactBelow
+    return width < threshold ? .compact : .regular
+  }
+}
+
 private struct AdaptiveLayoutWidth: ViewModifier {
   let compactBelow: CGFloat
   @Environment(\.horizontalSizeClass) private var sizeClass
@@ -28,8 +42,8 @@ private struct AdaptiveLayoutWidth: ViewModifier {
     #else
       content
         .environment(\.layoutWidth, measured)
-        .onGeometryChange(for: LayoutWidth.self) { proxy in
-          proxy.size.width < compactBelow ? .compact : .regular
+        .onGeometryChange(for: LayoutWidth.self) { [measured, compactBelow] proxy in
+          LayoutWidth.measuring(proxy.size.width, compactBelow: compactBelow, previous: measured)
         } action: { width in
           measured = width
         }
