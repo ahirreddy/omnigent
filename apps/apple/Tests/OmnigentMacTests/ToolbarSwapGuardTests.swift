@@ -114,3 +114,59 @@ struct MenuTitleGuardTests {
     #expect(item.title == "Right panel")
   }
 }
+
+/// Pasting many lines into a single-line field joins them, so clicks on the text stay fast.
+@MainActor
+struct SingleLinePasteGuardTests {
+  /// A pasteboard of its own, so the test leaves the user's clipboard alone.
+  private static func pasteboard(_ text: String) -> NSPasteboard {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("SingleLinePasteGuardTests"))
+    pasteboard.clearContents()
+    pasteboard.setString(text, forType: .string)
+    return pasteboard
+  }
+
+  /// `field`'s field editor in a window that is never ordered front.
+  private static func editor(for field: NSTextField) throws -> NSTextView {
+    let window = NSWindow(
+      contentRect: CGRect(x: 0, y: 0, width: 300, height: 100), styleMask: .borderless,
+      backing: .buffered, defer: true)
+    field.frame = CGRect(x: 0, y: 0, width: 300, height: 24)
+    window.contentView?.addSubview(field)
+    #expect(window.makeFirstResponder(field))
+    return try #require(field.currentEditor() as? NSTextView)
+  }
+
+  @Test func pastedLinesAreJoined() throws {
+    #expect(SingleLinePasteGuard.install())
+    for field in [NSSearchField(), NSTextField(string: "")] {
+      let editor = try Self.editor(for: field)
+      editor.insertText("find ", replacementRange: editor.selectedRange())
+
+      let pasteboard = Self.pasteboard("\nfirst\r\nsecond\n\nthird\n")
+      #expect(editor.readSelection(from: pasteboard, type: .string))
+
+      #expect(editor.string == "find first second third", "\(type(of: field))")
+    }
+  }
+
+  @Test func aWrappingFieldKeepsItsLines() throws {
+    #expect(SingleLinePasteGuard.install())
+    let field = NSTextField(wrappingLabelWithString: "")
+    field.isEditable = true
+    let editor = try Self.editor(for: field)
+
+    #expect(editor.readSelection(from: Self.pasteboard("first\nsecond"), type: .string))
+
+    #expect(editor.string == "first\nsecond")
+  }
+
+  @Test func aTextViewKeepsItsLines() {
+    #expect(SingleLinePasteGuard.install())
+    let view = NSTextView()
+
+    #expect(view.readSelection(from: Self.pasteboard("first\nsecond"), type: .string))
+
+    #expect(view.string == "first\nsecond")
+  }
+}

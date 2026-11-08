@@ -132,6 +132,9 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
     if !MenuTitleGuard.install() {
       services.logger.error("AppKit lacks the menu item title setter; nil titles are unguarded.")
     }
+    if !SingleLinePasteGuard.install() {
+      services.logger.error("AppKit lacks the text view paste method; pasted lines stay unjoined.")
+    }
     services.bind()
     super.applicationWillFinishLaunching(notification)
   }
