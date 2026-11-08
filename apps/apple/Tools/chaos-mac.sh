@@ -70,7 +70,13 @@ run_seed() {
     if ((size == last_size)); then still=$((still + 2)); else still=0; fi
     last_size=$size
     if ((still >= stall_after)); then
-      sample "$pid" 3 -file "$dir/stall-sample.txt" >/dev/null 2>&1 || true
+      # Two samples ten seconds apart tell a slow main thread from one stuck in a loop.
+      for attempt in 1 2; do
+        if ! sample "$pid" 3 -file "$dir/stall-sample-$attempt.txt" >/dev/null 2>&1; then
+          echo "sample $attempt of $pid failed" >> "$dir/notes"
+        fi
+        ((attempt == 2)) || sleep 10
+      done
       kill -9 "$pid" 2>/dev/null || true
       echo "seed $seed: STALL after $(tail -1 "$log")" | tee "$dir/result"
       return

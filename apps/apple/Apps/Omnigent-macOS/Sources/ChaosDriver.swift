@@ -57,6 +57,9 @@
       else { return }
       let driver = ChaosDriver(seed: seed, defaults: defaults, router: router, serverURL: serverURL)
       shared = driver
+      if !ChaosToolbarProbe.install(write: { [driver] line in driver.write(line) }) {
+        driver.write("TOOLBAR probe not installed")
+      }
       NSSetUncaughtExceptionHandler { exception in recordUncaughtException(exception) }
       Task { await driver.run() }
     }

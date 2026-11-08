@@ -121,6 +121,10 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
       // killed) run left for restoration.
       UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
     }
+    if !ToolbarSwapGuard.install() {
+      services.logger.error(
+        "AppKit lacks the toolbar methods to guard; toolbar swaps are unguarded.")
+    }
     services.bind()
     super.applicationWillFinishLaunching(notification)
   }
