@@ -77,6 +77,7 @@
       Self.logger.notice("\(line, privacy: .public)")
       guard let log else { return }
       do {
+        try log.seekToEnd()
         try log.write(contentsOf: Data((line + "\n").utf8))
       } catch {
         Self.logger.error("Chaos log write failed: \(error.localizedDescription, privacy: .public)")

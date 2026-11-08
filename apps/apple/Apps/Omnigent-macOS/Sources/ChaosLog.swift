@@ -36,6 +36,30 @@
       guard unsafe thrownCount <= 200 else { return }
       let stack = Thread.callStackSymbols.dropFirst(2).prefix(30).joined(separator: "\n")
       append("THROWN \(exception.name.rawValue): \(exception.reason ?? "no reason")\n\(stack)\n")
+      if exception.reason?.contains("Update Constraints in Window") == true, Thread.isMainThread {
+        append(MainActor.assumeIsolated { viewsNeedingConstraints() })
+      }
+    }
+
+    /// The views still asking for a constraint pass, deepest last: the one in a loop is among
+    /// them, and a hosting view's type names the SwiftUI view it shows.
+    @MainActor
+    private static func viewsNeedingConstraints() -> String {
+      var lines: [String] = []
+      func visit(_ view: NSView, depth: Int) {
+        guard lines.count < 40 else { return }
+        if view.needsUpdateConstraints {
+          let type = String(describing: Swift.type(of: view)).prefix(400)
+          lines.append(
+            "  depth=\(depth) \(Int(view.frame.width))x\(Int(view.frame.height)) \(type)")
+        }
+        for subview in view.subviews { visit(subview, depth: depth + 1) }
+      }
+      for window in NSApp.windows where window.isVisible {
+        lines.append("NEEDS CONSTRAINTS in \(describe(window))")
+        if let frame = unsafe window.contentView?.superview { visit(frame, depth: 0) }
+      }
+      return lines.joined(separator: "\n") + "\n"
     }
 
     /// Appends `text` to the chaos log, or says on standard error why it could not.
