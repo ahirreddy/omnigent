@@ -135,7 +135,7 @@
 
     private enum Action: CaseIterable {
       case menu, shortcut, click, doubleClick, rightClick, drag, type, paste, key, scroll, resize
-      case session, window
+      case session, window, hover, compose
 
       var weight: Int {
         switch self {
@@ -143,8 +143,8 @@
         case .shortcut: 16
         case .menu, .type, .scroll: 11
         case .key: 9
-        case .drag, .session: 4
-        case .doubleClick, .rightClick, .paste, .resize: 3
+        case .drag, .session, .hover: 4
+        case .doubleClick, .rightClick, .paste, .resize, .compose: 3
         case .window: 1
         }
       }
@@ -160,8 +160,8 @@
       switch action {
       case .menu: invokeMenuItem()
       case .shortcut, .key: pressKeys(action, in: window)
-      case .click, .doubleClick, .rightClick, .drag: point(action, in: window)
-      case .type, .paste: enterText(action, in: window)
+      case .click, .doubleClick, .rightClick, .drag, .hover: point(action, in: window)
+      case .type, .paste, .compose: enterText(action, in: window)
       case .scroll: scroll(in: window)
       case .resize, .session, .window: arrange(action, window)
       }
@@ -169,22 +169,6 @@
 
     private func pressKeys(_ action: Action, in window: NSWindow) {
       if action == .shortcut { pressShortcut(in: window) } else { pressKey(in: window) }
-    }
-
-    private func point(_ action: Action, in window: NSWindow) {
-      if action == .drag { drag(in: window) } else { click(action, in: window) }
-    }
-
-    private func enterText(_ action: Action, in window: NSWindow) {
-      if action == .paste { paste(in: window) } else { type(in: window) }
-    }
-
-    private func arrange(_ action: Action, _ window: NSWindow) {
-      switch action {
-      case .resize: resize(window)
-      case .session: openSession()
-      default: changeWindow(window)
-      }
     }
 
     private func pickAction() -> Action {
@@ -307,6 +291,30 @@
   }
 
   extension ChaosDriver {
+    private func point(_ action: Action, in window: NSWindow) {
+      switch action {
+      case .drag: drag(in: window)
+      case .hover: hover(in: window)
+      default: click(action, in: window)
+      }
+    }
+
+    private func enterText(_ action: Action, in window: NSWindow) {
+      switch action {
+      case .paste: paste(in: window)
+      case .compose: compose(in: window)
+      default: type(in: window)
+      }
+    }
+
+    private func arrange(_ action: Action, _ window: NSWindow) {
+      switch action {
+      case .resize: resize(window)
+      case .session: openSession()
+      default: changeWindow(window)
+      }
+    }
+
     /// Half the time a control from the window's accessibility tree, else any point.
     fileprivate func clickTarget(in window: NSWindow) -> (CGPoint, String) {
       if random.int(below: 2) == 0 {
@@ -319,10 +327,28 @@
       return (randomPoint(in: window), "")
     }
 
+    fileprivate func hover(in window: NSWindow) {
+      let start = randomPoint(in: window)
+      let end = randomPoint(in: window)
+      write("\(step) hover \(Int(start.x)),\(Int(start.y)) to \(Int(end.x)),\(Int(end.y))")
+      ChaosInput.hover(from: start, to: end, steps: 4 + random.int(below: 20), in: window)
+    }
+
+    /// Input-method text, a stage every few tenths of a second; a fifth of it abandoned.
+    fileprivate func compose(in window: NSWindow) {
+      let words = ["かんじ", "漢字かな", "한국어", "中文输入法", "ㅎㅏㄴ", "にほんご"]
+      let word = words[random.int(below: words.count)]
+      let abandons = random.int(below: 5) == 0
+      let pause = 0.02 + 0.3 * random.unit
+      let taken = ChaosInput.compose(word, abandons: abandons, pause: pause, in: window)
+      write("\(step) compose \(word)\(abandons ? " abandoned" : "")\(taken ? "" : " (no client)")")
+    }
+
     /// Minimizes and restores, zooms, enters or leaves full screen, opens a new window, shrinks
-    /// the window to its minimum or switches the app between light, dark and the system's look.
+    /// the window to its minimum, moves it off every screen and back or switches the app between
+    /// light, dark and the system's look.
     fileprivate func changeWindow(_ window: NSWindow) {
-      switch random.int(below: 6) {
+      switch random.int(below: 7) {
       case 0:
         write("\(step) window minimize and restore")
         window.miniaturize(nil)
@@ -336,6 +362,13 @@
       case 3:
         write("\(step) window smallest")
         window.setFrame(CGRect(origin: window.frame.origin, size: window.minSize), display: true)
+      case 5:
+        write("\(step) window off screen and back")
+        let frame = window.frame
+        window.setFrameOrigin(CGPoint(x: -40_000, y: -40_000))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+          window.setFrame(frame, display: true)
+        }
       case 4:
         let looks: [NSAppearance.Name?] = [nil, .aqua, .darkAqua]
         let look = looks[random.int(below: looks.count)]
@@ -345,31 +378,6 @@
         write("\(step) window new")
         ChaosInput.press(.shortcut("n"), [.command, .shift], in: window)
       }
-    }
-  }
-
-  /// SplitMix64: a small seeded generator, so a seed replays the same choices.
-  struct SplitMix {
-    private var state: UInt64
-
-    init(seed: UInt64) { state = seed }
-
-    mutating func next() -> UInt64 {
-      state &+= 0x9E37_79B9_7F4A_7C15
-      var mixed = state
-      mixed = (mixed ^ (mixed >> 30)) &* 0xBF58_476D_1CE4_E5B9
-      mixed = (mixed ^ (mixed >> 27)) &* 0x94D0_49BB_1331_11EB
-      return mixed ^ (mixed >> 31)
-    }
-
-    /// A number in 0..<bound; 0 when `bound` is not positive.
-    mutating func int(below bound: Int) -> Int {
-      bound > 0 ? Int(next() % UInt64(bound)) : 0
-    }
-
-    /// A number in 0...1.
-    var unit: CGFloat {
-      mutating get { CGFloat(next() >> 11) / CGFloat(UInt64(1) << 53) }
     }
   }
 #endif

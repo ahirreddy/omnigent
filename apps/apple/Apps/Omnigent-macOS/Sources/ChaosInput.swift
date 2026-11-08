@@ -118,14 +118,62 @@
     /// Presses at `start`, drags through `steps` points to `end` and releases there.
     static func drag(from start: CGPoint, to end: CGPoint, steps: Int, in window: NSWindow) {
       mouse(.leftMouseDown, at: start, in: window)
-      let count = max(1, steps)
-      for index in 1...count {
-        let fraction = CGFloat(index) / CGFloat(count)
-        let point = CGPoint(
-          x: start.x + (end.x - start.x) * fraction, y: start.y + (end.y - start.y) * fraction)
+      for point in path(from: start, to: end, steps: steps) {
         mouse(.leftMouseDragged, at: point, in: window)
       }
       mouse(.leftMouseUp, at: end, in: window)
+    }
+
+    /// Moves the pointer with no button down through `steps` points from `start` to `end`.
+    static func hover(from start: CGPoint, to end: CGPoint, steps: Int, in window: NSWindow) {
+      for point in [start] + path(from: start, to: end, steps: steps) {
+        mouse(.mouseMoved, at: point, in: window)
+      }
+    }
+
+    /// `steps` evenly spaced points after `start`, the last one `end`.
+    private static func path(from start: CGPoint, to end: CGPoint, steps: Int) -> [CGPoint] {
+      let count = max(1, steps)
+      return (1...count).map { index in
+        let fraction = CGFloat(index) / CGFloat(count)
+        return CGPoint(
+          x: start.x + (end.x - start.x) * fraction, y: start.y + (end.y - start.y) * fraction)
+      }
+    }
+
+    /// Types `text` through an input method into the window's first responder: marked text
+    /// growing a character at a time, then committed, or, when `abandons`, dropped as Escape
+    /// drops it. Each stage waits `pause` seconds, as a person picking characters does.
+    /// - Returns: Whether the first responder takes input-method text.
+    @discardableResult
+    static func compose(_ text: String, abandons: Bool, pause: TimeInterval, in window: NSWindow)
+      -> Bool
+    {
+      guard let client = window.firstResponder as? (any NSTextInputClient) else { return false }
+      let nowhere = NSRange(location: NSNotFound, length: 0)
+      var stages: [() -> Void] = []
+      var marked = ""
+      for character in text {
+        marked.append(character)
+        let stage = marked
+        stages.append {
+          client.setMarkedText(
+            stage, selectedRange: NSRange(location: stage.utf16.count, length: 0),
+            replacementRange: nowhere)
+        }
+      }
+      if abandons {
+        stages.append {
+          client.setMarkedText("", selectedRange: NSRange(), replacementRange: nowhere)
+          client.unmarkText()
+        }
+      } else {
+        stages.append { client.insertText(text, replacementRange: nowhere) }
+      }
+      for (index, stage) in stages.enumerated() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + pause * Double(index), execute: stage)
+      }
+      return true
     }
 
     private static func mouse(
