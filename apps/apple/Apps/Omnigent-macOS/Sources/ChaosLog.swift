@@ -150,18 +150,21 @@
       return field == lastEditedField ? nil : field
     }
 
-    /// The key window's field being edited when its text has line breaks or runs past what a
-    /// paste into a single-line field leaves (``SingleLinePasteGuard``): what a stall clicking
-    /// in it needs.
+    /// The key window's editable single-line field when its text has line breaks or runs well
+    /// past what a paste leaves (``SingleLinePasteGuard``), so typing after a paste does not
+    /// count: what a stall clicking in it needs.
     @MainActor
     private static func editedField() -> String? {
       guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.isFieldEditor,
-        let field = editor.delegate as? NSTextField
+        let field = editor.delegate as? NSTextField, field.isEditable
       else { return nil }
+      let cell = field.cell
+      guard cell?.usesSingleLineMode == true || cell?.isScrollable == true else { return nil }
       let text = editor.string
       let lines = text.reduce(1) { $1.isNewline ? $0 + 1 : $0 }
-      guard lines > 1 || text.utf16.count > SingleLinePasteGuard.maximumLength else { return nil }
-      let cell = field.cell
+      guard lines > 1 || text.utf16.count > SingleLinePasteGuard.maximumLength * 2 else {
+        return nil
+      }
       return "FIELD \(Swift.type(of: field)) editor=\(Swift.type(of: editor)) "
         + "lines=\(lines) length=\(text.utf16.count) singleLine=\(cell?.usesSingleLineMode ?? false) "
         + "scrollable=\(cell?.isScrollable ?? false) id=\(field.identifier?.rawValue ?? "")"
