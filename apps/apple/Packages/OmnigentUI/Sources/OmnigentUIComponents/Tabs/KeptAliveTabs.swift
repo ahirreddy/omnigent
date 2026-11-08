@@ -40,32 +40,41 @@ public struct KeptAliveTabs<Item: Identifiable, Content: View>: View {
         HeldWhileHidden(content: content(item), isHidden: isHidden)
           .equatable()
           .modifier(HiddenTabContent(isHidden: isHidden))
-          .layoutValue(key: KeptAliveKey.self, value: isHidden ? String(describing: item.id) : nil)
+          .layoutValue(
+            key: KeptAliveKey.self,
+            value: KeptAliveSlot(id: String(describing: item.id), isHidden: isHidden))
       }
     }
     .hostsConversationToolbar()
   }
 }
 
-/// Each hidden tab's last shown size, kept outside observation: layout reads and writes it, on
-/// the main thread only.
+/// Each tab's last shown size, kept outside observation: layout reads and writes it, on the main
+/// thread only.
 nonisolated private final class KeptAliveSizes: @unchecked Sendable {
-  var byID: [String: CGSize] = [:]
-  var shownSize: CGSize?
+  var lastShown: [String: CGSize] = [:]
 }
 
-/// A hidden tab's id, so the layout can hold its size; `nil` for the shown tab.
+/// A tab's id and whether it is hidden, so the layout can hold a hidden tab's size.
+nonisolated private struct KeptAliveSlot: Equatable {
+  let id: String
+  let isHidden: Bool
+}
+
 nonisolated private struct KeptAliveKey: LayoutValueKey {
-  static let defaultValue: String? = nil
+  static let defaultValue: KeptAliveSlot? = nil
 }
 
 /// A `ZStack` that proposes the shown tab the whole space and each hidden tab the size it had
 /// when it was last shown: an unchanged proposal, so resizing does not lay hidden tabs out again.
+/// A tab mounted hidden (another session's tabs taking over, a new window) has shown at no size
+/// yet and follows the column: a size from the column's first passes can be smaller than the
+/// tab's content, and its right panel then loops on constraint passes.
 private struct KeptAliveLayout: Layout {
   let sizes: KeptAliveSizes
 
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    let shown = subviews.filter { $0[KeptAliveKey.self] == nil }
+    let shown = subviews.filter { $0[KeptAliveKey.self]?.isHidden != true }
     let sizes = shown.map { $0.sizeThatFits(proposal) }
     return CGSize(
       width: sizes.map(\.width).max() ?? proposal.replacingUnspecifiedDimensions().width,
@@ -75,27 +84,23 @@ private struct KeptAliveLayout: Layout {
   func placeSubviews(
     in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
   ) {
-    // The shown tab's size, or the last one it had during a pass before the column has its size.
-    if Self.isMeasured(bounds.size) { sizes.shownSize = bounds.size }
     for subview in subviews {
-      guard let id = subview[KeptAliveKey.self] else {
+      let slot = subview[KeptAliveKey.self]
+      guard let slot, slot.isHidden else {
         subview.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+        if let slot, Self.isMeasured(bounds.size) { sizes.lastShown[slot.id] = bounds.size }
         continue
       }
-      // A tab hidden since before it was measured takes the shown tab's size.
-      let size = sizes.byID[id] ?? sizes.shownSize ?? bounds.size
-      if Self.isMeasured(size) { sizes.byID[id] = size }
+      let size = sizes.lastShown[slot.id] ?? bounds.size
       subview.place(at: bounds.origin, proposal: ProposedViewSize(size))
     }
-    // A shown tab's frozen size is dropped, so it freezes at its newest size when hidden again.
-    let hidden = Set(subviews.compactMap { $0[KeptAliveKey.self] })
-    sizes.byID = sizes.byID.filter { hidden.contains($0.key) }
+    let ids = Set(subviews.compactMap { $0[KeptAliveKey.self]?.id })
+    sizes.lastShown = sizes.lastShown.filter { ids.contains($0.key) }
   }
 
   /// Whether `size` is the column's, not that of a pass made while the split view sized the
   /// column at its placeholder minimum (``UnmeasuredMinimum``) in either dimension, or before it
-  /// had a size. A tab
-  /// frozen at that minimum lays its right panel out smaller than its content.
+  /// had a size. A tab frozen there lays its right panel out smaller than its content.
   static func isMeasured(_ size: CGSize) -> Bool {
     let placeholder = UnmeasuredMinimum.column
     return size.width > placeholder.width && size.height > placeholder.height

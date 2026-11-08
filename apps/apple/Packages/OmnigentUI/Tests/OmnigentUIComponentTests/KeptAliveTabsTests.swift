@@ -20,8 +20,8 @@
       var byID: [String: CGSize] = [:]
     }
 
-    private func tabs(_ ids: [String], sizes: Sizes) -> some View {
-      KeptAliveTabs(ids.map(Tab.init(id:)), shownID: "shown") { tab in
+    private func tabs(_ ids: [String], shown: String = "shown", sizes: Sizes) -> some View {
+      KeptAliveTabs(ids.map(Tab.init(id:)), shownID: shown) { tab in
         Color.clear.onGeometryChange(for: CGSize.self) {
           $0.size
         } action: { size in
@@ -56,15 +56,27 @@
       #expect(sizes.byID["hidden"] == column)
     }
 
-    @Test func aHiddenTabKeepsItsSizeWhenTheWindowResizes() {
+    /// A new window's first passes can be smaller than any size the window keeps.
+    @Test func aTabMountedHiddenFollowsTheColumnUntilItShows() {
       _ = NSApplication.shared
       let sizes = Sizes()
-      let view = NSHostingView(rootView: tabs(["shown", "hidden"], sizes: sizes))
+      let view = NSHostingView(rootView: tabs(["hidden", "shown"], sizes: sizes))
+      layOut(view, at: CGSize(width: 600, height: 252))
+      layOut(view, at: CGSize(width: 768, height: 716))
+
+      #expect(sizes.byID["hidden"] == CGSize(width: 768, height: 716))
+    }
+
+    @Test func aHiddenTabKeepsTheSizeItLastShowedAt() {
+      _ = NSApplication.shared
+      let sizes = Sizes()
+      let view = NSHostingView(rootView: tabs(["a", "b"], shown: "a", sizes: sizes))
       layOut(view, at: CGSize(width: 800, height: 600))
+      view.rootView = tabs(["a", "b"], shown: "b", sizes: sizes)
       layOut(view, at: CGSize(width: 900, height: 700))
 
-      #expect(sizes.byID["shown"] == CGSize(width: 900, height: 700))
-      #expect(sizes.byID["hidden"] == CGSize(width: 800, height: 600))
+      #expect(sizes.byID["b"] == CGSize(width: 900, height: 700))
+      #expect(sizes.byID["a"] == CGSize(width: 800, height: 600))
     }
   }
 #endif
