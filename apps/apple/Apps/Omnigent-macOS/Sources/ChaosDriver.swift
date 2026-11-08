@@ -226,6 +226,8 @@
       let start = randomPoint(in: window)
       let end = randomPoint(in: window)
       write("\(step) drag \(Int(start.x)),\(Int(start.y)) to \(Int(end.x)),\(Int(end.y))")
+      // A drag on a divider resizes the columns beside it while it moves.
+      LoopProbe.quiet(for: 1)
       ChaosInput.drag(from: start, to: end, steps: 4 + random.int(below: 12), in: window)
     }
 
