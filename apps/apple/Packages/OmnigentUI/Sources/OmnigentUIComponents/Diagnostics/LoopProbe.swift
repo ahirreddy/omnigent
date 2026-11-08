@@ -14,6 +14,8 @@
     static let busySeconds = 3
     /// Loops reported per name, so one that never ends is not logged on every frame.
     static let reportsPerName = 5
+    /// The latest changes a report lists, enough to tell a value flipping from one growing.
+    static let reportedChanges = 6
 
     private struct Window {
       var start: Date
@@ -21,6 +23,8 @@
       /// Busy seconds just before this one.
       var busyBefore = 0
       var reports = 0
+      /// The latest changes' details, oldest first.
+      var recent: [String] = []
     }
 
     private static var windows: [String: Window] = [:]
@@ -33,15 +37,18 @@
       if elapsed > 1 {
         let wasBusy = window.changes >= limit && elapsed < 2
         window = Window(
-          start: now, busyBefore: wasBusy ? window.busyBefore + 1 : 0, reports: window.reports)
+          start: now, busyBefore: wasBusy ? window.busyBefore + 1 : 0, reports: window.reports,
+          recent: window.recent)
       }
       window.changes += 1
+      window.recent = Array((window.recent + [detail()]).suffix(reportedChanges))
       if window.changes == limit, window.busyBefore + 1 >= busySeconds,
         window.reports < reportsPerName
       {
         window.reports += 1
         sink(
-          "LOOP \(name) changed \(limit) times a second for \(busySeconds) seconds: \(detail())")
+          "LOOP \(name) changed \(limit) times a second for \(busySeconds) seconds: "
+            + window.recent.joined(separator: " | "))
       }
       windows[name] = window
     }

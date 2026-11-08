@@ -29,7 +29,7 @@
       for second in 0..<seconds {
         for index in 0..<perSecond {
           let offset = Double(second) + Double(index) / Double(perSecond) * 0.9
-          LoopProbe.record("dock", at: start.addingTimeInterval(offset), "state")
+          LoopProbe.record("dock", at: start.addingTimeInterval(offset), "\(index % 2)")
         }
       }
     }
@@ -37,7 +37,8 @@
     @Test func aBusyStateForSecondsIsReported() {
       probing { lines in
         change(perSecond: LoopProbe.limit * 2, seconds: LoopProbe.busySeconds)
-        #expect(lines.all == ["LOOP dock changed 30 times a second for 3 seconds: state"])
+        #expect(
+          lines.all == ["LOOP dock changed 30 times a second for 3 seconds: 0 | 1 | 0 | 1 | 0 | 1"])
       }
     }
 
