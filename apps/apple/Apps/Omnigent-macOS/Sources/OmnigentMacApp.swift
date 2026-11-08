@@ -121,6 +121,10 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
       // killed) run left for restoration.
       UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
     }
+    // Windows carry their own tab strip. Native window tabs (which a full-screen window's new
+    // windows join by default) also hand windows between full-screen spaces, which AppKit
+    // throws on.
+    NSWindow.allowsAutomaticWindowTabbing = false
     if !ToolbarSwapGuard.install() {
       services.logger.error(
         "AppKit lacks the toolbar methods to guard; toolbar swaps are unguarded.")

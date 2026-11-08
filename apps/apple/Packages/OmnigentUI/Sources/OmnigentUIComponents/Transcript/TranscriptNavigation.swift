@@ -205,7 +205,28 @@ struct TranscriptNavigatorOverlay: ViewModifier {
 @MainActor
 private final class ScrollTopTracker {
   var lastOffset: CGFloat = 0
+  var isScrolling = false
   var hideTask: Task<Void, Never>?
+}
+
+/// What a scroll does to the "Jump to top" pill. Only the reader's own scrolling (or a jump)
+/// should reach it: a layout pass also moves the offset (rows measured, history paged in), and
+/// state written from those schedules another pass, which can move it again without end.
+enum ScrollTopReveal: Equatable {
+  case reveal, hide, unchanged
+
+  /// Whether `offset` (points below the top) is at the top. Once there, a few points of
+  /// re-measured rows do not leave it.
+  static func isAtTop(_ offset: CGFloat, wasAtTop: Bool) -> Bool {
+    offset <= (wasAtTop ? 8 : 1)
+  }
+
+  /// The pill's change for a scroll of `delta` points (negative is up).
+  static func change(delta: CGFloat, isAtTop: Bool, isRevealed: Bool) -> Self {
+    if delta < -1, !isAtTop { return .reveal }
+    if delta > 1, isRevealed { return .hide }
+    return .unchanged
+  }
 }
 
 /// The web's hover-revealed "Jump to top" pill: pointing within ``band`` of the transcript's top,
@@ -237,12 +258,18 @@ struct JumpToTopReveal: ViewModifier {
           case .active(let location): location.y < Self.band
           case .ended: false
           }
-        if hovering != isHovering { isHovering = hovering }
+        guard hovering != isHovering else { return }
+        if hovering { updateIsAtTop() }
+        isHovering = hovering
       }
       .onScrollGeometryChange(for: CGFloat.self) { geometry in
         geometry.contentOffset.y + geometry.contentInsets.top
       } action: { _, offset in
         scrolled(to: offset)
+      }
+      .onScrollPhaseChange { _, phase in
+        tracker.isScrolling = phase.isScrolling
+        if !phase.isScrolling { updateIsAtTop() }
       }
       .overlay(alignment: .top) { pill }
       .accessibilityAction(named: "Jump to the first message", jump)
@@ -274,11 +301,13 @@ struct JumpToTopReveal: ViewModifier {
 
   /// Reveals the pill while the reader scrolls up, and hides it once they stop or turn back.
   private func scrolled(to offset: CGFloat) {
-    let atTop = offset <= 1
-    if atTop != isAtTop { isAtTop = atTop }
     let delta = offset - tracker.lastOffset
     tracker.lastOffset = offset
-    if delta < -1, !atTop {
+    // A layout pass moved the offset, not the reader: no state, so no further pass.
+    guard tracker.isScrolling else { return }
+    let atTop = updateIsAtTop()
+    switch ScrollTopReveal.change(delta: delta, isAtTop: atTop, isRevealed: scrolledUp) {
+    case .reveal:
       if !scrolledUp { scrolledUp = true }
       tracker.hideTask?.cancel()
       tracker.hideTask = Task { @MainActor in
@@ -289,9 +318,21 @@ struct JumpToTopReveal: ViewModifier {
         }
         scrolledUp = false
       }
-    } else if delta > 1, scrolledUp {
+    case .hide:
       tracker.hideTask?.cancel()
       scrolledUp = false
+    case .unchanged:
+      break
     }
+  }
+
+  /// Reads the last offset into ``isAtTop``: while scrolling, when a scroll ends, and when the
+  /// pointer reaches the top band.
+  /// - Returns: Whether the transcript is at its top.
+  @discardableResult
+  private func updateIsAtTop() -> Bool {
+    let atTop = ScrollTopReveal.isAtTop(tracker.lastOffset, wasAtTop: isAtTop)
+    if atTop != isAtTop { isAtTop = atTop }
+    return atTop
   }
 }

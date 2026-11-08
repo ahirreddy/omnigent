@@ -3,17 +3,18 @@
   import ObjectiveC
 
   /// Logs every `NSWindow.toolbar` assignment during a chaos run, with how deeply it nests in
-  /// another, so a toolbar swap that re-enters itself shows in the log before it crashes.
-  @MainActor
+  /// another, so a toolbar swap that re-enters itself shows in the log before it crashes. Like
+  /// ``ToolbarSwapGuard`` its replacement is nonisolated and reads the window through KVC.
   enum ChaosToolbarProbe {
-    fileprivate static var write: (String) -> Void = { _ in }
-    fileprivate static var depth = 0
+    /// Set once before the exchange; read on the main thread.
+    nonisolated(unsafe) fileprivate static var write: (String) -> Void = { _ in }
+    nonisolated(unsafe) fileprivate static var depth = 0
 
     /// Starts logging through `write`.
     /// - Returns: Whether the probe could be installed.
-    @discardableResult
+    @MainActor @discardableResult
     static func install(write: @escaping (String) -> Void) -> Bool {
-      self.write = write
+      unsafe self.write = write
       let setter = #selector(setter: NSWindow.toolbar)
       let probe = #selector(NSWindow.chaosProbeSetToolbar(_:))
       guard let original = unsafe class_getInstanceMethod(NSWindow.self, setter),
@@ -23,25 +24,30 @@
       return true
     }
 
-    fileprivate static func describe(_ toolbar: NSToolbar?) -> String {
+    nonisolated fileprivate static func describe(_ toolbar: NSObject?) -> String {
       guard let toolbar else { return "none" }
-      return "\(toolbar.identifier) items=\(toolbar.items.count)"
+      let identifier = toolbar.value(forKey: "identifier") as? String ?? "?"
+      let items = (toolbar.value(forKey: "items") as? [Any])?.count ?? 0
+      return "\(identifier) items=\(items)"
     }
   }
 
   extension NSWindow {
     /// After the exchange this is `setToolbar:`, and calling it calls the original.
-    @objc fileprivate func chaosProbeSetToolbar(_ toolbar: NSToolbar?) {
-      ChaosToolbarProbe.depth += 1
-      defer { ChaosToolbarProbe.depth -= 1 }
-      let depth = ChaosToolbarProbe.depth
+    @objc nonisolated fileprivate func chaosProbeSetToolbar(_ toolbar: NSToolbar?) {
+      unsafe ChaosToolbarProbe.depth += 1
+      defer { unsafe ChaosToolbarProbe.depth -= 1 }
+      let depth = unsafe ChaosToolbarProbe.depth
+      let title = value(forKey: "title") as? String ?? ""
+      let hasSheet = value(forKey: "attachedSheet") != nil
+      let current = value(forKey: "toolbar") as? NSObject
       var line =
-        "TOOLBAR depth=\(depth) window=\"\(title)\" sheet=\(attachedSheet != nil) "
-        + "\(ChaosToolbarProbe.describe(self.toolbar)) -> \(ChaosToolbarProbe.describe(toolbar))"
+        "TOOLBAR depth=\(depth) window=\"\(title)\" sheet=\(hasSheet) "
+        + "\(ChaosToolbarProbe.describe(current)) -> \(ChaosToolbarProbe.describe(toolbar))"
       if depth > 1 {
         line += "\n" + Thread.callStackSymbols.prefix(60).joined(separator: "\n")
       }
-      ChaosToolbarProbe.write(line)
+      unsafe ChaosToolbarProbe.write(line)
       chaosProbeSetToolbar(toolbar)
     }
   }

@@ -33,13 +33,14 @@ struct ToolbarSwapGuardTests {
     return (window, view)
   }
 
-  private func drainMainQueue() async {
-    await withCheckedContinuation { continuation in
-      DispatchQueue.main.async { continuation.resume() }
+  /// Lets the main run loop turn until `done` or a second passes.
+  private func runMainLoop(until done: () -> Bool) async throws {
+    for _ in 0..<100 where !done() {
+      try await Task.sleep(for: .milliseconds(10))
     }
   }
 
-  @Test func aConstraintPassDuringASwapRunsAfterIt() async {
+  @Test func aConstraintPassDuringASwapRunsAfterIt() async throws {
     #expect(ToolbarSwapGuard.install())
     let (window, view) = makeWindow()
     view.needsUpdateConstraints = true
@@ -51,7 +52,7 @@ struct ToolbarSwapGuardTests {
       window.updateConstraintsIfNeeded()
       #expect(view.updates == 1, "the pass ran inside the swap")
     }
-    await drainMainQueue()
+    try await runMainLoop { view.updates == 2 }
 
     #expect(view.updates == 2, "the held pass never ran")
   }
@@ -67,5 +68,26 @@ struct ToolbarSwapGuardTests {
 
     window.toolbar = nil
     #expect(window.toolbar == nil)
+  }
+}
+
+/// What the app sets on every window before the first opens.
+@MainActor
+struct WindowLaunchSettingsTests {
+  /// Native window tabs would join a full-screen window's new windows to it and then hand them
+  /// between spaces, which AppKit throws on; the app's windows have their own tab strip.
+  @Test func nativeWindowTabbingIsOff() {
+    #expect(!NSWindow.allowsAutomaticWindowTabbing)
+  }
+
+  /// The test host launches through the same delegate, so the guard is already in place.
+  @Test func theToolbarSwapGuardIsInstalledAtLaunch() {
+    let window = NSWindow(
+      contentRect: CGRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled],
+      backing: .buffered, defer: true)
+    var swapped = false
+    ToolbarSwapGuard.swap(window) { swapped = ToolbarSwapGuard.isSwapping(window) }
+    #expect(swapped)
+    #expect(ToolbarSwapGuard.install(), "a second install reports the first")
   }
 }

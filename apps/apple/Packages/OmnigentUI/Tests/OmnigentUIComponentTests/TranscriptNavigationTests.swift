@@ -57,3 +57,34 @@ struct TranscriptNavigationTests {
     #expect(TranscriptNavigator.fitsBesideColumn(width: 1_000, column: 720))
   }
 }
+
+/// The "Jump to top" pill's response to the reader's scrolling.
+struct ScrollTopRevealTests {
+  @Test("scrolling up away from the top reveals the pill; scrolling down hides it")
+  func scrollingUpRevealsAndDownHides() {
+    #expect(ScrollTopReveal.change(delta: -20, isAtTop: false, isRevealed: false) == .reveal)
+    #expect(ScrollTopReveal.change(delta: 20, isAtTop: false, isRevealed: true) == .hide)
+    #expect(ScrollTopReveal.change(delta: 20, isAtTop: false, isRevealed: false) == .unchanged)
+  }
+
+  @Test("at the top, or for a sub-point jitter, nothing changes")
+  func topAndJitterLeaveThePill() {
+    #expect(ScrollTopReveal.change(delta: -20, isAtTop: true, isRevealed: false) == .unchanged)
+    #expect(ScrollTopReveal.change(delta: -0.5, isAtTop: false, isRevealed: false) == .unchanged)
+    #expect(ScrollTopReveal.change(delta: 0.5, isAtTop: false, isRevealed: true) == .unchanged)
+  }
+
+  @Test("a few points of re-measured rows at the top do not leave it")
+  func theTopHasHysteresis() {
+    #expect(ScrollTopReveal.isAtTop(0, wasAtTop: false))
+    #expect(!ScrollTopReveal.isAtTop(4, wasAtTop: false))
+    #expect(ScrollTopReveal.isAtTop(4, wasAtTop: true))
+    #expect(!ScrollTopReveal.isAtTop(9, wasAtTop: true))
+    // Rows re-measured back and forth across the edge settle instead of flipping each pass.
+    var atTop = true
+    for offset: CGFloat in [0, 6, 0, 7, 2, 5] {
+      atTop = ScrollTopReveal.isAtTop(offset, wasAtTop: atTop)
+      #expect(atTop)
+    }
+  }
+}
