@@ -84,6 +84,12 @@ def agent_spec(port: int) -> str:
         "  cwd: .\n"
         "  sandbox:\n"
         "    type: none\n"
+        # A plain shell, so the apps' terminal tabs open in mock sessions.
+        "terminals:\n"
+        "  shell:\n"
+        "    command: bash\n"
+        '    args: ["--noprofile", "--norc"]\n'
+        "    os_env: inherit\n"
     )
 
 
