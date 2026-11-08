@@ -83,12 +83,19 @@ public final class DecisionSurfaces {
     if bottomBarTop == top { return }
     #if DEBUG
       LoopProbe.record(
-        "decision bottom bar",
+        "decision bottom bar \(probeTag)",
         "top \(String(describing: bottomBarTop)) -> \(String(describing: top))")
     #endif
     bottomBarTop = top
     update()
   }
+
+  #if DEBUG
+    /// A short tag for this conversation in loop reports.
+    private var probeTag: String {
+      String(UInt(bitPattern: ObjectIdentifier(self).hashValue) % 10_000)
+    }
+  #endif
 
   private func update() {
     var next = InlineDecisionVisibility()
@@ -102,7 +109,7 @@ public final class DecisionSurfaces {
     guard next != visibility else { return }
     #if DEBUG
       LoopProbe.record(
-        "decision visibility",
+        "decision visibility \(probeTag)",
         "on screen \(next.onScreen.sorted()), bar top \(String(describing: bottomBarTop)), "
           + "placements \(placements)")
     #endif

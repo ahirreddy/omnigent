@@ -139,11 +139,7 @@ extension View {
   /// Records this row's height for ``LoopProbe`` in Debug builds, so a loop names the row.
   @ViewBuilder func probesRowHeight(_ id: String) -> some View {
     #if DEBUG
-      onGeometryChange(for: CGFloat.self) {
-        $0.size.height
-      } action: { old, new in
-        LoopProbe.record("transcript row height", "\(id) \(old) -> \(new)")
-      }
+      modifier(RowHeightProbe(id: id))
     #else
       self
     #endif
