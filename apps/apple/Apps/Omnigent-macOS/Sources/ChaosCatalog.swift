@@ -145,3 +145,51 @@
     }
   }
 #endif
+
+#if DEBUG
+  /// Controls a click can land on, read from the window's own accessibility tree (in-process, so
+  /// no Accessibility permission): buttons, links, rows, fields, pickers and the like.
+  @MainActor
+  enum ChaosTargets {
+    struct Control {
+      let point: CGPoint
+      let name: String
+    }
+
+    private static let roles: Set<NSAccessibility.Role> = [
+      .button, .link, .checkBox, .radioButton, .popUpButton, .menuButton, .row, .cell,
+      .textField, .textArea, .slider, .disclosureTriangle, .incrementor, .comboBox, .tabGroup,
+      .image, .staticText, .scrollBar, .splitter,
+    ]
+
+    /// Up to `limit` elements of the tree under `window`, breadth first; the visible controls
+    /// among them, with their centers in window coordinates.
+    static func controls(in window: NSWindow, limit: Int = 4000) -> [Control] {
+      var queue: [Any] = window.accessibilityChildren() ?? []
+      var found: [Control] = []
+      var visited = 0
+      let bounds = window.contentView?.bounds ?? .zero
+      while visited < queue.count, visited < limit {
+        let item = queue[visited]
+        visited += 1
+        guard let element = item as? any NSAccessibilityProtocol else { continue }
+        if let children = element.accessibilityChildren() { queue += children }
+        guard let role = element.accessibilityRole(), roles.contains(role) else { continue }
+        let frame = element.accessibilityFrame()
+        guard frame.width > 1, frame.height > 1 else { continue }
+        let center = window.convertPoint(fromScreen: CGPoint(x: frame.midX, y: frame.midY))
+        guard bounds.contains(center) else { continue }
+        found.append(Control(point: center, name: describe(element, role: role)))
+      }
+      return found
+    }
+
+    private static func describe(_ element: any NSAccessibilityProtocol, role: NSAccessibility.Role)
+      -> String
+    {
+      let identifier = element.accessibilityIdentifier() ?? ""
+      let label = element.accessibilityLabel() ?? ""
+      return "\(role.rawValue) \(identifier.isEmpty ? "" : "#\(identifier) ")\(label.prefix(40))"
+    }
+  }
+#endif

@@ -217,9 +217,9 @@
     }
 
     private func click(_ action: Action, in window: NSWindow) {
-      let point = randomPoint(in: window)
+      let (point, target) = clickTarget(in: window)
       let name = "\(action)".lowercased()
-      write("\(step) \(name) \(Int(point.x)),\(Int(point.y)) in \(window.title)")
+      write("\(step) \(name) \(Int(point.x)),\(Int(point.y)) \(target) in \(window.title)")
       switch action {
       case .doubleClick: ChaosInput.click(at: point, in: window, count: 2)
       case .rightClick: ChaosInput.click(at: point, in: window, right: true)
@@ -297,6 +297,18 @@
   }
 
   extension ChaosDriver {
+    /// Half the time a control from the window's accessibility tree, else any point.
+    fileprivate func clickTarget(in window: NSWindow) -> (CGPoint, String) {
+      if random.int(below: 2) == 0 {
+        let controls = ChaosTargets.controls(in: window)
+        if !controls.isEmpty {
+          let control = controls[random.int(below: controls.count)]
+          return (control.point, "on \(control.name)")
+        }
+      }
+      return (randomPoint(in: window), "")
+    }
+
     /// Minimizes and restores, zooms, enters or leaves full screen, or opens a new window.
     fileprivate func changeWindow(_ window: NSWindow) {
       switch random.int(below: 4) {
