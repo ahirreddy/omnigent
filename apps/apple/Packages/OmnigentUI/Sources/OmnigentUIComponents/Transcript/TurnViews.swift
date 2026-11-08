@@ -153,6 +153,7 @@ struct InlineDecisions: View {
         draft: drafts.binding(card.id)
       )
       .reportsInlineDecision(card.id, showsApprove: true)
+      .probesRowHeight("inline-\(card.id)")
       .id("inline-\(card.id)")
     }
   }

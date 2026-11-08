@@ -108,6 +108,7 @@ struct TranscriptRowsContent<Header: View>: View {
         .equatable()
         .id(entry.id)
         .reportsReadingAnchor(entry.id)
+        .probesRowHeight(entry.id)
         .background { if focus?.flashedRowID == entry.id { MessageFlash() } }
     }
     InlineDecisions(state: state, actions: actions)

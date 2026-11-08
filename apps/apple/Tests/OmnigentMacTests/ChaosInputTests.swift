@@ -54,5 +54,23 @@
       #expect(window.makeFirstResponder(nil))
       #expect(!ChaosInput.compose("かんじ", abandons: false, pause: 0, in: window))
     }
+
+    @Test func aSweepVisitsEveryHeightBetweenItsEnds() {
+      #expect(ChaosWindows.sweepHeights(from: 300, to: 400, steps: 4) == [300, 325, 350, 375, 400])
+      #expect(ChaosWindows.sweepHeights(from: 400, to: 301, steps: 2) == [400, 351, 301])
+      #expect(ChaosWindows.sweepHeights(from: 300, to: 400, steps: 0) == [300, 400])
+    }
+
+    @Test func aSweepKeepsTheTopEdgeAndEndsAtTheLastHeight() async throws {
+      let window = NSWindow(
+        contentRect: CGRect(x: 40, y: 500, width: 300, height: 400), styleMask: .borderless,
+        backing: .buffered, defer: true)
+      let top = window.frame.maxY
+      ChaosWindows.sweep(window, width: 320, heights: [380, 350, 330], pause: 0.01)
+      try await Task.sleep(for: .milliseconds(300))
+
+      #expect(window.frame.size == CGSize(width: 320, height: 330))
+      #expect(window.frame.maxY == top)
+    }
   }
 #endif

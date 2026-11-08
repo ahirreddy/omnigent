@@ -135,7 +135,7 @@
 
     private enum Action: CaseIterable {
       case menu, shortcut, click, doubleClick, rightClick, drag, type, paste, key, scroll, resize
-      case session, window, hover, compose
+      case session, window, hover, compose, sweep
 
       var weight: Int {
         switch self {
@@ -144,7 +144,7 @@
         case .menu, .type, .scroll: 11
         case .key: 9
         case .drag, .session, .hover: 4
-        case .doubleClick, .rightClick, .paste, .resize, .compose: 3
+        case .doubleClick, .rightClick, .paste, .resize, .compose, .sweep: 3
         case .window: 1
         }
       }
@@ -163,7 +163,7 @@
       case .click, .doubleClick, .rightClick, .drag, .hover: point(action, in: window)
       case .type, .paste, .compose: enterText(action, in: window)
       case .scroll: scroll(in: window)
-      case .resize, .session, .window: arrange(action, window)
+      case .resize, .session, .window, .sweep: arrange(action, window)
       }
     }
 
@@ -311,6 +311,7 @@
       switch action {
       case .resize: resize(window)
       case .session: openSession()
+      case .sweep: sweepHeight(window)
       default: changeWindow(window)
       }
     }
@@ -360,40 +361,31 @@
       }
     }
 
-    /// Minimizes and restores, zooms, enters or leaves full screen, opens a new window, shrinks
-    /// the window to its minimum, moves it off every screen and back or switches the app between
-    /// light, dark and the system's look.
     fileprivate func changeWindow(_ window: NSWindow) {
-      switch random.int(below: 7) {
-      case 0:
-        write("\(step) window minimize and restore")
-        window.miniaturize(nil)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { window.deminiaturize(nil) }
-      case 1:
-        write("\(step) window zoom")
-        window.zoom(nil)
-      case 2:
-        write("\(step) window full screen")
-        window.toggleFullScreen(nil)
-      case 3:
-        write("\(step) window smallest")
-        window.setFrame(CGRect(origin: window.frame.origin, size: window.minSize), display: true)
-      case 5:
-        write("\(step) window off screen and back")
-        let frame = window.frame
-        window.setFrameOrigin(CGPoint(x: -40_000, y: -40_000))
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-          window.setFrame(frame, display: true)
-        }
-      case 4:
-        let looks: [NSAppearance.Name?] = [nil, .aqua, .darkAqua]
-        let look = looks[random.int(below: looks.count)]
-        write("\(step) appearance \(look?.rawValue ?? "system")")
-        NSApp.appearance = look.flatMap(NSAppearance.init(named:))
-      default:
-        write("\(step) window new")
-        ChaosInput.press(.shortcut("n"), [.command, .shift], in: window)
+      let choice = random.int(below: ChaosWindows.changes)
+      let step = step
+      ChaosWindows.change(window, choice: choice, look: random.int(below: 3)) {
+        write("\(step) \($0)")
       }
+    }
+
+    /// Steps the window's height up or down across most of its range, a few tenths of a second
+    /// a step, at a random width.
+    fileprivate func sweepHeight(_ window: NSWindow) {
+      guard let screen = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+      let minimum = window.minSize
+      let width = (minimum.width + random.unit * max(0, screen.width - minimum.width)).rounded()
+      let tallest =
+        minimum.height + (0.3 + 0.7 * random.unit) * max(0, screen.height - minimum.height)
+      let upward = random.int(below: 2) == 0
+      let steps = 10 + random.int(below: 40)
+      let heights = ChaosWindows.sweepHeights(
+        from: upward ? minimum.height : tallest, to: upward ? tallest : minimum.height, steps: steps
+      )
+      guard let first = heights.first, let last = heights.last else { return }
+      let pause = 0.05 + 0.3 * random.unit
+      write("\(step) sweep \(Int(width)) wide, \(Int(first)) to \(Int(last)) high")
+      ChaosWindows.sweep(window, width: width, heights: heights, pause: pause)
     }
   }
 #endif
