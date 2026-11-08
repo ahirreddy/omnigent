@@ -46,12 +46,16 @@ final class TranscriptScrollState {
     }
   }
 
-  /// Records a scroll geometry change for ``LoopProbe``, in Debug builds.
+  /// Records a scroll geometry change for ``LoopProbe``, in Debug builds, tagged with this
+  /// transcript so changes from several windows can be told apart.
   func probe(_ name: String, _ detail: @autoclosure () -> String) {
     #if DEBUG
-      LoopProbe.record(name, detail())
+      LoopProbe.record(name, "\(probeTag): \(detail())")
     #endif
   }
+
+  /// A short tag for this transcript in loop reports.
+  var probeTag: String { String(UInt(bitPattern: ObjectIdentifier(self).hashValue) % 10_000) }
 
   /// A resize that pins the bottom drops a pending restore.
   func cancelRestore() {
@@ -120,6 +124,21 @@ extension View {
     #endif
   }
 }
+
+#if DEBUG
+  private struct RowHeightProbe: ViewModifier {
+    let id: String
+    @Environment(\.transcriptScrollState) private var scroll
+
+    func body(content: Content) -> some View {
+      content.onGeometryChange(for: CGFloat.self) {
+        $0.size.height
+      } action: { old, new in
+        scroll?.probe("transcript row height", "\(id) \(old) -> \(new)")
+      }
+    }
+  }
+#endif
 
 private struct ReadingAnchorReporter: ViewModifier {
   let id: String

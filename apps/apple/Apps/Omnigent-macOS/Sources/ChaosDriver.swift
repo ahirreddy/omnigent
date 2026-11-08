@@ -276,6 +276,7 @@
       let height = minimum.height + random.unit * max(0, screen.height - minimum.height)
       let frame = CGRect(x: screen.minX, y: screen.maxY - height, width: width, height: height)
       write("\(step) resize \(Int(width))x\(Int(height))")
+      LoopProbe.quiet(for: 1)
       window.setFrame(frame, display: true, animate: random.int(below: 4) == 0)
     }
 
@@ -364,6 +365,7 @@
     fileprivate func changeWindow(_ window: NSWindow) {
       let choice = random.int(below: ChaosWindows.changes)
       let step = step
+      LoopProbe.quiet(for: 2)
       ChaosWindows.change(window, choice: choice, look: random.int(below: 3)) {
         write("\(step) \($0)")
       }
@@ -385,6 +387,7 @@
       guard let first = heights.first, let last = heights.last else { return }
       let pause = 0.05 + 0.3 * random.unit
       write("\(step) sweep \(Int(width)) wide, \(Int(first)) to \(Int(last)) high")
+      LoopProbe.quiet(for: pause * Double(heights.count) + 1)
       ChaosWindows.sweep(window, width: width, heights: heights, pause: pause)
     }
   }

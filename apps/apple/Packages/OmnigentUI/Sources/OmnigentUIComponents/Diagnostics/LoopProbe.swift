@@ -1,5 +1,5 @@
 #if DEBUG
-  import Foundation
+  public import Foundation
 
   /// Reports state that layout keeps changing many times a second for seconds on end, the mark
   /// of a feedback loop (a dock resizing the view that measures it); a resize changes it as
@@ -28,10 +28,22 @@
     }
 
     private static var windows: [String: Window] = [:]
+    /// Until when changes are not counted.
+    private static var quietUntil: Date?
+
+    /// Counts nothing for `seconds`: the host is resizing a window itself, which changes
+    /// layout every frame. A loop that outlasts it is reported once it has gone on as long.
+    public static func quiet(for seconds: TimeInterval, from now: Date = Date()) {
+      quietUntil = max(quietUntil ?? now, now.addingTimeInterval(seconds))
+    }
 
     /// Records that `name` changed; `detail` describes its state for the report.
     static func record(_ name: String, at now: Date = Date(), _ detail: @autoclosure () -> String) {
       guard let sink else { return }
+      if let quietUntil, now < quietUntil {
+        windows[name] = nil
+        return
+      }
       var window = windows[name] ?? Window(start: now)
       let elapsed = now.timeIntervalSince(window.start)
       if elapsed > 1 {
@@ -56,6 +68,7 @@
     /// Forgets every count, for tests.
     static func reset() {
       windows = [:]
+      quietUntil = nil
     }
   }
 #endif
