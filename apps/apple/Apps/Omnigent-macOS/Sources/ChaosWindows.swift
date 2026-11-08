@@ -25,7 +25,8 @@
         window.toggleFullScreen(nil)
       case 3:
         log("window smallest")
-        window.setFrame(CGRect(origin: window.frame.origin, size: window.minSize), display: true)
+        window.setFrame(
+          CGRect(origin: window.frame.origin, size: smallestSize(of: window)), display: true)
       case 4:
         let looks: [NSAppearance.Name?] = [nil, .aqua, .darkAqua]
         let name = looks[look % looks.count]
@@ -42,6 +43,19 @@
         log("window new")
         ChaosInput.press(.shortcut("n"), [.command, .shift], in: window)
       }
+    }
+
+    /// The smallest frame a person could drag `window` to: its minimum size and the frame
+    /// around its content's minimum, and never less than its title bar. `setFrame` honors
+    /// neither, and a window with no height is on no screen.
+    static func smallestSize(of window: NSWindow) -> CGSize {
+      let content = window.frameRect(
+        forContentRect: CGRect(origin: .zero, size: window.contentMinSize)
+      ).size
+      let titleBar = window.frame.height - window.contentLayoutRect.height
+      return CGSize(
+        width: max(window.minSize.width, content.width, 100),
+        height: max(window.minSize.height, content.height, titleBar + 40))
     }
 
     /// The heights a sweep from `start` to `end` in `steps` steps sets, rounded to points.

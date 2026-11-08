@@ -61,6 +61,18 @@
       #expect(ChaosWindows.sweepHeights(from: 300, to: 400, steps: 0) == [300, 400])
     }
 
+    @Test func theSmallestSizeKeepsTheWindowOnScreen() {
+      let window = NSWindow(
+        contentRect: CGRect(x: 40, y: 500, width: 300, height: 400),
+        styleMask: [.titled, .resizable], backing: .buffered, defer: true)
+      window.minSize = .zero
+      #expect(ChaosWindows.smallestSize(of: window).height > 40)
+      window.contentMinSize = CGSize(width: 260, height: 200)
+      let smallest = ChaosWindows.smallestSize(of: window)
+      #expect(smallest.width >= 260)
+      #expect(smallest.height > 200)
+    }
+
     @Test func aSweepKeepsTheTopEdgeAndEndsAtTheLastHeight() async throws {
       let window = NSWindow(
         contentRect: CGRect(x: 40, y: 500, width: 300, height: 400), styleMask: .borderless,

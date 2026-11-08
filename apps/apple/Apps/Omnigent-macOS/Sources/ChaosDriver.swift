@@ -273,7 +273,7 @@
 
     private func resize(_ window: NSWindow) {
       guard let screen = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
-      let minimum = window.minSize
+      let minimum = ChaosWindows.smallestSize(of: window)
       let width = minimum.width + random.unit * max(0, screen.width - minimum.width)
       let height = minimum.height + random.unit * max(0, screen.height - minimum.height)
       let frame = CGRect(x: screen.minX, y: screen.maxY - height, width: width, height: height)
@@ -377,7 +377,7 @@
     /// a step, at a random width.
     fileprivate func sweepHeight(_ window: NSWindow) {
       guard let screen = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
-      let minimum = window.minSize
+      let minimum = ChaosWindows.smallestSize(of: window)
       let width = (minimum.width + random.unit * max(0, screen.width - minimum.width)).rounded()
       let tallest =
         minimum.height + (0.3 + 0.7 * random.unit) * max(0, screen.height - minimum.height)
