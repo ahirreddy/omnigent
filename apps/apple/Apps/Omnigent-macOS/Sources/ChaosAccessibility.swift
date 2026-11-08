@@ -18,7 +18,9 @@
       guard let object = element as? NSObject else { return [] }
       var actions: [Action] = []
       // Optional protocol methods: called only when the element implements them.
-      if object.responds(to: NSSelectorFromString("accessibilityPerformPress")) {
+      if object.responds(to: NSSelectorFromString("accessibilityPerformPress")),
+        (element as? ChaosLegacyElement)?.offersPress != false
+      {
         actions.append(Action(name: "press") { _ = element.accessibilityPerformPress() })
       }
       // Every control answers increment and decrement; only these change a value with them.

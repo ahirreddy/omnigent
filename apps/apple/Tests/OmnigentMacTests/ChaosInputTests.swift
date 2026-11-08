@@ -133,6 +133,8 @@
           Toggle("Notify", isOn: .constant(true))
         }.frame(width: 300, height: 200))
       window.contentView?.layoutSubtreeIfNeeded()
+      ChaosTargets.buildAccessibilityTree()
+      RunLoop.main.run(until: Date().addingTimeInterval(0.2))
       let names = ChaosTargets.controls(in: window).map(\.name)
       #expect(
         names.contains { $0.hasPrefix("AXButton") && $0.hasSuffix("Send") },

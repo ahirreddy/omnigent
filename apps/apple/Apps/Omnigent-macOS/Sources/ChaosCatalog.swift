@@ -164,6 +164,18 @@
       .image, .staticText, .scrollBar, .splitter,
     ]
 
+    private static var isTreeBuilt = false
+
+    /// Turns on the enhanced interface VoiceOver asks for, without which SwiftUI leaves its
+    /// accessibility tree empty. The attribute is set by name, through AppKit's older messages.
+    static func buildAccessibilityTree() {
+      guard !isTreeBuilt else { return }
+      isTreeBuilt = true
+      _ = unsafe NSApp.perform(
+        NSSelectorFromString("accessibilitySetValue:forAttribute:"), with: true,
+        with: "AXEnhancedUserInterface")
+    }
+
     /// The text fields and areas among ``controls(in:limit:)``.
     static func textControls(in window: NSWindow) -> [Control] {
       controls(in: window).filter {
@@ -174,6 +186,7 @@
     /// Up to `limit` elements of the tree under `window`, breadth first; the visible controls
     /// among them, with their centers in window coordinates.
     static func controls(in window: NSWindow, limit: Int = 4000) -> [Control] {
+      buildAccessibilityTree()
       var queue: [Any] = window.accessibilityChildren() ?? []
       var found: [Control] = []
       var visited = 0
@@ -181,7 +194,7 @@
       while visited < queue.count, visited < limit {
         let item = queue[visited]
         visited += 1
-        guard let element = item as? any NSAccessibilityProtocol else { continue }
+        guard let element = ChaosLegacyElement.element(item) else { continue }
         if let children = element.accessibilityChildren() { queue += children }
         guard let role = element.accessibilityRole(), roles.contains(role) else { continue }
         let frame = element.accessibilityFrame()
@@ -200,11 +213,16 @@
       var roles: [String: Int] = [:]
       var visited = 0
       while visited < queue.count, visited < limit {
-        let element = queue[visited] as? any NSAccessibilityProtocol
+        let item = queue[visited]
         visited += 1
-        guard let element else { continue }
+        guard let element = ChaosLegacyElement.element(item) else {
+          roles["\(Swift.type(of: item))", default: 0] += 1
+          continue
+        }
         queue += element.accessibilityChildren() ?? []
-        roles[element.accessibilityRole()?.rawValue ?? "none", default: 0] += 1
+        roles[
+          element.accessibilityRole()?.rawValue ?? "\(Swift.type(of: element)) without a role",
+          default: 0] += 1
       }
       let common = roles.sorted { $0.value > $1.value }.prefix(6)
       return "\(visited) elements: "
