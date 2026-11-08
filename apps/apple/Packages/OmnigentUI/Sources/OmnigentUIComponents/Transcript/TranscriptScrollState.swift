@@ -48,11 +48,11 @@ final class TranscriptScrollState {
     }
   }
 
-  /// Records a scroll geometry change for ``LoopProbe``, in Debug builds, tagged with this
-  /// transcript so changes from several windows can be told apart.
+  /// Records a scroll geometry change for ``LoopProbe``, in Debug builds, counted for this
+  /// transcript alone so several windows changing at once do not add up to a loop.
   func probe(_ name: String, _ detail: @autoclosure () -> String) {
     #if DEBUG
-      LoopProbe.record(name, "\(probeTag): \(detail())")
+      LoopProbe.record("\(name) \(probeTag)", detail())
     #endif
   }
 
