@@ -191,3 +191,48 @@ struct SingleLinePasteGuardTests {
     #expect(view.string == "first\nsecond")
   }
 }
+
+#if OMNIGENT_CHROMIUM
+  /// A scroll monitor whose window left every screen skips its resume instead of asserting.
+  @MainActor
+  struct ScrollMonitorGuardTests {
+    /// Stands in for AppKit's monitor and its captured data, answering the same messages.
+    private final class Data: NSObject {
+      @objc let window: NSWindow?
+      init(window: NSWindow?) { self.window = window }
+    }
+
+    private final class Monitor: NSObject {
+      @objc let constantData: Data
+      init(window: NSWindow?) { constantData = Data(window: window) }
+    }
+
+    /// A window that is never ordered front, at `origin`.
+    private static func window(at origin: CGPoint) -> NSWindow {
+      NSWindow(
+        contentRect: CGRect(origin: origin, size: CGSize(width: 200, height: 200)),
+        styleMask: .borderless, backing: .buffered, defer: true)
+    }
+
+    @Test func installsOnThisAppKit() {
+      #expect(ScrollMonitorGuard.install())
+    }
+
+    @Test func aWindowOnAScreenResumes() throws {
+      let screen = try #require(NSScreen.screens.first)
+      let window = Self.window(at: screen.frame.origin)
+      #expect(ScrollMonitorGuard.windowHasScreen(Monitor(window: window)))
+    }
+
+    @Test func aWindowOnNoScreenOrNoWindowSkips() {
+      let window = Self.window(at: CGPoint(x: -40_000, y: -40_000))
+      #expect(!ScrollMonitorGuard.windowHasScreen(Monitor(window: window)))
+      #expect(!ScrollMonitorGuard.windowHasScreen(Monitor(window: nil)))
+    }
+
+    /// A later AppKit whose monitor answers other messages keeps its own resume.
+    @Test func anUnknownMonitorResumes() {
+      #expect(ScrollMonitorGuard.windowHasScreen(NSObject()))
+    }
+  }
+#endif

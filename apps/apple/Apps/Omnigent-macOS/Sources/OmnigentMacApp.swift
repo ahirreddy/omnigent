@@ -135,6 +135,12 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
     if !SingleLinePasteGuard.install() {
       services.logger.error("AppKit lacks the text view paste method; pasted lines stay unjoined.")
     }
+    #if OMNIGENT_CHROMIUM
+      if !ScrollMonitorGuard.install() {
+        services.logger.error(
+          "AppKit lacks the scroll monitor to guard; its resumes are unguarded.")
+      }
+    #endif
     services.bind()
     super.applicationWillFinishLaunching(notification)
   }
