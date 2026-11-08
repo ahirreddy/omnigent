@@ -334,14 +334,22 @@
       ChaosInput.hover(from: start, to: end, steps: 4 + random.int(below: 20), in: window)
     }
 
-    /// Input-method text, a stage every few tenths of a second; a fifth of it abandoned.
+    /// Input-method text, a stage every few tenths of a second; a fifth of it abandoned. With
+    /// nothing focused that takes text, it focuses the composer first.
     fileprivate func compose(in window: NSWindow) {
       let words = ["かんじ", "漢字かな", "한국어", "中文输入法", "ㅎㅏㄴ", "にほんご"]
       let word = words[random.int(below: words.count)]
       let abandons = random.int(below: 5) == 0
       let pause = 0.02 + 0.3 * random.unit
-      let taken = ChaosInput.compose(word, abandons: abandons, pause: pause, in: window)
-      write("\(step) compose \(word)\(abandons ? " abandoned" : "")\(taken ? "" : " (no client)")")
+      write("\(step) compose \(word)\(abandons ? " abandoned" : "")")
+      if ChaosInput.compose(word, abandons: abandons, pause: pause, in: window) { return }
+      ChaosInput.press(.shortcut("l"), [.control, .shift], in: window)
+      let step = step
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in
+        if !ChaosInput.compose(word, abandons: abandons, pause: pause, in: window) {
+          write("\(step) compose: nothing takes text")
+        }
+      }
     }
 
     /// Minimizes and restores, zooms, enters or leaves full screen, opens a new window, shrinks
