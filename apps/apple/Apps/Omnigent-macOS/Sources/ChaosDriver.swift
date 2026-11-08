@@ -335,7 +335,8 @@
     }
 
     /// Input-method text, a stage every few tenths of a second; a fifth of it abandoned. With
-    /// nothing focused that takes text, it focuses the composer first.
+    /// nothing focused that takes text, it clicks a text field or area first, or with none on
+    /// screen asks for the composer.
     fileprivate func compose(in window: NSWindow) {
       let words = ["かんじ", "漢字かな", "한국어", "中文输入法", "ㅎㅏㄴ", "にほんご"]
       let word = words[random.int(below: words.count)]
@@ -343,11 +344,18 @@
       let pause = 0.02 + 0.3 * random.unit
       write("\(step) compose \(word)\(abandons ? " abandoned" : "")")
       if ChaosInput.compose(word, abandons: abandons, pause: pause, in: window) { return }
-      ChaosInput.press(.shortcut("l"), [.control, .shift], in: window)
+      let fields = ChaosTargets.textControls(in: window)
+      if fields.isEmpty {
+        ChaosInput.press(.shortcut("l"), [.control, .shift], in: window)
+      } else {
+        let field = fields[random.int(below: fields.count)]
+        write("\(step) compose: click \(Int(field.point.x)),\(Int(field.point.y)) on \(field.name)")
+        ChaosInput.click(at: field.point, in: window)
+      }
       let step = step
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in
         if !ChaosInput.compose(word, abandons: abandons, pause: pause, in: window) {
-          write("\(step) compose: nothing takes text")
+          write("\(step) compose: \(ChaosLog.describeTextFocus(in: window))")
         }
       }
     }

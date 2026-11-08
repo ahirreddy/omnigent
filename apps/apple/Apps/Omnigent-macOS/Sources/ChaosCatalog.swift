@@ -162,6 +162,13 @@
       .image, .staticText, .scrollBar, .splitter,
     ]
 
+    /// The text fields and areas among ``controls(in:limit:)``.
+    static func textControls(in window: NSWindow) -> [Control] {
+      controls(in: window).filter {
+        $0.name.hasPrefix("AXTextField") || $0.name.hasPrefix("AXTextArea")
+      }
+    }
+
     /// Up to `limit` elements of the tree under `window`, breadth first; the visible controls
     /// among them, with their centers in window coordinates.
     static func controls(in window: NSWindow, limit: Int = 4000) -> [Control] {

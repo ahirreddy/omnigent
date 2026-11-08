@@ -130,6 +130,16 @@
         .joined(separator: "\n")
     }
 
+    /// What has focus in `window` when nothing there takes text, and whether the composer
+    /// could be focused instead.
+    @MainActor
+    static func describeTextFocus(in window: NSWindow) -> String {
+      let focused = window.firstResponder.map { "\(Swift.type(of: $0))" } ?? "nothing"
+      let command = ChaosMenu.items().contains { $0.path.hasSuffix("> Focus Composer") }
+      return "\(focused) takes no text in \(describe(window)), "
+        + "Focus Composer \(command ? "enabled" : "disabled")"
+    }
+
     @MainActor private static var lastEditedField: String?
 
     /// ``editedField()`` when it differs from the last call's.
