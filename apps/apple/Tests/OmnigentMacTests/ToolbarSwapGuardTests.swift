@@ -150,6 +150,27 @@ struct SingleLinePasteGuardTests {
     }
   }
 
+  /// One long line of mixed-direction text past about 9,000 characters crashes CoreText.
+  @Test func aLongPasteIsCutToFit() throws {
+    #expect(SingleLinePasteGuard.install())
+    let editor = try Self.editor(for: NSTextField(string: ""))
+    editor.insertText("find ", replacementRange: editor.selectedRange())
+    let line = String(repeating: "مرحبا hello 🙂 ", count: 1200)
+
+    #expect(editor.readSelection(from: Self.pasteboard(line), type: .string))
+
+    let length = editor.string.utf16.count
+    #expect(length <= SingleLinePasteGuard.maximumLength)
+    #expect(length > SingleLinePasteGuard.maximumLength - 20)
+    #expect(editor.string.hasPrefix("find مرحبا hello"))
+  }
+
+  @Test func aCutKeepsWholeCharacters() {
+    #expect(SingleLinePasteGuard.pasted("ab👍🏽c", room: 5) == "ab")
+    #expect(SingleLinePasteGuard.pasted("ab👍🏽c", room: 6) == "ab👍🏽")
+    #expect(SingleLinePasteGuard.pasted("a\nb", room: 0).isEmpty)
+  }
+
   @Test func aWrappingFieldKeepsItsLines() throws {
     #expect(SingleLinePasteGuard.install())
     let field = NSTextField(wrappingLabelWithString: "")

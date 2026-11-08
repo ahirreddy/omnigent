@@ -1,10 +1,11 @@
 import AppKit
 import ObjectiveC
 
-/// A paste of many lines into a single-line field (a search field, a rename field) keeps its
-/// line breaks, and AppKit's click handling on such text slows with the square of its lines: a
-/// double-click on a few thousand pasted lines stalls the app for many seconds. The guard joins
-/// the pasted lines with spaces, as a browser's text input does.
+/// A paste into a single-line field (a search field, a rename field) keeps its line breaks, and
+/// AppKit's click handling on such text slows with the square of its lines: a double-click on a
+/// few thousand pasted lines stalls the app for many seconds. One very long line of
+/// right-to-left text crashes CoreText instead. The guard joins the pasted lines with spaces, as a
+/// browser's text input does, and keeps the field under ``maximumLength``.
 ///
 /// The replacement is nonisolated for the same reason as ``ToolbarSwapGuard``'s.
 enum SingleLinePasteGuard {
@@ -26,10 +27,27 @@ enum SingleLinePasteGuard {
     return true
   }
 
+  /// The most UTF-16 units a paste leaves in a single-line field, well under the 9,000 or so
+  /// past which CoreText crashes laying out one line of mixed-direction text.
+  nonisolated static let maximumLength = 4000
+
   /// `text` on one line: each run of line breaks becomes a space, and leading and trailing
   /// ones are dropped.
   nonisolated static func joined(_ text: String) -> String {
     text.split(whereSeparator: \.isNewline).joined(separator: " ")
+  }
+
+  /// What a paste of `text` inserts into a single-line field with `room` UTF-16 units left:
+  /// its lines joined, cut after the last whole character that fits.
+  nonisolated static func pasted(_ text: String, room: Int) -> String {
+    var result = ""
+    var length = 0
+    for character in joined(text) {
+      length += character.utf16.count
+      guard length <= room else { break }
+      result.append(character)
+    }
+    return result
   }
 }
 
@@ -41,11 +59,17 @@ extension NSTextView {
   ) -> Bool {
     guard value(forKey: "fieldEditor") as? Bool == true,
       let field = value(forKey: "delegate") as? NSTextField, Self.isSingleLine(field),
-      let text = pasteboard.string(forType: .string), text.contains(where: \.isNewline)
+      let text = pasteboard.string(forType: .string),
+      let current = value(forKey: "string") as? String,
+      let selection = (value(forKey: "selectedRange") as? NSValue)?.rangeValue
     else { return singleLineGuardReadSelection(from: pasteboard, type: type) }
+    let room = max(0, SingleLinePasteGuard.maximumLength - (current.utf16.count - selection.length))
+    guard text.contains(where: \.isNewline) || text.utf16.count > room else {
+      return singleLineGuardReadSelection(from: pasteboard, type: type)
+    }
     // `insertText:` replaces the selection, as a paste does, with undo.
-    _ = unsafe perform(
-      #selector(NSResponder.insertText(_:)), with: SingleLinePasteGuard.joined(text))
+    let pasted = SingleLinePasteGuard.pasted(text, room: room)
+    _ = unsafe perform(#selector(NSResponder.insertText(_:)), with: pasted)
     return true
   }
 
