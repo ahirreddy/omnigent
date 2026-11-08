@@ -8,6 +8,8 @@ final class TranscriptScrollState {
   var follow = TranscriptFollow()
   /// Scrolls a row to an anchor; the transcript sets it to its scroll view's proxy.
   var scrollToRow: (String, UnitPoint) -> Void = { _, _ in }
+  /// The content heights the transcript recently scrolled to the bottom for.
+  var followedHeights = FollowedHeights()
   /// The row under the viewport's middle at the current width, and at the width before it.
   private var anchor: TranscriptReadingAnchor?
   private var anchorBefore: TranscriptReadingAnchor?
@@ -63,6 +65,29 @@ final class TranscriptScrollState {
       LoopProbe.record("transcript keeps bottom", "anchor \(String(describing: anchor))")
     #endif
     pending = nil
+  }
+}
+
+/// Content heights a following transcript recently scrolled to the bottom for. After such a
+/// scroll the lazy rows above the viewport are estimated again, and in a short viewport the
+/// estimate can come back to a height already followed; following it again would repeat every
+/// frame. New output reaches a new height, so only a repeat is let go.
+nonisolated struct FollowedHeights {
+  /// How long a height counts as recently followed after it last came back.
+  static let memory: TimeInterval = 2
+
+  private var recent: [(height: CGFloat, at: Date)] = []
+
+  /// Whether growth to `height` should be followed: not when the transcript followed the same
+  /// height within ``memory`` seconds. Remembers `height` either way.
+  mutating func follows(_ height: CGFloat, at now: Date = Date()) -> Bool {
+    recent.removeAll { now.timeIntervalSince($0.at) > Self.memory }
+    if let index = recent.firstIndex(where: { abs($0.height - height) < 1 }) {
+      recent[index].at = now
+      return false
+    }
+    recent.append((height, now))
+    return true
   }
 }
 

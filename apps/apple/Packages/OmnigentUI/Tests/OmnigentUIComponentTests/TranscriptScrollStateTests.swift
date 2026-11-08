@@ -107,4 +107,23 @@ struct TranscriptScrollStateTests {
     TranscriptReadingAnchor(
       id: id, fraction: fraction, rowHeight: row, viewportWidth: width, viewportHeight: 1_000)
   }
+
+  @Test("growth that keeps reaching new heights is followed, a height coming back is not")
+  func followedHeights() {
+    var heights = FollowedHeights()
+    let start = Date()
+    let changes: [(CGFloat, TimeInterval)] = [
+      (658, 0), (737, 0), (770, 0),
+      // Lazy rows estimated again after the scroll: the content shrinks and grows back.
+      (737, 0.1), (770.4, 0.2),
+      // A bounce that keeps going stays let go; new output is followed.
+      (737, 2.05), (812, 2.1),
+      // Long after, the same height is growth like any other.
+      (737, 5),
+    ]
+    let followed = changes.map { height, offset in
+      heights.follows(height, at: start.addingTimeInterval(offset))
+    }
+    #expect(followed == [true, true, true, false, false, false, true, true])
+  }
 }

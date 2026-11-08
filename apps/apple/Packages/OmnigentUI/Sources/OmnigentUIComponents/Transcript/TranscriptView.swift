@@ -125,7 +125,7 @@ public struct TranscriptView: View {
         geometry.contentSize.height
       } action: { previous, current in
         scroll.probe("transcript content height", "\(previous) -> \(current), \(follow)")
-        if current > previous, follow.layoutGrew() {
+        if current > previous, follow.layoutGrew(), scroll.followedHeights.follows(current) {
           proxy.scrollTo(Self.bottomID, anchor: .bottom)
         }
       }
