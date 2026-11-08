@@ -75,14 +75,14 @@ private struct KeptAliveLayout: Layout {
   func placeSubviews(
     in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
   ) {
+    // The shown tab's size, or the last one it had during a pass before the column has its size.
+    if Self.isMeasured(bounds.size) { sizes.shownSize = bounds.size }
     for subview in subviews {
       guard let id = subview[KeptAliveKey.self] else {
         subview.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
-        if Self.isMeasured(bounds.size) { sizes.shownSize = bounds.size }
         continue
       }
-      // A tab hidden since before it was measured takes the size the shown tab last had. A pass
-      // before the window has a size freezes nothing.
+      // A tab hidden since before it was measured takes the shown tab's size.
       let size = sizes.byID[id] ?? sizes.shownSize ?? bounds.size
       if Self.isMeasured(size) { sizes.byID[id] = size }
       subview.place(at: bounds.origin, proposal: ProposedViewSize(size))
@@ -92,9 +92,12 @@ private struct KeptAliveLayout: Layout {
     sizes.byID = sizes.byID.filter { hidden.contains($0.key) }
   }
 
-  /// Whether `size` came from a laid-out window rather than a pass before it had a size.
+  /// Whether `size` is the column's, not that of a pass made while the split view sized the
+  /// column at its placeholder minimum (``UnmeasuredMinimum``) or before it had a size. A tab
+  /// frozen at that minimum lays its right panel out smaller than its content.
   static func isMeasured(_ size: CGSize) -> Bool {
-    size.width > 0 && size.height > 0
+    let placeholder = UnmeasuredMinimum.column
+    return size.width > placeholder.width || size.height > placeholder.height
   }
 }
 

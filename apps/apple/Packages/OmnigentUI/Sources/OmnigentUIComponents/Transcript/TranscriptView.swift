@@ -161,13 +161,15 @@ public struct TranscriptView: View {
           isShown: hasUserMessages,
           previous: { step(.previous, proxy) }, next: { step(.next, proxy) })
       )
-      .modifier(turnRail(proxy))
       .modifier(
         JumpToTopReveal(
           hasMoreHistory: state.hasMoreHistory && actions.loadOlder != nil,
           isLoading: state.isLoadingHistory, jump: { jumpToTop(proxy) })
       )
       .transcriptSelectionPopup(reply: actions.replyWithSelection, ask: actions.askInSideChat)
+      // After the scroll observers above: the rail is a scroll view of its own, and with two in
+      // reach they watch whichever SwiftUI finds first.
+      .modifier(turnRail(proxy))
       .overlay(alignment: .bottom) {
         if pill.isShown {
           JumpToLatestPill(pill: pill) { jumpToLatest(proxy) }
