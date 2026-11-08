@@ -33,6 +33,10 @@ final class TranscriptScrollState {
   /// After a width change, puts what was at the viewport's middle back there: at once with
   /// the row's old proportions, then exactly when the row reports its new height.
   func restoreReading(from oldWidth: CGFloat, to newWidth: CGFloat) {
+    #if DEBUG
+      LoopProbe.record(
+        "transcript width", "\(oldWidth) -> \(newWidth), anchor \(String(describing: anchor))")
+    #endif
     guard let before = readingAnchor(atWidth: oldWidth) else { return }
     if let now = anchor, now.id == before.id, now.viewportWidth == newWidth {
       scrollToRow(before.id, before.unitPoint(in: now))
@@ -44,6 +48,9 @@ final class TranscriptScrollState {
 
   /// A resize that pins the bottom drops a pending restore.
   func cancelRestore() {
+    #if DEBUG
+      LoopProbe.record("transcript keeps bottom", "anchor \(String(describing: anchor))")
+    #endif
     pending = nil
   }
 }
