@@ -81,6 +81,22 @@ pause_server_now_and_then() {
   done
 }
 
+# Whether CoreAudio plays a short sound within ten seconds. In some VMs it does not, and a sound
+# the app plays (a notification, a beep) then blocks the main thread for a minute or more.
+audio_answers() {
+  local player
+  afplay -v 0 /System/Library/Sounds/Tink.aiff & player=$!
+  for _ in $(seq 1 10); do
+    if ! kill -0 "$player" 2>/dev/null; then
+      wait "$player"
+      return
+    fi
+    sleep 1
+  done
+  kill "$player" 2>/dev/null || true
+  return 1
+}
+
 # One seed: launch, wait for DONE, a crash or a stall, and keep what explains it.
 run_seed() {
   local seed="$1" dir="$out/seed-$seed" pid=""
@@ -142,7 +158,10 @@ watch_seed() {
         ((attempt == 2)) || sleep 10
       done
       kill -9 "$pid" 2>/dev/null || true
-      echo "seed $seed: STALL after $(tail -1 "$log")" | tee "$dir/result"
+      local note=""
+      grep -q "com.apple.main-thread" "$dir/stall-sample-2.txt" 2>/dev/null \
+        || note=" (no main thread in the samples, as when CoreAudio blocks it)"
+      echo "seed $seed: STALL after $(tail -1 "$log")$note" | tee "$dir/result"
       return
     fi
   done
@@ -174,6 +193,10 @@ if [[ -n "$container" && ! -d "$container/tmp" ]]; then
   done
   pkill -9 -f "^$binary" || true
   [[ -d "$container/tmp" ]] || { echo "error: no container at $container" >&2; exit 1; }
+fi
+if ! audio_answers; then
+  echo "warning: CoreAudio did not play a sound; stalls in it are this Mac's, not the app's" \
+    | tee "$out/audio-warning"
 fi
 for seed in $seed_list; do
   run_seed "$seed"
