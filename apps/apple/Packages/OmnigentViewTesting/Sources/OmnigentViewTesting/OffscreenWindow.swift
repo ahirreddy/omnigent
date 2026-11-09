@@ -106,6 +106,9 @@
       }
       RunLoop.main.add(release, forMode: .common)
       let target = activeWindow
+      // A window that isn't key yet treats a click as first mouse, which a destructive button
+      // ignores. Making it key in an inactive app takes no focus from the frontmost app.
+      target.makeKey()
       deliver(down, to: target)
       if release.isValid {
         release.invalidate()

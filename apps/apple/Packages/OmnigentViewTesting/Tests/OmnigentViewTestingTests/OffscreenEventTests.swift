@@ -148,6 +148,23 @@
       #expect(menu.items.map(\.title).contains("Item"))
     }
 
+    @Test("a click reaches a destructive button of any style")
+    func destructiveButtons() throws {
+      let log = Log()
+      let screen = OffscreenWindow(
+        VStack(spacing: 8) {
+          Button("Bordered", role: .destructive) { log.deleted.append("bordered") }
+            .buttonStyle(.bordered)
+          Button("Borderless", role: .destructive) { log.deleted.append("borderless") }
+            .buttonStyle(.borderless)
+          Button("Default", role: .destructive) { log.deleted.append("default") }
+        },
+        width: 200, height: 150)
+      defer { screen.close() }
+      for index in screen.controlFrames.indices { try screen.clickControl(at: index) }
+      #expect(log.deleted == ["bordered", "borderless", "default"])
+    }
+
     @Test("hovering a view reports entering it, and ending the hover reports leaving")
     func hover() throws {
       let log = Log()
