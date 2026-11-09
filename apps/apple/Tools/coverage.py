@@ -24,8 +24,8 @@ PACKAGES = ROOT / "Packages"
 # Generated bindings, a shim and test helpers are not product code.
 EXCLUDED_PACKAGES = {"OmnigentCoreFFI", "OmnigentGhosttyKit", "OmnigentTestSupport"}
 
-# Design samples, not reachable from the shipped app.
-EXCLUDED_DIRECTORIES = ("/Gallery/",)
+# Design samples, which only the gallery and previews open.
+EXCLUDED_SOURCES = re.compile(r"/Gallery/|/Preview/|Playground[^/]*\.swift$|Previews\.swift$")
 
 COVERAGE_OFF = re.compile(r"^\s*// coverage:off(?:\s+(.*\S))?\s*$")
 COVERAGE_ON = re.compile(r"^\s*// coverage:on\s*$")
@@ -143,7 +143,7 @@ def summarize(document, sources, read_source=None):
     for export in document["data"]:
         for entry in export["files"]:
             path = entry["filename"]
-            if not path.startswith(prefix) or any(part in path for part in EXCLUDED_DIRECTORIES):
+            if not path.startswith(prefix) or EXCLUDED_SOURCES.search(path):
                 continue
             try:
                 excluded, reasons = excluded_lines(read_source(path))

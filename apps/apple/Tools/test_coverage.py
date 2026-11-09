@@ -46,8 +46,10 @@ class CoverageTests(unittest.TestCase):
         rows = coverage.summarize(document, Path("/p/Sources"), read_source=lambda _path: "")
         self.assertEqual(rows, [("/p/Sources/A.swift", 2, 3, hit, [])])
 
-    def test_summary_leaves_out_the_gallery(self):
-        document = {"data": [{"files": [self.entry("/p/Sources/Gallery/Sample.swift", [])]}]}
+    def test_summary_leaves_out_design_samples(self):
+        samples = ["Gallery/Sample", "Preview/Data", "Tabs/TabsPlayground", "CLI/CLIPreviews"]
+        files = [self.entry(f"/p/Sources/{sample}.swift", []) for sample in samples]
+        document = {"data": [{"files": files}]}
         self.assertEqual(
             coverage.summarize(document, Path("/p/Sources"), read_source=lambda _path: ""), []
         )
