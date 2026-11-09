@@ -274,6 +274,26 @@ impl Decision {
     }
 }
 
+fn encode_failed(error: &serde_json::Error) -> ResolveError {
+    ResolveError::Encode {
+        message: error.to_string(),
+    }
+}
+
+/// The `approval` event carrying an encoded result, which must be an object.
+fn approval_event_body(result: Value, elicitation_id: &str) -> Result<Value, ResolveError> {
+    let Value::Object(mut data) = result else {
+        return Err(ResolveError::Encode {
+            message: format!("expected an object result, got {result}"),
+        });
+    };
+    data.insert(
+        "elicitation_id".to_owned(),
+        Value::String(elicitation_id.to_owned()),
+    );
+    Ok(json!({"type": "approval", "data": data}))
+}
+
 impl ResolveRequest {
     /// The JSON body for `route`.
     ///
@@ -282,24 +302,11 @@ impl ResolveRequest {
     /// [`ResolveError::Encode`] when the result cannot be encoded (for example a non-finite
     /// number).
     pub fn body(&self, route: ResolveRoute) -> Result<Value, ResolveError> {
-        let result = serde_json::to_value(&self.result).map_err(|error| ResolveError::Encode {
-            message: error.to_string(),
-        })?;
-        Ok(match (route, result) {
-            (ResolveRoute::Dedicated, result) => result,
-            (ResolveRoute::ApprovalEvent, Value::Object(mut data)) => {
-                data.insert(
-                    "elicitation_id".to_owned(),
-                    Value::String(self.elicitation_id.clone()),
-                );
-                json!({"type": "approval", "data": data})
-            }
-            (ResolveRoute::ApprovalEvent, other) => {
-                return Err(ResolveError::Encode {
-                    message: format!("expected an object result, got {other}"),
-                });
-            }
-        })
+        let result = serde_json::to_value(&self.result).map_err(|error| encode_failed(&error))?;
+        match route {
+            ResolveRoute::Dedicated => Ok(result),
+            ResolveRoute::ApprovalEvent => approval_event_body(result, &self.elicitation_id),
+        }
     }
 
     /// The HTTP request for `route` on `endpoint`, with the org header and, when given, the
@@ -322,10 +329,7 @@ impl ResolveRequest {
             ),
             ResolveRoute::ApprovalEvent => format!("/v1/sessions/{}/events", self.session_id),
         };
-        let body =
-            serde_json::to_vec(&self.body(route)?).map_err(|error| ResolveError::Encode {
-                message: error.to_string(),
-            })?;
+        let body = serde_json::to_vec(&self.body(route)?).map_err(|error| encode_failed(&error))?;
         let mut request = endpoint
             .request_with("POST", &path, &[], "application/json", bearer)
             .map_err(ResolveError::Endpoint)?;
@@ -412,5 +416,59 @@ pub fn resolve_response(
         status => Err(ResolveError::Uncertain {
             message: format!("HTTP {status}"),
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use omnigent_protocol::FromWire;
+    use serde_json::{Value, json};
+
+    use super::*;
+
+    #[test]
+    fn a_non_permission_response_is_not_a_permission_choice() {
+        let request = omnigent_protocol::ElicitationRequest::from_value(
+            json!({"elicitation_id": "request", "params": {}}),
+        )
+        .unwrap();
+        let decision = Decision::from_request(&request, "session");
+        for response in [
+            DecisionResponse::Approve,
+            DecisionResponse::Decline,
+            DecisionResponse::Cancel,
+            DecisionResponse::Answer("a".to_owned()),
+            DecisionResponse::Form(BTreeMap::new()),
+        ] {
+            assert_eq!(
+                decision.permission_result(&response),
+                Err(DecisionError::NotOffered),
+                "{response:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_encoder_failure_reads_as_an_encode_error() {
+        let failure = serde_json::from_str::<Value>("{").unwrap_err();
+        let detail = failure.to_string();
+        assert_eq!(
+            encode_failed(&failure),
+            ResolveError::Encode { message: detail }
+        );
+    }
+
+    #[test]
+    fn an_approval_event_needs_an_object_result() {
+        assert_eq!(
+            approval_event_body(json!({"action": "accept"}), "e1"),
+            Ok(json!({"type": "approval", "data": {"action": "accept", "elicitation_id": "e1"}}))
+        );
+        assert_eq!(
+            approval_event_body(json!(7), "e1"),
+            Err(ResolveError::Encode {
+                message: "expected an object result, got 7".to_owned()
+            })
+        );
     }
 }

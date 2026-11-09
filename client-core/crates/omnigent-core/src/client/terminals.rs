@@ -24,6 +24,10 @@ const CREDENTIAL_HEADERS: [&str; 2] = ["Authorization", DATABRICKS_ORG_HEADER];
 /// addressed on a host-sharded server.
 pub(super) type Credentialed = (HttpRequest, u64, Option<super::routing::Addressing>);
 
+pub(super) const fn invalid_request(detail: String) -> TerminalError {
+    TerminalError::InvalidRequest { detail }
+}
+
 impl<T: HttpTransport> ClientCore<T> {
     /// Builds a request against the connected server's root URL with the connection's
     /// credential headers, and the connection epoch it belongs to. Shared by the terminal and
@@ -75,7 +79,7 @@ impl<T: HttpTransport> ClientCore<T> {
         self.credentialed_request(
             |root| build(&TerminalEndpoint::new(root, session_id)?),
             TerminalError::NotConnected,
-            |detail| TerminalError::InvalidRequest { detail },
+            invalid_request,
         )
     }
 

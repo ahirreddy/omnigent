@@ -173,14 +173,12 @@ pub fn is_session_cookie(cookie: &StoredCookie, name: &str, server: &Url, now_ms
     let Some(host) = server.host_str().map(str::to_ascii_lowercase) else {
         return false;
     };
-    let Some(request_path) = server_url::endpoint(server, "/v1/me") else {
-        return false;
-    };
     cookie.name == name
         && cookie.has_value
         && cookie.domain.trim_matches('.').eq_ignore_ascii_case(&host)
         && (!cookie.secure || server.scheme() == "https")
-        && path_matches(&cookie.path, request_path.path())
+        && server_url::endpoint(server, "/v1/me")
+            .is_some_and(|request| path_matches(&cookie.path, request.path()))
         && cookie.expires_at_ms.is_none_or(|expiry| expiry > now_ms)
 }
 

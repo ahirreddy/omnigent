@@ -209,17 +209,12 @@ impl AttentionTracker {
     /// Turn ends whose settle window has passed at `now_ms`, unless the session is now viewed or
     /// its runner went offline meanwhile.
     pub fn due(&mut self, view: &ViewContext, now_ms: u64) -> Vec<AttentionNotification> {
-        let due: Vec<String> = self
-            .deferred
-            .iter()
-            .filter(|(_, deferred)| deferred.due_ms <= now_ms)
-            .map(|(id, _)| id.clone())
-            .collect();
+        let (due, waiting): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.deferred)
+            .into_iter()
+            .partition(|(_, deferred)| deferred.due_ms <= now_ms);
+        self.deferred = waiting;
         let mut fired = Vec::new();
-        for id in due {
-            let Some(deferred) = self.deferred.remove(&id) else {
-                continue;
-            };
+        for (id, deferred) in due {
             if view.is_viewing(&id) || self.runner_offline.contains(&id) {
                 continue;
             }

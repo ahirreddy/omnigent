@@ -165,12 +165,6 @@ impl LoginManager {
         Ok(start)
     }
 
-    fn active_in(&self, id: LoginId, phase: impl Fn(&Phase) -> bool) -> bool {
-        self.active
-            .as_ref()
-            .is_some_and(|active| active.id == id && phase(&active.phase))
-    }
-
     fn end(&mut self, tokens: &mut TokenManager) -> Option<LoginId> {
         let active = self.active.take()?;
         tokens.end_sign_in(&active.sign_in);
@@ -191,23 +185,23 @@ impl LoginManager {
         id: LoginId,
         outcome: BrowserOutcome,
     ) -> Result<PendingExchange, DatabricksError> {
-        if !self.active_in(id, |phase| *phase == Phase::Browser) {
+        let Some(active) = self
+            .active
+            .as_mut()
+            .filter(|active| active.id == id && active.phase == Phase::Browser)
+        else {
             return Err(DatabricksError::Cancelled);
-        }
+        };
         let validated = match outcome {
-            BrowserOutcome::Callback(url) => self
-                .active
-                .as_ref()
-                .ok_or(DatabricksError::Cancelled)
-                .and_then(|active| active.attempt.authorization_response(&url)),
+            BrowserOutcome::Callback(url) => active.attempt.authorization_response(&url),
             BrowserOutcome::Cancelled => Err(DatabricksError::Cancelled),
             BrowserOutcome::Unavailable => Err(DatabricksError::BrowserUnavailable),
             BrowserOutcome::InProgress => Err(DatabricksError::LoginInProgress),
             BrowserOutcome::Failed => Err(DatabricksError::AuthenticationFailed),
             BrowserOutcome::MissingCallback => Err(DatabricksError::InvalidCallback),
         };
-        match (validated, self.active.as_mut()) {
-            (Ok(authorization), Some(active)) => {
+        match validated {
+            Ok(authorization) => {
                 active.phase = Phase::Exchanging;
                 Ok(PendingExchange {
                     id,
@@ -215,8 +209,7 @@ impl LoginManager {
                     authorization,
                 })
             }
-            (Ok(_), None) => Err(DatabricksError::Cancelled),
-            (Err(error), _) => {
+            Err(error) => {
                 self.end(tokens);
                 Err(error)
             }
@@ -236,21 +229,23 @@ impl LoginManager {
         id: LoginId,
         result: Result<DatabricksTokens, DatabricksError>,
     ) -> Result<LoginCommit, DatabricksError> {
-        if !self.active_in(id, |phase| *phase == Phase::Exchanging) {
+        let Some(active) = self
+            .active
+            .as_mut()
+            .filter(|active| active.id == id && active.phase == Phase::Exchanging)
+        else {
             return Err(DatabricksError::Cancelled);
-        }
+        };
         let committed = result.and_then(|signed_in| {
-            let active = self.active.as_ref().ok_or(DatabricksError::Cancelled)?;
             let mutation = tokens.save_signed_in(&active.sign_in, &signed_in)?;
             Ok((signed_in, mutation))
         });
-        match (committed, self.active.as_mut()) {
-            (Ok((signed_in, mutation)), Some(active)) => {
+        match committed {
+            Ok((signed_in, mutation)) => {
                 active.phase = Phase::Committing(signed_in);
                 Ok(LoginCommit { id, mutation })
             }
-            (Ok(_), None) => Err(DatabricksError::Cancelled),
-            (Err(error), _) => {
+            Err(error) => {
                 self.end(tokens);
                 Err(error)
             }

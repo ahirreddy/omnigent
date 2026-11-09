@@ -281,3 +281,14 @@ fn a_promotion_that_returns_no_id_is_uncertain() {
         Err(SessionError::DeliveryUncertain { detail }) if detail.contains("no id")
     ));
 }
+
+#[test]
+fn a_promoted_project_needs_an_id() {
+    assert_eq!(
+        super::promoted_id(&project(None, "Alpha")),
+        Err(SessionError::DeliveryUncertain {
+            detail: "the promoted project has no id".into(),
+        })
+    );
+    assert_eq!(super::promoted_id(&project(Some("p1"), "Alpha")), Ok("p1"));
+}

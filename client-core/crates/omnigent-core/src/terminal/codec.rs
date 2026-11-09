@@ -309,4 +309,17 @@ mod tests {
             .is_err()
         );
     }
+
+    #[test]
+    fn clipboard_data_that_decodes_past_the_limit_is_invalid() {
+        // The base64 limit rounds up to a whole group, so it can hold two bytes more.
+        let at_the_limit = STANDARD.encode(vec![b'a'; MAX_CLIPBOARD_BYTES + 1]);
+        assert!(at_the_limit.len() <= MAX_CLIPBOARD_BYTES.div_ceil(3) * 4);
+        assert!(matches!(
+            ServerFrame::decode(text(
+                &json!({"type": "clipboard-write", "encoding": "base64", "data": at_the_limit})
+            )),
+            Err(FrameError::Invalid { .. })
+        ));
+    }
 }

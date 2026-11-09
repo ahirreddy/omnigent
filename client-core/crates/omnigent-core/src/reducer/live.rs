@@ -685,22 +685,15 @@ impl LiveReducer {
     /// Ends every streaming row; activity rows take `status`. Native previews may keep
     /// streaming past a wrapper response's end.
     pub(super) fn seal_live_content(&mut self, status: &str, preserving_native_text: bool) {
-        let targets: Vec<usize> = self
-            .snap
-            .rows
-            .iter()
-            .enumerate()
-            .filter(|(_, row)| {
+        let sealed =
+            self.snap.rows.iter_mut().filter(|row| {
                 row.is_streaming && !(preserving_native_text && is_native_preview(row))
-            })
-            .map(|(at, _)| at)
-            .collect();
-        for at in targets {
-            if let Some(row) = self.row_mut(at) {
-                row.is_streaming = false;
-                if let Some(activity) = &mut row.activity {
-                    activity.status = Some(status.to_owned());
-                }
+            });
+        for row in sealed {
+            self.journal.touch(&row.id);
+            row.is_streaming = false;
+            if let Some(activity) = &mut row.activity {
+                activity.status = Some(status.to_owned());
             }
         }
         if self.active_reasoning.take().is_some() {

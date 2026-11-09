@@ -22,6 +22,7 @@ use omnigent_core::items::ConversationPage;
 use omnigent_core::notifications::attention::{AttentionTracker, ViewContext, unread_badge_ids};
 use omnigent_core::realtime::{
     AttemptId, JitterSource, SessionUpdates, SplitMix64, StreamInput, UpdatesConfig, UpdatesInput,
+    UpdatesOutput, WatchError,
 };
 use omnigent_core::{ClientEvent, SessionError};
 use omnigent_protocol::SessionListItem;
@@ -571,7 +572,13 @@ impl Engine {
                 ids.push(id);
             }
         }
-        match self.updates.set_watch(ids) {
+        let watch = self.updates.set_watch(ids);
+        self.apply_watch(watch);
+    }
+
+    /// The updates machine's answer to a new watch list; a refused list is shown, not dropped.
+    pub(crate) fn apply_watch(&mut self, watch: Result<Vec<UpdatesOutput>, WatchError>) {
+        match watch {
             Ok(outputs) => self.run_updates_outputs(outputs),
             Err(error) => self.error(ErrorScope::SessionList, crate::errors::core_error(error)),
         }

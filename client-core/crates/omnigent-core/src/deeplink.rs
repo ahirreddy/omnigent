@@ -1625,4 +1625,17 @@ mod tests {
         assert_eq!(percent_decoded("%e2%82"), None);
         assert_eq!(form_decoded("a+b%2B"), Some("a b+".to_owned()));
     }
+
+    #[test]
+    fn a_link_that_parses_back_without_its_acknowledgment_is_a_mismatch() {
+        let link = OmnigentDeepLink {
+            origin: ServerOrigin::new(OriginScheme::Https, "example.com", None).unwrap(),
+            route: conversation("abc"),
+            acknowledgment: Some(DeepLinkAcknowledgment::new(1234, &"a".repeat(64)).unwrap()),
+        };
+        assert_eq!(
+            link.to_link(DeepLinkPolicy::Ios),
+            Err(DeepLinkBuildError::Mismatch)
+        );
+    }
 }

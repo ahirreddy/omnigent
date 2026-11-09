@@ -271,6 +271,11 @@ core-test:
     cd client-core && cargo clippy --workspace --all-targets -- -D warnings
     cd client-core && cargo test --workspace
 
+# Rust core: line coverage by crate from its tests; missed lines go to client-core/target/coverage/uncovered.txt.
+[group('client')]
+rust-coverage *flags:
+    python3 client-core/scripts/coverage.py {{ flags }}
+
 # Type-check the platform-neutral core crates for wasm32 (no JS facade yet).
 [group('client')]
 core-wasm-check:

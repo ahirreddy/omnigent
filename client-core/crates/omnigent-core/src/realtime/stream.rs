@@ -1550,4 +1550,17 @@ mod tests {
             "no timer outlives the closed stream"
         );
     }
+
+    /// The steps behind `handle`'s current-attempt check do nothing once no attempt is left.
+    #[test]
+    fn steps_without_an_attempt_change_nothing() {
+        let mut machine = SessionStream::new(StreamConfig::default(), FixedJitter(0));
+        let mut out = Vec::new();
+        machine.on_response(1, &head(200, "text/event-stream"), &mut out);
+        machine.on_chunk(1, HEARTBEAT, &mut out);
+        machine.mark_ready(1, &mut out);
+        machine.lose(1, LinkError::Stalled { silent_ms: 1 }, true, &mut out);
+        assert_eq!(out, []);
+        assert_eq!(machine.state(), &ConnectionState::Idle);
+    }
 }

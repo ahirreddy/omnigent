@@ -1180,3 +1180,54 @@ fn accepting_a_decision_with_no_fields_takes_no_content() {
     let plain = json!({"action": "accept"});
     assert_eq!(raw(&transport, "POST", &route, Some(&plain)).0, 202);
 }
+
+#[test]
+fn a_session_that_does_not_encode_to_an_object_is_a_server_error() {
+    let not_json = serde_json::from_str::<Value>("{").unwrap_err();
+    for encoded in [Err(not_json), Ok(Value::Null)] {
+        let Err(Reject(status, detail)) = encoded_fields(encoded) else {
+            panic!("expected a rejection");
+        };
+        assert_eq!((status, detail), (500, "Could not encode the session"));
+    }
+}
+
+#[test]
+fn labels_that_are_not_an_object_are_a_server_error_and_missing_ones_are_created() {
+    let mut object = Map::new();
+    labels_mut(&mut object)
+        .unwrap()
+        .insert("a".into(), json!("b"));
+    assert_eq!(Value::Object(object), json!({"labels": {"a": "b"}}));
+    let mut broken = Map::from_iter([("labels".to_owned(), json!(3))]);
+    let Err(Reject(status, detail)) = labels_mut(&mut broken) else {
+        panic!("expected a rejection");
+    };
+    assert_eq!((status, detail), (500, "labels are not an object"));
+}
+
+#[test]
+fn a_word_only_goes_onto_a_message() {
+    let mut item = ConversationItem::from_parts("i1", "reasoning", Map::new(), None).unwrap();
+    let before = item.clone();
+    append_word(&mut item, "word");
+    assert_eq!(item, before);
+}
+
+#[test]
+fn a_list_row_adds_the_viewer_fields_and_leaves_a_non_object_alone() {
+    assert_eq!(list_row(Value::Null, 2, None), Value::Null);
+    assert_eq!(
+        list_row(
+            json!({"id": "a", "items": [], "pending_elicitations": []}),
+            2,
+            Some(&(9, true))
+        ),
+        json!({
+            "id": "a",
+            "pending_elicitations_count": 2,
+            "viewer_last_seen": 9,
+            "viewer_unread": true,
+        })
+    );
+}

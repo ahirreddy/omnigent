@@ -844,14 +844,11 @@ impl<T: HttpTransport, S: SecureStore> OidcCredentials<T, S> {
             self.forget(server).await?;
             return Err(no_grant());
         };
-        let request = form_post(
-            server,
-            "/oauth/token",
-            &[
-                ("grant_type", "refresh_token"),
-                ("refresh_token", grant.refresh_token.expose()),
-            ],
-        )?;
+        let fields = [
+            ("grant_type", "refresh_token"),
+            ("refresh_token", grant.refresh_token.expose()),
+        ];
+        let request = form_post(server, "/oauth/token", &fields)?;
         let response = self.send(server, request).await?;
         if flight.cancelled.load(Ordering::Acquire) {
             return Err(OidcError::Cancelled);
@@ -964,9 +961,13 @@ impl<T: HttpTransport, S: SecureStore> OidcCredentials<T, S> {
 
     /// Best-effort `POST /oauth/revoke` of a forgotten grant.
     pub async fn revoke(&self, pending: PendingRevocation) -> RevokeOutcome {
+        self.revoke_at(pending, "/oauth/revoke").await
+    }
+
+    async fn revoke_at(&self, pending: PendingRevocation, route: &str) -> RevokeOutcome {
         let Ok(request) = form_post(
             &pending.server,
-            "/oauth/revoke",
+            route,
             &[("refresh_token", pending.grant.refresh_token.expose())],
         ) else {
             return RevokeOutcome::Failed(NetworkCause::Transport(TransportError::Other {

@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// Why a wire payload could not be decoded.
 ///
@@ -90,6 +90,17 @@ pub trait FromWire: Sized {
 }
 
 /// Decodes a serde-derived model, labelling failures with `context`.
+/// The fields of a value that must serialize as an object.
+pub(crate) fn serialized_object<E: serde::ser::Error>(
+    value: Value,
+    what: &str,
+) -> Result<Map<String, Value>, E> {
+    match value {
+        Value::Object(fields) => Ok(fields),
+        _ => Err(E::custom(format!("{what} must serialise as an object"))),
+    }
+}
+
 pub(crate) fn decode_as<T: serde::de::DeserializeOwned>(
     value: Value,
     context: impl FnOnce() -> String,

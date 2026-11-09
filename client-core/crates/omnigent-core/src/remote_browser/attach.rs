@@ -1498,7 +1498,16 @@ const fn plain_resize(viewport: Viewport) -> ResizeRequest {
 
 /// Queues `message` for `attempt`'s socket.
 fn send(attempt: AttemptId, message: &ClientMessage, out: &mut Vec<AttachOutput>) {
-    match message.encode() {
+    queue_encoded(attempt, message.encode(), out);
+}
+
+/// Queues an encoded message, or reports why it could not be encoded.
+fn queue_encoded(
+    attempt: AttemptId,
+    encoded: Result<String, MessageError>,
+    out: &mut Vec<AttachOutput>,
+) {
+    match encoded {
         Ok(text) => out.push(AttachOutput::Send {
             attempt,
             message: SocketMessage::Text(text),

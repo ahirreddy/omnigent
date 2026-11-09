@@ -727,3 +727,16 @@ fn foregrounding_a_healthy_attach_changes_nothing_and_the_grid_size_reads_back()
     assert_eq!(harness.machine.grid_size(), None);
     assert_eq!(harness.run(AttachInput::Foreground), Vec::new());
 }
+
+/// The steps behind `handle`'s current-attempt check do nothing once no attempt is left.
+#[test]
+fn steps_without_an_attempt_change_nothing() {
+    let mut harness = Harness::interactive();
+    let before = harness.machine.state().clone();
+    let mut out = Vec::new();
+    harness.machine.opened(1, &mut out);
+    let loss = Loss::Retry(LinkError::Stalled { silent_ms: 1 });
+    harness.machine.lose(1, loss, true, &mut out);
+    assert_eq!(out, Vec::new());
+    assert_eq!(harness.machine.state(), &before);
+}

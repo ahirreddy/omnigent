@@ -51,14 +51,13 @@ impl LiveReducer {
         let mut anchors: BTreeMap<String, String> = BTreeMap::new();
         let mut stale_text: BTreeSet<String> = BTreeSet::new();
         for message in &authoritative.rows {
-            let matched = previews.iter().position(|preview| {
+            let matched = previews.iter().enumerate().find(|(_, preview)| {
                 preview.id == message.id
                     || self.matches_activity(preview, message)
                     || (!previous_committed.contains(message.id.as_str())
                         && matches_text(preview, message))
             });
-            let Some(at) = matched else { continue };
-            let Some(preview) = previews.get(at) else {
+            let Some((at, preview)) = matched else {
                 continue;
             };
             // A history read can finish with an older prefix while the stream already advanced.
@@ -102,7 +101,7 @@ impl LiveReducer {
     }
 
     /// Puts each surviving preview back next to the rows it streamed between.
-    fn reinsert_previews(
+    pub(super) fn reinsert_previews(
         &mut self,
         previous_rows: &[Row],
         previews: Vec<Row>,

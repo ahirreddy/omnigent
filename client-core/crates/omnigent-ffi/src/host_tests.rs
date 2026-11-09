@@ -159,3 +159,90 @@ fn too_few_random_bytes_are_never_used_as_if_they_were_enough() {
         })
     );
 }
+
+/// Every `with_foreign` trait crosses the boundary as a handle: a Rust object must lift back as
+/// itself, with the handle's reference released.
+fn crosses_the_boundary<T: ?Sized + uniffi::FfiConverterArc<crate::UniFfiTag>>(object: Arc<T>) {
+    let lifted = T::try_lift(T::lower(Arc::clone(&object))).unwrap();
+    assert!(Arc::ptr_eq(&object, &lifted));
+    drop(lifted);
+    assert_eq!(Arc::strong_count(&object), 1);
+
+    // Inside a record or a list the handle travels as eight bytes, which a short read refuses.
+    let mut buffer = Vec::new();
+    T::write(Arc::clone(&object), &mut buffer);
+    let read = T::try_read(&mut buffer.as_slice()).unwrap();
+    assert!(Arc::ptr_eq(&object, &read));
+    drop(read);
+    assert_eq!(Arc::strong_count(&object), 1);
+    assert!(T::try_read(&mut buffer.get(..2).unwrap()).is_err());
+}
+
+struct NoSettings;
+
+impl SettingsStorage for NoSettings {
+    fn get(&self, _key: String) -> Result<Option<String>, SettingsStorageError> {
+        Ok(None)
+    }
+
+    fn set(&self, _key: String, _value: Option<String>) -> Result<(), SettingsStorageError> {
+        Ok(())
+    }
+}
+
+struct NoPreferences;
+
+impl ManagedPreferenceSource for NoPreferences {
+    fn value(&self, _key: String, _domain: String) -> Option<String> {
+        None
+    }
+
+    fn is_forced(&self, _key: String, _domain: String) -> bool {
+        false
+    }
+}
+
+struct DeafTerminal;
+
+impl crate::terminal::TerminalAttachListener for DeafTerminal {
+    fn on_state(&self, _state: crate::terminal::TerminalAttachState) {}
+    fn on_output(&self, _bytes: Vec<u8>) {}
+    fn on_reset_screen(&self) {}
+    fn on_clipboard_write(&self, _text: String) {}
+    fn on_input_dropped(&self, _count: u64, _reason: crate::terminal::TerminalInputDropReason) {}
+    fn on_notice(&self, _message: String) {}
+}
+
+struct DeafBrowser;
+
+impl crate::remote_browser::RemoteBrowserListener for DeafBrowser {
+    fn on_state(&self, _snapshot: crate::remote_browser::RemoteBrowserSnapshot) {}
+    fn on_video(&self, _frame: crate::remote_browser::VideoFrame) {}
+    fn on_still(&self, _still: crate::remote_browser::StillImage) {}
+    fn on_closed(&self, _reason: Option<crate::remote_browser::RemoteTabClosedReason>) {}
+    fn on_notice(&self, _notice: crate::remote_browser::RemoteBrowserNotice) {}
+    fn on_clipboard(&self, _op: crate::remote_browser::RemoteEditOp, _text: String) {}
+}
+
+#[test]
+fn every_host_object_survives_the_trip_across_the_boundary() {
+    use crate::test_support::{
+        FakeHandle, FakeHttp, FakeSocket, FakeSockets, FakeStreams, FixedEntropy, ManualClock,
+        MemoryStore, Recorder, TestScheduler,
+    };
+    crosses_the_boundary::<dyn HttpTransport>(Arc::new(FakeHttp::default()));
+    crosses_the_boundary::<dyn EventStreamTransport>(Arc::new(FakeStreams::default()));
+    crosses_the_boundary::<dyn StreamHandle>(Arc::new(FakeHandle::default()));
+    crosses_the_boundary::<dyn WebSocketTransport>(Arc::new(FakeSockets::default()));
+    crosses_the_boundary::<dyn WebSocketHandle>(Arc::new(FakeSocket::default()));
+    let clock = Arc::new(ManualClock::default());
+    crosses_the_boundary::<dyn Scheduler>(Arc::new(TestScheduler::new(Arc::clone(&clock))));
+    crosses_the_boundary::<dyn Clock>(clock);
+    crosses_the_boundary::<dyn SecureStore>(Arc::new(MemoryStore::default()));
+    crosses_the_boundary::<dyn EntropySource>(Arc::new(FixedEntropy::default()));
+    crosses_the_boundary::<dyn SettingsStorage>(Arc::new(NoSettings));
+    crosses_the_boundary::<dyn ManagedPreferenceSource>(Arc::new(NoPreferences));
+    crosses_the_boundary::<dyn crate::events::CoreListener>(Arc::new(Recorder::default()));
+    crosses_the_boundary::<dyn crate::terminal::TerminalAttachListener>(Arc::new(DeafTerminal));
+    crosses_the_boundary::<dyn crate::remote_browser::RemoteBrowserListener>(Arc::new(DeafBrowser));
+}

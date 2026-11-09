@@ -556,6 +556,10 @@ impl<T: HttpTransport> ClientCore<T> {
 mod discovery_tests;
 
 #[cfg(test)]
+#[path = "helpers_tests.rs"]
+mod helpers_tests;
+
+#[cfg(test)]
 #[path = "client_tests.rs"]
 mod client_tests;
 

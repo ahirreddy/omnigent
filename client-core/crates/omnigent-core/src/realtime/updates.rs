@@ -1630,4 +1630,17 @@ mod tests {
             Err(WatchError::InvalidSessionId { id: String::new() })
         );
     }
+
+    /// The steps behind `handle`'s current-attempt check do nothing once no attempt is left.
+    #[test]
+    fn steps_without_an_attempt_change_nothing() {
+        let mut machine = SessionUpdates::new(UpdatesConfig::default(), FixedJitter(0));
+        let mut out = Vec::new();
+        machine.on_opened(1, &mut out);
+        machine.on_message(1, &SocketMessage::Text("{}".to_owned()), &mut out);
+        machine.mark_live(1, &mut out);
+        machine.lose(1, LinkError::Stalled { silent_ms: 1 }, true, &mut out);
+        assert_eq!(out, []);
+        assert_eq!(machine.state(), &ConnectionState::Idle);
+    }
 }

@@ -82,3 +82,12 @@ fn closing_stops_whatever_the_machine_left_behind() {
     assert_eq!(handle.cancels.load(Ordering::SeqCst), 1);
     assert!(engine.drivers.is_empty());
 }
+
+#[test]
+fn a_stream_opened_for_a_session_that_closed_is_cancelled() {
+    let harness = Harness::new(UrlPolicy::Development);
+    let (mut engine, _queue) = harness.idle_engine();
+    let handle = Arc::new(FakeHandle::default());
+    engine.keep_stream_handle("gone", AttemptId(1), handle.clone());
+    assert_eq!(handle.cancels.load(Ordering::SeqCst), 1);
+}

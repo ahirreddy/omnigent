@@ -10,6 +10,7 @@
 //! This is the decisions half of `NativeLab`'s `LiveConversationReducer` elicitation handling; the
 //! reducer (WP3) owns turn status and calls in here.
 
+use std::borrow::Borrow;
 use std::collections::VecDeque;
 
 use omnigent_protocol::{
@@ -231,18 +232,19 @@ impl SessionDecisions {
             .entries
             .iter()
             .find(|entry| entry.decision.id == decision_id);
-        match entry {
-            Some(entry) if entry.state == DecisionState::Pending => Ok(entry),
-            Some(_) => Err(DecisionError::AlreadyResolved {
-                decision_id: decision_id.to_owned(),
-            }),
-            None if self.is_retired(decision_id) => Err(DecisionError::AlreadyResolved {
-                decision_id: decision_id.to_owned(),
-            }),
-            None => Err(DecisionError::NotFound {
-                decision_id: decision_id.to_owned(),
-            }),
-        }
+        pending_or_error(entry, self.is_retired(decision_id), decision_id)
+    }
+
+    fn pending_entry_mut(
+        &mut self,
+        decision_id: &str,
+    ) -> Result<&mut DecisionEntry, DecisionError> {
+        let retired = self.is_retired(decision_id);
+        let entry = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.decision.id == decision_id);
+        pending_or_error(entry, retired, decision_id)
     }
 
     /// Records that the server accepted `response` for `decision_id`. The card stays visible as
@@ -257,15 +259,7 @@ impl SessionDecisions {
         decision_id: &str,
         response: DecisionResponse,
     ) -> Result<(), DecisionError> {
-        self.pending_entry(decision_id)?;
-        let entry = self
-            .entries
-            .iter_mut()
-            .find(|entry| entry.decision.id == decision_id)
-            .ok_or_else(|| DecisionError::NotFound {
-                decision_id: decision_id.to_owned(),
-            })?;
-        entry.state = DecisionState::Answered(response);
+        self.pending_entry_mut(decision_id)?.state = DecisionState::Answered(response);
         Ok(())
     }
 }
@@ -277,4 +271,24 @@ pub enum DecisionEventOutcome {
     Request(RequestOutcome),
     /// A `response.elicitation_resolved`.
     Resolved(ResolvedOutcome),
+}
+
+/// The entry when it can still be answered, else why not.
+fn pending_or_error<E: Borrow<DecisionEntry>>(
+    entry: Option<E>,
+    retired: bool,
+    decision_id: &str,
+) -> Result<E, DecisionError> {
+    match entry {
+        Some(entry) if entry.borrow().state == DecisionState::Pending => Ok(entry),
+        Some(_) => Err(DecisionError::AlreadyResolved {
+            decision_id: decision_id.to_owned(),
+        }),
+        None if retired => Err(DecisionError::AlreadyResolved {
+            decision_id: decision_id.to_owned(),
+        }),
+        None => Err(DecisionError::NotFound {
+            decision_id: decision_id.to_owned(),
+        }),
+    }
 }

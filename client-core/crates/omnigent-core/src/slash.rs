@@ -353,6 +353,17 @@ pub fn slash_action(
             }
         });
     }
+    builtin_action(&command.name, arguments, &harness, &commands, configuration)
+}
+
+/// What the built-in command `name` does; `None` for a name that isn't one.
+fn builtin_action(
+    name: &str,
+    arguments: String,
+    harness: &str,
+    commands: &[SlashCommand],
+    configuration: &SessionConfiguration,
+) -> Option<SlashAction> {
     let no_arguments = |name: &str, action: SlashAction| {
         if arguments.is_empty() {
             action
@@ -362,8 +373,8 @@ pub fn slash_action(
             }
         }
     };
-    Some(match command.name.as_str() {
-        "compact" if compacts_by_control(&harness) => no_arguments("compact", SlashAction::Compact),
+    Some(match name {
+        "compact" if compacts_by_control(harness) => no_arguments("compact", SlashAction::Compact),
         "compact" | "btw" => SlashAction::SendText,
         "new" => no_arguments("new", SlashAction::NewSession),
         "clear" => no_arguments("clear", SlashAction::Clear),
@@ -373,7 +384,7 @@ pub fn slash_action(
         "mcp" => SlashAction::Show {
             text: "Usage: /mcp".to_owned(),
         },
-        "side" if forks_side_chat_natively(&harness) => SlashAction::SendText,
+        "side" if forks_side_chat_natively(harness) => SlashAction::SendText,
         "side" => SlashAction::SideChat {
             question: arguments,
         },

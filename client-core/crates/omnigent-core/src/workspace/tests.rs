@@ -1040,3 +1040,20 @@ fn a_connected_build_signs_the_request_and_carries_a_write_body() {
     assert_eq!(header(&with, "Content-Type"), Some("application/json"));
     assert_eq!(with.body.as_deref(), Some(br#"{"a":1}"#.as_slice()));
 }
+
+#[test]
+fn a_disconnect_during_a_workspace_read_discards_its_answer() {
+    let transport = RouteTransport::local();
+    let path = format!("/v1/sessions/{SESSION}/resources/environments/default/changes");
+    let gate = transport.gate("GET", &path);
+    let core = connected(transport);
+    let listing = request(WorkspaceOperation::ListChanges);
+    let mut read = std::pin::pin!(core.workspace(&listing));
+    assert!(crate::client::test_support::still_pending(read.as_mut()));
+    core.disconnect();
+    gate.open();
+    assert!(matches!(
+        block_on(read),
+        Err(WorkspaceError::Session(SessionError::NotConnected))
+    ));
+}

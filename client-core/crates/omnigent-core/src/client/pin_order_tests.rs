@@ -7,6 +7,7 @@ use serde_json::json;
 use super::super::sessions::SessionSummary;
 use super::super::test_support::{Reply, RouteTransport, connected};
 use super::{PinOrderWrite, PinStamp, compare, pin_order_writes};
+use crate::SessionError;
 use crate::session_query::{self, SessionFilter};
 
 fn pins(values: &[Option<f64>]) -> Vec<SessionSummary> {
@@ -212,4 +213,15 @@ fn every_write_is_finite_whatever_keys_the_server_sent() {
             }
         }
     }
+}
+
+#[test]
+fn a_pin_key_that_is_not_finite_is_refused_before_any_write() {
+    assert_eq!(
+        super::pin_stamp(f64::NAN),
+        Err(SessionError::DeliveryUncertain {
+            detail: "pin key NaN is not finite".to_owned()
+        })
+    );
+    assert_eq!(super::pin_stamp(2.5).unwrap().label(), "2.5");
 }

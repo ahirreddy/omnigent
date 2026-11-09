@@ -125,11 +125,15 @@ fn databricks_discovery(url: &Url) -> core::ServerDiscovery {
     }
 }
 
+fn invalid_origin(error: url::ParseError) -> CoreError {
+    CoreError::InvalidUrl {
+        message: error.to_string(),
+    }
+}
+
 /// The workspace URL a Databricks credential is scoped to: the endpoint's origin and its `o=`.
 fn databricks_workspace(endpoint: &ServerEndpoint) -> Result<Url, CoreError> {
-    let mut workspace = Url::parse(endpoint.origin()).map_err(|error| CoreError::InvalidUrl {
-        message: error.to_string(),
-    })?;
+    let mut workspace = Url::parse(endpoint.origin()).map_err(invalid_origin)?;
     if let Some(org) = endpoint.databricks_org_id() {
         workspace.set_query(Some(&format!("o={org}")));
     }
@@ -303,6 +307,17 @@ mod databricks_tests {
         assert_eq!(
             databricks_workspace(&endpoint).unwrap().as_str(),
             "https://dbc-1.cloud.databricks.com/?o=42"
+        );
+    }
+
+    #[test]
+    fn an_origin_that_does_not_parse_is_an_invalid_url() {
+        let error = invalid_origin(url::ParseError::EmptyHost);
+        assert_eq!(
+            error,
+            CoreError::InvalidUrl {
+                message: url::ParseError::EmptyHost.to_string()
+            }
         );
     }
 }

@@ -2053,3 +2053,20 @@ fn a_server_that_cannot_be_reached_ends_requests_to_the_old_one_too() {
     assert!(connect(&mut harness).is_err());
     assert_no_request_reaches_the_old_server(&mut harness);
 }
+
+#[test]
+fn an_offline_sample_that_does_not_load_is_a_decode_error() {
+    assert_eq!(
+        sample_failed(omnigent_core::workspace_store::WorkspaceError::Encode {
+            message: "broken".into()
+        }),
+        CoreError::Decode {
+            message: format!(
+                "offline sample: {}",
+                omnigent_core::workspace_store::WorkspaceError::Encode {
+                    message: "broken".into()
+                }
+            )
+        }
+    );
+}

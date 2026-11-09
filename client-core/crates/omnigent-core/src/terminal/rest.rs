@@ -795,4 +795,17 @@ mod tests {
             Err(TerminalError::Forbidden { .. })
         ));
     }
+
+    #[test]
+    fn a_server_url_with_no_websocket_form_is_an_invalid_attach() {
+        let endpoint = TerminalEndpoint {
+            server_url: Url::parse("custom://example.com/omni").unwrap(),
+            session_id: "conv_1".to_owned(),
+        };
+        let options = AttachOptions::default();
+        assert!(matches!(
+            endpoint.attach_request("t1", &options),
+            Err(TerminalError::InvalidRequest { .. })
+        ));
+    }
 }

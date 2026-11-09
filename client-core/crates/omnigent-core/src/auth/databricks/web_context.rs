@@ -596,4 +596,18 @@ mod tests {
         assert!(wide.applies_to(&page, 0));
         assert!(!format!("{cookie:?}").contains("secret-session"));
     }
+
+    #[test]
+    fn an_empty_url_path_counts_as_the_root() {
+        let cookie = SessionCookie {
+            name: "n".to_owned(),
+            value: "v".to_owned(),
+            domain: "workspace.databricks.com".to_owned(),
+            path: "/".to_owned(),
+            secure: false,
+            http_only: false,
+            expires_at_ms: None,
+        };
+        assert!(cookie.applies_to(&url("custom://workspace.databricks.com"), 0));
+    }
 }

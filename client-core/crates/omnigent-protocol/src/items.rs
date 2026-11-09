@@ -17,7 +17,7 @@ use serde_json::{Map, Value};
 
 use crate::content::{self, AttachmentPart, ContentPart};
 use crate::display;
-use crate::error::{DecodeError, FromWire, decode_as};
+use crate::error::{DecodeError, FromWire, decode_as, serialized_object};
 use crate::field::{is_false, null_as_default};
 use crate::native_tools::{NativeToolItem, NativeToolKind};
 use crate::wire_enum::wire_enum;
@@ -664,23 +664,29 @@ impl ItemData {
 
     fn decode(item_type: &str, payload: Map<String, Value>) -> Result<Self, DecodeError> {
         let context = || format!("item `{item_type}`");
-        let value = Value::Object(payload);
         Ok(match item_type {
-            "message" => Self::Message(decode_as(value, context)?),
-            "function_call" => Self::FunctionCall(decode_as(value, context)?),
-            "function_call_output" => Self::FunctionCallOutput(decode_as(value, context)?),
-            "error" => Self::Error(validated_error(decode_as(value, context)?)?),
-            "reasoning" => Self::Reasoning(decode_as(value, context)?),
-            "compaction" => Self::Compaction(decode_as(value, context)?),
-            "native_tool" => Self::NativeTool(native_tool_wrapper(value)?),
-            "resource_event" => Self::ResourceEvent(decode_as(value, context)?),
-            "routing_decision" => Self::RoutingDecision(decode_as(value, context)?),
-            "slash_command" => Self::SlashCommand(decode_as(value, context)?),
-            "terminal_command" => Self::TerminalCommand(decode_as(value, context)?),
+            "message" => Self::Message(decode_as(Value::Object(payload), context)?),
+            "function_call" => Self::FunctionCall(decode_as(Value::Object(payload), context)?),
+            "function_call_output" => {
+                Self::FunctionCallOutput(decode_as(Value::Object(payload), context)?)
+            }
+            "error" => Self::Error(validated_error(decode_as(
+                Value::Object(payload),
+                context,
+            )?)?),
+            "reasoning" => Self::Reasoning(decode_as(Value::Object(payload), context)?),
+            "compaction" => Self::Compaction(decode_as(Value::Object(payload), context)?),
+            "native_tool" => Self::NativeTool(native_tool_wrapper(Value::Object(payload))?),
+            "resource_event" => Self::ResourceEvent(decode_as(Value::Object(payload), context)?),
+            "routing_decision" => {
+                Self::RoutingDecision(decode_as(Value::Object(payload), context)?)
+            }
+            "slash_command" => Self::SlashCommand(decode_as(Value::Object(payload), context)?),
+            "terminal_command" => {
+                Self::TerminalCommand(decode_as(Value::Object(payload), context)?)
+            }
             bare => {
-                let Value::Object(mut fields) = value else {
-                    return Err(DecodeError::NotAnObject { context: context() });
-                };
+                let mut fields = payload;
                 fields
                     .entry("type")
                     .or_insert_with(|| Value::String(bare.to_owned()));
@@ -878,9 +884,7 @@ impl Serialize for ConversationItem {
             ItemData::TerminalCommand(data) => serde_json::to_value(data),
         }
         .map_err(S::Error::custom)?;
-        let Value::Object(data) = data else {
-            return Err(S::Error::custom("item data must serialise as an object"));
-        };
+        let data = serialized_object(data, "item data")?;
         let mut fields = Map::new();
         fields.insert("id".to_owned(), Value::String(self.id.clone()));
         fields.insert(
