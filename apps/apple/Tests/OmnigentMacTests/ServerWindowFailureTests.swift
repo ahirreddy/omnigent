@@ -86,6 +86,31 @@ struct ServerWindowFailureTests {
     return OpenWindow(screen: screen, binding: binding, scratch: scratch, http: http)
   }
 
+  /// A server that can't be reached leaves the window on it, not ready, with the reason logged.
+  @Test func aServerThatFailsIsLoggedAndTheWindowStaysOnIt() async throws {
+    let url = try #require(URL(string: "https://failing-\(UUID().uuidString).example.com"))
+    let window = try openFailingWindow(on: url)
+    defer { window.close() }
+    #expect(try await AppLog.waitFor("Could not connect to \(url.absoluteString)"))
+    #expect(!window.http.requests.isEmpty)
+    #expect(window.binding.id.serverURL == url)
+    let registry = window.scratch.desktop.registry
+    #expect(registry.entry(window.binding.id.instance)?.isReady == false)
+    #expect(window.scratch.services.recentServers.urls.isEmpty)
+  }
+
+  /// Waking the Mac tries a server that was down again, as a VPN coming back needs.
+  @Test func aWakeTriesAFailedServerAgain() async throws {
+    let url = try #require(URL(string: "https://waking-\(UUID().uuidString).example.com"))
+    let window = try openFailingWindow(on: url)
+    defer { window.close() }
+    let message = "Could not connect to \(url.absoluteString)"
+    #expect(try await AppLog.waitFor(message))
+    let failures = try AppLog.messages(containing: message).count
+    NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+    #expect(try await AppLog.waitFor(message, count: failures + 1))
+  }
+
   /// Debug > Show Core Inspector shows the sheet, and Done closes it.
   @Test func theInspectorOpensFromTheDebugCommandAndDoneClosesIt() async throws {
     let scratch = try TestScratch(launchArguments: ["-OmnigentDemo"])

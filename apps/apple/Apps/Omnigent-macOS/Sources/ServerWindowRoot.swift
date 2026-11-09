@@ -274,11 +274,18 @@ struct ServerWindowRoot: View {
     await session.signIn.connectNow(serverURL.absoluteString)
     guard !Task.isCancelled, id.serverURL == serverURL else { return }
     // A signed-in outcome reaches `didConnect` through `signIn.onSignedIn`.
-    if case .failed(_, let error) = session.connection.phase {
+    if let failure = Self.connectionFailure(session) {
       services.logger.notice(
-        "Could not connect to \(serverURL.absoluteString, privacy: .public): \(error.message, privacy: .public)"
+        "Could not connect to \(serverURL.absoluteString, privacy: .public): \(failure, privacy: .public)"
       )
     }
+  }
+
+  /// Why the last connect failed. The core's failed phase can arrive after the connect returns,
+  /// and the sign-in holds the error until then.
+  static func connectionFailure(_ session: ServerSession) -> String? {
+    if case .failed(_, let error) = session.connection.phase { return error.message }
+    return session.isSignedIn ? nil : session.signIn.flowError?.message
   }
 
   /// Wake, unlock and session switches reopen the streams, so a server that came back with the
