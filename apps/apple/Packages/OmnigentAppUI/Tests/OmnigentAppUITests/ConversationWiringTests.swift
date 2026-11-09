@@ -13,13 +13,13 @@ import Testing
 @MainActor
 @Suite("Conversation wiring", .serialized, .timeLimit(.minutes(1)))
 struct ConversationWiringTests {
-  private final class Opened {
+  final class Opened {
     var urls: [URL] = []
     var sessions: [String] = []
     var succeeds = true
   }
 
-  private struct Wired {
+  struct Wired {
     let container: ConversationContainer
     let store: ConversationStore
     let opened: Opened
@@ -28,7 +28,7 @@ struct ConversationWiringTests {
   }
 
   /// The owner's session `conv_a`, on a machine the server knows, with `settings`.
-  private func wired(
+  func wired(
     _ server: AppServer = threeSessionServer(), settings: OmnigentCoreFFI.SessionSettings? = nil,
     tabRoutes: ConversationTabRoutes? = nil
   ) async throws -> Wired {
