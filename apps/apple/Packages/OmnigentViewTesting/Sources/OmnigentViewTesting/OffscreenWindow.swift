@@ -115,6 +115,9 @@
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
         deliver(mouseUp, to: target)
       }
+      // Tracking that ended early, as a closing menu's does, leaves the posted up queued. A later
+      // button's tracking would end on it, and that button's action would never run.
+      NSApp.discardEvents(matching: .leftMouseUp, before: nil)
       settle()
     }
 

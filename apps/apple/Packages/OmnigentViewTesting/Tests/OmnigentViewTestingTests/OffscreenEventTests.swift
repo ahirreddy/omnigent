@@ -175,6 +175,22 @@
       }
     }
 
+    @Test("a click after a menu reaches a borderless button")
+    func clickAfterMenu() throws {
+      let log = Log()
+      let screen = OffscreenWindow(
+        VStack {
+          Menu("More") { Button("Item") {} }
+          Button("Remove") { log.deleted.append("remove") }.buttonStyle(.borderless)
+        },
+        width: 200, height: 120)
+      defer { screen.close() }
+      let frames = screen.controlFrames
+      _ = try screen.openMenu(CGPoint(x: frames[0].midX, y: frames[0].midY))
+      try screen.clickControl(at: 1)
+      #expect(log.deleted == ["remove"])
+    }
+
     @Test("hovering a view reports entering it, and ending the hover reports leaving")
     func hover() throws {
       let log = Log()
