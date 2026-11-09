@@ -199,4 +199,22 @@ struct NewSessionScreenTests {
     let shown = try screen.shownText()
     #expect(shown.contains { $0.contains("host") || $0.contains("Connect") }, "\(shown)")
   }
+
+  @Test("A long folder and branch stay inside a narrow window")
+  func chipsFitANarrowWindow() async throws {
+    let server = startableServer()
+    let long = "/work/" + String(repeating: "very-long-folder-name-", count: 8)
+    let row = sessionRow("conv_a", host: "mac", workspace: long, updatedAt: 5)
+    server.route(
+      "/v1/sessions", method: "GET", .json(#"{"object":"list","data":[\#(row)],"has_more":false}"#))
+    let (screen, _) = try await page(server, width: 480)
+    defer { screen.close() }
+    let tooWide = screen.allViews.filter { view in
+      guard view is NSControl else { return false }
+      let frame = view.convert(view.bounds, to: screen.host)
+      return frame.maxX > 481 || frame.minX < -1
+    }
+    let frames = tooWide.map { $0.convert($0.bounds, to: screen.host) }
+    #expect(tooWide.isEmpty, "controls past the window's edge: \(frames)")
+  }
 }

@@ -160,6 +160,16 @@ public struct NewSessionOptionActions {
   }
 }
 
+/// As wide as its label when that fits; a long folder or branch truncates inside the window.
+private struct ChipWidth: ViewModifier {
+  func body(content: Content) -> some View {
+    ViewThatFits(in: .horizontal) {
+      content.fixedSize()
+      content.lineLimit(1).truncationMode(.middle)
+    }
+  }
+}
+
 /// The folder, worktree and repository chips under the new-session composer.
 struct NewSessionOptionsBar: View {
   let options: NewSessionOptions
@@ -282,7 +292,7 @@ struct NewSessionOptionsBar: View {
         options.folder.map { URL(filePath: $0).lastPathComponent } ?? "Choose folder",
         systemImage: "folder")
     }
-    .fixedSize()
+    .modifier(ChipWidth())
     .help(options.folder ?? "Choose the folder the session works in")
     .accessibilityLabel("Folder, \(options.folder ?? "none")")
     .accessibilityIdentifier("new-session-folder")
@@ -312,7 +322,7 @@ struct NewSessionOptionsBar: View {
     } label: {
       Label(options.worktreeTitle, systemImage: "arrow.triangle.branch")
     }
-    .fixedSize()
+    .modifier(ChipWidth())
     .help("Work in the folder, a new worktree branch, or an existing worktree")
     .accessibilityIdentifier("new-session-worktree")
     .popover(isPresented: $isNamingBranch) { branchForm }
@@ -356,7 +366,7 @@ struct NewSessionOptionsBar: View {
       } label: {
         Label(label, systemImage: "arrow.triangle.branch")
       }
-      .fixedSize()
+      .modifier(ChipWidth())
       .foregroundStyle(options.repositories.problem == nil ? .primary : Theme.warning)
       .help(options.repositories.problem ?? "Repositories cloned into the sandbox")
       .accessibilityLabel("Sandbox repositories, \(label)")
