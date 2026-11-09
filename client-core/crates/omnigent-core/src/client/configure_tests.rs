@@ -774,6 +774,75 @@ fn an_expired_sign_in_during_the_host_preview_ends_the_read() {
 }
 
 #[test]
+fn a_change_during_the_model_preview_stops_the_edit_before_any_write() {
+    let transport = RouteTransport::local();
+    let previewing = merged(&json!({"model_options": []}));
+    stub_session(&transport, &previewing);
+    transport.ok(
+        MODEL_OPTIONS,
+        r#"{"models":[{"id":"sample-balanced","supportedReasoningEfforts":[{"reasoningEffort":"low"}]}]}"#,
+    );
+    let gate = transport.gate("GET", MODEL_OPTIONS);
+    let core = live(transport);
+    let mut edit = edit_from(&previewing);
+    edit.effort = Some("low".into());
+    let mut apply = pin!(core.apply_configuration(&edit, "conv_a"));
+    assert!(still_pending(apply.as_mut()));
+    let event =
+        ServerStreamEvent::from_value(json!({"type": "session.model", "model": "new"})).unwrap();
+    core.record_stream_event("conv_a", &event);
+    gate.open();
+    assert_eq!(
+        block_on(apply),
+        Err(SessionError::Configuration(
+            ConfigurationError::ChangedElsewhere
+        ))
+    );
+    assert_eq!(mutation_bodies(core.transport()), Vec::<Value>::new());
+}
+
+#[test]
+fn a_switch_to_a_target_the_catalog_rules_out_says_why_and_never_posts() {
+    let transport = RouteTransport::local();
+    for envelope in &switch_script()[..3] {
+        transport.respond(Some("GET"), &envelope.path, None, envelope.reply.clone());
+    }
+    transport.respond(
+        Some("GET"),
+        "/v1/hosts",
+        None,
+        Reply::json(
+            200,
+            r#"{"hosts":[{"host_id":"demo-host","name":"Host","status":"offline"}]}"#,
+        ),
+    );
+    let core = live(transport);
+    let baseline = summary(&fields()).configuration.unwrap();
+    assert_eq!(
+        block_on(core.switch_harness("target", &baseline, "conv_a")),
+        Err(SessionError::Configuration(
+            ConfigurationError::Unavailable("The session's host must be online.".into())
+        ))
+    );
+    assert_eq!(mutation_bodies(core.transport()), Vec::<Value>::new());
+}
+
+#[test]
+fn a_read_crossed_by_a_newer_row_returns_the_newer_row() {
+    let transport = RouteTransport::local();
+    stub_session(&transport, &merged(&json!({"title": "Stale"})));
+    let gate = transport.gate("GET", PATH);
+    let core = live(transport);
+    let mut read = pin!(core.editable("conv_a"));
+    assert!(still_pending(read.as_mut()));
+    core.apply_session_rows(vec![wire(&merged(&json!({"title": "Newer"})), true)])
+        .unwrap();
+    gate.open();
+    assert_eq!(block_on(read).unwrap().title, "Newer");
+    assert_eq!(core.cached_summary("conv_a").unwrap().title, "Newer");
+}
+
+#[test]
 fn a_changed_files_refresh_overlapping_a_settings_save_keeps_its_result() {
     const CHANGES: &str = "/v1/sessions/conv_a/resources/environments/default/changes";
     let transport = RouteTransport::local();

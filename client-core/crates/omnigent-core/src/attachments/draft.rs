@@ -689,6 +689,23 @@ mod tests {
         DraftKey::new("server/account", "session_a")
     }
 
+    #[test]
+    fn an_accepted_send_for_a_session_that_never_staged_a_file_is_harmless() {
+        let mut store = AttachmentDraftStore::new();
+        let batch = store.begin_submission(&key()).unwrap();
+        assert_eq!(batch.attachments(), []);
+        assert_eq!(
+            store.finish_submission(&batch, SubmissionOutcome::Accepted),
+            Ok(())
+        );
+        assert_eq!(store.draft(&key()).items(), []);
+        assert!(store.can_submit(&key()));
+        assert_eq!(
+            store.finish_submission(&batch, SubmissionOutcome::Accepted),
+            Err(DraftError::StaleSubmission)
+        );
+    }
+
     fn file_named(name: &str) -> UploadFile {
         UploadFile::new(name, None, b"retained bytes".to_vec()).unwrap()
     }

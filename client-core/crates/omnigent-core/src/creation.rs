@@ -1260,6 +1260,24 @@ mod tests {
     }
 
     #[test]
+    fn an_agent_without_a_native_wrapper_gets_no_terminal_labels_or_launch_arguments() {
+        let selection = CreationSelection {
+            approval_mode: Some("bypassPermissions".into()),
+            plan_mode: true,
+            ..selection()
+        };
+        let body = creation_body(
+            &selection,
+            "",
+            &agent("ag_sdk", Some("openai-agents")),
+            None,
+        );
+        assert_eq!(body["agent_id"], Value::String("ag_codex".into()));
+        assert!(body.get("labels").is_none());
+        assert!(body.get("terminal_launch_args").is_none());
+    }
+
+    #[test]
     fn canonical_native_aliases_preserve_wrapper_contract() {
         for (harness, wrapper) in [
             ("claude-native", "claude-code-native-ui"),

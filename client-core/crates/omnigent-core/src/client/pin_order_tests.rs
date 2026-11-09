@@ -177,3 +177,39 @@ fn moving_a_pin_writes_its_new_key_and_pins_an_unpinned_session_first() {
         ]
     );
 }
+
+#[test]
+fn every_write_is_finite_whatever_keys_the_server_sent() {
+    let hostile = [
+        Some(f64::INFINITY),
+        Some(f64::NEG_INFINITY),
+        Some(f64::NAN),
+        Some(f64::MAX),
+        Some(f64::MIN),
+        Some(-1e308),
+        Some(0.0),
+        None,
+    ];
+    for first in hostile {
+        for second in hostile {
+            for third in hostile {
+                let rows = pins(&[first, second, third]);
+                for (from, to) in [
+                    ("conv_0", "conv_1"),
+                    ("conv_0", "conv_2"),
+                    ("conv_2", "conv_0"),
+                    ("conv_2", "conv_1"),
+                    ("loose", "conv_0"),
+                    ("loose", "conv_2"),
+                ] {
+                    for write in pin_order_writes(&rows, from, to, u64::MAX) {
+                        assert!(
+                            PinStamp::new(write.key).is_some(),
+                            "{from} to {to} over {first:?} {second:?} {third:?}: {write:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
