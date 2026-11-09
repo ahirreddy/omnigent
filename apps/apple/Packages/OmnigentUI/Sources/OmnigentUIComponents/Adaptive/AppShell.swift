@@ -106,8 +106,13 @@ enum SidebarLaunchState: String {
   case collapsed
   case peek
 
-  static let current = UserDefaults.standard.string(forKey: "OmnigentSidebar")
-    .flatMap(Self.init(rawValue:))
+  static let defaultsKey = "OmnigentSidebar"
+  static let current = read(.standard)
+
+  /// How the launch arguments in `defaults` ask the sidebar to start.
+  static func read(_ defaults: UserDefaults) -> Self? {
+    defaults.string(forKey: defaultsKey).flatMap(Self.init(rawValue:))
+  }
 }
 
 /// The shell's column sizes.
@@ -173,16 +178,10 @@ private struct TitlebarTabStrip: View {
     .frame(width: stripWidth)
   }
 
-  /// Toolbar items take their ideal width, so the strip is given the detail column's width less
-  /// what sits around it: the traffic lights and sidebar toggle when the sidebar is hidden, and
-  /// the screen's trailing items (as many as it reports, else room for all of them).
   private var stripWidth: CGFloat {
-    let leading = isSidebarHidden ? TitlebarMetrics.collapsedLeading : 0
-    let trailing =
-      trailingItems.map { TitlebarMetrics.trailingWidth(items: $0) }
-      ?? TitlebarMetrics.trailingReserve
-    let width = detailWidth.value - leading - trailing - TitlebarMetrics.newTabControls
-    return max(TitlebarMetrics.minimumStrip, width.rounded(.down))
+    TitlebarMetrics.stripWidth(
+      detailWidth: detailWidth.value, isSidebarHidden: isSidebarHidden,
+      trailingItems: trailingItems)
   }
 }
 
@@ -204,6 +203,23 @@ enum TitlebarMetrics {
   static let minimumStrip: CGFloat = 220
   /// New Tab and the overview menu, beside the trailing items.
   static let newTabControls: CGFloat = 64
+
+  /// Toolbar items take their ideal width, so the strip is given the detail column's width less
+  /// what sits around it: the traffic lights and sidebar toggle when the sidebar is hidden, and
+  /// the screen's trailing items (as many as it reports, else room for all of them).
+  /// - Parameters:
+  ///   - detailWidth: The detail column's width.
+  ///   - isSidebarHidden: The sidebar is hidden.
+  ///   - trailingItems: The screen's trailing button widths, if it reports them.
+  /// - Returns: The strip's width.
+  static func stripWidth(detailWidth: CGFloat, isSidebarHidden: Bool, trailingItems: Int?)
+    -> CGFloat
+  {
+    let leading = isSidebarHidden ? collapsedLeading : 0
+    let trailing = trailingItems.map { trailingWidth(items: $0) } ?? trailingReserve
+    let width = detailWidth - leading - trailing - newTabControls
+    return max(minimumStrip, width.rounded(.down))
+  }
 
   /// Room for `items` trailing toolbar buttons and the toolbar's margins.
   /// - Parameter items: Button widths (a viewer stack counts as two).

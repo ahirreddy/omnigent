@@ -182,57 +182,35 @@ public struct TabStrip: View {
     #endif
   }
 
-  /// Live reorder: the tab swaps with a neighbour once it is dragged past half that
-  /// neighbour's width. Below the strip it previews the content's drop targets.
+  /// Live reorder and, below the strip, a preview of the content's drop targets.
   private func dragChanged(
     _ value: DragGesture.Value, tab: TabItemState, group: [TabItemState],
     widthOf: (TabItemState) -> CGFloat
   ) {
     var current = drag ?? TabDrag(id: tab.id)
-    let delta = value.translation.width - current.shift
-    let below = value.translation.height > TabDrag.tearDistance
-    if !below, let index = group.firstIndex(where: { $0.id == tab.id }) {
-      if index + 1 < group.count, Self.canSwap(tab, with: group[index + 1], forward: true),
-        case let step = widthOf(group[index + 1]) + TabMetrics.spacing, delta > step / 2
-      {
-        move(tab.id, besides: group[index + 1].id)
-        current.shift += step
-      } else if index > 0, Self.canSwap(tab, with: group[index - 1], forward: false),
-        case let step = widthOf(group[index - 1]) + TabMetrics.spacing, delta < -step / 2
-      {
-        move(tab.id, besides: group[index - 1].id)
-        current.shift -= step
-      }
-    }
-    current.offset = value.translation.width - current.shift
-    current.lift = value.translation.height
-    tracker?.update(id: tab.id, pane: tab.pane, location: below ? value.location : nil)
-    let dropsInPane = actions.showInPane != nil && tracker?.target != nil
-    current.isTearing =
-      actions.moveToNewWindow != nil && tab.isClosable && below && !dropsInPane
+    let neighbour = current.follow(
+      TabDrag.Pointer(translation: value.translation, location: value.location), tab: tab,
+      group: group, widthOf: widthOf,
+      drops: TabDrag.Drops(
+        tracker: tracker, canShowInPane: actions.showInPane != nil,
+        canTear: actions.moveToNewWindow != nil))
+    if let neighbour { move(tab.id, besides: neighbour) }
     drag = current
   }
 
-  /// A release onto a content edge shows the tab in that pane, onto the other section moves it
-  /// there, and well below the strip elsewhere moves it to a new window.
   private func dragEnded(_ value: DragGesture.Value, tab: TabItemState) {
-    let tearing = drag?.isTearing == true
-    let target = tracker?.target
+    let otherSection = tab.pane.flatMap { sectionFrames[$0.other] }
+    let release = TabDragRelease(
+      target: tracker?.target, isTearing: drag?.isTearing == true,
+      canShowInPane: actions.showInPane != nil, isSplit: state.split != nil, pane: tab.pane,
+      isOverOtherSection: otherSection?.contains(value.location) == true)
     tracker?.end()
     withAnimation(reduceMotion ? nil : Theme.Motion.feedback) { drag = nil }
-    if let showInPane = actions.showInPane {
-      if let target {
-        showInPane(tab.id, target)
-        return
-      }
-      if state.split != nil, let pane = tab.pane,
-        sectionFrames[pane.other]?.contains(value.location) == true
-      {
-        showInPane(tab.id, pane.other)
-        return
-      }
+    switch release {
+    case .show(let pane): actions.showInPane?(tab.id, pane)
+    case .newWindow: actions.moveToNewWindow?(tab.id)
+    case .stay: break
     }
-    if tearing { actions.moveToNewWindow?(tab.id) }
   }
 
   private func move(_ id: String, besides neighbour: String) {
@@ -252,14 +230,104 @@ struct TabDrag: Equatable {
   var offset: CGFloat = 0
   var lift: CGFloat = 0
   var isTearing = false
+
+  /// Where the pointer is.
+  struct Pointer {
+    /// The drag so far.
+    var translation: CGSize
+    /// The pointer, global.
+    var location: CGPoint
+  }
+
+  /// Where the tab can land outside the strip.
+  struct Drops {
+    /// The content's view of the drag.
+    var tracker: TabDragTracker?
+    /// A release on the content can show the tab in a pane.
+    var canShowInPane: Bool
+    /// A release below the strip can move the tab to a new window.
+    var canTear: Bool
+  }
+
+  /// Follows the pointer. The tab swaps with a neighbour once it is dragged past half that
+  /// neighbour's width; below the strip it stops swapping and reports where it is to the tracker.
+  /// - Parameters:
+  ///   - pointer: Where the pointer is.
+  ///   - tab: The dragged tab.
+  ///   - group: The tabs it can swap with, including itself.
+  ///   - widthOf: A tab's width.
+  ///   - drops: Where the tab can land outside the strip.
+  /// - Returns: The neighbour to swap with.
+  mutating func follow(
+    _ pointer: Pointer, tab: TabItemState, group: [TabItemState],
+    widthOf: (TabItemState) -> CGFloat, drops: Drops
+  ) -> String? {
+    let delta = pointer.translation.width - shift
+    let isBelow = pointer.translation.height > Self.tearDistance
+    var neighbour: String?
+    if !isBelow, let index = group.firstIndex(where: { $0.id == tab.id }) {
+      if index + 1 < group.count, TabStrip.canSwap(tab, with: group[index + 1], forward: true),
+        case let step = widthOf(group[index + 1]) + TabMetrics.spacing, delta > step / 2
+      {
+        neighbour = group[index + 1].id
+        shift += step
+      } else if index > 0, TabStrip.canSwap(tab, with: group[index - 1], forward: false),
+        case let step = widthOf(group[index - 1]) + TabMetrics.spacing, delta < -step / 2
+      {
+        neighbour = group[index - 1].id
+        shift -= step
+      }
+    }
+    offset = pointer.translation.width - shift
+    lift = pointer.translation.height
+    drops.tracker?.update(id: tab.id, pane: tab.pane, location: isBelow ? pointer.location : nil)
+    let dropsInPane = drops.canShowInPane && drops.tracker?.target != nil
+    isTearing = drops.canTear && tab.isClosable && isBelow && !dropsInPane
+    return neighbour
+  }
+}
+
+/// What releasing a dragged tab does.
+enum TabDragRelease: Equatable {
+  case show(TabPane)
+  case newWindow
+  case stay
+
+  /// A release onto a content edge shows the tab in that pane, onto the other section moves it
+  /// there, and well below the strip elsewhere moves it to a new window.
+  /// - Parameters:
+  ///   - target: The content edge under the pointer.
+  ///   - isTearing: The tab is torn off the strip.
+  ///   - canShowInPane: The window can show a tab in a pane.
+  ///   - isSplit: The window is split.
+  ///   - pane: The tab's pane.
+  ///   - isOverOtherSection: The pointer is over the other pane's strip section.
+  init(
+    target: TabPane?, isTearing: Bool, canShowInPane: Bool, isSplit: Bool, pane: TabPane?,
+    isOverOtherSection: Bool
+  ) {
+    if canShowInPane, let target {
+      self = .show(target)
+    } else if canShowInPane, isSplit, let pane, isOverOtherSection {
+      self = .show(pane.other)
+    } else {
+      self = isTearing ? .newWindow : .stay
+    }
+  }
 }
 
 #if os(macOS)
   /// What a double-click on the titlebar does, from the user's Desktop & Dock setting.
   enum TitlebarDoubleClick {
     @MainActor static func perform() {
-      guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
-      switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+      perform(
+        on: NSApp.keyWindow ?? NSApp.mainWindow,
+        setting: UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick"))
+    }
+
+    @MainActor static func perform(on window: NSWindow?, setting: String?) {
+      guard let window else { return }
+      switch setting {
       case "Minimize": window.performMiniaturize(nil)
       case "None": break
       default: window.performZoom(nil)

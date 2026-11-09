@@ -147,15 +147,32 @@ struct TabItemView: View {
   }
 
   private var help: String {
+    Self.help(tab, liveStatus: isSelected ? statusDetails?.detail(of: tab.id) : nil)
+  }
+
+  /// The tooltip: title, subtitle and status. The selected tab carries its session's live status
+  /// line, as the titlebar has none of its own.
+  /// - Parameters:
+  ///   - tab: The tab.
+  ///   - liveStatus: The session's status line, when the tab is selected.
+  /// - Returns: The text.
+  static func help(_ tab: TabItemState, liveStatus: String?) -> String {
     var parts = [tab.displayTitle]
     if let subtitle = tab.subtitle { parts.append(subtitle) }
-    // The selected tab carries its session's status line: the titlebar has none of its own.
-    let live = isSelected ? statusDetails?.detail(of: tab.id) : nil
-    if let status = tab.statusDetail ?? live ?? tab.status.label { parts.append(status) }
+    if let status = tab.statusDetail ?? liveStatus ?? tab.status.label { parts.append(status) }
     return parts.joined(separator: " \u{00B7} ")
   }
 
   private var accessibilityValue: String {
+    Self.accessibilityValue(tab, isVisibleInOtherPane: isVisibleInOtherPane)
+  }
+
+  /// What VoiceOver reads after the title.
+  /// - Parameters:
+  ///   - tab: The tab.
+  ///   - isVisibleInOtherPane: The split window's other pane shows it.
+  /// - Returns: The text.
+  static func accessibilityValue(_ tab: TabItemState, isVisibleInOtherPane: Bool) -> String {
     var parts = [tab.kind.label]
     if let pane = tab.pane { parts.append("\(pane.label) pane") }
     if isVisibleInOtherPane { parts.append("Shown") }
@@ -314,17 +331,21 @@ extension View {
   ///   - width: The view's width.
   ///   - height: The view's height.
   /// - Returns: The view with the larger hit area.
-  func touchTarget(width: CGFloat, height: CGFloat) -> some View {
-    modifier(TouchTarget(width: width, height: height))
+  @ViewBuilder func touchTarget(width: CGFloat, height: CGFloat) -> some View {
+    #if os(iOS)
+      modifier(TouchTarget(width: width, height: height))
+    #else
+      self
+    #endif
   }
 }
 
-private struct TouchTarget: ViewModifier {
-  let width: CGFloat
-  let height: CGFloat
+#if os(iOS)
+  private struct TouchTarget: ViewModifier {
+    let width: CGFloat
+    let height: CGFloat
 
-  func body(content: Content) -> some View {
-    #if os(iOS)
+    func body(content: Content) -> some View {
       let horizontal = max(0, (TabMetrics.touchTarget - width) / 2)
       let vertical = max(0, (TabMetrics.touchTarget - height) / 2)
       content
@@ -333,8 +354,6 @@ private struct TouchTarget: ViewModifier {
         .contentShape(Rectangle())
         .padding(.horizontal, -horizontal)
         .padding(.vertical, -vertical)
-    #else
-      content
-    #endif
+    }
   }
-}
+#endif

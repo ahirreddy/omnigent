@@ -109,71 +109,104 @@ public struct OmnigentTabCommands: Commands {
   /// The menus.
   public var body: some Commands {
     CommandGroup(after: .newItem) {
-      Button("New Tab") { actions?.newTab() }
-        .keyboardShortcut(AppShortcuts.newTab)
-        .disabled(actions == nil)
+      NewTabMenuItem(actions: actions)
     }
     CommandGroup(replacing: .saveItem) {
-      Button("Close Tab") {
-        if let close = actions?.closeTab { close() } else { closeWindow?() }
-      }
-      .keyboardShortcut(AppShortcuts.closeTab)
-      .disabled(actions?.closeTab == nil && (closeWindow == nil || (actions?.count ?? 0) > 0))
-      if let closeWindow {
-        Button("Close Window", action: closeWindow)
-          .keyboardShortcut(AppShortcuts.closeWindow)
-      }
+      CloseMenuItems(actions: actions, closeWindow: closeWindow)
     }
     CommandMenu("Tab") {
-      Button("Reopen Closed Tab") { actions?.reopenClosedTab?() }
-        .keyboardShortcut(AppShortcuts.reopenClosedTab)
-        .disabled(actions?.reopenClosedTab == nil)
-      Divider()
-      Button("Show Next Tab") { actions?.selectNextTab?() }
-        .keyboardShortcut(AppShortcuts.nextTab)
-        .disabled(actions?.selectNextTab == nil)
-      Button("Show Previous Tab") { actions?.selectPreviousTab?() }
-        .keyboardShortcut(AppShortcuts.previousTab)
-        .disabled(actions?.selectPreviousTab == nil)
-      Button("Show All Tabs") { actions?.showAllTabs?() }
-        .keyboardShortcut(AppShortcuts.showAllTabs)
-        .disabled(actions?.showAllTabs == nil)
-      Divider()
-      ForEach(0..<9, id: \.self) { index in
-        Button(index == 8 ? "Select Last Tab" : "Select Tab \(index + 1)") {
-          actions?.selectTab(index)
-        }
-        .keyboardShortcut(AppShortcuts.selectTab(index))
-        .disabled((actions?.count ?? 0) <= (index == 8 ? 0 : index))
-      }
-      Divider()
-      Button("Show Terminal") { actions?.toggleTerminal?() }
-        .keyboardShortcut(AppShortcuts.showTerminal)
-        .disabled(actions?.toggleTerminal == nil)
-      Button("New Shell") { actions?.newShell?() }
-        .keyboardShortcut(AppShortcuts.newShell)
-        .disabled(actions?.newShell == nil)
-      Button("Pin or Unpin Tab") { actions?.togglePinned?() }
-        .disabled(actions?.togglePinned == nil)
-      Button("Duplicate Tab") { actions?.duplicateTab?() }
-        .disabled(actions?.duplicateTab == nil)
-      // A session's tabs stay together; another window shows a session, not a tab.
-      if let move = actions?.moveTabToNewWindow {
-        Button("Move Tab to New Window", action: move)
-      }
-      if actions?.supportsSplit == true {
-        Button("Move Tab to Other Pane") { actions?.moveTabToOtherPane?() }
-          .disabled(actions?.moveTabToOtherPane == nil)
-      }
+      TabMenuItems(actions: actions)
     }
     CommandGroup(after: .sidebar) {
       if actions?.supportsSplit == true {
-        splitItems
+        SplitMenuItems(actions: actions)
       }
     }
   }
+}
 
-  @ViewBuilder private var splitItems: some View {
+/// File > New Tab.
+struct NewTabMenuItem: View {
+  let actions: TabCommandActions?
+
+  var body: some View {
+    Button("New Tab") { actions?.newTab() }
+      .keyboardShortcut(AppShortcuts.newTab)
+      .disabled(actions == nil)
+  }
+}
+
+/// File > Close Tab, and Close Window where windows close.
+struct CloseMenuItems: View {
+  let actions: TabCommandActions?
+  let closeWindow: (@MainActor () -> Void)?
+
+  var body: some View {
+    Button("Close Tab") {
+      if let close = actions?.closeTab { close() } else { closeWindow?() }
+    }
+    .keyboardShortcut(AppShortcuts.closeTab)
+    .disabled(actions?.closeTab == nil && (closeWindow == nil || (actions?.count ?? 0) > 0))
+    if let closeWindow {
+      Button("Close Window", action: closeWindow)
+        .keyboardShortcut(AppShortcuts.closeWindow)
+    }
+  }
+}
+
+/// The Tab menu.
+struct TabMenuItems: View {
+  let actions: TabCommandActions?
+
+  var body: some View {
+    Button("Reopen Closed Tab") { actions?.reopenClosedTab?() }
+      .keyboardShortcut(AppShortcuts.reopenClosedTab)
+      .disabled(actions?.reopenClosedTab == nil)
+    Divider()
+    Button("Show Next Tab") { actions?.selectNextTab?() }
+      .keyboardShortcut(AppShortcuts.nextTab)
+      .disabled(actions?.selectNextTab == nil)
+    Button("Show Previous Tab") { actions?.selectPreviousTab?() }
+      .keyboardShortcut(AppShortcuts.previousTab)
+      .disabled(actions?.selectPreviousTab == nil)
+    Button("Show All Tabs") { actions?.showAllTabs?() }
+      .keyboardShortcut(AppShortcuts.showAllTabs)
+      .disabled(actions?.showAllTabs == nil)
+    Divider()
+    ForEach(0..<9, id: \.self) { index in
+      Button(index == 8 ? "Select Last Tab" : "Select Tab \(index + 1)") {
+        actions?.selectTab(index)
+      }
+      .keyboardShortcut(AppShortcuts.selectTab(index))
+      .disabled((actions?.count ?? 0) <= (index == 8 ? 0 : index))
+    }
+    Divider()
+    Button("Show Terminal") { actions?.toggleTerminal?() }
+      .keyboardShortcut(AppShortcuts.showTerminal)
+      .disabled(actions?.toggleTerminal == nil)
+    Button("New Shell") { actions?.newShell?() }
+      .keyboardShortcut(AppShortcuts.newShell)
+      .disabled(actions?.newShell == nil)
+    Button("Pin or Unpin Tab") { actions?.togglePinned?() }
+      .disabled(actions?.togglePinned == nil)
+    Button("Duplicate Tab") { actions?.duplicateTab?() }
+      .disabled(actions?.duplicateTab == nil)
+    // A session's tabs stay together; another window shows a session, not a tab.
+    if let move = actions?.moveTabToNewWindow {
+      Button("Move Tab to New Window", action: move)
+    }
+    if actions?.supportsSplit == true {
+      Button("Move Tab to Other Pane") { actions?.moveTabToOtherPane?() }
+        .disabled(actions?.moveTabToOtherPane == nil)
+    }
+  }
+}
+
+/// View > the split view and pane focus.
+struct SplitMenuItems: View {
+  let actions: TabCommandActions?
+
+  var body: some View {
     Button(actions?.isSplit == true ? "Hide Split View" : "Show Split View") {
       actions?.toggleSplit?()
     }
