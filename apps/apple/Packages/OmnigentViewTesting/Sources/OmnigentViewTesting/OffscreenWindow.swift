@@ -8,12 +8,16 @@
     case eventUnavailable
     /// No view or menu item has this name.
     case notFound(String)
+    /// A plain click opened a menu that stayed open, which would have held the test forever.
+    case unexpectedMenu(String)
 
     /// A sentence saying what failed.
     public var description: String {
       switch self {
       case .eventUnavailable: "AppKit could not create the event."
       case .notFound(let name): "Nothing is named \(name)."
+      case .unexpectedMenu(let title):
+        "The click opened the menu \"\(title)\" and it stayed open; use openMenu for menus."
       }
     }
   }
@@ -100,6 +104,37 @@
     public func click(
       _ point: CGPoint, clickCount: Int = 1, modifiers: NSEvent.ModifierFlags = []
     ) throws {
+      // A menu that closes on its own is fine; one still tracking would hold the run forever.
+      let stuck = try clickClosingMenus(
+        point, clickCount: clickCount, modifiers: modifiers, after: Self.stuckMenuLimit)
+      if let stuck, stuck.wasClosed { throw OffscreenWindowError.unexpectedMenu(stuck.menu.title) }
+    }
+
+    /// How long a plain click's menu may track before the click closes it and fails.
+    static var stuckMenuLimit: TimeInterval { 5 }
+
+    /// Clicks, closing a menu the click opens if it is still tracking `delay` after it opened.
+    /// - Returns: The menu the click opened, if any, and whether this closed it.
+    private func clickClosingMenus(
+      _ point: CGPoint, clickCount: Int, modifiers: NSEvent.ModifierFlags, after delay: TimeInterval
+    ) throws -> (menu: NSMenu, wasClosed: Bool)? {
+      nonisolated(unsafe) var opened: NSMenu?
+      nonisolated(unsafe) var wasClosed = false
+      let center = NotificationCenter.default
+      let observer = center.addObserver(
+        forName: NSMenu.didBeginTrackingNotification, object: nil, queue: nil
+      ) { note in
+        let menu = note.object as? NSMenu
+        unsafe opened = menu
+        // Canceling before the tracking loop starts would be lost.
+        let close = Timer(timeInterval: delay, repeats: false) { _ in
+          guard let menu, unsafe opened === menu else { return }
+          unsafe wasClosed = true
+          menu.cancelTrackingWithoutAnimation()
+        }
+        RunLoop.main.add(close, forMode: .common)
+      }
+      defer { center.removeObserver(observer) }
       let down = try mouseEvent(.leftMouseDown, point, clickCount, modifiers)
       let mouseUp = try mouseEvent(.leftMouseUp, point, clickCount, modifiers, delay: 0.03)
       // An AppKit control tracks the mouse inside its mouse down until it sees the up. Posting
@@ -124,6 +159,8 @@
       // button's tracking would end on it, and that button's action would never run.
       NSApp.discardEvents(matching: .leftMouseUp, before: nil)
       settle()
+      guard let menu = unsafe opened else { return nil }
+      return (menu, unsafe wasClosed)
     }
 
     /// Clicks the middle of a view found in the window.
@@ -272,23 +309,11 @@
     /// - Returns: The menu; pass it to `choose(_:in:)` to run an item.
     /// - Throws: `OffscreenWindowError` when the click opened no menu.
     public func openMenu(_ point: CGPoint) throws -> NSMenu {
-      nonisolated(unsafe) var opened: NSMenu?
-      let center = NotificationCenter.default
-      let observer = center.addObserver(
-        forName: NSMenu.didBeginTrackingNotification, object: nil, queue: nil
-      ) { note in
-        let menu = note.object as? NSMenu
-        unsafe opened = menu
-        // Canceling before the tracking loop starts would be lost.
-        let close = Timer(timeInterval: 0.05, repeats: false) { _ in
-          menu?.cancelTrackingWithoutAnimation()
-        }
-        RunLoop.main.add(close, forMode: .common)
+      guard let opened = try clickClosingMenus(point, clickCount: 1, modifiers: [], after: 0.05)
+      else {
+        throw OffscreenWindowError.notFound("a menu")
       }
-      defer { center.removeObserver(observer) }
-      try click(point)
-      guard let menu = unsafe opened else { throw OffscreenWindowError.notFound("a menu") }
-      return menu
+      return opened.menu
     }
 
     /// The menu a right click at a point would open, without opening it.

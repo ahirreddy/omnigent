@@ -162,6 +162,18 @@
       #expect(menu.items.map(\.title).contains("Item"))
     }
 
+    @Test("a plain click whose menu stays open closes it and fails, rather than hanging the run")
+    func plainClickOnAMenuFails() throws {
+      let screen = OffscreenWindow(
+        StuckMenuView().frame(width: 200, height: 100), width: 200, height: 100)
+      defer { screen.close() }
+      let started = Date()
+      #expect(throws: OffscreenWindowError.unexpectedMenu("Stuck")) {
+        try screen.click(CGPoint(x: 100, y: 50))
+      }
+      #expect(Date().timeIntervalSince(started) < 15)
+    }
+
     @Test("a click reaches a destructive button of any style")
     func destructiveButtons() throws {
       let log = Log()
@@ -249,5 +261,21 @@
       try screen.endHover()
       #expect(log.hovered == [true, false])
     }
+  }
+#endif
+
+#if os(macOS)
+  /// Opens a context menu on a left click, which tracks until something closes it.
+  private struct StuckMenuView: NSViewRepresentable {
+    final class MenuView: NSView {
+      override func mouseDown(with event: NSEvent) {
+        let menu = NSMenu(title: "Stuck")
+        menu.addItem(withTitle: "Item", action: nil, keyEquivalent: "")
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+      }
+    }
+
+    func makeNSView(context: Context) -> MenuView { MenuView() }
+    func updateNSView(_ view: MenuView, context: Context) {}
   }
 #endif
