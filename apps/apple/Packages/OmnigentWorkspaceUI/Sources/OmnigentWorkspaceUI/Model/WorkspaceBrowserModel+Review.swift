@@ -99,6 +99,15 @@ extension WorkspaceBrowserModel {
   /// - Parameter save: Save the edits rather than discard them.
   public func finishPendingClose(saving save: Bool) async {
     guard let document = pendingClose else { return }
+    await finishClose(of: document, saving: save)
+  }
+
+  /// Finishes closing `document` after the question was answered. The answer's button passes the
+  /// document, since dismissing the question clears `pendingClose` before its task runs.
+  /// - Parameters:
+  ///   - document: The document the question was about.
+  ///   - save: Whether to save its edits first.
+  public func finishClose(of document: WorkspaceDocument, saving save: Bool) async {
     pendingClose = nil
     guard let editor = editors[document.path] else {
       await close(document)

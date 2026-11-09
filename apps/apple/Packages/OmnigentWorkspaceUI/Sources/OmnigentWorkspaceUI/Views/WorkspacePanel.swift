@@ -80,10 +80,10 @@ public struct WorkspaceDocumentView: View {
     document
       .alert(
         closeTitle, isPresented: closeConfirmation, presenting: model.pendingClose
-      ) { _ in
-        Button("Save") { Task { await model.finishPendingClose(saving: true) } }
+      ) { document in
+        Button("Save") { Task { await model.finishClose(of: document, saving: true) } }
         Button("Don't Save", role: .destructive) {
-          Task { await model.finishPendingClose(saving: false) }
+          Task { await model.finishClose(of: document, saving: false) }
         }
         Button("Cancel", role: .cancel) { model.pendingClose = nil }
       } message: { _ in
