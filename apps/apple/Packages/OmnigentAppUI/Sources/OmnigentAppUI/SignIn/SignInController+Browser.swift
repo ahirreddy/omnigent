@@ -188,7 +188,24 @@ extension SignInController {
       }
       return
     }
-    _ = await openInBrowser(login.loginUrl)
+    guard await openInBrowser(login.loginUrl) else { return }
+    method = nil
+    await finishTicketSignIn()
+  }
+
+  /// The core polls the ticket itself and reports only through the phase, so a sign-in finished
+  /// that way still has to be remembered and handed to the window.
+  private func finishTicketSignIn() async {
+    while store.browserLogin != nil {
+      do {
+        try await Task.sleep(for: .milliseconds(100))
+      } catch {
+        return
+      }
+    }
+    if case .connected(let server) = store.phase {
+      signedIn(server, issuesBefore: store.issues.count)
+    }
   }
 
   private func begin(redirectURI: String) -> OidcChallenge? {
