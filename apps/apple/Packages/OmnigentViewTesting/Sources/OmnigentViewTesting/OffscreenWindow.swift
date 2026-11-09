@@ -202,6 +202,10 @@
     /// The frames of the controls in reading order, top to bottom and then left to right: every
     /// button of any style, toggle, menu and field, including those inside a scroll view.
     public var controlFrames: [CGRect] {
+      // SwiftUI rebuilds its focus proxies only with the key view loop, so a control that just
+      // became enabled or went away would otherwise be listed wrongly.
+      activeWindow.recalculateKeyViewLoop()
+      settle(0.02)
       let root = activeRoot
       // A lazy stack keeps the controls of a row it dropped, hidden, until it needs them again.
       let shown = allViews.filter { Self.isControl($0) && !$0.isHiddenOrHasHiddenAncestor }
