@@ -39,6 +39,28 @@ struct CoreDebugViewTests {
     #expect(CoreDebugView.describe(LinkState.stopped) == "stopped")
   }
 
+  @Test func aFailedPhaseAndLinkSayWhy() {
+    let error = CoreError.InvalidState(message: "broken")
+    #expect(CoreDebugView.describe(.failed(serverUrl: "u", error: error)).hasPrefix("failed u: "))
+    #expect(CoreDebugView.describe(LinkState.failed(error: error)).hasPrefix("failed: "))
+    let reconnecting = LinkState.reconnecting(reason: error, failures: 3, delayMs: 500)
+    #expect(CoreDebugView.describe(reconnecting).contains("after 3 failures"))
+  }
+
+  /// `-OmnigentCoreDebugSession` preselects a session; its rows open in the core.
+  @Test func aPreselectedSessionOpensItsConversation() async throws {
+    let store = try await connectedStore()
+    let key = "OmnigentCoreDebugSession"
+    UserDefaults.standard.set("demo-notes", forKey: key)
+    defer { UserDefaults.standard.removeObject(forKey: key) }
+    let screen = OffscreenWindow(CoreDebugView().environment(store), width: 720, height: 600)
+    defer { screen.close() }
+    for _ in 0..<200 where store.conversations["demo-notes"] == nil {
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(store.conversations["demo-notes"] != nil)
+  }
+
   @Test func theInspectorShowsTheConnectedCoreAndItsSessions() async throws {
     let store = try await connectedStore()
     #expect(store.isSignedIn)

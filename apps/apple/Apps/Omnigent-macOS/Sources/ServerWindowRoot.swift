@@ -101,6 +101,17 @@ struct ServerWindowRoot: View {
   private func start() {
     guard session == nil else { return }
     let session = services.makeServerSession()
+    configure(session)
+    self.session = session
+    if Self.resumesLocalServer(
+      boundTo: id.serverURL, localServerIsRunning: desktop.localServer.server.endpoint != nil)
+    {
+      session.signIn.resumeLocalServer()
+    }
+  }
+
+  /// Binds a new session's sign-in to this window and the app's services.
+  func configure(_ session: ServerSession) {
     session.signIn.directory = services.serverDirectory()
     session.signIn.localSetup = LocalServerSetup(
       manager: desktop.localServer, showLogs: { openWindow(id: LocalServerLogsWindow.id) })
@@ -133,12 +144,6 @@ struct ServerWindowRoot: View {
       }
       Task { await services.didConnect(to: url) }
     }
-    self.session = session
-    if Self.resumesLocalServer(
-      boundTo: id.serverURL, localServerIsRunning: desktop.localServer.server.endpoint != nil)
-    {
-      session.signIn.resumeLocalServer()
-    }
   }
 
   /// Quitting stopped the server this Mac runs for itself, so a window opened on the connect
@@ -163,7 +168,7 @@ struct ServerWindowRoot: View {
 
   /// The sidebar's server switcher: known servers, switching this window in place, connecting
   /// another server (the server picker) and Settings.
-  private func serverSwitching(_ session: ServerSession) -> ServerSwitching {
+  func serverSwitching(_ session: ServerSession) -> ServerSwitching {
     ServerSwitching(
       servers: services.knownServers(), organizationServers: services.organizationServers(),
       switchTo: { url in
@@ -184,7 +189,7 @@ struct ServerWindowRoot: View {
       })
   }
 
-  private func actions(_ session: ServerSession) -> ServerWindowActions {
+  func actions(_ session: ServerSession) -> ServerWindowActions {
     let bound = id.serverURL != nil
     let signInActions = session.signIn.actions
     return ServerWindowActions(

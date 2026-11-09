@@ -1,4 +1,5 @@
 import OmnigentAppUI
+import OmnigentAuthUI
 import OmnigentDesktop
 import OmnigentStores
 import OmnigentViewTesting
@@ -34,11 +35,13 @@ struct ServerWindowRootTests {
 
   private let demoURL = URL(string: ServerSession.demoServerURL)
 
+  /// Awaits rather than spinning the run loop: a test on the main actor must give it up for
+  /// the window's tasks to run in the hosted process.
   private func waitFor(
-    _ screen: OffscreenWindow<Host>, _ condition: () -> Bool, seconds: Double = 5
-  ) -> Bool {
+    _ condition: () -> Bool, seconds: Double = 10
+  ) async throws -> Bool {
     let deadline = Date(timeIntervalSinceNow: seconds)
-    while !condition(), Date() < deadline { screen.settle(0.05) }
+    while !condition(), Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
     return condition()
   }
 
@@ -55,56 +58,56 @@ struct ServerWindowRootTests {
     try TestScratch(launchArguments: ["-OmnigentDemo"])
   }
 
-  @Test func aWindowOnTheDemoServerBecomesReady() throws {
+  @Test func aWindowOnTheDemoServerBecomesReady() async throws {
     let scratch = try demoScratch()
     defer { scratch.remove() }
     let (screen, binding) = open(on: demoURL, scratch: scratch)
     defer { screen.close() }
     let registry = scratch.desktop.registry
-    #expect(waitFor(screen) { registry.entry(binding.id.instance)?.isReady == true })
+    #expect(try await waitFor { registry.entry(binding.id.instance)?.isReady == true })
     #expect(registry.entry(binding.id.instance)?.id.serverURL == demoURL)
   }
 
-  @Test func aLinkToAConversationShowsIt() throws {
+  @Test func aLinkToAConversationShowsIt() async throws {
     let scratch = try demoScratch()
     defer { scratch.remove() }
     let (screen, binding) = open(on: demoURL, scratch: scratch)
     defer { screen.close() }
     let registry = scratch.desktop.registry
     let instance = binding.id.instance
-    #expect(waitFor(screen) { registry.entry(instance)?.isReady == true })
+    #expect(try await waitFor { registry.entry(instance)?.isReady == true })
 
     registry.deliver(.conversation(sessionID: "demo-notes"), to: instance)
-    #expect(waitFor(screen) { registry.entry(instance)?.viewedSessionID == "demo-notes" })
+    #expect(try await waitFor { registry.entry(instance)?.viewedSessionID == "demo-notes" })
 
     registry.deliver(.message(sessionID: "demo-design", messageID: "m1"), to: instance)
-    #expect(waitFor(screen) { registry.entry(instance)?.viewedSessionID == "demo-design" })
+    #expect(try await waitFor { registry.entry(instance)?.viewedSessionID == "demo-design" })
 
     registry.deliver(.home, to: instance)
-    #expect(waitFor(screen) { registry.entry(instance)?.viewedSessionID == nil })
+    #expect(try await waitFor { registry.entry(instance)?.viewedSessionID == nil })
   }
 
-  @Test func aWindowWithNoServerShowsTheConnectScreenAndIsNotReady() throws {
+  @Test func aWindowWithNoServerShowsTheConnectScreenAndIsNotReady() async throws {
     let scratch = try demoScratch()
     defer { scratch.remove() }
     let (screen, binding) = open(on: nil, scratch: scratch)
     defer { screen.close() }
-    screen.settle(0.3)
-    #expect(scratch.desktop.registry.entry(binding.id.instance)?.isReady == false)
+    let registry = scratch.desktop.registry
+    #expect(try await waitFor { registry.entry(binding.id.instance) != nil })
+    #expect(registry.entry(binding.id.instance)?.isReady == false)
     #expect(binding.id.serverURL == nil)
     #expect(!screen.controlFrames.isEmpty)
   }
 
   /// Closing a window forgets it, unless the app is quitting.
-  @Test func closingTheWindowLeavesTheRegistry() throws {
+  @Test func closingTheWindowLeavesTheRegistry() async throws {
     let scratch = try demoScratch()
     defer { scratch.remove() }
     let (screen, binding) = open(on: demoURL, scratch: scratch)
     let registry = scratch.desktop.registry
-    #expect(waitFor(screen) { registry.entry(binding.id.instance) != nil })
+    #expect(try await waitFor { registry.entry(binding.id.instance) != nil })
     screen.close()
-    screen.settle(0.2)
-    #expect(registry.entry(binding.id.instance) == nil)
+    #expect(try await waitFor { registry.entry(binding.id.instance) == nil })
   }
 
   @Test func theTitleNamesTheServerNeverItsAddress() throws {
@@ -127,5 +130,150 @@ struct ServerWindowRootTests {
         session, to: #require(URL(string: "https://other.example.com"))))
     #expect(ServerWindowRoot.sameServer(demoURL, URL(string: ServerSession.demoServerURL + "/")))
     #expect(!ServerWindowRoot.sameServer(nil, demoURL))
+  }
+
+  @Test func signingInRecordsTheServer() async throws {
+    let scratch = try demoScratch()
+    defer { scratch.remove() }
+    let (screen, _) = open(on: demoURL, scratch: scratch)
+    defer { screen.close() }
+    let recents = scratch.services.recentServers
+    #expect(try await waitFor { !recents.urls.isEmpty })
+    #expect(
+      recents.urls.map(\.absoluteString).first?.hasPrefix(ServerSession.demoServerURL) == true)
+  }
+
+  @Test func anInviteLinkKeepsTheWindowOnItsServer() async throws {
+    let scratch = try demoScratch()
+    defer { scratch.remove() }
+    let (screen, binding) = open(on: demoURL, scratch: scratch)
+    defer { screen.close() }
+    let registry = scratch.desktop.registry
+    let instance = binding.id.instance
+    #expect(try await waitFor { registry.entry(instance)?.isReady == true })
+    registry.deliver(.register(invite: "code"), to: instance)
+    #expect(try await waitFor { registry.pendingRoute(for: instance) == nil })
+    #expect(binding.id.serverURL == demoURL)
+  }
+}
+
+/// A window's actions and sign-in callbacks, called directly with the session they act on.
+@MainActor
+struct ServerWindowActionsTests {
+  @Observable
+  final class WindowBinding {
+    var id: ServerWindowID
+    init(_ id: ServerWindowID) { self.id = id }
+  }
+
+  private let demoURL = URL(string: ServerSession.demoServerURL)
+  private let otherURL = URL(string: "https://other.example.com")
+
+  private func root(_ binding: WindowBinding, _ scratch: TestScratch) -> ServerWindowRoot {
+    ServerWindowRoot(
+      id: Binding(get: { binding.id }, set: { binding.id = $0 }), services: scratch.services)
+  }
+
+  @Test func anUnboundWindowHasNoServerActions() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let binding = WindowBinding(ServerWindowID(serverURL: nil))
+    let actions = root(binding, scratch).actions(try ServerSession.demo())
+    #expect(actions.newSession == nil)
+    #expect(actions.changeServer == nil)
+    #expect(actions.reconnect == nil)
+    #expect(actions.signOut == nil)
+    #expect(actions.find == nil)
+    #expect(actions.zoom == nil)
+  }
+
+  @Test func changeServerGoesBackToTheConnectScreen() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let binding = WindowBinding(ServerWindowID(serverURL: demoURL))
+    let instance = binding.id.instance
+    let session = try ServerSession.demo()
+    let changeServer = try #require(root(binding, scratch).actions(session).changeServer)
+    changeServer()
+    #expect(binding.id.serverURL == nil)
+    #expect(binding.id.instance == instance, "the window lost its identity")
+  }
+
+  @Test func aSignedInWindowOffersNewSession() async throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let binding = WindowBinding(ServerWindowID(serverURL: demoURL))
+    let session = ServerSession(connection: try await PreviewData.connectedDemoStore())
+    let actions = root(binding, scratch).actions(session)
+    #expect(actions.newSession != nil)
+    #expect(actions.reconnect != nil)
+  }
+
+  @Test func switchingServersRebindsOnlyOnAChange() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let binding = WindowBinding(ServerWindowID(serverURL: demoURL))
+    let session = try ServerSession.demo()
+    let switching = root(binding, scratch).serverSwitching(session)
+    let same = try #require(URL(string: ServerSession.demoServerURL + "/"))
+    let other = try #require(otherURL)
+
+    switching.switchTo(same)
+    #expect(binding.id.serverURL == demoURL)
+    switching.switchTo(other)
+    #expect(binding.id.serverURL == other)
+    switching.addServer()
+    #expect(binding.id.serverURL == nil)
+  }
+
+  @Test func theSwitcherListsKnownServers() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let other = try #require(otherURL)
+    scratch.services.recentServers.record(other)
+    let binding = WindowBinding(ServerWindowID(serverURL: nil))
+    let switching = root(binding, scratch).serverSwitching(try ServerSession.demo())
+    #expect(switching.servers == [other])
+    #expect(switching.organizationServers.isEmpty)
+  }
+
+  @Test func signInFollowsTheWindow() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let binding = WindowBinding(ServerWindowID(serverURL: demoURL))
+    let session = try ServerSession.demo()
+    root(binding, scratch).configure(session)
+    let other = try #require(otherURL)
+
+    session.signIn.onServerChange(other)
+    #expect(binding.id.serverURL == other)
+    let instanceAfterChange = binding.id
+    session.signIn.onServerChange(other)
+    #expect(binding.id == instanceAfterChange)
+    session.signIn.onServerChange(nil)
+    #expect(binding.id.serverURL == nil)
+  }
+
+  @Test func forgettingAServerUpdatesThePicker() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let other = try #require(otherURL)
+    scratch.services.recentServers.record(other)
+    let session = try ServerSession.demo()
+    root(WindowBinding(ServerWindowID(serverURL: nil)), scratch).configure(session)
+    #expect(session.signIn.directory.recentServers == [other.absoluteString])
+
+    session.signIn.forgetServer(other.absoluteString)
+    #expect(scratch.services.recentServers.urls.isEmpty)
+    #expect(session.signIn.directory.recentServers.isEmpty)
+  }
+
+  /// With no CLI config in the private home, this Mac simply has no host id yet.
+  @Test func thisMacHasNoHostIDWithoutACLIConfig() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let session = try ServerSession.demo()
+    root(WindowBinding(ServerWindowID(serverURL: nil)), scratch).configure(session)
+    #expect(session.connection.sessionList.thisMachineHostID() == nil)
   }
 }
