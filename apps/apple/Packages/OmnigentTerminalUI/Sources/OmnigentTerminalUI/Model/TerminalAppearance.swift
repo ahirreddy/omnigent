@@ -148,8 +148,42 @@ public enum GhosttyConfigText {
       "shell-integration = none",
       "link-url = true",
     ]
+    lines += keybindings.map { "keybind = \($0)" }
     return lines.joined(separator: "\n") + "\n"
   }
+
+  /// Only chords the terminal itself acts on. Ghostty's defaults also bind quit, new tab, close,
+  /// splits and more, for an app of its own, which would take them from the app's menus.
+  private static let keybindings = [
+    "clear",
+    "performable:super+c=copy_to_clipboard:mixed",
+    "super+v=paste_from_clipboard",
+    "super+a=select_all",
+    "super+f=start_search",
+    "super+e=search_selection",
+    "performable:super+g=navigate_search:next",
+    "performable:super+shift+g=navigate_search:previous",
+    "performable:escape=end_search",
+    "super+equal=increase_font_size:1",
+    "super+shift+equal=increase_font_size:1",
+    "super+minus=decrease_font_size:1",
+    "super+digit_0=reset_font_size",
+    "super+home=scroll_to_top",
+    "super+end=scroll_to_bottom",
+    "super+page_up=scroll_page_up",
+    "super+page_down=scroll_page_down",
+    "super+arrow_left=text:\\x01",
+    "super+arrow_right=text:\\x05",
+    "super+backspace=text:\\x15",
+    "performable:shift+arrow_left=adjust_selection:left",
+    "performable:shift+arrow_right=adjust_selection:right",
+    "performable:shift+arrow_up=adjust_selection:up",
+    "performable:shift+arrow_down=adjust_selection:down",
+    "performable:shift+page_up=adjust_selection:page_up",
+    "performable:shift+page_down=adjust_selection:page_down",
+    "performable:shift+home=adjust_selection:home",
+    "performable:shift+end=adjust_selection:end",
+  ]
 
   private static func quoted(_ value: String) -> String {
     "\"" + value.replacingOccurrences(of: "\"", with: "") + "\""

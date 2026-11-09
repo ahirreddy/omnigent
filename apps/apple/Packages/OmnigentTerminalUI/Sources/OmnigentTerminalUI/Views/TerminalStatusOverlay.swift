@@ -34,11 +34,25 @@ struct TerminalStatusOverlay: View {
         title: closedTitle(reason), detail: closedDetail(reason), systemImage: "terminal",
         canRetry: true)
     case .failed(let failure):
-      card(
-        title: failure.requiresSignIn ? "Sign in again" : "Terminal connection failed",
-        detail: failure.message, systemImage: "exclamationmark.triangle",
-        canRetry: !failure.requiresSignIn)
+      if Self.shellIsGone(failure.message) {
+        card(
+          title: "This terminal isn't running",
+          detail:
+            "Its shell may have ended when the host restarted. Reattach if it comes back, or "
+            + "close this tab and open a new terminal.",
+          systemImage: "terminal", canRetry: true)
+      } else {
+        card(
+          title: failure.requiresSignIn ? "Sign in again" : "Terminal connection failed",
+          detail: failure.message, systemImage: "exclamationmark.triangle",
+          canRetry: !failure.requiresSignIn)
+      }
     }
+  }
+
+  /// The server reached the host, which had no process to attach to.
+  static func shellIsGone(_ message: String) -> Bool {
+    message.contains("runner attach factory failed")
   }
 
   private func reconnectText(failures: Int, delay: Int, reason: String) -> String {

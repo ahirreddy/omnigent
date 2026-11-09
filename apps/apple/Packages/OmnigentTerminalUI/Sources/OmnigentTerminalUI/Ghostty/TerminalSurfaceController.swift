@@ -212,7 +212,7 @@ public final class TerminalSurfaceController {
     guard let surface = unsafe surface, !bytes.isEmpty else { return }
     bytes.withUnsafeBufferPointer { buffer in
       unsafe buffer.withMemoryRebound(to: CChar.self) { chars in
-        unsafe ghostty_surface_process_output(surface, chars.baseAddress, UInt(chars.count))
+        unsafe runtime.parse(surface, chars)
       }
     }
     view.requestRender()

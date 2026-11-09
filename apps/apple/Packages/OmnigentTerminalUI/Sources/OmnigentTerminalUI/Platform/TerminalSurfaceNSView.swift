@@ -122,18 +122,22 @@
     /// chords before AppKit turns them into menu commands or `doCommand(by:)`.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
       guard event.type == .keyDown, focused,
-        let surface = unsafe controller?.surface,
-        !event.modifierFlags.isDisjoint(with: [.command, .control])
+        !event.modifierFlags.isDisjoint(with: [.command, .control]),
+        isBinding(event)
       else { return false }
+      keyDown(with: event)
+      return true
+    }
+
+    /// Whether Ghostty's configuration binds this key, which leaves all others to the app's menus.
+    func isBinding(_ event: NSEvent) -> Bool {
+      guard let surface = unsafe controller?.surface else { return false }
       var key = unsafe event.ghosttyKeyEvent(GHOSTTY_ACTION_PRESS)
       var flags = ghostty_binding_flags_e(0)
-      let isBinding = (event.ghosttyCharacters ?? "").withCString { pointer in
+      return (event.ghosttyCharacters ?? "").withCString { pointer in
         unsafe key.text = pointer
         return unsafe ghostty_surface_key_is_binding(surface, key, &flags)
       }
-      guard isBinding else { return false }
-      keyDown(with: event)
-      return true
     }
 
     func send(

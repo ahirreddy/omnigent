@@ -38,6 +38,7 @@ public enum GhosttyError: Error, Hashable, Sendable, CustomStringConvertible {
 @MainActor
 @safe
 public final class GhosttyRuntime {
+  private let parser = GhosttyParserThread()
   private static var instance: GhosttyRuntime?
   private static let logger = Logger(subsystem: "ai.omnigent", category: "terminal")
 
@@ -148,6 +149,11 @@ public final class GhosttyRuntime {
   /// Runs libghostty's app-thread work. Called after every wakeup.
   func tick() {
     unsafe ghostty_app_tick(app)
+  }
+
+  /// Parses remote output for `surface`, draining libghostty's mailbox until it is done.
+  func parse(_ surface: ghostty_surface_t, _ bytes: UnsafeBufferPointer<CChar>) {
+    unsafe parser.process(surface, bytes) { tick() }
   }
 
   /// The app gained or lost focus.
