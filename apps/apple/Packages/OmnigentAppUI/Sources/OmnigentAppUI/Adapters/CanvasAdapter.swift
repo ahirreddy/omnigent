@@ -53,7 +53,7 @@ struct CanvasAdapter: View {
     }
   }
 
-  private func actions(_ canvas: CanvasStore) -> CanvasActions {
+  func actions(_ canvas: CanvasStore) -> CanvasActions {
     var actions = CanvasActions { open($0) }
     actions.selectBoard = { canvas.select(board: $0) }
     actions.move = { id, left, top in canvas.move(id, left: Int64(left), top: Int64(top)) }

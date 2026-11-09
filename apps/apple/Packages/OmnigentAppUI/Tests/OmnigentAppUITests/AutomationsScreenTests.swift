@@ -248,7 +248,7 @@ extension AutomationsScreenTests {
       .json(
         #"{"models":[{"id":"listed","model":"listed","displayName":"Listed"},{"id":"hidden","model":"hidden","hidden":true}]}"#
       ))
-    server.route("/v1/sessions/projects", .json(#"{"projects":[{"id":"p1","name":"Alpha"}]}"#))
+    server.route("/v1/sessions/projects", .json(#"[{"id":"p1","name":"Alpha"}]"#))
     let connection = try await signedInStore(server)
     server.route(
       "/v1/info",

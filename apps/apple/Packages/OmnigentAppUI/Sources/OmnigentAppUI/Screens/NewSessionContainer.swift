@@ -136,7 +136,7 @@ struct NewSessionContainer: View {
     }
   }
 
-  private func actions(_ creation: CreationStore) -> ComposerActions {
+  func actions(_ creation: CreationStore) -> ComposerActions {
     let form = form
     return ComposerActions(
       send: {
@@ -173,7 +173,7 @@ struct NewSessionContainer: View {
       extras: extraActions(creation))
   }
 
-  private func extraActions(_ creation: CreationStore) -> ComposerExtraActions {
+  func extraActions(_ creation: CreationStore) -> ComposerExtraActions {
     let form = form
     // A new agent uploads with the session, so it needs no `agent_install`; importing a bundle
     // installs it. A managed sandbox has no create path for an uploaded bundle.
@@ -207,7 +207,7 @@ struct NewSessionContainer: View {
     return { await useThisMachine(url) }
   }
 
-  private func optionActions(_ creation: CreationStore) -> NewSessionOptionActions {
+  func optionActions(_ creation: CreationStore) -> NewSessionOptionActions {
     let form = form
     let list = connection.sessionList
     var actions = NewSessionOptionActions(

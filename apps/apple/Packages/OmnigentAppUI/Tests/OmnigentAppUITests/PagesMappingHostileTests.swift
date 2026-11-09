@@ -8,7 +8,9 @@ import Testing
 @testable import OmnigentAppUI
 
 /// Lists a page after page without end, like a server whose cursor never runs out.
-private final class EndlessDirectory: WorkspaceDataSource {
+final class EndlessDirectory: WorkspaceDataSource {
+  /// Where the source says its files are, when it says.
+  var root: String?
   var reads = 0
   private var failure: OmnigentWorkspaceUI.WorkspaceFailure {
     OmnigentWorkspaceUI.WorkspaceFailure(.unavailable, message: "")
@@ -44,7 +46,7 @@ private final class EndlessDirectory: WorkspaceDataSource {
   func diff(_ path: String) throws(OmnigentWorkspaceUI.WorkspaceFailure)
     -> OmnigentWorkspaceUI.FileDiff
   { throw failure }
-  func absoluteLocation(of path: String) -> String? { nil }
+  func absoluteLocation(of path: String) -> String? { root }
   func save(_ path: String, text: String, base: String?) throws(OmnigentWorkspaceUI
     .WorkspaceFailure)
     -> OmnigentWorkspaceUI.FileSaveResult
