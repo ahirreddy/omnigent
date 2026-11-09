@@ -55,11 +55,16 @@ struct PickerVisibilitySetting: View {
   }
 
   private func read() async {
-    switch await source.load() {
+    // Another server's agents, or a failure from before a retry, must not show while this loads.
+    entries = []
+    isLoaded = false
+    failure = nil
+    let result = await source.load()
+    guard !Task.isCancelled else { return }
+    switch result {
     case .loaded(let loaded):
       entries = loaded
       isLoaded = true
-      failure = nil
     case .failed(let message):
       failure = message
     }
