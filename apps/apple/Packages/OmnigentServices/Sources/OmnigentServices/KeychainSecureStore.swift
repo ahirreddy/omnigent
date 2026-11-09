@@ -32,20 +32,31 @@ public enum KeychainStorageMode: Sendable, Equatable {
 public final class KeychainSecureStore: SecureStore, Sendable {
   private let mode: KeychainStorageMode
   private let serviceName: @Sendable (String) -> String
+  private let addItem: @Sendable (CFDictionary) -> OSStatus
 
   /// Creates a store.
   /// - Parameters:
   ///   - mode: Which Keychain to use.
   ///   - serviceName: Maps a namespace to its Keychain service. Tests inject a unique mapping so
   ///     they never touch real items.
-  public init(
+  public convenience init(
     mode: KeychainStorageMode = .dataProtection,
     serviceName: @escaping @Sendable (String) -> String = {
       KeychainSecureStore.defaultService(for: $0)
     }
   ) {
+    self.init(mode: mode, serviceName: serviceName, addItem: { SecItemAdd($0, nil) })
+  }
+
+  /// Creates a store whose new items go through `addItem`, so a failed add can be tested.
+  init(
+    mode: KeychainStorageMode,
+    serviceName: @escaping @Sendable (String) -> String,
+    addItem: @escaping @Sendable (CFDictionary) -> OSStatus
+  ) {
     self.mode = mode
     self.serviceName = serviceName
+    self.addItem = addItem
   }
 
   /// The production service for a namespace. These names match the existing iOS app, so
@@ -73,10 +84,7 @@ public final class KeychainSecureStore: SecureStore, Sendable {
     let status = unsafe SecItemCopyMatching(query as CFDictionary, &result)
     switch status {
     case errSecSuccess:
-      guard let data = result as? Data else {
-        throw .Other(message: "Keychain returned a non-data value for \(describe(key))")
-      }
-      return data
+      return try Self.itemData(result, of: describe(key))
     case errSecItemNotFound:
       return nil
     default:
@@ -104,7 +112,7 @@ public final class KeychainSecureStore: SecureStore, Sendable {
       for (name, attribute) in attributes {
         addQuery[name] = attribute
       }
-      let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+      let addStatus = addItem(addQuery as CFDictionary)
       guard addStatus == errSecSuccess else {
         throw Self.failure(addStatus, operation: "write \(describe(key))")
       }
@@ -146,6 +154,19 @@ public final class KeychainSecureStore: SecureStore, Sendable {
     case .fileBased(build: let build?):
       "\(serviceName(namespace)).build-\(build)"
     }
+  }
+
+  /// The bytes a successful read returned.
+  /// - Parameters:
+  ///   - result: What the Keychain returned.
+  ///   - item: The item's description, for the error.
+  /// - Returns: The bytes.
+  /// - Throws: `SecureStoreError.Other` when the Keychain returned anything else.
+  static func itemData(_ result: CFTypeRef?, of item: String) throws(SecureStoreError) -> Data {
+    guard let data = result as? Data else {
+      throw .Other(message: "Keychain returned a non-data value for \(item)")
+    }
+    return data
   }
 
   private func describe(_ key: SecureStoreKey) -> String {

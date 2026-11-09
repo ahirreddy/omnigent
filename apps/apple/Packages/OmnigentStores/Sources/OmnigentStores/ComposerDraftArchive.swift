@@ -7,17 +7,27 @@ public import Foundation
 public final class ComposerDraftArchive {
   /// The archive under `Application Support/<bundle id>/composer-drafts.json`, or `nil` when
   /// Application Support cannot be located.
-  public static let shared: ComposerDraftArchive? = {
+  public static let shared = locating(bundleIdentifier: Bundle.main.bundleIdentifier) {
+    try FileManager.default.url(
+      for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+  }
+
+  /// The archive of the app named `bundleIdentifier`, in the folder `applicationSupport` finds.
+  /// - Parameters:
+  ///   - bundleIdentifier: The app's identifier, when it has one.
+  ///   - applicationSupport: Locates Application Support.
+  /// - Returns: The archive, or `nil` after logging why when the folder can't be located.
+  static func locating(
+    bundleIdentifier: String?, applicationSupport: () throws -> URL
+  ) -> ComposerDraftArchive? {
     do {
-      let support = try FileManager.default.url(
-        for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-      let folder = support.appending(path: Bundle.main.bundleIdentifier ?? "Omnigent")
+      let folder = try applicationSupport().appending(path: bundleIdentifier ?? "Omnigent")
       return ComposerDraftArchive(fileURL: folder.appending(path: "composer-drafts.json"))
     } catch {
       NSLog("Composer drafts are not kept across launches: %@", error.localizedDescription)
       return nil
     }
-  }()
+  }
 
   /// The last failure to read or write the file, until the next success.
   public private(set) var lastError: String?

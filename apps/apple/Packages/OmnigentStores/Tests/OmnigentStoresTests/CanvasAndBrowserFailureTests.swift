@@ -132,6 +132,21 @@ struct BrowserActionFailureTests {
     #expect(server.requests(to: "/v1/sessions/conv_a/browser/action_result/a1").isEmpty)
   }
 
+  @Test("A failure that can be written goes out as JSON; one that can't is an error")
+  func failureJSON() throws {
+    struct Unencodable: Encodable {
+      func encode(to encoder: any Encoder) throws { throw CocoaError(.coderInvalidValue) }
+    }
+    let written = try BrowserActionStore.failureJSON(["ok": "no"]).get()
+    #expect(written == #"{"ok":"no"}"#)
+    guard case .failure(.InvalidState(let message)) = BrowserActionStore.failureJSON(Unencodable())
+    else {
+      Issue.record("expected the failure to be reported")
+      return
+    }
+    #expect(message.contains("Could not encode"))
+  }
+
   @Test("A browser action event reaches the handler; with none it's left for another client")
   func eventsReachTheHandler() async throws {
     let server = RouteServer()

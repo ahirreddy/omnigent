@@ -23,7 +23,7 @@ extension ComposerStore {
       clearDraft()
       lastError = nil
     } catch {
-      restore(extras)
+      // Only a message with nothing to send is refused, so no files are left held.
       lastError = Self.queueError(error)
     }
   }
@@ -86,12 +86,7 @@ extension ComposerStore {
       }
       refreshAttachments()
     }
-    do {
-      try queue.remove(last.id)
-    } catch {
-      lastError = Self.queueError(error)
-      return nil
-    }
+    queue.removeNewest()
     for path in last.extras.mentions { addMention(path) }
     return last.text
   }
@@ -122,17 +117,6 @@ extension ComposerStore {
       holdID: held?.id,
       files: held?.items.map { MessageQueue.File(name: $0.filename, isImage: $0.isImage) } ?? [],
       mentions: mentions)
-  }
-
-  /// Puts extras taken for a message that was not queued back in the draft.
-  func restore(_ extras: MessageQueue.Extras) {
-    guard let holdID = extras.holdID else { return }
-    do {
-      try core.restoreHeldAttachments(sessionId: sessionID, hold: holdID)
-    } catch {
-      lastError = coreError(error)
-    }
-    refreshAttachments()
   }
 
   private func deliver(_ id: Int) async {

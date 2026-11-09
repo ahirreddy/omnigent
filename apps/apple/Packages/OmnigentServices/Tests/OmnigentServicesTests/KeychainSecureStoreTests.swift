@@ -105,6 +105,58 @@ import Testing
     try store.delete(key: item)
   }
 
+  /// A write that finds no item goes on to add one, and that add can fail too.
+  @Test func aFailedAddSaysItCouldNotWrite() throws {
+    let service = "ai.omnigent.tests.\(UUID().uuidString)"
+    let store = KeychainSecureStore(
+      mode: .fileBased(build: nil), serviceName: { _ in service },
+      addItem: { _ in errSecDuplicateItem })
+    let item = SecureStoreKey(namespace: "oidc", account: "add-fails")
+    guard
+      case .Other(let message) = thrownError({ try store.set(key: item, value: Data("x".utf8)) })
+        as? SecureStoreError
+    else {
+      Issue.record("expected the write to fail")
+      return
+    }
+    #expect(message.contains("could not write"))
+    #expect(try store.get(key: item) == nil)
+  }
+
+  /// Sign-out relies on delete, so a failure must surface.
+  @Test func aKeychainThatRefusesADeleteReportsIt() throws {
+    let service = "ai.omnigent.tests.\(UUID().uuidString)"
+    let store = KeychainSecureStore(mode: .dataProtection, serviceName: { _ in service })
+    let item = SecureStoreKey(namespace: "oidc", account: "refused")
+    do {
+      try store.delete(key: item)
+    } catch SecureStoreError.Other(let message) {
+      #expect(message.contains("could not delete"))
+      #expect(message.contains("OSStatus -34018"))
+    }
+  }
+
+  @Test func onlyDataCountsAsAReadResult() throws {
+    let bytes = Data("value".utf8)
+    #expect(try KeychainSecureStore.itemData(bytes as CFData, of: "item") == bytes)
+    for wrong in ["text" as CFString, nil] as [CFTypeRef?] {
+      guard
+        case .Other(let message) = thrownError({
+          _ = try KeychainSecureStore.itemData(wrong, of: "the item")
+        }) as? SecureStoreError
+      else {
+        Issue.record("expected a non-data result to throw")
+        continue
+      }
+      #expect(message.contains("non-data value for the item"))
+    }
+  }
+
+  /// Reads no item: the app's own store uses the names the iOS app wrote.
+  @Test func theDefaultStoreUsesTheProductionServiceNames() {
+    #expect(KeychainSecureStore().service(for: "oidc") == "ai.omnigent.ios.oidc")
+  }
+
   @Test func namespacesMapToTheExistingServiceNames() {
     #expect(
       KeychainSecureStore.defaultService(for: "databricks") == "ai.omnigent.ios.databricks-oauth")

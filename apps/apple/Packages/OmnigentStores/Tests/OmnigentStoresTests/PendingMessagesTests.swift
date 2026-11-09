@@ -16,6 +16,44 @@ private func userRow(_ id: String, _ text: String) -> Row {
 
 @Suite("Messages waiting for their echo")
 struct PendingMessagesTests {
+  @Test("a draft's file shows under its name with its kind and type, before it has a reference")
+  func draftFile() {
+    let image = DraftAttachment(
+      id: 7, filename: "a.png", mediaType: "image/png", byteCount: 3, isImage: true,
+      status: .staged)
+    let shown = PendingMessages.attachment(image)
+    #expect(shown.id == "7")
+    #expect(shown.title == "a.png")
+    #expect(shown.kind == .image)
+    #expect(shown.mimeType == "image/png")
+    #expect(shown.reference == nil)
+    #expect(!shown.isEmbedded)
+  }
+
+  @Test("a queued file is known by name, and an image stays an image")
+  func queuedFile() {
+    let file = PendingMessages.attachment(MessageQueue.File(name: "a.txt", isImage: false))
+    #expect(file.id == "a.txt")
+    #expect(file.title == "a.txt")
+    #expect(file.kind == .file)
+    #expect(file.mimeType == nil)
+    #expect(PendingMessages.attachment(MessageQueue.File(name: "b", isImage: true)).kind == .image)
+  }
+
+  @Test(
+    "a new session's file is an image only when its type says so",
+    arguments: [
+      ("image/jpeg", AttachmentKind.image), ("text/plain", .file), (nil, .file),
+    ] as [(String?, AttachmentKind)])
+  func stagedFile(mediaType: String?, kind: AttachmentKind) {
+    let staged = PendingAttachment(filename: "f", mediaType: mediaType, data: Data())
+    let shown = PendingMessages.attachment(staged)
+    #expect(shown.id == staged.id.uuidString)
+    #expect(shown.title == "f")
+    #expect(shown.kind == kind)
+    #expect(shown.mimeType == mediaType)
+  }
+
   @Test("an echo matches by item id even when the server reworded the text")
   func matchesByItemID() throws {
     var pending = PendingMessages()

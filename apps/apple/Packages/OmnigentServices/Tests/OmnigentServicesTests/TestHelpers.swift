@@ -38,6 +38,12 @@ func thrownError(_ body: () throws -> Void) -> (any Error)? {
   return nil
 }
 
+/// A string holding half of a surrogate pair, which Swift can't write directly.
+func loneSurrogateString() -> Any {
+  // swiftlint:disable:next legacy_objc_type
+  unsafe NSString(characters: [unichar(0xD800)], length: 1)
+}
+
 /// Records every event of one event stream, in order.
 final class RecordingByteSink: ByteSinkReceiving, Sendable {
   enum Event: Sendable, Equatable {

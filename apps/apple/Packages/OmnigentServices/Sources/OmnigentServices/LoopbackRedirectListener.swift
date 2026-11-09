@@ -54,9 +54,17 @@
 
     private let state = Mutex(State())
     private let queue = DispatchQueue(label: "ai.omnigent.loopback-redirect")
+    private let makeListener: @Sendable (NWParameters) throws -> NWListener
 
     /// Creates a listener. Nothing is bound until ``start(path:)``.
-    public init() {}
+    public convenience init() {
+      self.init(makeListener: { try NWListener(using: $0, on: .any) })
+    }
+
+    /// Creates a listener that binds through `makeListener`, so a failed bind can be tested.
+    init(makeListener: @escaping @Sendable (NWParameters) throws -> NWListener) {
+      self.makeListener = makeListener
+    }
 
     /// Waits for the redirect. Cancelling the calling task stops the listener.
     /// - Returns: The full callback URL, including its query.
@@ -85,7 +93,7 @@
       parameters.requiredInterfaceType = .loopback
       let listener: NWListener
       do {
-        listener = try NWListener(using: parameters, on: .any)
+        listener = try makeListener(parameters)
       } catch {
         continuation.resume(
           returning: .failure(.failed(message: "The listener could not be created: \(error)")))
@@ -143,7 +151,7 @@
       waiters.callback?.resume(returning: outcome)
     }
 
-    private func listenerStateChanged(_ newState: NWListener.State) {
+    func listenerStateChanged(_ newState: NWListener.State) {
       switch newState {
       case .ready:
         listenerBecameReady()
@@ -176,7 +184,7 @@
       startWaiter?.resume(returning: .success(port))
     }
 
-    private func accept(_ connection: NWConnection) {
+    func accept(_ connection: NWConnection) {
       let accepted = LoopbackConnection(connection)
       let isOpen = state.withLock { $0.outcome == nil }
       guard isOpen else {
@@ -194,7 +202,7 @@
     }
 
     /// Accumulates received bytes until the request head is complete, then handles it.
-    private func receiveCompletion(
+    func receiveCompletion(
       _ accepted: LoopbackConnection, buffer: Data
     ) -> @Sendable (Data?, NWConnection.ContentContext?, Bool, NWError?) -> Void {
       { [self] content, _, isComplete, error in
@@ -224,31 +232,18 @@
     }
 
     private func handle(_ line: RequestLine, on accepted: LoopbackConnection) {
-      guard !line.method.isEmpty else {
-        respond(on: accepted, status: 400, reason: "Bad Request", body: "Malformed request.")
-        return
-      }
-      guard line.method == "GET" else {
-        respond(
-          on: accepted, status: 405, reason: "Method Not Allowed", body: "Method not allowed.")
-        return
-      }
       let expected = state.withLock { $0.path }
-      let requestPath = line.target.split(separator: "?", maxSplits: 1).first.map(String.init)
-      guard requestPath == expected else {
-        respond(on: accepted, status: 404, reason: "Not Found", body: "Not found.")
-        return
-      }
       let (port, host) = state.withLock { ($0.listener?.port?.rawValue, $0.host) }
-      guard let port, let url = URL(string: "http://\(host):\(port)\(line.target)") else {
-        respond(on: accepted, status: 400, reason: "Bad Request", body: "Malformed request.")
-        return
+      switch Self.decision(for: line, expectedPath: expected, port: port, host: host) {
+      case .refuse(let status, let reason, let body):
+        respond(on: accepted, status: status, reason: reason, body: body)
+      case .complete(let url):
+        respond(
+          on: accepted, status: 200, reason: "OK",
+          body: "<!doctype html><title>Omnigent</title>"
+            + "<p>Sign-in complete. You can close this window.</p>")
+        finish(.success(url))
       }
-      respond(
-        on: accepted, status: 200, reason: "OK",
-        body: "<!doctype html><title>Omnigent</title>"
-          + "<p>Sign-in complete. You can close this window.</p>")
-      finish(.success(url))
     }
 
     private func respond(
@@ -267,13 +262,75 @@
     }
 
     /// Logs a failed response write, then closes the connection.
-    private func sendCompletion(_ accepted: LoopbackConnection) -> @Sendable (NWError?) -> Void {
+    func sendCompletion(_ accepted: LoopbackConnection) -> @Sendable (NWError?) -> Void {
       { error in
         if let error {
           servicesLogger.error("Loopback redirect response failed: \(error)")
         }
         accepted.connection.cancel()
       }
+    }
+  }
+
+  /// Owns one accepted connection. `NWConnection` is not `Sendable`, but this wrapper only calls
+  /// its thread-safe `receive`, `send`, and `cancel`, and it is created and used only inside the
+  /// listener's callbacks.
+  final class LoopbackConnection: @unchecked Sendable {
+    let connection: NWConnection
+
+    init(_ connection: NWConnection) {
+      self.connection = connection
+    }
+  }
+
+  extension LoopbackRedirectListener {
+    /// What a complete request head leads to.
+    enum RequestDecision: Equatable {
+      /// The redirect arrived: answer with the sign-in page and end the wait.
+      case complete(URL)
+      /// Answer with this error and keep waiting.
+      case refuse(status: Int, reason: String, body: String)
+    }
+
+    /// Decides how to answer a request.
+    /// - Parameters:
+    ///   - line: The parsed request line.
+    ///   - expectedPath: The redirect path, without a query.
+    ///   - port: The bound port.
+    ///   - host: The host the redirect URL names.
+    /// - Returns: The decision.
+    static func decision(
+      for line: RequestLine, expectedPath: String?, port: UInt16?, host: String
+    ) -> RequestDecision {
+      let malformed = RequestDecision.refuse(
+        status: 400, reason: "Bad Request", body: "Malformed request.")
+      guard !line.method.isEmpty else { return malformed }
+      guard line.method == "GET" else {
+        return .refuse(status: 405, reason: "Method Not Allowed", body: "Method not allowed.")
+      }
+      let requestPath = line.target.split(separator: "?", maxSplits: 1).first.map(String.init)
+      guard requestPath == expectedPath else {
+        return .refuse(status: 404, reason: "Not Found", body: "Not found.")
+      }
+      guard case .success(let url) = callbackURL(host: host, port: port, target: line.target) else {
+        return malformed
+      }
+      return .complete(url)
+    }
+
+    /// The URL the browser reached, or was told to reach.
+    /// - Parameters:
+    ///   - host: The host the redirect URL names.
+    ///   - port: The bound port.
+    ///   - target: The path and query.
+    /// - Returns: The URL, or a failure when no port is bound.
+    static func callbackURL(
+      host: String, port: UInt16?, target: String
+    ) -> Result<URL, LoopbackRedirectError> {
+      guard let port, let url = URL(string: "http://\(host):\(port)\(target)") else {
+        return .failure(.failed(message: "The redirect URL could not be formed for \(target)."))
+      }
+      return .success(url)
     }
 
     /// The method and target of the request line, once the head is complete.
@@ -301,17 +358,6 @@
     }
   }
 
-  /// Owns one accepted connection. `NWConnection` is not `Sendable`, but this wrapper only calls
-  /// its thread-safe `receive`, `send`, and `cancel`, and it is created and used only inside the
-  /// listener's callbacks.
-  private final class LoopbackConnection: @unchecked Sendable {
-    let connection: NWConnection
-
-    init(_ connection: NWConnection) {
-      self.connection = connection
-    }
-  }
-
   extension LoopbackRedirectListener {
     /// Binds an ephemeral port on the loopback interface.
     /// - Parameters:
@@ -333,11 +379,7 @@
       let result = await withCheckedContinuation { (continuation: StartContinuation) in
         startListener(path: path, continuation: continuation)
       }
-      let port = try result.get()
-      guard let url = URL(string: "http://\(host):\(port)\(path)") else {
-        throw .failed(message: "The redirect URL could not be formed for port \(port).")
-      }
-      return url
+      return try Self.callbackURL(host: host, port: result.get(), target: path).get()
     }
   }
 #endif

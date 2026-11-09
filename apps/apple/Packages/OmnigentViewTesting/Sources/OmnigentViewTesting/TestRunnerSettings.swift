@@ -19,10 +19,9 @@
 
     /// Clears what an earlier run saved, when this process is a test runner.
     static func clearEarlierRun() {
-      guard let domain = domainToClear(processName: ProcessInfo.processInfo.processName) else {
-        return
+      if let domain = domainToClear(processName: ProcessInfo.processInfo.processName) {
+        UserDefaults.standard.removePersistentDomain(forName: domain)
       }
-      UserDefaults.standard.removePersistentDomain(forName: domain)
     }
   }
 #endif

@@ -14,6 +14,18 @@ import Testing
     #expect(first != second)
   }
 
+  @Test func aFailedGeneratorIsAnErrorAndNeverZeroedBytes() {
+    let source = SystemEntropySource(fill: { _ in errSecNotAvailable })
+    guard
+      case .Unavailable(let message) = thrownError({ _ = try source.randomBytes(len: 32) })
+        as? EntropyError
+    else {
+      Issue.record("expected the generator's failure")
+      return
+    }
+    #expect(message.contains("\(errSecNotAvailable)"))
+  }
+
   @Test func zeroLengthReturnsNoBytes() throws {
     let empty = try SystemEntropySource().randomBytes(len: 0)
     #expect(empty.isEmpty)

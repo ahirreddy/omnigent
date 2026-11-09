@@ -55,16 +55,29 @@ extension ConnectionStore {
 
   /// Applies the automatic-titles preference to `core` now and whenever it changes.
   static func watchBackgroundTitles(_ core: ClientCore) -> Task<Void, Never> {
-    var applied = SessionPreferences.backgroundTitles()
-    core.setBackgroundSessionTitles(enabled: applied)
-    return Task { [weak core] in
+    watchBackgroundTitles(in: .standard) { [weak core] enabled in
+      core?.setBackgroundSessionTitles(enabled: enabled)
+    }
+  }
+
+  /// Hands `apply` the automatic-titles preference in `defaults` now and whenever it changes.
+  /// - Parameters:
+  ///   - defaults: Where the preference is stored.
+  ///   - apply: Receives each new value.
+  /// - Returns: The task watching for changes.
+  static func watchBackgroundTitles(
+    in defaults: UserDefaults, apply: @escaping @MainActor (Bool) -> Void
+  ) -> Task<Void, Never> {
+    var applied = SessionPreferences.backgroundTitles(in: defaults)
+    apply(applied)
+    return Task {
       for await _ in NotificationCenter.default.notifications(
         named: UserDefaults.didChangeNotification)
       {
-        let enabled = SessionPreferences.backgroundTitles()
-        guard enabled != applied, let core else { continue }
+        let enabled = SessionPreferences.backgroundTitles(in: defaults)
+        guard enabled != applied else { continue }
         applied = enabled
-        core.setBackgroundSessionTitles(enabled: enabled)
+        apply(enabled)
       }
     }
   }

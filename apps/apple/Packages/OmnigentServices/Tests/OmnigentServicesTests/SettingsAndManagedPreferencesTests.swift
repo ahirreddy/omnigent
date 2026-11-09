@@ -27,6 +27,21 @@ import Testing
     }
   }
 
+  /// A string can hold half of a surrogate pair, which has no UTF-8 and so no JSON form.
+  @Test func aStringWithNoUTF8FormIsReportedInsteadOfCrashingTheRead() throws {
+    try withDefaults { defaults, storage in
+      defaults.register(defaults: ["omnigent.broken": loneSurrogateString()])
+      guard
+        case .Failed(let message) = thrownError({ _ = try storage.get(key: "omnigent.broken") })
+          as? SettingsStorageError
+      else {
+        Issue.record("expected the read to fail")
+        return
+      }
+      #expect(message.contains("could not be encoded as JSON"))
+    }
+  }
+
   @Test func storesStringsNativelyForAppStorageCompatibility() throws {
     try withDefaults { defaults, storage in
       try storage.set(key: "omnigent.serverURL", value: "\"https://example.com\"")
@@ -155,6 +170,17 @@ import Testing
     let managed = source(["serverUrls": ["https://a.example"]], forced: ["serverUrls"])
     #expect(managed.isForced(key: "serverUrls", domain: domain))
     #expect(!managed.isForced(key: "other", domain: domain))
+  }
+
+  @Test func aManagedStringWithNoUTF8FormIsRefused() {
+    let error = thrownError {
+      _ = try ManagedPreferencesSource.jsonText(for: loneSurrogateString())
+    }
+    guard case .unsupportedType(let detail) = error as? ManagedPreferenceError else {
+      Issue.record("expected the conversion to fail")
+      return
+    }
+    #expect(detail.contains("UTF8"))
   }
 
   @Test func jsonTextRejectsNonFiniteNumbers() {

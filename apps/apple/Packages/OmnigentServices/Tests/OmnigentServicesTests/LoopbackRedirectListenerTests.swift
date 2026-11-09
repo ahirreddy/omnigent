@@ -7,12 +7,12 @@
 
   @Suite struct LoopbackRedirectListenerTests {
     /// A URL from a string this test built, failing the test when it is malformed.
-    private func url(_ string: String) throws -> URL {
+    func url(_ string: String) throws -> URL {
       try #require(URL(string: string))
     }
 
     /// Sends one `GET` with an ephemeral session and returns the status and body.
-    private func get(_ url: URL) async throws -> (Int, String) {
+    func get(_ url: URL) async throws -> (Int, String) {
       let session = URLSession(configuration: .ephemeral)
       defer { session.finishTasksAndInvalidate() }
       let (data, response) = try await session.data(from: url)
@@ -162,7 +162,7 @@
     }
 
     /// Opens a raw connection to `listener`'s port.
-    private func connect(to redirect: URL) throws -> NWConnection {
+    func connect(to redirect: URL) throws -> NWConnection {
       let port = try #require(redirect.port)
       let endpointPort = try #require(NWEndpoint.Port(rawValue: UInt16(port)))
       let connection = NWConnection(host: "127.0.0.1", port: endpointPort, using: .tcp)

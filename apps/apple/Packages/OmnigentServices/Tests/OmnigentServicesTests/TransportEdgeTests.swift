@@ -68,6 +68,7 @@ import Testing
 
     handle.close(code: 4_999, reason: "custom")
     #expect(await eventually { hasEnded(sink) })
+    #expect(URLSessionWebSocketTask.CloseCode(rawValue: 4_999)?.rawValue == 4_999)
   }
 
   @Test("Binary input sent after the link ended throws instead of vanishing")

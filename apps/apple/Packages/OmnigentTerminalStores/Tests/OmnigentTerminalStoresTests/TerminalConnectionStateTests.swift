@@ -244,6 +244,27 @@ struct TerminalStoreTests {
     #expect(store.controller(for: "t1", permissionLevel: 4, hostID: nil) !== first)
   }
 
+  @Test("A renderer that can't start says so and makes no surface, and a later try can succeed")
+  func rendererFails() async throws {
+    let connection = try await connectedStore(sockets: FakeWebSocketTransport())
+    var failure: GhosttyError? = .appCreationFailed
+    let store = TerminalStore(
+      terminals: try #require(connection.terminals("conv_a"))
+    ) { terminal throws(GhosttyError) in
+      if let failure { throw failure }
+      return try TerminalSurfaceController(connection: terminal)
+    }
+
+    #expect(store.controller(for: "t1", permissionLevel: 4, hostID: nil) == nil)
+    #expect(store.lastError == .appCreationFailed)
+    #expect(store.controllers.isEmpty)
+
+    failure = nil
+    #expect(store.controller(for: "t1", permissionLevel: 4, hostID: nil) != nil)
+    #expect(store.lastError == nil)
+    #expect(store.controllers.count == 1)
+  }
+
   @Test("The harness surface exists only once the core says it is ready")
   func harnessSurface() async throws {
     let (_, store) = try await terminalStore()
