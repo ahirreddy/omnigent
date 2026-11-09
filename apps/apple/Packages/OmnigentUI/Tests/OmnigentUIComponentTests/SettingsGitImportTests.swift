@@ -23,7 +23,7 @@
       defer { screen.close() }
       try screen.click(try #require(screen.switches.first))
       #expect(store.bool(forKey: GitPreferences.alwaysUseWorktreeKey))
-      try screen.replaceText(in: try #require(screen.fields.first), with: "main")
+      try screen.replaceText(in: try #require(screen.textFields.first), with: "main")
       #expect(store.string(forKey: GitPreferences.defaultBaseBranchKey) == "main")
       try screen.choose("Keep the worktree", inPopUp: try #require(screen.popUps.first))
       #expect(store.string(forKey: GitPreferences.deleteWorktreesOnArchiveKey) == "false")
@@ -106,7 +106,7 @@
         inPopUp: try #require(screen.popUps.first { $0.title == "Recent sessions" }))
       #expect(screen.popUps.contains { $0.title == "Claude Code" }, "All is not one harness")
       #expect(screen.buttonFrames.isEmpty, "Import is off without an id")
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       try screen.replaceText(in: field, with: " abc ")
       try screen.clickButton(at: 0)
       try await screen.letTasksRun()
@@ -126,7 +126,7 @@
       try screen.choose(
         "Session by ID",
         inPopUp: try #require(screen.popUps.first { $0.title == "Recent sessions" }))
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       try screen.click(field)
       try screen.press(keyCode: 36, characters: "\r")
       try await screen.letTasksRun()

@@ -95,7 +95,7 @@
       #expect(try screen.shows("\(Int(CodeTypography.defaultSize) + 1) pt"))
       try screen.click(CGPoint(x: frame.midX, y: frame.maxY - 3))
       #expect(code.size == CodeTypography.defaultSize)
-      try screen.replaceText(in: try #require(screen.fields.last), with: "Menlo")
+      try screen.replaceText(in: try #require(screen.textFields.last), with: "Menlo")
       #expect(code.family == "Menlo")
       try screen.click(try #require(screen.switches.last))
       #expect(code.isHeavier)

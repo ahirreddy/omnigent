@@ -105,7 +105,7 @@
         serverAgents: [row("server", description: "Finds bugs")], myAgents: [row("mine")])
       let screen = screen(state)
       defer { screen.close() }
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       try screen.replaceText(in: field, with: "bugs")
       #expect(try screen.shows("Agent server"))
       #expect(try !screen.shows("Agent mine"))
@@ -146,7 +146,7 @@
       let screen = screen(CustomAgentsSettingsState(isLoadingConfig: true))
       defer { screen.close() }
       #expect(try screen.shows("Custom Agents"))
-      #expect(screen.fields.isEmpty)
+      #expect(screen.textFields.isEmpty)
       try screen.clickButton(at: 0)
       #expect(log.entries == ["close"])
     }
@@ -160,8 +160,8 @@
       let screen = screen(editorState(harnesses: harnesses))
       defer { screen.close() }
       let before = screen.buttonFrames.count
-      try screen.replaceText(in: try #require(screen.fields.first), with: "New")
-      try screen.replaceText(in: try #require(screen.fields.last), with: "m2")
+      try screen.replaceText(in: try #require(screen.textFields.first), with: "New")
+      try screen.replaceText(in: try #require(screen.textFields.last), with: "m2")
       try screen.choose("Claude", inPopUp: try #require(screen.popUps.first))
       #expect(screen.buttonFrames.count == before + 1, "Save joined the controls")
       let save = try #require(screen.buttonFrames.last)
@@ -203,9 +203,9 @@
       try screen.clickButton(at: 1)
       screen.settle(0.3)
       #expect(try screen.shows("Add MCP Server"))
-      try screen.replaceText(in: try #require(screen.fields.first), with: "wiki")
+      try screen.replaceText(in: try #require(screen.textFields.first), with: "wiki")
       try screen.replaceText(
-        in: try #require(screen.fields.dropFirst().first), with: "https://w.test")
+        in: try #require(screen.textFields.dropFirst().first), with: "https://w.test")
       let done = try #require(screen.sheetButtons.last)
       try screen.click(CGPoint(x: done.midX, y: done.midY))
       screen.settle(0.3)
@@ -226,15 +226,15 @@
       defer { screen.close() }
       try screen.clickButton(at: 1)
       screen.settle(0.3)
-      try screen.replaceText(in: try #require(screen.fields.first), with: "wiki")
+      try screen.replaceText(in: try #require(screen.textFields.first), with: "wiki")
       try screen.replaceText(
-        in: try #require(screen.fields.dropFirst().first), with: "https://w.test")
+        in: try #require(screen.textFields.dropFirst().first), with: "https://w.test")
       try screen.click(try #require(screen.sheetButtons.last).center)
       screen.settle(0.3)
       // Back, Add, then the added row's Edit.
       try screen.clickButton(at: 2)
       screen.settle(0.3)
-      try screen.replaceText(in: try #require(screen.fields.first), with: "docs2")
+      try screen.replaceText(in: try #require(screen.textFields.first), with: "docs2")
       try screen.click(try #require(screen.sheetButtons.last).center)
       screen.settle(0.3)
       #expect(try screen.shows("docs2"))
@@ -251,7 +251,7 @@
       try screen.clickButton(at: 2)
       screen.settle(0.3)
       #expect(try screen.shows("Edit docs"))
-      #expect(screen.fields.first?.isEnabled == false)
+      #expect(screen.textFields.first?.isEnabled == false)
       // The toolbar ends Cancel, Done.
       let cancel = try #require(screen.sheetButtons.suffix(2).first)
       try screen.click(CGPoint(x: cancel.midX, y: cancel.midY))
@@ -313,13 +313,13 @@
       let screen = screen(MCPServerEdit(isNew: true), taken: ["docs"])
       defer { screen.close() }
       #expect(try screen.shows("Name the server."))
-      let name = try #require(screen.fields.first)
+      let name = try #require(screen.textFields.first)
       try screen.replaceText(in: name, with: "docs")
       #expect(try screen.shows("Another MCP server has this name."))
       try screen.replaceText(in: name, with: "wiki")
       #expect(try screen.shows("Use an HTTP or HTTPS URL."))
       try screen.replaceText(
-        in: try #require(screen.fields.dropFirst().first), with: " https://w.test ")
+        in: try #require(screen.textFields.dropFirst().first), with: " https://w.test ")
       #expect(try !screen.shows("Use an HTTP"))
       let done = try #require(screen.sheetButtons.last)
       try screen.click(CGPoint(x: done.midX, y: done.midY))
@@ -333,7 +333,7 @@
       try screen.choose("Command", inPopUp: try #require(screen.popUps.first))
       #expect(try screen.shows("Enter the command."))
       #expect(try screen.shows("Environment"))
-      try screen.replaceText(in: try #require(screen.fields.dropFirst().first), with: "npx")
+      try screen.replaceText(in: try #require(screen.textFields.dropFirst().first), with: "npx")
       #expect(try !screen.shows("Enter the command."))
     }
 
@@ -342,7 +342,7 @@
       let screen = screen(existing)
       defer { screen.close() }
       #expect(try screen.shows("Edit docs"))
-      #expect(screen.fields.first?.isEnabled == false)
+      #expect(screen.textFields.first?.isEnabled == false)
       #expect(screen.popUps.first?.isEnabled == false)
       try screen.clickSheetButton(at: screen.sheetButtons.count - 2)
       #expect(log.entries == ["cancel"])

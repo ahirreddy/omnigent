@@ -64,11 +64,11 @@
       try screen.click(try footer(screen).save)
       #expect(log.entries.isEmpty, "nothing to save yet")
 
-      let name = try #require(screen.fields.first { $0.placeholderString == "daily-brief" })
+      let name = try #require(screen.textFields.first { $0.placeholderString == "daily-brief" })
       try screen.replaceText(in: name, with: "Brief")
       #expect(draft.value.name == "Brief")
       let prompt = try #require(
-        screen.fields.first { $0.placeholderString?.hasPrefix("What") == true })
+        screen.textFields.first { $0.placeholderString?.hasPrefix("What") == true })
       try screen.replaceText(in: prompt, with: "Summarize")
       #expect(draft.value.prompt == "Summarize")
       try screen.click(try footer(screen).save)
@@ -94,7 +94,7 @@
       let draft = EditedValue(AutomationDraftState(name: "Brief"))
       let screen = sheet(draft, context: context())
       defer { screen.close() }
-      let name = try #require(screen.fields.first { $0.placeholderString == "daily-brief" })
+      let name = try #require(screen.textFields.first { $0.placeholderString == "daily-brief" })
       try screen.click(name)
       try screen.press(keyCode: 36, characters: "\r")
       #expect(log.entries.isEmpty)
@@ -188,11 +188,11 @@
       let screen = sheet(draft, context: context())
       defer { screen.close() }
       #expect(try screen.shows("Pick the host this automation runs on."))
-      #expect(screen.fields.allSatisfy { $0.placeholderString != "Home folder" })
+      #expect(screen.textFields.allSatisfy { $0.placeholderString != "Home folder" })
       try screen.choose("Build Mac", inPopUp: try popUp(screen, showing: "Pick a host"))
       #expect(draft.value.hostID == "h1")
       #expect(try screen.shows("A run fails while the host is offline."))
-      let folder = try #require(screen.fields.first { $0.placeholderString == "Home folder" })
+      let folder = try #require(screen.textFields.first { $0.placeholderString == "Home folder" })
       try screen.replaceText(in: folder, with: "/work")
       #expect(draft.value.workspace == "/work")
 

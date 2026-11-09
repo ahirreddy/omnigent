@@ -41,7 +41,7 @@
       let screen = screen(.confirmSwitch(account: "ada@example.com", asksForEmail: true))
       defer { screen.close() }
       #expect(try screen.shows("Mac is signed in as ada@example.com."))
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       try screen.replaceText(in: field, with: " bob@example.com ")
       try clickAll(screen, count: 2)
       #expect(log.entries == ["close", "switch bob@example.com"])
@@ -52,7 +52,7 @@
       let screen = screen(.confirmSwitch(account: nil, asksForEmail: false))
       defer { screen.close() }
       #expect(try screen.shows("Mac is signed in as the current account."))
-      #expect(screen.fields.isEmpty)
+      #expect(screen.textFields.isEmpty)
       try clickAll(screen, count: 2)
       #expect(log.entries == ["close", "switch nil"])
     }
@@ -323,7 +323,7 @@
       let screen = screen(credentialState(adoptable: nil))
       defer { screen.close() }
       try openForm(screen)
-      let url = try #require(screen.fields.first)
+      let url = try #require(screen.textFields.first)
       let key = try #require(screen.secureFields.last)
       try screen.replaceText(in: url, with: " https://proxy.test ")
       try screen.click(key)

@@ -98,9 +98,9 @@
       let screen = try addSheet(templates: [template])
       defer { screen.close() }
       try chooseFirst(screen)
-      let name = try #require(screen.fields.first)
+      let name = try #require(screen.textFields.first)
       #expect(name.stringValue == "budget-1")
-      let limit = try #require(screen.fields.last)
+      let limit = try #require(screen.textFields.last)
       #expect(limit.stringValue == "10")
       try screen.replaceText(in: limit, with: "25")
       // Change Policy, Cancel, Add.
@@ -116,7 +116,7 @@
       let screen = try addSheet(templates: [template])
       defer { screen.close() }
       try chooseFirst(screen)
-      let name = try #require(screen.fields.first)
+      let name = try #require(screen.textFields.first)
       try screen.replaceText(in: name, with: "   ")
       // Change Policy, Cancel: Add is off.
       #expect(screen.buttonFrames.count == 2)
@@ -150,7 +150,7 @@
         id: "other", name: "Other", detail: "", suggestedName: "other-1", params: [])
       let screen = try addSheet(templates: [template, other])
       defer { screen.close() }
-      let filter = try #require(screen.fields.first)
+      let filter = try #require(screen.textFields.first)
       // Two template rows, then Cancel; Add is off.
       #expect(screen.buttonFrames.count == 3)
       try screen.replaceText(in: filter, with: "Bud")
@@ -189,8 +189,8 @@
       try screen.set(toggles[1], isOn: true)
       try screen.set(toggles[2], isOn: false)
       try screen.choose("y", inPopUp: try #require(screen.popUps.first))
-      #expect(screen.fields.contains { $0.placeholderString == "JSON object" })
-      #expect(screen.fields.contains { $0.placeholderString == "Comma-separated" })
+      #expect(screen.textFields.contains { $0.placeholderString == "JSON object" })
+      #expect(screen.textFields.contains { $0.placeholderString == "Comma-separated" })
       try screen.clickButton(at: 2)
       try await screen.letTasksRun()
       let sent = try #require(log.entries.first)
@@ -213,7 +213,7 @@
       let screen = try addSheet(templates: [repeated])
       defer { screen.close() }
       try chooseFirst(screen)
-      #expect(screen.fields.last?.stringValue == "first")
+      #expect(screen.textFields.last?.stringValue == "first")
     }
   }
 #endif

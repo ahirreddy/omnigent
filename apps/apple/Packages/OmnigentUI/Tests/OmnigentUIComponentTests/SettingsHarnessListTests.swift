@@ -116,7 +116,7 @@
     func search() throws {
       let screen = list()
       defer { screen.close() }
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       try screen.replaceText(in: field, with: "anthropic")
       #expect(try screen.shows("Claude Code"))
       #expect(try !screen.shows("Codex"))

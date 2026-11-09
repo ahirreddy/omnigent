@@ -61,7 +61,7 @@
       #expect(log.entries == ["filter active []"])
       try screen.click(segment: 2, of: filter)
       #expect(log.entries.last == "filter paused []")
-      let search = try #require(screen.fields.first)
+      let search = try #require(screen.textFields.first)
       try screen.replaceText(in: search, with: "br")
       #expect(log.entries.suffix(2) == ["filter paused [b]", "filter paused [br]"])
     }

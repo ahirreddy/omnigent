@@ -61,7 +61,7 @@
     func codeBlock() throws {
       let named = transcriptScreen(CodeBlockView(code: "let answer = 42", language: "swift"))
       defer { named.close() }
-      #expect(try named.shows("swift"))
+      #expect(try named.shows("Swift"))
       #expect(try named.shows("let answer = 42"))
       let controls = named.controlFrames.count
       #expect(controls == 3)
@@ -213,7 +213,7 @@
       let open = screen("Intro\n\n```swift\nlet a = 1", isStreaming: true)
       defer { open.close() }
       #expect(try open.shows("let a = 1"))
-      #expect(try open.shows("swift"))
+      #expect(try open.shows("Swift"))
     }
 
     @Test("Plain and Styled output draw the source, not the rendered blocks")

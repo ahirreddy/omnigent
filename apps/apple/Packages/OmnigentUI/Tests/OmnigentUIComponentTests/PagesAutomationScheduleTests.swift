@@ -38,7 +38,7 @@
       let choice = custom(.monthly)
       let screen = screen(choice)
       defer { screen.close() }
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       try screen.replaceText(in: field, with: "1, 15")
       #expect(choice.value.monthDays == [1, 15])
     }
@@ -93,11 +93,11 @@
       let choice = custom(.daily)
       let screen = screen(choice)
       defer { screen.close() }
-      #expect(screen.fields.isEmpty)
+      #expect(screen.textFields.isEmpty)
       let unit = try #require(screen.popUps.first { $0.title == "Days" })
       try screen.choose("Years", inPopUp: unit)
       #expect(choice.value.frequency == .yearly)
-      #expect(screen.fields.count == 1)
+      #expect(screen.textFields.count == 1)
       let month = try #require(screen.popUps.first { $0.title == "January" })
       try screen.choose("March", inPopUp: month)
       #expect(choice.value.month == 3)

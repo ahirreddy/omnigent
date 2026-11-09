@@ -70,7 +70,7 @@
       let event = try #require(screen.popUps.first { $0.title == "A ticket is created" })
       try screen.choose("A ticket is updated", inPopUp: event)
       #expect(draft.value.trigger?.event == "updated")
-      let scope = try #require(screen.fields.first { $0.placeholderString == "ENG" })
+      let scope = try #require(screen.textFields.first { $0.placeholderString == "ENG" })
       try screen.replaceText(in: scope, with: "OPS")
       #expect(draft.value.trigger?.scope == "OPS")
       #expect(try screen.shows("Trigger automations keep one session"))
@@ -100,14 +100,15 @@
       let draft = draft()
       let screen = sheet(draft)
       defer { screen.close() }
-      #expect(screen.fields.allSatisfy { $0.placeholderString != "name" })
+      #expect(screen.textFields.allSatisfy { $0.placeholderString != "name" })
       // Add condition, then Cancel; Save is disabled.
       try screen.clickButton(at: 0)
       let added = try #require(draft.value.trigger?.conditions.first)
       #expect(added.field == "assignee")
       #expect(added.operation == "unassigned")
       #expect(
-        screen.fields.allSatisfy { $0.placeholderString != "name" }, "is unassigned has no value")
+        screen.textFields.allSatisfy { $0.placeholderString != "name" },
+        "is unassigned has no value")
     }
 
     @Test("a comparison with a value asks for one, and switching field resets the comparison")
@@ -119,7 +120,7 @@
       let comparison = try #require(screen.popUps.first { $0.title == "is unassigned" })
       try screen.choose("is", inPopUp: comparison)
       #expect(draft.value.trigger?.conditions.first?.operation == "is")
-      let value = try #require(screen.fields.first { $0.placeholderString == "name" })
+      let value = try #require(screen.textFields.first { $0.placeholderString == "name" })
       try screen.replaceText(in: value, with: "ahir")
       #expect(draft.value.trigger?.conditions.first?.value == "ahir")
 
@@ -148,7 +149,7 @@
       let screen = sheet(draft)
       defer { screen.close() }
       let field = try #require(
-        screen.fields.first { $0.placeholderString == "What each session does" })
+        screen.textFields.first { $0.placeholderString == "What each session does" })
       try screen.replaceText(in: field, with: "0123456789")
       #expect(try !screen.shows("Keep the instructions under"))
       try screen.type("x")
@@ -170,7 +171,7 @@
       try screen.click(CGPoint(x: edit.midX, y: edit.midY))
       #expect(draft.value.trigger == nil)
       #expect(draft.value.prompt == "Rendered prompt")
-      #expect(screen.fields.contains { $0.stringValue == "Rendered prompt" })
+      #expect(screen.textFields.contains { $0.stringValue == "Rendered prompt" })
     }
 
     @Test("no rendered prompt offers nothing to take over")

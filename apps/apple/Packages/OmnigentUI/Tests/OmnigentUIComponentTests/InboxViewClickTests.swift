@@ -172,7 +172,7 @@
       defer { screen.close() }
       try press("/", screen)
       try screen.type("b")
-      let search = try #require(screen.fields.first)
+      let search = try #require(screen.textFields.first)
       #expect(search.stringValue == "b")
       #expect(log.entries.isEmpty)
     }
@@ -210,7 +210,7 @@
     func search() throws {
       let screen = bed.screen(items: [bed.item("a", age: 10), bed.item("b", age: 20)])
       defer { screen.close() }
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       try screen.replaceText(in: field, with: "Preview b")
       #expect(try screen.shows("Title b"))
       #expect(try !screen.shows("Title a"))

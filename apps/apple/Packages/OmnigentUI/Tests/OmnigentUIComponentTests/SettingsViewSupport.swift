@@ -45,7 +45,7 @@
     }
 
     /// Every `TextField`, in layout order.
-    var fields: [NSTextField] {
+    var textFields: [NSTextField] {
       views(named: "AppKitTextField").compactMap { $0 as? NSTextField }
         .filter { !($0 is NSSecureTextField) }
     }
@@ -70,7 +70,7 @@
     var buttonFrames: [CGRect] {
       let root = activeWindow.contentView
       let others: [NSView] =
-        switches + fields + secureFields + popUps + segmentedControls
+        switches + textFields + secureFields + popUps + segmentedControls
         + allViews.filter { $0 is NSStepper || $0 is NSDatePicker }
       let otherFrames = others.map { $0.convert($0.bounds, to: root) }
       return controlFrames.filter { frame in

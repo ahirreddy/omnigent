@@ -119,6 +119,9 @@ def run_package(name, should_test):
         [*base, "--show-codecov-path"], capture_output=True, text=True, check=True
     ).stdout.strip()
     rows = summarize(export_all_bundles(codecov), path / "Sources")
+    # No lines means the export missed this package, which must not read as full coverage.
+    if not any(row[2] for row in rows):
+        raise SystemExit(f"{name}: coverage data has no lines for this package's sources.")
     return rows, (result is None or result.returncode == 0)
 
 
@@ -141,7 +144,10 @@ def main():
     for name in names:
         rows, passed = run_package(name, not options.no_test)
         if not passed:
+            # The profile on disk may be from an older run, so it says nothing about this one.
             failed.append(name)
+            print(f"    n/a  tests failed   {name}", flush=True)
+            continue
         covered = sum(row[1] for row in rows)
         lines = sum(row[2] for row in rows)
         total_covered += covered

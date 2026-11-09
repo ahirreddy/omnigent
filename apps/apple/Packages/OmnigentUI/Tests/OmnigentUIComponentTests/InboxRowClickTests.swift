@@ -44,24 +44,24 @@
     func toggle() throws {
       let screen = row(repliable(), expanded: false)
       defer { screen.close() }
-      #expect(screen.fields.isEmpty)
+      #expect(screen.textFields.isEmpty)
       try screen.clickControl(at: 0)
       #expect(log.entries == ["selected"])
       // The disclosure animates; a click needs the row where it ends up.
       screen.settle(0.5)
-      #expect(screen.fields.count == 1)
+      #expect(screen.textFields.count == 1)
       try screen.clickControl(at: 0)
       screen.settle(0.5)
       #expect(log.entries == ["selected", "selected"])
       #expect(try !screen.shows("Open session"))
-      #expect(screen.fields.isEmpty)
+      #expect(screen.textFields.isEmpty)
     }
 
     @Test("a reply in flight can't be sent twice or opened away from")
     func sending() throws {
       let screen = row(repliable(reply: .sending), draft: EditedValue("Ship it"))
       defer { screen.close() }
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       #expect(!field.isEnabled)
       for frame in screen.controlFrames { try screen.click(CGPoint(x: frame.midX, y: frame.midY)) }
       #expect(!log.entries.contains { $0.hasPrefix("reply") || $0.hasPrefix("open") })
@@ -73,7 +73,7 @@
       let screen = row(repliable(reply: .failed(message: "The host is offline")), draft: draft)
       defer { screen.close() }
       #expect(try screen.shows("The host is offline"))
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       #expect(field.stringValue == "Ship it")
       try screen.click(field)
       try screen.type("!")
@@ -87,19 +87,19 @@
       defer { screen.close() }
       #expect(try screen.shows("Reply sent."))
       #expect(draft.value.isEmpty)
-      #expect(screen.fields.isEmpty)
+      #expect(screen.textFields.isEmpty)
     }
 
     @Test("no reply field without editor access or a reply action")
     func noReply() throws {
       let readOnly = row(bed.item("a"))
       defer { readOnly.close() }
-      #expect(readOnly.fields.isEmpty)
+      #expect(readOnly.textFields.isEmpty)
       var actions = bed.actions
       actions.reply = nil
       let noAction = row(repliable(), actions: actions)
       defer { noAction.close() }
-      #expect(noAction.fields.isEmpty)
+      #expect(noAction.textFields.isEmpty)
     }
 
     @Test("Open and Mark as read act on the row; a read row has no Mark as read")
@@ -258,7 +258,7 @@
       let draft = EditedValue("")
       let screen = row(repliable(), draft: draft)
       defer { screen.close() }
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       try screen.replaceText(in: field, with: "   ")
       #expect(log.entries.isEmpty)
       // A blank draft leaves Send disabled, so Return can't send it either.
@@ -276,7 +276,7 @@
       let draft = EditedValue("")
       let screen = row(repliable(), draft: draft)
       defer { screen.close() }
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       try screen.replaceText(in: field, with: "One")
       try screen.press(keyCode: 36, characters: "\r")
       #expect(log.entries.isEmpty)
@@ -291,7 +291,7 @@
       let screen = row(repliable(), draft: EditedValue("Ship it"))
       defer { screen.close() }
       // Send sits beside the reply field.
-      let field = try #require(screen.fields.first)
+      let field = try #require(screen.textFields.first)
       let box = field.convert(field.bounds, to: screen.activeWindow.contentView)
       let send = try #require(
         screen.buttonFrames.first { $0.minX >= box.maxX && abs($0.midY - box.midY) < 20 })
