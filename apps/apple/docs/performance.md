@@ -322,13 +322,13 @@ about 50% between runs; the render and view counts are exact.
 
 | Switch | Before | After |
 | --- | --- | --- |
-| Chat to side chat, either way | 250-285 ms | 82-86 ms |
-| Chat to terminal | 210-280 ms | 68 ms |
-| Terminal to chat | 300 ms | 97 ms |
-| Chat to New Tab | 190-250 ms | 61 ms |
-| New Tab to chat | 280 ms | 98 ms |
-| Chat to browser | 155-180 ms | 56 ms |
-| Browser to terminal | 113-128 ms | 57 ms |
+| Chat to side chat, either way | 250-285 ms | 65-69 ms |
+| Chat to terminal | 210-280 ms | 64-72 ms |
+| Terminal to chat | 300 ms | 86-92 ms |
+| Chat to New Tab | 190-250 ms | 56 ms |
+| New Tab to chat | 280 ms | 84-94 ms |
+| Chat to browser | 155-180 ms | 55-67 ms |
+| Browser to terminal | 113-128 ms | 51-66 ms |
 | AppKit views made and dropped per switch between kept chats | 30 | 5 (focus rings) |
 | Renders of each kept conversation (screen, transcript, rows) per switch | 3 | 1, the one that shows |
 
@@ -349,14 +349,19 @@ What changed:
   `AppShell` kept in its state, so each switch between the two kinds rendered the shell, the
   sidebar and the shown tab a second time. The count sits with the detail width in
   `TitlebarStripSpace`, which only the strip reads.
+- **The conversation that shows renders once, not twice.** `ConnectedServerView` read the
+  selected tab and the kept list inside the closure it gives `TabSplitView`, so the split view
+  followed the selection too and built the kept tabs again after the window had. It reads them
+  before making the split view.
 
-Each has a counting test (`KeptAliveTabsSwitchTests`, `AdaptiveShellTests`); `RenderTally`
-(Debug) gives a test the renders one change caused, by `countsRenders` name.
+Each has a counting test (`KeptAliveTabsSwitchTests`, `AdaptiveShellTests`,
+`ConnectedWindowTabsTests`); `RenderTally` (Debug) gives a test the renders one change caused,
+by `countsRenders` name.
 
 Left as it is:
 
-- One render of the shell, the sidebar, the tab strip and the conversation that shows, about
-  60-70 ms of what is left: `ConnectedServerView` and `AppShell` read the selected tab in their
+- One render of the shell, the sidebar, the tab strip and the conversation that shows, most
+  of what is left: `ConnectedServerView` and `AppShell` read the selected tab in their
   bodies, so a switch re-runs both and hands the sidebar and the shown tab new closures.
   Holding those needs the closures made stable first.
 - The flip itself, about 55 ms spread over SwiftUI's graph update, the toolbar and the display
@@ -364,6 +369,10 @@ Left as it is:
 - Terminals, browsers and the New Tab page are not kept: each selection builds the page again,
   a terminal tab asks the server for its terminals and the New Tab page for the session's
   agent. That is a request after the switch, not time in its frame.
+- A chat left in Terminal mode lets go of its terminal surface while its tab is hidden, so
+  coming back builds the surface again: 100-165 ms, the slowest switch. Its transcript stays
+  built. Going from Terminal back to Chat builds the composer again (about 250 ms over the
+  following frames), since the composer is removed under the terminal.
 - The kept tabs' order (`zIndex`) changes on a switch, about 10 ms, so the shown tab's
   overlays are never under a hidden one's.
 
