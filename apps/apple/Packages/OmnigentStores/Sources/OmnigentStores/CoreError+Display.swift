@@ -79,6 +79,15 @@ func coreError(_ error: any Error) -> CoreError {
   return .InvalidState(message: String(describing: error))
 }
 
+extension ConnectionStore {
+  /// A user-facing description of a failure.
+  /// - Parameter error: The error thrown by the core.
+  /// - Returns: Text suitable for display.
+  public static func describe(_ error: any Error) -> String {
+    coreError(error).message
+  }
+}
+
 /// One failure surfaced as state, with where it happened.
 public struct CoreIssue: Identifiable, Equatable, Sendable {
   /// Unique within the process.

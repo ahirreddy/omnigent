@@ -273,13 +273,20 @@ public final class SessionListStore {
     lastError = error
   }
 
+  /// Forgets everything of the account that was signed in.
   func clear() {
     serverSessions = [:]
     expectations = [:]
     isLoaded = false
+    lastError = nil
+    editError = nil
+    viewerID = nil
+    unreadIDs = []
+    draftSessionIDs = []
     paging.clear()
     projects = []
     projectsError = nil
+    projectSortMode = nil
     hostEnvironments = [:]
     hostsError = nil
     recompute()

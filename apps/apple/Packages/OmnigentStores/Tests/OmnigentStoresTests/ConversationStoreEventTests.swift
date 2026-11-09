@@ -202,6 +202,7 @@ struct ConversationStoreEventTests {
     let server = RouteServer()
     server.fail("/v1/sessions/conv_a/events", method: "POST")
     let (store, conversation) = try await conversation(server)
+    try await eventually("the first list") { store.sessionList.isLoaded }
     store.sessionList.apply(
       .reset(sessions: [
         SessionSummary(
