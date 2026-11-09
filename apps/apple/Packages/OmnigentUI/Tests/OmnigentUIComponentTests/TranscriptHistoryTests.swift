@@ -279,9 +279,12 @@
     func railPreview() async throws {
       let (window, _) = try await screen(session())
       defer { window.close() }
-      try window.hover(tick(0, of: 6))
+      // The whole reply as one string: the transcript draws its paragraphs apart.
+      let reply = "Line 0 of answer 12\n\nLine 1 of answer 12"
+      #expect(try !window.shows(reply))
+      try window.hover(tick(2, of: 6))
       try await letTasksRun(window)
-      #expect(try window.shows("Line 0 of answer 10"))
+      #expect(try window.shows(reply))
       // Past the ticks there's nothing to preview.
       try window.hover(CGPoint(x: 16, y: Self.height / 2 + 200))
       try await letTasksRun(window)

@@ -113,6 +113,10 @@
 
       let downloadMenu = try view.openMenu(center(frames[1]))
       #expect(titles(of: downloadMenu) == ["Download CSV", "Download Markdown"])
+      // Their save panel presents nothing off screen; choosing them must still leave the table.
+      try view.choose("Download CSV", in: downloadMenu)
+      try view.choose("Download Markdown", in: downloadMenu)
+      #expect(try view.shows("Name"))
     }
 
     @Test("Expand shows the table on its own, and Done goes back")
