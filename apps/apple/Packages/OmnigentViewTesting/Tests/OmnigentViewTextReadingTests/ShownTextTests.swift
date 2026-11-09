@@ -20,6 +20,16 @@
     }
   }
 
+  private struct NestedHosts: View {
+    var body: some View {
+      NavigationSplitView {
+        List { Text("In a row") }
+      } detail: {
+        Text("In the detail")
+      }
+    }
+  }
+
   @Suite("Shown text", .serialized)
   @MainActor
   struct ShownTextTests {
@@ -35,6 +45,14 @@
       #expect(try !screen.shows("Revealed"))
       try screen.clickControl(at: 0)
       #expect(try screen.shows("Revealed"))
+    }
+
+    @Test("Reads split panes and list rows, which host their own view trees")
+    func readsNestedHosts() throws {
+      let screen = OffscreenWindow(NestedHosts(), width: 800, height: 400)
+      defer { screen.close() }
+      #expect(try screen.shows("In a row"))
+      #expect(try screen.shows("In the detail"))
     }
   }
 #endif

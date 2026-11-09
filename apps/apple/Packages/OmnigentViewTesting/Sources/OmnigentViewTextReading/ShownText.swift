@@ -8,7 +8,8 @@
   // recording for that target's whole test process.
   extension OffscreenWindow {
     /// The text the view draws now, one string per text view, read from SwiftUI's view tree. Text
-    /// that is laid out counts even when it is transparent or scrolled out of the window.
+    /// that is laid out counts even when it is transparent or scrolled out of the window. Split
+    /// panes, list rows and a presented sheet host their own trees, and those count too.
     /// - Returns: The strings; they are not in layout order.
     /// - Throws: `OffscreenWindowError` when SwiftUI doesn't report its tree.
     public func shownText() throws -> [String] {
@@ -18,6 +19,10 @@
       }
       var found: [String] = []
       for node in tree { try ShownTextReader.collect(node, into: &found) }
+      for view in allViews where view !== host {
+        guard let nested = view as? any ViewTreeReporting else { continue }
+        for node in nested.reportedTree() { try ShownTextReader.collect(node, into: &found) }
+      }
       return found
     }
 
@@ -28,6 +33,15 @@
     public func shows(_ text: String) throws -> Bool {
       try shownText().contains { $0.contains(text) }
     }
+  }
+
+  /// Reaches the tree of a hosting view whose content type is private to SwiftUI.
+  private protocol ViewTreeReporting {
+    func reportedTree() -> [_ViewDebug.Data]
+  }
+
+  extension NSHostingView: ViewTreeReporting {
+    fileprivate func reportedTree() -> [_ViewDebug.Data] { _viewDebugData() }
   }
 
   /// Walks `_ViewDebug` values for the strings of the views that draw text. Its JSON form is no use
