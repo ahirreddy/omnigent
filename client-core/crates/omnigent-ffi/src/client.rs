@@ -1098,7 +1098,7 @@ impl ClientCore {
         let inner = &self.inner;
         let resolved = inner.resolved()?;
         let user = lock(&inner.auth).connected_user.clone();
-        inner.begin_generation();
+        let generation = inner.begin_generation();
         inner.post(Msg::Disconnected {
             phase: ConnectionPhase::Disconnected,
         });
@@ -1142,7 +1142,10 @@ impl ClientCore {
             }
             CoreMode::LocalSingleUser | CoreMode::Proxy | CoreMode::Unsupported { .. } => Ok(()),
         };
-        inner.sign_in_required(&resolved, None);
+        // A connect that began during a slow revoke owns the phase now.
+        if inner.check_generation(generation).is_ok() {
+            inner.sign_in_required(&resolved, None);
+        }
         result
     }
 

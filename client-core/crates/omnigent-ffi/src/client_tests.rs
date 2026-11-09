@@ -1420,6 +1420,39 @@ fn signing_out_of_oidc_revokes_and_reports_what_failed() {
     ));
 }
 
+/// A sign-out waiting on a slow revoke must not throw a newer connection back to sign-in.
+#[test]
+fn a_connect_during_a_slow_sign_out_keeps_its_phase() {
+    let mut harness = oidc_server();
+    sign_in_oidc(&mut harness);
+    let release = harness.http.hold("/oauth/revoke");
+    let core = Arc::clone(&harness.core);
+    let signing_out = harness.start(async move { core.sign_out().await });
+    assert!(signing_out.borrow().is_none());
+
+    route_oidc_tokens(&harness, "token-2", 3_600);
+    let challenge_phase = connect(&mut harness).unwrap();
+    assert!(
+        matches!(challenge_phase, ConnectionPhase::SignInRequired { .. }),
+        "{challenge_phase:?}"
+    );
+    let challenge = harness.core.begin_oidc_sign_in(REDIRECT.into()).unwrap();
+    let attempt = challenge.attempt_id;
+    let callback = callback_for(&challenge);
+    harness
+        .call(|core| async move { core.complete_oidc_sign_in(attempt, callback).await })
+        .unwrap();
+
+    release.send(()).unwrap();
+    harness.pump();
+    assert!(signing_out.borrow_mut().take().unwrap().is_ok());
+    assert!(
+        matches!(last_phase(&harness), ConnectionPhase::Connected { .. }),
+        "{:?}",
+        last_phase(&harness)
+    );
+}
+
 #[test]
 fn signing_out_of_accounts_removes_only_the_signed_in_users_credential() {
     let mut harness = accounts_server();
