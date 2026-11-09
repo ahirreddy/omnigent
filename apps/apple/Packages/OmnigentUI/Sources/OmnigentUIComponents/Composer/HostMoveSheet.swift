@@ -183,15 +183,20 @@ struct HostMoveSheet: View {
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
     ToolbarItem(placement: .cancellationAction) {
-      Button("Cancel", action: close)
+      // A move can't be called back once sent, and the spinner slides this under the pointer.
+      Button("Cancel", action: close).disabled(isSubmitting)
     }
     ToolbarItemGroup(placement: .confirmationAction) {
       if isSubmitting { ProgressView().controlSize(.small) }
-      Button(isSwitch ? "Switch Host" : "Start Session") { Task { await submit() } }
-        .primaryActionStyle()
-        .disabled(hostID == nil || resolved == nil || isSubmitting || targets.isEmpty)
-        .accessibilityIdentifier(isSwitch ? "switch-host-button" : "resume-dir-bind-button")
+      confirmButton
     }
+  }
+
+  private var confirmButton: some View {
+    Button(isSwitch ? "Switch Host" : "Start Session") { Task { await submit() } }
+      .primaryActionStyle()
+      .disabled(hostID == nil || resolved == nil || isSubmitting || targets.isEmpty)
+      .accessibilityIdentifier(isSwitch ? "switch-host-button" : "resume-dir-bind-button")
   }
 
   private var description: String {

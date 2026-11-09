@@ -38,6 +38,59 @@ struct DeliveryBanner: View {
   }
 }
 
+/// A photo the system picker returned, which the app reads on demand.
+protocol PickedPhoto {
+  var supportedContentTypes: [UTType] { get }
+  func loadData() async throws -> Data?
+}
+
+extension PhotosPickerItem: PickedPhoto {
+  // coverage:off only the system photo picker hands out items that load; VM flow backlog
+  func loadData() async throws -> Data? {
+    try await loadTransferable(type: Data.self)
+  }
+  // coverage:on
+}
+
+/// The composer's file importer and photo picker. What they return, read or not, goes to `loaded`.
+struct ComposerAttachmentPickers: ViewModifier {
+  @Binding var isImporting: Bool
+  @Binding var isPickingPhotos: Bool
+  @Binding var photoItems: [PhotosPickerItem]
+  var loadPhotos: @MainActor ([any PickedPhoto]) async -> AttachmentLoading.Result =
+    AttachmentLoading.photos
+  let loaded: @MainActor (AttachmentLoading.Result) -> Void
+
+  func body(content: Content) -> some View {
+    content
+      .fileImporter(
+        isPresented: $isImporting, allowedContentTypes: [.item], allowsMultipleSelection: true,
+        onCompletion: filesPicked
+      )
+      .photosPicker(
+        isPresented: $isPickingPhotos, selection: $photoItems,
+        matching: .any(of: [.images, .videos])
+      )
+      .onChange(of: photoItems) { _, items in photosPicked(items) }
+  }
+
+  func filesPicked(_ result: Result<[URL], any Error>) {
+    switch result {
+    case .success(let urls):
+      loaded(AttachmentLoading.Result(inputs: urls.map { .file(url: $0) }))
+    case .failure(let error):
+      let message = "Could not open the files: \(error.localizedDescription)"
+      loaded(AttachmentLoading.Result(failures: [message]))
+    }
+  }
+
+  private func photosPicked(_ items: [PhotosPickerItem]) {
+    guard !items.isEmpty else { return }
+    photoItems = []
+    Task { loaded(await loadPhotos(items)) }
+  }
+}
+
 /// Loads picked photos and pasted items into attachment inputs, collecting every failure.
 enum AttachmentLoading {
   struct Result {
@@ -45,12 +98,12 @@ enum AttachmentLoading {
     var failures: [String] = []
   }
 
-  static func photos(_ items: [PhotosPickerItem]) async -> Result {
+  static func photos(_ items: [any PickedPhoto]) async -> Result {
     var result = Result()
     for (offset, item) in items.enumerated() {
       let type = item.supportedContentTypes.first ?? .image
       do {
-        guard let data = try await item.loadTransferable(type: Data.self) else {
+        guard let data = try await item.loadData() else {
           result.failures.append("Photo \(offset + 1) has no data this app can read.")
           continue
         }
@@ -86,20 +139,32 @@ enum AttachmentLoading {
 struct GrowingTextEditor: View {
   @Binding var text: String
   let placeholder: String
-  var minLines = 1
-  var maxLines = 10
+  let minLines: Int
+  let maxLines: Int
   /// The text view's accessibility identifier. Set on the editor alone, so the measuring copy,
   /// the placeholder and the editor's scroll view never carry it.
-  var identifier: String?
+  let identifier: String
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @ScaledMetric(relativeTo: .body) private var lineHeight: CGFloat = Theme.Typography
-    .editorLineHeight
+  @ScaledMetric private var lineHeight: CGFloat
 
-  #if os(macOS)
-    private let inset = EdgeInsets(top: 0, leading: 5, bottom: 0, trailing: 5)
-  #else
-    private let inset = EdgeInsets(top: 8, leading: 5, bottom: 8, trailing: 5)
-  #endif
+  init(
+    text: Binding<String>, placeholder: String, minLines: Int, maxLines: Int, identifier: String
+  ) {
+    _text = text
+    self.placeholder = placeholder
+    self.minLines = minLines
+    self.maxLines = maxLines
+    self.identifier = identifier
+    _lineHeight = ScaledMetric(wrappedValue: Theme.Typography.editorLineHeight, relativeTo: .body)
+  }
+
+  private var inset: EdgeInsets {
+    #if os(macOS)
+      EdgeInsets(top: 0, leading: 5, bottom: 0, trailing: 5)
+    #else
+      EdgeInsets(top: 8, leading: 5, bottom: 8, trailing: 5)
+    #endif
+  }
 
   private var verticalInsets: CGFloat { inset.top + inset.bottom }
 
@@ -118,7 +183,7 @@ struct GrowingTextEditor: View {
       TextEditor(text: $text)
         .proseStyle()
         .scrollContentBackground(.hidden)
-        .accessibilityIdentifier(identifier ?? "", isEnabled: identifier != nil)
+        .accessibilityIdentifier(identifier)
     }
     .animation(reduceMotion ? nil : Theme.Motion.feedback, value: Theme.lineCount(text))
     .overlay(alignment: .topLeading) {
@@ -260,16 +325,20 @@ struct DropTargetTracking: ViewModifier {
   @Binding var isTargeted: Bool
 
   func body(content: Content) -> some View {
-    if #available(iOS 27.0, *) {
-      content.onDropSessionUpdated { session in
-        switch session.phase {
-        case .entering, .active: isTargeted = true
-        case .exiting, .ended, .dataTransferCompleted: isTargeted = false
-        @unknown default: isTargeted = false
-        }
+    #if os(macOS)
+      tracking(content)
+    #else
+      if #available(iOS 27.0, *) { tracking(content) } else { content }
+    #endif
+  }
+
+  @available(iOS 27.0, *)
+  private func tracking(_ content: Content) -> some View {
+    content.onDropSessionUpdated { session in
+      switch session.phase {
+      case .entering, .active: isTargeted = true
+      default: isTargeted = false
       }
-    } else {
-      content
     }
   }
 }

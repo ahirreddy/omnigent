@@ -24,7 +24,7 @@ private struct AgentOutputRendering: ViewModifier {
 /// chat's rich markdown. Streaming text ends with a block cursor.
 struct CLIOutputText: View {
   let text: String
-  var isStreaming = false
+  let isStreaming: Bool
   @Environment(\.transcriptAppearance) private var appearance
   @Environment(\.cliPalette) private var palette
 
@@ -94,7 +94,7 @@ struct CLIAssistantBlock: View, Equatable {
   @Environment(\.conversationActions) private var actions
   @Environment(\.cliPalette) private var palette
   @FocusState private var actionsFocused: Bool
-  private let size = CLIFontSize()
+  private(set) var size = CLIFontSize()
 
   static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.row == rhs.row && lhs.decoration == rhs.decoration

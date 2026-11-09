@@ -118,9 +118,7 @@ public struct OmnigentTabCommands: Commands {
       TabMenuItems(actions: actions)
     }
     CommandGroup(after: .sidebar) {
-      if actions?.supportsSplit == true {
-        SplitMenuItems(actions: actions)
-      }
+      SplitMenuGroup(actions: actions)
     }
   }
 }
@@ -198,6 +196,17 @@ struct TabMenuItems: View {
     if actions?.supportsSplit == true {
       Button("Move Tab to Other Pane") { actions?.moveTabToOtherPane?() }
         .disabled(actions?.moveTabToOtherPane == nil)
+    }
+  }
+}
+
+/// The split items, in a window that can split.
+struct SplitMenuGroup: View {
+  let actions: TabCommandActions?
+
+  var body: some View {
+    if actions?.supportsSplit == true {
+      SplitMenuItems(actions: actions)
     }
   }
 }

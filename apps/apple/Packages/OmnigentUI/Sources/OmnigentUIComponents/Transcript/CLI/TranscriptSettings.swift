@@ -169,32 +169,39 @@ public struct TranscriptCommands: Commands {
   /// The menu items.
   public var body: some Commands {
     CommandGroup(before: .toolbar) {
-      if let window {
-        Picker(
-          "Transcript Style",
-          selection: Binding(get: { window.style }, set: { window.setStyle($0) })
-        ) {
-          ForEach(TranscriptStyle.allCases) { Text($0.title).tag($0) }
-        }
-        Picker(
-          "Output Rendering",
-          selection: Binding(
-            get: { window.preferences.outputRendering(for: window.style) },
-            set: { window.preferences.setOutputRendering($0, for: window.style) })
-        ) {
-          ForEach(OutputRendering.allCases) { Text($0.title).tag($0) }
-        }
-        Picker(
-          "Content Width",
-          selection: Binding(
-            get: { window.preferences.contentWidth(for: window.style) },
-            set: { window.preferences.setContentWidth($0, for: window.style) })
-        ) {
-          ForEach(TranscriptContentWidth.allCases) { Text($0.title).tag($0) }
-        }
-        Divider()
-      }
+      if let window { TranscriptMenuItems(window: window) }
     }
+  }
+}
+
+/// The View menu's transcript pickers for the key window.
+struct TranscriptMenuItems: View {
+  let window: TranscriptWindowControls
+
+  var body: some View {
+    Picker(
+      "Transcript Style",
+      selection: Binding(get: { window.style }, set: { window.setStyle($0) })
+    ) {
+      ForEach(TranscriptStyle.allCases) { Text($0.title).tag($0) }
+    }
+    Picker(
+      "Output Rendering",
+      selection: Binding(
+        get: { window.preferences.outputRendering(for: window.style) },
+        set: { window.preferences.setOutputRendering($0, for: window.style) })
+    ) {
+      ForEach(OutputRendering.allCases) { Text($0.title).tag($0) }
+    }
+    Picker(
+      "Content Width",
+      selection: Binding(
+        get: { window.preferences.contentWidth(for: window.style) },
+        set: { window.preferences.setContentWidth($0, for: window.style) })
+    ) {
+      ForEach(TranscriptContentWidth.allCases) { Text($0.title).tag($0) }
+    }
+    Divider()
   }
 }
 
@@ -276,10 +283,11 @@ extension View {
 
 private struct AppearanceSettingsHost: ViewModifier {
   let preferences: ThemePreferences
-  @State private var isPresented = false
   @State private var presenter = AppearanceSettingsPresenter()
   #if os(macOS)
     @Environment(\.openSettings) private var openSettings
+  #else
+    @State private var isPresented = false
   #endif
 
   func body(content: Content) -> some View {
@@ -289,9 +297,11 @@ private struct AppearanceSettingsHost: ViewModifier {
       .transcriptAppearance(from: preferences.transcript)
       .environment(\.openAppearanceSettings, OpenAppearanceSettingsAction(presenter: presenter))
       .environment(\.themePreferences, preferences)
-      .sheet(isPresented: $isPresented) {
-        AppearanceSettingsView(preferences: preferences)
-      }
+      #if os(iOS)
+        .sheet(isPresented: $isPresented) {
+          AppearanceSettingsView(preferences: preferences)
+        }
+      #endif
   }
 
   private var open: @MainActor () -> Void {

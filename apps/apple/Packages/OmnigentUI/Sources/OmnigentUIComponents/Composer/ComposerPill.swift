@@ -8,7 +8,7 @@ struct ComposerFooter: View {
   let state: ComposerViewState
   let actions: ComposerActions
   let isEditable: Bool
-  var showsContextDetails = false
+  let showsContextDetails: Bool
 
   private var tray: ComposerTrayView {
     ComposerTrayView(

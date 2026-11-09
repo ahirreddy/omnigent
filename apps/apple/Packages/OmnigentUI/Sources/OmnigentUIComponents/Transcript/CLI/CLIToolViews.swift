@@ -86,7 +86,7 @@ struct CLIToolLine: View {
   @State private var isExpanded = false
   @Environment(\.cliPalette) private var palette
   @Environment(\.transcriptAppearance) private var appearance
-  private let size = CLIFontSize()
+  private(set) var size = CLIFontSize()
 
   private var activity: Activity? { entry.primary?.activity }
 

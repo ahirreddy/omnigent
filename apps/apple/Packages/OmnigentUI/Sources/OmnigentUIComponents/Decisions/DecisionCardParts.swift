@@ -73,11 +73,18 @@ struct InlineMarkdownText: View {
       .fixedSize(horizontal: false, vertical: true)
   }
 
-  private var attributed: AttributedString {
+  private var attributed: AttributedString { Self.attributed(markdown) }
+
+  /// The text with its inline Markdown applied.
+  static func attributed(
+    _ markdown: String,
+    parse: (String) throws -> AttributedString = {
+      try AttributedString(
+        markdown: $0, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+    }
+  ) -> AttributedString {
     do {
-      return try AttributedString(
-        markdown: markdown,
-        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+      return try parse(markdown)
     } catch {
       // Text that is not valid Markdown is shown exactly as the agent wrote it.
       return AttributedString(markdown)

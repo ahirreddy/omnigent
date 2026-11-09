@@ -102,9 +102,6 @@ private struct BackgroundTasksButton: View {
     .accessibilityLabel("\(label) still running")
     .accessibilityIdentifier("composer-background-tasks")
     .popover(isPresented: $isShown, arrowEdge: .top) { list }
-    .onChange(of: indicators.backgroundTasks) { _, count in
-      if count <= 0, isShown { isShown = false }
-    }
   }
 
   /// Grows with the list up to a cap, then scrolls.
