@@ -105,7 +105,8 @@ import SwiftUI
       view.changed = changed
       if view.clearRequest != clearRequest {
         view.clearRequest = clearRequest
-        view.clearSelection()
+        // Clearing writes the popup's state, which SwiftUI drops during a view update.
+        Task { @MainActor in view.clearSelection() }
       }
     }
 
