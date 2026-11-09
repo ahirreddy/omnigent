@@ -122,9 +122,7 @@
     }
 
     /// See `BrowserEngine.makeTab(profile:initialURL:)`.
-    public func makeTab(profile: BrowserProfile, initialURL: URL?) throws(BrowserError)
-      -> any BrowserTab
-    {
+    public func makeTab(profile: BrowserProfile, initialURL: URL?) -> any BrowserTab {
       let webProfile = session.profile(
         identifier: profile.identifier,
         persistence: profile.persistence == .persistent ? .persistent : .ephemeral)

@@ -67,15 +67,16 @@ final class SystemAgentInput: BrowserAgentInput {
   }
 
   func insertText(_ text: String) async throws(BrowserError) {
+    let quoted = try Self.jsString(text)
     try await run(
       """
       (() => {
         const el = document.activeElement;
         if (!el || el === document.body) return 'error:no element is focused';
-        if (document.execCommand('insertText', false, \(Self.jsString(text)))) return 'ok';
+        if (document.execCommand('insertText', false, \(quoted))) return 'ok';
         const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')?.set;
         if (!setter) return 'error:the focused element is not editable';
-        setter.call(el, (el.value || '') + \(Self.jsString(text)));
+        setter.call(el, (el.value || '') + \(quoted));
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         return 'ok';
@@ -88,11 +89,12 @@ final class SystemAgentInput: BrowserAgentInput {
       try await insertText(String(character))
       return
     }
+    let domKey = try Self.jsString(key.domKey)
     try await run(
       """
       (() => {
         const el = document.activeElement || document.body;
-        const init = { key: \(Self.jsString(key.domKey)), bubbles: true, cancelable: true,
+        const init = { key: \(domKey), bubbles: true, cancelable: true,
                        shiftKey: \(modifiers.contains(.shift)),
                        ctrlKey: \(modifiers.contains(.control)),
                        altKey: \(modifiers.contains(.option)),
@@ -109,13 +111,7 @@ final class SystemAgentInput: BrowserAgentInput {
   }
 
   /// A JavaScript string literal for `text`.
-  static func jsString(_ text: String) -> String {
-    let data: Data
-    do {
-      data = try JSONEncoder().encode(text)
-    } catch {
-      preconditionFailure("Encoding a String as JSON cannot fail: \(error)")
-    }
-    return String(bytes: data, encoding: .utf8) ?? "\"\""
+  static func jsString(_ text: String) throws(BrowserError) -> String {
+    try AgentBrowserScripts.literal(text)
   }
 }

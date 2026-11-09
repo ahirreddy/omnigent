@@ -243,18 +243,13 @@
     /// Opens `url` in a new tab of this profile, without an opener.
     func openInNewTab(_ url: URL) {
       guard let engine else { return }
-      do {
-        let tab = try engine.makeTab(profile: profile, initialURL: url)
-        tab.popupPolicy = popupPolicy
-        tab.urlPolicy = urlPolicy
-        delegate?.tab(
-          self,
-          didOpen: BrowserPopup(
-            tab: tab, opener: self, targetURL: url, disposition: .foregroundTab,
-            requestedSize: nil))
-      } catch {
-        state.report(error)
-      }
+      let tab = engine.makeTab(profile: profile, initialURL: url)
+      tab.popupPolicy = popupPolicy
+      tab.urlPolicy = urlPolicy
+      delegate?.tab(
+        self,
+        didOpen: BrowserPopup(
+          tab: tab, opener: self, targetURL: url, disposition: .foregroundTab, requestedSize: nil))
     }
 
     private static func dialogKind(_ kind: WebDialogKind) -> BrowserDialogKind {
@@ -340,18 +335,24 @@
       }
     }
 
-    private static let namedKeys: [BrowserAgentKey: AgentKey] = [
-      .enter: .enter, .tab: .tab, .escape: .escape, .backspace: .backspace, .delete: .delete,
-      .arrowLeft: .arrowLeft, .arrowRight: .arrowRight, .arrowUp: .arrowUp,
-      .arrowDown: .arrowDown, .home: .home, .end: .end, .pageUp: .pageUp, .pageDown: .pageDown,
-    ]
-
+    // swiftlint:disable:next cyclomatic_complexity
     private static func agentKey(_ key: BrowserAgentKey) -> AgentKey {
-      if case .character(let character) = key { return .character(character) }
-      guard let mapped = namedKeys[key] else {
-        preconditionFailure("BrowserAgentKey \(key) has no AgentKey; namedKeys is incomplete.")
+      switch key {
+      case .character(let character): .character(character)
+      case .enter: .enter
+      case .tab: .tab
+      case .escape: .escape
+      case .backspace: .backspace
+      case .delete: .delete
+      case .arrowLeft: .arrowLeft
+      case .arrowRight: .arrowRight
+      case .arrowUp: .arrowUp
+      case .arrowDown: .arrowDown
+      case .home: .home
+      case .end: .end
+      case .pageUp: .pageUp
+      case .pageDown: .pageDown
       }
-      return mapped
     }
   }
 #endif

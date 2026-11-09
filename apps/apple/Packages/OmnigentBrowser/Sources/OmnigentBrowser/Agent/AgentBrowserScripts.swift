@@ -14,15 +14,25 @@ nonisolated enum AgentElementTarget: Sendable, Hashable {
 /// both engines report the same message.
 nonisolated enum AgentBrowserScripts {
   /// A JavaScript literal for `value`.
-  static func literal(_ value: String) -> String {
+  static func literal(_ value: String) throws(BrowserError) -> String {
+    try jsonText(value, of: "a script's text")
+  }
+
+  /// JSON text for `value`, or a failure naming `subject`.
+  static func jsonText(_ value: some Encodable, of subject: String) throws(BrowserError) -> String {
     let data: Data
     do {
       data = try JSONEncoder().encode(value)
     } catch {
-      preconditionFailure("Encoding a String as JSON cannot fail: \(error)")
+      throw .storageFailed("Encoding \(subject) failed: \(error.localizedDescription)")
     }
+    return try utf8Text(data, of: subject)
+  }
+
+  /// Encoded JSON as text, or a failure naming `subject`.
+  static func utf8Text(_ data: Data, of subject: String) throws(BrowserError) -> String {
     guard let text = String(bytes: data, encoding: .utf8) else {
-      preconditionFailure("JSONEncoder produced invalid UTF-8.")
+      throw .storageFailed("Encoding \(subject) did not produce UTF-8.")
     }
     return text
   }
@@ -129,15 +139,17 @@ nonisolated enum AgentBrowserScripts {
     """#
 
   /// Statements that set `el` to the target or throw the desktop app's precise error.
-  static func findElement(_ target: AgentElementTarget) -> String {
+  static func findElement(_ target: AgentElementTarget) throws(BrowserError) -> String {
     switch target {
     case .ref(let ref, let snapshotID):
-      let idCheck =
-        snapshotID.map { id in
-          "if (window.__omni_snapshot_id__ !== \(literal(id))) throw new Error('snapshot ' + "
-            + "\(literal(id)) + ' was superseded by ' + (window.__omni_snapshot_id__ || '(none)') "
-            + "+ ' — call browser_snapshot again'); "
-        } ?? ""
+      var idCheck = ""
+      if let snapshotID {
+        let id = try literal(snapshotID)
+        idCheck =
+          "if (window.__omni_snapshot_id__ !== \(id)) throw new Error('snapshot ' + "
+          + "\(id) + ' was superseded by ' + (window.__omni_snapshot_id__ || '(none)') "
+          + "+ ' — call browser_snapshot again'); "
+      }
       return idCheck
         + "if (!window.__omni_refs__) throw new Error('no snapshot in this page — call "
         + "browser_snapshot first'); "
@@ -147,8 +159,9 @@ nonisolated enum AgentBrowserScripts {
         + "if (!el) throw new Error('ref ' + \(ref) + ' was garbage-collected — call "
         + "browser_snapshot again'); "
     case .selector(let selector):
-      return "const el = document.querySelector(\(literal(selector))); "
-        + "if (!el) throw new Error('selector not found: ' + \(literal(selector))); "
+      let quoted = try literal(selector)
+      return "const el = document.querySelector(\(quoted)); "
+        + "if (!el) throw new Error('selector not found: ' + \(quoted)); "
     }
   }
 
@@ -160,8 +173,8 @@ nonisolated enum AgentBrowserScripts {
 
   /// Scrolls the target to the middle of the viewport and returns
   /// `{x, y, width, height, editable, tag}`, the center in viewport CSS pixels.
-  static func locate(_ target: AgentElementTarget) -> String {
-    guarded(
+  static func locate(_ target: AgentElementTarget) throws(BrowserError) -> String {
+    try guarded(
       findElement(target)
         + "el.scrollIntoView({ block: 'center', inline: 'center' }); "
         + "const r = el.getBoundingClientRect(); const tag = el.tagName.toLowerCase(); "
@@ -174,8 +187,8 @@ nonisolated enum AgentBrowserScripts {
   }
 
   /// Focuses the target and selects its contents, so typed text replaces them.
-  static func focusAndSelect(_ target: AgentElementTarget) -> String {
-    guarded(
+  static func focusAndSelect(_ target: AgentElementTarget) throws(BrowserError) -> String {
+    try guarded(
       findElement(target)
         + "if (document.activeElement !== el && typeof el.focus === 'function') el.focus(); "
         + "if ((el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && "
@@ -187,16 +200,16 @@ nonisolated enum AgentBrowserScripts {
   }
 
   /// Focuses the target without selecting.
-  static func focus(_ target: AgentElementTarget) -> String {
-    guarded(
+  static func focus(_ target: AgentElementTarget) throws(BrowserError) -> String {
+    try guarded(
       findElement(target)
         + "if (typeof el.focus === 'function') el.focus(); "
         + "return JSON.stringify({ focused: document.activeElement === el });")
   }
 
   /// The target's `value` (inputs) or text (other elements).
-  static func value(_ target: AgentElementTarget) -> String {
-    guarded(
+  static func value(_ target: AgentElementTarget) throws(BrowserError) -> String {
+    try guarded(
       findElement(target)
         + "const value = ('value' in el) ? String(el.value) : String(el.textContent || ''); "
         + "return JSON.stringify({ value, hasValue: 'value' in el });")

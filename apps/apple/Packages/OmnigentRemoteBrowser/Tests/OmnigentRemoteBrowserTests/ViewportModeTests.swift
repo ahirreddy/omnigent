@@ -12,6 +12,13 @@ import Testing
 struct ViewportModeTests {
   private let phone = CGSize(width: 393, height: 659.5)
 
+  @Test("saving a mode whose bytes aren't text fails instead of clearing the saved mode")
+  func unsavableMode() {
+    #expect(throws: CocoaError.self) {
+      _ = try RemoteViewportModeDefaults.text(of: Data([0xFF]))
+    }
+  }
+
   private func eventually(_ condition: () -> Bool) async throws -> Bool {
     for _ in 0..<200 {
       if condition() { return true }

@@ -86,13 +86,6 @@ public final class BrowserEnvironment {
     #endif
   }
 
-  /// The environment over `standardDirectory`.
-  public static func standard(
-    provider: any BrowserEngineProvider, preferences: BrowserPreferences
-  ) -> BrowserEnvironment {
-    BrowserEnvironment(directory: standardDirectory, provider: provider, preferences: preferences)
-  }
-
   /// `Application Support/<bundle id>/Browser`.
   public static var standardDirectory: URL {
     let bundle = Bundle.main.bundleIdentifier ?? "ai.omnigent"

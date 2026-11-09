@@ -42,8 +42,15 @@ nonisolated public struct FixtureVideoStream: Sendable {
   public init(named name: String, streamID: UInt32 = 1, formatChanged: Bool = false)
     throws(FixtureStreamError)
   {
-    guard let streamURL = Bundle.module.url(forResource: name, withExtension: "annexb"),
-      let indexURL = Bundle.module.url(forResource: name + ".frames", withExtension: "json")
+    try self.init(named: name, streamID: streamID, formatChanged: formatChanged, in: .module)
+  }
+
+  /// Loads a stream from `resources`.
+  init(named name: String, streamID: UInt32 = 1, formatChanged: Bool = false, in resources: Bundle)
+    throws(FixtureStreamError)
+  {
+    guard let streamURL = resources.url(forResource: name, withExtension: "annexb"),
+      let indexURL = resources.url(forResource: name + ".frames", withExtension: "json")
     else { throw .missingResource(name) }
     let stream: Data
     let index: Data

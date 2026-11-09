@@ -91,14 +91,18 @@ public final class WebContentRenderer {
       return
     }
     let template = lastKeyDown.removeValue(forKey: keyCode)
-    guard
-      let event = InputTranslator.unhandledKeyEvent(
-        UnhandledKey(
-          keyCode: keyCode, modifiers: InputModifiers(rawValue: fields.u64(.modifiers) ?? 0),
-          character: UInt16(truncatingIfNeeded: fields.u64(.character) ?? 0),
-          unmodifiedCharacter: UInt16(truncatingIfNeeded: fields.u64(.unmodifiedCharacter) ?? 0)),
-        template: template, windowNumber: template?.windowNumber ?? 0)
-    else {
+    let event = InputTranslator.unhandledKeyEvent(
+      UnhandledKey(
+        keyCode: keyCode, modifiers: InputModifiers(rawValue: fields.u64(.modifiers) ?? 0),
+        character: UInt16(truncatingIfNeeded: fields.u64(.character) ?? 0),
+        unmodifiedCharacter: UInt16(truncatingIfNeeded: fields.u64(.unmodifiedCharacter) ?? 0)),
+      template: template, windowNumber: template?.windowNumber ?? 0)
+    forwardUnhandledKey(event, keyCode: keyCode)
+  }
+
+  /// Hands the rebuilt key to the view; AppKit may refuse to build one.
+  func forwardUnhandledKey(_ event: NSEvent?, keyCode: UInt16) {
+    guard let event else {
       Logger.view.error("Could not rebuild an NSEvent for unhandled key \(keyCode).")
       return
     }

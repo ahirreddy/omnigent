@@ -42,9 +42,8 @@ nonisolated public struct RemoteEdgeColor: Hashable, Sendable {
     let width = CVPixelBufferGetWidth(pixelBuffer)
     let height = CVPixelBufferGetHeight(pixelBuffer)
     guard width > 0, height > 0 else { return nil }
-    guard CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly) == kCVReturnSuccess else {
-      return nil
-    }
+    let locked = CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+    guard locked == kCVReturnSuccess else { return nil }
     defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
     let reader: PixelReader
     switch CVPixelBufferGetPixelFormatType(pixelBuffer) {

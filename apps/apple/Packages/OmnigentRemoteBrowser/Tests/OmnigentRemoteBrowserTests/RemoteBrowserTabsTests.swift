@@ -151,6 +151,36 @@ struct CoreConnectorTests {
     }
   }
 
+  @Test("a connected core's tab calls carry the server's answers")
+  func connectedCalls() async throws {
+    let resources = "/v1/sessions/s/resources"
+    let tab = """
+      {"id":"t","type":"browser","session_id":"s","name":"Page","metadata":{"url":"https://a.test/"}}
+      """
+    let http = FakeHttpTransport(routes: [
+      "/.well-known/omnigent.json": .json(ManifestFixtures.localNoAuth),
+      "/v1/info": .json(#"{"single_user":true,"accounts_enabled":false}"#),
+      "/v1/me": .json(#"{"user_id":"local"}"#),
+      "/v1/sessions": .json(#"{"object":"list","data":[],"has_more":false}"#),
+      "\(resources)/browser_profiles": .json(#"{"data":[{"name":"work","running":true}]}"#),
+      "\(resources)/browsers": .json(tab),
+      "\(resources)/browsers/t": .json(#"{"deleted":true,"id":"t"}"#),
+    ])
+    let core = try ClientCore(
+      http: http, streams: FakeEventStreamTransport(), sockets: FakeWebSocketTransport(),
+      clock: SystemClock(), scheduler: TaskScheduler(), secureStore: InMemorySecureStore(),
+      entropy: FixedEntropySource(),
+      config: HostConfig(urlPolicy: .development, oidcRedirect: .none))
+    _ = try await core.connect(serverUrl: "http://127.0.0.1:6767", expectedUserId: nil)
+    let connector = CoreRemoteBrowserConnector(core: core)
+    #expect(try await connector.profiles(sessionID: "s").map(\.name) == ["work"])
+    let created = try await connector.createTab(sessionID: "s", url: nil, profile: nil)
+    #expect(created.id == "t")
+    #expect(created.url == "https://a.test/")
+    try await connector.closeTab(sessionID: "s", tabID: "t")
+    #expect(http.requests.last?.method == "DELETE")
+  }
+
   @Test("attaching makes a driver that does nothing until started")
   func attachMakesADriver() async throws {
     let store = RemoteBrowserStore(sessionID: "s", tabID: "t")

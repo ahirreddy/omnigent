@@ -69,9 +69,11 @@
       else {
         throw .printFailed("The page's PDF could not be prepared for printing.")
       }
+      // coverage:off the print sheet; VM flow backlog "print a browser page"
       operation.jobTitle = webView.title
       operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }
+    // coverage:on
 
     func viewSourceURL() throws(BrowserError) -> URL {
       guard let url = webView.url, let source = URL(string: "view-source:\(url.absoluteString)")

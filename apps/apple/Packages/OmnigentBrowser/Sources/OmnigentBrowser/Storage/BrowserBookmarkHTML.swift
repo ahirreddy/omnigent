@@ -53,11 +53,9 @@ nonisolated enum BrowserBookmarkHTML {
   }
 
   static func parse(_ data: Data) throws(BrowserError) -> Result {
-    guard
-      let html = String(bytes: data, encoding: .utf8) ?? String(bytes: data, encoding: .isoLatin1)
-    else {
-      throw .storageFailed("The bookmarks file is not text.")
-    }
+    // Any bytes read as Latin-1.
+    let html =
+      String(bytes: data, encoding: .utf8) ?? String(data.map { Character(Unicode.Scalar($0)) })
     guard html.range(of: "<DL", options: .caseInsensitive) != nil else {
       throw .storageFailed("The file is not a bookmarks export (no <DL> list).")
     }
@@ -71,12 +69,15 @@ nonisolated enum BrowserBookmarkHTML {
     return Result(toolbar: builder.toolbar, other: builder.stack[0].folder.children ?? [])
   }
 
-  static func tokenize(_ html: String) throws(BrowserError) -> [Token] {
+  static let tokenPattern = #"<H3([^>]*)>(.*?)</H3>|<DL[^>]*>|</DL>|<A\s([^>]*)>(.*?)</A>"#
+
+  static func tokenize(_ html: String, pattern: String = tokenPattern) throws(BrowserError)
+    -> [Token]
+  {
     let regex: NSRegularExpression
     do {
       regex = try NSRegularExpression(
-        pattern: #"<H3([^>]*)>(.*?)</H3>|<DL[^>]*>|</DL>|<A\s([^>]*)>(.*?)</A>"#,
-        options: [.caseInsensitive, .dotMatchesLineSeparators])
+        pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators])
     } catch {
       throw .storageFailed("Bookmark parser: \(error.localizedDescription)")
     }
@@ -115,13 +116,17 @@ nonisolated enum BrowserBookmarkHTML {
     else {
       return nil
     }
-    let match = attributes[range]
+    return quotedValue(in: attributes[range]).map(unescape)
+  }
+
+  /// The text between the first and last quotes of `match`, if it has both.
+  static func quotedValue(in match: Substring) -> String? {
     guard let open = match.firstIndex(of: "\""), let close = match.lastIndex(of: "\""),
       open < close
     else {
       return nil
     }
-    return unescape(String(match[match.index(after: open)..<close]))
+    return String(match[match.index(after: open)..<close])
   }
 
   static func unescape(_ text: String) -> String {

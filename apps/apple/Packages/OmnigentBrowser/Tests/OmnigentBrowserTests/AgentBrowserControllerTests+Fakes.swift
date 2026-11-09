@@ -13,7 +13,7 @@ import Testing
 @MainActor
 final class RecordingAgentInput: BrowserAgentInput {
   var isRendererDirect: Bool { true }
-  var needsHostWindow: Bool { false }
+  var needsHostWindow = false
   private(set) var preparedViewport: CGSize?
 
   func prepareForAgent(viewport: CGSize) {

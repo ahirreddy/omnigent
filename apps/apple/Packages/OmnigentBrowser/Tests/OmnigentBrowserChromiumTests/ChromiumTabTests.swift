@@ -111,6 +111,13 @@ import Testing
       #expect(throws: BrowserError.tabNotReady) { try fixture.tab.showDevTools() }
     }
 
+    @Test("DevTools open through the host")
+    func showsDevTools() throws {
+      let fixture = try ChromiumTabFixture()
+      try fixture.tab.showDevTools()
+      #expect(fixture.last(.showDevTools) != nil)
+    }
+
     @Test func requestsConvertTheirRepliesAndFailures() async throws {
       let fixture = try ChromiumTabFixture()
       try fixture.connect()

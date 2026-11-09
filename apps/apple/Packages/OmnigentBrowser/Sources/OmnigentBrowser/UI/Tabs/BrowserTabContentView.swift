@@ -252,14 +252,16 @@ struct BrowserTabShortcuts: View {
   let model: BrowserTabModel
   @Binding var sheet: BrowserTabSheet?
 
+  private func findAgain(forward: Bool) {
+    Task { await model.findNext(forward: forward) }
+  }
+
   var body: some View {
     ZStack {
       shortcut("Open Location", "l") { model.focusOmnibox() }
       shortcut("Find", "f") { model.showFindBar() }
-      shortcut("Find Next", "g") { Task { await model.findNext(forward: true) } }
-      shortcut("Find Previous", "g", [.command, .shift]) {
-        Task { await model.findNext(forward: false) }
-      }
+      shortcut("Find Next", "g") { findAgain(forward: true) }
+      shortcut("Find Previous", "g", [.command, .shift]) { findAgain(forward: false) }
       shortcut("Zoom In", "=") { model.zoomIn() }
       shortcut("Zoom In", "+") { model.zoomIn() }
       shortcut("Zoom Out", "-") { model.zoomOut() }

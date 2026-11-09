@@ -251,19 +251,28 @@ nonisolated enum WireJSON {
     }
   }
 
+  /// Only plain strings, numbers, arrays and structs come here; failure is a programming error.
   static func encode<T: Encodable>(_ value: T) -> String {
+    let result = Result { () throws(WebLayerError) in try encoded(value) }
+    guard case .success(let text) = result else { preconditionFailure("\(T.self): \(result)") }
+    return text
+  }
+
+  static func encoded<T: Encodable>(_ value: T) throws(WebLayerError) -> String {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
     let data: Data
     do {
       data = try encoder.encode(value)
     } catch {
-      // Only plain strings, numbers, arrays and structs are encoded; failure is a programming
-      // error.
-      preconditionFailure("JSON encoding of \(T.self) failed: \(error)")
+      throw .invalidArgument("JSON encoding of \(T.self) failed: \(error.localizedDescription)")
     }
+    return try text(ofJSON: data)
+  }
+
+  static func text(ofJSON data: Data) throws(WebLayerError) -> String {
     guard let text = String(bytes: data, encoding: .utf8) else {
-      preconditionFailure("JSONEncoder produced invalid UTF-8.")
+      throw .invalidArgument("JSONEncoder produced invalid UTF-8.")
     }
     return text
   }

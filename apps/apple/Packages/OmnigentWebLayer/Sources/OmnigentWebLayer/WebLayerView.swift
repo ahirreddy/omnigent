@@ -49,7 +49,7 @@ public final class WebLayerView: NSView {
 
 /// The layer-hosting surface that receives input. IME composition is in
 /// `WebSurfaceView+TextInput.swift`, drag and drop in `WebSurfaceView+Drag.swift`.
-final class WebSurfaceView: NSView {
+class WebSurfaceView: NSView {
   let webView: WebView
   private var redispatching = false
   private var trackingArea: NSTrackingArea?
@@ -257,13 +257,19 @@ final class WebSurfaceView: NSView {
       Task { @MainActor in
         guard let self else { return }
         self.hostWindow?.invalidateCursorRects(for: self)
-        if let window = self.hostWindow,
-          self.bounds.contains(self.convert(window.mouseLocationOutsideOfEventStream, from: nil))
-        {
-          Self.nsCursor(self.webView.cursor).set()
+        if let window = self.hostWindow {
+          self.updateCursor(
+            pointerAt: self.convert(window.mouseLocationOutsideOfEventStream, from: nil))
         }
         self.observeCursor()
       }
+    }
+  }
+
+  /// Shows the page's cursor at once when the pointer, at `point`, is over the view.
+  func updateCursor(pointerAt point: CGPoint) {
+    if bounds.contains(point) {
+      Self.nsCursor(webView.cursor).set()
     }
   }
 

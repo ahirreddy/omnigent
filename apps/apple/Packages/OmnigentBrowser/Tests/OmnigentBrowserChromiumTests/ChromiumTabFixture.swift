@@ -48,7 +48,7 @@
           renderMode: .ioSurface, spawnDuration: .zero, helloDuration: .zero, readyDuration: .zero,
           hostInitMilliseconds: 0))
       let profile = BrowserProfile(identifier: "tests", persistence: .ephemeral)
-      let made = try engine.makeTab(profile: profile, initialURL: nil)
+      let made = engine.makeTab(profile: profile, initialURL: nil)
       tab = try #require(made as? ChromiumBrowserTab)
       tab.webView.status = .live
       if withDelegate { tab.delegate = recorder }

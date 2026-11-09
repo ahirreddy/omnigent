@@ -23,10 +23,11 @@ public final class FixtureRemoteBrowserDriver: RemoteBrowserDriverProtocol {
   private let state: Mutex<State>
   private let listener: any RemoteBrowserListener
   private let latency: Duration
+  private let resources: Bundle
   private static let frameInterval = Duration.milliseconds(66)
 
   nonisolated init(
-    start: RemoteBrowserSnapshot, tabExists: Bool, latency: Duration,
+    start: RemoteBrowserSnapshot, tabExists: Bool, latency: Duration, resources: Bundle,
     listener: any RemoteBrowserListener
   ) {
     var snapshot = start
@@ -40,6 +41,7 @@ public final class FixtureRemoteBrowserDriver: RemoteBrowserDriverProtocol {
       scrollMetrics: true, touch: true)
     state = Mutex(State(snapshot: snapshot, tabExists: tabExists))
     self.latency = latency
+    self.resources = resources
     self.listener = listener
   }
 
@@ -94,7 +96,7 @@ public final class FixtureRemoteBrowserDriver: RemoteBrowserDriverProtocol {
 
   /// Sends the fixture thumbnail.
   public nonisolated func requestStill(kind: StillKind) {
-    guard let url = Bundle.module.url(forResource: "thumbnail_320x200", withExtension: "jpg") else {
+    guard let url = resources.url(forResource: "thumbnail_320x200", withExtension: "jpg") else {
       listener.onNotice(
         notice: RemoteBrowserNotice(
           message: FixtureStreamError.missingResource("thumbnail_320x200.jpg").description,
@@ -138,7 +140,7 @@ public final class FixtureRemoteBrowserDriver: RemoteBrowserDriverProtocol {
     var streamError: FixtureStreamError?
     let snapshot = state.withLock { state in
       if Self.navigate(&state, command, url: url) {
-        streamError = Self.switchStreamIfNeeded(&state)
+        streamError = Self.switchStreamIfNeeded(&state, resources: resources)
       }
       return state.snapshot
     }
@@ -229,15 +231,20 @@ public final class FixtureRemoteBrowserDriver: RemoteBrowserDriverProtocol {
       return  // Stopped while connecting.
     }
     guard connect() else { return }
-    while !Task.isCancelled {
+    repeat {
       let (frame, progressed) = state.withLock { state in Self.tick(&state) }
       if let progressed { listener.onState(snapshot: progressed) }
       if let frame { listener.onVideo(frame: frame) }
-      do {
-        try await Task.sleep(for: Self.frameInterval)
-      } catch {
-        return
-      }
+    } while await Self.waitForNextFrame()
+  }
+
+  /// Waits one frame; false once the playback is cancelled.
+  private nonisolated static func waitForNextFrame() async -> Bool {
+    do {
+      try await Task.sleep(for: frameInterval)
+      return true
+    } catch {
+      return false
     }
   }
 
@@ -254,7 +261,7 @@ public final class FixtureRemoteBrowserDriver: RemoteBrowserDriverProtocol {
       return false
     }
     do throws(FixtureStreamError) {
-      let stream = try FixtureVideoStream(named: FixtureVideoStream.large)
+      let stream = try FixtureVideoStream(named: FixtureVideoStream.large, in: resources)
       let attached = state.withLock {
         $0.stream = $0.stream ?? stream
         $0.snapshot.connection = .attached(mode: $0.snapshot.mode ?? .view)
@@ -316,7 +323,8 @@ extension FixtureRemoteBrowserDriver {
   }
 
   /// Plays the small stream for URLs containing `small`, the large one otherwise.
-  private nonisolated static func switchStreamIfNeeded(_ state: inout State) -> FixtureStreamError?
+  private nonisolated static func switchStreamIfNeeded(_ state: inout State, resources: Bundle)
+    -> FixtureStreamError?
   {
     let wantsSmall = state.snapshot.nav?.url.contains("small") == true
     guard wantsSmall != (state.stream?.width == 640) else { return nil }
@@ -325,7 +333,7 @@ extension FixtureRemoteBrowserDriver {
     do throws(FixtureStreamError) {
       state.stream = try FixtureVideoStream(
         named: wantsSmall ? FixtureVideoStream.small : FixtureVideoStream.large,
-        streamID: state.streamID, formatChanged: true)
+        streamID: state.streamID, formatChanged: true, in: resources)
       return nil
     } catch {
       return error

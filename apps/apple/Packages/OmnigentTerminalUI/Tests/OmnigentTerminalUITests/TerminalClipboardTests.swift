@@ -155,4 +155,27 @@ struct TerminalClipboardTests {
     let unknown = unsafe perform(GHOSTTY_ACTION_NEW_TAB, on: controller)
     #expect(!unknown)
   }
+
+  @Test("a program can't read the clipboard even when the config would ask")
+  func remoteReadRefused() async throws {
+    let surface = try NeverShownSurface()
+    #expect(await surface.ready())
+    SystemSideEffects.reset()
+    SystemSideEffects.pasteboard.setString("secret", forType: .string)
+    guard let config = unsafe ghostty_config_new() else {
+      Issue.record("libghostty made no config")
+      return
+    }
+    defer { unsafe ghostty_config_free(config) }
+    let text = "clipboard-read = ask\n"
+    text.withCString { pointer in
+      unsafe ghostty_config_load_string(config, pointer, UInt(text.utf8.count), "test")
+    }
+    unsafe ghostty_config_finalize(config)
+    unsafe surface.controller.apply(config: config, colorScheme: .dark)
+    surface.connection.emit(Array("\u{1b}]52;c;?\u{07}".utf8))
+    #expect(await eventually { surface.controller.lastError?.contains("refused") == true })
+    let answer = String(bytes: surface.connection.received, encoding: .utf8) ?? ""
+    #expect(!answer.contains("c2VjcmV0"))
+  }
 }

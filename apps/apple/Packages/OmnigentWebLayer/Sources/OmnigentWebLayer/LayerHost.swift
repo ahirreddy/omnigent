@@ -30,6 +30,9 @@ public final class LayerHost {
     return layerClass.instancesRespond(to: NSSelectorFromString("setContextId:"))
   }
 
+  /// The private class embedding the host's context. A test names a missing one.
+  var remoteLayerClassName = "CALayerHost"
+
   init() {
     rootLayer.isGeometryFlipped = true
     rootLayer.masksToBounds = true
@@ -53,7 +56,7 @@ public final class LayerHost {
 
   /// Remote-layer mode: embeds the host's CAContext.
   func attachRemoteContext(_ contextID: UInt32) throws(WebLayerError) {
-    guard let layerClass = NSClassFromString("CALayerHost") as? CALayer.Type,
+    guard let layerClass = NSClassFromString(remoteLayerClassName) as? CALayer.Type,
       layerClass.instancesRespond(to: NSSelectorFromString("setContextId:"))
     else {
       throw .renderingUnavailable("CALayerHost is not available on this macOS version.")

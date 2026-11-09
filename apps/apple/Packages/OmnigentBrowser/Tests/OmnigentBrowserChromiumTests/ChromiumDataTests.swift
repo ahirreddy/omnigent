@@ -7,10 +7,28 @@ import Testing
   @testable import OmnigentBrowserChromium
   @testable import OmnigentWebLayer
 
+  /// A value whose encoding fails, as a broken encoder would.
+  private struct RefusesToEncode: Encodable {
+    func encode(to encoder: any Encoder) throws {
+      throw CocoaError(.coderInvalidValue)
+    }
+  }
+
   @MainActor
   @Suite("Chromium profile data", .serialized)
   struct ChromiumDataTests {
     private let profile = BrowserProfile(identifier: "tests", persistence: .ephemeral)
+
+    @Test("DevTools parameters that can't be encoded fail instead of being sent")
+    func parametersRefused() throws {
+      #expect(throws: WebLayerError.self) {
+        _ = try ChromiumBrowserEngine.json(RefusesToEncode())
+      }
+      #expect(throws: WebLayerError.self) {
+        _ = try ChromiumBrowserEngine.utf8Text(Data([0xFF]))
+      }
+      #expect(try ChromiumBrowserEngine.json(["a": "b"]) == #"{"a":"b"}"#)
+    }
 
     /// Runs one removal, answering each DevTools call, and returns how many it made.
     private func answeredCalls(

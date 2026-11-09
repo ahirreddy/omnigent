@@ -52,17 +52,15 @@ nonisolated public struct BrowserFavicon: Hashable, Sendable {
     }
     context.interpolationQuality = .high
     context.draw(image, in: CGRect(x: 0, y: 0, width: size, height: size))
+    let failure = BrowserError.snapshotFailed("The icon could not be scaled.")
+    guard let scaled = context.makeImage() else { throw failure }
     let output = NSMutableData()
-    guard let scaled = context.makeImage(),
-      let destination = CGImageDestinationCreateWithData(
-        output as CFMutableData, UTType.png.identifier as CFString, 1, nil)
-    else {
-      throw .snapshotFailed("The icon could not be scaled.")
-    }
-    CGImageDestinationAddImage(destination, scaled, nil)
-    guard CGImageDestinationFinalize(destination) else {
-      throw .snapshotFailed("The icon could not be encoded.")
-    }
+    let bytes = output as CFMutableData
+    let type = UTType.png.identifier as CFString
+    guard let png = CGImageDestinationCreateWithData(bytes, type, 1, nil) else { throw failure }
+    CGImageDestinationAddImage(png, scaled, nil)
+    let unencoded = BrowserError.snapshotFailed("The icon could not be encoded.")
+    guard CGImageDestinationFinalize(png) else { throw unencoded }
     return Self(pngData: output as Data)
   }
 }

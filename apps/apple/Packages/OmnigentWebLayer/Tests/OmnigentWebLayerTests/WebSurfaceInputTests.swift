@@ -7,6 +7,18 @@ import Testing
 
 @testable import OmnigentWebLayer
 
+/// A surface that records the drag AppKit would start instead of taking over the pointer.
+private final class RecordingDragSurface: WebSurfaceView {
+  var startedItems: [NSDraggingItem] = []
+
+  override func beginDraggingSession(
+    with items: [NSDraggingItem], event: NSEvent, source: any NSDraggingSource
+  ) -> NSDraggingSession {
+    startedItems = items
+    return NSDraggingSession()
+  }
+}
+
 /// What the surface does with the pointer, keys and a page's drag, beyond the basics above.
 @MainActor
 @Suite("Web surface input", .serialized)
@@ -102,6 +114,51 @@ struct WebSurfaceInputTests {
     let ended = try #require(fixture.last(.dragSourceEnded))
     #expect(ended.u64(.dragOperations) != 0)
     window.contentView = nil
+  }
+
+  @Test("a page's drag starts from the last mouse-down, and AppKit's callbacks reach the page")
+  func pageDragStarts() throws {
+    let fixture = ProtocolFixture()
+    let surface = RecordingDragSurface(webView: fixture.webView)
+    let start = WebDragStart(
+      data: WebDragData(text: "t"), operations: .copy, location: .zero, image: nil)
+    surface.lastMouseDown = try Offscreen.mouseEvent(.leftMouseDown)
+    surface.beginPageDrag(start)
+    #expect(surface.startedItems.count == 1)
+    #expect(surface.pageDrag != nil)
+
+    let session = NSDraggingSession()
+    #expect(surface.draggingSession(session, sourceOperationMaskFor: .outsideApplication) == .copy)
+    fixture.sent.removeAll()
+    surface.draggingSession(session, endedAt: .zero, operation: .copy)
+    #expect(surface.pageDrag == nil)
+    #expect(fixture.last(.dragSourceEnded) != nil)
+  }
+
+  @Test("the page's cursor shows at once only while the pointer is over the view")
+  func cursorUnderThePointer() throws {
+    let host = hosted()
+    let (fixture, surface) = (host.fixture, host.surface)
+    try fixture.receive(.cursorChanged, WireEncoder().u64(.cursor, 1))
+    NSCursor.arrow.set()
+    surface.updateCursor(pointerAt: CGPoint(x: -1, y: -1))
+    #expect(NSCursor.current == NSCursor.arrow)
+    surface.updateCursor(pointerAt: CGPoint(x: 1, y: 1))
+    #expect(NSCursor.current != NSCursor.arrow)
+    NSCursor.arrow.set()
+    host.window.contentView = nil
+  }
+
+  @Test("a key AppKit won't rebuild goes nowhere, and the rest reach the view")
+  func unhandledKeyNotRebuilt() throws {
+    let fixture = ProtocolFixture()
+    let renderer = fixture.webView.renderer
+    var delivered = 0
+    renderer.onUnhandledKeyEvent = { _ in delivered += 1 }
+    renderer.forwardUnhandledKey(nil, keyCode: 7)
+    #expect(delivered == 0)
+    renderer.forwardUnhandledKey(try Offscreen.keyEvent(), keyCode: 0)
+    #expect(delivered == 1)
   }
 
   @Test("a shortcut the page gave back goes to the window first, and doesn't return to the page")

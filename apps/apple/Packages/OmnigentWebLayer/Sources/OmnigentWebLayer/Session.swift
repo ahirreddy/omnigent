@@ -24,6 +24,8 @@ public final class Session {
   @ObservationIgnored var generation = 0
   @ObservationIgnored var token = ""
   @ObservationIgnored var requestedMode = RenderMode.remoteLayer
+  /// Whether this macOS has remote layers. A test answers no.
+  @ObservationIgnored var remoteLayerSupported: () -> Bool = { LayerHost.isRemoteLayerSupported }
   @ObservationIgnored var launchStart = ContinuousClock.now
   @ObservationIgnored var spawnDuration = Duration.zero
   @ObservationIgnored var helloDuration: Duration?
@@ -135,17 +137,7 @@ public final class Session {
   /// - Throws: The launch failure, or `.hostTimedOut` after `timeout`.
   public func waitUntilReady(timeout: Duration = .seconds(60)) async throws(WebLayerError) {
     let deadline = ContinuousClock.now + timeout
-    while true {
-      switch state {
-      case .ready:
-        return
-      case .failed(let error), .crashed(let error):
-        throw error
-      case .idle, .stopped:
-        throw .notReady
-      case .launching:
-        break
-      }
+    while try !launchFinished() {
       if ContinuousClock.now >= deadline {
         throw .hostTimedOut(phase: "start-up", seconds: Double(timeout.components.seconds))
       }
@@ -154,6 +146,17 @@ public final class Session {
       } catch {
         throw .notReady
       }
+    }
+  }
+
+  /// Whether the host is ready, false while it launches.
+  /// - Throws: The launch failure, or `.notReady` when no launch is under way.
+  private func launchFinished() throws(WebLayerError) -> Bool {
+    switch state {
+    case .ready: true
+    case .launching: false
+    case .failed(let error), .crashed(let error): throw error
+    case .idle, .stopped: throw .notReady
     }
   }
 

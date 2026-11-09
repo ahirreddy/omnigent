@@ -31,12 +31,19 @@ extension BrowserTabModel {
     tab.load(BrowserRestorePlaceholder.startURL)
     let tabID = ObjectIdentifier(tab)
     Task { [weak self] in
-      do {
-        try await Task.sleep(for: .seconds(15))
-      } catch {
-        return
-      }
-      self?.restoreTimedOut(tabID)
+      if await Self.restoreWaitRanOut() { self?.restoreTimedOut(tabID) }
+    }
+  }
+
+  /// Whether a restore's wait ran its course; a cancelled wait times nothing out.
+  static func restoreWaitRanOut(
+    sleep: () async throws -> Void = { try await Task.sleep(for: .seconds(15)) }
+  ) async -> Bool {
+    do {
+      try await sleep()
+      return true
+    } catch {
+      return false
     }
   }
 
