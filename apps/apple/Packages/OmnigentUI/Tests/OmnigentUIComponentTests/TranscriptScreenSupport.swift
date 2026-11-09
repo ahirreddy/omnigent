@@ -83,6 +83,10 @@
     func add(_ entry: String) {
       entries.append(entry)
     }
+
+    func clear() {
+      entries.removeAll()
+    }
   }
 
   /// Rows of each kind, with only what a test cares about spelled out.
