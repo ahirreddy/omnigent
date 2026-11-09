@@ -171,26 +171,45 @@ public final class DesktopRouter {
     let strategy = DeepLinkRouting.strategy(
       target: origin, windows: registry.routingSnapshots, knownOrigins: Set(known.keys),
       focused: registry.keyWindow)
+    await follow(strategy, route: route, origin: origin, originURL: origin.url, known: known)
+  }
+
+  /// Carries out `strategy`, reporting a target that isn't there rather than dropping the link.
+  /// - Parameters:
+  ///   - strategy: How to open the route.
+  ///   - route: The destination.
+  ///   - origin: The server the link names.
+  ///   - originURL: The server's URL, used after the user consents to it.
+  ///   - known: The URL of each server the user connected to before.
+  func follow(
+    _ strategy: DeepLinkStrategy<UUID>, route: DeepLinkRoute, origin: ServerOrigin,
+    originURL: URL?, known: [ServerOrigin: URL]
+  ) async {
     switch strategy {
     case .navigate(let instance), .navigateWhenReady(let instance):
-      // The strategy picked this window from the registry's own list, with no wait since.
-      if let entry = registry.entry(instance) {
-        registry.deliver(route, to: instance)
-        openWindow?(entry.id)
+      guard let entry = registry.entry(instance) else {
+        reportIssue(.routingFailed("window \(instance) closed while routing"))
+        return
       }
+      registry.deliver(route, to: instance)
+      openWindow?(entry.id)
     case .openKnownServer:
-      // The strategy picks this only for an origin `known` holds.
-      if let serverURL = known[origin] { openNewWindow(serverURL, route: route) }
+      guard let serverURL = known[origin] else {
+        reportIssue(.routingFailed("no known URL for \(origin)"))
+        return
+      }
+      openNewWindow(serverURL, route: route)
     case .requireConsent:
       guard await confirmUnknownServer(origin) else {
         reportIssue(.consentDeclined(origin))
         return
       }
-      // Every host the origin grammar allows forms a URL.
-      if let serverURL = origin.url {
-        rememberServer(serverURL)
-        openNewWindow(serverURL, route: route)
+      guard let serverURL = originURL else {
+        reportIssue(.routingFailed("Foundation rejected \(origin)"))
+        return
       }
+      rememberServer(serverURL)
+      openNewWindow(serverURL, route: route)
     }
   }
 

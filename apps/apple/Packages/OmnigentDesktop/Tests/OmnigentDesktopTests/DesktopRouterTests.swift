@@ -270,6 +270,30 @@ struct DesktopRouterTests {
     #expect(screen.controlFrames.isEmpty)
   }
 
+  @Test("a target that isn't there is reported, not dropped in silence")
+  func missingTargetsAreReported() async throws {
+    let origin = try ServerOrigin(url: try url("https://ws.example.com"))
+    let cases: [(DeepLinkStrategy<UUID>, expected: String)] = [
+      (.navigate(UUID()), "closed while routing"),
+      (.navigateWhenReady(UUID()), "closed while routing"),
+      (.openKnownServer, "no known URL"),
+      (.requireConsent, "Foundation rejected"),
+    ]
+    for (strategy, expected) in cases {
+      let harness = Harness()
+      harness.attach()
+      await harness.router.follow(
+        strategy, route: .conversation(sessionID: "c1"), origin: origin, originURL: nil, known: [:])
+      #expect(harness.opened.isEmpty)
+      #expect(harness.remembered.isEmpty)
+      guard case .routingFailed(let reason) = harness.issues.first else {
+        Issue.record("expected routingFailed, got \(harness.issues)")
+        continue
+      }
+      #expect(reason.contains(expected))
+    }
+  }
+
   @Test("no window is requested when one attaches during launch")
   func coldStartWithRestoredWindow() async throws {
     let harness = Harness(known: [try url("http://localhost:8000")])
