@@ -96,7 +96,7 @@ struct AutomationsAdapter: View {
     )?.absoluteString ?? ""
   }
 
-  private func actions(_ pages: PagesStore) -> AutomationsActions {
+  func actions(_ pages: PagesStore) -> AutomationsActions {
     var actions = AutomationsActions()
     actions.filter = {
       filter = $0

@@ -79,7 +79,7 @@ struct InboxTriageAdapter: View {
     }
   }
 
-  private var actions: InboxActions {
+  var actions: InboxActions {
     let pages = connection.pages
     var actions = InboxActions(
       open: { item in

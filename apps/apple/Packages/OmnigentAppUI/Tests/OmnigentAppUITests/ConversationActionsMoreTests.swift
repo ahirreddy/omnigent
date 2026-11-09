@@ -84,6 +84,10 @@ extension ConversationWiringTests {
     ]
     wired.container.switchHarness(to: "ag_other")
     #expect(wired.container.failures == ["Other can't run on this machine."])
+    wired.server.route(
+      "/v1/sessions/conv_a/events", method: "POST", .json(#"{"queued":false}"#, status: 202))
+    wired.container.switchHarness(to: "ag_claude")
+    #expect(wired.container.failures.count == 1, "an agent it can move to reports nothing")
   }
 
   @Test("Fork From Here does nothing for a message still being written")
@@ -99,6 +103,14 @@ extension ConversationWiringTests {
     let row = OmnigentUIComponents.Row(id: "r", role: .user, text: "hello")
     forkable.forkFrom?(row)
     #expect(wired.container.forkFlow.viewState == nil)
+
+    var settled = OmnigentUIComponents.Row(id: "a", role: .assistant, text: "done")
+    settled.responseId = "resp_1"
+    forkable.forkFrom?(settled)
+    try await eventually("the sheet") { wired.container.forkFlow.viewState != nil }
+    wired.container.forkFlow.cancel()
+    forkable.forkToRecover?(true)
+    try await eventually("the recovery sheet") { wired.container.forkFlow.viewState != nil }
   }
 
   @Test("A file change the agent made refreshes the changed files the panel shows")
@@ -125,6 +137,23 @@ extension ConversationWiringTests {
     try await settle(screen, until: "the changes") {
       data.requests.count(where: { $0.hasPrefix("changes") }) > before
     }
+  }
+
+  @Test("A session's agent details show, and background work shows in the composer's tray")
+  func agentInfoAndTray() async throws {
+    let wired = try await wired()
+    wired.store.apply(
+      revision: 2,
+      change: TranscriptChange(
+        rows: [], header: nil,
+        sections: [ConversationFixtures.section("status", details: [("background", "2")])]))
+    let screen = OffscreenWindow(wired.container, width: 1000, height: 600)
+    defer { screen.close() }
+    try await settle(screen, until: "the tray") { (try? screen.shownText())?.isEmpty == false }
+    #expect(
+      SessionToolsAdapter.indicators(
+        wired.store, screen: ConversationAdapter.screenState(wired.store, summary: nil)
+      ).backgroundTasks == 2)
   }
 
   @Test("A side chat says whose it is")

@@ -32,7 +32,7 @@ struct AutomationDetailAdapter: View {
     }
   }
 
-  private var actions: AutomationDetailActions {
+  var actions: AutomationDetailActions {
     var actions = AutomationDetailActions()
     let id = automation.id
     actions.back = back

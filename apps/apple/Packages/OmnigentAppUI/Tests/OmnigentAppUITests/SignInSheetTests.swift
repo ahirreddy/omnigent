@@ -110,6 +110,22 @@ struct SignInSheetTests {
     #expect(asked.pages.isEmpty)
   }
 
+  @Test("Retry connects to the last server again, and does nothing before there was one")
+  func retrying() async throws {
+    let server = oidcServer()
+    let controller = try controller(server) { _, _ throws(WebAuthenticationError) in
+      throw .cancelled
+    }
+    controller.actions.retry()
+    #expect(server.requests("GET", "/.well-known/omnigent.json").isEmpty)
+    await controller.connectNow("http://127.0.0.1:6767")
+    let before = server.requests("GET", "/.well-known/omnigent.json").count
+    controller.actions.retry()
+    try await eventually("the second connect") {
+      server.requests("GET", "/.well-known/omnigent.json").count > before
+    }
+  }
+
   @Test("A sign-in option the browser can't run says to use the form")
   func thePasswordOption() async throws {
     let controller = try controller(oidcServer()) { _, _ throws(WebAuthenticationError) in

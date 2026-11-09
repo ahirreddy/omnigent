@@ -70,6 +70,26 @@ struct PullRequestPanelTests {
     return try #require(connection.makePanelStore("conv_a"))
   }
 
+  @Test("Unlink, Turn Off Auto-Merge and dismissing a failed edit reach the panel")
+  func smallerEdits() async throws {
+    let server = server()
+    server.route("\(githubPath)/prs", method: "POST", .json(#"{"detail":"refused"}"#, status: 500))
+    server.route("\(githubPath)/disable-auto-merge", method: "POST", .json("{}"))
+    let panel = try await panel(server)
+    let actions = PullRequestPanelSlots.extras(panel, canEdit: true).actions
+    actions.unlink?(pullRequestURL)
+    try await eventually("the refused unlink") { panel.editError != nil }
+    actions.dismissError?()
+    #expect(panel.editError == nil)
+
+    actions.select?(pullRequestURL)
+    try await eventually("the detail") { panel.openPullRequest != nil }
+    actions.disableAutoMerge?()
+    try await eventually("the auto-merge edit") {
+      !server.requests("POST", "\(githubPath)/disable-auto-merge").isEmpty
+    }
+  }
+
   @Test("Opening a pull request shows its files, and the list and Refresh read again")
   func openAndRefresh() async throws {
     let server = server()
