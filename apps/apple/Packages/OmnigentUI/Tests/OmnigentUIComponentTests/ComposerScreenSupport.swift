@@ -199,9 +199,9 @@
       guard frames.indices.contains(index) else {
         throw OffscreenWindowError.notFound("chip \(index) of \(frames.count)")
       }
-      // A plain menu just after another closed can drop the click, so it gets a second one.
+      // After a menu closes, the first click on a different plain menu opens nothing, however long
+      // the wait. The next click works. A VM flow checks whether a real click does the same.
       if let menu = try? openMenu(clickPoint(frames[index])) { return menu }
-      settle(0.05)
       return try openMenu(clickPoint(frames[index]))
     }
 
