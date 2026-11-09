@@ -76,6 +76,13 @@
   @MainActor
   @Suite("A view in an offscreen window takes real input", .serialized)
   struct OffscreenWindowTests {
+    @Test("a window doesn't animate: the animation's end would stop the test runner's run loop")
+    func windowsDontAnimate() {
+      let screen = OffscreenWindow(Text("Still"), width: 100, height: 100)
+      defer { screen.close() }
+      #expect(screen.window.animationBehavior == .none)
+    }
+
     @Test("a click reaches each kind of control")
     func clicks() throws {
       let taps = Taps()

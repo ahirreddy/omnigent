@@ -258,6 +258,9 @@
         MainActor.assumeIsolated {
           created.alphaValue = 0
           created.ignoresMouseEvents = true
+          // Ordering in or out animates, and the animation's end stops whichever run loop is
+          // running. On the test runner's own loop that ends the process.
+          created.animationBehavior = .none
         }
         return created
       }
