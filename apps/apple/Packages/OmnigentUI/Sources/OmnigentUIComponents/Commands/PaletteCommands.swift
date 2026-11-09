@@ -176,11 +176,9 @@ private struct ShortcutAliases: View {
     Group {
       Button("Toggle Sidebar") { perform(.toggleSidebar) }
         .keyboardShortcut(AppShortcuts.toggleSidebarAlias)
-      // Shift turns [ into { on most layouts, so the shifted character is bound too; focusing
-      // a pane is idempotent if both match.
-      focus(.leading, AppShortcuts.previousPane)
+      // Shift turns [ into {, and a binding on [ itself also takes Option-Command-[, which would
+      // leave a split window with no way to toggle its sidebar.
       focus(.leading, KeyboardShortcut("{", modifiers: [.command, .option]))
-      focus(.trailing, AppShortcuts.nextPane)
       focus(.trailing, KeyboardShortcut("}", modifiers: [.command, .option]))
     }
     .opacity(0)
