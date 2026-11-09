@@ -443,6 +443,14 @@ pub struct ContextUsage {
 
 const CONTEXT_BAR_WIDTH: u64 = 20;
 
+/// `used / window` of `scale`, rounded, for `used <= window`. Wide so counts near the integer
+/// limit cannot overflow.
+fn rounded_share(used: u64, window: u64, scale: u64) -> u64 {
+    let window = u128::from(window);
+    let share = (u128::from(used) * u128::from(scale) + window / 2) / window;
+    u64::try_from(share).unwrap_or(scale)
+}
+
 /// The `/context` text: the model, the tokens used against the window with a bar, and the
 /// item count (the web composer's `/context`).
 #[must_use]
@@ -458,9 +466,9 @@ pub fn context_report(configuration: Option<&SessionConfiguration>, usage: Conte
     match (usage.tokens_used, usage.context_window) {
         (Some(tokens), Some(window)) if window > 0 => {
             let used = tokens.min(window);
-            let filled = (used * CONTEXT_BAR_WIDTH + window / 2) / window;
+            let filled = rounded_share(used, window, CONTEXT_BAR_WIDTH);
             // Tenths of a percent, rounded.
-            let tenths = (used * 1000 + window / 2) / window;
+            let tenths = rounded_share(used, window, 1000);
             lines.push(format!(
                 "{} / {} tokens ({}.{}%)",
                 grouped(tokens),
