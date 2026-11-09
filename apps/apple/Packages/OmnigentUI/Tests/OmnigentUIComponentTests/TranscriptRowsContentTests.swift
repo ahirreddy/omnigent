@@ -10,13 +10,13 @@
   @Suite("What surrounds the rows", .serialized)
   @MainActor
   struct TranscriptRowsContentTests {
-    private let log = HostLog()
+    let log = HostLog()
 
     init() {
       SystemSideEffects.reset()
     }
 
-    private func screen(
+    func screen(
       _ state: ConversationViewState, actions: ConversationActions = ConversationActions(),
       style: TranscriptStyle = .chat
     ) async throws -> OffscreenWindow<AnyView> {
@@ -30,7 +30,7 @@
       return window
     }
 
-    private func state(
+    func state(
       rows: [Row] = [], status: TurnStatus? = nil,
       _ change: (inout ConversationViewState) -> Void = { _ in }
     ) -> ConversationViewState {
@@ -183,7 +183,7 @@
 
     // MARK: The plan
 
-    private func plan() -> EventSection {
+    func plan() -> EventSection {
       EventSection(
         id: "todos", title: "Plan", summary: "1 of 2",
         details: [
@@ -228,6 +228,110 @@
       let settled = TranscriptFixture.answer("settled")
       #expect(TranscriptView.lastAnswerID([settled, empty, streaming]) == "settled")
       #expect(TranscriptView.lastAnswerID([streaming]) == nil)
+    }
+
+  }
+
+  // The same surroundings in CLI style.
+  extension TranscriptRowsContentTests {
+
+    @Test("CLI style shows the empty and loading states")
+    func cliEmptyStates() async throws {
+      let fresh = try await screen(state(), style: .cli)
+      defer { fresh.close() }
+      #expect(try fresh.shows(EmptyTranscriptView.heading))
+      let hydrating = try await screen(state { $0.isHydrating = true }, style: .cli)
+      defer { hydrating.close() }
+      #expect(try hydrating.shows("Loading conversation\u{2026}"))
+    }
+
+    @Test("CLI style carries the plan, superseded, failure and error banners in its stream")
+    func cliBanners() async throws {
+      var actions = ConversationActions()
+      let log = self.log
+      actions.resume = { log.add("resume") }
+      actions.openSession = { log.add("open \($0)") }
+      let window = try await screen(
+        state(rows: [TranscriptFixture.answer("a")]) {
+          $0.sections = [
+            plan(),
+            EventSection(
+              id: "superseded", title: "Continued elsewhere", summary: "Moved on", details: [],
+              sessionId: "next"),
+          ]
+          $0.header.failureMessage = "Out of disk"
+          $0.errorMessage = "Network down"
+        }, actions: actions, style: .cli)
+      defer { window.close() }
+      for text in ["Plan", "Continued elsewhere", "Out of disk", "Network down"] {
+        #expect(try window.shows(text), "\(text)")
+      }
+      let row = TranscriptFixture.activityRow(
+        .error, title: "Failed", summary: "Out of disk", isFailure: true)
+      let withRow = try await screen(
+        state(rows: [row]) { $0.header.failureMessage = "Out of disk" }, style: .cli)
+      defer { withRow.close() }
+      #expect(try !withRow.shows("Resume session"))
+      let toItself = try await screen(
+        state(rows: [TranscriptFixture.answer("a")]) {
+          $0.sections = [
+            EventSection(
+              id: "superseded", title: "Continued elsewhere", summary: "Moved on", details: [],
+              sessionId: TranscriptFixture.header.id)
+          ]
+        }, style: .cli)
+      defer { toItself.close() }
+      #expect(try !toItself.shows("Continued elsewhere"))
+    }
+
+    @Test("CLI style shows a running turn's working line until a row streams")
+    func cliWorkingLine() async throws {
+      let blocked = try await screen(
+        state(rows: [TranscriptFixture.user("u")], status: .running) {
+          $0.decisions = [
+            DecisionCard(
+              id: "d", carryingSessionId: TranscriptFixture.header.id, title: "Allow it?",
+              detail: "A tool", kind: .approval)
+          ]
+        }, style: .cli)
+      defer { blocked.close() }
+      #expect(try blocked.shows("Allow it?"))
+
+      var streaming = TranscriptFixture.answer("a", "Typing")
+      streaming.isStreaming = true
+      let live = try await screen(state(rows: [streaming], status: .running), style: .cli)
+      defer { live.close() }
+      #expect(try live.shows("Typing"))
+    }
+
+    @Test("A settled turn ends with how long it worked, and a live one doesn't")
+    func cliFooter() throws {
+      let finished = try #require(ISO8601DateFormatter().date(from: "2026-03-01T09:47:00Z"))
+      let answer = TranscriptFixture.answer("a", responseID: "r")
+      let segments = TurnLayout.segments(
+        TranscriptLayout.items(for: [TranscriptFixture.user("u"), answer]), isRunning: false)
+      let settled = CLILayout.blocks(
+        segments, durations: ["r": 12], timestamps: ["a": finished], isRunning: false,
+        now: finished)
+      let footer = try #require(settled.last)
+      guard case .footer(_, let text) = footer else {
+        Issue.record("Expected a footer, got \(footer)")
+        return
+      }
+      #expect(text.hasPrefix("Worked for 12s \u{2022} "))
+      #expect(footer.id.hasPrefix("footer:"))
+
+      let live = CLILayout.blocks(
+        segments, durations: ["r": 12], timestamps: [:], isRunning: true, now: finished)
+      #expect(!live.contains { $0.id.hasPrefix("footer:") })
+      // A turn closed by the next user message settles even while running.
+      let closed = CLILayout.blocks(
+        segments, durations: ["r": 12], timestamps: [:], isRunning: true, closesLastTurn: true,
+        now: finished)
+      #expect(closed.contains { $0.id.hasPrefix("footer:") })
+      // Nothing to report: no footer.
+      let bare = CLILayout.blocks(segments, durations: [:], timestamps: [:], isRunning: false)
+      #expect(!bare.contains { $0.id.hasPrefix("footer:") })
     }
 
     @Test("CLI style opens at the newest row")
