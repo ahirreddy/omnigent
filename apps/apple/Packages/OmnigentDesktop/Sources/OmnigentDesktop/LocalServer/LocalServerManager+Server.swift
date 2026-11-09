@@ -147,14 +147,17 @@ extension LocalServerManager {
     let clock = dependencies.clock
     let deadline = clock.now + dependencies.timing.serverReadiness
     var lastProblem: String?
-    while true {
-      if run.stopRequested { return .stopRequested }
+    while !run.stopRequested {
       if let exit = run.exit {
         if exit.isSuccess, preferences.port == nil { return .reuseExisting }
         return .failed(.exitedBeforeReady(exit, lastLines: serverLog.lastProcessLines(10)))
       }
       if run.port == nil { run.port = canonicalPort(since: run.launchDate, problem: &lastProblem) }
-      if let outcome = await probeOnce(run, problem: &lastProblem) { return outcome }
+      if let outcome = await probeOnce(run, problem: &lastProblem) {
+        // A process that exited during the probe isn't what answered it; the exit decides.
+        if case .ready = outcome, run.exit != nil { continue }
+        return outcome
+      }
       guard clock.now < deadline else {
         let seconds = Int(dependencies.timing.serverReadiness.components.seconds)
         return .failed(.readinessTimedOut(seconds: seconds, lastProblem: lastProblem))
@@ -165,6 +168,7 @@ extension LocalServerManager {
         return .stopRequested
       }
     }
+    return .stopRequested
   }
 
   /// One probe of the run's port: an outcome when ready or rejected, `nil` to keep waiting.

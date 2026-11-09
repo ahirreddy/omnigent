@@ -50,11 +50,18 @@ struct LocalServerFailureTests {
         }
       })
     await harness.manager.startServer(trigger: .launch)
-    guard case .running(let endpoint, _) = harness.manager.server else {
+    guard case .running(let endpoint, let ownership) = harness.manager.server else {
       Issue.record("expected the running server, got \(harness.manager.server)")
       return
     }
     #expect(endpoint.port == 7300)
+    // The exit can land just after the probe; it then settles on the server that's really there.
+    if ownership == .owned {
+      await waitUntil(within: .seconds(5)) { harness.manager.server.ownership == .adopted }
+    }
+    await harness.manager.waitForScheduledRestarts()
+    #expect(harness.manager.server.ownership == .adopted)
+    #expect(!harness.manager.hasProcessesToStopOnQuit)
   }
 
   @Test("a configured port past the valid range fails instead of probing it")
