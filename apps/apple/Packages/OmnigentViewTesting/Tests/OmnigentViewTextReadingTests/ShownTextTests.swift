@@ -37,6 +37,20 @@
   @Suite("Shown text", .serialized)
   @MainActor
   struct ShownTextTests {
+    /// Without the setting, an empty list would read as a view showing nothing.
+    @Test("A process that records no view tree fails the read")
+    func noViewTree() throws {
+      let screen = OffscreenWindow(Text("Plain text"), width: 200, height: 100)
+      defer { screen.close() }
+      let setting = "SWIFTUI_VIEW_DEBUG"
+      let saved = try #require(ProcessInfo.processInfo.environment[setting])
+      unsafe unsetenv(setting)
+      defer { unsafe setenv(setting, saved, 1) }
+      #expect(throws: OffscreenWindowError.notFound("SwiftUI's view tree")) {
+        try screen.shownText()
+      }
+    }
+
     @Test("Reads every kind of text, resolved, and follows state")
     func reads() throws {
       let screen = OffscreenWindow(TextKinds(), width: 300, height: 300)

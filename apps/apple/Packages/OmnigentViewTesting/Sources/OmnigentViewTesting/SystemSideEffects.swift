@@ -106,9 +106,7 @@
       }
       guard isFirst else { return }
       installFalsePassGuard()
-      guard RunnerLoopShield.isRequested else {
-        fatalError("The runner loop shield didn't start: a stopped run loop would end the run.")
-      }
+      requireShield(isRequested: RunnerLoopShield.isRequested)
       installPasteboard()
       installWorkspace()
       installPanels()
@@ -122,19 +120,41 @@
       state.withLockUnchecked { change(&$0.record) }
     }
 
-    /// Swaps a method's body for a C function taking the receiver and selector first. A selector
-    /// this SDK lacks must fail the test run, not leak through.
+    /// Ends the test process as a failed run, when tests can't safely go on. It exits rather than
+    /// crashes, so a test can watch it happen.
+    /// - Parameter message: Why, for the run's log.
+    static func failRun(_ message: String) -> Never {
+      FileHandle.standardError.write(Data("\(message)\n".utf8))
+      exit(70)
+    }
+
+    /// Fails the run unless the shield was asked for: a stopped run loop would end the run.
+    /// - Parameter isRequested: Whether the test bundle's load asked for it.
+    static func requireShield(isRequested: Bool) {
+      guard isRequested else { failRun("The runner loop shield didn't start.") }
+    }
+
+    /// The method to replace. A selector this SDK lacks must fail the test run, not leak through.
+    /// - Parameters:
+    ///   - owner: The class.
+    ///   - name: The selector's name.
+    ///   - isClassMethod: Whether it is a class method.
+    /// - Returns: The method.
+    static func method(_ owner: AnyClass, _ name: String, isClassMethod: Bool = false) -> Method {
+      let selector = NSSelectorFromString(name)
+      let found =
+        unsafe isClassMethod
+        ? class_getClassMethod(owner, selector) : class_getInstanceMethod(owner, selector)
+      guard let found = unsafe found else { failRun("SystemSideEffects: \(owner) has no \(name)") }
+      return unsafe found
+    }
+
+    /// Swaps a method's body for a C function taking the receiver and selector first.
     static func replace<Function>(
       _ owner: AnyClass, _ name: String, isClassMethod: Bool = false, with function: Function
     ) {
-      let selector = NSSelectorFromString(name)
-      let method =
-        unsafe isClassMethod
-        ? class_getClassMethod(owner, selector) : class_getInstanceMethod(owner, selector)
-      guard let method = unsafe method else {
-        preconditionFailure("SystemSideEffects: \(owner) has no \(name)")
-      }
-      unsafe method_setImplementation(method, unsafeBitCast(function, to: IMP.self))
+      let found = unsafe method(owner, name, isClassMethod: isClassMethod)
+      unsafe method_setImplementation(found, unsafeBitCast(function, to: IMP.self))
     }
 
     private static func installPasteboard() {
@@ -235,21 +255,24 @@
 
     /// Turns an early exit into a failure, so unrun tests can't count as a pass.
     private static func installFalsePassGuard() {
-      atexit {
-        guard Self.endsRunEarly(callStack: Thread.callStackSymbols) else { return }
-        let message = "FALSE PASS: the test runner's run loop stopped mid-run. Failing the run.\n"
-        FileHandle.standardError.write(Data(message.utf8))
-        _exit(70)
-      }
+      atexit { Self.endRunIfEarly(callStack: Thread.callStackSymbols) }
     }
+
+    /// Fails the run when an exit ended it early, and otherwise lets the exit go on.
+    /// - Parameter callStack: The symbols of the exiting call stack.
+    static func endRunIfEarly(callStack: [String]) {
+      guard endsRunEarly(callStack: callStack) else { return }
+      // coverage:off _exit skips coverage's write at exit; the test falsePassFailsTheRun runs this
+      let message = "FALSE PASS: the test runner's run loop stopped mid-run. Failing the run.\n"
+      FileHandle.standardError.write(Data(message.utf8))
+      _exit(70)
+    }
+    // coverage:on
 
     /// Every window in the process is transparent and takes no real clicks from birth, whatever
     /// shows it: sheets, dialogs and menus can move on screen, and tests still reach them by event.
     private static func installInvisibleWindows() {
-      let selector = NSSelectorFromString("initWithContentRect:styleMask:backing:defer:")
-      guard let create = unsafe class_getInstanceMethod(NSWindow.self, selector) else {
-        preconditionFailure("SystemSideEffects: NSWindow has no designated initializer")
-      }
+      let create = unsafe method(NSWindow.self, "initWithContentRect:styleMask:backing:defer:")
       unsafe originalWindowInit = method_getImplementation(create)
       let makeInvisible: WindowInit = { window, selector, frame, style, backing, deferred in
         let original = unsafe unsafeBitCast(Self.originalWindowInit, to: WindowInit.self)
@@ -265,10 +288,7 @@
       }
       unsafe method_setImplementation(create, unsafeBitCast(makeInvisible, to: IMP.self))
 
-      let alpha = NSSelectorFromString("setAlphaValue:")
-      guard let setAlpha = unsafe class_getInstanceMethod(NSWindow.self, alpha) else {
-        preconditionFailure("SystemSideEffects: NSWindow has no setAlphaValue:")
-      }
+      let setAlpha = unsafe method(NSWindow.self, "setAlphaValue:")
       unsafe originalSetAlpha = method_getImplementation(setAlpha)
       let keepTransparent: SetAlpha = { window, selector, _ in
         let original = unsafe unsafeBitCast(Self.originalSetAlpha, to: SetAlpha.self)

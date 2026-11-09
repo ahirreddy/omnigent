@@ -37,14 +37,9 @@
     }
 
     /// A panel holds the file a test chose. With none, a save panel still names its own folder and
-    /// file, and an open panel holds nothing, as they do unshown.
+    /// file, and an open panel holds nothing, as they do unshown. An open panel inherits this.
     private static func installPanelChoice() {
-      let selector = NSSelectorFromString("URL")
-      guard let saveMethod = unsafe class_getInstanceMethod(NSSavePanel.self, selector),
-        let openMethod = unsafe class_getInstanceMethod(NSOpenPanel.self, selector)
-      else {
-        preconditionFailure("SystemSideEffects: panels have no URL")
-      }
+      let saveMethod = unsafe method(NSSavePanel.self, "URL")
       let chosen: PanelURL = { panel, selector in
         if let url = Self.state.withLock({ $0.panelURL }) { return url as NSURL }
         guard let original = unsafe Self.originalPanelURL else { return nil }
@@ -52,12 +47,6 @@
       }
       unsafe originalPanelURL = method_setImplementation(
         saveMethod, unsafeBitCast(chosen, to: IMP.self))
-      if unsafe openMethod != saveMethod {
-        let chosenToOpen: PanelURL = { _, _ in
-          Self.state.withLock { $0.panelURL }.map { $0 as NSURL }
-        }
-        unsafe method_setImplementation(openMethod, unsafeBitCast(chosenToOpen, to: IMP.self))
-      }
     }
   }
 #endif

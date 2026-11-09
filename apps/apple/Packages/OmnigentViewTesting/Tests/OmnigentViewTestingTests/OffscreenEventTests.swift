@@ -22,6 +22,20 @@
     func updateNSView(_ view: MouseDownRecorder, context: Context) {}
   }
 
+  /// Reports the menu item it was asked to run.
+  @MainActor
+  private final class MenuItemTarget: NSObject {
+    private let report: (String) -> Void
+
+    init(report: @escaping (String) -> Void) {
+      self.report = report
+    }
+
+    @objc func choose(_ item: NSMenuItem) {
+      report(item.title)
+    }
+  }
+
   @MainActor
   private final class Log {
     var picked: Set<String> = []
@@ -189,6 +203,38 @@
       _ = try screen.openMenu(CGPoint(x: frames[0].midX, y: frames[0].midY))
       try screen.clickControl(at: 1)
       #expect(log.deleted == ["remove"])
+    }
+
+    @Test("clicking a view found in the window clicks its middle")
+    func clickingAView() throws {
+      let log = Log()
+      let screen = OffscreenWindow(
+        Button("Whole window") { log.deleted.append("clicked") }.buttonStyle(.borderless),
+        width: 200, height: 100)
+      defer { screen.close() }
+      try screen.click(screen.host)
+      #expect(log.deleted == ["clicked"])
+    }
+
+    @Test("a menu item is found at any depth, and a missing one is an error")
+    func choosingMenuItems() throws {
+      let screen = OffscreenWindow(Text("Menus"), width: 100, height: 100)
+      defer { screen.close() }
+      var chosen: [String] = []
+      let target = MenuItemTarget { chosen.append($0) }
+      let inner = NSMenu(title: "Inner")
+      let item = inner.addItem(
+        withTitle: "Deep", action: #selector(MenuItemTarget.choose(_:)), keyEquivalent: "")
+      item.target = target
+      let outer = NSMenu(title: "Outer")
+      outer.addItem(withTitle: "Other", action: nil, keyEquivalent: "")
+      outer.addItem(withTitle: "Folder", action: nil, keyEquivalent: "").submenu = inner
+
+      try screen.choose("Deep", in: outer)
+      #expect(chosen == ["Deep"])
+      #expect(throws: OffscreenWindowError.notFound("Nowhere")) {
+        try screen.choose("Nowhere", in: outer)
+      }
     }
 
     @Test("hovering a view reports entering it, and ending the hover reports leaving")

@@ -78,6 +78,38 @@
       #expect(SystemSideEffects.record.revealedURLs == [file])
     }
 
+    @Test("opening files with an app records both, and a sheet or background panel answers")
+    func openingWithAndPanelSheets() throws {
+      let file = URL(filePath: "/tmp/a.txt")
+      let app = URL(filePath: "/Applications/Editor.app")
+      var opened = false
+      NSWorkspace.shared.open([file], withApplicationAt: app, configuration: .init()) { _, error in
+        #expect(error == nil)
+        opened = true
+      }
+      #expect(opened)
+      #expect(SystemSideEffects.record.openedURLs == [file, app])
+
+      SystemSideEffects.answer(panel: .OK)
+      var answers: [NSApplication.ModalResponse] = []
+      let window = NSWindow(
+        contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+      window.isReleasedWhenClosed = false
+      NSSavePanel().beginSheetModal(for: window) { answers.append($0) }
+      NSOpenPanel().begin { answers.append($0) }
+      #expect(answers == [.OK, .OK])
+      #expect(SystemSideEffects.record.panelCount == 2)
+      #expect(window.attachedSheet == nil)
+    }
+
+    /// The call itself is deprecated, and product code on an older path still makes it.
+    @Test("the older way of bringing the app forward is recorded too")
+    func activatingIgnoringOtherApps() {
+      _ = unsafe NSApplication.shared.perform(
+        NSSelectorFromString("activateIgnoringOtherApps:"), with: nil)
+      #expect(SystemSideEffects.record.activationCount == 1)
+    }
+
     @Test("panels and alerts answer without showing")
     func modals() {
       let alert = NSAlert()
@@ -162,6 +194,18 @@
       #expect(SystemSideEffects.endsRunEarly(callStack: early))
       #expect(!SystemSideEffects.endsRunEarly(callStack: normal))
       #expect(!SystemSideEffects.endsRunEarly(callStack: ["exit", "main"]))
+    }
+
+    @Test("an exit that's on time goes on as usual")
+    func onTimeExit() {
+      SystemSideEffects.endRunIfEarly(callStack: ["exit", "main"])
+    }
+
+    @Test("the methods it replaces are there to find")
+    func foundMethods() {
+      #expect(
+        unsafe method_getName(SystemSideEffects.method(NSAlert.self, "runModal")) == #selector(
+          NSAlert.runModal))
     }
 
     @Test("focus, new windows, menus and quitting are recorded")
