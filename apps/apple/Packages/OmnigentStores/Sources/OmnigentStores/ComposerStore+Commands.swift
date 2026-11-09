@@ -24,7 +24,6 @@ struct ConversationFacts: Equatable {
 extension ComposerStore {
   /// How long a held message waits while the host already reads online before it is tried
   /// again: a short outage can come and go between header updates.
-  static let hostRecheckDelay: Duration = .seconds(60)
 
   /// Sends the draft and the uploaded attachments. A slash command does what the core says: a
   /// skill runs on the server, `/compact` and `/clear` use their controls, `/model` and
@@ -143,9 +142,10 @@ extension ComposerStore {
   /// otherwise the header's next online report releases them.
   func scheduleHostRecheck() {
     guard conversationFacts?()?.hostOnline ?? false, hostRecheck == nil else { return }
+    let delay = hostRecheckDelay
     hostRecheck = Task { [weak self] in
       do {
-        try await Task.sleep(for: Self.hostRecheckDelay)
+        try await Task.sleep(for: delay)
       } catch {
         // Released or replaced meanwhile.
         return
@@ -184,7 +184,7 @@ extension ComposerStore {
     do {
       try queue.hold(draft, extras: extras)
     } catch {
-      restore(extras)
+      // Only a message with nothing to send is refused, so no files are left held.
       lastError = Self.queueError(error)
       return
     }
@@ -214,11 +214,8 @@ extension ComposerStore {
       contextWindow: facts?.contextWindow, items: UInt64(facts?.items ?? 0))
   }
 
+  /// The core offers this command only to a session whose menu has modes to switch to.
   private func openApprovalPicker() {
-    guard let menu = approvalModeMenu, menu.options.contains(where: \.switchable) else {
-      commandNotice = "The approval mode can't be changed right now."
-      return
-    }
     text = ""
     commandNotice = nil
     approvalPickerRequests += 1

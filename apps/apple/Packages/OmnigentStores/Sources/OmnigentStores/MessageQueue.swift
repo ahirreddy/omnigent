@@ -69,7 +69,7 @@ public struct MessageQueue: Equatable, Sendable {
     /// Where it stands.
     public internal(set) var state: State
     /// Its files and tagged paths.
-    public internal(set) var extras = Extras()
+    public internal(set) var extras: Extras
   }
 
   /// Why a queue operation was refused.
@@ -138,6 +138,11 @@ public struct MessageQueue: Equatable, Sendable {
     let index = try index(of: id)
     guard items[index].state != .sending else { throw .sending }
     items.remove(at: index)
+  }
+
+  /// Removes the newest message, which the caller found is not being sent.
+  mutating func removeNewest() {
+    _ = items.popLast()
   }
 
   /// Moves messages, as `List.onMove` reports it.

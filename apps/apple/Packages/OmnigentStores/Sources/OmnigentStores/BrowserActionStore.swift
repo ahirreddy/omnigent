@@ -113,23 +113,12 @@ public final class BrowserActionStore {
       return
     }
     update(request.actionId) { $0.phase = .performing }
-    let result: Data
-    do {
-      result = try await performer.perform(request)
-    } catch {
-      let message = "The browser could not run \(request.action): \(error)"
-      update(request.actionId) { $0.performerError = message }
-      do {
-        result = try JSONEncoder().encode(FailureResult(error: message))
-      } catch {
-        fail(
-          request.actionId,
-          .InvalidState(message: "Could not encode the browser action failure: \(error)"))
-        return
-      }
-    }
-    guard let resultJSON = String(bytes: result, encoding: .utf8) else {
-      fail(request.actionId, .Decode(message: "The browser action result is not UTF-8 JSON."))
+    let resultJSON: String
+    switch await performedJSON(of: request, performer: performer) {
+    case .success(let json):
+      resultJSON = json
+    case .failure(let error):
+      fail(request.actionId, error)
       return
     }
     update(request.actionId) { $0.phase = .posting }
@@ -140,6 +129,38 @@ public final class BrowserActionStore {
       update(request.actionId) { $0.phase = .delivered(delivery) }
     } catch {
       fail(request.actionId, coreError(error))
+    }
+  }
+
+  /// Runs `request`: the performer's answer, or `{ok: false}` when it produced none.
+  private func performedJSON(
+    of request: BrowserActionRequest, performer: any BrowserActionPerforming
+  ) async -> Result<String, CoreError> {
+    let result: Data
+    do {
+      result = try await performer.perform(request)
+    } catch {
+      let message = "The browser could not run \(request.action): \(error)"
+      update(request.actionId) { $0.performerError = message }
+      return Self.failureJSON(FailureResult(error: message))
+    }
+    guard let resultJSON = String(bytes: result, encoding: .utf8) else {
+      return .failure(.Decode(message: "The browser action result is not UTF-8 JSON."))
+    }
+    return .success(resultJSON)
+  }
+
+  /// The JSON of a failure to post in place of a result.
+  /// - Parameter failure: The failure.
+  /// - Returns: The JSON, or the error when it can't be encoded.
+  static func failureJSON(_ failure: some Encodable) -> Result<String, CoreError> {
+    do {
+      // JSONEncoder always writes UTF-8.
+      // swiftlint:disable:next optional_data_string_conversion
+      return .success(String(decoding: try JSONEncoder().encode(failure), as: UTF8.self))
+    } catch {
+      return .failure(
+        .InvalidState(message: "Could not encode the browser action failure: \(error)"))
     }
   }
 

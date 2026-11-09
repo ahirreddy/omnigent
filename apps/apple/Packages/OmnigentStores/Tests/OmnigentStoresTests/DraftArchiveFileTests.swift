@@ -34,6 +34,33 @@ struct DraftArchiveFileTests {
     #expect(relaunched.sessions(account: "b").isEmpty)
   }
 
+  @Test(
+    "Drafts live in the app's own folder, with a fallback name",
+    arguments: [("ai.omnigent.mac", "ai.omnigent.mac"), (nil, "Omnigent")] as [(String?, String)])
+  func location(identifier: String?, folderName: String) throws {
+    defer { #expect(throws: Never.self) { try cleanUp() } }
+    let archive = try #require(
+      ComposerDraftArchive.locating(bundleIdentifier: identifier) { folder })
+    archive.record(SavedDraft(text: "hello"), account: "a", session: "s")
+    archive.flush()
+    let saved = folder.appending(path: folderName).appending(path: "composer-drafts.json")
+    #expect(FileManager.default.fileExists(atPath: saved.path))
+  }
+
+  @Test("Without Application Support, drafts just aren't kept across launches")
+  func noApplicationSupport() {
+    #expect(
+      ComposerDraftArchive.locating(bundleIdentifier: "ai.omnigent.mac") {
+        throw CocoaError(.fileNoSuchFile)
+      } == nil)
+  }
+
+  /// Reads only: nothing is recorded, so nothing is written where the app keeps its drafts.
+  @Test("The app's archive is found in Application Support")
+  func sharedArchive() {
+    #expect(ComposerDraftArchive.shared != nil)
+  }
+
   @Test("A file that can't be written reports the failure and keeps the draft in memory")
   func saveFailure() async throws {
     defer { #expect(throws: Never.self) { try cleanUp() } }

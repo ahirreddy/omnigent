@@ -179,12 +179,8 @@ public final class SessionListStore {
     recompute()
     let lifetime = expectationLifetime
     Task { [weak self] in
-      do {
-        try await Task.sleep(for: lifetime)
-      } catch {
-        // Cancelled with the store; the expectation goes with it.
-        return
-      }
+      // Nothing cancels this task, the only way the sleep can fail.
+      try? await Task.sleep(for: lifetime)
       self?.withdrawExpectation(token, for: sessionID)
     }
     return token

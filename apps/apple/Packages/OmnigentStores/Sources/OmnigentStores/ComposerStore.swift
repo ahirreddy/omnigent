@@ -99,6 +99,8 @@ public final class ComposerStore {
   @ObservationIgnored weak var transcript: ConversationStore?
   /// Retries messages held for the host while it already reads online.
   @ObservationIgnored var hostRecheck: Task<Void, Never>?
+  /// How long that retry waits.
+  @ObservationIgnored var hostRecheckDelay: Duration = .seconds(60)
 
   init(sessionID: String, core: ClientCore) {
     self.sessionID = sessionID
