@@ -769,10 +769,15 @@ pub(super) fn spawn(
     };
     let machine =
         core::RemoteBrowserAttach::new(config, target.options.clone(), SplitMix64::new(seed));
-    let pipe = Arc::clone(&video);
+    // Weak: the pipe holds the wake sender, so a strong one would keep this task, and with it the
+    // listener, alive after the attach ends.
+    let pipe = Arc::downgrade(&video);
     let video_listener = Arc::clone(&listener);
     host.spawn(async move {
         while woken.next().await.is_some() {
+            let Some(pipe) = pipe.upgrade() else {
+                return;
+            };
             pipe.armed.store(false, Ordering::Release);
             while let Some(frame) = pipe.pop() {
                 video_listener.on_video(frame.into());

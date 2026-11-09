@@ -1206,6 +1206,26 @@ fn the_demo_has_no_remote_browsers() {
     assert_ne!(lock(&recorder.states).len(), 0);
 }
 
+/// Closing a browser tab must let go of the app's listener, and with it the view it retains.
+#[test]
+fn dropping_the_driver_ends_its_tasks_and_releases_the_listener() {
+    let (mut harness, recorder, driver) = attached(RemoteBrowserMode::Control, "hello", false);
+    let (_, sink, socket) = harness.sockets.last();
+    sink.message(binary("h264_idr"));
+    harness.pump();
+    assert_eq!(lock(&recorder.video).len(), 1);
+    drop(driver);
+    harness.pump();
+    assert_eq!(lock(&socket.closes).len(), 1, "the socket closes");
+    assert_eq!(
+        Arc::strong_count(&recorder),
+        1,
+        "nothing retains the listener"
+    );
+    drop(sink);
+    harness.advance(120_000);
+}
+
 #[test]
 fn deleting_tabs_and_listing_profiles_report_their_typed_errors() {
     let mut harness = connected();
