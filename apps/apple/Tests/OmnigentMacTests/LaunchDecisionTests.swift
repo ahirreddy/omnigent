@@ -17,8 +17,28 @@ struct LaunchDecisionTests {
   private let linked = URL(string: "https://linked.example.com")
   private let preferred = URL(string: "https://preferred.example.com")
 
+  /// A launch with no link opens on the person's default server, or the connect screen.
+  @Test func aNewWindowOpensOnTheDesktopsDefaultServer() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let desktop = scratch.desktop
+    #expect(OmnigentMacApp.newWindowServerURL(demo: nil, desktop: desktop) == nil)
+    desktop.preferences.defaultServerURL = preferred
+    #expect(OmnigentMacApp.newWindowServerURL(demo: nil, desktop: desktop) == preferred)
+    #expect(OmnigentMacApp.newWindowServerURL(demo: demo, desktop: desktop) == demo)
+  }
+
+  /// Only a person's real launch brings back the windows it left.
+  @Test func aRealLaunchRestoresItsWindows() {
+    let ignores = OmnigentMacAppDelegate.ignoresSavedWindows
+    #expect(!ignores(false, false))
+    #expect(ignores(true, false))
+    #expect(ignores(false, true))
+    #expect(ignores(true, true))
+  }
+
   @Test func aNewWindowPrefersTheDemoThenALinkThenTheDefault() {
-    let choose = OmnigentMacApp.newWindowServerURL
+    let choose = OmnigentMacApp.newWindowServerURL(demo:linked:preferred:)
     #expect(choose(demo, linked, preferred) == demo)
     #expect(choose(nil, linked, preferred) == linked)
     #expect(choose(nil, nil, preferred) == preferred)
@@ -88,7 +108,7 @@ struct DebugHooksTests {
       let router = scratch.desktop.router
       #expect(!ChaosScript.startIfRequested(router: router, serverURL: { nil }))
       ChaosDriver.startIfRequested(router: router, serverURL: { nil })
-      #expect(!HangTrace.isEnabled)
+      // Not `HangTrace.isEnabled`: the hang watch's own tests leave it on for this process.
       #expect(LoopProbe.sink == nil)
     }
 

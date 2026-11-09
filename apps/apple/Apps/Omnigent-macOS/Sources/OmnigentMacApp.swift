@@ -32,13 +32,22 @@ struct OmnigentMacApp: App {
     demo ?? linked ?? preferred
   }
 
+  /// A new window's server, from what this launch's desktop knows.
+  /// - Parameters:
+  ///   - demo: The demo server, in a demo launch.
+  ///   - desktop: The launch's desktop.
+  /// - Returns: The server, or `nil` for the connect screen.
+  static func newWindowServerURL(demo: URL?, desktop: DesktopController) -> URL? {
+    newWindowServerURL(
+      demo: demo, linked: desktop.router.requestedServerURL,
+      preferred: desktop.preferences.defaultServerURL)
+  }
+
   var body: some Scene {
     let services = appDelegate.services
     let desktop = services.desktop
     let defaultServerURL = {
-      Self.newWindowServerURL(
-        demo: OmnigentMacAppDelegate.demoServerURL, linked: desktop.router.requestedServerURL,
-        preferred: desktop.preferences.defaultServerURL)
+      Self.newWindowServerURL(demo: OmnigentMacAppDelegate.demoServerURL, desktop: desktop)
     }
     ServerWindowScene(
       defaultServerURL: defaultServerURL,
@@ -136,6 +145,16 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
       ?? DesktopController(localServerCapability: AppEdition.current.localServerCapability)
   }
 
+  /// A test host restores no windows from a real run, and the demo starts with one window on its
+  /// sessions, never the windows an earlier (perhaps killed) run left. Other launches restore.
+  /// - Parameters:
+  ///   - isTestHost: Whether the process hosts tests.
+  ///   - isDemo: Whether this is a demo launch.
+  /// - Returns: Whether to ignore the windows saved for restoration.
+  static func ignoresSavedWindows(isTestHost: Bool, isDemo: Bool) -> Bool {
+    isTestHost || isDemo
+  }
+
   /// Omnigent > Check for Updates..., in the Developer ID edition only.
   var checkForUpdates: (() -> Void)? {
     #if OMNIGENT_CHROMIUM
@@ -146,14 +165,9 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   }
 
   override func applicationWillFinishLaunching(_ notification: Notification) {
-    if Self.isTestHost {
-      // No Dock icon, no menu bar, never the active app; no windows restored from a real run.
-      NSApp.setActivationPolicy(.prohibited)
-      UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
-    }
-    if Self.isDemo {
-      // The demo starts with one window on its sessions, never the windows an earlier (perhaps
-      // killed) run left for restoration.
+    // No Dock icon, no menu bar, never the active app.
+    if Self.isTestHost { NSApp.setActivationPolicy(.prohibited) }
+    if Self.ignoresSavedWindows(isTestHost: Self.isTestHost, isDemo: Self.isDemo) {
       UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
     }
     // Windows carry their own tab strip. Native window tabs (which a full-screen window's new
@@ -318,13 +332,16 @@ enum SettingsToolbarHighlight {
   /// Highlights the toolbar item titled `tab` in the window that shows the Settings tabs.
   @MainActor static func select(_ tab: String) {
     for window in NSApp.windows where window.isVisible {
-      // The Settings toolbar is the one with a General item.
-      guard let toolbar = window.toolbar,
-        toolbar.items.contains(where: { $0.label == SettingsNavigator.generalTab }),
-        let item = toolbar.items.first(where: { $0.label == tab }),
-        toolbar.selectedItemIdentifier != item.itemIdentifier
-      else { continue }
-      toolbar.selectedItemIdentifier = item.itemIdentifier
+      if let toolbar = window.toolbar { select(tab, in: toolbar) }
     }
+  }
+
+  /// Highlights the item titled `tab` when `toolbar` is the Settings one, which has a General item.
+  @MainActor static func select(_ tab: String, in toolbar: NSToolbar) {
+    guard toolbar.items.contains(where: { $0.label == SettingsNavigator.generalTab }),
+      let item = toolbar.items.first(where: { $0.label == tab }),
+      toolbar.selectedItemIdentifier != item.itemIdentifier
+    else { return }
+    toolbar.selectedItemIdentifier = item.itemIdentifier
   }
 }
