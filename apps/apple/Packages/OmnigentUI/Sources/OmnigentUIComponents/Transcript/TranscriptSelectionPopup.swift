@@ -90,7 +90,7 @@ import SwiftUI
   /// Reports the selection in the transcript's selectable text. SwiftUI's selectable `Text` is an
   /// `NSTextField` that selects through the window's field editor, so a selection is the field
   /// editor of a non-editable field, inside this view's bounds.
-  private struct SelectionWatcher: NSViewRepresentable {
+  struct SelectionWatcher: NSViewRepresentable {
     let clearRequest: Int
     let changed: @MainActor (TranscriptSelection?) -> Void
 
@@ -176,7 +176,7 @@ import SwiftUI
       }
 
       /// The selected range's bounds in this view's coordinates.
-      private func bounds(of range: NSRange, in editor: NSTextView) -> CGRect? {
+      func bounds(of range: NSRange, in editor: NSTextView) -> CGRect? {
         // Both are AppKit `unowned(unsafe)` references the editor keeps alive while it shows.
         guard let layout = unsafe editor.layoutManager, let container = unsafe editor.textContainer
         else {

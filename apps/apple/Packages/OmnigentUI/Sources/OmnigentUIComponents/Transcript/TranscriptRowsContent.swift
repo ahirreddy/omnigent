@@ -14,15 +14,15 @@ final class TranscriptCurrentState {
 /// What the row list reports to ``TranscriptView`` when its rows change.
 struct TranscriptRowEvents {
   /// The rows' revision changed.
-  var revisionChanged: () -> Void = {}
+  var revisionChanged: () -> Void
   /// The first row changed (older history landed above).
-  var firstRowChanged: () -> Void = {}
+  var firstRowChanged: () -> Void
   /// The viewer's newest message changed, from the old id to the new one.
-  var ownMessageChanged: (String?, String?) -> Void = { _, _ in }
+  var ownMessageChanged: (String?, String?) -> Void
   /// Whether any user message is loaded, for the previous and next message buttons.
-  var hasUserMessagesChanged: (Bool) -> Void = { _ in }
+  var hasUserMessagesChanged: (Bool) -> Void
   /// The user turns changed, for the turn rail.
-  var turnsChanged: ([TranscriptTurn]) -> Void = { _ in }
+  var turnsChanged: ([TranscriptTurn]) -> Void
 }
 
 /// The transcript's scrolling content. It reads the rows in its own body (paced, see

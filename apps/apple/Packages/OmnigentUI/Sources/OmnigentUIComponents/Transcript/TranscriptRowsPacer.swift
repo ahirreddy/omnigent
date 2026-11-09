@@ -83,7 +83,8 @@ final class TranscriptRowsPacer {
     schedule(after: max(.zero, interval - elapsed))
   }
 
-  private func schedule(after delay: Duration) {
+  /// Publishes after `delay`, in place of any update already waiting.
+  func schedule(after delay: Duration) {
     pending?.cancel()
     pending = Task { [weak self] in
       if delay > .zero {

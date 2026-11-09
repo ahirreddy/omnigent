@@ -9,6 +9,9 @@ public final class TranscriptFocus {
   private var messageIDs: [String: String] = [:]
   /// The row a link just scrolled to, flashed for a moment as the web does.
   public private(set) var flashedRowID: String?
+  @ObservationIgnored private var flashTimer: Task<Void, Never>?
+  /// How long a row stays flashed.
+  @ObservationIgnored var flashDuration: Duration = .seconds(2)
 
   /// Creates an empty focus.
   public init() {}
@@ -36,13 +39,14 @@ public final class TranscriptFocus {
   /// Flashes `rowID` once; the flash ends on its own.
   func flash(_ rowID: String) {
     flashedRowID = rowID
-    Task { [weak self] in
+    flashTimer?.cancel()
+    flashTimer = Task { [weak self, flashDuration] in
       do {
-        try await Task.sleep(for: .seconds(2))
+        try await Task.sleep(for: flashDuration)
       } catch {
-        return  // Never cancelled; nothing to clear early.
+        return  // A newer flash took over, with a timer of its own.
       }
-      if self?.flashedRowID == rowID { self?.flashedRowID = nil }
+      self?.flashedRowID = nil
     }
   }
 
