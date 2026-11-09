@@ -37,7 +37,7 @@ extension Session {
       lastProtocolError = error
     }
     requestedMode = configuration.renderMode
-    if requestedMode == .remoteLayer, !LayerHost.isRemoteLayerSupported {
+    if requestedMode == .remoteLayer, !remoteLayerSupported() {
       Logger.session.error("CALayerHost is unavailable; using the IOSurface rendering path.")
       requestedMode = .ioSurface
     }

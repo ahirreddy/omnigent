@@ -53,13 +53,33 @@ struct owl_channel {
   owl_event_handler on_event;
 };
 
+static owl_channel_fault owl_pending_fault = OWL_CHANNEL_FAULT_NONE;
+
+void owl_channel_inject_fault(owl_channel_fault fault) {
+  owl_pending_fault = fault;
+}
+
+static bool owl_fault_fires(owl_channel_fault fault) {
+  if (owl_pending_fault != fault) {
+    return false;
+  }
+  owl_pending_fault = OWL_CHANNEL_FAULT_NONE;
+  return true;
+}
+
 static kern_return_t owl_set_queue_limit(mach_port_t port) {
+  if (owl_fault_fires(OWL_CHANNEL_FAULT_QUEUE_LIMIT)) {
+    return KERN_RESOURCE_SHORTAGE;
+  }
   mach_port_limits_t limits = {.mpl_qlimit = MACH_PORT_QLIMIT_LARGE};
   return mach_port_set_attributes(mach_task_self(), port, MACH_PORT_LIMITS_INFO,
                                   (mach_port_info_t)&limits, MACH_PORT_LIMITS_INFO_COUNT);
 }
 
 static kern_return_t owl_arm_dead_name(owl_channel *channel) {
+  if (owl_fault_fires(OWL_CHANNEL_FAULT_ARM_DEAD_NAME)) {
+    return KERN_RESOURCE_SHORTAGE;
+  }
   mach_port_t previous = MACH_PORT_NULL;
   kern_return_t kr = mach_port_request_notification(
       mach_task_self(), channel->peer, MACH_NOTIFY_DEAD_NAME, 0, channel->receive,
@@ -71,7 +91,8 @@ static kern_return_t owl_arm_dead_name(owl_channel *channel) {
 }
 
 static owl_channel *owl_channel_alloc(mach_port_t receive) {
-  owl_channel *channel = calloc(1, sizeof(owl_channel));
+  owl_channel *channel = owl_fault_fires(OWL_CHANNEL_FAULT_ALLOC) ? NULL
+                                                                  : calloc(1, sizeof(owl_channel));
   if (channel != NULL) {
     channel->receive = receive;
     channel->peer = MACH_PORT_NULL;
@@ -114,7 +135,9 @@ kern_return_t owl_channel_connect(const char *service_name, owl_channel **out) {
     return kr;
   }
   mach_port_t receive = MACH_PORT_NULL;
-  kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &receive);
+  kr = owl_fault_fires(OWL_CHANNEL_FAULT_ALLOCATE_PORT)
+           ? KERN_RESOURCE_SHORTAGE
+           : mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &receive);
   if (kr != KERN_SUCCESS) {
     mach_port_deallocate(mach_task_self(), peer);
     return kr;
@@ -175,13 +198,15 @@ static void owl_emit(owl_channel *channel, owl_channel_event event, int64_t deta
   }
 }
 
-static pid_t owl_sender_pid(const owl_receive_buffer *buffer) {
-  mach_msg_size_t offset = round_msg(buffer->header.msgh_size);
-  if (offset + sizeof(mach_msg_audit_trailer_t) > sizeof(buffer->bytes)) {
+pid_t owl_audit_sender(const void *message, size_t capacity) {
+  mach_msg_header_t header;
+  memcpy(&header, message, sizeof(header));
+  mach_msg_size_t offset = round_msg(header.msgh_size);
+  if (offset + sizeof(mach_msg_audit_trailer_t) > capacity) {
     return -1;
   }
   mach_msg_audit_trailer_t trailer;
-  memcpy(&trailer, buffer->bytes + offset, sizeof(trailer));
+  memcpy(&trailer, (const uint8_t *)message + offset, sizeof(trailer));
   if (trailer.msgh_trailer_size < sizeof(mach_msg_audit_trailer_t)) {
     return -1;
   }
@@ -227,7 +252,7 @@ static bool owl_wire_is_valid(const owl_wire *wire) {
 }
 
 static void owl_dispatch(owl_channel *channel, owl_receive_buffer *buffer) {
-  pid_t sender = owl_sender_pid(buffer);
+  pid_t sender = owl_audit_sender(buffer->bytes, sizeof(buffer->bytes));
   if (owl_handle_notification(channel, buffer, sender)) {
     return;
   }

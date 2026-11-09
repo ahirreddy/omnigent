@@ -5,6 +5,8 @@ internal import os
 /// A spawned web host process. Reports its exit on the main actor.
 final class HostProcess {
   let pid: pid_t
+  /// Delivers a signal, returning `kill`'s result. A test swaps it to model a refusal.
+  var sendSignal: (pid_t, Int32) -> Int32 = Darwin.kill
   private let process: Process
   private let exitSink: ExitSink
 
@@ -41,7 +43,7 @@ final class HostProcess {
 
   /// Sends SIGKILL. A host that already exited is not an error.
   func kill() {
-    if Darwin.kill(pid, SIGKILL) != 0, errno != ESRCH {
+    if sendSignal(pid, SIGKILL) != 0, errno != ESRCH {
       Logger.session.error("kill(\(self.pid), SIGKILL) failed: errno \(errno)")
     }
   }

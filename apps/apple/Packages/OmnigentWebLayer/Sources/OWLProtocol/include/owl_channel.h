@@ -111,6 +111,22 @@ kern_return_t owl_port_release(mach_port_t port);
 /// Human-readable text for a kern_return_t / mach_msg_return_t.
 const char *_Nonnull owl_error_string(kern_return_t code);
 
+/// The sender PID in a received message's audit trailer, or -1 when `capacity` bytes can't hold a
+/// full trailer after the message or the kernel gave a shorter one.
+pid_t owl_audit_sender(const void *_Nonnull message, size_t capacity);
+
+/// A failure of the kernel or allocator that only a test can arrange.
+typedef enum owl_channel_fault {
+  OWL_CHANNEL_FAULT_NONE = 0,
+  OWL_CHANNEL_FAULT_QUEUE_LIMIT = 1,
+  OWL_CHANNEL_FAULT_ALLOC = 2,
+  OWL_CHANNEL_FAULT_ALLOCATE_PORT = 3,
+  OWL_CHANNEL_FAULT_ARM_DEAD_NAME = 4,
+} owl_channel_fault;
+
+/// Makes the next matching step of channel setup fail once. For tests; the app never calls it.
+void owl_channel_inject_fault(owl_channel_fault fault);
+
 #ifdef __cplusplus
 }
 #endif
