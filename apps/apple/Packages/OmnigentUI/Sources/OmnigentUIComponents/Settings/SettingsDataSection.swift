@@ -1,3 +1,4 @@
+import OmnigentWorkspaceUI
 public import SwiftUI
 import UniformTypeIdentifiers
 
@@ -54,7 +55,7 @@ public struct SettingsDataSection: View {
     .confirmationDialog("Reset appearance?", isPresented: $confirmingReset) {
       Button("Reset", role: .destructive) {
         SettingsPortability.resetAppearance()
-        theme.reload()
+        reloadLivePreferences()
         show(status: "Appearance reset.")
       }
     } message: {
@@ -93,13 +94,19 @@ public struct SettingsDataSection: View {
     do {
       let settings = try SettingsPortability.settings(in: Data(contentsOf: url))
       let count = SettingsPortability.apply(settings)
-      theme.reload()
+      reloadLivePreferences()
       show(status: "Imported \(count) setting\(count == 1 ? "" : "s").")
     } catch let error as SettingsPortability.ImportError {
       show(failure: error.description)
     } catch {
       show(failure: "Could not read the file: \(error.localizedDescription)")
     }
+  }
+
+  /// The preferences held in memory; `@AppStorage` ones follow the store by themselves.
+  private func reloadLivePreferences() {
+    theme.reload()
+    CodeTypography.shared.reload()
   }
 
   private func show(status: String? = nil, failure: String? = nil) {
@@ -126,18 +133,5 @@ struct SettingsFile: FileDocument {
 
   func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
     FileWrapper(regularFileWithContents: data)
-  }
-}
-
-extension ThemePreferences {
-  /// Rereads the stored appearance after its keys changed underneath it (an import or reset),
-  /// assigning only what changed.
-  /// - Parameter defaults: The store the preferences were loaded from.
-  public func reload(from defaults: UserDefaults = .standard) {
-    let stored = ThemePreferences(defaults: defaults)
-    if mode != stored.mode { mode = stored.mode }
-    if paletteID != stored.paletteID { paletteID = stored.paletteID }
-    if custom != stored.custom { custom = stored.custom }
-    if terminal != stored.terminal { terminal = stored.terminal }
   }
 }

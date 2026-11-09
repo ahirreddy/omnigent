@@ -219,6 +219,18 @@ public final class ThemePreferences {
   /// Every theme the picker offers: the presets and Custom.
   public var themes: [OmnigentTheme] { OmnigentTheme.builtIn + [custom.theme()] }
 
+  /// Rereads the stored appearance after its keys changed underneath it (an import or reset),
+  /// assigning only what changed, and says what the new values got wrong.
+  /// - Parameter store: The store the preferences were loaded from.
+  public func reload(from store: UserDefaults = .standard) {
+    let stored = ThemePreferences(defaults: store)
+    if mode != stored.mode { mode = stored.mode }
+    if paletteID != stored.paletteID { paletteID = stored.paletteID }
+    if custom != stored.custom { custom = stored.custom }
+    if terminal != stored.terminal { terminal = stored.terminal }
+    if readErrors != stored.readErrors { readErrors = stored.readErrors }
+  }
+
   static func decodePalette(_ stored: String?) -> Result<String, ReadError> {
     guard let stored else { return .success(OmnigentTheme.omni.id) }
     let malformed = ReadError.malformed(key: paletteKey)

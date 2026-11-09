@@ -23,12 +23,12 @@ public final class CodeTypography {
 
   /// The code font size, in points.
   public var size: Double {
-    didSet { if size != oldValue { defaults.set(size, forKey: Self.sizeKey) } }
+    didSet { if size != oldValue, !isReloading { defaults.set(size, forKey: Self.sizeKey) } }
   }
   /// A font family; empty uses the system monospaced font.
   public var family: String {
     didSet {
-      guard family != oldValue else { return }
+      guard family != oldValue, !isReloading else { return }
       if family.isEmpty {
         defaults.removeObject(forKey: Self.familyKey)
       } else {
@@ -39,11 +39,14 @@ public final class CodeTypography {
   /// Medium instead of regular weight.
   public var isHeavier: Bool {
     didSet {
-      if isHeavier != oldValue { defaults.set(isHeavier ? 500 : 400, forKey: Self.weightKey) }
+      if isHeavier != oldValue, !isReloading {
+        defaults.set(isHeavier ? 500 : 400, forKey: Self.weightKey)
+      }
     }
   }
 
   private let defaults: UserDefaults
+  @ObservationIgnored private var isReloading = false
 
   /// Loads the preferences; values out of range read as the defaults.
   /// - Parameter defaults: The store.
@@ -53,6 +56,17 @@ public final class CodeTypography {
     size = Self.sizes.contains(stored) ? stored : Self.defaultSize
     family = defaults.string(forKey: Self.familyKey)?.trimmingCharacters(in: .whitespaces) ?? ""
     isHeavier = defaults.integer(forKey: Self.weightKey) == 500
+  }
+
+  /// Rereads the store after its keys changed underneath (an import or reset), leaving an unset
+  /// key unset.
+  public func reload() {
+    let stored = CodeTypography(defaults: defaults)
+    isReloading = true
+    defer { isReloading = false }
+    if size != stored.size { size = stored.size }
+    if family != stored.family { family = stored.family }
+    if isHeavier != stored.isHeavier { isHeavier = stored.isHeavier }
   }
 
   /// How much larger than the default the code font is.
