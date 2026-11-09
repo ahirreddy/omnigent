@@ -90,7 +90,8 @@ struct ExpandableHeader<Accessory: View>: View {
           .font(Theme.Typography.label)
           .foregroundStyle(.secondary)
           .lineLimit(2)
-        if isExpanded, let subtitle, !subtitle.isEmpty {
+        // A header with nothing to open would otherwise never show it.
+        if isExpanded || !isEnabled, let subtitle, !subtitle.isEmpty {
           Text(subtitle)
             .font(monospacedSubtitle ? Theme.codeFont : .caption)
             .foregroundStyle(.secondary)

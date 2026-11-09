@@ -1,4 +1,5 @@
 #if os(macOS)
+  import AppKit
   import OmnigentViewTesting
   import SwiftUI
 
@@ -31,6 +32,35 @@
   func letTasksRun(_ screen: OffscreenWindow<AnyView>, milliseconds: Int = 60) async throws {
     try await Task.sleep(for: .milliseconds(milliseconds))
     screen.settle(0.02)
+  }
+
+  /// Where named pieces of a view landed, from the top left of the screen.
+  @MainActor
+  final class FrameLog {
+    fileprivate(set) var frames: [String: CGRect] = [:]
+  }
+
+  extension View {
+    /// Records this view's frame under `name`, in window coordinates.
+    func recordingFrame(_ name: String, in log: FrameLog) -> some View {
+      onGeometryChange(for: CGRect.self) { proxy in
+        proxy.frame(in: .global)
+      } action: { frame in
+        log.frames[name] = frame
+      }
+    }
+  }
+
+  extension OffscreenWindow {
+    /// The first context menu found on a grid of points: a menu only answers over drawn content.
+    func firstContextMenu(step: CGFloat = 12) throws -> NSMenu? {
+      for row in stride(from: step / 2, to: host.bounds.height, by: step) {
+        for column in stride(from: step / 2, to: host.bounds.width, by: step) {
+          if let menu = try contextMenu(at: CGPoint(x: column, y: row)) { return menu }
+        }
+      }
+      return nil
+    }
   }
 
   /// What the views under test asked the host to do, in order.
