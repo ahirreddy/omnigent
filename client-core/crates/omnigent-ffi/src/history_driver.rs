@@ -12,6 +12,7 @@ use crate::engine::{Engine, Msg};
 use crate::errors::CoreError;
 use crate::events::{CoreEvent, ErrorScope};
 use crate::runtime::post;
+use crate::stream_driver::DriverInstance;
 
 /// Older-history messages for the engine.
 pub(crate) enum HistoryMsg {
@@ -20,6 +21,7 @@ pub(crate) enum HistoryMsg {
     /// A read finished.
     Loaded {
         session_id: String,
+        driver: DriverInstance,
         request: OlderHistoryRequest,
         result: Box<Result<HistoryPage, SessionError>>,
     },
@@ -31,19 +33,23 @@ impl Engine {
             HistoryMsg::Load(session_id) => self.load_older(&session_id),
             HistoryMsg::Loaded {
                 session_id,
+                driver,
                 request,
                 result,
-            } => self.older_loaded(&session_id, &request, *result),
+            } => {
+                if self.is_current_driver(&session_id, driver) {
+                    self.older_loaded(&session_id, &request, *result);
+                }
+            }
         }
     }
 
     /// Starts reading the page above `session_id`'s rows, unless there is none or one is loading.
     fn load_older(&mut self, session_id: &str) {
-        let Some(request) = self
-            .drivers
-            .get(session_id)
-            .and_then(|driver| driver.sync.begin_older_history_raw())
-        else {
+        let Some((driver, request)) = self.drivers.get(session_id).and_then(|driver| {
+            let request = driver.sync.begin_older_history_raw()?;
+            Some((driver.instance, request))
+        }) else {
             return;
         };
         self.emit_paging(session_id);
@@ -58,6 +64,7 @@ impl Engine {
                 &tx,
                 Msg::History(HistoryMsg::Loaded {
                     session_id: id,
+                    driver,
                     request,
                     result: Box::new(result),
                 }),

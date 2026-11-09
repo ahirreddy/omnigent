@@ -826,6 +826,121 @@ fn list_errors(events: &[CoreEvent]) -> Vec<CoreError> {
         .collect()
 }
 
+/// `URLSession` reports a cancelled task after the cancel: closing a tab and reopening it must not
+/// let the old task's end kill the new stream.
+#[test]
+fn a_late_callback_from_a_closed_stream_cannot_touch_the_reopened_session() {
+    let mut harness = live_session();
+    let (old_sink, _, _) = harness.streams.last();
+    harness.core.close_session(SESSION.into());
+    harness.pump();
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    assert_eq!(harness.streams.count(), 2);
+    let (new_sink, new_handle, _) = harness.streams.last();
+    new_sink.response(200, event_stream_head());
+    new_sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    harness.events.take();
+
+    old_sink.chunk(HEARTBEAT.to_vec());
+    old_sink.response(200, event_stream_head());
+    old_sink.finish(Some(ConnectionFailure::Cancelled));
+    harness.pump();
+    let events = harness.events.take();
+    assert_eq!(link_states(&events), [], "{events:#?}");
+    assert_eq!(new_handle.cancels.load(Ordering::SeqCst), 0);
+    assert_eq!(harness.streams.count(), 2);
+}
+
+/// A history read started before the tab closed finishes while the reopened tab's read is out.
+/// Both carry the first read token of their opening.
+#[test]
+fn a_history_read_from_before_a_reopen_is_not_mistaken_for_the_new_one() {
+    let mut harness = connected();
+    route_session(&harness);
+    let items = format!("/v1/sessions/{SESSION}/items");
+    let stale_gate = harness.http.hold(&items);
+    let fresh_gate = harness.http.hold(&items);
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+
+    harness.core.close_session(SESSION.into());
+    harness.pump();
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["stale"], false)));
+    stale_gate.send(()).unwrap();
+    harness.pump();
+    assert_eq!(row_ids(&harness), Vec::<String>::new());
+
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["fresh"], false)));
+    fresh_gate.send(()).unwrap();
+    harness.pump();
+    assert_eq!(row_ids(&harness), ["fresh"]);
+}
+
+#[test]
+fn older_history_from_before_a_reopen_is_dropped() {
+    let mut harness = connected();
+    route_session(&harness);
+    let items = format!("/v1/sessions/{SESSION}/items");
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["msg_3", "msg_2"], true)));
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+
+    // The page above the first opening's rows is still out when the reopened tab asks for its own.
+    let stale_page = harness.http.hold(&items);
+    harness.core.load_older_history(SESSION.into());
+    harness.pump();
+    harness.core.close_session(SESSION.into());
+    harness.pump();
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    let fresh_page = harness.http.hold(&items);
+    harness.core.load_older_history(SESSION.into());
+    harness.pump();
+    harness.events.take();
+
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["stale"], false)));
+    stale_page.send(()).unwrap();
+    harness.pump();
+    assert_eq!(harness.events.take(), []);
+
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["msg_1"], false)));
+    fresh_page.send(()).unwrap();
+    harness.pump();
+    assert!(row_ids(&harness).contains(&"msg_1".to_owned()));
+    assert!(!row_ids(&harness).contains(&"stale".to_owned()));
+}
+
 #[test]
 fn a_read_for_a_closed_session_is_ignored() {
     let mut harness = connected();
@@ -935,6 +1050,20 @@ fn a_session_opened_while_disconnected_starts_on_connect_and_stops_on_disconnect
         1,
         "no reconnect after a disconnect"
     );
+}
+
+#[test]
+fn a_stream_input_with_no_connection_opens_nothing() {
+    let mut harness = Harness::new(UrlPolicy::Development);
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    harness.core.post(crate::engine::Msg::Stream {
+        session_id: SESSION.into(),
+        driver: crate::stream_driver::DriverInstance::first(),
+        input: omnigent_core::realtime::StreamInput::Start,
+    });
+    harness.pump();
+    assert_eq!(harness.streams.count(), 0);
 }
 
 #[test]

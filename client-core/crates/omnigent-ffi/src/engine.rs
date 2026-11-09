@@ -35,7 +35,7 @@ use crate::host::{EventStreamTransport, WebSocketTransport};
 use crate::list_driver::ListMsg;
 use crate::runtime::{Host, Sessions, post};
 use crate::sessions::SessionListChange;
-use crate::stream_driver::SessionDriver;
+use crate::stream_driver::{DriverInstance, SessionDriver};
 use crate::updates_driver::Socket;
 
 /// How long a burst of "inventory may be stale" hints waits before one list refresh.
@@ -138,11 +138,13 @@ pub(crate) enum Msg {
     /// An input for a session stream machine.
     Stream {
         session_id: String,
+        driver: DriverInstance,
         input: StreamInput,
     },
     /// A history read finished.
     Hydrated {
         session_id: String,
+        driver: DriverInstance,
         attempt: Option<AttemptId>,
         request: core::reconcile::HydrationRequest,
         result: Box<Result<ConversationPage, SessionError>>,
@@ -242,6 +244,7 @@ pub(crate) struct Engine {
     pub(crate) socket: Option<Socket>,
     pub(crate) updates_timers: HashMap<u64, AbortHandle>,
     pub(crate) drivers: HashMap<String, SessionDriver>,
+    pub(crate) next_driver: u64,
     pub(crate) attention: Attention,
     /// Read state of every known session, and the unread sessions last reported.
     pub(crate) read: core::read_state::ReadState,
@@ -276,6 +279,7 @@ impl Engine {
                 socket: None,
                 updates_timers: HashMap::new(),
                 drivers: HashMap::new(),
+                next_driver: 0,
                 attention: Attention::default(),
                 read: core::read_state::ReadState::new(),
                 unread: BTreeSet::new(),
@@ -342,13 +346,18 @@ impl Engine {
             Msg::Client(event) => self.client_event(event),
             Msg::Open(session_id) => self.open_session(&session_id),
             Msg::Close(session_id) => self.close_session(&session_id),
-            Msg::Stream { session_id, input } => self.stream_input(&session_id, input),
+            Msg::Stream {
+                session_id,
+                driver,
+                input,
+            } => self.stream_message(&session_id, driver, input),
             Msg::Hydrated {
                 session_id,
+                driver,
                 attempt,
                 request,
                 result,
-            } => self.hydrated(&session_id, attempt, &request, *result),
+            } => self.hydrated(&session_id, driver, attempt, &request, *result),
             Msg::History(message) => self.history_message(message),
             Msg::Updates(input) => self.updates_input(input),
             Msg::List(message) => self.list_message(message),
