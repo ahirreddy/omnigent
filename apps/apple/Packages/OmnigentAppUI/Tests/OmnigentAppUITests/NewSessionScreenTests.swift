@@ -147,8 +147,14 @@ struct NewSessionScreenTests {
     #expect(opened.sessions.isEmpty, "the user must see the failure first")
     #expect(try screen.shows("hello"), "the words aren't lost")
 
-    // The notice sits above the composer, so its Dismiss is the first control in reading order.
-    try screen.clickControl(at: 0)
+    // The notice sits above the composer, with its Dismiss at the trailing end.
+    let buttons = screen.allViews.filter { $0 is NSButton }
+    let dismiss = try #require(
+      buttons.first {
+        let frame = $0.convert($0.bounds, to: screen.host)
+        return frame.minX > 700 && frame.midY < 400
+      })
+    try screen.click(dismiss)
     try await settle(screen, until: "the session opens") { !opened.sessions.isEmpty }
     #expect(opened.sessions == ["conv_new"])
   }
