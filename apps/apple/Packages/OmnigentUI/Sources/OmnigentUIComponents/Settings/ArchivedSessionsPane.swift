@@ -200,21 +200,19 @@ struct ArchivedGroup: Equatable {
   let label: String
   let sessions: [SessionSummary]
 
-  /// Groups `sessions` (newest first) by when they last changed.
+  /// Groups `sessions` by when they last changed, one group per label: pages can arrive out of
+  /// date order, and the list identifies its sections by label.
   static func groups(
     _ sessions: [SessionSummary], now: Date, calendar: Calendar = .current
   ) -> [Self] {
-    var groups: [Self] = []
+    var labels: [String] = []
+    var members: [String: [SessionSummary]] = [:]
     for session in sessions {
       let label = label(Date(timeIntervalSince1970: TimeInterval(session.updatedAt)), now, calendar)
-      if groups.last?.label == label {
-        groups[groups.count - 1] = Self(
-          label: label, sessions: groups[groups.count - 1].sessions + [session])
-      } else {
-        groups.append(Self(label: label, sessions: [session]))
-      }
+      if members[label] == nil { labels.append(label) }
+      members[label, default: []].append(session)
     }
-    return groups
+    return labels.map { Self(label: $0, sessions: members[$0] ?? []) }
   }
 
   static func label(_ date: Date, _ now: Date, _ calendar: Calendar) -> String {
@@ -226,7 +224,10 @@ struct ArchivedGroup: Equatable {
     if date >= daysAgo(1) { return "Yesterday" }
     if date >= daysAgo(7) { return "Previous 7 days" }
     if date >= daysAgo(30) { return "Previous 30 days" }
-    return date.formatted(.dateTime.month(.wide).year())
+    var style = Date.FormatStyle.dateTime.month(.wide).year()
+    style.calendar = calendar
+    style.timeZone = calendar.timeZone
+    return date.formatted(style)
   }
 }
 
