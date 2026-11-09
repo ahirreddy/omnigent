@@ -22,7 +22,7 @@ private struct Chord {
   }
 }
 
-private enum Events {
+enum Events {
   static func key(
     _ type: NSEvent.EventType = .keyDown, characters: String = "a", keyCode: UInt16 = 0,
     flags: NSEvent.ModifierFlags = []

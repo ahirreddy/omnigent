@@ -66,6 +66,8 @@ final class AgentFakeTab: BrowserTab {
   private(set) var scripts: [String] = []
   var title = "Agent page"
   var snapshotPNG = Data([0x89, 0x50, 0x4E, 0x47])
+  /// Makes the next document-state probe find the engine still creating the page.
+  var pageNotReady = false
   /// Answers scripts other than the document-state probe.
   var respond: (String) throws(BrowserError) -> BrowserScriptValue = { _ in .undefined }
 
@@ -91,6 +93,10 @@ final class AgentFakeTab: BrowserTab {
   func evaluateJavaScript(_ script: String) throws(BrowserError) -> BrowserScriptValue {
     scripts.append(script)
     if script.contains("document.readyState") {
+      if pageNotReady {
+        pageNotReady = false
+        throw .tabNotReady
+      }
       return .string(
         #"{"href":"\#(state.url?.absoluteString ?? "about:blank")","readyState":"complete","title":"\#(title)"}"#
       )

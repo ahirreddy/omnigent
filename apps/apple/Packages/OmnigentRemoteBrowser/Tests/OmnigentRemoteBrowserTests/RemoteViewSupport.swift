@@ -2,6 +2,7 @@
   import AppKit
   import Foundation
   import OmnigentCoreFFI
+  import OmnigentViewTesting
   import SwiftUI
   import Testing
 
@@ -15,6 +16,7 @@
     let store: RemoteBrowserStore
 
     init(lastURL: String = "", mode: RemoteViewportMode = .keep) {
+      SystemSideEffects.install()
       UserDefaults.standard.removeObject(forKey: RemoteViewportModeDefaults.key)
       store = RemoteBrowserStore(sessionID: "s", tabID: "t", lastURL: lastURL)
       store.pasteboard = MemoryPasteboard()
@@ -76,6 +78,7 @@
   /// cursor on the user's screen.
   @MainActor
   func neverShownWindow(size: CGSize) -> NSWindow {
+    SystemSideEffects.install()
     _ = NSApplication.shared
     let window = NSWindow(
       contentRect: CGRect(origin: CGPoint(x: -60_000, y: -60_000), size: size),

@@ -227,7 +227,7 @@
         appItems: items.map { item in WebAppMenuItem(title: item.title, action: item.action) })
     }
 
-    private func linkItems(_ context: BrowserContextMenuContext) -> [BrowserContextMenuItem] {
+    func linkItems(_ context: BrowserContextMenuContext) -> [BrowserContextMenuItem] {
       guard let link = context.linkURL, !link.absoluteString.isEmpty else { return [] }
       return [
         BrowserContextMenuItem(title: "Open Link in New Tab") { [weak self] in

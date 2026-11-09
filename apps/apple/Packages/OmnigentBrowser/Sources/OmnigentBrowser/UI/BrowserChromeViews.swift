@@ -173,7 +173,10 @@ struct BrowserDownloadRow: View {
     .buttonStyle(.borderless)
   }
 
-  private var statusText: String {
+  private var statusText: String { Self.statusText(download) }
+
+  /// The line under the download's progress.
+  static func statusText(_ download: BrowserDownload) -> String {
     let received = ByteCountFormatter.string(
       fromByteCount: download.receivedBytes, countStyle: .file)
     switch download.state {

@@ -33,7 +33,7 @@
     }
 
     private typealias OpenedHandler = @convention(block) (NSRunningApplication?, NSError?) -> Void
-    private typealias ResponseHandler = @convention(block) (Int) -> Void
+    typealias ResponseHandler = @convention(block) (Int) -> Void
     private typealias OpenConfigured =
       @convention(c) (
         NSWorkspace, Selector, NSURL, NSWorkspace.OpenConfiguration, OpenedHandler?
@@ -42,8 +42,6 @@
       @convention(c) (
         NSWorkspace, Selector, NSArray, NSURL, NSWorkspace.OpenConfiguration, OpenedHandler?
       ) -> Void
-    private typealias PanelSheet =
-      @convention(c) (NSSavePanel, Selector, NSWindow?, ResponseHandler?) -> Void
     private typealias AlertSheet =
       @convention(c) (NSAlert, Selector, NSWindow?, ResponseHandler?) -> Void
     private typealias WindowInit =
@@ -52,15 +50,18 @@
     private typealias MenuPopUp =
       @convention(c) (NSMenu, Selector, NSMenuItem?, NSPoint, NSView?) -> Bool
 
-    private struct State {
+    struct State {
       var record = Record()
       var alertResponse = NSApplication.ModalResponse.alertFirstButtonReturn
       var panelResponse = NSApplication.ModalResponse.cancel
+      var panelURL: URL?
+      var opensFail = false
     }
 
-    private static let state = OSAllocatedUnfairLock(initialState: State())
+    static let state = OSAllocatedUnfairLock(initialState: State())
     private nonisolated(unsafe) static var originalWindowInit: IMP?
     private nonisolated(unsafe) static var originalSetAlpha: IMP?
+    nonisolated(unsafe) static var originalPanelURL: IMP?
     private static let installation = OSAllocatedUnfairLock(initialState: false)
 
     /// A private clipboard standing in for `NSPasteboard.general`, unique to this process.
@@ -81,13 +82,19 @@
     /// - Parameters:
     ///   - alert: What an alert returns.
     ///   - panel: What an open or save panel returns.
+    ///   - panelURL: The file an open or save panel holds, as if the person chose it.
+    ///   - opensFail: Whether opening a URL or app reports a failure instead of succeeding.
     public static func answer(
       alert: NSApplication.ModalResponse = .alertFirstButtonReturn,
-      panel: NSApplication.ModalResponse = .cancel
+      panel: NSApplication.ModalResponse = .cancel,
+      panelURL: URL? = nil,
+      opensFail: Bool = false
     ) {
       state.withLock {
         $0.alertResponse = alert
         $0.panelResponse = panel
+        $0.panelURL = panelURL
+        $0.opensFail = opensFail
       }
     }
 
@@ -111,13 +118,13 @@
       installInvisibleWindows()
     }
 
-    private static func note(_ change: (inout Record) -> Void) {
+    static func note(_ change: (inout Record) -> Void) {
       state.withLockUnchecked { change(&$0.record) }
     }
 
     /// Swaps a method's body for a C function taking the receiver and selector first. A selector
     /// this SDK lacks must fail the test run, not leak through.
-    private static func replace<Function>(
+    static func replace<Function>(
       _ owner: AnyClass, _ name: String, isClassMethod: Bool = false, with function: Function
     ) {
       let selector = NSSelectorFromString(name)
@@ -143,7 +150,12 @@
       replace(NSWorkspace.self, "openURL:", with: open)
       let openConfigured: OpenConfigured = { _, _, url, _, done in
         Self.note { $0.openedURLs.append(url as URL) }
-        done?(nil, nil)
+        guard !Self.state.withLock({ $0.opensFail }) else {
+          done?(nil, NSError(domain: NSCocoaErrorDomain, code: NSFileReadUnknownError))
+          return
+        }
+        // Swift's async form of this call crashes on no app and no error.
+        done?(NSRunningApplication.current, nil)
       }
       replace(NSWorkspace.self, "openURL:configuration:completionHandler:", with: openConfigured)
       replace(
@@ -152,7 +164,7 @@
       let openWith: OpenWith = { _, _, urls, application, _, done in
         Self.note { $0.openedURLs.append(contentsOf: urls.compactMap { $0 as? URL }) }
         Self.note { $0.openedURLs.append(application as URL) }
-        done?(nil, nil)
+        done?(NSRunningApplication.current, nil)
       }
       replace(
         NSWorkspace.self, "openURLs:withApplicationAtURL:configuration:completionHandler:",
@@ -161,25 +173,6 @@
         Self.note { $0.revealedURLs.append(contentsOf: urls.compactMap { $0 as? URL }) }
       }
       replace(NSWorkspace.self, "activateFileViewerSelectingURLs:", with: reveal)
-    }
-
-    private static func installPanels() {
-      let run: @convention(c) (NSSavePanel, Selector) -> Int = { _, _ in
-        Self.note { $0.panelCount += 1 }
-        return Self.state.withLock { $0.panelResponse.rawValue }
-      }
-      replace(NSSavePanel.self, "runModal", with: run)
-      replace(NSOpenPanel.self, "runModal", with: run)
-      let sheet: PanelSheet = { _, _, _, done in
-        Self.note { $0.panelCount += 1 }
-        done?(Self.state.withLock { $0.panelResponse.rawValue })
-      }
-      replace(NSSavePanel.self, "beginSheetModalForWindow:completionHandler:", with: sheet)
-      let begin: @convention(c) (NSSavePanel, Selector, ResponseHandler?) -> Void = { _, _, done in
-        Self.note { $0.panelCount += 1 }
-        done?(Self.state.withLock { $0.panelResponse.rawValue })
-      }
-      replace(NSSavePanel.self, "beginWithCompletionHandler:", with: begin)
     }
 
     private static func installAlerts() {

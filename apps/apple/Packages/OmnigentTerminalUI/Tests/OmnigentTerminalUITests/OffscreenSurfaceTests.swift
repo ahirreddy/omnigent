@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import OmnigentViewTesting
 import Testing
 
 @testable import OmnigentTerminalUI
@@ -46,6 +47,7 @@ struct OffscreenSurfaceTests {
 
   @Test("a recorded TUI replays without a real window on screen")
   func recording() async throws {
+    SystemSideEffects.install()
     let controller = try TerminalSurfaceController(
       connection: ReplayTerminalConnection.recordedReplTUI())
     let window = NSWindow(
@@ -116,6 +118,7 @@ struct OffscreenSurfaceTests {
       surface.controller.press(.enter)
       if round.isMultiple(of: 2) { await Task.yield() }
     }
+    SystemSideEffects.install()
     let controller = try TerminalSurfaceController(connection: EchoTerminalConnection())
     #expect(controller.gridSize == nil)
     #expect(!controller.hasSelection)
@@ -123,6 +126,7 @@ struct OffscreenSurfaceTests {
 
   @Test("a controller without a window answers commands")
   func noWindow() throws {
+    SystemSideEffects.install()
     let controller = try TerminalSurfaceController(connection: EchoTerminalConnection())
     controller.setFocused(true)
     controller.setFocused(false)

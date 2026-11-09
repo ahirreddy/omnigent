@@ -84,8 +84,11 @@ public struct BrowserHistoryView: View {
       }
       Divider()
       HStack {
-        Button("Remove Selected") { store.remove(visitIDs: selection) }
-          .disabled(selection.isEmpty)
+        Button("Remove Selected") {
+          store.remove(visitIDs: selection)
+          selection = []
+        }
+        .disabled(selection.isEmpty)
         if let clearData {
           Button("Clear Browsing Data…", action: clearData)
             .accessibilityIdentifier("browser.history.clear")
@@ -289,7 +292,7 @@ public struct BrowserBookmarksManagerView: View {
       do {
         let data = try Data(contentsOf: url)
         let count = try store.importHTML(data)
-        message = "Imported \(count) bookmarks."
+        message = "Imported \(count) \(count == 1 ? "bookmark" : "bookmarks")."
         error = nil
       } catch let failure as BrowserError {
         error = failure

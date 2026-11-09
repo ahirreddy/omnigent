@@ -1,4 +1,5 @@
 import AppKit
+import OmnigentViewTesting
 import SwiftUI
 import Testing
 
@@ -48,6 +49,7 @@ struct TerminalViewRenderTests {
 
   @Test("banners, badges and the unavailable view draw hostile text")
   func banners() throws {
+    SystemSideEffects.install()
     let controller = try TerminalSurfaceController(connection: EchoTerminalConnection())
     for text in hostileText {
       #expect(OffscreenRender.draw(TerminalErrorBanner(message: text) {}, settle: 0) > 0)
@@ -95,6 +97,7 @@ struct TerminalViewRenderTests {
 
   @Test("the find bar draws match counts of every kind")
   func findBar() throws {
+    SystemSideEffects.install()
     let controller = try TerminalSurfaceController(connection: EchoTerminalConnection())
     let searches = [
       TerminalSearch(needle: ""), TerminalSearch(needle: "", total: 0),
@@ -115,6 +118,7 @@ struct TerminalViewRenderTests {
   @Test(
     "a selected match at the largest Int reads as a count")
   func hugeSelectedMatch() throws {
+    SystemSideEffects.install()
     let controller = try TerminalSurfaceController(connection: EchoTerminalConnection())
     controller.search = TerminalSearch(needle: "", total: .max, selected: .max)
     #expect(OffscreenRender.draw(TerminalFindBar(controller: controller), settle: 0) > 0)

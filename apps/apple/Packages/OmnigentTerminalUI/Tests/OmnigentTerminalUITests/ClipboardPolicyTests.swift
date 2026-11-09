@@ -1,4 +1,5 @@
 import Foundation
+import OmnigentViewTesting
 import Testing
 
 @testable import OmnigentTerminalUI
@@ -8,6 +9,7 @@ import Testing
 struct ClipboardPolicyTests {
   @Test("a remote copy asks, or is refused visibly, as the setting says")
   func remoteCopyFollowsThePolicy() throws {
+    SystemSideEffects.install()
     let controller = try TerminalSurfaceController(connection: EchoTerminalConnection())
     controller.remoteCopied("rm -rf ~", policy: .ask)
     #expect(controller.pendingClipboard?.text == "rm -rf ~")

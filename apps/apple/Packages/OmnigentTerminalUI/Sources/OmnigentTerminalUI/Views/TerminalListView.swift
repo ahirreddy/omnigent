@@ -100,11 +100,7 @@ public struct TerminalListView: View {
     }
     .toolbar {
       if canEdit, !shellChoices.isEmpty {
-        Menu("New Terminal", systemImage: "plus") {
-          ForEach(shellChoices, id: \.self) { shell in
-            Button(shell) { onCreate(shell) }
-          }
-        }
+        NewTerminalMenu(shellChoices: shellChoices, onCreate: onCreate)
       }
     }
     .confirmationDialog(
@@ -184,6 +180,20 @@ public struct TerminalStatusBadge: View {
     case .idle: .blue
     case .exited: .secondary
     case .unknown: .orange
+    }
+  }
+}
+
+/// Launches one of the shells the agent declares.
+struct NewTerminalMenu: View {
+  let shellChoices: [String]
+  let onCreate: (String) -> Void
+
+  var body: some View {
+    Menu("New Terminal", systemImage: "plus") {
+      ForEach(shellChoices, id: \.self) { shell in
+        Button(shell) { onCreate(shell) }
+      }
     }
   }
 }

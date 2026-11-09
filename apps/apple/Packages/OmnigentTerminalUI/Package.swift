@@ -35,7 +35,9 @@ let package = Package(
     .testTarget(
       name: "OmnigentTerminalUITests",
       dependencies: [
-        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentTerminalUI",
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+        .product(name: "OmnigentViewTextReading", package: "OmnigentViewTesting"),
+        .product(name: "OmnigentGhosttyKit", package: "OmnigentGhosttyKit"), "OmnigentTerminalUI",
       ],
       swiftSettings: mainActorSwiftSettings
     ),

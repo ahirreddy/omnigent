@@ -217,6 +217,7 @@ struct BrowserFindBar: View {
       Button("Next", systemImage: "chevron.down") { Task { await model.findNext(forward: true) } }
       Toggle("Match Case", isOn: $find.caseSensitive)
         .toggleStyle(.button)
+        .onChange(of: find.caseSensitive) { Task { await model.findNext(forward: true) } }
       Spacer()
       Button("Done") { model.hideFindBar() }
         .keyboardShortcut(.cancelAction)
@@ -232,7 +233,12 @@ struct BrowserFindBar: View {
   }
 
   private var matchText: String {
-    guard !model.find.query.isEmpty, let result = model.find.result else { return "" }
+    Self.matchText(query: model.find.query, result: model.find.result)
+  }
+
+  /// What the count beside the field says.
+  static func matchText(query: String, result: BrowserFindResult?) -> String {
+    guard !query.isEmpty, let result else { return "" }
     guard result.matchFound else { return "No matches" }
     if let count = result.matchCount {
       return "\(result.activeMatch ?? 1) of \(count)"

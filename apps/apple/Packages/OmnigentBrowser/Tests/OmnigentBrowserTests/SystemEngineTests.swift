@@ -1,4 +1,5 @@
 import Foundation
+import OmnigentViewTesting
 import Testing
 
 @testable import OmnigentBrowser
@@ -21,6 +22,8 @@ func waitUntil(
 @MainActor
 @Suite("System engine (WebKit)", .serialized)
 struct SystemEngineTests {
+  init() { SystemSideEffects.install() }
+
   private func writePage(_ name: String, title: String, body: String) throws -> URL {
     let directory = FileManager.default.temporaryDirectory
       .appending(path: "OmnigentBrowserTests-\(UUID().uuidString)", directoryHint: .isDirectory)

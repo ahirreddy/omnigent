@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import OWLProtocol
+import OmnigentViewTesting
 import Testing
 
 @testable import OmnigentWebLayer
@@ -24,6 +25,7 @@ final class ProtocolFixture {
       hostAppURL: URL(fileURLWithPath: "/nonexistent/Omnigent Web Host.app"),
       rootCacheURL: FileManager.default.temporaryDirectory)
   ) {
+    SystemSideEffects.install()
     session = Session(configuration: configuration)
     webView = session.profile(identifier: "tests", persistence: .ephemeral).makeWebView()
     webView.status = .live

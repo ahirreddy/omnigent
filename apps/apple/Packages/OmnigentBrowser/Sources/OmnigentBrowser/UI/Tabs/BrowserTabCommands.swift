@@ -19,8 +19,20 @@
     /// The menus.
     public var body: some Commands {
       CommandMenu("Browser") {
-        Group { items }.disabled(tab == nil)
+        BrowserTabCommandItems(
+          tab: tab, sheet: sheet, includesFindAndZoom: includesFindAndZoom)
       }
+    }
+  }
+
+  /// The Browser menu's items, disabled while no browser tab is focused.
+  struct BrowserTabCommandItems: View {
+    let tab: BrowserTabModel?
+    let sheet: Binding<BrowserTabSheet?>?
+    let includesFindAndZoom: Bool
+
+    var body: some View {
+      Group { items }.disabled(tab == nil)
     }
 
     @ViewBuilder private var items: some View {

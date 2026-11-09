@@ -115,6 +115,16 @@ public enum WebContextMenuPresenter {
     _ menu: WebContextMenu, in view: NSView, appItems: [WebAppMenuItem] = []
   ) {
     let target = MenuTarget(menu: menu, appItems: appItems)
+    let nsMenu = makeMenu(menu, appItems: appItems, target: target)
+    // popUp blocks in a tracking loop until the menu closes.
+    let opened = nsMenu.popUp(positioning: nil, at: menuPoint(menu.location, in: view), in: view)
+    target.finish(menuOpened: opened)
+  }
+
+  /// The menu: the app's items, then the host's.
+  static func makeMenu(
+    _ menu: WebContextMenu, appItems: [WebAppMenuItem], target: MenuTarget
+  ) -> NSMenu {
     let nsMenu = NSMenu(title: "")
     nsMenu.autoenablesItems = false
     for (index, item) in appItems.enumerated() {
@@ -128,9 +138,7 @@ public enum WebContextMenuPresenter {
       nsMenu.addItem(.separator())
     }
     add(menu.items, to: nsMenu, target: target)
-    // popUp blocks in a tracking loop until the menu closes.
-    let opened = nsMenu.popUp(positioning: nil, at: menuPoint(menu.location, in: view), in: view)
-    target.finish(menuOpened: opened)
+    return nsMenu
   }
 
   /// Builds the NSMenu items for host items. Exposed for tests.
@@ -165,7 +173,7 @@ public enum WebContextMenuPresenter {
 }
 
 /// Collects the choice; answers the host exactly once.
-private final class MenuTarget: NSObject {
+final class MenuTarget: NSObject {
   let menu: WebContextMenu
   let appItems: [WebAppMenuItem]
   var chosenHostCommand: Int?

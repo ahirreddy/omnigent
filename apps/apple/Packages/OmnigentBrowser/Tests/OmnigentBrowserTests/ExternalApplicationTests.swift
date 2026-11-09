@@ -1,4 +1,5 @@
 import Foundation
+import OmnigentViewTesting
 import Testing
 
 @testable import OmnigentBrowser
@@ -65,6 +66,29 @@ struct ExternalApplicationTests {
         return
       }
       #expect(feature.contains("No app opens"))
+    }
+
+    @Test func anAppThatWontOpenIsReported() async throws {
+      SystemSideEffects.install()
+      SystemSideEffects.answer(opensFail: true)
+      defer { SystemSideEffects.reset() }
+      let tab = FakeTab(kind: .system, profile: .ephemeral("external"), initialURL: nil)
+      let delegate = RecordingTabDelegate()
+      BrowserExternalApplication.request(
+        try url("mailto:owl@example.com"), origin: try url("https://a.example/"), from: tab,
+        delegate: delegate)
+      guard case .dialog(let dialog)? = delegate.prompts.first else {
+        Issue.record("expected a confirmation, got \(delegate.prompts)")
+        return
+      }
+      dialog.accept()
+      for _ in 0..<200 where tab.state.lastError == nil { await Task.yield() }
+      guard case .engineError(_, let message)? = tab.state.lastError else {
+        Issue.record(
+          "expected the failure on the tab, got \(String(describing: tab.state.lastError))")
+        return
+      }
+      #expect(message.hasPrefix("Could not open mailto: link"))
     }
 
     @Test func registeredSchemesAskAndDeclineWithoutOpening() throws {

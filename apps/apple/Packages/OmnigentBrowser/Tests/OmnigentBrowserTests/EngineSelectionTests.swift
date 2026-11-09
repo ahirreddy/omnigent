@@ -33,31 +33,47 @@ final class FakeTab: BrowserTab {
     loads.append(url)
     state.url = url
   }
-  func goBack() {}
-  func goForward() {}
-  func reload() {}
-  func stopLoading() {}
+  func goBack() { commands.append("back") }
+  func goForward() { commands.append("forward") }
+  func reload() { commands.append("reload") }
+  func stopLoading() { commands.append("stop") }
   func evaluateJavaScript(_ script: String) throws(BrowserError) -> BrowserScriptValue {
     record(script)
+    if let scriptFailure { throw scriptFailure }
     return .bool(true)
   }
   func takeSnapshotPNG() throws(BrowserError) -> Data { Data() }
   func find(_ text: String, forward: Bool, caseSensitive: Bool) throws(BrowserError)
     -> BrowserFindResult
   {
-    BrowserFindResult(matchFound: false, matchCount: nil, activeMatch: nil)
+    commands.append("find \(text) \(forward ? "forward" : "backward") \(caseSensitive)")
+    if let failure { throw failure }
+    return findResult
   }
-  func showDevTools() throws(BrowserError) {}
+  func showDevTools() throws(BrowserError) {
+    commands.append("devtools")
+    if let failure { throw failure }
+  }
   func close() { state.isClosed = true }
 
+  /// What the tab was asked to do, in order.
+  private(set) var commands: [String] = []
+  /// Thrown by the commands that can fail.
+  var failure: BrowserError?
+  /// Thrown by scripts.
+  var scriptFailure: BrowserError?
+  var findResult = BrowserFindResult(matchFound: false, matchCount: nil, activeMatch: nil)
   private(set) var hardReloads = 0
   private(set) var scripts: [String] = []
   var history = BrowserNavigationHistory.empty
   var restoreData: Data?
   private(set) var restoredData: Data?
 
-  func reload(ignoringCache: Bool) { if ignoringCache { hardReloads += 1 } }
-  func stopFinding() {}
+  func reload(ignoringCache: Bool) {
+    commands.append(ignoringCache ? "hardReload" : "reload")
+    if ignoringCache { hardReloads += 1 }
+  }
+  func stopFinding() { commands.append("stopFinding") }
   func setZoomFactor(_ factor: Double) { state.zoomFactor = factor }
   func setAudioMuted(_ muted: Bool) { state.isMuted = muted }
   var navigationHistory: BrowserNavigationHistory {
@@ -72,8 +88,13 @@ final class FakeTab: BrowserTab {
     restoredData = data
     return true
   }
-  func printPage() throws(BrowserError) {}
+  func printPage() throws(BrowserError) {
+    commands.append("print")
+    if let failure { throw failure }
+  }
   func viewSourceURL() throws(BrowserError) -> URL {
+    commands.append("viewSource")
+    if let failure { throw failure }
     guard let url = state.url else { throw .tabNotReady }
     return url
   }

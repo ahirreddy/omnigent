@@ -49,7 +49,7 @@ struct IncomingMessage {
     case failure(WebLayerError)
   }
 
-  private var handle: OpaquePointer?
+  private(set) var handle: OpaquePointer?
   private var started = false
   let serviceName: String
   var onEvent: ((Event) -> Void)?
