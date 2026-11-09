@@ -20,6 +20,20 @@
     }
   }
 
+  private struct RowsAndSheet: View {
+    @State private var names = ["Kept row", "Removed row"]
+    @State private var isOpen = false
+
+    var body: some View {
+      VStack {
+        Button("Remove") { names.removeLast() }
+        Button("Open") { isOpen = true }
+        List(names, id: \.self) { Text($0) }
+      }
+      .sheet(isPresented: $isOpen) { Text("Sheet text").frame(width: 200, height: 100) }
+    }
+  }
+
   @Suite("Shown text", .serialized)
   @MainActor
   struct ShownTextTests {
@@ -35,6 +49,26 @@
       #expect(try !screen.shows("Revealed"))
       try screen.clickControl(at: 0)
       #expect(try screen.shows("Revealed"))
+    }
+
+    @Test("Reads list rows, so a row that goes away reads as gone")
+    func listRows() throws {
+      let screen = OffscreenWindow(RowsAndSheet(), width: 300, height: 300)
+      defer { screen.close() }
+      #expect(try screen.shows("Kept row"))
+      #expect(try screen.shows("Removed row"))
+      try screen.clickControl(at: 0)
+      #expect(try screen.shows("Kept row"))
+      #expect(try !screen.shows("Removed row"))
+    }
+
+    @Test("Reads a sheet over the window")
+    func sheet() throws {
+      let screen = OffscreenWindow(RowsAndSheet(), width: 300, height: 300)
+      defer { screen.close() }
+      #expect(try !screen.shows("Sheet text"))
+      try screen.clickControl(at: 1)
+      #expect(try screen.shows("Sheet text"))
     }
   }
 #endif
