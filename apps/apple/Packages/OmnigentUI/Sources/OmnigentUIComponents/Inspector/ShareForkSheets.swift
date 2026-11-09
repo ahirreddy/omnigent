@@ -114,25 +114,28 @@ public struct ShareSheet: View {
           Button("Done", action: done)
             .accessibilityIdentifier("share-done")
         }
-        ToolbarItemGroup(placement: .cancellationAction) {
+        // One item holding both: a Mac sheet's bar keeps only the first in this placement.
+        ToolbarItem(placement: .cancellationAction) {
           if let link = state.link {
-            Button(copied ? "Copied!" : "Copy link", systemImage: "link") {
-              Pasteboard.copy(link.absoluteString)
-              copied = true
-            }
-            .accessibilityIdentifier("share-copy-link")
-            .task(id: copied) {
-              guard copied else { return }
-              do {
-                try await Task.sleep(for: .seconds(2))
-              } catch {
-                // Cancelled because the sheet closed; nothing to reset.
-                return
+            HStack {
+              Button(copied ? "Copied!" : "Copy link", systemImage: "link") {
+                Pasteboard.copy(link.absoluteString)
+                copied = true
               }
-              copied = false
+              .accessibilityIdentifier("share-copy-link")
+              .task(id: copied) {
+                guard copied else { return }
+                do {
+                  try await Task.sleep(for: .seconds(2))
+                } catch {
+                  // Cancelled because the sheet closed; nothing to reset.
+                  return
+                }
+                copied = false
+              }
+              ShareLink(item: link)
+                .accessibilityIdentifier("share-link")
             }
-            ShareLink(item: link)
-              .accessibilityIdentifier("share-link")
           }
         }
       }
@@ -223,29 +226,32 @@ public struct ForkSheet: View {
           Button("Cancel", action: actions.cancel)
             .accessibilityIdentifier("fork-cancel")
         }
-        ToolbarItemGroup(placement: .confirmationAction) {
-          if state.isForking {
-            ProgressView().controlSize(.small)
-          }
-          if case .anotherDirectory = state.kind {
-            Button("Continue") { fork(start: true) }
-              .primaryActionStyle()
-              .disabled(state.isForking)
-              .accessibilityIdentifier("fork-continue")
-          } else if !startsInDirectory {
-            Button(state.verb) { fork(start: choices.isSandbox) }
-              .primaryActionStyle()
-              .disabled(state.isForking || sandboxBlocked)
-              .help(choices.isSandbox ? state.options.sandboxProblem ?? "" : "")
-              .accessibilityIdentifier("fork-clone")
-          } else {
-            Button(state.verb) { fork(start: false) }
-              .disabled(state.isForking)
-              .accessibilityIdentifier("fork-clone")
-            Button("\(state.verb) & start") { fork(start: true) }
-              .primaryActionStyle()
-              .disabled(state.isForking)
-              .accessibilityIdentifier("fork-clone-start")
+        // One item holding them all: a Mac sheet's bar keeps only the first in this placement.
+        ToolbarItem(placement: .confirmationAction) {
+          HStack {
+            if state.isForking {
+              ProgressView().controlSize(.small)
+            }
+            if case .anotherDirectory = state.kind {
+              Button("Continue") { fork(start: true) }
+                .primaryActionStyle()
+                .disabled(state.isForking)
+                .accessibilityIdentifier("fork-continue")
+            } else if !startsInDirectory {
+              Button(state.verb) { fork(start: choices.isSandbox) }
+                .primaryActionStyle()
+                .disabled(state.isForking || sandboxBlocked)
+                .help(choices.isSandbox ? state.options.sandboxProblem ?? "" : "")
+                .accessibilityIdentifier("fork-clone")
+            } else {
+              Button(state.verb) { fork(start: false) }
+                .disabled(state.isForking)
+                .accessibilityIdentifier("fork-clone")
+              Button("\(state.verb) & start") { fork(start: true) }
+                .primaryActionStyle()
+                .disabled(state.isForking)
+                .accessibilityIdentifier("fork-clone-start")
+            }
           }
         }
       }
