@@ -32,20 +32,27 @@ public final class FixtureRemoteBrowser: RemoteBrowserConnecting {
   private let tabs = Mutex<[String: Tab]>([:])
   private let profileList: [RemoteBrowserProfile]
   private let latency: Duration
+  private let resources: Bundle
 
   /// Creates a host.
   /// - Parameters:
   ///   - profiles: The machine's profiles.
   ///   - latency: Simulated connect and request latency.
-  public nonisolated init(
+  public nonisolated convenience init(
     profiles: [RemoteBrowserProfile] = [
       RemoteBrowserProfile(name: "default", running: true),
       RemoteBrowserProfile(name: "work", running: false),
     ],
     latency: Duration = .milliseconds(120)
   ) {
+    self.init(profiles: profiles, latency: latency, resources: .module)
+  }
+
+  /// A host playing the streams in `resources`, so a test can leave some out.
+  nonisolated init(profiles: [RemoteBrowserProfile], latency: Duration, resources: Bundle) {
     profileList = profiles
     self.latency = latency
+    self.resources = resources
   }
 
   /// Adds a tab directly, for scenarios that start with one open.
@@ -95,7 +102,8 @@ public final class FixtureRemoteBrowser: RemoteBrowserConnecting {
     start.nav?.title = tab.map { Self.title(for: $0.url) } ?? ""
     start.mode = mode
     return FixtureRemoteBrowserDriver(
-      start: start, tabExists: tab != nil, latency: latency, listener: listener)
+      start: start, tabExists: tab != nil, latency: latency, resources: resources,
+      listener: listener)
   }
 
   /// A page title for a fixture URL: its host without `www.`.

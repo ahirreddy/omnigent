@@ -150,10 +150,7 @@ nonisolated public enum RemoteViewportModeDefaults {
     throws
   {
     let data = try JSONEncoder().encode(mode)
-    guard let text = String(bytes: data, encoding: .utf8) else {
-      throw CocoaError(.fileWriteInapplicableStringEncoding)
-    }
-    defaults.set(text, forKey: key)
+    defaults.set(String(bytes: data, encoding: .utf8), forKey: key)
   }
 
   private static let log = Logger(subsystem: "ai.omnigent.remote-browser", category: "viewport")

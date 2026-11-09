@@ -110,13 +110,21 @@ public final class RemoteVideoRenderer {
 
   private func recoverIfNeeded() {
     let renderer = layer.sampleBufferRenderer
-    if renderer.status == .failed {
-      let message = renderer.error.map { String(describing: $0) } ?? "unknown decoder error"
+    recover(
+      failed: renderer.status == .failed, error: renderer.error,
+      needsFlush: renderer.requiresFlushToResumeDecoding)
+  }
+
+  /// A failed decoder is reported and restarted; a required flush only asks for a new keyframe.
+  func recover(failed: Bool, error: (any Error)?, needsFlush: Bool) {
+    let renderer = layer.sampleBufferRenderer
+    if failed {
+      let message = error.map { String(describing: $0) } ?? "unknown decoder error"
       Self.log.error("Decoder failed: \(message, privacy: .public)")
       lastError = message
       renderer.flush()
       awaitKeyframe(.decoderError)
-    } else if renderer.requiresFlushToResumeDecoding {
+    } else if needsFlush {
       renderer.flush()
       awaitKeyframe(.flush)
     }
@@ -139,10 +147,7 @@ public final class RemoteVideoRenderer {
     let report = HardwareDecodeReport.probe(description)
     hardwareDecode = report
     // Once per format, persisted so the decode path can be checked after the fact.
-    if report.usingHardware {
-      Self.log.notice("H.264 \(report.description, privacy: .public)")
-    } else {
-      Self.log.error("H.264 \(report.description, privacy: .public)")
-    }
+    let level: OSLogType = report.usingHardware ? .default : .error
+    Self.log.log(level: level, "H.264 \(report.description, privacy: .public)")
   }
 }
