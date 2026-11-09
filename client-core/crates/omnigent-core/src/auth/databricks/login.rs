@@ -510,6 +510,23 @@ mod tests {
 
     /// `DatabricksLoginManagerTests::testInvalidCallbackAndBrowserFailureNeverExchangeCode`.
     #[test]
+    fn a_login_start_hides_its_url_and_late_answers_after_cancel_are_cancelled() {
+        let mut login = Login::new();
+        let start = login.start(WORKSPACE).unwrap();
+        let debug = format!("{start:?}");
+        assert!(debug.contains("<redacted>"), "{debug}");
+        assert!(!debug.contains(&start.authorization_url), "{debug}");
+        assert_eq!(
+            login
+                .manager
+                .commit_finished(&mut login.harness.manager, start.id, Ok(()))
+                .map(|_| ()),
+            Err(DatabricksError::Cancelled),
+            "nothing is committing yet"
+        );
+    }
+
+    #[test]
     fn databricks_login_invalid_callback_never_exchanges() {
         let mut login = Login::new();
         for (outcome, expected) in [

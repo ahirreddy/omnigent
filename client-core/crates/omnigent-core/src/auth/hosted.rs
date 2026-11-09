@@ -735,6 +735,57 @@ mod tests {
     }
 
     #[test]
+    fn a_blank_expected_identity_is_refused_up_front() {
+        assert_eq!(
+            HostedConnection::new(hosted(), bearer(), Some("  ".to_owned())).map(|_| ()),
+            Err(HostedAuthError::IdentityUnavailable)
+        );
+    }
+
+    #[test]
+    fn an_identity_reply_that_is_not_json_is_malformed() {
+        let transport = ScriptedTransport::new();
+        transport
+            .json(200, r#"{"single_user":false,"accounts_enabled":false}"#)
+            .json(200, "not json");
+        let mut connection = HostedConnection::new(hosted(), bearer(), None).unwrap();
+        assert!(matches!(
+            block_on(connection.connect(&transport)),
+            Err(HostedAuthError::MalformedResponse { detail }) if detail.starts_with("/v1/me:")
+        ));
+    }
+
+    #[test]
+    fn a_connected_read_maps_its_status_and_body() {
+        let transport = ScriptedTransport::new();
+        transport
+            .json(200, r#"{"single_user":false,"accounts_enabled":false}"#)
+            .json(200, r#"{"user_id":"alice"}"#)
+            .json(403, "{}")
+            .json(500, "{}")
+            .json(200, "not json");
+        let mut connection = HostedConnection::new(hosted(), bearer(), None).unwrap();
+        assert_eq!(
+            connection.websocket_url("/v1/x", &[]),
+            Err(HostedAuthError::NotConnected)
+        );
+        block_on(connection.connect(&transport)).unwrap();
+        assert!(connection.websocket_url("/v1/x", &[]).is_ok());
+        assert_eq!(
+            block_on(connection.get_json(&transport, "/v1/x", &[])),
+            Err(HostedAuthError::Forbidden)
+        );
+        assert_eq!(
+            block_on(connection.get_json(&transport, "/v1/x", &[])),
+            Err(HostedAuthError::HttpStatus { status: 500 })
+        );
+        assert!(matches!(
+            block_on(connection.get_json(&transport, "/v1/x", &[])),
+            Err(HostedAuthError::MalformedResponse { detail }) if detail.starts_with("/v1/x:")
+        ));
+    }
+
+    #[test]
     fn stale_generation_results_are_dropped() {
         let transport = ScriptedTransport::new();
         transport

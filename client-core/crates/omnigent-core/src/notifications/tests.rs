@@ -688,3 +688,36 @@ fn an_oversized_saved_ledger_keeps_the_most_recent_keys() {
     assert_eq!(saved.len(), MAX_LEDGER_ENTRIES);
     assert_eq!(saved[0], "key3");
 }
+
+#[test]
+fn push_capabilities_refuse_wrongly_typed_fields_and_tolerate_null() {
+    let base = json!({"available": true, "workspace_id": "w"});
+    let with = |key: &str, value: Value| {
+        let mut object = base.clone();
+        object[key] = value;
+        PushCapabilities::from_json(&object)
+    };
+    assert!(with("environment", json!(5)).is_err());
+    assert!(with("missing_configuration", json!("x")).is_err());
+    assert!(with("local_development", json!("yes")).is_err());
+    assert_eq!(
+        with("local_development", Value::Null)
+            .unwrap()
+            .local_development,
+        None
+    );
+}
+
+#[test]
+fn a_registration_reports_what_it_holds() {
+    let registration = PushRegistration::new(
+        "install_a",
+        "ab",
+        "sandbox",
+        "ai.test",
+        ["conv_b", "conv_a"].map(str::to_owned),
+    )
+    .unwrap();
+    assert_eq!(registration.installation_id(), "install_a");
+    assert_eq!(registration.session_ids(), ["conv_a", "conv_b"]);
+}

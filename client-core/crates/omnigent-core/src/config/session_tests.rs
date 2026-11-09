@@ -459,3 +459,52 @@ fn model_choice_round_trips_and_keeps_absent_efforts_distinct() {
     assert_eq!(full.value(), "wire");
     assert!(full.matches(Some("wire")) && full.matches(Some("m")));
 }
+
+#[test]
+fn efforts_depend_on_the_wrapper_and_the_catalog() {
+    let of_wrapper = |wrapper: &str| {
+        let mut configuration = demo_configuration();
+        configuration.wrapper = Some(wrapper.to_owned());
+        configuration.models = Vec::new();
+        configuration.efforts(None)
+    };
+    assert_eq!(of_wrapper("pi-native-ui"), Vec::<String>::new());
+    assert_eq!(
+        of_wrapper("claude-code-native-ui"),
+        CLAUDE_EFFORTS.map(str::to_owned).to_vec()
+    );
+}
+
+#[test]
+fn a_harness_row_names_itself_and_readiness_gaps_are_explained() {
+    let current = demo_configuration();
+    let target = HarnessChoice {
+        id: "target".into(),
+        name: "Claude".into(),
+        harness: Some("claude-native".into()),
+        builtin: Some(true),
+    };
+    assert_eq!(target.title(), harness_label(Some("claude-native")));
+    let readiness = |ready: Option<HarnessReadiness>| {
+        let catalog = ConfigurationCatalog {
+            agents: vec![target.clone()],
+            host: Some(ConfigurationHost {
+                host_id: "demo-host".into(),
+                name: "Host".into(),
+                status: "online".into(),
+                configured_harnesses: ready
+                    .map(|ready| BTreeMap::from([("claude-native".to_owned(), ready)])),
+            }),
+            ..ConfigurationCatalog::default()
+        };
+        catalog.unavailable_reason(&target, &current)
+    };
+    assert_eq!(
+        readiness(None).as_deref(),
+        Some("Host readiness has not been reported.")
+    );
+    assert_eq!(
+        readiness(Some(HarnessReadiness::NotReady)).as_deref(),
+        Some("This harness is not configured on the host.")
+    );
+}

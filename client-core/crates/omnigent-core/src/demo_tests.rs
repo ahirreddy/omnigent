@@ -1128,3 +1128,18 @@ fn a_decision_answer_is_checked_against_its_schema() {
         "a second answer finds it gone"
     );
 }
+
+#[test]
+fn workspace_ids_list_every_session_and_item() {
+    let workspace = sample_workspace().unwrap();
+    let sessions = session_ids(&workspace);
+    assert_eq!(sessions.len(), workspace.sessions.len());
+    assert!(sessions.contains(&workspace.sessions[0].snapshot.id));
+    let items = item_ids(&workspace);
+    let total: usize = workspace
+        .sessions
+        .iter()
+        .map(|session| session.snapshot.items.len())
+        .sum();
+    assert_eq!(items.len(), total, "item ids never collide across sessions");
+}

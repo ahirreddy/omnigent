@@ -383,3 +383,12 @@ fn hostile_trigger_text_stays_inside_its_quotes() {
         "single quotes are escaped for the shell: {prompt}"
     );
 }
+
+#[test]
+fn a_condition_field_keeps_what_it_was_built_with() {
+    let built = field("id", "Label", &[], "placeholder");
+    assert_eq!(built.id, "id");
+    assert_eq!(built.label, "Label");
+    assert_eq!(built.placeholder, "placeholder");
+    assert_eq!(built.operators.len(), 0);
+}

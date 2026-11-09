@@ -224,3 +224,25 @@ fn launch_modes_offer_launch_only_modes_and_send_flags_only_off_default() {
         Some(2)
     );
 }
+
+#[test]
+fn a_null_field_reports_no_mode_rather_than_unknown() {
+    let claude = Some("claude-code-native-ui");
+    assert_eq!(
+        reported_approval_mode(claude, &labels(&[]), &Field::Null),
+        Some(None)
+    );
+    assert_eq!(
+        reported_approval_mode(claude, &Field::Null, &Field::Absent),
+        Some(None)
+    );
+    assert_eq!(
+        reported_approval_mode(claude, &Field::Absent, &Field::Absent),
+        None
+    );
+    let built = mode("v", "t", "h", "d", Ask, true);
+    assert_eq!(
+        (built.value, built.title, built.switchable),
+        ("v", "t", true)
+    );
+}

@@ -90,6 +90,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn rarer_codes_have_their_own_sentences() {
+        for (code, phrase) in [
+            ("required_terminal_exited", "terminal exited"),
+            ("connection_error", "connection to the agent dropped"),
+            ("session_agent_missing", "no longer exists"),
+            ("codex_thread_reset", "fresh thread"),
+            ("databricks_sign_in_completed", "sign-in completed"),
+            ("codex_thread_not_started", "before it could start"),
+            ("transient_upstream_error", "temporary error"),
+            ("codex_compaction_model_failed", "compact the conversation"),
+            ("codex_provider_auth_failed", "sign-in command"),
+            ("client_update_required", "too old"),
+        ] {
+            let sentence = failure_description(code).unwrap();
+            assert!(sentence.contains(phrase), "{code}: {sentence}");
+        }
+    }
+
+    #[test]
     fn the_runner_title_wins_then_the_code_then_a_generic_line() {
         assert_eq!(
             failure_headline(Some("Signed in"), "rate_limit_exceeded", false),
