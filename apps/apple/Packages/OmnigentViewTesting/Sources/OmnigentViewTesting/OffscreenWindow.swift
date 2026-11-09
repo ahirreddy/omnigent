@@ -73,6 +73,9 @@
     public func close() {
       window.orderOut(nil)
       window.contentView = nil
+      // AppKit queues run loop stops while windows change. Left for the test runner's own loop,
+      // one would end the process early with exit code 0: a false pass.
+      RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
     }
 
     /// Runs the main run loop, so state changes, tasks and animations proceed.
