@@ -515,6 +515,30 @@ fn an_unreadable_store_asks_to_sign_in_with_the_reason() {
     );
 }
 
+/// An offline launch is a connection failure: the grant is fine, so the app offers Retry instead
+/// of asking for a password it does not need.
+#[test]
+fn a_network_failure_restoring_the_grant_is_not_a_sign_in_prompt() {
+    let mut harness = oidc_server();
+    sign_in_oidc(&mut harness);
+    harness.core.disconnect();
+    harness.pump();
+    harness.http.fail_next("/oauth/token", offline());
+    let error = connect(&mut harness).unwrap_err();
+    assert!(matches!(error, CoreError::Oidc { .. }), "{error:?}");
+    assert!(
+        matches!(last_phase(&harness), ConnectionPhase::Failed { .. }),
+        "{:?}",
+        last_phase(&harness)
+    );
+    assert_eq!(lock(&harness.store.items).len(), 1, "the grant is kept");
+    let phase = connect(&mut harness).unwrap();
+    assert!(
+        matches!(phase, ConnectionPhase::Connected { .. }),
+        "{phase:?}"
+    );
+}
+
 /// The renewal timer fires while the laptop has no network: the session is still valid, so the
 /// connection stays and the renewal tries again.
 #[test]

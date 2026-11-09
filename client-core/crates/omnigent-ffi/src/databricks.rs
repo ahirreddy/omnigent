@@ -304,7 +304,15 @@ impl Inner {
                 Ok(ConnectionPhase::Connected { server })
             }
             Ok(None) => Ok(self.sign_in_required(resolved, None)),
-            Err(error) => Ok(self.sign_in_required(resolved, Some(error.into()))),
+            Err(error) => {
+                let error = CoreError::from(error);
+                // Not reaching the workspace says nothing about the grant: offer Retry.
+                if error.requires_sign_in() {
+                    Ok(self.sign_in_required(resolved, Some(error)))
+                } else {
+                    Err(self.fail(&base_url, error))
+                }
+            }
         }
     }
 

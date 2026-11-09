@@ -504,6 +504,10 @@ impl Inner {
                 self.schedule_renewal(generation, resolved, &server, &session);
                 Ok(ConnectionPhase::Connected { server: connected })
             }
+            // Not reaching the server says nothing about the grant: offer Retry, not sign-in.
+            Err(error) if error.is_network_failure() => {
+                Err(self.fail(resolved.endpoint.base_url(), error.into()))
+            }
             Err(error) => Ok(self.sign_in_required(resolved, Some(error.into()))),
         }
     }

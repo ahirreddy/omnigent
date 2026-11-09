@@ -230,6 +230,43 @@ fn a_refused_exchange_or_a_failed_save_returns_to_sign_in_with_the_reason() {
     ));
 }
 
+/// Offline at launch with a good grant: the app must offer Retry, not throw the user at a browser.
+#[test]
+fn a_network_failure_refreshing_the_saved_grant_is_not_a_sign_in_prompt() {
+    let mut harness = signed_in();
+    harness.core.disconnect();
+    harness.pump();
+    harness.advance(4_000_000);
+    harness.http.fail_next(TOKEN, offline());
+    let error = connect(&mut harness).unwrap_err();
+    assert!(!error.requires_sign_in(), "{error:?}");
+    assert!(
+        matches!(last_phase(&harness), ConnectionPhase::Failed { .. }),
+        "{:?}",
+        last_phase(&harness)
+    );
+    // The grant is still there.
+    route_databricks(&harness, "access-2", 3_600);
+    assert!(matches!(
+        connect(&mut harness),
+        Ok(ConnectionPhase::Connected { .. })
+    ));
+}
+
+#[test]
+fn a_store_that_cannot_be_read_at_connect_reports_the_reason() {
+    let mut harness = databricks();
+    route_databricks(&harness, "access-1", 3_600);
+    *lock(&harness.store.get_failure) = Some(locked());
+    let result = connect(&mut harness);
+    assert!(result.is_err(), "{result:?}");
+    assert!(
+        matches!(last_phase(&harness), ConnectionPhase::Failed { .. }),
+        "{:?}",
+        last_phase(&harness)
+    );
+}
+
 #[test]
 fn a_connect_replaced_during_its_refresh_reports_nothing() {
     let mut harness = signed_in();
