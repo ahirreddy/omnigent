@@ -85,6 +85,20 @@
       try screen.press(keyCode: 36, characters: "\r")
     }
 
+    @Test("clicking a row selects it, so Return opens that one")
+    func clickSelects() throws {
+      let screen = bed.screen(items: [bed.item("a", age: 10), bed.item("b", age: 20)])
+      defer { screen.close() }
+      let rows = screen.buttonFrames.filter { $0.height < 200 && $0.width > 200 }
+      try #require(rows.count == 2, "\(screen.buttonFrames)")
+      try screen.click(rows[1].center)
+      screen.settle(0.5)
+      #expect(try screen.shows("Preview b"))
+      try pressReturn(screen)
+      #expect(log.entries.contains("open b"), "\(log.entries)")
+      #expect(!log.entries.contains("open a"), "\(log.entries)")
+    }
+
     @Test("J and K move the selection, Return opens it, and neither end wraps")
     func letterKeys() throws {
       let screen = bed.screen(items: [

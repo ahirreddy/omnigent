@@ -126,6 +126,37 @@
         ])
     }
 
+    /// A point on row `index`'s title, level with the row's menu.
+    private func rowTitle<Content>(_ index: Int, _ screen: OffscreenWindow<Content>) throws
+      -> CGPoint
+    {
+      let menu = try #require(Array(screen.popUps.dropFirst()).dropFirst(index).first)
+      let frame = menu.convert(menu.bounds, to: screen.activeWindow.contentView)
+      return CGPoint(x: 120, y: frame.midY)
+    }
+
+    @Test("clicking a row opens that automation's details")
+    func clickRow() throws {
+      let screen = page(AutomationsViewState(rows: [row("a"), row("b")], hasAny: true))
+      defer { screen.close() }
+      try screen.click(try rowTitle(1, screen))
+      #expect(log.entries == ["detail b"])
+    }
+
+    @Test("with no details to open, one click does nothing and a double click edits")
+    func doubleClickRow() throws {
+      var actions = actions
+      actions.openDetail = nil
+      let screen = page(
+        AutomationsViewState(rows: [row("a"), row("b")], hasAny: true), actions: actions)
+      defer { screen.close() }
+      let title = try rowTitle(0, screen)
+      try screen.click(title, clickCount: 1)
+      #expect(log.entries.isEmpty)
+      try screen.click(title, clickCount: 2)
+      #expect(log.entries == ["edit a"])
+    }
+
     @Test("a row's menu runs, edits, pauses and opens the last run of that row")
     func rowMenu() throws {
       let screen = page(
