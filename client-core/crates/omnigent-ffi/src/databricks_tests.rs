@@ -186,6 +186,50 @@ fn cancelling_a_login_returns_to_sign_in_once() {
     assert_eq!(plain.events.take(), []);
 }
 
+/// A sign-in the user replaced with a newer one must not knock the sheet back to the sign-in page.
+#[test]
+fn a_login_replaced_during_its_code_exchange_leaves_the_new_one_in_charge() {
+    let (mut harness, first) = signing_in();
+    let gate = harness.http.hold(TOKEN);
+    let core = Arc::clone(&harness.core);
+    let (attempt, callback) = (first.attempt_id, callback_for(&first));
+    let pending =
+        harness.start(async move { core.complete_databricks_sign_in(attempt, callback).await });
+    harness.pump();
+    harness.core.begin_databricks_sign_in(None).unwrap();
+    harness.pump();
+    gate.send(()).unwrap();
+    harness.pump();
+    let result = pending.borrow_mut().take().unwrap();
+    assert!(
+        matches!(result, Err(CoreError::Databricks { .. })),
+        "{result:?}"
+    );
+    assert!(
+        matches!(last_phase(&harness), ConnectionPhase::SigningIn { .. }),
+        "{:?}",
+        last_phase(&harness)
+    );
+}
+
+/// A disconnect during the slow Keychain write of a new grant wins over the sign-in.
+#[test]
+fn a_disconnect_while_the_grant_saves_stays_disconnected() {
+    let (mut harness, challenge) = signing_in();
+    let gate = harness.store.hold_set();
+    let core = Arc::clone(&harness.core);
+    let (attempt, callback) = (challenge.attempt_id, callback_for(&challenge));
+    let pending =
+        harness.start(async move { core.complete_databricks_sign_in(attempt, callback).await });
+    harness.pump();
+    harness.core.disconnect();
+    harness.pump();
+    gate.send(()).unwrap();
+    harness.pump();
+    assert!(pending.borrow_mut().take().unwrap().is_err());
+    assert_eq!(last_phase(&harness), ConnectionPhase::Disconnected);
+}
+
 #[test]
 fn a_disconnect_during_the_code_exchange_wins() {
     let (mut harness, challenge) = signing_in();

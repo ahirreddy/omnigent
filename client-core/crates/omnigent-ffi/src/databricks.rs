@@ -510,9 +510,13 @@ impl ClientCore {
             .attempts
             .remove(&attempt_id)
             .ok_or_else(|| CoreError::invalid_state("This sign-in is no longer in progress."))?;
+        // A login a newer one or a disconnect cancelled does not own the phase any more.
         let fail = |error: DatabricksError| {
+            let cancelled = error.is_cancelled();
             let error = CoreError::from(error);
-            inner.sign_in_required(&resolved, Some(error.clone()));
+            if !cancelled && inner.check_generation(generation).is_ok() {
+                inner.sign_in_required(&resolved, Some(error.clone()));
+            }
             error
         };
         let outcome = Url::parse(&callback_url)
