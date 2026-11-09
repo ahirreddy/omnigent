@@ -95,27 +95,29 @@ public struct WorkspaceInspector: View {
     #endif
   }
 
-  private func systemTabPicker(showsTitles: Bool) -> some View {
-    Picker("Right panel tab", selection: Binding(get: { shownTab }, set: select)) {
-      ForEach(tabs) { tab in
-        Group {
-          if showsTitles {
-            Text(tab.shortTitle)
-          } else {
-            Label(label(for: tab), systemImage: tab.systemImage).labelStyle(.iconOnly)
+  #if !os(macOS)
+    private func systemTabPicker(showsTitles: Bool) -> some View {
+      Picker("Right panel tab", selection: Binding(get: { shownTab }, set: select)) {
+        ForEach(tabs) { tab in
+          Group {
+            if showsTitles {
+              Text(tab.shortTitle)
+            } else {
+              Label(label(for: tab), systemImage: tab.systemImage).labelStyle(.iconOnly)
+            }
           }
+          .help(label(for: tab))
+          .accessibilityLabel(label(for: tab))
+          .tag(tab)
         }
-        .help(label(for: tab))
-        .accessibilityLabel(label(for: tab))
-        .tag(tab)
       }
+      .pickerStyle(.segmented)
+      .tint(Theme.secondary)
+      .labelsHidden()
+      .accessibilityLabel("Right panel tab")
+      .accessibilityHint("Switches between files, changes, pull requests, agents and info")
     }
-    .pickerStyle(.segmented)
-    .tint(Theme.secondary)
-    .labelsHidden()
-    .accessibilityLabel("Right panel tab")
-    .accessibilityHint("Switches between files, changes, pull requests, agents and info")
-  }
+  #endif
 
   private func label(for tab: InspectorTab) -> String { labels.label(for: tab) }
 
