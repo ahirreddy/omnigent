@@ -63,6 +63,18 @@
     }
   }
 
+  /// What the test's private pasteboard holds.
+  @MainActor
+  func copiedText() -> String? {
+    SystemSideEffects.pasteboard.string(forType: .string)
+  }
+
+  /// A menu's item titles, without the empty one a button-style menu starts with.
+  @MainActor
+  func titles(of menu: NSMenu) -> [String] {
+    menu.items.map(\.title).filter { !$0.isEmpty }
+  }
+
   /// What the views under test asked the host to do, in order.
   @MainActor
   final class HostLog {
