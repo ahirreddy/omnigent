@@ -6,7 +6,7 @@ use super::super::input::InputError;
 
 use super::*;
 use crate::realtime::test_support::FixedJitter;
-use crate::remote_browser::test_support::{fixture_bytes, message_text};
+use crate::remote_browser::test_support::{fixture_bytes, fixture_json, message_text};
 
 struct Harness {
     machine: RemoteBrowserAttach<FixedJitter>,
@@ -881,4 +881,539 @@ fn edit_and_touch_need_the_host_feature_and_control() {
             .contains(&AttachOutput::TabChanged)
     );
     assert!(harness.machine.tab().scroll.is_some());
+}
+
+fn transport_failure() -> TransportError {
+    TransportError::Timeout {
+        message: "timed out".to_owned(),
+    }
+}
+
+/// A harness on its first socket attempt, with `max_reconnects` as the budget.
+fn budgeted(max_reconnects: u32) -> Harness {
+    let config = AttachConfig {
+        max_reconnects,
+        ..AttachConfig::default()
+    };
+    let mut harness = Harness {
+        machine: RemoteBrowserAttach::new(
+            config,
+            options(AttachMode::Control, None),
+            FixedJitter(0),
+        ),
+        now: 1_000,
+    };
+    harness.run(AttachInput::Start);
+    harness
+}
+
+#[test]
+fn only_auth_failures_ask_the_user_to_sign_in() {
+    let auth = AttachFailure::AuthenticationRequired {
+        detail: "401".to_owned(),
+    };
+    assert!(auth.requires_sign_in());
+    let unauthorized = AttachFailure::Unrecoverable(LinkError::HttpStatus { status: 401 });
+    assert!(unauthorized.requires_sign_in());
+    let moved = AttachFailure::Unrecoverable(LinkError::HttpStatus { status: 302 });
+    assert!(!moved.requires_sign_in());
+}
+
+#[test]
+fn a_failed_connect_retries_on_a_transport_error_and_fails_on_an_auth_challenge() {
+    let mut harness = budgeted(5);
+    let attempt = harness.attempt();
+    let failed = harness.run(AttachInput::ConnectFailed {
+        attempt,
+        error: transport_failure(),
+    });
+    assert!(matches!(
+        state(&failed),
+        Some(ConnectionState::Reconnecting { failures: 1, .. })
+    ));
+    assert_eq!(
+        harness.run(AttachInput::ConnectFailed {
+            attempt,
+            error: transport_failure(),
+        }),
+        [],
+        "a late report for a dead attempt changes nothing"
+    );
+    harness.fire(&failed, TimerKind::Reconnect);
+    let attempt = harness.attempt();
+    let challenged = harness.run(AttachInput::Ended {
+        attempt,
+        end: SocketEnd::Failed(ConnectionFailure::AuthenticationRequired {
+            message: "challenge".to_owned(),
+        }),
+    });
+    assert_eq!(
+        state(&challenged),
+        Some(&ConnectionState::Failed {
+            error: AttachFailure::AuthenticationRequired {
+                detail: "challenge".to_owned()
+            }
+        })
+    );
+}
+
+#[test]
+fn a_send_failure_closes_the_socket_and_reconnects_and_a_stale_one_is_ignored() {
+    let mut harness = Harness::attached();
+    let old = harness.attempt();
+    let failed = harness.run(AttachInput::SendFailed {
+        attempt: old,
+        error: transport_failure(),
+    });
+    assert!(
+        failed
+            .iter()
+            .any(|output| matches!(output, AttachOutput::Close { attempt, .. } if *attempt == old))
+    );
+    assert!(matches!(
+        state(&failed),
+        Some(ConnectionState::Reconnecting {
+            reason: LinkError::SendFailed(_),
+            ..
+        })
+    ));
+    assert_eq!(
+        harness.run(AttachInput::SendFailed {
+            attempt: old,
+            error: transport_failure(),
+        }),
+        []
+    );
+}
+
+#[test]
+fn starting_twice_keeps_the_running_attempt() {
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    let attempt = harness.attempt();
+    assert_eq!(harness.run(AttachInput::Start), []);
+    assert_eq!(harness.attempt(), attempt);
+}
+
+#[test]
+fn stopping_while_waiting_to_reconnect_cancels_the_timer() {
+    let mut harness = Harness::attached();
+    let lost = harness.close(1006, "");
+    let (token, _) = timer(&lost, TimerKind::Reconnect).unwrap();
+    let stopped = harness.run(AttachInput::Stop);
+    assert!(stopped.contains(&AttachOutput::CancelTimer { token }));
+    assert_eq!(state(&stopped), Some(&ConnectionState::Stopped));
+    assert_eq!(
+        harness.run(AttachInput::TimerFired { token }),
+        [],
+        "the cancelled timer firing anyway does not reconnect"
+    );
+}
+
+#[test]
+fn returning_to_the_foreground_redials_at_once_but_only_when_waiting() {
+    let mut harness = Harness::attached();
+    assert_eq!(harness.run(AttachInput::Foreground), [], "attached stays");
+    let lost = harness.close(1006, "");
+    let (token, _) = timer(&lost, TimerKind::Reconnect).unwrap();
+    let foreground = harness.run(AttachInput::Foreground);
+    assert!(foreground.contains(&AttachOutput::CancelTimer { token }));
+    assert!(
+        foreground
+            .iter()
+            .any(|output| matches!(output, AttachOutput::Connect { .. }))
+    );
+    // The dial is in flight, with no timer left: a second foreground does not dial twice.
+    assert_eq!(harness.run(AttachInput::Foreground), []);
+}
+
+#[test]
+fn the_budget_runs_out_and_the_foreground_starts_over() {
+    let mut harness = budgeted(1);
+    let attempt = harness.attempt();
+    let failed = harness.run(AttachInput::Ended {
+        attempt,
+        end: SocketEnd::Failed(ConnectionFailure::Transport(transport_failure())),
+    });
+    assert!(matches!(
+        state(&failed),
+        Some(ConnectionState::Reconnecting { failures: 1, .. })
+    ));
+    harness.fire(&failed, TimerKind::Reconnect);
+    let attempt = harness.attempt();
+    let exhausted = harness.run(AttachInput::Ended {
+        attempt,
+        end: SocketEnd::HandshakeRejected { status: 503 },
+    });
+    assert_eq!(
+        state(&exhausted),
+        Some(&ConnectionState::Failed {
+            error: AttachFailure::ReconnectBudgetExhausted {
+                last: LinkError::HttpStatus { status: 503 },
+                attempts: 1,
+            }
+        })
+    );
+    assert_eq!(harness.machine.current_attempt(), None);
+    let restarted = harness.run(AttachInput::Foreground);
+    assert_eq!(state(&restarted), Some(&ConnectionState::Connecting));
+    let attempt = harness.attempt();
+    let fresh = harness.run(AttachInput::Ended {
+        attempt,
+        end: SocketEnd::HandshakeRejected { status: 503 },
+    });
+    assert!(
+        matches!(
+            state(&fresh),
+            Some(ConnectionState::Reconnecting { failures: 1, .. })
+        ),
+        "the restart forgot the old failures"
+    );
+}
+
+#[test]
+fn a_zero_budget_gives_up_on_the_first_failure() {
+    let mut harness = budgeted(0);
+    let attempt = harness.attempt();
+    let exhausted = harness.run(AttachInput::Ended {
+        attempt,
+        end: SocketEnd::HandshakeRejected { status: 500 },
+    });
+    assert!(matches!(
+        state(&exhausted),
+        Some(ConnectionState::Failed {
+            error: AttachFailure::ReconnectBudgetExhausted { attempts: 0, .. }
+        })
+    ));
+}
+
+#[test]
+fn a_terminal_status_fails_without_a_retry_and_the_foreground_leaves_it_alone() {
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    let attempt = harness.attempt();
+    let moved = harness.run(AttachInput::Ended {
+        attempt,
+        end: SocketEnd::HandshakeRejected { status: 302 },
+    });
+    assert_eq!(
+        state(&moved),
+        Some(&ConnectionState::Failed {
+            error: AttachFailure::Unrecoverable(LinkError::HttpStatus { status: 302 })
+        })
+    );
+    assert_eq!(harness.run(AttachInput::Foreground), []);
+}
+
+#[test]
+fn a_403_handshake_reports_the_requested_mode() {
+    let mut harness = Harness::new(options(AttachMode::View, None));
+    harness.run(AttachInput::Start);
+    let attempt = harness.attempt();
+    let denied = harness.run(AttachInput::Ended {
+        attempt,
+        end: SocketEnd::HandshakeRejected { status: 403 },
+    });
+    assert!(matches!(
+        state(&denied),
+        Some(ConnectionState::Failed {
+            error: AttachFailure::AccessDenied {
+                mode: AttachMode::View,
+                ..
+            }
+        })
+    ));
+}
+
+#[test]
+fn opened_twice_and_a_message_before_open_break_the_host_contract() {
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    let early = harness.recv(SocketMessage::Text(message_text("host_to_client/hello")));
+    assert!(matches!(
+        state(&early),
+        Some(ConnectionState::Failed {
+            error: AttachFailure::Unrecoverable(LinkError::HostContract { .. })
+        })
+    ));
+
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    harness.open();
+    let twice = harness.open();
+    assert!(matches!(
+        state(&twice),
+        Some(ConnectionState::Failed {
+            error: AttachFailure::Unrecoverable(LinkError::HostContract { .. })
+        })
+    ));
+    assert!(
+        twice
+            .iter()
+            .any(|output| matches!(output, AttachOutput::Close { .. })),
+        "the socket that misbehaved is closed"
+    );
+}
+
+#[test]
+fn malformed_text_is_a_notice_and_keeps_the_connection() {
+    let mut harness = Harness::attached();
+    for text in ["", "{", "[1,2]", "\"hello\"", "{\"type\":\"hello\"}"] {
+        let outputs = harness.recv(SocketMessage::Text(text.to_owned()));
+        assert!(
+            matches!(notices(&outputs)[..], [Notice::MalformedMessage(_)]),
+            "{text}: {outputs:?}"
+        );
+        assert_eq!(state(&outputs), None);
+    }
+    assert!(harness.machine.current_attempt().is_some());
+}
+
+#[test]
+fn a_delta_before_any_keyframe_requests_one_exactly_once() {
+    let mut harness = Harness::attached();
+    let first = harness.frame("h264_delta");
+    assert!(
+        sent(&first)
+            .iter()
+            .any(|message| matches!(message, ClientMessage::KeyframeRequest { .. }))
+    );
+    let second = harness.frame("h264_delta");
+    assert!(
+        !sent(&second)
+            .iter()
+            .any(|message| matches!(message, ClientMessage::KeyframeRequest { .. }))
+    );
+}
+
+#[test]
+fn an_invalid_mouse_event_is_refused_before_the_control_gate() {
+    let mut harness = Harness::control();
+    let outputs = harness.run(AttachInput::Mouse(mouse(MouseKind::Move, f64::NAN)));
+    assert!(matches!(notices(&outputs)[..], [Notice::InvalidInput(_)]));
+}
+
+#[test]
+fn a_dialog_reply_needs_control_and_goes_out_when_holding_it() {
+    let reply = DialogReply {
+        id: "dialog_1".to_owned(),
+        accept: true,
+        text: Some("\u{1F600}".to_owned()),
+    };
+    let mut watching = Harness::attached();
+    let refused = watching.run(AttachInput::DialogReply(reply.clone()));
+    assert_eq!(
+        notices(&refused),
+        [&Notice::InputDropped {
+            input: InputKind::DialogReply,
+            reason: DropReason::NotInControl,
+        }]
+    );
+    let mut holding = Harness::holding_control();
+    let replied = holding.run(AttachInput::DialogReply(reply.clone()));
+    assert_eq!(sent(&replied), [ClientMessage::DialogReply(reply)]);
+}
+
+#[test]
+fn a_still_request_before_the_hello_is_dropped_and_view_mode_may_ask() {
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    let early = harness.run(AttachInput::RequestStill {
+        kind: StillKind::Still,
+    });
+    assert_eq!(
+        notices(&early),
+        [&Notice::InputDropped {
+            input: InputKind::Still,
+            reason: DropReason::NotAttached,
+        }]
+    );
+    let mut viewing = Harness::new(options(AttachMode::View, None));
+    viewing.run(AttachInput::Start);
+    viewing.open();
+    viewing.host("hello_view_handoff");
+    let asked = viewing.run(AttachInput::RequestStill {
+        kind: StillKind::Still,
+    });
+    assert_eq!(
+        sent(&asked),
+        [ClientMessage::StillRequest {
+            kind: StillKind::Still
+        }]
+    );
+}
+
+#[test]
+fn a_viewport_set_while_control_is_on_its_way_waits_for_the_grant() {
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    harness.open();
+    harness.host("hello_v1_1");
+    harness.run(AttachInput::TakeControl);
+    let early = harness.run(AttachInput::SetViewport(Some(mobile_request())));
+    assert_eq!(resizes(&early), []);
+    assert_eq!(resizes(&harness.host("control_user_this")).len(), 1);
+}
+
+#[test]
+fn a_scoped_host_without_mobile_emulation_reports_it_once_and_resizes_plainly() {
+    let mut hello = fixture_json("messages/host_to_client/hello_v1_1.json");
+    hello["features"] = serde_json::json!(["viewport_scope"]);
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    harness.open();
+    harness.recv(SocketMessage::Text(hello.to_string()));
+    harness.run(AttachInput::TakeControl);
+    harness.host("control_user_this");
+    let first = harness.run(AttachInput::SetViewport(Some(mobile_request())));
+    assert_eq!(
+        notices(&first),
+        [&Notice::InputDropped {
+            input: InputKind::MobileEmulation,
+            reason: DropReason::Unsupported,
+        }]
+    );
+    assert_eq!(
+        resizes(&first),
+        [ResizeRequest {
+            viewport: mobile_request().viewport,
+            scope: Some(ViewportScope::Control),
+            mobile: None,
+        }]
+    );
+    let again = harness.run(AttachInput::SetViewport(Some(mobile_request())));
+    assert_eq!(notices(&again), Vec::<&Notice>::new());
+}
+
+#[test]
+fn taking_control_before_the_hello_is_sent_once_the_hello_arrives() {
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    harness.open();
+    assert_eq!(harness.run(AttachInput::TakeControl), []);
+    let hello = harness.host("hello");
+    assert!(
+        sent(&hello).contains(&ClientMessage::Control {
+            op: ControlOp::Take
+        }),
+        "the click is honoured once the host says hello: {hello:?}"
+    );
+    assert!(harness.machine.wants_control());
+}
+
+#[test]
+fn a_take_cancelled_or_refused_before_the_hello_is_not_sent() {
+    let mut released = Harness::control();
+    released.run(AttachInput::Start);
+    released.open();
+    released.run(AttachInput::TakeControl);
+    released.run(AttachInput::ReleaseControl);
+    assert_eq!(sent(&released.host("hello")), []);
+
+    let mut stopped = Harness::control();
+    stopped.run(AttachInput::Start);
+    stopped.run(AttachInput::TakeControl);
+    stopped.run(AttachInput::Stop);
+    stopped.run(AttachInput::Start);
+    stopped.open();
+    assert_eq!(sent(&stopped.host("hello")), []);
+
+    let mut viewing = Harness::control();
+    viewing.run(AttachInput::Start);
+    viewing.open();
+    viewing.run(AttachInput::TakeControl);
+    let hello = viewing.host("hello_view_handoff");
+    assert_eq!(sent(&hello), []);
+    assert_eq!(
+        notices(&hello),
+        [&Notice::InputDropped {
+            input: InputKind::Control,
+            reason: DropReason::ReadOnly,
+        }]
+    );
+    assert!(!viewing.machine.wants_control());
+}
+
+#[test]
+fn a_host_that_only_grants_view_refuses_a_take() {
+    // The client asked to attach in control mode but the host only granted view.
+    let mut downgraded = Harness::control();
+    downgraded.run(AttachInput::Start);
+    downgraded.open();
+    downgraded.host("hello_view_handoff");
+    let refused = downgraded.run(AttachInput::TakeControl);
+    assert_eq!(
+        notices(&refused),
+        [&Notice::InputDropped {
+            input: InputKind::Control,
+            reason: DropReason::ReadOnly,
+        }]
+    );
+    assert!(!downgraded.machine.wants_control());
+}
+
+#[test]
+fn releasing_control_without_holding_it_sends_nothing() {
+    let mut harness = Harness::attached();
+    assert_eq!(sent(&harness.run(AttachInput::ReleaseControl)), []);
+}
+
+#[test]
+fn turning_stats_off_clears_the_shown_stats() {
+    let mut harness = Harness::attached();
+    harness.run(AttachInput::UpdateSettings(SettingsUpdate {
+        stats: Some(true),
+        ..SettingsUpdate::default()
+    }));
+    harness.host("stats");
+    assert!(harness.machine.tab().stats.is_some());
+    let off = harness.run(AttachInput::UpdateSettings(SettingsUpdate {
+        stats: Some(false),
+        ..SettingsUpdate::default()
+    }));
+    assert!(off.contains(&AttachOutput::TabChanged));
+    assert_eq!(harness.machine.tab().stats, None);
+    let again = harness.run(AttachInput::UpdateSettings(SettingsUpdate {
+        stats: Some(false),
+        ..SettingsUpdate::default()
+    }));
+    assert!(!again.contains(&AttachOutput::TabChanged));
+}
+
+#[test]
+fn a_coalesced_move_flushes_on_its_timer_while_holding_control() {
+    let mut harness = Harness::holding_control();
+    harness.run(AttachInput::Mouse(mouse(MouseKind::Move, 1.0)));
+    let armed = harness.run(AttachInput::Mouse(mouse(MouseKind::Move, 2.0)));
+    let flushed = harness.fire(&armed, TimerKind::InputFlush);
+    assert_eq!(
+        sent(&flushed),
+        [ClientMessage::Mouse(mouse(MouseKind::Move, 2.0))]
+    );
+}
+
+#[test]
+fn a_timer_for_a_dead_attempt_is_ignored() {
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    let opened = harness.open();
+    let (ping, _) = timer(&opened, TimerKind::Ping).unwrap();
+    let (watchdog, _) = timer(&opened, TimerKind::Watchdog).unwrap();
+    harness.close(1006, "");
+    harness.now += 1_000_000;
+    assert_eq!(harness.run(AttachInput::TimerFired { token: ping }), []);
+    assert_eq!(harness.run(AttachInput::TimerFired { token: watchdog }), []);
+}
+
+#[test]
+fn a_clock_that_jumps_backward_rearms_the_watchdog_without_declaring_a_stall() {
+    let mut harness = Harness::control();
+    harness.run(AttachInput::Start);
+    harness.now = 1_000_000;
+    let opened = harness.open();
+    let (watchdog, _) = timer(&opened, TimerKind::Watchdog).unwrap();
+    harness.now = 5;
+    let fired = harness.run(AttachInput::TimerFired { token: watchdog });
+    assert_eq!(state(&fired), None);
+    assert!(timer(&fired, TimerKind::Watchdog).is_some());
 }
