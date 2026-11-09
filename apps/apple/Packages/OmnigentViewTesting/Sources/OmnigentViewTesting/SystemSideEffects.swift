@@ -98,6 +98,7 @@
         return !installed
       }
       guard isFirst else { return }
+      installFalsePassGuard()
       installPasteboard()
       installWorkspace()
       installPanels()
@@ -221,6 +222,26 @@
         return false
       }
       replace(NSMenu.self, "popUpMenuPositioningItem:atLocation:inView:", with: popUp)
+    }
+
+    /// Whether a process exit came from the test runner's run loop returning, not from the runner
+    /// deciding the result: AppKit can stop that loop, and it would then exit 0 mid-run.
+    /// - Parameter callStack: The symbols of the exiting call stack.
+    /// - Returns: Whether the exit ends the test run early.
+    static func endsRunEarly(callStack: [String]) -> Bool {
+      let fromRunLoop = callStack.contains { $0.contains("swift_task_asyncMainDrainQueue") }
+      let fromRunner = callStack.contains { $0.contains("SwiftPMGeneratedTestRunner") }
+      return fromRunLoop && !fromRunner
+    }
+
+    /// Turns an early exit into a failure, so unrun tests can't count as a pass.
+    private static func installFalsePassGuard() {
+      atexit {
+        guard Self.endsRunEarly(callStack: Thread.callStackSymbols) else { return }
+        let message = "FALSE PASS: the test runner's run loop stopped mid-run. Failing the run.\n"
+        FileHandle.standardError.write(Data(message.utf8))
+        _exit(70)
+      }
     }
 
     /// Every window in the process is transparent and takes no real clicks from birth, whatever
