@@ -15,6 +15,26 @@
       TabStrip(state: state, actions: actions).frame(width: width, height: 38)
     }
 
+    @Test("Clicking a tab selects it")
+    func clickSelects() throws {
+      let spy = TabSpy()
+      let screen = OffscreenWindow(strip(TabFixture.pair, spy.actions), width: 700, height: 38)
+      defer { screen.close() }
+      try screen.click(screen.tabCenter(index: 1, width: 224))
+      #expect(spy.calls == ["select two"])
+    }
+
+    @Test("A double click on the strip's empty space opens a tab")
+    func doubleClickEmpty() throws {
+      let spy = TabSpy()
+      let screen = OffscreenWindow(strip(TabFixture.pair, spy.actions), width: 700, height: 38)
+      defer { screen.close() }
+      let empty = CGPoint(x: 560, y: 19)
+      try screen.click(empty, clickCount: 1)
+      try screen.click(empty, clickCount: 2)
+      #expect(spy.calls == ["new tab"])
+    }
+
     @Test("New Tab opens a tab")
     func newTab() throws {
       let spy = TabSpy()
