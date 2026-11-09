@@ -446,6 +446,16 @@ impl AttachLoop {
     }
 
     fn handle(&mut self, input: core::AttachInput) {
+        // An ended socket and a fired timer have nothing left to close or cancel.
+        match &input {
+            core::AttachInput::Ended { attempt, .. } => {
+                self.sockets.remove(attempt);
+            }
+            core::AttachInput::TimerFired { token } => {
+                self.timers.remove(&token.id);
+            }
+            _ => {}
+        }
         let outputs = self.machine.handle(self.host.now_ms(), input);
         for output in outputs {
             self.output(output);

@@ -385,6 +385,26 @@ fn a_socket_lost_mid_attach_reconnects_clears_the_screen_and_ignores_the_old_soc
     assert_eq!(crate::engine::lock(&old_socket.closes).len(), 0);
 }
 
+/// A terminal left attached for days through network changes must not keep a socket per drop.
+#[test]
+fn an_ended_socket_is_released_while_the_attach_goes_on() {
+    let (mut harness, _recorder, driver) = attached(Some(4));
+    let (_, sink, socket) = harness.sockets.last();
+    let before = Arc::strong_count(&socket);
+    sink.ended(SocketEnd::Failed {
+        failure: ConnectionFailure::Offline {
+            message: "gone".into(),
+        },
+    });
+    harness.pump();
+    assert!(
+        Arc::strong_count(&socket) < before,
+        "the loop and its writer task let go of the socket"
+    );
+    drop(driver);
+    harness.pump();
+}
+
 #[test]
 fn stopping_twice_timers_after_stop_and_a_late_socket_do_nothing() {
     let (mut harness, recorder, driver) = attached(Some(4));

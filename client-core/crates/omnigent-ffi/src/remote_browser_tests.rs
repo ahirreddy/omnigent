@@ -1099,6 +1099,46 @@ fn a_burst_of_video_overflows_the_queue_and_asks_for_a_keyframe() {
 }
 
 #[test]
+fn a_lost_socket_reconnects_and_its_stragglers_do_nothing() {
+    let (mut harness, recorder, driver) = attached(RemoteBrowserMode::Control, "hello", false);
+    let before = harness.sockets.count();
+    let (_, old_sink, old_socket) = harness.sockets.last();
+    let held = Arc::strong_count(&old_socket);
+    old_sink.ended(SocketEnd::Failed {
+        failure: crate::host::ConnectionFailure::Offline {
+            message: "gone".into(),
+        },
+    });
+    harness.pump();
+    assert!(matches!(
+        recorder.last().connection,
+        RemoteBrowserConnection::Reconnecting { .. }
+    ));
+    assert!(
+        Arc::strong_count(&old_socket) < held,
+        "an attach open for days must not keep a socket per drop"
+    );
+    harness.advance(120_000);
+    assert_eq!(harness.sockets.count(), before + 1);
+    let (_, new_sink, _) = harness.sockets.last();
+    new_sink.opened();
+    new_sink.message(message("hello"));
+    harness.pump();
+    let video = lock(&recorder.video).len();
+    old_sink.message(binary("h264_idr"));
+    old_sink.ended(SocketEnd::Failed {
+        failure: crate::host::ConnectionFailure::Cancelled,
+    });
+    harness.pump();
+    assert_eq!(lock(&recorder.video).len(), video);
+    assert!(matches!(
+        recorder.last().connection,
+        RemoteBrowserConnection::Attached { .. }
+    ));
+    assert_eq!(format!("{driver:?}"), "RemoteBrowserDriver");
+}
+
+#[test]
 fn a_socket_that_cannot_open_or_write_reconnects() {
     let mut harness = connected();
     let recorder = Arc::new(Recorder::default());
