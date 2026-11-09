@@ -135,7 +135,8 @@ final class NewSessionForm {
     selection.planMode = false
   }
 
-  static let hostCheckInterval = Duration.seconds(2)
+  /// How often a page with no host looks for one.
+  @ObservationIgnored var hostCheckInterval = Duration.seconds(2)
 
   /// Reloads hosts and agents after a setup, an install or a new host, keeping what the user
   /// chose.
@@ -160,7 +161,6 @@ final class NewSessionForm {
     Task { await creation.folderChanged(hostID: hostID, path: path) }
   }
 
-  /// Applies the worktree choice to the selection's git block and workspace.
   /// A folder is a path on one machine: on leaving the host, the next one fills its own.
   private func forgetFolder() {
     folder = ""
@@ -169,6 +169,7 @@ final class NewSessionForm {
     applyWorktree()
   }
 
+  /// Applies the worktree choice to the selection's git block and workspace.
   func applyWorktree() {
     let resolved = NewSessionAdapter.git(worktree, folder: folder)
     selection.git = resolved.git
@@ -188,6 +189,9 @@ final class NewSessionForm {
       selection.approvalMode = creationApprovalModeMenu(agent: agent)?.selected
     }
     if isSandbox {
+      // The composer offers no model on a new sandbox, so one picked on a host doesn't follow.
+      selection.model = nil
+      selection.reasoningEffort = nil
       let target = sandbox.target(creation.catalog.value)
       Task {
         await creation.createInSandbox(selection, target: target, title: "", firstMessage: text)
@@ -224,7 +228,7 @@ final class NewSessionForm {
     guard needsHost(creation) else { return }
     while needsHost(creation) {
       do {
-        try await Task.sleep(for: Self.hostCheckInterval)
+        try await Task.sleep(for: hostCheckInterval)
       } catch {
         // Cancelled: the screen left, or a host connected.
         return
