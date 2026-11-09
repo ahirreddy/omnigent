@@ -370,7 +370,9 @@ extension SidebarView {
     )
     .draggable(SidebarDragItem.session(session.id).payload)
     .sidebarDropTarget { item in target.map { drop(item, on: $0) } ?? false }
-    .modifier(SessionSwipeActions(session: session, isUnread: isUnread, menu: menu))
+    #if os(iOS)
+      .modifier(SessionSwipeActions(session: session, isUnread: isUnread, menu: menu))
+    #endif
   }
 
   /// A double-click on one session row renames it in place.

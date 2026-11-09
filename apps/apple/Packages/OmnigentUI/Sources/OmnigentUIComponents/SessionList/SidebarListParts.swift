@@ -88,14 +88,14 @@ struct SessionListErrorBar: View {
   }
 }
 
-/// A row's iPhone and iPad swipe actions: read state and pin leading, archive trailing.
-struct SessionSwipeActions: ViewModifier {
-  let session: SessionSummary
-  let isUnread: Bool
-  let menu: SessionRowMenu
+#if os(iOS)
+  /// A row's iPhone and iPad swipe actions: read state and pin leading, archive trailing.
+  struct SessionSwipeActions: ViewModifier {
+    let session: SessionSummary
+    let isUnread: Bool
+    let menu: SessionRowMenu
 
-  func body(content: Content) -> some View {
-    #if os(iOS)
+    func body(content: Content) -> some View {
       content
         .swipeActions(edge: .leading) {
           if let setUnread = menu.actions.setUnread {
@@ -120,11 +120,9 @@ struct SessionSwipeActions: ViewModifier {
             .tint(.indigo)
           }
         }
-    #else
-      content
-    #endif
+    }
   }
-}
+#endif
 
 /// A row's hover tooltip: the title, when it was updated, its harness and environment, then
 /// the web's details (Created by, Repo, Branch).
