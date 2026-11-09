@@ -559,13 +559,16 @@ impl Engine {
                 .cmp(&left.updated_at)
                 .then_with(|| left.id.cmp(&right.id))
         });
-        let mut ids: Vec<String> = self.drivers.keys().cloned().collect();
-        for summary in summaries {
+        // One id the server would refuse must not freeze the watch for every other session.
+        let open = self.drivers.keys().cloned();
+        let known = summaries.into_iter().map(|summary| summary.id);
+        let mut ids: Vec<String> = Vec::new();
+        for id in open.chain(known) {
             if ids.len() >= MAX_WATCHED {
                 break;
             }
-            if !ids.contains(&summary.id) {
-                ids.push(summary.id);
+            if core::realtime::updates::is_valid_session_id(&id) && !ids.contains(&id) {
+                ids.push(id);
             }
         }
         match self.updates.set_watch(ids) {

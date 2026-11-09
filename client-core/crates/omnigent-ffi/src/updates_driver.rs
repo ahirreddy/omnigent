@@ -31,7 +31,7 @@ impl Engine {
             return;
         }
         self.updates_input(UpdatesInput::Start);
-        self.update_watch_now();
+        self.update_watch();
     }
 
     pub(crate) fn stop_updates(&mut self) {
@@ -40,20 +40,6 @@ impl Engine {
             timer.abort();
         }
         self.updates_timers.clear();
-    }
-
-    fn update_watch_now(&mut self) {
-        let ids: Vec<String> = self
-            .sessions
-            .cached_summaries()
-            .into_iter()
-            .map(|summary| summary.id)
-            .take(omnigent_core::realtime::MAX_WATCHED_SESSIONS)
-            .collect();
-        match self.updates.set_watch(ids) {
-            Ok(outputs) => self.run_updates_outputs(outputs),
-            Err(error) => self.error(ErrorScope::SessionList, core_error(error)),
-        }
     }
 
     pub(crate) fn updates_input(&mut self, input: UpdatesInput) {

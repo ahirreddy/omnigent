@@ -1821,6 +1821,54 @@ fn sessions_removed_through_the_client_leave_the_list_and_the_watch() {
     );
 }
 
+/// More open tabs than the socket's cap must not stop the watch updating for all of them.
+#[test]
+fn more_open_sessions_than_the_watch_cap_still_updates_the_watch() {
+    let mut harness = connected();
+    let (_, socket) = live_socket(&mut harness);
+    for index in 0..=omnigent_core::realtime::MAX_WATCHED_SESSIONS {
+        harness.core.open_session(format!("open_{index}"));
+    }
+    harness.pump();
+    harness.events.take();
+    let before = lock(&socket.sent).len();
+    harness.core.refresh_sessions();
+    harness.pump();
+    let events = harness.events.take();
+    assert_eq!(list_errors(&events), [], "{}", events.len());
+    let sent = lock(&socket.sent).clone();
+    assert!(sent.len() > before, "the watch was sent");
+    let watch: serde_json::Value = serde_json::from_str(sent.last().unwrap()).unwrap();
+    assert_eq!(
+        watch["session_ids"].as_array().unwrap().len(),
+        omnigent_core::realtime::MAX_WATCHED_SESSIONS
+    );
+}
+
+/// One id the server would refuse must not freeze the watch for everything else.
+#[test]
+fn a_session_id_the_watch_refuses_leaves_the_others_watched() {
+    let mut harness = connected();
+    let (_, socket) = live_socket(&mut harness);
+    harness.core.open_session("not a valid id!".into());
+    harness.core.open_session("watch_me".into());
+    harness.pump();
+    harness.events.take();
+    harness.core.refresh_sessions();
+    harness.pump();
+    assert_eq!(list_errors(&harness.events.take()), []);
+    let sent = lock(&socket.sent).clone();
+    let watch: serde_json::Value = serde_json::from_str(sent.last().unwrap()).unwrap();
+    let watched: Vec<&str> = watch["session_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert!(watched.contains(&"watch_me"), "{watched:?}");
+    assert!(!watched.contains(&"not a valid id!"), "{watched:?}");
+}
+
 #[test]
 fn a_turn_end_notifies_after_settling_and_a_viewed_session_does_not() {
     let mut harness = connected();
