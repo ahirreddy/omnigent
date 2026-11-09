@@ -27,6 +27,21 @@ final class MacTabFlowUITests: XCTestCase {
     XCTAssertTrue(live.element("newtab-terminal", in: app).exists, "no Terminal launcher")
   }
 
+  /// The + button is a menu of what opens in the session; closing it opens nothing.
+  @MainActor
+  func testPlusButtonListsWhatOpensInTheSession() {
+    let live = MacLiveUITestSupport(self)
+    let app = live.launchDemo()
+    defer { app.terminate() }
+    live.openDemo("demo-notes", in: app)
+
+    live.click(live.element("tab-new", in: app), "the + button")
+    let terminal = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH 'Terminal'"))
+    XCTAssertNotNil(live.hittable(terminal), "the + menu has no Terminal\n\(app.debugDescription)")
+    app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+    XCTAssertFalse(live.tabs("newTab", in: app).firstMatch.exists, "+ opened the New Tab page")
+  }
+
   /// Shift-Command-[ and Shift-Command-] move between the session's tabs.
   @MainActor
   func testShiftCommandBracketsMoveBetweenTabs() {

@@ -20,10 +20,15 @@ final class BrowserTabsUITests: XCTestCase {
     if isPhone {
       tap(app.buttons["tab-switcher"], "the tab switcher")
       tap(app.buttons["tab-overview-new"], "New Tab in the overview")
+      tap(app.descendants(matching: .any)["newtab-browser"], "Browser on the new-tab page")
     } else {
+      // The strip's + is a menu of what opens in the session.
       tap(app.buttons["tab-new"], "New Tab in the strip")
+      let browser = app.buttons.matching(
+        NSPredicate(format: "identifier == 'tab-new-browser' OR label == 'Browser'")
+      ).firstMatch
+      tap(browser, "Browser in the + menu")
     }
-    tap(app.descendants(matching: .any)["newtab-browser"], "Browser on the new-tab page")
     let omnibox = app.textFields["browser.omnibox"]
     XCTAssertTrue(omnibox.waitForExistence(timeout: 10), "the browser tab did not open")
     // Reload replaces Stop once the server's page has loaded. A navigation typed before then

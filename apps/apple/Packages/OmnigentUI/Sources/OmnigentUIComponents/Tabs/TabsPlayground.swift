@@ -168,8 +168,25 @@ final class TabsPlaygroundModel {
       duplicate: duplicate, closeOthers: closeOthers, closeToRight: closeToRight)
     if !closed.isEmpty { actions.reopenClosed = reopen }
     actions.moveToNewWindow = close
+    actions.newTabMenu = { self.newTabMenu }
     addSplit(to: &actions)
     return actions
+  }
+
+  /// The + button's menu: the sample session's launchers, each in a new tab.
+  var newTabMenu: NewTabOptions {
+    NewTabOptions(
+      state: Self.newTabState,
+      actions: NewTabPageActions(
+        newSideChat: { self.open(.sideChat, "Side chat 1") },
+        newTerminal: { self.open(.terminal, $0 ?? "zsh") },
+        openBrowser: { self.open(.browser, "Omnigent") },
+        openRemoteBrowser: { _ in self.open(.remoteBrowser, "example.com") }))
+  }
+
+  /// Opens a sample tab of a kind after the selected one.
+  func open(_ kind: TabKind, _ title: String) {
+    add(TabItemState(id: UUID().uuidString, kind: kind, title: title, canDuplicate: false))
   }
 
   var commands: TabCommandActions {

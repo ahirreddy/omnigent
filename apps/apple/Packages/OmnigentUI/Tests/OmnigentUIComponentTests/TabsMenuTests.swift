@@ -172,7 +172,7 @@
       #expect(spy.calls == ["reopen"])
     }
 
-    @Test("Without reopen or remote browsers those items are gone")
+    @Test("Without reopen that item is gone")
     func basics() throws {
       let spy = TabSpy()
       let screen = controls(TabFixture.pair, spy.basicActions)
@@ -200,33 +200,6 @@
       try screen.choose("Show All Tabs", in: try screen.openMenu(control: 1))
       #expect(screen.window.attachedSheet != nil)
       #expect(try screen.shows("Tabs"))
-    }
-
-    @Test("New Tab's own menu offers remote browsers by profile")
-    func remoteProfiles() throws {
-      let spy = TabSpy()
-      var actions = spy.actions
-      actions.remoteBrowserProfiles = ["work", "home"]
-      let screen = controls(TabFixture.pair, actions)
-      defer { screen.close() }
-      let frame = try #require(screen.controlFrames.first)
-      let menu = try #require(try screen.contextMenu(at: CGPoint(x: frame.midX, y: frame.midY)))
-      try screen.choose("home", in: menu)
-      #expect(spy.calls == ["remote home"])
-    }
-
-    @Test("With no profiles the remote browser opens the default one")
-    func remoteDefault() throws {
-      let spy = TabSpy()
-      let screen = controls(TabFixture.pair, spy.actions)
-      defer { screen.close() }
-      let frame = try #require(screen.controlFrames.first)
-      let menu = try #require(try screen.contextMenu(at: CGPoint(x: frame.midX, y: frame.midY)))
-      try screen.choose("Default Profile", in: menu)
-      #expect(spy.calls == ["remote default"])
-      let again = try #require(try screen.contextMenu(at: CGPoint(x: frame.midX, y: frame.midY)))
-      try screen.choose("New Tab", in: again)
-      #expect(spy.calls == ["remote default", "new tab"])
     }
   }
 #endif

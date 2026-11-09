@@ -24,9 +24,17 @@
       actions.focusPane = { [self] in calls.append("focus \($0.rawValue)") }
       actions.setSplitFraction = { [self] in calls.append("fraction \($0)") }
       actions.closeSplit = { [self] in calls.append("close split") }
-      actions.newRemoteBrowser = { [self] in calls.append("remote \($0)") }
       actions.renameSession = { [self] in calls.append("rename \($0)") }
       return actions
+    }
+
+    /// Every New Tab launcher, as the page and the + menu offer them.
+    var newTabActions: NewTabPageActions {
+      NewTabPageActions(
+        newSideChat: { [self] in calls.append("side chat") },
+        newTerminal: { [self] in calls.append("terminal \($0 ?? "-")") },
+        openBrowser: { [self] in calls.append("browser") },
+        openRemoteBrowser: { [self] in calls.append("remote \($0)") })
     }
 
     /// Only the actions every window has.
@@ -44,6 +52,11 @@
   }
 
   enum TabFixture {
+    /// Preferences of their own, so a remembered terminal stays in one test.
+    static func scratchDefaults() throws -> UserDefaults {
+      try #require(UserDefaults(suiteName: "tabs-\(UUID().uuidString)"))
+    }
+
     static func tab(
       _ id: String, _ kind: TabKind = .chat, status: TabStatus = .none, isPinned: Bool = false,
       isClosable: Bool = true, pane: TabPane? = nil

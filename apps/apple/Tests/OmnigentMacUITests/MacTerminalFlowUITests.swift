@@ -13,7 +13,8 @@ final class MacTerminalFlowUITests: XCTestCase {
     super.tearDown()
   }
 
-  /// The New Tab page's Terminal launcher opens a shell in the page's session.
+  /// The New Tab page's Terminal launcher opens a shell in the page's session with one click,
+  /// however many terminals the agent declares.
   @MainActor
   func testNewTabPageOpensATerminal() throws {
     let live = MacLiveUITestSupport(self)
@@ -24,14 +25,25 @@ final class MacTerminalFlowUITests: XCTestCase {
     app.typeKey("t", modifierFlags: .command)
 
     live.click(live.element("newtab-terminal", in: app), "the Terminal launcher")
-    // Several declared terminals are a menu; one, or none known yet, starts at once.
-    let choice = app.menuItems.matching(
-      NSPredicate(format: "identifier BEGINSWITH 'newtab-terminal-'")
-    ).firstMatch
-    if choice.waitForExistence(timeout: 3) { choice.click() }
     XCTAssertTrue(
       live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
     XCTAssertTrue(live.element("terminal-tab", in: app).waitForExistence(timeout: 30))
+  }
+
+  /// The + button's menu opens a shell in a new tab of the session, without the New Tab page.
+  @MainActor
+  func testPlusMenuOpensATerminal() throws {
+    let live = MacLiveUITestSupport(self)
+    let session = try live.fixtureSession()
+    let app = live.launch()
+    defer { app.terminate() }
+    live.open(session, in: app)
+
+    live.click(live.element("tab-new", in: app), "the + button", timeout: 30)
+    live.clickMenuItem("Terminal", in: app)
+    XCTAssertTrue(
+      live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
+    XCTAssertFalse(live.tabs("newTab", in: app).firstMatch.exists, "+ opened the New Tab page")
   }
 
   /// A new shell takes the keyboard: typing reaches it without a click, and again after
