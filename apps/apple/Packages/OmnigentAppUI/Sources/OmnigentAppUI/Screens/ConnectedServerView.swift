@@ -109,6 +109,7 @@ public struct ConnectedServerView: View {
     .focusedSceneValue(\.tabCommands, tabCommandRelay.publish(tabs.commands))
     .modifier(TabRestoration(session: session, context: tabContext) { restore($0) })
     .modifier(SessionTabsLifecycle(session: session))
+    .modifier(NewTabOptionsLoading(session: session))
     .modifier(CloseShellConfirmation(session: session) { tabFailure = $0 })
     .onChange(of: selection) { _, current in session.tabs.show(current) }
     .onChange(of: session.tabs.page) { _, page in pageChanged(page) }

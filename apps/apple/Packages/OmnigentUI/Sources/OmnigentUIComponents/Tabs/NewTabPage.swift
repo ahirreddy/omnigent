@@ -41,8 +41,8 @@ nonisolated public struct NewTabPageState: Hashable, Sendable {
 public struct NewTabPageActions {
   /// Start a side chat of the session; `nil` hides it.
   public var newSideChat: (@MainActor () -> Void)?
-  /// Open a new terminal: a declared terminal name, or `nil` for the default shell when the
-  /// declared names are not known.
+  /// Open a new terminal: a declared terminal name, or `nil` while the declared names are not
+  /// known, for the host to pick (``PreferredTerminal``) once it reads them.
   public var newTerminal: (@MainActor (String?) -> Void)?
   /// Open a browser tab.
   public var openBrowser: (@MainActor () -> Void)?
@@ -66,6 +66,41 @@ public struct NewTabPageActions {
     self.openBrowser = openBrowser
     self.openRemoteBrowser = openRemoteBrowser
   }
+
+  /// Browser, when this build can open one.
+  func browser(in state: NewTabPageState) -> (@MainActor () -> Void)? {
+    state.canOpenBrowser ? openBrowser : nil
+  }
+
+  /// Whether anything opens in the session.
+  func offersLaunchers(in state: NewTabPageState) -> Bool {
+    newSideChat != nil || newTerminal != nil || browser(in: state) != nil
+      || openRemoteBrowser != nil
+  }
+}
+
+extension NewTabPageState {
+  /// The remote browser profiles offered: the machine's, else its default one.
+  var remoteBrowserChoices: [String] {
+    remoteBrowserProfiles.isEmpty ? ["default"] : remoteBrowserProfiles
+  }
+}
+
+/// What a session opens in a new tab, as both the New Tab page and the + button's menu offer it.
+public struct NewTabOptions {
+  /// What the session offers.
+  public var state: NewTabPageState
+  /// What opens each of them in a new tab.
+  public var actions: NewTabPageActions
+
+  /// Creates the options.
+  /// - Parameters:
+  ///   - state: What the session offers.
+  ///   - actions: What opens it.
+  public init(state: NewTabPageState, actions: NewTabPageActions) {
+    self.state = state
+    self.actions = actions
+  }
 }
 
 /// The new-tab page (Command-T): a side chat, terminal, browser or remote browser in the
@@ -74,6 +109,7 @@ public struct NewTabPage: View {
   private let state: NewTabPageState
   private let actions: NewTabPageActions
   @Environment(\.layoutWidth) private var layoutWidth
+  @AppStorage(PreferredTerminal.key) private var preferredTerminal: String?
 
   /// Creates the page.
   /// - Parameters:
@@ -114,10 +150,7 @@ public struct NewTabPage: View {
     .accessibilityIdentifier("newtab-page")
   }
 
-  private var hasLaunchers: Bool {
-    actions.newSideChat != nil || actions.newTerminal != nil
-      || (state.canOpenBrowser && actions.openBrowser != nil) || actions.openRemoteBrowser != nil
-  }
+  private var hasLaunchers: Bool { actions.offersLaunchers(in: state) }
 
   private var launchers: some View {
     let columns = [GridItem(.adaptive(minimum: 170), spacing: Theme.Spacing.medium)]
@@ -131,7 +164,7 @@ public struct NewTabPage: View {
       if let newTerminal = actions.newTerminal {
         terminal(newTerminal)
       }
-      if state.canOpenBrowser, let openBrowser = actions.openBrowser {
+      if let openBrowser = actions.browser(in: state) {
         launcher(
           "Browser", detail: "Open this server's web app", systemImage: "globe",
           identifier: "newtab-browser", action: openBrowser)
@@ -143,7 +176,8 @@ public struct NewTabPage: View {
   }
 
   /// The session's terminals: the default shell while its declared names are unknown, a
-  /// disabled note when it declares none, its one terminal, or a menu of them.
+  /// disabled note when it declares none, its one terminal, or the chosen one of several, whose
+  /// name chooses another.
   @ViewBuilder
   private func terminal(_ newTerminal: @escaping @MainActor (String?) -> Void) -> some View {
     switch state.terminals {
@@ -162,17 +196,40 @@ public struct NewTabPage: View {
         "Terminal", detail: names[0], systemImage: "terminal", identifier: "newtab-terminal",
         action: { newTerminal(names[0]) })
     case .declared(let names):
-      launcherMenu(
-        LauncherLabel(
-          title: "Terminal", detail: "\(names.count) terminals", systemImage: "terminal"),
-        identifier: "newtab-terminal", choices: names, choose: newTerminal)
+      let chosen = PreferredTerminal.resolve(names, preferred: preferredTerminal) ?? names[0]
+      launcher(
+        "Terminal", detail: "A terminal in this session", systemImage: "terminal",
+        identifier: "newtab-terminal", action: { newTerminal(chosen) }
+      )
+      .overlay(alignment: .topTrailing) {
+        terminalChoice(names, chosen: chosen)
+          .padding(Theme.Spacing.medium)
+      }
     }
+  }
+
+  /// The name of the terminal Terminal opens, as a menu of the declared ones. The choice is
+  /// remembered for every session.
+  private func terminalChoice(_ names: [String], chosen: String) -> some View {
+    Picker(
+      "Terminal to open", selection: Binding(get: { chosen }, set: { preferredTerminal = $0 })
+    ) {
+      ForEach(names, id: \.self) { name in
+        Text(name).tag(name)
+      }
+    }
+    .pickerStyle(.menu)
+    .labelsHidden()
+    .controlSize(.small)
+    .fixedSize()
+    .help("Choose the terminal that opens")
+    .accessibilityIdentifier("newtab-terminal-choice")
   }
 
   /// A remote browser in the default profile, the machine's one profile, or a menu of them.
   @ViewBuilder
   private func remoteBrowser(_ open: @escaping @MainActor (String) -> Void) -> some View {
-    let profiles = state.remoteBrowserProfiles.isEmpty ? ["default"] : state.remoteBrowserProfiles
+    let profiles = state.remoteBrowserChoices
     let detail = "A browser on the agent's machine"
     if profiles.count == 1 {
       launcher(
@@ -236,25 +293,5 @@ private struct LauncherLabel: View {
     .cardSurface(cornerRadius: Theme.Radius.medium)
     .hoverHighlight(cornerRadius: Theme.Radius.medium)
     .contentShape(Rectangle())
-  }
-}
-
-/// The + button's menu: New Tab, and a remote browser tab in a chosen profile.
-struct NewTabMenu: View {
-  let actions: TabActions
-
-  var body: some View {
-    Button("New Tab", systemImage: "plus", action: actions.newTab)
-    if let newRemoteBrowser = actions.newRemoteBrowser {
-      Menu("New Remote Browser Tab", systemImage: TabKind.remoteBrowser.systemImage) {
-        if actions.remoteBrowserProfiles.isEmpty {
-          Button("Default Profile") { newRemoteBrowser("default") }
-        }
-        ForEach(actions.remoteBrowserProfiles, id: \.self) { profile in
-          Button(profile) { newRemoteBrowser(profile) }
-        }
-      }
-      .accessibilityIdentifier("tab-new-remote-browser")
-    }
   }
 }

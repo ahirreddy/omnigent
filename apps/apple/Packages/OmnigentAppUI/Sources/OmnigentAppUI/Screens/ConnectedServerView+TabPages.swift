@@ -5,18 +5,9 @@ import SwiftUI
 // MARK: Tab pages
 
 extension ConnectedServerView {
-  /// The New Tab page, opening its session and loading what it offers (side chat, browser
-  /// profiles, terminals).
+  /// The New Tab page; the window reads what it offers (``NewTabOptionsLoading``).
   func newTabPage(_ tab: AppTab, routes: WindowTabs) -> some View {
-    let sessionID = session.tabs.currentSessionID
-    return NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: tab.id))
-      .task(id: sessionID) {
-        guard let sessionID else { return }
-        session.open(sessionID)
-        async let profiles: Void = session.loadRemoteBrowserProfiles(sessionID)
-        await session.loadDeclaredTerminalNames([sessionID])
-        await profiles
-      }
+    NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: tab.id))
   }
 
   /// A session's remote browser tab. On iPhone it hides the navigation bar (Safari's layout),
@@ -68,5 +59,16 @@ extension ConnectedServerView {
   func paneTab(_ pane: TabPane, in tabs: TabStore) -> AppTab? {
     guard let split = tabs.splitState else { return tabs.selected }
     return split.activeID(pane).flatMap(tabs.tab)
+  }
+}
+
+/// Reads the shown session's remote browser profiles for the New Tab page and the + menu each
+/// time a session shows; its declared terminals load when it opens (``ServerSession/open(_:)``).
+struct NewTabOptionsLoading: ViewModifier {
+  let session: ServerSession
+
+  func body(content: Content) -> some View {
+    let sessionID = session.tabs.currentSessionID
+    return content.task(id: sessionID) { await session.loadRemoteBrowserProfiles(sessionID) }
   }
 }

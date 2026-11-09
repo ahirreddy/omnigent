@@ -159,6 +159,10 @@ struct WindowTabsLogicTests {
     #expect(state.terminals == .unknown)
     #expect(!state.canOpenBrowser)
     #expect(window.newTabActions(replacing: nil).newTerminal != nil)
+    // The + menu offers what the page does.
+    let menu = try #require(window.strip?.actions.newTabMenu)
+    #expect(menu().state == state)
+    #expect(menu().actions.newTerminal != nil)
   }
 
   @Test("New Tab's side chat replaces the page; a native agent's is typed in its chat")
