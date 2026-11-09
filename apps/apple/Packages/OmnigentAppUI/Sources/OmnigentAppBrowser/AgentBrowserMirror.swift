@@ -12,6 +12,7 @@ import SwiftUI
 /// agent's page never leaves its off-screen panel and no input can reach it.
 struct AgentBrowserMirror: View {
   let tab: any BrowserTab
+  var refreshInterval: Duration = .seconds(1)
 
   @State private var image: Image?
   @State private var failure: String?
@@ -63,9 +64,9 @@ struct AgentBrowserMirror: View {
         failure = error.localizedDescription
       }
       do {
-        try await Task.sleep(for: .seconds(1))
+        try await Task.sleep(for: refreshInterval)
       } catch {
-        return
+        break
       }
     }
   }

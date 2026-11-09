@@ -18,6 +18,8 @@ public final class BrowserTabHost: BrowserTabHosting {
   private let keyboardShortcuts: Bool
   private var models: [UUID: BrowserTabModel] = [:]
   private var windows: [UUID: SessionTabGroups] = [:]
+  /// Encodes a new page's state.
+  var encodeState: (BrowserTabRestoreState) throws -> Data = { try JSONEncoder().encode($0) }
 
   /// Creates the host.
   /// - Parameters:
@@ -176,7 +178,7 @@ public final class BrowserTabHost: BrowserTabHosting {
 
   private func encode(_ model: BrowserTabModel) -> Data? {
     do {
-      return try JSONEncoder().encode(model.snapshotForRestore())
+      return try encodeState(model.snapshotForRestore())
     } catch {
       // The tab still opens; it saves once the page reports a state that encodes.
       logger.error(
