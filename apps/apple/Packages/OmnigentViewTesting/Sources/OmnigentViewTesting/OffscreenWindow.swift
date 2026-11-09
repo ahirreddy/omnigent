@@ -202,6 +202,10 @@
     /// The frames of the controls in reading order, top to bottom and then left to right: every
     /// button of any style, toggle, menu and field, including those inside a scroll view.
     public var controlFrames: [CGRect] {
+      // SwiftUI rebuilds its focus proxies only with the key view loop, so a control that just
+      // became enabled or went away would otherwise be listed wrongly.
+      activeWindow.recalculateKeyViewLoop()
+      settle(0.02)
       let root = activeRoot
       let frames = allViews.filter(Self.isControl).map { $0.convert($0.bounds, to: root) }
       return Self.readingOrder(Self.oneFramePerControl(frames.filter { !$0.isEmpty }))
