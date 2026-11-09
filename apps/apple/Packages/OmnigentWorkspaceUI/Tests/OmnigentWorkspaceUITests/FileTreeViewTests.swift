@@ -2,6 +2,7 @@
   import AppKit
   import Foundation
   import OmnigentViewTesting
+  import OmnigentViewTextReading
   import SwiftUI
   import Testing
 
@@ -72,7 +73,7 @@
   @MainActor
   @Suite("File tree view", .serialized)
   struct FileTreeViewTests {
-    private static let files = [
+    static let files = [
       WorkspaceEntry(path: "a.txt", kind: .file, size: 12),
       WorkspaceEntry(path: "a-rather-longer-name.txt", kind: .file, size: 12_000),
       WorkspaceEntry(path: "mid.rs", kind: .file, size: 4_096),
@@ -133,5 +134,21 @@
       .filter { CGFloat($0.lowerBound) > 44 * scale }
       #expect(bands.count == 1, "the size is still drawn at the edge")
     }
+
+    static let tree: [String: [WorkspaceEntry]] = [
+      "": [
+        WorkspaceEntry(path: "src", kind: .directory),
+        WorkspaceEntry(path: ".env", kind: .file, size: 10),
+        WorkspaceEntry(path: "readme.md", kind: .file, size: 2_000),
+        WorkspaceEntry(path: "link", kind: .symlink),
+        WorkspaceEntry(path: "socket", kind: .other),
+        WorkspaceEntry(path: "future", kind: .unknown("door")),
+      ],
+      "src": [
+        WorkspaceEntry(path: "src/.hidden", kind: .file, size: 1),
+        WorkspaceEntry(path: "src/main.rs", kind: .file, size: 40),
+      ],
+      "empty": [],
+    ]
   }
 #endif
