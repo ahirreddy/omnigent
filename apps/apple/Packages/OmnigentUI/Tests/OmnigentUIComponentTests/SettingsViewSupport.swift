@@ -13,20 +13,6 @@
     }
   }
 
-  /// A failure to find something in a sheet or dialog the view presented.
-  enum PresentationError: Error, CustomStringConvertible {
-    case noSheet
-    case noButton(String, available: [String])
-
-    var description: String {
-      switch self {
-      case .noSheet: "The view presented no sheet."
-      case .noButton(let title, let available):
-        "No button named \(title) in the sheet; it has \(available)."
-      }
-    }
-  }
-
   /// Holds a value a view edits through a binding, so a test can read what the controls wrote.
   @MainActor
   @Observable
@@ -61,6 +47,12 @@
     /// Every `TextField`, in layout order.
     var fields: [NSTextField] {
       views(named: "AppKitTextField").compactMap { $0 as? NSTextField }
+        .filter { !($0 is NSSecureTextField) }
+    }
+
+    /// Every `SecureField`, in layout order.
+    var secureFields: [NSSecureTextField] {
+      allViews.compactMap { $0 as? NSSecureTextField }
     }
 
     /// Every `Picker` and `Menu` drawn as a pop-up button, in layout order.
@@ -78,7 +70,7 @@
     var buttonFrames: [CGRect] {
       let root = activeWindow.contentView
       let others: [NSView] =
-        switches + fields + popUps + segmentedControls
+        switches + fields + secureFields + popUps + segmentedControls
         + allViews.filter { $0 is NSStepper || $0 is NSDatePicker }
       let otherFrames = others.map { $0.convert($0.bounds, to: root) }
       return controlFrames.filter { frame in
@@ -105,6 +97,12 @@
         try type(text)
       }
       settle(0.02)
+    }
+
+    /// Sets a switch by clicking its side: a click on the right turns it on, the left off.
+    func set(_ control: NSControl, isOn: Bool) throws {
+      let frame = control.convert(control.bounds, to: activeWindow.contentView)
+      try click(CGPoint(x: isOn ? frame.maxX - 6 : frame.minX + 6, y: frame.midY))
     }
 
     /// Opens a pop-up and chooses one of its items, however deep.
@@ -138,36 +136,34 @@
       }
       settle(0.01)
     }
+  }
 
-    /// The sheet or dialog on this window; it sits with the window, past every display.
-    var presentedSheet: NSWindow? { window.attachedSheet }
+  /// A settings pane in the grouped form it lives in, with its own defaults.
+  @MainActor
+  func settingsForm<Pane: View>(
+    store: UserDefaults, width: CGFloat = 800, height: CGFloat = 800,
+    @ViewBuilder _ pane: () -> Pane
+  ) -> OffscreenWindow<some View> {
+    SystemSideEffects.reset()
+    return OffscreenWindow(
+      Form { pane() }.formStyle(.grouped).defaultAppStorage(store), width: width, height: height)
+  }
 
-    /// The titled AppKit buttons of the presented sheet, which is how a dialog draws its choices.
-    var sheetButtonTitles: [String] {
-      presentedSheet.map { Self.buttons(in: $0).map(\.title) } ?? []
+  /// Holds an async action open until the test lets it finish.
+  @MainActor
+  final class AsyncGate {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+
+    func wait() async {
+      if isOpen { return }
+      await withCheckedContinuation { waiters.append($0) }
     }
 
-    /// Presses a dialog's button by title.
-    /// - Parameter title: The button's title.
-    /// - Throws: `PresentationError` when no such button is showing.
-    func pressSheetButton(_ title: String) throws {
-      guard let sheet = presentedSheet else { throw PresentationError.noSheet }
-      let buttons = Self.buttons(in: sheet)
-      guard let button = buttons.first(where: { $0.title == title }) else {
-        throw PresentationError.noButton(title, available: buttons.map(\.title))
-      }
-      button.performClick(nil)
-      settle()
-    }
-
-    private static func buttons(in sheet: NSWindow) -> [NSButton] {
-      var found: [NSButton] = []
-      var pending = sheet.contentView.map { [$0] } ?? []
-      while let view = pending.popLast() {
-        if let button = view as? NSButton, !button.title.isEmpty { found.append(button) }
-        pending.append(contentsOf: view.subviews)
-      }
-      return found
+    func open() {
+      isOpen = true
+      for waiter in waiters { waiter.resume() }
+      waiters = []
     }
   }
 #endif
