@@ -170,7 +170,7 @@ struct HarnessesScreenTests {
     try await settle(screen, until: "the check") {
       !server.requests("POST", "/v1/hosts/h1/harnesses/refresh").isEmpty
     }
-    try await settle(screen, untilShowing: "Sign In to Claude Code on Mac")
+    try await settle(screen, untilShowing: "Still not signed in on Mac.")
     server.route(
       "/v1/hosts/h1/harnesses/refresh", method: "POST",
       .json(#"{"host_id":"h1","configured_harnesses":{"claude-native":true}}"#))

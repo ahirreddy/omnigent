@@ -29,7 +29,10 @@
 
     static func perform(
       _ response: NotificationActionResponse, desktop: DesktopController,
-      connections: SupervisionConnections
+      connections: SupervisionConnections,
+      authenticate: @MainActor () async throws(SupervisionError) -> Void = {
+        try await Self.authenticate()
+      }
     ) async {
       let payload: SupervisionPayload
       do {

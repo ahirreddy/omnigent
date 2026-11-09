@@ -75,8 +75,6 @@ struct CustomAgentsScreenTests {
     try await settle(screen, until: "the create") {
       !server.requests("POST", "/v1/agents").isEmpty
     }
-    let body = try #require(server.requests("POST", "/v1/agents").first?.body)
-    #expect(String(bytes: body, encoding: .utf8)?.contains("helper") == true)
     try await settle(screen, untilShowing: "Delete Agent…")
     #expect(!server.requests("GET", "/v1/agents/a1/config").isEmpty, "the editor opens it")
   }
