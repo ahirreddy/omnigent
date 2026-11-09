@@ -107,8 +107,8 @@ geometry**, and **the cost of a running session**.
 - **Astra:** separate cursor updates from still-image decoding in `RemoteBrowserView`, and give the
   remote page an accessibility bridge.
 - **Astra:** compare a 640–680 pt reading column against today's 720 pt.
-- **Fable:** focus dimming of the inactive split pane (Claude Code), and an unread dot that clears
-  on focus (Warp).
+- **Fable:** an unread dot that clears on focus (Warp). Dimming the inactive split pane (Claude
+  Code) was tried and dropped: both panes look the same.
 - **Fable:** elapsed time on the live turn in both styles ("Working · 12s"), and "Worked for 3s"
   under chat answers as CLI already shows.
 - **Fable:** one banner grammar for failure, connection and delivery errors; humanize raw host

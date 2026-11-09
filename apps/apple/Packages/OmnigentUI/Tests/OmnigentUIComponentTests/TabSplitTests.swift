@@ -54,15 +54,39 @@ struct TabSplitTests {
     #expect(tracker.target == nil, "the middle tears the tab off instead")
     tracker.update(id: "a", pane: nil, location: CGPoint(x: 1_050, y: 300))
     #expect(tracker.target == .trailing)
-    tracker.isSplit = true
-    tracker.update(id: "a", pane: .trailing, location: CGPoint(x: 1_050, y: 300))
-    #expect(tracker.target == nil, "a tab already in the right pane stays")
-    tracker.update(id: "a", pane: .trailing, location: CGPoint(x: 150, y: 300))
-    #expect(tracker.target == .leading)
-    tracker.update(id: "a", pane: .trailing, location: CGPoint(x: 150, y: 50))
+    tracker.update(id: "a", pane: nil, location: CGPoint(x: 150, y: 50))
     #expect(tracker.target == nil, "above the content")
     tracker.end()
     #expect(tracker.draggedID == nil)
+  }
+
+  @Test("In a split the whole of the other pane takes a dragged tab; its own pane does not")
+  func splitDropTargets() {
+    let tracker = TabDragTracker()
+    tracker.contentFrame = CGRect(x: 100, y: 100, width: 1_000, height: 600)
+    tracker.isSplit = true
+    tracker.update(id: "a", pane: .trailing, location: CGPoint(x: 1_050, y: 300))
+    #expect(tracker.target == nil, "a tab already in the right pane stays")
+    tracker.update(id: "a", pane: .trailing, location: CGPoint(x: 590, y: 300))
+    #expect(tracker.target == .leading, "left of the middle, before the divider is known")
+    tracker.update(id: "a", pane: .leading, location: CGPoint(x: 610, y: 300))
+    #expect(tracker.target == .trailing)
+    // The panes are not halves: the divider decides.
+    tracker.dividerX = 400
+    tracker.update(id: "a", pane: .leading, location: CGPoint(x: 410, y: 300))
+    #expect(tracker.target == .trailing)
+    tracker.update(id: "a", pane: .trailing, location: CGPoint(x: 410, y: 300))
+    #expect(tracker.target == nil)
+    tracker.update(id: "a", pane: .trailing, location: CGPoint(x: 390, y: 300))
+    #expect(tracker.target == .leading)
+    tracker.update(id: "a", pane: .trailing, location: CGPoint(x: 390, y: 50))
+    #expect(tracker.target == nil, "above the content")
+    // Over the other pane's strip section, that pane is the target.
+    tracker.update(id: "a", pane: .trailing, location: nil, section: .leading)
+    #expect(tracker.target == .leading)
+    tracker.end()
+    #expect(tracker.target == nil)
+    #expect(tracker.section == nil)
   }
 
   @Test("The strip's left section ends over the panes' divider")

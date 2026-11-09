@@ -29,6 +29,11 @@ playground can't show. Every polish pass ends with this check, in the apps thems
    - New side chats open as tabs of their parent session and leave with it.
    - New Session, Inbox, Canvas, Automations and Usage show full size with no strip.
    - Split view pairs two tabs of the same session; another session goes in another window.
+   - In a split neither pane is dimmed; the strip marks the focused pane's tab.
+   - In a split a tab moves to the other pane by a drag onto that pane or onto its section of
+     the strip (the pane highlights first), by its context menu (Move to Left or Right Pane) and
+     by Tab > Move Tab to Other Pane. A pane's only tab trades places with the other pane's tab,
+     so the split stays; try it over a terminal and over a browser page.
    - Quit and relaunch: the window comes back on its page and each session on its tabs.
    - Dragging a tab reorders it and never moves the window.
    - Dragging the strip's empty space moves the window, and a double-click there zooms it.

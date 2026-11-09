@@ -106,16 +106,16 @@
       #expect(spy.calls.isEmpty)
     }
 
-    @Test("The other pane is dimmed by a wash over it")
-    func dim() throws {
-      func picture(_ focused: TabPane, contrast: Bool = false) throws -> Data {
+    @Test("The pane without focus looks exactly like the focused one")
+    func noDim() throws {
+      func picture(_ focused: TabPane) throws -> Data {
         let state = TabSplitState(leadingID: "one", trailingID: "two", focused: focused)
         let rendered = try RenderSupport.render(
           TabSplitView(split: state, actions: TabActions()) { _ in Color.black },
-          width: 900, height: 200, scheme: .dark, layout: .regular, increasedContrast: contrast)
+          width: 900, height: 200, scheme: .dark, layout: .regular)
         return try #require(rendered.image.tiffRepresentation)
       }
-      #expect(try picture(.leading) != picture(.trailing))
+      #expect(try picture(.leading) == picture(.trailing))
     }
 
     @Test("While a tab is dragged over an edge, that pane's preview shows")
@@ -148,6 +148,36 @@
       tracker.update(id: "two", pane: .trailing, location: onLeft)
       screen.settle(0.02)
       #expect(try screen.shows("Left Pane"))
+    }
+
+    @Test("In a split, the whole of the other pane previews the drop, up to the divider")
+    func previewWholePane() throws {
+      let tracker = TabDragTracker()
+      let screen = view(split, TabSpy().actions, tracker: tracker)
+      defer { screen.close() }
+      let frame = tracker.contentFrame
+      let divider = try #require(tracker.dividerX)
+      tracker.update(
+        id: "one", pane: .leading, location: CGPoint(x: divider - 10, y: frame.midY))
+      screen.settle(0.02)
+      #expect(try !screen.shows("Right Pane"))
+      tracker.update(
+        id: "one", pane: .leading, location: CGPoint(x: divider + 10, y: frame.midY))
+      screen.settle(0.02)
+      #expect(try screen.shows("Right Pane"))
+    }
+
+    @Test("A tab over the other pane's strip section previews that pane")
+    func previewFromSection() throws {
+      let tracker = TabDragTracker()
+      let screen = view(split, TabSpy().actions, tracker: tracker)
+      defer { screen.close() }
+      tracker.update(id: "one", pane: .leading, location: nil)
+      screen.settle(0.02)
+      #expect(try !screen.shows("Right Pane"))
+      tracker.update(id: "one", pane: .leading, location: nil, section: .trailing)
+      screen.settle(0.02)
+      #expect(try screen.shows("Right Pane"))
     }
   }
 

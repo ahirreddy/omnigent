@@ -155,7 +155,7 @@ struct TabSplitStoreTests {
     #expect(store.pane(of: blank.id) == .trailing)
   }
 
-  @Test("Moving a pane's last tab away, or closing it, goes back to one pane")
+  @Test("Closing a pane's last tab goes back to one pane; moving it away does not")
   func collapse() {
     let three = Three()
     let store = three.store
@@ -171,12 +171,13 @@ struct TabSplitStoreTests {
     store.close(page.id)
     #expect(store.split == nil)
     #expect(store.selectedID == chat.id)
-    // A primary chat moves between panes too; moving it back closes the emptied pane.
-    store.open(.inbox)
+    // A primary chat moves between panes too; moving it back keeps both panes.
+    let inbox = store.open(.inbox)
     store.show(chat.id, in: .trailing)
     #expect(store.pane(of: chat.id) == .trailing)
     store.show(chat.id, in: .leading)
-    #expect(store.split == nil)
+    #expect(store.pane(of: chat.id) == .leading)
+    #expect(store.pane(of: inbox.id) == .trailing)
   }
 
   @Test("Splitting a single tab adds a new-tab page; Show Split View pairs the next tab")
