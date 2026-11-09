@@ -79,6 +79,31 @@
     }
   }
 
+  /// Keeps a run loop source firing on the main thread, as a stream of events or callbacks does.
+  /// A loop that handled a source skips its before-waiting observers, so SwiftUI's next update
+  /// waits while the main queue keeps draining.
+  @MainActor
+  final class BusyMainRunLoop: NSObject {
+    private var isRunning = false
+
+    func start() {
+      isRunning = true
+      requeue()
+    }
+
+    func stop() {
+      isRunning = false
+    }
+
+    private func requeue() {
+      perform(#selector(fire), on: .main, with: nil, waitUntilDone: false)
+    }
+
+    @objc private func fire() {
+      if isRunning { requeue() }
+    }
+  }
+
   /// The message navigator's Previous and Next, at the transcript's bottom-trailing corner.
   @MainActor
   func navigatorButtons(on window: OffscreenWindow<AnyView>, width: CGFloat) -> [CGRect] {

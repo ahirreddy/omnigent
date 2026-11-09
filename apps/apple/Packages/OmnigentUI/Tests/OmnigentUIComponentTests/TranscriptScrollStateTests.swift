@@ -18,6 +18,59 @@ struct TranscriptScrollStateTests {
     #expect(!pill.isShown)
   }
 
+  @Test("framing that lands away from the end shows the pill, however late it reports")
+  func framingLandsAwayFromTheEnd() {
+    var follow = TranscriptFollow()
+    follow.frameLatest()
+    #expect(!follow.follows)
+    #expect(!follow.pill.isShown)
+    follow.geometryChanged(isNearBottom: false)
+    #expect(follow.pill.isShown)
+    follow.frameLandingWaitEnded()
+    #expect(!follow.follows)
+    #expect(follow.pill.isShown)
+  }
+
+  @Test("framing that never leaves the end goes back to following, with no pill on the way")
+  func framingStaysAtTheEnd() {
+    var follow = TranscriptFollow()
+    follow.frameLatest()
+    #expect(!follow.layoutGrew())
+    follow.frameLandingWaitEnded()
+    #expect(follow.follows)
+    #expect(follow.layoutGrew())
+    #expect(!follow.pill.isShown)
+  }
+
+  @Test("framing that passes through a far estimate on its way back to the end still follows")
+  func framingComesBackToTheEnd() {
+    var follow = TranscriptFollow()
+    follow.frameLatest()
+    follow.geometryChanged(isNearBottom: false)
+    follow.geometryChanged(isNearBottom: true)
+    #expect(!follow.pill.isShown)
+    follow.frameLandingWaitEnded()
+    #expect(follow.follows)
+  }
+
+  @Test("after framing, the wait ending changes nothing the reader has since done")
+  func framingWaitAfterReaderActed() {
+    var navigated = TranscriptFollow()
+    navigated.frameLatest()
+    navigated.readEarlier()
+    #expect(navigated.pill.isShown)
+    navigated.frameLandingWaitEnded()
+    #expect(!navigated.follows)
+
+    var jumped = TranscriptFollow()
+    jumped.frameLatest()
+    jumped.jumpToLatest()
+    jumped.geometryChanged(isNearBottom: false)
+    jumped.frameLandingWaitEnded()
+    #expect(jumped.follows)
+    #expect(!jumped.pill.isShown)
+  }
+
   @Test("the pill changes only when following stops or unseen output arrives")
   func pillChangesWithFollowing() {
     var follow = TranscriptFollow()

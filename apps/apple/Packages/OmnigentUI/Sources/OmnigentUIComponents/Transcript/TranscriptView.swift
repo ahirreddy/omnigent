@@ -372,10 +372,15 @@ extension TranscriptView {
       proxy.scrollTo(Self.bottomID, anchor: .bottom)
       return
     }
-    follow.readEarlier()
+    follow.frameLatest()
     proxy.scrollTo(latest.id, anchor: .top)
-    await Task.yield()
-    if follow.isNearBottom { follow.jumpToLatest() }
+    // A scroll that stays at the end reports nothing, so only time can say the turn fits.
+    do {
+      try await Task.sleep(for: TranscriptFollow.frameLandingWait)
+    } catch {
+      return  // Cancelled: another session opened, and its own task frames it.
+    }
+    follow.frameLandingWaitEnded()
   }
 }
 

@@ -35,16 +35,18 @@
   }
 
   /// Whether `condition` comes true within ten seconds, for what takes however long the machine
-  /// and the suites running beside this one let it.
+  /// and the suites running beside this one let it. The limit is in time, whatever a check costs.
   @MainActor
   func waitUntil(
     _ screen: OffscreenWindow<AnyView>, _ condition: @MainActor () throws -> Bool
   ) async throws -> Bool {
-    for _ in 0..<100 {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(10))
+    while clock.now < deadline {
       if try condition() { return true }
       try await letTasksRun(screen, milliseconds: 100)
     }
-    return false
+    return try condition()
   }
 
   /// The selection popup reads the selection when its event monitor sees an event, which only
