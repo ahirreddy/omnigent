@@ -87,10 +87,13 @@ struct FolderBrowserView: View {
         ForEach(listing?.folders ?? []) { entry in
           Label(entry.name, systemImage: "folder")
             .tag(entry.path)
-            .contentShape(Rectangle())
-            .onTapGesture(count: 2) { open(entry.path) }
             .accessibilityIdentifier("folder-browser-row-\(entry.name)")
         }
+      }
+      // A tap gesture on the row would keep a single click from selecting it.
+      .contextMenu(forSelectionType: String.self) { _ in
+      } primaryAction: { paths in
+        if let path = paths.first { open(path) }
       }
       .overlay {
         if isLoading {
