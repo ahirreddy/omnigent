@@ -81,6 +81,18 @@ def summarize(document, sources):
     return rows
 
 
+def export_all_bundles(json_path):
+    """Exports every test bundle of a package: SwiftPM's own JSON covers only one of them."""
+    products = Path(json_path).parent.parent
+    bundles = sorted(products.glob("*.xctest"))
+    binaries = [bundle / "Contents" / "MacOS" / bundle.stem for bundle in bundles]
+    objects = [argument for binary in binaries[1:] for argument in ("-object", str(binary))]
+    profile = Path(json_path).parent / "default.profdata"
+    command = ["xcrun", "llvm-cov", "export", f"-instr-profile={profile}", str(binaries[0])]
+    result = subprocess.run([*command, *objects], capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+
 def run_package(name, should_test):
     """Runs one package's tests and returns its coverage rows and whether they passed."""
     path = PACKAGES / name
@@ -96,7 +108,7 @@ def run_package(name, should_test):
     codecov = subprocess.run(
         [*base, "--show-codecov-path"], capture_output=True, text=True, check=True
     ).stdout.strip()
-    rows = summarize(json.loads(Path(codecov).read_text()), path / "Sources")
+    rows = summarize(export_all_bundles(codecov), path / "Sources")
     return rows, (result is None or result.returncode == 0)
 
 
