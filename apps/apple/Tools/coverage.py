@@ -164,8 +164,11 @@ def main():
                 print(f"        {share:5.1f}%  {missing:>5} missing  {short}")
             if options.uncovered and options.uncovered in path:
                 print(f"        {path}: {' '.join(line_ranges(uncovered_lines(segments)))}")
-    percent = 100 * total_covered / total_lines if total_lines else 100
-    print(f"{percent:6.1f}%  {total_covered:>6}/{total_lines:<6}  total")
+    if total_lines:
+        percent = 100 * total_covered / total_lines
+        print(f"{percent:6.1f}%  {total_covered:>6}/{total_lines:<6}  total")
+    else:
+        print("    n/a  no coverage measured")
     if failed:
         print(f"Tests failed in: {', '.join(failed)}", file=sys.stderr)
         return 1

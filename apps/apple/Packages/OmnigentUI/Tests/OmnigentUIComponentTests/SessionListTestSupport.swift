@@ -18,13 +18,6 @@
       }
     }
 
-    /// The `Menu`s, in tree order.
-    var popUps: [NSButton] {
-      allViews.compactMap { view in
-        String(describing: Swift.type(of: view)) == "SwiftUIPopupButton" ? view as? NSButton : nil
-      }
-    }
-
     /// The buttons that collapse and expand a list's sections, top to bottom.
     var sectionToggles: [NSButton] {
       allViews.compactMap { $0 as? NSButton }
