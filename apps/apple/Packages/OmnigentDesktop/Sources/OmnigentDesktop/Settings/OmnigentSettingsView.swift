@@ -147,8 +147,8 @@ struct GeneralSettingsTab<BrowserSettings: View>: View {
   var body: some View {
     Form {
       Section {
-        Picker("Open new windows on", selection: $preferences.defaultServerURL) {
-          Text("Connect screen").tag(URL?.none)
+        Picker("New windows open on", selection: $preferences.defaultServerURL) {
+          Text("Server picker").tag(URL?.none)
           if !organizationServers.isEmpty {
             Section("Provided by your organization") {
               ForEach(organizationServers, id: \.url) { server in

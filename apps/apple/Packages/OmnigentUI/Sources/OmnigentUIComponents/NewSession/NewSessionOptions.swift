@@ -38,6 +38,11 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   public var folder: String?
   /// Folders offered as recents.
   public var recentFolders: [String]
+  /// The recents the menu lists: dot folders only once the session's folder is inside one.
+  var offeredFolders: [String] {
+    if let folder, FolderListing.isInDotFolder(folder) { return recentFolders }
+    return recentFolders.filter { !FolderListing.isInDotFolder($0) }
+  }
   /// The session starts on a new sandbox: repositories replace the folder.
   public var isSandbox: Bool
   /// Repositories to clone into the sandbox.
@@ -270,9 +275,9 @@ struct NewSessionOptionsBar: View {
         }
         .accessibilityIdentifier("new-session-browse-folders")
       }
-      if !options.recentFolders.isEmpty {
+      if !options.offeredFolders.isEmpty {
         Section("Folders") {
-          ForEach(options.recentFolders, id: \.self) { path in
+          ForEach(options.offeredFolders, id: \.self) { path in
             Button(path) { actions.selectFolder?(path) }
           }
         }
