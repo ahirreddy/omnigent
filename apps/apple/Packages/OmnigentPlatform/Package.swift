@@ -16,10 +16,15 @@ let package = Package(
   name: "OmnigentPlatform",
   platforms: [.iOS("26.0"), .macOS("26.0")],
   products: [.library(name: "OmnigentPlatform", targets: ["OmnigentPlatform"])],
+  dependencies: [.package(path: "../OmnigentViewTesting")],
   targets: [
     .target(name: "OmnigentPlatform", swiftSettings: strictSwiftSettings),
     .testTarget(
-      name: "OmnigentPlatformTests", dependencies: ["OmnigentPlatform"],
+      name: "OmnigentPlatformTests",
+      dependencies: [
+        "OmnigentPlatform",
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+      ],
       swiftSettings: strictSwiftSettings),
   ],
   swiftLanguageModes: [.v6]
