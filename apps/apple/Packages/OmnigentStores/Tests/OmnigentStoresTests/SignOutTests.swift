@@ -63,6 +63,8 @@ struct SignOutTests {
     #expect(store.conversation("conv_a") != nil)
     #expect(store.workspace("conv_a") != nil)
     #expect(store.terminals("conv_a") != nil)
+    let form = try #require(store.creation())
+    form.stageAttachment(PendingAttachment(filename: "a", mediaType: nil, data: Data()))
     store.apply(.unreadChanged(sessionIds: ["conv_a"]))
     store.sessionList.setDraft("conv_a", true)
 
@@ -75,6 +77,7 @@ struct SignOutTests {
     #expect(store.conversations.isEmpty)
     #expect(store.workspaceStores.isEmpty)
     #expect(store.terminalStores.isEmpty)
+    #expect(store.creation()?.attachments.isEmpty == true, "the form starts over")
   }
 
   @Test("Disconnecting takes the rows off the screen and keeps open sessions for the next connect")

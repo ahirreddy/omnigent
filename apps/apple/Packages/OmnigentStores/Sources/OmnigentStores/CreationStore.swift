@@ -78,6 +78,8 @@ public final class CreationStore {
 
   private let core: ClientCore
   private var pendingFirstMessage: String?
+  /// Files already added to the created session's draft, so a retry doesn't add them twice.
+  private var stagedItems: [UUID: UInt64] = [:]
   private var selectionGeneration = 0
   private var worktreeGeneration = 0
 
@@ -228,7 +230,11 @@ public final class CreationStore {
           selection: selection, title: title, text: firstMessage)
         pendingFirstMessage = firstMessage
         phase = .created(sessionID: receipt.sessionId, firstMessageError: nil)
-        await sendWithAttachments(sessionID: receipt.sessionId, text: firstMessage)
+        do {
+          try await sendWithAttachments(sessionID: receipt.sessionId, text: firstMessage)
+        } catch {
+          phase = .created(sessionID: receipt.sessionId, firstMessageError: coreError(error))
+        }
       } else if text.isEmpty {
         let receipt = try await core.createSession(selection: selection, title: title)
         pendingFirstMessage = nil
@@ -308,22 +314,22 @@ public final class CreationStore {
     }
   }
 
-  /// Uploads the staged files to `sessionID`, then sends `text` with them. A failure leaves
-  /// the session created with the error to retry from the session.
-  private func sendWithAttachments(sessionID: String, text: String) async {
-    do {
-      for attachment in attachments {
-        let item = try core.addAttachment(
+  /// Uploads the files still staged to `sessionID`, then sends `text` with them. Each file
+  /// leaves the form once uploaded, so a retry resumes with the ones that failed.
+  private func sendWithAttachments(sessionID: String, text: String) async throws {
+    for attachment in attachments {
+      let item =
+        try stagedItems[attachment.id]
+        ?? core.addAttachment(
           sessionId: sessionID, filename: attachment.filename, mediaType: attachment.mediaType,
           data: attachment.data)
-        try await core.uploadFirstAttachment(sessionId: sessionID, itemId: item)
-      }
-      attachments = []
-      _ = try await core.sendFirstMessage(sessionId: sessionID, text: text)
-      pendingFirstMessage = nil
-    } catch {
-      phase = .created(sessionID: sessionID, firstMessageError: coreError(error))
+      stagedItems[attachment.id] = item
+      try await core.uploadFirstAttachment(sessionId: sessionID, itemId: item)
+      stagedItems[attachment.id] = nil
+      removeAttachment(attachment.id)
     }
+    _ = try await core.sendFirstMessage(sessionId: sessionID, text: text)
+    pendingFirstMessage = nil
   }
 
   /// Sends the first message again to the session that was created. Never creates another.
@@ -332,8 +338,7 @@ public final class CreationStore {
       return
     }
     do {
-      _ = try await core.sendFirstMessage(sessionId: sessionID, text: text)
-      pendingFirstMessage = nil
+      try await sendWithAttachments(sessionID: sessionID, text: text)
       phase = .created(sessionID: sessionID, firstMessageError: nil)
     } catch {
       phase = .created(sessionID: sessionID, firstMessageError: coreError(error))
@@ -349,6 +354,11 @@ public final class CreationStore {
   public func reset() {
     guard phase != .creating else { return }
     if case .uncertain = phase { return }
+    // Files of a created session stay in its composer; they don't belong to the next one.
+    if case .created = phase {
+      attachments = []
+      stagedItems = [:]
+    }
     pendingFirstMessage = nil
     phase = .editing
   }

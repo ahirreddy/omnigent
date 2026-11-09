@@ -31,6 +31,7 @@ extension ConnectionStore {
     for sessionID in conversations.keys { closeConversation(sessionID) }
     workspaceStores = [:]
     terminalStores = [:]
+    creationStore = nil
     signedInUserID = nil
   }
 
