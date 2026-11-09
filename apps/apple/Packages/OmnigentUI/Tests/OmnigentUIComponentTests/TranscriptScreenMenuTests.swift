@@ -144,6 +144,26 @@
       #expect(try menu.shows("Files"))
     }
 
+    @Test("Choosing a panel in a compact window's menu leaves any open document for it")
+    func compactPanelChoice() async throws {
+      let log = self.log
+      var extras = ConversationExtras()
+      extras.slots.documents = InspectorDocuments(
+        tabs: [], selected: nil, select: { _ in }, close: { _ in },
+        showPanel: { log.add("show panel") }, content: AnyView(EmptyView()))
+      let state = ConversationViewState(
+        header: TranscriptFixture.header, rows: [TranscriptFixture.answer("a")], terminal: .ready)
+      let window = try await screen(state, extras: extras, layout: .compact)
+      defer { window.close() }
+      let items = try #require(box.items)
+      let menu = transcriptScreen(VStack { items.titleMenu }, height: 600, layout: .compact)
+      defer { menu.close() }
+      // The view picker and Copy Session ID come first; the panels follow.
+      try menu.clickControl(at: 3)
+      try await letTasksRun(window)
+      #expect(log.entries == ["show panel"])
+    }
+
     @Test("The session menu's Rename asks for a name")
     func renameFromMenu() async throws {
       var sessionActions = SessionListActions()

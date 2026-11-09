@@ -242,17 +242,6 @@
         .transcriptSelectionPopup(reply: reply, ask: ask))
     }
 
-    /// The popup reads the selection when the event monitor sees an event, which only
-    /// `NSApp.sendEvent` delivers; a key up reaches nothing else here.
-    private func announceSelection(_ screen: OffscreenWindow<AnyView>) async throws {
-      let event = NSEvent.keyEvent(
-        with: .keyUp, location: .zero, modifierFlags: [],
-        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: screen.window.windowNumber,
-        context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 0)
-      NSApp.sendEvent(try #require(event))
-      try await letTasksRun(screen)
-    }
-
     @Test("Selecting text offers Reply and Ask, each acting on the selection and clearing it")
     func selectionPopup() async throws {
       let log = HostLog()

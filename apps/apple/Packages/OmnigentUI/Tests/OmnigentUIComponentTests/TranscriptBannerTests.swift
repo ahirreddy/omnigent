@@ -51,6 +51,9 @@
       #expect(screen.controlFrames.count == 1)
       let menu = try screen.openMenu(center(of: screen.controlFrames[0]))
       #expect(menu.items.map(\.title) == ["Copy Error"])
+      SystemSideEffects.reset()
+      try screen.choose("Copy Error", in: menu)
+      #expect(copiedText() == "No connection")
     }
 
     @Test("A notice's overflow copy isn't called an error, and it has none without text to copy")

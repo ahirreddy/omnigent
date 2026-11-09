@@ -36,12 +36,17 @@
 
     private var jumpPill: CGPoint { CGPoint(x: Self.width / 2, y: Self.height - 34) }
 
+    /// The pill shows once the transcript has framed the latest question.
+    private func clickJumpPill(on window: OffscreenWindow<AnyView>) async throws {
+      #expect(try await waitUntil(window) { try window.shows("Jump to latest") })
+      try window.click(jumpPill)
+    }
+
     /// Previous is above Next at the transcript's bottom-trailing corner.
     private func navigatorButton(
       _ direction: TranscriptNavigation.Direction, on window: OffscreenWindow<AnyView>
     ) throws -> CGPoint {
-      let buttons = window.controlFrames.filter { $0.maxX > Self.width - 40 && $0.minY > 300 }
-        .sorted { $0.minY < $1.minY }
+      let buttons = navigatorButtons(on: window, width: Self.width)
       let button = try #require(direction == .previous ? buttons.first : buttons.last)
       #expect(buttons.count == 2)
       return CGPoint(x: button.midX, y: button.midY)
@@ -54,7 +59,7 @@
       #expect(viewport.maximumOffset > 0)
       #expect(try window.shows("Question 7"))
       #expect(try window.shows("Line 0 of answer 7"))
-      #expect(try window.shows("Jump to latest"))
+      #expect(try await waitUntil(window) { try window.shows("Jump to latest") })
     }
 
     @Test("A short conversation just keeps following")
@@ -74,7 +79,7 @@
       let conversation = longSession()
       let (window, viewport) = try await screen(conversation)
       defer { window.close() }
-      try window.click(jumpPill)
+      try await clickJumpPill(on: window)
       try await letTasksRun(window, milliseconds: 400)
       #expect(try !window.shows("Jump to latest"))
       conversation.append(TranscriptFixture.answer("more", "Fresh output at the end"))
@@ -88,7 +93,7 @@
       let conversation = longSession()
       let (window, viewport) = try await screen(conversation)
       defer { window.close() }
-      try window.click(jumpPill)
+      try await clickJumpPill(on: window)
       try await letTasksRun(window, milliseconds: 400)
       try window.click(try navigatorButton(.previous, on: window))
       try await letTasksRun(window, milliseconds: 300)
@@ -150,11 +155,10 @@
       let conversation = longSession()
       let (window, viewport) = try await screen(conversation)
       defer { window.close() }
-      try window.click(jumpPill)
+      try await clickJumpPill(on: window)
       try await letTasksRun(window, milliseconds: 400)
       window.host.setFrameSize(NSSize(width: 600, height: Self.height))
-      try await letTasksRun(window, milliseconds: 300)
-      #expect(viewport.distanceToEnd() < 80)
+      #expect(try await waitUntil(window) { viewport.distanceToEnd() < 80 })
     }
 
     // MARK: Message navigation

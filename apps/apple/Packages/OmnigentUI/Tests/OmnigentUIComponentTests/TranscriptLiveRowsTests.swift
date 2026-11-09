@@ -176,5 +176,33 @@
       #expect(try window.shows("Allow it?"))
       #expect(!window.allViews.contains { $0 is NSTextView })
     }
+
+    @Test("A sign-in code fetched from a transcript row can be copied")
+    func signInCodeCopies() async throws {
+      SystemSideEffects.reset()
+      var actions = ConversationActions()
+      actions.openSignIn = { .opened(code: "ABCD-1234") }
+      let failure = Activity(
+        kind: .error, title: "Turn failed", summary: "Sign in again",
+        details: [
+          DetailSection(id: "code", title: "Code", text: "databricks_sign_in_pending")
+        ],
+        isFailure: true)
+      let state = ConversationViewState(
+        header: TranscriptFixture.header,
+        rows: [Row(id: "failure", role: .tool, activity: failure)])
+      let window = transcriptScreen(
+        TranscriptView(state: state, actions: actions, scrollToLatestRequest: 0), width: 900)
+      defer { window.close() }
+      try await letTasksRun(window, milliseconds: 200)
+      let link = try #require(window.controlFrames.first { $0.width > 120 && $0.width < 240 })
+      try window.click(CGPoint(x: link.midX, y: link.midY))
+      try await letTasksRun(window)
+      #expect(try window.shows("Copy Code ABCD-1234"))
+      let copy = try #require(
+        window.controlFrames.first { $0.minX >= link.maxX && abs($0.midY - link.midY) < 4 })
+      try window.click(CGPoint(x: copy.midX, y: copy.midY))
+      #expect(copiedText() == "ABCD-1234")
+    }
   }
 #endif

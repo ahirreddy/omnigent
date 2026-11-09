@@ -70,23 +70,6 @@
       return distance
     }
 
-    /// Scrolls as a reader does: a live scroll begins, moves in steps, and ends.
-    /// - Parameter delta: Points to move; negative is up.
-    func readerScroll(by delta: CGFloat) {
-      guard let scrollView else { return }
-      let center = NotificationCenter.default
-      center.post(name: NSScrollView.willStartLiveScrollNotification, object: scrollView)
-      screen.settle(0.02)
-      let start = offset
-      let steps = 6
-      for step in 1...steps {
-        move(to: start + delta * CGFloat(step) / CGFloat(steps))
-        center.post(name: NSScrollView.didLiveScrollNotification, object: scrollView)
-      }
-      center.post(name: NSScrollView.didEndLiveScrollNotification, object: scrollView)
-      screen.settle()
-    }
-
     /// Moves the position with no gesture, as a layout pass does.
     func move(to offset: CGFloat) {
       guard let scrollView else { return }
@@ -94,6 +77,13 @@
       scrollView.reflectScrolledClipView(scrollView.contentView)
       screen.settle()
     }
+  }
+
+  /// The message navigator's Previous and Next, at the transcript's bottom-trailing corner.
+  @MainActor
+  func navigatorButtons(on window: OffscreenWindow<AnyView>, width: CGFloat) -> [CGRect] {
+    window.controlFrames.filter { $0.maxX > width - 40 && $0.minY > 300 }
+      .sorted { $0.minY < $1.minY }
   }
 
   // An expectation on the driver would otherwise print the whole window's view tree.

@@ -118,17 +118,6 @@
       #expect(screen.controlFrames.isEmpty)
     }
 
-    /// Mermaid draws in WebKit and takes a moment; this waits for it without spinning the test.
-    private func waitUntil(_ screen: OffscreenWindow<AnyView>, _ condition: () throws -> Bool)
-      async throws -> Bool
-    {
-      for _ in 0..<100 {
-        if try condition() { return true }
-        try await letTasksRun(screen, milliseconds: 100)
-      }
-      return false
-    }
-
     @Test("A diagram offers its code and copies it, and Show Diagram comes back")
     func mermaidDiagram() async throws {
       SystemSideEffects.reset()
@@ -146,6 +135,17 @@
       try screen.clickControl(at: screen.controlFrames.count - 1)
       #expect(try !screen.shows("Show Diagram"))
       try screen.clickControl(at: 1)
+      #expect(screen.window.attachedSheet != nil)
+    }
+
+    @Test("Clicking a drawn diagram opens it full size")
+    func mermaidDiagramEnlarges() async throws {
+      let screen = transcriptScreen(MermaidBlockView(source: "graph TD; C-->D"))
+      defer { screen.close() }
+      let drawn = try await waitUntil(screen) { try screen.shows("Diagram") }
+      #expect(drawn)
+      #expect(screen.window.attachedSheet == nil)
+      try screen.clickControl(at: screen.controlFrames.count - 1)
       #expect(screen.window.attachedSheet != nil)
     }
 

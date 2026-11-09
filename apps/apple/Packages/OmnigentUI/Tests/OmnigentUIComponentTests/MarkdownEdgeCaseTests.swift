@@ -1,6 +1,7 @@
 #if os(macOS)
   import Foundation
   import OmnigentViewTesting
+  import OmnigentViewTextReading
   import SwiftUI
   import UniformTypeIdentifiers
   import Testing
@@ -72,6 +73,34 @@
       let error = CocoaError(.fileReadCorruptFile)
       renderer.webView(WKWebView(), didFail: nil, withError: error)
       renderer.webView(WKWebView(), didFailProvisionalNavigation: nil, withError: error)
+    }
+
+    @Test("An equation still streaming reads as text rather than typesetting")
+    func openEquationStaysText() throws {
+      let screen = transcriptScreen(
+        MathBlockView(tex: "x^2").environment(\.markdownBlockIsOpen, true))
+      defer { screen.close() }
+      #expect(try screen.shows("x\u{00B2}"))
+    }
+
+    @Test("A cited workspace file opens in the app, once its folder's listing shows it")
+    func citedFileOpens() async throws {
+      var listed: [String] = []
+      var opened: [WorkspaceFileTarget] = []
+      let links = WorkspaceFileLinks(
+        root: { "/home/u/ws" }, home: { "/home/u" },
+        listFolder: { folder in
+          listed.append(folder)
+          return WorkspaceFolderListing(files: ["a.ts"])
+        },
+        open: { opened.append($0) })
+      let screen = transcriptScreen(
+        MarkdownView("[src/a.ts](src/a.ts)").environment(\.workspaceFileLinks, links))
+      defer { screen.close() }
+      try await letTasksRun(screen)
+      #expect(listed == ["src"])
+      try screen.click(CGPoint(x: 12, y: 10))
+      #expect(opened == [WorkspaceFileTarget(path: "src/a.ts")])
     }
   }
 #endif

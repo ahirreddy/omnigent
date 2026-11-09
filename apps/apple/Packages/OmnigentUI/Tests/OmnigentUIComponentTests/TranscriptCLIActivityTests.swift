@@ -283,4 +283,24 @@
       #expect(screen.controlFrames.isEmpty)
     }
   }
+
+  extension TranscriptCLIActivityTests {
+    @Test("A host that logs agent starts as tool calls doesn't show them twice")
+    func agentsLoggedAsToolCalls() throws {
+      var state = PreviewData.conversation
+      state.sections = [
+        EventSection(id: "child-a", title: "Done one", summary: "Ready", sessionId: "a")
+      ]
+      #expect(SubagentGroup(state: state) != nil)
+      state.rows = [
+        Row(
+          id: "spawn", role: .tool,
+          activity: Activity(kind: .toolCall, title: "spawn_agent", summary: "Done one"))
+      ]
+      let screen = transcriptScreen(
+        CLISubagentLines(state: state, actions: ConversationActions()))
+      defer { screen.close() }
+      #expect(try !screen.shows("`Done one`"))
+    }
+  }
 #endif

@@ -34,6 +34,32 @@
     screen.settle(0.02)
   }
 
+  /// Whether `condition` comes true within ten seconds, for what takes however long the machine
+  /// and the suites running beside this one let it.
+  @MainActor
+  func waitUntil(
+    _ screen: OffscreenWindow<AnyView>, _ condition: @MainActor () throws -> Bool
+  ) async throws -> Bool {
+    for _ in 0..<100 {
+      if try condition() { return true }
+      try await letTasksRun(screen, milliseconds: 100)
+    }
+    return false
+  }
+
+  /// The selection popup reads the selection when its event monitor sees an event, which only
+  /// `NSApp.sendEvent` delivers; a key up reaches nothing else here.
+  @MainActor
+  func announceSelection(_ screen: OffscreenWindow<AnyView>) async throws {
+    let event = NSEvent.keyEvent(
+      with: .keyUp, location: .zero, modifierFlags: [],
+      timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: screen.window.windowNumber,
+      context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 0)
+    guard let event else { throw OffscreenWindowError.notFound("key up event") }
+    NSApp.sendEvent(event)
+    try await letTasksRun(screen)
+  }
+
   /// Where named pieces of a view landed, from the top left of the screen.
   @MainActor
   final class FrameLog {
