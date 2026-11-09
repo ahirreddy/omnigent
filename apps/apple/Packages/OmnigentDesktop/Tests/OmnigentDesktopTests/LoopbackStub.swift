@@ -4,6 +4,7 @@ import Network
 /// A one-file HTTP server on loopback that answers each path from a table.
 final class LoopbackStub: Sendable {
   struct Reply: Sendable {
+    /// Zero drops the connection without answering.
     var status: Int
     var body = ""
     var headers: [String: String] = [:]
@@ -45,6 +46,10 @@ final class LoopbackStub: Sendable {
       let request = data.flatMap { String(bytes: $0, encoding: .utf8) } ?? ""
       let path = request.split(separator: " ").dropFirst().first.map(String.init) ?? ""
       let reply = replies[path] ?? Reply(status: 404)
+      guard reply.status != 0 else {
+        connection.cancel()
+        return
+      }
       let headers = reply.headers.map { "\($0.key): \($0.value)\r\n" }.joined()
       let head =
         "HTTP/1.1 \(reply.status) Status\r\nContent-Length: \(reply.body.utf8.count)\r\n"

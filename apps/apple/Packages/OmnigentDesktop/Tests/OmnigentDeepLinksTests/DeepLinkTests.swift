@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import OmnigentDeepLinks
@@ -220,6 +221,20 @@ struct DeepLinkAcknowledgmentTests {
     #expect(throws: DeepLinkError.unsupportedPath("/members")) {
       try parse("omnigent://localhost/members?desktop_ack=123:\(Self.token)")
     }
+  }
+
+  @Test("a callback parameter with no value is rejected")
+  func acknowledgmentWithoutValue() {
+    #expect(throws: DeepLinkError.self) { try parse("omnigent://localhost/?desktop_ack") }
+  }
+
+  @Test("an origin read back from storage must have a scheme and a clean authority")
+  func serializedOrigins() throws {
+    #expect(throws: ServerOriginError.self) { try ServerOrigin(serialized: "omni.example.com") }
+    #expect(throws: ServerOriginError.self) { try ServerOrigin(serialized: "http://[::1]junk") }
+    let origin = try ServerOrigin(serialized: "http://[::1]:8000/")
+    #expect("\(origin)" == "http://[::1]:8000")
+    #expect(origin.url?.absoluteString == "http://[::1]:8000")
   }
 
   @Test("an invite opens before sign-in; one without a token is rejected")

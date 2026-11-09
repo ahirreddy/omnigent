@@ -16,13 +16,19 @@ final class FakeProcess: LocalProcessHandle {
   let launch: LocalProcessLaunch
   /// Exit on SIGINT or SIGTERM. Off simulates a process that ignores them.
   let exitsOnTerminate: Bool
+  /// What signaling it fails with, when asked to.
+  let signalFailure: @Sendable () -> LocalServerError?
   private let continuation: AsyncStream<LocalProcessOutput>.Continuation
   private let state = Mutex(State())
 
-  init(pid: Int32, launch: LocalProcessLaunch, exitsOnTerminate: Bool) {
+  init(
+    pid: Int32, launch: LocalProcessLaunch, exitsOnTerminate: Bool,
+    signalFailure: @escaping @Sendable () -> LocalServerError? = { nil }
+  ) {
     self.pid = pid
     self.launch = launch
     self.exitsOnTerminate = exitsOnTerminate
+    self.signalFailure = signalFailure
     (output, continuation) = AsyncStream.makeStream(of: LocalProcessOutput.self)
   }
 
@@ -56,6 +62,7 @@ final class FakeProcess: LocalProcessHandle {
   }
 
   func send(_ signal: LocalProcessSignal) throws(LocalServerError) {
+    if let failure = signalFailure() { throw failure }
     let running = state.withLock { current -> Bool in
       guard current.exit == nil else { return false }
       current.signals.append(signal)
@@ -80,6 +87,8 @@ final class FakeRunner: LocalProcessRunning {
     var busyPorts: Set<Int> = []
     var ignoresTerminate = false
     var launchFailure: LocalServerError?
+    var signalFailure: LocalServerError?
+    var portCheckFailure: LocalServerError?
   }
 
   private let state = Mutex(State())
@@ -96,6 +105,16 @@ final class FakeRunner: LocalProcessRunning {
   /// Makes every later launch fail with `error`.
   func failLaunches(with error: LocalServerError) {
     state.withLock { $0.launchFailure = error }
+  }
+
+  /// Makes every later signal fail with `error`.
+  func failSignals(with error: LocalServerError) {
+    state.withLock { $0.signalFailure = error }
+  }
+
+  /// Makes every later port check fail with `error`.
+  func failPortChecks(with error: LocalServerError) {
+    state.withLock { $0.portCheckFailure = error }
   }
 
   func ignoreTerminate() {
@@ -128,7 +147,8 @@ final class FakeRunner: LocalProcessRunning {
     let (process, behavior) = state.withLock { current -> (FakeProcess, Behavior?) in
       current.nextPID += 1
       let process = FakeProcess(
-        pid: current.nextPID, launch: launch, exitsOnTerminate: !current.ignoresTerminate)
+        pid: current.nextPID, launch: launch, exitsOnTerminate: !current.ignoresTerminate,
+        signalFailure: { [weak self] in self?.state.withLock { $0.signalFailure } })
       current.processes.append(process)
       let behavior = current.behaviors.isEmpty ? nil : current.behaviors.removeFirst()
       return (process, behavior)
@@ -170,6 +190,7 @@ final class FakeRunner: LocalProcessRunning {
   }
 
   func send(_ signal: LocalProcessSignal, toGroupOf pid: Int32) throws(LocalServerError) {
+    if let failure = state.withLock({ $0.signalFailure }) { throw failure }
     let ends = state.withLock { current -> Bool in
       current.externalSignals.append((pid, signal))
       return signal == .kill || !current.ignoresTerminate
@@ -178,7 +199,8 @@ final class FakeRunner: LocalProcessRunning {
   }
 
   func isLoopbackPortAvailable(_ port: Int) throws(LocalServerError) -> Bool {
-    state.withLock { !$0.busyPorts.contains(port) }
+    if let failure = state.withLock({ $0.portCheckFailure }) { throw failure }
+    return state.withLock { !$0.busyPorts.contains(port) }
   }
 }
 

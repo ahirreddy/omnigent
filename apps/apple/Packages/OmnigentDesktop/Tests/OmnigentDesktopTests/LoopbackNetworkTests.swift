@@ -81,6 +81,18 @@ struct LoopbackNetworkTests {
       try await probe(["/health": moved]) == .rejected("/health returned HTTP 302"))
   }
 
+  @Test("a connection dropped on the manifest keeps waiting, because it may still be starting")
+  func manifestDropped() async throws {
+    let result = try await probe([
+      "/health": Self.health, "/.well-known/omnigent.json": Reply(status: 0),
+    ])
+    guard case .notReady(let reason) = result else {
+      Issue.record("expected to keep waiting, got \(result)")
+      return
+    }
+    #expect(reason.contains("omnigent.json"), "\(reason)")
+  }
+
   @Test("nothing listening keeps waiting and names the path")
   func nothingListening() async throws {
     let stub = try await LoopbackStub([:])
