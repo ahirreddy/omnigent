@@ -437,6 +437,25 @@ mod tests {
     ]"#;
 
     #[test]
+    fn an_unreadable_new_comment_is_malformed() {
+        let core = connected(RouteTransport::local());
+        core.transport()
+            .ok("/v1/sessions/conv_a/comments", r#"{"id":5}"#);
+        let draft = NewFileComment {
+            path: "a.rs".into(),
+            body: "why?".into(),
+            start_index: 3,
+            end_index: 5,
+            anchor: None,
+        };
+        assert!(matches!(
+            block_on(core.add_session_comment("conv_a", &draft)),
+            Err(SessionError::MalformedResponse { detail })
+                if detail.starts_with("/v1/sessions/conv_a/comments: ")
+        ));
+    }
+
+    #[test]
     fn line_ranges_count_characters_without_the_break() {
         assert_eq!(line_character_range("ab\ncd\n", 1), Some((0, 2)));
         assert_eq!(line_character_range("ab\ncd\n", 2), Some((3, 5)));

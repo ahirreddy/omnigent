@@ -186,6 +186,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_unreadable_grant_acknowledgement_is_uncertain() {
+        let transport = RouteTransport::local();
+        transport.ok("/v1/sessions/s1/permissions", r#"{"user_id":5}"#);
+        let core = connected(transport);
+        assert!(matches!(
+            block_on(core.grant_session_access("s1", "ada", 2)),
+            Err(SessionError::DeliveryUncertain { detail }) if detail.contains("unreadable")
+        ));
+    }
+
+    #[test]
     fn a_repeated_cursor_is_refused_and_a_runaway_listing_stops_at_its_cap() {
         let page = |cursor: &str| {
             Reply::json(

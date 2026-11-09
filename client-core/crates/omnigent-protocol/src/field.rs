@@ -110,6 +110,13 @@ mod tests {
     }
 
     #[test]
+    fn only_a_present_field_converts_to_a_value() {
+        assert_eq!(Field::Present(5).into_value(), Some(5));
+        assert_eq!(Field::<i32>::Absent.into_value(), None);
+        assert_eq!(Field::<i32>::Null.into_value(), None);
+    }
+
+    #[test]
     fn absent_null_and_value_are_distinct_and_round_trip() {
         for (json, field) in [
             ("{}", Field::Absent),

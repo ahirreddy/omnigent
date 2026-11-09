@@ -111,11 +111,9 @@ fn malformed(path: &str) -> impl Fn(String) -> SessionError + '_ {
 
 fn github_path(session_id: &str, resource: &str) -> Result<String, SessionError> {
     validate_identifier(session_id)?;
-    Ok(if resource.is_empty() {
-        format!("/v1/sessions/{session_id}/resources/github")
-    } else {
-        format!("/v1/sessions/{session_id}/resources/github/{resource}")
-    })
+    Ok(format!(
+        "/v1/sessions/{session_id}/resources/github/{resource}"
+    ))
 }
 
 impl<T: HttpTransport> ClientCore<T> {

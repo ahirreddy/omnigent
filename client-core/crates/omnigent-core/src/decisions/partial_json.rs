@@ -349,6 +349,15 @@ mod tests {
     }
 
     #[test]
+    fn an_array_cut_after_a_finished_item_keeps_that_item() {
+        let Ok(Json::Array(items, cut)) = parse("[\"a\"  ") else {
+            panic!("expected an array");
+        };
+        assert_eq!(items.len(), 1);
+        assert!(cut);
+    }
+
+    #[test]
     fn complete_json_reads_exactly() {
         assert_eq!(
             parse(r#"{"a": "x\né😀", "b": [1, true, null], "c": {}}"#),

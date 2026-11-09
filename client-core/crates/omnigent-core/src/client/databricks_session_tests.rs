@@ -457,3 +457,38 @@ fn cookie_dates_out_of_range_are_rejected_instead_of_overflowing() {
         assert_eq!(parse_http_date(bad), None, "{bad}");
     }
 }
+
+#[test]
+fn a_trailing_slash_does_not_change_the_plain_path() {
+    let plain = |raw: &str| plain_path(&Url::parse(raw).unwrap()).to_owned();
+    assert_eq!(plain("https://w.test/omnigent/"), "/omnigent");
+    assert_eq!(plain("https://w.test/"), "/");
+    assert_eq!(plain("https://w.test/omnigent"), "/omnigent");
+}
+
+#[test]
+fn unusable_tokens_never_reach_the_server() {
+    let server = Server::new(|_| panic!("no request should be sent"));
+    let mut bad = tokens(None);
+    bad.access_token = SecretString::new("has space");
+    assert_eq!(
+        create(&server, &context(WORKSPACE), &bad).unwrap_err(),
+        DatabricksError::InvalidSessionResponse
+    );
+}
+
+#[test]
+fn a_set_cookie_header_that_is_no_pair_is_skipped() {
+    let server = Server::new(|request| {
+        if url_of(request).path() == "/auth/session/create" {
+            return response(302, &[("Location", "/omnigent/c/abc?o=123")]);
+        }
+        response(
+            200,
+            &[("Set-Cookie", "no-pair"), ("Set-Cookie", &default_cookie())],
+        )
+    });
+    let context = context(&format!("{WORKSPACE}/omnigent/c/abc?o=123"));
+    let session = create(&server, &context, &tokens(None)).unwrap();
+    assert_eq!(session.cookies.len(), 1);
+}

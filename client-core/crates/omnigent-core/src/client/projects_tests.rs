@@ -462,3 +462,32 @@ fn a_member_patch_answered_with_garbage_is_uncertain() {
         Err(SessionError::DeliveryUncertain { .. })
     ));
 }
+
+#[test]
+fn renaming_stops_when_the_member_pages_cycle() {
+    let transport = RouteTransport::local();
+    let page = |last: &str| {
+        Reply::json(
+            200,
+            format!(
+                r#"{{"data":[{{"id":"m1","status":"idle","created_at":1}}],"has_more":true,"last_id":"{last}"}}"#
+            ),
+        )
+    };
+    transport.enqueue(
+        "GET",
+        "/v1/sessions",
+        vec![page("first"), page("second"), page("first")],
+    );
+    transport.respond(
+        Some("POST"),
+        "/v1/projects",
+        None,
+        Reply::json(201, r#"{"id":"p2","name":"New"}"#),
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.rename_project(&project(None, "Old"), "New")),
+        Err(SessionError::InvalidPagination)
+    );
+}

@@ -525,3 +525,17 @@ fn server_pages_come_from_info_and_a_broken_body_says_so() {
         Err(SessionError::MalformedResponse { detail }) if detail.starts_with("/v1/info: ")
     ));
 }
+
+#[test]
+fn an_active_automation_with_no_next_run_sorts_after_a_scheduled_one_either_way() {
+    let scheduled = automation("a", "Later name", AutomationState::Active, Some(5));
+    let unknown = automation("b", "Early name", AutomationState::Active, None);
+    for input in [[&scheduled, &unknown], [&unknown, &scheduled]] {
+        let rows: Vec<Automation> = input.into_iter().cloned().collect();
+        let ids: Vec<String> = arrange_automations(&rows, AutomationFilter::All, "")
+            .into_iter()
+            .map(|automation| automation.id)
+            .collect();
+        assert_eq!(ids, ["a", "b"]);
+    }
+}

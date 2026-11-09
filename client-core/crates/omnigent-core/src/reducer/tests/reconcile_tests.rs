@@ -793,3 +793,10 @@ fn a_configuration_read_of_another_session_keeps_this_sessions_buffered_settings
         "the read of this session supersedes its buffered settings"
     );
 }
+
+#[test]
+fn an_explicit_null_agrees_only_with_nothing_known() {
+    let known = 5;
+    assert!(same_as(&Field::<i32>::Null, None));
+    assert!(!same_as(&Field::<i32>::Null, Some(&known)));
+}

@@ -828,3 +828,11 @@ fn reasoning_summaries_of_the_wrong_shape_fail_to_decode() {
         );
     }
 }
+
+#[test]
+fn a_native_tool_wrapper_that_is_not_an_object_is_refused() {
+    assert!(matches!(
+        native_tool_wrapper(Value::Null),
+        Err(DecodeError::NotAnObject { context }) if context == "item `native_tool`"
+    ));
+}

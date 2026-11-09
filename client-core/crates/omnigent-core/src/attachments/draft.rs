@@ -745,6 +745,20 @@ mod tests {
     }
 
     #[test]
+    fn progress_for_an_attempt_whose_item_was_removed_elsewhere_is_stale() {
+        let mut store = AttachmentDraftStore::default();
+        let item = store.add(file(), &key()).unwrap();
+        let attempt = store.begin_upload(&key(), item).unwrap();
+        store
+            .finish_upload(&attempt, Err(UploadError::Rejected { status: 413 }))
+            .unwrap();
+        assert_eq!(
+            store.update_progress(&attempt, 0.5),
+            Err(DraftError::StaleAttempt)
+        );
+    }
+
+    #[test]
     fn ids_keys_and_the_selection_error_read_back() {
         assert_eq!(HoldId::new(7).get(), 7);
         let mut store = AttachmentDraftStore::default();

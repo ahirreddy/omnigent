@@ -249,6 +249,18 @@ mod tests {
     use crate::auth::databricks::test_support::{ACCOUNT_ISSUER, TOKEN_BODY, tokens};
 
     #[test]
+    fn a_stored_issuer_that_is_not_text_is_invalid_data() {
+        let record = serde_json::json!({
+            "version": 2,
+            "tokens": {"accessToken": "a", "refreshToken": "r", "expiresAt": 1.0, "issuer": 5},
+        });
+        assert_eq!(
+            decode_record(&serde_json::to_vec(&record).unwrap()),
+            Err(DatabricksError::InvalidCredentialData)
+        );
+    }
+
+    #[test]
     fn a_bundle_converts_to_the_shared_token_set() {
         let bundle = tokens("access", "refresh", 5_000, None);
         let set = bundle.to_token_set();

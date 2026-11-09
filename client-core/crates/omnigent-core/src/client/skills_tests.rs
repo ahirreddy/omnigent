@@ -235,3 +235,19 @@ fn turning_titles_off_marks_event_posts() {
         .collect();
     assert_eq!(titles, [None, Some("off".to_owned())]);
 }
+
+#[test]
+fn unreadable_catalogs_and_info_name_their_route() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok("/v1/skills", r#"{"warnings":[]}"#)
+        .ok("/v1/info", "[]");
+    assert!(matches!(
+        block_on(core.host_skills("host_a", "claude", "/work", None)),
+        Err(SessionError::MalformedResponse { detail }) if detail.starts_with("/v1/skills: ")
+    ));
+    assert!(matches!(
+        block_on(core.slash_options()),
+        Err(SessionError::MalformedResponse { detail }) if detail.starts_with("/v1/info: ")
+    ));
+}

@@ -263,3 +263,19 @@ fn an_overly_long_url_and_too_many_repositories_are_explained() {
     .unwrap();
     assert!(problem.contains("repositories"), "{problem}");
 }
+
+#[test]
+fn an_unpushed_branch_falls_back_to_the_repository_branch_the_session_named() {
+    let original = [repo("https://g.com/o/b", "main")];
+    let live = repository_branches(&json!({"repositories": [
+        {"url": "https://g.com/o/b", "branch": "local-only", "pushed": false},
+    ]}))
+    .unwrap();
+    let forked = fork_sandbox_repos(&original, &live);
+    assert_eq!(forked.repos[0].branch, "main");
+    assert!(
+        forked.notes[0].1.ends_with("Using main."),
+        "{:?}",
+        forked.notes
+    );
+}

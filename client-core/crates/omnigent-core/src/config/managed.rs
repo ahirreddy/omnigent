@@ -747,6 +747,15 @@ mod tests {
     const DESKTOP: ManagedDialect = ManagedDialect::Desktop;
 
     #[test]
+    fn preferences_report_their_domains_in_order() {
+        let preferences = ManagedPreferences::new(
+            vec!["first".to_owned(), "second".to_owned()],
+            FakeSource::default(),
+        );
+        assert_eq!(preferences.domains(), ["first", "second"]);
+    }
+
+    #[test]
     fn a_non_boolean_flag_reads_as_a_sentence() {
         assert_eq!(
             ManagedConfigError::NotABoolean {

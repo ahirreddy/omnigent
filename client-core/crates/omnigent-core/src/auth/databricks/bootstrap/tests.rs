@@ -789,3 +789,36 @@ fn installed_cookie_must_be_the_issued_secure_session_cookie() {
     );
     assert!(encode_record(&saved_tokens()).is_ok());
 }
+
+#[test]
+fn a_cancelled_flow_refuses_every_later_check() {
+    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let mut env = Env::new();
+    env.tokens.put(context.scope(), &saved_tokens());
+    let mut web = FakeWebStore::new(context.store_identifier());
+    let (mut flow, _step) = env.until_session(&context, &mut web);
+    assert_eq!(
+        flow.install_allowed(&env.sign_outs, Ok(false)),
+        Err(DatabricksError::CredentialsChanged)
+    );
+    flow.cancel();
+    assert_eq!(
+        flow.check_active(&env.sign_outs),
+        Err(DatabricksError::Cancelled)
+    );
+    assert!(matches!(
+        flow.credential_checked(&env.sign_outs, Ok(true)),
+        Err(DatabricksError::Cancelled)
+    ));
+}
+
+#[test]
+fn signing_out_of_another_contexts_store_is_refused() {
+    let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+    let other = web_context("https://workspace.databricks.com/omnigent?o=456");
+    let mut env = Env::new();
+    assert!(matches!(
+        env.sign_outs.begin(&context, other.store_identifier()),
+        Err(DatabricksError::WorkspaceChanged)
+    ));
+}

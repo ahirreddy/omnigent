@@ -575,3 +575,15 @@ fn merge_methods_have_their_wire_names_and_team_reviewers_say_so() {
         "team"
     );
 }
+
+#[test]
+fn an_unreadable_label_list_names_its_route() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok("/v1/sessions/conv_a/resources/github/labels", "[]");
+    assert!(matches!(
+        block_on(core.pull_request_repository_labels("conv_a", "acme/app")),
+        Err(SessionError::MalformedResponse { detail })
+            if detail.starts_with("/v1/sessions/conv_a/resources/github/labels: ")
+    ));
+}

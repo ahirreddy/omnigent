@@ -1623,6 +1623,22 @@ mod tests {
     }
 
     #[test]
+    fn an_unreadable_snapshot_and_list_name_their_route() {
+        use futures::executor::block_on;
+
+        use super::super::test_support::{RouteTransport, connected};
+
+        let transport = RouteTransport::local();
+        transport.ok("/v1/sessions/conv_a", "[]");
+        let core = connected(transport);
+        assert!(matches!(
+            block_on(core.fetch_snapshot("conv_a")).map(|_| ()),
+            Err(SessionError::MalformedResponse { detail })
+                if detail.starts_with("/v1/sessions/conv_a: ")
+        ));
+    }
+
+    #[test]
     fn a_snapshot_naming_another_session_is_malformed() {
         use futures::executor::block_on;
 

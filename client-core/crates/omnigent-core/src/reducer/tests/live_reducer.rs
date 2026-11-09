@@ -958,3 +958,10 @@ fn records_ignore_an_empty_id_and_stay_bounded() {
         "the first key was dropped"
     );
 }
+
+#[test]
+fn every_attachment_kind_has_a_stable_name() {
+    use crate::reducer::AttachmentKind;
+    assert_eq!(AttachmentKind::File.as_str(), "file");
+    assert_eq!(AttachmentKind::Image.as_str(), "image");
+}

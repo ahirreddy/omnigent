@@ -588,3 +588,22 @@ fn an_import_reports_failures_with_or_without_a_session_id() {
         [json!({"host_id": "h1", "source": "claude", "limit": 3})]
     );
 }
+
+#[test]
+fn a_member_with_a_text_timestamp_is_malformed_and_an_odd_import_tally_is_uncertain() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok(
+            "/auth/users",
+            r#"{"users":[{"id":"u1","created_at":"yesterday"}]}"#,
+        )
+        .ok("/v1/imports/local", r#"{"imported":"many"}"#);
+    assert!(matches!(
+        block_on(core.members()),
+        Err(SessionError::MalformedResponse { detail }) if detail.contains("created_at")
+    ));
+    assert!(matches!(
+        block_on(core.import_local_sessions("h1", "claude", 3, None)),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("tally")
+    ));
+}

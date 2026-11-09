@@ -1143,3 +1143,40 @@ fn workspace_ids_list_every_session_and_item() {
         .sum();
     assert_eq!(items.len(), total, "item ids never collide across sessions");
 }
+
+#[test]
+fn a_blank_message_with_nothing_attached_is_refused() {
+    let transport = DemoTransport::sample().unwrap();
+    let (_, created) = raw(
+        &transport,
+        "POST",
+        "/v1/sessions",
+        Some(&json!({"agent_id": "demo-codex", "host_id": DEMO_HOST_ID})),
+    );
+    let events = format!("/v1/sessions/{}/events", created["id"].as_str().unwrap());
+    let blank =
+        json!({"type": "message", "data": {"content": [{"type": "input_text", "text": "  "}]}});
+    let (status, body) = raw(&transport, "POST", &events, Some(&blank));
+    assert_eq!(status, 400);
+    assert!(
+        body["detail"].as_str().unwrap().contains("Write a message"),
+        "{body}"
+    );
+}
+
+#[test]
+fn accepting_a_decision_with_no_fields_takes_no_content() {
+    let transport = DemoTransport::sample().unwrap();
+    let found = transport.lock().sessions.iter_mut().find_map(|session| {
+        let pending = session.snapshot.pending_elicitations.first_mut()?;
+        pending.params.requested_schema =
+            serde_json::from_value(json!({"properties": {}})).unwrap();
+        Some((session.snapshot.id.clone(), pending.elicitation_id.clone()))
+    });
+    let (id, decision) = found.unwrap();
+    let route = format!("/v1/sessions/{id}/elicitations/{decision}/resolve");
+    let extra = json!({"action": "accept", "content": {"name": "x"}});
+    assert_eq!(raw(&transport, "POST", &route, Some(&extra)).0, 422);
+    let plain = json!({"action": "accept"});
+    assert_eq!(raw(&transport, "POST", &route, Some(&plain)).0, 202);
+}

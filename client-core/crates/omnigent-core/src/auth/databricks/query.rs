@@ -70,6 +70,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn lowercase_and_uppercase_escapes_decode_alike() {
+        let parsed = items("low=a%2bb&up=a%2Bb").unwrap();
+        assert_eq!(parsed[0].value.as_deref(), Some("a+b"));
+        assert_eq!(parsed[1].value.as_deref(), Some("a+b"));
+    }
+
+    #[test]
     fn decodes_like_url_components() {
         let parsed = items("code=code%2Bvalue&plus=a+b&bare&empty=&o=1=2").unwrap();
         let pairs: Vec<_> = parsed

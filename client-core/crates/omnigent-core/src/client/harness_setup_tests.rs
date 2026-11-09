@@ -333,3 +333,29 @@ fn acknowledgements_that_do_not_decode_are_uncertain() {
         Err(SessionError::DeliveryUncertain { detail }) if detail.contains("acknowledgement")
     ));
 }
+
+#[test]
+fn unreadable_detected_credentials_and_install_versions_name_their_route() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok("/v1/hosts/h1/credentials/detected", r#"{"credentials":7}"#)
+        .ok(
+            "/v1/hosts/h1/harnesses/codex-native/install",
+            r#"{"host_id":"h1","version":7}"#,
+        );
+    assert!(matches!(
+        block_on(core.detected_credentials("h1")),
+        Err(SessionError::MalformedResponse { detail })
+            if detail.starts_with("/v1/hosts/h1/credentials/detected: ")
+    ));
+    assert!(matches!(
+        block_on(core.install_harness_reporting("h1", "codex-native")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("unreadable")
+    ));
+    core.transport()
+        .ok("/v1/hosts/h1/harnesses/codex/login", "not json");
+    assert!(matches!(
+        block_on(core.start_harness_login("h1", "codex")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("unreadable")
+    ));
+}

@@ -146,3 +146,21 @@ fn pull_request_status_follows_the_provider_state() {
         PullRequestStatus::Unknown
     );
 }
+
+#[test]
+fn a_server_that_never_finishes_paging_stops_after_the_page_limit() {
+    let core = connected(RouteTransport::local());
+    let pages = (0..25)
+        .map(|page| {
+            Reply::json(
+                200,
+                format!(r#"{{"data":[],"has_more":true,"last_id":"pr_{page}"}}"#),
+            )
+        })
+        .collect();
+    core.transport().enqueue("GET", PATH, pages);
+    assert_eq!(
+        block_on(core.session_pull_requests("conv_a")),
+        Err(SessionError::InvalidPagination)
+    );
+}

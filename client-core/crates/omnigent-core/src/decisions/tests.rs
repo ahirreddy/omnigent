@@ -1382,3 +1382,16 @@ fn an_approval_does_not_accept_a_typed_answer() {
         Err(DecisionError::NotOffered)
     );
 }
+
+#[test]
+fn a_repeated_resolution_retires_its_id_once() {
+    let mut decisions = SessionDecisions::new("session_a");
+    let resolved: omnigent_protocol::elicitation::ElicitationResolved =
+        serde_json::from_value(json!({
+            "elicitation_id": "gone", "action": "accept",
+        }))
+        .unwrap();
+    decisions.apply_resolved(&resolved);
+    decisions.apply_resolved(&resolved);
+    assert!(decisions.is_retired("gone"));
+}

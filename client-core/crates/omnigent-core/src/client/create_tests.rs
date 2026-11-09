@@ -947,3 +947,26 @@ fn a_create_answered_after_a_disconnect_is_uncertain() {
         SessionError::Creation(CreationError::Uncertain)
     );
 }
+
+#[test]
+fn agent_pages_that_cycle_stop_the_catalog() {
+    let transport = stub();
+    let page = |last: &str| {
+        Reply::json(
+            200,
+            format!(
+                r#"{{"data":[{{"id":"ag_codex","name":"n","harness":"codex-native"}}],"has_more":true,"last_id":"{last}"}}"#
+            ),
+        )
+    };
+    transport.enqueue(
+        "GET",
+        "/v1/agents",
+        vec![page("ag_one"), page("ag_two"), page("ag_one")],
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.creation_catalog()).unwrap_err(),
+        SessionError::InvalidPagination
+    );
+}

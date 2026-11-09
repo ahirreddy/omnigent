@@ -91,3 +91,16 @@ fn malformed_ops_are_errors_not_silent_edits() {
     ));
     assert_eq!(list, [user("a", "A")]);
 }
+
+#[test]
+fn a_later_change_set_replaces_the_wholesale_parts_it_carries() {
+    let mut earlier = crate::reducer::ChangeSet {
+        decisions: Some(Vec::new()),
+        ..crate::reducer::ChangeSet::default()
+    };
+    earlier.extend(crate::reducer::ChangeSet::default());
+    assert_eq!(earlier.decisions, Some(Vec::new()));
+    let mut empty = crate::reducer::ChangeSet::default();
+    empty.extend(earlier);
+    assert_eq!(empty.decisions, Some(Vec::new()));
+}
