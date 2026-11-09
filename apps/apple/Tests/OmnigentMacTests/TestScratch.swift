@@ -18,14 +18,27 @@ final class TestScratch {
   let desktop: DesktopController
   let services: AppServices
 
-  init() throws {
+  /// - Parameters:
+  ///   - managedByOwnSuite: Reads organization servers from this scratch's preferences.
+  ///   - launchArguments: The arguments its services behave as launched with.
+  ///   - notificationPermission: What answers the permission question.
+  ///   - flushDrafts: What quitting does for drafts.
+  /// - Throws: `TestHost.IsolationError` when the private store can't be made.
+  init(
+    managedByOwnSuite: Bool = false, launchArguments: [String] = [],
+    notificationPermission: (any NotificationAuthorizing)? = nil,
+    flushDrafts: @escaping () -> Void = {}
+  ) throws {
     suite = "ai.omnigent.tests.\(UUID().uuidString)"
     isolation = try TestHost.Isolation(
       suite: suite,
       root: FileManager.default.temporaryDirectory.appending(
         path: suite, directoryHint: .isDirectory))
-    desktop = isolation.makeDesktop()
-    services = isolation.makeServices(desktop: desktop)
+    desktop = isolation.makeDesktop(managedDomains: managedByOwnSuite ? [suite] : [])
+    services = isolation.makeServices(
+      desktop: desktop, flushDrafts: flushDrafts,
+      notificationPermission: notificationPermission ?? TestHost.DeniedNotifications(),
+      launchArguments: launchArguments)
   }
 
   var defaults: UserDefaults { isolation.defaults }

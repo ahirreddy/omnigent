@@ -21,14 +21,24 @@ struct OmnigentMacApp: App {
 
   @NSApplicationDelegateAdaptor(OmnigentMacAppDelegate.self) private var appDelegate
 
+  /// The server a new window opens on: the demo's offline one, whatever the default is; then the
+  /// server of a link that launched the app; then the user's default.
+  /// - Parameters:
+  ///   - demo: The demo server, in a demo launch.
+  ///   - linked: The server a link asked for.
+  ///   - preferred: The user's default server.
+  /// - Returns: The server, or `nil` for the connect screen.
+  static func newWindowServerURL(demo: URL?, linked: URL?, preferred: URL?) -> URL? {
+    demo ?? linked ?? preferred
+  }
+
   var body: some Scene {
     let services = appDelegate.services
     let desktop = services.desktop
-    // The demo's windows open on its offline server, whatever the default server is; a window
-    // opened for a link that launched the app opens on the link's server.
     let defaultServerURL = {
-      OmnigentMacAppDelegate.demoServerURL ?? desktop.router.requestedServerURL
-        ?? desktop.preferences.defaultServerURL
+      Self.newWindowServerURL(
+        demo: OmnigentMacAppDelegate.demoServerURL, linked: desktop.router.requestedServerURL,
+        preferred: desktop.preferences.defaultServerURL)
     }
     ServerWindowScene(
       defaultServerURL: defaultServerURL,
@@ -111,6 +121,7 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
     do {
       let isolation = try TestHost.Isolation.forHostProcess()
       try isolation.replaceStandardDefaults()
+      try TestHostNotifications.install()
       return isolation
     } catch {
       fatalError(error.description)
@@ -225,7 +236,7 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   }
 
   #if OMNIGENT_CHROMIUM
-    private func reportUpdater(_ issue: SparkleUpdaterIssue) {
+    func reportUpdater(_ issue: SparkleUpdaterIssue) {
       let message: String
       switch issue {
       case .startFailed(let error):

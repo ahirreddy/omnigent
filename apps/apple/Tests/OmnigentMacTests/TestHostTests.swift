@@ -2,6 +2,7 @@ import AppKit
 import OmnigentBrowser
 import OmnigentDesktop
 import Testing
+import UserNotifications
 
 #if OMNIGENT_CHROMIUM
   @testable import OmnigentMac
@@ -102,6 +103,9 @@ struct TestHostIsolationTests {
   @Test func errorsSayWhatFailed() {
     #expect(
       TestHost.IsolationError.defaultsUnavailable(suite: "a.suite").description.contains("a.suite"))
+    #expect(TestHost.IsolationError.standardDefaultsNotReplaced.description.contains("standard"))
+    #expect(
+      TestHost.IsolationError.notificationsNotReplaced(method: "add").description.contains("add"))
   }
 
   @Test func startsFromEmptyPreferences() throws {
@@ -163,6 +167,20 @@ struct LaunchDelegateTests {
     defer { UserDefaults.standard.removeObject(forKey: key) }
     #expect(UserDefaults.standard.string(forKey: key) == "written")
     #expect(CFPreferencesCopyAppValue(key as CFString, bundleID as CFString) == nil)
+  }
+
+  /// The center is the user's too, through the bundle identifier: nothing here may show, ask for
+  /// permission or change what they have.
+  @Test func nothingReachesTheUsersNotifications() async throws {
+    let center = UNUserNotificationCenter.current()
+    let before = TestHostNotifications.suppressedCount
+    let content = UNMutableNotificationContent()
+    content.title = "A test run must not show this"
+    try await center.add(
+      UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    #expect(TestHostNotifications.suppressedCount == before + 1)
+    #expect(try await center.requestAuthorization(options: [.alert]) == false)
+    #expect(center.delegate == nil)
   }
 
   /// A window's saved frame, which AppKit writes itself, stays out of the user's preferences:

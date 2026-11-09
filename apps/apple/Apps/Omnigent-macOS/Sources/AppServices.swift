@@ -57,6 +57,7 @@ final class AppServices {
   @ObservationIgnored private var notificationAuthorizationRequested = false
   @ObservationIgnored private let flushDrafts: () -> Void
   @ObservationIgnored private let notificationPermission: any NotificationAuthorizing
+  @ObservationIgnored private let isDemo: Bool
 
   /// Where UI tests and the test host keep saved tabs instead of Application Support.
   static let tabsDirectoryKey = "OmnigentTabsDirectory"
@@ -69,12 +70,15 @@ final class AppServices {
   ///   - flushDrafts: Saves the composer drafts when the app quits.
   ///   - notificationPermission: What asks for notification permission; `desktop`'s center when
   ///     `nil`.
+  ///   - launchArguments: The process's arguments, where `-OmnigentDemo` asks for the demo.
   init(
     desktop: DesktopController, defaults: UserDefaults = .standard,
     browserDirectory: URL = BrowserEnvironment.standardDirectory,
     flushDrafts: @escaping () -> Void = { ComposerDraftArchive.shared?.flush() },
-    notificationPermission: (any NotificationAuthorizing)? = nil
+    notificationPermission: (any NotificationAuthorizing)? = nil,
+    launchArguments: [String] = ProcessInfo.processInfo.arguments
   ) {
+    isDemo = launchArguments.contains("-OmnigentDemo")
     self.desktop = desktop
     self.flushDrafts = flushDrafts
     self.notificationPermission = notificationPermission ?? desktop.notifications
@@ -97,7 +101,7 @@ final class AppServices {
       } else {
         tabPersistence = try TabPersistence.applicationSupport(
           bundleID: Bundle.main.bundleIdentifier ?? "ai.omnigent.mac",
-          isDemo: ProcessInfo.processInfo.arguments.contains("-OmnigentDemo"))
+          isDemo: isDemo)
       }
     } catch {
       tabPersistence = nil
@@ -198,7 +202,7 @@ final class AppServices {
   /// A new window's server session over the live services.
   /// - Returns: The session.
   func makeServerSession() -> ServerSession {
-    if ProcessInfo.processInfo.arguments.contains("-OmnigentDemo") {
+    if isDemo {
       do {
         return try ServerSession.demo()
       } catch {

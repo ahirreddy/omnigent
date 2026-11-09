@@ -63,7 +63,7 @@ struct ServerWindowRoot: View {
     )
     .environment(\.useThisMachine, useThisMachine)
     .environment(\.openSettingsAt, .settingsWindow(openSettings: openSettings))
-    .navigationTitle(title(session))
+    .navigationTitle(Self.title(session, boundTo: id.serverURL))
     .sheet(isPresented: $showsCoreDebug) {
       CoreDebugView()
         .environment(session.connection)
@@ -134,20 +134,30 @@ struct ServerWindowRoot: View {
       Task { await services.didConnect(to: url) }
     }
     self.session = session
-    // Quitting stopped the server this Mac runs for itself; reopening goes back to it.
-    let isBound = id.serverURL != nil
-    let isBoundElsewhere = id.serverURL.map { !LocalInstall.isLocalInstall($0.absoluteString) }
-    if !(isBoundElsewhere ?? false), !isBound || desktop.localServer.server.endpoint == nil {
+    if Self.resumesLocalServer(
+      boundTo: id.serverURL, localServerIsRunning: desktop.localServer.server.endpoint != nil)
+    {
       session.signIn.resumeLocalServer()
     }
   }
 
+  /// Quitting stopped the server this Mac runs for itself, so a window opened on the connect
+  /// screen or on that stopped server goes back to it. A window on another server does not.
+  /// - Parameters:
+  ///   - serverURL: The server the window opens on.
+  ///   - localServerIsRunning: Whether this Mac's server is up.
+  /// - Returns: Whether to offer to start the local server again.
+  static func resumesLocalServer(boundTo serverURL: URL?, localServerIsRunning: Bool) -> Bool {
+    guard let serverURL else { return true }
+    return LocalInstall.isLocalInstall(serverURL.absoluteString) && !localServerIsRunning
+  }
+
   /// The server's display name ("This Mac" for a loopback server, never `127.0.0.1`).
-  private func title(_ session: ServerSession) -> String {
+  static func title(_ session: ServerSession, boundTo serverURL: URL?) -> String {
     if let server = session.connection.connectedServer {
       return ExecutionContext.serverDisplayName(name: server.serverName, baseURL: server.baseUrl)
     }
-    guard let url = id.serverURL else { return "Omnigent" }
+    guard let url = serverURL else { return "Omnigent" }
     return ExecutionContext.serverDisplayName(name: nil, baseURL: url.absoluteString)
   }
 

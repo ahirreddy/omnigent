@@ -22,6 +22,8 @@ enum TestHost {
     case defaultsUnavailable(suite: String)
     /// `UserDefaults.standard` could not be pointed at the private preferences.
     case standardDefaultsNotReplaced
+    /// A notification center method could not be replaced.
+    case notificationsNotReplaced(method: String)
     /// The directory could not be created.
     case directoryUnavailable(path: String, reason: String)
 
@@ -31,6 +33,8 @@ enum TestHost {
         "The test host has no private preferences: \(suite) is not usable."
       case .standardDefaultsNotReplaced:
         "The test host could not replace UserDefaults.standard."
+      case .notificationsNotReplaced(let method):
+        "The test host could not silence UNUserNotificationCenter's \(method)."
       case .directoryUnavailable(let path, let reason):
         "The test host has no private directory at \(path): \(reason)"
       }
@@ -96,18 +100,22 @@ enum TestHost {
 
     /// Shell services that can't reach the user's server, host, records or preferences: local
     /// processes are off, and the home and records they would use are private anyway.
+    /// - Parameter managedDomains: The domains organization servers come from.
     /// - Returns: The services, with the menu bar extra off.
-    func makeDesktop() -> DesktopController {
+    func makeDesktop(managedDomains: [String] = []) -> DesktopController {
       var dependencies = LocalServerManager.Dependencies.live(
         records: LocalServerRecordStore(
           directory: root.appending(path: "LocalServer", directoryHint: .isDirectory)))
       dependencies.environment = [:]
       dependencies.homeDirectory = root
       let desktop = DesktopController(
-        defaults: defaults, managedDomains: [],
+        defaults: defaults, managedDomains: managedDomains,
         localServerCapability: .unavailable(.disabled("This process hosts unit tests.")),
         localServerDependencies: dependencies)
       desktop.localServerPreferences.showsMenuBarExtra = false
+      desktop.notifications.preferencesProvider = {
+        NotificationPreferences(turnEnded: false, elicitations: false, runnerOffline: false)
+      }
       return desktop
     }
 
@@ -117,14 +125,18 @@ enum TestHost {
     ///   - flushDrafts: Saves composer drafts at quit; by default nothing touches the user's.
     ///   - notificationPermission: Answers the permission question; by default it stays denied,
     ///     so no system prompt can appear.
+    ///   - launchArguments: The arguments to behave as launched with; none by default, as the
+    ///     test host's own hold nothing the tests chose.
     /// - Returns: The services, with nothing kept in the user's Application Support.
     func makeServices(
       desktop: DesktopController, flushDrafts: @escaping () -> Void = {},
-      notificationPermission: any NotificationAuthorizing = DeniedNotifications()
+      notificationPermission: any NotificationAuthorizing = DeniedNotifications(),
+      launchArguments: [String] = []
     ) -> AppServices {
       AppServices(
         desktop: desktop, defaults: defaults, browserDirectory: browserDirectory,
-        flushDrafts: flushDrafts, notificationPermission: notificationPermission)
+        flushDrafts: flushDrafts, notificationPermission: notificationPermission,
+        launchArguments: launchArguments)
     }
   }
 
