@@ -103,13 +103,15 @@ struct AddPolicySheet: View {
         Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
         Button("Add") { submit() }
           .keyboardShortcut(.defaultAction)
-          .disabled(selected == nil || isAdding)
+          .disabled(selected == nil || isAdding || trimmedName.isEmpty)
           .accessibilityIdentifier("settings.add-policy-confirm")
       }
       .padding(Theme.Spacing.large)
     }
     .settingsSheetFrame(width: 520, height: 520)
   }
+
+  private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
   private var picker: some View {
     Section {
@@ -216,7 +218,7 @@ struct AddPolicySheet: View {
     isAdding = true
     failed = false
     Task {
-      let added = await add(selected, name, values)
+      let added = await add(selected, trimmedName, values)
       isAdding = false
       if added { dismiss() } else { failed = true }
     }
