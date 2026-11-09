@@ -5,7 +5,7 @@ use omnigent_core as core;
 use omnigent_core::SessionError;
 use omnigent_core::auth::databricks::DatabricksError;
 use omnigent_core::auth::errors::{AuthFailure as CoreAuthFailure, HostedAuthError, OidcError};
-use omnigent_core::realtime::LinkError;
+use omnigent_core::realtime::{HydrationFailure, LinkError};
 
 /// Longest server body kept in [`CoreError::HttpStatus`].
 const MAX_BODY_CHARS: usize = 1_000;
@@ -159,6 +159,8 @@ pub enum LinkErrorKind {
     SendFailed,
     Hydration,
     HostContract,
+    /// The stream or its snapshot answered 404: the session may no longer exist.
+    NotFound,
 }
 
 /// `omnigent_core::auth::databricks::DatabricksError`'s variants.
@@ -558,6 +560,10 @@ impl From<OidcError> for CoreError {
 
 const fn link_kind(error: &LinkError) -> LinkErrorKind {
     match error {
+        LinkError::HttpStatus { status: 404 }
+        | LinkError::Hydration(HydrationFailure::HttpStatus { status: 404 }) => {
+            LinkErrorKind::NotFound
+        }
         LinkError::HttpStatus { .. } => LinkErrorKind::HttpStatus,
         LinkError::UnexpectedContentType { .. } => LinkErrorKind::UnexpectedContentType,
         LinkError::Connection(_) => LinkErrorKind::Connection,
@@ -814,6 +820,31 @@ mod tests {
 
         let unauthorized: CoreError = SessionError::Unauthorized { reason: None }.into();
         assert!(unauthorized.requires_sign_in());
+    }
+
+    #[test]
+    fn a_missing_session_reads_as_not_found_from_the_stream_or_its_snapshot() {
+        for error in [
+            LinkError::HttpStatus { status: 404 },
+            LinkError::Hydration(HydrationFailure::HttpStatus { status: 404 }),
+        ] {
+            let error: CoreError = error.into();
+            assert!(matches!(
+                error,
+                CoreError::Link {
+                    kind: LinkErrorKind::NotFound,
+                    ..
+                }
+            ));
+        }
+        let other: CoreError = LinkError::HttpStatus { status: 500 }.into();
+        assert!(matches!(
+            other,
+            CoreError::Link {
+                kind: LinkErrorKind::HttpStatus,
+                ..
+            }
+        ));
     }
 
     #[test]

@@ -64,7 +64,9 @@ enum LiveConversationFixture {
     }
   }
 
-  static func connected(_ gate: EventsGate) async throws -> (ConnectionStore, ConversationStore) {
+  static func connected(
+    _ gate: EventsGate, streams: FakeEventStreamTransport = FakeEventStreamTransport()
+  ) async throws -> (ConnectionStore, ConversationStore) {
     let routes: [String: HttpResponse] = [
       "/.well-known/omnigent.json": .json(ManifestFixtures.localNoAuth),
       "/v1/info": .json(#"{"single_user":true,"accounts_enabled":false}"#),
@@ -78,7 +80,6 @@ enum LiveConversationFixture {
     let http = FakeHttpTransport { request throws(TransportError) in
       await gate.respond(request, routes: routes)
     }
-    let streams = FakeEventStreamTransport()
     let core = try ClientCore(
       http: http, streams: streams, sockets: FakeWebSocketTransport(), clock: SystemClock(),
       scheduler: TaskScheduler(), secureStore: InMemorySecureStore(),

@@ -206,6 +206,27 @@ struct SupersededBanner: View {
   }
 }
 
+/// The banners to end a transcript with, so a failure the turn, a row and the stream all report
+/// shows once.
+nonisolated struct TranscriptFailures: Equatable {
+  /// The last turn's failure, unless a recent row already says it.
+  var turnFailure: String?
+  /// A session error, unless a recent row or the turn's failure already says it.
+  var sessionError: String?
+
+  init(_ state: ConversationViewState) {
+    let shownInRows = Set(
+      state.rows.suffix(20).compactMap { row in
+        row.activity?.isFailure == true ? row.activity?.summary : nil
+      })
+    let failure = state.header.failureMessage
+    turnFailure = failure.flatMap { shownInRows.contains($0) ? nil : $0 }
+    sessionError = state.errorMessage.flatMap {
+      $0 == failure || shownInRows.contains($0) ? nil : $0
+    }
+  }
+}
+
 /// The last turn failed, with Resume when the session can resume.
 struct FailureBanner: View {
   let message: String

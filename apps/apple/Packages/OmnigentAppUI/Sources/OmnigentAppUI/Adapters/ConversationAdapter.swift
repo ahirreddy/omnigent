@@ -124,13 +124,12 @@ enum ConversationAdapter {
   }
 
   /// The newest failure to show. Stream and transport failures describe a connection problem,
-  /// which the connection line covers while it lasts; once the stream is live again they are
-  /// history, not a current error. Every other failure stays until dismissed.
+  /// which the connection line under the composer shows while it lasts and which is history once
+  /// the stream is live, so neither is a card. Every other failure stays until dismissed.
   static func errorMessage(_ store: ConversationStore) -> String? {
-    let live = store.link == .live
     let current = store.errors.last { error in
       switch error {
-      case .Link, .Transport: !live
+      case .Link, .Transport: false
       default: true
       }
     }

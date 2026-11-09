@@ -331,6 +331,23 @@ struct SessionTabsLifecycleTests {
       current: ["kept": false, "archived": true, "old": false])
     #expect(gone == ["deleted", "archived"])
   }
+
+  @Test("A session the server no longer has loses its tabs; a 404 the list contradicts doesn't")
+  func missing() {
+    let answers = [
+      SessionAnswer(id: "live", isClosed: false, answeredNotFound: false),
+      SessionAnswer(id: "stale", isClosed: false, answeredNotFound: true),
+      SessionAnswer(id: "restarting", isClosed: false, answeredNotFound: true),
+      SessionAnswer(id: "removed", isClosed: true, answeredNotFound: false),
+      SessionAnswer(id: "sub-agent", isClosed: false, answeredNotFound: false),
+    ]
+    #expect(
+      SessionTabsLifecycle.missing(
+        answers, isListLoaded: true, listed: ["live", "restarting"])
+        == ["stale", "removed"])
+    // Before the list loads, only a closed session is known to be gone.
+    #expect(SessionTabsLifecycle.missing(answers, isListLoaded: false, listed: []) == ["removed"])
+  }
 }
 
 @Suite("In-app links")

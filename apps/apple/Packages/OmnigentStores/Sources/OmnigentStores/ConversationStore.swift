@@ -77,6 +77,10 @@ public final class ConversationStore {
   public private(set) var lastFailure: String?
   /// Failures in this session, newest last. Never dropped silently.
   public private(set) var errors: [CoreError] = []
+  /// The server answered 404 for a session this store never loaded, as a tab saved before the
+  /// session was deleted does.
+  public private(set) var answeredNotFoundBeforeLoading = false
+  private var hasLoaded = false
   /// The last terminal or browser read found the runner offline: the agent is asleep until a
   /// message relaunches it. A panel state, not a session error.
   public private(set) var runnerUnavailable: CoreError?
@@ -310,13 +314,18 @@ public final class ConversationStore {
     if state != .live, isHydrated { isHydrated = false }
     switch state {
     case .reconnecting(let reason, _, _): record(reason)
-    case .failed(let error): record(error)
+    case .failed(let error):
+      record(error)
+      // The core retries 404s and gave up: the session is gone, not restarting.
+      if error.isSessionNotFound { closed() }
     default: break
     }
   }
 
   func hydrated() {
     if !isHydrated { isHydrated = true }
+    if answeredNotFoundBeforeLoading { answeredNotFoundBeforeLoading = false }
+    hasLoaded = true
     composer.streamReady()
   }
 
@@ -339,6 +348,11 @@ public final class ConversationStore {
   }
 
   func record(_ error: CoreError) {
+    if error.isSessionNotFound {
+      // The connection line says so while the core retries, and closing follows if it gives up.
+      if !hasLoaded { answeredNotFoundBeforeLoading = true }
+      return
+    }
     if error.isRunnerUnavailable {
       if error != runnerUnavailable { runnerUnavailable = error }
       return
