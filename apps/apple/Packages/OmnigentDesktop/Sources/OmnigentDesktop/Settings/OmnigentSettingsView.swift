@@ -229,6 +229,7 @@ struct NotificationSettingsTab: View {
       }
       Section {
         Toggle("Play sound", isOn: $preferences.soundEnabled)
+          .accessibilityIdentifier("settings.notifications.play-sound")
         Picker("Sound", selection: $preferences.soundName) {
           ForEach(soundNames, id: \.self) { Text($0).tag($0) }
         }

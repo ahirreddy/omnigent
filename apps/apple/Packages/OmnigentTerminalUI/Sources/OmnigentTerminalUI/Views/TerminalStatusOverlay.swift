@@ -99,11 +99,13 @@ struct TerminalStatusOverlay: View {
       if canRetry {
         Button("Reattach", action: retry)
           .buttonStyle(.borderedProminent)
+          .accessibilityIdentifier("terminal-reattach")
       }
     }
     .padding(20)
     .frame(maxWidth: 360)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
     .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("terminal-status-card")
   }
 }

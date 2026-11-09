@@ -48,6 +48,10 @@ public struct FileTreeView: View {
             .id(row.id)
             .contentShape(.rect)
             .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier(
+              row.entry.map { "workspace.tree.row.\($0.path)" } ?? "",
+              isEnabled: row.entry != nil
+            )
             .onTapGesture {
               guard let entry = row.entry else { return }
               model.selection = entry.path
