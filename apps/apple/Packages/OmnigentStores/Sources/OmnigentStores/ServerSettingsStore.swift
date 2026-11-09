@@ -134,6 +134,7 @@ public final class ServerSettingsStore {
   /// Reads the next page of archived sessions.
   public func loadMoreArchived() async {
     guard hasMoreArchived, let loaded = archived.value else { return }
+    error = nil
     await readArchivedPage(appending: loaded)
   }
 
@@ -146,7 +147,12 @@ public final class ServerSettingsStore {
       archivedCursor = page.nextCursor
       hasMoreArchived = page.nextCursor != nil
     } catch {
-      archived = .failed(coreError(error))
+      // A later page failing leaves the sessions already shown, and the cursor to retry from.
+      if loaded.isEmpty {
+        archived = .failed(coreError(error))
+      } else {
+        self.error = coreError(error)
+      }
     }
   }
 
