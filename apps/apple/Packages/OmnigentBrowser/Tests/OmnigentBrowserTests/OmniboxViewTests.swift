@@ -199,6 +199,24 @@
       #expect(!fixture.model.isBookmarked)
     }
 
+    @Test("the pill's Clear empties the text and goes away")
+    func pillClear() throws {
+      let fixture = try TabFixture()
+      let screen = OffscreenWindow(field(fixture, style: .pill), width: 700, height: 400)
+      defer { screen.close() }
+      fixture.model.focusOmnibox()
+      screen.settle()
+      try screen.type("https://typed.example")
+      screen.settle()
+      let controls = screen.controlFrames
+      // Clear, then Cancel, then the suggestion for what was typed.
+      let clear = try #require(controls.first)
+      try screen.click(CGPoint(x: clear.midX, y: clear.midY))
+      screen.settle()
+      #expect((screen.window.firstResponder as? NSText)?.string.isEmpty == true)
+      #expect(screen.controlFrames.count < controls.count)
+    }
+
     @Test("the pill clears while editing, and Cancel gives up")
     func pillStyle() throws {
       let fixture = try TabFixture()

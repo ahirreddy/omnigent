@@ -25,6 +25,17 @@ struct StoreFailureTests {
     #expect(throws: BrowserError.self) { try unwritable.write(["value"]) }
   }
 
+  @Test("a credential held in memory can be forgotten")
+  func inMemoryCredentialRemoval() {
+    let store = InMemoryBrowserCredentialStore()
+    let space = BrowserProtectionSpace(
+      host: "a.test", port: 443, realm: "Realm", scheme: "basic", isProxy: false, isSecure: true)
+    store.save(BrowserCredential(username: "owl", password: "hoot"), for: space)
+    #expect(store.credential(for: space)?.username == "owl")
+    store.removeCredential(for: space)
+    #expect(store.credential(for: space) == nil)
+  }
+
   @Test("a debounced save that fails tells whoever is listening, and stays pending")
   func debouncedFailure() async throws {
     let file = BrowserPersistentFile<[String]>(

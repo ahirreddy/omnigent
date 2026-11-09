@@ -238,6 +238,22 @@
       #expect(store.profile(id: second.id) == nil)
     }
 
+    @Test("data that can't be removed with a profile says why")
+    func deleteFailure() async throws {
+      let fixture = try TabFixture()
+      let store = fixture.environment.profiles
+      let second = try store.create(name: "Second", color: .green, avatar: .initials)
+      store.cleanUp = { _ throws(BrowserError) in throw .storageFailed("The disk refused.") }
+      let screen = OffscreenWindow(
+        BrowserProfileManagerView(environment: fixture.environment), width: 520, height: 420)
+      defer { screen.close() }
+      await screen.catchUp()
+      try screen.clickDrawnButton(at: 4)
+      await screen.letSheetSettle()
+      #expect(store.profile(id: second.id) == nil)
+      #expect(try screen.shows("The disk refused."))
+    }
+
     @Test("deleting the last profile isn't offered")
     func lastProfile() async throws {
       let fixture = try TabFixture()

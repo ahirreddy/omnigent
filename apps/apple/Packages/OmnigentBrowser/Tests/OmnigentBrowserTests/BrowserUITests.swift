@@ -113,6 +113,14 @@ struct PromptPresenterTests {
     }
     presenter.tab(tab, didRequest: .permission(unknown))
     #expect(other == .deny)
+    presenter.permissionStore.record(
+      .deny, for: .microphone, origin: "https://a.test", profile: tab.profile)
+    var refused: BrowserPermissionAnswer?
+    let remembered = BrowserPermissionPrompt(origin: "https://a.test", permissions: .microphone) {
+      refused = $0
+    }
+    presenter.tab(tab, didRequest: .permission(remembered))
+    #expect(refused == .deny)
   }
 
   @Test func downloadsGoStraightToTheFolderUnlessAsked() throws {

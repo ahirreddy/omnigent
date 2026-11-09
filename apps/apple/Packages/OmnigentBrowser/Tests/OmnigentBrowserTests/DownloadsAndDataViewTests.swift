@@ -127,6 +127,12 @@
       #expect(SystemSideEffects.record.panelCount == 1)
       #expect(settings.directory == original)
 
+      let chosen = try temporaryDirectory()
+      SystemSideEffects.answer(panel: .OK, panelURL: chosen)
+      defer { SystemSideEffects.reset() }
+      try screen.click(CGPoint(x: change.midX, y: change.midY))
+      #expect(settings.directory == chosen)
+
       let ask = try #require(screen.controlFrames.last)
       try screen.click(CGPoint(x: ask.midX, y: ask.midY))
       #expect(settings.askBeforeDownload)
@@ -288,6 +294,12 @@
         BrowserTabCommandItems(tab: fixture?.model, sheet: sheet, includesFindAndZoom: find)
       }
       .menuStyle(.borderlessButton)
+    }
+
+    @Test("the Browser menu can go in an app's menu bar")
+    func menuBarCommands() {
+      let commands = BrowserTabCommands(includesFindAndZoom: false)
+      #expect(String(describing: type(of: commands.body)).contains("CommandMenu"))
     }
 
     @Test("every item reaches the focused tab")
