@@ -46,6 +46,19 @@
       try window.click(jumpPill)
     }
 
+    /// Whether a jump from `start` ended at the newest row, with only the list's bottom padding
+    /// past it. The jump is an animated scroll, so this waits for it to leave `start` and stop.
+    private func jumpReachesEnd(
+      from start: CGFloat, _ viewport: TranscriptScrollDriver, on window: OffscreenWindow<AnyView>
+    ) async throws -> Bool {
+      var recent: [CGFloat] = []
+      let stopped = try await waitUntil(window) {
+        recent = recent.suffix(2) + [viewport.offset]
+        return recent.count == 3 && Set(recent).count == 1 && recent[0] != start
+      }
+      return stopped && viewport.distanceToEnd() <= Theme.Spacing.extraLarge + 1
+    }
+
     /// Previous is above Next at the transcript's bottom-trailing corner.
     private func navigatorButton(
       _ direction: TranscriptNavigation.Direction, on window: OffscreenWindow<AnyView>
@@ -139,8 +152,7 @@
       #expect(try window.shows("New output"))
 
       try window.click(jumpPill)
-      try await letTasksRun(window, milliseconds: 400)
-      #expect(viewport.distanceToEnd() < 80)
+      #expect(try await jumpReachesEnd(from: reading, viewport, on: window))
       #expect(try !window.shows("New output"))
     }
 
@@ -151,8 +163,7 @@
       defer { window.close() }
       viewport.move(to: 0)
       conversation.scrollRequest += 1
-      try await letTasksRun(window, milliseconds: 400)
-      #expect(viewport.distanceToEnd() < 80)
+      #expect(try await jumpReachesEnd(from: 0, viewport, on: window))
     }
 
     @Test("Sending a message takes the reader to it, wherever they were reading")
@@ -162,8 +173,7 @@
       defer { window.close() }
       viewport.move(to: 0)
       conversation.append(TranscriptFixture.user("mine", "My new question"))
-      try await letTasksRun(window, milliseconds: 400)
-      #expect(viewport.distanceToEnd() < 80)
+      #expect(try await jumpReachesEnd(from: 0, viewport, on: window))
       #expect(try window.shows("My new question"))
     }
 
@@ -243,9 +253,9 @@
     func nextAtEnd() async throws {
       let (window, viewport) = try await screen(longSession())
       defer { window.close() }
+      let framed = viewport.offset
       try window.click(try navigatorButton(.next, on: window))
-      try await letTasksRun(window, milliseconds: 400)
-      #expect(viewport.distanceToEnd() < 80)
+      #expect(try await jumpReachesEnd(from: framed, viewport, on: window))
       #expect(try !window.shows("Jump to latest"))
     }
 
