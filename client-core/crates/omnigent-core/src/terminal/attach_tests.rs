@@ -718,3 +718,12 @@ fn replays_the_recorded_attach_to_a_deleted_terminal() {
 }
 
 use base64::Engine as _;
+
+#[test]
+fn foregrounding_a_healthy_attach_changes_nothing_and_the_grid_size_reads_back() {
+    let mut harness = Harness::interactive();
+    harness.run(AttachInput::Start);
+    harness.open();
+    assert_eq!(harness.machine.grid_size(), None);
+    assert_eq!(harness.run(AttachInput::Foreground), Vec::new());
+}

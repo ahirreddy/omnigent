@@ -267,6 +267,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_secret_converts_without_showing_itself() {
+        let secret = SecretString::from("value".to_owned());
+        assert!(!secret.is_empty());
+        assert!(SecretString::new("").is_empty());
+        assert!(!format!("{secret:?}").contains("value"));
+        assert_eq!(secret.into_inner(), "value");
+    }
+
+    #[test]
+    fn store_and_entropy_errors_read_as_sentences() {
+        assert_eq!(
+            SecureStoreError::Other {
+                message: "denied".to_owned()
+            }
+            .to_string(),
+            "secure storage failed: denied"
+        );
+        assert_eq!(
+            EntropyError::ShortRead {
+                requested: 32,
+                received: 4
+            }
+            .to_string(),
+            "asked for 32 random bytes, got 4"
+        );
+    }
+
+    #[test]
     fn secret_debug_is_redacted() {
         let secret = SecretString::new("hunter2");
         assert_eq!(format!("{secret:?}"), "SecretString(<redacted>)");

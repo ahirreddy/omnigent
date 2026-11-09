@@ -117,3 +117,22 @@ fn discarding_forgets_the_hold() {
         Err(DraftError::UnknownItem)
     );
 }
+
+#[test]
+fn a_held_send_waits_for_the_running_send_and_a_locked_item_cannot_upload_again() {
+    let mut store = AttachmentDraftStore::new();
+    let items = uploaded(&mut store, &["a.txt"]);
+    let hold = store.hold(&key()).unwrap().unwrap();
+    let more = uploaded(&mut store, &["b.txt"]);
+    let batch = store.begin_submission(&key()).unwrap();
+    assert_eq!(batch.key(), &key());
+    assert_eq!(
+        store.begin_held_submission(&key(), hold).map(|_| ()),
+        Err(DraftError::NotReady)
+    );
+    assert_eq!(
+        store.begin_upload(&key(), more[0]).map(|_| ()),
+        Err(DraftError::Locked)
+    );
+    assert_eq!(items.len(), 1);
+}

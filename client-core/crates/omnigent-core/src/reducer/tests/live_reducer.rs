@@ -1,12 +1,14 @@
 //! Port of `NativeLab` `LiveConversationReducerTests.swift` (the WP3 rows).
 
 use omnigent_protocol::sessions::NativeModelOption;
+use omnigent_protocol::{ConversationItem, FromWire, ServerStreamEvent};
 use serde_json::json;
 
 use super::{Harness, assistant, conversation, events, user};
+use crate::reducer::live::{event_response_id, matches_text};
 use crate::reducer::{
     ActivityKind, ReducerError, ReportedValue, RowRole, SessionSettings, TurnStatus, effort_label,
-    model_label,
+    model_label, project_item,
 };
 
 const SESSION: &str = "session1";
@@ -706,4 +708,232 @@ fn an_error_event_detail_stays_with_its_row() {
             .iter()
             .any(|detail| detail.text.contains("slow"))
     );
+}
+
+#[test]
+fn model_and_effort_labels_cover_routing_options_and_silence() {
+    let routed = SessionSettings {
+        routing_mode: Some("on".to_owned()),
+        ..SessionSettings::default()
+    };
+    assert_eq!(model_label(&routed), "Smart routing");
+    assert_eq!(
+        model_label(&SessionSettings::default()),
+        "Model not reported"
+    );
+    assert_eq!(effort_label(&SessionSettings::default()), "Not reported");
+    let option = |id: &str, display_name: Option<&str>, model: Option<&str>| {
+        serde_json::from_value::<NativeModelOption>(json!({
+            "id": id, "displayName": display_name, "model": model
+        }))
+        .unwrap()
+    };
+    let named = |value: &str, options: Vec<NativeModelOption>| SessionSettings {
+        model_override: ReportedValue::Value {
+            value: value.to_owned(),
+        },
+        model_options: options,
+        ..SessionSettings::default()
+    };
+    assert_eq!(
+        model_label(&named("a", vec![option("a", Some("Fancy"), None)])),
+        "Fancy"
+    );
+    assert_eq!(
+        model_label(&named("a", vec![option("a", None, Some("model-a"))])),
+        "model-a"
+    );
+    assert_eq!(model_label(&named("a", vec![option("a", None, None)])), "a");
+    assert_eq!(ReportedValue::reported(None), ReportedValue::HarnessDefault);
+    assert_eq!(
+        ReportedValue::reported(Some("x".to_owned())),
+        ReportedValue::Value {
+            value: "x".to_owned()
+        }
+    );
+}
+
+#[test]
+fn every_row_vocabulary_has_a_stable_name() {
+    assert_eq!(ActivityKind::Error.as_str(), "error");
+    assert_eq!(ActivityKind::Unknown.as_str(), "unknown");
+    assert_eq!(ActivityKind::Retry.as_str(), "retry");
+    assert_eq!(ActivityKind::File.as_str(), "file");
+    assert_eq!(ActivityKind::Policy.as_str(), "policy");
+    assert_eq!(ActivityKind::ClientTask.as_str(), "clientTask");
+    assert_eq!(ActivityKind::Browser.as_str(), "browser");
+    assert_eq!(ActivityKind::Sidechat.as_str(), "sidechat");
+    assert_eq!(TurnStatus::Running.as_str(), "running");
+    assert_eq!(TurnStatus::NeedsResponse.as_str(), "needsResponse");
+}
+
+#[test]
+fn a_snapshot_finds_a_row_by_id() {
+    let harness = Harness::with_rows(SESSION, vec![assistant("m1", "hello")]);
+    let snapshot = harness.snapshot();
+    assert_eq!(
+        snapshot.row("m1").map(|row| row.text.as_str()),
+        Some("hello")
+    );
+    assert_eq!(snapshot.row("missing"), None);
+}
+
+#[test]
+fn state_sections_cover_todos_servers_resources_and_failed_changes() {
+    use std::collections::BTreeMap;
+
+    use omnigent_protocol::events::{Todo, TodoStatus};
+
+    use crate::reducer::{ChangedFiles, SessionEventState, sections};
+
+    let resource = |value: serde_json::Value| value.as_object().unwrap().clone();
+    let state = SessionEventState {
+        background_task_count: Some(3),
+        background_tasks: Some(Vec::new()),
+        todos: Some(vec![
+            Todo {
+                content: "Write".to_owned(),
+                status: TodoStatus::Pending,
+                active_form: None,
+            },
+            Todo {
+                content: "Ship".to_owned(),
+                status: TodoStatus::InProgress,
+                active_form: None,
+            },
+        ]),
+        mcp_startup: Some(BTreeMap::from([(
+            "docs".to_owned(),
+            serde_json::from_value(json!({"status": "failed", "error": "no route"})).unwrap(),
+        )])),
+        resources: Some(BTreeMap::from([(
+            "r1".to_owned(),
+            resource(json!({"type": "file", "metadata": {"cwd": "/x", "other": 1}})),
+        )])),
+        changed_files: Some(BTreeMap::from([(
+            "default".to_owned(),
+            ChangedFiles::Failed {
+                message: "Changed files unavailable".to_owned(),
+            },
+        )])),
+        ..SessionEventState::default()
+    };
+    let shown = sections(&state);
+    let text = format!("{shown:?}");
+    assert!(text.contains("Ship"), "{text}");
+    assert!(text.contains("no route"), "{text}");
+    assert!(text.contains("details unavailable"), "{text}");
+    assert!(text.contains("Changed files unavailable"), "{text}");
+    assert!(text.contains("/x"), "{text}");
+}
+
+#[test]
+fn a_repeated_status_and_an_empty_first_delta_add_nothing() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "response.in_progress", "response_id": "r1"}));
+    harness.send(json!({"type": "response.output_text.delta", "response_id": "r1", "delta": ""}));
+    assert_eq!(harness.ids(), Vec::<String>::new());
+    harness.send(json!({"type": "response.output_text.delta", "response_id": "r1", "delta": "hi"}));
+    harness.send(json!({"type": "response.in_progress", "response_id": "r1"}));
+    assert_eq!(harness.last().text, "hi");
+    assert!(harness.last().is_streaming, "the same response keeps going");
+}
+
+#[test]
+fn resolving_one_of_two_decisions_keeps_the_other_waiting() {
+    let mut harness = Harness::new(SESSION);
+    let request = |id: &str| {
+        json!({"type": "response.elicitation_request", "elicitation_id": id,
+            "params": {"message": "May I?"}})
+    };
+    harness.send(request("e1"));
+    harness.send(request("e2"));
+    assert_eq!(harness.snapshot().decisions.len(), 2);
+    harness.send(json!({"type": "response.elicitation_resolved", "elicitation_id": "e1"}));
+    assert_eq!(harness.snapshot().decisions.len(), 1);
+    assert_eq!(harness.snapshot().header.status, TurnStatus::NeedsResponse);
+}
+
+#[test]
+fn a_compaction_preview_is_retired_unless_it_failed() {
+    let compaction = json!({"type": "response.output_item.done", "item": {
+        "id": "c1", "type": "compaction", "summary": "Shorter"}});
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "response.compaction.in_progress"}));
+    assert_eq!(harness.ids().len(), 1);
+    harness.send(compaction.clone());
+    assert_eq!(harness.ids(), ["c1"]);
+
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "response.compaction.failed"}));
+    harness.send(compaction);
+    assert_eq!(harness.ids().len(), 2, "the failure stays on screen");
+}
+
+#[test]
+fn previews_match_only_commits_of_their_own_kind_and_response() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(
+        json!({"type": "response.retry", "source": "llm", "attempt": 1, "max_attempts": 3,
+        "delay_seconds": 1.0, "error": {"code": "x", "message": "y"}}),
+    );
+    let preview = harness.last().clone();
+    let mut committed = preview.clone();
+    committed.id = "committed".to_owned();
+    assert!(
+        !harness.reducer.matches_activity(&preview, &committed),
+        "retries are never persisted as the same row"
+    );
+
+    let reasoning = |id: &str, summary: &str, response: &str| {
+        let item = ConversationItem::from_value(json!({
+            "id": id, "type": "reasoning", "response_id": response,
+            "summary": [{"type": "summary_text", "text": summary}]
+        }))
+        .unwrap();
+        project_item(&item).unwrap().unwrap()
+    };
+    harness.send(json!({"type": "response.in_progress", "response_id": "r1"}));
+    harness
+        .send(json!({"type": "response.reasoning_summary_text.delta", "delta": "thinking long"}));
+    let preview = harness.last().clone();
+    let same_response = preview.response_id.clone().unwrap();
+    assert!(
+        harness
+            .reducer
+            .matches_activity(&preview, &reasoning("r", "thinking", &same_response))
+    );
+    assert!(
+        !harness
+            .reducer
+            .matches_activity(&preview, &reasoning("r", "thinking long", "another"))
+    );
+
+    let mut text_preview = assistant("live:m", "Hello");
+    text_preview.response_id = Some("r1".to_owned());
+    let mut committed = assistant("other", "Hello there");
+    committed.response_id = Some("r2".to_owned());
+    assert!(!matches_text(&text_preview, &committed));
+    committed.response_id = Some("r1".to_owned());
+    assert!(matches_text(&text_preview, &committed));
+    committed.text = String::new();
+    assert!(
+        !matches_text(&text_preview, &committed),
+        "nothing to compare"
+    );
+}
+
+#[test]
+fn every_lifecycle_event_names_its_response() {
+    for (kind, fields) in [
+        ("response.created", json!({"response": {"id": "r1"}})),
+        ("response.queued", json!({"response": {"id": "r1"}})),
+        ("response.in_progress", json!({"response": {"id": "r1"}})),
+        ("session.interrupted", json!({"response_id": "r1"})),
+    ] {
+        let mut value = fields;
+        value["type"] = json!(kind);
+        let event = ServerStreamEvent::from_value(value).unwrap();
+        assert_eq!(event_response_id(&event), Some("r1"), "{kind}");
+    }
 }

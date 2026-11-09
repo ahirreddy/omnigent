@@ -1007,3 +1007,48 @@ fn loopback_redirects_work_for_desktop_sign_in() {
     );
     assert!(!format!("{attempt:?}").contains(&state));
 }
+
+#[test]
+fn oidc_server_reports_its_parts_and_refuses_other_schemes() {
+    let server = server();
+    assert_eq!(server.origin(), "http://localhost:6767");
+    assert_eq!(server.host(), HOST);
+    assert_eq!(attempt().server(), &server);
+    assert_eq!(
+        OidcServer::from_url(Url::parse("ftp://example.com").unwrap()),
+        Err(OidcError::InvalidServerUrl)
+    );
+}
+
+#[test]
+fn oidc_forgetting_an_unreadable_grant_says_so_and_still_deletes() {
+    let credentials = credentials();
+    credentials
+        .store()
+        .insert(&server().grant_key(), b"not a grant");
+    let forgotten = block_on(credentials.forget_grant(&server()));
+    assert_eq!(forgotten.revocation, None);
+    assert_eq!(
+        forgotten.load_error,
+        Some(OidcError::InvalidGrantRecord { host: HOST.into() })
+    );
+    assert_eq!(credentials.store().value(&server().grant_key()), None);
+
+    credentials.store().fail_get.set(true);
+    let forgotten = block_on(credentials.forget_grant(&server()));
+    assert!(matches!(
+        forgotten.load_error,
+        Some(OidcError::Store { .. })
+    ));
+}
+
+#[test]
+fn oidc_a_token_that_cannot_be_a_header_is_rejected_without_a_request() {
+    let credentials = credentials();
+    let token = SecretString::new("bad token");
+    assert_eq!(
+        block_on(credentials.is_accepted(&server(), &token, SessionPresentation::Bearer)),
+        Err(OidcError::SessionRejected { host: HOST.into() })
+    );
+    assert_eq!(credentials.transport().take().len(), 0);
+}

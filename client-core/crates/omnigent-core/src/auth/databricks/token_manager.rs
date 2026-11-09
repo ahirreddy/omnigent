@@ -1052,6 +1052,75 @@ mod tests {
     }
 
     #[test]
+    fn two_lookups_reading_an_expired_bundle_share_one_refresh() {
+        let mut manager = TokenManager::new();
+        let scope = default_scope();
+        let bytes = encode_record(&tokens("a", "r", NOW, None)).unwrap();
+        let rejected = tokens("a", "r", NOW, None);
+        let load = |manager: &mut TokenManager, mode: LookupMode| {
+            let LookupStep::Load(ticket) = manager.lookup(&scope, mode) else {
+                panic!("expected a load");
+            };
+            assert_eq!(ticket.scope(), &scope);
+            ticket
+        };
+        let first = load(&mut manager, LookupMode::Cached);
+        let second = load(&mut manager, LookupMode::Cached);
+        let third = load(&mut manager, LookupMode::Rejected(rejected));
+        let started = manager.loaded(first, Ok(Some(bytes.clone())), NOW).unwrap();
+        assert!(
+            matches!(started, LookupStep::StartRefresh { .. }),
+            "{started:?}"
+        );
+        for ticket in [second, third] {
+            let joined = manager
+                .loaded(ticket, Ok(Some(bytes.clone())), NOW)
+                .unwrap();
+            assert!(matches!(joined, LookupStep::Wait { .. }), "{joined:?}");
+        }
+    }
+
+    #[test]
+    fn a_superseded_write_report_only_answers_itself() {
+        let mut manager = TokenManager::new();
+        let scope = default_scope();
+        let first = manager
+            .save(&scope, &tokens("a", "r", 3_000_000, None))
+            .unwrap();
+        let second = manager
+            .save(&scope, &tokens("b", "r", 3_000_000, None))
+            .unwrap();
+        let outcome = manager.write_finished(first.write.id, Ok(()));
+        assert_eq!(outcome.result, Ok(()));
+        assert_eq!(outcome.completions.len(), 0);
+        let outcome = manager.write_finished(second.write.id, Ok(()));
+        assert_eq!(outcome.result, Ok(()));
+    }
+
+    #[test]
+    fn a_candidate_is_not_current_while_a_write_is_pending() {
+        let mut manager = TokenManager::new();
+        let scope = default_scope();
+        let saved = tokens("a", "r", 3_000_000, None);
+        let bytes = encode_record(&saved).unwrap();
+        assert_eq!(
+            manager.is_current(&scope, Ok(Some(bytes.clone())), &saved),
+            Ok(true)
+        );
+        let mutation = manager.save(&scope, &saved).unwrap();
+        assert_eq!(
+            manager.is_current(&scope, Ok(Some(bytes)), &saved),
+            Ok(false)
+        );
+        let debug = format!("{:?}", manager.scopes.get(&scope).unwrap().pending);
+        assert!(debug.contains("save: true"), "{debug}");
+        assert!(!debug.contains("value"), "{debug}");
+        assert!(mutation.write.value.is_some());
+        let sign_in = manager.begin_sign_in(&scope);
+        assert_eq!(sign_in.scope(), &scope);
+    }
+
+    #[test]
     fn debug_faults_change_only_their_fields() {
         let saved = tokens(
             "test-access",

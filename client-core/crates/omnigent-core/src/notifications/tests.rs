@@ -648,3 +648,43 @@ fn badge_counts_waiting_or_unseen_sessions_except_the_viewed_one() {
     };
     assert_eq!(unread_badge_ids(&rows, &blurred, |_| false).len(), 2);
 }
+
+#[test]
+fn a_scope_needs_a_workspace_and_reports_its_endpoint() {
+    assert_eq!(
+        NotificationScope::new("https://example.com", "user", ""),
+        Err(NotificationError::EmptyIdentity {
+            field: "workspace_id"
+        })
+    );
+    let scope = NotificationScope::new("https://example.com", "user", "workspace").unwrap();
+    assert_eq!(
+        scope.endpoint(),
+        &ServerEndpoint::new("https://example.com").unwrap()
+    );
+}
+
+#[test]
+fn notification_kinds_have_their_wire_names() {
+    for (kind, name) in [
+        (NotificationKind::Approval, "approval"),
+        (NotificationKind::Completed, "completed"),
+        (NotificationKind::Failed, "failed"),
+    ] {
+        assert_eq!(kind.as_str(), name);
+    }
+}
+
+#[test]
+fn an_oversized_saved_ledger_keeps_the_most_recent_keys() {
+    assert!(NotificationLedger::default().is_empty());
+    let keys: Vec<String> = (0..MAX_LEDGER_ENTRIES + 3)
+        .map(|index| format!("key{index}"))
+        .collect();
+    let ledger = NotificationLedger::from_json(&json!({"version": 1, "keys": keys})).unwrap();
+    assert!(!ledger.is_empty());
+    let saved = ledger.to_json();
+    let saved = saved["keys"].as_array().unwrap();
+    assert_eq!(saved.len(), MAX_LEDGER_ENTRIES);
+    assert_eq!(saved[0], "key3");
+}

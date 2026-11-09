@@ -130,3 +130,41 @@ fn several_repositories_are_not_checked_on_servers_that_cannot_change_them() {
             .all(|request| !path_of(request).ends_with("repository-branches"))
     );
 }
+
+#[test]
+fn github_repos_are_listed_and_a_bad_listing_names_its_route() {
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        "/v1/connections/github/repos",
+        vec![
+            Reply::json(
+                200,
+                r#"{"connected":true,"repos":[{"full_name":"o/r"}],"truncated":true}"#,
+            ),
+            Reply::json(200, r#"{"connected":true,"repos":[{}]}"#),
+        ],
+    );
+    let core = connected(transport);
+    let listing = block_on(core.github_repos()).unwrap();
+    assert_eq!(listing.repos[0].clone_url, "https://github.com/o/r.git");
+    assert!(listing.truncated);
+    assert!(matches!(
+        block_on(core.github_repos()),
+        Err(SessionError::MalformedResponse { detail })
+            if detail.starts_with("/v1/connections/github/repos:")
+    ));
+}
+
+#[test]
+fn a_fork_of_a_session_without_labels_or_profile_has_no_repositories() {
+    let transport = RouteTransport::local();
+    transport.ok(
+        "/v1/sessions/conv_src",
+        r#"{"id":"conv_src","status":"idle","created_at":1,"permission_level":4}"#,
+    );
+    let core = connected(transport);
+    let defaults = block_on(core.fork_sandbox_defaults("conv_src")).unwrap();
+    assert_eq!(defaults.repos.repos.len(), 0);
+    assert_eq!(defaults.profile, None);
+}

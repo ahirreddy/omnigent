@@ -267,6 +267,10 @@ fn goal_control_follows_the_harness() {
         goal_control(None, Some("claude-sdk"), Some("other"), None),
         None
     );
+    assert_eq!(
+        goal_control(None, Some("pi-native"), Some("polly"), None),
+        None
+    );
     assert_eq!(goal_command(" ship it "), Some("/goal ship it".into()));
     assert_eq!(goal_command("  "), None);
 }
@@ -362,5 +366,93 @@ fn a_quoted_side_chat_starts_with_the_quote_as_its_draft() {
         SideChatStart::Command {
             prefix: "/side > why this?\n\n".into()
         }
+    );
+}
+
+#[test]
+fn goal_replies_that_cannot_be_read_are_reported_by_their_route() {
+    let transport = RouteTransport::local();
+    let path = "/v1/sessions/conv_a/codex_goal";
+    let bad =
+        r#"{"goal":{"thread_id":"t","objective":"x","status":"active","token_budget":"many"}}"#;
+    for (method, reply) in [("GET", bad), ("PUT", bad), ("DELETE", "{}")] {
+        transport.respond(Some(method), path, None, Reply::json(200, reply));
+    }
+    transport.respond(Some("DELETE"), path, None, Reply::json(200, "{}"));
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.session_goal("conv_a")),
+        Err(SessionError::MalformedResponse { detail }) if detail.contains("codex_goal")
+    ));
+    assert!(matches!(
+        block_on(core.set_session_goal("conv_a", "x", None, None)),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("acknowledgement")
+    ));
+    assert!(matches!(
+        block_on(core.clear_session_goal("conv_a")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("`cleared`")
+    ));
+}
+
+#[test]
+fn a_goal_with_null_counts_reads_as_unset() {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("GET"),
+        "/v1/sessions/conv_a/codex_goal",
+        None,
+        Reply::json(
+            200,
+            r#"{"goal":{"thread_id":"t","objective":"x","status":"active","token_budget":null}}"#,
+        ),
+    );
+    let core = connected(transport);
+    let goal = block_on(core.session_goal("conv_a")).unwrap().unwrap();
+    assert_eq!(goal.token_budget, None);
+}
+
+#[test]
+fn an_unreadable_plan_mode_acknowledgement_is_uncertain_not_failed() {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("PATCH"),
+        SESSION,
+        None,
+        Reply::json(200, r#"{"id": 5}"#),
+    );
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.set_plan_mode("conv_a", true)),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("acknowledgement")
+    ));
+}
+
+#[test]
+fn a_side_chat_without_a_runner_binds_nothing_and_a_resumable_offline_host_relaunches() {
+    let core = connected(side_chat_transport(&json!({"runner_online": true})));
+    block_on(core.create_side_chat("conv_a", "Why?")).unwrap();
+    assert!(
+        !core
+            .transport()
+            .writes()
+            .iter()
+            .any(|request| request.method == "PATCH"),
+        "no runner to bind"
+    );
+
+    let core = connected(side_chat_transport(&json!({
+        "runner_id": "run_1", "runner_online": false, "host_id": "host_1",
+        "host_online": false, "host_resumable": true,
+    })));
+    core.transport().respond(
+        Some("POST"),
+        "/v1/sessions/conv_a/events",
+        None,
+        Reply::json(200, r#"{"recovered":true}"#),
+    );
+    assert!(block_on(core.create_side_chat("conv_a", "Why?")).is_err());
+    assert_eq!(
+        core.transport().write_bodies(),
+        vec![json!({"type": "retry_session", "data": {}})]
     );
 }

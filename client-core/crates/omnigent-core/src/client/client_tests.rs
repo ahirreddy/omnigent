@@ -1253,3 +1253,29 @@ fn a_malformed_changes_body_reads_as_unavailable() {
         }]
     ));
 }
+
+#[test]
+fn a_disconnect_during_connecting_wins() {
+    let transport = RouteTransport::local();
+    let gate = transport.gate("GET", "/v1/info");
+    let core = core(transport);
+    let endpoint = crate::auth::endpoint::ServerEndpoint::new(super::test_support::LOCAL).unwrap();
+    let mut connecting = pin!(core.connect(endpoint, None, None));
+    assert!(still_pending(connecting.as_mut()));
+    core.disconnect();
+    gate.open();
+    assert_eq!(
+        block_on(connecting).map(|_| ()),
+        Err(SessionError::NotConnected)
+    );
+    assert!(!core.is_connected());
+}
+
+#[test]
+fn listeners_and_ids_report_themselves_without_their_callbacks() {
+    let core = core(RouteTransport::local());
+    assert!(core.config().allows_insecure_http);
+    assert_eq!(super::SubscriptionId(7).get(), 7);
+    let listed = format!("{:?}", super::Listeners::default());
+    assert!(listed.contains("count: 0"), "{listed}");
+}

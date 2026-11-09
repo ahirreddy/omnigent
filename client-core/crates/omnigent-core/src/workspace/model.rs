@@ -630,6 +630,75 @@ mod tests {
     }
 
     #[test]
+    fn decoders_refuse_the_root_a_file_and_the_wrong_shape() {
+        assert_eq!(
+            entry(
+                &serde_json::json!({"path": "", "type": "dir"}),
+                &WorkspacePath::root(),
+                Rooting::Listing
+            ),
+            Err("an entry names the environment root".to_owned())
+        );
+        assert!(matches!(
+            changes(&serde_json::json!({"data": [{"path": ""}]})),
+            Err(WorkspaceError::MalformedResponse { detail }) if detail.contains("environment root")
+        ));
+        assert!(matches!(
+            changes(&serde_json::json!(5)),
+            Err(WorkspaceError::MalformedResponse { detail }) if detail.contains("not an object")
+        ));
+        let listed = changes(&serde_json::json!([
+            {"path": "a.rs"},
+            {"path": "b.rs", "status": "conflicted"},
+        ]))
+        .unwrap();
+        assert_eq!(
+            listed.entries[0].status,
+            ChangeStatus::Unknown(String::new())
+        );
+        assert_eq!(
+            listed.entries[1].status,
+            ChangeStatus::Unknown("conflicted".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_diff_must_be_for_the_file_asked_about_and_may_omit_the_path() {
+        let asked = WorkspacePath::parse("a.rs").unwrap();
+        let reply = serde_json::json!({"diff": "patch"});
+        assert_eq!(file_diff(&reply, &asked).unwrap().path, asked);
+        let other = serde_json::json!({"path": "b.rs", "diff": "patch"});
+        assert!(matches!(
+            file_diff(&other, &asked),
+            Err(WorkspaceError::MalformedResponse { detail }) if detail == "file diff: asked for a.rs, got b.rs"
+        ));
+    }
+
+    #[test]
+    fn a_file_falls_back_to_its_top_level_name() {
+        let file = session_file(&serde_json::json!({"id": "f", "name": "n.txt"})).unwrap();
+        assert_eq!(file.filename, "n.txt");
+        assert_eq!(
+            session_file(&serde_json::json!({"id": "f"})).unwrap_err(),
+            "`metadata.filename` is missing"
+        );
+    }
+
+    #[test]
+    fn a_listing_that_is_really_a_file_says_so() {
+        let path = WorkspacePath::parse("a.rs").unwrap();
+        let object = serde_json::json!({"object": "session.file_content"});
+        assert_eq!(
+            require_list(object.as_object().unwrap(), &path),
+            Err(WorkspaceError::UnexpectedKind {
+                path: "a.rs".to_owned(),
+                expected: "directory",
+                actual: "file",
+            })
+        );
+    }
+
+    #[test]
     fn listing_and_search_rooting() {
         let src = WorkspacePath::parse("src").unwrap();
         let echoed = serde_json::json!({"path": "src/lib.rs", "type": "file"});

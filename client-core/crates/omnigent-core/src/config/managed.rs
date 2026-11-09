@@ -746,6 +746,34 @@ mod tests {
     const IOS: ManagedDialect = ManagedDialect::Ios;
     const DESKTOP: ManagedDialect = ManagedDialect::Desktop;
 
+    #[test]
+    fn entry_errors_read_as_sentences() {
+        assert_eq!(
+            ManagedEntryError::Credentials.to_string(),
+            "must not contain credentials"
+        );
+        assert_eq!(ManagedEntryError::NoHost.to_string(), "has no host");
+        assert!(
+            ManagedEntryError::InvalidOrigin(ServerOriginError::MissingHost)
+                .to_string()
+                .starts_with("has an invalid host or port")
+        );
+    }
+
+    #[test]
+    fn a_url_with_an_empty_host_fails_and_a_query_may_carry_its_own_delimiters() {
+        let entry = |url: &str| {
+            ManagedConfiguration::decode(&json!({SERVER_URLS_KEY: [url]}), IOS)
+                .map(|configuration| configuration.servers[0].authority.clone())
+        };
+        assert!(entry("https://:443").is_err());
+        assert!(entry("https://exa%zzmple.com").is_err());
+        assert_eq!(
+            entry("https://example.com/a?b=/c@d?e").as_deref(),
+            Ok("example.com")
+        );
+    }
+
     fn decode(value: &Value) -> ManagedConfiguration {
         ManagedConfiguration::decode(value, IOS).unwrap()
     }

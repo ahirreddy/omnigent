@@ -347,3 +347,78 @@ fn persisted_rows_carry_the_item_time_for_message_timestamps() {
     assert_eq!(tool.created_at, Some(1_700_000_200));
     assert_eq!(undated.created_at, None);
 }
+
+fn visible(item_type: &str, fields: Value) -> Option<Row> {
+    let mut fields = fields;
+    fields["id"] = json!("item");
+    fields["type"] = json!(item_type);
+    project_item(&ConversationItem::from_value(fields).expect("decodes")).expect("projects")
+}
+
+#[test]
+fn a_meta_item_of_an_unknown_type_stays_hidden() {
+    assert_eq!(visible("brand_new", json!({"is_meta": true})), None);
+    let shown = visible("brand_new", json!({})).expect("visible");
+    assert_eq!(shown.activity_kind(), Some(ActivityKind::Unknown));
+    assert_eq!(
+        shown.activity.unwrap().summary,
+        "Additional session activity"
+    );
+}
+
+#[test]
+fn unknown_blocks_show_as_message_content_and_attachments_keep_their_kind() {
+    let row = decode(
+        "message",
+        json!({"role": "assistant", "content": [
+            {"type": "output_text", "text": "hello"},
+            {"type": "brand_new_block", "payload": {"x": 1}},
+            {"type": "input_image", "image_url": "https://x/a.png"},
+            {"type": "input_audio"},
+            {"type": "input_video"},
+        ]}),
+    );
+    let activity = row.activity.clone().expect("details");
+    assert_eq!(activity.title, "Message content");
+    assert_eq!(activity.summary, "hello");
+    assert_eq!(activity.details[0].title, "brand new block");
+    let kinds: Vec<&str> = row
+        .attachments
+        .iter()
+        .map(|part| part.kind.as_str())
+        .collect();
+    assert_eq!(kinds, ["image", "audio", "video"]);
+}
+
+#[test]
+fn empty_summaries_have_their_own_wording() {
+    let reasoning = decode("reasoning", json!({"summary": []}));
+    assert!(
+        display_text(&reasoning).contains("No public reasoning summary was provided."),
+        "{reasoning:?}"
+    );
+    let compaction = decode("compaction", json!({"summary": ""}));
+    assert!(
+        display_text(&compaction).contains("Earlier context was summarized for this session."),
+        "{compaction:?}"
+    );
+}
+
+#[test]
+fn an_updated_resource_opened_page_and_unknown_tool_read_as_such() {
+    let resource = decode(
+        "resource_event",
+        json!({"event_type": "x.moved", "resource_id": "r", "resource_type": "file"}),
+    );
+    assert!(display_text(&resource).contains("updated"), "{resource:?}");
+    let page = decode(
+        "web_search_call",
+        json!({"action": {"type": "open_page", "url": "https://x"}}),
+    );
+    assert_eq!(page.activity.unwrap().title, "Open web page");
+    let unknown = decode(
+        "native_tool",
+        json!({"item": {"type": "brand_new_call", "id": "n"}}),
+    );
+    assert_eq!(unknown.activity.unwrap().summary, "Provider tool activity");
+}
