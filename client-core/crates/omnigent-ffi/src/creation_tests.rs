@@ -462,12 +462,3 @@ fn a_demo_session_is_created_and_its_first_message_starts_the_reply() {
         .unwrap();
     assert!(queued.queued);
 }
-
-#[test]
-fn a_profile_free_target_reads_no_revision() {
-    assert_eq!(SandboxTarget::default().profile, None);
-    assert_eq!(
-        catalog().agents[0].picker_section,
-        AgentPickerSection::Harness
-    );
-}

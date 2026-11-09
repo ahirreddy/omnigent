@@ -11,24 +11,10 @@ use crate::events::{ConnectionPhase, CoreEvent, ErrorScope, LinkState};
 use crate::host::{ConnectionFailure, SocketMessage};
 use crate::http::HttpHeader;
 use crate::sessions::SessionListChange;
-use crate::test_support::{Harness, envelope_response, fixture, json};
+use crate::test_support::{Harness, connected, envelope_response, fixture, json};
 use crate::transcript::{Row, RowRole, apply_row_ops};
 
 const SESSION: &str = "facbcc05b00f4321b98b1929d217abc5";
-
-fn connected() -> Harness {
-    let mut harness = Harness::new(UrlPolicy::Development);
-    harness.local_server();
-    let core = Arc::clone(&harness.core);
-    let phase = harness
-        .run(async move { core.connect("http://127.0.0.1:6767".into(), None).await })
-        .unwrap();
-    assert!(
-        matches!(phase, ConnectionPhase::Connected { .. }),
-        "{phase:?}"
-    );
-    harness
-}
 
 /// The rows a store holds after applying every transcript event in order.
 fn rows_from(events: &[CoreEvent], session_id: &str) -> Vec<Row> {
