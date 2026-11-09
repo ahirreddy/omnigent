@@ -66,7 +66,7 @@ public final class DesktopNotificationCenter: NSObject {
   nonisolated static let payloadKey = "omnigent.desktop"
 
   /// The last authorization read.
-  public private(set) var authorization: Authorization = .unknown
+  public internal(set) var authorization: Authorization = .unknown
 
   /// Frontmost window state, usually `ServerWindowRegistry.notificationContext`.
   @ObservationIgnored public var contextProvider: () -> NotificationContext

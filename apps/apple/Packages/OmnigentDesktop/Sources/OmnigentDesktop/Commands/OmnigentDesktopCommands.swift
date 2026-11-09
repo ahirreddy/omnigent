@@ -70,7 +70,9 @@ public struct OmnigentDesktopCommands: Commands {
     ToolbarCommands()
     InspectorCommands()
     CommandGroup(replacing: .newItem) {
-      newItems
+      NewWindowMenuItems(
+        window: focused, defaultServerURL: actions.defaultServerURL,
+        openServerWindow: { openWindow(value: $0) })
     }
     CommandGroup(after: .appInfo) {
       if let checkForUpdates = actions.checkForUpdates {
@@ -82,47 +84,59 @@ public struct OmnigentDesktopCommands: Commands {
       FindMenu(find: focused?.actions.find)
     }
     CommandGroup(before: .toolbar) {
-      viewItems
+      ViewMenuItems(window: focused?.actions)
     }
     CommandMenu("Server") {
-      serverItems
+      ServerMenuItems(
+        window: focused, localServer: actions.localServer,
+        showLogs: { openWindow(id: LocalServerLogsWindow.id) })
     }
     CommandGroup(replacing: .help) {
-      if let helpURL = actions.helpURL {
-        Button("Omnigent Help") { NSWorkspace.shared.open(helpURL) }
-      }
-      if let exportDiagnostics = actions.exportDiagnostics {
-        Button("Export Diagnostics\u{2026}", action: exportDiagnostics)
-      }
+      HelpMenuItems(actions: actions)
     }
   }
+}
 
-  @ViewBuilder private var newItems: some View {
-    Button("New Session") { focused?.actions.newSession?() }
+/// File: New Session, New Window and New Window on Different Server.
+struct NewWindowMenuItems: View {
+  let window: FocusedServerWindow?
+  let defaultServerURL: () -> URL?
+  let openServerWindow: (ServerWindowID) -> Void
+
+  var body: some View {
+    Button("New Session") { window?.actions.newSession?() }
       .keyboardShortcut("n", modifiers: .command)
-      .disabled(focused?.actions.newSession == nil)
+      .disabled(window?.actions.newSession == nil)
     Button("New Window") {
-      openWindow(value: ServerWindowID.newWindow(serverURL: newWindowServerURL()))
+      // New windows open on the key window's server, else the default server.
+      let server = window.map(\.id.serverURL) ?? defaultServerURL()
+      openServerWindow(ServerWindowID.newWindow(serverURL: server))
     }
     .keyboardShortcut("n", modifiers: [.command, .shift])
     Button("New Window on Different Server\u{2026}") {
-      openWindow(value: ServerWindowID.newWindow(serverURL: nil))
+      openServerWindow(ServerWindowID.newWindow(serverURL: nil))
     }
   }
+}
 
-  @ViewBuilder private var serverItems: some View {
-    let window = focused?.actions
-    Button("Change Server\u{2026}") { window?.changeServer?() }
-      .disabled(window?.changeServer == nil)
-    Button("Sign Out of Server") { window?.signOut?() }
-      .disabled(window?.signOut == nil)
-    if let manager = actions.localServer, manager.capability.isAvailable {
+/// Server: the key window's server items, then this Mac's local server items.
+struct ServerMenuItems: View {
+  let window: FocusedServerWindow?
+  let localServer: LocalServerManager?
+  let showLogs: () -> Void
+
+  var body: some View {
+    Button("Change Server\u{2026}") { window?.actions.changeServer?() }
+      .disabled(window?.actions.changeServer == nil)
+    Button("Sign Out of Server") { window?.actions.signOut?() }
+      .disabled(window?.actions.signOut == nil)
+    if let manager = localServer, manager.capability.isAvailable {
       localServerItems(manager)
     }
   }
 
   @ViewBuilder private func localServerItems(_ manager: LocalServerManager) -> some View {
-    let hostFallback = focused?.id.serverURL
+    let hostFallback = window?.id.serverURL
     Divider()
     Button("Start Server on This Mac") { LocalServerActions.startServer(manager) }
       .disabled(!manager.server.canStart)
@@ -137,11 +151,15 @@ public struct OmnigentDesktopCommands: Commands {
     Button("Stop Host") { LocalServerActions.stopHost(manager) }
       .disabled(!manager.host.canStop)
     Divider()
-    Button("Show Server Logs") { openWindow(id: LocalServerLogsWindow.id) }
+    Button("Show Server Logs", action: showLogs)
   }
+}
 
-  @ViewBuilder private var viewItems: some View {
-    let window = focused?.actions
+/// View: Reconnect and zoom.
+struct ViewMenuItems: View {
+  let window: ServerWindowActions?
+
+  var body: some View {
     // Command-R reloads a browser tab and Option-Command-R renames the session.
     Button("Reconnect") { window?.reconnect?() }
       .keyboardShortcut("r", modifiers: [.command, .option, .shift])
@@ -157,11 +175,19 @@ public struct OmnigentDesktopCommands: Commands {
       .keyboardShortcut("-", modifiers: .command)
       .disabled(window?.zoom == nil)
   }
+}
 
-  /// New windows open on the key window's server, else the default server.
-  private func newWindowServerURL() -> URL? {
-    if let focused { return focused.id.serverURL }
-    return actions.defaultServerURL()
+/// Help: Omnigent Help and Export Diagnostics, each hidden without its action.
+struct HelpMenuItems: View {
+  let actions: DesktopCommandActions
+
+  var body: some View {
+    if let helpURL = actions.helpURL {
+      Button("Omnigent Help") { NSWorkspace.shared.open(helpURL) }
+    }
+    if let exportDiagnostics = actions.exportDiagnostics {
+      Button("Export Diagnostics\u{2026}", action: exportDiagnostics)
+    }
   }
 }
 

@@ -244,6 +244,7 @@ struct LocalServerHarness {
   let preferences: LocalServerPreferences
   let manager: LocalServerManager
   let records: LocalServerRecordStore
+  let dependencies: LocalServerManager.Dependencies
 
   nonisolated static let cliPath = "/fake/bin/omnigent"
 
@@ -269,7 +270,7 @@ struct LocalServerHarness {
     var timing = LocalServerManager.Timing()
     timing.serverReadiness = .seconds(30)
     timing.hostConnect = .seconds(30)
-    let dependencies = LocalServerManager.Dependencies(
+    dependencies = LocalServerManager.Dependencies(
       runner: runner, probe: probe, clock: clock, records: records, cliSystem: system,
       environment: ["HOME": root.path, "DYLD_INSERT_LIBRARIES": "/x.dylib", "LANG": "C"],
       homeDirectory: root, timing: timing)
