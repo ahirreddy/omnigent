@@ -251,6 +251,11 @@
       try click(clickPoint(frames[index]))
     }
 
+    /// Clicks each listed button, for a screen where none should do anything.
+    func clickEveryButton() throws {
+      for frame in buttons { try click(clickPoint(frame)) }
+    }
+
     /// Just off a control's center: a row's exact middle can fall on the seam between two lines of
     /// text beside it, and SwiftUI's hit test misses on that one line of points.
     func clickPoint(_ frame: CGRect) -> CGPoint {
