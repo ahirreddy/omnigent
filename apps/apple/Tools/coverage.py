@@ -26,7 +26,11 @@ TEST_ARGUMENTS = {
         "--filter",
         "HostileConfigTests|HostilePreferencesTests|HostileEchoShellTests|HostileRecordingTests"
         "|HostileDemoAndInputTests|OffscreenSurfaceTests|OffscreenCommandTests|HostileBytesTests"
-        "|SurfaceKeyboardTests|SurfaceMouseTests|TerminalViewRenderTests|HostileConnectionTests",
+        "|SurfaceKeyboardTests|SurfaceMouseTests|TerminalViewRenderTests|HostileConnectionTests"
+        "|TerminalClipboardTests|TerminalStatusOverlayTests|TerminalFindBarTests|TerminalListTests"
+        "|TerminalSettingsTests|AttachedTerminalOverlayTests|SurfaceContextMenuTests"
+        "|TerminalPreferencesTests|ClipboardPolicyTests|ConfigAndInputTests|FakeConnectionTests"
+        "|SurfacePixelSizeTests",
     ],
     "OmnigentRemoteBrowser": [
         "--skip",
@@ -34,7 +38,13 @@ TEST_ARGUMENTS = {
         "--skip",
         "RemoteBrowserViewE2ETests",
     ],
-    "OmnigentBrowser": ["--filter", "OmnigentBrowserChromiumTests"],
+    # Left out: the login Keychain test, and the agent panel, which orders a window in.
+    "OmnigentBrowser": [
+        "--skip",
+        "KeychainCredentialStoreTests",
+        "--skip",
+        "AgentBrowserWebKitTests",
+    ],
 }
 
 
