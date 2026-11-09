@@ -29,8 +29,10 @@
   /// Hosts a SwiftUI view off every display and drives it with real AppKit events, so a test runs
   /// the same hit testing, focus and key handling as the app without a UI test.
   ///
-  /// Clicks reach `Button`s of any style, `Toggle`s, text fields and menus. They don't reach
-  /// `onTapGesture` or `onHover`: cover those through the action the view was given.
+  /// Clicks reach `Button`s of any style, `Toggle`s, text fields, menus and presented sheets:
+  /// while a sheet is up, every call here acts on it. Dialogs and alerts answer at once through
+  /// `SystemSideEffects`. Clicks don't reach `onTapGesture` or `onHover`: cover those through the
+  /// action the view was given.
   @MainActor
   public final class OffscreenWindow<Content: View> {
     /// Far past any display, so the window is never seen and takes no real clicks.
@@ -56,6 +58,8 @@
         app.setActivationPolicy(.accessory)
       }
       host = NSHostingView(rootView: view)
+      // The test chooses the size; the view's ideal size would otherwise resize the window.
+      host.sizingOptions = []
       window = AlwaysKeyWindow(
         contentRect: CGRect(origin: Self.origin, size: CGSize(width: width, height: height)),
         styleMask: [.borderless], backing: .buffered, defer: false)
@@ -101,11 +105,12 @@
         MainActor.assumeIsolated { NSApp.postEvent(unsafe trackedUp, atStart: false) }
       }
       RunLoop.main.add(release, forMode: .common)
-      window.sendEvent(down)
+      let target = activeWindow
+      target.sendEvent(down)
       if release.isValid {
         release.invalidate()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
-        window.sendEvent(mouseUp)
+        target.sendEvent(mouseUp)
       }
       settle()
     }
@@ -114,7 +119,7 @@
     /// - Parameter view: A view in this window.
     /// - Throws: `OffscreenWindowError` when AppKit declines an event.
     public func click(_ view: NSView) throws {
-      let frame = view.convert(view.bounds, to: host)
+      let frame = view.convert(view.bounds, to: activeRoot)
       try click(CGPoint(x: frame.midX, y: frame.midY))
     }
 
@@ -140,19 +145,25 @@
       for type in [NSEvent.EventType.keyDown, .keyUp] {
         let event = NSEvent.keyEvent(
           with: type, location: .zero, modifierFlags: modifiers,
-          timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+          timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: activeWindow.windowNumber,
           context: nil, characters: characters, charactersIgnoringModifiers: characters,
           isARepeat: false, keyCode: keyCode)
         guard let event else { throw OffscreenWindowError.eventUnavailable }
-        window.sendEvent(event)
+        activeWindow.sendEvent(event)
       }
       settle(0.02)
     }
 
-    /// Every view under the window's content, in depth-first order.
+    /// The window events go to: a presented sheet or dialog, or else the main window.
+    public var activeWindow: NSWindow { window.attachedSheet ?? window }
+
+    /// The root of what events reach; coordinates are from its top left.
+    private var activeRoot: NSView { activeWindow.contentView ?? host }
+
+    /// Every view under the active window's content, in depth-first order.
     public var allViews: [NSView] {
       var found: [NSView] = []
-      var pending: [NSView] = [host]
+      var pending: [NSView] = [activeRoot]
       while let view = pending.popLast() {
         found.append(view)
         pending.append(contentsOf: view.subviews.reversed())
@@ -164,7 +175,8 @@
     /// button of any style, toggle, menu and field. SwiftUI keeps one proxy view for each.
     public var controlFrames: [CGRect] {
       let proxies = allViews.filter { String(describing: Swift.type(of: $0)) == "KeyViewProxy" }
-      return proxies.map { $0.convert($0.bounds, to: host) }
+      let root = activeRoot
+      return proxies.map { $0.convert($0.bounds, to: root) }
     }
 
     /// Clicks the middle of a control by its position in `controlFrames`.
@@ -240,9 +252,10 @@
       _ modifiers: NSEvent.ModifierFlags, delay: TimeInterval = 0
     ) throws -> NSEvent {
       let event = NSEvent.mouseEvent(
-        with: type, location: host.convert(point, to: nil), modifierFlags: modifiers,
+        with: type, location: activeRoot.convert(point, to: nil), modifierFlags: modifiers,
         timestamp: ProcessInfo.processInfo.systemUptime + delay,
-        windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: clickCount,
+        windowNumber: activeWindow.windowNumber, context: nil, eventNumber: 1,
+        clickCount: clickCount,
         pressure: 1)
       guard let event else { throw OffscreenWindowError.eventUnavailable }
       return event
