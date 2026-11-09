@@ -109,13 +109,22 @@ struct FilePreviewView: View {
 
   private func markdown(_ text: String) -> AnyView {
     if let renderMarkdown { return renderMarkdown.render(text) }
-    let options = AttributedString.MarkdownParsingOptions(
-      interpretedSyntax: .inlineOnlyPreservingWhitespace)
+    return AnyView(Text(Self.inlineMarkdown(text)))
+  }
+
+  /// `text` with its inline Markdown applied; text that doesn't parse still reads as plain text.
+  static func inlineMarkdown(
+    _ text: String,
+    parse: (String) throws -> AttributedString = {
+      try AttributedString(
+        markdown: $0,
+        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+    }
+  ) -> AttributedString {
     do {
-      return AnyView(Text(try AttributedString(markdown: text, options: options)))
+      return try parse(text)
     } catch {
-      // Not parseable as Markdown: the plain text still reads.
-      return AnyView(Text(verbatim: text))
+      return AttributedString(text)
     }
   }
 }
