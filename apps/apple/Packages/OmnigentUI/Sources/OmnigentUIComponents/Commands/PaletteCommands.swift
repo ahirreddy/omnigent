@@ -79,12 +79,20 @@ extension View {
   }
 }
 
+/// One showing of the palette: its starting scope and the commands focused when it opened. An
+/// item, so the sheet is built from these rather than from state written just before it.
+private struct PaletteOpening: Identifiable {
+  let scope: PaletteScope
+  let commands: SessionCommandActions
+
+  var id: PaletteScope { scope }
+}
+
 private struct PalettePresentation: ViewModifier {
   let state: @MainActor () -> PaletteViewState
   let actions: PaletteActions
   let initiallyPresented: Bool
-  /// The shown palette's starting scope; an item, so the sheet opens with the requested one.
-  @State private var palette: PaletteScope?
+  @State private var palette: PaletteOpening?
   @State private var showsShortcuts = false
   @State private var focusedCommands = FocusedSessionCommandsBox()
   @State private var capturedCommands = SessionCommandActions()
@@ -102,7 +110,9 @@ private struct PalettePresentation: ViewModifier {
       .background { FocusedSessionCommandsReader(box: focusedCommands) }
       .background { ShortcutAliases(perform: actions.perform) }
       #if DEBUG
-        .perfHooks(["palette", "palette.close"]) { palette = $0 == "palette" ? .all : nil }
+        .perfHooks(["palette", "palette.close"]) { hook in
+          if hook == "palette" { open(.all) } else { palette = nil }
+        }
       #endif
       .focusedSceneValue(
         \.paletteCommands,
@@ -111,11 +121,11 @@ private struct PalettePresentation: ViewModifier {
             openPalette: { open(.all) }, openShortcuts: { showsShortcuts = true },
             findSession: { open(.sessions) }))
       )
-      .sheet(item: $palette, onDismiss: executePending) { scope in
+      .sheet(item: $palette, onDismiss: executePending) { opening in
         let state = state()
         CommandPalette(
-          state: state, commands: entries(state), findsSessions: scope == .sessions,
-          search: actions.search
+          state: state, commands: PaletteCatalog.entries(state: state, commands: opening.commands),
+          findsSessions: opening.scope == .sessions, search: actions.search
         ) { target in
           pendingTarget = target
           palette = nil
@@ -128,7 +138,7 @@ private struct PalettePresentation: ViewModifier {
 
   private func open(_ scope: PaletteScope) {
     capturedCommands = focusedCommands.commands ?? SessionCommandActions()
-    palette = scope
+    palette = PaletteOpening(scope: scope, commands: capturedCommands)
   }
 
   private func executePending() {
@@ -141,10 +151,6 @@ private struct PalettePresentation: ViewModifier {
     case .toggleInspector: capturedCommands.toggleInspector?()
     default: actions.perform(target)
     }
-  }
-
-  private func entries(_ state: PaletteViewState) -> [PaletteEntry] {
-    PaletteCatalog.entries(state: state, commands: capturedCommands)
   }
 }
 

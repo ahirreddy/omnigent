@@ -40,7 +40,7 @@
     /// A list row's middle, from the top left of the view.
     func center(ofRow row: Int) throws -> CGPoint {
       let list = try #require(list)
-      let frame = list.convert(list.rect(ofRow: row), to: host)
+      let frame = list.convert(list.rect(ofRow: row), to: activeWindow.contentView)
       return CGPoint(x: frame.midX, y: frame.midY)
     }
 
