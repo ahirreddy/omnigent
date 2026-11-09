@@ -38,7 +38,7 @@
       return try screen.openMenu(CGPoint(x: picker.midX, y: picker.midY))
     }
 
-    @Test("new windows default to the connect screen and can pick a recent server")
+    @Test("new windows default to the server picker and can pick a recent server")
     func recentDefault() async throws {
       let fixture = try DesktopFixture()
       defer { fixture.cleanUp() }
@@ -47,12 +47,12 @@
       defer { screen.close() }
       await flush(screen)
       let menu = try pickerMenu(screen)
-      #expect(screen.titles(menu).contains("Connect screen"))
+      #expect(screen.titles(menu).contains("Server picker"))
       #expect(screen.titles(menu).contains("recent.test"))
       try screen.choose("recent.test", in: menu)
       await flush(screen)
       #expect(fixture.desktop.preferences.defaultServerURL == recent)
-      try screen.choose("Connect screen", in: try pickerMenu(screen))
+      try screen.choose("Server picker", in: try pickerMenu(screen))
       await flush(screen)
       #expect(fixture.desktop.preferences.defaultServerURL == nil)
     }
@@ -142,7 +142,7 @@
         OmnigentSettingsView(desktop: fixture.desktop), width: 700, height: 800)
       defer { plain.close() }
       await flush(plain)
-      #expect(try plain.allText().contains("Open new windows on"))
+      #expect(try plain.allText().contains("New windows open on"))
     }
   }
 #endif
