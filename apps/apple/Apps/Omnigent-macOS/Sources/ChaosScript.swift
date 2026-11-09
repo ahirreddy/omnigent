@@ -9,7 +9,8 @@
   /// One step per line; blank lines and lines starting with `#` are skipped:
   /// `session ID`, `resize WIDTH HEIGHT`, `click IDENTIFIER`, `doubleclick IDENTIFIER`,
   /// `shortcut NAME`, `twice NAME` (the shortcut pressed twice with no pause), `type TEXT` (with
-  /// `\r` for Return), `wait SECONDS`,
+  /// `\r` for Return), `key NAME` (pageUp, pageDown, home, end, up, down), `scroll DELTA TICKS` (a
+  /// coasting trackpad scroll at the window's center; positive moves up), `wait SECONDS`,
   /// where an identifier is a control's accessibility identifier and a name is one in
   /// ``ChaosMenu/shortcuts``.
   @MainActor
@@ -21,7 +22,13 @@
       case wait(TimeInterval)
       case shortcut(String, count: Int)
       case type(String)
+      case key(String)
+      case scroll(delta: CGFloat, ticks: Int)
     }
+
+    nonisolated private static let keyNames: Set<String> = [
+      "pageUp", "pageDown", "home", "end", "up", "down",
+    ]
 
     struct Malformed: Error, Equatable {
       let line: String
@@ -71,6 +78,18 @@
       case ("resize", 2):
         Double(arguments[0]).flatMap { width in
           Double(arguments[1]).map { .resize(width: width, height: $0) }
+        }
+      default: movementStep(command, arguments)
+      }
+    }
+
+    nonisolated private static func movementStep(_ command: String, _ arguments: [String]) -> Step?
+    {
+      switch (command, arguments.count) {
+      case ("key", 1): keyNames.contains(arguments[0]) ? .key(arguments[0]) : nil
+      case ("scroll", 2):
+        Double(arguments[0]).flatMap { delta in
+          Int(arguments[1]).map { .scroll(delta: delta, ticks: $0) }
         }
       default: nil
       }
@@ -130,7 +149,7 @@
           return
         }
         router.open(.conversation(sessionID: id), onServer: server)
-      case .resize, .click, .shortcut, .type:
+      case .resize, .click, .shortcut, .type, .key, .scroll:
         guard let window = visibleWindow else {
           log?.write("\(step): no window")
           return
@@ -168,7 +187,27 @@
         for _ in 0..<count { ChaosInput.press(shortcut.key, shortcut.modifiers, in: window) }
       case .type(let text):
         ChaosInput.type(text, in: window)
+      case .key, .scroll:
+        moveReading(step, in: window)
       case .session, .wait:
+        break
+      }
+    }
+
+    private func moveReading(_ step: Step, in window: NSWindow) {
+      switch step {
+      case .key(let name):
+        let keys: [String: ChaosKey] = [
+          "pageUp": .pageUp, "pageDown": .pageDown, "home": .home, "end": .end, "up": .upArrow,
+          "down": .downArrow,
+        ]
+        if let key = keys[name] { ChaosInput.press(key, [], in: window) }
+      case .scroll(let delta, let ticks):
+        let bounds = window.contentView?.bounds ?? .zero
+        ChaosInput.scroll(
+          at: CGPoint(x: bounds.midX, y: bounds.midY), by: CGVector(dx: 0, dy: delta),
+          ticks: ticks, momentum: true, in: window)
+      default:
         break
       }
     }

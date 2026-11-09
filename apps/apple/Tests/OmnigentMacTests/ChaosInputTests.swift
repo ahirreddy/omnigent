@@ -153,17 +153,23 @@
         click toggle-inspector
         twice right panel
         type **bold** and `code`
+        key pageUp
+        scroll 240 12
         wait 1.5
         """)
       #expect(
         steps == [
           .session("demo-notes"), .resize(width: 923, height: 672),
           .click("toggle-inspector", count: 2), .click("toggle-inspector", count: 1),
-          .shortcut("right panel", count: 2), .type("**bold** and `code`"), .wait(1.5),
+          .shortcut("right panel", count: 2), .type("**bold** and `code`"), .key("pageUp"),
+          .scroll(delta: 240, ticks: 12), .wait(1.5),
         ])
     }
 
-    @Test(arguments: ["frobnicate", "wait soon", "resize 900", "resize wide 600", "click"])
+    @Test(arguments: [
+      "frobnicate", "wait soon", "resize 900", "resize wide 600", "key sideways", "scroll fast 3",
+      "click",
+    ])
     func aMalformedScriptLineIsNamed(line: String) {
       #expect(throws: ChaosScript.Malformed(line: line)) {
         try ChaosScript.parse("session demo-notes\n\(line)\nwait 1")
