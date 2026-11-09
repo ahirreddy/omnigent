@@ -152,8 +152,10 @@ pub fn anchored_start(comment: &FileComment, text: &str) -> Option<u64> {
         return comment.start_index;
     };
     let anchor_length = anchor.chars().fold(0_u64, |count, _| count + 1);
-    let window =
-        stored.saturating_sub(ANCHOR_SEARCH_WINDOW)..=stored + anchor_length + ANCHOR_SEARCH_WINDOW;
+    let window = stored.saturating_sub(ANCHOR_SEARCH_WINDOW)
+        ..=stored
+            .saturating_add(anchor_length)
+            .saturating_add(ANCHOR_SEARCH_WINDOW);
     let mut first = None;
     let mut nearest: Option<u64> = None;
     let mut characters = 0_u64;
@@ -545,6 +547,11 @@ mod tests {
             Some(3)
         );
         assert_eq!(anchored_start(&comment_at(3, None), "abcd"), Some(3));
+        // A stored offset at the integer limit falls back to the first occurrence.
+        assert_eq!(
+            anchored_start(&comment_at(u64::MAX, Some("cd")), "abcd"),
+            Some(2)
+        );
         // Far away, the first occurrence wins; overlapping copies are found.
         let far = format!("{}aaa", "z".repeat(900));
         assert_eq!(anchored_start(&comment_at(0, Some("aa")), &far), Some(900));
