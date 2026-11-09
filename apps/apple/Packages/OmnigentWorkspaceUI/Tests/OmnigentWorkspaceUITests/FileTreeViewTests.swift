@@ -19,6 +19,9 @@
     var absoluteRoot: String?
     var requests: [String] = []
     var failure: WorkspaceFailure?
+    var commentsFailure: WorkspaceFailure?
+    /// Runs before a content search answers, to hold one in flight.
+    var beforeContentSearch: (() async -> Void)?
     var matches = PathSearchResult(entries: [])
     private let sample = SampleWorkspaceDataSource()
 
@@ -48,7 +51,10 @@
     }
     func searchContent(_ query: ContentSearchQuery) async throws(WorkspaceFailure)
       -> ContentSearchResult
-    { try await sample.searchContent(query) }
+    {
+      await beforeContentSearch?()
+      return try await sample.searchContent(query)
+    }
     func changes() async throws(WorkspaceFailure) -> ChangesList { try await sample.changes() }
     func diff(_ path: String) async throws(WorkspaceFailure) -> FileDiff {
       try await sample.diff(path)
@@ -61,7 +67,10 @@
     { .saved }
     func comments(on path: String, text: String) async throws(WorkspaceFailure)
       -> [FileCommentLine]
-    { [] }
+    {
+      if let commentsFailure { throw commentsFailure }
+      return []
+    }
     func addComment(_ body: String, on span: FileTextSpan) async throws(WorkspaceFailure) {}
     // swiftlint:disable:next discouraged_optional_boolean
     func updateComment(_ id: String, body: String?, open: Bool?) async throws(WorkspaceFailure) {}
