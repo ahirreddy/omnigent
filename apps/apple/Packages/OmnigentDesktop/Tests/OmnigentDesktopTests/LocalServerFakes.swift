@@ -18,17 +18,21 @@ final class FakeProcess: LocalProcessHandle {
   let exitsOnTerminate: Bool
   /// What signaling it fails with, when asked to.
   let signalFailure: @Sendable () -> LocalServerError?
+  /// Survives even SIGKILL, when asked to, as a process stuck in the kernel does.
+  let survivesKill: @Sendable () -> Bool
   private let continuation: AsyncStream<LocalProcessOutput>.Continuation
   private let state = Mutex(State())
 
   init(
     pid: Int32, launch: LocalProcessLaunch, exitsOnTerminate: Bool,
-    signalFailure: @escaping @Sendable () -> LocalServerError? = { nil }
+    signalFailure: @escaping @Sendable () -> LocalServerError? = { nil },
+    survivesKill: @escaping @Sendable () -> Bool = { false }
   ) {
     self.pid = pid
     self.launch = launch
     self.exitsOnTerminate = exitsOnTerminate
     self.signalFailure = signalFailure
+    self.survivesKill = survivesKill
     (output, continuation) = AsyncStream.makeStream(of: LocalProcessOutput.self)
   }
 
@@ -69,7 +73,7 @@ final class FakeProcess: LocalProcessHandle {
       return true
     }
     guard running else { return }
-    if signal == .kill || exitsOnTerminate { exit(.signaled(signal.rawValue)) }
+    if signal == .kill ? !survivesKill() : exitsOnTerminate { exit(.signaled(signal.rawValue)) }
   }
 }
 
@@ -89,6 +93,7 @@ final class FakeRunner: LocalProcessRunning {
     var launchFailure: LocalServerError?
     var signalFailure: LocalServerError?
     var portCheckFailure: LocalServerError?
+    var survivesKill = false
   }
 
   private let state = Mutex(State())
@@ -115,6 +120,11 @@ final class FakeRunner: LocalProcessRunning {
   /// Makes every later port check fail with `error`.
   func failPortChecks(with error: LocalServerError) {
     state.withLock { $0.portCheckFailure = error }
+  }
+
+  /// Makes later processes survive even SIGKILL.
+  func surviveKill() {
+    state.withLock { $0.survivesKill = true }
   }
 
   func ignoreTerminate() {
@@ -148,7 +158,8 @@ final class FakeRunner: LocalProcessRunning {
       current.nextPID += 1
       let process = FakeProcess(
         pid: current.nextPID, launch: launch, exitsOnTerminate: !current.ignoresTerminate,
-        signalFailure: { [weak self] in self?.state.withLock { $0.signalFailure } })
+        signalFailure: { [weak self] in self?.state.withLock { $0.signalFailure } },
+        survivesKill: { [weak self] in self?.state.withLock { $0.survivesKill } ?? false })
       current.processes.append(process)
       let behavior = current.behaviors.isEmpty ? nil : current.behaviors.removeFirst()
       return (process, behavior)

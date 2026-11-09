@@ -201,6 +201,71 @@ struct LocalServerFailureTests {
 struct LocalCommandFailureTests {
   private let problem = LocalServerError.spawnSetupFailed("no permission")
 
+  @Test("a server that survives even a kill fails its stop and says so")
+  func survivesKill() async throws {
+    let harness = try LocalServerHarness()
+    defer { harness.cleanUp() }
+    harness.runner.ignoreTerminate()
+    harness.runner.surviveKill()
+    harness.runner.script(announces(7304))
+    harness.probe.answer(try loopback(7304), .ready(nil))
+    await harness.manager.startServer(trigger: .launch)
+    await harness.manager.stopServer()
+    guard case .failed(.commandFailed(_, _, let output)) = harness.manager.server else {
+      Issue.record("expected a failed stop, got \(harness.manager.server)")
+      return
+    }
+    #expect(output == "the process did not exit")
+  }
+
+  @Test("a recovered server whose PID moved on isn't signaled when stopped")
+  func recoveredPidReused() async throws {
+    let harness = try LocalServerHarness()
+    defer { harness.cleanUp() }
+    let identity = LocalProcessIdentity(pid: 60, startMicroseconds: 1)
+    harness.runner.addExternal(identity)
+    try harness.records.write(
+      LocalServerRecord(kind: .server, process: identity, port: 7305, commandLine: "omnigent"))
+    harness.probe.answer(try loopback(7305), .ready(nil))
+    await harness.manager.startServer(trigger: .launch)
+    #expect(harness.manager.server.endpoint?.port == 7305)
+    harness.runner.addExternal(LocalProcessIdentity(pid: 60, startMicroseconds: 2))
+    await harness.manager.stopServer()
+    #expect(harness.runner.externalSignals.isEmpty)
+    #expect(harness.manager.server == .stopped)
+  }
+
+  @Test("a CLI stop that can't launch fails the stop with the reason")
+  func adoptedStopWontLaunch() async throws {
+    let harness = try LocalServerHarness()
+    defer { harness.cleanUp() }
+    harness.runner.addExternal(LocalProcessIdentity(pid: 61, startMicroseconds: 1))
+    try harness.writeCanonicalRecord(pid: 61, port: 7306)
+    harness.probe.answer(try loopback(7306), .ready(nil))
+    await harness.manager.startServer(trigger: .launch)
+    #expect(harness.manager.server.endpoint?.port == 7306)
+    harness.runner.failLaunches(with: problem)
+    await harness.manager.stopServer()
+    #expect(harness.manager.server == .failed(problem))
+  }
+
+  @Test("records that can't be written or removed are logged and the server still runs")
+  func recordsUnwritable() async throws {
+    let harness = try LocalServerHarness()
+    defer { harness.cleanUp() }
+    var reported: [LocalServerError] = []
+    harness.manager.reportIssue = { reported.append($0) }
+    let directory = harness.records.fileURL(.server).deletingLastPathComponent()
+    try Data().write(to: directory)
+    harness.runner.script(announces(7307))
+    harness.probe.answer(try loopback(7307), .ready(nil))
+    await harness.manager.startServer(trigger: .launch)
+    #expect(harness.manager.server.endpoint?.port == 7307)
+    #expect(!reported.isEmpty)
+    await harness.manager.stopServer()
+    #expect(harness.manager.server == .stopped)
+  }
+
   @Test("an installer that can't launch fails the install and logs why")
   func installerWontLaunch() async throws {
     let harness = try LocalServerHarness(executables: [LocalServerHarness.cliPath, "/fake/bin/uv"])
