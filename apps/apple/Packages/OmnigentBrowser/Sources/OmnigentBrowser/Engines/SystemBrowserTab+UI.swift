@@ -26,6 +26,8 @@ extension SystemBrowserTab: WKUIDelegate {
 
   func withdrawPrompts(reason: String) {
     for prompt in state.pendingPrompts {
+      // WebKit raises an exception if a completion handler goes unanswered.
+      Self.deny(prompt)
       prompt.base.withdraw(reason: reason)
       state.remove(prompt.base)
       delegate?.tab(self, didCancel: prompt)
