@@ -28,7 +28,7 @@ extension SystemBrowserTab: WKNavigationDelegate {
   }
 
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-    state.lastError = .contentProcessTerminated(reason: "WebKit web content process exited.")
+    state.lastError = .contentProcessTerminated(reason: "WebKit did not say why.")
   }
 
   func webView(

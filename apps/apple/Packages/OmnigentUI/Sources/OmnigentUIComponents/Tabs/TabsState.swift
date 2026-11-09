@@ -295,10 +295,9 @@ public struct TabActions {
   public var setSplitFraction: (@MainActor (Double) -> Void)?
   /// Go back to one pane.
   public var closeSplit: (@MainActor () -> Void)?
-  /// Open a remote browser tab in a profile (the + button's menu); `nil` hides it.
-  public var newRemoteBrowser: (@MainActor (String) -> Void)?
-  /// The remote browser profiles the + button's menu offers.
-  public var remoteBrowserProfiles: [String] = []
+  /// What the + button's menu offers in the shown session, read when the button draws; `nil`
+  /// makes + open the new-tab page (``newTab``), as Command-T does.
+  public var newTabMenu: (@MainActor () -> NewTabOptions)?
   /// Rename the session of a chat tab (``TabItemState/canRenameSession``); `nil` hides it.
   public var renameSession: (@MainActor (String) -> Void)?
 

@@ -255,6 +255,61 @@
       #expect(titles.filter { $0 == "omnigent.example.com" }.count == 1)
     }
 
+    private func footer(
+      _ account: SignedInAccount, signOut: (@MainActor () -> Void)?, width: CGFloat
+    ) -> OffscreenWindow<some View> {
+      OffscreenWindow(
+        AccountChip(account: account, style: .sidebarFooter, signOut: signOut)
+          .frame(width: width),
+        width: width, height: 80)
+    }
+
+    @Test("the sidebar footer spans the sidebar, names the account, and its menu signs out")
+    func sidebarFooter() throws {
+      let spy = AuthSpy()
+      let screen = footer(account(), signOut: spy.actions().signOut, width: 248)
+      defer { screen.close() }
+      #expect(try screen.shows("ada"))
+      #expect(try screen.shows("Example Agents"))
+      let row = try #require(screen.controlFrames.first)
+      #expect(row.width >= 240, "\(row)")
+      let menu = try screen.openMenu(CGPoint(x: row.midX, y: row.midY))
+      #expect(menu.items.map(\.title).contains("Signed in as ada"))
+      try screen.choose("Sign Out", in: menu)
+      #expect(spy.log == ["signOut"])
+    }
+
+    @Test("a long name keeps the footer as wide as a narrow sidebar; no action, no Sign Out")
+    func narrowFooter() throws {
+      var long = account()
+      long.userId = String(repeating: "ada.lovelace", count: 6) + "@example.com"
+      let screen = footer(long, signOut: nil, width: 220)
+      defer { screen.close() }
+      let row = try #require(screen.controlFrames.first)
+      #expect(row.width <= 220, "\(row)")
+      let titles = try screen.openMenu(CGPoint(x: row.midX, y: row.midY)).items.map(\.title)
+      #expect(titles.contains("Signed in as \(long.userLabel)"))
+      #expect(!titles.contains("Sign Out"))
+    }
+
+    @Test("the pointer over the footer highlights it, and leaving clears the highlight")
+    func footerHover() throws {
+      let screen = footer(account(), signOut: nil, width: 248)
+      defer { screen.close() }
+      let host = screen.host
+      func image() throws -> Data {
+        let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        return try #require(bitmap.tiffRepresentation)
+      }
+      let plain = try image()
+      let row = try #require(screen.controlFrames.first)
+      try screen.hover(CGPoint(x: row.midX, y: row.midY))
+      #expect(try image() != plain)
+      try screen.endHover()
+      #expect(try image() == plain)
+    }
+
     @Test("the chip's initial is the user's first letter or digit, else a question mark")
     func initials() throws {
       for (user, initial) in [("ada", "A"), ("__7x", "7"), ("---", "?")] {

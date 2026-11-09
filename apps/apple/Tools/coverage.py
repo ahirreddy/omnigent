@@ -50,7 +50,7 @@ TEST_ARGUMENTS = {
         "|TerminalClipboardTests|TerminalStatusOverlayTests|TerminalFindBarTests|TerminalListTests"
         "|TerminalSettingsTests|AttachedTerminalOverlayTests|SurfaceContextMenuTests"
         "|TerminalPreferencesTests|ClipboardPolicyTests|ConfigAndInputTests|FakeConnectionTests"
-        "|SurfacePixelSizeTests",
+        "|SurfacePixelSizeTests|TerminalKeyboardFocusTests",
     ],
     "OmnigentRemoteBrowser": [
         "--skip",

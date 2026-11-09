@@ -107,7 +107,7 @@ private struct HeldWhileHidden<Content: View>: View, Equatable {
 }
 
 /// A kept tab's content while another tab shows: invisible, inert and quiet.
-private struct HiddenTabContent: ViewModifier {
+struct HiddenTabContent: ViewModifier {
   let isHidden: Bool
 
   func body(content: Content) -> some View {

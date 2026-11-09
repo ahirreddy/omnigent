@@ -55,7 +55,9 @@ struct RemoteBrowserUITestSupport {
     return app
   }
 
-  /// The new-tab page's Remote Browser launcher: this session, default profile.
+  /// A remote browser tab in this session, default profile: the New Tab page's launcher when the
+  /// page shows, else the strip's + menu where there is a strip (iPad), else the page from the
+  /// session's tab switcher (iPhone).
   /// - Parameters:
   ///   - app: The app.
   ///   - shot: Records a step.
@@ -63,26 +65,37 @@ struct RemoteBrowserUITestSupport {
   func openRemoteTab(_ app: XCUIApplication, shot: (String) throws -> Void) throws {
     let launcher = app.buttons["newtab-remote-browser"].firstMatch
     if !launcher.waitForExistence(timeout: 20) {
-      openNewTab(app)
+      let newTab = app.buttons["tab-new"].firstMatch
+      if newTab.exists {
+        newTab.tap()
+        try shot("new-tab")
+        let item = app.buttons.matching(
+          NSPredicate(
+            format: "identifier == 'tab-new-remote-browser' OR label == 'Remote Browser'")
+        ).firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 10), "the + menu has no Remote Browser")
+        item.tap()
+        chooseDefaultProfile(app, identifier: "tab-new-remote-browser-default")
+        return
+      }
+      openNewTabPage(app)
     }
     XCTAssertTrue(launcher.waitForExistence(timeout: 20), "the new-tab page has no Remote Browser")
     try shot("new-tab")
     launcher.tap()
-    // Several profiles are a menu; the machine's only profile opens at once.
+    chooseDefaultProfile(app, identifier: "newtab-remote-browser-default")
+  }
+
+  /// Several profiles are a menu; the machine's only profile opens at once.
+  private func chooseDefaultProfile(_ app: XCUIApplication, identifier: String) {
     let profile = app.buttons.matching(
-      NSPredicate(format: "identifier == 'newtab-remote-browser-default' OR label == 'default'")
+      NSPredicate(format: "identifier == %@ OR label == 'default'", identifier)
     ).firstMatch
     if profile.waitForExistence(timeout: 5) { profile.tap() }
   }
 
-  /// A new tab: the tab strip's + where there is a strip (iPad), else the session's tab
-  /// switcher and its New Tab (iPhone).
-  private func openNewTab(_ app: XCUIApplication) {
-    let newTab = app.buttons["tab-new"].firstMatch
-    if newTab.exists {
-      newTab.tap()
-      return
-    }
+  /// The New Tab page from the session's tab switcher (iPhone).
+  private func openNewTabPage(_ app: XCUIApplication) {
     // A relaunch can restore a tab, where the switcher is already in the toolbar.
     let switcher = app.buttons["tab-switcher"].firstMatch
     if !switcher.waitForExistence(timeout: 5) {

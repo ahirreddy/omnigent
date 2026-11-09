@@ -36,9 +36,10 @@ struct WindowTabsActionsTests {
       connection: connection, opener: ExternalURLOpener { _ in true }, remoteBrowser: remote)
     let browser = FakeBrowserHost()
     let failures = Failures()
-    let tabs = WindowTabs(
+    var tabs = WindowTabs(
       session: session, context: TabWindowContext(browser: browser), showAll: {},
       fail: { failures.messages.append($0) })
+    tabs.preferences = try #require(UserDefaults(suiteName: "window-tabs-\(UUID().uuidString)"))
     return Window(
       session: session, tabs: tabs, browser: browser, failures: failures, server: server)
   }
@@ -176,6 +177,20 @@ extension WindowTabsActionsTests {
     }
   }
 
+  @Test("New Shell starts the remembered terminal while the agent declares it, else its first")
+  func newShellRemembered() async throws {
+    let window = try await window(terminalServer())
+    window.session.tabs.open(.chat(sessionID: "conv_a"))
+    let path = "/v1/sessions/conv_a/resources/terminals"
+    window.tabs.preferences.set("bash", forKey: PreferredTerminal.key)
+    await window.tabs.newTerminal(in: "conv_a", named: nil, replacing: nil)
+    #expect(String(describing: try window.server.posted(path).last).contains("bash"))
+    window.tabs.preferences.set("fish", forKey: PreferredTerminal.key)
+    await window.tabs.newTerminal(in: "conv_a", named: nil, replacing: nil)
+    #expect(String(describing: try window.server.posted(path).last).contains("zsh"))
+    #expect(window.failures.messages.isEmpty)
+  }
+
   @Test("New Shell says why when the agent has no terminals or one refuses to start")
   func newShellFailures() async throws {
     let server = terminalServer()
@@ -196,7 +211,7 @@ extension WindowTabsActionsTests {
     #expect(!created(window.session.tabs.group("conv_a")))
   }
 
-  @Test("Show Terminal goes to a ready harness, else the first shell, else starts one")
+  @Test("Show Terminal shows a ready agent terminal in the chat, else a shell, else starts one")
   func toggleTerminal() async throws {
     let window = try await window(terminalServer())
     window.session.tabs.open(.chat(sessionID: "conv_a"))
@@ -222,7 +237,10 @@ extension WindowTabsActionsTests {
     #expect(group.selected?.content == .chat(sessionID: "conv_a"), "and back to the chat")
     terminals.apply(terminals: [shell], harness: .ready(terminal: shell.terminal))
     window.tabs.toggleTerminal("conv_a")
-    #expect(group.selected?.content == .harness(sessionID: "conv_a"))
+    #expect(window.session.tabs.viewMode("conv_a") == .terminal)
+    #expect(group.selected?.content == .chat(sessionID: "conv_a"), "in the chat's own tab")
+    window.tabs.toggleTerminal("conv_a")
+    #expect(window.session.tabs.viewMode("conv_a") == .chat, "and back to the transcript")
   }
 
   @Test("From the New Tab page, a shell in the session replaces the page")
@@ -237,7 +255,19 @@ extension WindowTabsActionsTests {
     #expect(group.tabs.first { $0.id == page.id }?.content.kind == .terminal, "the same tab")
   }
 
-  @Test("A remote browser opens from the strip and the New Tab page")
+  @Test("From the + menu, a shell opens in a new tab beside the chat")
+  func newTabMenuTerminal() async throws {
+    let window = try await window(terminalServer())
+    window.session.tabs.open(.chat(sessionID: "conv_a"))
+    let group = window.session.tabs.group("conv_a")
+    let menu = try #require(window.tabs.strip?.actions.newTabMenu)
+    let newTerminal = try #require(menu().actions.newTerminal)
+    newTerminal("zsh")
+    try await eventually("the shell") { created(group) }
+    #expect(group.tabs.map(\.content.kind) == [.chat, .terminal])
+  }
+
+  @Test("A remote browser opens from the + menu and the New Tab page")
   func remoteBrowser() async throws {
     let window = try await window(remote: FixtureRemoteBrowser(latency: .milliseconds(1)))
     window.session.tabs.open(.chat(sessionID: "conv_a"))
@@ -245,8 +275,8 @@ extension WindowTabsActionsTests {
     let isRemote: (AppTab) -> Bool = {
       if case .remoteBrowser = $0.content { true } else { false }
     }
-    let strip = try #require(window.tabs.strip)
-    let open = try #require(strip.actions.newRemoteBrowser)
+    let menu = try #require(window.tabs.strip?.actions.newTabMenu)
+    let open = try #require(menu().actions.openRemoteBrowser)
     open("default")
     try await eventually("the remote tab") { group.tabs.contains(where: isRemote) }
     let page = group.open(.newTab)
@@ -277,7 +307,7 @@ extension WindowTabsActionsTests {
     #expect(opened.urls == [mail, web])
   }
 
-  @Test("Sub-agents open in their own window when asked; a Terminal default opens the TUI once")
+  @Test("Sub-agents open in their own window when asked; a Terminal default shows the TUI once")
   func routesFollowPreferences() async throws {
     let window = try await window()
     final class Children { var ids: [String] = [] }
@@ -293,13 +323,17 @@ extension WindowTabsActionsTests {
     let saved = UserDefaults.standard.object(forKey: key)
     defer { UserDefaults.standard.set(saved, forKey: key) }
     UserDefaults.standard.set(TranscriptViewDefault.terminal.rawValue, forKey: key)
-    let group = window.session.tabs.group("conv_a")
+    let groups = window.session.tabs
     let routes = tabs.routes(for: "conv_a", subagentsApart: false)
     routes.applyDefaultView?()
-    #expect(group.selected?.content == .harness(sessionID: "conv_a"))
-    group.select(try #require(group.tabs.first).id)
-    let selected = group.selectedID
+    #expect(groups.viewMode("conv_a") == .terminal)
+    #expect(groups.group("conv_a").selected?.content == .chat(sessionID: "conv_a"))
+    groups.setViewMode(.chat, for: "conv_a")
     routes.applyDefaultView?()
-    #expect(group.selectedID == selected, "only the first time")
+    #expect(groups.viewMode("conv_a") == .chat, "only the first time")
+
+    UserDefaults.standard.set(TranscriptViewDefault.chat.rawValue, forKey: key)
+    tabs.routes(for: "conv_b", subagentsApart: false).applyDefaultView?()
+    #expect(groups.viewChoice("conv_b").mode == .chat, "a Chat default is a choice too")
   }
 }

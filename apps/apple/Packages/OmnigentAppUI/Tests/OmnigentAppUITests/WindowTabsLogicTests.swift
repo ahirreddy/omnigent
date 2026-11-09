@@ -103,8 +103,9 @@ struct WindowTabsLogicTests {
     #expect(session.tabs.group("s").tabs.contains { $0.content == .chat(sessionID: "s") })
 
     let page = session.tabs.group("s").open(.newTab)
-    window.show(.harness(sessionID: "s"), in: "s", replacing: page.id)
-    #expect(session.tabs.group("s").tab(page.id)?.content == .harness(sessionID: "s"))
+    let shell = AppTabContent.terminal(sessionID: "s", terminalID: "t")
+    window.show(shell, in: "s", replacing: page.id)
+    #expect(session.tabs.group("s").tab(page.id)?.content == shell)
   }
 
   @Test("Opening a browser does nothing in a build that has none")
@@ -115,11 +116,11 @@ struct WindowTabsLogicTests {
     #expect(session.tabs.currentSessionID == nil)
   }
 
-  @Test("Control-` goes back to the chat from a terminal view")
+  @Test("Control-` goes back to the chat from a terminal tab")
   func toggleFromTerminal() throws {
     let session = try ServerSession.demo()
     let window = tabs(session)
-    session.tabs.group("s").open(.harness(sessionID: "s"))
+    session.tabs.group("s").open(.terminal(sessionID: "s", terminalID: "t"))
     session.tabs.show(.session("s"))
     window.toggleTerminal("s")
     #expect(session.tabs.group("s").selected?.content == .chat(sessionID: "s"))
@@ -128,7 +129,7 @@ struct WindowTabsLogicTests {
   @Test("Only chats and terminals have a terminal view")
   func terminalOffers() {
     #expect(WindowTabs.offersTerminal(.chat(sessionID: "")))
-    #expect(WindowTabs.offersTerminal(.harness(sessionID: "")))
+    #expect(!WindowTabs.offersTerminal(.harness(sessionID: "")))
     #expect(WindowTabs.offersTerminal(.terminal(sessionID: "", terminalID: "")))
     #expect(!WindowTabs.offersTerminal(.newTab))
     #expect(!WindowTabs.offersTerminal(.sideChatSession(parentID: "", childID: nil)))
@@ -159,6 +160,10 @@ struct WindowTabsLogicTests {
     #expect(state.terminals == .unknown)
     #expect(!state.canOpenBrowser)
     #expect(window.newTabActions(replacing: nil).newTerminal != nil)
+    // The + menu offers what the page does.
+    let menu = try #require(window.strip?.actions.newTabMenu)
+    #expect(menu().state == state)
+    #expect(menu().actions.newTerminal != nil)
   }
 
   @Test("New Tab's side chat replaces the page; a native agent's is typed in its chat")

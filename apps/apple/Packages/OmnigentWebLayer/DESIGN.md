@@ -577,7 +577,7 @@ before it on a cold one. `owl-boot-starting.png` is captured with the host not y
 | Host hangs | 1 s pings answered on the host's CEF UI thread; none for 8 s means hung | Host is SIGKILLed; `.crashed(.hostUnresponsive)` |
 | Host never handshakes or initializes | Timeouts | `.failed(...)`; Retry |
 | Channel closed but process alive | Dead name, then 2 s grace | Host killed; `.crashed(.channelFailed)` |
-| Renderer process crash | `OnRenderProcessTerminated` | `WebView.lastError = .rendererTerminated`; the view reloads normally |
+| Renderer process crash | `OnRenderProcessTerminated` | `WebView.lastError = .rendererTerminated`, whose text names how the process ended (crashed, killed, out of memory, not launched, integrity failure) and the signal or exit code; the raw status and code go to the log. Nothing reloads by itself; `reload()` starts a new renderer |
 
 `WebView.reload()` on an unavailable view restarts the host. The session re-creates every profile
 and view, each at its last committed URL. Ephemeral profile data is lost, which is the intended

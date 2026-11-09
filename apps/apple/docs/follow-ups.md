@@ -180,8 +180,8 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Transcript selection popup:** SwiftUI selects within one text block, so Reply and Ask in
   side chat quote at most one paragraph or code block (the web can select across messages).
 - [ ] **Right panel, Open new:** no Side chat item; starting a new side chat has no route yet.
-- [ ] **Tabs:** the titlebar tab row reserves a fixed estimated width for the trailing controls. An
-  account chip or four viewers may leave a gap or push items into overflow; measure it instead.
+- [ ] **Tabs:** the titlebar tab row reserves a fixed estimated width for the trailing controls.
+  Four viewers may leave a gap or push items into overflow; measure it instead.
 - [ ] **Lint:** `SupportingScreens`, `AdapterTests` and `NativeAppE2EUITests` have pre-existing
   swift-format/lint findings.
 

@@ -1,6 +1,8 @@
 #if os(macOS)
   import AppKit
+  import OmnigentAuthUI
   import OmnigentViewTesting
+  import OmnigentViewTextReading
   import SwiftUI
   import Testing
 
@@ -182,6 +184,43 @@
         width: 320, height: 90)
       defer { none.close() }
       #expect(none.controlFrames.isEmpty)
+    }
+
+    private func sidebar(account: SignedInAccount?, spy: SidebarSpy) -> OffscreenWindow<AnyView> {
+      spy.state.account = account
+      return OffscreenWindow(AnyView(SidebarHarness(spy: spy)), width: 300, height: 600)
+    }
+
+    /// How far the list's rows stay clear of the sidebar's foot.
+    private func listBottomInset(_ screen: OffscreenWindow<AnyView>) throws -> CGFloat {
+      try #require(screen.list?.enclosingScrollView).contentInsets.bottom
+    }
+
+    @Test("the account sits at the sidebar's foot across its width, and its menu signs out")
+    func accountFooter() throws {
+      let account = SignedInAccount(
+        baseUrl: "https://omnigent.example.com", serverName: "Example Agents", userId: "ada",
+        accountId: "a1", mode: .oidc)
+      let spy = SidebarSpy(SidebarFixture.state)
+      let screen = sidebar(account: account, spy: spy)
+      defer { screen.close() }
+      #expect(try screen.shows("ada"))
+      #expect(try screen.shows("Example Agents"))
+      let footer = try #require(screen.controlFrames.last)
+      #expect(footer.maxY > 580 && footer.minY > 520, "pinned to the foot: \(footer)")
+      #expect(footer.width >= 280, "as wide as the sidebar, less its margins: \(footer)")
+      #expect(try listBottomInset(screen) >= footer.height, "the rows end above it")
+      let menu = try screen.openMenu(CGPoint(x: footer.midX, y: footer.midY))
+      #expect(menu.items.map(\.title).contains("Signed in as ada"))
+      try screen.choose("Sign Out", in: menu)
+      #expect(spy.calls == ["sign out"])
+    }
+
+    @Test("with no account the footer takes no room: the list reaches the sidebar's foot")
+    func noAccountFooter() throws {
+      let screen = sidebar(account: nil, spy: SidebarSpy(SidebarFixture.state))
+      defer { screen.close() }
+      #expect(try listBottomInset(screen) == 0)
     }
   }
 #endif

@@ -1,5 +1,4 @@
 import Foundation
-import OmnigentAuthUI
 import OmnigentCoreFFI
 import OmnigentRemoteBrowser
 import OmnigentStores
@@ -105,10 +104,10 @@ public struct ConnectedServerView: View {
     .background { PinnedSessionShortcuts(open: openPinnedSession) }
     .copyConfirmations()
     .environment(\.transcriptFocus, session.transcriptFocus)
-    .toolbar { accountToolbar }
     .focusedSceneValue(\.tabCommands, tabCommandRelay.publish(tabs.commands))
     .modifier(TabRestoration(session: session, context: tabContext) { restore($0) })
     .modifier(SessionTabsLifecycle(session: session))
+    .modifier(NewTabOptionsLoading(session: session))
     .modifier(CloseShellConfirmation(session: session) { tabFailure = $0 })
     .onChange(of: selection) { _, current in session.tabs.show(current) }
     .onChange(of: session.tabs.page) { _, page in pageChanged(page) }
@@ -166,6 +165,7 @@ public struct ConnectedServerView: View {
     state.projectSort = connection.sessionList.projectSortMode.map {
       $0 == .manual ? .manual : .alphabetical
     }
+    state.account = signOutAccount
     return state
   }
 
@@ -178,14 +178,6 @@ public struct ConnectedServerView: View {
     let list = connection.sessionList
     return Binding(
       get: { list.editError != nil }, set: { if !$0 { list.dismissEditError() } })
-  }
-
-  @ToolbarContentBuilder private var accountToolbar: some ToolbarContent {
-    if case .connected(let account) = session.signIn.state.phase, account.canSignOut {
-      ToolbarItem(placement: .automatic) {
-        AccountChip(account: account, actions: session.signIn.actions)
-      }
-    }
   }
 
   /// Links from a session's chat: server links in the app, others in a browser tab or outside.
@@ -330,9 +322,9 @@ extension ConnectedServerView {
         TerminalTabView(
           session: session, sessionID: sessionID, terminalID: terminalID,
           showChat: { tabs.showChat(sessionID) })
+      // The agent's terminal shows in its session's chat; a tab left for it shows that chat.
       case .harness(let sessionID):
-        HarnessTabView(
-          session: session, sessionID: sessionID, showChat: { tabs.showChat(sessionID) })
+        detail(.session(sessionID))
       case .sideChat(let sessionID, let rowID):
         SideChatTabContainer(
           session: session, sessionID: sessionID, rowID: rowID,

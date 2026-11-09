@@ -48,16 +48,21 @@ final class SessionTabsUITests: XCTestCase {
     return app
   }
 
-  /// Opens New Tab in the shown session and picks Browser.
+  /// Opens a browser tab in the shown session: the New Tab page's Browser on iPhone, the strip's
+  /// + menu on iPad.
   @MainActor
   private func openBrowserTab(in app: XCUIApplication) {
     if isPhone {
       tap(app.buttons["tab-switcher"], "the tab switcher")
       tap(app.buttons["tab-overview-new"], "New Tab in the overview")
+      tap(app.descendants(matching: .any)["newtab-browser"], "Browser on the new-tab page")
     } else {
       tap(app.buttons["tab-new"], "New Tab in the strip")
+      let browser = app.buttons.matching(
+        NSPredicate(format: "identifier == 'tab-new-browser' OR label == 'Browser'")
+      ).firstMatch
+      tap(browser, "Browser in the + menu")
     }
-    tap(app.descendants(matching: .any)["newtab-browser"], "Browser on the new-tab page")
   }
 
   /// How many tabs besides its chat the shown session has: browser tabs in the strip on iPad,

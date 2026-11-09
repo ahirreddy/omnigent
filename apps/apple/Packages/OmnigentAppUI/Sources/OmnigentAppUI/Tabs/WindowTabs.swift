@@ -42,6 +42,8 @@ struct WindowTabs {
   var supportsSplit = true
   /// Opens a session in another window, where the platform has windows.
   var openInNewWindow: (@MainActor (String) -> Void)?
+  /// Where the remembered terminal (``PreferredTerminal``) is read.
+  var preferences = UserDefaults.standard
 
   var groups: SessionTabGroups { session.tabs }
   /// The shown session's tabs; `nil` on a session-less page.
@@ -81,19 +83,11 @@ struct WindowTabs {
       actions.setSplitFraction = { store.setSplitFraction($0) }
       actions.closeSplit = { store.closeSplit() }
     }
-    if session.remoteBrowsers != nil, let sessionID = groups.currentSessionID {
-      actions.newRemoteBrowser = { profile in
-        Task { await openRemoteBrowser(in: sessionID, profile: profile, replacing: nil) }
-      }
-      actions.remoteBrowserProfiles = remoteBrowserProfiles
+    // What the New Tab page offers, each in a new tab; read when + draws, not with the strip.
+    actions.newTabMenu = {
+      NewTabOptions(state: newTabState, actions: newTabActions(replacing: nil))
     }
     return actions
-  }
-
-  /// Profile names read for any session (profiles are per machine).
-  private var remoteBrowserProfiles: [String] {
-    let profiles = session.remoteBrowsers?.profiles ?? [:]
-    return Self.profileNames(profiles.values.flatMap { $0.map(\.name) })
   }
 
   /// Profile names, the default first, once each.
@@ -152,7 +146,7 @@ struct WindowTabs {
     return commands
   }
 
-  /// The new-tab page's state: what the shown session offers.
+  /// The new-tab page's and the + menu's state: what the shown session offers.
   var newTabState: NewTabPageState {
     guard let current = groups.currentSessionID else { return NewTabPageState() }
     let terminals: NewTabTerminals =
@@ -284,21 +278,22 @@ struct WindowTabs {
   /// and from a terminal back. Side chats and browsers have no terminal view.
   static func offersTerminal(_ content: AppTabContent) -> Bool {
     switch content {
-    case .chat, .terminal, .harness: true
+    case .chat, .terminal: true
     default: false
     }
   }
 
-  /// Control-`: from a session's chat to its terminal (the harness TUI, else its first shell),
-  /// and from a terminal back to the chat.
+  /// Control-`: from a session's chat to its terminal (the harness TUI in the chat's Terminal
+  /// view, else its first shell), and from a terminal back to the chat.
   func toggleTerminal(_ sessionID: String) {
     switch groups.group(sessionID).selected?.content {
-    case .terminal, .harness:
+    case .terminal:
       open(.chat(sessionID: sessionID))
     default:
       let terminals = session.terminalStores[sessionID]?.terminals
       if case .ready = terminals?.harness {
-        open(.harness(sessionID: sessionID))
+        groups.setViewMode(
+          groups.viewMode(sessionID) == .terminal ? .chat : .terminal, for: sessionID)
       } else if let shell = terminals?.userShells.first {
         open(.terminal(sessionID: sessionID, terminalID: shell.terminal.id))
       } else {
@@ -307,8 +302,9 @@ struct WindowTabs {
     }
   }
 
-  /// Starts a terminal in a session and shows it in a tab: `name`, else the agent's only
-  /// declared terminal, else the conventional "Shell" while the declared names are unknown.
+  /// Starts a terminal in a session and shows it in a tab: `name`, else the remembered one the
+  /// agent declares, else its first (the host's login shell for a native harness), else the
+  /// conventional "Shell" while the declared names are unknown.
   func newTerminal(in sessionID: String, named name: String?, replacing id: String?) async {
     session.open(sessionID)
     guard let terminals = session.terminalStores[sessionID]?.terminals else {
@@ -317,7 +313,8 @@ struct WindowTabs {
     }
     await session.loadDeclaredTerminalNames([sessionID])
     let choices = session.declaredTerminalNames(in: sessionID).choices
-    guard let chosen = name ?? choices.first else {
+    let preferred = PreferredTerminal.stored(in: preferences)
+    guard let chosen = name ?? PreferredTerminal.resolve(choices, preferred: preferred) else {
       fail("This session's agent declares no terminals, so none can start here.")
       return
     }

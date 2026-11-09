@@ -13,7 +13,8 @@ final class MacTerminalFlowUITests: XCTestCase {
     super.tearDown()
   }
 
-  /// The New Tab page's Terminal launcher opens a shell in the page's session.
+  /// The New Tab page's Terminal launcher opens a shell in the page's session with one click,
+  /// however many terminals the agent declares.
   @MainActor
   func testNewTabPageOpensATerminal() throws {
     let live = MacLiveUITestSupport(self)
@@ -24,14 +25,66 @@ final class MacTerminalFlowUITests: XCTestCase {
     app.typeKey("t", modifierFlags: .command)
 
     live.click(live.element("newtab-terminal", in: app), "the Terminal launcher")
-    // Several declared terminals are a menu; one, or none known yet, starts at once.
-    let choice = app.menuItems.matching(
-      NSPredicate(format: "identifier BEGINSWITH 'newtab-terminal-'")
-    ).firstMatch
-    if choice.waitForExistence(timeout: 3) { choice.click() }
     XCTAssertTrue(
       live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
     XCTAssertTrue(live.element("terminal-tab", in: app).waitForExistence(timeout: 30))
+  }
+
+  /// The + button's menu opens a shell in a new tab of the session, without the New Tab page.
+  @MainActor
+  func testPlusMenuOpensATerminal() throws {
+    let live = MacLiveUITestSupport(self)
+    let session = try live.fixtureSession()
+    let app = live.launch()
+    defer { app.terminate() }
+    live.open(session, in: app)
+
+    live.click(live.element("tab-new", in: app), "the + button", timeout: 30)
+    live.clickMenuItem("Terminal", in: app)
+    XCTAssertTrue(
+      live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
+    XCTAssertFalse(live.tabs("newTab", in: app).firstMatch.exists, "+ opened the New Tab page")
+  }
+
+  /// A new shell takes the keyboard: typing reaches it without a click, and again after
+  /// switching to the chat and back with Control-`.
+  @MainActor
+  func testANewTerminalTakesTheKeyboard() throws {
+    let live = MacLiveUITestSupport(self)
+    let session = try live.fixtureSession()
+    let workspace = try live.fixtureWorkspace()
+    let opened = workspace.appending(path: "terminal-focus-\(UUID().uuidString).txt")
+    let shownAgain = workspace.appending(path: "terminal-refocus-\(UUID().uuidString).txt")
+    defer {
+      for marker in [opened, shownAgain] { try? FileManager.default.removeItem(at: marker) }
+    }
+    let app = live.launch()
+    defer { app.terminate() }
+    live.open(session, in: app)
+
+    app.typeKey("t", modifierFlags: [.command, .option])
+    typesWithoutAClick(into: opened, live: live, app: app)
+    app.typeKey("`", modifierFlags: .control)
+    XCTAssertTrue(live.element("transcript-\(session)", in: app).waitForExistence(timeout: 10))
+    app.typeKey("`", modifierFlags: .control)
+    typesWithoutAClick(into: shownAgain, live: live, app: app)
+  }
+
+  /// Once the shown terminal attaches, types a command that writes `marker` and waits for it.
+  @MainActor
+  private func typesWithoutAClick(
+    into marker: URL, live: MacLiveUITestSupport, app: XCUIApplication
+  ) {
+    XCTAssertTrue(live.element("terminal-tab", in: app).waitForExistence(timeout: 30))
+    XCTAssertTrue(
+      live.waitUntil(timeout: 30) {
+        !live.text(containing: "Attaching", in: app).exists
+          && !live.text(containing: "Connecting", in: app).exists
+      }, "the terminal never attached")
+    app.typeText("echo focused > '\(marker.path)'\r")
+    XCTAssertTrue(
+      live.waitUntil(timeout: 30) { FileManager.default.fileExists(atPath: marker.path) },
+      "typing did not reach the terminal (no \(marker.lastPathComponent))")
   }
 
   /// Command-T in a focused terminal is the app's, not the shell's: a New Tab page opens.

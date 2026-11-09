@@ -97,10 +97,9 @@ struct SystemTabNavigationTests {
     #expect(tab.state.lastError == nil)
 
     tab.webViewWebContentProcessDidTerminate(tab.webView)
-    guard case .contentProcessTerminated? = tab.state.lastError else {
-      Issue.record("expected a terminated process")
-      return
-    }
+    #expect(
+      tab.state.lastError?.localizedDescription
+        == "The page's web content process stopped. WebKit did not say why. Reload to restart it.")
   }
 }
 

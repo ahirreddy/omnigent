@@ -1,4 +1,5 @@
 import Foundation
+public import OmnigentAuthUI
 
 /// A project (folder) in the sidebar's Projects section.
 nonisolated public struct SessionProject: Hashable, Sendable, Identifiable {
@@ -193,7 +194,7 @@ nonisolated public struct SessionRowInfo: Hashable, Sendable {
   }
 }
 
-/// The sidebar: navigation, quick filters, sections and the server switcher.
+/// The sidebar: navigation, quick filters, sections, the server switcher and the account.
 nonisolated public struct SidebarViewState: Hashable, Sendable {
   /// The sessions (core-ordered) with unread, attention, counts and load state.
   public var list: SessionListViewState
@@ -227,6 +228,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var showsSharedScope = true
   /// Load more and the folders' pages.
   public var paging = SidebarPaging()
+  /// The signed-in account at the sidebar's foot; `nil` shows no footer.
+  public var account: SignedInAccount?
 
   /// Creates sidebar state.
   /// - Parameters:

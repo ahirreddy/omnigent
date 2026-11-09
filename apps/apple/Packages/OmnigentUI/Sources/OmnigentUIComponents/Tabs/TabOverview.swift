@@ -24,9 +24,6 @@ struct TabOverviewMenu: View {
           Button("Reopen Closed Tab", systemImage: "arrow.uturn.backward", action: reopen)
         }
       }
-      if actions.newRemoteBrowser != nil {
-        Section { NewTabMenu(actions: actions) }
-      }
       if !state.recentlyClosed.isEmpty {
         Section("Recently Closed") {
           ForEach(state.recentlyClosed.prefix(8)) { tab in

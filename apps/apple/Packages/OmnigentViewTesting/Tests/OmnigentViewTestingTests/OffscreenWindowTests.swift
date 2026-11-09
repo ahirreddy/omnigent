@@ -124,6 +124,25 @@
       #expect(screen.window.animationBehavior == .none)
     }
 
+    @Test("a window given a title bar, for its toolbar, stays off every display")
+    func titledStaysOffscreen() {
+      let screen = OffscreenWindow(Text("Still"), width: 300, height: 200)
+      defer { screen.close() }
+      let frame = screen.window.frame
+      screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
+      screen.settle()
+      #expect(screen.window.frame == frame)
+    }
+
+    @Test("opening a menu where there is none is an error")
+    func noMenu() {
+      let screen = OffscreenWindow(Text("Still"), width: 100, height: 100)
+      defer { screen.close() }
+      #expect(throws: OffscreenWindowError.notFound("a menu")) {
+        try screen.openMenu(CGPoint(x: 50, y: 50))
+      }
+    }
+
     @Test("a click reaches each kind of control")
     func clicks() throws {
       let taps = Taps()

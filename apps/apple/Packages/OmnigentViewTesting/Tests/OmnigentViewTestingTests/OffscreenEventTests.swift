@@ -167,10 +167,21 @@
       let screen = OffscreenWindow(
         StuckMenuView().frame(width: 200, height: 100), width: 200, height: 100)
       defer { screen.close() }
-      let started = Date()
-      #expect(throws: OffscreenWindowError.unexpectedMenu("Stuck")) {
-        try screen.click(CGPoint(x: 100, y: 50))
+      // While another app takes focus or tracks a menu of its own, this menu closes by itself and
+      // the click passes: click again once that is over.
+      var thrown: OffscreenWindowError?
+      var started = Date()
+      let deadline = Date(timeIntervalSinceNow: 30)
+      while thrown == nil, Date() < deadline {
+        started = Date()
+        do {
+          try screen.click(CGPoint(x: 100, y: 50))
+          screen.settle(0.5)
+        } catch let error as OffscreenWindowError {
+          thrown = error
+        }
       }
+      #expect(thrown == .unexpectedMenu("Stuck"))
       #expect(Date().timeIntervalSince(started) < 15)
     }
 
@@ -246,6 +257,15 @@
       #expect(chosen == ["Deep"])
       #expect(throws: OffscreenWindowError.notFound("Nowhere")) {
         try screen.choose("Nowhere", in: outer)
+      }
+    }
+
+    @Test("opening a menu where there is none is an error")
+    func noMenuToOpen() throws {
+      let screen = OffscreenWindow(Text("Plain"), width: 100, height: 100)
+      defer { screen.close() }
+      #expect(throws: OffscreenWindowError.notFound("a menu")) {
+        _ = try screen.openMenu(CGPoint(x: 50, y: 50))
       }
     }
 

@@ -154,7 +154,11 @@ struct ConnectedAppTests {
     "Every kind of tab shows in its session",
     arguments: [
       (AppTabContent.newTab, "Opens in"),
-      (.harness(sessionID: "demo-design"), "Terminal surface placeholder"),
+      // A tab left for the agent's terminal shows its session's chat.
+      (
+        .harness(sessionID: "demo-design"),
+        "Help me make the mobile session screen easier to scan."
+      ),
       (.terminal(sessionID: "demo-design", terminalID: "t1"), "Connecting…"),
       (.sideChat(sessionID: "demo-design", rowID: "row"), "Side Chat Unavailable"),
       (.sideChatSession(parentID: "demo-design", childID: nil), "Ask a side question…"),

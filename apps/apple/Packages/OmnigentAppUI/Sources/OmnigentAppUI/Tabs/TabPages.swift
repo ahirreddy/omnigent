@@ -39,6 +39,7 @@ struct TerminalTabView: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .modifier(TerminalPageFocus(surface: surface))
     .navigationTitle(row?.terminal.displayLabel ?? "Terminal")
     .navigationSubtitle(sessionTitle)
     .toolbar {
@@ -69,62 +70,6 @@ struct TerminalTabView: View {
     guard surface == nil, let store, let header else { return }
     surface = store.controller(
       for: terminalID, permissionLevel: header.permissionLevel, hostID: header.settings?.hostId)
-  }
-}
-
-/// The session harness's TUI in a tab, once the core reports it ready.
-struct HarnessTabView: View {
-  let session: ServerSession
-  let sessionID: String
-  let showChat: @MainActor () -> Void
-
-  @State private var surface: TerminalSurfaceController?
-  @State private var commandRelay = FocusedActionsRelay<SessionCommandActions>()
-  @Environment(\.isActiveTabPane) private var isActivePane
-
-  private var store: TerminalStore? { session.terminalStores[sessionID] }
-  private var conversation: ConversationStore? { session.connection.conversations[sessionID] }
-
-  var body: some View {
-    Group {
-      if let surface {
-        SessionTerminalView(controller: surface)
-      } else {
-        VStack {
-          TerminalPlaceholderView(harness: conversation?.header?.settings?.harness)
-          if let error = store?.lastError {
-            Label(String(describing: error), systemImage: "exclamationmark.triangle")
-              .foregroundStyle(ThemeColor.failure)
-          }
-        }
-      }
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .navigationTitle(conversation?.header?.title ?? "Agent Terminal")
-    .navigationSubtitle("Agent terminal")
-    .toolbar {
-      if isActivePane {
-        ToolbarItem(placement: .primaryAction) {
-          Button("Show Chat", systemImage: TabKind.chat.systemImage, action: showChat)
-            .help("Show this session's chat (Option-Command-\\)")
-            .accessibilityIdentifier("harness-tab-chat")
-        }
-      }
-    }
-    // The primary chat's terminal view: Option-Command-\\ goes back to the chat.
-    .focusedSceneValue(
-      \.sessionCommands,
-      commandRelay.publish(isActivePane ? SessionCommandActions(toggleViewMode: showChat) : nil)
-    )
-    .onChange(of: store?.terminals.harness, initial: true) { attach() }
-    .onChange(of: conversation?.header?.permissionLevel) { attach() }
-    .accessibilityIdentifier("harness-tab")
-  }
-
-  private func attach() {
-    guard surface == nil, let store, let header = conversation?.header else { return }
-    surface = store.harnessController(
-      permissionLevel: header.permissionLevel, hostID: header.settings?.hostId)
   }
 }
 

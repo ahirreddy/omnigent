@@ -1,18 +1,37 @@
 public import SwiftUI
 
-/// The signed-in account as a compact chip, for a toolbar or sidebar footer. Its menu names the
-/// account and server and offers Sign Out.
+/// The signed-in account as a compact chip, or as the row at the foot of the sidebar. Its menu
+/// names the account and server and offers Sign Out.
 public struct AccountChip: View {
+  /// How the account draws.
+  public enum Style: Sendable {
+    /// A capsule at its own size.
+    case chip
+    /// A row as wide as the sidebar, at its foot.
+    case sidebarFooter
+  }
+
   private let account: SignedInAccount
-  private let actions: AuthActions
+  private let style: Style
+  private let signOut: (@MainActor () -> Void)?
 
   /// Creates the chip.
   /// - Parameters:
   ///   - account: The connected account.
   ///   - actions: The store's actions.
   public init(account: SignedInAccount, actions: AuthActions) {
+    self.init(account: account, style: .chip, signOut: actions.signOut)
+  }
+
+  /// Creates the account in a style.
+  /// - Parameters:
+  ///   - account: The connected account.
+  ///   - style: A chip or the sidebar's footer row.
+  ///   - signOut: Signs out; `nil` leaves Sign Out out of the menu.
+  public init(account: SignedInAccount, style: Style, signOut: (@MainActor () -> Void)?) {
     self.account = account
-    self.actions = actions
+    self.style = style
+    self.signOut = signOut
   }
 
   /// The chip.
@@ -25,25 +44,30 @@ public struct AccountChip: View {
           Text(verbatim: account.server.hostLabel)
         }
       }
-      if account.canSignOut {
+      if account.canSignOut, let signOut {
         Divider()
         Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
-          actions.signOut()
+          signOut()
         }
         .accessibilityIdentifier("auth.sign-out")
       }
     } label: {
-      AccountChipLabel(account: account)
+      switch style {
+      case .chip: AccountChipLabel(account: account)
+      case .sidebarFooter: AccountFooterLabel(account: account)
+      }
     }
     // A plain button-style menu draws the custom label; the default macOS style would replace
     // it with a pop-up button.
     .menuStyle(.button)
     .buttonStyle(.plain)
     .menuIndicator(.hidden)
-    .fixedSize()
+    .fixedSize(horizontal: style == .chip, vertical: true)
     .help("\(account.userLabel) on \(account.server.displayName)")
     .accessibilityLabel("Account: \(account.userLabel) on \(account.server.displayName)")
-    .accessibilityHint(account.canSignOut ? "Shows the account menu with Sign Out" : "")
+    .accessibilityHint(
+      account.canSignOut && signOut != nil ? "Shows the account menu with Sign Out" : ""
+    )
     .accessibilityIdentifier("auth.account-chip")
   }
 }
@@ -54,12 +78,7 @@ struct AccountChipLabel: View {
 
   var body: some View {
     HStack(spacing: 8) {
-      Text(verbatim: initial)
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.white)
-        .frame(width: 22, height: 22)
-        .background(Circle().fill(.tint))
-        .accessibilityHidden(true)
+      AccountAvatar(account: account)
       VStack(alignment: .leading, spacing: 0) {
         Text(verbatim: account.userLabel)
           .font(.callout.weight(.medium))
@@ -80,6 +99,54 @@ struct AccountChipLabel: View {
     .background(.background.secondary, in: Capsule())
     .overlay { Capsule().strokeBorder(.separator, lineWidth: 0.5) }
     .contentShape(Capsule())
+  }
+}
+
+/// The sidebar footer's face: the avatar, the user over the server, and the menu's chevrons,
+/// across the sidebar's width. A narrow sidebar shortens the names, not the row.
+struct AccountFooterLabel: View {
+  let account: SignedInAccount
+  @State private var isHovered = false
+
+  var body: some View {
+    let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+    HStack(spacing: 8) {
+      AccountAvatar(account: account)
+      VStack(alignment: .leading, spacing: 0) {
+        Text(verbatim: account.userLabel)
+          .font(.callout.weight(.medium))
+          .lineLimit(1)
+        Text(verbatim: account.server.displayName)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+          .truncationMode(.middle)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      Image(systemName: "chevron.up.chevron.down")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityHidden(true)
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 6)
+    .background(.fill.tertiary.opacity(isHovered ? 1 : 0), in: shape)
+    .contentShape(shape)
+    .onHover { isHovered = $0 }
+  }
+}
+
+/// The account's initial in a tinted circle.
+struct AccountAvatar: View {
+  let account: SignedInAccount
+
+  var body: some View {
+    Text(verbatim: initial)
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(.white)
+      .frame(width: 22, height: 22)
+      .background(Circle().fill(.tint))
+      .accessibilityHidden(true)
   }
 
   private var initial: String {

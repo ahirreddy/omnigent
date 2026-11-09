@@ -17,8 +17,14 @@
     var mode = SessionViewMode.chat
     var showsInspector = false
     var draft = ""
+    /// The screen is a tab kept built while another shows.
+    var isHiddenTab = false
+    /// The window's titlebar holds the tabs.
+    var tabsInTitlebar = false
     /// The commands the menus would run.
     @ObservationIgnored var commands: SessionCommandActions?
+    /// The trailing toolbar widths the screen reports to the tab strip.
+    @ObservationIgnored var trailingItems: Int?
 
     init(_ state: ConversationViewState) {
       self.state = state
@@ -51,6 +57,9 @@
         ) {
           Text("the terminal surface")
         }
+        .environment(\.isTabContentHidden, model.isHiddenTab)
+        .environment(\.tabsInTitlebar, model.tabsInTitlebar)
+        .onPreferenceChange(TitlebarTrailingItems.self) { model.trailingItems = $0 }
         CommandsProbe(model: model)
       }
     }
@@ -301,6 +310,64 @@
       defer { window.close() }
       try await letTasksRun(window, milliseconds: 200)
       #expect(model.commands == nil)
+    }
+  }
+
+  // MARK: The terminal view
+
+  extension TranscriptConversationScreenTests {
+    @Test("Back from Terminal, the chat is the view it was, not one built again")
+    func chatKeptUnderTheTerminal() async throws {
+      let model = chat(terminal: .ready)
+      let window = try await screen(model)
+      defer { window.close() }
+      let transcript = try #require(window.allViews.first { $0 is NSScrollView })
+
+      model.mode = .terminal
+      try await letTasksRun(window)
+      #expect(window.allViews.contains { $0 === transcript }, "it stays built under the terminal")
+
+      model.mode = .chat
+      try await letTasksRun(window)
+      #expect(try window.shows("Hello there"))
+      #expect(try !window.shows("the terminal surface"))
+      #expect(window.allViews.contains { $0 === transcript })
+      #expect(window.allViews.contains { $0 is NSTextView }, "the composer is back")
+    }
+
+    @Test("A tab kept built while another shows lets go of its terminal surface")
+    func hiddenTabInTerminal() async throws {
+      let model = chat(terminal: .ready)
+      model.mode = .terminal
+      model.isHiddenTab = true
+      let window = try await screen(model)
+      defer { window.close() }
+      #expect(try !window.shows("the terminal surface"))
+
+      model.isHiddenTab = false
+      try await letTasksRun(window)
+      #expect(try window.shows("the terminal surface"), "shown again, it takes the surface back")
+    }
+
+    @Test("Beside the tabs, the tab strip keeps clear of the Chat / Terminal switch")
+    func switchWidthBesideTheTabs() async throws {
+      let model = chat(terminal: .ready)
+      model.tabsInTitlebar = true
+      let window = try await screen(model)
+      defer { window.close() }
+      let withSwitch = try #require(model.trailingItems)
+
+      model.state.terminal = .none
+      try await letTasksRun(window)
+      let withoutSwitch = try #require(model.trailingItems)
+      #expect(withSwitch == withoutSwitch + TitlebarTrailingItems.viewSwitch)
+
+      model.state.terminal = .ready
+      model.tabsInTitlebar = false
+      try await letTasksRun(window)
+      #expect(
+        model.trailingItems == withoutSwitch - 1,
+        "without tabs the switch holds the middle, and there is no session menu button")
     }
   }
 #endif

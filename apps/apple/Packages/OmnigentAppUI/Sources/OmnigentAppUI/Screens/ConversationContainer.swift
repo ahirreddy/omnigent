@@ -79,7 +79,7 @@ struct ConversationContainer: View {
       state: screen, composer: composerState(screen),
       draft: textSource.draft(conversation.composer, $textSource),
       showsInspector: showsInspector, inspectorTab: $inspectorTab,
-      mode: modeRoute.mode(tabRoutes?.openHarness, $modeRoute),
+      mode: modeRoute.mode(tabRoutes?.viewChoice, $modeRoute),
       fork: $forkFlow.sheet,
       actions: routed(forkable(actions)), composerActions: composerActions,
       extras: ConversationExtras(
@@ -91,7 +91,9 @@ struct ConversationContainer: View {
     ) {
       ConversationHarnessTerminal(
         surface: harnessSurface, harness: conversation.header?.settings?.harness,
-        error: terminals?.lastError)
+        error: terminals?.lastError
+      )
+      .modifier(TerminalPageFocus(surface: harnessSurface))
     }
     .modifier(MessageMediaEnvironment(fileLinks: fileLinks, conversation: conversation))
     .task(id: workspace.map(ObjectIdentifier.init)) {

@@ -88,33 +88,43 @@ public struct ConversationScreen<Terminal: View>: View {
 
   private var showsTerminal: Bool { mode == .terminal && offersTerminal }
 
-  /// Only a session's primary chat has the terminal view; side chats and other tabs do not.
+  /// Only a chat whose harness has a terminal offers the terminal view; other tabs do not.
   private var offersTerminal: Bool { state.terminalAvailable && offersTerminalView }
+
+  /// The Chat / Terminal switch shows among the trailing toolbar items, beside the tabs.
+  private var showsViewSwitch: Bool {
+    offersTerminal && tabsInTitlebar && layoutWidth == .regular
+  }
 
   private var inspectorTab: Binding<InspectorTab> { externalInspectorTab ?? $localInspectorTab }
 
   /// The screen.
   public var body: some View {
-    Group {
+    ZStack {
+      // A request answers inline while its card is on screen, else in the dock. The transcript
+      // stays built under the terminal, so going back to Chat shows it where it was.
+      LiveTranscript(
+        state: state, liveRows: liveRows, actions: transcriptActions,
+        scrollToLatestRequest: scrollRequest
+      )
+      .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
+      .chatDropTarget(
+        isEnabled: composerState.acceptsAttachments && composerState.availability == .available,
+        add: composerActions.addAttachments
+      )
+      .modifier(HiddenUnderTerminal(showsTerminal: showsTerminal))
+      // A hidden tab lets go of the terminal surface, as a terminal tab does.
       if showsTerminal {
-        TerminalPane(status: state.terminal, resume: actions.resume) { terminal }
-      } else {
-        // A request answers inline while its card is on screen, else in the dock.
-        LiveTranscript(
-          state: state, liveRows: liveRows, actions: transcriptActions,
-          scrollToLatestRequest: scrollRequest
-        )
-        .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
-        .chatDropTarget(
-          isEnabled: composerState.acceptsAttachments && composerState.availability == .available,
-          add: composerActions.addAttachments)
+        ShownTabOnly { TerminalPane(status: state.terminal, resume: actions.resume) { terminal } }
       }
     }
     .countsRenders("screen")
     // A bar: the transcript fades under the dock and composer, its inset following them.
     .safeAreaBar(edge: .bottom, spacing: 0) {
       VStack(spacing: 0) {
+        // Under the terminal no card is on screen, so every request answers in the dock.
         DecisionDock(state: state, actions: actions)
+          .environment(showsTerminal ? nil : decisionSurfaces)
         if !showsTerminal {
           TranscriptComposer(
             draft: draft, state: composerState, actions: composerActions,
@@ -166,7 +176,8 @@ public struct ConversationScreen<Terminal: View>: View {
       ShownTabTrailingItems(
         count: TitlebarTrailingItems.count(
           state, hasShare: extras.share != nil, tabsInTitlebar: tabsInTitlebar,
-          isRegular: layoutWidth == .regular, projectTag: showsProjectTag))
+          isRegular: layoutWidth == .regular, projectTag: showsProjectTag)
+          + (showsViewSwitch ? TitlebarTrailingItems.viewSwitch : 0))
     )
     .modifier(ActivePaneToolbar(items: toolbarItems))
     .sheet(isPresented: $showsShare) {

@@ -6,8 +6,8 @@ public import OmnigentUIComponents
 /// reorder, select by position or cycle, and split into two panes.
 ///
 /// A window keeps one store per session (``SessionTabGroups``), so tabs are scoped per session:
-/// its primary chat (``AppTabContent/chat``), side chats, terminals, agent TUI and the browser
-/// tabs opened from it. The primary chat cannot be closed, replaced or duplicated: it leaves only
+/// its primary chat (``AppTabContent/chat``), side chats, terminals and the browser tabs opened
+/// from it. The primary chat cannot be closed, replaced or duplicated: it leaves only
 /// with its session (``removeSessions(_:)``, when the session is archived or deleted). It is
 /// selected and moved like any other tab, so another tab can be the session's selected one, but
 /// it stays first among its session's tabs in the same pane and pin group, and moving it carries
@@ -49,8 +49,6 @@ public final class TabStore {
   public private(set) var unread: Set<String> = []
   /// A shell tab whose close waits for "Close shell?": closing it ends the shell.
   public var closingShell: String?
-  /// Sessions whose chat has shown in this window, so the default transcript view applies once.
-  @ObservationIgnored var transcriptDefaultApplied: Set<String> = []
   /// The tabs that were busy at the last ``noteBusy(_:)``.
   @ObservationIgnored private var busy: Set<String> = []
 

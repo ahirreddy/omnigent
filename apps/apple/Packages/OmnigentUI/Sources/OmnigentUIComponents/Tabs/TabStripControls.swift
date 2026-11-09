@@ -20,20 +20,7 @@ public struct TabStripControls: View {
   /// The controls.
   public var body: some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
-      Button(action: actions.newTab) {
-        Image(systemName: "plus")
-          .font(.system(size: 13, weight: .medium))
-          .frame(width: 26, height: 26)
-          .contentShape(Rectangle())
-          .touchTarget(width: 26, height: 26)
-      }
-      .buttonStyle(.plain)
-      .foregroundStyle(.secondary)
-      .hoverHighlight()
-      .help("New tab (Command-T)")
-      .accessibilityLabel("New tab")
-      .accessibilityIdentifier("tab-new")
-      .contextMenu { NewTabMenu(actions: actions) }
+      NewTabButton(actions: actions)
       TabOverviewMenu(state: state, actions: actions) { showsOverview = true }
       if let issue = state.issue {
         Image(systemName: "exclamationmark.triangle")

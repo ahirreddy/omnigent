@@ -19,7 +19,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   case chat(sessionID: String)
   /// A user shell of a session.
   case terminal(sessionID: String, terminalID: String)
-  /// A session harness's own TUI.
+  /// A session harness's own TUI, in tabs saved before the chat showed it; dropped on load.
   case harness(sessionID: String)
   /// A side question from a session's transcript.
   case sideChat(sessionID: String, rowID: String)

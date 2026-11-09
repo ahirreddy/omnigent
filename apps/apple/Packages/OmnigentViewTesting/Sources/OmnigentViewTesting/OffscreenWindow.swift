@@ -28,6 +28,12 @@
     override var canBecomeMain: Bool { true }
     override var isKeyWindow: Bool { true }
     override var isMainWindow: Bool { true }
+
+    /// A test that gives the window a title bar keeps it off every display; AppKit would pull the
+    /// title bar onto one.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+      frameRect
+    }
   }
 
   /// Hosts a SwiftUI view off every display and drives it with real AppKit events, so a test runs

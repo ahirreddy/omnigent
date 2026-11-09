@@ -14,6 +14,17 @@ struct ShownTabOnly<Content: View>: View {
   }
 }
 
+/// A chat's transcript while its terminal shows or its tab is hidden: kept built, as a hidden
+/// tab's content is, so going back to Chat shows it where it was.
+struct HiddenUnderTerminal: ViewModifier {
+  let showsTerminal: Bool
+  @Environment(\.isTabContentHidden) private var isHiddenTab
+
+  func body(content: Content) -> some View {
+    content.modifier(HiddenTabContent(isHidden: showsTerminal || isHiddenTab))
+  }
+}
+
 /// The titlebar space a shown conversation's trailing items take; a hidden tab reserves none.
 struct ShownTabTrailingItems: ViewModifier {
   let count: Int
