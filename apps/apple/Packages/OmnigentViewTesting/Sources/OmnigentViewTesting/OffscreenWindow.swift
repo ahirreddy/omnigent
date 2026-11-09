@@ -106,11 +106,11 @@
       }
       RunLoop.main.add(release, forMode: .common)
       let target = activeWindow
-      target.sendEvent(down)
+      deliver(down, to: target)
       if release.isValid {
         release.invalidate()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03))
-        target.sendEvent(mouseUp)
+        deliver(mouseUp, to: target)
       }
       settle()
     }
@@ -149,9 +149,37 @@
           context: nil, characters: characters, charactersIgnoringModifiers: characters,
           isARepeat: false, keyCode: keyCode)
         guard let event else { throw OffscreenWindowError.eventUnavailable }
-        activeWindow.sendEvent(event)
+        deliver(event, to: activeWindow)
       }
       settle(0.02)
+    }
+
+    /// Moves the pointer over a point, as hover tracking reports it.
+    /// - Parameter point: The point, from the top left of the view.
+    /// - Throws: `OffscreenWindowError` when AppKit declines the event.
+    public func hover(_ point: CGPoint) throws {
+      let event = try mouseEvent(.mouseMoved, point, 0, [])
+      host.mouseEntered(with: event)
+      host.mouseMoved(with: event)
+      settle()
+    }
+
+    /// Ends a hover: the pointer left the window.
+    /// - Throws: `OffscreenWindowError` when AppKit declines the event.
+    public func endHover() throws {
+      host.mouseExited(with: try mouseEvent(.mouseMoved, .zero, 0, []))
+      settle()
+    }
+
+    /// Sends an event from a run loop of its own. AppKit can stop the current loop while handling
+    /// one, such as a list row with a drag source, and a test body's loop is the test runner's.
+    private func deliver(_ event: NSEvent, to target: NSWindow) {
+      nonisolated(unsafe) let sent = event
+      CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue) {
+        MainActor.assumeIsolated { target.sendEvent(unsafe sent) }
+        CFRunLoopStop(CFRunLoopGetMain())
+      }
+      _ = CFRunLoopRunInMode(.defaultMode, .greatestFiniteMagnitude, false)
     }
 
     /// The window events go to: a presented sheet or dialog, or else the main window.
@@ -252,8 +280,13 @@
     /// - Throws: `OffscreenWindowError` when AppKit declines the event.
     public func contextMenu(at point: CGPoint) throws -> NSMenu? {
       let event = try mouseEvent(.rightMouseDown, point, 1, [])
-      let target = unsafe host.hitTest(host.convert(point, to: host.superview)) ?? host
-      return target.menu(for: event)
+      var view: NSView? = unsafe host.hitTest(host.convert(point, to: host.superview))
+      // A list row's menu belongs to the table around the row's views.
+      while let current = view {
+        if let menu = current.menu(for: event) { return menu }
+        view = unsafe current.superview
+      }
+      return nil
     }
 
     /// Runs a menu item's action, as choosing it does.
