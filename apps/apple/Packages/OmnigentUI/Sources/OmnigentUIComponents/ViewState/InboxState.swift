@@ -86,6 +86,10 @@ nonisolated public struct InboxItem: Hashable, Sendable, Identifiable {
     }
   }
 
+  /// A binary approval that needs no review first: one shortcut or swipe answers it. A plan is
+  /// read before it is approved, so it never qualifies.
+  public var approvesDirectly: Bool { canApprove && decision?.permissions.plan == nil }
+
   /// Creates an item.
   /// - Parameters:
   ///   - id: Id.
