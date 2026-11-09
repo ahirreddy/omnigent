@@ -4,7 +4,7 @@
 //! `SessionConfiguration.modelLabel`/`effortLabel` and the reducer's stable fingerprints.
 
 use omnigent_protocol::display;
-use omnigent_protocol::sessions::{McpStartupStatus, SandboxStage};
+use omnigent_protocol::sessions::{McpStartupStatus, ModelUsage, SandboxStage};
 use serde_json::{Map, Value};
 
 use super::state::{
@@ -311,28 +311,7 @@ fn usage_section(state: &SessionEventState, result: &mut Vec<EventSection>) {
     if let Some(models) = &state.usage_by_model {
         let lines: Vec<String> = models
             .iter()
-            .map(|(model, usage)| {
-                let mut counts = Vec::new();
-                let fields = [
-                    ("input_tokens", usage.input_tokens),
-                    ("output_tokens", usage.output_tokens),
-                    ("total_tokens", usage.total_tokens),
-                    ("cache_read_input_tokens", usage.cache_read_input_tokens),
-                    (
-                        "cache_creation_input_tokens",
-                        usage.cache_creation_input_tokens,
-                    ),
-                ];
-                for (key, value) in fields {
-                    if let Some(value) = value {
-                        counts.push(format!("{key}: {value}"));
-                    }
-                }
-                if let Some(cost) = usage.total_cost_usd {
-                    counts.push(format!("total_cost_usd: {}", swift_number(cost)));
-                }
-                format!("{model}: {}", counts.join(", "))
-            })
+            .map(|(model, usage)| model_usage_line(model, usage))
             .collect();
         details.push(detail(
             "usage_by_model",
@@ -348,6 +327,57 @@ fn usage_section(state: &SessionEventState, result: &mut Vec<EventSection>) {
         |tokens| format!("{tokens} context tokens"),
     );
     result.push(EventSection::new("usage", "Usage", summary).with_details(details));
+}
+
+/// One model's usage as a person reads it: `gpt-5: 8,303 input · 120 output · $0.04`. A total
+/// shows only when the server did not split it into input and output.
+fn model_usage_line(model: &str, usage: &ModelUsage) -> String {
+    let split = usage.input_tokens.is_some() || usage.output_tokens.is_some();
+    let counts = [
+        (usage.input_tokens, "input"),
+        (usage.output_tokens, "output"),
+        (usage.total_tokens.filter(|_| !split), "tokens"),
+        (
+            usage.cache_read_input_tokens.filter(|count| *count > 0),
+            "cache read",
+        ),
+        (
+            usage.cache_creation_input_tokens.filter(|count| *count > 0),
+            "cache write",
+        ),
+    ];
+    let mut parts: Vec<String> = counts
+        .iter()
+        .filter_map(|(count, label)| count.map(|count| format!("{} {label}", grouped(count))))
+        .collect();
+    parts.extend(usage.total_cost_usd.map(dollars));
+    if parts.is_empty() {
+        model.to_owned()
+    } else {
+        format!("{model}: {}", parts.join(" \u{b7} "))
+    }
+}
+
+/// `8303` as `8,303`.
+fn grouped(count: u64) -> String {
+    let digits = count.to_string();
+    let mut result = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            result.push(',');
+        }
+        result.push(digit);
+    }
+    result
+}
+
+/// A cost in cents, or `<$0.01` when rounding would read as free.
+fn dollars(cost: f64) -> String {
+    if cost > 0.0 && cost < 0.01 {
+        "<$0.01".to_owned()
+    } else {
+        format!("${cost:.2}")
+    }
 }
 
 fn todo_section(state: &SessionEventState, result: &mut Vec<EventSection>) {

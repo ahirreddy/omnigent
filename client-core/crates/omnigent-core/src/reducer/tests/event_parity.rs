@@ -101,6 +101,47 @@ fn usage_sparse_merge_replacement_and_response_context_tokens() {
 }
 
 #[test]
+fn usage_by_model_reads_as_counts_and_cost() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({
+        "type": "session.usage",
+        "usage_by_model": {
+            "cheap": {"input_tokens": 999, "total_cost_usd": 0.001},
+            "empty": {},
+            "gpt-5.6-sol": {
+                "input_tokens": 8303,
+                "output_tokens": 120,
+                "total_tokens": 8423,
+                "cache_read_input_tokens": 1_000_000,
+                "cache_creation_input_tokens": 0,
+                "total_cost_usd": 0.0449,
+            },
+            "total-only": {"total_tokens": 12345, "total_cost_usd": 0.0},
+        },
+    }));
+    let sections = harness.reducer.sections();
+    let usage = sections.iter().find(|section| section.id == "usage");
+    let lines = usage
+        .and_then(|usage| {
+            usage
+                .details
+                .iter()
+                .find(|detail| detail.id == "usage_by_model")
+        })
+        .map(|detail| detail.text.clone());
+    assert_eq!(
+        lines.as_deref(),
+        Some(
+            "cheap: 999 input \u{b7} <$0.01\n\
+             empty\n\
+             gpt-5.6-sol: 8,303 input \u{b7} 120 output \u{b7} 1,000,000 cache read \u{b7} \
+             $0.04\n\
+             total-only: 12,345 tokens \u{b7} $0.00"
+        )
+    );
+}
+
+#[test]
 fn reported_modes_keep_their_raw_value_for_the_composer() {
     let mut harness = Harness::new(SESSION);
     harness.send(json!({"type": "session.codex_approval_mode", "approval_mode": "approve-for-me"}));
