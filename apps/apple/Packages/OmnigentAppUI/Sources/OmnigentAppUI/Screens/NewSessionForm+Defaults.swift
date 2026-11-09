@@ -41,22 +41,34 @@ extension NewSessionForm {
   static func recentFolder(hostID: String, sessions: [OmnigentCoreFFI.SessionSummary]) -> String? {
     sessions
       .filter { $0.configuration?.hostId == hostID && $0.workspace.hasPrefix("/") }
-      .max { $0.updatedAt < $1.updatedAt }?
+      // The id settles a tie, so the choice doesn't depend on the order of the list.
+      .max { ($0.updatedAt, $0.id) < ($1.updatedAt, $1.id) }?
       .workspace
   }
 
-  /// What refills the folder: another host, or the host coming online.
-  func folderSeedTrigger(_ creation: CreationStore) -> String {
+  /// What refills the folder: another host, the host coming online, leaving a new sandbox, or the
+  /// session list being read.
+  func folderSeedTrigger(_ creation: CreationStore, list: SessionListStore) -> String {
     let isOnline = creation.catalog.value?.hosts.contains {
       $0.hostId == selection.hostId && $0.isAvailable
     }
-    return "\(selection.hostId)/\(isOnline == true)"
+    return "\(selection.hostId)/\(isOnline == true)/\(isSandbox)/\(Self.hasRead(list))"
   }
 
-  /// Fills an empty folder once per host: the host's recent folder, else its home folder.
-  func seedFolder(_ creation: CreationStore, sessions: [OmnigentCoreFFI.SessionSummary]) async {
+  /// The list has answered, so a host with no sessions in it really has none.
+  private static func hasRead(_ list: SessionListStore) -> Bool {
+    list.isLoaded || list.lastError != nil
+  }
+
+  /// Fills an empty folder once per host: the host's recent folder, else its home folder. Reads
+  /// every session, since the sidebar's search and quick filter say nothing about the host.
+  func seedFolder(_ creation: CreationStore, list: SessionListStore) async {
     let hostID = selection.hostId
-    guard !isSandbox, folder.isEmpty, !hostID.isEmpty, seededFolderHost != hostID else { return }
+    guard !isSandbox, folder.isEmpty, !hostID.isEmpty, seededFolderHost != hostID,
+      Self.hasRead(list)
+    else { return }
+    let sessions = filterSessions(
+      sessions: Array(list.sessionsByID.values), text: "", filter: .all)
     if let recent = Self.recentFolder(hostID: hostID, sessions: sessions) {
       seededFolderHost = hostID
       selectFolder(creation, recent)
