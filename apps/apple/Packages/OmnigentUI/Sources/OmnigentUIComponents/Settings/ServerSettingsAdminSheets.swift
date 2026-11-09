@@ -91,9 +91,12 @@ struct AddPolicySheet: View {
       Text("Add Global Policy").font(.headline).padding(Theme.Spacing.large)
       Form {
         if let selected { configure(selected) } else { picker }
-        if failed, let errorMessage {
-          Label(errorMessage, systemImage: "exclamationmark.triangle")
-            .foregroundStyle(Theme.warning)
+        if failed {
+          Label(
+            errorMessage ?? "The policy could not be added.",
+            systemImage: "exclamationmark.triangle"
+          )
+          .foregroundStyle(Theme.warning)
         }
       }
       .formStyle(.grouped)

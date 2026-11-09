@@ -99,6 +99,24 @@
       #expect(log.entries.first?.contains("[kept]") == true, "\(log.entries)")
     }
 
+    @Test("a refused policy stays open and always says something")
+    func refused() async throws {
+      let screen = try addSheet(templates: [template], adds: false)
+      defer { screen.close() }
+      try chooseFirst(screen)
+      try screen.clickButton(at: 2)
+      try await screen.letTasksRun()
+      #expect(screen.window.attachedSheet != nil)
+      #expect(log.entries.count == 1)
+      #expect(try screen.shows("The policy could not be added."))
+      let explained = try addSheet(templates: [template], adds: false, errorMessage: "Duplicate")
+      defer { explained.close() }
+      try chooseFirst(explained)
+      try explained.clickButton(at: 2)
+      try await explained.letTasksRun()
+      #expect(try explained.shows("Duplicate"))
+    }
+
     @Test("Change Policy goes back to the list, and the filter narrows it")
     func changeAndFilter() throws {
       let other = PolicyTemplate(
