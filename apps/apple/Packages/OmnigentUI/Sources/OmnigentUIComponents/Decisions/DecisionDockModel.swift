@@ -39,9 +39,10 @@ struct DecisionDockModel {
 
   var headline: String {
     let pending = state.pendingDecisions.count
-    let noun = pending == 1 ? "request needs" : "requests need"
-    if pending == cards.count { return "\(pending) \(noun) you" }
-    return "\(pending) of \(cards.count) \(noun) you"
+    if pending == cards.count {
+      return "\(pending) \(pending == 1 ? "request needs" : "requests need") you"
+    }
+    return "\(pending) of \(cards.count) requests \(pending == 1 ? "needs" : "need") you"
   }
 
   /// The headline, plus how many are answered above when the dock lists the rest.
