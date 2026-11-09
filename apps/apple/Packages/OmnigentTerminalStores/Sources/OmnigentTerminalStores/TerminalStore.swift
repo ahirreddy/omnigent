@@ -18,15 +18,30 @@ public final class TerminalStore {
   /// The last surface failure (libghostty could not start or create the surface).
   public internal(set) var lastError: GhosttyError?
 
-  @ObservationIgnored private let runtime: GhosttyRuntime?
+  @ObservationIgnored private let makeController:
+    (CoreTerminalConnection) throws(GhosttyError) -> TerminalSurfaceController
 
   /// A store over `terminals`.
   /// - Parameters:
   ///   - terminals: The session's terminal list, from `ConnectionStore.terminals(_:)`.
   ///   - runtime: The libghostty runtime; the shared one when `nil`.
-  public init(terminals: SessionTerminalsStore, runtime: GhosttyRuntime? = nil) {
+  public convenience init(terminals: SessionTerminalsStore, runtime: GhosttyRuntime? = nil) {
+    self.init(terminals: terminals) { connection throws(GhosttyError) in
+      try TerminalSurfaceController(connection: connection, runtime: runtime)
+    }
+  }
+
+  /// A store whose surfaces come from `makeController`, so a renderer failure can be tested.
+  /// - Parameters:
+  ///   - terminals: The session's terminal list.
+  ///   - makeController: Creates the surface of a connection.
+  init(
+    terminals: SessionTerminalsStore,
+    makeController:
+      @escaping (CoreTerminalConnection) throws(GhosttyError) -> TerminalSurfaceController
+  ) {
     self.terminals = terminals
-    self.runtime = runtime
+    self.makeController = makeController
   }
 
   /// The session.
@@ -47,7 +62,7 @@ public final class TerminalStore {
       attach: terminals.attach(
         terminalID: terminalID, permissionLevel: permissionLevel, hostID: hostID))
     do {
-      let controller = try TerminalSurfaceController(connection: connection, runtime: runtime)
+      let controller = try makeController(connection)
       controllers[terminalID] = controller
       lastError = nil
       return controller
