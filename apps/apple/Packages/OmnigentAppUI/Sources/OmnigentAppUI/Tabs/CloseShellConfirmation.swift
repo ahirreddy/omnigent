@@ -33,7 +33,7 @@ struct CloseShellConfirmation: ViewModifier {
     return "\(subject) and ends any process running in it. This can\u{2019}t be undone."
   }
 
-  private func closeShell() {
+  func closeShell() {
     guard let tabs, let id = tabs.closingShell, let shell = tabs.closeShell(id),
       let terminals = session.terminalStores[shell.sessionID]?.terminals
     else { return }
