@@ -141,7 +141,8 @@
       replace(NSWorkspace.self, "openURL:", with: open)
       let openConfigured: OpenConfigured = { _, _, url, _, done in
         Self.note { $0.openedURLs.append(url as URL) }
-        done?(nil, nil)
+        // Swift's async form of this call crashes on no app and no error.
+        done?(NSRunningApplication.current, nil)
       }
       replace(NSWorkspace.self, "openURL:configuration:completionHandler:", with: openConfigured)
       replace(
@@ -150,7 +151,7 @@
       let openWith: OpenWith = { _, _, urls, application, _, done in
         Self.note { $0.openedURLs.append(contentsOf: urls.compactMap { $0 as? URL }) }
         Self.note { $0.openedURLs.append(application as URL) }
-        done?(nil, nil)
+        done?(NSRunningApplication.current, nil)
       }
       replace(
         NSWorkspace.self, "openURLs:withApplicationAtURL:configuration:completionHandler:",
