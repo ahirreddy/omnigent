@@ -93,7 +93,9 @@ let package = Package(
     .testTarget(
       name: "OmnigentAppBrowserTests",
       dependencies: [
-        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentAppBrowser",
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+        .product(name: "OmnigentViewTextReading", package: "OmnigentViewTesting"),
+        "OmnigentAppBrowser",
         "OmnigentAppUI",
         .product(name: "OmnigentBrowser", package: "OmnigentBrowser"),
         .product(name: "OmnigentUIComponents", package: "OmnigentUI"),

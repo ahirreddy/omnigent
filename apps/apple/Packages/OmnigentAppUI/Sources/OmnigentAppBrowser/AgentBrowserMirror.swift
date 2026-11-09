@@ -52,8 +52,13 @@ struct AgentBrowserMirror: View {
     while !Task.isCancelled {
       do {
         let data = try await tab.takeSnapshotPNG()
-        image = Self.image(from: data)
-        failure = nil
+        if let decoded = Self.image(from: data) {
+          image = decoded
+          failure = nil
+        } else {
+          // Without this the page would show a spinner forever.
+          failure = "The page's picture could not be read."
+        }
       } catch {
         failure = error.localizedDescription
       }
@@ -66,7 +71,7 @@ struct AgentBrowserMirror: View {
   }
 
   /// The decoded snapshot, or `nil` when the platform cannot decode it.
-  private static func image(from data: Data) -> Image? {
+  static func image(from data: Data) -> Image? {
     #if os(macOS)
       NSImage(data: data).map(Image.init(nsImage:))
     #else
