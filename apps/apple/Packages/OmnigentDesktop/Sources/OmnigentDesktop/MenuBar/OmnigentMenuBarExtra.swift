@@ -32,19 +32,22 @@ public struct OmnigentMenuBarExtra: Scene {
 
   /// The extra.
   public var body: some Scene {
-    let preferences = desktop.localServerPreferences
-    // SwiftUI writes the status item's visibility back on every scene update, which follows
-    // every window's layout; only a real change may reach the preference and its observers.
-    MenuBarExtra(
-      isInserted: Binding(
-        get: { preferences.showsMenuBarExtra },
-        set: { if preferences.showsMenuBarExtra != $0 { preferences.showsMenuBarExtra = $0 } })
-    ) {
+    MenuBarExtra(isInserted: Self.isInserted(desktop.localServerPreferences)) {
       OmnigentMenuBarContent(desktop: desktop, sessions: sessions)
     } label: {
       OmnigentMenuBarLabel(state: label.value)
     }
     .menuBarExtraStyle(.window)
+  }
+}
+
+extension OmnigentMenuBarExtra {
+  /// SwiftUI writes the status item's visibility back on every scene update, which follows
+  /// every window's layout; only a real change may reach the preference and its observers.
+  static func isInserted(_ preferences: LocalServerPreferences) -> Binding<Bool> {
+    Binding(
+      get: { preferences.showsMenuBarExtra },
+      set: { if preferences.showsMenuBarExtra != $0 { preferences.showsMenuBarExtra = $0 } })
   }
 }
 
@@ -101,6 +104,8 @@ public struct OmnigentMenuBarContent: View {
   private let sessions: (any MenuBarSessionSource)?
   @Environment(\.openWindow) private var openWindow
   @Environment(\.openSettings) private var openSettings
+  /// The app's windows; Open Omnigent brings one forward, or opens one when none is showing.
+  var openWindows: () -> [NSWindow] = { NSApplication.shared.windows }
 
   /// Creates the panel.
   /// - Parameters:
@@ -210,7 +215,7 @@ public struct OmnigentMenuBarContent: View {
 
   private func openOmnigent() {
     activate()
-    let windows = NSApplication.shared.windows.filter { $0.canBecomeMain && $0.isVisible }
+    let windows = openWindows().filter { $0.canBecomeMain && $0.isVisible }
     if let window = windows.first {
       window.makeKeyAndOrderFront(nil)
     } else {

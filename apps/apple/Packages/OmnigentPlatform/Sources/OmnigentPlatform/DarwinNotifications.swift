@@ -118,7 +118,8 @@
       }
     }
 
-    private static func modified(_ file: URL) -> Date? {
+    /// When the file last changed, or `nil` when that can't be read, as when it just went away.
+    static func modified(_ file: URL) -> Date? {
       do {
         return try file.resourceValues(forKeys: [.contentModificationDateKey])
           .contentModificationDate

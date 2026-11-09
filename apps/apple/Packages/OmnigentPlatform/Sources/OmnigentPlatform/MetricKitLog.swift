@@ -19,11 +19,16 @@
     }
 
     private static func log(_ kind: String, _ json: Data) {
-      guard let text = String(bytes: json, encoding: .utf8) else {
+      guard let line = logLine(kind, json) else {
         logger.error("\(kind, privacy: .public): a payload that is not UTF-8 JSON")
         return
       }
-      logger.notice("\(kind, privacy: .public) \(text, privacy: .public)")
+      logger.notice("\(line, privacy: .public)")
+    }
+
+    /// What one payload logs, or `nil` when its JSON isn't UTF-8.
+    static func logLine(_ kind: String, _ json: Data) -> String? {
+      String(bytes: json, encoding: .utf8).map { "\(kind) \($0)" }
     }
   }
 #endif

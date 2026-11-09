@@ -74,9 +74,14 @@ public enum ModalLoop {
 
 enum DesktopAlert {
   static func present(_ alert: NSAlert) async -> NSApplication.ModalResponse {
+    await present(alert, on: NSApplication.shared.mainWindow)
+  }
+
+  static func present(
+    _ alert: NSAlert, on mainWindow: NSWindow?
+  ) async -> NSApplication.ModalResponse {
     NSApplication.shared.activate()
-    guard let window = NSApplication.shared.mainWindow, window.isVisible,
-      window.attachedSheet == nil
+    guard let window = mainWindow, window.isVisible, window.attachedSheet == nil
     else {
       return await ModalLoop.run { alert.runModal() }
     }

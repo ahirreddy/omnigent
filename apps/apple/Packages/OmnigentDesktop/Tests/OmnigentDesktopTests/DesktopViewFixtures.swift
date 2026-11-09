@@ -112,9 +112,13 @@
       var playedSounds: [String] = []
       var soundsPlay = true
       var terminationReplies: [Bool] = []
+      var attentionRequests = 0
+      var workspaceOpensFail = false
     }
 
     private static let lock = OSAllocatedUnfairLock(initialState: State())
+    private typealias OpenURL = @convention(c) (NSWorkspace, Selector, NSURL) -> Bool
+    nonisolated(unsafe) private static var recordingOpenURL: OpenURL?
 
     /// What has been recorded, and what panels and sounds will answer.
     static var state: State {
@@ -140,6 +144,24 @@
         lock.withLock { $0.terminationReplies.append(answer) }
       }
       replace(NSApplication.self, "replyToApplicationShouldTerminate:", with: reply)
+      let attention: @convention(c) (NSApplication, Selector, UInt) -> Int = { _, _, _ in
+        lock.withLock { $0.attentionRequests += 1 }
+        return 0
+      }
+      replace(NSApplication.self, "requestUserAttention:", with: attention)
+      // `SystemSideEffects` always opens a plain URL; this can refuse, as the system does.
+      guard
+        let opening = unsafe class_getInstanceMethod(
+          NSWorkspace.self, NSSelectorFromString("openURL:"))
+      else { preconditionFailure("DesktopSideEffects: NSWorkspace has no openURL:") }
+      unsafe recordingOpenURL = unsafeBitCast(method_getImplementation(opening), to: OpenURL.self)
+      let open: OpenURL = { workspace, selector, url in
+        guard !state.workspaceOpensFail, let recording = unsafe recordingOpenURL else {
+          return false
+        }
+        return recording(workspace, selector, url)
+      }
+      unsafe method_setImplementation(opening, unsafeBitCast(open, to: IMP.self))
     }()
 
     /// Installs once and forgets what was recorded.

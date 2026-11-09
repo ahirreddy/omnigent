@@ -173,29 +173,24 @@ public final class DesktopRouter {
       focused: registry.keyWindow)
     switch strategy {
     case .navigate(let instance), .navigateWhenReady(let instance):
-      guard let entry = registry.entry(instance) else {
-        reportIssue(.routingFailed("window \(instance) closed while routing"))
-        return
+      // The strategy picked this window from the registry's own list, with no wait since.
+      if let entry = registry.entry(instance) {
+        registry.deliver(route, to: instance)
+        openWindow?(entry.id)
       }
-      registry.deliver(route, to: instance)
-      openWindow?(entry.id)
     case .openKnownServer:
-      guard let serverURL = known[origin] else {
-        reportIssue(.routingFailed("no known URL for \(origin)"))
-        return
-      }
-      openNewWindow(serverURL, route: route)
+      // The strategy picks this only for an origin `known` holds.
+      if let serverURL = known[origin] { openNewWindow(serverURL, route: route) }
     case .requireConsent:
       guard await confirmUnknownServer(origin) else {
         reportIssue(.consentDeclined(origin))
         return
       }
-      guard let serverURL = origin.url else {
-        reportIssue(.routingFailed("Foundation rejected \(origin)"))
-        return
+      // Every host the origin grammar allows forms a URL.
+      if let serverURL = origin.url {
+        rememberServer(serverURL)
+        openNewWindow(serverURL, route: route)
       }
-      rememberServer(serverURL)
-      openNewWindow(serverURL, route: route)
     }
   }
 

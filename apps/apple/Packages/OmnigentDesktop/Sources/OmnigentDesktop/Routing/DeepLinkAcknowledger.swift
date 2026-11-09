@@ -41,9 +41,7 @@ nonisolated public struct LoopbackDeepLinkAcknowledger: DeepLinkAcknowledging {
     components.host = "127.0.0.1"
     components.port = acknowledgment.port
     components.path = acknowledgment.callbackPath
-    guard let url = components.url else {
-      throw .transport(URLError(.badURL))
-    }
+    guard let url = components.url else { throw .transport(URLError(.badURL)) }
     var request = URLRequest(url: url, timeoutInterval: timeout)
     request.httpMethod = "POST"
     let configuration = URLSessionConfiguration.ephemeral
