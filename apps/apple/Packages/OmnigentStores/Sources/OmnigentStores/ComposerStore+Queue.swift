@@ -153,13 +153,17 @@ extension ComposerStore {
       isSending = false
       refreshBlocked()
     }
+    let pendingRow = transcript?.showSending(
+      message.text, attachments: message.extras.files.map(PendingMessages.attachment))
     do {
       let sent = try await core.sendQueuedMessage(
         sessionId: sessionID, text: message.text, hold: message.extras.holdID,
         harness: configuration?.harness, paths: message.extras.mentions)
+      transcript?.messageAccepted(pendingRow, sent)
       setText(fromCore: sent.draft)
       queue.finish(id, failure: nil)
     } catch {
+      transcript?.messageNotSent(pendingRow)
       let failure = coreError(error)
       if failure.isHostOffline {
         queue.waitForHost(id)

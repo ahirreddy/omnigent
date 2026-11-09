@@ -76,6 +76,9 @@ public final class CreationStore {
   /// and the form takes its defaults. The form clears it once read.
   public var pendingProject: ProjectSummary?
 
+  /// The conversation of a new session, to show its first message as soon as it is sent.
+  @ObservationIgnored var conversation: (@MainActor (String) -> ConversationStore?)?
+
   private let core: ClientCore
   private var pendingFirstMessage: String?
   private var selectionGeneration = 0
@@ -237,8 +240,9 @@ public final class CreationStore {
         let created = try await core.createSessionAndSend(
           selection: selection, title: title, text: firstMessage)
         switch created.firstMessage {
-        case .sent:
+        case .sent(let sent):
           pendingFirstMessage = nil
+          showFirstMessage(firstMessage, sent: sent, sessionID: created.receipt.sessionId)
           phase = .created(sessionID: created.receipt.sessionId, firstMessageError: nil)
         case .failed(let error):
           pendingFirstMessage = firstMessage
@@ -294,11 +298,15 @@ public final class CreationStore {
         return
       }
       pendingFirstMessage = firstMessage
+      let store = conversation?(sessionID)
+      let pendingRow = store?.showSending(firstMessage)
       phase = .created(sessionID: sessionID, firstMessageError: nil)
       do {
-        _ = try await core.sendMessage(sessionId: sessionID, text: firstMessage)
+        let sent = try await core.sendMessage(sessionId: sessionID, text: firstMessage)
+        store?.messageAccepted(pendingRow, sent)
         pendingFirstMessage = nil
       } catch {
+        store?.messageNotSent(pendingRow)
         phase = .created(sessionID: sessionID, firstMessageError: coreError(error))
       }
     } catch {
@@ -307,9 +315,19 @@ public final class CreationStore {
     }
   }
 
+  /// Opens the session with its accepted first message on show: the conversation hydrates after
+  /// this, and the server's echo can take seconds longer.
+  private func showFirstMessage(_ text: String, sent: MessageSent, sessionID: String) {
+    let store = conversation?(sessionID)
+    store?.messageAccepted(store?.showSending(text), sent)
+  }
+
   /// Uploads the staged files to `sessionID`, then sends `text` with them. A failure leaves
   /// the session created with the error to retry from the session.
   private func sendWithAttachments(sessionID: String, text: String) async {
+    let store = conversation?(sessionID)
+    let pendingRow = store?.showSending(
+      text, attachments: attachments.map(PendingMessages.attachment))
     do {
       for attachment in attachments {
         let item = try core.addAttachment(
@@ -318,9 +336,11 @@ public final class CreationStore {
         try await core.uploadFirstAttachment(sessionId: sessionID, itemId: item)
       }
       attachments = []
-      _ = try await core.sendFirstMessage(sessionId: sessionID, text: text)
+      let sent = try await core.sendFirstMessage(sessionId: sessionID, text: text)
+      store?.messageAccepted(pendingRow, sent)
       pendingFirstMessage = nil
     } catch {
+      store?.messageNotSent(pendingRow)
       phase = .created(sessionID: sessionID, firstMessageError: coreError(error))
     }
   }
@@ -331,8 +351,9 @@ public final class CreationStore {
       return
     }
     do {
-      _ = try await core.sendMessage(sessionId: sessionID, text: text)
+      let sent = try await core.sendMessage(sessionId: sessionID, text: text)
       pendingFirstMessage = nil
+      showFirstMessage(text, sent: sent, sessionID: sessionID)
       phase = .created(sessionID: sessionID, firstMessageError: nil)
     } catch {
       phase = .created(sessionID: sessionID, firstMessageError: coreError(error))

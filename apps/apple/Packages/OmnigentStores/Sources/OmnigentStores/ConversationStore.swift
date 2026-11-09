@@ -50,6 +50,8 @@ public final class ConversationStore {
   public let sessionID: String
   /// Every row, in order: transcript and activity rows.
   public private(set) var rows: [Row] = []
+  /// Messages sent here that the server has not echoed yet.
+  public private(set) var pendingMessages = PendingMessages()
   /// The session header, once known.
   public private(set) var header: SessionHeader? {
     didSet {
@@ -117,6 +119,7 @@ public final class ConversationStore {
     composer = ComposerStore(sessionID: sessionID, core: core)
     tools = SessionToolsStore(sessionID: sessionID, core: core)
     composer.conversationFacts = { [weak self] in self?.composerFacts }
+    composer.transcript = self
   }
 
   /// What the composer's `/context`, `/mcp` and held sends read. Read on demand, never while
@@ -141,6 +144,12 @@ public final class ConversationStore {
     // `_rows` is the untracked storage: a body calling this must not depend on every row.
     rowWatches.watch(rowID) { _rows }
   }
+
+  /// What the transcript shows: ``rows``, then the messages still waiting for their echo.
+  public var displayRows: [Row] { rows + pendingMessages.rows }
+
+  /// Changes whenever ``displayRows`` does, which ``revision`` alone misses for a message sent here.
+  public var displayRevision: UInt64 { revision &+ pendingMessages.generation }
 
   /// Rows that belong in the transcript.
   public var transcriptRows: [Row] { rows.filter { !$0.isActivityOnly } }
@@ -222,6 +231,36 @@ public final class ConversationStore {
     core.loadOlderHistory(sessionId: sessionID)
   }
 
+  /// Shows a message being sent until the server echoes it.
+  /// - Parameters:
+  ///   - text: The message.
+  ///   - attachments: Its files.
+  /// - Returns: Its row's id, or `nil` for a message with nothing to show.
+  func showSending(_ text: String, attachments: [Attachment] = []) -> String? {
+    let rowID = pendingMessages.add(text: text, attachments: attachments, transcript: rows)
+    digestRows()
+    return rowID
+  }
+
+  /// The server accepted the message on `rowID`. The echo may already have arrived.
+  /// - Parameters:
+  ///   - rowID: The message's row, from ``showSending(_:attachments:)``.
+  ///   - sent: The acknowledgement.
+  func messageAccepted(_ rowID: String?, _ sent: MessageSent) {
+    guard let rowID else { return }
+    pendingMessages.acknowledge(rowID, itemID: sent.itemId)
+    retireEchoedMessages()
+    digestRows()
+  }
+
+  /// The message on `rowID` did not go out; whoever sent it keeps its text.
+  /// - Parameter rowID: The message's row, from ``showSending(_:attachments:)``.
+  func messageNotSent(_ rowID: String?) {
+    guard let rowID else { return }
+    pendingMessages.withdraw(rowID)
+    digestRows()
+  }
+
   /// Clears ``errors`` after the user has seen them.
   public func dismissErrors() {
     errors = []
@@ -237,6 +276,7 @@ public final class ConversationStore {
     if header != self.header { self.header = header }
     if sections != self.sections { self.sections = sections }
     decisions.replace(cards)
+    retireEchoedMessages()
     rowWatches.refreshAll(from: rows)
     timeTurn(observed: false)
     digestRows()
@@ -255,9 +295,15 @@ public final class ConversationStore {
     if let header = Self.known(change.header), header != self.header { self.header = header }
     if let sections = change.sections, sections != self.sections { self.sections = sections }
     self.revision = revision
+    retireEchoedMessages()
     rowWatches.refresh(touchedBy: change.rows, in: rows)
     timeTurn(observed: true)
     digestRows()
+  }
+
+  /// Touches the observed list only when it holds something, as this runs for every delta.
+  private func retireEchoedMessages() {
+    if !pendingMessages.entries.isEmpty { pendingMessages.retireEchoes(in: rows) }
   }
 
   /// The core's stand-in header, shown until the server's metadata loads, is no header: the
@@ -267,7 +313,7 @@ public final class ConversationStore {
   }
 
   private func digestRows() {
-    let digest = TranscriptDigest(rows: rows)
+    let digest = TranscriptDigest(rows: displayRows)
     if digest != transcriptDigest { transcriptDigest = digest }
   }
 

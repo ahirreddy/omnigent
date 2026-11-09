@@ -17,8 +17,8 @@ enum ConversationAdapter {
   ) -> ConversationViewState {
     let header = Self.header(store, summary: summary)
     var state = ConversationViewState(
-      revision: store.revision, header: header,
-      rows: store.rows.map(OmnigentUIComponents.Row.init),
+      revision: store.displayRevision, header: header,
+      rows: store.displayRows.map(OmnigentUIComponents.Row.init),
       decisions: store.decisions.cards.map(OmnigentUIComponents.DecisionCard.init),
       decisionPhases: decisionPhases(store.decisions),
       sections: store.sections.map(OmnigentUIComponents.EventSection.init),
@@ -109,7 +109,9 @@ enum ConversationAdapter {
   /// - Parameter store: The conversation.
   /// - Returns: The reader.
   static func liveRows(_ store: ConversationStore) -> LiveTranscriptRows {
-    LiveTranscriptRows { (store.rows.map(OmnigentUIComponents.Row.init), store.revision) }
+    LiveTranscriptRows {
+      (store.displayRows.map(OmnigentUIComponents.Row.init), store.displayRevision)
+    }
   }
 
   /// The newest failure to show. Stream and transport failures describe a connection problem,

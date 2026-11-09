@@ -62,6 +62,7 @@ extension ConnectionStore {
     if let creationStore { return creationStore }
     guard let core else { return nil }
     let store = CreationStore(core: core)
+    store.conversation = { [weak self] sessionID in self?.conversation(sessionID) }
     creationStore = store
     return store
   }

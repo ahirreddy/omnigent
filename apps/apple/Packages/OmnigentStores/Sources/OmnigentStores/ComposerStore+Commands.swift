@@ -158,13 +158,20 @@ extension ComposerStore {
   private func deliverMessage() async {
     let draft = draftMessage
     let (paths, harness) = (mentions, configuration?.harness)
-    await deliver { core, session, text in
-      guard !paths.isEmpty else {
-        return try await core.sendMessage(sessionId: session, text: text)
+    let pendingRow = transcript?.showSending(
+      draft, attachments: attachments.items.map(PendingMessages.attachment))
+    await deliver { [transcript] core, session, text in
+      let sent: MessageSent
+      if paths.isEmpty {
+        sent = try await core.sendMessage(sessionId: session, text: text)
+      } else {
+        sent = try await core.sendMessageMentioning(
+          sessionId: session, text: text, harness: harness, paths: paths)
       }
-      return try await core.sendMessageMentioning(
-        sessionId: session, text: text, harness: harness, paths: paths)
+      transcript?.messageAccepted(pendingRow, sent)
+      return sent
     }
+    if lastError != nil { transcript?.messageNotSent(pendingRow) }
     if lastError == nil, !paths.isEmpty { mentions.removeAll { paths.contains($0) } }
     guard let failure = lastError, failure.isHostOffline else { return }
     let extras: MessageQueue.Extras
