@@ -5,6 +5,21 @@ import WebKit
 
 @testable import OmnigentBrowser
 
+/// Tracks a download as WebKit hands it over; a delegate set any later misses the first callback.
+@MainActor
+private final class DownloadStart {
+  var download: WKDownload?
+
+  func begin(on tab: SystemBrowserTab, url: URL) {
+    tab.webView.startDownload(using: URLRequest(url: url)) { [weak tab] download in
+      guard let tab else { return }
+      tab.webView(
+        tab.webView, navigationAction: FakeNavigationAction(url: url), didBecome: download)
+      self.download = download
+    }
+  }
+}
+
 @MainActor
 @Suite("System tab downloads", .serialized)
 struct SystemTabDownloadTests {
@@ -18,16 +33,14 @@ struct SystemTabDownloadTests {
   private func startDownload(_ fixture: SystemTabFixture, text: String) async throws -> WKDownload {
     let encoded = Data(text.utf8).base64EncodedString()
     let url = try testURL("data:text/plain;base64,\(encoded)")
-    let webView = fixture.tab.webView
     for _ in 0..<3 {
-      var started: WKDownload?
-      Task { started = await webView.startDownload(using: URLRequest(url: url)) }
-      guard try await waitUntil(timeout: .seconds(3), { started != nil }), let download = started
+      let start = DownloadStart()
+      start.begin(on: fixture.tab, url: url)
+      guard try await waitUntil(timeout: .seconds(3), { start.download != nil }),
+        let download = start.download
       else {
         continue
       }
-      fixture.tab.webView(
-        webView, navigationAction: FakeNavigationAction(url: url), didBecome: download)
       return download
     }
     throw BrowserError.downloadFailed("WebKit never started the download.")
