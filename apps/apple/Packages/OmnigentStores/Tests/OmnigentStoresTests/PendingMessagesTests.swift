@@ -7,8 +7,6 @@ import Testing
 
 @testable import OmnigentStores
 
-nonisolated private let sessionID = "facbcc05b00f4321b98b1929d217abc5"
-
 private func userRow(_ id: String, _ text: String) -> Row {
   Row(
     id: id, role: .user, text: text, isStreaming: false, activity: nil, attachments: [],
@@ -113,96 +111,9 @@ struct PendingMessagesTests {
   }
 }
 
-/// Holds a POST to a session's events until the test answers it.
-private final class EventsGate: Sendable {
-  private let answer = Mutex<CheckedContinuation<HttpResponse, Never>?>(nil)
-  private let items = Mutex(#"{"object":"list","data":[],"has_more":false}"#)
-
-  var isWaiting: Bool { answer.withLock { $0 != nil } }
-
-  func setItems(_ json: String) { items.withLock { $0 = json } }
-
-  func respond(_ request: HttpRequest, routes: [String: HttpResponse]) async -> HttpResponse {
-    let path = URLComponents(string: request.url)?.path ?? ""
-    if request.method == "POST", path == "/v1/sessions/\(sessionID)/events" {
-      return await withCheckedContinuation { continuation in
-        answer.withLock { $0 = continuation }
-      }
-    }
-    if path == "/v1/sessions/\(sessionID)/items" { return .json(items.withLock { $0 }) }
-    return routes[path] ?? .json(#"{"detail":"not found"}"#, status: 404)
-  }
-
-  func release(_ response: HttpResponse) {
-    let waiting = answer.withLock { state in
-      defer { state = nil }
-      return state
-    }
-    waiting?.resume(returning: response)
-  }
-}
-
 @MainActor
 @Suite("Sending shows the message at once", .serialized)
 struct OptimisticSendTests {
-  private func fixtureResponse(_ path: String) throws -> String {
-    let url = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-      .deletingLastPathComponent().appending(path: "client-core/fixtures/\(path)")
-    let object = try #require(
-      try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
-    let data = try JSONSerialization.data(withJSONObject: try #require(object["response"]))
-    return try #require(String(data: data, encoding: .utf8))
-  }
-
-  private func waitUntil(_ what: String, _ condition: () -> Bool) async throws {
-    let deadline = ContinuousClock.now + .seconds(10)
-    while !condition() {
-      guard ContinuousClock.now < deadline else {
-        Issue.record("timed out waiting for \(what)")
-        return
-      }
-      try await Task.sleep(for: .milliseconds(5))
-    }
-  }
-
-  private func connected(_ gate: EventsGate) async throws -> (ConnectionStore, ConversationStore) {
-    let routes: [String: HttpResponse] = [
-      "/.well-known/omnigent.json": .json(ManifestFixtures.localNoAuth),
-      "/v1/info": .json(#"{"single_user":true,"accounts_enabled":false}"#),
-      "/v1/me": .json(#"{"user_id":"local"}"#),
-      "/v1/sessions": .json(try fixtureResponse("sessions/recorded-sessions-list.json")),
-      "/v1/sessions/\(sessionID)": .json(
-        try fixtureResponse("sessions/recorded-session-get-no-items.json")),
-      "/v1/sessions/\(sessionID)/resources/environments/default/changes": .json(
-        #"{"entries":[]}"#),
-    ]
-    let http = FakeHttpTransport { request throws(TransportError) in
-      await gate.respond(request, routes: routes)
-    }
-    let streams = FakeEventStreamTransport()
-    let core = try ClientCore(
-      http: http, streams: streams, sockets: FakeWebSocketTransport(), clock: SystemClock(),
-      scheduler: TaskScheduler(), secureStore: InMemorySecureStore(),
-      entropy: FixedEntropySource(),
-      config: HostConfig(urlPolicy: .development, oidcRedirect: .none))
-    let connection = ConnectionStore(core: core)
-    await connection.connect(serverURL: "http://127.0.0.1:6767")
-    let conversation = try #require(connection.conversation(sessionID))
-    // The connection's own update stream may open first.
-    var opened = await streams.waitForOpen()
-    while !opened.0.url.hasSuffix("/v1/sessions/\(sessionID)/stream") {
-      opened = await streams.waitForOpen()
-    }
-    opened.1.response(
-      status: 200, headers: [HttpHeader(name: "Content-Type", value: "text/event-stream")])
-    let heartbeat = #"{"sequence_number": null, "type": "session.heartbeat", "server_time": null}"#
-    opened.1.chunk(bytes: Data("event: session.heartbeat\ndata: \(heartbeat)\n\n".utf8))
-    try await waitUntil("the session to accept messages") { conversation.isHydrated }
-    return (connection, conversation)
-  }
-
   private static let echo = """
     {"object":"list","data":[{"id":"item_1","type":"message","role":"user","status":"completed",\
     "content":[{"type":"input_text","text":"Ship it"}],"created_at":1}],"has_more":false}
@@ -211,13 +122,13 @@ struct OptimisticSendTests {
   @Test("a follow-up shows before the server answers, and its echo doesn't duplicate it")
   func followUpShowsAtOnce() async throws {
     let gate = EventsGate()
-    let (connection, conversation) = try await connected(gate)
-    defer { connection.closeConversation(sessionID) }
+    let (connection, conversation) = try await LiveConversationFixture.connected(gate)
+    defer { connection.closeConversation(liveSessionID) }
     let revision = conversation.displayRevision
 
     conversation.composer.text = "Ship it"
     let sending = Task { await conversation.composer.send() }
-    try await waitUntil("the POST") { gate.isWaiting }
+    try await LiveConversationFixture.waitUntil("the POST") { gate.isWaiting }
     #expect(conversation.displayRows.map(\.text) == ["Ship it"])
     #expect(conversation.displayRows.first?.isEphemeral == true)
     #expect(conversation.rows.isEmpty)
@@ -227,7 +138,7 @@ struct OptimisticSendTests {
     gate.setItems(Self.echo)
     gate.release(.json(#"{"queued":true,"item_id":"item_1"}"#))
     _ = await sending.value
-    try await waitUntil("the echo") { conversation.rows.count == 1 }
+    try await LiveConversationFixture.waitUntil("the echo") { conversation.rows.count == 1 }
     #expect(conversation.displayRows.map(\.id) == ["item_1"])
     #expect(conversation.composer.lastError == nil)
     #expect(conversation.composer.text.isEmpty)
@@ -236,12 +147,12 @@ struct OptimisticSendTests {
   @Test("a refused message leaves the transcript and stays in the draft")
   func refusalWithdrawsTheRow() async throws {
     let gate = EventsGate()
-    let (connection, conversation) = try await connected(gate)
-    defer { connection.closeConversation(sessionID) }
+    let (connection, conversation) = try await LiveConversationFixture.connected(gate)
+    defer { connection.closeConversation(liveSessionID) }
 
     conversation.composer.text = "Ship it"
     let sending = Task { await conversation.composer.send() }
-    try await waitUntil("the POST") { gate.isWaiting }
+    try await LiveConversationFixture.waitUntil("the POST") { gate.isWaiting }
     #expect(conversation.displayRows.count == 1)
     gate.release(.json(#"{"detail":"no"}"#, status: 400))
     _ = await sending.value
@@ -253,15 +164,15 @@ struct OptimisticSendTests {
   @Test("a queued message shows when it goes out, not while it waits")
   func queuedMessageShowsWhenSent() async throws {
     let gate = EventsGate()
-    let (connection, conversation) = try await connected(gate)
-    defer { connection.closeConversation(sessionID) }
+    let (connection, conversation) = try await LiveConversationFixture.connected(gate)
+    defer { connection.closeConversation(liveSessionID) }
 
     conversation.composer.text = "Ship it"
     conversation.composer.queueDraft()
     #expect(conversation.displayRows.isEmpty)
     let id = try #require(conversation.composer.queue.items.first?.id)
     let sending = Task { await conversation.composer.sendQueuedNow(id) }
-    try await waitUntil("the POST") { gate.isWaiting }
+    try await LiveConversationFixture.waitUntil("the POST") { gate.isWaiting }
     #expect(conversation.displayRows.map(\.text) == ["Ship it"])
     gate.release(.json(#"{"detail":"no"}"#, status: 400))
     await sending.value
@@ -271,35 +182,35 @@ struct OptimisticSendTests {
   @Test("a new session opens with its first message showing, sent or being sent")
   func firstMessageShowsInTheNewSession() async throws {
     let gate = EventsGate()
-    let (connection, conversation) = try await connected(gate)
-    defer { connection.closeConversation(sessionID) }
+    let (connection, conversation) = try await LiveConversationFixture.connected(gate)
+    defer { connection.closeConversation(liveSessionID) }
     let creation = try #require(connection.creation())
 
     let creating = Task {
-      await creation.createThenSend(firstMessage: "Ship it") { _ in (sessionID, nil) }
+      await creation.createThenSend(firstMessage: "Ship it") { _ in (liveSessionID, nil) }
     }
-    try await waitUntil("the POST") { gate.isWaiting }
-    #expect(creation.phase == .created(sessionID: sessionID, firstMessageError: nil))
+    try await LiveConversationFixture.waitUntil("the POST") { gate.isWaiting }
+    #expect(creation.phase == .created(sessionID: liveSessionID, firstMessageError: nil))
     #expect(conversation.displayRows.map(\.text) == ["Ship it"])
 
     gate.setItems(Self.echo)
     gate.release(.json(#"{"queued":true,"item_id":"item_1"}"#))
     await creating.value
-    try await waitUntil("the echo") { conversation.rows.count == 1 }
+    try await LiveConversationFixture.waitUntil("the echo") { conversation.rows.count == 1 }
     #expect(conversation.displayRows.map(\.id) == ["item_1"])
   }
 
   @Test("a first message that failed leaves no row behind")
   func failedFirstMessageLeavesNoRow() async throws {
     let gate = EventsGate()
-    let (connection, conversation) = try await connected(gate)
-    defer { connection.closeConversation(sessionID) }
+    let (connection, conversation) = try await LiveConversationFixture.connected(gate)
+    defer { connection.closeConversation(liveSessionID) }
     let creation = try #require(connection.creation())
 
     let creating = Task {
-      await creation.createThenSend(firstMessage: "Ship it") { _ in (sessionID, nil) }
+      await creation.createThenSend(firstMessage: "Ship it") { _ in (liveSessionID, nil) }
     }
-    try await waitUntil("the POST") { gate.isWaiting }
+    try await LiveConversationFixture.waitUntil("the POST") { gate.isWaiting }
     gate.release(.json(#"{"detail":"no"}"#, status: 400))
     await creating.value
     #expect(conversation.displayRows.isEmpty)

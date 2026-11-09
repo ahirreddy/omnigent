@@ -51,7 +51,7 @@ public final class ConversationStore {
   /// Every row, in order: transcript and activity rows.
   public private(set) var rows: [Row] = []
   /// Messages sent here that the server has not echoed yet.
-  public private(set) var pendingMessages = PendingMessages()
+  public internal(set) var pendingMessages = PendingMessages()
   /// The session header, once known.
   public private(set) var header: SessionHeader? {
     didSet {
@@ -231,36 +231,6 @@ public final class ConversationStore {
     core.loadOlderHistory(sessionId: sessionID)
   }
 
-  /// Shows a message being sent until the server echoes it.
-  /// - Parameters:
-  ///   - text: The message.
-  ///   - attachments: Its files.
-  /// - Returns: Its row's id, or `nil` for a message with nothing to show.
-  func showSending(_ text: String, attachments: [Attachment] = []) -> String? {
-    let rowID = pendingMessages.add(text: text, attachments: attachments, transcript: rows)
-    digestRows()
-    return rowID
-  }
-
-  /// The server accepted the message on `rowID`. The echo may already have arrived.
-  /// - Parameters:
-  ///   - rowID: The message's row, from ``showSending(_:attachments:)``.
-  ///   - sent: The acknowledgement.
-  func messageAccepted(_ rowID: String?, _ sent: MessageSent) {
-    guard let rowID else { return }
-    pendingMessages.acknowledge(rowID, itemID: sent.itemId)
-    retireEchoedMessages()
-    digestRows()
-  }
-
-  /// The message on `rowID` did not go out; whoever sent it keeps its text.
-  /// - Parameter rowID: The message's row, from ``showSending(_:attachments:)``.
-  func messageNotSent(_ rowID: String?) {
-    guard let rowID else { return }
-    pendingMessages.withdraw(rowID)
-    digestRows()
-  }
-
   /// Clears ``errors`` after the user has seen them.
   public func dismissErrors() {
     errors = []
@@ -275,6 +245,7 @@ public final class ConversationStore {
     let header = Self.known(header)
     if header != self.header { self.header = header }
     if sections != self.sections { self.sections = sections }
+    relayReportedMode()
     decisions.replace(cards)
     retireEchoedMessages()
     rowWatches.refreshAll(from: rows)
@@ -293,7 +264,10 @@ public final class ConversationStore {
     }
     // Setting an observed property notifies even when the value is unchanged.
     if let header = Self.known(change.header), header != self.header { self.header = header }
-    if let sections = change.sections, sections != self.sections { self.sections = sections }
+    if let sections = change.sections, sections != self.sections {
+      self.sections = sections
+      relayReportedMode()
+    }
     self.revision = revision
     retireEchoedMessages()
     rowWatches.refresh(touchedBy: change.rows, in: rows)
@@ -302,7 +276,7 @@ public final class ConversationStore {
   }
 
   /// Touches the observed list only when it holds something, as this runs for every delta.
-  private func retireEchoedMessages() {
+  func retireEchoedMessages() {
     if !pendingMessages.entries.isEmpty { pendingMessages.retireEchoes(in: rows) }
   }
 
@@ -312,7 +286,7 @@ public final class ConversationStore {
     header?.isPlaceholder == true ? nil : header
   }
 
-  private func digestRows() {
+  func digestRows() {
     let digest = TranscriptDigest(rows: displayRows)
     if digest != transcriptDigest { transcriptDigest = digest }
   }

@@ -29,6 +29,7 @@ enum ConversationAdapter {
       summary: summary.map(OmnigentUIComponents.SessionSummary.init),
       turnStartedAt: store.turnTimer.startedAt)
     state.isHydrating = isHydrating(store)
+    state.approvalModeTitle = approvalModeTitle(store)
     return state
   }
 
@@ -59,6 +60,7 @@ enum ConversationAdapter {
       isEmpty: digest.isEmpty, lastInterrupted: digest.lastInterrupted,
       activityTitle: digest.activityTitle)
     state.isHydrating = isHydrating(store)
+    state.approvalModeTitle = approvalModeTitle(store)
     return state
   }
 
@@ -103,6 +105,11 @@ enum ConversationAdapter {
   /// rather than offering an empty session.
   static func isHydrating(_ store: ConversationStore) -> Bool {
     !store.isHydrated && !store.isClosed && store.transcriptDigest.isEmpty
+  }
+
+  /// What the composer's chip calls the session's approval mode.
+  static func approvalModeTitle(_ store: ConversationStore) -> String? {
+    store.composer.approvalModeMenu.flatMap { ComposerAdapter.approvalModes($0).selected?.label }
   }
 
   /// Reads the store's rows inside the transcript's body.

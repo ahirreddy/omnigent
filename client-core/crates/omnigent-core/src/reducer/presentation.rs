@@ -215,18 +215,20 @@ fn status_sections(state: &SessionEventState, result: &mut Vec<EventSection>) {
         ));
     }
     if let Some(mode) = &state.permission_mode {
-        result.push(EventSection::new(
-            "permission",
-            "Permission mode",
-            capitalized(mode),
-        ));
+        result.push(
+            EventSection::new("permission", "Permission mode", capitalized(mode))
+                .with_details(vec![detail(REPORTED_MODE_DETAIL, "Mode", mode)]),
+        );
     }
     if let Some(mode) = &state.approval_mode {
-        result.push(EventSection::new(
-            "approval",
-            "Approval mode",
-            capitalized(&mode.replace('-', " ")),
-        ));
+        result.push(
+            EventSection::new(
+                "approval",
+                "Approval mode",
+                capitalized(&mode.replace('-', " ")),
+            )
+            .with_details(vec![detail(REPORTED_MODE_DETAIL, "Mode", mode)]),
+        );
     }
 }
 
@@ -423,6 +425,8 @@ fn startup_sections(state: &SessionEventState, result: &mut Vec<EventSection>) {
 
 /// How many still-starting MCP servers the startup line names before "…".
 const MCP_STARTING_NAMES_SHOWN: usize = 3;
+/// The detail holding a mode's raw value, for clients that compare it with their mode menus.
+const REPORTED_MODE_DETAIL: &str = "mode";
 
 /// The transcript's startup line (`startup`): a failed sandbox launch, the sandbox's in-flight
 /// stage, or the MCP servers still starting. Its `state` detail is `failed` or `progress`.

@@ -93,6 +93,8 @@ public final class ComposerStore {
   @ObservationIgnored var draftStored: ((SavedDraft) -> Void)?
   /// What `/context`, `/mcp` and held sends read from the conversation.
   @ObservationIgnored var conversationFacts: (@MainActor () -> ConversationFacts?)?
+  /// The approval mode the harness last reported on the stream.
+  @ObservationIgnored var reportedApprovalMode: String?
   /// The conversation that shows a message as soon as it is sent. It owns this composer.
   @ObservationIgnored weak var transcript: ConversationStore?
   /// Retries messages held for the host while it already reads online.

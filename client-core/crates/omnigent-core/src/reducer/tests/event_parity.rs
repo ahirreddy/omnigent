@@ -101,6 +101,33 @@ fn usage_sparse_merge_replacement_and_response_context_tokens() {
 }
 
 #[test]
+fn reported_modes_keep_their_raw_value_for_the_composer() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "session.codex_approval_mode", "approval_mode": "approve-for-me"}));
+    harness.send(json!({"type": "session.permission_mode", "permission_mode": "acceptEdits"}));
+    let sections = harness.reducer.sections();
+    let mode = |id: &str| {
+        let section = sections.iter().find(|section| section.id == id);
+        let detail = section.and_then(|section| section.details.first());
+        (
+            section.map(|section| section.summary.clone()),
+            detail.map(|detail| (detail.id.clone(), detail.text.clone())),
+        )
+    };
+    assert_eq!(
+        mode("approval"),
+        (
+            Some("Approve For Me".to_owned()),
+            Some(("mode".to_owned(), "approve-for-me".to_owned()))
+        )
+    );
+    assert_eq!(
+        mode("permission").1,
+        Some(("mode".to_owned(), "acceptEdits".to_owned()))
+    );
+}
+
+#[test]
 fn invalid_usage_never_replaces_valid_nonnegative_state() {
     let mut harness = Harness::new(SESSION);
     let lines = events("EventParity--InvalidUsageNeverReplacesValidNonnegativeState.jsonl");

@@ -89,7 +89,12 @@ public struct SessionInspectorView: View {
         }
       }
       ForEach(["permission", "approval", "collaboration"], id: \.self) { id in
-        if let section = state.section(id) { LabeledContent(section.title, value: section.summary) }
+        if let section = state.section(id) {
+          LabeledContent(
+            section.title,
+            value: id == "collaboration"
+              ? section.summary : state.approvalModeTitle ?? section.summary)
+        }
       }
       if let failure = header.failureMessage {
         LabeledContent("Last failure") {

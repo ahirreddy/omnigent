@@ -240,10 +240,21 @@ extension ComposerStore {
     }
   }
 
+  /// The harness reported its approval mode on the stream. A session that never switched has no
+  /// label for its configuration to read, so this is the only word on its mode.
+  /// - Parameter mode: The mode's raw value; `nil` when none was reported.
+  func harnessReported(mode: String?) {
+    guard let mode, mode != reportedApprovalMode else { return }
+    reportedApprovalMode = mode
+    configuration?.approvalMode = mode
+  }
+
   private func adopt(_ summary: SessionSummary) {
-    configuration = summary.configuration
+    var read = summary.configuration
+    if read?.approvalMode == nil { read?.approvalMode = reportedApprovalMode }
+    configuration = read
     workspace = summary.workspace
-    configurationLabels = summary.configuration.map {
+    configurationLabels = read.map {
       OmnigentCoreFFI.configurationLabels(configuration: $0)
     }
   }
