@@ -296,7 +296,8 @@ public final class CreationStore {
       pendingFirstMessage = firstMessage
       phase = .created(sessionID: sessionID, firstMessageError: nil)
       do {
-        _ = try await core.sendMessage(sessionId: sessionID, text: firstMessage)
+        // The session isn't open yet, so this can't wait for its live stream.
+        _ = try await core.sendFirstMessage(sessionId: sessionID, text: firstMessage)
         pendingFirstMessage = nil
       } catch {
         phase = .created(sessionID: sessionID, firstMessageError: coreError(error))
@@ -331,7 +332,7 @@ public final class CreationStore {
       return
     }
     do {
-      _ = try await core.sendMessage(sessionId: sessionID, text: text)
+      _ = try await core.sendFirstMessage(sessionId: sessionID, text: text)
       pendingFirstMessage = nil
       phase = .created(sessionID: sessionID, firstMessageError: nil)
     } catch {
