@@ -17,6 +17,12 @@ struct ChangePasswordPane: View {
   @State private var new = ""
   @State private var confirmation = ""
   @State private var changed = false
+  @State private var isChanging = false
+
+  /// The confirmation lasts until the next password is typed.
+  private var showsChanged: Bool {
+    changed && current.isEmpty && new.isEmpty && confirmation.isEmpty
+  }
 
   var body: some View {
     Section {
@@ -24,19 +30,22 @@ struct ChangePasswordPane: View {
       SecureField("New password", text: $new)
       SecureField("Confirm new password", text: $confirmation)
       HStack {
-        if changed {
+        if showsChanged {
           Label("Password changed", systemImage: "checkmark.circle").foregroundStyle(.secondary)
         } else if !confirmation.isEmpty, confirmation != new {
           Text("The new passwords don't match.").foregroundStyle(Theme.failure)
         }
         Spacer()
         Button("Change Password") {
+          isChanging = true
           Task {
             changed = await actions.changePassword?(current, new) ?? false
             if changed { (current, new, confirmation) = ("", "", "") }
+            isChanging = false
           }
         }
-        .disabled(current.isEmpty || new.isEmpty || new != confirmation)
+        // A second click would resend a current password the first one already replaced.
+        .disabled(current.isEmpty || new.isEmpty || new != confirmation || isChanging)
       }
     } header: {
       Text("Change password")
