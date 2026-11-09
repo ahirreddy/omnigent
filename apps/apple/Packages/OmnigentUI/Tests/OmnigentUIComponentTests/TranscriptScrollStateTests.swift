@@ -112,18 +112,37 @@ struct TranscriptScrollStateTests {
   func followedHeights() {
     var heights = FollowedHeights()
     let start = Date()
-    let changes: [(CGFloat, TimeInterval)] = [
-      (658, 0), (737, 0), (770, 0),
-      // Lazy rows estimated again after the scroll: the content shrinks and grows back.
-      (737, 0.1), (770.4, 0.2),
-      // A bounce that keeps going stays let go; new output is followed.
-      (737, 2.05), (812, 2.1),
-      // Long after, the same height is growth like any other.
-      (737, 5),
-    ]
-    let followed = changes.map { height, offset in
-      heights.follows(height, at: start.addingTimeInterval(offset))
+    func follows(_ height: CGFloat, from origin: CGFloat, after seconds: TimeInterval) -> Bool {
+      heights.follows(height, from: origin, at: start.addingTimeInterval(seconds))
     }
-    #expect(followed == [true, true, true, false, false, false, true, true])
+    #expect(follows(658, from: 600, after: 0))
+    #expect(follows(737, from: 658, after: 0))
+    #expect(follows(770, from: 737, after: 0))
+    // Lazy rows estimated again after the scroll: the content shrinks and grows back.
+    #expect(!follows(737, from: 699, after: 0.1))
+    #expect(!follows(770.4, from: 700, after: 0.2))
+    // A bounce that keeps going stays let go; new output is followed.
+    #expect(!follows(737, from: 701, after: 2.05))
+    #expect(follows(812, from: 790, after: 2.1))
+    // Long after, the same growth is growth like any other.
+    #expect(follows(737, from: 658, after: 5))
+  }
+
+  @Test("growth to a new estimate from a height it already grew from is not followed")
+  func followedHeightsBouncingToNewEstimates() {
+    var heights = FollowedHeights()
+    let start = Date()
+    func follows(_ height: CGFloat, from origin: CGFloat, after seconds: TimeInterval) -> Bool {
+      heights.follows(height, from: origin, at: start.addingTimeInterval(seconds))
+    }
+    #expect(follows(689, from: 616, after: 0))
+    #expect(!follows(723, from: 616, after: 0.02))
+    #expect(!follows(678, from: 616, after: 0.04))
+    // The bounce keeps the start remembered for as long as it lasts.
+    #expect(!follows(701, from: 616, after: 1.9))
+    #expect(!follows(695, from: 616, after: 3.8))
+    // Output growing on from elsewhere is followed meanwhile, and the start ages out after.
+    #expect(follows(760, from: 730, after: 3.9))
+    #expect(follows(689, from: 616, after: 6))
   }
 }
