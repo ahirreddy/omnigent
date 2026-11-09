@@ -113,6 +113,8 @@ def run_package(name, should_test):
         if result.returncode != 0:
             tail = result.stdout[-2000:] + result.stderr[-1000:]
             print(f"{name}: tests failed\n{tail}", file=sys.stderr)
+            # A failed run may leave no profile to export, and the rest still need measuring.
+            return [], False
     else:
         result = None
     codecov = subprocess.run(
