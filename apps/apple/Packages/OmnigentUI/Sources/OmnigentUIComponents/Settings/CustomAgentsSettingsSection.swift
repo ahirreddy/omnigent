@@ -292,7 +292,7 @@ public struct CustomAgentsSettingsSection: View {
         .buttonStyle(.borderless)
       messages
     }
-    if let form = Binding($draft) {
+    if let form = Binding(keepingLast: $draft) {
       Section(form.wrappedValue.name) {
         TextField("Description", text: form.description)
         Picker("Harness", selection: form.harness) {
