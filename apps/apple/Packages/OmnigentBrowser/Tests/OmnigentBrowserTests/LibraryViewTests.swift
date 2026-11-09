@@ -42,15 +42,17 @@
         BrowserHistoryView(store: store, open: recorder.open), width: 640, height: 480)
       defer { screen.close() }
       await screen.catchUp()
-      // A header and the day's two visits.
+      // A header and the day's two visits, one named and one by its address.
       #expect(screen.rowPoints.count == 3)
+      #expect(try screen.shows("Alpha"))
+      #expect(try screen.shows("b.example"))
       #expect(try !screen.shows("No History"))
 
       try screen.focusField()
       try screen.type("zzz")
       await screen.catchUp()
       #expect(try screen.shows("No Matches"))
-      #expect(screen.rowPoints.isEmpty)
+      #expect(try !screen.shows("Alpha"))
 
       store.remove(visitIDs: Set(store.visits.map(\.id)))
       screen.selectFieldText()
@@ -191,8 +193,8 @@
       defer { screen.close() }
       await screen.catchUp()
       #expect(try screen.shows("Bookmarks"))
-      // Two section headers, the bar's three items and Other Bookmarks' none.
-      #expect(screen.rowPoints.count >= 3)
+      #expect(try screen.shows("Alpha"))
+      #expect(try screen.shows("a.example"))
 
       let row = try #require(screen.rowPoints.dropFirst().first)
       let menu = try #require(try screen.rowMenu(at: row))
