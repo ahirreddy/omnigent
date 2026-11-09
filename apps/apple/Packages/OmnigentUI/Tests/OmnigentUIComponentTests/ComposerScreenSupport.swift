@@ -251,6 +251,22 @@
       try click(clickPoint(frames[index]))
     }
 
+    /// Scrolls the longest scroll view to its end, as a user would to reach a form's last row.
+    func scrollToEnd() {
+      let scrollViews = allViews.compactMap { $0 as? NSScrollView }
+      guard let scrollView = scrollViews.max(by: { contentHeight($0) < contentHeight($1) }) else {
+        return
+      }
+      let clip = scrollView.contentView
+      clip.scroll(to: NSPoint(x: 0, y: max(0, contentHeight(scrollView) - clip.bounds.height)))
+      scrollView.reflectScrolledClipView(clip)
+      settle(0.1)
+    }
+
+    private func contentHeight(_ scrollView: NSScrollView) -> CGFloat {
+      scrollView.documentView?.frame.height ?? 0
+    }
+
     /// Clicks each listed button, for a screen where none should do anything.
     func clickEveryButton() throws {
       for frame in buttons { try click(clickPoint(frame)) }
