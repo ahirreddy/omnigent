@@ -53,7 +53,7 @@
       }
       guard types.contains(.siteData) else { return }
       for origin in Set(origins.compactMap(Self.origin)) {
-        let params = Self.json([
+        let params = try Self.json([
           "origin": origin,
           "storageTypes":
             "local_storage,indexeddb,websql,service_workers,cache_storage,file_systems,shader_cache",
@@ -96,10 +96,21 @@
       return "\(scheme)://\(host)\(url.port.map { ":\($0)" } ?? "")"
     }
 
-    private static func json(_ object: [String: String]) -> String {
-      let data = try? JSONEncoder().encode(object)
-      precondition(data != nil, "Encoding strings as JSON cannot fail.")
-      return String(bytes: data ?? Data(), encoding: .utf8) ?? ""
+    static func json(_ object: some Encodable) throws(WebLayerError) -> String {
+      let data: Data
+      do {
+        data = try JSONEncoder().encode(object)
+      } catch {
+        throw .invalidArgument(error.localizedDescription)
+      }
+      return try utf8Text(data)
+    }
+
+    static func utf8Text(_ data: Data) throws(WebLayerError) -> String {
+      guard let text = String(bytes: data, encoding: .utf8) else {
+        throw .invalidArgument("DevTools parameters are not UTF-8.")
+      }
+      return text
     }
   }
 #endif

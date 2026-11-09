@@ -118,8 +118,11 @@ nonisolated public enum BrowserRestorePlaceholder {
   }
 
   /// Script that rebuilds `history` on the start page. Returns true.
-  public static func rebuildScript(for history: BrowserNavigationHistory) -> String {
-    let json = AgentBrowserScripts.literal(history.entries.map(fragment(for:)))
+  public static func rebuildScript(for history: BrowserNavigationHistory) throws(BrowserError)
+    -> String
+  {
+    let json = try AgentBrowserScripts.jsonText(
+      history.entries.map(fragment(for:)), of: "the history to restore")
     return """
       (() => {
         const entries = \(json);

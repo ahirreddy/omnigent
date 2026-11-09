@@ -116,9 +116,17 @@ nonisolated enum BrowserBookmarkHTML {
     else {
       return nil
     }
-    // The pattern ends in the closing quote and has one opening quote before it.
-    let value = attributes[range].drop { $0 != "\"" }.dropFirst().dropLast()
-    return unescape(String(value))
+    return quotedValue(in: attributes[range]).map(unescape)
+  }
+
+  /// The text between the first and last quotes of `match`, if it has both.
+  static func quotedValue(in match: Substring) -> String? {
+    guard let open = match.firstIndex(of: "\""), let close = match.lastIndex(of: "\""),
+      open < close
+    else {
+      return nil
+    }
+    return String(match[match.index(after: open)..<close])
   }
 
   static func unescape(_ text: String) -> String {

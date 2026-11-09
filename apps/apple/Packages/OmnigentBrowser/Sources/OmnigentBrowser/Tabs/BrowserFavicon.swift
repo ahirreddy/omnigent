@@ -59,7 +59,8 @@ nonisolated public struct BrowserFavicon: Hashable, Sendable {
     let type = UTType.png.identifier as CFString
     guard let png = CGImageDestinationCreateWithData(bytes, type, 1, nil) else { throw failure }
     CGImageDestinationAddImage(png, scaled, nil)
-    guard CGImageDestinationFinalize(png) else { throw failure }
+    let unencoded = BrowserError.snapshotFailed("The icon could not be encoded.")
+    guard CGImageDestinationFinalize(png) else { throw unencoded }
     return Self(pngData: output as Data)
   }
 }

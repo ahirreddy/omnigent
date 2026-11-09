@@ -235,8 +235,17 @@ public final class FixtureRemoteBrowserDriver: RemoteBrowserDriverProtocol {
       let (frame, progressed) = state.withLock { state in Self.tick(&state) }
       if let progressed { listener.onState(snapshot: progressed) }
       if let frame { listener.onVideo(frame: frame) }
-      // Only cancellation ends the wait early, which stops the playback.
-    } while (try? await Task.sleep(for: Self.frameInterval)) != nil
+    } while await Self.waitForNextFrame()
+  }
+
+  /// Waits one frame; false once the playback is cancelled.
+  private nonisolated static func waitForNextFrame() async -> Bool {
+    do {
+      try await Task.sleep(for: frameInterval)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /// Attaches, or reports the tab gone or the fixture unreadable; `true` when attached.

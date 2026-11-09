@@ -99,7 +99,7 @@ struct RestoreStateTests {
   }
 
   @Test func rebuildScriptCarriesEveryEntry() throws {
-    let script = BrowserRestorePlaceholder.rebuildScript(for: try Self.history())
+    let script = try BrowserRestorePlaceholder.rebuildScript(for: try Self.history())
     #expect(script.contains("const target = 1;"))
     #expect(script.contains("u=https%3A%2F%2Fb.example%2Ftwo%3Fx%3D1%26y%3Da%2Bb%23frag"))
     #expect(script.contains("history.pushState"))
