@@ -219,3 +219,13 @@ fn validation_matches_the_web() {
     assert!(needs_anchored_scheduling(&daily));
     assert!(needs_anchored_scheduling(&model(SchedulePreset::Custom)));
 }
+
+#[test]
+fn next_run_text_survives_the_ends_of_the_64_bit_range() {
+    assert_eq!(format_next_run(i64::MIN, i64::MAX), "soon");
+    assert_eq!(format_next_run(i64::MAX, i64::MAX), "soon");
+    let days = i64::MAX / 86_400;
+    assert_eq!(format_next_run(i64::MAX, 0), format!("in {days} days"));
+    // The difference itself overflows, and clamps the same way.
+    assert_eq!(format_next_run(i64::MAX, -1), format!("in {days} days"));
+}
