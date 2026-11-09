@@ -152,13 +152,14 @@
         doubleclick toggle-inspector
         click toggle-inspector
         twice right panel
+        type **bold** and `code`
         wait 1.5
         """)
       #expect(
         steps == [
           .session("demo-notes"), .resize(width: 923, height: 672),
           .click("toggle-inspector", count: 2), .click("toggle-inspector", count: 1),
-          .shortcut("right panel", count: 2), .wait(1.5),
+          .shortcut("right panel", count: 2), .type("**bold** and `code`"), .wait(1.5),
         ])
     }
 

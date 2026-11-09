@@ -8,7 +8,8 @@
   ///
   /// One step per line; blank lines and lines starting with `#` are skipped:
   /// `session ID`, `resize WIDTH HEIGHT`, `click IDENTIFIER`, `doubleclick IDENTIFIER`,
-  /// `shortcut NAME`, `twice NAME` (the shortcut pressed twice with no pause), `wait SECONDS`,
+  /// `shortcut NAME`, `twice NAME` (the shortcut pressed twice with no pause), `type TEXT` (with
+  /// `\r` for Return), `wait SECONDS`,
   /// where an identifier is a control's accessibility identifier and a name is one in
   /// ``ChaosMenu/shortcuts``.
   @MainActor
@@ -19,6 +20,7 @@
       case click(String, count: Int)
       case wait(TimeInterval)
       case shortcut(String, count: Int)
+      case type(String)
     }
 
     struct Malformed: Error, Equatable {
@@ -64,6 +66,8 @@
       case ("shortcut", 1...): .shortcut(arguments.joined(separator: " "), count: 1)
       case ("twice", 1...): .shortcut(arguments.joined(separator: " "), count: 2)
       case ("wait", 1): TimeInterval(arguments[0]).map(Step.wait)
+      case ("type", 1...):
+        .type(arguments.joined(separator: " ").replacingOccurrences(of: "\\r", with: "\r"))
       case ("resize", 2):
         Double(arguments[0]).flatMap { width in
           Double(arguments[1]).map { .resize(width: width, height: $0) }
@@ -126,7 +130,7 @@
           return
         }
         router.open(.conversation(sessionID: id), onServer: server)
-      case .resize, .click, .shortcut:
+      case .resize, .click, .shortcut, .type:
         guard let window = visibleWindow else {
           log?.write("\(step): no window")
           return
@@ -157,6 +161,8 @@
           return
         }
         for _ in 0..<count { ChaosInput.press(shortcut.key, shortcut.modifiers, in: window) }
+      case .type(let text):
+        ChaosInput.type(text, in: window)
       case .session, .wait:
         break
       }
