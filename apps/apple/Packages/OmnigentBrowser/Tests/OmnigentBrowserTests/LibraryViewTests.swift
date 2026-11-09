@@ -227,5 +227,43 @@
       #expect(SystemSideEffects.record.panelCount == 1)
       #expect(store.allBookmarks.count == before)
     }
+
+    @Test("a chosen file is imported and counted; one that can't be read or parsed says why")
+    func importChosenFile() async throws {
+      let store = try store()
+      let before = store.allBookmarks.count
+      let screen = OffscreenWindow(
+        BrowserBookmarksManagerView(store: store, open: { _, _ in }), width: 600, height: 480)
+      defer {
+        screen.close()
+        SystemSideEffects.reset()
+      }
+      await screen.catchUp()
+      let folder = try temporaryDirectory()
+
+      func importFile(_ file: URL) async throws {
+        SystemSideEffects.answer(panel: .OK, panelURL: file)
+        let importButton = try #require(screen.controlFrames.first)
+        try screen.click(CGPoint(x: importButton.midX, y: importButton.midY))
+        await screen.catchUp()
+      }
+
+      let exported = folder.appending(path: "bookmarks.html")
+      try Data(#"<DL><DT><A HREF="https://chosen.example/">Chosen</A></DL>"#.utf8).write(
+        to: exported)
+      try await importFile(exported)
+      #expect(store.allBookmarks.count == before + 1)
+      #expect(try screen.shows("Imported 1 bookmark."))
+
+      try await importFile(folder.appending(path: "gone.html"))
+      #expect(store.allBookmarks.count == before + 1)
+      #expect(try screen.shows("Could not read gone.html"))
+
+      let binary = folder.appending(path: "binary.html")
+      try Data([0xFF, 0xFE, 0xC0]).write(to: binary)
+      try await importFile(binary)
+      #expect(store.allBookmarks.count == before + 1)
+      #expect(try screen.shows("no <DL> list"))
+    }
   }
 #endif
