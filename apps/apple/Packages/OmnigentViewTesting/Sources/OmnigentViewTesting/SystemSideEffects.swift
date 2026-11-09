@@ -196,6 +196,9 @@
     }
 
     private static func installApplication() {
+      // A destructive button ignores clicks in an inactive app, and a test never activates.
+      let isActive: @convention(c) (NSApplication, Selector) -> Bool = { _, _ in true }
+      replace(NSApplication.self, "isActive", with: isActive)
       let terminate: @convention(c) (NSApplication, Selector, AnyObject?) -> Void = { _, _, _ in
         Self.note { $0.terminationCount += 1 }
       }
