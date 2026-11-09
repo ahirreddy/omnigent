@@ -426,3 +426,34 @@ fn http_dates_parse_and_transport_failures_keep_their_kind() {
         Err(DatabricksError::Cancelled)
     );
 }
+
+#[test]
+fn cookie_dates_out_of_range_are_rejected_instead_of_overflowing() {
+    assert_eq!(parse_http_date("Thu, 01 Jan 1970 00:00:01 GMT"), Some(1000));
+    assert_eq!(
+        parse_http_date("Fri, 31 Dec 9999 23:59:60 GMT"),
+        Some(253_402_300_800_000)
+    );
+    for bad in [
+        "Thu, 01 Jan 18446744073709551615 00:00:00 GMT",
+        "Thu, 01 Feb 10000 00:00:00 GMT",
+        "Thu, 01 Jan 1969 00:00:00 GMT",
+        "Thu, 01 Jan 2026 18446744073709551615:00:00 GMT",
+        "Thu, 01 Jan 2026 00:18446744073709551615:00 GMT",
+        "Thu, 01 Jan 2026 00:00:18446744073709551615 GMT",
+        "Thu, 18446744073709551615 Jan 2026 00:00:00 GMT",
+        "Thu, 00 Jan 2026 00:00:00 GMT",
+        "Thu, 32 Jan 2026 00:00:00 GMT",
+        "Thu, 01 Foo 2026 00:00:00 GMT",
+        "Thu, 01 Jan 2026 24:00:00 GMT",
+        "Thu, 01 Jan 2026 00:60:00 GMT",
+        "Thu, 01 Jan 2026 00:00:61 GMT",
+        "Thu, 01 Jan 2026 00:00:00 PST",
+        "Thu, 01 Jan 2026 00:00:00",
+        "Thu, 01 Jan 2026",
+        "01 Jan 2026 00:00:00 GMT",
+        "",
+    ] {
+        assert_eq!(parse_http_date(bad), None, "{bad}");
+    }
+}

@@ -426,7 +426,14 @@ fn parse_http_date(text: &str) -> Option<u64> {
     let hour: u64 = clock.next()?.parse().ok()?;
     let minute: u64 = clock.next()?.parse().ok()?;
     let second: u64 = clock.next()?.parse().ok()?;
-    if fields.next()? != "GMT" || year < 1970 || !(1..=31).contains(&day) {
+    // A cookie date from a server: fields out of range would overflow the arithmetic below.
+    if fields.next()? != "GMT"
+        || !(1970..=9999).contains(&year)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
         return None;
     }
     // Days from the civil date (Howard Hinnant's algorithm), for years from 1970 on.
