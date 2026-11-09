@@ -135,6 +135,15 @@
       #expect(seenDuringMenu.isEmpty, "\(seenDuringMenu)")
     }
 
+    @Test("an exit from the runner's own loop counts as ending the run early")
+    func falsePassDetection() {
+      let early = ["exit", "swift_task_asyncMainDrainQueue", "main"]
+      let normal = ["exit", "__SwiftPMGeneratedTestRunner", "swift_task_asyncMainDrainQueue"]
+      #expect(SystemSideEffects.endsRunEarly(callStack: early))
+      #expect(!SystemSideEffects.endsRunEarly(callStack: normal))
+      #expect(!SystemSideEffects.endsRunEarly(callStack: ["exit", "main"]))
+    }
+
     @Test("focus, new windows, menus and quitting are recorded")
     func application() {
       let app = NSApplication.shared
