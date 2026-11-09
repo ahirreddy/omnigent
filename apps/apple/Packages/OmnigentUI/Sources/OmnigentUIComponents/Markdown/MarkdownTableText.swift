@@ -65,7 +65,7 @@ enum CodeFileExtension {
   /// `language`'s usual extension; `txt` when unknown.
   static func `for`(_ language: String?) -> String {
     let name = (language ?? "").lowercased().trimmingCharacters(in: .whitespaces)
-    if let known = known[name] { return known }
+    if let fence = CodeHighlighting.fenceName(language), let known = known[fence] { return known }
     let isPlainName = !name.isEmpty && name.count <= 10 && name.allSatisfy(\.isLetter)
     return isPlainName ? name : "txt"
   }
