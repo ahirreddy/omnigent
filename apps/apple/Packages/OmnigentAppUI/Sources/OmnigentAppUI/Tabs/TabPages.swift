@@ -39,6 +39,7 @@ struct TerminalTabView: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .modifier(TerminalPageFocus(surface: surface))
     .navigationTitle(row?.terminal.displayLabel ?? "Terminal")
     .navigationSubtitle(sessionTitle)
     .toolbar {
@@ -100,6 +101,7 @@ struct HarnessTabView: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .modifier(TerminalPageFocus(surface: surface))
     .navigationTitle(conversation?.header?.title ?? "Agent Terminal")
     .navigationSubtitle("Agent terminal")
     .toolbar {

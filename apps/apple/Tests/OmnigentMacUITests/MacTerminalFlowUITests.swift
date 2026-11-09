@@ -34,6 +34,47 @@ final class MacTerminalFlowUITests: XCTestCase {
     XCTAssertTrue(live.element("terminal-tab", in: app).waitForExistence(timeout: 30))
   }
 
+  /// A new shell takes the keyboard: typing reaches it without a click, and again after
+  /// switching to the chat and back with Control-`.
+  @MainActor
+  func testANewTerminalTakesTheKeyboard() throws {
+    let live = MacLiveUITestSupport(self)
+    let session = try live.fixtureSession()
+    let workspace = try live.fixtureWorkspace()
+    let opened = workspace.appending(path: "terminal-focus-\(UUID().uuidString).txt")
+    let shownAgain = workspace.appending(path: "terminal-refocus-\(UUID().uuidString).txt")
+    defer {
+      for marker in [opened, shownAgain] { try? FileManager.default.removeItem(at: marker) }
+    }
+    let app = live.launch()
+    defer { app.terminate() }
+    live.open(session, in: app)
+
+    app.typeKey("t", modifierFlags: [.command, .option])
+    typesWithoutAClick(into: opened, live: live, app: app)
+    app.typeKey("`", modifierFlags: .control)
+    XCTAssertTrue(live.element("transcript-\(session)", in: app).waitForExistence(timeout: 10))
+    app.typeKey("`", modifierFlags: .control)
+    typesWithoutAClick(into: shownAgain, live: live, app: app)
+  }
+
+  /// Once the shown terminal attaches, types a command that writes `marker` and waits for it.
+  @MainActor
+  private func typesWithoutAClick(
+    into marker: URL, live: MacLiveUITestSupport, app: XCUIApplication
+  ) {
+    XCTAssertTrue(live.element("terminal-tab", in: app).waitForExistence(timeout: 30))
+    XCTAssertTrue(
+      live.waitUntil(timeout: 30) {
+        !live.text(containing: "Attaching", in: app).exists
+          && !live.text(containing: "Connecting", in: app).exists
+      }, "the terminal never attached")
+    app.typeText("echo focused > '\(marker.path)'\r")
+    XCTAssertTrue(
+      live.waitUntil(timeout: 30) { FileManager.default.fileExists(atPath: marker.path) },
+      "typing did not reach the terminal (no \(marker.lastPathComponent))")
+  }
+
   /// Command-T in a focused terminal is the app's, not the shell's: a New Tab page opens.
   @MainActor
   func testCommandTOpensATabFromATerminal() throws {
