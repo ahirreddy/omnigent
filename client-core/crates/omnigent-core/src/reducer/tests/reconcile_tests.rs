@@ -10,9 +10,7 @@
 use omnigent_protocol::{ConversationItem, FromWire, SessionListItem, SessionSnapshot};
 use serde_json::{Value, json};
 
-use crate::reconcile::{
-    ConfigurationReadError, ConversationState, ConversationSync, header_from_snapshot,
-};
+use super::*;
 use crate::reducer::tests::{
     Harness, assistant, fixture, fixture_lines, sse_data, swift_snapshot, user,
 };
@@ -119,7 +117,7 @@ fn newer_snapshot_replaces_messages_and_decisions_together() {
     let mut incoming = initial;
     incoming.revision += 1;
     incoming.decisions[0].answered = true;
-    incoming.header.status = crate::reducer::TurnStatus::Idle;
+    incoming.header.status = TurnStatus::Idle;
     incoming
         .rows
         .push(assistant("next-message", "Ready to continue."));
@@ -134,7 +132,7 @@ fn older_and_equal_revisions_cannot_restore_resolved_decision() {
     let mut resolved = old.clone();
     resolved.revision += 1;
     resolved.decisions[0].answered = true;
-    resolved.header.status = crate::reducer::TurnStatus::Idle;
+    resolved.header.status = TurnStatus::Idle;
     let mut state = ConversationState::new(resolved.clone());
     assert!(!state.apply(old.clone()));
     let mut conflicting = old;
@@ -565,14 +563,233 @@ fn browser_action_requests_reach_the_host_once_across_replays_and_reconnects() {
 fn a_snapshot_seeds_background_tasks_only_with_their_count() {
     let counted = session(json!({"id": SESSION, "status": "waiting", "created_at": 1,
         "background_task_count": 2, "background_tasks": [{"command": "make watch"}]}));
-    let state = crate::reconcile::event_state_from_snapshot(&counted);
+    let state = event_state_from_snapshot(&counted);
     assert_eq!(state.background_task_count, Some(2));
     assert_eq!(state.background_tasks.map(|tasks| tasks.len()), Some(1));
     let silent = session(json!({"id": SESSION, "status": "idle", "created_at": 1,
         "background_tasks": [{"command": "make watch"}]}));
-    let state = crate::reconcile::event_state_from_snapshot(&silent);
+    let state = event_state_from_snapshot(&silent);
     assert_eq!(
         (state.background_task_count, state.background_tasks),
         (None, None)
+    );
+}
+
+fn minimal_session(extra: &Value) -> SessionSnapshot {
+    let mut base = serde_json::json!({"id": SESSION, "status": "idle", "created_at": 1});
+    for (key, value) in extra.as_object().unwrap() {
+        base[key] = value.clone();
+    }
+    session(base)
+}
+
+#[test]
+fn an_unknown_status_cannot_become_a_header() {
+    let error = header_from_snapshot(
+        &minimal_session(&serde_json::json!({"status": "odd"})),
+        None,
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        ProjectionError::UnknownStatus {
+            session_id: SESSION.to_owned(),
+            status: "odd".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn null_fields_clear_to_safe_defaults_and_absent_ones_keep_the_previous_value() {
+    let earlier = header_from_snapshot(
+        &minimal_session(&serde_json::json!({
+            "title": "Named", "permission_level": 4, "archived": true,
+        })),
+        None,
+    )
+    .unwrap();
+    assert_eq!(earlier.title, "Named");
+    assert_eq!(earlier.permission_level, Some(4));
+    let absent =
+        header_from_snapshot(&minimal_session(&serde_json::json!({})), Some(&earlier)).unwrap();
+    assert_eq!(absent.title, "Named");
+    assert_eq!(absent.permission_level, Some(4));
+    assert!(absent.archived);
+    assert!(!absent.read_only);
+    let cleared = header_from_snapshot(
+        &minimal_session(&serde_json::json!({
+            "title": null, "permission_level": null, "archived": null,
+        })),
+        Some(&earlier),
+    )
+    .unwrap();
+    assert_eq!(cleared.title, UNTITLED_SESSION);
+    assert_eq!(cleared.permission_level, None);
+    assert!(cleared.read_only, "an unknown permission is read only");
+    assert!(!cleared.archived);
+    let blank =
+        header_from_snapshot(&minimal_session(&serde_json::json!({"title": ""})), None).unwrap();
+    assert_eq!(blank.title, UNTITLED_SESSION);
+}
+
+#[test]
+fn a_failed_list_row_keeps_the_known_failure_or_says_something_generic() {
+    let row = |status: &str| -> SessionListItem {
+        serde_json::from_value(
+            serde_json::json!({"id": SESSION, "status": status, "created_at": 1}),
+        )
+        .unwrap()
+    };
+    let generic = header_from_list_item(&row("failed"), None).unwrap();
+    assert_eq!(
+        generic.failure_message.as_deref(),
+        Some(DEFAULT_FAILURE_MESSAGE)
+    );
+    let mut known = generic;
+    known.failure_message = Some("It broke".to_owned());
+    let kept = header_from_list_item(&row("failed"), Some(&known)).unwrap();
+    assert_eq!(kept.failure_message.as_deref(), Some("It broke"));
+    let fine = header_from_list_item(&row("idle"), Some(&known)).unwrap();
+    assert_eq!(fine.failure_message, None);
+}
+
+#[test]
+fn mcp_servers_in_an_unknown_state_are_not_shown() {
+    let state = event_state_from_snapshot(&minimal_session(&serde_json::json!({
+        "mcp_startup": {"good": {"status": "ready"}, "odd": {"status": "brand_new"}},
+    })));
+    let servers = state.mcp_startup.unwrap();
+    assert_eq!(servers.keys().collect::<Vec<_>>(), ["good"]);
+}
+
+#[test]
+fn a_repeated_history_item_keeps_its_place_and_its_latest_content() {
+    let items: Vec<ConversationItem> = serde_json::from_value(serde_json::json!([
+        {"id": "a", "type": "message", "role": "user", "content": "first"},
+        {"id": "b", "type": "message", "role": "assistant", "content": "second"},
+        {"id": "a", "type": "message", "role": "user", "content": "edited"},
+    ]))
+    .unwrap();
+    let rows = history_rows(&items).unwrap();
+    let shown: Vec<(&str, &str)> = rows
+        .iter()
+        .map(|row| (row.id.as_str(), row.text.as_str()))
+        .collect();
+    assert_eq!(shown, [("a", "edited"), ("b", "second")]);
+}
+
+#[test]
+fn the_ledger_forgets_removed_sessions_and_stops_watching_a_lost_one() {
+    let mut sync = seeded_sync();
+    sync.open_stream();
+    let mut ledger = MetadataLedger::default();
+    ledger.cache(header_from_snapshot(&writable_session(), None).unwrap());
+    let before = ledger.epoch(SESSION);
+    ledger.remove(&[SESSION.to_owned()]);
+    assert_eq!(ledger.header(SESSION), None);
+    assert_eq!(ledger.epoch(SESSION), before + 1);
+
+    assert!(!sync.handle_removed(&["other".to_owned()]));
+    assert!(sync.handle_removed(&[SESSION.to_owned()]));
+    assert_eq!(
+        sync.request_hydration(),
+        None,
+        "a stopped sync reads nothing"
+    );
+    let ignored = sync
+        .handle_event(serde_json::json!({"type": "session.title", "title": "x"}))
+        .unwrap();
+    assert_eq!(ignored, SyncUpdate::default());
+}
+
+#[test]
+fn too_many_events_during_one_read_overflow_and_nothing_changes() {
+    let mut sync = seeded_sync();
+    let _request = sync.open_stream();
+    for _ in 0..MAX_BUFFERED_EVENTS {
+        sync.handle_event(serde_json::json!({"type": "session.title", "title": "x"}))
+            .unwrap();
+    }
+    assert_eq!(
+        sync.handle_event(serde_json::json!({"type": "session.title", "title": "y"})),
+        Err(SyncError::BufferOverflow {
+            limit: MAX_BUFFERED_EVENTS
+        })
+    );
+    assert_eq!(sync.buffered_event_types().len(), MAX_BUFFERED_EVENTS);
+}
+
+#[test]
+fn old_browser_actions_are_forgotten_and_a_replay_of_a_recent_one_is_silenced() {
+    let mut sync = seeded_sync();
+    let action = |index: usize| {
+        serde_json::json!({
+            "type": "browser.action_request", "action_id": format!("a{index}"), "action": "open",
+        })
+    };
+    assert!(
+        sync.handle_event(action(0))
+            .unwrap()
+            .effects
+            .browser_action
+            .is_some()
+    );
+    assert!(
+        sync.handle_event(action(0))
+            .unwrap()
+            .effects
+            .browser_action
+            .is_none(),
+        "the replay is not run again"
+    );
+    for index in 1..=MAX_REMEMBERED_BROWSER_ACTIONS {
+        sync.handle_event(action(index)).unwrap();
+    }
+    assert!(
+        sync.handle_event(action(0))
+            .unwrap()
+            .effects
+            .browser_action
+            .is_some(),
+        "the memory is bounded, so the oldest was forgotten"
+    );
+}
+
+#[test]
+fn a_configuration_read_is_refused_for_another_session_or_after_watching_stopped() {
+    let mut sync = seeded_sync();
+    let read = sync.begin_configuration_read("other");
+    assert!(matches!(
+        sync.finish_configuration_read(&read, &writable_session()),
+        Err(ConfigurationReadError::WrongSession { .. })
+    ));
+    let read = sync.begin_configuration_read(SESSION);
+    sync.stop();
+    assert_eq!(
+        sync.finish_configuration_read(&read, &writable_session())
+            .map(|_| ()),
+        Err(ConfigurationReadError::StreamChanged)
+    );
+}
+
+#[test]
+fn a_configuration_read_of_another_session_keeps_this_sessions_buffered_settings() {
+    let mut sync = seeded_sync();
+    sync.open_stream();
+    sync.handle_event(serde_json::json!({"type": "session.model", "model": "m"}))
+        .unwrap();
+    assert_eq!(sync.buffered_event_types().len(), 1);
+    let other = serde_json::json!({"id": "other", "status": "idle", "created_at": 1});
+    let read = sync.begin_configuration_read("other");
+    sync.finish_configuration_read(&read, &session(other))
+        .unwrap();
+    assert_eq!(sync.buffered_event_types().len(), 1);
+    let read = sync.begin_configuration_read(SESSION);
+    sync.finish_configuration_read(&read, &writable_session())
+        .unwrap();
+    assert_eq!(
+        sync.buffered_event_types().len(),
+        0,
+        "the read of this session supersedes its buffered settings"
     );
 }

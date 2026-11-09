@@ -817,3 +817,137 @@ fn saving_over_someone_elses_change_is_a_conflict_until_forced() {
         Err(WorkspaceError::InvalidPath(_))
     ));
 }
+
+#[test]
+fn the_client_reaches_the_environment_search_and_session_file_routes() {
+    let core = connected(local_with("recorded-environments"));
+    let environments = block_on(core.workspace_environments(SESSION)).unwrap();
+    assert_ne!(environments.len(), 0);
+
+    let core = connected(local_with("recorded-search-root"));
+    let found = block_on(core.search_workspace_paths(
+        SESSION,
+        DEFAULT_ENVIRONMENT_ID,
+        PathSearchQuery::new("main"),
+    ))
+    .unwrap();
+    assert_ne!(found.entries.len(), 0);
+
+    let core = connected(local_with("recorded-content-search"));
+    let lines = block_on(core.search_workspace_content(
+        SESSION,
+        DEFAULT_ENVIRONMENT_ID,
+        ContentSearchQuery::new("fixture needle"),
+    ))
+    .unwrap();
+    assert_ne!(lines.matches.len(), 0);
+
+    let core = connected(local_with("recorded-session-files"));
+    let files = block_on(core.session_files(
+        SESSION,
+        SessionFilesQuery {
+            limit: 100,
+            after: None,
+        },
+    ))
+    .unwrap();
+    assert_ne!(files.files.len(), 0);
+}
+
+#[test]
+fn invalid_identifiers_fail_before_any_request() {
+    let core = connected(RouteTransport::local());
+    let invalid =
+        |error: &WorkspaceError| matches!(error, WorkspaceError::InvalidIdentifier { .. });
+    for session in ["", "../x", "a/b"] {
+        assert!(invalid(
+            &block_on(core.workspace_environments(session)).unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.workspace_environment(session, DEFAULT_ENVIRONMENT_ID)).unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.list_workspace_directory(
+                session,
+                DEFAULT_ENVIRONMENT_ID,
+                DirectoryQuery::first_page(path("src")),
+            ))
+            .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.read_workspace_file(session, DEFAULT_ENVIRONMENT_ID, path("a.txt")))
+                .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.write_workspace_file(
+                session,
+                DEFAULT_ENVIRONMENT_ID,
+                path("a.txt"),
+                String::new()
+            ))
+            .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.workspace_file_diff(session, DEFAULT_ENVIRONMENT_ID, path("a.txt")))
+                .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.search_workspace_paths(
+                session,
+                DEFAULT_ENVIRONMENT_ID,
+                PathSearchQuery::new("x")
+            ))
+            .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.search_workspace_content(
+                session,
+                DEFAULT_ENVIRONMENT_ID,
+                ContentSearchQuery::new("x")
+            ))
+            .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.session_files(
+                session,
+                SessionFilesQuery {
+                    limit: 1,
+                    after: None
+                }
+            ))
+            .unwrap_err()
+        ));
+    }
+    assert_eq!(
+        core.transport()
+            .taken()
+            .iter()
+            .filter(|request| path_of(request).contains("/sessions/"))
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn a_save_stops_when_the_latest_read_fails() {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("GET"),
+        &format!("/v1/sessions/{SESSION}/resources/environments/{DEFAULT_ENVIRONMENT_ID}/filesystem/a.txt"),
+        None,
+        Reply::json(500, "{}"),
+    );
+    let core = connected(transport);
+    let result = block_on(core.save_workspace_file(
+        SESSION,
+        DEFAULT_ENVIRONMENT_ID,
+        path("a.txt"),
+        "new".to_owned(),
+        Some("base"),
+    ));
+    assert!(result.is_err(), "{result:?}");
+    assert!(
+        core.transport().writes().is_empty(),
+        "nothing is written over a file that could not be read"
+    );
+}

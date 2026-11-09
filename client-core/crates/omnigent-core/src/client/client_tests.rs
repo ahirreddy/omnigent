@@ -973,3 +973,283 @@ fn declared_terminal_names_come_from_the_session_agent() {
         Err(SessionError::InvalidIdentifier { .. })
     ));
 }
+
+fn notes(name: &str) -> UploadFile {
+    UploadFile::new(name, Some("text/plain"), b"notes".to_vec()).unwrap()
+}
+
+/// A writable `conv_a` that accepts messages and file uploads.
+fn upload_stub() -> RouteTransport {
+    let transport = RouteTransport::local();
+    transport.writable_session("[]");
+    transport.ok("/v1/sessions/conv_a/events", r#"{"queued":true}"#);
+    transport.respond(
+        Some("POST"),
+        "/v1/sessions/conv_a/resources/files",
+        None,
+        Reply::json(201, r#"{"id":"file_1","session_id":"conv_a"}"#),
+    );
+    transport
+}
+
+#[test]
+fn a_staged_upload_goes_out_with_the_message_and_leaves_the_composer() {
+    let core = live(upload_stub());
+    let item = core.add_attachment("conv_a", notes("plan.txt")).unwrap();
+    block_on(core.upload_attachment("conv_a", item, "boundary-1")).unwrap();
+    block_on(core.send_message("conv_a", "with a file")).unwrap();
+    let body = body_json(core.transport().writes().last().unwrap());
+    assert_eq!(
+        body["data"]["content"][0],
+        json!({"type": "input_file", "file_id": "file_1", "filename": "plan.txt"})
+    );
+    assert!(!core.attachment_draft("conv_a").unwrap().has_attachments());
+}
+
+#[test]
+fn a_staged_file_can_be_removed_and_removing_it_twice_is_refused() {
+    let core = live(upload_stub());
+    let item = core.add_attachment("conv_a", notes("plan.txt")).unwrap();
+    core.remove_attachment("conv_a", item).unwrap();
+    assert!(!core.attachment_draft("conv_a").unwrap().has_attachments());
+    assert_eq!(
+        core.remove_attachment("conv_a", item),
+        Err(SessionError::Draft(
+            crate::attachments::DraftError::UnknownItem
+        ))
+    );
+    let disconnected = core_with_no_connection();
+    assert_eq!(
+        disconnected.remove_attachment("conv_a", item),
+        Err(SessionError::NotConnected)
+    );
+}
+
+fn core_with_no_connection() -> crate::ClientCore<RouteTransport> {
+    core(RouteTransport::local())
+}
+
+#[test]
+fn a_skill_cannot_carry_staged_files() {
+    let core = live(upload_stub());
+    let item = core.add_attachment("conv_a", notes("plan.txt")).unwrap();
+    block_on(core.upload_attachment("conv_a", item, "boundary-1")).unwrap();
+    assert_eq!(
+        block_on(core.send_command("conv_a", "", super::events::SendPayload::Compact)),
+        Err(SessionError::Draft(
+            crate::attachments::DraftError::NotReady
+        ))
+    );
+    assert_eq!(
+        core.transport()
+            .writes()
+            .iter()
+            .filter(|request| path_of(request).ends_with("/events"))
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn the_first_upload_of_a_new_session_needs_no_live_stream() {
+    let core = connected(upload_stub());
+    let item = core.add_attachment("conv_a", notes("plan.txt")).unwrap();
+    assert_eq!(
+        block_on(core.upload_attachment("conv_a", item, "boundary-1")),
+        Err(SessionError::StreamNotReady)
+    );
+    let uploaded = block_on(core.upload_first_attachment("conv_a", item, "boundary-1")).unwrap();
+    assert_eq!(uploaded.id, "file_1");
+}
+
+#[test]
+fn an_upload_whose_body_contains_the_boundary_fails_and_marks_the_item() {
+    let core = live(upload_stub());
+    let file = UploadFile::new("a.txt", Some("text/plain"), b"x--boundary-1y".to_vec()).unwrap();
+    let item = core.add_attachment("conv_a", file).unwrap();
+    assert_eq!(
+        block_on(core.upload_attachment("conv_a", item, "boundary-1")),
+        Err(SessionError::Upload(
+            crate::attachments::UploadError::BoundaryInBody
+        ))
+    );
+    assert!(
+        core.transport()
+            .writes()
+            .iter()
+            .all(|request| !path_of(request).ends_with("/resources/files"))
+    );
+    // A new boundary is a fresh attempt for the same item.
+    assert!(block_on(core.upload_attachment("conv_a", item, "boundary-2")).is_ok());
+}
+
+#[test]
+fn a_hosted_upload_carries_the_bearer_and_a_401_ends_the_connection() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_a"),
+        r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":4}"#,
+    );
+    transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_a/items"),
+        r#"{"data":[],"has_more":false}"#,
+    );
+    transport.respond(
+        Some("POST"),
+        &format!("{MOUNT}/v1/sessions/conv_a/resources/files"),
+        None,
+        Reply::json(401, "{}"),
+    );
+    let core = connected_hosted(transport);
+    core.set_live_session("conv_a", true);
+    let item = core.add_attachment("conv_a", notes("plan.txt")).unwrap();
+    let result = block_on(core.upload_attachment("conv_a", item, "boundary-1"));
+    assert_eq!(
+        result,
+        Err(SessionError::Upload(
+            crate::attachments::UploadError::Unauthorized
+        ))
+    );
+    let requests = core.transport().taken();
+    let upload = requests
+        .iter()
+        .find(|request| path_of(request).ends_with("/resources/files"))
+        .unwrap();
+    assert_eq!(
+        header(upload, "Authorization"),
+        Some(format!("Bearer {}", super::test_support::TOKEN).as_str())
+    );
+    assert!(matches!(
+        block_on(core.send_message("conv_a", "still here?")),
+        Err(SessionError::NotConnected | SessionError::Unauthorized { .. })
+    ));
+}
+
+#[test]
+fn a_disconnect_during_an_upload_makes_its_outcome_uncertain() {
+    let transport = upload_stub();
+    let gate = transport.gate("POST", "/v1/sessions/conv_a/resources/files");
+    let core = live(transport);
+    let item = core.add_attachment("conv_a", notes("plan.txt")).unwrap();
+    let mut upload = pin!(core.upload_attachment("conv_a", item, "boundary-1"));
+    assert!(still_pending(upload.as_mut()));
+    core.disconnect();
+    gate.open();
+    assert!(matches!(
+        block_on(upload),
+        Err(SessionError::Upload(
+            crate::attachments::UploadError::Uncertain(_)
+        ))
+    ));
+}
+
+#[test]
+fn an_unreadable_acknowledgement_is_an_uncertain_delivery() {
+    let transport = RouteTransport::local();
+    transport.writable_session("[]");
+    transport.respond(
+        Some("POST"),
+        "/v1/sessions/conv_a/events",
+        None,
+        Reply::json(202, "not json"),
+    );
+    let core = live(transport);
+    assert!(matches!(
+        block_on(core.send_message("conv_a", "hello")),
+        Err(SessionError::DeliveryUncertain { .. })
+    ));
+}
+
+#[test]
+fn a_decision_that_is_gone_is_reported_and_a_mirrored_one_posts_to_its_child() {
+    let transport = RouteTransport::local();
+    transport.writable_session(
+        r#"[{"elicitation_id":"ask1","params":{"target_session_id":"child1","message":"Approve?"}}]"#,
+    );
+    transport.ok(
+        "/v1/sessions/child1",
+        r#"{"id":"child1","status":"idle","created_at":1,"permission_level":4}"#,
+    );
+    transport.ok(
+        "/v1/sessions/child1/items",
+        r#"{"data":[],"has_more":false}"#,
+    );
+    transport.ok("/v1/sessions/child1/elicitations/ask1/resolve", "{}");
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.resolve_decision("conv_a", "gone", &DecisionResponse::Approve)),
+        Err(SessionError::Decision(
+            crate::decisions::DecisionError::NotFound { .. }
+        ))
+    ));
+    block_on(core.resolve_decision("conv_a", "ask1", &DecisionResponse::Approve)).unwrap();
+    assert_eq!(
+        core.transport()
+            .writes()
+            .iter()
+            .map(path_of)
+            .collect::<Vec<_>>(),
+        ["/v1/sessions/child1/elicitations/ask1/resolve"]
+    );
+}
+
+#[test]
+fn an_invalidation_during_a_read_repeats_it_and_a_session_closed_meanwhile_drops_it() {
+    let changes = "/v1/sessions/conv_a/resources/environments/default/changes";
+    let transport = RouteTransport::local();
+    transport.writable_session("[]");
+    transport.ok(changes, r#"{"data":[{"path":"a.rs","status":"modified"}]}"#);
+    let gate = transport.gate("GET", changes);
+    let core = live(transport);
+    let recorder = record(&core);
+    let mut first = pin!(core.invalidate_changed_files("conv_a", "default"));
+    assert!(still_pending(first.as_mut()));
+    // The second invalidation joins the read in flight rather than starting another.
+    block_on(core.invalidate_changed_files("conv_a", "default"));
+    let reads = || {
+        core.transport()
+            .taken()
+            .iter()
+            .filter(|request| path_of(request) == changes)
+            .count()
+    };
+    assert_eq!(reads(), 1);
+    gate.open();
+    block_on(first);
+    assert_eq!(reads(), 2, "the read repeats once for the invalidation");
+    assert_eq!(
+        recorder.take().len(),
+        1,
+        "only the fresh answer is published"
+    );
+
+    let closing = RouteTransport::local();
+    closing.ok(changes, r#"{"data":[]}"#);
+    let gate = closing.gate("GET", changes);
+    let core = live(closing);
+    let recorder = record(&core);
+    let mut read = pin!(core.invalidate_changed_files("conv_a", "default"));
+    assert!(still_pending(read.as_mut()));
+    core.set_live_session("conv_a", false);
+    gate.open();
+    block_on(read);
+    assert_eq!(recorder.take(), []);
+}
+
+#[test]
+fn a_malformed_changes_body_reads_as_unavailable() {
+    let changes = "/v1/sessions/conv_a/resources/environments/default/changes";
+    let transport = RouteTransport::local();
+    transport.ok(changes, "[7]");
+    let core = live(transport);
+    let recorder = record(&core);
+    block_on(core.invalidate_changed_files("conv_a", "default"));
+    let events = recorder.take();
+    assert!(matches!(
+        events.as_slice(),
+        [ClientEvent::ChangedFiles {
+            update: ChangedFilesUpdate::Unavailable(_),
+            ..
+        }]
+    ));
+}

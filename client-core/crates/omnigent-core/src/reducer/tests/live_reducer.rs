@@ -336,3 +336,374 @@ fn rehydration_discards_old_previews_and_pending_decisions() {
     assert_eq!(fresh.ids(), ["committed"]);
     assert_eq!(fresh.pending_ids(), Vec::<&str>::new());
 }
+
+#[test]
+fn hollow_events_change_nothing() {
+    let hollow = [
+        json!({"type": "session.sandbox_status", "stage": "brand_new_stage"}),
+        json!({"type": "session.superseded", "target_conversation_id": ""}),
+        json!({"type": "session.changed_files.invalidated", "environment_id": ""}),
+        json!({"type": "session.resource.created", "resource": {"type": "terminal"}}),
+        json!({"type": "session.created", "child_session_id": ""}),
+        json!({"type": "session.child_session.updated", "child_session_id": "", "child": {}}),
+        json!({"type": "response.output_file.done", "file_id": ""}),
+        json!({"type": "response.client_task.cancel", "task_id": ""}),
+    ];
+    let mut harness = Harness::new(SESSION);
+    let before = harness.snapshot().clone();
+    for event in hollow {
+        let outcome = harness.send(event.clone());
+        assert!(outcome.changes.is_empty(), "{event}");
+    }
+    assert_eq!(*harness.snapshot(), before);
+}
+
+#[test]
+fn a_title_event_renames_the_session() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "session.title", "conversation_id": SESSION, "title": "New"}));
+    assert_eq!(harness.snapshot().header.title, "New");
+    let other =
+        harness.send(json!({"type": "session.title", "conversation_id": "other", "title": "x"}));
+    assert!(other.changes.is_empty());
+    assert_eq!(harness.snapshot().header.title, "New");
+}
+
+#[test]
+fn events_for_another_session_or_turn_are_ignored_through_the_typed_entry_point() {
+    use omnigent_protocol::{FromWire, ServerStreamEvent};
+    let mut harness = Harness::new(SESSION);
+    for event in [
+        json!({"type": "turn.started", "session_id": "other"}),
+        json!({"type": "turn.completed", "session_id": "other"}),
+        json!({"type": "turn.cancelled", "session_id": "other"}),
+        json!({"type": "turn.failed", "session_id": "other"}),
+        json!({"type": "session.title", "conversation_id": "other", "title": "x"}),
+        json!({"type": "session.btw_sidechat", "conversation_id": "other", "question": "q", "answer": "a"}),
+        json!({"type": "future.event", "conversation_id": "other"}),
+        json!({"type": "future.event", "session_id": "other"}),
+    ] {
+        let typed = ServerStreamEvent::from_value(event.clone()).unwrap();
+        let outcome = harness.reducer.apply(&typed).unwrap();
+        assert!(outcome.changes.is_empty(), "{event}");
+    }
+}
+
+#[test]
+fn a_side_question_shows_its_answer_and_says_when_it_was_cut() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({
+        "type": "session.btw_sidechat", "question": "why?", "answer": "because", "truncated": true,
+    }));
+    let row = harness.last();
+    let activity = row.activity.as_ref().unwrap();
+    assert_eq!(activity.kind, ActivityKind::Sidechat);
+    assert_eq!(
+        activity.detail("answer"),
+        Some("because\n[Answer truncated]")
+    );
+    assert_eq!(activity.detail("question"), Some("why?"));
+    harness.send(json!({
+        "type": "session.btw_sidechat", "question": "why?", "answer": "again", "truncated": false,
+    }));
+    assert_eq!(
+        harness.snapshot().rows.len(),
+        1,
+        "the same question updates its row"
+    );
+}
+
+#[test]
+fn unknown_events_keep_a_bounded_number_of_rows() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "future.event", "id": "event0"}));
+    let oldest = harness.last().id.clone();
+    for index in 1..90 {
+        harness.send(json!({"type": "future.event", "id": format!("event{index}")}));
+    }
+    assert_eq!(harness.snapshot().rows.len(), 80);
+    assert!(harness.snapshot().rows.iter().all(|row| row.id != oldest));
+}
+
+#[test]
+fn an_unknown_event_whose_item_is_already_saved_adds_no_row() {
+    let mut harness = Harness::with_rows(SESSION, vec![assistant("saved", "hello")]);
+    let outcome = harness.send(json!({"type": "future.event", "item_id": "saved"}));
+    assert!(outcome.changes.is_empty());
+    assert_eq!(harness.ids(), ["saved"]);
+}
+
+#[test]
+fn a_retry_with_a_nonsense_delay_or_no_error_text_still_reads_sensibly() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({
+        "type": "response.retry",
+        "source": "llm",
+        "attempt": 2,
+        "max_attempts": 5,
+        "delay_seconds": -3.5,
+        "error": {"code": "", "message": "", "detail": {"hint": "slow down"}},
+    }));
+    let activity = harness.last().activity.clone().unwrap();
+    assert_eq!(activity.summary, "Attempt 2 of 5 · retry in 0.0 seconds");
+    assert_eq!(activity.title, "Retrying response");
+}
+
+#[test]
+fn an_empty_policy_denial_has_a_default_explanation() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "response.policy_denied", "reason": ""}));
+    assert_eq!(
+        harness.last().activity.as_ref().unwrap().summary,
+        "The server declined this action."
+    );
+}
+
+#[test]
+fn a_late_tool_output_cannot_resurrect_a_saved_result() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "response.in_progress", "response_id": "r1"}));
+    harness.send(json!({
+        "type": "response.output_item.done",
+        "response_id": "r1",
+        "item": {
+            "id": "out1", "type": "function_call_output", "call_id": "c1", "output": "done",
+            "response_id": "r1",
+        },
+    }));
+    let saved = harness.ids().len();
+    let outcome = harness.send(json!({
+        "type": "response.function_call_output.delta", "call_id": "c1", "delta": "late",
+    }));
+    assert!(outcome.changes.is_empty());
+    assert_eq!(harness.ids().len(), saved);
+}
+
+#[test]
+fn replayed_chunks_are_dropped_by_index() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "response.in_progress", "response_id": "r1"}));
+    harness.send(json!({
+        "type": "response.output_text.delta", "delta": "one", "index": 3, "response_id": "r1",
+    }));
+    let replay = harness.send(json!({
+        "type": "response.output_text.delta", "delta": "one", "index": 3, "response_id": "r1",
+    }));
+    assert!(replay.changes.is_empty());
+    assert_eq!(harness.last().text, "one");
+    harness.send(
+        json!({"type": "response.reasoning_text.delta", "delta": "hm", "index": 1, "item_id": "x"}),
+    );
+    let reasoning = harness.send(json!({
+        "type": "response.reasoning_text.delta", "delta": "hm", "index": 1, "item_id": "x",
+    }));
+    assert!(reasoning.changes.is_empty());
+}
+
+#[test]
+fn a_final_delta_without_a_message_id_starts_a_new_text_section() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "response.in_progress", "response_id": "r1"}));
+    harness.send(json!({
+        "type": "response.output_text.delta", "delta": "first", "final": true,
+    }));
+    assert!(!harness.last().is_streaming);
+    harness.send(json!({"type": "response.output_text.delta", "delta": "second"}));
+    assert_eq!(harness.snapshot().rows.len(), 2);
+    assert_eq!(harness.last().text, "second");
+    assert!(harness.last().is_streaming);
+}
+
+#[test]
+fn a_queued_response_does_not_interrupt_the_running_one() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "response.in_progress", "response_id": "r1"}));
+    harness.send(json!({"type": "response.output_text.delta", "delta": "text"}));
+    let queued = harness.send(json!({"type": "response.queued", "response_id": "r2"}));
+    assert!(queued.changes.is_empty());
+    assert_eq!(harness.reducer.response_id(), Some("r1"));
+    harness.send(json!({"type": "response.in_progress", "response_id": "r2"}));
+    assert_eq!(harness.reducer.response_id(), Some("r2"));
+    assert!(!harness.last().is_streaming, "the old response's row ended");
+}
+
+#[test]
+fn a_response_with_no_id_adopts_text_that_arrived_before_its_id() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "response.in_progress"}));
+    harness.send(json!({"type": "response.output_text.delta", "delta": "early"}));
+    assert_eq!(harness.last().response_id, None);
+    harness.send(json!({"type": "response.in_progress", "response_id": "r1"}));
+    assert_eq!(harness.last().response_id.as_deref(), Some("r1"));
+}
+
+#[test]
+fn a_reasoning_row_closes_when_text_arrives_and_sections_separate() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "response.in_progress", "response_id": "r1"}));
+    harness.send(json!({"type": "response.reasoning.started", "item_id": "x"}));
+    harness.send(json!({"type": "response.reasoning_summary_text.delta", "delta": "thinking", "item_id": "x"}));
+    harness.send(json!({"type": "response.reasoning.started", "item_id": "x"}));
+    let reasoning = harness.last().clone();
+    assert_eq!(
+        reasoning.activity.as_ref().unwrap().detail("summary"),
+        Some("thinking\n\n")
+    );
+    harness.send(json!({"type": "response.output_text.delta", "delta": "answer"}));
+    let closed = harness
+        .snapshot()
+        .rows
+        .iter()
+        .find(|row| row.id == reasoning.id)
+        .unwrap();
+    assert!(!closed.is_streaming);
+    assert_eq!(
+        closed.activity.as_ref().unwrap().status.as_deref(),
+        Some("completed")
+    );
+}
+
+#[test]
+fn a_new_response_reported_by_status_ends_the_previous_one() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({"type": "response.in_progress", "response_id": "r1"}));
+    harness.send(json!({"type": "response.output_text.delta", "delta": "text"}));
+    harness.send(json!({"type": "session.status", "status": "running", "response_id": "r2"}));
+    assert_eq!(harness.reducer.response_id(), Some("r2"));
+    assert!(!harness.last().is_streaming);
+    let stale = harness
+        .send(json!({"type": "response.output_text.delta", "delta": "late", "response_id": "r1"}));
+    assert!(
+        stale.changes.is_empty(),
+        "the ended response cannot speak again"
+    );
+}
+
+#[test]
+fn a_pending_decision_wins_over_running_and_idle_statuses() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({
+        "type": "response.elicitation_request", "elicitation_id": "ask1",
+        "params": {"message": "Approve?"},
+    }));
+    assert_eq!(harness.snapshot().header.status, TurnStatus::NeedsResponse);
+    harness.send(json!({"type": "response.output_text.delta", "delta": "text"}));
+    assert_eq!(harness.snapshot().header.status, TurnStatus::NeedsResponse);
+    harness.send(json!({"type": "session.status", "status": "idle"}));
+    assert_eq!(harness.snapshot().header.status, TurnStatus::NeedsResponse);
+    harness.send(json!({"type": "response.completed", "response_id": "r9"}));
+    assert_eq!(harness.snapshot().header.status, TurnStatus::NeedsResponse);
+    harness.send(json!({"type": "response.elicitation_resolved", "elicitation_id": "ask1"}));
+    assert_ne!(harness.snapshot().header.status, TurnStatus::NeedsResponse);
+}
+
+#[test]
+fn a_second_interrupt_marker_changes_nothing() {
+    let mut harness = Harness::with_rows(SESSION, vec![assistant("reply", "cut off")]);
+    let marker = |id: &str| {
+        json!({
+            "type": "response.output_item.done",
+            "item": {"id": id, "type": "message", "role": "user",
+                     "content": [{"type": "input_text", "text": "[System: interrupted]"}]},
+        })
+    };
+    harness.send(marker("m1"));
+    assert!(harness.last().interrupted);
+    let again = harness.send(marker("m2"));
+    assert!(again.changes.is_empty());
+}
+
+#[test]
+fn stream_events_apply_through_their_data() {
+    let mut harness = Harness::new(SESSION);
+    let event = crate::reducer::StreamEvent {
+        event_type: "session.title".to_owned(),
+        data: json!({"type": "session.title", "title": "From the stream"})
+            .as_object()
+            .unwrap()
+            .clone(),
+    };
+    harness.reducer.apply_stream_event(&event).unwrap();
+    assert_eq!(harness.snapshot().header.title, "From the stream");
+}
+
+#[test]
+fn malformed_payloads_are_decode_errors_and_change_nothing() {
+    let mut harness = Harness::new(SESSION);
+    for payload in [
+        json!(7),
+        json!([]),
+        json!({}),
+        json!({"type": ""}),
+        json!({"type": 7}),
+    ] {
+        assert!(
+            matches!(
+                harness.try_send(payload.clone()),
+                Err(ReducerError::Decode(_))
+            ),
+            "{payload}"
+        );
+    }
+}
+
+#[test]
+fn legacy_lifecycle_names_map_to_the_canonical_ones() {
+    use crate::reducer::canonical_event_type;
+    assert_eq!(
+        canonical_event_type("response.started"),
+        "response.in_progress"
+    );
+    assert_eq!(
+        canonical_event_type("response.TaskStatus.COMPLETED"),
+        "response.completed"
+    );
+    assert_eq!(canonical_event_type("x.TaskStatus."), "response.");
+    assert_eq!(canonical_event_type("session.title"), "session.title");
+}
+
+#[test]
+fn an_item_without_a_role_or_response_gets_them_from_its_event() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({
+        "type": "response.output_item.done",
+        "response_id": "r1",
+        "item": {"id": "m1", "type": "message", "content": [{"type": "output_text", "text": "hi"}]},
+    }));
+    assert_eq!(harness.last().role, RowRole::Assistant);
+    assert_eq!(harness.last().response_id.as_deref(), Some("r1"));
+    harness.send(json!({
+        "type": "response.output_item.done",
+        "item": {"id": "m2", "type": "message",
+                 "data": {"content": [{"type": "output_text", "text": "nested"}]}},
+    }));
+    assert_eq!(harness.last().role, RowRole::Assistant);
+    assert!(matches!(
+        harness.try_send(json!({"type": "response.output_item.done", "item": 7})),
+        Err(ReducerError::Decode(_))
+    ));
+}
+
+#[test]
+fn an_error_event_detail_stays_with_its_row() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({
+        "type": "response.retry", "source": "tool", "tool_name": "grep", "attempt": 1,
+        "max_attempts": 2, "delay_seconds": 1.5,
+        "error": {"code": "E", "message": "boom", "detail": {"hint": "slow"}},
+    }));
+    assert_eq!(
+        harness.last().activity.as_ref().unwrap().title,
+        "Retrying grep"
+    );
+    assert!(
+        harness
+            .last()
+            .activity
+            .as_ref()
+            .unwrap()
+            .details
+            .iter()
+            .any(|detail| detail.text.contains("slow"))
+    );
+}

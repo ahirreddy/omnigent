@@ -1017,8 +1017,8 @@ impl<T: HttpTransport> ClientCore<T> {
 
 #[cfg(test)]
 mod changed_files_tests {
-    use super::{ChangedFile, changed_files};
-    use serde_json::Value;
+    use super::{ChangedFile, UploadedAttachment, changed_files, message_body};
+    use serde_json::{Value, json};
 
     #[test]
     fn server_list_envelope_decodes() {
@@ -1033,6 +1033,38 @@ mod changed_files_tests {
                 path: "src/new_file.rs".into(),
                 status: "created".into(),
             })
+        );
+    }
+
+    #[test]
+    fn a_bare_array_decodes_and_a_scalar_is_an_error() {
+        let files = changed_files(&json!([{"path": "a.rs", "status": "added"}])).unwrap();
+        assert_eq!(
+            files,
+            [ChangedFile {
+                path: "a.rs".into(),
+                status: "added".into(),
+            }]
+        );
+        assert_eq!(
+            changed_files(&json!(7)),
+            Err("changes is not an object".to_owned())
+        );
+    }
+
+    #[test]
+    fn an_image_is_sent_as_an_input_image() {
+        let image = UploadedAttachment {
+            server_url: url::Url::parse("http://127.0.0.1:6767").unwrap(),
+            user_id: None,
+            session_id: "conv_a".into(),
+            id: "file_1".into(),
+            filename: "a.png".into(),
+            is_image: true,
+        };
+        assert_eq!(
+            message_body("", &[image])["data"]["content"],
+            json!([{"type": "input_image", "file_id": "file_1", "filename": "a.png"}])
         );
     }
 

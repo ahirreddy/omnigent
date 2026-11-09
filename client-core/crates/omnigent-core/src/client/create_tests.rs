@@ -732,3 +732,218 @@ fn host_worktrees_read_rows_and_treat_non_git_as_empty() {
         Ok(Vec::new())
     );
 }
+
+fn malformed<T>(result: &Result<T, SessionError>) -> bool {
+    matches!(result, Err(SessionError::MalformedResponse { .. }))
+}
+
+#[test]
+fn a_repeated_agent_cursor_stops_the_catalog_instead_of_looping() {
+    let transport = stub();
+    let page = Reply::json(
+        200,
+        r#"{"data":[{"id":"ag_codex","name":"n","harness":"codex-native"}],
+            "has_more":true,"last_id":"ag_same"}"#,
+    );
+    transport.enqueue("GET", "/v1/agents", vec![page.clone(), page.clone(), page]);
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.creation_catalog()).unwrap_err(),
+        SessionError::InvalidPagination
+    );
+}
+
+#[test]
+fn the_callers_agents_stop_at_fifty_root_names_and_keep_only_known_ones_after() {
+    let transport = stub();
+    with_agent_install(&transport);
+    let rows: Vec<serde_json::Value> = (0..50)
+        .map(|index| json!({"id": format!("ag_{index}"), "name": format!("n{index}"), "harness": "codex-native"}))
+        .chain([
+            json!({"id": "ag_fork", "name": "n0", "harness": "codex-native"}),
+            json!({"id": "ag_over", "name": "over-the-limit", "harness": "codex-native"}),
+        ])
+        .collect();
+    transport.enqueue(
+        "GET",
+        "/v1/agents",
+        vec![
+            Reply::json(200, r#"{"data":[],"has_more":false}"#),
+            Reply::json(
+                200,
+                json!({"data": rows, "has_more": true, "last_id": "ag_over"}).to_string(),
+            ),
+        ],
+    );
+    let core = connected(transport);
+    let catalog = block_on(core.creation_catalog()).unwrap();
+    let ids: Vec<&str> = catalog
+        .agents
+        .iter()
+        .map(|agent| agent.id.as_str())
+        .collect();
+    assert!(!ids.contains(&"ag_over"), "{ids:?}");
+    let scoped = core
+        .transport()
+        .taken()
+        .iter()
+        .filter(|request| query_value(request, "scope").as_deref() == Some("user"))
+        .count();
+    assert_eq!(scoped, 1, "the limit ends the paging");
+}
+
+#[test]
+fn malformed_catalog_pages_are_reported() {
+    let transport = RouteTransport::local();
+    transport.ok("/v1/hosts", r#"{"nope":[]}"#);
+    transport.ok("/v1/hosts/host_a/harnesses/h/model-options", "[]");
+    transport.ok(
+        "/v1/hosts/host_a/harnesses/empty/model-options",
+        r#"{"models":7}"#,
+    );
+    transport.ok("/v1/hosts/host_a/worktrees", r#"{"nope":[]}"#);
+    transport.ok("/v1/hosts/host_a/filesystem", "[]");
+    transport.ok("/v1/agents", "7");
+    let core = connected(transport);
+    assert!(malformed(&block_on(core.hosts())));
+    assert!(malformed(&block_on(
+        core.host_model_options("host_a", "h", true)
+    )));
+    assert!(malformed(&block_on(
+        core.host_model_options("host_a", "empty", true)
+    )));
+    assert!(malformed(&block_on(core.host_worktrees("host_a", "/repo"))));
+    assert!(malformed(&block_on(core.host_directory("host_a", None))));
+    assert!(malformed(&block_on(core.agent_rows())));
+}
+
+#[test]
+fn hosts_are_deduplicated_and_rows_without_an_id_skipped() {
+    let transport = RouteTransport::local();
+    transport.ok(
+        "/v1/hosts",
+        r#"{"hosts":[{"host_id":"host_a","name":"A","status":"online"},
+            {"host_id":"host_a","name":"Again","status":"offline"},
+            {"host_id":"","name":"Blank","status":"online"}]}"#,
+    );
+    let core = connected(transport);
+    let hosts = block_on(core.hosts()).unwrap();
+    assert_eq!(
+        hosts
+            .iter()
+            .map(|host| host.name.as_str())
+            .collect::<Vec<_>>(),
+        ["A"]
+    );
+    core.transport().ok("/v1/hosts", r#"{"hosts":[7]}"#);
+    assert!(malformed(&block_on(core.hosts())));
+}
+
+#[test]
+fn the_root_directory_is_its_own_path() {
+    let transport = stub();
+    transport.ok(
+        "/v1/hosts/host_a/filesystem/",
+        r#"{"data":[{"name":"etc","path":"/etc","type":"directory"}],"has_more":false}"#,
+    );
+    let core = connected(transport);
+    let root = block_on(core.host_directory("host_a", Some("/"))).unwrap();
+    assert_eq!(root.path.as_deref(), Some("/"));
+    assert_eq!(root.directories[0].name, "etc");
+    assert_eq!(root.parent, None);
+}
+
+#[test]
+fn slashes_alone_are_no_directory() {
+    let core = connected(stub());
+    assert!(matches!(
+        block_on(core.host_directory("host_a", Some("  "))),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}
+
+#[test]
+fn a_title_over_the_limit_is_refused_before_any_request() {
+    let core = connected(stub());
+    let long = "\u{1F600}".repeat(121);
+    assert!(matches!(
+        block_on(core.create_session(&selection(), &long)),
+        Err(SessionError::Creation(CreationError::Unavailable(_)))
+    ));
+    assert_eq!(posts(core.transport()), 0);
+    let sandboxed = sandbox(&["/work"]);
+    assert!(matches!(
+        block_on(core.create_sandbox_session(&selection(), &sandboxed, &long)),
+        Err(SessionError::Creation(CreationError::Unavailable(_)))
+    ));
+    // Exactly at the limit counts characters, not bytes.
+    let exact = "\u{1F600}".repeat(120);
+    assert!(block_on(core.create_session(&selection(), &exact)).is_ok());
+}
+
+#[test]
+fn models_for_an_unavailable_agent_or_one_without_a_preview_are_empty_or_refused() {
+    let transport = stub();
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.creation_models("ag_missing", "host_a")),
+        Err(SessionError::Creation(CreationError::Unavailable(_)))
+    ));
+    let plain = RouteTransport::local();
+    plain.ok(
+        "/v1/hosts",
+        r#"{"hosts":[{"host_id":"host_a","name":"A","status":"online",
+            "configured_harnesses":{"openai-agents":true}}]}"#,
+    );
+    plain.ok(
+        "/v1/agents",
+        r#"{"data":[{"id":"ag_plain","name":"n","harness":"openai-agents"}],"has_more":false}"#,
+    );
+    let core = connected(plain);
+    assert_eq!(
+        block_on(core.creation_models("ag_plain", "host_a")).unwrap(),
+        [],
+        "a harness without a model preview has no models to offer"
+    );
+}
+
+#[test]
+fn create_for_message_posts_and_the_first_message_can_follow_separately() {
+    let transport = stub();
+    transport.writable_session("[]");
+    let core = connected(transport);
+    let receipt =
+        block_on(core.create_session_for_message(&selection(), "", "first words")).unwrap();
+    assert_eq!(posts(core.transport()), 1);
+    let session = receipt.session_id;
+    core.transport().ok(
+        &format!("/v1/sessions/{session}"),
+        format!(r#"{{"id":"{session}","status":"idle","created_at":1,"permission_level":4}}"#),
+    );
+    core.transport().ok(
+        &format!("/v1/sessions/{session}/items"),
+        r#"{"data":[],"has_more":false}"#,
+    );
+    core.transport().ok(
+        &format!("/v1/sessions/{session}/events"),
+        r#"{"queued":true}"#,
+    );
+    let sent = block_on(core.send_first_message(&session, "first words")).unwrap();
+    assert!(sent.submission.queued);
+}
+
+#[test]
+fn a_create_answered_after_a_disconnect_is_uncertain() {
+    let transport = stub();
+    let gate = transport.gate("POST", "/v1/sessions");
+    let core = connected(transport);
+    let chosen = selection();
+    let mut creating = std::pin::pin!(core.create_session(&chosen, ""));
+    assert!(super::test_support::still_pending(creating.as_mut()));
+    core.disconnect();
+    gate.open();
+    assert_eq!(
+        block_on(creating).unwrap_err(),
+        SessionError::Creation(CreationError::Uncertain)
+    );
+}
