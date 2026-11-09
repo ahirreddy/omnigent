@@ -180,6 +180,33 @@
       #expect(try screen.shows("changes slot"))
     }
 
+    @Test("The column layout gives the panel its width beside the content, or none without one")
+    func columnLayout() throws {
+      let both = OffscreenWindow(
+        AnyView(
+          PanelColumnLayout {
+            Button("content") {}.frame(maxWidth: .infinity, maxHeight: .infinity)
+            Button("panel") {}.frame(maxWidth: .infinity, maxHeight: .infinity)
+          }), width: 1_000, height: 300)
+      defer { both.close() }
+      let frames = both.controlFrames
+      #expect(frames.count == 2)
+      // Each button is centered in the column it was given.
+      #expect(abs(frames[0].midX - (1_000 - PanelColumnLayout.panelWidth(in: 1_000)) / 2) < 1)
+      #expect(abs(frames[1].midX - (1_000 - PanelColumnLayout.panelWidth(in: 1_000) / 2)) < 1)
+
+      let alone = OffscreenWindow(
+        AnyView(PanelColumnLayout { Button("content") {}.frame(maxWidth: .infinity) }),
+        width: 1_000,
+        height: 300)
+      defer { alone.close() }
+      #expect(abs(try #require(alone.controlFrames.first).midX - 500) < 1)
+      // An empty layout takes the space and places nothing.
+      let empty = OffscreenWindow(AnyView(PanelColumnLayout {}), width: 300, height: 300)
+      defer { empty.close() }
+      #expect(empty.controlFrames.isEmpty)
+    }
+
     @Test("Tab labels carry their counts, and only when there's something to count")
     func labels() {
       let files = EventSection(

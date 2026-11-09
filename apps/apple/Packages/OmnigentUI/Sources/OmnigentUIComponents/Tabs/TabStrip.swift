@@ -320,8 +320,14 @@ enum TabDragRelease: Equatable {
   /// What a double-click on the titlebar does, from the user's Desktop & Dock setting.
   enum TitlebarDoubleClick {
     @MainActor static func perform() {
-      guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
-      switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+      perform(
+        on: NSApp.keyWindow ?? NSApp.mainWindow,
+        setting: UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick"))
+    }
+
+    @MainActor static func perform(on window: NSWindow?, setting: String?) {
+      guard let window else { return }
+      switch setting {
       case "Minimize": window.performMiniaturize(nil)
       case "None": break
       default: window.performZoom(nil)

@@ -331,17 +331,21 @@ extension View {
   ///   - width: The view's width.
   ///   - height: The view's height.
   /// - Returns: The view with the larger hit area.
-  func touchTarget(width: CGFloat, height: CGFloat) -> some View {
-    modifier(TouchTarget(width: width, height: height))
+  @ViewBuilder func touchTarget(width: CGFloat, height: CGFloat) -> some View {
+    #if os(iOS)
+      modifier(TouchTarget(width: width, height: height))
+    #else
+      self
+    #endif
   }
 }
 
-private struct TouchTarget: ViewModifier {
-  let width: CGFloat
-  let height: CGFloat
+#if os(iOS)
+  private struct TouchTarget: ViewModifier {
+    let width: CGFloat
+    let height: CGFloat
 
-  func body(content: Content) -> some View {
-    #if os(iOS)
+    func body(content: Content) -> some View {
       let horizontal = max(0, (TabMetrics.touchTarget - width) / 2)
       let vertical = max(0, (TabMetrics.touchTarget - height) / 2)
       content
@@ -350,8 +354,6 @@ private struct TouchTarget: ViewModifier {
         .contentShape(Rectangle())
         .padding(.horizontal, -horizontal)
         .padding(.vertical, -vertical)
-    #else
-      content
-    #endif
+    }
   }
-}
+#endif

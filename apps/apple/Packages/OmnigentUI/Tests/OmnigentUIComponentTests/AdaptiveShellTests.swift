@@ -75,7 +75,9 @@
       #expect(!detail.automaticallyAdjustsSafeAreaInsets)
       // Its marker view in the column takes no clicks.
       let marker = try #require(
-        screen.allViews.first { String(describing: Swift.type(of: $0)).contains("ItemView") })
+        screen.allViews.first {
+          String(reflecting: Swift.type(of: $0)).contains("DetailBesideSidebar")
+        })
       #expect(marker.hitTest(.zero) == nil)
     }
 

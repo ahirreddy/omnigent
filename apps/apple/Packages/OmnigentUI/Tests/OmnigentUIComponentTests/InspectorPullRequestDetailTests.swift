@@ -61,7 +61,7 @@
       let spy = PullRequestSpy()
       let loading = pullRequestDetail(.loading, spy: spy)
       defer { loading.close() }
-      #expect(try loading.shows("Loading pull request\u{2026}"))
+      #expect(loading.allViews.contains { $0 is NSProgressIndicator })
 
       let failed = pullRequestDetail(.failed("boom"), spy: spy)
       defer { failed.close() }

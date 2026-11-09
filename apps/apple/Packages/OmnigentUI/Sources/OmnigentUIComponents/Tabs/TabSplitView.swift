@@ -148,8 +148,8 @@ public struct TabSplitView<Content: View>: View {
             .accessibilityLabel("Split divider")
             .accessibilityValue("\(Int((liveFraction ?? split?.fraction ?? 0.5) * 100)) percent")
             .accessibilityAdjustableAction { direction in
-              let step = direction == .increment ? 0.05 : -0.05
-              actions.setSplitFraction?((split?.fraction ?? 0.5) + step)
+              actions.setSplitFraction?(
+                TabSplitLayout.adjusted(split?.fraction ?? 0.5, direction: direction))
             }
             .accessibilityIdentifier("tab-split-divider")
         }
@@ -175,6 +175,17 @@ public struct TabSplitView<Content: View>: View {
 struct TabSplitLayout: Equatable {
   /// The coordinate space the divider is dragged in.
   static let space = "tab-split"
+  /// How far VoiceOver's adjust moves the divider.
+  static let adjustStep = 0.05
+
+  /// The divider's fraction after VoiceOver adjusts it.
+  /// - Parameters:
+  ///   - fraction: The current fraction.
+  ///   - direction: Increment or decrement.
+  /// - Returns: The new fraction.
+  static func adjusted(_ fraction: Double, direction: AccessibilityAdjustmentDirection) -> Double {
+    fraction + (direction == .increment ? adjustStep : -adjustStep)
+  }
 
   var leading: CGFloat
   var gap: CGFloat

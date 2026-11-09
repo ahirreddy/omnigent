@@ -25,6 +25,32 @@
       #expect(log.choices?.hostID == nil)
     }
 
+    @Test("A sandbox with profiles offers the picker; repositories edit until branches are read")
+    func sandboxChoices() throws {
+      let log = SheetLog()
+      var options = ForkOptions(
+        hosts: [ForkHostOption(id: "h", name: "Box")], offersSandbox: true)
+      options.profiles = SandboxProfilesState(
+        profiles: [SandboxProfileOption(id: "p", name: "Large", description: "", revision: "1")])
+      var actions = forkActions(log)
+      actions.profiles = SandboxProfilesActions(select: { log.calls.append("profile \($0.id)") })
+      actions.repositories = SandboxRepositoriesActions(
+        setRepos: { log.calls.append("repos \($0.count)") }, urlProblem: { _, _ in nil },
+        branchProblem: { _, _ in nil }, repoName: { $0 }, isSameRepo: { $0 == $1 })
+      let screen = forkSheet(forkState(options: options), actions)
+      defer { screen.close() }
+      try screen.pick("New sandbox", in: screen.pickers[1])
+      #expect(try screen.shows("Profile"))
+      #expect(try !screen.shows("Checking current branches\u{2026}"))
+      #expect(screen.firstTextField != nil)
+
+      options.isCheckingBranches = true
+      let checking = forkSheet(forkState(options: options), actions)
+      defer { checking.close() }
+      try checking.pick("New sandbox", in: checking.pickers[1])
+      #expect(try checking.shows("Checking current branches\u{2026}"))
+    }
+
     @Test("Named sandboxes report their provider")
     func namedSandbox() throws {
       let log = SheetLog()
