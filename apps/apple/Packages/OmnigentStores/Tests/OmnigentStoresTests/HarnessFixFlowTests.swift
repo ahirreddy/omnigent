@@ -173,6 +173,9 @@ struct HarnessFixFlowTests {
       "\(loginPath)/l1", .json(#"{"status":"pending","error":null,"expired":false}"#))
     server.route("\(loginPath)/l1", method: "DELETE", .json("{}"))
     await fix.startDeviceLogin(detail: try codex(setup), hostID: "h1")
+    try await eventually("a poll") {
+      !server.requests(to: "\(loginPath)/l1", method: "GET").isEmpty
+    }
     fix.cancel()
     #expect(fix.phase == .idle)
     try await eventually("the cancel") {
@@ -188,6 +191,26 @@ struct HarnessFixFlowTests {
     #expect(fix.phase == .idle, "the flow already stopped")
     fix.cancel()
     #expect(server.requests(to: "\(loginPath)/l1", method: "DELETE").count == 2)
+  }
+
+  @Test("Closing the sheet between status reads ends the wait without another read")
+  func cancelledBetweenPolls() async throws {
+    let server = RouteServer()
+    let (setup, _) = try await harnessFixStores(server)
+    server.route(loginPath, started)
+    server.route(
+      "\(loginPath)/l1", method: "GET", .json(#"{"status":"pending","error":null,"expired":false}"#)
+    )
+    server.route("\(loginPath)/l1", method: "DELETE", .json("{}"))
+    let connection = try await connectedStore(server)
+    let core = try #require(connection.core)
+    let fix = HarnessFixStore(core: core, setup: setup, pollInterval: .seconds(60))
+    await fix.startDeviceLogin(detail: try codex(setup), hostID: "h1")
+    try await Task.sleep(for: .milliseconds(20))
+    fix.cancel()
+    try await Task.sleep(for: .milliseconds(20))
+    #expect(server.requests(to: "\(loginPath)/l1", method: "GET").isEmpty)
+    #expect(fix.phase == .idle)
   }
 
   @Test("A sign-in that starts after the sheet closed is cancelled on the host")

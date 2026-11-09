@@ -53,7 +53,7 @@ struct ComposerCommandTests {
     #expect(try eventBodies(live).count == 1)
   }
 
-  @Test("A skill runs on the server, and read failures explain the missing ones")
+  @Test("On a native harness a skill goes as text, and read failures explain the missing ones")
   func skills() async throws {
     let live = try await LiveComposer(fields: claudeFields("default"))
     live.acceptMessages()

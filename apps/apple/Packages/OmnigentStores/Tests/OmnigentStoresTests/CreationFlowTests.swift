@@ -30,7 +30,7 @@ func creationRoutes() throws -> RouteServer {
   return server
 }
 
-private func acceptCreation(_ server: RouteServer) throws {
+func acceptCreation(_ server: RouteServer) throws {
   server.route(
     "/v1/sessions", method: "POST",
     .json(
@@ -62,6 +62,21 @@ private func createdError(_ creation: CreationStore) -> CoreError? {
 @Suite("Starting a session", .timeLimit(.minutes(1)))
 struct CreationFlowTests {
   private let selection = newSessionSelection
+
+  @Test("A first message goes out with the new session")
+  func sendsFirstMessage() async throws {
+    let server = try creationRoutes()
+    try acceptCreation(server)
+    server.route(
+      "/v1/sessions/conv_created/events", method: "POST", .json(#"{"queued":true}"#))
+    let creation = try await loadedCreation(server)
+    await creation.create(selection, title: "", firstMessage: "hello")
+    guard case .created(_, nil) = creation.phase else {
+      Issue.record("phase: \(creation.phase)")
+      return
+    }
+    #expect(server.requests(to: "/v1/sessions/conv_created/events", method: "POST").count == 1)
+  }
 
   @Test("A session with no first message is created and no message is sent")
   func createsWithoutMessage() async throws {

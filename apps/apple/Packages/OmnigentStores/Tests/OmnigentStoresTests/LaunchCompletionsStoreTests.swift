@@ -82,6 +82,17 @@ struct LaunchCompletionsStoreTests {
     #expect(store.skillsNote == "Pick a host.")
   }
 
+  @Test("A newer @ replaces the listing still waiting, so the old query never reads")
+  func supersededMention() async throws {
+    let server = RouteServer()
+    routeRepo(server)
+    let store = try await completions(server)
+    store.draftChanged("see @oldquery", target: target)
+    store.draftChanged("see @", target: target)
+    try await eventually("the listing") { !store.mentionCandidates.isEmpty }
+    #expect(!server.requests().contains { $0.url.contains("oldquery") })
+  }
+
   @Test("Typing an @ lists the folder; removing it clears the list")
   func mentions() async throws {
     let server = RouteServer()
