@@ -29,7 +29,8 @@
       defer { screen.close() }
       let menu = try screen.openMenu(control: 0)
       #expect(menu.titles == ["Side Chat", "Terminal", "Browser", "Remote Browser"])
-      #expect(menu.items.allSatisfy { $0.image != nil })
+      // A pull-down menu can lead with a separator standing in for its title item.
+      #expect(menu.items.filter { !$0.isSeparatorItem }.allSatisfy { $0.image != nil })
       for title in menu.titles { try screen.choose(title, in: try screen.openMenu(control: 0)) }
       #expect(spy.calls == ["side chat", "terminal -", "browser", "remote default"])
     }
