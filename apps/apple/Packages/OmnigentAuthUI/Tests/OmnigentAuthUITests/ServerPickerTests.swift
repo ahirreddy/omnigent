@@ -78,6 +78,17 @@
       #expect(try !screen.allText().contains(message))
     }
 
+    @Test("leaving the field flags a rejected URL too")
+    func leavingFlags() async throws {
+      let screen = hosted(picker(spy: AuthSpy()))
+      defer { screen.close() }
+      try screen.fill(0, "http://plain.example.com")
+      await flush(screen)
+      screen.window.makeFirstResponder(nil)
+      await flush(screen)
+      #expect(try screen.allText().contains("This build requires https:// server URLs."))
+    }
+
     @Test("the prefilled URL shows, and a new one from the store replaces it")
     func prefill() async throws {
       let spy = AuthSpy()

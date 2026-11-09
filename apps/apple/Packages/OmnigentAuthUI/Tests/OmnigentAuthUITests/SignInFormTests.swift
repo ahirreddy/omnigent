@@ -39,8 +39,8 @@
       #expect(screen.fields[1].stringValue.isEmpty, "the password doesn't stay on screen")
     }
 
-    // Moving focus on Return needs an active app, which an offscreen test isn't: that's for a real
-    // click flow, and `CredentialsInput.returnStep` has unit tests of which step comes next.
+    // `@FocusState` doesn't move AppKit's focus offscreen, so Return moving to the password is for
+    // a real flow; `CredentialsInput.returnStep` has unit tests of which step comes next.
     @Test("Return in the password signs in; Return in the username alone doesn't")
     func returnKey() throws {
       let spy = AuthSpy()

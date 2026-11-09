@@ -223,7 +223,7 @@ public final class DesktopNotificationCenter: NSObject {
       serverURL: serverURL, route: .conversation(sessionID: sessionID))
   }
 
-  private func presentationOptions(for activation: NotificationActivation?)
+  func presentationOptions(for activation: NotificationActivation?)
     -> UNNotificationPresentationOptions
   {
     guard let activation, case .conversation(let sessionID) = activation.route else {
@@ -268,10 +268,19 @@ extension DesktopNotificationCenter: UNUserNotificationCenterDelegate {
   nonisolated public func userNotificationCenter(
     _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
   ) async {
-    let identifier = response.notification.request.identifier
-    let userInfo = response.notification.request.content.userInfo
+    await respond(
+      actionIdentifier: response.actionIdentifier,
+      identifier: response.notification.request.identifier,
+      userInfo: response.notification.request.content.userInfo,
+      text: (response as? UNTextInputNotificationResponse)?.userText)
+  }
+
+  /// Acts on a choice in a delivered notification: `identifier` names it, `userInfo` its payload.
+  nonisolated func respond(
+    actionIdentifier: String, identifier: String, userInfo: [AnyHashable: Any], text: String?
+  ) async {
     let activation = Self.activation(from: userInfo)
-    switch response.actionIdentifier {
+    switch actionIdentifier {
     case UNNotificationDefaultActionIdentifier:
       await MainActor.run { activate(activation, identifier: identifier) }
     case UNNotificationDismissActionIdentifier:
@@ -283,8 +292,7 @@ extension DesktopNotificationCenter: UNUserNotificationCenterDelegate {
         return
       }
       let action = NotificationActionResponse(
-        activation: activation, actionIdentifier: response.actionIdentifier,
-        text: (response as? UNTextInputNotificationResponse)?.userText, context: context)
+        activation: activation, actionIdentifier: actionIdentifier, text: text, context: context)
       await perform(action)
     }
   }
