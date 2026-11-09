@@ -546,7 +546,19 @@ impl Inner {
             let host = inner.host.clone();
             host.spawn(async move { inner.renew(generation, resolved, server).await });
         });
-        lock(&self.auth).renewal = Some(timer);
+        self.install_renewal(generation, timer);
+    }
+
+    /// Makes `timer` the one pending renewal of `generation`.
+    pub(crate) fn install_renewal(&self, generation: u64, timer: AbortHandle) {
+        let mut auth = lock(&self.auth);
+        if auth.generation == generation {
+            if let Some(previous) = auth.renewal.replace(timer) {
+                previous.abort();
+            }
+        } else {
+            timer.abort();
+        }
     }
 
     async fn renew(self: Arc<Self>, generation: u64, resolved: Resolved, server: OidcServer) {

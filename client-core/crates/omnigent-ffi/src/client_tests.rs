@@ -515,6 +515,34 @@ fn an_unreadable_store_asks_to_sign_in_with_the_reason() {
     );
 }
 
+/// Signing in again after a 401 must leave one renewal running, not two refreshing the same grant.
+#[test]
+fn signing_in_again_replaces_the_pending_renewal() {
+    let mut harness = oidc_server();
+    sign_in_oidc(&mut harness);
+    harness
+        .http
+        .route("/v1/sessions", json(401, r#"{"detail":"expired"}"#));
+    harness.core.refresh_sessions();
+    harness.pump();
+    harness.http.route(
+        "/v1/sessions",
+        json(200, r#"{"object":"list","data":[],"has_more":false}"#),
+    );
+    harness.advance(1_000);
+    let challenge = harness.core.begin_oidc_sign_in(REDIRECT.into()).unwrap();
+    let callback = callback_for(&challenge);
+    harness
+        .call(|core| async move {
+            core.complete_oidc_sign_in(challenge.attempt_id, callback)
+                .await
+        })
+        .unwrap();
+    let refreshes = harness.http.count("/oauth/token");
+    harness.advance(3_600_000);
+    assert_eq!(harness.http.count("/oauth/token"), refreshes + 1);
+}
+
 #[test]
 fn a_disconnect_cancels_the_renewal_and_a_racing_one_is_dropped() {
     let mut harness = oidc_server();

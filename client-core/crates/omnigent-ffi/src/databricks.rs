@@ -336,14 +336,7 @@ impl Inner {
             let host = inner.host.clone();
             host.spawn(async move { inner.renew_databricks(generation, resolved, scope).await });
         });
-        let mut auth = lock(&self.auth);
-        if auth.generation == generation {
-            if let Some(previous) = auth.renewal.replace(timer) {
-                previous.abort();
-            }
-        } else {
-            timer.abort();
-        }
+        self.install_renewal(generation, timer);
     }
 
     async fn renew_databricks(
