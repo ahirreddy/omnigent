@@ -67,7 +67,9 @@ is [`INTEGRATION.md`](INTEGRATION.md).
   System (WebKit)" button and a "Retry" button. The controller never switches engines on its own.
 - Chromium starts asynchronously: the tab shows "Starting Chromium…" until the host is ready. A
   host crash or hang becomes `BrowserError.engineStopped` and a Reload overlay; Reload restarts
-  the host. Every error is a typed `BrowserError`.
+  the host. A crash of one page's renderer becomes `BrowserError.contentProcessTerminated`: the
+  banner says how the process ended, and Reload starts a new renderer for that tab. Every error
+  is a typed `BrowserError`.
 
 ## Chromium
 

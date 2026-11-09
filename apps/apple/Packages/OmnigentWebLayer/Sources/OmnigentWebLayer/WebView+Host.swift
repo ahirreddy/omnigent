@@ -115,9 +115,13 @@ extension WebView {
   private func handlePageEvent(_ kind: OWLMessageKind, _ fields: WireDecoder) -> Bool {
     switch kind {
     case .rendererGone:
-      let status = fields.i64(.status) ?? 0
-      let code = fields.i64(.errorCode) ?? 0
-      let detail = "status \(status), code \(code) \(fields.string(.message) ?? "")"
+      let termination = RendererTermination(
+        status: fields.i64(.status) ?? 0, code: fields.i64(.errorCode) ?? 0,
+        hostMessage: fields.string(.message) ?? "")
+      // The raw numbers go to the log, where a crash report can be matched to them.
+      Logger.view.error(
+        "View \(self.id)'s renderer ended: status \(termination.status), code \(termination.code).")
+      let detail = termination.summary
       lastError = .rendererTerminated(detail)
       onEvent?(.rendererTerminated(detail))
     case .downloadBlocked:

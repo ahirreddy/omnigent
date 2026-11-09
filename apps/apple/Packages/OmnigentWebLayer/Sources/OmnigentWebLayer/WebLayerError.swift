@@ -30,7 +30,7 @@ nonisolated public enum WebLayerError: Error, Hashable, Sendable {
   case navigationFailed(url: URL?, code: Int, message: String)
   /// A navigation was superseded or stopped.
   case navigationCancelled(url: URL?)
-  /// The page's renderer process exited.
+  /// The page's renderer process exited; the text says how. Reloading the view starts a new one.
   case rendererTerminated(String)
   /// Script evaluation threw.
   case scriptFailed(String)
@@ -106,7 +106,7 @@ extension WebLayerError: LocalizedError {
     case .navigationCancelled(let url):
       "Loading \(url?.absoluteString ?? "the page") was cancelled."
     case .rendererTerminated(let message):
-      "The page's renderer process stopped: \(message)"
+      "The page's renderer process stopped. \(message)"
     case .scriptFailed(let message):
       "Script failed: \(message)"
     case .unsupportedScriptResult(let type):
