@@ -14,10 +14,6 @@
       transcriptScreen(MarkdownView(text, isStreaming: isStreaming))
     }
 
-    private func titles(of menu: NSMenu) -> [String] {
-      menu.items.map(\.title).filter { !$0.isEmpty }
-    }
-
     private func copiedLines() -> [String] {
       let copied = SystemSideEffects.pasteboard.string(forType: .string) ?? ""
       return copied.split(whereSeparator: \.isNewline).map(String.init)
@@ -104,9 +100,9 @@
       defer { view.close() }
       for text in ["Name", "Size", "a", "2"] { #expect(try view.shows(text), "\(text)") }
 
-      // Button-style menus have no control view, so they're found beside the Expand button.
-      let expand = try #require(view.controlFrames.last)
-      let copyMenu = try view.openMenu(CGPoint(x: 12, y: expand.midY))
+      let frames = view.controlFrames
+      #expect(frames.count == 3)
+      let copyMenu = try view.openMenu(center(frames[0]))
       #expect(titles(of: copyMenu) == ["Copy as Markdown", "Copy as CSV", "Copy as TSV"])
       try view.choose("Copy as CSV", in: copyMenu)
       #expect(copiedLines() == ["Name,Size", "a,1", "b,2"])
@@ -115,7 +111,7 @@
       try view.choose("Copy as Markdown", in: copyMenu)
       #expect(SystemSideEffects.pasteboard.string(forType: .string)?.contains("| Name") == true)
 
-      let downloadMenu = try view.openMenu(CGPoint(x: expand.minX - 12, y: expand.midY))
+      let downloadMenu = try view.openMenu(center(frames[1]))
       #expect(titles(of: downloadMenu) == ["Download CSV", "Download Markdown"])
     }
 
