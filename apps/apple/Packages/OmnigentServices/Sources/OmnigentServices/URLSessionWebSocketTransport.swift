@@ -92,15 +92,8 @@ private final class SocketHandleImpl: WebSocketHandle, Sendable {
   }
 
   func close(code: UInt16, reason: String) {
-    // URLSession only accepts the close codes in its CloseCode enum. Any other code cannot be
-    // expressed, so the socket is cancelled without a close frame and the failure is logged.
-    guard let closeCode = URLSessionWebSocketTask.CloseCode(rawValue: Int(code)) else {
-      servicesLogger.error(
-        "WebSocket close code \(code) is not supported by URLSession; cancelling without a close frame"
-      )
-      task.cancel()
-      return
-    }
+    // CloseCode is an imported C enum and takes any raw value, so application codes pass through.
+    let closeCode = URLSessionWebSocketTask.CloseCode(rawValue: Int(code)) ?? .invalid
     task.cancel(with: closeCode, reason: reason.isEmpty ? nil : Data(reason.utf8))
   }
 }
@@ -109,7 +102,7 @@ private final class SocketHandleImpl: WebSocketHandle, Sendable {
 ///
 /// Every callback, including receive completions, is posted to `queue` in arrival order, so the
 /// sink sees opened, then messages, then ended, with no reordering between URLSession threads.
-private final class SocketDelegate: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegate,
+final class SocketDelegate: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegate,
   Sendable
 {
   struct State {
@@ -201,20 +194,28 @@ private final class SocketDelegate: NSObject, URLSessionWebSocketDelegate, URLSe
       queue.addOperation { [self] in
         switch result {
         case .success(let message):
-          guard !state.withLock({ $0.ended }) else { return }
-          guard let frame = Self.socketMessage(message) else {
-            end(
-              .failed(failure: .other(message: "Unsupported WebSocket frame type.")), session: nil)
-            task.cancel()
-            return
-          }
-          sink.message(message: frame)
-          receiveNext(task)
+          deliver(Self.socketMessage(message), from: task)
         case .failure:
           return
         }
       }
     }
+  }
+
+  /// Hands one frame to the sink and waits for the next. A frame kind this transport doesn't know
+  /// ends the socket.
+  /// - Parameters:
+  ///   - frame: The frame, or nil for an unknown kind.
+  ///   - task: The socket it arrived on.
+  func deliver(_ frame: SocketMessage?, from task: URLSessionWebSocketTask) {
+    guard !state.withLock({ $0.ended }) else { return }
+    guard let frame else {
+      end(.failed(failure: .other(message: "Unsupported WebSocket frame type.")), session: nil)
+      task.cancel()
+      return
+    }
+    sink.message(message: frame)
+    receiveNext(task)
   }
 
   /// Delivers the end of the socket exactly once and invalidates the session.

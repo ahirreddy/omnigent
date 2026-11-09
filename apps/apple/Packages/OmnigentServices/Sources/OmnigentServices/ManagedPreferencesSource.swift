@@ -76,10 +76,9 @@ public final class ManagedPreferencesSource: ManagedPreferenceSource, Sendable {
     } catch {
       throw .unsupportedType(String(describing: error))
     }
-    guard let text = String(bytes: data, encoding: .utf8) else {
-      throw .unsupportedType("JSON encoding was not UTF-8")
-    }
-    return text
+    // JSONSerialization always writes UTF-8.
+    // swiftlint:disable:next optional_data_string_conversion
+    return String(decoding: data, as: UTF8.self)
   }
 
   /// The JSON-compatible tree for a property-list value.

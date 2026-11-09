@@ -10,12 +10,9 @@ public final class TaskScheduler: Scheduler, Sendable {
   public func sleep(delayMs: UInt64) async {
     do {
       try await Task.sleep(for: .milliseconds(delayMs))
-    } catch is CancellationError {
-      // Cancellation is how the core cancels a timer, so returning at once is the contract.
-      return
     } catch {
-      // Task.sleep documents CancellationError as its only failure; anything else is a bug.
-      preconditionFailure("Task.sleep threw an unexpected error: \(error)")
+      // Cancellation is how the core cancels a timer, and the only way Task.sleep fails.
+      assert(error is CancellationError, "Task.sleep threw an unexpected error: \(error)")
     }
   }
 

@@ -31,12 +31,9 @@ public final class UserDefaultsSettingsStorage: SettingsStorage, Sendable {
     do {
       let data = try JSONSerialization.data(
         withJSONObject: object, options: [.fragmentsAllowed, .withoutEscapingSlashes])
-      guard let text = String(data: data, encoding: .utf8) else {
-        throw SettingsStorageError.Failed(message: "Setting \(key) is not UTF-8 JSON")
-      }
-      return text
-    } catch let error as SettingsStorageError {
-      throw error
+      // JSONSerialization always writes UTF-8.
+      // swiftlint:disable:next optional_data_string_conversion
+      return String(decoding: data, as: UTF8.self)
     } catch {
       throw .Failed(message: "Setting \(key) could not be encoded as JSON: \(error)")
     }

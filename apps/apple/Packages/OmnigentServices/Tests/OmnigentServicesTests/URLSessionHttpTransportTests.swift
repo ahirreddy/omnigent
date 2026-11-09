@@ -66,6 +66,15 @@ struct URLSessionHttpTransportTests {
     return URLSessionHttpTransport(session: URLSession(configuration: configuration))
   }
 
+  /// The transports narrow the status to the core's UInt16 on the strength of this.
+  @Test(arguments: [70_000, 65_536, -1, Int.max])
+  func aResponseAlwaysHoldsASmallStatus(given: Int) throws {
+    let url = try #require(URL(string: "http://127.0.0.1:9/"))
+    let response = try #require(
+      HTTPURLResponse(url: url, statusCode: given, httpVersion: nil, headerFields: nil))
+    #expect((0...1_023).contains(response.statusCode))
+  }
+
   @Test func sendsRequestAndReturnsResponse() async throws {
     let transport = makeTransport()
     let body = Data(#"{"ok":true}"#.utf8)

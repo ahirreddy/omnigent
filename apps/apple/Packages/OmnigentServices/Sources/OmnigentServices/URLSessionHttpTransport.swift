@@ -47,11 +47,10 @@ public final class URLSessionHttpTransport: HttpTransport, Sendable {
       throw .Other(
         message: "Expected an HTTP response from \(request.url), got \(type(of: response))")
     }
-    guard let status = UInt16(exactly: http.statusCode) else {
-      throw .Other(message: "HTTP status \(http.statusCode) from \(request.url) is out of range")
-    }
     logRefusedRequest(urlRequest, status: http.statusCode, body: data)
-    return HttpResponse(status: status, headers: Self.headers(from: http), body: data)
+    return HttpResponse(
+      status: UInt16(truncatingIfNeeded: http.statusCode), headers: Self.headers(from: http),
+      body: data)
   }
 
   static func makeURLRequest(_ request: HttpRequest) throws(TransportError) -> URLRequest {

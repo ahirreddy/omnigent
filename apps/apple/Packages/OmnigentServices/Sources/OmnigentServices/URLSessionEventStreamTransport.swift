@@ -44,7 +44,7 @@ public final class URLSessionEventStreamTransport: EventStreamTransport, Sendabl
     request: HttpRequest, sink: any ByteSinkReceiving
   ) throws(TransportError) -> any StreamHandle {
     let urlRequest = try URLSessionHttpTransport.makeURLRequest(request)
-    let delegate = StreamDelegate(sink: sink)
+    let delegate = EventStreamDelegate(sink: sink)
     // URLSession retains its delegate until the session is invalidated, which every end path
     // does, so a strong reference is intended here.
     let session = URLSession(
@@ -65,9 +65,9 @@ private let unlimitedInterval: TimeInterval = 60 * 60 * 24 * 365
 private final class StreamHandleImpl: StreamHandle, Sendable {
   private let session: URLSession
   private let task: URLSessionDataTask
-  private let control: StreamDelegate
+  private let control: EventStreamDelegate
 
-  init(session: URLSession, task: URLSessionDataTask, control: StreamDelegate) {
+  init(session: URLSession, task: URLSessionDataTask, control: EventStreamDelegate) {
     self.session = session
     self.task = task
     self.control = control
@@ -82,7 +82,7 @@ private final class StreamHandleImpl: StreamHandle, Sendable {
 
 /// Routes one stream's delegate callbacks to its sink. All callbacks run on `queue`, which
 /// serializes them, so the sink sees response, chunks and finish in order.
-private final class StreamDelegate: NSObject, URLSessionDataDelegate, Sendable {
+final class EventStreamDelegate: NSObject, URLSessionDataDelegate, Sendable {
   struct State {
     var finished = false
     var cancelled = false
@@ -114,9 +114,7 @@ private final class StreamDelegate: NSObject, URLSessionDataDelegate, Sendable {
       completionHandler(.cancel)
       return
     }
-    guard let http = response as? HTTPURLResponse,
-      let status = UInt16(exactly: http.statusCode)
-    else {
+    guard let http = response as? HTTPURLResponse else {
       completionHandler(.cancel)
       finish(
         with: .other(message: "Expected an HTTP response, got \(type(of: response))"),
@@ -125,7 +123,9 @@ private final class StreamDelegate: NSObject, URLSessionDataDelegate, Sendable {
     }
     logRefusedRequest(dataTask.originalRequest, status: http.statusCode)
     completionHandler(.allow)
-    sink.response(status: status, headers: URLSessionHttpTransport.headers(from: http))
+    sink.response(
+      status: UInt16(truncatingIfNeeded: http.statusCode),
+      headers: URLSessionHttpTransport.headers(from: http))
   }
 
   func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
