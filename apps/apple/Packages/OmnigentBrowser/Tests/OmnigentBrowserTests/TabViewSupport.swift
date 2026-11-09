@@ -125,6 +125,35 @@
       try click(CGPoint(x: found[index].midX, y: found[index].midY))
     }
 
+    /// Whether a drawn button takes clicks: SwiftUI gives only an enabled one its focus proxy.
+    func drawnButtonIsEnabled(at index: Int) async -> Bool {
+      // The proxies only change when the key view loop is rebuilt.
+      window.recalculateKeyViewLoop()
+      await catchUp()
+      let target = drawnButtons[index]
+      return controlFrames.contains {
+        abs($0.minX - target.minX) < 2 && abs($0.minY - target.minY) < 2
+      }
+    }
+
+    /// The menu a right click on a list row would open: the table answers for its rows.
+    /// - Parameter point: A point in the row, from the top left of the window.
+    /// - Returns: The first menu up the view tree.
+    /// - Throws: `OffscreenWindowError.eventUnavailable` when AppKit declines the event.
+    func rowMenu(at point: CGPoint) throws -> NSMenu? {
+      let event = NSEvent.mouseEvent(
+        with: .rightMouseDown, location: host.convert(point, to: nil), modifierFlags: [],
+        timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1,
+        clickCount: 1, pressure: 1)
+      guard let event else { throw OffscreenWindowError.eventUnavailable }
+      var view = host.hitTest(host.convert(point, to: host.superview))
+      while let current = view {
+        if let menu = current.menu(for: event) { return menu }
+        view = current.superview
+      }
+      return nil
+    }
+
     /// Selects the focused field's text, so typing replaces it.
     func selectFieldText() {
       (window.firstResponder as? NSText)?.selectAll(nil)

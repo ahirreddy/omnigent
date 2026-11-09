@@ -84,8 +84,11 @@ public struct BrowserHistoryView: View {
       }
       Divider()
       HStack {
-        Button("Remove Selected") { store.remove(visitIDs: selection) }
-          .disabled(selection.isEmpty)
+        Button("Remove Selected") {
+          store.remove(visitIDs: selection)
+          selection = []
+        }
+        .disabled(selection.isEmpty)
         if let clearData {
           Button("Clear Browsing Data…", action: clearData)
             .accessibilityIdentifier("browser.history.clear")
