@@ -1,4 +1,6 @@
 import Foundation
+import OmnigentViewTesting
+import SwiftUI
 import Testing
 
 @testable import OmnigentDesktop
@@ -219,6 +221,53 @@ struct DesktopRouterTests {
     await harness.router.drainTask?.value
     #expect(harness.opened == [window])
     #expect(harness.registry.pendingRoute(for: window.instance) == .conversation(sessionID: "c1"))
+  }
+
+  @Test("a trusted link to a URL that isn't a server is reported and opens nothing")
+  func trustedInvalidServer() async throws {
+    let harness = Harness()
+    harness.attach()
+    let bad = try url("mailto:someone@example.com")
+    harness.router.open(.home, onServer: bad)
+    await harness.router.drainTask?.value
+    #expect(harness.opened.isEmpty)
+    guard case .invalidServerURL(let reported, _) = harness.issues.first else {
+      Issue.record("expected an invalid server, got \(harness.issues)")
+      return
+    }
+    #expect(reported == bad)
+  }
+
+  @Test("a saved server that isn't valid is reported, and the others still work")
+  func invalidKnownServer() async throws {
+    let harness = Harness(known: [
+      try url("mailto:x@example.com"), try url("http://localhost:8000"),
+    ])
+    harness.attach()
+    try await harness.open("omnigent://localhost:8000/c/c1")
+    #expect(harness.opened.count == 1)
+    #expect(harness.issues.count == 1)
+  }
+
+  @Test("the logs window, opening first, can still open a server window for a queued link")
+  func logsWindowGivesTheRouterItsOpener() async throws {
+    let harness = Harness(known: [try url("http://localhost:8000")])
+    harness.router.open([try url("omnigent://localhost:8000/c/c1")])
+    let request = harness.router.windowRequest
+    let screen = OffscreenWindow(
+      Color.clear.modifier(RouterWindowOpener(router: harness.router)), width: 100, height: 100)
+    defer { screen.close() }
+    await request?.value
+    await harness.router.drainTask?.value
+    #expect(harness.windowRequests == 0, "the logs window's opener served the link")
+  }
+
+  @Test("a logs window with no router has nothing to attach")
+  func logsWindowWithoutRouter() throws {
+    let screen = OffscreenWindow(
+      Color.clear.modifier(RouterWindowOpener(router: nil)), width: 100, height: 100)
+    defer { screen.close() }
+    #expect(screen.controlFrames.isEmpty)
   }
 
   @Test("no window is requested when one attaches during launch")

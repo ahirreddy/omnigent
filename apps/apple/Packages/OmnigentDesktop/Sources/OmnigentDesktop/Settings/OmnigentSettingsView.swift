@@ -201,6 +201,7 @@ struct GeneralSettingsTab<BrowserSettings: View>: View {
 struct NotificationSettingsTab: View {
   @Bindable var preferences: DesktopPreferences
   let notifications: DesktopNotificationCenter
+  var isAvailable = DesktopNotificationCenter.isAvailable
   @State private var soundNames: [String] = []
   @State private var errorMessage: String?
 
@@ -211,7 +212,7 @@ struct NotificationSettingsTab: View {
         switch notifications.authorization {
         case .notDetermined, .unknown:
           Button("Allow Notifications\u{2026}") { Task { await requestAuthorization() } }
-            .disabled(!DesktopNotificationCenter.isAvailable)
+            .disabled(!isAvailable)
         case .denied, .provisional:
           Button("Open Notification Settings\u{2026}") { openSystemNotificationSettings() }
         case .authorized:
@@ -250,7 +251,7 @@ struct NotificationSettingsTab: View {
   }
 
   private var permissionLabel: String {
-    guard DesktopNotificationCenter.isAvailable else { return "Unavailable outside the app" }
+    guard isAvailable else { return "Unavailable outside the app" }
     return switch notifications.authorization {
     case .unknown: "Checking\u{2026}"
     case .notDetermined: "Not requested"
@@ -282,7 +283,7 @@ struct NotificationSettingsTab: View {
   }
 
   private func refreshAuthorization() async {
-    guard DesktopNotificationCenter.isAvailable else { return }
+    guard isAvailable else { return }
     do {
       try await notifications.refreshAuthorization()
     } catch {

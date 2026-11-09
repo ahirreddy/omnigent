@@ -70,8 +70,8 @@ struct LocalServerSettingsTab: View {
       Text("This Mac")
     } footer: {
       Text(
-        "Hosting lets a server run agents on this Mac. Omnigent asks each time and never hosts "
-          + "on its own.")
+        "Hosting lets a server run agents on this Mac. This Mac's own server hosts without "
+          + "asking; any other server asks first.")
     }
   }
 

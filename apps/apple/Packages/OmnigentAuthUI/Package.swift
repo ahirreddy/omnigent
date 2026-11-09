@@ -28,7 +28,9 @@ let package = Package(
     .testTarget(
       name: "OmnigentAuthUITests",
       dependencies: [
-        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentAuthUI",
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+        .product(name: "OmnigentViewTextReading", package: "OmnigentViewTesting"),
+        "OmnigentAuthUI",
       ],
       swiftSettings: mainActorSwiftSettings
     ),

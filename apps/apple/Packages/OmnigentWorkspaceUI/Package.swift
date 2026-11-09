@@ -33,6 +33,7 @@ let package = Package(
       name: "OmnigentWorkspaceUITests",
       dependencies: [
         .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+        .product(name: "OmnigentViewTextReading", package: "OmnigentViewTesting"),
         "OmnigentWorkspaceUI",
       ],
       swiftSettings: mainActorSwiftSettings

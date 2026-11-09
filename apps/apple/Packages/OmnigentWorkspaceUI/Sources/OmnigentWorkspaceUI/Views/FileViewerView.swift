@@ -173,22 +173,10 @@ private struct FileHeader: View {
   @Binding var showsComments: Bool
 
   var body: some View {
-    HStack(spacing: 8) {
-      Image(systemName: FileIcons.symbol(forName: WorkspacePaths.name(of: file.path)))
-        .foregroundStyle(.secondary)
-        .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 1) {
-        Text(WorkspacePaths.name(of: file.path))
-          .font(.headline)
-          .lineLimit(1)
-        Text(file.path)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-          .truncationMode(.head)
-          .textSelection(.enabled)
-      }
-      Spacer(minLength: 8)
+    DocumentHeader(
+      symbol: FileIcons.symbol(forName: WorkspacePaths.name(of: file.path)),
+      name: WorkspacePaths.name(of: file.path), path: file.path
+    ) {
       if let review, case .text = file.preview, review.canComment || !review.comments.isEmpty {
         FileCommentsToggle(openCount: review.openComments.count, isShown: $showsComments)
       }
@@ -215,8 +203,6 @@ private struct FileHeader: View {
       .buttonStyle(.borderless)
       .fixedSize()
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
   }
 
   private var details: String {

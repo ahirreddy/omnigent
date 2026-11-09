@@ -215,7 +215,10 @@ public final class FileTreeModel {
   public func stepIn() async {
     guard let entry = selectedEntry, entry.kind.isDirectory else { return }
     if expanded.contains(entry.path) {
-      if let first = children[entry.path]?.first { selection = first.path }
+      // The first row shown: a hidden or unsorted entry would select nothing visible.
+      if let first = rows.first(where: { $0.directory == entry.path && $0.entry != nil }) {
+        selection = first.id
+      }
     } else {
       await expand(entry.path)
     }

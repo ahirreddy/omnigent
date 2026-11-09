@@ -134,22 +134,7 @@ public struct DiffViewerView: View {
   }
 
   private func header(proxy: ScrollViewProxy) -> some View {
-    HStack(spacing: 8) {
-      Image(systemName: changeSymbol)
-        .foregroundStyle(.secondary)
-        .accessibilityHidden(true)
-      VStack(alignment: .leading, spacing: 1) {
-        Text(WorkspacePaths.name(of: diff.path))
-          .font(.headline)
-          .lineLimit(1)
-        Text(subtitle)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-          .truncationMode(.head)
-          .textSelection(.enabled)
-      }
-      Spacer(minLength: 8)
+    DocumentHeader(symbol: changeSymbol, name: WorkspacePaths.name(of: diff.path), path: subtitle) {
       LineCounts(added: diff.added, removed: diff.removed)
       Text(navigator.label)
         .font(.caption)
@@ -166,8 +151,6 @@ public struct DiffViewerView: View {
       .buttonStyle(.borderless)
       .fixedSize()
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
   }
 
   @ViewBuilder private func navigationControls(proxy: ScrollViewProxy) -> some View {

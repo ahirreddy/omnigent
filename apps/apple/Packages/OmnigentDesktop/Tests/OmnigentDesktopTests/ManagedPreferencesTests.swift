@@ -46,6 +46,16 @@ struct ManagedPreferencesTests {
     #expect(calls() == ["ai.omnigent.mac:serverUrls", "ai.omnigent.desktop:serverUrls"])
   }
 
+  @Test("a value that no profile enforces isn't read as forced")
+  func notForcedByDefault() throws {
+    let preferences = ManagedPreferences(
+      domains: ["ai.omnigent.tests.not-a-real-domain"],
+      readValue: { _, _ in ["https://acme.example.com"] })
+    let snapshot = try preferences.servers()
+    #expect(snapshot.servers.count == 1)
+    #expect(!snapshot.serversAreForced)
+  }
+
   @Test("returns nothing when no domain sets the key")
   func unset() throws {
     let snapshot = try reader([:]).0.servers()

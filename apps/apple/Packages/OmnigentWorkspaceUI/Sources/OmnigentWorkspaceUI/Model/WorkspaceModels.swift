@@ -225,6 +225,8 @@ public final class WorkspaceBrowserModel {
       openDocuments.append(document)
     }
     self.document = document
+    // Left selected under another document, the row couldn't be clicked to open its diff again.
+    if case .diff(changes.selection ?? "") = document {} else { changes.selection = nil }
     switch document {
     case .file(let path, _):
       diff = .idle
@@ -296,6 +298,7 @@ public final class WorkspaceBrowserModel {
     document = nil
     file = .idle
     diff = .idle
+    changes.selection = nil
   }
 
   /// Handles `session.changed_files.invalidated`: reloads changes and the tree, and the open

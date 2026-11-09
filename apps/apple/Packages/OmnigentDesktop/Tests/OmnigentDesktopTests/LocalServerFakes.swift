@@ -16,13 +16,23 @@ final class FakeProcess: LocalProcessHandle {
   let launch: LocalProcessLaunch
   /// Exit on SIGINT or SIGTERM. Off simulates a process that ignores them.
   let exitsOnTerminate: Bool
+  /// What signaling it fails with, when asked to.
+  let signalFailure: @Sendable () -> LocalServerError?
+  /// Survives even SIGKILL, when asked to, as a process stuck in the kernel does.
+  let survivesKill: @Sendable () -> Bool
   private let continuation: AsyncStream<LocalProcessOutput>.Continuation
   private let state = Mutex(State())
 
-  init(pid: Int32, launch: LocalProcessLaunch, exitsOnTerminate: Bool) {
+  init(
+    pid: Int32, launch: LocalProcessLaunch, exitsOnTerminate: Bool,
+    signalFailure: @escaping @Sendable () -> LocalServerError? = { nil },
+    survivesKill: @escaping @Sendable () -> Bool = { false }
+  ) {
     self.pid = pid
     self.launch = launch
     self.exitsOnTerminate = exitsOnTerminate
+    self.signalFailure = signalFailure
+    self.survivesKill = survivesKill
     (output, continuation) = AsyncStream.makeStream(of: LocalProcessOutput.self)
   }
 
@@ -56,13 +66,14 @@ final class FakeProcess: LocalProcessHandle {
   }
 
   func send(_ signal: LocalProcessSignal) throws(LocalServerError) {
+    if let failure = signalFailure() { throw failure }
     let running = state.withLock { current -> Bool in
       guard current.exit == nil else { return false }
       current.signals.append(signal)
       return true
     }
     guard running else { return }
-    if signal == .kill || exitsOnTerminate { exit(.signaled(signal.rawValue)) }
+    if signal == .kill ? !survivesKill() : exitsOnTerminate { exit(.signaled(signal.rawValue)) }
   }
 }
 
@@ -79,6 +90,10 @@ final class FakeRunner: LocalProcessRunning {
     var externalWaiters: [Int32: [CheckedContinuation<Void, Never>]] = [:]
     var busyPorts: Set<Int> = []
     var ignoresTerminate = false
+    var launchFailure: LocalServerError?
+    var signalFailure: LocalServerError?
+    var portCheckFailure: LocalServerError?
+    var survivesKill = false
   }
 
   private let state = Mutex(State())
@@ -90,6 +105,26 @@ final class FakeRunner: LocalProcessRunning {
   /// Queues behaviors for the next launches, in order.
   func script(_ behaviors: Behavior...) {
     state.withLock { current in current.behaviors += behaviors }
+  }
+
+  /// Makes every later launch fail with `error`.
+  func failLaunches(with error: LocalServerError) {
+    state.withLock { $0.launchFailure = error }
+  }
+
+  /// Makes every later signal fail with `error`.
+  func failSignals(with error: LocalServerError) {
+    state.withLock { $0.signalFailure = error }
+  }
+
+  /// Makes every later port check fail with `error`.
+  func failPortChecks(with error: LocalServerError) {
+    state.withLock { $0.portCheckFailure = error }
+  }
+
+  /// Makes later processes survive even SIGKILL.
+  func surviveKill() {
+    state.withLock { $0.survivesKill = true }
   }
 
   func ignoreTerminate() {
@@ -118,10 +153,13 @@ final class FakeRunner: LocalProcessRunning {
   }
 
   func launch(_ launch: LocalProcessLaunch) throws(LocalServerError) -> any LocalProcessHandle {
+    if let failure = state.withLock({ $0.launchFailure }) { throw failure }
     let (process, behavior) = state.withLock { current -> (FakeProcess, Behavior?) in
       current.nextPID += 1
       let process = FakeProcess(
-        pid: current.nextPID, launch: launch, exitsOnTerminate: !current.ignoresTerminate)
+        pid: current.nextPID, launch: launch, exitsOnTerminate: !current.ignoresTerminate,
+        signalFailure: { [weak self] in self?.state.withLock { $0.signalFailure } },
+        survivesKill: { [weak self] in self?.state.withLock { $0.survivesKill } ?? false })
       current.processes.append(process)
       let behavior = current.behaviors.isEmpty ? nil : current.behaviors.removeFirst()
       return (process, behavior)
@@ -163,6 +201,7 @@ final class FakeRunner: LocalProcessRunning {
   }
 
   func send(_ signal: LocalProcessSignal, toGroupOf pid: Int32) throws(LocalServerError) {
+    if let failure = state.withLock({ $0.signalFailure }) { throw failure }
     let ends = state.withLock { current -> Bool in
       current.externalSignals.append((pid, signal))
       return signal == .kill || !current.ignoresTerminate
@@ -171,7 +210,8 @@ final class FakeRunner: LocalProcessRunning {
   }
 
   func isLoopbackPortAvailable(_ port: Int) throws(LocalServerError) -> Bool {
-    state.withLock { !$0.busyPorts.contains(port) }
+    if let failure = state.withLock({ $0.portCheckFailure }) { throw failure }
+    return state.withLock { !$0.busyPorts.contains(port) }
   }
 }
 
@@ -244,6 +284,7 @@ struct LocalServerHarness {
   let preferences: LocalServerPreferences
   let manager: LocalServerManager
   let records: LocalServerRecordStore
+  let dependencies: LocalServerManager.Dependencies
 
   nonisolated static let cliPath = "/fake/bin/omnigent"
 
@@ -269,7 +310,7 @@ struct LocalServerHarness {
     var timing = LocalServerManager.Timing()
     timing.serverReadiness = .seconds(30)
     timing.hostConnect = .seconds(30)
-    let dependencies = LocalServerManager.Dependencies(
+    dependencies = LocalServerManager.Dependencies(
       runner: runner, probe: probe, clock: clock, records: records, cliSystem: system,
       environment: ["HOME": root.path, "DYLD_INSERT_LIBRARIES": "/x.dylib", "LANG": "C"],
       homeDirectory: root, timing: timing)
