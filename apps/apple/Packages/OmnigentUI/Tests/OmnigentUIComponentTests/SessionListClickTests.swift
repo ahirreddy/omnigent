@@ -136,7 +136,8 @@
       screen.settle(0.3)
       #expect(try #require(screen.list).numberOfRows == rows)
       #expect(
-        UserDefaults.standard.string(forKey: SidebarNavigationOrder.collapsedSectionsKey).isEmpty)
+        UserDefaults.standard.string(forKey: SidebarNavigationOrder.collapsedSectionsKey)?.isEmpty
+          == true)
     }
 
     @Test("a new pin opens the collapsed Pinned section")
@@ -148,7 +149,8 @@
       spy.state.list.sessions[1].isPinned = true
       screen.settle(0.3)
       #expect(
-        UserDefaults.standard.string(forKey: SidebarNavigationOrder.collapsedSectionsKey).isEmpty)
+        UserDefaults.standard.string(forKey: SidebarNavigationOrder.collapsedSectionsKey)?.isEmpty
+          == true)
     }
 
     @Test("Load more reads a page as it appears, up to three per scope, then on a click")

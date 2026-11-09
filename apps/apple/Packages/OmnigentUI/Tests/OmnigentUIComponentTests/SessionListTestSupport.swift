@@ -47,23 +47,7 @@
     /// Clicks a list row with the real mouse path. Rows without a drag or button in them need
     /// ``selectRow(_:)``: AppKit's click recognizer doesn't run for synthesized events.
     func clickRow(_ row: Int, modifiers: NSEvent.ModifierFlags = []) throws {
-      // A row with a drag source reposts the mouse up from inside its mouse down, which stops the
-      // current run loop. Before the first suspension that would be the test runner's own loop.
-      let point = try center(ofRow: row)
-      nonisolated(unsafe) var failure: (any Error)?
-      CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
-        MainActor.assumeIsolated {
-          do {
-            try self.click(point, modifiers: modifiers)
-          } catch {
-            unsafe failure = error
-          }
-          CFRunLoopStop(CFRunLoopGetMain())
-        }
-      }
-      _ = CFRunLoopRunInMode(.defaultMode, 10, false)
-      if let failure = unsafe failure { throw failure }
-      settle()
+      try click(center(ofRow: row), modifiers: modifiers)
     }
 
     /// Selects a row as the list's own click handling does.
@@ -74,37 +58,70 @@
 
     /// The context menu of a list row, with its actions wired as a right click wires them.
     func menu(ofRow row: Int) throws -> NSMenu? {
-      let list = try #require(list)
-      let event = try #require(
-        NSEvent.mouseEvent(
-          with: .rightMouseDown, location: host.convert(try center(ofRow: row), to: nil),
-          modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-          windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1,
-          pressure: 1))
-      return list.menu(for: event)
+      try contextMenu(at: center(ofRow: row))
     }
 
-    /// Moves the pointer over a point, as hover tracking reports it.
-    func hover(_ point: CGPoint) throws {
+    /// Opens the `Menu` that is this control in `controlFrames`, and returns its items.
+    func openMenu(control index: Int) throws -> NSMenu {
+      let frame = try #require(controlFrames.indices.contains(index) ? controlFrames[index] : nil)
+      return try openMenu(CGPoint(x: frame.midX, y: frame.midY))
+    }
+
+    /// Opens a `Menu`, and returns its items.
+    func openMenu(_ popUp: NSView) throws -> NSMenu {
+      let frame = popUp.convert(popUp.bounds, to: activeWindow.contentView)
+      return try openMenu(CGPoint(x: frame.midX, y: frame.midY))
+    }
+
+    /// Hovers a list row: it hosts its content in its own hosting view, which tracks by itself.
+    func hoverRow(_ row: Int) throws {
+      let point = try center(ofRow: row)
       let event = try #require(
         NSEvent.mouseEvent(
           with: .mouseMoved, location: host.convert(point, to: nil), modifierFlags: [],
           timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
           context: nil, eventNumber: 1, clickCount: 0, pressure: 0))
-      host.mouseEntered(with: event)
-      host.mouseMoved(with: event)
+      let targets = allViews.filter { view in
+        String(describing: Swift.type(of: view)).contains("HostingView")
+          && view.convert(view.bounds, to: host).contains(point)
+      }
+      for target in targets {
+        target.mouseEntered(with: event)
+        target.mouseMoved(with: event)
+      }
       settle()
     }
 
-    /// Ends a hover: the pointer left the window.
-    func endHover() throws {
+    /// Ends a hover over a list row.
+    func endRowHover() throws {
       let event = try #require(
         NSEvent.mouseEvent(
           with: .mouseMoved, location: .zero, modifierFlags: [],
           timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
           context: nil, eventNumber: 1, clickCount: 0, pressure: 0))
-      host.mouseExited(with: event)
+      for target in allViews
+      where String(describing: Swift.type(of: target)).contains("HostingView") {
+        target.mouseExited(with: event)
+      }
       settle()
+    }
+
+    /// The borderless buttons in a list row.
+    func plainButtons(inRow row: Int) throws -> [NSButton] {
+      let list = try #require(list)
+      return plainButtons.filter { button in
+        let frame = button.convert(button.bounds, to: list)
+        return list.row(at: CGPoint(x: frame.midX, y: frame.midY)) == row
+      }
+    }
+
+    /// The `Menu`s in a list row.
+    func popUps(inRow row: Int) throws -> [NSButton] {
+      let list = try #require(list)
+      return popUps.filter { button in
+        let frame = button.convert(button.bounds, to: list)
+        return list.row(at: CGPoint(x: frame.midX, y: frame.midY)) == row
+      }
     }
   }
 
