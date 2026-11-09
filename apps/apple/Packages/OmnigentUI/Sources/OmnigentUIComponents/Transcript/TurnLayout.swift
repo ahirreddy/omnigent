@@ -87,7 +87,8 @@ nonisolated enum TurnLayout {
 
   /// "8s", "1m 46s", "1m", "1h 2m".
   static func duration(_ seconds: TimeInterval) -> String {
-    let total = Int(seconds.rounded())
+    // Built from server timestamps, so it needn't be a sensible span.
+    let total = seconds.isFinite ? Int(min(max(seconds.rounded(), 0), 0x1p53)) : 0
     let hours = total / 3_600
     let minutes = (total % 3_600) / 60
     let secs = total % 60

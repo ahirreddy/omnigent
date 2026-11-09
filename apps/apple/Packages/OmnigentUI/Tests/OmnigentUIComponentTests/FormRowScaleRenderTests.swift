@@ -115,6 +115,15 @@
       #expect(Set(AgentTreeLayout.layout(nodes).centers.keys) == ["root"])
     }
 
+    @Test(
+      "a turn's duration built from odd timestamps still reads as a time",
+      arguments: [-5, .nan, .infinity, -.infinity, 1e300])
+    func oddDurations(seconds: TimeInterval) {
+      #expect(
+        TurnLayout.duration(seconds).hasSuffix("s") || TurnLayout.duration(seconds).hasSuffix("m")
+          || TurnLayout.duration(seconds).hasSuffix("h"))
+    }
+
     @Test("the smallest 64-bit expiry reads as expired")
     func countdownBeforeInt() {
       let expired = Date(timeIntervalSince1970: TimeInterval(Int64.min))

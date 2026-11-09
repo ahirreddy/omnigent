@@ -155,7 +155,8 @@ enum AutomationsMapping {
     switch end {
     case .never: .never
     case .count(let count): .count(count: UInt32(clamping: count))
-    case .until(let date): .until(at: Int64(date.timeIntervalSince1970))
+    case .until(let date):
+      .until(at: Int64(min(max(date.timeIntervalSince1970, -0x1p62), 0x1p62)))
     }
   }
 

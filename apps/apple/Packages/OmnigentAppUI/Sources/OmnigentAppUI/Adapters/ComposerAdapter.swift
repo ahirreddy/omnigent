@@ -64,9 +64,17 @@ enum ComposerAdapter {
     func value(_ id: String) -> Double? {
       usage.details.first { $0.id == id }.flatMap { Double($0.text) }
     }
-    guard let tokens = value("context_tokens"), let window = value("context_window"), window > 0
+    guard let tokens = value("context_tokens"), let window = value("context_window"),
+      tokens.isFinite, window.isFinite, window > 0
     else { return nil }
-    return ContextTokens(used: Int(tokens.rounded()), window: Int(window.rounded()))
+    return ContextTokens(used: count(tokens), window: count(window))
+  }
+
+  /// `value` as a count; the server's unsigned 64-bit numbers can be past what `Int` holds.
+  private static func count(_ value: Double) -> Int {
+    let rounded = value.rounded()
+    if rounded >= 0x1p63 { return .max }
+    return rounded < -0x1p63 ? .min : Int(rounded)
   }
 
   static func slashCommand(_ command: OmnigentCoreFFI.SlashCommand)

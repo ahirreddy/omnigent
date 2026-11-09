@@ -32,7 +32,7 @@ nonisolated public struct RemoteViewportSize: Hashable, Sendable, Codable {
   /// "1280 × 800", with "@2x" for DPR 2.
   public var label: String {
     let base = "\(width) \u{00D7} \(height)"
-    return dpr > 1 ? "\(base) @\(Int(dpr))x" : base
+    return dpr > 1 ? "\(base) @\(Int(min(dpr, 3)))x" : base
   }
 }
 
