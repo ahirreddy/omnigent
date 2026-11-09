@@ -138,8 +138,6 @@
         })
     }
 
-    // `performClick` skips the real click path: a synthetic click doesn't fire this destructive
-    // button, though it does a plain one. Only a real click can tell if a user's would.
     @Test("Delete removes a comment")
     func delete() async throws {
       let spy = ReviewSpy()
@@ -147,7 +145,7 @@
       defer { screen.close() }
       let delete = try #require(buttons(screen).last)
       #expect(delete.hasDestructiveAction)
-      delete.performClick(nil)
+      try screen.click(delete)
       #expect(await settle(screen) { spy.deleted == ["open-one"] })
     }
 
