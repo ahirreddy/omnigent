@@ -73,12 +73,6 @@ struct TabPagesTests {
       width: 500, height: 400)
     defer { closed.close() }
     try await settle(closed, untilShowing: "Terminal Closed")
-
-    let harness = OffscreenWindow(
-      HarnessTabView(session: session, sessionID: "conv_a", showChat: {}), width: 500, height: 400)
-    defer { harness.close() }
-    try await pause(harness)
-    #expect(try harness.shownText().contains { $0.contains("terminal") || $0.contains("Terminal") })
   }
 
   @Test("A side question whose conversation isn't open waits for it")

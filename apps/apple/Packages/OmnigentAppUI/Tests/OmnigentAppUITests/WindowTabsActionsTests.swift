@@ -196,7 +196,7 @@ extension WindowTabsActionsTests {
     #expect(!created(window.session.tabs.group("conv_a")))
   }
 
-  @Test("Show Terminal goes to a ready harness, else the first shell, else starts one")
+  @Test("Show Terminal shows a ready agent terminal in the chat, else a shell, else starts one")
   func toggleTerminal() async throws {
     let window = try await window(terminalServer())
     window.session.tabs.open(.chat(sessionID: "conv_a"))
@@ -222,7 +222,10 @@ extension WindowTabsActionsTests {
     #expect(group.selected?.content == .chat(sessionID: "conv_a"), "and back to the chat")
     terminals.apply(terminals: [shell], harness: .ready(terminal: shell.terminal))
     window.tabs.toggleTerminal("conv_a")
-    #expect(group.selected?.content == .harness(sessionID: "conv_a"))
+    #expect(window.session.tabs.viewMode("conv_a") == .terminal)
+    #expect(group.selected?.content == .chat(sessionID: "conv_a"), "in the chat's own tab")
+    window.tabs.toggleTerminal("conv_a")
+    #expect(window.session.tabs.viewMode("conv_a") == .chat, "and back to the transcript")
   }
 
   @Test("From the New Tab page, a shell in the session replaces the page")
@@ -277,7 +280,7 @@ extension WindowTabsActionsTests {
     #expect(opened.urls == [mail, web])
   }
 
-  @Test("Sub-agents open in their own window when asked; a Terminal default opens the TUI once")
+  @Test("Sub-agents open in their own window when asked; a Terminal default shows the TUI once")
   func routesFollowPreferences() async throws {
     let window = try await window()
     final class Children { var ids: [String] = [] }
@@ -293,13 +296,17 @@ extension WindowTabsActionsTests {
     let saved = UserDefaults.standard.object(forKey: key)
     defer { UserDefaults.standard.set(saved, forKey: key) }
     UserDefaults.standard.set(TranscriptViewDefault.terminal.rawValue, forKey: key)
-    let group = window.session.tabs.group("conv_a")
+    let groups = window.session.tabs
     let routes = tabs.routes(for: "conv_a", subagentsApart: false)
     routes.applyDefaultView?()
-    #expect(group.selected?.content == .harness(sessionID: "conv_a"))
-    group.select(try #require(group.tabs.first).id)
-    let selected = group.selectedID
+    #expect(groups.viewMode("conv_a") == .terminal)
+    #expect(groups.group("conv_a").selected?.content == .chat(sessionID: "conv_a"))
+    groups.setViewMode(.chat, for: "conv_a")
     routes.applyDefaultView?()
-    #expect(group.selectedID == selected, "only the first time")
+    #expect(groups.viewMode("conv_a") == .chat, "only the first time")
+
+    UserDefaults.standard.set(TranscriptViewDefault.chat.rawValue, forKey: key)
+    tabs.routes(for: "conv_b", subagentsApart: false).applyDefaultView?()
+    #expect(groups.viewChoice("conv_b").mode == .chat, "a Chat default is a choice too")
   }
 }

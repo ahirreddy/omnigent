@@ -85,7 +85,7 @@ struct PrimaryChatTests {
   @Test("Only the primary chat and its terminals offer Show Terminal")
   func terminalViewOnlyOnPrimaryChat() {
     #expect(WindowTabs.offersTerminal(.chat(sessionID: "s")))
-    #expect(WindowTabs.offersTerminal(.harness(sessionID: "s")))
+    #expect(!WindowTabs.offersTerminal(.harness(sessionID: "s")))
     #expect(WindowTabs.offersTerminal(.terminal(sessionID: "s", terminalID: "t")))
     #expect(!WindowTabs.offersTerminal(.sideChat(sessionID: "s", rowID: "r")))
     #expect(!WindowTabs.offersTerminal(.agentBrowser(sessionID: "s")))

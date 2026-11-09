@@ -31,4 +31,8 @@ extension TitlebarTrailingItems {
     if hasShare, isRegular { items += 2 }
     return items
   }
+
+  /// The Chat / Terminal switch leading the trailing items (82 points and the gap beside it),
+  /// in button widths.
+  static let viewSwitch = 3
 }

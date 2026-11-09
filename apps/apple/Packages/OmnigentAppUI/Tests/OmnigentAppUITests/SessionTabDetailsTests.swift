@@ -173,7 +173,7 @@ struct SessionTabDetailsTests {
     #expect(session.remoteBrowsers?.profiles["conv_a"]?.isEmpty == false)
   }
 
-  @Test("A terminal that can't start says why on its tab's page and on the agent's")
+  @Test("A terminal that can't start says why on its tab's page")
   func terminalFailures() async throws {
     let session = try await session()
     session.open("conv_a")
@@ -186,12 +186,7 @@ struct SessionTabDetailsTests {
       width: 500, height: 400)
     defer { page.close() }
     try await settle(page, untilShowing: "Terminal Unavailable")
-
-    let harness = OffscreenWindow(
-      HarnessTabView(session: session, sessionID: "conv_a", showChat: {}), width: 500, height: 400)
-    defer { harness.close() }
-    try await pause(harness)
-    #expect(try harness.shownText().contains { $0.contains(message) })
+    #expect(try page.shownText().contains { $0.contains(message) })
   }
 
   @Test("A side question shows what was asked and what came back")
