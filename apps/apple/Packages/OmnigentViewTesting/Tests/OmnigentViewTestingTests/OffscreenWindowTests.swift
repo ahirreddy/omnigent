@@ -43,6 +43,36 @@
     }
   }
 
+  /// One control of each style, with those in the scroll view above those outside it.
+  private struct EveryStyle: View {
+    let taps: Taps
+    @State private var isOn = false
+    @State private var isPressed = false
+    @State private var text = ""
+
+    var body: some View {
+      VStack(alignment: .leading, spacing: 8) {
+        ScrollView {
+          Button("Scrolled") { taps.log.append("scrolled") }.buttonStyle(.plain)
+        }
+        .frame(height: 30)
+        HStack(spacing: 8) {
+          Button("Left") { taps.log.append("left") }.buttonStyle(.plain)
+          Button("Middle") { taps.log.append("middle") }.buttonStyle(.borderless)
+          Button("Right") { taps.log.append("right") }
+        }
+        Toggle("Check", isOn: $isOn).onChange(of: isOn) { taps.log.append("check") }
+        Toggle("Press", isOn: $isPressed)
+          .toggleStyle(.button)
+          .onChange(of: isPressed) { taps.log.append("press") }
+        Menu("Menu") { Button("Item") { taps.log.append("item") } }
+        TextField("Field", text: $text)
+      }
+      .padding(8)
+      .frame(width: 300, height: 260, alignment: .top)
+    }
+  }
+
   @MainActor
   @Suite("A view in an offscreen window takes real input", .serialized)
   struct OffscreenWindowTests {
@@ -70,6 +100,22 @@
       try screen.clickControl(at: 0)
       #expect(taps.log.last == "default")
       #expect(throws: OffscreenWindowError.self) { try screen.clickControl(at: 99) }
+    }
+
+    @Test("controls of every style are listed once, in reading order")
+    func controlOrder() throws {
+      let taps = Taps()
+      let screen = OffscreenWindow(EveryStyle(taps: taps), width: 300, height: 260)
+      defer { screen.close() }
+      let frames = screen.controlFrames
+      #expect(frames.count == 8, "\(frames)")
+      for index in [0, 1, 2, 3, 4, 5] { try screen.clickControl(at: index) }
+      #expect(taps.log == ["scrolled", "left", "middle", "right", "check", "press"])
+      let menu = try screen.openMenu(CGPoint(x: frames[6].midX, y: frames[6].midY))
+      #expect(menu.items.map(\.title).contains("Item"))
+      try screen.click(CGPoint(x: frames[7].midX, y: frames[7].midY))
+      try screen.type("a")
+      #expect(screen.window.firstResponder is NSText)
     }
 
     @Test("a context menu can be read and chosen from without opening it")
