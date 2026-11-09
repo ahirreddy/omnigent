@@ -156,7 +156,7 @@
 
     /// Selects the focused field's text, so typing replaces it.
     func selectFieldText() {
-      (window.firstResponder as? NSText)?.selectAll(nil)
+      (activeWindow.firstResponder as? NSText)?.selectAll(nil)
     }
 
     func pressReturn() throws { try press(keyCode: 36, characters: "\r") }
