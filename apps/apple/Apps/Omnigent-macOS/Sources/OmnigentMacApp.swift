@@ -81,14 +81,16 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   /// Launched by `xcodebuild` to host the unit tests (`OmnigentMacTests`), which load into
   /// this process. The app then stays in the background with no windows, so test runs do not
   /// take focus from whatever the user is doing.
-  static let isTestHost: Bool = {
-    let environment = ProcessInfo.processInfo.environment
-    let keys = ["XCTestConfigurationFilePath", "XCTestBundlePath", "XCTestSessionIdentifier"]
-    return keys.contains { environment[$0] != nil } && NSClassFromString("XCTestCase") != nil
-  }()
+  static let isTestHost = TestHost.isHosting(
+    environment: ProcessInfo.processInfo.environment,
+    hasXCTest: NSClassFromString("XCTestCase") != nil)
+
+  /// Set when hosting tests: the delegate's state lives here, not with the user's.
+  let testHostIsolation: TestHost.Isolation?
 
   /// App-wide services, created with the delegate's `DesktopController`.
-  private(set) lazy var services = AppServices(desktop: desktop)
+  private(set) lazy var services =
+    testHostIsolation?.makeServices(desktop: desktop) ?? AppServices(desktop: desktop)
 
   #if OMNIGENT_CHROMIUM
     private(set) lazy var updater = SparkleUpdater { [weak self] issue in
@@ -97,8 +99,30 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   #endif
 
   init() {
-    super.init(
-      desktop: DesktopController(localServerCapability: AppEdition.current.localServerCapability))
+    let isolation = Self.isolationForLaunch(isTestHost: Self.isTestHost)
+    testHostIsolation = isolation
+    super.init(desktop: Self.makeDesktop(isolation: isolation))
+  }
+
+  /// The test host's private store. Failing to make one ends the run: the alternative is running
+  /// the tests against the user's preferences and server records.
+  private static func isolationForLaunch(isTestHost: Bool) -> TestHost.Isolation? {
+    guard isTestHost else { return nil }
+    do {
+      let isolation = try TestHost.Isolation.forHostProcess()
+      try isolation.replaceStandardDefaults()
+      return isolation
+    } catch {
+      fatalError(error.description)
+    }
+  }
+
+  /// The shell services of a launch.
+  /// - Parameter isolation: The test host's private store; `nil` in a real launch.
+  /// - Returns: The services.
+  static func makeDesktop(isolation: TestHost.Isolation?) -> DesktopController {
+    isolation?.makeDesktop()
+      ?? DesktopController(localServerCapability: AppEdition.current.localServerCapability)
   }
 
   /// Omnigent > Check for Updates..., in the Developer ID edition only.
@@ -156,7 +180,8 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
       }
     #endif
     services.bind()
-    super.applicationWillFinishLaunching(notification)
+    // A test host must not take the notification taps of the user's own copy of the app.
+    if !Self.isTestHost { super.applicationWillFinishLaunching(notification) }
   }
 
   override func applicationShouldTerminate(_ sender: NSApplication)
@@ -171,7 +196,14 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   }
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
-    super.applicationDidFinishLaunching(notification)
+    TestHost.LaunchWork(
+      startLocalServer: { super.applicationDidFinishLaunching(notification) },
+      startChaos: startChaosIfRequested,
+      startUpdater: startUpdater
+    ).run(isTestHost: Self.isTestHost)
+  }
+
+  private func startChaosIfRequested() {
     #if DEBUG
       let desktop = services.desktop
       let serverURL = { Self.demoServerURL ?? desktop.preferences.defaultServerURL }
@@ -179,6 +211,9 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
         ChaosDriver.startIfRequested(router: desktop.router, serverURL: serverURL)
       }
     #endif
+  }
+
+  private func startUpdater() {
     #if OMNIGENT_CHROMIUM
       do {
         try updater.start()

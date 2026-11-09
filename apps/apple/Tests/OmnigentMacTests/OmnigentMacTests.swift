@@ -94,8 +94,9 @@ struct EditionTests {
   }
 
   @Test func browserTabsKeepPagesUntilClosed() throws {
-    let services = AppServices(desktop: DesktopController(), defaults: try isolatedDefaults())
-    let host = services.browserTabs
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let host = scratch.services.browserTabs
     let serverURL = try #require(URL(string: "http://127.0.0.1:6767/workspace"))
     let page = host.makePage(url: serverURL)
     #expect(page.state != nil)
@@ -140,9 +141,10 @@ struct RecentServersTests {
   }
 
   @Test func knownServersIncludeRecentsAndDefault() throws {
-    let defaults = try isolatedDefaults()
-    let desktop = DesktopController(defaults: defaults, managedDomains: [])
-    let services = AppServices(desktop: desktop, defaults: defaults)
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let services = scratch.services
+    let desktop = scratch.desktop
     let recent = try #require(URL(string: "http://127.0.0.1:6767"))
     let preferred = try #require(URL(string: "https://omnigent.example.com"))
     services.recentServers.record(recent)
