@@ -582,3 +582,7 @@ impl ClientCore {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "databricks_tests.rs"]
+mod tests;

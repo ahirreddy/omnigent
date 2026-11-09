@@ -1,0 +1,354 @@
+//! Databricks sign-in and renewal through the real core: a host error or a user action at each
+//! await.
+
+use std::sync::Arc;
+
+use super::*;
+use crate::api_tests::{WORKSPACE_HOST, databricks, route_databricks};
+use crate::connection::UrlPolicy;
+use crate::errors::DatabricksErrorKind;
+use crate::test_support::{Harness, json, phases};
+
+const TOKEN: &str = "/oidc/v1/token";
+
+fn offline() -> crate::http::TransportError {
+    crate::http::TransportError::Offline {
+        message: "no route".into(),
+    }
+}
+
+fn locked() -> crate::host::SecureStoreError {
+    crate::host::SecureStoreError::Unavailable {
+        message: "device locked".into(),
+    }
+}
+
+fn connect(harness: &mut Harness) -> Result<ConnectionPhase, CoreError> {
+    let core = Arc::clone(&harness.core);
+    harness.run(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await })
+}
+
+fn callback_for(challenge: &DatabricksChallenge) -> String {
+    let state = Url::parse(&challenge.authorize_url)
+        .unwrap()
+        .query_pairs()
+        .find(|(name, _)| name == "state")
+        .map(|(_, value)| value.into_owned())
+        .unwrap();
+    format!("https://login.databricks.com/mobile-redirect?state={state}&code=abc")
+}
+
+/// A harness on the sign-in screen of a workspace, the login started.
+fn signing_in() -> (Harness, DatabricksChallenge) {
+    let mut harness = databricks();
+    route_databricks(&harness, "access-1", 3_600);
+    connect(&mut harness).unwrap();
+    let challenge = harness.core.begin_databricks_sign_in(None).unwrap();
+    (harness, challenge)
+}
+
+fn complete(
+    harness: &mut Harness,
+    challenge: &DatabricksChallenge,
+) -> Result<ConnectedServer, CoreError> {
+    let core = Arc::clone(&harness.core);
+    let attempt = challenge.attempt_id;
+    let callback = callback_for(challenge);
+    harness.run(async move { core.complete_databricks_sign_in(attempt, callback).await })
+}
+
+fn signed_in() -> Harness {
+    let (mut harness, challenge) = signing_in();
+    complete(&mut harness, &challenge).unwrap();
+    harness.events.take();
+    harness
+}
+
+fn last_phase(harness: &Harness) -> ConnectionPhase {
+    phases(&harness.events.all()).pop().unwrap()
+}
+
+fn connection_errors(events: &[CoreEvent]) -> Vec<CoreError> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            CoreEvent::Error {
+                scope: ErrorScope::Connection,
+                error,
+            } => Some(error.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn token_error(status: u16, code: &str) -> crate::http::HttpResponse {
+    json(status, &serde_json::json!({ "error": code }).to_string())
+}
+
+#[test]
+fn the_build_client_is_checked_when_a_workspace_is_used() {
+    let mut harness = Harness::with_databricks(
+        UrlPolicy::Release,
+        Some(DatabricksOAuthSettings {
+            client_id: "not a client id!".into(),
+            redirect_url: "https://login.databricks.com/mobile-redirect".into(),
+        }),
+    );
+    let error = connect(&mut harness).unwrap_err();
+    assert!(matches!(error, CoreError::Databricks { .. }), "{error:?}");
+    assert!(matches!(
+        last_phase(&harness),
+        ConnectionPhase::Failed { .. }
+    ));
+    assert_eq!(
+        format!(
+            "{:?}",
+            DatabricksAuth::new(&DatabricksOAuthSettings {
+                client_id: "omnigent-app".into(),
+                redirect_url: "https://login.databricks.com/mobile-redirect".into(),
+            })
+        ),
+        "DatabricksAuth { configured: true, .. }"
+    );
+}
+
+#[test]
+fn signing_in_needs_a_workspace_and_the_right_redirect_kind() {
+    let mut harness = Harness::with_databricks(
+        UrlPolicy::Development,
+        Some(DatabricksOAuthSettings {
+            client_id: "omnigent-app".into(),
+            redirect_url: "https://login.databricks.com/mobile-redirect".into(),
+        }),
+    );
+    assert!(matches!(
+        harness.core.begin_databricks_sign_in(None),
+        Err(CoreError::InvalidState { .. })
+    ));
+    harness.local_server();
+    let core = Arc::clone(&harness.core);
+    harness
+        .run(async move { core.connect("http://127.0.0.1:6767".into(), None).await })
+        .unwrap();
+    assert!(matches!(
+        harness.core.begin_databricks_sign_in(None),
+        Err(CoreError::InvalidState { .. })
+    ));
+
+    let mut harness = databricks();
+    connect(&mut harness).unwrap();
+    let error = harness
+        .core
+        .begin_databricks_sign_in(Some(5_000))
+        .unwrap_err();
+    assert!(matches!(error, CoreError::InvalidState { .. }), "{error:?}");
+}
+
+#[test]
+fn a_failing_rng_stops_the_login_before_it_starts() {
+    let mut harness = databricks();
+    connect(&mut harness).unwrap();
+    harness
+        .entropy
+        .failing
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let error = harness.core.begin_databricks_sign_in(None).unwrap_err();
+    assert!(matches!(error, CoreError::Databricks { .. }), "{error:?}");
+    assert!(matches!(
+        last_phase(&harness),
+        ConnectionPhase::SignInRequired { .. }
+    ));
+}
+
+#[test]
+fn cancelling_a_login_returns_to_sign_in_once() {
+    let (mut harness, challenge) = signing_in();
+    harness.pump();
+    harness.core.cancel_databricks_sign_in(challenge.attempt_id);
+    harness.pump();
+    assert!(matches!(
+        last_phase(&harness),
+        ConnectionPhase::SignInRequired { reason: None, .. }
+    ));
+    harness.events.take();
+    // The same attempt again, or one that never existed, changes nothing.
+    harness.core.cancel_databricks_sign_in(challenge.attempt_id);
+    harness.core.cancel_databricks_sign_in(999);
+    harness.pump();
+    assert_eq!(harness.events.take(), []);
+    let error = complete(&mut harness, &challenge).unwrap_err();
+    assert!(matches!(error, CoreError::InvalidState { .. }), "{error:?}");
+
+    // A core with no build client has nothing to cancel.
+    let mut plain = Harness::new(UrlPolicy::Development);
+    plain.core.cancel_databricks_sign_in(1);
+    plain.pump();
+    assert_eq!(plain.events.take(), []);
+}
+
+#[test]
+fn a_disconnect_during_the_code_exchange_wins() {
+    let (mut harness, challenge) = signing_in();
+    let gate = harness.http.hold(TOKEN);
+    let core = Arc::clone(&harness.core);
+    let (attempt, callback) = (challenge.attempt_id, callback_for(&challenge));
+    let pending =
+        harness.start(async move { core.complete_databricks_sign_in(attempt, callback).await });
+    harness.pump();
+    harness.core.disconnect();
+    harness.pump();
+    gate.send(()).unwrap();
+    harness.pump();
+    assert!(pending.borrow_mut().take().unwrap().is_err());
+    assert_eq!(last_phase(&harness), ConnectionPhase::Disconnected);
+}
+
+#[test]
+fn a_refused_exchange_or_a_failed_save_returns_to_sign_in_with_the_reason() {
+    let (mut harness, challenge) = signing_in();
+    harness.http.route(TOKEN, token_error(400, "invalid_grant"));
+    let error = complete(&mut harness, &challenge).unwrap_err();
+    assert!(matches!(error, CoreError::Databricks { .. }), "{error:?}");
+    assert!(matches!(
+        last_phase(&harness),
+        ConnectionPhase::SignInRequired {
+            reason: Some(_),
+            ..
+        }
+    ));
+
+    let (mut harness, challenge) = signing_in();
+    *lock(&harness.store.set_failure) = Some(locked());
+    let error = complete(&mut harness, &challenge).unwrap_err();
+    assert!(matches!(error, CoreError::Databricks { .. }), "{error:?}");
+    assert!(matches!(
+        last_phase(&harness),
+        ConnectionPhase::SignInRequired {
+            reason: Some(_),
+            ..
+        }
+    ));
+}
+
+#[test]
+fn a_connect_replaced_during_its_refresh_reports_nothing() {
+    let mut harness = signed_in();
+    harness.core.disconnect();
+    harness.pump();
+    harness.advance(4_000_000);
+    let gate = harness.http.hold(TOKEN);
+    let core = Arc::clone(&harness.core);
+    let first =
+        harness.start(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await });
+    harness.pump();
+    harness.core.disconnect();
+    harness.pump();
+    gate.send(()).unwrap();
+    harness.pump();
+    assert!(first.borrow_mut().take().unwrap().is_err());
+    assert_eq!(last_phase(&harness), ConnectionPhase::Disconnected);
+}
+
+#[test]
+fn a_network_failure_at_renewal_keeps_the_connection_and_retries() {
+    let mut harness = signed_in();
+    harness.http.fail_next(TOKEN, offline());
+    harness.advance(3_600_000);
+    let events = harness.events.take();
+    assert_eq!(connection_errors(&events).len(), 1, "{events:#?}");
+    assert_eq!(phases(&events), []);
+
+    route_databricks(&harness, "access-2", 3_600);
+    harness.advance(RENEWAL_RETRY_MS);
+    let events = harness.events.take();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, CoreEvent::CredentialRotated { .. })),
+        "{events:#?}"
+    );
+}
+
+#[test]
+fn a_rotated_grant_that_cannot_be_saved_is_reported() {
+    let mut harness = signed_in();
+    route_databricks(&harness, "access-2", 3_600);
+    *lock(&harness.store.set_failure) = Some(locked());
+    harness.advance(3_600_000);
+    let events = harness.events.take();
+    assert!(!connection_errors(&events).is_empty(), "{events:#?}");
+}
+
+#[test]
+fn a_disconnect_during_a_renewal_refresh_rotates_nothing() {
+    let mut harness = signed_in();
+    let gate = harness.http.hold(TOKEN);
+    route_databricks(&harness, "access-2", 3_600);
+    harness.advance(3_600_000);
+    harness.core.disconnect();
+    harness.pump();
+    harness.events.take();
+    gate.send(()).unwrap();
+    harness.pump();
+    assert!(
+        !harness
+            .events
+            .take()
+            .iter()
+            .any(|event| matches!(event, CoreEvent::CredentialRotated { .. }))
+    );
+}
+
+/// Signing out while a refresh is out: the rotated grant must not come back.
+#[test]
+fn signing_out_during_a_refresh_discards_its_result() {
+    let mut harness = signed_in();
+    let gate = harness.http.hold(TOKEN);
+    route_databricks(&harness, "access-2", 3_600);
+    harness.advance(3_600_000);
+    let core = Arc::clone(&harness.core);
+    harness.run(async move { core.sign_out().await }).unwrap();
+    assert!(lock(&harness.store.items).is_empty());
+    gate.send(()).unwrap();
+    harness.pump();
+    assert!(lock(&harness.store.items).is_empty(), "no grant comes back");
+}
+
+#[test]
+fn signing_out_reports_a_grant_that_could_not_be_deleted() {
+    let mut harness = signed_in();
+    *lock(&harness.store.delete_failure) = Some(locked());
+    let core = Arc::clone(&harness.core);
+    let result = harness.run(async move { core.sign_out().await });
+    assert!(
+        matches!(result, Err(CoreError::Databricks { .. })),
+        "{result:?}"
+    );
+    assert!(matches!(
+        last_phase(&harness),
+        ConnectionPhase::SignInRequired { .. }
+    ));
+}
+
+#[test]
+fn a_kind_of_refusal_is_named() {
+    let (mut harness, challenge) = signing_in();
+    let core = Arc::clone(&harness.core);
+    let attempt = challenge.attempt_id;
+    let error = harness
+        .run(async move {
+            core.complete_databricks_sign_in(attempt, "not a url".into())
+                .await
+        })
+        .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            CoreError::Databricks {
+                kind: DatabricksErrorKind::InvalidCallback | DatabricksErrorKind::Cancelled,
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+}

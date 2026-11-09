@@ -324,15 +324,7 @@ impl Engine {
                 link,
                 server,
                 sign_in,
-            } => {
-                self.link = Some(link);
-                self.sign_in = Some(sign_in);
-                self.set_phase(ConnectionPhase::Connected { server });
-                self.read_reset();
-                self.reset_list_window();
-                self.start_realtime();
-                self.refresh_list();
-            }
+            } => self.connected(link, server, sign_in),
             Msg::Disconnected { phase } => {
                 self.stop_realtime();
                 self.link = None;
@@ -395,6 +387,16 @@ impl Engine {
             }
         }
         true
+    }
+
+    fn connected(&mut self, link: Link, server: ConnectedServer, sign_in: SignInContext) {
+        self.link = Some(link);
+        self.sign_in = Some(sign_in);
+        self.set_phase(ConnectionPhase::Connected { server });
+        self.read_reset();
+        self.reset_list_window();
+        self.start_realtime();
+        self.refresh_list();
     }
 
     fn set_phase(&mut self, phase: ConnectionPhase) {

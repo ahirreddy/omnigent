@@ -637,6 +637,23 @@ impl Inner {
         }
     }
 
+    /// Saves an accounts-style credential.
+    async fn save_credential(
+        &self,
+        resolved: &Resolved,
+        credential: &accounts::AccountCredential,
+    ) -> Result<(), CoreError> {
+        accounts::save_credential(
+            self.store()?,
+            &resolved.endpoint,
+            credential,
+            self.host.unix_ms(),
+        )
+        .await
+        .map(|_| ())
+        .map_err(CoreError::from)
+    }
+
     async fn poll_browser_login(
         self: Arc<Self>,
         generation: u64,
@@ -669,24 +686,10 @@ impl Inner {
             match status {
                 Ok(PollStatus::Pending) => {}
                 Ok(PollStatus::Complete(credential)) => {
-                    let store = match self.store() {
-                        Ok(store) => store,
-                        Err(error) => {
-                            self.sign_in_required(&resolved, Some(error));
-                            return;
-                        }
-                    };
-                    if let Err(error) = accounts::save_credential(
-                        store,
-                        &resolved.endpoint,
-                        &credential,
-                        self.host.unix_ms(),
-                    )
-                    .await
-                    {
+                    if let Err(error) = self.save_credential(&resolved, &credential).await {
                         self.post(Msg::Emit(CoreEvent::Error {
                             scope: ErrorScope::Connection,
-                            error: error.into(),
+                            error,
                         }));
                     }
                     let user = Some(credential.user_id.clone());
@@ -1484,18 +1487,7 @@ impl ClientCore {
                 return Err(error);
             }
         };
-        let saved = match inner.store() {
-            Ok(store) => accounts::save_credential(
-                store,
-                &resolved.endpoint,
-                &credential,
-                inner.host.unix_ms(),
-            )
-            .await
-            .map_err(CoreError::from),
-            Err(error) => Err(error),
-        };
-        if let Err(error) = saved {
+        if let Err(error) = inner.save_credential(&resolved, &credential).await {
             // Leave `SigningIn` (unless a newer connect owns the phase): the sign-in screen shows
             // why the credential was not kept. The caller gets the save error either way.
             if inner.check_generation(generation).is_ok() {
@@ -1594,3 +1586,7 @@ pub fn secure_store_namespaces() -> Vec<String> {
         SecureStoreKey::DATABRICKS_NAMESPACE.to_owned(),
     ]
 }
+
+#[cfg(test)]
+#[path = "client_tests.rs"]
+mod tests;

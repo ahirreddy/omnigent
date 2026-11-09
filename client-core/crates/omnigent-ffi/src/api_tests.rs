@@ -474,9 +474,9 @@ fn changed_files_invalidation_is_reported_as_an_event() {
     assert_eq!(files[0].path, "src/a.rs");
 }
 
-const WORKSPACE_HOST: &str = "https://dbc-1.cloud.databricks.com";
+pub(crate) const WORKSPACE_HOST: &str = "https://dbc-1.cloud.databricks.com";
 
-fn databricks() -> Harness {
+pub(crate) fn databricks() -> Harness {
     Harness::with_databricks(
         UrlPolicy::Release,
         Some(DatabricksOAuthSettings {
@@ -486,7 +486,7 @@ fn databricks() -> Harness {
     )
 }
 
-fn route_databricks(harness: &Harness, access: &str, expires_in: u64) {
+pub(crate) fn route_databricks(harness: &Harness, access: &str, expires_in: u64) {
     harness.http.route(
         "/oidc/.well-known/openid-configuration",
         json(

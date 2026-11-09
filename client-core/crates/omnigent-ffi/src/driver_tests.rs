@@ -753,3 +753,1020 @@ fn older_history_loads_above_the_rows_on_request() {
         Some(older.url)
     );
 }
+
+const HEARTBEAT: &[u8] = b"event: session.heartbeat\ndata: {\"type\":\"session.heartbeat\"}\n\n";
+
+fn offline() -> crate::http::TransportError {
+    crate::http::TransportError::Offline {
+        message: "no route".into(),
+    }
+}
+
+fn delta_frame(item: &str, delta: &str) -> Vec<u8> {
+    format!(
+        "event: response.output_text.delta\ndata: {}\n\n",
+        serde_json::json!({
+            "type": "response.output_text.delta",
+            "item_id": item,
+            "output_index": 0,
+            "content_index": 0,
+            "delta": delta,
+            "sequence_number": 1,
+        })
+    )
+    .into_bytes()
+}
+
+/// A connected harness with `SESSION` open and its stream live and hydrated.
+fn live_session() -> Harness {
+    let mut harness = connected();
+    route_session(&harness);
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    harness
+}
+
+fn link_states(events: &[CoreEvent]) -> Vec<LinkState> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            CoreEvent::SessionLinkChanged { state, .. } => Some(state.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn session_errors(events: &[CoreEvent]) -> Vec<CoreError> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            CoreEvent::Error {
+                scope: ErrorScope::Session { .. },
+                error,
+            } => Some(error.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn list_errors(events: &[CoreEvent]) -> Vec<CoreError> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            CoreEvent::Error {
+                scope: ErrorScope::SessionList,
+                error,
+            } => Some(error.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_read_for_a_closed_session_is_ignored() {
+    let mut harness = connected();
+    route_session(&harness);
+    let items = format!("/v1/sessions/{SESSION}/items");
+    let gate = harness.http.hold(&items);
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    harness.core.close_session(SESSION.into());
+    harness.pump();
+    harness.events.take();
+    gate.send(()).unwrap();
+    harness.pump();
+    assert_eq!(harness.events.take(), []);
+}
+
+#[test]
+fn a_duplicate_frame_and_a_doubled_sink_change_nothing_twice() {
+    let mut harness = live_session();
+    let (sink, handle, _) = harness.streams.last();
+    let frame = delta_frame("msg_1", "hello");
+    sink.chunk(frame.clone());
+    sink.chunk(frame);
+    harness.pump();
+    assert_eq!(session_errors(&harness.events.all()), []);
+
+    // A second response head breaks the host contract: the attempt ends and reconnects.
+    harness.events.take();
+    sink.response(200, event_stream_head());
+    harness.pump();
+    let states = link_states(&harness.events.take());
+    assert!(
+        matches!(states[..], [LinkState::Failed { .. }]),
+        "{states:?}"
+    );
+    assert_eq!(handle.cancels.load(Ordering::SeqCst), 1);
+
+    // The ended attempt finishing, twice, is ignored.
+    sink.finish(None);
+    sink.finish(Some(ConnectionFailure::Cancelled));
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    assert_eq!(link_states(&harness.events.take()), []);
+}
+
+#[test]
+fn closing_twice_and_closing_an_unknown_session_are_harmless() {
+    let mut harness = live_session();
+    let (_, handle, _) = harness.streams.last();
+    harness.core.close_session(SESSION.into());
+    harness.core.close_session(SESSION.into());
+    harness.core.close_session("never-opened".into());
+    harness.pump();
+    assert_eq!(handle.cancels.load(Ordering::SeqCst), 1);
+    assert!(!harness.core.sessions().is_live_session(SESSION));
+}
+
+#[test]
+fn opening_twice_keeps_one_stream_and_reports_the_state_again() {
+    let mut harness = live_session();
+    harness.events.take();
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    assert_eq!(harness.streams.count(), 1);
+    let events = harness.events.take();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, CoreEvent::TranscriptReset { .. })),
+        "{events:#?}"
+    );
+}
+
+#[test]
+fn a_session_opened_while_disconnected_starts_on_connect_and_stops_on_disconnect() {
+    let mut harness = Harness::new(UrlPolicy::Development);
+    harness.local_server();
+    route_session(&harness);
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    assert_eq!(harness.streams.count(), 0);
+    harness
+        .call(|core| async move { core.connect("http://127.0.0.1:6767".into(), None).await })
+        .unwrap();
+    assert_eq!(harness.streams.count(), 1);
+    let (sink, handle, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+
+    // The disconnect wins over everything the old stream still has to say.
+    harness.core.disconnect();
+    harness.pump();
+    assert_eq!(handle.cancels.load(Ordering::SeqCst), 1);
+    harness.events.take();
+    sink.chunk(delta_frame("msg_1", "late"));
+    sink.finish(Some(ConnectionFailure::Cancelled));
+    harness.pump();
+    assert_eq!(harness.events.take(), []);
+    harness.advance(60_000);
+    assert_eq!(
+        harness.streams.count(),
+        1,
+        "no reconnect after a disconnect"
+    );
+}
+
+#[test]
+fn a_timer_for_a_closed_session_or_a_dead_attempt_does_nothing() {
+    let mut harness = connected();
+    route_session(&harness);
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.finish(Some(ConnectionFailure::Offline {
+        message: "no route".into(),
+    }));
+    harness.pump();
+    assert!(harness.scheduler.pending_timers() > 0);
+
+    // The reconnect timer was pending when the tab closed.
+    harness.core.close_session(SESSION.into());
+    harness.pump();
+    harness.advance(60_000);
+    assert_eq!(harness.streams.count(), 1);
+}
+
+#[test]
+fn a_clock_that_moves_backward_neither_panics_nor_loses_the_stream() {
+    let mut harness = live_session();
+    harness.advance(10_000);
+    let (sink, handle, _) = harness.streams.last();
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    harness.events.take();
+    harness.rewind(10_000);
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    assert_eq!(link_states(&harness.events.take()), []);
+    assert_eq!(handle.cancels.load(Ordering::SeqCst), 0);
+
+    // Losing it now measures a negative lifetime: it still reconnects.
+    sink.finish(None);
+    harness.pump();
+    harness.advance(10_000);
+    assert_eq!(harness.streams.count(), 2);
+}
+
+#[test]
+fn a_stream_the_host_could_not_start_retries_with_backoff() {
+    let mut harness = connected();
+    route_session(&harness);
+    *lock(&harness.streams.refuse) = Some(offline());
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    assert_eq!(harness.streams.count(), 0);
+    let states = link_states(&harness.events.all());
+    assert!(
+        states
+            .iter()
+            .any(|state| matches!(state, LinkState::Reconnecting { .. })),
+        "{states:?}"
+    );
+    harness.advance(10_000);
+    assert_eq!(harness.streams.count(), 1);
+}
+
+#[test]
+fn a_foreground_reopens_what_ended_and_ignores_what_is_live() {
+    let mut harness = live_session();
+    let (sink, _, _) = harness.streams.last();
+    sink.chunk(b"data: [DONE]\n\n".to_vec());
+    harness.pump();
+    assert!(link_states(&harness.events.all()).contains(&LinkState::Closed));
+    let sockets = harness.sockets.count();
+    harness.core.foreground();
+    harness.pump();
+    assert_eq!(harness.streams.count(), 2, "a closed stream reopens");
+    assert_eq!(harness.sockets.count(), sockets, "the live socket stays");
+    harness.core.foreground();
+    harness.pump();
+    assert_eq!(harness.streams.count(), 2, "a connecting stream stays");
+
+    harness.core.disconnect();
+    harness.pump();
+    harness.core.foreground();
+    harness.pump();
+    assert_eq!(harness.streams.count(), 2, "a disconnected core stays down");
+}
+
+#[test]
+fn a_400_stream_on_a_plain_server_retries_without_routing() {
+    let mut harness = connected();
+    route_session(&harness);
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, request) = harness.streams.last();
+    assert!(
+        !request
+            .headers
+            .iter()
+            .any(|header| header.name == omnigent_core::SLICE_KEY_HEADER)
+    );
+    sink.response(400, Vec::new());
+    harness.pump();
+    harness.advance(10_000);
+    assert_eq!(harness.streams.count(), 2);
+}
+
+#[test]
+fn an_event_that_does_not_apply_is_reported_and_the_stream_goes_on() {
+    let mut harness = live_session();
+    let (sink, handle, _) = harness.streams.last();
+    harness.events.take();
+    // `delta` must be a string.
+    sink.chunk(
+        b"event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"item_id\":7,\"delta\":{}}\n\n"
+            .to_vec(),
+    );
+    harness.pump();
+    let events = harness.events.take();
+    assert_eq!(session_errors(&events).len(), 1, "{events:#?}");
+    assert_eq!(handle.cancels.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_frame_that_is_not_an_event_reconnects() {
+    let mut harness = live_session();
+    let (sink, handle, _) = harness.streams.last();
+    harness.events.take();
+    sink.chunk(b"data: not json\n\n".to_vec());
+    harness.pump();
+    let states = link_states(&harness.events.take());
+    assert!(
+        matches!(
+            states[..],
+            [LinkState::Reconnecting {
+                reason: CoreError::Link { .. },
+                ..
+            }]
+        ),
+        "{states:?}"
+    );
+    assert_eq!(handle.cancels.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn too_many_events_while_history_loads_restarts_the_stream() {
+    let mut harness = connected();
+    route_session(&harness);
+    let gate = harness.http.hold(&format!("/v1/sessions/{SESSION}/items"));
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    harness.events.take();
+    let frame = delta_frame("msg_1", "x");
+    for _ in 0..=omnigent_core::reconcile::MAX_BUFFERED_EVENTS {
+        sink.chunk(frame.clone());
+    }
+    harness.pump();
+    let states = link_states(&harness.events.take());
+    assert!(
+        states
+            .iter()
+            .any(|state| matches!(state, LinkState::Reconnecting { .. })),
+        "{states:?}"
+    );
+    assert!(!harness.core.sessions().is_live_session(SESSION));
+    drop(gate);
+    harness.pump();
+    harness.advance(10_000);
+    assert_eq!(harness.streams.count(), 2);
+}
+
+fn hydration_failure_case(response: crate::http::HttpResponse) -> Vec<CoreEvent> {
+    let mut harness = connected();
+    route_session(&harness);
+    harness
+        .http
+        .route(&format!("/v1/sessions/{SESSION}/items"), response);
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    harness.events.take();
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    harness.events.take()
+}
+
+#[test]
+fn a_failed_history_read_reconnects_or_asks_for_sign_in() {
+    let reconnects = |states: &[LinkState]| {
+        states
+            .iter()
+            .any(|state| matches!(state, LinkState::Reconnecting { .. }))
+    };
+    let failed = |states: &[LinkState]| {
+        states
+            .iter()
+            .any(|state| matches!(state, LinkState::Failed { .. }))
+    };
+    // A server error is transient.
+    let events = hydration_failure_case(json(500, r#"{"detail":"boom"}"#));
+    assert_eq!(session_errors(&events).len(), 1, "{events:#?}");
+    assert!(reconnects(&link_states(&events)), "{events:#?}");
+    // A session still being created may appear.
+    let events = hydration_failure_case(json(404, r#"{"detail":"no"}"#));
+    assert_eq!(session_errors(&events).len(), 1, "{events:#?}");
+    assert!(reconnects(&link_states(&events)), "{events:#?}");
+    // A page this app cannot read and a redirect will not get better.
+    for response in [json(200, "not json"), json(302, "")] {
+        let events = hydration_failure_case(response);
+        assert_eq!(session_errors(&events).len(), 1, "{events:#?}");
+        assert!(failed(&link_states(&events)), "{events:#?}");
+    }
+    // A 401 and a 403 end the session link; the app signs in again, not an error toast.
+    for status in [401, 403] {
+        let events = hydration_failure_case(json(status, r#"{"detail":"no"}"#));
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                CoreEvent::ConnectionChanged {
+                    phase: ConnectionPhase::SignInRequired { .. }
+                }
+            )),
+            "{status}: {events:#?}"
+        );
+    }
+}
+
+#[test]
+fn a_host_error_at_each_step_of_a_history_read_reconnects() {
+    for (error, label, reconnects) in [
+        (offline(), "offline", true),
+        // The app asked for this: nothing retries a cancelled read.
+        (crate::http::TransportError::Cancelled, "cancelled", false),
+    ] {
+        let mut harness = connected();
+        route_session(&harness);
+        harness
+            .http
+            .fail_next(&format!("/v1/sessions/{SESSION}/items"), error);
+        harness.core.open_session(SESSION.into());
+        harness.pump();
+        let (sink, _, _) = harness.streams.last();
+        sink.response(200, event_stream_head());
+        harness.events.take();
+        sink.chunk(HEARTBEAT.to_vec());
+        harness.pump();
+        let events = harness.events.take();
+        assert_eq!(
+            link_states(&events)
+                .iter()
+                .any(|state| matches!(state, LinkState::Reconnecting { .. })),
+            reconnects,
+            "{label}: {events:#?}"
+        );
+    }
+}
+
+#[test]
+fn a_snapshot_the_conversation_cannot_show_reconnects() {
+    let mut harness = connected();
+    route_session(&harness);
+    harness.http.route(
+        &format!("/v1/sessions/{SESSION}"),
+        json(
+            200,
+            r#"{"id":"another-session","status":"idle","created_at":1}"#,
+        ),
+    );
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    harness.events.take();
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    let events = harness.events.take();
+    assert_eq!(session_errors(&events).len(), 1, "{events:#?}");
+    assert!(
+        link_states(&events)
+            .iter()
+            .any(|state| matches!(state, LinkState::Failed { .. })),
+        "{events:#?}"
+    );
+}
+
+#[test]
+fn a_turn_failure_is_reported_as_a_session_failure() {
+    let mut harness = live_session();
+    let (sink, _, _) = harness.streams.last();
+    harness.events.take();
+    sink.chunk(
+        b"event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"id\":\"r1\",\"status\":\"failed\",\"error\":{\"code\":\"x\",\"message\":\"the model refused\"}}}\n\n"
+            .to_vec(),
+    );
+    harness.pump();
+    let events = harness.events.take();
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CoreEvent::SessionFailure { message, .. } if message.contains("refused")
+        )),
+        "{events:#?}"
+    );
+}
+
+/// The updates socket of a connected harness, opened and live.
+fn live_socket(
+    harness: &mut Harness,
+) -> (
+    Arc<crate::host::MessageSink>,
+    Arc<crate::test_support::FakeSocket>,
+) {
+    let (_, sink, socket) = harness.sockets.last();
+    sink.opened();
+    sink.message(SocketMessage::Text {
+        text: r#"{"type":"snapshot","items":[]}"#.into(),
+    });
+    harness.pump();
+    (sink, socket)
+}
+
+fn frame(harness: &mut Harness, sink: &crate::host::MessageSink, text: &serde_json::Value) {
+    sink.message(SocketMessage::Text {
+        text: text.to_string(),
+    });
+    harness.pump();
+}
+
+fn session_row(id: &str, status: &str, updated_at: i64) -> serde_json::Value {
+    serde_json::json!({
+        "id": id,
+        "status": status,
+        "title": id,
+        "created_at": 1,
+        "updated_at": updated_at,
+        "permission_level": 4,
+    })
+}
+
+#[test]
+fn the_socket_reports_each_frame_kind() {
+    let mut harness = connected();
+    let (sink, _) = live_socket(&mut harness);
+    harness.events.take();
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "hosts_changed"}),
+    );
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "projects_changed"}),
+    );
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "heartbeat"}),
+    );
+    let events = harness.events.take();
+    assert!(events.contains(&CoreEvent::HostsChanged), "{events:#?}");
+    assert!(events.contains(&CoreEvent::ProjectsChanged), "{events:#?}");
+    assert_eq!(events.len(), 2, "{events:#?}");
+}
+
+#[test]
+fn a_removed_frame_closes_the_open_session_and_only_it() {
+    let mut harness = live_session();
+    let (_, handle, _) = harness.streams.last();
+    let (sink, _) = live_socket(&mut harness);
+    harness.core.open_session("other_session".into());
+    harness.pump();
+    harness.events.take();
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "removed", "ids": [SESSION]}),
+    );
+    let events = harness.events.take();
+    assert!(
+        events.contains(&CoreEvent::SessionClosed {
+            session_id: SESSION.into()
+        }),
+        "{events:#?}"
+    );
+    assert!(
+        !events.contains(&CoreEvent::SessionClosed {
+            session_id: "other_session".into()
+        }),
+        "{events:#?}"
+    );
+    assert_eq!(handle.cancels.load(Ordering::SeqCst), 1);
+    // Its frames can arrive twice.
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "removed", "ids": [SESSION]}),
+    );
+    assert!(!harness.events.take().contains(&CoreEvent::SessionClosed {
+        session_id: SESSION.into()
+    }));
+}
+
+#[test]
+fn a_list_row_an_open_session_cannot_apply_is_reported() {
+    let mut harness = live_session();
+    let (sink, _) = live_socket(&mut harness);
+    harness.events.take();
+    let mut row = session_row(SESSION, "idle", 3);
+    row["status"] = serde_json::json!("a-status-from-the-future");
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "changed", "items": [row]}),
+    );
+    let events = harness.events.take();
+    assert!(
+        !session_errors(&events).is_empty() || !list_errors(&events).is_empty(),
+        "{events:#?}"
+    );
+}
+
+#[test]
+fn the_socket_refused_or_failing_reconnects_and_late_callbacks_are_ignored() {
+    let mut harness = Harness::new(UrlPolicy::Development);
+    harness.local_server();
+    *lock(&harness.sockets.refuse) = Some(offline());
+    harness
+        .call(|core| async move { core.connect("http://127.0.0.1:6767".into(), None).await })
+        .unwrap();
+    assert_eq!(harness.sockets.count(), 0);
+    harness.advance(10_000);
+    assert_eq!(harness.sockets.count(), 1);
+
+    // A send fails: the attempt ends and another starts.
+    let (_, sink, socket) = harness.sockets.last();
+    *lock(&socket.send_failure) = Some(offline());
+    sink.opened();
+    harness.pump();
+    harness.advance(10_000);
+    assert_eq!(harness.sockets.count(), 2);
+
+    // The old socket's late events reach nothing.
+    harness.events.take();
+    sink.message(SocketMessage::Text {
+        text: r#"{"type":"hosts_changed"}"#.into(),
+    });
+    sink.opened();
+    sink.ended(crate::host::SocketEnd::Failed {
+        failure: ConnectionFailure::Cancelled,
+    });
+    harness.pump();
+    assert!(!harness.events.take().contains(&CoreEvent::HostsChanged));
+    assert_eq!(harness.sockets.count(), 2);
+}
+
+#[test]
+fn a_rejected_socket_asks_for_sign_in_and_stops_retrying() {
+    let mut harness = connected();
+    let (_, sink, _) = harness.sockets.last();
+    sink.ended(crate::host::SocketEnd::HandshakeRejected { status: 401 });
+    harness.pump();
+    assert!(harness.events.all().iter().any(|event| matches!(
+        event,
+        CoreEvent::ConnectionChanged {
+            phase: ConnectionPhase::SignInRequired { .. }
+        }
+    )));
+    let sockets = harness.sockets.count();
+    harness.advance(60_000);
+    assert_eq!(harness.sockets.count(), sockets);
+}
+
+#[test]
+fn a_socket_that_resumes_reloads_the_list() {
+    let mut harness = connected();
+    let (sink, _) = live_socket(&mut harness);
+    sink.ended(crate::host::SocketEnd::Closed {
+        code: 1012,
+        reason: "restart".into(),
+    });
+    harness.pump();
+    harness.advance(10_000);
+    let lists = harness.http.count("/v1/sessions");
+    let (_, sink, _) = harness.sockets.last();
+    sink.opened();
+    sink.message(SocketMessage::Text {
+        text: r#"{"type":"snapshot","items":[]}"#.into(),
+    });
+    harness.pump();
+    assert_eq!(harness.http.count("/v1/sessions"), lists + 1);
+}
+
+#[test]
+fn a_bearer_rotation_with_no_connection_reports_nothing() {
+    let mut harness = connected();
+    harness.core.disconnect();
+    harness.pump();
+    harness.events.take();
+    harness.core.post(crate::engine::Msg::BearerRotated {
+        bearer: omnigent_core::auth::SecretString::new("t"),
+        expires_at_ms: None,
+    });
+    harness.pump();
+    assert_eq!(harness.events.take(), []);
+}
+
+#[test]
+fn listeners_can_leave_and_a_late_id_is_unknown() {
+    let mut harness = connected();
+    let second = Arc::new(crate::test_support::Recorder::default());
+    let id = harness.core.subscribe(second.clone());
+    assert!(harness.core.unsubscribe(id));
+    assert!(!harness.core.unsubscribe(id));
+    harness.core.refresh_sessions();
+    harness.pump();
+    assert_eq!(second.all(), []);
+    assert_eq!(
+        format!("{:?}", crate::engine::Listeners::default()),
+        "Listeners { count: 0, .. }"
+    );
+}
+
+/// A listener that calls back into the core from inside `on_event`.
+struct Reentrant {
+    core: std::sync::Mutex<Option<std::sync::Weak<crate::client::ClientCore>>>,
+    own_id: std::sync::atomic::AtomicU64,
+    seen: std::sync::atomic::AtomicUsize,
+}
+
+impl crate::events::CoreListener for Reentrant {
+    fn on_event(&self, _event: CoreEvent) {
+        self.seen.fetch_add(1, Ordering::SeqCst);
+        let core = lock(&self.core).clone().and_then(|core| core.upgrade());
+        if let Some(core) = core {
+            // Every synchronous call a host could make from a callback.
+            core.unsubscribe(self.own_id.load(Ordering::SeqCst));
+            core.subscribe(Arc::new(crate::test_support::Recorder::default()));
+            core.set_view(Some(SESSION.into()), true);
+            core.close_session(SESSION.into());
+            core.refresh_sessions();
+            // Each of these answers an error or a value without waiting on the engine.
+            assert!(core.composer_text(SESSION.into()).is_ok());
+            assert!(core.is_send_blocked(SESSION.into()).is_ok());
+            core.disconnect();
+            *lock(&self.core) = None;
+        }
+    }
+}
+
+#[test]
+fn a_listener_may_call_back_into_the_core_during_delivery() {
+    let mut harness = live_session();
+    let listener = Arc::new(Reentrant {
+        core: std::sync::Mutex::new(Some(Arc::downgrade(&harness.core))),
+        own_id: std::sync::atomic::AtomicU64::new(0),
+        seen: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let id = harness.core.subscribe(listener.clone());
+    listener.own_id.store(id, Ordering::SeqCst);
+    harness.core.refresh_sessions();
+    harness.pump();
+    assert_eq!(
+        listener.seen.load(Ordering::SeqCst),
+        1,
+        "it left on the first event"
+    );
+    let last = crate::test_support::phases(&harness.events.all()).pop();
+    assert_eq!(last, Some(ConnectionPhase::Disconnected));
+}
+
+/// A transport that delivers everything from inside `open_stream`, as the host contract allows.
+struct EagerStreams;
+
+impl crate::host::EventStreamTransport for EagerStreams {
+    fn open_stream(
+        &self,
+        _request: crate::http::HttpRequest,
+        sink: Arc<crate::host::ByteSink>,
+    ) -> Result<Arc<dyn crate::host::StreamHandle>, crate::http::TransportError> {
+        sink.response(200, event_stream_head());
+        sink.chunk(HEARTBEAT.to_vec());
+        sink.finish(None);
+        Ok(Arc::new(crate::test_support::FakeHandle::default()))
+    }
+}
+
+#[test]
+fn a_sink_called_before_open_returns_is_handled_in_order() {
+    let mut harness = Harness::with_streams(UrlPolicy::Development, Arc::new(EagerStreams));
+    harness.local_server();
+    route_session(&harness);
+    harness
+        .call(|core| async move { core.connect("http://127.0.0.1:6767".into(), None).await })
+        .unwrap();
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let states = link_states(&harness.events.all());
+    assert!(
+        states.contains(&LinkState::Live),
+        "the head and heartbeat count: {states:?}"
+    );
+    assert!(
+        states
+            .iter()
+            .any(|state| matches!(state, LinkState::Reconnecting { .. })),
+        "the end counts too: {states:?}"
+    );
+}
+
+#[test]
+fn shutting_down_stops_the_engine_and_every_stream() {
+    let mut harness = live_session();
+    let (_, handle, _) = harness.streams.last();
+    let (_, _, socket) = harness.sockets.last();
+    harness.core.shutdown();
+    harness.pump();
+    assert_eq!(handle.cancels.load(Ordering::SeqCst), 1);
+    assert_eq!(lock(&socket.closes).len(), 1);
+    // A second shutdown, or anything else, reaches no engine.
+    harness.events.take();
+    harness.core.shutdown();
+    harness.core.refresh_sessions();
+    harness.pump();
+    assert_eq!(harness.events.take(), []);
+    let core = Arc::clone(&harness.core);
+    let result = harness.run(async move { core.mark_session_seen(SESSION.into()).await });
+    assert!(
+        matches!(result, Err(CoreError::Session { .. })),
+        "{result:?}"
+    );
+    let core = Arc::clone(&harness.core);
+    let result = harness.run(async move { core.set_session_unread(SESSION.into(), true).await });
+    assert!(
+        matches!(result, Err(CoreError::Session { .. })),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn inventory_hints_reload_the_list_after_a_delay_unless_the_socket_is_live() {
+    let mut harness = connected();
+    let (_, sink, _) = harness.sockets.last();
+    let lists = harness.http.count("/v1/sessions");
+    harness.core.post(crate::engine::Msg::Client(
+        omnigent_core::ClientEvent::InventoryInvalidated,
+    ));
+    harness.core.post(crate::engine::Msg::Client(
+        omnigent_core::ClientEvent::InventoryInvalidated,
+    ));
+    harness.pump();
+    harness.advance(3_000);
+    assert_eq!(harness.http.count("/v1/sessions"), lists + 1, "one reload");
+
+    sink.opened();
+    sink.message(SocketMessage::Text {
+        text: r#"{"type":"snapshot","items":[]}"#.into(),
+    });
+    harness.pump();
+    harness.core.post(crate::engine::Msg::Client(
+        omnigent_core::ClientEvent::InventoryInvalidated,
+    ));
+    harness.pump();
+    harness.advance(3_000);
+    assert_eq!(
+        harness.http.count("/v1/sessions"),
+        lists + 1,
+        "the socket covers it"
+    );
+}
+
+#[test]
+fn a_pending_inventory_reload_dies_with_the_connection() {
+    let mut harness = connected();
+    let lists = harness.http.count("/v1/sessions");
+    harness.core.post(crate::engine::Msg::Client(
+        omnigent_core::ClientEvent::InventoryInvalidated,
+    ));
+    harness.pump();
+    harness.core.disconnect();
+    harness.pump();
+    harness.advance(10_000);
+    assert_eq!(harness.http.count("/v1/sessions"), lists);
+}
+
+#[test]
+fn sessions_removed_through_the_client_leave_the_list_and_the_watch() {
+    let mut harness = connected();
+    harness.events.take();
+    harness.core.post(crate::engine::Msg::Client(
+        omnigent_core::ClientEvent::SessionsRemoved {
+            ids: vec!["session_a".into()],
+        },
+    ));
+    harness.pump();
+    let events = harness.events.take();
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CoreEvent::SessionListChanged {
+                change: SessionListChange::Remove { ids }
+            } if ids == &["session_a".to_owned()]
+        )),
+        "{events:#?}"
+    );
+}
+
+#[test]
+fn a_turn_end_notifies_after_settling_and_a_viewed_session_does_not() {
+    let mut harness = connected();
+    let (sink, _) = live_socket(&mut harness);
+    harness.core.set_notifications_allowed(true);
+    harness.pump();
+    let seed = |harness: &mut Harness, status: &str| {
+        let row = session_row("notify_me", status, 2);
+        frame(
+            harness,
+            &sink,
+            &serde_json::json!({"type": "changed", "items": [row]}),
+        );
+    };
+    let notifications = |events: &[CoreEvent]| {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                CoreEvent::Notification { notification } => Some(notification.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    seed(&mut harness, "running");
+    seed(&mut harness, "idle");
+    harness.events.take();
+    harness.advance(9_999);
+    assert_eq!(notifications(&harness.events.take()).len(), 0);
+    harness.advance(1);
+    let shown = notifications(&harness.events.take());
+    assert_eq!(shown.len(), 1);
+    assert_eq!(shown[0].session_id, "notify_me");
+    assert_eq!(shown[0].kind, crate::events::NotificationKind::Completed);
+    assert_ne!(shown[0].body, "");
+
+    // A failure while viewed stays silent, checked again when due.
+    harness.core.set_view(Some("notify_me".into()), true);
+    harness.pump();
+    seed(&mut harness, "running");
+    seed(&mut harness, "failed");
+    harness.advance(10_000);
+    assert_eq!(notifications(&harness.events.take()).len(), 0);
+
+    // A removed row takes its pending cue with it.
+    harness.core.set_view(None, false);
+    harness.pump();
+    seed(&mut harness, "running");
+    seed(&mut harness, "idle");
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "removed", "ids": ["notify_me"]}),
+    );
+    harness.events.take();
+    harness.advance(10_000);
+    assert_eq!(notifications(&harness.events.take()).len(), 0);
+}
+
+#[test]
+fn an_elicitation_notifies_at_once_and_the_badge_follows() {
+    let mut harness = connected();
+    let (sink, _) = live_socket(&mut harness);
+    harness.core.set_notifications_allowed(true);
+    harness.pump();
+    let mut row = session_row("asking", "running", 2);
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "changed", "items": [row.clone()]}),
+    );
+    harness.events.take();
+    row["pending_elicitations_count"] = serde_json::json!(1);
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "changed", "items": [row.clone()]}),
+    );
+    let events = harness.events.take();
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CoreEvent::Notification { notification }
+                if notification.kind == crate::events::NotificationKind::Approval
+        )),
+        "{events:#?}"
+    );
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CoreEvent::BadgeChanged { session_ids } if session_ids == &["asking".to_owned()]
+        )),
+        "{events:#?}"
+    );
+    // Looking at it clears the badge.
+    harness.core.set_view(Some("asking".into()), true);
+    harness.pump();
+    assert!(harness.events.take().iter().any(|event| matches!(
+        event,
+        CoreEvent::BadgeChanged { session_ids } if session_ids.is_empty()
+    )));
+}
+
+#[test]
+fn the_demo_reconnects_open_sessions_and_a_stray_tick_does_nothing() {
+    let mut harness = Harness::demo();
+    harness.core.open_session("demo-design".into());
+    harness.pump();
+    harness
+        .call(|core| async move { core.connect(String::new(), None).await })
+        .unwrap();
+    assert_ne!(rows_from(&harness.events.all(), "demo-design").len(), 0);
+
+    harness.core.post(crate::engine::Msg::DemoTick);
+    harness.core.post(crate::engine::Msg::DemoKick);
+    harness.core.post(crate::engine::Msg::DemoKick);
+    harness.pump();
+    assert_eq!(harness.scheduler.pending_timers(), 1, "one ticker");
+    harness.advance(crate::engine::DEMO_TICK_MS);
+    assert_eq!(harness.scheduler.pending_timers(), 0);
+
+    let mut real = connected();
+    real.events.take();
+    real.core.post(crate::engine::Msg::DemoTick);
+    real.pump();
+    assert_eq!(real.events.take(), []);
+}
