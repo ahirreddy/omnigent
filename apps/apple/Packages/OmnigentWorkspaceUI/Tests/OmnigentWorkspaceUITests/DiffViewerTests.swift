@@ -50,6 +50,45 @@
       #expect(try screen.shows("Change 1 of \(total)"))
     }
 
+    @Test("once clicked, n and j move to the next change and p and k back", arguments: ["n", "j"])
+    func keys(next: String) async throws {
+      let screen = hosted()
+      defer { screen.close() }
+      try screen.click(CGPoint(x: 400, y: 200))
+      await flush(screen)
+      let code: UInt16 = next == "n" ? 45 : 38
+      try screen.press(keyCode: code, characters: next)
+      await flush(screen)
+      #expect(try screen.shows("Change 1 of"))
+      try screen.press(keyCode: code, characters: next)
+      await flush(screen)
+      #expect(try screen.shows("Change 2 of"))
+      let back = next == "n" ? ("p", UInt16(35)) : ("k", UInt16(40))
+      try screen.press(keyCode: back.1, characters: back.0)
+      await flush(screen)
+      #expect(try screen.shows("Change 1 of"))
+    }
+
+    @Test("a line with no final newline draws a mark")
+    func missingNewline() throws {
+      let plain = hosted()
+      defer { plain.close() }
+      var marked = WorkspaceSamples.libDiff
+      marked.hunks[0].lines[0].missingNewline = true
+      let screen = hosted(marked)
+      defer { screen.close() }
+      let again = hosted()
+      defer { again.close() }
+      #expect(try drawing(again) == drawing(plain), "two identical diffs draw the same")
+      #expect(try drawing(screen) != drawing(plain))
+    }
+
+    private func drawing(_ screen: OffscreenWindow<DiffViewerView>) throws -> Data? {
+      let bitmap = try #require(screen.host.bitmapImageRepForCachingDisplay(in: screen.host.bounds))
+      screen.host.cacheDisplay(in: screen.host.bounds, to: bitmap)
+      return bitmap.tiffRepresentation
+    }
+
     @Test("a diff with no changes turns navigation off and says it matches")
     func identical() async throws {
       let diff = FileDiff(
