@@ -62,6 +62,35 @@
       #expect(try await waitUntil(window) { try window.shows("Jump to latest") })
     }
 
+    @Test("A busy main thread can't lose the pill, or leave output moving a reader framed earlier")
+    func framingOutlastsLateLayout() async throws {
+      var state = ConversationViewState(
+        header: TranscriptFixture.header, rows: TranscriptFixture.turns(8))
+      state.viewerName = "Me"
+      let conversation = LiveConversation(state)
+      let window = transcriptScreen(
+        LiveTranscriptHost(conversation: conversation, actions: ConversationActions()),
+        width: Self.width, height: Self.height)
+      defer { window.close() }
+      // The view's task resumes once this test suspends, with SwiftUI's update held back.
+      let busyLoop = BusyMainRunLoop()
+      busyLoop.start()
+      try await Task.sleep(for: .milliseconds(200))
+      busyLoop.stop()
+      try await letTasksRun(window, milliseconds: 100)
+      #expect(try window.shows("Line 0 of answer 7"))
+      #expect(try await waitUntil(window) { try window.shows("Jump to latest") })
+
+      let viewport = TranscriptScrollDriver(screen: window)
+      let reading = viewport.offset
+      var other = TranscriptFixture.user("theirs", "Someone else asks")
+      other.author = "Sam"
+      conversation.append(other)
+      try await letTasksRun(window, milliseconds: 300)
+      #expect(abs(viewport.offset - reading) < 2)
+      #expect(try window.shows("New output"))
+    }
+
     @Test("A short conversation just keeps following")
     func shortConversationFollows() async throws {
       let (window, _) = try await screen(

@@ -1,6 +1,7 @@
 /// The transcript's reading position rules.
 ///
-/// - It opens following the newest output.
+/// - It opens following the newest output, then frames the latest question: a turn too long to
+///   fit stops following there, where the reader starts its answer.
 /// - Incoming output scrolls only while following, and never while the user's finger (or
 ///   trackpad) is moving the transcript; the catch-up waits until the scroll ends.
 /// - A user scroll that ends away from the bottom stops following. From then on incoming output
@@ -17,9 +18,15 @@ nonisolated struct TranscriptFollow: Equatable {
   private(set) var isNearBottom = true
   /// Output arrived mid-scroll while following; scroll once the user lets go.
   private var owesCatchUp = false
+  /// Opening scrolled to the latest question and hasn't heard where that landed.
+  private var awaitsFrameLanding = false
 
-  /// "Jump to latest" shows while not following.
-  var showsJumpToLatest: Bool { !follows }
+  /// How long a framing scroll may take to report leaving the end. It lands in the next layout,
+  /// which a busy main thread can hold back well past the next turn of its queue.
+  static let frameLandingWait = Duration.milliseconds(500)
+
+  /// "Jump to latest" shows while not following, except while framing is still at the end.
+  var showsJumpToLatest: Bool { !follows && !(awaitsFrameLanding && isNearBottom) }
 
   /// The pill's title.
   var jumpTitle: String { pill.title }
@@ -93,6 +100,20 @@ nonisolated struct TranscriptFollow: Equatable {
   mutating func readEarlier() {
     follows = false
     owesCatchUp = false
+    awaitsFrameLanding = false
+  }
+
+  /// Opening a session scrolls to its latest question: nothing follows until that lands.
+  mutating func frameLatest() {
+    readEarlier()
+    awaitsFrameLanding = true
+  }
+
+  /// No word that framing left the end, so the turn fits and the reader keeps following.
+  mutating func frameLandingWaitEnded() {
+    guard awaitsFrameLanding else { return }
+    awaitsFrameLanding = false
+    if isNearBottom { follow() }
   }
 
   /// Another session opened: start again at its newest row.
@@ -103,5 +124,6 @@ nonisolated struct TranscriptFollow: Equatable {
   private mutating func follow() {
     follows = true
     hasUnseenOutput = false
+    awaitsFrameLanding = false
   }
 }
