@@ -85,13 +85,16 @@ struct MCPPane: View {
               }
             }
             if service.canDisconnect {
-              Button("Disconnect") { actions.disconnectMCP?(service) }
+              Button("Disconnect") {
+                results[service.id] = nil
+                actions.disconnectMCP?(service)
+              }
             }
           }
           .settingsRowButton()
         } label: {
           Text(service.name)
-          Text(results[service.id] ?? detail(service))
+          Text(Self.detail(service, testResult: results[service.id]))
         }
       }
     } footer: {
@@ -129,9 +132,12 @@ struct MCPPane: View {
     }
   }
 
-  private func detail(_ service: MCPServiceRow) -> String {
+  /// The row's second line: the last test's result while connected, else what it is.
+  static func detail(_ service: MCPServiceRow, testResult: String?) -> String {
+    if service.isConnected, let testResult { return testResult }
     let status = service.isConnected ? "Connected" : "Not connected"
-    let tools = service.tools.isEmpty ? "" : " \u{00B7} \(service.tools.count) tools"
+    let count = service.tools.count
+    let tools = count == 0 ? "" : " \u{00B7} \(count) \(count == 1 ? "tool" : "tools")"
     return service.detail.isEmpty ? status + tools : "\(service.detail) \u{00B7} \(status)\(tools)"
   }
 
