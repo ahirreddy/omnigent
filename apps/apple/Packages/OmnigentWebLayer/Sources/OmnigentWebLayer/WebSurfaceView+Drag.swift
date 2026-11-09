@@ -71,10 +71,15 @@ extension WebSurfaceView: NSDraggingSource {
       return
     }
     pageDrag = start
-    let item = NSDraggingItem(pasteboardWriter: Self.pasteboardWriter(for: start.data))
-    let image = start.image.flatMap(NSImage.init(data:)) ?? Self.placeholderImage
+    beginDraggingSession(with: [Self.draggingItem(for: start)], event: event, source: self)
+  }
+
+  /// What the pointer carries: the page's image, or a placeholder when it gave none or a bad one.
+  static func draggingItem(for start: WebDragStart) -> NSDraggingItem {
+    let item = NSDraggingItem(pasteboardWriter: pasteboardWriter(for: start.data))
+    let image = start.image.flatMap(NSImage.init(data:)) ?? placeholderImage
     item.setDraggingFrame(CGRect(origin: start.location, size: image.size), contents: image)
-    beginDraggingSession(with: [item], event: event, source: self)
+    return item
   }
 
   /// A file wins over text, so Finder receives the file; otherwise text, HTML and the link.
@@ -101,12 +106,22 @@ extension WebSurfaceView: NSDraggingSource {
   func draggingSession(
     _ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext
   ) -> NSDragOperation {
+    pageDragOperations
+  }
+
+  /// What the page's own drag allows; nothing once it has ended.
+  var pageDragOperations: NSDragOperation {
     pageDrag?.operations.dragOperation ?? []
   }
 
   func draggingSession(
     _ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation
   ) {
+    pageDragEnded(at: screenPoint, operation: operation)
+  }
+
+  /// Tells the page where its drag ended, in the view's coordinates.
+  func pageDragEnded(at screenPoint: NSPoint, operation: NSDragOperation) {
     pageDrag = nil
     var point = CGPoint.zero
     if let window = hostWindow {

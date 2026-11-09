@@ -67,6 +67,41 @@ final class FakeHost {
     return MachSendRight(name: name)
   }
 
+  /// A send right and the name of its receive right, whose end looks like the host dying.
+  static func sendRightWithReceive() throws -> (MachSendRight, mach_port_t) {
+    var name = mach_port_t(MACH_PORT_NULL)
+    let task = unsafe mach_task_self_
+    #expect(unsafe mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &name) == KERN_SUCCESS)
+    let made = mach_port_insert_right(
+      task, name, name, mach_msg_type_name_t(MACH_MSG_TYPE_MAKE_SEND))
+    #expect(made == KERN_SUCCESS)
+    return (MachSendRight(name: name), name)
+  }
+
+  /// A send right to a port whose queue is full, like a host that stopped reading.
+  static func fullPort() throws -> MachSendRight {
+    let (right, port) = try sendRightWithReceive()
+    var limits = mach_port_limits_t(mpl_qlimit: 1)
+    let limited = withUnsafeMutablePointer(to: &limits) { pointer in
+      unsafe pointer.withMemoryRebound(to: integer_t.self, capacity: 1) { info in
+        unsafe mach_port_set_attributes(mach_task_self_, port, MACH_PORT_LIMITS_INFO, info, 1)
+      }
+    }
+    #expect(limited == KERN_SUCCESS)
+    var result = KERN_SUCCESS
+    while result == KERN_SUCCESS {
+      var header = mach_msg_header_t()
+      header.msgh_bits = mach_msg_bits_t(MACH_MSG_TYPE_COPY_SEND)
+      header.msgh_size = mach_msg_size_t(MemoryLayout<mach_msg_header_t>.size)
+      header.msgh_remote_port = port
+      result = unsafe mach_msg(
+        &header, MACH_SEND_MSG | MACH_SEND_TIMEOUT, header.msgh_size, 0,
+        mach_port_t(MACH_PORT_NULL), 0, mach_port_t(MACH_PORT_NULL))
+    }
+    #expect(result == MACH_SEND_TIMED_OUT)
+    return right
+  }
+
   static func message(_ kind: OWLMessageKind, _ fields: WireEncoder = WireEncoder()) throws
     -> IncomingMessage
   {
