@@ -272,6 +272,88 @@
       #expect(log.isEmpty)
     }
 
+    @Test("A session's commands reach the newest ones, and nil stays nil")
+    func sessionCommands() {
+      var log: [String] = []
+      func make(_ tag: String) -> SessionCommandActions {
+        func entry(_ name: String) -> @MainActor () -> Void { { log.append("\(tag) \(name)") } }
+        var actions = SessionCommandActions(
+          send: entry("send"), interrupt: entry("stop"), jumpToLatest: entry("latest"),
+          focusComposer: entry("composer"), toggleInspector: entry("inspector"),
+          previousSession: entry("previous"), nextSession: entry("next"),
+          toggleViewMode: entry("mode"), openChanges: entry("changes"))
+        actions.rename = entry("rename")
+        actions.chooseModel = entry("choose")
+        actions.cycleModel = entry("model")
+        actions.cycleEffort = entry("effort")
+        actions.approveOwnsCommandReturn = true
+        return actions
+      }
+      let latest = make("latest")
+      let forwarded = make("old").forwarding { latest }
+      #expect(forwarded.menuSignature == latest.menuSignature)
+      #expect(forwarded.approveOwnsCommandReturn)
+      let items = [
+        forwarded.send, forwarded.interrupt, forwarded.jumpToLatest, forwarded.focusComposer,
+        forwarded.toggleInspector, forwarded.previousSession, forwarded.nextSession,
+        forwarded.toggleViewMode, forwarded.openChanges, forwarded.rename, forwarded.chooseModel,
+        forwarded.cycleModel, forwarded.cycleEffort,
+      ]
+      for item in items { item?() }
+      #expect(log.count == 13)
+      let fromLatest = log.filter { $0.hasPrefix("latest ") }
+      #expect(fromLatest.count == 13)
+      #expect(SessionCommandActions().forwarding { latest }.send == nil)
+      #expect(SessionCommandActions().menuSignature.allSatisfy { !$0 })
+    }
+
+    @Test("A window's tab commands reach the newest ones, and keep the menu's state")
+    func tabCommands() {
+      var log: [String] = []
+      func make(_ tag: String, count: Int) -> TabCommandActions {
+        func entry(_ name: String) -> @MainActor () -> Void { { log.append("\(tag) \(name)") } }
+        var actions = TabCommandActions(
+          newTab: entry("new"), closeTab: entry("close"), reopenClosedTab: entry("reopen"),
+          selectTab: { log.append("\(tag) select \($0)") }, selectNextTab: entry("next"),
+          selectPreviousTab: entry("previous"), togglePinned: entry("pin"),
+          duplicateTab: entry("duplicate"), moveTabToNewWindow: entry("tear"),
+          showAllTabs: entry("all"), openBrowser: entry("browser"),
+          toggleTerminal: entry("terminal"), count: count)
+        actions.supportsSplit = true
+        actions.isSplit = true
+        actions.toggleSplit = entry("split")
+        actions.focusPane = { log.append("\(tag) focus \($0.rawValue)") }
+        actions.moveTabToOtherPane = entry("other pane")
+        actions.newShell = entry("shell")
+        return actions
+      }
+      let latest = make("latest", count: 3)
+      let forwarded = make("old", count: 3).forwarding { latest }
+      #expect(forwarded.menuSignature == latest.menuSignature)
+      #expect(forwarded.count == 3)
+      #expect(forwarded.supportsSplit && forwarded.isSplit)
+      forwarded.newTab()
+      forwarded.selectTab(2)
+      forwarded.focusPane?(.trailing)
+      let items = [
+        forwarded.closeTab, forwarded.reopenClosedTab, forwarded.selectNextTab,
+        forwarded.selectPreviousTab, forwarded.togglePinned, forwarded.duplicateTab,
+        forwarded.moveTabToNewWindow, forwarded.showAllTabs, forwarded.openBrowser,
+        forwarded.toggleTerminal, forwarded.toggleSplit, forwarded.moveTabToOtherPane,
+        forwarded.newShell,
+      ]
+      for item in items { item?() }
+      #expect(log.count == 16)
+      let fromLatest = log.filter { $0.hasPrefix("latest ") }
+      #expect(fromLatest.count == 16)
+      #expect(log.contains("latest select 2"))
+      #expect(log.contains("latest focus trailing"))
+      let none = TabCommandActions().forwarding { latest }
+      #expect(none.closeTab == nil)
+      #expect(none.focusPane == nil)
+      #expect(make("a", count: 1).menuSignature != make("a", count: 2).menuSignature)
+    }
+
     @Test("every tab and right panel key is well formed across the indexes the app asks for")
     func indexedShortcuts() {
       for index in 0..<9 {

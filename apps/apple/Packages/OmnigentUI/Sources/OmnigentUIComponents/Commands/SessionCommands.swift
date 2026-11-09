@@ -81,57 +81,75 @@ public struct OmnigentSessionCommands: Commands {
   /// The menu.
   public var body: some Commands {
     CommandMenu("Navigate") {
-      Button("Command Palette…") { palette?.openPalette() }
-        .keyboardShortcut(AppShortcuts.commandPalette)
-        .disabled(palette == nil)
-      Button("Find Session by Name…") { palette?.findSession() }
-        .keyboardShortcut(AppShortcuts.findSession)
-        .disabled(palette == nil)
-      Button("Keyboard Shortcuts…") { palette?.openShortcuts() }
-        .keyboardShortcut(AppShortcuts.keyboardShortcuts)
-        .disabled(palette == nil)
+      NavigateMenuItems(palette: palette)
     }
     CommandMenu("Conversation") {
-      Button("Send Message") { actions?.send?() }
-        .keyboardShortcut(actions?.approveOwnsCommandReturn == true ? nil : AppShortcuts.send)
-        .disabled(actions?.send == nil)
-      Button("Stop Agent") { actions?.interrupt?() }
-        .keyboardShortcut(AppShortcuts.stopAgent)
-        .disabled(actions?.interrupt == nil)
-      Divider()
-      Button("Rename Session\u{2026}") { actions?.rename?() }
-        .keyboardShortcut(AppShortcuts.renameSession)
-        .disabled(actions?.rename == nil)
-      Button("Focus Composer") { actions?.focusComposer?() }
-        .keyboardShortcut(AppShortcuts.focusComposer)
-        .disabled(actions?.focusComposer == nil)
-      Button("Jump to Latest") { actions?.jumpToLatest?() }
-        .keyboardShortcut(AppShortcuts.jumpToLatest)
-        .disabled(actions?.jumpToLatest == nil)
-      Divider()
-      Button("Choose Model\u{2026}") { actions?.chooseModel?() }
-        .keyboardShortcut("m", modifiers: [.control, .shift])
-        .disabled(actions?.chooseModel == nil)
-      Button("Next Model") { actions?.cycleModel?() }
-        .keyboardShortcut("m", modifiers: [.control, .option])
-        .disabled(actions?.cycleModel == nil)
-      Button("Next Reasoning Effort") { actions?.cycleEffort?() }
-        .keyboardShortcut("e", modifiers: [.control, .option])
-        .disabled(actions?.cycleEffort == nil)
-      Divider()
-      Button("Toggle Chat and Terminal") { actions?.toggleViewMode?() }
-        .keyboardShortcut(AppShortcuts.toggleViewMode)
-        .disabled(actions?.toggleViewMode == nil)
-      Button("Toggle Right Panel") { actions?.toggleInspector?() }
-        .keyboardShortcut(AppShortcuts.toggleInspector)
-        .disabled(actions?.toggleInspector == nil)
-      Divider()
-      Button("Previous Session") { actions?.previousSession?() }
-        .keyboardShortcut(AppShortcuts.previousSession)
-        .disabled(actions?.previousSession == nil)
-      Button("Next Session") { actions?.nextSession?() }
-        .keyboardShortcut(AppShortcuts.nextSession)
-        .disabled(actions?.nextSession == nil)
+      ConversationMenuItems(actions: actions)
     }
+  }
+}
+
+/// The Navigate menu.
+struct NavigateMenuItems: View {
+  let palette: PaletteCommandActions?
+
+  var body: some View {
+    Button("Command Palette…") { palette?.openPalette() }
+      .keyboardShortcut(AppShortcuts.commandPalette)
+      .disabled(palette == nil)
+    Button("Find Session by Name…") { palette?.findSession() }
+      .keyboardShortcut(AppShortcuts.findSession)
+      .disabled(palette == nil)
+    Button("Keyboard Shortcuts…") { palette?.openShortcuts() }
+      .keyboardShortcut(AppShortcuts.keyboardShortcuts)
+      .disabled(palette == nil)
+  }
+}
+
+/// The Conversation menu.
+struct ConversationMenuItems: View {
+  let actions: SessionCommandActions?
+
+  var body: some View {
+    Button("Send Message") { actions?.send?() }
+      .keyboardShortcut(actions?.approveOwnsCommandReturn == true ? nil : AppShortcuts.send)
+      .disabled(actions?.send == nil)
+    Button("Stop Agent") { actions?.interrupt?() }
+      .keyboardShortcut(AppShortcuts.stopAgent)
+      .disabled(actions?.interrupt == nil)
+    Divider()
+    Button("Rename Session\u{2026}") { actions?.rename?() }
+      .keyboardShortcut(AppShortcuts.renameSession)
+      .disabled(actions?.rename == nil)
+    Button("Focus Composer") { actions?.focusComposer?() }
+      .keyboardShortcut(AppShortcuts.focusComposer)
+      .disabled(actions?.focusComposer == nil)
+    Button("Jump to Latest") { actions?.jumpToLatest?() }
+      .keyboardShortcut(AppShortcuts.jumpToLatest)
+      .disabled(actions?.jumpToLatest == nil)
+    Divider()
+    Button("Choose Model\u{2026}") { actions?.chooseModel?() }
+      .keyboardShortcut("m", modifiers: [.control, .shift])
+      .disabled(actions?.chooseModel == nil)
+    Button("Next Model") { actions?.cycleModel?() }
+      .keyboardShortcut("m", modifiers: [.control, .option])
+      .disabled(actions?.cycleModel == nil)
+    Button("Next Reasoning Effort") { actions?.cycleEffort?() }
+      .keyboardShortcut("e", modifiers: [.control, .option])
+      .disabled(actions?.cycleEffort == nil)
+    Divider()
+    Button("Toggle Chat and Terminal") { actions?.toggleViewMode?() }
+      .keyboardShortcut(AppShortcuts.toggleViewMode)
+      .disabled(actions?.toggleViewMode == nil)
+    Button("Toggle Right Panel") { actions?.toggleInspector?() }
+      .keyboardShortcut(AppShortcuts.toggleInspector)
+      .disabled(actions?.toggleInspector == nil)
+    Divider()
+    Button("Previous Session") { actions?.previousSession?() }
+      .keyboardShortcut(AppShortcuts.previousSession)
+      .disabled(actions?.previousSession == nil)
+    Button("Next Session") { actions?.nextSession?() }
+      .keyboardShortcut(AppShortcuts.nextSession)
+      .disabled(actions?.nextSession == nil)
   }
 }

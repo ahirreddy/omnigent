@@ -70,30 +70,66 @@ public struct OmnigentServerCommands: Commands {
   public var body: some Commands {
     // File: New Session and New Window, as the Mac's desktop File menu.
     CommandGroup(replacing: .newItem) {
-      Button("New Session") { actions?.newSession?() }
-        .keyboardShortcut(AppShortcuts.newSession)
-        .disabled(actions?.newSession == nil)
-      Button("New Window") { actions?.newWindow?() }
-        .keyboardShortcut(AppShortcuts.newWindow)
-        .disabled(actions?.newWindow == nil)
+      ServerFileMenuItems(actions: actions)
     }
     // iPad's app menu: the Settings screen (Command-comma), as the Mac's Settings window.
     CommandGroup(replacing: .appSettings) {
-      Button("Settings\u{2026}") { openSettings?() }
-        .keyboardShortcut(AppShortcuts.settings)
-        .disabled(openSettings == nil)
+      SettingsMenuItem(openSettings: openSettings)
     }
     CommandGroup(before: .toolbar) {
-      // Command-R reloads a browser tab and Option-Command-R renames the session.
-      Button("Reconnect") { actions?.reconnect?() }
-        .keyboardShortcut(AppShortcuts.reconnect)
-        .disabled(actions?.reconnect == nil)
+      ReconnectMenuItem(actions: actions)
     }
     CommandMenu("Server") {
-      Button("Change Server\u{2026}") { actions?.changeServer?() }
-        .disabled(actions?.changeServer == nil)
-      Button("Sign Out of Server") { actions?.signOut?() }
-        .disabled(actions?.signOut == nil)
+      ServerMenuItems(actions: actions)
     }
+  }
+}
+
+/// File > New Session and New Window.
+struct ServerFileMenuItems: View {
+  let actions: ServerCommandActions?
+
+  var body: some View {
+    Button("New Session") { actions?.newSession?() }
+      .keyboardShortcut(AppShortcuts.newSession)
+      .disabled(actions?.newSession == nil)
+    Button("New Window") { actions?.newWindow?() }
+      .keyboardShortcut(AppShortcuts.newWindow)
+      .disabled(actions?.newWindow == nil)
+  }
+}
+
+/// The app menu's Settings.
+struct SettingsMenuItem: View {
+  let openSettings: OpenSettingsScreenAction?
+
+  var body: some View {
+    Button("Settings\u{2026}") { openSettings?() }
+      .keyboardShortcut(AppShortcuts.settings)
+      .disabled(openSettings == nil)
+  }
+}
+
+/// View > Reconnect.
+struct ReconnectMenuItem: View {
+  let actions: ServerCommandActions?
+
+  var body: some View {
+    // Command-R reloads a browser tab and Option-Command-R renames the session.
+    Button("Reconnect") { actions?.reconnect?() }
+      .keyboardShortcut(AppShortcuts.reconnect)
+      .disabled(actions?.reconnect == nil)
+  }
+}
+
+/// The Server menu.
+struct ServerMenuItems: View {
+  let actions: ServerCommandActions?
+
+  var body: some View {
+    Button("Change Server\u{2026}") { actions?.changeServer?() }
+      .disabled(actions?.changeServer == nil)
+    Button("Sign Out of Server") { actions?.signOut?() }
+      .disabled(actions?.signOut == nil)
   }
 }
