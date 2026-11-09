@@ -15,6 +15,18 @@ import Testing
     try body(defaults, UserDefaultsSettingsStorage(defaults: defaults))
   }
 
+  @Test(
+    "A number JSON can't hold is reported instead of crashing the read",
+    arguments: [Double.nan, Double.infinity, -Double.infinity])
+  func nonFiniteSetting(number: Double) throws {
+    try withDefaults { defaults, storage in
+      defaults.set(number, forKey: "omnigent.number")
+      defaults.set([number], forKey: "omnigent.numbers")
+      #expect(throws: SettingsStorageError.self) { try storage.get(key: "omnigent.number") }
+      #expect(throws: SettingsStorageError.self) { try storage.get(key: "omnigent.numbers") }
+    }
+  }
+
   @Test func storesStringsNativelyForAppStorageCompatibility() throws {
     try withDefaults { defaults, storage in
       try storage.set(key: "omnigent.serverURL", value: "\"https://example.com\"")
