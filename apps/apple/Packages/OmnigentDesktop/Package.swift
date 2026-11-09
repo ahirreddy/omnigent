@@ -30,9 +30,9 @@ let package = Package(
   ],
   dependencies: [
     // Keep equal to SPARKLE_VERSION in scripts/release/fetch-sparkle-tools.sh.
-    .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
+    .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1"),
+    .package(path: "../OmnigentViewTesting"),
   ],
-  dependencies: [.package(path: "../OmnigentViewTesting")],
   targets: [
     .target(name: "OmnigentDeepLinks", swiftSettings: mainActorSwiftSettings),
     .target(
