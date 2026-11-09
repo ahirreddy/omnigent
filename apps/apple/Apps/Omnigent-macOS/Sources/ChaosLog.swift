@@ -5,6 +5,16 @@
 
   /// What ``ChaosDriver`` writes besides its steps: window names and every Objective-C exception.
   enum ChaosLog {
+    /// What has the keyboard: the field a field editor is editing, else the responder itself.
+    static func focus(in window: NSWindow) -> String {
+      guard let responder = window.firstResponder else { return "none" }
+      let text = responder as? NSTextView
+      let holder = text?.isFieldEditor == true ? (text?.delegate as AnyObject?) : responder
+      let name = (holder as? NSView)?.accessibilityIdentifier() ?? ""
+      let undo = responder.undoManager?.canUndo == true ? " can undo" : ""
+      return "\(holder.map { String(describing: type(of: $0)) } ?? "none") \(name)\(undo)"
+    }
+
     /// A window's title, or its class and level when it has none (sheets, panels, popovers).
     @MainActor
     static func describe(_ window: NSWindow) -> String {

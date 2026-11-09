@@ -6,8 +6,9 @@
 # in use. It needs no Accessibility or automation mode: the driver's input stays in the process.
 #
 # Usage: chaos-mac.sh --app PATH [--seeds FIRST-LAST or A,B,C] [--steps N] [--interval S]
-#                     [--server URL --sessions id,id [--outages]] [--script FILE] [--out DIR]
+#                     [--server URL --sessions id,id [--outages]] [--script FILE] [--undo] [--out DIR]
 # --script replays the steps in FILE (ChaosScript.swift) instead of a random walk.
+# --undo presses undo after about one step in four, and logs what had the focus.
 # Without --server it runs on the app's offline demo server (-OmnigentDemo). --outages pauses the
 # server (SIGSTOP) for a few seconds now and then, so requests hang and streams stall.
 set -euo pipefail
@@ -20,6 +21,7 @@ server=""
 sessions=""
 outages=0
 script=""
+undo=0
 out="${TMPDIR:-/tmp}/omnigent-chaos-$(date +%Y%m%d-%H%M%S)"
 while (($#)); do
   case "$1" in
@@ -31,6 +33,7 @@ while (($#)); do
     --sessions) sessions="$2"; shift 2 ;;
     --outages) outages=1; shift ;;
     --script) script="$2"; shift 2 ;;
+    --undo) undo=1; shift ;;
     --out) out="$2"; shift 2 ;;
     *) echo "unknown option $1" >&2; exit 64 ;;
   esac
@@ -115,6 +118,7 @@ run_seed() {
     -OmnigentChaosLog "$log" -ApplePersistenceIgnoreState YES -OmnigentNoNotificationPrompt YES
     -OmnigentTabsDirectory "$tabs" -NSQuitAlwaysKeepsWindows NO)
   [[ -z "$script" ]] || args+=(-OmnigentChaosScript "$script")
+  ((undo == 0)) || args+=(-OmnigentChaosUndo YES)
   if [[ -n "$server" ]]; then
     args+=(-desktop.defaultServerURL "$server")
     [[ -z "$sessions" ]] || args+=(-OmnigentChaosSessions "$sessions")

@@ -136,6 +136,9 @@
           return
         }
         act(step, in: window)
+        log?.write(
+          "\(step), focus \(ChaosLog.focus(in: window)), in \(ChaosLog.describe(window)),"
+            + " key \(window.isKeyWindow)")
       }
     }
 

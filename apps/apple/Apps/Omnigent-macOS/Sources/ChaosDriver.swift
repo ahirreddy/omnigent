@@ -27,6 +27,8 @@
     private let serverURL: () -> URL?
     private let router: DesktopRouter
     private let log: ChaosLogFile?
+    /// Presses undo after about one step in four, to find a text view that can't take it.
+    private let pressesUndo: Bool
     private var step = 0
 
     private init(
@@ -47,6 +49,7 @@
       self.router = router
       self.serverURL = serverURL
       log = defaults.string(forKey: "OmnigentChaosLog").flatMap(ChaosLogFile.init)
+      pressesUndo = defaults.bool(forKey: "OmnigentChaosUndo")
     }
 
     /// Starts the walk when the launch asks for one.
@@ -148,6 +151,13 @@
       case .scroll: scroll(in: window)
       case .resize, .session, .window, .sweep: arrange(action, window)
       }
+      if pressesUndo, random.int(below: 4) == 0 { pressUndo() }
+    }
+
+    private func pressUndo() {
+      guard let window else { return }
+      write("\(step) undo, focus \(ChaosLog.focus(in: window))")
+      ChaosInput.press(.shortcut("z"), .command, in: window)
     }
 
     private func pressKeys(_ action: Action, in window: NSWindow) {
@@ -222,7 +232,7 @@
     private func type(in window: NSWindow) {
       var text = ChaosText.snippets[random.int(below: ChaosText.snippets.count)]
       if random.int(below: 4) == 0 { text += "\r" }
-      write("\(step) type \(text.debugDescription)")
+      write("\(step) type \(text.debugDescription), focus \(ChaosLog.focus(in: window))")
       ChaosInput.type(text, in: window)
     }
 
