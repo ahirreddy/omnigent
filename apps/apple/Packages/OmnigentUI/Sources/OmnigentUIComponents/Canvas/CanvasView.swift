@@ -184,8 +184,8 @@ public struct CanvasView: View {
       }
       .onEnded { value in
         actions.move?(
-          card.id, card.left + Int(value.translation.width.rounded()),
-          card.top + Int(value.translation.height.rounded()))
+          card.id, CanvasGeometry.moved(card.left, by: value.translation.width),
+          CanvasGeometry.moved(card.top, by: value.translation.height))
         dragging = nil
         dragOffset = .zero
       }
@@ -249,15 +249,11 @@ public struct CanvasView: View {
 /// The board's dot lattice, aligned to the grid cards snap to.
 private struct CanvasDotGrid: View {
   let origin: CGPoint
-  /// Past this many dots the lattice is left out; a huge board would redraw too slowly.
-  private static let maxDots = 60_000
 
   var body: some View {
     Canvas { context, size in
       let step = CanvasGeometry.gridStep
-      let columns = Int(size.width / step) + 1
-      let rows = Int(size.height / step) + 1
-      guard columns * rows <= Self.maxDots else { return }
+      guard let (columns, rows) = CanvasGeometry.dotLattice(in: size) else { return }
       // The first grid line at or after the content's origin.
       let startX = (origin.x / step).rounded(.up) * step - origin.x
       let startY = (origin.y / step).rounded(.up) * step - origin.y
