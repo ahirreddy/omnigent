@@ -5,9 +5,9 @@ public import OmnigentUIComponents
 extension TabStore {
   // MARK: Split view
 
-  /// Shows a tab in a pane and focuses it, splitting the window when it is not. A pane left
-  /// without tabs closes the split; a split with a single tab gets a new-tab page in the other
-  /// pane.
+  /// Shows a tab in a pane and focuses it, splitting the window when it is not. A pane's only
+  /// tab trades places with the tab the other pane shows, so moving it never closes the split;
+  /// a split with a single tab gets a new-tab page in the other pane.
   /// - Parameters:
   ///   - id: The tab.
   ///   - target: The pane.
@@ -36,18 +36,14 @@ extension TabStore {
       select(id)
       return
     }
-    // Leave the source pane: it shows another of its tabs, or the split closes.
+    // Leave the source pane: it shows another of its tabs, or takes the tab the target showed.
     let sourceTabs = ids(in: source).filter { $0 != id }
-    if sourceTabs.isEmpty {
-      split = nil
-      selectedID = id
-      tabs = arranged(tabs)
-      changed()
-      return
-    }
     let sourceActive = activeID(source)
-    if target == .trailing { split?.trailing.insert(id) } else { split?.trailing.remove(id) }
-    let replacement = sourceActive == id ? neighbour(of: id, among: sourceTabs) : sourceActive
+    let traded = sourceTabs.isEmpty ? activeID(target) : nil
+    place(id, in: target)
+    if let traded { place(traded, in: source) }
+    let replacement =
+      traded ?? (sourceActive == id ? neighbour(of: id, among: sourceTabs) : sourceActive)
     split?.focused = target
     split?.otherSelectedID = replacement
     selectedID = id
@@ -55,6 +51,10 @@ extension TabStore {
     if let replacement { materialized.insert(replacement) }
     tabs = arranged(tabs)
     changed()
+  }
+
+  private func place(_ id: String, in pane: TabPane) {
+    if pane == .trailing { split?.trailing.insert(id) } else { split?.trailing.remove(id) }
   }
 
   /// Splits the window, the selected tab staying on the left and the tab after it (else

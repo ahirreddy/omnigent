@@ -94,9 +94,13 @@ struct TabCommandWiringTests {
     actions.setSplitFraction?(0.6)
     #expect(store.split?.fraction == TabSplitState.clamp(0.6))
     actions.showInPane?(shell.id, .leading)
-    #expect(store.split == nil, "the pane it left is empty, so the window is whole again")
-    actions.showInPane?(shell.id, .trailing)
+    #expect(store.pane(of: shell.id) == .leading, "the two tabs trade panes")
+    #expect(store.splitState?.trailingID != nil)
+    // The menu command moves it back from whichever pane it is in.
+    let moveBack = try #require(tabs.commands.moveTabToOtherPane)
+    moveBack()
     #expect(store.pane(of: shell.id) == .trailing)
+    #expect(store.splitState?.leadingID != nil)
     actions.closeSplit?()
     #expect(store.split == nil)
   }
