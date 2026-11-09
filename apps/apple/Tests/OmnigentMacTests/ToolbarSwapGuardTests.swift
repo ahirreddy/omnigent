@@ -187,6 +187,19 @@ struct SingleLinePasteGuardTests {
     #expect(SingleLinePasteGuard.pasted("a\nb", room: 0).isEmpty)
   }
 
+  @Test(arguments: [
+    ("", ""), ("one", "one"), ("\n\none\r\n\r\ntwo\n", "one two"), ("a\u{2028}b", "a b"),
+    ("\n\n", ""),
+  ])
+  func linesJoinWithOneSpace(text: String, joined: String) {
+    #expect(SingleLinePasteGuard.joined(text) == joined)
+  }
+
+  @Test func noRoomPastesNothing() {
+    #expect(SingleLinePasteGuard.pasted("abc", room: 0).isEmpty)
+    #expect(SingleLinePasteGuard.pasted("abc", room: -5).isEmpty)
+  }
+
   @Test func aWrappingFieldKeepsItsLines() throws {
     #expect(SingleLinePasteGuard.install())
     let field = NSTextField(wrappingLabelWithString: "")
