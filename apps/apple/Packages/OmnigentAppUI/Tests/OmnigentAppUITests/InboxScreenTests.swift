@@ -20,7 +20,7 @@ struct InboxScreenTests {
     var files: [String] = []
   }
 
-  private typealias Screen = OffscreenWindow<InboxTriageAdapter>
+  private typealias Screen = OffscreenWindow<AnyView>
 
   // Send in an expanded first row, the failure notice's Retry and the demo question's first option.
   private static let send = CGPoint(x: 905, y: 241)
@@ -32,13 +32,15 @@ struct InboxScreenTests {
     _ connection: ConnectionStore, defaults: UserDefaults? = nil
   ) throws -> (Screen, Opened) {
     let opened = Opened()
+    let storage = try defaults ?? scratchDefaults()
     let adapter = InboxTriageAdapter(
       connection: connection, open: { opened.sessions.append($0) },
-      openFile: { path, _, _ in opened.files.append(path) },
-      defaults: try defaults ?? scratchDefaults())
+      openFile: { path, _, _ in opened.files.append(path) }, defaults: storage)
     // The store keeps seen comments in the process's defaults; each test starts with none.
     UserDefaults.standard.removeObject(forKey: adapter.seenCommentsKey)
-    return (OffscreenWindow(adapter, width: 1000, height: 800), opened)
+    // The page's filter is remembered; test runs share the standard defaults, so keep it apart.
+    let root = AnyView(adapter.defaultAppStorage(storage))
+    return (OffscreenWindow(root, width: 1000, height: 800), opened)
   }
 
   private struct Page {
