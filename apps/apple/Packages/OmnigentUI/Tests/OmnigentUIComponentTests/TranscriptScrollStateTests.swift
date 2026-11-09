@@ -71,6 +71,25 @@ struct TranscriptScrollStateTests {
     #expect(!jumped.pill.isShown)
   }
 
+  private func stallThisThread(seconds: TimeInterval) {
+    Thread.sleep(forTimeInterval: seconds)
+  }
+
+  @Test("a stalled main thread pauses the wait for framing to land instead of using it up")
+  @MainActor
+  func framingWaitOutlastsAStall() async throws {
+    var hasEnded = false
+    let wait = Task { @MainActor in
+      try await TranscriptFollow.waitForFrameLanding()
+      hasEnded = true
+    }
+    defer { wait.cancel() }
+    await Task.yield()
+    stallThisThread(seconds: 0.6)
+    try await Task.sleep(for: .milliseconds(1))
+    #expect(!hasEnded)
+  }
+
   @Test("the pill changes only when following stops or unseen output arrives")
   func pillChangesWithFollowing() {
     var follow = TranscriptFollow()

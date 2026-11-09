@@ -21,9 +21,15 @@ nonisolated struct TranscriptFollow: Equatable {
   /// Opening scrolled to the latest question and hasn't heard where that landed.
   private var awaitsFrameLanding = false
 
-  /// How long a framing scroll may take to report leaving the end. It lands in the next layout,
-  /// which a busy main thread can hold back well past the next turn of its queue.
-  static let frameLandingWait = Duration.milliseconds(500)
+  /// Waits as long as a framing scroll may take to report leaving the end. It lands in the next
+  /// layout, which a busy main thread holds back; each step needs that thread free, so a stall
+  /// pauses this wait instead of using it up.
+  @MainActor
+  static func waitForFrameLanding() async throws {
+    for _ in 0..<10 {
+      try await Task.sleep(for: .milliseconds(50))
+    }
+  }
 
   /// "Jump to latest" shows while not following, except while framing is still at the end.
   var showsJumpToLatest: Bool { !follows && !(awaitsFrameLanding && isNearBottom) }
