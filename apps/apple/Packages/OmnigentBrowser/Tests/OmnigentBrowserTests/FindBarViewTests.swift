@@ -9,6 +9,7 @@
   private enum FindControl {
     static let previous = 0
     static let next = 1
+    static let matchCase = 2
     static let done = 3
   }
 
@@ -65,6 +66,22 @@
       await screen.catchUp()
       #expect(tab.commands.count == before + 1)
       #expect(tab.commands.last == "find cat forward false")
+    }
+
+    @Test("Match Case searches again, so the count isn't left over from the old search")
+    func matchCaseSearchesAgain() async throws {
+      let fixture = try TabFixture()
+      let tab = try fixture.tab
+      let screen = makeBar(fixture)
+      defer { screen.close() }
+      fixture.model.find.query = "cat"
+      await screen.catchUp()
+
+      try screen.clickButton(at: FindControl.matchCase)
+      await screen.catchUp()
+
+      #expect(fixture.model.find.caseSensitive)
+      #expect(tab.commands.last == "find cat forward true")
     }
 
     @Test("Done and Escape close the bar and clear the highlights")

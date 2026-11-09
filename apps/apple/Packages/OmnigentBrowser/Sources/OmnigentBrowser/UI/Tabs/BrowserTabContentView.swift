@@ -217,6 +217,7 @@ struct BrowserFindBar: View {
       Button("Next", systemImage: "chevron.down") { Task { await model.findNext(forward: true) } }
       Toggle("Match Case", isOn: $find.caseSensitive)
         .toggleStyle(.button)
+        .onChange(of: find.caseSensitive) { Task { await model.findNext(forward: true) } }
       Spacer()
       Button("Done") { model.hideFindBar() }
         .keyboardShortcut(.cancelAction)
