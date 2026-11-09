@@ -202,6 +202,7 @@ struct NotificationSettingsTab: View {
   @Bindable var preferences: DesktopPreferences
   let notifications: DesktopNotificationCenter
   var isAvailable = DesktopNotificationCenter.isAvailable
+  var listSounds: @MainActor () throws -> [String] = SystemSounds.names
   @State private var soundNames: [String] = []
   @State private var errorMessage: String?
 
@@ -263,7 +264,7 @@ struct NotificationSettingsTab: View {
 
   private func loadSounds() {
     do {
-      soundNames = try SystemSounds.names()
+      soundNames = try listSounds()
       if !soundNames.contains(preferences.soundName), let first = soundNames.first {
         preferences.soundName =
           soundNames.contains(SystemSounds.defaultName) ? SystemSounds.defaultName : first
@@ -300,13 +301,9 @@ struct NotificationSettingsTab: View {
   }
 
   private func openSystemNotificationSettings() {
-    var components = URLComponents()
-    components.scheme = "x-apple.systempreferences"
-    components.path = "com.apple.Notifications-Settings.extension"
-    components.queryItems = Bundle.main.bundleIdentifier.map {
-      [URLQueryItem(name: "id", value: $0)]
-    }
-    guard let url = components.url, NSWorkspace.shared.open(url) else {
+    let url = DesktopNotificationCenter.systemSettingsURL(
+      bundleIdentifier: Bundle.main.bundleIdentifier)
+    guard let url, NSWorkspace.shared.open(url) else {
       errorMessage = "Open System Settings > Notifications to change this."
       return
     }

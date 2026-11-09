@@ -18,6 +18,11 @@ import Synchronization
 /// what it started on a normal quit, and its record lets the next launch find a server that
 /// survived a crash (see `LocalServerManager`).
 nonisolated public struct PosixSpawnProcessRunner: LocalProcessRunning {
+  /// Makes each output pipe. A pipe can fail when the process is out of descriptors.
+  var makePipe: @Sendable () throws(LocalServerError) -> OutputPipe = {
+    () throws(LocalServerError) in try OutputPipe()
+  }
+
   /// Creates the runner.
   public init() {}
 
@@ -28,10 +33,10 @@ nonisolated public struct PosixSpawnProcessRunner: LocalProcessRunning {
   public func launch(_ launch: LocalProcessLaunch) throws(LocalServerError)
     -> any LocalProcessHandle
   {
-    let stdout = try OutputPipe()
+    let stdout = try makePipe()
     let stderr: OutputPipe
     do {
-      stderr = try OutputPipe()
+      stderr = try makePipe()
     } catch {
       stdout.closeBoth()
       throw error
@@ -84,11 +89,15 @@ nonisolated public struct PosixSpawnProcessRunner: LocalProcessRunning {
   ///   - pid: The PID.
   /// - Throws: `LocalServerError.commandFailed` when the kernel refuses.
   public func send(_ signal: LocalProcessSignal, toGroupOf pid: Int32) throws(LocalServerError) {
-    if killpg(pid, signal.rawValue) == 0 { return }
+    try Self.send(signalNumber: signal.rawValue, toGroupOf: pid)
+  }
+
+  static func send(signalNumber: Int32, toGroupOf pid: Int32) throws(LocalServerError) {
+    if killpg(pid, signalNumber) == 0 { return }
     let groupError = errno
-    if groupError == ESRCH, Darwin.kill(pid, signal.rawValue) == 0 || errno == ESRCH { return }
+    if groupError == ESRCH, Darwin.kill(pid, signalNumber) == 0 || errno == ESRCH { return }
     throw .commandFailed(
-      command: "kill -\(signal.rawValue) \(pid)", exit: nil, output: Errno.describe(groupError))
+      command: "kill -\(signalNumber) \(pid)", exit: nil, output: Errno.describe(groupError))
   }
 
   /// Whether `127.0.0.1:port` can be bound now, with `SO_REUSEADDR` as uvicorn binds.
@@ -99,11 +108,7 @@ nonisolated public struct PosixSpawnProcessRunner: LocalProcessRunning {
     let socketFD = socket(AF_INET, SOCK_STREAM, 0)
     guard socketFD >= 0 else { throw .spawnSetupFailed("socket: \(Errno.describe(errno))") }
     defer { close(socketFD) }
-    var reuse: Int32 = 1
-    let length = socklen_t(MemoryLayout<Int32>.size)
-    guard unsafe setsockopt(socketFD, SOL_SOCKET, SO_REUSEADDR, &reuse, length) == 0 else {
-      throw .spawnSetupFailed("setsockopt: \(Errno.describe(errno))")
-    }
+    try Self.allowAddressReuse(on: socketFD)
     var address = sockaddr_in()
     address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
     address.sin_family = sa_family_t(AF_INET)
@@ -117,18 +122,27 @@ nonisolated public struct PosixSpawnProcessRunner: LocalProcessRunning {
     return bound == 0
   }
 
+  static func allowAddressReuse(on socketFD: Int32) throws(LocalServerError) {
+    var reuse: Int32 = 1
+    let length = socklen_t(MemoryLayout<Int32>.size)
+    guard unsafe setsockopt(socketFD, SOL_SOCKET, SO_REUSEADDR, &reuse, length) == 0 else {
+      throw .spawnSetupFailed("setsockopt: \(Errno.describe(errno))")
+    }
+  }
+
+  /// Fails a `posix_spawn` setup step, which returns its error code rather than setting `errno`.
+  static func check(_ step: String, _ status: Int32) throws(LocalServerError) {
+    guard status == 0 else { throw .spawnSetupFailed("\(step): \(Errno.describe(status))") }
+  }
+
   private static func spawn(_ launch: LocalProcessLaunch, stdout: Int32, stderr: Int32)
     throws(LocalServerError) -> pid_t
   {
     var actions: posix_spawn_file_actions_t?
     var attributes: posix_spawnattr_t?
-    guard unsafe posix_spawn_file_actions_init(&actions) == 0 else {
-      throw .spawnSetupFailed("posix_spawn_file_actions_init: \(Errno.describe(errno))")
-    }
+    try check("posix_spawn_file_actions_init", unsafe posix_spawn_file_actions_init(&actions))
     defer { unsafe posix_spawn_file_actions_destroy(&actions) }
-    guard unsafe posix_spawnattr_init(&attributes) == 0 else {
-      throw .spawnSetupFailed("posix_spawnattr_init: \(Errno.describe(errno))")
-    }
+    try check("posix_spawnattr_init", unsafe posix_spawnattr_init(&attributes))
     defer { unsafe posix_spawnattr_destroy(&attributes) }
 
     var steps: [(String, Int32)] = [
@@ -155,9 +169,7 @@ nonisolated public struct PosixSpawnProcessRunner: LocalProcessRunning {
       ("setsigmask", unsafe posix_spawnattr_setsigmask(&attributes, &emptyMask)),
       ("setsigdefault", unsafe posix_spawnattr_setsigdefault(&attributes, &allSignals)),
     ]
-    if let failed = steps.first(where: { $0.1 != 0 }) {
-      throw .spawnSetupFailed("\(failed.0): \(Errno.describe(failed.1))")
-    }
+    for (step, status) in steps { try check(step, status) }
 
     let argv = [launch.executable.path] + launch.arguments
     let envp = launch.environment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
@@ -204,13 +216,19 @@ nonisolated struct OutputPipe {
   let readEnd: Int32
   let writeEnd: Int32
 
-  init() throws(LocalServerError) {
+  /// Opens the pipe.
+  /// - Parameter markCloseOnExec: Marks a descriptor and returns `errno` on failure, else 0.
+  /// - Throws: `LocalServerError.spawnSetupFailed` when the pipe can't be made or marked.
+  init(
+    markCloseOnExec: (Int32) -> Int32 = { fcntl($0, F_SETFD, FD_CLOEXEC) == 0 ? 0 : errno }
+  ) throws(LocalServerError) {
     var fds: [Int32] = [-1, -1]
     guard unsafe pipe(&fds) == 0 else { throw .spawnSetupFailed("pipe: \(Errno.describe(errno))") }
     readEnd = fds[0]
     writeEnd = fds[1]
-    for descriptor in fds where fcntl(descriptor, F_SETFD, FD_CLOEXEC) != 0 {
-      let code = errno
+    for descriptor in fds {
+      let code = markCloseOnExec(descriptor)
+      guard code != 0 else { continue }
       closeBoth()
       throw .spawnSetupFailed("fcntl FD_CLOEXEC: \(Errno.describe(code))")
     }
@@ -278,40 +296,43 @@ nonisolated final class SpawnedProcess: LocalProcessHandle {
   }
 
   func send(_ signal: LocalProcessSignal) throws(LocalServerError) {
+    try send(signalNumber: signal.rawValue)
+  }
+
+  func send(signalNumber: Int32) throws(LocalServerError) {
     // Held across `killpg` so the reaper cannot mark the exit (freeing the PID) mid-signal.
     let failure = state.withLock { current -> Int32? in
       guard case .running = current else { return nil }
-      return killpg(pid, signal.rawValue) == 0 || errno == ESRCH ? nil : errno
+      return killpg(pid, signalNumber) == 0 || errno == ESRCH ? nil : errno
     }
     if let failure {
       throw .commandFailed(
-        command: "kill -\(signal.rawValue) -\(pid)", exit: nil, output: Errno.describe(failure))
+        command: "kill -\(signalNumber) -\(pid)", exit: nil, output: Errno.describe(failure))
     }
   }
 
-  private static func drain(
+  static func drain(
     _ descriptor: Int32, _ kind: LocalProcessOutput.Stream,
     into continuation: AsyncStream<LocalProcessOutput>.Continuation
   ) {
     defer { close(descriptor) }
     var buffer = [UInt8](repeating: 0, count: 16_384)
-    while true {
-      let count = buffer.withUnsafeMutableBytes { bytes in
+    var count = 0
+    repeat {
+      count = buffer.withUnsafeMutableBytes { bytes in
         unsafe read(descriptor, bytes.baseAddress, bytes.count)
       }
       if count > 0 {
         continuation.yield(LocalProcessOutput(kind, Data(buffer[0..<count])))
-      } else if count == 0 {
-        return
-      } else if errno != EINTR {
+      } else if count < 0, errno != EINTR {
         let message = "[Omnigent] Reading the process output failed: \(Errno.describe(errno))\n"
         continuation.yield(LocalProcessOutput(kind, Data(message.utf8)))
         return
       }
-    }
+    } while count != 0
   }
 
-  private static func reap(_ pid: Int32) -> LocalProcessExit {
+  static func reap(_ pid: Int32) -> LocalProcessExit {
     var status: Int32 = 0
     while true {
       let result = unsafe waitpid(pid, &status, 0)

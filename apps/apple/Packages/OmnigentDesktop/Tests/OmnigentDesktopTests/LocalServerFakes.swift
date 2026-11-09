@@ -260,12 +260,22 @@ final class FakeClock: LocalServerClock {
   private let base = ContinuousClock.now
   private let elapsed = Mutex(Duration.zero)
   private let sleeps = Mutex([Duration]())
+  private let holdsSleeps = Mutex(false)
 
   var now: ContinuousClock.Instant { base + elapsed.withLock { $0 } }
   var recordedSleeps: [Duration] { sleeps.withLock { $0 } }
 
+  /// Makes later sleeps last until they're cancelled, as a long backoff does.
+  func holdLaterSleeps(_ holds: Bool = true) {
+    holdsSleeps.withLock { $0 = holds }
+  }
+
   func sleep(for duration: Duration) async throws {
     try Task.checkCancellation()
+    if holdsSleeps.withLock({ $0 }) {
+      sleeps.withLock { $0.append(duration) }
+      try await Task.sleep(for: .seconds(600))
+    }
     sleeps.withLock { $0.append(duration) }
     elapsed.withLock { $0 += duration }
     // Let output and exit tasks run between polls, as real sleeps would.

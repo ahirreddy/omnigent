@@ -27,11 +27,12 @@ nonisolated enum LocalCommand {
   ///   - runner: Spawns it.
   ///   - clock: Measures the timeout.
   ///   - timeout: How long before the process group is killed.
+  ///   - drainLimit: How long to keep reading output after the exit.
   /// - Returns: The exit and output.
   /// - Throws: `LocalServerError.spawnFailed`, or `.commandFailed` on timeout.
   static func run(
     _ launch: LocalProcessLaunch, runner: any LocalProcessRunning,
-    clock: any LocalServerClock, timeout: Duration
+    clock: any LocalServerClock, timeout: Duration, drainLimit: Duration = .seconds(2)
   ) async throws(LocalServerError) -> LocalCommandResult {
     let process = try runner.launch(launch)
     let collector = Task {
@@ -65,16 +66,16 @@ nonisolated enum LocalCommand {
     // A grandchild (a shell's background helper, say) can hold the pipes open after the command
     // exits. Stop reading shortly after the exit instead of waiting for an EOF that may not come.
     // Real time on purpose: this only bounds a hang, and test clocks do not really sleep.
-    let drainLimit = Task {
+    let drainTimer = Task {
       do {
-        try await Task.sleep(for: .seconds(2))
+        try await Task.sleep(for: drainLimit)
         collector.cancel()
       } catch {
         // Cancelled: the output finished first.
       }
     }
     let (stdout, stderr) = await collector.value
-    drainLimit.cancel()
+    drainTimer.cancel()
     let result = LocalCommandResult(
       exit: exit, standardOutput: stdout.lossyUTF8, standardError: stderr.lossyUTF8)
     if let timeoutProblem {

@@ -44,6 +44,18 @@ nonisolated public struct NotificationActionResponse: Hashable, Sendable {
   public var context: [String: String]
 }
 
+/// What the wrapper uses from `UNUserNotificationCenter`, which exists only in an app bundle.
+nonisolated protocol NotificationSystemCenter: AnyObject {
+  var delegate: (any UNUserNotificationCenterDelegate)? { get set }
+  func setNotificationCategories(_ categories: Set<UNNotificationCategory>)
+  func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
+  func notificationSettings() async -> UNNotificationSettings
+  func add(_ request: UNNotificationRequest) async throws
+  func removeDeliveredNotifications(withIdentifiers identifiers: [String])
+}
+
+extension UNUserNotificationCenter: NotificationSystemCenter {}
+
 /// `UNUserNotificationCenter` wrapper: applies `NotificationPolicy`, presents banners while the
 /// app is frontmost (unlike Electron, where macOS hid them), plays the opt-in sound, bounces the
 /// Dock and turns taps into routes.
@@ -80,6 +92,9 @@ public final class DesktopNotificationCenter: NSObject {
   @ObservationIgnored public var onAction: (NotificationActionResponse) async -> Void = { _ in }
   @ObservationIgnored private var throttle = SoundThrottle()
   @ObservationIgnored private let reportIssue: DesktopIssueReporter
+  /// The center posts go to.
+  @ObservationIgnored var systemCenter: @MainActor () -> (any NotificationSystemCenter)? =
+    DesktopNotificationCenter.currentSystemCenter
 
   /// Creates the wrapper. Call `installAsDelegate()` from `applicationWillFinishLaunching`.
   /// - Parameter reportIssue: Receives sound and payload problems that do not fail a post.
@@ -96,9 +111,26 @@ public final class DesktopNotificationCenter: NSObject {
   /// Whether this process can use `UNUserNotificationCenter`.
   public static var isAvailable: Bool { Bundle.main.bundleIdentifier != nil }
 
-  private func center() throws(DesktopNotificationError) -> UNUserNotificationCenter {
-    guard Self.isAvailable else { throw .unavailable }
+  /// System Settings' notifications page, on this app's row when it has a bundle identifier.
+  static func systemSettingsURL(bundleIdentifier: String?) -> URL? {
+    var components = URLComponents()
+    components.scheme = "x-apple.systempreferences"
+    components.path = "com.apple.Notifications-Settings.extension"
+    components.queryItems = bundleIdentifier.map { [URLQueryItem(name: "id", value: $0)] }
+    return components.url
+  }
+
+  /// The system's center, or `nil` outside an app bundle, where asking for it would crash.
+  private static func currentSystemCenter() -> (any NotificationSystemCenter)? {
+    guard isAvailable else { return nil }
+    // coverage:off exists only in an app bundle; the VM flow backlog has "a notification posts"
     return UNUserNotificationCenter.current()
+    // coverage:on
+  }
+
+  private func center() throws(DesktopNotificationError) -> any NotificationSystemCenter {
+    guard let center = systemCenter() else { throw .unavailable }
+    return center
   }
 
   /// Becomes the center's delegate so banners show while frontmost and taps are routed.
