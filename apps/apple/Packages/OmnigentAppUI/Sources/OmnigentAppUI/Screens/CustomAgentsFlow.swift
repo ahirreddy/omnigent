@@ -55,16 +55,22 @@ extension View {
     imported: @escaping @MainActor (ManagedAgent) -> Void
   ) -> some View {
     fileImporter(isPresented: isPresented, allowedContentTypes: [.gzip]) { result in
-      guard let store else { return }
-      switch result {
-      case .success(let url):
-        Task {
-          if let agent = await CustomAgentsBundle.install(url, store: store) { imported(agent) }
-        }
-      case .failure(let error):
-        store.recordImportFailure(error.localizedDescription)
-      }
+      Task { await bundlePicked(result, store: store, imported: imported) }
     }
+  }
+}
+
+/// Installs the bundle picked in the file importer, or records why the importer failed.
+func bundlePicked(
+  _ result: Result<URL, any Error>, store: CustomAgentsStore?,
+  imported: @MainActor (ManagedAgent) -> Void
+) async {
+  guard let store else { return }
+  switch result {
+  case .success(let url):
+    if let agent = await CustomAgentsBundle.install(url, store: store) { imported(agent) }
+  case .failure(let error):
+    store.recordImportFailure(error.localizedDescription)
   }
 }
 
