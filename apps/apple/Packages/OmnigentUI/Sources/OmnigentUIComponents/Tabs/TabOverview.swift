@@ -91,6 +91,12 @@ public struct TabOverviewSheet: View {
         Section {
           ForEach(matches) { tab in row(tab) }
             .onMove { from, to in move(from: from, to: to) }
+          // A row, not a toolbar item: a Mac sheet's bar drops primary actions without a word.
+          Button("New Tab", systemImage: "plus") {
+            actions.newTab()
+            dismiss()
+          }
+          .accessibilityIdentifier("tab-overview-new")
         }
         if let reopen = actions.reopenClosed, !state.recentlyClosed.isEmpty {
           Section("Recently Closed") {
@@ -118,13 +124,6 @@ public struct TabOverviewSheet: View {
         ToolbarItem(placement: .confirmationAction) {
           Button("Done", action: dismiss)
             .accessibilityIdentifier("tab-overview-done")
-        }
-        ToolbarItem(placement: .primaryAction) {
-          Button("New Tab", systemImage: "plus") {
-            actions.newTab()
-            dismiss()
-          }
-          .accessibilityIdentifier("tab-overview-new")
         }
       }
     }
@@ -184,15 +183,29 @@ public struct TabOverviewSheet: View {
   }
 
   private func move(from source: IndexSet, to destination: Int) {
-    let visible = matches
-    guard let first = source.first, visible.indices.contains(first) else { return }
+    if let move = Self.move(from: source, to: destination, visible: matches, in: state.tabs) {
+      actions.move(move.id, move.index)
+    }
+  }
+
+  /// Where a row dragged in the (filtered) list lands in the whole strip.
+  /// - Parameters:
+  ///   - source: The row's position in the list.
+  ///   - destination: The list position it's inserted before.
+  ///   - visible: The list's tabs.
+  ///   - tabs: The whole strip.
+  /// - Returns: The tab and the strip index it ends up at, or `nil` when it stays.
+  static func move(
+    from source: IndexSet, to destination: Int, visible: [TabItemState], in tabs: [TabItemState]
+  ) -> (id: String, index: Int)? {
+    guard let first = source.first, visible.indices.contains(first) else { return nil }
     let moved = visible[first]
     // `destination` inserts before a row of the (filtered) list; find that row in the whole
     // strip without the moved tab, which is the index the tab ends up at.
-    let others = state.tabs.map(\.id).filter { $0 != moved.id }
+    let others = tabs.map(\.id).filter { $0 != moved.id }
     let index: Int
     if destination < visible.count {
-      guard visible[destination].id != moved.id else { return }
+      guard visible[destination].id != moved.id else { return nil }
       index = others.firstIndex(of: visible[destination].id) ?? others.count
     } else if let last = visible.last(where: { $0.id != moved.id }),
       let position = others.firstIndex(of: last.id)
@@ -201,7 +214,7 @@ public struct TabOverviewSheet: View {
     } else {
       index = others.count
     }
-    actions.move(moved.id, index)
+    return (moved.id, index)
   }
 }
 
