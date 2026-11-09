@@ -20,7 +20,7 @@ nonisolated private let fixtureRoot = URL(fileURLWithPath: #filePath)
   .appending(path: "client-core/fixtures")
 
 /// The `response` of a recorded `{request, status, response}` envelope, as JSON text.
-nonisolated private func recorded(_ path: String) throws -> String {
+nonisolated func recorded(_ path: String) throws -> String {
   let data = try Data(contentsOf: fixtureRoot.appending(path: path))
   let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
   let response = try #require(object["response"])
