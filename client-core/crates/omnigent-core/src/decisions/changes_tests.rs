@@ -4,6 +4,7 @@
 use omnigent_protocol::{ElicitationRequest, FromWire};
 use serde_json::{Value, json};
 
+use super::changes::format_preview;
 use super::*;
 
 const SESSION_RS: &str = "/Users/dev/omnigent/client-core/crates/omnigent-core/src/auth/session.rs";
@@ -267,4 +268,12 @@ fn other_preview_shapes_never_invent_files() {
         })),
         vec![change("/b", Some(Write), Some(0), None)]
     );
+}
+
+#[test]
+fn deep_nesting_cannot_inflate_a_preview_without_bound() {
+    // Each level used to add a line indented by its depth: 50k brackets asked for 2.5 GB.
+    let formatted = format_preview(&"[".repeat(50_000)).unwrap();
+    assert!(formatted.len() < 50_000 * 200, "{}", formatted.len());
+    assert!(formatted.starts_with("[\n  [\n    [\n"));
 }

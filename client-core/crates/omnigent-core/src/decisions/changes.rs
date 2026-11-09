@@ -482,6 +482,8 @@ pub(super) fn format_preview(raw: &str) -> Option<String> {
 /// Line breaks and two-space indents around JSON structure, leaving strings untouched.
 fn reindent(text: &str) -> String {
     const INDENT: &str = "  ";
+    // Past this depth the indent stops growing: a `[[[[...` preview must not inflate quadratically.
+    const MAX_INDENT_LEVELS: usize = 64;
     let mut out = String::with_capacity(text.len() * 2);
     let mut depth = 0_usize;
     let mut in_string = false;
@@ -489,7 +491,7 @@ fn reindent(text: &str) -> String {
     let mut chars = text.chars().peekable();
     let newline = |out: &mut String, depth: usize| {
         out.push('\n');
-        for _ in 0..depth {
+        for _ in 0..depth.min(MAX_INDENT_LEVELS) {
             out.push_str(INDENT);
         }
     };
