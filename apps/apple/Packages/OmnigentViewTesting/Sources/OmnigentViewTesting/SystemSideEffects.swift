@@ -99,7 +99,9 @@
       }
       guard isFirst else { return }
       installFalsePassGuard()
-      RunnerLoopShield.install()
+      guard RunnerLoopShield.isRequested else {
+        fatalError("The runner loop shield didn't start: a stopped run loop would end the run.")
+      }
       installPasteboard()
       installWorkspace()
       installPanels()

@@ -165,6 +165,16 @@
       #expect(log.deleted == ["bordered", "borderless", "default"])
     }
 
+    @Test("a stop queued as a synchronous test returns doesn't end the run")
+    func stopAsSyncTestReturns() {
+      let screen = OffscreenWindow(Text("Still"), width: 100, height: 100)
+      // After close, whose run loop would otherwise take the stop.
+      screen.close()
+      CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue) {
+        CFRunLoopStop(CFRunLoopGetMain())
+      }
+    }
+
     @Test("hovering a view reports entering it, and ending the hover reports leaving")
     func hover() throws {
       let log = Log()
