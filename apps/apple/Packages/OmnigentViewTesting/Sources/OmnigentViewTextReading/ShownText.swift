@@ -4,20 +4,35 @@
   import SwiftUI
   import OmnigentViewDebugBootstrap
 
+  /// Any SwiftUI host, whatever its content: a `List` row and a sheet each have their own.
+  private protocol ViewTreeHosting {
+    var viewTree: [_ViewDebug.Data] { get }
+  }
+
+  extension NSHostingView: ViewTreeHosting {
+    fileprivate var viewTree: [_ViewDebug.Data] { _viewDebugData() }
+  }
+
   // A test target opts in by depending on this product: linking it turns on SwiftUI's view tree
   // recording for that target's whole test process.
   extension OffscreenWindow {
     /// The text the view draws now, one string per text view, read from SwiftUI's view tree. Text
-    /// that is laid out counts even when it is transparent or scrolled out of the window.
+    /// that is laid out counts even when it is transparent or scrolled out of the window. That
+    /// includes the rows a `List` has made and a sheet over the window, not rows it hasn't made.
     /// - Returns: The strings; they are not in layout order.
     /// - Throws: `OffscreenWindowError` when SwiftUI doesn't report its tree.
     public func shownText() throws -> [String] {
-      let tree = host._viewDebugData()
-      guard omnigent_view_debug_is_enabled() != 0, !tree.isEmpty else {
+      guard omnigent_view_debug_is_enabled() != 0, !host._viewDebugData().isEmpty else {
         throw OffscreenWindowError.notFound("SwiftUI's view tree")
       }
       var found: [String] = []
-      for node in tree { try ShownTextReader.collect(node, into: &found) }
+      var pending = [window.contentView, window.attachedSheet?.contentView].compactMap(\.self)
+      while let view = pending.popLast() {
+        if let hosting = view as? any ViewTreeHosting {
+          for node in hosting.viewTree { try ShownTextReader.collect(node, into: &found) }
+        }
+        pending.append(contentsOf: view.subviews)
+      }
       return found
     }
 
