@@ -72,6 +72,7 @@ pub(super) fn parse(text: &str) -> Result<Json, NotJson> {
         bytes: text.as_bytes(),
         text,
         at: 0,
+        depth: 0,
     };
     let value = reader.value()?.ok_or(NotJson)?;
     reader.whitespace();
@@ -85,7 +86,12 @@ struct Reader<'a> {
     bytes: &'a [u8],
     text: &'a str,
     at: usize,
+    depth: usize,
 }
+
+/// The deepest nesting read, as `serde_json`: a server's `[[[[...` must not overflow the stack,
+/// which would abort the app rather than fail the parse.
+const MAX_DEPTH: usize = 128;
 
 /// `Ok(None)`: the cut ran through a scalar, which is dropped.
 type Step = Result<Option<Json>, NotJson>;
@@ -115,8 +121,9 @@ impl Reader<'_> {
         self.whitespace();
         match self.peek() {
             None => Ok(None),
-            Some(b'{') => self.object().map(Some),
-            Some(b'[') => self.array().map(Some),
+            Some(b'{' | b'[') if self.depth >= MAX_DEPTH => Err(NotJson),
+            Some(b'{') => self.nested(Self::object),
+            Some(b'[') => self.nested(Self::array),
             Some(b'"') => Ok(self.string()?.map(Json::String)),
             Some(b't') => self.literal("true", Json::Bool(true)),
             Some(b'f') => self.literal("false", Json::Bool(false)),
@@ -124,6 +131,13 @@ impl Reader<'_> {
             Some(b'-' | b'0'..=b'9') => self.number(),
             Some(_) => Err(NotJson),
         }
+    }
+
+    fn nested(&mut self, container: fn(&mut Self) -> Result<Json, NotJson>) -> Step {
+        self.depth += 1;
+        let parsed = container(self);
+        self.depth -= 1;
+        parsed.map(Some)
     }
 
     fn literal(&mut self, word: &str, value: Json) -> Step {
@@ -392,6 +406,16 @@ mod tests {
         let kept = parse(r#"{"a": "b", "#).unwrap();
         assert!(kept.is_cut());
         assert_eq!(kept.text(&["a"]), Some("b"));
+    }
+
+    #[test]
+    fn nesting_past_the_limit_is_not_json_instead_of_a_stack_overflow() {
+        assert_eq!(parse(&"[".repeat(2_000_000)), Err(NotJson));
+        assert_eq!(parse(&r#"{"a":"#.repeat(2_000_000)), Err(NotJson));
+        let at_limit = format!("{}{}", "[".repeat(MAX_DEPTH), "]".repeat(MAX_DEPTH));
+        assert!(matches!(parse(&at_limit), Ok(Json::Array(_, false))));
+        let past_limit = format!("{}{}", "[".repeat(MAX_DEPTH + 1), "]".repeat(MAX_DEPTH + 1));
+        assert_eq!(parse(&past_limit), Err(NotJson));
     }
 
     #[test]
