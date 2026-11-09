@@ -124,12 +124,17 @@ struct MCPPane: View {
           Button("Cancel", role: .cancel) { close() }
           Button("Connect") { connect(service) }
             .keyboardShortcut(.defaultAction)
-            .disabled(token.trimmingCharacters(in: .whitespaces).isEmpty || isConnecting)
+            .disabled(Self.cleanedToken(token).isEmpty || isConnecting)
         }
       }
       .formStyle(.grouped)
       .settingsSheetFrame(width: 420)
     }
+  }
+
+  /// The token to send: copying one often brings a stray space or newline along.
+  static func cleanedToken(_ typed: String) -> String {
+    typed.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   /// The row's second line: the last test's result while connected, else what it is.
@@ -145,7 +150,7 @@ struct MCPPane: View {
     isConnecting = true
     connectFailed = false
     Task {
-      let connected = await actions.connectMCP?(service, token) == true
+      let connected = await actions.connectMCP?(service, Self.cleanedToken(token)) == true
       isConnecting = false
       if connected { close() } else { connectFailed = true }
     }
