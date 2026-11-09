@@ -8,8 +8,8 @@ struct WorkspacePanelDefaults: ViewModifier {
   let workspace: WorkspaceBrowserModel?
   /// The chat's own choice; `nil` until it shows or hides the panel.
   @Binding var choice: WorkspacePanelDefault?
-  @AppStorage(InterfacePreferences.workspacePanelKey) private var panelDefault =
-    WorkspacePanelDefault.collapsed
+  @AppStorage(wrappedValue: .collapsed, InterfacePreferences.workspacePanelKey)
+  private var panelDefault: WorkspacePanelDefault
 
   func body(content: Content) -> some View {
     content

@@ -42,7 +42,15 @@ public enum KeychainModeSelection {
         let kind = "locally signed build"
         let folder = "LocalCredentials"
       #endif
-      let status = probeDataProtectionKeychain()
+      return choice(probed: probeDataProtectionKeychain(), kind: kind, folder: folder)
+    #else
+      return Choice(mode: .dataProtection, credentialDirectory: nil, fallbackReason: nil)
+    #endif
+  }
+
+  #if os(macOS)
+    /// The keychain unless the probe found this build isn't entitled to it.
+    static func choice(probed status: OSStatus, kind: String, folder: String) -> Choice {
       guard status == errSecMissingEntitlement else {
         return Choice(mode: .dataProtection, credentialDirectory: nil, fallbackReason: nil)
       }
@@ -53,12 +61,8 @@ public enum KeychainModeSelection {
           "This \(kind) is not entitled to the data-protection keychain (OSStatus \(status)); "
           + "credentials are kept in files only you can read, in \(directory.path), so they "
           + "survive rebuilds. Team-signed builds use the keychain.")
-    #else
-      return Choice(mode: .dataProtection, credentialDirectory: nil, fallbackReason: nil)
-    #endif
-  }
+    }
 
-  #if os(macOS)
     /// `Application Support/<bundle id>/<folder>`.
     static func credentialDirectory(_ folder: String) -> URL {
       URL.applicationSupportDirectory

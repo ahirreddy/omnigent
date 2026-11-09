@@ -122,7 +122,7 @@
       approve.activation = NotificationActivation(serverURL: url, route: approve.activation.route)
       await DesktopSupervision.perform(
         approve, desktop: desktop, connections: connections,
-        authenticate: { () async throws(SupervisionError) in throw .authenticationFailed })
+        evaluate: { false })
       #expect(issues.all.contains { if case .invalidServerURL = $0 { true } else { false } })
       #expect(issues.failedPosts == 0)
     }
@@ -197,14 +197,14 @@
 
       await DesktopSupervision.perform(
         approve, desktop: desktop, connections: connections,
-        authenticate: { () async throws(SupervisionError) in throw .authenticationFailed })
+        evaluate: { false })
       #expect(try await pending(connection) == before, "nothing was sent")
       #expect(issues.supervision.first?.hasPrefix("A notification action did not run") == true)
       #expect(issues.failedPosts == 1, "the failure tells the user in a notification")
 
       await DesktopSupervision.perform(
         approve, desktop: desktop, connections: connections,
-        authenticate: { () async throws(SupervisionError) in })
+        evaluate: { true })
       #expect(try await pending(connection) == before - 1)
     }
 
@@ -285,6 +285,46 @@
       notifications.offlineHosts.observe([offline])
       try await settle(screen, until: "the offline post") { issues.failedPosts == 2 }
       #expect(notifications.offlineHosts.pending.isEmpty)
+    }
+  }
+
+  extension DesktopAttentionTests {
+    @Test("A passed, refused or failed check of who's approving decides whether it answers")
+    func authenticating() async throws {
+      try await DesktopSupervision.authenticate(evaluate: { true })
+      struct NoFingerprint: Error {}
+      let refusals: [() async throws -> Bool] = [{ false }, { throw NoFingerprint() }]
+      for refusal in refusals {
+        do {
+          try await DesktopSupervision.authenticate(evaluate: refusal)
+          Issue.record("a refusal authenticated")
+        } catch {
+          #expect(error == .authenticationFailed)
+        }
+      }
+    }
+
+    @Test("Notification buttons register where there's a center; a refusal is reported")
+    func registeringCategories() throws {
+      let (desktop, issues) = try desktop()
+      DesktopSupervision.registerCategories(on: desktop, isAvailable: false)
+      #expect(issues.all.isEmpty)
+      // This process has no notification center, so registering is refused rather than posted.
+      DesktopSupervision.registerCategories(on: desktop, isAvailable: true)
+      #expect(issues.failedPosts == 1)
+    }
+
+    @Test("A turn end whose reply can't be read still notifies, and says the read failed")
+    func unreadableReplyPreview() async throws {
+      let connection = try await signedInStore(threeSessionServer())
+      let notifications = try #require(connection.notifications)
+      let (desktop, issues) = try desktop()
+      notifications.notify(notification(.completed, session: "conv_missing"))
+      let url = try #require(Self.server)
+      await DesktopAttention.deliverPending(
+        notifications, list: connection.sessionList, serverURL: url, desktop: desktop)
+      #expect(issues.supervision.first?.hasPrefix("Reply preview not read") == true)
+      #expect(issues.failedPosts == 1, "the plain notification still goes out")
     }
   }
 #endif

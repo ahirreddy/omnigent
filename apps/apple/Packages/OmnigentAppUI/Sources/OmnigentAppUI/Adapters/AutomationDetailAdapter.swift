@@ -12,6 +12,7 @@ struct AutomationDetailAdapter: View {
   let open: (String) -> Void
   let back: @MainActor () -> Void
   let edit: @MainActor () -> Void
+  var readsRunsEvery: Duration = .seconds(30)
 
   var body: some View {
     TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -24,9 +25,9 @@ struct AutomationDetailAdapter: View {
       while !Task.isCancelled {
         await pages.loadAutomationRuns(automation.id)
         do {
-          try await Task.sleep(for: .seconds(30))
+          try await Task.sleep(for: readsRunsEvery)
         } catch {
-          return  // Cancelled: the page closed.
+          break  // Cancelled: the page closed.
         }
       }
     }

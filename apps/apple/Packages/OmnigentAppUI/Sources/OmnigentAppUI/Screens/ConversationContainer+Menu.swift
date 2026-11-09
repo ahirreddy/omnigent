@@ -16,27 +16,40 @@ final class ConversationFailures {
 
 /// A transcript in the web's `.jsonl` export format, for the save panel.
 struct TranscriptExport: FileDocument {
-  static let contentType = UTType(filenameExtension: "jsonl") ?? .json
+  static let contentType = contentType(forExtension: "jsonl")
   static var readableContentTypes: [UTType] { [contentType] }
 
   let text: String
+
+  /// The file's bytes.
+  var fileContents: Data { Data(text.utf8) }
 
   init(text: String) {
     self.text = text
   }
 
-  init(configuration: ReadConfiguration) throws {
-    guard let data = configuration.file.regularFileContents,
-      let text = String(bytes: data, encoding: .utf8)
-    else {
+  /// A transcript read from a file's bytes.
+  init(fileContents: Data?) throws {
+    guard let fileContents, let text = String(bytes: fileContents, encoding: .utf8) else {
       throw CocoaError(.fileReadCorruptFile)
     }
     self.text = text
   }
 
-  func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-    FileWrapper(regularFileWithContents: Data(text.utf8))
+  /// The system's type for an extension, or JSON where it has none.
+  static func contentType(forExtension fileExtension: String) -> UTType {
+    UTType(filenameExtension: fileExtension) ?? .json
   }
+
+  // coverage:off only SwiftUI's save panel can make these; VM flow backlog: export a transcript
+  init(configuration: ReadConfiguration) throws {
+    try self.init(fileContents: configuration.file.regularFileContents)
+  }
+
+  func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+    FileWrapper(regularFileWithContents: fileContents)
+  }
+  // coverage:on
 }
 
 extension ConversationContainer {

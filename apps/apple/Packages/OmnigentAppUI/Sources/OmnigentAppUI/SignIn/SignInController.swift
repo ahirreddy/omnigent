@@ -49,6 +49,10 @@ public final class SignInController {
   @ObservationIgnored var challenge: OidcChallenge?
   #if os(macOS)
     @ObservationIgnored var listener: LoopbackRedirectListener?
+    /// Makes the listener each loopback sign-in waits on.
+    @ObservationIgnored var makeListener: @MainActor () -> LoopbackRedirectListener = {
+      LoopbackRedirectListener()
+    }
   #endif
   /// Shows the sign-in sheet, which waits for the page to come back to `callback`.
   @ObservationIgnored var authenticateInSheet: AuthenticateInSheet = SignInController.systemSheet()
@@ -102,9 +106,9 @@ public final class SignInController {
         reason: reason ?? flowError)
     case .disconnected:
       return .failed(serverUrl: lastServerUrl ?? "", error: flowError)
+    // A sign-in that failed after the server accepted it (for example saving the credential)
+    // leaves the core's phase at signing in; show the failure instead of a spinner.
     case .signingIn(let baseUrl, _) where browserTask == nil && method == nil:
-      // A sign-in that failed after the server accepted it (for example saving the credential)
-      // leaves the core's phase at signing in; show the failure instead of a spinner.
       return .failed(serverUrl: baseUrl, error: flowError)
     default:
       return phase
@@ -151,14 +155,13 @@ public final class SignInController {
       let phase = try await core.connect(
         serverUrl: serverURL, expectedUserId: accounts.user(for: serverURL))
       resolved(phase)
-    } catch let error as CoreError {
+    } catch {
+      let failure = thrownByCore(error)
       // A newer connect replaced this one; its own outcome is what the user sees.
-      if case .InvalidState = error, store.phase != .disconnected { return }
+      if case .InvalidState = failure, store.phase != .disconnected { return }
       // The core moves the phase to `failed` with this error; keep it visible if it did not.
       if case .failed = store.phase { return }
-      flowError = SignInError(error)
-    } catch {
-      flowError = SignInError(.InvalidState(message: String(describing: error)))
+      flowError = SignInError(failure)
     }
   }
 

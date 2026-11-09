@@ -69,4 +69,34 @@ struct AuthModelEdgeTests {
     #expect(AuthActions.previewInviteToken("https://a.test/j?invite=xyz") == "xyz")
     #expect(AuthActions.previewInviteToken("https://a.test/j?invite=") == nil)
   }
+
+  @Test("preview actions do nothing when a sample's control is used, and report a reachable server")
+  @MainActor
+  func inertActions() async throws {
+    let actions = AuthActions.inert
+    actions.connect("https://a.test")
+    let credentials = AccountCredentials(username: "ada", password: "p")
+    actions.submitCredentials(credentials)
+    actions.startBrowserSignIn(.browserTicket)
+    actions.cancel()
+    actions.signOut()
+    actions.retry()
+    actions.forgetServer("https://a.test")
+    actions.createAccount(AccountCreationRequest(kind: .firstAdmin, credentials: credentials))
+    actions.showAccountForm(.createAdmin)
+    let setup = try #require(actions.localSetup)
+    setup.start()
+    setup.recheckCLI()
+    setup.hostAfterSignIn("https://a.test")
+    #expect(setup.showLogs == nil && setup.installCLI == nil)
+    #expect(await actions.checkServer("https://a.test") == .reachable)
+  }
+
+  @Test("a card button is secondary unless it says otherwise")
+  @MainActor
+  func buttonKinds() {
+    let button = AuthButton(title: "Scan", identifier: "auth.scan") {}
+    #expect(button.kind == .secondary)
+    #expect(!button.isBusy)
+  }
 }

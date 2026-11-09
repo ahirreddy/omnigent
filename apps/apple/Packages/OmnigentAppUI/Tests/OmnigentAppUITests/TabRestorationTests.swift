@@ -213,4 +213,77 @@ struct TabRestorationTests {
     #expect(failures.messages.count == 1)
     #expect(session.tabs.group("conv_a").tabs.count == 1, "only its chat")
   }
+
+  private struct Unencodable: Error {}
+
+  @Test("A closing remote tab whose address won't encode says so and still closes")
+  func aRemoteAddressThatWontEncode() async throws {
+    let bound = try await bound(remote: FixtureRemoteBrowser(latency: .milliseconds(1)))
+    defer {
+      bound.screen.close()
+      remove(bound.directory)
+    }
+    let remote = try #require(bound.session.remoteBrowsers)
+    let opened = try #require(
+      await remote.open(sessionID: "conv_a", url: "https://example.com", profile: "work"))
+    let state = try opened.record.encoded()
+    _ = remote.store(sessionID: "conv_a", tabID: opened.tab.id, record: opened.record)
+    let tab = AppTab(
+      content: .remoteBrowser(sessionID: "conv_a", tabID: opened.tab.id), browserState: state)
+    let closed = TabRestoration.closeRemoteTab(
+      tab, in: remote, persistence: bound.persistence, encode: { _ in throw Unencodable() })
+    #expect(closed.browserState == state, "the last saved address stays")
+    #expect(bound.persistence.issue?.description.contains("could not be kept") == true)
+  }
+
+  @Test("A remote tab that opened but won't save says so and adds nothing")
+  func aRemoteRecordThatWontEncode() async throws {
+    let connection = try await signedInStore(threeSessionServer())
+    let session = ServerSession(
+      connection: connection, remoteBrowser: FixtureRemoteBrowser(latency: .milliseconds(1)))
+    final class Failures { var messages: [String] = [] }
+    let failures = Failures()
+    let window = WindowTabs(
+      session: session, context: TabWindowContext(), showAll: {},
+      fail: { failures.messages.append($0) })
+    await window.openRemoteBrowser(
+      in: "conv_a", profile: "work", replacing: nil, encode: { _ in throw Unencodable() })
+    #expect(failures.messages.first?.hasPrefix("The remote browser tab could not be saved") == true)
+    #expect(session.tabs.group("conv_a").tabs.count == 1, "only its chat")
+  }
+
+  @Test("A removed session's saved tabs are forgotten")
+  func removingASession() async throws {
+    let bound = try await bound()
+    defer {
+      bound.screen.close()
+      remove(bound.directory)
+    }
+    let server = try #require(bound.session.connection.connectedServer?.baseUrl)
+    let group = bound.session.tabs.group("conv_a")
+    group.open(.inbox)
+    try await settle(bound.screen, until: "the save") {
+      TabPersistence(directory: bound.directory, debounce: .milliseconds(1))
+        .savedTabs(session: "conv_a", server: server, for: UUID()) != nil
+    }
+    bound.session.tabs.onRemove?(["conv_a"])
+    try await settle(bound.screen, until: "the removal") {
+      TabPersistence(directory: bound.directory, debounce: .milliseconds(1))
+        .savedTabs(session: "conv_a", server: server, for: UUID()) == nil
+    }
+  }
+
+  @Test("Another window is offered the tabs this one holds for a session")
+  func offeringTabsToAnotherWindow() async throws {
+    let bound = try await bound()
+    defer {
+      bound.screen.close()
+      remove(bound.directory)
+    }
+    let server = try #require(bound.session.connection.connectedServer?.baseUrl)
+    let group = bound.session.tabs.group("conv_a")
+    group.open(.inbox)
+    let offered = bound.persistence.savedTabs(session: "conv_a", server: server, for: UUID())
+    #expect(offered?.tabs.contains { $0.content == .inbox } == true)
+  }
 }

@@ -23,14 +23,21 @@ extension ConnectedServerView {
   ) -> some View {
     RemoteBrowserTabContainer(
       session: session, tab: tab, sessionID: sessionID, tabID: tabID,
-      reopen: { url, record in
-        Task {
-          await routes.openRemoteBrowser(
-            in: sessionID, profile: record.profile, url: url, replacing: tab.id)
-        }
-      },
+      reopen: reopenRemoteBrowser(tab, sessionID: sessionID, routes: routes),
       showSessions: { selectionBinding.wrappedValue = nil },
       tabsButton: { tabsButton(routes) })
+  }
+
+  /// A remote tab that ended opens again at a URL, in its place.
+  func reopenRemoteBrowser(
+    _ tab: AppTab, sessionID: String, routes: WindowTabs
+  ) -> @MainActor (String, RemoteBrowserTabRecord) -> Void {
+    { url, record in
+      Task {
+        await routes.openRemoteBrowser(
+          in: sessionID, profile: record.profile, url: url, replacing: tab.id)
+      }
+    }
   }
 
   /// The tab-count button for a page that hides the navigation bar (iPhone).

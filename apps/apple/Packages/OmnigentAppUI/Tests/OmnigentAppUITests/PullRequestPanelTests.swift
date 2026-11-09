@@ -140,6 +140,17 @@ struct PullRequestPanelTests {
     #expect(try shown.shows("No Changes"))
   }
 
+  @Test("The Changes tab says it is loading until the files are read")
+  func changesLoading() async throws {
+    let panel = try await panel(server())
+    await panel.showPullRequest(pullRequestURL)
+    panel.files = .loading
+    let view = try #require(PullRequestPanelSlots.extras(panel, canEdit: true).changes)
+    let shown = OffscreenWindow(view, width: 600, height: 400)
+    defer { shown.close() }
+    #expect(try shown.shows("Loading changes"))
+  }
+
   @Test("Labels, reviewers and merge methods read as chips, the repository's default first")
   func choices() async throws {
     let panel = try await panel(server())

@@ -48,7 +48,8 @@ struct ConversationContainer: View {
   #endif
   @State private var inspectorTab: InspectorTab = DefaultWorkspaceTab.stored().inspectorTab
   @State private var showsGoal = false
-  @State private var modeRoute = ConversationModeRoute()
+  // swiftlint:disable:next private_swiftui_state
+  @State var modeRoute = ConversationModeRoute()
   @State private var textSource = ComposerTextSource()
   @State private var isStopping = false
   @State private var dismissedSendError: CoreError?
@@ -60,8 +61,8 @@ struct ConversationContainer: View {
   @State var forkFlow = ForkFlow()
   @State private var export: TranscriptExport?
   @State private var shareStore: ShareStore?
-  @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
-    false
+  @AppStorage(wrappedValue: false, ComposerPreferences.submitWithCommandReturnKey)
+  private var submitWithCommandReturn: Bool
   @AppStorage(ComposerPreferences.alwaysSteerKey) private var alwaysSteer = true
   @State private var fileLinks: WorkspaceFileLinks?
   // The liveness row's open sheet; a send can open Resume on a Machine.
@@ -80,12 +81,14 @@ struct ConversationContainer: View {
       actions: routed(forkable(actions)), composerActions: composerActions,
       extras: ConversationExtras(
         sessionActions: forkable(sessionActions), slots: workspaceSlots,
-        share: share, forkActions: forkActions, navigation: navigation,
+        share: share(over: shareStore), forkActions: forkActions, navigation: navigation,
         menuContext: menuContext, exportTranscript: exportTranscript,
         shareOpened: { [shareStore] in Task { await shareStore?.load() } }),
       liveRows: ConversationAdapter.liveRows(conversation)
     ) {
-      harnessTerminal
+      ConversationHarnessTerminal(
+        surface: harnessSurface, harness: conversation.header?.settings?.harness,
+        error: terminals?.lastError)
     }
     .modifier(MessageMediaEnvironment(fileLinks: fileLinks, conversation: conversation))
     .task(id: workspace.map(ObjectIdentifier.init)) {
@@ -94,12 +97,9 @@ struct ConversationContainer: View {
     .fileExporter(
       isPresented: Binding(get: { export != nil }, set: { if !$0 { export = nil } }),
       document: export, contentType: TranscriptExport.contentType,
-      defaultFilename: "\(conversation.sessionID).jsonl"
-    ) { result in
-      if case .failure(let error) = result {
-        failures.append("Could not save the transcript: \(error.localizedDescription)")
-      }
-    }
+      defaultFilename: "\(conversation.sessionID).jsonl",
+      onCompletion: exportFinished
+    )
     .alert(
       "Something Went Wrong", isPresented: .constant(!failures.isEmpty),
       actions: { Button("OK") { failures = [] } },
@@ -149,7 +149,7 @@ struct ConversationContainer: View {
     return panelRoute.isShown(default: panelDefault, isSheet: isSheet, $panelRoute)
   }
 
-  private var state: ConversationViewState {
+  var state: ConversationViewState {
     var state = ConversationAdapter.screenState(conversation, summary: summary)
     state.shareUnavailableReason = shareUnavailableReason
     if let terminals { state.terminal = TerminalAdapter.status(terminals.terminals.harness) }
@@ -195,7 +195,7 @@ struct ConversationContainer: View {
   }
 
   /// The Share sheet over the session's grants, once its store exists.
-  private var share: (state: ShareViewState, actions: ShareActions)? {
+  func share(over shareStore: ShareStore?) -> (state: ShareViewState, actions: ShareActions)? {
     guard offersShare, let shareStore else { return nil }
     let link = SidebarAdapter.webURL(server: server, sessionID: conversation.sessionID)
     return (ShareAdapter.state(shareStore, link: link), ShareAdapter.actions(shareStore))
@@ -213,6 +213,13 @@ struct ConversationContainer: View {
     }
   }
 
+  /// The save panel closed: a file that couldn't be written goes in the alert.
+  func exportFinished(_ result: Result<URL, any Error>) {
+    if case .failure(let error) = result {
+      failures.append("Could not save the transcript: \(error.localizedDescription)")
+    }
+  }
+
   /// Attaches the harness TUI once ready (the store keeps it), applying the default view.
   private func attachHarness() {
     guard let terminals else { return }
@@ -220,21 +227,6 @@ struct ConversationContainer: View {
     harnessSurface = terminals.harnessController(
       permissionLevel: conversation.header?.permissionLevel,
       hostID: conversation.header?.settings?.hostId)
-  }
-
-  /// The harness TUI when the core reports it ready, else the package's placeholder.
-  @ViewBuilder private var harnessTerminal: some View {
-    if let harnessSurface {
-      SessionTerminalView(controller: harnessSurface)
-    } else {
-      VStack {
-        TerminalPlaceholderView(harness: conversation.header?.settings?.harness)
-        if let terminals, let error = terminals.lastError {
-          Label(String(describing: error), systemImage: "exclamationmark.triangle")
-            .foregroundStyle(.red)
-        }
-      }
-    }
   }
 
   /// The right panel's tabs, open files and "Open new" menu.

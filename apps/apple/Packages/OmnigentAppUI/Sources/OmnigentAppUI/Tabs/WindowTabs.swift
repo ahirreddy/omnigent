@@ -237,8 +237,10 @@ struct WindowTabs {
   ///   - profile: The browser profile.
   ///   - url: The first page; the host's default when `nil`.
   ///   - id: The tab to replace.
+  ///   - encode: Makes the state the tab saves.
   func openRemoteBrowser(
-    in sessionID: String, profile: String, url: String? = nil, replacing id: String?
+    in sessionID: String, profile: String, url: String? = nil, replacing id: String?,
+    encode: (RemoteBrowserTabRecord) throws -> Data = { try $0.encoded() }
   ) async {
     guard let remote = session.remoteBrowsers else { return }
     guard let opened = await remote.open(sessionID: sessionID, url: url, profile: profile) else {
@@ -247,7 +249,7 @@ struct WindowTabs {
     }
     let record: Data
     do {
-      record = try opened.record.encoded()
+      record = try encode(opened.record)
     } catch {
       fail("The remote browser tab could not be saved: \(error)")
       return

@@ -46,6 +46,22 @@ struct InboxTriageRequestsTests {
       .filter { $0.decision != nil }
   }
 
+  @Test("An answer the server refused stays on its card with the reason")
+  func aRefusedAnswer() async throws {
+    let connection = try await signedInStore(threeSessionServer())
+    let conversation = try #require(connection.conversation("conv_a"))
+    let request = card("req", carrying: "conv_a", target: "conv_a")
+    conversation.decisions.replace([request])
+    await conversation.decisions.resolve(request, with: .approve)
+    guard
+      case .failed(let message) = ConversationAdapter.decisionPhases(conversation.decisions)["req"]
+    else {
+      Issue.record("the card lost its failure")
+      return
+    }
+    #expect(!message.isEmpty)
+  }
+
   @Test("A request carried by two sessions is listed once, under its target")
   func sharedRequests() async throws {
     let open = try await connection(

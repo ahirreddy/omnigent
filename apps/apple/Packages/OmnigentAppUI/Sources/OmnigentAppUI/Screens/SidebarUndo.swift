@@ -13,11 +13,18 @@ struct SidebarUndo: Identifiable {
   /// Undo pill keeps.
   static let worktreeGrace: TimeInterval = 5
 
-  let id = UUID().uuidString
+  let id: String
   let change: Change
   /// The archive also removes worktrees once the grace passes.
-  var removesWorktrees = false
-  var createdAt = Date.now
+  var removesWorktrees: Bool
+  var createdAt: Date
+
+  init(change: Change, removesWorktrees: Bool = false, createdAt: Date = .now) {
+    id = UUID().uuidString
+    self.change = change
+    self.removesWorktrees = removesWorktrees
+    self.createdAt = createdAt
+  }
 
   var banner: UndoBanner? {
     switch change {

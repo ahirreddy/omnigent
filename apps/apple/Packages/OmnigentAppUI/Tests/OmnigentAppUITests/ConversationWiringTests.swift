@@ -193,13 +193,14 @@ struct ConversationWiringTests {
     server.route("/v1/sessions/conv_a/sign-in-link", .json(#"{"pending":false}"#))
     #expect(await open() == .notPending)
 
-    SystemSideEffects.reset()
     server.route(
       "/v1/sessions/conv_a/sign-in-link",
       .json(#"{"pending":true,"url":"https://login.example/x","code":"ABCD"}"#))
     #expect(await open() == .opened(code: "ABCD"))
-    #expect(
-      SystemSideEffects.record.openedURLs.map(\.absoluteString) == ["https://login.example/x"])
+    #expect(wired.opened.urls.map(\.absoluteString) == ["https://login.example/x"])
+
+    wired.opened.succeeds = false
+    #expect(await open() == .failed("The browser did not open https://login.example/x."))
   }
 
   @Test("A link that can't open says so in the alert")

@@ -55,13 +55,13 @@ public enum SceneLinkPlan: Equatable, Sendable {
   ///   - invite: The invite token.
   /// - Returns: The link, or `nil` when `server` is not a URL with a path.
   public static func inviteLink(server: URL, invite: String) -> String? {
-    guard var components = URLComponents(url: server, resolvingAgainstBaseURL: false) else {
-      return nil
+    URLComponents(url: server, resolvingAgainstBaseURL: false).flatMap { server in
+      var components = server
+      while components.path.hasSuffix("/") { components.path.removeLast() }
+      components.path += "/register"
+      components.queryItems = [URLQueryItem(name: "invite", value: invite)]
+      return components.string
     }
-    while components.path.hasSuffix("/") { components.path.removeLast() }
-    components.path += "/register"
-    components.queryItems = [URLQueryItem(name: "invite", value: invite)]
-    return components.string
   }
 }
 

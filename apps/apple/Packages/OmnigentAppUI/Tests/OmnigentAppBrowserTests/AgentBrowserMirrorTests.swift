@@ -122,4 +122,23 @@ struct AgentBrowserMirrorTests {
     #expect(try screen.shows("No Picture of the Page"))
     #expect(try screen.shows("The page's picture could not be read."))
   }
+
+  @Test("The picture is read again while the page shows, and not after")
+  func refreshing() async throws {
+    let picture = try onePixelPNG()
+    let tab = SnapshotTab { picture }
+    let screen = OffscreenWindow(
+      AgentBrowserMirror(tab: tab, refreshInterval: .milliseconds(5)), width: 500, height: 300)
+    let deadline = ContinuousClock.now + .seconds(5)
+    while tab.snapshots < 3, ContinuousClock.now < deadline {
+      screen.settle(0.005)
+      try await Task.sleep(for: .milliseconds(5))
+    }
+    #expect(tab.snapshots >= 3)
+    screen.close()
+    try await Task.sleep(for: .milliseconds(30))
+    let afterClosing = tab.snapshots
+    try await Task.sleep(for: .milliseconds(30))
+    #expect(tab.snapshots == afterClosing)
+  }
 }

@@ -48,6 +48,15 @@ extension SignInController {
     }
   }
 
+  /// The page a challenge names, or why it can't be shown.
+  static func signInPage(_ address: String, of owner: String) throws(WebAuthenticationError) -> URL
+  {
+    guard let url = URL(string: address) else {
+      throw .failed(message: "\(owner) sign-in page is not a URL: \(address)")
+    }
+    return url
+  }
+
   /// Databricks workspace OAuth: a loopback listener and the system browser when the core's
   /// method says so (macOS), else the sign-in sheet intercepting the HTTPS callback it names.
   private func databricksSignIn() async {
@@ -64,14 +73,8 @@ extension SignInController {
       }
       return
     }
-    guard let url = URL(string: challenge.authorizeUrl) else {
-      store.cancelDatabricksSignIn(challenge)
-      flowError = SignInError(
-        category: .oidc,
-        message: "The workspace sign-in page is not a URL: \(challenge.authorizeUrl)")
-      return
-    }
     do {
+      let url = try Self.signInPage(challenge.authorizeUrl, of: "The workspace")
       let callback = try await authenticateInSheet(
         url, .https(host: challenge.callbackHost, path: challenge.callbackPath))
       let completedBefore = store.issues.count
@@ -95,32 +98,34 @@ extension SignInController {
   }
 
   #if os(macOS)
+    /// The challenge for the listener's port; without one, stops listening and says why.
+    func beginDatabricks(
+      port: UInt16, listener: LoopbackRedirectListener
+    ) -> DatabricksChallenge? {
+      let before = store.issues.count
+      if let challenge = store.beginDatabricksSignIn(loopbackPort: port) { return challenge }
+      listener.cancel()
+      if store.issues.count > before, let issue = store.issues.last {
+        flowError = SignInError(issue.error)
+      }
+      return nil
+    }
+
     /// Databricks through the system browser: the published client's `http://localhost`
     /// redirect, received on an ephemeral port (RFC 8252).
     private func databricksLoopbackSignIn() async {
-      let listener = LoopbackRedirectListener()
+      let listener = makeListener()
       self.listener = listener
-      let redirect: URL
+      let port: UInt16
       do {
-        redirect = try await listener.start(path: "/", host: "localhost")
+        port = try Self.loopbackPort(
+          of: try await listener.start(path: "/", host: "localhost"))
       } catch {
+        listener.cancel()
         flowError = Self.listenerError(error)
         return
       }
-      guard let port = redirect.port.flatMap({ UInt16(exactly: $0) }) else {
-        listener.cancel()
-        flowError = SignInError(
-          category: .oidc, message: "The sign-in listener has no port: \(redirect.absoluteString)")
-        return
-      }
-      let before = store.issues.count
-      guard let challenge = store.beginDatabricksSignIn(loopbackPort: port) else {
-        listener.cancel()
-        if store.issues.count > before, let issue = store.issues.last {
-          flowError = SignInError(issue.error)
-        }
-        return
-      }
+      guard let challenge = beginDatabricks(port: port, listener: listener) else { return }
       guard await openInBrowser(challenge.authorizeUrl) else {
         store.cancelDatabricksSignIn(challenge)
         listener.cancel()
@@ -140,7 +145,7 @@ extension SignInController {
 
   private func loopbackSignIn(path: String) async {
     #if os(macOS)
-      let listener = LoopbackRedirectListener()
+      let listener = makeListener()
       self.listener = listener
       let redirect: URL
       do {
@@ -170,14 +175,8 @@ extension SignInController {
 
   private func sheetSignIn(redirectUri: String) async {
     guard let challenge = begin(redirectURI: redirectUri) else { return }
-    guard let url = URL(string: challenge.authorizeUrl) else {
-      store.cancelBrowserSignIn(challenge)
-      flowError = SignInError(
-        category: .oidc,
-        message: "The server's sign-in page is not a URL: \(challenge.authorizeUrl)")
-      return
-    }
     do {
+      let url = try Self.signInPage(challenge.authorizeUrl, of: "The server's")
       let callback = try await authenticateInSheet(url, .customScheme(challenge.callbackScheme))
       await complete(challenge, callbackURL: callback)
     } catch {
@@ -260,7 +259,15 @@ extension SignInController {
   }
 
   #if os(macOS)
-    private static func listenerError(_ error: LoopbackRedirectError) -> SignInError {
+    /// The port a listener's address names, or why it names none.
+    static func loopbackPort(of redirect: URL) throws(LoopbackRedirectError) -> UInt16 {
+      guard let port = redirect.port.flatMap({ UInt16(exactly: $0) }) else {
+        throw .failed(message: "The sign-in listener has no port: \(redirect.absoluteString)")
+      }
+      return port
+    }
+
+    static func listenerError(_ error: LoopbackRedirectError) -> SignInError {
       let detail =
         switch error {
         case .failed(let message): message

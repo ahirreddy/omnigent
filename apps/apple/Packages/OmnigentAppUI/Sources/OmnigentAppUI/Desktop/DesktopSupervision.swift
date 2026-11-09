@@ -15,24 +15,34 @@
     public static func install(
       on desktop: DesktopController, connections: SupervisionConnections = .shared
     ) {
-      if DesktopNotificationCenter.isAvailable {
-        do {
-          try desktop.notifications.setCategories(SupervisionNotificationCategories.all)
-        } catch {
-          desktop.onIssue(.notificationFailed(error))
-        }
-      }
+      registerCategories(on: desktop, isAvailable: DesktopNotificationCenter.isAvailable)
       desktop.notifications.onAction = { response in
         await perform(response, desktop: desktop, connections: connections)
       }
     }
 
+    /// Gives notifications their buttons where this process has a notification center.
+    static func registerCategories(on desktop: DesktopController, isAvailable: Bool) {
+      guard isAvailable else { return }
+      do {
+        try desktop.notifications.setCategories(SupervisionNotificationCategories.all)
+      } catch {
+        desktop.onIssue(.notificationFailed(error))
+      }
+    }
+
+    /// Runs a notification's button, asking the device owner before an approval.
     static func perform(
       _ response: NotificationActionResponse, desktop: DesktopController,
-      connections: SupervisionConnections,
-      authenticate: @MainActor () async throws(SupervisionError) -> Void = {
-        try await Self.authenticate()
-      }
+      connections: SupervisionConnections
+    ) async {
+      await perform(
+        response, desktop: desktop, connections: connections, evaluate: askTheDeviceOwner)
+    }
+
+    static func perform(
+      _ response: NotificationActionResponse, desktop: DesktopController,
+      connections: SupervisionConnections, evaluate: () async throws -> Bool
     ) async {
       let payload: SupervisionPayload
       do {
@@ -46,7 +56,7 @@
         return
       }
       do throws(SupervisionError) {
-        if action == .approve { try await authenticate() }
+        if action == .approve { try await authenticate(evaluate: evaluate) }
         guard let connection = connections.connection(for: payload.serverURL) else {
           throw .notConnected
         }
@@ -58,18 +68,24 @@
       }
     }
 
-    /// Device owner authentication: Touch ID, a paired Watch, or the login password.
-    static func authenticate() async throws(SupervisionError) {
-      let context = LAContext()
+    /// Whether the person passed `evaluate`; anything else is a failed authentication.
+    static func authenticate(evaluate: () async throws -> Bool) async throws(SupervisionError) {
+      let passed: Bool
       do {
-        guard
-          try await context.evaluatePolicy(
-            .deviceOwnerAuthentication, localizedReason: "approve a request from a notification")
-        else { throw SupervisionError.authenticationFailed }
+        passed = try await evaluate()
       } catch {
         throw .authenticationFailed
       }
+      guard passed else { throw .authenticationFailed }
     }
+
+    // coverage:off shows the system's Touch ID prompt; VM flow backlog: approve from a notification
+    /// Device owner authentication: Touch ID, a paired Watch, or the login password.
+    private static func askTheDeviceOwner() async throws -> Bool {
+      try await LAContext().evaluatePolicy(
+        .deviceOwnerAuthentication, localizedReason: "approve a request from a notification")
+    }
+    // coverage:on
 
     private static func notifyFailure(
       _ error: SupervisionError, response: NotificationActionResponse, desktop: DesktopController

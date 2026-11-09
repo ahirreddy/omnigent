@@ -1,17 +1,20 @@
 import Foundation
 import OSLog
-import OmnigentAppBrowser
 import OmnigentAppUI
-import OmnigentBrowser
 import OmnigentUIComponents
+import OmnigentViewTesting
+import OmnigentViewTextReading
 import Testing
+
+@testable import OmnigentAppBrowser
+@testable import OmnigentBrowser
 
 /// The browser host both apps share: pages keyed by tab, the window's ``TabStore`` as the only
 /// closed-tabs stack, and pages a page opens landing in the opener's window.
 @MainActor
 struct BrowserTabHostTests {
   /// A host over an in-memory browser with the system engine, the only engine on iOS.
-  private struct Fixture {
+  struct Fixture {
     let environment: BrowserEnvironment
     let host: BrowserTabHost
     let suite = "BrowserTabHostTests.\(UUID().uuidString)"
@@ -170,5 +173,91 @@ struct BrowserTabHostTests {
     host.windowClosed(window)
     #expect(host.page(page.id) == nil)
     #expect(fixture.environment.recentlyClosed.states.isEmpty)
+  }
+}
+
+/// Pages that aren't where the window expects them.
+extension BrowserTabHostTests {
+  private struct Unencodable: Error {}
+
+  @Test func aPageAlreadyBuiltIsShownAsIs() throws {
+    let fixture = try Fixture()
+    defer { fixture.removeDefaults() }
+    let page = fixture.host.makePage(url: URL(string: "https://example.com/a"))
+    let model = try #require(fixture.host.page(page.id))
+    _ = fixture.host.content(for: page.id, restoring: Data("ignored".utf8), navigation: nil) {}
+    #expect(fixture.host.page(page.id) === model)
+  }
+
+  @Test func aSavedPageThatWontDecodeSaysSoAndBuildsNothing() throws {
+    let fixture = try Fixture()
+    defer { fixture.removeDefaults() }
+    let id = UUID()
+    let view = fixture.host.content(for: id, restoring: Data("not json".utf8), navigation: nil) {}
+    #expect(fixture.host.page(id) == nil)
+    let screen = OffscreenWindow(view, width: 500, height: 300)
+    defer { screen.close() }
+    #expect(try screen.shows("Page Not Restored"))
+  }
+
+  @Test func aTabSavedBeforeItsPageHadStateStartsFresh() throws {
+    let fixture = try Fixture()
+    defer { fixture.removeDefaults() }
+    let id = UUID()
+    _ = fixture.host.content(for: id, restoring: nil, navigation: nil) {}
+    #expect(fixture.host.page(id) != nil)
+    #expect(fixture.host.status(of: id) != nil)
+  }
+
+  @Test func aNewPageWhoseStateWontEncodeStillOpens() throws {
+    let fixture = try Fixture()
+    defer { fixture.removeDefaults() }
+    fixture.host.encodeState = { _ in throw Unencodable() }
+    let page = fixture.host.makePage(url: URL(string: "https://example.com/a"))
+    #expect(page.state == nil)
+    #expect(fixture.host.page(page.id) != nil)
+  }
+
+  @Test func aDetachedWindowNoLongerShowsItsPages() throws {
+    let fixture = try Fixture()
+    defer { fixture.removeDefaults() }
+    let groups = SessionTabGroups()
+    let window = UUID()
+    fixture.host.attach(window: window, tabs: groups)
+    let page = fixture.host.makePage(url: URL(string: "https://example.com/a"))
+    groups.group("s").open(.browser(browserID: page.id), browserState: page.state)
+    #expect(fixture.host.isPageShown(page.id, outside: UUID()))
+    fixture.host.detach(window: window)
+    #expect(!fixture.host.isPageShown(page.id, outside: UUID()))
+    // Without the window, its page stays open for the window that comes back.
+    #expect(fixture.host.page(page.id) != nil)
+    fixture.host.windowClosed(window)
+    #expect(fixture.host.page(page.id) != nil)
+  }
+
+  @Test func aPopupNoSessionCanShowIsClosed() throws {
+    let fixture = try Fixture()
+    defer { fixture.removeDefaults() }
+    let opener = fixture.environment.makeTab(url: URL(string: "https://example.com/a"))
+    let popup = fixture.environment.openTab(
+      url: URL(string: "https://example.com/b"), profileID: opener.profileID, opener: opener)
+    #expect(popup.isClosed)
+    #expect(fixture.host.page(popup.id) == nil)
+  }
+
+  @Test func aPageClosingItselfWithoutATabJustCloses() throws {
+    let fixture = try Fixture()
+    defer { fixture.removeDefaults() }
+    let window = fixture.window()
+    fixture.host.attach(window: UUID(), tabs: window.groups)
+    window.tabs.open(.inbox)
+    let page = fixture.host.makePage(url: URL(string: "https://example.com/a"))
+    let model = try #require(fixture.host.page(page.id))
+    fixture.environment.onCloseTab?(model)
+    #expect(model.isClosed)
+    fixture.environment.onSwitchToTab?(model.id)
+    let stray = fixture.environment.makeTab(url: URL(string: "https://example.com/b"))
+    fixture.environment.onCloseTab?(stray)
+    #expect(stray.isClosed)
   }
 }
