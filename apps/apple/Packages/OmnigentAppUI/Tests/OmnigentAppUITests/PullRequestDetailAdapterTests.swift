@@ -148,6 +148,33 @@ struct PullRequestUnavailableTests {
     case notUnavailable(String)
   }
 
+  @Test func anUnnamedProviderIsStillSaidInWords() throws {
+    var bare = info(nil, availability: .repositoryUnresolved(hint: nil))
+    bare.providerName = nil
+    #expect(try shown(bare).message.contains("the git provider"))
+  }
+
+  @Test func aMergeStateNobodyKnowsSaysSo() {
+    #expect(
+      PullRequestDetailAdapter.merge(detail(mergeState: "WEIRD"))
+        == .blocked("GitHub reports that it can\u{2019}t merge yet."))
+  }
+
+  @Test func aCommentWithoutAnAuthorOrAddressStillShows() {
+    var pullRequest = detail()
+    pullRequest.comments = [
+      PullRequestComment(author: nil, body: "x", createdAt: nil, url: nil)
+    ]
+    let content = PullRequestDetailAdapter.content(
+      detail: .loaded(info(pullRequest)), files: nil, canEdit: false)
+    guard case .ready(let state) = content else {
+      Issue.record("expected the detail, got \(content)")
+      return
+    }
+    #expect(state.comments.first?.author == "Unknown")
+    #expect(state.comments.first?.id == "0")
+  }
+
   @Test func eachReasonSaysWhatToDo() throws {
     #expect(try shown(info(nil, availability: .notAGitRepository)).title == "Not a git repository")
     #expect(try shown(info(nil, availability: .hostOutdated)).title == "Update your host")
