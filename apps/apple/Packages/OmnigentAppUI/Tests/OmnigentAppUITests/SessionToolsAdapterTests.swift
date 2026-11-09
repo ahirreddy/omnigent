@@ -103,6 +103,22 @@ struct SessionToolsAdapterTests {
     #expect(opened.isEmpty)
   }
 
+  @Test("Side Chat and Ask in Side Chat, from the composer and a selection, start the same way")
+  func sideChatEntryPoints() async throws {
+    let store = try await PreviewData.connectedDemoStore()
+    let conversation = try await loaded("demo-design", in: store)
+    let start = try #require(SessionToolsAdapter.sideChat(conversation, routes: routes))
+    conversation.composer.text = ""
+    start()
+    #expect(conversation.composer.text.hasPrefix("/side"))
+
+    var actions = ConversationActions()
+    SessionToolsAdapter.addSelectionActions(to: &actions, store: conversation, routes: routes)
+    conversation.composer.text = ""
+    actions.askInSideChat?("why?")
+    #expect(conversation.composer.text == "/side > why?\n\n")
+  }
+
   @Test("A goal maps to the tray pill with its usage")
   func goalPill() {
     let goal = SessionGoal(

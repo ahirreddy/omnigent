@@ -165,6 +165,16 @@ public struct NewSessionOptionActions {
   }
 }
 
+/// As wide as its label when that fits; a long folder or branch truncates inside the window.
+private struct ChipWidth: ViewModifier {
+  func body(content: Content) -> some View {
+    ViewThatFits(in: .horizontal) {
+      content.fixedSize()
+      content.lineLimit(1).truncationMode(.middle)
+    }
+  }
+}
+
 /// The folder, worktree and repository chips under the new-session composer.
 struct NewSessionOptionsBar: View {
   let options: NewSessionOptions
@@ -287,7 +297,7 @@ struct NewSessionOptionsBar: View {
         options.folder.map { URL(filePath: $0).lastPathComponent } ?? "Choose folder",
         systemImage: "folder")
     }
-    .fixedSize()
+    .modifier(ChipWidth())
     .help(options.folder ?? "Choose the folder the session works in")
     .accessibilityLabel("Folder, \(options.folder ?? "none")")
     .accessibilityIdentifier("new-session-folder")
@@ -317,7 +327,7 @@ struct NewSessionOptionsBar: View {
     } label: {
       Label(options.worktreeTitle, systemImage: "arrow.triangle.branch")
     }
-    .fixedSize()
+    .modifier(ChipWidth())
     .help("Work in the folder, a new worktree branch, or an existing worktree")
     .accessibilityIdentifier("new-session-worktree")
     .popover(isPresented: $isNamingBranch) { branchForm }
@@ -342,7 +352,7 @@ struct NewSessionOptionsBar: View {
       } label: {
         Label(label, systemImage: "arrow.triangle.branch")
       }
-      .fixedSize()
+      .modifier(ChipWidth())
       .foregroundStyle(options.repositories.problem == nil ? .primary : Theme.warning)
       .help(options.repositories.problem ?? "Repositories cloned into the sandbox")
       .accessibilityLabel("Sandbox repositories, \(label)")
@@ -356,42 +366,5 @@ struct NewSessionOptionsBar: View {
         .frame(width: 400)
       }
     }
-  }
-}
-
-/// Names a new worktree's branch and what it starts from.
-struct NewWorktreeBranchForm: View {
-  @Binding var branch: String
-  @Binding var base: String
-  let isValidBranch: (@MainActor (String) -> Bool)?
-  let use: (NewSessionWorktreeChoice) -> Void
-  let cancel: () -> Void
-
-  private var isBranchValid: Bool {
-    let name = branch.trimmingCharacters(in: .whitespaces)
-    return isValidBranch?(name) ?? !name.isEmpty
-  }
-
-  var body: some View {
-    Form {
-      TextField("Branch", text: $branch, prompt: Text("feature/my-change"))
-        .accessibilityIdentifier("new-session-branch")
-      TextField("From", text: $base, prompt: Text("Default branch"))
-        .accessibilityIdentifier("new-session-base-branch")
-      HStack {
-        Spacer()
-        Button("Cancel", action: cancel)
-        Button("Use Branch") {
-          use(
-            .new(
-              branch: branch.trimmingCharacters(in: .whitespaces),
-              base: base.trimmingCharacters(in: .whitespaces)))
-        }
-        .keyboardShortcut(.defaultAction)
-        .disabled(!isBranchValid)
-      }
-    }
-    .padding()
-    .frame(width: 320)
   }
 }

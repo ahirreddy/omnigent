@@ -76,7 +76,9 @@ let package = Package(
     .testTarget(
       name: "OmnigentAppUITests",
       dependencies: [
-        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentAppUI",
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+        .product(name: "OmnigentViewTextReading", package: "OmnigentViewTesting"),
+        "OmnigentAppUI",
         .product(name: "OmnigentStores", package: "OmnigentStores"),
         .product(name: "OmnigentCoreFFI", package: "OmnigentCoreFFI"),
         .product(name: "OmnigentUIComponents", package: "OmnigentUI"),
@@ -91,7 +93,9 @@ let package = Package(
     .testTarget(
       name: "OmnigentAppBrowserTests",
       dependencies: [
-        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentAppBrowser",
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+        .product(name: "OmnigentViewTextReading", package: "OmnigentViewTesting"),
+        "OmnigentAppBrowser",
         "OmnigentAppUI",
         .product(name: "OmnigentBrowser", package: "OmnigentBrowser"),
         .product(name: "OmnigentUIComponents", package: "OmnigentUI"),

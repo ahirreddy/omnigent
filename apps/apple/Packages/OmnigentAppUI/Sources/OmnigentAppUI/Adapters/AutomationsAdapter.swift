@@ -9,6 +9,8 @@ import SwiftUI
 struct AutomationsAdapter: View {
   let connection: ConnectionStore
   let open: (String) -> Void
+  /// Where the guide remembers it was seen.
+  var defaults = UserDefaults.standard
   @State private var filter: AutomationsFilter = .all
   @State private var search = ""
   @State private var editing: Editing?
@@ -50,7 +52,7 @@ struct AutomationsAdapter: View {
             pages: pages, filter: filter, search: search, now: context.date),
           actions: actions(pages))
       }
-      .automationsIntro(connection)
+      .automationsIntro(connection, defaults: defaults)
     }
   }
 
@@ -94,7 +96,7 @@ struct AutomationsAdapter: View {
     )?.absoluteString ?? ""
   }
 
-  private func actions(_ pages: PagesStore) -> AutomationsActions {
+  func actions(_ pages: PagesStore) -> AutomationsActions {
     var actions = AutomationsActions()
     actions.filter = {
       filter = $0

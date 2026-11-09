@@ -101,7 +101,7 @@ public final class ConnectionStore {
     preferenceWatch = Self.watchBackgroundTitles(core)
   }
 
-  private init(startupError: CoreError) {
+  init(startupError: CoreError) {
     core = nil
     notifications = nil
     browserActions = nil

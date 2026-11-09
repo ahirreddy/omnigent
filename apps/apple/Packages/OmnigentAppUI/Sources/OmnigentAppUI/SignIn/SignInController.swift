@@ -50,7 +50,8 @@ public final class SignInController {
   #if os(macOS)
     @ObservationIgnored var listener: LoopbackRedirectListener?
   #endif
-  @ObservationIgnored let presenter = WebAuthenticationPresenter()
+  /// Shows the sign-in sheet, which waits for the page to come back to `callback`.
+  @ObservationIgnored var authenticateInSheet: AuthenticateInSheet = SignInController.systemSheet()
 
   /// Creates a controller.
   /// - Parameters:

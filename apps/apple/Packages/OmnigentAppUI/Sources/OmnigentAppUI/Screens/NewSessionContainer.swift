@@ -15,7 +15,7 @@ struct NewSessionContainer: View {
   let open: @MainActor (String) -> Void
 
   @State private var draft = ""
-  @State private var form = NewSessionForm()
+  @State private var form: NewSessionForm
   @State private var creation: CreationStore?
   @State private var coreMissing = false
   @State private var setupTarget: HarnessSetupTarget?
@@ -32,6 +32,15 @@ struct NewSessionContainer: View {
   @Environment(\.useThisMachine) private var useThisMachine
   @Environment(\.openURL) private var openURL
   @Environment(\.openSettingsAt) private var openSettingsAt
+
+  init(
+    connection: ConnectionStore, form: NewSessionForm = NewSessionForm(),
+    open: @escaping @MainActor (String) -> Void
+  ) {
+    self.connection = connection
+    self.open = open
+    _form = State(initialValue: form)
+  }
 
   var body: some View {
     Group {
@@ -127,7 +136,7 @@ struct NewSessionContainer: View {
     }
   }
 
-  private func actions(_ creation: CreationStore) -> ComposerActions {
+  func actions(_ creation: CreationStore) -> ComposerActions {
     let form = form
     return ComposerActions(
       send: {
@@ -164,7 +173,7 @@ struct NewSessionContainer: View {
       extras: extraActions(creation))
   }
 
-  private func extraActions(_ creation: CreationStore) -> ComposerExtraActions {
+  func extraActions(_ creation: CreationStore) -> ComposerExtraActions {
     let form = form
     // A new agent uploads with the session, so it needs no `agent_install`; importing a bundle
     // installs it. A managed sandbox has no create path for an uploaded bundle.
@@ -177,17 +186,7 @@ struct NewSessionContainer: View {
       }
     }
     var extras = ComposerExtraActions(
-      selectHost: { host in
-        if let provider = NewSessionAdapter.sandboxProvider(hostID: host.id) {
-          if form.sandbox.provider != provider { form.sandbox.profile = nil }
-          form.sandbox.provider = provider
-          form.isSandbox = true
-        } else {
-          form.isSandbox = false
-          form.chooseHost(host.id, creation)
-          form.selectFolder(creation, form.folder)
-        }
-      },
+      selectHost: { host in form.chooseHostRow(host.id, creation) },
       connectHost: { isConnectingHost = true },
       selectApprovalMode: { option in
         form.selection.approvalMode = option.id
@@ -208,7 +207,7 @@ struct NewSessionContainer: View {
     return { await useThisMachine(url) }
   }
 
-  private func optionActions(_ creation: CreationStore) -> NewSessionOptionActions {
+  func optionActions(_ creation: CreationStore) -> NewSessionOptionActions {
     let form = form
     let list = connection.sessionList
     var actions = NewSessionOptionActions(

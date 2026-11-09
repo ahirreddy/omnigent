@@ -21,7 +21,7 @@ struct UsageAdapter: View {
     }
   }
 
-  private func actions(_ pages: PagesStore) -> UsageActions {
+  func actions(_ pages: PagesStore) -> UsageActions {
     var actions = UsageActions { formatCostUsd(costUsd: $0) }
     actions.setRange = { range, start, end in
       window = UsageMapping.Window(range: range, start: start, end: end)

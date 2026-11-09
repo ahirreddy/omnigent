@@ -194,6 +194,51 @@ struct SignInControllerTests {
         .first { $0.name == "redirect_uri" }?.value
       #expect(redirect?.hasPrefix("http://localhost:") == true, "\(redirect ?? "none")")
     }
+
+    /// The workspace's sign-in offered, its browser step answered by `opens`.
+    private func offered(opens: Bool) async throws -> SignInController {
+      let core = try ClientCore(
+        http: FakeHttpTransport(routes: workspaceRoutes), streams: FakeEventStreamTransport(),
+        sockets: FakeWebSocketTransport(), clock: SystemClock(), scheduler: TaskScheduler(),
+        secureStore: InMemorySecureStore(), entropy: FixedEntropySource(),
+        config: HostConfig(
+          urlPolicy: .development, oidcRedirect: .none,
+          databricks: DatabricksOAuthSettings(clientId: "omnigent", redirectUrl: "http://localhost")
+        ))
+      let controller = SignInController(
+        store: ConnectionStore(core: core), opener: ExternalURLOpener { _ in opens },
+        defaults: try scratchDefaults())
+      await controller.connectNow("https://dbc-1.cloud.databricks.com/?o=42")
+      try await waitUntil("the workspace sign-in") {
+        if case .signInRequired = controller.store.phase { return true }
+        return false
+      }
+      return controller
+    }
+
+    @Test("A browser that won't open ends the sign-in and says so", .timeLimit(.minutes(1)))
+    func browserRefuses() async throws {
+      let controller = try await offered(opens: false)
+      controller.actions.startBrowserSignIn(
+        .databricksWorkspace(workspaceHost: "dbc-1.cloud.databricks.com"))
+      try await waitUntil("the failure") { controller.flowError != nil }
+      #expect(!controller.store.isSignedIn)
+    }
+
+    @Test("Cancel while the browser is out brings the sign-in back", .timeLimit(.minutes(1)))
+    func cancelWhileWaiting() async throws {
+      let controller = try await offered(opens: true)
+      controller.actions.startBrowserSignIn(
+        .databricksWorkspace(workspaceHost: "dbc-1.cloud.databricks.com"))
+      try await waitUntil("the sign-in to start") { controller.method != nil }
+      try await Task.sleep(for: .milliseconds(100))
+      controller.actions.cancel()
+      try await waitUntil("the sign-in to come back") {
+        if case .signInRequired = controller.store.phase { return controller.method == nil }
+        return false
+      }
+      #expect(controller.flowError == nil)
+    }
   }
 #endif
 

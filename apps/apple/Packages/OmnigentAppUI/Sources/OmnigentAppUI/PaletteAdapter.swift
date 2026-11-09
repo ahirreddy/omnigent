@@ -26,7 +26,7 @@ struct PaletteAdapter: ViewModifier {
       state: { state }, actions: PaletteActions(perform: perform, search: searchServer(_:limit:)))
   }
 
-  private var state: PaletteViewState {
+  var state: PaletteViewState {
     let connection = session.connection
     let directory = session.signIn.directory
     let managed = directory.managed.map {
@@ -61,7 +61,7 @@ struct PaletteAdapter: ViewModifier {
   }
 
   /// Server matches: titles, and message content ("In messages") with its snippet.
-  private func searchServer(_ query: String, limit: Int) async -> PaletteSearchResults {
+  func searchServer(_ query: String, limit: Int) async -> PaletteSearchResults {
     let list = session.connection.sessionList
     do {
       let titles = try await list.search(query, inMessages: false, limit: UInt32(limit))
@@ -114,7 +114,7 @@ struct PaletteAdapter: ViewModifier {
     }
   }
 
-  private func perform(_ target: PaletteTarget) {
+  func perform(_ target: PaletteTarget) {
     if let destination = Self.destination(target) {
       selection = destination
       return

@@ -32,8 +32,7 @@ extension NewSessionForm {
       catalog?.hosts.contains(where: { $0.hostId == hostID }) == true
     {
       isSandbox = false
-      hostWasChosen = true
-      change(creation) { $0.hostId = hostID }
+      chooseHost(hostID, creation)
     }
     change(creation) {
       if let model = settings.model { $0.model = model }

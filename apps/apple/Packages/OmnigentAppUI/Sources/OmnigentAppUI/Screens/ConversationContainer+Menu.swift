@@ -1,10 +1,18 @@
 import Foundation
+import Observation
 import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
 import OmnigentWorkspaceUI
 import SwiftUI
 import UniformTypeIdentifiers
+
+/// What the conversation's alert reports. An object, so closures made in an earlier render add
+/// to the same list.
+@Observable
+final class ConversationFailures {
+  var messages: [String] = []
+}
 
 /// A transcript in the web's `.jsonl` export format, for the save panel.
 struct TranscriptExport: FileDocument {
@@ -126,6 +134,16 @@ extension ConversationContainer {
         ForkContext(source: source, upToResponseID: responseID, kind: .fromMessage(rowID: row.id)))
     }
     return actions
+  }
+
+  /// Changes the session's agent, or says why that one isn't available.
+  func switchHarness(to agentID: String) {
+    let composer = conversation.composer
+    if let reason = composer.harnessOptions.first(where: { $0.id == agentID })?.unavailableReason {
+      failures.append(reason)
+      return
+    }
+    Task { await composer.switchHarness(to: agentID) }
   }
 
   /// Forks the whole session (the session menu's Fork, the reconnect sheet's way out); `nil`

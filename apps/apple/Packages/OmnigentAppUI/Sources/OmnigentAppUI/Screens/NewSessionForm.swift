@@ -63,7 +63,9 @@ final class NewSessionForm {
     let isOnline = catalog.hosts.contains { $0.hostId == selection.hostId && $0.isAvailable }
     if !hostWasChosen, !isOnline {
       let host = catalog.hosts.first(where: \.isAvailable) ?? catalog.hosts.first
-      selection.hostId = rememberedHost(catalog) ?? host?.hostId ?? selection.hostId
+      let next = rememberedHost(catalog) ?? host?.hostId ?? selection.hostId
+      if !selection.hostId.isEmpty, next != selection.hostId { forgetFolder() }
+      selection.hostId = next
     }
     guard !agentWasChosen, !startsPendingAgent else { return }
     let agent = defaultAgent(catalog)
@@ -86,10 +88,27 @@ final class NewSessionForm {
   /// The user picked `hostID`; an agent they didn't pick follows what is ready there.
   func chooseHost(_ hostID: String, _ creation: CreationStore) {
     hostWasChosen = true
+    if hostID != selection.hostId {
+      forgetFolder()
+      Task { await creation.folderChanged(hostID: hostID, path: "") }
+    }
     selection.hostId = hostID
     if let catalog = creation.catalog.value { applyDefaults(catalog) }
     let selection = selection
     Task { await creation.selectionChanged(selection) }
+  }
+
+  /// The Host menu's row: a new sandbox of a provider, or a machine. Picking the machine already
+  /// selected keeps its folder and worktree.
+  func chooseHostRow(_ rowID: String, _ creation: CreationStore) {
+    if let provider = NewSessionAdapter.sandboxProvider(hostID: rowID) {
+      if sandbox.provider != provider { sandbox.profile = nil }
+      sandbox.provider = provider
+      isSandbox = true
+    } else {
+      isSandbox = false
+      chooseHost(rowID, creation)
+    }
   }
 
   /// Edits the selection and reloads the host's folders and the agent's models.
@@ -116,7 +135,8 @@ final class NewSessionForm {
     selection.planMode = false
   }
 
-  static let hostCheckInterval = Duration.seconds(2)
+  /// How often a page with no host looks for one.
+  @ObservationIgnored var hostCheckInterval = Duration.seconds(2)
 
   /// Reloads hosts and agents after a setup, an install or a new host, keeping what the user
   /// chose.
@@ -141,6 +161,14 @@ final class NewSessionForm {
     Task { await creation.folderChanged(hostID: hostID, path: path) }
   }
 
+  /// A folder is a path on one machine: on leaving the host, the next one fills its own.
+  private func forgetFolder() {
+    folder = ""
+    worktree = .none
+    seededFolderHost = nil
+    applyWorktree()
+  }
+
   /// Applies the worktree choice to the selection's git block and workspace.
   func applyWorktree() {
     let resolved = NewSessionAdapter.git(worktree, folder: folder)
@@ -161,6 +189,9 @@ final class NewSessionForm {
       selection.approvalMode = creationApprovalModeMenu(agent: agent)?.selected
     }
     if isSandbox {
+      // The composer offers no model on a new sandbox, so one picked on a host doesn't follow.
+      selection.model = nil
+      selection.reasoningEffort = nil
       let target = sandbox.target(creation.catalog.value)
       Task {
         await creation.createInSandbox(selection, target: target, title: "", firstMessage: text)
@@ -197,7 +228,7 @@ final class NewSessionForm {
     guard needsHost(creation) else { return }
     while needsHost(creation) {
       do {
-        try await Task.sleep(for: Self.hostCheckInterval)
+        try await Task.sleep(for: hostCheckInterval)
       } catch {
         // Cancelled: the screen left, or a host connected.
         return

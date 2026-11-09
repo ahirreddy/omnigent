@@ -131,3 +131,71 @@ struct PullRequestDetailAdapterTests {
     #expect(PullRequestAdapter.summary(merged, live: .checksFailing).status == .merged)
   }
 }
+
+/// Why a session's Pull Requests tab has nothing to show, and what the person can do about it.
+@MainActor
+struct PullRequestUnavailableTests {
+  private func shown(_ info: PullRequestInfo) throws -> (title: String, message: String) {
+    let content = PullRequestDetailAdapter.content(
+      detail: .loaded(info), files: nil, canEdit: true)
+    guard case .unavailable(let title, let message, _) = content else {
+      throw PullRequestError.notUnavailable("\(content)")
+    }
+    return (title, message)
+  }
+
+  private enum PullRequestError: Error {
+    case notUnavailable(String)
+  }
+
+  @Test func anUnnamedProviderIsStillSaidInWords() throws {
+    var bare = info(nil, availability: .repositoryUnresolved(hint: nil))
+    bare.providerName = nil
+    #expect(try shown(bare).message.contains("the git provider"))
+  }
+
+  @Test func aMergeStateNobodyKnowsSaysSo() {
+    #expect(
+      PullRequestDetailAdapter.merge(detail(mergeState: "WEIRD"))
+        == .blocked("GitHub reports that it can\u{2019}t merge yet."))
+  }
+
+  @Test func aCommentWithoutAnAuthorOrAddressStillShows() {
+    var pullRequest = detail()
+    pullRequest.comments = [
+      PullRequestComment(author: nil, body: "x", createdAt: nil, url: nil)
+    ]
+    let content = PullRequestDetailAdapter.content(
+      detail: .loaded(info(pullRequest)), files: nil, canEdit: false)
+    guard case .ready(let state) = content else {
+      Issue.record("expected the detail, got \(content)")
+      return
+    }
+    #expect(state.comments.first?.author == "Unknown")
+    #expect(state.comments.first?.id == "0")
+  }
+
+  @Test func eachReasonSaysWhatToDo() throws {
+    #expect(try shown(info(nil, availability: .notAGitRepository)).title == "Not a git repository")
+    #expect(try shown(info(nil, availability: .hostOutdated)).title == "Update your host")
+    #expect(
+      try shown(info(nil, availability: .unsupportedRemote(remoteHost: "git.example"))).message
+        .contains("git.example"))
+    #expect(
+      try shown(info(nil, availability: .unsupportedRemote(remoteHost: nil))).title
+        == "No supported remote")
+    #expect(
+      try shown(info(nil, availability: .repositoryUnresolved(hint: "Run gh auth login"))).message
+        == "Run gh auth login")
+    #expect(
+      try shown(info(nil, availability: .repositoryUnresolved(hint: nil))).message
+        == "Sign in to GitHub on the session\u{2019}s host, then refresh.")
+    #expect(try shown(info(nil, availability: .unavailable)).title == "Pull request unavailable")
+  }
+
+  @Test func aHostsWarningExplainsAReadThatFailed() throws {
+    var warned = info(nil, availability: .unavailable)
+    warned.warnings = ["GitHub says no"]
+    #expect(try shown(warned).message == "GitHub says no")
+  }
+}

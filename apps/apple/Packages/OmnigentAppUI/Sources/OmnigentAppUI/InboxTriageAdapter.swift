@@ -10,6 +10,8 @@ struct InboxTriageAdapter: View {
   let open: (String) -> Void
   /// Shows a comment's file in its session's right panel: path, character offset, session.
   var openFile: ((String, UInt64?, String) -> Void)?
+  /// Where this device's read marks live.
+  var defaults = UserDefaults.standard
   @State private var ownedSessions: Set<String> = []
   @State private var readRevisions: [String: Double] = [:]
   @State private var banner: TransientBanner?
@@ -18,7 +20,7 @@ struct InboxTriageAdapter: View {
     "omnigent.inbox.read.\(connection.connectedServer?.baseUrl ?? "").\(connection.connectedServer?.userId ?? "")"
   }
 
-  private var seenCommentsKey: String {
+  var seenCommentsKey: String {
     "omnigent.inbox.seenComments.\(connection.connectedServer?.baseUrl ?? "").\(connection.connectedServer?.userId ?? "")"
   }
 
@@ -54,7 +56,7 @@ struct InboxTriageAdapter: View {
     )
     .transientBanner($banner)
     .onAppear {
-      readRevisions = UserDefaults.standard.dictionary(forKey: readKey) as? [String: Double] ?? [:]
+      readRevisions = defaults.dictionary(forKey: readKey) as? [String: Double] ?? [:]
       connection.pages?.bindSeenComments(key: seenCommentsKey)
     }
     .task(id: commentSignature) {
@@ -77,7 +79,7 @@ struct InboxTriageAdapter: View {
     }
   }
 
-  private var actions: InboxActions {
+  var actions: InboxActions {
     let pages = connection.pages
     var actions = InboxActions(
       open: { item in
@@ -125,7 +127,7 @@ struct InboxTriageAdapter: View {
       Task { await connection.markSeen(item.sessionId) }
     } else {
       readRevisions[item.id] = item.date.timeIntervalSince1970
-      UserDefaults.standard.set(readRevisions, forKey: readKey)
+      defaults.set(readRevisions, forKey: readKey)
     }
   }
 

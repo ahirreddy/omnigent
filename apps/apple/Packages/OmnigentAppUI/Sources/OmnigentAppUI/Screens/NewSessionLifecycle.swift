@@ -30,8 +30,8 @@ struct NewSessionLifecycle: ViewModifier {
       .task(id: form.needsHost(creation)) {
         await form.waitForHost(creation)
       }
-      .task(id: form.folderSeedTrigger(creation)) {
-        await form.seedFolder(creation, sessions: connection.sessionList.visible)
+      .task(id: form.folderSeedTrigger(creation, list: connection.sessionList)) {
+        await form.seedFolder(creation, list: connection.sessionList)
       }
       .task(id: form.isSandbox ? form.sandbox.provider ?? "" : nil) {
         if form.isSandbox, let sandboxes = form.sandboxes {
