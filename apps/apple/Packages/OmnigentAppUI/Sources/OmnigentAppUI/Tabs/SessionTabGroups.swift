@@ -3,7 +3,7 @@ public import Observation
 public import OmnigentUIComponents
 
 /// A window's tabs, scoped per session. Each session owns a ``TabStore``: its primary chat, side
-/// chats, terminals, agent TUI and the browser tabs opened from it. The window shows one page:
+/// chats, terminals and the browser tabs opened from it. The window shows one page:
 /// a session, with its tabs in the strip, or a session-less page (New Session, Inbox, Canvas,
 /// Automations, Usage) at full size with no strip. Showing another session swaps the whole strip;
 /// coming back shows its tabs as they were, the selected one included.
@@ -25,6 +25,8 @@ public final class SessionTabGroups {
   public private(set) var recentSessions: [String] = []
   /// Tabs in the order they were last shown, across sessions, the most recent first.
   @ObservationIgnored private(set) var recentTabs: [String] = []
+  /// Each chat's Chat or Terminal choice, by session (see ``viewChoice(_:)``).
+  @ObservationIgnored var viewChoices: [String: SessionViewChoice] = [:]
 
   /// Reads a session's saved tabs when its group is made.
   @ObservationIgnored public var loadSaved: (@MainActor (String) -> TabWindowSnapshot?)?
@@ -145,11 +147,11 @@ public final class SessionTabGroups {
   public func group(_ sessionID: String) -> TabStore {
     if let group = groups[sessionID] { return group }
     let loaded = loadSaved?(sessionID)
+    // Tabs saved on the agent's terminal, when it had a tab of its own: the chat shows it.
+    if let loaded, Self.selectsHarness(loaded) { setViewMode(.terminal, for: sessionID) }
     var saved = Self.normalized(loaded ?? TabWindowSnapshot(), for: sessionID)
     if let pageInUse { saved = Self.reassigningPages(saved, inUse: pageInUse) }
     let group = TabStore(saved)
-    // Remembered tabs are the user's: the default transcript view applies to new ones only.
-    if loaded != nil { group.transcriptDefaultApplied.insert(sessionID) }
     group.willClose = willClose
     group.onChange = { [weak self] in self?.groupChanged(sessionID) }
     groups[sessionID] = group
@@ -166,6 +168,7 @@ public final class SessionTabGroups {
       if let group = groups.removeValue(forKey: sessionID) { retire(group) }
     }
     recentSessions.removeAll(where: sessionIDs.contains)
+    viewChoices = viewChoices.filter { !sessionIDs.contains($0.key) }
     if let shown = currentSessionID, sessionIDs.contains(shown) {
       page = recentSessions.first.map(SidebarDestination.session)
       onChange?(nil)
@@ -181,6 +184,7 @@ public final class SessionTabGroups {
     for group in previous.values { retire(group) }
     recentSessions = []
     recentTabs = []
+    viewChoices = [:]
     if page != nil { page = nil }
   }
 
@@ -217,12 +221,13 @@ public final class SessionTabGroups {
 
 extension SessionTabGroups {
   /// Whether a tab of this kind lives in a session's group: the session's own tabs, browser
-  /// pages and the new-tab page. Session-less pages show at full size instead.
+  /// pages and the new-tab page. Session-less pages show at full size instead, and the agent's
+  /// terminal shows in the session's chat.
   nonisolated static func belongsInGroup(_ content: AppTabContent) -> Bool {
     switch content {
-    case .newSession, .inbox, .canvas, .automations, .usage: false
-    case .newTab, .chat, .terminal, .harness, .sideChat, .sideChatSession, .browser,
-      .agentBrowser, .remoteBrowser:
+    case .newSession, .inbox, .canvas, .automations, .usage, .harness: false
+    case .newTab, .chat, .terminal, .sideChat, .sideChatSession, .browser, .agentBrowser,
+      .remoteBrowser:
       true
     }
   }

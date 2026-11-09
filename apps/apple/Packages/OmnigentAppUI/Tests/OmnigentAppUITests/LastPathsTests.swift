@@ -72,7 +72,7 @@ struct LastPathsTests {
     let session = try ServerSession.demo()
     session.tabs.showChat("s1")
     let store = try #require(session.tabs.current)
-    let moved = AppTab(content: .harness(sessionID: "s1"))
+    let moved = AppTab(content: .terminal(sessionID: "s1", terminalID: "t1"))
     store.adopt([moved])
     #expect(store.selected?.id == moved.id)
     store.adopt([moved])

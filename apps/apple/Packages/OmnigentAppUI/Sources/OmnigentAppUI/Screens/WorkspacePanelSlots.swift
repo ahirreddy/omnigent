@@ -101,8 +101,8 @@ struct WorkspacePanelSlots {
     }
   }
 
-  /// "Open new": the agent's terminal, a new shell per declared terminal, the session's running
-  /// shells, and a browser. Each opens as a window tab.
+  /// "Open new": the agent's terminal (the chat's Terminal view), a new shell per declared
+  /// terminal, the session's running shells, and a browser, each in a window tab.
   private var openNew: [InspectorMenuSection] {
     guard let tabRoutes else { return [] }
     var sections: [InspectorMenuSection] = []

@@ -35,16 +35,12 @@ extension WindowTabs {
     if subagentsApart, let openInNewWindow {
       routes.openChild = openInNewWindow
     }
-    // Settings › Default transcript view: Terminal opens the agent's TUI tab the first time
-    // the session's chat shows; after that, and for remembered tabs, the tabs are the user's.
-    // It never changes which session the window shows.
-    let groups = groups
+    // Settings › Default transcript view: Terminal shows the agent's TUI the first time the
+    // session's chat shows in this window; after that the choice is the user's.
+    let choice = groups.viewChoice(sessionID)
     routes.applyDefaultView = {
-      let group = groups.group(sessionID)
-      guard group.transcriptDefaultApplied.insert(sessionID).inserted,
-        TranscriptViewDefault.stored() == .terminal
-      else { return }
-      group.open(.harness(sessionID: sessionID))
+      guard choice.mode == nil else { return }
+      choice.mode = TranscriptViewDefault.stored() == .terminal ? .terminal : .chat
     }
     return routes
   }

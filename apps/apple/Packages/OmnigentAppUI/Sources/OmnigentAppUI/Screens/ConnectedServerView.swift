@@ -322,9 +322,9 @@ extension ConnectedServerView {
         TerminalTabView(
           session: session, sessionID: sessionID, terminalID: terminalID,
           showChat: { tabs.showChat(sessionID) })
+      // The agent's terminal shows in its session's chat; a tab left for it shows that chat.
       case .harness(let sessionID):
-        HarnessTabView(
-          session: session, sessionID: sessionID, showChat: { tabs.showChat(sessionID) })
+        detail(.session(sessionID))
       case .sideChat(let sessionID, let rowID):
         SideChatTabContainer(
           session: session, sessionID: sessionID, rowID: rowID,

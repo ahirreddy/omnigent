@@ -236,15 +236,8 @@
         isRegular: true, showsProjectTag: true, mode: .constant(.chat),
         showsInspector: inspector.binding, showsInfo: .constant(false), showShare: {},
         titleMenu: AnyView(EmptyView()))
-      let screen = OffscreenWindow(
-        NavigationStack { Color.clear.toolbar { ConversationToolbar(items: items) } },
-        width: 900, height: 400)
+      let screen = toolbarWindow(items)
       defer { screen.close() }
-      screen.window.contentView = nil
-      screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
-      screen.host.sceneBridgingOptions = [.toolbars, .title]
-      screen.window.contentView = screen.host
-      screen.settle(0.5)
       #expect(screen.window.toolbar?.items.map(\.label) == ["Add to project", "Right panel"])
       try screen.press(keyCode: 30, characters: "]", modifiers: [.command, .option])
       #expect(inspector.value)
@@ -277,6 +270,47 @@
       try await letTasksRun(screen, milliseconds: 100)
       #expect(log.entries == ["answer"])
       #expect(screen.window.firstResponder === screen.textView, "the composer takes the typing")
+    }
+  }
+
+  extension ViewBehaviorGapsTests {
+    /// A window whose toolbar holds a conversation's items, as the app's windows show them.
+    private func toolbarWindow(_ items: ConversationToolbarItems) -> OffscreenWindow<some View> {
+      let screen = OffscreenWindow(
+        NavigationStack { Color.clear.toolbar { ConversationToolbar(items: items) } },
+        width: 900, height: 400)
+      screen.window.contentView = nil
+      screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
+      screen.host.sceneBridgingOptions = [.toolbars, .title]
+      screen.window.contentView = screen.host
+      screen.settle(0.5)
+      return screen
+    }
+
+    /// The labels of the toolbar items a chat with a ready terminal shows, spaces left out.
+    private func toolbarLabels(offersTerminal: Bool, tabsInTitlebar: Bool) -> [String] {
+      let items = ConversationToolbarItems(
+        state: ConversationViewState(header: TranscriptFixture.header, terminal: .ready),
+        extras: ConversationExtras(), offersTerminal: offersTerminal,
+        tabsInTitlebar: tabsInTitlebar, isRegular: true, showsProjectTag: false,
+        mode: .constant(.chat), showsInspector: .constant(false), showsInfo: .constant(false),
+        showShare: {}, titleMenu: AnyView(EmptyView()))
+      let screen = toolbarWindow(items)
+      defer { screen.close() }
+      return (screen.window.toolbar?.items.map(\.label) ?? []).filter { !$0.isEmpty }
+    }
+
+    @Test("With the tabs in the titlebar, Chat / Terminal leads the trailing toolbar items")
+    func viewSwitchBesideTheTabs() {
+      #expect(
+        toolbarLabels(offersTerminal: true, tabsInTitlebar: true)
+          == ["View", "Session", "Right panel"])
+      #expect(
+        toolbarLabels(offersTerminal: false, tabsInTitlebar: true)
+          == ["Session", "Right panel"], "a chat without a terminal has no switch")
+      #expect(
+        toolbarLabels(offersTerminal: true, tabsInTitlebar: false) == ["View", "Right panel"],
+        "without tabs the switch holds the middle")
     }
   }
 #endif

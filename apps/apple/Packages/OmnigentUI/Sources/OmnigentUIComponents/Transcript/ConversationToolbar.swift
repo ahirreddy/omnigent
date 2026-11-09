@@ -6,8 +6,8 @@ extension EnvironmentValues {
   @Entry var hostsConversationToolbar = false
 }
 
-/// The conversation's trailing toolbar items and what they act on: viewers, Agent info, the
-/// project tag, the session menu, Share and the right-panel toggle.
+/// The conversation's toolbar items and what they act on: the Chat / Terminal switch, viewers,
+/// Agent info, the project tag, the session menu, Share and the right-panel toggle.
 struct ConversationToolbarItems {
   let state: ConversationViewState
   let extras: ConversationExtras
@@ -38,10 +38,10 @@ struct ConversationToolbar: ToolbarContent {
   let items: ConversationToolbarItems
 
   var body: some ToolbarContent {
-    // With tabs in the titlebar, the agent's TUI is its own tab (Option-Command-\\ opens it);
-    // at compact width the switch leads the title menu, so the title stays.
-    if items.offersTerminal, !items.tabsInTitlebar, items.isRegular {
-      ToolbarItem(placement: .principal) {
+    // The tabs hold the titlebar's middle, so the switch leads the trailing items there; at
+    // compact width it leads the title menu, so the title stays.
+    if items.offersTerminal, items.isRegular {
+      ToolbarItem(placement: items.tabsInTitlebar ? .primaryAction : .principal) {
         ViewModePicker(mode: items.mode, status: items.state.terminal)
       }
     }
