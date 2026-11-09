@@ -947,17 +947,21 @@ impl<T: HttpTransport> ClientCore<T> {
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    pub(super) async fn load_changed_files(&self, session_id: &str, environment_id: &str) {
+    pub(super) async fn load_changed_files(
+        &self,
+        session_id: &str,
+        environment_id: &str,
+    ) -> Option<ChangedFilesUpdate> {
         let key = (session_id.to_owned(), environment_id.to_owned());
         let connection_epoch = {
             let mut state = lock(&self.state);
             if !state.live_sessions.contains(session_id) {
-                return;
+                return None;
             }
             let fetch = state.changed_files.entry(key.clone()).or_default();
             fetch.epoch = fetch.epoch.wrapping_add(1);
             if fetch.in_flight {
-                return;
+                return None;
             }
             fetch.in_flight = true;
             state.epoch
@@ -976,7 +980,7 @@ impl<T: HttpTransport> ClientCore<T> {
             let mut state = lock(&self.state);
             if state.epoch != connection_epoch || !state.live_sessions.contains(session_id) {
                 state.changed_files.remove(&key);
-                return;
+                return None;
             }
             let fetch = state.changed_files.entry(key.clone()).or_default();
             if fetch.epoch != started {
@@ -989,9 +993,9 @@ impl<T: HttpTransport> ClientCore<T> {
             state.events.push(ClientEvent::ChangedFiles {
                 session_id: session_id.to_owned(),
                 environment_id: environment_id.to_owned(),
-                update,
+                update: update.clone(),
             });
-            return;
+            return Some(update);
         }
     }
 

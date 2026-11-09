@@ -128,21 +128,7 @@ impl<T: HttpTransport> ClientCore<T> {
         environment_id: &str,
     ) -> Option<SyncUpdate> {
         let session_id = sync.session_id().to_owned();
-        let before = lock(&self.state).events.len();
-        self.load_changed_files(&session_id, environment_id).await;
-        let update = {
-            let state = lock(&self.state);
-            state.events.get(before..).and_then(|events| {
-                events.iter().rev().find_map(|event| match event {
-                    super::ClientEvent::ChangedFiles {
-                        session_id: id,
-                        environment_id: environment,
-                        update,
-                    } if *id == session_id && environment == environment_id => Some(update.clone()),
-                    _ => None,
-                })
-            })
-        };
+        let update = self.load_changed_files(&session_id, environment_id).await;
         self.dispatch();
         update.map(|update| sync.set_changed_files(environment_id, update.into()))
     }

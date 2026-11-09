@@ -11,6 +11,7 @@ use super::sessions::SessionSummary;
 use super::sessions::test_support::{summary_of, wire};
 use super::test_support::{Reply, RouteTransport, envelopes, fixture_lines, live, still_pending};
 use crate::config::session::{ConfigurationEdit, ConfigurationError};
+use crate::reconcile::ConversationSync;
 
 const CONFIG: &str = "sessions/SessionConfiguration--";
 const PATH: &str = "/v1/sessions/conv_a";
@@ -770,4 +771,46 @@ fn an_expired_sign_in_during_the_host_preview_ends_the_read() {
         matches!(got, Err(SessionError::Unauthorized { .. })),
         "{got:?}"
     );
+}
+
+#[test]
+fn a_changed_files_refresh_overlapping_a_settings_save_keeps_its_result() {
+    const CHANGES: &str = "/v1/sessions/conv_a/resources/environments/default/changes";
+    let transport = RouteTransport::local();
+    stub_session(&transport, &fields());
+    transport.ok(
+        "/v1/sessions/conv_a/items",
+        r#"{"data":[],"has_more":false}"#,
+    );
+    let acknowledged = merged(&json!({"reasoning_effort": "low"}));
+    transport.respond(Some("PATCH"), PATH, None, patched(&acknowledged));
+    transport.ok(
+        CHANGES,
+        r#"{"entries":[{"path":"src/lib.rs","status":"modified"}]}"#,
+    );
+    let save_gate = transport.gate("PATCH", PATH);
+    let changes_gate = transport.gate("GET", CHANGES);
+    let core = live(transport);
+    let mut sync = ConversationSync::new("conv_a");
+    let request = sync.open_stream();
+    block_on(core.hydrate(&mut sync, &request)).unwrap();
+    let mut edit = edit_from(&fields());
+    edit.effort = Some("low".into());
+    // The save's snapshot read leaves an undelivered event, delivered while the refresh reads.
+    let mut save = pin!(core.apply_configuration(&edit, "conv_a"));
+    assert!(still_pending(save.as_mut()));
+    let refreshed = {
+        let mut refresh = pin!(core.refresh_changed_files(&mut sync, "default"));
+        assert!(still_pending(refresh.as_mut()));
+        save_gate.open();
+        block_on(save).unwrap();
+        changes_gate.open();
+        block_on(refresh)
+    };
+    assert!(refreshed.is_some(), "the refresh lost its result");
+    let files = sync
+        .published()
+        .and_then(|snapshot| snapshot.event_state.changed_files.clone())
+        .unwrap();
+    assert!(files.contains_key("default"));
 }
