@@ -5,13 +5,16 @@ import SwiftUI
 // MARK: Tab pages
 
 extension ConnectedServerView {
-  /// The New Tab page, loading what its recent sessions offer (browser profiles, terminals).
+  /// The New Tab page, opening its session and loading what it offers (side chat, browser
+  /// profiles, terminals).
   func newTabPage(_ tab: AppTab, routes: WindowTabs) -> some View {
-    NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: tab.id))
-      .task(id: routes.newTabState.recentSessions.map(\.id)) {
-        let recent = routes.newTabState.recentSessions.map(\.id)
-        async let profiles: Void = session.loadRemoteBrowserProfiles(recent.first)
-        await session.loadDeclaredTerminalNames(recent)
+    let sessionID = session.tabs.currentSessionID
+    return NewTabPage(state: routes.newTabState, actions: routes.newTabActions(replacing: tab.id))
+      .task(id: sessionID) {
+        guard let sessionID else { return }
+        session.open(sessionID)
+        async let profiles: Void = session.loadRemoteBrowserProfiles(sessionID)
+        await session.loadDeclaredTerminalNames([sessionID])
         await profiles
       }
   }

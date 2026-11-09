@@ -186,6 +186,12 @@ private struct ShortcutAliases: View {
       // leave a split window with no way to toggle its sidebar.
       focus(.leading, KeyboardShortcut("{", modifiers: [.command, .option]))
       focus(.trailing, KeyboardShortcut("}", modifiers: [.command, .option]))
+      Button("Show Next Tab") { tabs?.selectNextTab?() }
+        .keyboardShortcut(AppShortcuts.nextTabAlias)
+        .disabled(tabs?.selectNextTab == nil)
+      Button("Show Previous Tab") { tabs?.selectPreviousTab?() }
+        .keyboardShortcut(AppShortcuts.previousTabAlias)
+        .disabled(tabs?.selectPreviousTab == nil)
     }
     .opacity(0)
     .frame(width: 0, height: 0)

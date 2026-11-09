@@ -91,6 +91,10 @@ public enum AppShortcuts {
   public static let nextTab = KeyboardShortcut(.tab, modifiers: .control)
   /// The previous tab.
   public static let previousTab = KeyboardShortcut(.tab, modifiers: [.control, .shift])
+  /// The next tab, with Safari's Shift-Command-]. Shift turns ] into }.
+  public static let nextTabAlias = KeyboardShortcut("}", modifiers: .command)
+  /// The previous tab, with Safari's Shift-Command-[.
+  public static let previousTabAlias = KeyboardShortcut("{", modifiers: .command)
   /// Every tab in a list.
   public static let showAllTabs = KeyboardShortcut("\\", modifiers: [.command, .shift])
   /// A session's terminal, or back to its chat.
@@ -147,14 +151,18 @@ public enum AppShortcuts {
   /// - Parameter shortcut: The shortcut.
   /// - Returns: For example "⌥⌘R" or "⌃Tab".
   public static func text(_ shortcut: KeyboardShortcut) -> String {
+    let unshifted = shiftedKeys[shortcut.key.character]
     let modifiers = shortcut.modifiers
     var text = ""
     if modifiers.contains(.control) { text += "⌃" }
     if modifiers.contains(.option) { text += "⌥" }
-    if modifiers.contains(.shift) { text += "⇧" }
+    if modifiers.contains(.shift) || unshifted != nil { text += "⇧" }
     if modifiers.contains(.command) { text += "⌘" }
-    return text + keyName(shortcut.key)
+    return text + (unshifted ?? keyName(shortcut.key))
   }
+
+  /// Keys bound by their shifted character, which the menu bar shows as Shift and the key.
+  private static let shiftedKeys: [Character: String] = ["{": "[", "}": "]"]
 
   /// The key's name or glyph.
   /// - Parameter key: The key.

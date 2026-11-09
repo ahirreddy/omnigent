@@ -1,70 +1,75 @@
 public import SwiftUI
 
-/// What the new-tab page offers.
+/// The terminals a session's agent declares, as the new-tab page offers them.
+nonisolated public enum NewTabTerminals: Hashable, Sendable {
+  /// Not known yet: Terminal starts the default shell.
+  case unknown
+  /// The declared names; empty when the agent declares none.
+  case declared([String])
+}
+
+/// What the new-tab page offers. Everything opens in the page's session.
 nonisolated public struct NewTabPageState: Hashable, Sendable {
-  /// Recent sessions: quick links, and the targets for a new terminal.
-  public var recentSessions: [SessionSummary]
+  /// The session the page's tabs open in.
+  public var sessionTitle: String?
   /// Whether this build can open a browser tab.
   public var canOpenBrowser: Bool
-  /// The terminals each session's agent declares, by session id. A session that is missing is
-  /// not known yet and offers the default shell; an empty list explains that the agent declares
-  /// none.
-  public var terminalNames: [String: [String]]
+  /// The terminals the session's agent declares.
+  public var terminals: NewTabTerminals
   /// The remote browser profiles on the agent's machine; empty offers the default profile.
   public var remoteBrowserProfiles: [String]
 
   /// Creates the state.
   /// - Parameters:
-  ///   - recentSessions: Recent sessions, most recent first.
+  ///   - sessionTitle: The page's session.
   ///   - canOpenBrowser: Browser tabs are available.
-  ///   - terminalNames: Declared terminals by session id.
+  ///   - terminals: The session's declared terminals.
   ///   - remoteBrowserProfiles: Remote browser profiles.
   public init(
-    recentSessions: [SessionSummary] = [], canOpenBrowser: Bool = false,
-    terminalNames: [String: [String]] = [:], remoteBrowserProfiles: [String] = []
+    sessionTitle: String? = nil, canOpenBrowser: Bool = false,
+    terminals: NewTabTerminals = .unknown, remoteBrowserProfiles: [String] = []
   ) {
-    self.recentSessions = recentSessions
+    self.sessionTitle = sessionTitle
     self.canOpenBrowser = canOpenBrowser
-    self.terminalNames = terminalNames
+    self.terminals = terminals
     self.remoteBrowserProfiles = remoteBrowserProfiles
   }
 }
 
-/// What the new-tab page does. Each action replaces the new tab with what it opens.
+/// What the new-tab page does. Each action replaces the new tab with what it opens in the
+/// page's session.
 public struct NewTabPageActions {
-  /// Start a session (the new-session form).
-  public var newSession: @MainActor () -> Void
-  /// Open a new terminal in a session: the session id and a declared terminal name, or `nil`
-  /// for the default shell when the declared names are not known.
-  public var newTerminal: (@MainActor (String, String?) -> Void)?
+  /// Start a side chat of the session; `nil` hides it.
+  public var newSideChat: (@MainActor () -> Void)?
+  /// Open a new terminal: a declared terminal name, or `nil` for the default shell when the
+  /// declared names are not known.
+  public var newTerminal: (@MainActor (String?) -> Void)?
   /// Open a browser tab.
   public var openBrowser: (@MainActor () -> Void)?
-  /// Open a session's conversation.
-  public var openSession: @MainActor (String) -> Void
-  /// Open a remote browser tab for a session in a profile; `nil` hides it.
-  public var openRemoteBrowser: (@MainActor (String, String) -> Void)?
+  /// Open a remote browser tab in a profile; `nil` hides it.
+  public var openRemoteBrowser: (@MainActor (String) -> Void)?
 
   /// Creates the actions.
   /// - Parameters:
-  ///   - newSession: New session.
-  ///   - newTerminal: New terminal in a session; `nil` hides Terminal.
+  ///   - newSideChat: Side chat; `nil` hides it.
+  ///   - newTerminal: New terminal; `nil` hides Terminal.
   ///   - openBrowser: Browser; `nil` hides it.
-  ///   - openSession: Open a session.
+  ///   - openRemoteBrowser: Remote browser; `nil` hides it.
   public init(
-    newSession: @escaping @MainActor () -> Void = {},
-    newTerminal: (@MainActor (String, String?) -> Void)? = nil,
+    newSideChat: (@MainActor () -> Void)? = nil,
+    newTerminal: (@MainActor (String?) -> Void)? = nil,
     openBrowser: (@MainActor () -> Void)? = nil,
-    openSession: @escaping @MainActor (String) -> Void = { _ in }
+    openRemoteBrowser: (@MainActor (String) -> Void)? = nil
   ) {
-    self.newSession = newSession
+    self.newSideChat = newSideChat
     self.newTerminal = newTerminal
     self.openBrowser = openBrowser
-    self.openSession = openSession
+    self.openRemoteBrowser = openRemoteBrowser
   }
 }
 
-/// The new-tab page (Command-T): New session, Terminal (in a recent session) and Browser, then
-/// the recent sessions.
+/// The new-tab page (Command-T): a side chat, terminal, browser or remote browser in the
+/// session.
 public struct NewTabPage: View {
   private let state: NewTabPageState
   private let actions: NewTabPageActions
@@ -72,7 +77,7 @@ public struct NewTabPage: View {
 
   /// Creates the page.
   /// - Parameters:
-  ///   - state: Recent sessions and what is available.
+  ///   - state: The session and what is available.
   ///   - actions: What it opens.
   public init(state: NewTabPageState, actions: NewTabPageActions) {
     self.state = state
@@ -83,12 +88,21 @@ public struct NewTabPage: View {
   public var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: Theme.Spacing.section) {
-        Text("New Tab")
-          .font(Theme.Typography.title)
-          .accessibilityAddTraits(.isHeader)
-        launchers
-        if !state.recentSessions.isEmpty {
-          recent
+        VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+          Text("New Tab")
+            .font(Theme.Typography.title)
+            .accessibilityAddTraits(.isHeader)
+          if let sessionTitle = state.sessionTitle {
+            Text("Opens in \(sessionTitle)")
+              .foregroundStyle(.secondary)
+              .lineLimit(1)
+          }
+        }
+        if hasLaunchers {
+          launchers
+        } else {
+          Text("Nothing in this session opens in a tab.")
+            .foregroundStyle(.secondary)
         }
       }
       .frame(maxWidth: 640, alignment: .leading)
@@ -100,30 +114,22 @@ public struct NewTabPage: View {
     .accessibilityIdentifier("newtab-page")
   }
 
+  private var hasLaunchers: Bool {
+    actions.newSideChat != nil || actions.newTerminal != nil
+      || (state.canOpenBrowser && actions.openBrowser != nil) || actions.openRemoteBrowser != nil
+  }
+
   private var launchers: some View {
     let columns = [GridItem(.adaptive(minimum: 170), spacing: Theme.Spacing.medium)]
     return LazyVGrid(columns: columns, alignment: .leading, spacing: Theme.Spacing.medium) {
-      launcher(
-        "New Session", detail: "Start an agent on a task", systemImage: "square.and.pencil",
-        identifier: "newtab-session", action: actions.newSession)
+      if let newSideChat = actions.newSideChat {
+        launcher(
+          "Side Chat", detail: "Ask about this session without interrupting it",
+          systemImage: TabKind.sideChat.systemImage, identifier: "newtab-side-chat",
+          action: newSideChat)
+      }
       if let newTerminal = actions.newTerminal {
-        Menu {
-          if state.recentSessions.isEmpty {
-            Text("Open a session first")
-          }
-          ForEach(state.recentSessions.prefix(12)) { session in
-            terminalChoices(session, newTerminal: newTerminal)
-          }
-        } label: {
-          LauncherLabel(
-            title: "Terminal", detail: "A shell in a session's sandbox",
-            systemImage: "terminal")
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .disabled(state.recentSessions.isEmpty)
-        .accessibilityIdentifier("newtab-terminal")
+        terminal(newTerminal)
       }
       if state.canOpenBrowser, let openBrowser = actions.openBrowser {
         launcher(
@@ -131,56 +137,53 @@ public struct NewTabPage: View {
           identifier: "newtab-browser", action: openBrowser)
       }
       if let openRemoteBrowser = actions.openRemoteBrowser {
-        Menu {
-          if state.recentSessions.isEmpty {
-            Text("Open a session first")
-          }
-          ForEach(state.recentSessions.prefix(12)) { session in
-            Menu(session.title) {
-              let profiles =
-                state.remoteBrowserProfiles.isEmpty ? ["default"] : state.remoteBrowserProfiles
-              ForEach(profiles, id: \.self) { profile in
-                Button(profile) { openRemoteBrowser(session.id, profile) }
-                  .accessibilityIdentifier("newtab-remote-browser-\(session.id)-\(profile)")
-              }
-            }
-            .accessibilityIdentifier("newtab-remote-browser-\(session.id)")
-          }
-        } label: {
-          LauncherLabel(
-            title: "Remote Browser", detail: "A browser on the agent's machine",
-            systemImage: TabKind.remoteBrowser.systemImage)
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .disabled(state.recentSessions.isEmpty)
-        .accessibilityIdentifier("newtab-remote-browser")
+        remoteBrowser(openRemoteBrowser)
       }
     }
   }
 
-  /// A session's terminals: its declared names, a disabled note when it declares none, or the
-  /// default shell while the names are unknown.
+  /// The session's terminals: the default shell while its declared names are unknown, a
+  /// disabled note when it declares none, its one terminal, or a menu of them.
   @ViewBuilder
-  private func terminalChoices(
-    _ session: SessionSummary, newTerminal: @escaping @MainActor (String, String?) -> Void
-  ) -> some View {
-    switch state.terminalNames[session.id] {
-    case nil:
-      Button(session.title) { newTerminal(session.id, nil) }
-    case let names? where names.isEmpty:
-      Button("\(session.title): no terminals declared") {}
-        .disabled(true)
-        .help("This session's agent declares no terminals.")
-    case let names? where names.count == 1:
-      Button("\(session.title) \u{2014} \(names[0])") { newTerminal(session.id, names[0]) }
-    case let names?:
-      Menu(session.title) {
-        ForEach(names, id: \.self) { name in
-          Button(name) { newTerminal(session.id, name) }
-        }
-      }
+  private func terminal(_ newTerminal: @escaping @MainActor (String?) -> Void) -> some View {
+    switch state.terminals {
+    case .unknown:
+      launcher(
+        "Terminal", detail: "A shell in this session's sandbox", systemImage: "terminal",
+        identifier: "newtab-terminal", action: { newTerminal(nil) })
+    case .declared(let names) where names.isEmpty:
+      launcher(
+        "Terminal", detail: "This session's agent declares no terminals",
+        systemImage: "terminal", identifier: "newtab-terminal", action: {}
+      )
+      .disabled(true)
+    case .declared(let names) where names.count == 1:
+      launcher(
+        "Terminal", detail: names[0], systemImage: "terminal", identifier: "newtab-terminal",
+        action: { newTerminal(names[0]) })
+    case .declared(let names):
+      launcherMenu(
+        LauncherLabel(
+          title: "Terminal", detail: "\(names.count) terminals", systemImage: "terminal"),
+        identifier: "newtab-terminal", choices: names, choose: newTerminal)
+    }
+  }
+
+  /// A remote browser in the default profile, the machine's one profile, or a menu of them.
+  @ViewBuilder
+  private func remoteBrowser(_ open: @escaping @MainActor (String) -> Void) -> some View {
+    let profiles = state.remoteBrowserProfiles.isEmpty ? ["default"] : state.remoteBrowserProfiles
+    let detail = "A browser on the agent's machine"
+    if profiles.count == 1 {
+      launcher(
+        "Remote Browser", detail: detail, systemImage: TabKind.remoteBrowser.systemImage,
+        identifier: "newtab-remote-browser", action: { open(profiles[0]) })
+    } else {
+      launcherMenu(
+        LauncherLabel(
+          title: "Remote Browser", detail: detail,
+          systemImage: TabKind.remoteBrowser.systemImage),
+        identifier: "newtab-remote-browser", choices: profiles, choose: open)
     }
   }
 
@@ -195,45 +198,22 @@ public struct NewTabPage: View {
     .accessibilityIdentifier(identifier)
   }
 
-  private var recent: some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      Text("Recent Sessions")
-        .font(Theme.Typography.section)
-        .foregroundStyle(.secondary)
-        .textCase(.uppercase)
-      VStack(spacing: 0) {
-        ForEach(state.recentSessions.prefix(8)) { session in
-          Button {
-            actions.openSession(session.id)
-          } label: {
-            HStack(spacing: Theme.Spacing.medium) {
-              Image(systemName: TabKind.chat.systemImage)
-                .accessibilityHidden(true)
-                .foregroundStyle(.secondary)
-                .frame(width: Theme.Control.icon)
-              VStack(alignment: .leading, spacing: 2) {
-                Text(session.title).lineLimit(1)
-                if !session.agentName.isEmpty {
-                  Text(HarnessAppearance.agentName(session.agentName, harness: nil))
-                    .font(.caption).foregroundStyle(.secondary)
-                }
-              }
-              Spacer(minLength: 0)
-              if session.attention == .needsYou {
-                Circle().fill(Theme.attention).frame(width: 7, height: 7)
-              }
-            }
-            .padding(.vertical, Theme.Spacing.small)
-            .padding(.horizontal, Theme.Spacing.medium)
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .hoverHighlight()
-          .accessibilityIdentifier("newtab-recent-\(session.id)")
-        }
+  private func launcherMenu(
+    _ label: LauncherLabel, identifier: String, choices: [String],
+    choose: @escaping @MainActor (String) -> Void
+  ) -> some View {
+    Menu {
+      ForEach(choices, id: \.self) { choice in
+        Button(choice) { choose(choice) }
+          .accessibilityIdentifier("\(identifier)-\(choice)")
       }
-      .cardSurface(cornerRadius: Theme.Radius.medium)
+    } label: {
+      label
     }
+    .menuStyle(.button)
+    .buttonStyle(.plain)
+    .menuIndicator(.hidden)
+    .accessibilityIdentifier(identifier)
   }
 }
 

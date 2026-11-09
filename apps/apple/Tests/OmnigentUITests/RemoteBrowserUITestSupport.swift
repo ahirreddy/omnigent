@@ -68,17 +68,11 @@ struct RemoteBrowserUITestSupport {
     XCTAssertTrue(launcher.waitForExistence(timeout: 20), "the new-tab page has no Remote Browser")
     try shot("new-tab")
     launcher.tap()
-    let session = app.buttons["newtab-remote-browser-\(sessionID)"].firstMatch
-    XCTAssertTrue(session.waitForExistence(timeout: 10), "the launcher does not list the session")
-    session.tap()
-    // UIKit drops identifiers inside a submenu: match the profile by its title there.
+    // Several profiles are a menu; the machine's only profile opens at once.
     let profile = app.buttons.matching(
-      NSPredicate(
-        format: "identifier == %@ OR label == 'default'",
-        "newtab-remote-browser-\(sessionID)-default")
+      NSPredicate(format: "identifier == 'newtab-remote-browser-default' OR label == 'default'")
     ).firstMatch
-    XCTAssertTrue(profile.waitForExistence(timeout: 10), "no default profile to choose")
-    profile.tap()
+    if profile.waitForExistence(timeout: 5) { profile.tap() }
   }
 
   /// A new tab: the tab strip's + where there is a strip (iPad), else the session's tab

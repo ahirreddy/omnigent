@@ -82,8 +82,7 @@
       #expect(actions.moveToNewWindow == nil)
 
       let newTab = NewTabPageActions()
-      newTab.newSession()
-      newTab.openSession("s")
+      #expect(newTab.newSideChat == nil)
       #expect(newTab.newTerminal == nil)
       #expect(newTab.openBrowser == nil)
     }

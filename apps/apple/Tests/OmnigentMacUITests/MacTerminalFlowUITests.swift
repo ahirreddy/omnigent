@@ -13,7 +13,7 @@ final class MacTerminalFlowUITests: XCTestCase {
     super.tearDown()
   }
 
-  /// The New Tab page's Terminal launcher opens a shell on the chosen session.
+  /// The New Tab page's Terminal launcher opens a shell in the page's session.
   @MainActor
   func testNewTabPageOpensATerminal() throws {
     let live = MacLiveUITestSupport(self)
@@ -24,7 +24,11 @@ final class MacTerminalFlowUITests: XCTestCase {
     app.typeKey("t", modifierFlags: .command)
 
     live.click(live.element("newtab-terminal", in: app), "the Terminal launcher")
-    live.clickMenuItem("UI test fixture", in: app)
+    // Several declared terminals are a menu; one, or none known yet, starts at once.
+    let choice = app.menuItems.matching(
+      NSPredicate(format: "identifier BEGINSWITH 'newtab-terminal-'")
+    ).firstMatch
+    if choice.waitForExistence(timeout: 3) { choice.click() }
     XCTAssertTrue(
       live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
     XCTAssertTrue(live.element("terminal-tab", in: app).waitForExistence(timeout: 30))

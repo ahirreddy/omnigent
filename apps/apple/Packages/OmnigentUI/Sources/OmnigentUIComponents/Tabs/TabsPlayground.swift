@@ -70,9 +70,7 @@ public struct TabsPlayground: View {
         if let remoteBrowser { remoteBrowser } else { SamplePage(tab: tab) }
       case .newTab, .newSession, .inbox, .canvas, .automations, .usage:
         NewTabPage(
-          state: NewTabPageState(
-            recentSessions: Array(PreviewData.sessions.prefix(5)), canOpenBrowser: true,
-            terminalNames: TabsPlaygroundModel.terminalNames),
+          state: TabsPlaygroundModel.newTabState,
           actions: newTabActions)
       }
     }
@@ -82,13 +80,11 @@ public struct TabsPlayground: View {
 
 extension TabsPlayground {
   fileprivate var newTabActions: NewTabPageActions {
-    var actions = NewTabPageActions(
-      newSession: {},
-      newTerminal: { _, name in model.replaceSelected(.terminal, name ?? "zsh") },
+    NewTabPageActions(
+      newSideChat: { model.replaceSelected(.sideChat, "Side chat 1") },
+      newTerminal: { name in model.replaceSelected(.terminal, name ?? "zsh") },
       openBrowser: { model.replaceSelected(.browser, "Omnigent") },
-      openSession: { model.openChat($0) })
-    actions.openRemoteBrowser = { _, _ in model.replaceSelected(.remoteBrowser, "example.com") }
-    return actions
+      openRemoteBrowser: { _ in model.replaceSelected(.remoteBrowser, "example.com") })
   }
 }
 
@@ -145,13 +141,11 @@ final class TabsPlaygroundModel {
     return tab
   }
 
-  /// Declared terminals: two for the first session, none for the second; the rest unknown.
-  static var terminalNames: [String: [String]] {
-    let ids = PreviewData.sessions.map(\.id)
-    var names: [String: [String]] = [:]
-    if let first = ids.first { names[first] = ["zsh", "bash"] }
-    if ids.count > 1 { names[ids[1]] = [] }
-    return names
+  /// The sample session's new-tab page: two declared terminals and two browser profiles.
+  static var newTabState: NewTabPageState {
+    NewTabPageState(
+      sessionTitle: PreviewData.sessions.first?.title, canOpenBrowser: true,
+      terminals: .declared(["zsh", "bash"]), remoteBrowserProfiles: ["default", "work"])
   }
 
   /// The running chat, with the conversation's status line as its tooltip.

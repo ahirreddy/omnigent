@@ -193,6 +193,29 @@
       #expect(log.events == ["pane leading", "pane trailing"])
     }
 
+    @Test("Shift-Command-] and Shift-Command-[ show the next and previous tab")
+    func tabAliases() throws {
+      let log = CommandLog()
+      var tabs = TabCommandActions()
+      tabs.selectNextTab = { log.events.append("next tab") }
+      tabs.selectPreviousTab = { log.events.append("previous tab") }
+      let screen = OffscreenWindow(PaletteRoot(log: log, tabs: tabs), width: 640, height: 560)
+      defer { screen.close() }
+      try pressReal(screen, "}", ignoring: "}", [.command, .shift])
+      try pressReal(screen, "{", ignoring: "{", [.command, .shift])
+      #expect(log.events == ["next tab", "previous tab"])
+    }
+
+    @Test("with one tab the tab keys do nothing")
+    func tabAliasesWithOneTab() throws {
+      let log = CommandLog()
+      let screen = OffscreenWindow(
+        PaletteRoot(log: log, tabs: TabCommandActions()), width: 640, height: 560)
+      defer { screen.close() }
+      try pressReal(screen, "}", ignoring: "}", [.command, .shift])
+      #expect(log.events.isEmpty)
+    }
+
     @Test("without split panes the pane keys do nothing, and the sidebar key still works")
     func aliasesWithoutSplit() throws {
       let log = CommandLog()

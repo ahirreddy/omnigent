@@ -37,19 +37,16 @@ enum TabsCatalog {
         ]),
       .component(
         .tabs, "new-tab", "New Tab Page",
-        summary: "The launcher a new tab opens on: new session, terminals, browser and recents.",
+        summary:
+          "The launcher a new tab opens on: a side chat, terminal or browser in the session.",
         systemImage: "plus.square.on.square", canvas: .fixed(width: 900, height: 640),
-        keywords: ["launcher", "recent"],
+        keywords: ["launcher", "side chat"],
         states: [
-          CatalogState("full", "With recents") {
-            NewTabPage(
-              state: NewTabPageState(
-                recentSessions: Array(PreviewData.sessions.prefix(5)), canOpenBrowser: true,
-                terminalNames: TabsPlaygroundModel.terminalNames),
-              actions: CatalogActions.newTab)
+          CatalogState("full", "Every launcher") {
+            NewTabPage(state: TabsPlaygroundModel.newTabState, actions: CatalogActions.newTab)
           },
-          CatalogState("empty", "First run") {
-            NewTabPage(state: NewTabPageState(), actions: CatalogActions.newTab)
+          CatalogState("empty", "Nothing to open") {
+            NewTabPage(state: NewTabPageState(), actions: NewTabPageActions())
           },
         ]),
       .component(

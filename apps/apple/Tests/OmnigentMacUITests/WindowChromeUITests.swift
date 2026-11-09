@@ -31,14 +31,14 @@ final class WindowChromeUITests: XCTestCase {
     defer { app.terminate() }
     let window = app.windows.firstMatch
 
-    // A demo session's chat tab, from the New Tab page. An open right after launch is sometimes
+    // A demo session's chat tab, from the sidebar. An open right after launch is sometimes
     // lost (the window still settling on its server), so it is retried.
-    let recent = window.buttons["newtab-recent-demo-notes"]
+    let row = window.descendants(matching: .any)["session-row-demo-notes"]
     XCTAssertTrue(
-      recent.waitForExistence(timeout: 30), "no demo session in\n\(app.debugDescription)")
+      row.waitForExistence(timeout: 30), "no demo session in\n\(app.debugDescription)")
     let input = app.textViews["composer-input"]
-    for _ in 0..<3 where !input.exists && recent.exists {
-      recent.click()
+    for _ in 0..<3 where !input.exists && row.exists {
+      row.click()
       _ = input.waitForExistence(timeout: 10)
     }
     XCTAssertTrue(input.exists, "the conversation did not open")

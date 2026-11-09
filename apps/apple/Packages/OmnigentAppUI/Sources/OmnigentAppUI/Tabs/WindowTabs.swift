@@ -93,8 +93,12 @@ struct WindowTabs {
   /// Profile names read for any session (profiles are per machine).
   private var remoteBrowserProfiles: [String] {
     let profiles = session.remoteBrowsers?.profiles ?? [:]
-    let names = profiles.values.flatMap { $0.map(\.name) }
-    return Array(Set(names)).sorted { $0 == "default" || ($1 != "default" && $0 < $1) }
+    return Self.profileNames(profiles.values.flatMap { $0.map(\.name) })
+  }
+
+  /// Profile names, the default first, once each.
+  private static func profileNames(_ names: [String]) -> [String] {
+    Array(Set(names)).sorted { $0 == "default" || ($1 != "default" && $0 < $1) }
   }
 
   /// The menu commands: the shown session's tabs, or New Tab going to New Session on a
@@ -148,58 +152,37 @@ struct WindowTabs {
     return commands
   }
 
-  /// The new-tab page's state: the shown session first, then the other recent ones.
+  /// The new-tab page's state: what the shown session offers.
   var newTabState: NewTabPageState {
-    let list = session.connection.sessionList
-    let current = groups.currentSessionID
-    // Every session, since the sidebar's search and quick filter say nothing about this page.
-    let sessions = filterSessions(sessions: Array(list.sessionsByID.values), text: "", filter: .all)
-    let others = sessions.filter { $0.id != current }.sorted { $0.updatedAt > $1.updatedAt }
-    let ordered = (current.flatMap(list.session).map { [$0] } ?? []) + others.prefix(11)
-    let recent = ordered.map {
-      OmnigentUIComponents.SessionSummary($0, attention: list.attention(of: $0.id))
-    }
-    var names: [String: [String]] = [:]
-    for summary in recent {
-      if case .names(let declared) = session.declaredTerminalNames(in: summary.id) {
-        names[summary.id] = declared
+    guard let current = groups.currentSessionID else { return NewTabPageState() }
+    let terminals: NewTabTerminals =
+      switch session.declaredTerminalNames(in: current) {
+      case .unknown: .unknown
+      case .names(let declared): .declared(declared)
       }
-    }
+    let profiles = session.remoteBrowsers?.profiles[current] ?? []
     return NewTabPageState(
-      recentSessions: recent, canOpenBrowser: browser != nil, terminalNames: names,
-      remoteBrowserProfiles: remoteBrowserProfiles)
+      sessionTitle: session.connection.sessionList.session(current)?.title,
+      canOpenBrowser: browser != nil, terminals: terminals,
+      remoteBrowserProfiles: Self.profileNames(profiles.map(\.name)))
   }
 
   /// The new-tab page's actions. Each replaces the page's tab `id` (or opens one when `nil`)
-  /// in the shown session; what belongs elsewhere (another session, New Session) closes the
-  /// page and shows it there.
+  /// in the shown session.
   /// - Parameter id: The new-tab page's tab.
   /// - Returns: The actions.
   func newTabActions(replacing id: String?) -> NewTabPageActions {
-    let groups = groups
-    let current = groups.currentSessionID
-    /// The page's tab when `sessionID` is the shown session; otherwise the page closes.
-    func target(_ sessionID: String) -> String? {
-      guard let id, sessionID == current else {
-        if let id { groups.current?.close(id) }
-        return nil
-      }
-      return id
+    var actions = NewTabPageActions()
+    guard let current = groups.currentSessionID else { return actions }
+    if let conversation = session.connection.conversations[current],
+      SessionToolsAdapter.offersSideChat(conversation)
+    {
+      actions.newSideChat = { startSideChat(conversation, in: current, replacing: id) }
     }
-    var actions = NewTabPageActions(
-      newSession: {
-        if let id { groups.current?.close(id) }
-        groups.show(.newSession)
-      },
-      openSession: { sessionID in
-        if let id { groups.current?.close(id) }
-        groups.showChat(sessionID)
-      })
-    actions.newTerminal = { sessionID, name in
-      let replacing = target(sessionID)
-      Task { await newTerminal(in: sessionID, named: name, replacing: replacing) }
+    actions.newTerminal = { name in
+      Task { await newTerminal(in: current, named: name, replacing: id) }
     }
-    if let browser, let current {
+    if let browser {
       actions.openBrowser = {
         let page = browser.makePage(url: session.connectedURL)
         show(
@@ -207,27 +190,49 @@ struct WindowTabs {
       }
     }
     if session.remoteBrowsers != nil {
-      actions.openRemoteBrowser = { sessionID, profile in
-        let replacing = target(sessionID)
-        Task { await openRemoteBrowser(in: sessionID, profile: profile, replacing: replacing) }
+      actions.openRemoteBrowser = { profile in
+        Task { await openRemoteBrowser(in: current, profile: profile, replacing: id) }
       }
     }
     return actions
   }
 
+  /// Starts a side chat from the new-tab page: a new side chat in the page's tab, or for a
+  /// native harness, its chat with `/side` in the composer.
+  private func startSideChat(
+    _ conversation: ConversationStore, in sessionID: String, replacing id: String?
+  ) {
+    let harness = conversation.header?.settings?.harness
+    switch OmnigentCoreFFI.sideChatStart(harness: harness, quote: nil) {
+    case .command(let prefix):
+      if let id { groups.group(sessionID).close(id) }
+      groups.showChat(sessionID)
+      guard conversation.composer.text.isEmpty else {
+        fail("Send or clear the message you are writing before starting a side chat.")
+        return
+      }
+      conversation.composer.text = prefix
+    case .draft(let draft):
+      openPendingSideChat(sessionID, draft: draft, sendNow: false, replacing: id)
+    }
+  }
+
   /// Shows `content` in a session's group, in the tab `id` when it is still open there, else
   /// in a new tab, and shows the session.
+  @discardableResult
   func show(
     _ content: AppTabContent, in sessionID: String, replacing id: String?,
     browserState: Data? = nil
-  ) {
+  ) -> AppTab? {
     let group = groups.group(sessionID)
-    if let id, group.tab(id) != nil {
-      group.replace(id, with: content, browserState: browserState)
-    } else {
-      group.open(content, browserState: browserState)
-    }
+    let tab =
+      if let id, group.tab(id) != nil {
+        group.replace(id, with: content, browserState: browserState)
+      } else {
+        group.open(content, browserState: browserState)
+      }
     groups.show(.session(sessionID))
+    return tab
   }
 
   /// Creates a remote browser tab on a session's machine and shows it, replacing the tab `id`

@@ -108,10 +108,13 @@ struct PendingSideChatTab: View {
 }
 
 extension WindowTabs {
-  /// Opens a new side chat of `sessionID` with `draft` in its composer. With `sendNow` (a typed
-  /// `/side <question>`), the draft is sent at once.
-  func openPendingSideChat(_ sessionID: String, draft: String, sendNow: Bool) {
-    guard let tab = groups.open(.sideChatSession(parentID: sessionID, childID: nil)) else { return }
+  /// Opens a new side chat of `sessionID` with `draft` in its composer, in the tab `id` when it
+  /// is open, else a new one. With `sendNow` (a typed `/side <question>`), the draft is sent.
+  func openPendingSideChat(
+    _ sessionID: String, draft: String, sendNow: Bool, replacing id: String? = nil
+  ) {
+    let content = AppTabContent.sideChatSession(parentID: sessionID, childID: nil)
+    guard let tab = show(content, in: sessionID, replacing: id) else { return }
     session.sideChatDrafts.update(tab.id) { $0.text = draft }
     if sendNow {
       PendingSideChatTab.start(session: session, tabID: tab.id, parentID: sessionID, fail: fail)
