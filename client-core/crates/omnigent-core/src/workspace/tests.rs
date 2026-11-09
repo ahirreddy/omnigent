@@ -1016,3 +1016,27 @@ fn a_hosted_connection_builds_the_same_route_with_its_bearer() {
         Err(WorkspaceError::Session(SessionError::NotConnected))
     ));
 }
+
+#[test]
+fn a_connected_build_signs_the_request_and_carries_a_write_body() {
+    let transport = crate::auth::testing::ScriptedTransport::new();
+    transport
+        .json(200, r#"{"single_user":false,"accounts_enabled":false}"#)
+        .json(200, r#"{"user_id":"alice"}"#);
+    let endpoint = ServerEndpoint::new("https://example.com").unwrap();
+    let mut connection =
+        HostedConnection::new(endpoint, Some(SecretString::new(TOKEN)), None).unwrap();
+    block_on(connection.connect(&transport)).unwrap();
+    let built = request(WorkspaceOperation::ListChanges)
+        .build(&connection)
+        .unwrap();
+    assert_eq!(built.body, None);
+    assert_eq!(
+        header(&built, "Authorization"),
+        Some(format!("Bearer {TOKEN}").as_str())
+    );
+
+    let with = request::with_body(built, Some(&serde_json::json!({"a": 1}))).unwrap();
+    assert_eq!(header(&with, "Content-Type"), Some("application/json"));
+    assert_eq!(with.body.as_deref(), Some(br#"{"a":1}"#.as_slice()));
+}

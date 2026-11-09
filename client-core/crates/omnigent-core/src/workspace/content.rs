@@ -440,6 +440,24 @@ mod tests {
     }
 
     #[test]
+    fn a_directory_reply_or_an_unknown_encoding_is_not_a_file() {
+        let requested = WorkspacePath::parse("a.txt").unwrap();
+        assert_eq!(
+            file_content(&serde_json::json!({"object": "list"}), &requested),
+            Err(WorkspaceError::UnexpectedKind {
+                path: "a.txt".to_owned(),
+                expected: "file",
+                actual: "directory",
+            })
+        );
+        let unknown = serde_json::json!({"encoding": "utf-16", "content": "x"});
+        assert!(matches!(
+            file_content(&unknown, &requested),
+            Err(WorkspaceError::MalformedResponse { detail }) if detail.contains("utf-16")
+        ));
+    }
+
+    #[test]
     fn every_image_kind_has_its_mime_type_and_magic_bytes() {
         assert_eq!(ImageFormat::Png.mime_type(), "image/png");
         assert_eq!(ImageFormat::Jpeg.mime_type(), "image/jpeg");

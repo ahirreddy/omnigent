@@ -191,6 +191,19 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_child_reports_it_from_a_text_error_and_ignores_other_shapes() {
+        let failed = ChildState::of(&fields(json!({"last_task_error": "boom"})));
+        assert_eq!(failed, ChildState::Failed);
+        assert_eq!(failed.key(), "failed");
+        assert_eq!(failed.title(), "Failed");
+        assert_eq!(
+            error_message(&fields(json!({"last_task_error": "boom"}))),
+            Some("boom")
+        );
+        assert_eq!(error_message(&fields(json!({"last_task_error": 5}))), None);
+    }
+
+    #[test]
     fn classification_puts_a_pending_request_above_everything() {
         let blocked = fields(json!({"busy": true, "pending_elicitations_count": 2}));
         assert_eq!(ChildState::of(&blocked), ChildState::NeedsYou);

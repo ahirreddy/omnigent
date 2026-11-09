@@ -11,6 +11,7 @@ use omnigent_protocol::{
 use serde_json::{Value, json};
 
 use super::form::{MAX_FIELD_OPTIONS, MAX_FORM_FIELDS};
+use super::ledger::MAX_RETIRED_IDS;
 use super::*;
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
@@ -1297,4 +1298,76 @@ fn every_field_kind_names_itself() {
     for (kind, name) in names {
         assert_eq!(kind.to_string(), name);
     }
+}
+
+#[test]
+fn an_answered_request_seen_again_is_stale_and_old_retired_ids_age_out() {
+    let mut decisions = SessionDecisions::new("session");
+    assert_eq!(decisions.session_id(), "session");
+    let ask = |id: &str| request(json!({"elicitation_id": id, "params": {"message": "Approve?"}}));
+    assert_eq!(decisions.apply_request(&ask("a")), RequestOutcome::Added);
+    decisions
+        .record_answered("a", DecisionResponse::Approve)
+        .unwrap();
+    assert_eq!(decisions.apply_request(&ask("a")), RequestOutcome::Stale);
+    assert!(matches!(
+        decisions.record_answered("missing", DecisionResponse::Approve),
+        Err(DecisionError::NotFound { .. })
+    ));
+
+    for index in 0..=MAX_RETIRED_IDS {
+        decisions.apply_resolved(
+            &serde_json::from_value(json!({
+                "elicitation_id": format!("gone-{index}")
+            }))
+            .unwrap(),
+        );
+    }
+    assert!(!decisions.is_retired("gone-0"), "the oldest id aged out");
+    assert!(decisions.is_retired(&format!("gone-{MAX_RETIRED_IDS}")));
+}
+
+#[test]
+fn a_decision_that_is_not_external_has_no_handoff_url() {
+    assert_eq!(params(&json!({"message": "Approve?"})).external_url(), None);
+}
+
+#[test]
+fn a_persist_list_with_no_entry_offers_nothing_and_a_bare_value_counts_once() {
+    let mcp = |persist: Option<Value>| {
+        let mut meta = json!({"codex_approval_kind": "mcp_tool_call"});
+        if let Some(persist) = persist {
+            meta["persist"] = persist;
+        }
+        meta
+    };
+    assert_eq!(codex_persist_modes(Some(&mcp(None))).len(), 0);
+    assert_eq!(
+        codex_persist_modes(Some(&mcp(Some(json!("session"))))).len(),
+        1
+    );
+}
+
+#[test]
+fn a_question_with_an_empty_enum_or_a_keyword_a_yes_no_answer_ignores_is_not_an_approval() {
+    let with_schema = |schema: Value| params(&json!({"message": "m", "requestedSchema": schema}));
+    let empty_enum = with_schema(json!({"type": "object", "properties": {
+        "choice": {"type": "string", "enum": []}
+    }}));
+    assert!(!matches!(empty_enum.kind, DecisionKind::Choice { .. }));
+    let extra_keyword = with_schema(json!({"type": "object", "if": {}}));
+    assert!(!matches!(extra_keyword.kind, DecisionKind::Approval));
+}
+
+#[test]
+fn a_truncated_question_preview_fails_closed() {
+    let truncated = params(&json!({
+        "message": "m",
+        "content_preview": "AskUserQuestion({\"questions\": [nope])",
+    }));
+    assert!(
+        !matches!(truncated.kind, DecisionKind::Approval),
+        "{:?}",
+        truncated.kind
+    );
 }

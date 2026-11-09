@@ -137,6 +137,14 @@ mod tests {
         }
     }
 
+    #[test]
+    fn folding_reduces_every_accented_latin_letter() {
+        assert_eq!(
+            fold("ÀÇÈÌÑÒÙÝŠŽ àçèìñòùýšž Straße"),
+            "aceinouysz aceinouysz straße"
+        );
+    }
+
     fn ids(sessions: &[SessionSummary]) -> Vec<&str> {
         sessions.iter().map(|session| session.id.as_str()).collect()
     }

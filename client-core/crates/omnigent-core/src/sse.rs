@@ -356,6 +356,25 @@ mod tests {
 
     // Port of LiveConversationReducerTests.swift::testByteFramingRetainsEmptyLinesCRLFAndUTF8.
     #[test]
+    fn a_default_parser_is_a_new_parser_and_a_partial_bom_at_the_start_is_reported_as_bad_text() {
+        let mut parser = SseParser::default();
+        let mut events = Vec::new();
+        parser.push(b"data: a\n\n", &mut events).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].data, "a");
+
+        let mut parser = SseParser::new();
+        let mut events = Vec::new();
+        assert_eq!(
+            parser.push(b"\xEFdata: b\n\n", &mut events),
+            Err(SseError::InvalidUtf8 {
+                line: 1,
+                valid_up_to: 0
+            })
+        );
+    }
+
+    #[test]
     fn byte_framing_retains_empty_lines_crlf_and_utf8() {
         let stream = "\u{FEFF}event: test\r\ndata: héllo 🌎\r\n\r\ndata: second\r\rdata: third\n\n";
         let (events, error) = parse_bytewise(stream.as_bytes());

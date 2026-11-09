@@ -249,6 +249,11 @@ mod tests {
     }
 
     #[test]
+    fn an_inventory_knows_its_session() {
+        assert_eq!(TerminalInventory::new("conv_a").session_id(), "conv_a");
+    }
+
+    #[test]
     fn events_add_remove_and_pulse_terminals() {
         let mut inventory = TerminalInventory::new("conv_1");
         inventory.apply_snapshot(vec![terminal("terminal_claude_main", Some(true))]);

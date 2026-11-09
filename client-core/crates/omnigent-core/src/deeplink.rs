@@ -853,6 +853,13 @@ mod tests {
     const DASHED: &str = "e4f5a6b7-c8d9-e0f1-a2b3-c4d5e6f7a8b9";
 
     #[test]
+    fn a_scheme_with_a_bad_first_character_is_not_a_url() {
+        assert!(UrlParts::split("1http://example.com").is_none());
+        assert!(UrlParts::split("ht tp://example.com").is_none());
+        assert!(UrlParts::split("http://example.com").is_some());
+    }
+
+    #[test]
     fn every_error_reads_as_a_sentence() {
         for (error, text) in [
             (

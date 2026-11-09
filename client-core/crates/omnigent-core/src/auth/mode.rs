@@ -311,6 +311,20 @@ mod tests {
     use crate::auth::testing::response;
 
     #[test]
+    fn info_fields_of_the_wrong_type_and_a_forbidden_reply_are_refused() {
+        let info = |extra: &str| {
+            let body = format!(r#"{{"single_user":false,"accounts_enabled":false,{extra}}}"#);
+            ServerInfo::from_json(body.as_bytes())
+        };
+        assert!(info(r#""login_url":5"#).is_err());
+        assert!(info(r#""needs_setup":"yes""#).is_err());
+        assert_eq!(
+            check_json_response(&response(403, "application/json", "{}"), false),
+            Err(HostedAuthError::Forbidden)
+        );
+    }
+
+    #[test]
     fn auth_classifies_workspace_hosts() {
         for origin in [
             "https://databricks.com",

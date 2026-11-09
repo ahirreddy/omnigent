@@ -651,6 +651,13 @@ mod tests {
     }
 
     #[test]
+    fn a_browser_can_open_in_a_named_profile() {
+        let request = endpoint().create_request(None, Some("work")).unwrap();
+        let body: Value = serde_json::from_slice(request.body.as_deref().unwrap()).unwrap();
+        assert_eq!(body["profile"], "work");
+    }
+
+    #[test]
     fn a_base_url_that_is_not_web_is_refused() {
         for bad in ["ftp://example.com", "mailto:a@b.c"] {
             assert!(matches!(

@@ -211,6 +211,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_terminal_list_must_be_an_object_and_has_more_a_boolean() {
+        assert_eq!(
+            TerminalPage::decode(json!([])).map(|page| page.has_more),
+            Err("terminal list is not a JSON object".to_owned())
+        );
+        assert!(
+            !TerminalPage::decode(json!({"data": [], "has_more": null}))
+                .unwrap()
+                .has_more
+        );
+        assert!(TerminalPage::decode(json!({"data": [], "has_more": "yes"})).is_err());
+    }
+
+    #[test]
     fn decodes_the_runner_shape_and_keeps_raw() {
         let resource = TerminalResource::decode(json!({
             "id": "terminal_bash_s1", "object": "session.resource", "type": "terminal",

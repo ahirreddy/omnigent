@@ -367,7 +367,7 @@ fn merge(pending: MouseEvent, next: MouseEvent) -> Merge {
 
 #[cfg(test)]
 mod tests {
-    use omnigent_protocol::remote_browser::{KeyKind, MouseButton, TextRange};
+    use omnigent_protocol::remote_browser::{KeyKind, MouseButton, TextRange, TouchKind};
 
     use super::*;
 
@@ -436,6 +436,73 @@ mod tests {
         assert_eq!(out.send[0].kind, MouseKind::Wheel);
         assert_eq!(out.send[0].dy, Some(2.0));
         assert_eq!(coalescer.flush(3).unwrap().kind, MouseKind::Move);
+    }
+
+    #[test]
+    fn commands_outside_the_checked_shapes_are_accepted_and_bad_ones_refused() {
+        assert_eq!(
+            validate_ime(&ImeEvent {
+                op: ImeOp::Commit,
+                text: None,
+                selection: None,
+                replacement: None,
+            }),
+            Err(InputError::MissingText)
+        );
+        assert_eq!(
+            validate_nav(&NavCommand {
+                op: NavOp::Reload,
+                url: None,
+            }),
+            Ok(())
+        );
+        assert_eq!(
+            validate_edit(&EditCommand {
+                op: EditOp::Paste,
+                text: Some("hi".to_owned()),
+            }),
+            Ok(())
+        );
+        let touch = TouchEvent {
+            kind: TouchKind::Start,
+            id: 1,
+            x: 1.0,
+            y: 1.0,
+            pressure: None,
+            radius: None,
+            modifiers: 0,
+        };
+        assert_eq!(validate_touch(&touch), Ok(()));
+        for pressure in [-0.5, 1.5, f64::NAN] {
+            assert_eq!(
+                validate_touch(&TouchEvent {
+                    pressure: Some(pressure),
+                    ..touch.clone()
+                }),
+                Err(InputError::BadTouch { field: "pressure" })
+            );
+        }
+        for radius in [-1.0, f64::INFINITY, f64::NAN] {
+            assert_eq!(
+                validate_touch(&TouchEvent {
+                    radius: Some(radius),
+                    ..touch.clone()
+                }),
+                Err(InputError::BadTouch { field: "radius" })
+            );
+        }
+    }
+
+    #[test]
+    fn the_coalescer_reports_its_interval_and_wheels_without_deltas_stay_empty() {
+        assert_eq!(InputCoalescer::new(16).interval_ms(), 16);
+        let mut quiet = wheel(0.0);
+        quiet.dx = None;
+        quiet.dy = None;
+        let Merge::Merged(merged) = merge(quiet.clone(), quiet) else {
+            panic!("two wheels merge");
+        };
+        assert_eq!((merged.dx, merged.dy), (None, None));
     }
 
     #[test]

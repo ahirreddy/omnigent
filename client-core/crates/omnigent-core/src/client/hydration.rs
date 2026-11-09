@@ -176,6 +176,16 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_changes_become_a_failed_row() {
+        assert_eq!(
+            ChangedFiles::from(ChangedFilesUpdate::Unavailable("no".to_owned())),
+            ChangedFiles::Failed {
+                message: "no".to_owned()
+            }
+        );
+    }
+
+    #[test]
     fn hydration_makes_the_session_live_and_feeds_changed_files_to_the_reducer() {
         let core = connected(transport());
         let mut sync = ConversationSync::new("conv_a");

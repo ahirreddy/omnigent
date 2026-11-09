@@ -98,3 +98,11 @@ fn export_stops_at_a_cursor_that_comes_back() {
         Err(SessionError::InvalidPagination)
     );
 }
+
+#[test]
+fn a_transcript_row_that_is_not_an_object_is_refused() {
+    assert!(matches!(
+        super::export::record("item", json!(5), "/v1/x"),
+        Err(SessionError::MalformedResponse { detail }) if detail == "/v1/x: not an object"
+    ));
+}

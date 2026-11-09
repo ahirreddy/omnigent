@@ -421,6 +421,26 @@ mod tests {
 
     /// `DatabricksWebContextTests::testStableStoreIdentitySeparatesWorkspacesAndClients`.
     #[test]
+    fn a_store_identifier_exposes_its_bytes_and_cookies_refuse_hostless_urls() {
+        let context = web_context("https://workspace.databricks.com/omnigent?o=123");
+        assert_eq!(
+            context.store_identifier().bytes(),
+            context.store_identifier().0
+        );
+        let cookie = SessionCookie {
+            name: "n".to_owned(),
+            value: "v".to_owned(),
+            domain: "workspace.databricks.com".to_owned(),
+            path: "/".to_owned(),
+            secure: false,
+            http_only: false,
+            expires_at_ms: None,
+        };
+        assert!(!cookie.applies_to(&url("data:text/plain,x"), 0));
+        assert!(cookie.applies_to(&url("http://workspace.databricks.com/any"), 0));
+    }
+
+    #[test]
     fn web_context_store_identity_separates_workspace_and_client() {
         let first = web_context("https://workspace.databricks.com/omnigent?o=123");
         let same = web_context(

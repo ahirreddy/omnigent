@@ -11,7 +11,7 @@ use crate::http::HttpTransport;
 
 const EXPORT_PAGE_LIMIT: u32 = 500;
 
-fn record(kind: &str, value: Value, path: &str) -> Result<String, SessionError> {
+pub(super) fn record(kind: &str, value: Value, path: &str) -> Result<String, SessionError> {
     let Value::Object(fields) = value else {
         return Err(SessionError::MalformedResponse {
             detail: format!("{path}: not an object"),

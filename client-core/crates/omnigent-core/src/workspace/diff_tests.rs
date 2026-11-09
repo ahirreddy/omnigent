@@ -578,3 +578,21 @@ fn a_tiny_edit_budget_falls_back_without_panicking_and_common_edges_stay_equal()
     let same_start = diff("a\nb\nc\n", "a\nb\nd\n");
     assert_eq!(lines(&same_start.hunks[0]), [" a", " b", "-c", "+d"]);
 }
+
+#[test]
+fn a_patch_with_more_lines_than_its_header_is_refused() {
+    let patch = "--- a/x\n+++ b/x\n@@ -1,2 +1,1 @@\n a\n b\n";
+    assert!(
+        parse_unified(patch)
+            .unwrap_err()
+            .to_string()
+            .contains("more lines than its header says")
+    );
+}
+
+#[test]
+fn a_shared_prefix_left_for_the_edit_script_reads_as_equal_lines() {
+    let ops = myers(&[1, 2, 3], &[1, 2, 4], 100).unwrap();
+    assert_eq!(ops[..2], [Op::Equal, Op::Equal]);
+    assert_eq!(ops.len(), 4);
+}

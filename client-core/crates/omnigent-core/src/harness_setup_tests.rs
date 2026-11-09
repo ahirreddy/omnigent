@@ -312,3 +312,14 @@ fn definitions_take_the_steps_map_by_every_spelling() {
     assert_eq!(definitions[1].label, "Codex");
     assert!(harness_definitions(&json!({"setup_steps": {}})).is_err());
 }
+
+#[test]
+fn a_ready_harness_reads_configured_and_unknown_steps_stay_unknown() {
+    assert_eq!(HarnessAvailability::Ready.label(), "Configured");
+    assert_eq!(done_detail("auth"), "Signed in on the host.");
+    assert_eq!(done_detail("note"), "Done.");
+    assert_eq!(
+        step_status(Some("mystery"), Some(&HarnessAvailability::Ready)),
+        SetupStepStatus::Unknown
+    );
+}

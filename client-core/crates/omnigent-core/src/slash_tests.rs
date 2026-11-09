@@ -456,3 +456,21 @@ fn context_report_near_the_integer_limit_does_not_overflow() {
     assert!(half.contains("(50.0%)"), "{half}");
     assert_eq!(half.matches('\u{2588}').count(), 10);
 }
+
+#[test]
+fn a_skill_with_a_label_only_shows_it_and_an_override_says_so() {
+    let labelled = Skill {
+        display_name: Some("Pretty".to_owned()),
+        description: String::new(),
+        ..skill("plain")
+    };
+    assert_eq!(skill_description(&labelled), "Pretty");
+    let overridden = SessionConfiguration {
+        model_override: Some("fast".to_owned()),
+        ..session("claude-sdk")
+    };
+    assert!(matches!(
+        model_action("", &overridden),
+        SlashAction::Show { text } if text.contains("fast (override)")
+    ));
+}

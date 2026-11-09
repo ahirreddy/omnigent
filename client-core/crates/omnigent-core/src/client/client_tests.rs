@@ -1279,3 +1279,52 @@ fn listeners_and_ids_report_themselves_without_their_callbacks() {
     let listed = format!("{:?}", super::Listeners::default());
     assert!(listed.contains("count: 0"), "{listed}");
 }
+
+#[test]
+fn errors_say_whether_delivery_is_uncertain_and_whether_to_sign_in() {
+    use crate::attachments::{UploadError, UploadUncertainty};
+    use crate::auth::errors::HostedAuthError;
+    use crate::ledger::SubmissionOutcome;
+
+    let transport_error = TransportError::Offline {
+        message: "gone".to_owned(),
+    };
+    assert_eq!(
+        SessionError::Upload(UploadError::Uncertain(UploadUncertainty::Transport(
+            transport_error.clone()
+        )))
+        .submission_outcome(),
+        SubmissionOutcome::Uncertain
+    );
+    assert_eq!(
+        SessionError::from(HostedAuthError::Transport(transport_error.clone())),
+        SessionError::Transport(transport_error)
+    );
+    assert_eq!(
+        SessionError::from(HostedAuthError::Forbidden),
+        SessionError::Auth(HostedAuthError::Forbidden)
+    );
+    assert!(SessionError::NotConnected.requires_sign_in());
+    assert!(!SessionError::Cancelled.requires_sign_in());
+}
+
+#[test]
+fn a_missing_session_and_an_unreadable_history_page_read_differently() {
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        "/v1/sessions/conv_a/items",
+        vec![Reply::json(404, "{}"), Reply::json(200, "not json")],
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.history_page("conv_a", None, 10)).map(|_| ()),
+        Err(SessionError::SessionNotFound {
+            session_id: "conv_a".to_owned()
+        })
+    );
+    assert!(matches!(
+        block_on(core.history_page("conv_a", None, 10)),
+        Err(SessionError::MalformedResponse { detail }) if detail.contains("/items")
+    ));
+}

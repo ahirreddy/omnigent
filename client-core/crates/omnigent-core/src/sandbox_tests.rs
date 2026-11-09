@@ -244,3 +244,22 @@ fn a_repository_listed_twice_keeps_its_original_branch() {
     let forked = fork_sandbox_repos(&original, &live);
     assert_eq!(forked.repos, original);
 }
+
+#[test]
+fn an_overly_long_url_and_too_many_repositories_are_explained() {
+    let long = format!("https://github.com/o/{}.git", "x".repeat(4096));
+    assert_eq!(
+        sandbox_url_problem(&long, &[]).as_deref(),
+        Some(WORKSPACE_LENGTH_MESSAGE)
+    );
+    let problem = sandbox_repos_problem(
+        &[
+            repo("https://github.com/o/a.git", "main"),
+            repo("https://github.com/o/b.git", "main"),
+            repo("https://github.com/o/c.git", "main"),
+        ],
+        2,
+    )
+    .unwrap();
+    assert!(problem.contains("repositories"), "{problem}");
+}
