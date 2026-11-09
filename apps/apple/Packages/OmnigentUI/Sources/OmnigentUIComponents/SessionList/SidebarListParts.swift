@@ -8,17 +8,36 @@ struct SidebarEmptyState: View {
   /// Turns the Running or Needs you filter off with `nil`.
   var setQuickFilter: (@MainActor (SessionFilter?) -> Void)?
 
-  /// What a quick filter's empty list says, so it never reads as if every session were gone.
-  private var filteredOutTitle: String? {
-    switch state.quickFilter {
-    case .running: "Nothing is running"
-    case .needsResponse: "Nothing needs you"
-    case .all, .archived, .none: nil
+  /// What the list says when there is nothing to list.
+  enum Content: Equatable {
+    case filteredOut(String)
+    case loading
+    case noMatches(String)
+    case empty(String)
+    case nothing
+  }
+
+  /// What to say. A search or the Archived display that finds nothing says so even beside project
+  /// folders; otherwise folders alone are a list, with nothing to explain.
+  static func content(state: SidebarViewState, searchText: String) -> Content {
+    guard state.list.sessions.isEmpty else { return .nothing }
+    if searchText.isEmpty {
+      switch state.quickFilter {
+      case .running: return .filteredOut("Nothing is running")
+      case .needsResponse: return .filteredOut("Nothing needs you")
+      case .all, .archived, .none: break
+      }
     }
+    let showsArchived = state.display.show == .archived
+    guard state.projects.isEmpty || !searchText.isEmpty || showsArchived else { return .nothing }
+    if case .loading = state.list.phase { return .loading }
+    if !searchText.isEmpty { return .noMatches(searchText) }
+    return .empty(showsArchived ? "No archived sessions" : "No sessions")
   }
 
   var body: some View {
-    if let title = filteredOutTitle, state.list.sessions.isEmpty, searchText.isEmpty {
+    switch Self.content(state: state, searchText: searchText) {
+    case .filteredOut(let title):
       VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         Text(title).font(.callout).foregroundStyle(.secondary)
         if let setQuickFilter {
@@ -31,22 +50,16 @@ struct SidebarEmptyState: View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.horizontal, Theme.Spacing.small)
       .listRowSeparator(.hidden)
-    } else if state.list.sessions.isEmpty, state.projects.isEmpty {
-      switch state.list.phase {
-      case .loading:
-        ProgressView("Loading sessions\u{2026}")
-      case .loaded, .failed:
-        if !searchText.isEmpty {
-          ContentUnavailableView.search(text: searchText)
-        } else {
-          ContentUnavailableView(
-            state.display.show == .archived ? "No archived sessions" : "No sessions",
-            systemImage: "bubble.left.and.bubble.right"
-          )
-          .font(.callout)
-          .listRowSeparator(.hidden)
-        }
-      }
+    case .loading:
+      ProgressView("Loading sessions\u{2026}")
+    case .noMatches(let query):
+      ContentUnavailableView.search(text: query)
+    case .empty(let title):
+      ContentUnavailableView(title, systemImage: "bubble.left.and.bubble.right")
+        .font(.callout)
+        .listRowSeparator(.hidden)
+    case .nothing:
+      EmptyView()
     }
   }
 }
