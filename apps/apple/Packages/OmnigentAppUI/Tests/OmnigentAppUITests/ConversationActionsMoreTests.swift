@@ -156,6 +156,88 @@ extension ConversationWiringTests {
       ).backgroundTasks == 2)
   }
 
+  @Test("Resume reports a refusal, and dismissing clears it")
+  func resumeAndDismiss() async throws {
+    let wired = try await wired()
+    let actions = wired.container.actions
+    actions.resume?()
+    try await eventually("the failure") { !wired.store.errors.isEmpty }
+    actions.dismissError?()
+    #expect(wired.store.errors.isEmpty)
+    actions.loadOlder?()
+    #expect(!wired.store.isLoadingOlderHistory, "nothing older to read")
+  }
+
+  @Test("Choosing a model or effort before the session's settings arrive says so")
+  func modelAndEffort() async throws {
+    let wired = try await wired()
+    let actions = wired.container.composerActions
+    let composer = wired.store.composer
+    actions.selectModel?("opus")
+    try await eventually("the refusal") { composer.configurationError != nil }
+    actions.dismissDeliveryError?()
+    #expect(composer.configurationError == nil)
+    actions.selectEffort?("high")
+    try await eventually("the refusal") { composer.configurationError != nil }
+    actions.selectAgent?("agent")
+    actions.acknowledgeUncertainDelivery?()
+    #expect(composer.lastError == nil, "there's no unclear send to acknowledge")
+  }
+
+  @Test("Recalling a prompt reads what was sent, and the queue follows the turn")
+  func recallPrompts() async throws {
+    let wired = try await wired()
+    wired.store.apply(
+      revision: 2,
+      change: TranscriptChange(
+        rows: [.insert(index: 0, row: ConversationFixtures.userRow("a", text: "sent"))],
+        header: nil, sections: []))
+    let extras = wired.container.extras
+    #expect(extras.history.prompts?() == ["sent"])
+    wired.store.composer.text = "next"
+    extras.queueDraft?()
+    try await eventually("the queue to try it") {
+      wired.store.composer.queue.items.allSatisfy { $0.state != .queued }
+    }
+  }
+
+  /// A session a person can fork: its row names an agent the server knows.
+  private func forkableSession() async throws -> Wired {
+    let server = threeSessionServer()
+    let source = sessionRow("conv_a", host: "mac", workspace: "/w", updatedAt: 9)
+      .replacingOccurrences(of: "\"host_id\"", with: "\"agent_id\":\"ag_claude\",\"host_id\"")
+    server.route(
+      "/v1/sessions", method: "GET",
+      .json(#"{"object":"list","data":[\#(source)],"has_more":false}"#))
+    return try await wired(server)
+  }
+
+  @Test("The session menu's Fork opens the sheet for the whole session")
+  func forkFromTheMenu() async throws {
+    let wired = try await forkableSession()
+    let source = try #require(wired.container.summary)
+    wired.container.forkable(wired.container.sessionActions).fork?(
+      OmnigentUIComponents.SessionSummary(source))
+    try await eventually("the sheet") { wired.container.forkFlow.viewState != nil }
+  }
+
+  @Test("A fork that was made but couldn't start says so in the chat's alert")
+  func forkThatCouldNotStart() async throws {
+    let wired = try await forkableSession()
+    wired.server.route(
+      "/v1/sessions/conv_a/fork", method: "POST",
+      .json(#"{"id":"conv_f","status":"idle","created_at":5,"permission_level":4}"#, status: 201))
+    wired.server.route(
+      "/v1/hosts/mac/runners", method: "POST", .json(#"{"detail":"busy"}"#, status: 500))
+    wired.container.forkSession?()
+    try await eventually("the sheet") { wired.container.forkFlow.viewState != nil }
+    wired.container.forkActions.forkWith(
+      ForkChoices(agentID: "ag_claude", directory: "/w", start: true, hostID: "mac"))
+    try await eventually("the alert") { !wired.container.failures.isEmpty }
+    #expect(wired.container.failures.first?.hasPrefix("The fork was created") == true)
+    #expect(wired.opened.sessions == ["conv_f"])
+  }
+
   @Test("A side chat says whose it is")
   func sideChatComposer() async throws {
     var settings = ConversationFixtures.settings()

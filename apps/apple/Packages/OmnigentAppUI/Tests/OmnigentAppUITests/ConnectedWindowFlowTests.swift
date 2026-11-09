@@ -17,7 +17,7 @@ import Testing
 @MainActor
 @Suite("Connected window flows", .serialized, .timeLimit(.minutes(1)))
 struct ConnectedWindowFlowTests {
-  private struct Mounted {
+  struct Mounted {
     let view: ConnectedServerView
     let screen: OffscreenWindow<ConnectedServerView>
     let session: ServerSession
@@ -25,7 +25,7 @@ struct ConnectedWindowFlowTests {
     let model: SidebarModel
   }
 
-  private func mounted(
+  func mounted(
     _ server: AppServer = threeSessionServer(), page: SidebarDestination? = .session("conv_a")
   ) async throws -> Mounted {
     let session = try await signedInSession(server)

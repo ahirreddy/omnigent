@@ -266,7 +266,7 @@ struct ConversationContainer: View {
   }
 
   /// The session menu's Fork copies the whole session.
-  private func forkable(_ actions: SessionListActions) -> SessionListActions {
+  func forkable(_ actions: SessionListActions) -> SessionListActions {
     var actions = actions
     if let fork = forkSession { actions.fork = { _ in fork() } }
     return actions

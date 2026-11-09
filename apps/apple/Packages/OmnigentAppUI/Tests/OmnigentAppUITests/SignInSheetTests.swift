@@ -2,11 +2,11 @@ import Foundation
 import OmnigentAuthUI
 import OmnigentCoreFFI
 import OmnigentServices
-import OmnigentStores
 import OmnigentTestSupport
 import Testing
 
 @testable import OmnigentAppUI
+@testable import OmnigentStores
 
 /// Sign-in through the sheet: a registered scheme's OIDC redirect, and a Databricks HTTPS callback.
 @MainActor
@@ -219,5 +219,42 @@ struct SignInSheetTests {
     controller.actions.startBrowserSignIn(.databricksWorkspace(workspaceHost: "dbc.example"))
     try await eventually("the failure") { reason(controller) != nil }
     #expect(asked.pages.isEmpty)
+  }
+}
+
+/// The sign-in form's own actions.
+extension SignInSheetTests {
+  @Test("Connect, Forget and Check Server go to the controller")
+  func formActions() async throws {
+    let server = oidcServer()
+    let controller = try controller(server) { _, _ throws(WebAuthenticationError) in
+      throw .cancelled
+    }
+    final class Forgotten {
+      var urls: [String] = []
+    }
+    let forgotten = Forgotten()
+    controller.forgetServer = { forgotten.urls.append($0) }
+    let actions = controller.actions
+    actions.forgetServer("http://gone")
+    #expect(forgotten.urls == ["http://gone"])
+    #expect(await actions.checkServer("http://127.0.0.1:6767") != .unreachable)
+    actions.connect("http://127.0.0.1:6767")
+    try await eventually("the connect") {
+      !server.requests("GET", "/.well-known/omnigent.json").isEmpty
+    }
+  }
+
+  @Test("A window with no core reports why instead of connecting")
+  func noCore() async throws {
+    let controller = SignInController(
+      store: ConnectionStore(startupError: .InvalidState(message: "No keychain")),
+      opener: ExternalURLOpener { _ in true }, defaults: try scratchDefaults())
+    await controller.connectNow("http://127.0.0.1:6767")
+    guard case .failed(_, let error) = controller.state.phase else {
+      Issue.record("the form shows the failure")
+      return
+    }
+    #expect(error.message.contains("No keychain"))
   }
 }

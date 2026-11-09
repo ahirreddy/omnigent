@@ -50,7 +50,7 @@ struct CustomAgentsScreenTests {
   }
 
   /// Types what Save needs: the agent's name and a model.
-  private func fillIn<Content: View>(_ name: String, in screen: OffscreenWindow<Content>) throws {
+  func fillIn<Content: View>(_ name: String, in screen: OffscreenWindow<Content>) throws {
     try screen.click(field("my-agent", in: screen))
     try screen.type(name)
     try screen.click(field("claude-sonnet-4-5", in: screen))
