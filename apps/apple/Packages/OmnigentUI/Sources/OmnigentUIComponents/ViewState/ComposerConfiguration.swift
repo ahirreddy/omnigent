@@ -106,7 +106,8 @@ nonisolated public struct ComposerConfiguration: Hashable, Sendable {
 
   /// The agent's name: the reported name, else the selected row's, else the harness's label.
   public var agentTitle: String {
-    agentName ?? selectedAgent?.name ?? HarnessAppearance(harness: harness).label
+    (agentName ?? selectedAgent?.name).map { HarnessAppearance.agentName($0, harness: harness) }
+      ?? HarnessAppearance(harness: harness).label
   }
 
   /// Models the picker offers.

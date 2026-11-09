@@ -73,9 +73,10 @@ nonisolated enum TurnLayout {
     }
   }
 
-  /// Reasoning after the last message joins the previous run, so live and reloaded turns agree.
+  /// Reasoning and bookkeeping tools after the last message join the previous run, so live and
+  /// reloaded turns agree and the answer ends the turn.
   private static func mergeTrailingReasoning(_ pieces: inout [Piece]) {
-    guard case .work(let trailing) = pieces.last, trailing.allSatisfy(\.isReasoning),
+    guard case .work(let trailing) = pieces.last, trailing.allSatisfy(\.isTrailingWrapUp),
       let earlier = pieces.dropLast().lastIndex(where: {
         if case .work = $0 { true } else { false }
       }),
@@ -179,6 +180,14 @@ extension TranscriptItem {
   nonisolated var isReasoning: Bool {
     if case .activity(let row) = self { return row.activity?.kind == .reasoning }
     return false
+  }
+
+  /// Work after the last message that says nothing new: reasoning, or Codex's `turn_diff` mirror.
+  nonisolated var isTrailingWrapUp: Bool {
+    if case .tools(_, let entries) = self {
+      return !entries.isEmpty && entries.allSatisfy { $0.primary?.activity?.title == "turn_diff" }
+    }
+    return isReasoning
   }
 
   nonisolated var isStreaming: Bool {

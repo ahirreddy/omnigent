@@ -156,6 +156,10 @@ final class NewSessionForm {
     selection.projectId = project?.id
     // Routing stays chosen across agents but goes only with one the server routes.
     selection.smartRouting = smartRouting(creation.catalog.value) == .enabled
+    // The mode shown is the mode asked for: with none, the harness's own config decides.
+    if selection.approvalMode == nil, let agent = selectedAgent(creation) {
+      selection.approvalMode = creationApprovalModeMenu(agent: agent)?.selected
+    }
     if isSandbox {
       let target = sandbox.target(creation.catalog.value)
       Task {

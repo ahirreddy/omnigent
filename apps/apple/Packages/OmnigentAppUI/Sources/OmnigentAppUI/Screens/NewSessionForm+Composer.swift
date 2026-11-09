@@ -63,7 +63,7 @@ extension NewSessionForm {
     let agent = selectedAgent(creation)
     let server = connection.connectedServer
     return ExecutionContext(
-      agent: agent?.name, harness: agent?.harness,
+      agent: nil, harness: agent?.harness,
       host: isSandbox
         ? sandbox.option(catalog)?.label ?? "New Sandbox"
         : ExecutionContext.hostDisplayName(host?.name),

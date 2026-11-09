@@ -65,7 +65,8 @@ public struct SidebarView: View {
           isLoading: state.paging.isLoading, loaded: state.list.sessions.count,
           autoLoads: autoLoads, scope: loadMoreScope, load: load)
       }
-      SidebarEmptyState(state: state, searchText: searchText)
+      SidebarEmptyState(
+        state: state, searchText: searchText, setQuickFilter: actions.setQuickFilter)
     }
     .onHover { behavior.pointer(inside: $0, sessions: state.list.sessions) }
     .onChange(of: searchText.isEmpty) { _, isEmpty in
@@ -164,7 +165,6 @@ public struct SidebarView: View {
           .font(Theme.Typography.section)
           .foregroundStyle(Theme.mutedText)
           .textCase(nil)
-        Spacer()
         if let marker = hiddenMarker(section) {
           SidebarMarkerView(marker: marker)
         }
@@ -178,6 +178,8 @@ public struct SidebarView: View {
               options: state.display, showsShared: state.showsSharedScope, set: setDisplay)
           }
         }
+        // After the controls: the list's disclosure arrow takes the trailing edge on hover.
+        Spacer()
       }
       .labelStyle(.iconOnly)
       .buttonStyle(.borderless)

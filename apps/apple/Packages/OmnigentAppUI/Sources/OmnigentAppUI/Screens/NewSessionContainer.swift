@@ -190,8 +190,7 @@ struct NewSessionContainer: View {
       },
       connectHost: { isConnectingHost = true },
       selectApprovalMode: { option in
-        form.selection.approvalMode = NewSessionAdapter.approvalMode(
-          option, agent: form.selectedAgent(creation))
+        form.selection.approvalMode = option.id
       },
       togglePlan: form.planToggle(creation), isPlanOn: form.isPlanOn,
       createAgent: createAgent, importAgentBundle: importBundle)

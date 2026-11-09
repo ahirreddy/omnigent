@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if os(macOS)
+  import AppKit
+#endif
+
 extension View {
   /// The composer's focus rules: `focusRequest` focuses the editor (a menu command or the
   /// palette), a hidden kept tab gives up focus, and on iPhone a run opens with the keyboard
@@ -23,9 +27,27 @@ private struct ReadingPostureFocus: ViewModifier {
   /// When focus was last refused, in case the tap that caused it is reported after the refusal.
   @State private var refusedAt = Date.distantPast
   @Environment(\.isTabContentHidden) private var isHiddenTab
+  @Environment(\.isActiveTabPane) private var isActivePane
+
+  #if os(macOS)
+    /// Takes the keyboard when the composer comes on screen, so typing reaches it. Moving through
+    /// the sidebar with the keyboard keeps its focus; the wait lets a click on a list row finish.
+    private func focusOnShowing() async {
+      guard !isHiddenTab, isActivePane, NSApp.currentEvent?.type != .keyDown else { return }
+      do {
+        try await Task.sleep(for: .milliseconds(100))
+      } catch {
+        return
+      }
+      isFocused.wrappedValue = true
+    }
+  #endif
 
   func body(content: Content) -> some View {
     content
+      #if os(macOS)
+        .task(id: isHiddenTab) { await focusOnShowing() }
+      #endif
       .onChange(of: focusRequest) { _, _ in
         refusesRestoredFocusUntil = .distantPast
         isFocused.wrappedValue = true

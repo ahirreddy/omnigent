@@ -95,6 +95,10 @@ struct AttentionTests {
       EventSection(id: "files-default", title: "Changed files", summary: "3 files in default"))
     #expect(SessionStatusLine(state).text == "Finished \u{00B7} 3 files changed")
     state.sections.append(
+      EventSection(id: "files-one", title: "Changed files", summary: "1 file in one"))
+    #expect(SessionStatusLine(state).text == "Finished \u{00B7} 4 files changed")
+    state.sections.removeLast()
+    state.sections.append(
       EventSection(id: "files-sandbox", title: "Changed files", summary: "Loading changed files…"))
     #expect(SessionStatusLine(state).text == "Finished \u{00B7} 3 files changed")
     state.rows[0].interrupted = true

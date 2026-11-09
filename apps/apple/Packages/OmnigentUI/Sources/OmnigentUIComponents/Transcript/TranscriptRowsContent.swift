@@ -71,8 +71,9 @@ struct TranscriptRowsContent<Header: View>: View {
     .onChange(of: TranscriptView.ownMessageID(state)) { previous, latest in
       events.ownMessageChanged(previous, latest)
     }
-    .onChange(of: state.rows.contains { $0.role == .user }, initial: true) { _, hasUser in
-      events.hasUserMessagesChanged(hasUser)
+    // Previous and next need a second message to move between.
+    .onChange(of: state.rows.count { $0.role == .user } > 1, initial: true) { _, hasSeveral in
+      events.hasUserMessagesChanged(hasSeveral)
     }
     // The memo returns the same array while a delta changes only the open answer, so this
     // comparison is an identity check while streaming.

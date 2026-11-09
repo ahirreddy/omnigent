@@ -78,12 +78,17 @@ nonisolated public struct SessionStatusLine: Hashable, Sendable {
     return transcript.activityTitle
   }
 
-  /// Files across the loaded changed-files sections (`<N> files in <environment>`), or `nil`
+  /// Files across the loaded changed-files sections (`<N> file(s) in <environment>`), or `nil`
   /// when none reported a count.
   private static func changedFiles(_ state: ConversationViewState) -> Int? {
     let counts = state.sections.filter { $0.id.hasPrefix("files-") }.compactMap { section in
       section.summary.split(separator: " ", maxSplits: 2).first.flatMap { Int($0) }
-        .flatMap { section.summary.hasPrefix("\($0) files in ") ? $0 : nil }
+        .flatMap { count in
+          let isCount = ["files in ", "file in "].contains {
+            section.summary.hasPrefix("\(count) \($0)")
+          }
+          return isCount ? count : nil
+        }
     }
     return counts.isEmpty ? nil : counts.reduce(0, +)
   }

@@ -5,9 +5,33 @@ import SwiftUI
 struct SidebarEmptyState: View {
   let state: SidebarViewState
   let searchText: String
+  /// Turns the Running or Needs you filter off with `nil`.
+  var setQuickFilter: (@MainActor (SessionFilter?) -> Void)?
+
+  /// What a quick filter's empty list says, so it never reads as if every session were gone.
+  private var filteredOutTitle: String? {
+    switch state.quickFilter {
+    case .running: "Nothing is running"
+    case .needsResponse: "Nothing needs you"
+    case .all, .archived, .none: nil
+    }
+  }
 
   var body: some View {
-    if state.list.sessions.isEmpty, state.projects.isEmpty {
+    if let title = filteredOutTitle, state.list.sessions.isEmpty, searchText.isEmpty {
+      VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+        Text(title).font(.callout).foregroundStyle(.secondary)
+        if let setQuickFilter {
+          Button("Show All Sessions") { setQuickFilter(nil) }
+            .buttonStyle(.link)
+            .font(.callout)
+            .accessibilityIdentifier("sidebar-clear-filter")
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.horizontal, Theme.Spacing.small)
+      .listRowSeparator(.hidden)
+    } else if state.list.sessions.isEmpty, state.projects.isEmpty {
       switch state.list.phase {
       case .loading:
         ProgressView("Loading sessions\u{2026}")

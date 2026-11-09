@@ -24,7 +24,7 @@ struct EmptyTranscriptView: View {
 
   /// Whether the conversation is known to be empty, not still loading its history.
   static func isEmpty(_ state: ConversationViewState) -> Bool {
-    !state.isLoadingHistory && !state.isHydrating
+    !state.isLoadingHistory && !state.isHydrating && state.turnStartedAt == nil
   }
 
   private var loading: some View {

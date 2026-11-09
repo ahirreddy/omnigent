@@ -28,12 +28,12 @@ public struct SessionInspectorView: View {
     Form {
       sessionSection
       if let usage = state.section("usage") { usageSection(usage) }
-      if let todos = state.section("todos") {
+      if let todos = state.section("todos"), !SectionReading.todos(todos).isEmpty {
         Section("Plan") {
           ForEach(SectionReading.todos(todos)) { TodoRow(todo: $0) }
         }
       }
-      if let presence = state.section("presence") {
+      if let presence = state.section("presence"), !SectionReading.viewers(presence).isEmpty {
         Section("Viewers") {
           ForEach(SectionReading.viewers(presence)) { viewer in
             LabeledContent(viewer.name) {

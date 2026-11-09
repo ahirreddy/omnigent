@@ -62,7 +62,9 @@ enum NewSessionAdapter {
     }
     let choices = sorted.map { entry in
       OmnigentUIComponents.HarnessChoice(
-        id: entry.agent.id, name: entry.agent.name, harness: entry.agent.harness,
+        id: entry.agent.id,
+        name: HarnessAppearance.agentName(entry.agent.name, harness: entry.agent.harness),
+        harness: entry.agent.harness,
         builtin: entry.agent.builtin,
         unavailableReason: hostID.hasPrefix(newSandboxHostID)
           ? nil
@@ -117,14 +119,6 @@ enum NewSessionAdapter {
     var modes = ComposerAdapter.approvalModes(menu)
     modes.selectedID = selected ?? menu.selected
     return modes
-  }
-
-  /// The selection's approval mode for `option`: `nil` for the harness default.
-  static func approvalMode(
-    _ option: OmnigentUIComponents.ApprovalModeOption, agent: OmnigentCoreFFI.CreationAgent?
-  ) -> String? {
-    let defaultMode = agent.flatMap { creationApprovalModeMenu(agent: $0)?.selected }
-    return option.id == defaultMode ? nil : option.id
   }
 
   /// The `git` block and workspace for a worktree choice in `folder`.

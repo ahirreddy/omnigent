@@ -222,7 +222,11 @@ fn status_sections(state: &SessionEventState, result: &mut Vec<EventSection>) {
         ));
     }
     if let Some(mode) = &state.approval_mode {
-        result.push(EventSection::new("approval", "Approval mode", mode.clone()));
+        result.push(EventSection::new(
+            "approval",
+            "Approval mode",
+            capitalized(&mode.replace('-', " ")),
+        ));
     }
 }
 
@@ -547,7 +551,11 @@ fn changed_file_sections(state: &SessionEventState, result: &mut Vec<EventSectio
             ChangedFiles::Loading => ("Loading changed files…".to_owned(), Vec::new()),
             ChangedFiles::Failed { message } => (message.clone(), Vec::new()),
             ChangedFiles::Loaded { entries } => (
-                format!("{} files in {id}", entries.len()),
+                if entries.len() == 1 {
+                    format!("1 file in {id}")
+                } else {
+                    format!("{} files in {id}", entries.len())
+                },
                 entries
                     .iter()
                     .take(SECTION_ENTRIES)

@@ -48,19 +48,11 @@ public struct FileTreeView: View {
             .id(row.id)
             .contentShape(.rect)
             .accessibilityAddTraits(.isButton)
-            .onTapGesture(count: 2) {
-              guard let entry = row.entry else { return }
-              model.selection = entry.path
-              Task { await model.activateSelection() }
-            }
             .onTapGesture {
               guard let entry = row.entry else { return }
               model.selection = entry.path
               focused = true
-              #if os(iOS)
-                // Touch has no double-click: a tap opens the file or toggles the folder.
-                Task { await model.activateSelection() }
-              #endif
+              Task { await model.activateSelection() }
             }
             .contextMenu {
               if let entry = row.entry {

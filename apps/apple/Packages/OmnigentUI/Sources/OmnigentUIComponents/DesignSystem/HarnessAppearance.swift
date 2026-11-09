@@ -9,6 +9,17 @@ nonisolated public struct HarnessAppearance: Hashable, Sendable {
   /// The display label.
   public let label: String
 
+  /// The name to show for an agent: a built-in native agent (`codex-native-ui`) by its harness's
+  /// label, any other by its own name.
+  /// - Parameters:
+  ///   - name: The agent's name.
+  ///   - harness: The agent's harness.
+  /// - Returns: The name to show.
+  public static func agentName(_ name: String, harness: String?) -> String {
+    guard name.hasSuffix("-native-ui") else { return name }
+    return Self(harness: harness ?? String(name.dropLast("-ui".count))).label
+  }
+
   /// Resolves the appearance of a harness id or alias.
   /// - Parameter harness: The harness as sent, for example `codex-native`.
   public init(harness: String?) {

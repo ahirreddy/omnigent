@@ -214,7 +214,8 @@ public struct NewTabPage: View {
               VStack(alignment: .leading, spacing: 2) {
                 Text(session.title).lineLimit(1)
                 if !session.agentName.isEmpty {
-                  Text(session.agentName).font(.caption).foregroundStyle(.secondary)
+                  Text(HarnessAppearance.agentName(session.agentName, harness: nil))
+                    .font(.caption).foregroundStyle(.secondary)
                 }
               }
               Spacer(minLength: 0)

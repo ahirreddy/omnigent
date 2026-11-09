@@ -354,4 +354,11 @@ struct SessionListTests {
     #expect(HarnessAppearance(harness: "my-custom").identifier == "fallback")
     #expect(HarnessAppearance(harness: "my-custom").label == "My Custom")
   }
+
+  @Test("a built-in native agent reads as its harness, any other as its own name")
+  func agentNames() {
+    #expect(HarnessAppearance.agentName("codex-native-ui", harness: "codex-native") == "Codex")
+    #expect(HarnessAppearance.agentName("claude-native-ui", harness: nil) == "Claude Code")
+    #expect(HarnessAppearance.agentName("reviewer", harness: "codex-native") == "reviewer")
+  }
 }

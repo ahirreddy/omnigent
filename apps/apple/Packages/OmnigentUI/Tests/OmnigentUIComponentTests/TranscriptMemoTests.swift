@@ -179,3 +179,33 @@ struct TranscriptMemoTests {
     #expect(links == [url])
   }
 }
+
+@Suite("Trailing bookkeeping in a turn")
+struct TrailingWrapUpTests {
+  private func tool(_ id: String, _ title: String) -> TranscriptItem {
+    var activity = Activity(kind: .toolCall, title: title, summary: "")
+    activity.status = "completed"
+    let row = Row(id: id, role: .assistant, text: "", activity: activity)
+    return .tools(id: id, entries: [ToolEntry(call: row, result: nil)])
+  }
+
+  @Test func aTurnDiffAfterTheAnswerJoinsTheEarlierWork() {
+    let answer = TranscriptItem.message(Row(id: "a", role: .assistant, text: "Done."))
+    let segments = TurnLayout.segments(
+      [tool("t1", "shell"), answer, tool("t2", "turn_diff")], isRunning: false)
+    #expect(segments.count == 2)
+    guard case .worked(_, _, let items, _) = segments[0] else {
+      Issue.record("expected the work first")
+      return
+    }
+    #expect(items.map(\.id) == ["tools:t1", "tools:t2"])
+    #expect(segments[1] == .item(answer))
+  }
+
+  @Test func otherToolsAfterTheAnswerStayAfterIt() {
+    let answer = TranscriptItem.message(Row(id: "a", role: .assistant, text: "Done."))
+    let segments = TurnLayout.segments(
+      [tool("t1", "shell"), answer, tool("t2", "shell")], isRunning: false)
+    #expect(segments.count == 3)
+  }
+}
