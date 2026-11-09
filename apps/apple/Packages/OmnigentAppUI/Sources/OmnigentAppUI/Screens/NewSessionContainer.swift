@@ -124,15 +124,20 @@ struct NewSessionContainer: View {
     if let customAgents {
       CreateAgentContainer(
         store: customAgents, allowsImport: creation.catalog.value?.agentInstall == true,
-        created: { agent in
-          isCreatingAgent = false
-          Task { await form.agentInstalled(agent, creation) }
-        },
+        created: agentCreated(creation),
         drafted: { draft in
           isCreatingAgent = false
           form.adoptPendingAgent(draft)
         },
         cancel: { isCreatingAgent = false })
+    }
+  }
+
+  /// A bundle the sheet installed becomes the form's agent.
+  func agentCreated(_ creation: CreationStore) -> @MainActor (ManagedAgent) -> Void {
+    { agent in
+      isCreatingAgent = false
+      Task { await form.agentInstalled(agent, creation) }
     }
   }
 

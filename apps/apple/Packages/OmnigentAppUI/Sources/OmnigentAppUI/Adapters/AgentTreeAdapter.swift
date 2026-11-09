@@ -74,6 +74,7 @@ enum AgentTreeAdapter {
 struct AgentTreePanelHost: View {
   let conversation: ConversationStore
   let open: @MainActor (String) -> Void
+  var refreshInterval = AgentTreeAdapter.refreshInterval
 
   var body: some View {
     let tools = conversation.tools
@@ -86,7 +87,7 @@ struct AgentTreePanelHost: View {
     .task {
       while !Task.isCancelled {
         do {
-          try await Task.sleep(for: AgentTreeAdapter.refreshInterval)
+          try await Task.sleep(for: refreshInterval)
         } catch {
           return  // Cancelled: the tab is no longer shown.
         }

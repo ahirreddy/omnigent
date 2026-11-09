@@ -13,6 +13,7 @@ struct CanvasAdapter: View {
 
   /// How often the sessions are read again while the page is open, as the web.
   static let refreshInterval: Duration = .seconds(30)
+  var readsAgainEvery = Self.refreshInterval
 
   private var layoutKey: String {
     "omnigent.canvas.\(connection.connectedServer?.baseUrl ?? "").\(connection.connectedServer?.userId ?? "")"
@@ -44,9 +45,9 @@ struct CanvasAdapter: View {
         while !Task.isCancelled {
           await canvas.load(viewerID: connection.sessionList.viewerID)
           do {
-            try await Task.sleep(for: Self.refreshInterval)
+            try await Task.sleep(for: readsAgainEvery)
           } catch {
-            return  // Cancelled: the page closed.
+            break  // Cancelled: the page closed.
           }
         }
       }

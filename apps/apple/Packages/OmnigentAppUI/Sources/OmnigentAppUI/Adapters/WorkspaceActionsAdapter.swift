@@ -11,6 +11,16 @@ import SwiftUI
 /// folder is on this Mac, Share and Quick Look on iPhone and iPad (the file is read through the
 /// workspace, wherever the session runs), and the conversation's Markdown for file previews.
 enum WorkspaceActionsAdapter {
+  #if os(macOS)
+    /// Opens a file in its default app, or says it couldn't.
+    static func openExternally(
+      _ path: String, open: (URL) -> Bool = { NSWorkspace.shared.open($0) },
+      report: @MainActor (String) -> Void
+    ) {
+      if !open(URL(fileURLWithPath: path)) { report("Could not open \(path).") }
+    }
+  #endif
+
   /// The hooks for `workspace`.
   /// - Parameters:
   ///   - workspace: The session's workspace.
@@ -30,11 +40,7 @@ enum WorkspaceActionsAdapter {
       actions.reveal = { path in
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
       }
-      actions.openExternally = { path in
-        if !NSWorkspace.shared.open(URL(fileURLWithPath: path)) {
-          report("Could not open \(path).")
-        }
-      }
+      actions.openExternally = { openExternally($0, report: report) }
     #else
       let source = workspace.source
       actions.share = { path in

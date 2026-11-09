@@ -54,10 +54,17 @@ extension View {
     isPresented: Binding<Bool>, store: CustomAgentsStore?,
     imported: @escaping @MainActor (ManagedAgent) -> Void
   ) -> some View {
-    fileImporter(isPresented: isPresented, allowedContentTypes: [.gzip]) { result in
-      Task { await bundlePicked(result, store: store, imported: imported) }
-    }
+    fileImporter(
+      isPresented: isPresented, allowedContentTypes: [.gzip],
+      onCompletion: bundleImportFinished(store: store, imported: imported))
   }
+}
+
+/// What the file importer does with its answer.
+func bundleImportFinished(
+  store: CustomAgentsStore?, imported: @escaping @MainActor (ManagedAgent) -> Void
+) -> @MainActor (Result<URL, any Error>) -> Void {
+  { result in Task { await bundlePicked(result, store: store, imported: imported) } }
 }
 
 /// Installs the bundle picked in the file importer, or records why the importer failed.

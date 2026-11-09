@@ -19,7 +19,13 @@ public struct ServerSettingsRequest: Hashable, Sendable {
   public let url: String?
   /// The pane, or `nil` for the first one.
   public let pane: ServerSettingsPane?
-  let id = UUID()
+  let id: UUID
+
+  init(url: String?, pane: ServerSettingsPane?) {
+    self.url = url
+    self.pane = pane
+    id = UUID()
+  }
 }
 
 /// Which Settings tab shows, and the server pane to show next, shared by the Settings window and
