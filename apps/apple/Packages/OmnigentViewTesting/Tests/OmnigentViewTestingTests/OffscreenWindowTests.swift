@@ -5,6 +5,24 @@
 
   @testable import OmnigentViewTesting
 
+  /// A lazy stack whose one row changes identity.
+  private struct SwappedRows: View {
+    @State private var row = "first"
+
+    var body: some View {
+      VStack {
+        Button("Swap") { row = "second" }
+        ScrollView {
+          LazyVStack {
+            ForEach([row], id: \.self) { name in
+              Button(name) {}.buttonStyle(.borderless)
+            }
+          }
+        }
+      }
+    }
+  }
+
   @MainActor
   private final class Taps {
     var log: [String] = []
@@ -146,6 +164,15 @@
       try screen.click(CGPoint(x: frames[7].midX, y: frames[7].midY))
       try screen.type("a")
       #expect(screen.window.firstResponder is NSText)
+    }
+
+    @Test("the controls of a row a lazy stack dropped aren't listed")
+    func droppedRowControls() throws {
+      let screen = OffscreenWindow(SwappedRows(), width: 300, height: 200)
+      defer { screen.close() }
+      #expect(screen.controlFrames.count == 2, "the swap button and the row's")
+      try screen.clickControl(at: 0)
+      #expect(screen.controlFrames.count == 2, "\(screen.controlFrames)")
     }
 
     @Test("a context menu can be read and chosen from without opening it")
