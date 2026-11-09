@@ -114,7 +114,8 @@ enum Theme {
     let formatter = DateFormatter()
     formatter.calendar = calendar
     formatter.timeZone = calendar.timeZone
-    if let days = calendar.dateComponents([.day], from: date, to: now).day, days < 7 {
+    // A weekday means the past week; a date ahead of the clock needs its full date.
+    if let days = calendar.dateComponents([.day], from: date, to: now).day, (0..<7).contains(days) {
       formatter.setLocalizedDateFormatFromTemplate("EEE")
     } else {
       formatter.setLocalizedDateFormatFromTemplate("MMMd")

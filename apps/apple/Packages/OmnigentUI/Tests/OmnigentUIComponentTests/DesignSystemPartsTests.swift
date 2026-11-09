@@ -152,6 +152,16 @@
       #expect(Theme.relativeDate(lastMonth, now: now) == formatted(lastMonth, template: "MMMd"))
     }
 
+    @Test("a date ahead of the clock is a date, not a weekday that reads as last week")
+    func futureDates() throws {
+      let now = try #require(
+        Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 15, hour: 12)))
+      let later = try date(40, from: now)
+      #expect(Theme.relativeDate(later, now: now) == formatted(later, template: "MMMd"))
+      let tomorrow = try date(2, from: now)
+      #expect(Theme.relativeDate(tomorrow, now: now) == formatted(tomorrow, template: "MMMd"))
+    }
+
     @Test(
       "turn status reads from the header",
       arguments: [
