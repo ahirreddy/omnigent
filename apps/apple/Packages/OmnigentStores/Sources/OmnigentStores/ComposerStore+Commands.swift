@@ -22,9 +22,6 @@ struct ConversationFacts: Equatable {
 /// Sending: a message, or the slash command the core recognizes in the draft. A message the
 /// server refuses because the session's host is offline waits in the queue for the host.
 extension ComposerStore {
-  /// How long a held message waits while the host already reads online before it is tried
-  /// again: a short outage can come and go between header updates.
-
   /// Sends the draft and the uploaded attachments. A slash command does what the core says: a
   /// skill runs on the server, `/compact` and `/clear` use their controls, `/model` and
   /// `/effort` change the configuration, `/context`, `/mcp` and `/help` show text,
