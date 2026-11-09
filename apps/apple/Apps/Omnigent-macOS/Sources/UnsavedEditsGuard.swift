@@ -163,6 +163,55 @@ struct UnsavedEditsWindowAccessor: NSViewRepresentable {
   }
 }
 
+/// Quitting with unsaved file edits: Save (quits once all are saved), Don't Save, or Cancel.
+struct UnsavedEditsQuit {
+  /// Asks about `paths`; the default shows ``UnsavedEditsAlert/alert(for:)`` and waits.
+  var ask: ([String]) -> UnsavedEditsAlert.Choice = { paths in
+    UnsavedEditsAlert.choice(UnsavedEditsAlert.alert(for: paths).runModal())
+  }
+  /// Saves every edit, and returns the paths that could not be saved.
+  var saveAll: () async -> [String] = { await UnsavedFileEdits.saveAll() }
+  /// Throws every edit away.
+  var discardAll: () -> Void = { UnsavedFileEdits.discardAll() }
+  /// Says the failure when saving leaves files unsaved.
+  var showFailure: ([String]) -> Void = { UnsavedEditsAlert.showFailure($0, in: nil) }
+
+  /// Asks before quitting when `paths` hold edits.
+  /// - Parameters:
+  ///   - paths: The files with unsaved edits.
+  ///   - reply: Tells the app, later, whether to quit.
+  ///   - proceed: Continues quitting.
+  /// - Returns: The reply.
+  func run(
+    paths: [String], reply: @escaping (Bool) -> Void,
+    proceed: @escaping () -> NSApplication.TerminateReply
+  ) -> NSApplication.TerminateReply {
+    guard !paths.isEmpty else { return proceed() }
+    switch ask(paths) {
+    case .cancel:
+      return .terminateCancel
+    case .discard:
+      discardAll()
+      return proceed()
+    case .save:
+      Task {
+        let left = await saveAll()
+        guard left.isEmpty else {
+          reply(false)
+          return showFailure(left)
+        }
+        switch proceed() {
+        case .terminateNow: reply(true)
+        case .terminateCancel: reply(false)
+        case .terminateLater: break  // `proceed` replies once its own work is done.
+        @unknown default: reply(true)
+        }
+      }
+      return .terminateLater
+    }
+  }
+}
+
 extension OmnigentMacAppDelegate {
   /// Before quitting with unsaved file edits: Save (quits once all are saved), Don't Save, or
   /// Cancel.
@@ -173,29 +222,9 @@ extension OmnigentMacAppDelegate {
   func askAboutUnsavedEdits(
     _ sender: NSApplication, then proceed: @escaping () -> NSApplication.TerminateReply
   ) -> NSApplication.TerminateReply {
-    let paths = UnsavedFileEdits.paths
-    guard !paths.isEmpty, !Self.isTestHost else { return proceed() }
-    switch UnsavedEditsAlert.choice(UnsavedEditsAlert.alert(for: paths).runModal()) {
-    case .cancel:
-      return .terminateCancel
-    case .discard:
-      UnsavedFileEdits.discardAll()
-      return proceed()
-    case .save:
-      Task {
-        let left = await UnsavedFileEdits.saveAll()
-        guard left.isEmpty else {
-          sender.reply(toApplicationShouldTerminate: false)
-          return UnsavedEditsAlert.showFailure(left, in: nil)
-        }
-        switch proceed() {
-        case .terminateNow: sender.reply(toApplicationShouldTerminate: true)
-        case .terminateCancel: sender.reply(toApplicationShouldTerminate: false)
-        case .terminateLater: break  // `proceed` replies once its own work is done.
-        @unknown default: sender.reply(toApplicationShouldTerminate: true)
-        }
-      }
-      return .terminateLater
-    }
+    guard !Self.isTestHost else { return proceed() }
+    return UnsavedEditsQuit().run(
+      paths: UnsavedFileEdits.paths, reply: sender.reply(toApplicationShouldTerminate:),
+      proceed: proceed)
   }
 }

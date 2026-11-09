@@ -15,6 +15,7 @@ let localPackages: [Package] = [
   .package(path: "Packages/OmnigentServices"),
   .package(path: "Packages/OmnigentPlatform"),
   .package(path: "Packages/OmnigentTestSupport"),
+  .package(path: "Packages/OmnigentViewTesting"),
   .package(path: "Packages/OmnigentCoreFFI"),
   .package(path: "Packages/OmnigentBrowser"),
   // Remote agent browser tabs (video from the agent's machine) and the shared native input.
@@ -252,6 +253,7 @@ func uiTests(
 let macTestDependencies: [TargetDependency] = [
   .package(product: "OmnigentDesktop"),
   .package(product: "OmnigentBrowser"),
+  .package(product: "OmnigentViewTesting"),
 ]
 let developerIDTestSettings: SettingsDictionary = [
   "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) OMNIGENT_CHROMIUM"

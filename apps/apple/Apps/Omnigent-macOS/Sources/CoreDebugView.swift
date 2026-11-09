@@ -20,10 +20,19 @@ struct DebugCommands: Commands {
 
   static var isEnabled: Bool {
     #if DEBUG
-      true
+      isEnabled(isDebugBuild: true, defaults: .standard)
     #else
-      UserDefaults.standard.bool(forKey: "OmnigentDebugMenu")
+      isEnabled(isDebugBuild: false, defaults: .standard)
     #endif
+  }
+
+  /// Whether the Debug menu shows.
+  /// - Parameters:
+  ///   - isDebugBuild: Whether this is a Debug build.
+  ///   - defaults: Where `-OmnigentDebugMenu YES` lands.
+  /// - Returns: `true` in a Debug build, and elsewhere only when the launch asked.
+  static func isEnabled(isDebugBuild: Bool, defaults: UserDefaults) -> Bool {
+    isDebugBuild || defaults.bool(forKey: "OmnigentDebugMenu")
   }
 
   var body: some Commands {

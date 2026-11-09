@@ -9,6 +9,19 @@ import OmnigentDesktop
 import OmnigentStores
 import OmnigentUIComponents
 
+/// The notification permission `AppServices` asks for after the first connection.
+protocol NotificationAuthorizing: AnyObject {
+  /// The last permission read.
+  var authorization: DesktopNotificationCenter.Authorization { get }
+  /// Re-reads the permission.
+  func refreshAuthorization() async throws(DesktopNotificationError)
+  /// Asks the person for permission.
+  /// - Returns: Whether notifications are allowed.
+  @discardableResult func requestAuthorization() async throws(DesktopNotificationError) -> Bool
+}
+
+extension DesktopNotificationCenter: NotificationAuthorizing {}
+
 /// App-wide services shared by every window: the desktop shell, recent servers, the browser
 /// engines, appearance, the menu bar's sessions, the Keychain choice and the log.
 @Observable
@@ -42,13 +55,33 @@ final class AppServices {
   /// Why automatic updates are off, when the updater could not start.
   var updaterIssue: String?
   @ObservationIgnored private var notificationAuthorizationRequested = false
+  @ObservationIgnored private let flushDrafts: () -> Void
+  @ObservationIgnored private let notificationPermission: any NotificationAuthorizing
+  @ObservationIgnored private let isDemo: Bool
+
+  /// Where UI tests and the test host keep saved tabs instead of Application Support.
+  static let tabsDirectoryKey = "OmnigentTabsDirectory"
 
   /// Creates the services.
   /// - Parameters:
   ///   - desktop: The delegate's shell services.
-  ///   - defaults: Store for recent servers and the engine choice.
-  init(desktop: DesktopController, defaults: UserDefaults = .standard) {
+  ///   - defaults: Store for recent servers, browser settings and the engine choice.
+  ///   - browserDirectory: Where the browser keeps profiles, history and bookmarks.
+  ///   - flushDrafts: Saves the composer drafts when the app quits.
+  ///   - notificationPermission: What asks for notification permission; `desktop`'s center when
+  ///     `nil`.
+  ///   - launchArguments: The process's arguments, where `-OmnigentDemo` asks for the demo.
+  init(
+    desktop: DesktopController, defaults: UserDefaults = .standard,
+    browserDirectory: URL = BrowserEnvironment.standardDirectory,
+    flushDrafts: @escaping () -> Void = { ComposerDraftArchive.shared?.flush() },
+    notificationPermission: (any NotificationAuthorizing)? = nil,
+    launchArguments: [String] = ProcessInfo.processInfo.arguments
+  ) {
+    isDemo = launchArguments.contains("-OmnigentDemo")
     self.desktop = desktop
+    self.flushDrafts = flushDrafts
+    self.notificationPermission = notificationPermission ?? desktop.notifications
     logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ai.omnigent.mac", category: "app")
     recentServers = RecentServers(defaults: defaults)
     browserProvider = AppEdition.makeBrowserProvider()
@@ -56,18 +89,19 @@ final class AppServices {
     theme = ThemePreferences(defaults: defaults)
     keychain = KeychainModeSelection.current()
     agentBrowser = AgentBrowserPerformer.forEdition(provider: browserProvider)
-    browser = BrowserEnvironment.standard(
-      provider: browserProvider, preferences: browserPreferences)
+    browser = BrowserEnvironment(
+      directory: browserDirectory, provider: browserProvider, preferences: browserPreferences,
+      defaults: defaults)
     browserTabs = BrowserTabHost(
       environment: browser, agent: agentBrowser?.agentController, logger: logger)
     do {
       // UI tests pass `-OmnigentTabsDirectory <path>` to keep the user's saved tabs untouched.
-      if let directory = defaults.string(forKey: "OmnigentTabsDirectory") {
+      if let directory = defaults.string(forKey: Self.tabsDirectoryKey) {
         tabPersistence = TabPersistence(directory: URL(filePath: directory))
       } else {
         tabPersistence = try TabPersistence.applicationSupport(
           bundleID: Bundle.main.bundleIdentifier ?? "ai.omnigent.mac",
-          isDemo: ProcessInfo.processInfo.arguments.contains("-OmnigentDemo"))
+          isDemo: isDemo)
       }
     } catch {
       tabPersistence = nil
@@ -79,7 +113,7 @@ final class AppServices {
   func willTerminate() {
     isTerminating = true
     tabPersistence?.flush()
-    ComposerDraftArchive.shared?.flush()
+    flushDrafts()
   }
 
   /// A server window closed: unless the app is quitting, its page is forgotten and its browser
@@ -168,7 +202,7 @@ final class AppServices {
   /// A new window's server session over the live services.
   /// - Returns: The session.
   func makeServerSession() -> ServerSession {
-    if ProcessInfo.processInfo.arguments.contains("-OmnigentDemo") {
+    if isDemo {
       do {
         return try ServerSession.demo()
       } catch {
@@ -193,11 +227,10 @@ final class AppServices {
       return
     }
     notificationAuthorizationRequested = true
-    let notifications = desktop.notifications
     do {
-      try await notifications.refreshAuthorization()
-      guard notifications.authorization == .notDetermined else { return }
-      let granted = try await notifications.requestAuthorization()
+      try await notificationPermission.refreshAuthorization()
+      guard notificationPermission.authorization == .notDetermined else { return }
+      let granted = try await notificationPermission.requestAuthorization()
       logger.notice("Notification permission \(granted ? "granted" : "declined", privacy: .public)")
     } catch {
       desktop.onIssue(.notificationFailed(error))
