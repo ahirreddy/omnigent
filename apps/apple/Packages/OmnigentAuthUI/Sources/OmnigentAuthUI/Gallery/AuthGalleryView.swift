@@ -43,10 +43,11 @@ private struct AuthGalleryDetail: View {
       if case .connected(let account) = sample.state.phase {
         Divider()
         HStack {
-          Text("Toolbar chip:")
+          Text("Sidebar footer:")
             .font(.caption)
             .foregroundStyle(.secondary)
-          AccountChip(account: account, actions: .inert)
+          AccountChip(account: account, style: .sidebarFooter, signOut: {})
+            .frame(width: 248)
           Spacer()
         }
         .padding()

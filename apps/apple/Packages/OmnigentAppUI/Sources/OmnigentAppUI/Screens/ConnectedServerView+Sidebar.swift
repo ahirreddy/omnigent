@@ -132,6 +132,13 @@ final class SidebarModel {
 // MARK: Actions
 
 extension ConnectedServerView {
+  /// The connected account when it can sign out: the sidebar's footer and Sign Out show only then.
+  var signOutAccount: SignedInAccount? {
+    guard case .connected(server: let account) = session.signIn.state.phase, account.canSignOut
+    else { return nil }
+    return account
+  }
+
   var sidebarActions: SidebarActions {
     let model = sidebarModel
     var actions = SidebarActions(
@@ -155,7 +162,7 @@ extension ConnectedServerView {
       actions.addServer = serverSwitching.addServer
       actions.openServerSettings = serverSwitching.openSettings
     }
-    if case .connected(server: let account) = session.signIn.state.phase, account.canSignOut {
+    if signOutAccount != nil {
       let signIn = session.signIn.actions
       actions.signOut = { signIn.signOut() }
     }

@@ -89,6 +89,7 @@ public struct SidebarView: View {
     .modifier(SidebarSearchField(text: $searchText))
     .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader(state: state, actions: actions) }
     .safeAreaInset(edge: .bottom, spacing: 0) { bottomBars }
+    .sidebarAccountFooter(state.account, signOut: actions.signOut)
     #if os(macOS)
       .contextMenu(forSelectionType: SidebarDestination.self) { _ in
         EmptyView()

@@ -1,4 +1,24 @@
+import OmnigentAuthUI
 import SwiftUI
+
+extension View {
+  /// Pins the signed-in account under the sidebar's list, across its width. With no account the
+  /// footer takes no space.
+  func sidebarAccountFooter(_ account: SignedInAccount?, signOut: (@MainActor () -> Void)?)
+    -> some View
+  {
+    safeAreaBar(edge: .bottom, spacing: 0) {
+      if let account {
+        VStack(spacing: 0) {
+          Divider()
+          AccountChip(account: account, style: .sidebarFooter, signOut: signOut)
+            .padding(.horizontal, Theme.Spacing.small)
+            .padding(.vertical, Theme.Spacing.extraSmall)
+        }
+      }
+    }
+  }
+}
 
 /// The sidebar header: the Omnigent wordmark (which starts a new session, as the web's brand
 /// link), the server switcher, and the web's Search and Settings buttons.

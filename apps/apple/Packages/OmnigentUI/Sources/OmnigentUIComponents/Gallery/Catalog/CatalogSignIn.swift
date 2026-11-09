@@ -21,13 +21,19 @@ enum SignInCatalog {
         }),
       .component(
         .signIn, "account-chip", "Account Chip",
-        summary: "The signed-in account in the toolbar.",
+        summary: "The signed-in account at the foot of the sidebar, and on the signed-in screen.",
         systemImage: "person.crop.circle", canvas: .column(width: 360),
-        keywords: ["account", "sign out"],
+        keywords: ["account", "sign out", "sidebar", "footer"],
         states: [
+          CatalogState("sidebar-footer", "Sidebar footer") {
+            CatalogStack {
+              AccountChip(account: AuthSamples.account, style: .sidebarFooter, signOut: {})
+                .frame(width: 248)
+            }
+          },
           CatalogState("chip", "Signed in") {
             CatalogStack { AccountChip(account: AuthSamples.account, actions: .inert) }
-          }
+          },
         ]),
       .page(
         .signIn, "connect", "Connect and Sign In",

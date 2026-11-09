@@ -1,5 +1,4 @@
 import Foundation
-import OmnigentAuthUI
 import OmnigentCoreFFI
 import OmnigentRemoteBrowser
 import OmnigentStores
@@ -105,7 +104,6 @@ public struct ConnectedServerView: View {
     .background { PinnedSessionShortcuts(open: openPinnedSession) }
     .copyConfirmations()
     .environment(\.transcriptFocus, session.transcriptFocus)
-    .toolbar { accountToolbar }
     .focusedSceneValue(\.tabCommands, tabCommandRelay.publish(tabs.commands))
     .modifier(TabRestoration(session: session, context: tabContext) { restore($0) })
     .modifier(SessionTabsLifecycle(session: session))
@@ -166,6 +164,7 @@ public struct ConnectedServerView: View {
     state.projectSort = connection.sessionList.projectSortMode.map {
       $0 == .manual ? .manual : .alphabetical
     }
+    state.account = signOutAccount
     return state
   }
 
@@ -178,14 +177,6 @@ public struct ConnectedServerView: View {
     let list = connection.sessionList
     return Binding(
       get: { list.editError != nil }, set: { if !$0 { list.dismissEditError() } })
-  }
-
-  @ToolbarContentBuilder private var accountToolbar: some ToolbarContent {
-    if case .connected(let account) = session.signIn.state.phase, account.canSignOut {
-      ToolbarItem(placement: .automatic) {
-        AccountChip(account: account, actions: session.signIn.actions)
-      }
-    }
   }
 
   /// Links from a session's chat: server links in the app, others in a browser tab or outside.
