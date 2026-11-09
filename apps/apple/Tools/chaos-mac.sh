@@ -121,7 +121,10 @@ run_seed() {
   else
     args+=(-OmnigentDemo YES)
   fi
-  open -n -g "$app" --args "${args[@]}"
+  # `open` starts the app from launchd, so a coverage build's profile path has to be handed over.
+  local environment=()
+  [[ -z "${LLVM_PROFILE_FILE:-}" ]] || environment=(--env "LLVM_PROFILE_FILE=$LLVM_PROFILE_FILE")
+  open -n -g ${environment[@]+"${environment[@]}"} "$app" --args "${args[@]}"
   for _ in $(seq 1 60); do
     pid="$(running_pid)"
     [[ -z "$pid" ]] || break
