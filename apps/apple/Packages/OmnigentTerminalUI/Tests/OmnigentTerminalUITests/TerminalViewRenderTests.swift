@@ -1,4 +1,5 @@
 import AppKit
+import OmnigentViewTesting
 import SwiftUI
 import Testing
 

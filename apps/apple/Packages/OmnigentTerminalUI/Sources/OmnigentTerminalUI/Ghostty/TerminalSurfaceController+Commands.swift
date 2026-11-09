@@ -49,6 +49,8 @@ extension TerminalSurfaceController {
 
   /// Searches for `needle` (empty cancels the search but keeps the bar).
   public func updateSearch(_ needle: String) {
+    // A find bar that reappears sets its field to the current needle; Ghostty wouldn't recount.
+    guard search?.needle != needle else { return }
     search = TerminalSearch(needle: needle)
     perform("search:\(needle)")
   }
