@@ -119,7 +119,7 @@ extension ConversationContainer {
         return .failed(error.message)
       }
       guard link.pending, let url = link.url.flatMap(URL.init(string:)) else { return .notPending }
-      guard await opener.open(url) else {
+      guard await signInOpener.open(url) else {
         return .failed("The browser did not open \(url.absoluteString).")
       }
       return .opened(code: link.code)

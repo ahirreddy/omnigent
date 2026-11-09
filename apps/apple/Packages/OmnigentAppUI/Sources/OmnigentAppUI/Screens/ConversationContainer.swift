@@ -19,6 +19,9 @@ struct ConversationContainer: View {
   let changedFilesRevision: Int
   let navigation: SessionCommandActions
   let opener: ExternalURLOpener
+  /// Opens a sign-in page: always the system browser, whatever the in-app links setting says,
+  /// because identity providers refuse embedded browsers.
+  var signInOpener = ExternalURLOpener.system
   let openSession: @MainActor (String) -> Void
   let retry: @MainActor () -> Void
   /// The connected server, for the composer's execution context.

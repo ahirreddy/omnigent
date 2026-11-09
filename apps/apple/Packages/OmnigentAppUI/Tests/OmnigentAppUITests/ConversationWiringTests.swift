@@ -185,7 +185,13 @@ struct ConversationWiringTests {
   func signInLink() async throws {
     let server = threeSessionServer()
     let wired = try await wired(server)
-    let open = wired.container.openSignIn
+    let signInPages = Opened()
+    var container = wired.container
+    container.signInOpener = ExternalURLOpener { url in
+      signInPages.urls.append(url)
+      return signInPages.succeeds
+    }
+    let open = container.openSignIn
 
     server.route("/v1/sessions/conv_a/sign-in-link", .json(#"{"detail":"no"}"#, status: 500))
     if case .failed = await open() {} else { Issue.record("a failed read must say so") }
@@ -197,9 +203,10 @@ struct ConversationWiringTests {
       "/v1/sessions/conv_a/sign-in-link",
       .json(#"{"pending":true,"url":"https://login.example/x","code":"ABCD"}"#))
     #expect(await open() == .opened(code: "ABCD"))
-    #expect(wired.opened.urls.map(\.absoluteString) == ["https://login.example/x"])
+    #expect(signInPages.urls.map(\.absoluteString) == ["https://login.example/x"])
+    #expect(wired.opened.urls.isEmpty, "the in-app links opener must not get a sign-in page")
 
-    wired.opened.succeeds = false
+    signInPages.succeeds = false
     #expect(await open() == .failed("The browser did not open https://login.example/x."))
   }
 
