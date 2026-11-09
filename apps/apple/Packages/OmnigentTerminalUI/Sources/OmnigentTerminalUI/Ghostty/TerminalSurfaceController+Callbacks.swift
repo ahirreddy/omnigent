@@ -83,7 +83,10 @@ extension TerminalSurfaceController {
       }
     default:
       lastError = "The terminal program asked to read the clipboard; the request was refused."
-      unsafe ghostty_surface_complete_clipboard_request(surface, nil, state, false)
+      // libghostty needs a string, and asks again until confirmed: refuse with an empty answer.
+      "".withCString { pointer in
+        unsafe ghostty_surface_complete_clipboard_request(surface, pointer, state, true)
+      }
     }
   }
 
