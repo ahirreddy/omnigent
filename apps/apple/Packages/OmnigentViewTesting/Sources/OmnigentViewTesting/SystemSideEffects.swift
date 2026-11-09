@@ -99,6 +99,7 @@
       }
       guard isFirst else { return }
       installFalsePassGuard()
+      RunnerLoopShield.install()
       installPasteboard()
       installWorkspace()
       installPanels()
