@@ -91,8 +91,12 @@ impl<'a> ActivityUpdate<'a> {
 
 fn error_value(error: &StreamErrorDetail) -> Value {
     let mut fields = Map::new();
-    fields.insert("code".to_owned(), Value::String(error.code.clone()));
-    fields.insert("message".to_owned(), Value::String(error.message.clone()));
+    // A blank code or message would otherwise show as a bare "code:" label.
+    for (name, text) in [("code", &error.code), ("message", &error.message)] {
+        if !text.trim().is_empty() {
+            fields.insert(name.to_owned(), Value::String(text.clone()));
+        }
+    }
     if let Some(detail) = &error.detail {
         fields.insert("detail".to_owned(), Value::Object(detail.clone()));
     }

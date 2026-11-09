@@ -1019,6 +1019,42 @@ fn closing_a_reasoning_section_whose_row_is_gone_still_ends_the_section() {
 }
 
 #[test]
+fn a_retry_with_nothing_to_show_says_no_details_were_reported() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({
+        "type": "response.retry",
+        "source": "llm",
+        "attempt": 1,
+        "max_attempts": 2,
+        "delay_seconds": 1.0,
+        "error": {"code": "", "message": ""},
+    }));
+    let activity = harness.last().activity.clone().unwrap();
+    assert!(
+        activity
+            .details
+            .iter()
+            .any(|detail| detail.text == "No details reported"),
+        "{activity:?}"
+    );
+}
+
+#[test]
+fn a_retry_with_only_a_message_shows_no_blank_code() {
+    let mut harness = Harness::new(SESSION);
+    harness.send(json!({
+        "type": "response.retry",
+        "source": "llm",
+        "attempt": 1,
+        "max_attempts": 2,
+        "delay_seconds": 1.0,
+        "error": {"code": "  ", "message": "Overloaded"},
+    }));
+    let activity = harness.last().activity.clone().unwrap();
+    assert_eq!(activity.details[0].text, "message: Overloaded");
+}
+
+#[test]
 fn a_preview_with_no_earlier_row_is_not_put_back() {
     let mut harness = Harness::new(SESSION);
     let orphan = assistant("orphan", "streaming");
