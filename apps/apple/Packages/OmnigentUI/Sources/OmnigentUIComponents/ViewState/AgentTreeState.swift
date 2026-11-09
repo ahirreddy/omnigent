@@ -178,9 +178,13 @@ nonisolated public enum AgentTreeLayout {
   public static func layout(_ nodes: [AgentTreeNode]) -> (centers: [String: CGPoint], size: CGSize)
   {
     guard let root = nodes.first else { return ([:], .zero) }
+    // Parents come first, so taking each id once under a parent already placed can't form a cycle.
     var children: [String: [String]] = [:]
+    var placed: Set<String> = [root.id]
     for node in nodes.dropFirst() {
-      if let parent = node.parentID { children[parent, default: []].append(node.id) }
+      guard let parent = node.parentID, placed.contains(parent), placed.insert(node.id).inserted
+      else { continue }
+      children[parent, default: []].append(node.id)
     }
     var widths: [String: CGFloat] = [:]
     func width(_ id: String) -> CGFloat {

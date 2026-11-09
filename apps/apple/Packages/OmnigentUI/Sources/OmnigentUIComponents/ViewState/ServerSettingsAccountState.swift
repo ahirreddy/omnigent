@@ -77,7 +77,10 @@ nonisolated public enum ArchivedRetention {
     _ sessions: [SessionSummary], info: [String: ArchivedSessionInfo], days: Int?, now: Date
   ) -> [String] {
     guard let days else { return [] }
-    let cutoff = Int64(now.timeIntervalSince1970) - Int64(days) * 86_400
+    // A stored value too large to be a time span keeps everything, as "never" does.
+    let (span, overflowed) = Int64(days).multipliedReportingOverflow(by: 86_400)
+    guard !overflowed else { return [] }
+    let cutoff = Int64(now.timeIntervalSince1970) - span
     return sessions.compactMap { session in
       guard let facts = info[session.id], facts.canDelete, facts.archivedAt < cutoff else {
         return nil

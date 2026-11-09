@@ -253,7 +253,9 @@ struct HarnessDeviceCodeSection: View {
 
   /// `m:ss` until `date`, never negative.
   static func countdown(until date: Date, now: Date) -> String {
-    let seconds = max(0, Int(date.timeIntervalSince(now).rounded(.up)))
+    // A server's expiry can be any 64-bit value, which needn't fit an `Int` once it is relative.
+    let remaining = date.timeIntervalSince(now).rounded(.up)
+    let seconds = remaining > 0 ? Int(min(remaining, TimeInterval(Int32.max))) : 0
     let remainder = seconds % 60
     return "\(seconds / 60):\(remainder < 10 ? "0" : "")\(remainder)"
   }

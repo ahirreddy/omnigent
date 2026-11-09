@@ -83,12 +83,10 @@
     }
   }
 
-  /// Each of these traps today and takes the whole test process with it, so they stay disabled.
-  @Suite("Hostile data that crashes")
+  /// Data outside what the app writes or a server should send, which used to trap.
+  @Suite("Hostile data that crashed")
   struct HostileDataCrashReproductionTests {
-    @Test(
-      "a huge stored retention is ignored or clamped",
-      .disabled("Traps: Int64(days) * 86_400 overflows past about 10^14 days"))
+    @Test("a huge stored retention is ignored or clamped")
     func retentionOverflow() {
       let days = ArchivedRetention.days("99999999999999999")
       let session = SessionSummary(id: "s", title: "s")
@@ -96,24 +94,37 @@
         ArchivedRetention.expired([session], info: [:], days: days, now: .distantPast).isEmpty)
     }
 
-    @Test(
-      "a node listed under itself doesn't recurse forever",
-      .disabled("Stack overflow in AgentTreeLayout.layout: a repeated id can form a cycle"))
+    @Test("a node listed under itself doesn't recurse forever")
     func repeatedNode() {
       let nodes = [
         AgentTreeNode(id: "root", name: "root"),
         AgentTreeNode(id: "a", parentID: "root", depth: 1, name: "a"),
         AgentTreeNode(id: "a", parentID: "a", depth: 2, name: "a"),
       ]
-      #expect(AgentTreeLayout.layout(nodes).centers["root"] != nil)
+      let centers = AgentTreeLayout.layout(nodes).centers
+      #expect(Set(centers.keys) == ["root", "a"])
     }
 
-    @Test(
-      "the smallest 64-bit expiry reads as expired",
-      .disabled("Traps: Int() of a difference below Int.min, before the max(0, ...) clamps it"))
+    @Test("two nodes that name each other as parents leave the tree without them")
+    func parentsInACycle() {
+      let nodes = [
+        AgentTreeNode(id: "root", name: "root"),
+        AgentTreeNode(id: "a", parentID: "b", depth: 1, name: "a"),
+        AgentTreeNode(id: "b", parentID: "a", depth: 1, name: "b"),
+      ]
+      #expect(Set(AgentTreeLayout.layout(nodes).centers.keys) == ["root"])
+    }
+
+    @Test("the smallest 64-bit expiry reads as expired")
     func countdownBeforeInt() {
       let expired = Date(timeIntervalSince1970: TimeInterval(Int64.min))
       #expect(HarnessDeviceCodeSection.countdown(until: expired, now: .now) == "0:00")
+    }
+
+    @Test("an expiry too far ahead for an Int still reads as a time")
+    func countdownPastInt() {
+      let distant = Date(timeIntervalSinceReferenceDate: 1e300)
+      #expect(HarnessDeviceCodeSection.countdown(until: distant, now: .now).contains(":"))
     }
   }
 #endif
