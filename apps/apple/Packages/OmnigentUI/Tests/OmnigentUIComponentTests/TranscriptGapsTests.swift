@@ -174,23 +174,28 @@
       #expect(watcher.bounds(of: NSRange(location: 0, length: 1), in: unlaidOut) == nil)
     }
 
-    @Test("Output that arrived during a scroll catches up when it ends at the bottom")
+    @Test("Output that arrives during a scroll waits, and catches up when the scroll ends")
     func catchesUpAfterScroll() async throws {
+      let rows = (0..<10).flatMap { index in
+        [TranscriptFixture.user("u\(index)"), TranscriptFixture.answer("a\(index)")]
+      }
       let conversation = LiveConversation(
-        ConversationViewState(
-          header: TranscriptFixture.header, rows: TranscriptFixture.turns(6, startingAt: 10)))
+        ConversationViewState(header: TranscriptFixture.header, rows: rows))
       let screen = transcriptScreen(
         LiveTranscriptHost(conversation: conversation, actions: ConversationActions()),
         width: 500, height: 300)
       defer { screen.close() }
-      try await letTasksRun(screen, milliseconds: 200)
+      // Past the opening's framing wait, so the transcript follows.
+      try await letTasksRun(screen, milliseconds: 700)
       let driver = TranscriptScrollDriver(screen: screen)
       let scroll = try #require(driver.scrollView)
+      let reading = driver.offset
       screen.liveScroll(scroll, began: true)
-      conversation.append(contentsOf: TranscriptFixture.turns(3, startingAt: 40))
+      conversation.append(TranscriptFixture.answer("late", "One more line"))
       try await letTasksRun(screen, milliseconds: 200)
+      #expect(driver.offset == reading, "nothing moves under the reader's finger")
       screen.liveScroll(scroll, began: false)
-      #expect(try await waitUntil(screen) { driver.maximumOffset - driver.offset < 2 })
+      #expect(try await waitUntil(screen) { driver.offset > reading + 10 })
     }
   }
 #endif

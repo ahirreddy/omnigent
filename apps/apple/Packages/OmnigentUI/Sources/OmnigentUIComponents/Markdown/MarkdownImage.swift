@@ -159,7 +159,7 @@ struct ImageLightbox: View {
   let title: String
   @Environment(\.dismiss) private var dismiss
   @State private var zoom: CGFloat = 1
-  @GestureState private var pinch: CGFloat = 1
+  @GestureState(initialValue: 1) private var pinch: CGFloat
 
   var body: some View {
     NavigationStack {

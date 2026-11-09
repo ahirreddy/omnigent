@@ -40,11 +40,12 @@ public struct SettingsDataSection: View {
     }
     .fileExporter(
       isPresented: $flow.isExporting, document: flow.exporting, contentType: .json,
-      defaultFilename: SettingsPortability.fileName
-    ) { flow.finishExport($0) }
-    .fileImporter(isPresented: $flow.isImporting, allowedContentTypes: [.json]) {
-      flow.finishImport($0)
-    }
+      defaultFilename: SettingsPortability.fileName, onCompletion: flow.finishExport
+    )
+    .fileImporter(
+      isPresented: $flow.isImporting, allowedContentTypes: [.json],
+      onCompletion: flow.finishImport
+    )
     .confirmationDialog("Reset appearance?", isPresented: $confirmingReset) {
       Button("Reset", role: .destructive, action: flow.resetAppearance)
     } message: {
