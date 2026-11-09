@@ -183,7 +183,8 @@ struct HostMoveSheet: View {
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
     ToolbarItem(placement: .cancellationAction) {
-      Button("Cancel", action: close)
+      // A move can't be called back once sent, and the spinner slides this under the pointer.
+      Button("Cancel", action: close).disabled(isSubmitting)
     }
     ToolbarItemGroup(placement: .confirmationAction) {
       if isSubmitting { ProgressView().controlSize(.small) }

@@ -37,6 +37,34 @@
         })
     }
 
+    // The spinner moves Cancel under the pointer, so a double click on Switch Host lands on it.
+    @Test("A second click while a move is in flight neither moves it twice nor closes the sheet")
+    func moveInFlight() async throws {
+      let log = log
+      var actions = actions()
+      actions.submit = { choice in
+        log.choices.append(choice)
+        return await withCheckedContinuation { log.pendingMove = $0 }
+      }
+      let screen = OffscreenWindow(
+        ComposerSheetHost(
+          sheet: HostMoveSheet(kind: .switchHost(currentHostID: "old"), actions: actions) {
+            log.closes += 1
+          }))
+      defer { screen.close() }
+      screen.settle(0.5)
+      await screen.drainTasks()
+      let confirm = try #require(screen.buttons.last)
+      try screen.click(screen.clickPoint(confirm))
+      #expect(try await screen.eventually { log.pendingMove != nil })
+      try screen.click(screen.clickPoint(confirm))
+      await screen.drainTasks()
+      #expect(log.choices.count == 1)
+      #expect(log.closes == 0)
+      log.pendingMove?.resume(returning: .moved)
+      #expect(try await screen.eventually { log.closes == 1 })
+    }
+
     @Test("The folder chosen in Browse is where the session moves")
     func choosesFolder() async throws {
       let screen = OffscreenWindow(
