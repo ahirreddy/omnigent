@@ -56,6 +56,8 @@
       var record = Record()
       var alertResponse = NSApplication.ModalResponse.alertFirstButtonReturn
       var panelResponse = NSApplication.ModalResponse.cancel
+      var panelURL: URL?
+      var opensFail = false
     }
 
     private static let state = OSAllocatedUnfairLock(initialState: State())
@@ -81,13 +83,19 @@
     /// - Parameters:
     ///   - alert: What an alert returns.
     ///   - panel: What an open or save panel returns.
+    ///   - panelURL: The file an open or save panel holds, as if the person chose it.
+    ///   - opensFail: Whether opening a URL or app reports a failure instead of succeeding.
     public static func answer(
       alert: NSApplication.ModalResponse = .alertFirstButtonReturn,
-      panel: NSApplication.ModalResponse = .cancel
+      panel: NSApplication.ModalResponse = .cancel,
+      panelURL: URL? = nil,
+      opensFail: Bool = false
     ) {
       state.withLock {
         $0.alertResponse = alert
         $0.panelResponse = panel
+        $0.panelURL = panelURL
+        $0.opensFail = opensFail
       }
     }
 
@@ -143,6 +151,10 @@
       replace(NSWorkspace.self, "openURL:", with: open)
       let openConfigured: OpenConfigured = { _, _, url, _, done in
         Self.note { $0.openedURLs.append(url as URL) }
+        guard !Self.state.withLock({ $0.opensFail }) else {
+          done?(nil, NSError(domain: NSCocoaErrorDomain, code: NSFileReadUnknownError))
+          return
+        }
         // Swift's async form of this call crashes on no app and no error.
         done?(NSRunningApplication.current, nil)
       }
@@ -181,6 +193,16 @@
         done?(Self.state.withLock { $0.panelResponse.rawValue })
       }
       replace(NSSavePanel.self, "beginWithCompletionHandler:", with: begin)
+      let chosenURL: @convention(c) (NSSavePanel, Selector) -> NSURL? = { _, _ in
+        Self.state.withLock { $0.panelURL }.map { $0 as NSURL }
+      }
+      replace(NSSavePanel.self, "URL", with: chosenURL)
+      replace(NSOpenPanel.self, "URL", with: chosenURL)
+      let chosenURLs: @convention(c) (NSOpenPanel, Selector) -> NSArray = { _, _ in
+        let urls = Self.state.withLock { $0.panelURL }.map { [$0 as NSURL] } ?? []
+        return urls as NSArray
+      }
+      replace(NSOpenPanel.self, "URLs", with: chosenURLs)
     }
 
     private static func installAlerts() {

@@ -93,6 +93,26 @@
       #expect(NSOpenPanel().runModal() == .cancel)
     }
 
+    @Test("a panel can hold a chosen file, and opening can fail")
+    func chosenFileAndFailedOpen() async throws {
+      SystemSideEffects.install()
+      SystemSideEffects.reset()
+      defer { SystemSideEffects.reset() }
+      let chosen = URL(fileURLWithPath: "/nonexistent/chosen.html")
+      SystemSideEffects.answer(panel: .OK, panelURL: chosen, opensFail: true)
+      let openPanel = NSOpenPanel()
+      #expect(openPanel.runModal() == .OK)
+      #expect(openPanel.url == chosen)
+      #expect(openPanel.urls == [chosen])
+      #expect(NSSavePanel().url == chosen)
+      await #expect(throws: (any Error).self) {
+        _ = try await NSWorkspace.shared.open(chosen, configuration: .init())
+      }
+      SystemSideEffects.reset()
+      #expect(NSOpenPanel().url == nil)
+      #expect(NSOpenPanel().urls.isEmpty)
+    }
+
     @Test("sheets, dialogs, alerts and menus never become visible", .timeLimit(.minutes(1)))
     func invisibleModals() throws {
       var log: [String] = []
