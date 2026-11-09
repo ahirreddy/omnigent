@@ -149,6 +149,28 @@
       Form { pane() }.formStyle(.grouped).defaultAppStorage(store), width: width, height: height)
   }
 
+  /// A view as a sheet over an empty window, which is the only way its toolbar draws off screen.
+  @MainActor
+  func sheetScreen<Content: View>(
+    store: UserDefaults? = nil, @ViewBuilder _ content: @escaping () -> Content
+  ) -> OffscreenWindow<some View> {
+    SystemSideEffects.reset()
+    let screen = OffscreenWindow(
+      Color.clear.sheet(isPresented: .constant(true), content: content)
+        .defaultAppStorage(store ?? .standard), width: 800, height: 700)
+    screen.settle(0.3)
+    return screen
+  }
+
+  extension OffscreenWindow {
+    /// A sheet's own buttons, top to bottom with its toolbar last; its navigation bar leads with an inert control.
+    var sheetButtons: [CGRect] { Array(buttonFrames.dropFirst()) }
+
+    func clickSheetButton(at index: Int) throws {
+      try clickButton(at: index + 1)
+    }
+  }
+
   /// Holds an async action open until the test lets it finish.
   @MainActor
   final class AsyncGate {
