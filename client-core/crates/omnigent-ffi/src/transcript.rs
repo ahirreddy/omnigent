@@ -666,3 +666,7 @@ impl ClientCore {
             .map_err(crate::errors::CoreError::from)
     }
 }
+
+#[cfg(test)]
+#[path = "transcript_tests.rs"]
+mod tests;

@@ -785,3 +785,7 @@ pub(super) fn spawn(
     host.spawn(attach.run(rx));
     Arc::new(RemoteBrowserDriver { tx })
 }
+
+#[cfg(test)]
+#[path = "remote_browser_driver_tests.rs"]
+mod tests;

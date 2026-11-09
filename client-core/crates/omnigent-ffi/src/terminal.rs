@@ -801,3 +801,7 @@ pub(crate) fn terminals_event(
         harness,
     }
 }
+
+#[cfg(test)]
+#[path = "terminal_tests.rs"]
+mod tests;
