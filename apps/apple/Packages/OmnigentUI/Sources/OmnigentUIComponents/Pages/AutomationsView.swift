@@ -238,7 +238,10 @@ struct AutomationRowView: View {
     .onTapGesture(count: actions.open == nil ? 2 : 1) {
       if let open = actions.open { open() } else { actions.edit?() }
     }
-    .contextMenu { menuItems }
+    // As the row's own menu: a write is in flight, so nothing else can start on this row.
+    .contextMenu {
+      if !row.isBusy { menuItems }
+    }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("automation-\(row.id)")
   }

@@ -117,10 +117,7 @@ struct MCPServerEditorSheet: View {
         ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
         ToolbarItem(placement: .confirmationAction) {
           Button("Done") {
-            var saved = edit
-            saved.name = saved.name.trimmingCharacters(in: .whitespaces)
-            if saved.isNew { saved.originalName = saved.name }
-            save(saved)
+            save(Self.finished(edit))
           }
           .disabled(problem != nil)
           .accessibilityIdentifier("mcp-server-done")
@@ -174,16 +171,28 @@ struct MCPServerEditorSheet: View {
     }
   }
 
+  private var problem: String? { Self.problem(in: edit, taken: taken) }
+
+  /// The edit as saved: the spaces a paste brings along removed, and a new server named.
+  static func finished(_ edit: MCPServerEdit) -> MCPServerEdit {
+    var saved = edit
+    saved.name = saved.name.trimmingCharacters(in: .whitespaces)
+    saved.url = saved.url.trimmingCharacters(in: .whitespaces)
+    saved.command = saved.command.trimmingCharacters(in: .whitespaces)
+    if saved.isNew { saved.originalName = saved.name }
+    return saved
+  }
+
   /// Why the server cannot be saved yet.
-  private var problem: String? {
+  static func problem(in edit: MCPServerEdit, taken: Set<String>) -> String? {
     let name = edit.name.trimmingCharacters(in: .whitespaces)
     if name.isEmpty { return "Name the server." }
     if taken.contains(name) { return "Another MCP server has this name." }
     if edit.transport == "http" {
-      let url = edit.url.trimmingCharacters(in: .whitespaces)
-      if !(url.hasPrefix("http://") || url.hasPrefix("https://")) {
-        return "Use an HTTP or HTTPS URL."
-      }
+      let url = URLComponents(string: edit.url.trimmingCharacters(in: .whitespaces))
+      guard let scheme = url?.scheme?.lowercased(), ["http", "https"].contains(scheme),
+        url?.host?.isEmpty == false
+      else { return "Use an HTTP or HTTPS URL." }
     } else if edit.command.trimmingCharacters(in: .whitespaces).isEmpty {
       return "Enter the command."
     }

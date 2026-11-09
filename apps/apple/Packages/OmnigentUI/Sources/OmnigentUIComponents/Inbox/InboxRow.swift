@@ -32,9 +32,7 @@ struct InboxRow: View {
     .contextMenu { rowActions }
     #if os(iOS)
       .swipeActions(edge: .leading, allowsFullSwipe: false) {
-        if item.canApprove, let card = item.decision, card.permissions.plan == nil,
-          let respond = actions.respond
-        {
+        if item.approvesDirectly, let card = item.decision, let respond = actions.respond {
           // The row's primary action, as the card's Approve button; not a "needs you" signal.
           Button("Approve", systemImage: "checkmark") { respond(card, .approve) }
           .tint(Theme.accent)
@@ -111,7 +109,7 @@ struct InboxRow: View {
 
   /// The selected binary approval answers Command-Return (E does the same from the list).
   private var ownsApproveShortcut: Bool {
-    isSelected && item.canApprove && item.decision?.permissions.plan == nil
+    isSelected && item.approvesDirectly
   }
 
   private func age(at now: Date) -> String {

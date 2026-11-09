@@ -221,7 +221,7 @@ public struct InboxView: View {
 
   private func performPrimary() {
     guard let item = selected else { return }
-    if item.canApprove, let card = item.decision {
+    if item.approvesDirectly, let card = item.decision {
       actions.respond?(card, .approve)
     } else if !item.isUnresolved, item.isUnread {
       actions.markRead?(item)

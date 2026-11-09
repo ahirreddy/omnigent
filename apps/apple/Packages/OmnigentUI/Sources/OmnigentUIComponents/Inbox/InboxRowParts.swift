@@ -18,7 +18,7 @@ struct InboxKindTile: View {
     }
   }
 
-  private var symbol: String {
+  var symbol: String {
     switch item.kind {
     case .approval, .question: "hand.raised"
     case .comment: "text.bubble"

@@ -21,7 +21,8 @@ nonisolated enum InboxTriage {
       }
       let text = [
         item.preview, item.sessionTitle, item.agentName, item.executionContext,
-        item.comment?.path ?? "",
+        item.decision?.title ?? "", item.comment?.author ?? "", item.comment?.path ?? "",
+        item.comment?.body ?? "",
       ]
       .joined(separator: " ")
       return matchesFilter && (query.isEmpty || text.localizedStandardContains(query))

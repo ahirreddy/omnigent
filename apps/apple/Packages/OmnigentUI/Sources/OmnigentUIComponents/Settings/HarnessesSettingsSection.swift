@@ -179,11 +179,8 @@ public struct HarnessesSettingsSection: View {
         .accessibilityIdentifier("harness-settings-row-\(row.id)")
       }
       if visibleRows.isEmpty && !state.rows.isEmpty {
-        Text(
-          query.isEmpty
-            ? "No configured harnesses." : "No harnesses match \u{201C}\(query)\u{201D}."
-        )
-        .foregroundStyle(.secondary)
+        Text(Self.emptyMessage(query: query))
+          .foregroundStyle(.secondary)
       }
     } header: {
       HStack {
@@ -195,6 +192,13 @@ public struct HarnessesSettingsSection: View {
           .help("Check the host's harnesses again")
       }
     }
+  }
+
+  /// Why no row shows: spaces alone aren't a search, so they read as the Configured filter.
+  static func emptyMessage(query: String) -> String {
+    let typed = query.trimmingCharacters(in: .whitespaces)
+    return typed.isEmpty
+      ? "No configured harnesses." : "No harnesses match \u{201C}\(typed)\u{201D}."
   }
 
   private var visibleRows: [HarnessesSettingsRow] {

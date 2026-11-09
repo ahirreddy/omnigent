@@ -24,7 +24,7 @@ struct MembersPane: View {
         LabeledContent {
           HStack {
             if member.isAdmin { Text("Admin").foregroundStyle(.secondary) }
-            if member.canResetPassword || member.canRemove { menu(member) }
+            if hasActions(member) { menu(member) }
           }
         } label: {
           HStack(spacing: Theme.Spacing.small) {
@@ -59,6 +59,12 @@ struct MembersPane: View {
         "\(reset.password)\n\nShown once. Send it to them privately; their sessions were signed out."
       )
     }
+  }
+
+  /// Whether the member's menu would hold anything.
+  private func hasActions(_ member: ServerMember) -> Bool {
+    (member.canResetPassword && actions.resetPassword != nil)
+      || (member.canRemove && actions.removeMember != nil)
   }
 
   private func menu(_ member: ServerMember) -> some View {

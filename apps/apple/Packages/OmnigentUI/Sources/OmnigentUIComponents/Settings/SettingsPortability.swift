@@ -79,8 +79,10 @@ nonisolated public enum SettingsPortability {
     } catch {
       throw .invalidJSON
     }
-    guard let file = object as? [String: Any], let version = file["version"] as? Int,
-      version >= 1, let settings = file["settings"] as? [String: Any]
+    // Any JSON number from 1 up, as on the web; `true` also bridges to a number but isn't one.
+    guard let file = object as? [String: Any], let rawVersion = file["version"],
+      !isBoolean(rawVersion), let version = rawVersion as? Double, version >= 1,
+      let settings = file["settings"] as? [String: Any]
     else { throw .notSettings }
     let allowed = Set(exportableKeys)
     var values: [String: String] = [:]

@@ -359,8 +359,8 @@ public struct CustomAgentsSettingsSection: View {
         taken: Set(form.wrappedValue.mcpServers.map(\.id))
           .union(form.wrappedValue.mcpEdits.keys).subtracting([server.originalName]),
         save: { edited in
-          if !edited.originalName.isEmpty, edited.originalName != edited.name {
-            form.wrappedValue.mcpEdits[edited.originalName] = nil
+          if !server.originalName.isEmpty, server.originalName != edited.name {
+            form.wrappedValue.mcpEdits[server.originalName] = nil
           }
           form.wrappedValue.mcpEdits[edited.name] = edited
           editingServer = nil

@@ -293,7 +293,7 @@
       SessionSummary(id: id, title: id, updatedAt: updatedAt)
     }
 
-    @Test("sessions out of order form a new group each time the label changes")
+    @Test("sessions out of order share one group per label")
     func outOfOrder() {
       let today = Int64(now.timeIntervalSince1970)
       let groups = ArchivedGroup.groups(
@@ -301,7 +301,8 @@
           session("a", updatedAt: today), session("b", updatedAt: today - 86_400 * 20),
           session("c", updatedAt: today),
         ], now: now, calendar: calendar)
-      #expect(groups.map(\.label) == ["Today", "Previous 30 days", "Today"])
+      #expect(groups.map(\.label) == ["Today", "Previous 30 days"])
+      #expect(groups.first?.sessions.map(\.id) == ["a", "c"])
     }
 
     @Test("the far ends of the 64-bit range still get a label")

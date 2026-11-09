@@ -1,3 +1,4 @@
+import OmnigentWorkspaceUI
 public import SwiftUI
 import UniformTypeIdentifiers
 
@@ -54,7 +55,7 @@ public struct SettingsDataSection: View {
     .confirmationDialog("Reset appearance?", isPresented: $confirmingReset) {
       Button("Reset", role: .destructive) {
         SettingsPortability.resetAppearance()
-        theme.reload()
+        reloadLivePreferences()
         show(status: "Appearance reset.")
       }
     } message: {
@@ -88,18 +89,42 @@ public struct SettingsDataSection: View {
   }
 
   private func importFile(_ url: URL) {
+    switch Self.importSettings(from: url) {
+    case .imported(let message):
+      reloadLivePreferences()
+      show(status: message)
+    case .failed(let message):
+      show(failure: message)
+    }
+  }
+
+  /// What reading a settings file did, in the words the section shows.
+  enum ImportResult: Equatable {
+    case imported(String)
+    case failed(String)
+  }
+
+  /// Applies a settings file to the store.
+  static func importSettings(
+    from url: URL, to defaults: UserDefaults = .standard
+  ) -> ImportResult {
     let scoped = url.startAccessingSecurityScopedResource()
     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
     do {
       let settings = try SettingsPortability.settings(in: Data(contentsOf: url))
-      let count = SettingsPortability.apply(settings)
-      theme.reload()
-      show(status: "Imported \(count) setting\(count == 1 ? "" : "s").")
+      let count = SettingsPortability.apply(settings, to: defaults)
+      return .imported("Imported \(count) setting\(count == 1 ? "" : "s").")
     } catch let error as SettingsPortability.ImportError {
-      show(failure: error.description)
+      return .failed(error.description)
     } catch {
-      show(failure: "Could not read the file: \(error.localizedDescription)")
+      return .failed("Could not read the file: \(error.localizedDescription)")
     }
+  }
+
+  /// The preferences held in memory; `@AppStorage` ones follow the store by themselves.
+  private func reloadLivePreferences() {
+    theme.reload()
+    CodeTypography.shared.reload()
   }
 
   private func show(status: String? = nil, failure: String? = nil) {
@@ -126,18 +151,5 @@ struct SettingsFile: FileDocument {
 
   func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
     FileWrapper(regularFileWithContents: data)
-  }
-}
-
-extension ThemePreferences {
-  /// Rereads the stored appearance after its keys changed underneath it (an import or reset),
-  /// assigning only what changed.
-  /// - Parameter defaults: The store the preferences were loaded from.
-  public func reload(from defaults: UserDefaults = .standard) {
-    let stored = ThemePreferences(defaults: defaults)
-    if mode != stored.mode { mode = stored.mode }
-    if paletteID != stored.paletteID { paletteID = stored.paletteID }
-    if custom != stored.custom { custom = stored.custom }
-    if terminal != stored.terminal { terminal = stored.terminal }
   }
 }

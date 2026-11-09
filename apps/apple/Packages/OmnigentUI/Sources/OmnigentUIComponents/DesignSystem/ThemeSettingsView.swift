@@ -57,7 +57,8 @@ public struct ThemeSettingsView: View {
           Slider(value: customBinding(\.contrast), in: 0...100)
             .frame(maxWidth: 200)
             .accessibilityLabel("Theme contrast")
-          Text("\(Int(preferences.custom.contrast.rounded()))")
+          // A settings file can hold any number; converting one too large to Int would trap.
+          Text("\(Int(max(0, min(100, preferences.custom.contrast)).rounded()))")
             .monospacedDigit()
             .frame(minWidth: 28, alignment: .trailing)
             .accessibilityIdentifier("settings.theme-contrast-value")

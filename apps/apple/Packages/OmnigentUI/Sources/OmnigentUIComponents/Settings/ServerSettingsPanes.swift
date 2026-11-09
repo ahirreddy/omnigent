@@ -17,6 +17,12 @@ struct ChangePasswordPane: View {
   @State private var new = ""
   @State private var confirmation = ""
   @State private var changed = false
+  @State private var isChanging = false
+
+  /// The confirmation lasts until the next password is typed.
+  private var showsChanged: Bool {
+    changed && current.isEmpty && new.isEmpty && confirmation.isEmpty
+  }
 
   var body: some View {
     Section {
@@ -24,19 +30,22 @@ struct ChangePasswordPane: View {
       SecureField("New password", text: $new)
       SecureField("Confirm new password", text: $confirmation)
       HStack {
-        if changed {
+        if showsChanged {
           Label("Password changed", systemImage: "checkmark.circle").foregroundStyle(.secondary)
         } else if !confirmation.isEmpty, confirmation != new {
           Text("The new passwords don't match.").foregroundStyle(Theme.failure)
         }
         Spacer()
         Button("Change Password") {
+          isChanging = true
           Task {
             changed = await actions.changePassword?(current, new) ?? false
             if changed { (current, new, confirmation) = ("", "", "") }
+            isChanging = false
           }
         }
-        .disabled(current.isEmpty || new.isEmpty || new != confirmation)
+        // A second click would resend a current password the first one already replaced.
+        .disabled(current.isEmpty || new.isEmpty || new != confirmation || isChanging)
       }
     } header: {
       Text("Change password")
@@ -76,13 +85,16 @@ struct MCPPane: View {
               }
             }
             if service.canDisconnect {
-              Button("Disconnect") { actions.disconnectMCP?(service) }
+              Button("Disconnect") {
+                results[service.id] = nil
+                actions.disconnectMCP?(service)
+              }
             }
           }
           .settingsRowButton()
         } label: {
           Text(service.name)
-          Text(results[service.id] ?? detail(service))
+          Text(Self.detail(service, testResult: results[service.id]))
         }
       }
     } footer: {
@@ -112,7 +124,7 @@ struct MCPPane: View {
           Button("Cancel", role: .cancel) { close() }
           Button("Connect") { connect(service) }
             .keyboardShortcut(.defaultAction)
-            .disabled(token.trimmingCharacters(in: .whitespaces).isEmpty || isConnecting)
+            .disabled(Self.cleanedToken(token).isEmpty || isConnecting)
         }
       }
       .formStyle(.grouped)
@@ -120,9 +132,17 @@ struct MCPPane: View {
     }
   }
 
-  private func detail(_ service: MCPServiceRow) -> String {
+  /// The token to send: copying one often brings a stray space or newline along.
+  static func cleanedToken(_ typed: String) -> String {
+    typed.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// The row's second line: the last test's result while connected, else what it is.
+  static func detail(_ service: MCPServiceRow, testResult: String?) -> String {
+    if service.isConnected, let testResult { return testResult }
     let status = service.isConnected ? "Connected" : "Not connected"
-    let tools = service.tools.isEmpty ? "" : " \u{00B7} \(service.tools.count) tools"
+    let count = service.tools.count
+    let tools = count == 0 ? "" : " \u{00B7} \(count) \(count == 1 ? "tool" : "tools")"
     return service.detail.isEmpty ? status + tools : "\(service.detail) \u{00B7} \(status)\(tools)"
   }
 
@@ -130,7 +150,7 @@ struct MCPPane: View {
     isConnecting = true
     connectFailed = false
     Task {
-      let connected = await actions.connectMCP?(service, token) == true
+      let connected = await actions.connectMCP?(service, Self.cleanedToken(token)) == true
       isConnecting = false
       if connected { close() } else { connectFailed = true }
     }
@@ -160,7 +180,7 @@ struct IntegrationsPane: View {
           }
         } label: {
           Text(connection.name)
-          Text(connection.account.map { "Connected as \($0)" } ?? "Not connected")
+          Text(Self.status(connection))
         }
       }
     } footer: {
@@ -168,6 +188,14 @@ struct IntegrationsPane: View {
         "Connecting signs in on the server's web page in your browser. Refresh this pane afterwards."
       )
     }
+  }
+}
+
+extension IntegrationsPane {
+  /// Who is connected. A connected provider may not name its account.
+  static func status(_ connection: ProviderConnectionRow) -> String {
+    guard connection.isConnected else { return "Not connected" }
+    return connection.account.map { "Connected as \($0)" } ?? "Connected"
   }
 }
 
@@ -240,7 +268,9 @@ struct ImportSessionsPane: View {
         Picker("Import", selection: $mode) {
           ForEach(ImportMode.allCases) { Text($0.title).tag($0) }
         }
-        .onChange(of: mode) { if mode == .session, source == "all" { source = "claude" } }
+        .onChange(of: mode) {
+          if mode == .session { source = Self.singleSource(source, in: sources) }
+        }
         .accessibilityIdentifier("settings.import.mode")
         Picker("Harness", selection: $source) {
           ForEach(sources.filter { mode == .recent || $0.id != "all" }) {
@@ -274,8 +304,21 @@ struct ImportSessionsPane: View {
           ? "Sessions already imported are skipped."
           : "The harness's own id for the session, as its CLI shows it.")
     }
-    .onAppear { if host == nil { host = hosts.first?.id } }
-    .onChange(of: hosts) { if host == nil { host = hosts.first?.id } }
+    .onAppear { host = Self.liveHost(host, in: hosts) }
+    .onChange(of: hosts) { host = Self.liveHost(host, in: hosts) }
+  }
+
+  /// The chosen machine while it stays online, else the first one, so Import never targets a
+  /// machine the picker no longer lists.
+  static func liveHost(_ host: String?, in hosts: [SettingChoice]) -> String? {
+    hosts.contains { $0.id == host } ? host : hosts.first?.id
+  }
+
+  /// One session comes from one harness: "All" becomes Claude when offered, else the first.
+  static func singleSource(_ source: String, in sources: [SettingChoice]) -> String {
+    guard source == "all" else { return source }
+    let named = sources.filter { $0.id != "all" }
+    return (named.first { $0.id == "claude" } ?? named.first)?.id ?? source
   }
 
   private var canImport: Bool {
