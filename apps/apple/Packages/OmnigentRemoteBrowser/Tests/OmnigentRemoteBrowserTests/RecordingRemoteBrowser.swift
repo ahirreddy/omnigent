@@ -10,8 +10,14 @@ import Synchronization
 nonisolated final class RecordingBrowserDriver: RemoteBrowserDriverProtocol {
   private let calls = Mutex<[String]>([])
   private let failure = Mutex<(any Error & Sendable)?>(nil)
+  private let sentMice = Mutex<[MouseInput]>([])
+  private let sentKeys = Mutex<[KeyInput]>([])
+  private let sentIme = Mutex<[ImeInput]>([])
 
   var log: [String] { calls.withLock { $0 } }
+  var mice: [MouseInput] { sentMice.withLock { $0 } }
+  var keys: [KeyInput] { sentKeys.withLock { $0 } }
+  var ime: [ImeInput] { sentIme.withLock { $0 } }
 
   func fail(with error: (any Error & Sendable)?) { failure.withLock { $0 = error } }
 
@@ -32,9 +38,18 @@ nonisolated final class RecordingBrowserDriver: RemoteBrowserDriverProtocol {
   func releaseControl() { record("release") }
   func replyDialog(id: String, accept: Bool, text: String?) { record("dialog \(id)") }
   func updateSettings(update: RemoteBrowserSettingsUpdate) { record("settings") }
-  func mouse(input: MouseInput) throws { try recordThrowing("mouse") }
-  func key(input: KeyInput) throws { try recordThrowing("key") }
-  func ime(input: ImeInput) throws { try recordThrowing("ime") }
+  func mouse(input: MouseInput) throws {
+    sentMice.withLock { $0.append(input) }
+    try recordThrowing("mouse")
+  }
+  func key(input: KeyInput) throws {
+    sentKeys.withLock { $0.append(input) }
+    try recordThrowing("key")
+  }
+  func ime(input: ImeInput) throws {
+    sentIme.withLock { $0.append(input) }
+    try recordThrowing("ime")
+  }
   func touch(input: TouchInput) throws { try recordThrowing("touch") }
   func nav(op operation: NavOp, url: String?) throws {
     try recordThrowing("nav \(operation) \(url ?? "")")

@@ -8,10 +8,7 @@ import Testing
 /// A view in a session that records what it would send to a 1.1 host.
 @MainActor
 final class ProtocolFixture {
-  let session = Session(
-    configuration: SessionConfiguration(
-      hostAppURL: URL(fileURLWithPath: "/nonexistent/Omnigent Web Host.app"),
-      rootCacheURL: FileManager.default.temporaryDirectory))
+  let session: Session
   let webView: WebView
   let recorder = RecordingUIDelegate()
   var sent: [SentMessage] = []
@@ -22,7 +19,12 @@ final class ProtocolFixture {
     let fields: WireDecoder
   }
 
-  init() {
+  init(
+    configuration: SessionConfiguration = SessionConfiguration(
+      hostAppURL: URL(fileURLWithPath: "/nonexistent/Omnigent Web Host.app"),
+      rootCacheURL: FileManager.default.temporaryDirectory)
+  ) {
+    session = Session(configuration: configuration)
     webView = session.profile(identifier: "tests", persistence: .ephemeral).makeWebView()
     webView.status = .live
     webView.uiDelegate = recorder
