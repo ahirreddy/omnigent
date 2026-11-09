@@ -295,13 +295,11 @@ private struct CatalogTabContent: View {
           if let remoteBrowser { remoteBrowser } else { BrowserSample(tab: tab) }
         case .newTab, .newSession, .inbox, .canvas, .automations, .usage:
           NewTabPage(
-            state: NewTabPageState(
-              recentSessions: Array(PreviewData.sessions.prefix(5)), canOpenBrowser: true,
-              terminalNames: TabsPlaygroundModel.terminalNames),
+            state: TabsPlaygroundModel.newTabState,
             actions: NewTabPageActions(
-              newTerminal: { _, name in model.replaceSelected(.terminal, name ?? "zsh") },
-              openBrowser: { model.replaceSelected(.browser, "Omnigent Docs") },
-              openSession: { model.openChat($0) }))
+              newSideChat: { model.replaceSelected(.sideChat, "Side chat 1") },
+              newTerminal: { name in model.replaceSelected(.terminal, name ?? "zsh") },
+              openBrowser: { model.replaceSelected(.browser, "Omnigent Docs") }))
         }
       }
       .id(tab.id)

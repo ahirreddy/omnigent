@@ -13,7 +13,7 @@ final class MacTabFlowUITests: XCTestCase {
     super.tearDown()
   }
 
-  /// Command-T shows the New Tab page with its launchers and recent sessions.
+  /// Command-T shows the New Tab page with the session's launchers.
   @MainActor
   func testNewTabPageOffersItsLaunchers() {
     let live = MacLiveUITestSupport(self)
@@ -24,39 +24,26 @@ final class MacTabFlowUITests: XCTestCase {
     app.typeKey("t", modifierFlags: .command)
     XCTAssertTrue(
       live.element("newtab-page", in: app).waitForExistence(timeout: 10), "no New Tab page")
-    XCTAssertTrue(live.element("newtab-session", in: app).exists, "no New session launcher")
     XCTAssertTrue(live.element("newtab-terminal", in: app).exists, "no Terminal launcher")
-    XCTAssertTrue(
-      live.elements(prefix: "newtab-recent-", in: app).firstMatch.exists, "no recent sessions")
   }
 
-  /// A recent session on the New Tab page opens with one click.
+  /// Shift-Command-[ and Shift-Command-] move between the session's tabs.
   @MainActor
-  func testNewTabPageOpensARecentSession() {
+  func testShiftCommandBracketsMoveBetweenTabs() {
     let live = MacLiveUITestSupport(self)
     let app = live.launchDemo()
     defer { app.terminate() }
     live.openDemo("demo-notes", in: app)
     app.typeKey("t", modifierFlags: .command)
+    let page = live.element("newtab-page", in: app)
+    XCTAssertTrue(page.waitForExistence(timeout: 10), "no New Tab page")
 
-    live.click(live.element("newtab-recent-demo-question", in: app), "the recent session")
+    app.typeKey("[", modifierFlags: [.command, .shift])
     XCTAssertTrue(
-      live.element("transcript-demo-question", in: app).waitForExistence(timeout: 10),
-      "the recent session did not open")
-  }
-
-  /// The New Tab page's New session launcher opens the form.
-  @MainActor
-  func testNewTabPageStartsANewSession() {
-    let live = MacLiveUITestSupport(self)
-    let app = live.launchDemo()
-    defer { app.terminate() }
-    live.openDemo("demo-notes", in: app)
-    app.typeKey("t", modifierFlags: .command)
-
-    live.click(live.element("newtab-session", in: app), "New session")
-    XCTAssertTrue(
-      live.element("new-session-page", in: app).waitForExistence(timeout: 10), "no form")
+      live.element("transcript-demo-notes", in: app).waitForExistence(timeout: 10),
+      "Shift-Command-[ did not show the chat")
+    app.typeKey("]", modifierFlags: [.command, .shift])
+    XCTAssertTrue(page.waitForExistence(timeout: 10), "Shift-Command-] did not show the page")
   }
 
   /// A tab's close button removes that tab and leaves the chat.

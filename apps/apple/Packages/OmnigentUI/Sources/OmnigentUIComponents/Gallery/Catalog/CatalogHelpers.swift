@@ -92,5 +92,5 @@ enum CatalogActions {
   static let sidebar = GalleryActions.sidebar { _ in }
 
   static let newTab = NewTabPageActions(
-    newSession: {}, newTerminal: { _, _ in }, openBrowser: {}, openSession: { _ in })
+    newSideChat: {}, newTerminal: { _ in }, openBrowser: {}, openRemoteBrowser: { _ in })
 }

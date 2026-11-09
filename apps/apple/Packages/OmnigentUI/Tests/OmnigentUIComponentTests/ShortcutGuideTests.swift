@@ -13,6 +13,7 @@ struct ShortcutGuideTests {
     #expect(AppShortcuts.text(AppShortcuts.send) == "⌘Return")
     #expect(AppShortcuts.text(AppShortcuts.nextMessage) == "⌥⌘↓")
     #expect(AppShortcuts.text(AppShortcuts.selectTab(8)) == "⌘9")
+    #expect(AppShortcuts.text(AppShortcuts.nextTabAlias) == "⇧⌘]")
   }
 
   @Test("No two shortcuts share keys")
@@ -27,7 +28,8 @@ struct ShortcutGuideTests {
       AppShortcuts.toggleViewMode, AppShortcuts.toggleInspector, AppShortcuts.rightPanel,
       AppShortcuts.toggleSidebar, AppShortcuts.toggleSidebarAlias, AppShortcuts.searchWorkspace,
       AppShortcuts.newTab, AppShortcuts.closeTab, AppShortcuts.reopenClosedTab,
-      AppShortcuts.nextTab, AppShortcuts.previousTab, AppShortcuts.showAllTabs,
+      AppShortcuts.nextTab, AppShortcuts.previousTab, AppShortcuts.nextTabAlias,
+      AppShortcuts.previousTabAlias, AppShortcuts.showAllTabs,
       AppShortcuts.showTerminal, AppShortcuts.newShell, AppShortcuts.openBrowser,
       AppShortcuts.toggleSplit, AppShortcuts.focusLeftPane, AppShortcuts.focusRightPane,
       AppShortcuts.previousPane, AppShortcuts.nextPane, AppShortcuts.newSession,
@@ -55,6 +57,7 @@ struct ShortcutGuideTests {
     #expect(rows["Rename current session"] == "⌥⌘R")
     #expect(rows["Open pinned session 1–9 / 10"] == "⌃⌘1–9 / ⌃⌘0")
     #expect(rows["Reconnect"] == "⌥⇧⌘R")
+    #expect(rows["Next / previous tab"] == "⇧⌘] / ⇧⌘[ or ⌃Tab / ⌃⇧Tab")
     #expect(rows["Search workspace contents"] == "⇧⌘F")
     #expect(rows["Select a right panel tab"] == "⌥⌘1–\(InspectorTab.allCases.count)")
     #expect(rows["Expand or collapse the editor"] == "⇧⌘E")

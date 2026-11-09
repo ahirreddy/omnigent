@@ -137,26 +137,71 @@ struct WindowTabsLogicTests {
     #expect(AppTabContent.newTab.browserID == nil)
   }
 
-  @Test("The new-tab page lists the shown session first and at most twelve")
+  @Test("The new-tab page offers only the shown session, and nothing without one")
   func newTabPage() async throws {
     let connection = try await ConversationFixtures.connection()
-    let sessions = (0..<20).map { index in
-      ConversationFixtures.summary("s\(index)", updatedAt: index == 0 ? .min : Int64(index))
-    }
-    connection.sessionList.apply(.reset(sessions: sessions))
+    connection.sessionList.apply(
+      .reset(sessions: [
+        ConversationFixtures.summary("s0", title: "Fix the build"),
+        ConversationFixtures.summary("s1"),
+      ]))
     let session = ServerSession(connection: connection)
     let window = tabs(session)
-    let page = session.tabs.group("s0").open(.newTab)
+    #expect(window.newTabState == NewTabPageState())
+    let sessionless = window.newTabActions(replacing: nil)
+    #expect(sessionless.newTerminal == nil)
+    #expect(sessionless.openRemoteBrowser == nil)
+
+    session.tabs.group("s0").open(.newTab)
     session.tabs.show(.session("s0"))
     let state = window.newTabState
-    #expect(state.recentSessions.count == 12)
-    #expect(state.recentSessions.first?.id == "s0")
-    #expect(state.recentSessions.dropFirst().first?.id == "s19")
+    #expect(state.sessionTitle == "Fix the build")
+    #expect(state.terminals == .unknown)
     #expect(!state.canOpenBrowser)
+    #expect(window.newTabActions(replacing: nil).newTerminal != nil)
+  }
 
-    window.newTabActions(replacing: page.id).openSession("s5")
-    #expect(session.tabs.group("s0").tab(page.id) == nil)
-    #expect(session.tabs.currentSessionID == "s5")
+  @Test("New Tab's side chat replaces the page; a native agent's is typed in its chat")
+  func newTabSideChat() async throws {
+    let connection = try await ConversationFixtures.connection()
+    connection.sessionList.apply(.reset(sessions: [ConversationFixtures.summary("s0")]))
+    let session = ServerSession(connection: connection)
+    final class Failures { var messages: [String] = [] }
+    let failures = Failures()
+    let window = WindowTabs(
+      session: session, context: TabWindowContext(), showAll: {},
+      fail: { failures.messages.append($0) })
+    let group = session.tabs.group("s0")
+    group.open(.chat(sessionID: "s0"))
+    var page = group.open(.newTab)
+    session.tabs.show(.session("s0"))
+    #expect(window.newTabActions(replacing: page.id).newSideChat == nil, "no harness yet")
+
+    let conversation = try #require(connection.conversation("s0"))
+    func setHarness(_ harness: String, wrapper: String? = nil, revision: UInt64) {
+      let header = ConversationFixtures.header(
+        settings: ConversationFixtures.settings(harness: harness, wrapper: wrapper))
+      conversation.apply(
+        revision: revision, change: TranscriptChange(rows: [], header: header, sections: []))
+    }
+    setHarness("claude-sdk", revision: 1)
+    let startSideChat = try #require(window.newTabActions(replacing: page.id).newSideChat)
+    startSideChat()
+    #expect(group.tab(page.id)?.content == .sideChatSession(parentID: "s0", childID: nil))
+
+    setHarness("codex-native", wrapper: "codex-native-ui", revision: 2)
+    page = group.open(.newTab)
+    let startNativeSideChat = try #require(window.newTabActions(replacing: page.id).newSideChat)
+    startNativeSideChat()
+    #expect(group.tab(page.id) == nil)
+    #expect(group.selected?.content == .chat(sessionID: "s0"))
+    #expect(conversation.composer.text == "/side ")
+
+    page = group.open(.newTab)
+    let startAgain = try #require(window.newTabActions(replacing: page.id).newSideChat)
+    startAgain()
+    #expect(conversation.composer.text == "/side ", "a draft in progress stays")
+    #expect(failures.messages.count == 1)
   }
 
   @Test("Remote browser profiles list the default first, once each")
@@ -166,7 +211,9 @@ struct WindowTabsLogicTests {
       connection: connection, remoteBrowser: FixtureRemoteBrowser(latency: .milliseconds(1)))
     let window = tabs(session)
     await session.remoteBrowsers?.loadProfiles(sessionID: "a")
-    await session.remoteBrowsers?.loadProfiles(sessionID: "b")
+    session.tabs.show(.session("b"))
+    #expect(window.newTabState.remoteBrowserProfiles.isEmpty, "b's machine isn't read yet")
+    session.tabs.show(.session("a"))
     #expect(window.newTabState.remoteBrowserProfiles == ["default", "work"])
     await window.openRemoteBrowser(in: "a", profile: "exploded", replacing: "ghost")
     #expect(

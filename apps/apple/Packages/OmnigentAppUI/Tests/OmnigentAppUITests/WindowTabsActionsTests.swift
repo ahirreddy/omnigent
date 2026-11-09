@@ -47,20 +47,6 @@ struct WindowTabsActionsTests {
     group.tabs.contains { if case .browser = $0.content { true } else { false } }
   }
 
-  @Test("The New Tab page's recent sessions don't follow the sidebar's search or filter")
-  func newTabIgnoresTheSidebar() async throws {
-    let window = try await window()
-    let list = window.session.connection.sessionList
-    window.session.tabs.show(.session("conv_a"))
-    #expect(window.tabs.newTabState.recentSessions.map(\.id) == ["conv_a", "conv_b", "conv_c"])
-    list.searchText = "no session is called this"
-    #expect(list.visible.isEmpty)
-    #expect(window.tabs.newTabState.recentSessions.map(\.id) == ["conv_a", "conv_b", "conv_c"])
-    list.searchText = ""
-    list.filter = .running
-    #expect(window.tabs.newTabState.recentSessions.map(\.id) == ["conv_a", "conv_b", "conv_c"])
-  }
-
   @Test("Open Browser opens the server's web app in the session's tabs and shows the session")
   func openBrowser() async throws {
     let window = try await window()
@@ -135,23 +121,6 @@ struct WindowTabsActionsTests {
     window.browser.statuses[id]?.isLoading = false
     item = try #require(window.tabs.strip?.state.tabs.last)
     #expect(item.status == TabStatus.none)
-  }
-
-  @Test("The New Tab page's New Session and Open Session close the page they replace")
-  func newTabPageLeaves() async throws {
-    let window = try await window()
-    window.session.tabs.open(.chat(sessionID: "conv_a"))
-    let group = window.session.tabs.group("conv_a")
-    let page = group.open(.newTab)
-    window.tabs.newTabActions(replacing: page.id).newSession()
-    #expect(!group.tabs.contains { $0.id == page.id })
-    #expect(window.session.tabs.page == .newSession)
-
-    window.session.tabs.show(.session("conv_a"))
-    let second = group.open(.newTab)
-    window.tabs.newTabActions(replacing: second.id).openSession("conv_b")
-    #expect(!group.tabs.contains { $0.id == second.id })
-    #expect(window.session.tabs.page == .session("conv_b"))
   }
 
   @Test("The New Tab page's Browser takes over its tab")
@@ -256,23 +225,16 @@ extension WindowTabsActionsTests {
     #expect(group.selected?.content == .harness(sessionID: "conv_a"))
   }
 
-  @Test("From the New Tab page, a shell for this session replaces it; for another it closes it")
+  @Test("From the New Tab page, a shell in the session replaces the page")
   func newTabPageTerminal() async throws {
-    let server = terminalServer()
-    server.route("/v1/sessions/conv_b/agent", .json(#"{"terminals":[]}"#))
-    let window = try await window(server)
+    let window = try await window(terminalServer())
     window.session.tabs.open(.chat(sessionID: "conv_a"))
     let group = window.session.tabs.group("conv_a")
     let page = group.open(.newTab)
     let actions = window.tabs.newTabActions(replacing: page.id)
-    actions.newTerminal?("conv_a", "zsh")
+    actions.newTerminal?("zsh")
     try await eventually("the shell") { created(group) }
     #expect(group.tabs.first { $0.id == page.id }?.content.kind == .terminal, "the same tab")
-
-    let other = group.open(.newTab)
-    window.tabs.newTabActions(replacing: other.id).newTerminal?("conv_b", nil)
-    #expect(!group.tabs.contains { $0.id == other.id })
-    try await eventually("the failure") { !window.failures.messages.isEmpty }
   }
 
   @Test("A remote browser opens from the strip and the New Tab page")
@@ -289,7 +251,7 @@ extension WindowTabsActionsTests {
     try await eventually("the remote tab") { group.tabs.contains(where: isRemote) }
     let page = group.open(.newTab)
     let actions = window.tabs.newTabActions(replacing: page.id)
-    actions.openRemoteBrowser?("conv_a", "work")
+    actions.openRemoteBrowser?("work")
     try await eventually("the second tab") { group.tabs.filter(isRemote).count == 2 }
     #expect(group.tabs.first { $0.id == page.id }?.content.kind == .remoteBrowser, "the same tab")
   }

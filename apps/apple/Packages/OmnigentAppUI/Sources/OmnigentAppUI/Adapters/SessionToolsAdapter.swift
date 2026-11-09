@@ -83,11 +83,15 @@ enum SessionToolsAdapter {
   /// Side chat, for a session the viewer can write to whose harness is known (web
   /// `supportsSideChat`) and that is not itself a side chat; `nil` hides it.
   static func sideChat(_ store: ConversationStore, routes: Routes) -> (@MainActor () -> Void)? {
-    let settings = store.header?.settings
-    guard !ComposerAdapter.isReadOnly(store), settings?.harness?.isEmpty == false,
-      settings?.sideChatSourceId == nil
-    else { return nil }
+    guard offersSideChat(store) else { return nil }
     return { startSideChat(store, routes: routes) }
+  }
+
+  /// Whether the session offers a side chat: see ``sideChat(_:routes:)``.
+  static func offersSideChat(_ store: ConversationStore) -> Bool {
+    let settings = store.header?.settings
+    return !ComposerAdapter.isReadOnly(store) && settings?.harness?.isEmpty == false
+      && settings?.sideChatSourceId == nil
   }
 
   /// Sends the composer's draft and does what its command leaves to the screen: `/new` opens a

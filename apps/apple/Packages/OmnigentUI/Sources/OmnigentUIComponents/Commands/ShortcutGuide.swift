@@ -145,7 +145,10 @@ enum ShortcutGuide {
           "Select tab 1–8 / last tab",
           "\(AppShortcuts.text(AppShortcuts.selectTab(0)))–8 / "
             + AppShortcuts.text(AppShortcuts.selectTab(8))),
-        row("Next / previous tab", AppShortcuts.nextTab, AppShortcuts.previousTab),
+        ShortcutRow(
+          "Next / previous tab",
+          keys(AppShortcuts.nextTabAlias, AppShortcuts.previousTabAlias) + " or "
+            + keys(AppShortcuts.nextTab, AppShortcuts.previousTab)),
         row("Show all tabs", AppShortcuts.showAllTabs),
         row("Session terminal / chat", AppShortcuts.showTerminal),
       ])

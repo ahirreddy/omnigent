@@ -10,11 +10,6 @@
   @Suite("Tabs: the new tab page", .serialized)
   @MainActor
   struct TabsNewTabPageTests {
-    private let one = SessionSummary(id: "one", title: "One", agentName: "Coder")
-    private let two = SessionSummary(id: "two", title: "Two", attention: .needsYou)
-    private let three = SessionSummary(id: "three", title: "Three")
-    private let four = SessionSummary(id: "four", title: "Four")
-
     private func page(_ state: NewTabPageState, _ actions: NewTabPageActions)
       -> OffscreenWindow<AnyView>
     {
@@ -23,132 +18,94 @@
     }
 
     private func allActions(_ spy: TabSpy) -> NewTabPageActions {
-      var actions = NewTabPageActions(
-        newSession: { spy.calls.append("new session") },
-        newTerminal: { spy.calls.append("terminal \($0) \($1 ?? "-")") },
+      NewTabPageActions(
+        newSideChat: { spy.calls.append("side chat") },
+        newTerminal: { spy.calls.append("terminal \($0 ?? "-")") },
         openBrowser: { spy.calls.append("browser") },
-        openSession: { spy.calls.append("open \($0)") })
-      actions.openRemoteBrowser = { spy.calls.append("remote \($0) \($1)") }
-      return actions
+        openRemoteBrowser: { spy.calls.append("remote \($0)") })
     }
 
-    @Test("New Session starts one")
-    func newSession() throws {
+    @Test("Every launcher opens in the page's session")
+    func launchers() throws {
       let spy = TabSpy()
-      let screen = page(NewTabPageState(), allActions(spy))
+      let state = NewTabPageState(sessionTitle: "Fix the build", canOpenBrowser: true)
+      let screen = page(state, allActions(spy))
       defer { screen.close() }
       #expect(try screen.shows("New Tab"))
-      #expect(try screen.shows("Start an agent on a task"))
-      try screen.clickControl(at: 0)
-      #expect(spy.calls == ["new session"])
+      #expect(try screen.shows("Opens in Fix the build"))
+      #expect(try !screen.shows("New Session"))
+      #expect(screen.controlFrames.count == 4)
+      for index in 0..<4 { try screen.clickControl(at: index) }
+      #expect(spy.calls == ["side chat", "terminal -", "browser", "remote default"])
     }
 
     @Test("Browser shows only when the server has a web app")
     func browser() throws {
-      let spy = TabSpy()
-      let screen = page(NewTabPageState(canOpenBrowser: true), allActions(spy))
-      defer { screen.close() }
-      #expect(try screen.shows("Browser"))
-      try screen.clickControl(at: 1)
-      #expect(spy.calls == ["browser"])
-      let without = page(NewTabPageState(), allActions(spy))
+      let without = page(NewTabPageState(), allActions(TabSpy()))
       defer { without.close() }
       #expect(try !without.shows("Open this server's web app"))
+      #expect(without.controlFrames.count == 3)
     }
 
-    @Test("Launchers without an action aren't offered")
-    func onlySession() throws {
+    @Test("Launchers without an action aren't offered, and an empty page says so")
+    func nothingToOpen() throws {
       let screen = page(NewTabPageState(canOpenBrowser: true), NewTabPageActions())
       defer { screen.close() }
+      #expect(try !screen.shows("Side Chat"))
       #expect(try !screen.shows("Terminal"))
       #expect(try !screen.shows("Browser"))
-      #expect(try !screen.shows("Remote Browser"))
+      #expect(try !screen.shows("Opens in"))
+      #expect(try screen.shows("Nothing in this session opens in a tab."))
+      #expect(screen.controlFrames.isEmpty)
     }
 
-    @Test("With no sessions Terminal and Remote Browser are shown but disabled")
-    func disabledWithoutSessions() throws {
-      let screen = page(NewTabPageState(), allActions(TabSpy()))
-      defer { screen.close() }
-      #expect(try screen.shows("Terminal"))
-      #expect(try screen.shows("Remote Browser"))
-      #expect(screen.controlFrames.count == 1)
-    }
-
-    @Test("Recent sessions open, at most eight")
-    func recent() throws {
+    @Test("A session declaring no terminals shows Terminal disabled")
+    func noTerminals() throws {
       let spy = TabSpy()
-      let sessions = (0..<10).map { SessionSummary(id: "s\($0)", title: "Session \($0)") }
-      let screen = page(NewTabPageState(recentSessions: sessions), allActions(spy))
+      let screen = page(NewTabPageState(terminals: .declared([])), allActions(spy))
       defer { screen.close() }
-      #expect(try screen.shows("RECENT SESSIONS"))
-      #expect(try screen.shows("Session 7"))
-      #expect(try !screen.shows("Session 8"))
-      // New Session, Terminal, Remote Browser, then the sessions.
-      try screen.clickControl(at: 3)
-      #expect(spy.calls == ["open s0"])
+      #expect(try screen.shows("This session's agent declares no terminals"))
+      // The disabled launcher isn't a control: Side Chat and Remote Browser are.
+      #expect(screen.controlFrames.count == 2)
+      for index in 0..<2 { try screen.clickControl(at: index) }
+      #expect(spy.calls == ["side chat", "remote default"])
     }
 
-    @Test("A recent session names its agent and its needs-you dot")
-    func recentDetails() throws {
-      let screen = page(NewTabPageState(recentSessions: [one, two]), allActions(TabSpy()))
-      defer { screen.close() }
-      #expect(try screen.shows("Coder"))
-      func picture(_ session: SessionSummary) throws -> Data {
-        try RenderSupport.picture(
-          NewTabPage(
-            state: NewTabPageState(recentSessions: [session]), actions: NewTabPageActions()),
-          width: 500, height: 500)
-      }
-      let plain = SessionSummary(id: "two", title: "Two")
-      #expect(try picture(two) != picture(plain))
-    }
-
-    @Test("Without any recent session the section is gone")
-    func noRecent() throws {
-      let screen = page(NewTabPageState(), allActions(TabSpy()))
-      defer { screen.close() }
-      #expect(try !screen.shows("RECENT SESSIONS"))
-    }
-
-    @Test("Terminal's menu is by what each session declares")
-    func terminalChoices() throws {
+    @Test("A session's one declared terminal starts directly")
+    func oneTerminal() throws {
       let spy = TabSpy()
-      let state = NewTabPageState(
-        recentSessions: [one, two, three, four],
-        terminalNames: ["two": [], "three": ["shell"], "four": ["build", "test"]])
-      let screen = page(state, allActions(spy))
+      let screen = page(NewTabPageState(terminals: .declared(["build"])), allActions(spy))
       defer { screen.close() }
+      #expect(try screen.shows("build"))
+      try screen.clickControl(at: 1)
+      #expect(spy.calls == ["terminal build"])
+    }
+
+    @Test("Several declared terminals are a menu")
+    func terminalMenu() throws {
+      let spy = TabSpy()
+      let screen = page(NewTabPageState(terminals: .declared(["build", "test"])), allActions(spy))
+      defer { screen.close() }
+      #expect(try screen.shows("2 terminals"))
       let menu = try screen.openMenu(control: 1)
-      #expect(
-        menu.titles == [
-          "One", "Two: no terminals declared", "Three \u{2014} shell", "Four",
-        ])
-      #expect(menu.item(named: "Two: no terminals declared")?.isEnabled == false)
-      try screen.choose("One", in: menu)
-      try screen.choose("Three \u{2014} shell", in: screen.openMenu(control: 1))
-      try screen.choose("test", in: screen.openMenu(control: 1))
-      #expect(spy.calls == ["terminal one -", "terminal three shell", "terminal four test"])
+      #expect(menu.titles == ["build", "test"])
+      try screen.choose("test", in: menu)
+      #expect(spy.calls == ["terminal test"])
     }
 
-    @Test("Remote Browser asks for a session, then a profile")
+    @Test("Remote Browser opens the machine's one profile directly, or asks among several")
     func remoteBrowser() throws {
       let spy = TabSpy()
-      let state = NewTabPageState(recentSessions: [one], remoteBrowserProfiles: ["work", "home"])
-      let screen = page(state, allActions(spy))
-      defer { screen.close() }
-      let menu = try screen.openMenu(control: 2)
-      #expect(menu.item(named: "One")?.submenu?.titles == ["work", "home"])
-      try screen.choose("home", in: menu)
-      #expect(spy.calls == ["remote one home"])
-    }
-
-    @Test("With no profiles Remote Browser offers the default")
-    func remoteDefault() throws {
-      let spy = TabSpy()
-      let screen = page(NewTabPageState(recentSessions: [one]), allActions(spy))
-      defer { screen.close() }
-      try screen.choose("default", in: screen.openMenu(control: 2))
-      #expect(spy.calls == ["remote one default"])
+      let single = page(NewTabPageState(remoteBrowserProfiles: ["work"]), allActions(spy))
+      defer { single.close() }
+      try single.clickControl(at: 2)
+      let several = page(
+        NewTabPageState(remoteBrowserProfiles: ["work", "home"]), allActions(spy))
+      defer { several.close() }
+      let menu = try several.openMenu(control: 2)
+      #expect(menu.titles == ["work", "home"])
+      try several.choose("home", in: menu)
+      #expect(spy.calls == ["remote work", "remote home"])
     }
 
     @Test("A compact window pads less")
