@@ -39,6 +39,7 @@ final class FakeTab: BrowserTab {
   func stopLoading() { commands.append("stop") }
   func evaluateJavaScript(_ script: String) throws(BrowserError) -> BrowserScriptValue {
     record(script)
+    if let scriptFailure { throw scriptFailure }
     return .bool(true)
   }
   func takeSnapshotPNG() throws(BrowserError) -> Data { Data() }
@@ -59,6 +60,8 @@ final class FakeTab: BrowserTab {
   private(set) var commands: [String] = []
   /// Thrown by the commands that can fail.
   var failure: BrowserError?
+  /// Thrown by scripts.
+  var scriptFailure: BrowserError?
   var findResult = BrowserFindResult(matchFound: false, matchCount: nil, activeMatch: nil)
   private(set) var hardReloads = 0
   private(set) var scripts: [String] = []

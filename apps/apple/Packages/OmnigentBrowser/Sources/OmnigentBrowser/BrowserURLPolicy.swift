@@ -15,7 +15,7 @@ nonisolated public protocol BrowserURLPolicy: Sendable {
   func evaluate(_ url: URL) -> BrowserURLDecision
 }
 
-extension BrowserURLPolicy {
+nonisolated extension BrowserURLPolicy {
   /// The rules' decision.
   public func evaluate(_ url: URL) -> BrowserURLDecision {
     rules.evaluate(url)

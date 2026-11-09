@@ -82,6 +82,11 @@ public final class BrowserFaviconLoader {
     session = URLSession(configuration: configuration)
   }
 
+  /// A loader fetching through `session`.
+  init(session: URLSession) {
+    self.session = session
+  }
+
   /// The icon at `url`, fetched once and cached for the session.
   public func favicon(at url: URL) async throws(BrowserError) -> BrowserFavicon {
     if let cached = cache[url] { return cached }
