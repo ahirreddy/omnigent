@@ -116,7 +116,7 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
 
   /// The test host's private store. Failing to make one ends the run: the alternative is running
   /// the tests against the user's preferences and server records.
-  private static func isolationForLaunch(isTestHost: Bool) -> TestHost.Isolation? {
+  static func isolationForLaunch(isTestHost: Bool) -> TestHost.Isolation? {
     guard isTestHost else { return nil }
     do {
       let isolation = try TestHost.Isolation.forHostProcess()
@@ -191,8 +191,9 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
       }
     #endif
     services.bind()
-    // A test host must not take the notification taps of the user's own copy of the app.
-    if !Self.isTestHost { super.applicationWillFinishLaunching(notification) }
+    TestHost.LaunchWork.takeNotificationTaps(isTestHost: Self.isTestHost) {
+      super.applicationWillFinishLaunching(notification)
+    }
   }
 
   override func applicationShouldTerminate(_ sender: NSApplication)

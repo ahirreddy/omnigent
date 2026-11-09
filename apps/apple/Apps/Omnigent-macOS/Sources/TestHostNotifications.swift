@@ -55,7 +55,9 @@ enum TestHostNotifications {
     }
   }
 
-  private static func replace<Function>(_ name: String, with function: Function)
+  /// Replaces one method of the center.
+  /// - Throws: `TestHost.IsolationError.notificationsNotReplaced` when it has no such method.
+  static func replace<Function>(_ name: String, with function: Function)
     throws(TestHost.IsolationError)
   {
     let selector = NSSelectorFromString(name)

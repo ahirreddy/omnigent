@@ -183,6 +183,69 @@ struct LaunchDelegateTests {
     #expect(center.delegate == nil)
   }
 
+  /// Failing closed: a method it can't replace stops the host instead of leaving the real one.
+  @Test func aMissingNotificationMethodFailsTheHost() {
+    let name = "omnigentNoSuchMethod:"
+    #expect(throws: TestHost.IsolationError.notificationsNotReplaced(method: name)) {
+      try TestHostNotifications.replace(name, with: 0)
+    }
+  }
+
+  private func finishedTurn() throws -> DesktopNotificationEvent {
+    let url = try #require(URL(string: "https://omnigent.example.com"))
+    return DesktopNotificationEvent(
+      kind: .turnFinished, origin: try ServerOrigin(url: url), serverURL: url, sessionID: "conv",
+      title: "A test run must not show this", body: "Done.")
+  }
+
+  /// In the host, a post that passes the policy still stops at the center's replaced method.
+  @Test func aDeliveredPostStopsBeforeTheSystem() async throws {
+    let center = DesktopNotificationCenter()
+    // Active and viewing nothing: delivered, with no Dock request.
+    center.contextProvider = {
+      NotificationContext(appIsActive: true, viewing: nil, activeServerCount: 1)
+    }
+    let before = TestHostNotifications.suppressedCount
+    guard case .deliver = try await center.post(try finishedTurn()) else {
+      Issue.record("The policy should deliver this")
+      return
+    }
+    #expect(TestHostNotifications.suppressedCount == before + 1)
+  }
+
+  /// The test host's own desktop doesn't even get that far.
+  @Test func theHostsPolicySuppressesEveryKind() async throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let before = TestHostNotifications.suppressedCount
+    let decision = try await scratch.desktop.notifications.post(try finishedTurn())
+    guard case .suppress = decision else {
+      Issue.record("Expected suppression, got \(decision)")
+      return
+    }
+    #expect(TestHostNotifications.suppressedCount == before)
+  }
+
+  /// The real launch's side: no isolation, and a policy that delivers. Posting itself can't run
+  /// here, as this process has the center replaced; a real post is checked in the VM.
+  @Test func aRealLaunchKeepsItsNotifications() throws {
+    #expect(OmnigentMacAppDelegate.isolationForLaunch(isTestHost: false) == nil)
+    let desktop = OmnigentMacAppDelegate.makeDesktop(isolation: nil)
+    let decision = NotificationPolicy.decide(
+      try finishedTurn(),
+      context: NotificationContext(appIsActive: false, viewing: nil, activeServerCount: 1),
+      preferences: desktop.notifications.preferencesProvider())
+    guard case .deliver = decision else {
+      Issue.record("A real launch should deliver, got \(decision)")
+      return
+    }
+    var installs = 0
+    TestHost.LaunchWork.takeNotificationTaps(isTestHost: false) { installs += 1 }
+    #expect(installs == 1)
+    TestHost.LaunchWork.takeNotificationTaps(isTestHost: true) { installs += 1 }
+    #expect(installs == 1)
+  }
+
   /// A window's saved frame, which AppKit writes itself, stays out of the user's preferences:
   /// otherwise an offscreen test window would become where the user's next window opens.
   @Test func aSavedWindowFrameIsNotTheUsers() throws {

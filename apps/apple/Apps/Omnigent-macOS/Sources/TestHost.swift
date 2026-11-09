@@ -167,5 +167,15 @@ enum TestHost {
       startChaos()
       startUpdater()
     }
+
+    /// Becomes the system's notification delegate, unless the process hosts tests: it must not
+    /// take the notification taps of the user's own copy of the app.
+    /// - Parameters:
+    ///   - isTestHost: Whether the process hosts tests.
+    ///   - install: Installs the delegate.
+    static func takeNotificationTaps(isTestHost: Bool, install: () -> Void) {
+      guard !isTestHost else { return }
+      install()
+    }
   }
 }
