@@ -1,5 +1,9 @@
 public import SwiftUI
 
+#if os(macOS)
+  import AppKit
+#endif
+
 /// The web's two-column window: the sidebar (navigation, quick filters, sessions) and the detail
 /// column for the selected destination, with the right panel as the detail's inspector. On
 /// iPhone and a folded Duo it collapses to a stack with the sidebar as the root.
@@ -51,9 +55,9 @@ public struct AppShell<Detail: View>: View {
 
   /// The shell.
   public var body: some View {
-    let columns = $columns
+    let columns = settledColumns
     sidebarToggle?.toggle = { columns.wrappedValue = SidebarToggle.toggled(columns.wrappedValue) }
-    return NavigationSplitView(columnVisibility: $columns) {
+    return NavigationSplitView(columnVisibility: columns) {
       SidebarView(state: sidebar, selection: $selection, searchText: $searchText, actions: actions)
         .navigationSplitViewColumnWidth(
           min: AppShellMetrics.sidebarMinWidth, ideal: AppShellMetrics.sidebarIdealWidth,
@@ -123,6 +127,30 @@ enum AppShellMetrics {
 }
 
 extension AppShell {
+  /// The sidebar's visibility, with the window laid out on each side of a change on Mac. An
+  /// animated change that meets a resize in one layout pass animates the window's root view, and
+  /// SwiftUI then resizes the window to that size in every later pass until AppKit throws.
+  private var settledColumns: Binding<NavigationSplitViewVisibility> {
+    let columns = $columns
+    return Binding {
+      columns.wrappedValue
+    } set: { visibility, transaction in
+      Self.layOutVisibleWindows()
+      withTransaction(transaction) { columns.wrappedValue = visibility }
+      Self.layOutVisibleWindows()
+    }
+  }
+
+  /// Every window rather than the key one: the toggle's window needn't be key, as when
+  /// accessibility presses its button.
+  private static func layOutVisibleWindows() {
+    #if os(macOS)
+      for window in NSApp.windows where window.isVisible {
+        window.layoutIfNeeded()
+      }
+    #endif
+  }
+
   @ToolbarContentBuilder private var tabsToolbar: some ToolbarContent {
     if let tabs {
       if showsStrip {

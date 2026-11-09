@@ -234,7 +234,6 @@ private struct DecisionFlowScreen: View {
             ComposerView(
               draft: .constant(""), state: model.composer, actions: GalleryActions.composer)
           }
-          .decisionBottomBar(surfaces)
         }
         .themeCanvas()
         .navigationTitle(model.conversation.header.title)

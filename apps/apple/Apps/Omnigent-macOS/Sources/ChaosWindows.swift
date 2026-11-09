@@ -26,6 +26,7 @@
         guard let window = notification.object as? NSWindow else { return }
         MainActor.assumeIsolated {
           LoopProbe.record("window frame \(window.windowNumber)", "\(window.frame)")
+          ChaosLog.recordIfOversized(window)
         }
       }
     }

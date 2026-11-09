@@ -130,7 +130,6 @@ public struct ConversationScreen<Terminal: View>: View {
       }
       // No minimum width: wrapping banners would push their ideal width into the split view's.
       .frame(minWidth: 0, maxWidth: .infinity)
-      .decisionBottomBar(decisionSurfaces)
       // Clicks and taps in the bar's gaps stop here instead of reaching the rows beneath.
       .background { BarHitShield() }
     }

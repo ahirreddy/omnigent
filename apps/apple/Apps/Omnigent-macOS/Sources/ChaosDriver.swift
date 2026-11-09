@@ -384,7 +384,9 @@
       )
       guard let first = heights.first, let last = heights.last else { return }
       let pause = 0.05 + 0.3 * random.unit
-      write("\(step) sweep \(Int(width)) wide, \(Int(first)) to \(Int(last)) high")
+      write(
+        "\(step) sweep \(Int(width)) wide, \(Int(first)) to \(Int(last)) high, "
+          + "\(steps) steps \(Int(pause * 1000)) ms apart")
       LoopProbe.quiet(for: pause * Double(heights.count) + 1)
       ChaosWindows.sweep(window, width: width, heights: heights, pause: pause)
     }

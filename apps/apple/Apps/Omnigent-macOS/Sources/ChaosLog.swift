@@ -55,11 +55,27 @@
     nonisolated private static func recordThrown(_ exception: NSException) {
       unsafe thrownCount += 1
       guard unsafe thrownCount <= 200 else { return }
-      let stack = Thread.callStackSymbols.dropFirst(2).prefix(30).joined(separator: "\n")
+      // Long enough to pass AppKit's view recursion and reach what started a layout loop.
+      let stack = Thread.callStackSymbols.dropFirst(2).prefix(150).joined(separator: "\n")
       append("THROWN \(exception.name.rawValue): \(exception.reason ?? "no reason")\n\(stack)\n")
       if exception.reason?.contains("Update Constraints in Window") == true, Thread.isMainThread {
         append(MainActor.assumeIsolated { viewsNeedingConstraints() })
       }
+    }
+
+    /// Oversized windows logged so far; a window running away would log on every resize.
+    @MainActor private static var oversizedWindows = 0
+
+    /// Logs who resized `window` when it is far wider than its screen, which nothing in the app
+    /// or the driver asks for.
+    @MainActor
+    static func recordIfOversized(_ window: NSWindow) {
+      guard let screen = window.screen, window.frame.width > screen.frame.width * 2,
+        oversizedWindows < 5
+      else { return }
+      oversizedWindows += 1
+      let stack = Thread.callStackSymbols.dropFirst(2).prefix(150).joined(separator: "\n")
+      append("OVERSIZED \(describe(window)) \(window.frame)\n\(stack)\n")
     }
 
     /// Logs a menu item that AppKit titled with nil (``MenuTitleGuard``), with the toolbars whose
