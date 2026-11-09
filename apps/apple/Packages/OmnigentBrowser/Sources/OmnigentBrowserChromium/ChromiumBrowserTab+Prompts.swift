@@ -143,7 +143,8 @@
       return BrowserFileChooserPrompt(
         mode: mode, allowedExtensions: request.acceptTypes.flatMap(\.extensions),
         allowedMIMETypes: request.acceptTypes.map(\.filter).filter { $0.contains("/") },
-        suggestedName: URL(fileURLWithPath: request.defaultPath).lastPathComponent
+        suggestedName: request.defaultPath.isEmpty
+          ? "" : URL(fileURLWithPath: request.defaultPath).lastPathComponent
       ) { [weak self] urls in
         if urls.isEmpty {
           request.cancel()

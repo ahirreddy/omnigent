@@ -38,8 +38,10 @@ extension WebView {
     case .textSelectionChanged:
       selectedText = fields.string(.text) ?? ""
       let start = Int(fields.i64(.rangeStart) ?? 0)
+      let end = Int(fields.i64(.rangeEnd) ?? 0)
+      let (length, overflowed) = end.subtractingReportingOverflow(start)
       selectedRange = NSRange(
-        location: start, length: max(0, Int(fields.i64(.rangeEnd) ?? 0) - start))
+        location: start, length: end < start ? 0 : (overflowed ? .max : length))
     case .startDrag:
       startDrag(fields)
     case .dragCursor:

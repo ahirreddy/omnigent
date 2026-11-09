@@ -66,8 +66,7 @@ import Testing
     }
 
     @Test(
-      "a prompt nobody can answer is reported to the UI",
-      .disabled("Behavior: syncState overwrites state.report with webView.lastError, which is nil"))
+      "a prompt nobody can answer is reported to the UI")
     func promptsWithoutADelegateAreReported() throws {
       let fixture = try ChromiumTabFixture(withDelegate: false)
       try fixture.receive(.jsDialog, WireEncoder().u64(.promptID, 1))
@@ -198,8 +197,7 @@ import Testing
     }
 
     @Test(
-      "a chooser with no default path suggests no name",
-      .disabled("Behavior: an empty path as a file URL resolves to the working directory's name"))
+      "a chooser with no default path suggests no name")
     func aChooserWithNoDefaultPathSuggestsNoName() throws {
       let fixture = try ChromiumTabFixture()
       try fixture.receive(.fileChooser, WireEncoder().u64(.promptID, 2))

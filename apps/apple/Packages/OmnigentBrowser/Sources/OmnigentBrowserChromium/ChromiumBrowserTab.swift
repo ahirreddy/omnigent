@@ -16,6 +16,8 @@
     private(set) weak var engine: ChromiumBrowserEngine?
     /// Web-layer prompt ID to the engine-neutral prompt handed to the delegate.
     var prompts: [UInt64: BrowserPrompt] = [:]
+    /// The web view's error that `state.lastError` last took.
+    private var syncedWebViewError: WebLayerError?
     private(set) lazy var agentInput: any BrowserAgentInput = ChromiumAgentInput(webView: webView)
 
     var popupPolicy = BrowserPopupPolicy.requireUserGesture {
@@ -98,7 +100,11 @@
       state.estimatedProgress = webView.estimatedProgress
       state.canGoBack = webView.canGoBack
       state.canGoForward = webView.canGoForward
-      state.lastError = webView.lastError.map(Self.convert)
+      // The tab reports errors of its own, so only a change in the web view's replaces them.
+      if webView.lastError != syncedWebViewError {
+        syncedWebViewError = webView.lastError
+        state.lastError = webView.lastError.map(Self.convert)
+      }
       state.isClosed = webView.status == .closed
       state.faviconURL = webView.faviconURLs.first
       state.isAudible = webView.isAudible

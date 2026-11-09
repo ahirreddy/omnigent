@@ -46,7 +46,9 @@ nonisolated public struct FrameStats: Sendable, Equatable {
     if interval > 1.0 / 30 + Self.tolerance { over33ms += 1 }
     if interval > expected * 1.5 {
       hitchTime += interval - expected
-      dropped += max(Int((interval / expected).rounded()) - 1, 1)
+      let refreshes = Int(exactly: (interval / expected).rounded()) ?? .max
+      let (total, overflowed) = dropped.addingReportingOverflow(max(refreshes - 1, 1))
+      dropped = overflowed ? .max : total
     }
   }
 

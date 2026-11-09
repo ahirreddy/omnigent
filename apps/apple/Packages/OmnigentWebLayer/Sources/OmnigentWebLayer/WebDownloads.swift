@@ -176,7 +176,7 @@ public final class WebDownload: Identifiable {
   /// Progress in `0...1`, when the size is known.
   public var fractionCompleted: Double? {
     guard let totalBytes, totalBytes > 0 else { return state == .complete ? 1 : nil }
-    return min(1, Double(receivedBytes) / Double(totalBytes))
+    return min(max(Double(receivedBytes) / Double(totalBytes), 0), 1)
   }
 
   /// Cancels the download.

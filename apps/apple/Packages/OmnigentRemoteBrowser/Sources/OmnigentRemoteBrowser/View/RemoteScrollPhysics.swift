@@ -114,15 +114,15 @@ nonisolated public struct RemoteScrollIndicator: Hashable, Sendable {
   ///   - content: The page's rectangle in the view, points.
   public init?(metrics: RemoteScrollMetrics, content: CGRect) {
     let scrollable = metrics.contentHeight - metrics.viewportHeight
-    guard scrollable > 1, metrics.contentHeight > 0, content.height > Self.minimumLength * 2 else {
-      return nil
-    }
+    guard scrollable > 1, scrollable.isFinite, metrics.contentHeight.isFinite,
+      metrics.viewportHeight.isFinite, content.height > Self.minimumLength * 2
+    else { return nil }
     let track = CGRect(
       x: content.maxX - Self.width - Self.inset, y: content.minY + Self.inset, width: Self.width,
       height: content.height - 2 * Self.inset)
     let length = max(
-      Self.minimumLength, track.height * metrics.viewportHeight / metrics.contentHeight)
-    let progress = min(max(metrics.y / scrollable, 0), 1)
+      Self.minimumLength, track.height * (metrics.viewportHeight / metrics.contentHeight))
+    let progress = metrics.y.isNaN ? 0 : min(max(metrics.y / scrollable, 0), 1)
     self.track = track
     thumb = CGRect(
       x: track.minX, y: track.minY + (track.height - length) * progress, width: Self.width,

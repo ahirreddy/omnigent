@@ -90,11 +90,11 @@ extension WebLayerError: LocalizedError {
     case .hostInitializationFailed(let message):
       "Chromium failed to start: \(message)"
     case .hostTimedOut(let phase, let seconds):
-      "The Chromium web host did not finish \(phase) within \(Int(seconds)) seconds."
+      "The Chromium web host did not finish \(phase) within \(Self.wholeSeconds(seconds)) seconds."
     case .hostExited(let status, let reason):
       "The Chromium web host stopped (\(reason), status \(status))."
     case .hostUnresponsive(let seconds):
-      "The Chromium web host stopped responding for \(Int(seconds)) seconds and was restarted."
+      "The Chromium web host stopped responding for \(Self.wholeSeconds(seconds)) seconds and was restarted."
     case .hostError(let code, let message):
       "The Chromium web host reported error \(code): \(message)"
     case .notReady:
@@ -130,5 +130,10 @@ extension WebLayerError: LocalizedError {
     case .promptFinished(let message):
       "The request was already handled: \(message)"
     }
+  }
+
+  /// `seconds` for a sentence, however long it claims to be.
+  private static func wholeSeconds(_ seconds: Double) -> String {
+    Int(exactly: seconds.rounded()).map(String.init) ?? "\(seconds)"
   }
 }

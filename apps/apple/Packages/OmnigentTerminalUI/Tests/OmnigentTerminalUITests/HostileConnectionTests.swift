@@ -244,8 +244,7 @@ struct HostileDemoAndInputTests {
   }
 
   @Test(
-    "the demo TUI builds with the fewest rows Int holds",
-    .disabled("Traps: TerminalDemoContent.swift:66 rows - 4 overflows at Int.min"))
+    "the demo TUI builds with the fewest rows Int holds")
   func demoFewestRows() {
     #expect(!TerminalDemoContent.harnessTUI(columns: 80, rows: .min).isEmpty)
   }

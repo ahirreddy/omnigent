@@ -34,7 +34,11 @@ struct IncomingMessage {
   let fields: WireDecoder
   let port: MachSendRight?
 
-  var kind: OWLMessageKind? { OWLMessageKind(rawValue: kindValue) }
+  /// The kind, `nil` past the newest kind this client knows (the C enum accepts any number).
+  var kind: OWLMessageKind? {
+    kindValue <= OWLMessageKind.externalProtocol.rawValue
+      ? OWLMessageKind(rawValue: kindValue) : nil
+  }
 }
 
 /// The client end of the OWL channel. Delivers on the main queue.

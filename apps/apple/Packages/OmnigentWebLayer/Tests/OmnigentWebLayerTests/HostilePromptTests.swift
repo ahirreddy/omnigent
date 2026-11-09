@@ -81,8 +81,7 @@ struct HostilePromptTests {
   }
 
   @Test(
-    "A color's digits are ASCII",
-    .disabled("Behavior: WebColorRequest.choose uses isHexDigit, which accepts full-width digits"))
+    "A color's digits are ASCII")
   func fullWidthColorDigits() throws {
     let fixture = ProtocolFixture()
     try fixture.receive(.colorChooser, WireEncoder().u64(.promptID, 1))
@@ -114,8 +113,7 @@ struct HostilePromptTests {
   }
 
   @Test(
-    "An authentication port past Int is refused or kept, never a trap",
-    .disabled("Traps: WebAuthRequest.init converts the wire's UInt64 port with Int(_:)"))
+    "An authentication port past Int is refused or kept, never a trap")
   func hugeAuthPort() throws {
     let fixture = ProtocolFixture()
     try fixture.receive(.authRequest, WireEncoder().u64(.promptID, 1).u64(.port, .max))
@@ -300,10 +298,7 @@ struct HostileDownloadTests {
   }
 
   @Test(
-    "Progress stays in 0...1",
-    .disabled(
-      "Behavior: WebDownload.fractionCompleted only caps the top, so negative bytes read as negative progress"
-    ))
+    "Progress stays in 0...1")
   func negativeProgress() throws {
     let fixture = ProtocolFixture()
     let download = try started(fixture)

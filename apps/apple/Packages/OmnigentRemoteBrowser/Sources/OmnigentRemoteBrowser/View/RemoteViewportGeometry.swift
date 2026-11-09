@@ -34,10 +34,16 @@ nonisolated public struct RemoteViewportGeometry: Hashable, Sendable {
   ///   - deviceScale: The DPR the host encodes at.
   /// - Returns: The viewport.
   public static func viewport(videoSize: CGSize, deviceScale: Double = 1) -> RemoteViewport {
-    let ratio = deviceScale > 0 ? deviceScale : 1
+    let ratio = deviceScale > 0 && deviceScale.isFinite ? deviceScale : 1
     return RemoteViewport(
-      width: UInt32(clamping: Int((videoSize.width / ratio).rounded())),
-      height: UInt32(clamping: Int((videoSize.height / ratio).rounded())), dpr: ratio)
+      width: wholePixels(videoSize.width / ratio), height: wholePixels(videoSize.height / ratio),
+      dpr: ratio)
+  }
+
+  /// `length` as whole pixels, zero when it is not a number.
+  private static func wholePixels(_ length: Double) -> UInt32 {
+    guard !length.isNaN else { return 0 }
+    return UInt32(min(max(length.rounded(), 0), Double(UInt32.max)))
   }
 
   /// The CSS point under a view point.
@@ -51,7 +57,10 @@ nonisolated public struct RemoteViewportGeometry: Hashable, Sendable {
     let width = Double(viewport.width)
     let height = Double(viewport.height)
     if clamped {
-      return CGPoint(x: min(max(cssX, 0), width - 1), y: min(max(cssY, 0), height - 1))
+      func inside(_ value: Double, _ length: Double) -> Double {
+        value.isNaN ? 0 : min(max(value, 0), length - 1)
+      }
+      return CGPoint(x: inside(cssX, width), y: inside(cssY, height))
     }
     guard cssX >= 0, cssY >= 0, cssX < width, cssY < height else { return nil }
     return CGPoint(x: cssX, y: cssY)

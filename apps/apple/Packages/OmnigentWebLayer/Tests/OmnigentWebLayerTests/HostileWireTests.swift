@@ -232,7 +232,6 @@ struct WebLayerErrorTests {
 
   @Test(
     "A timeout of no real length still describes itself",
-    .disabled("Traps: WebLayerError.errorDescription calls Int(seconds) on NaN or a huge Double"),
     arguments: [Double.nan, .infinity, -.infinity, 1e300, Double(Int64.max)])
   func timeoutsOfNoRealLength(seconds: Double) {
     #expect(
@@ -241,7 +240,6 @@ struct WebLayerErrorTests {
 
   @Test(
     "A hang of no real length still describes itself",
-    .disabled("Traps: WebLayerError.errorDescription calls Int(seconds) on NaN or a huge Double"),
     arguments: [Double.nan, .infinity, 1e300])
   func hangsOfNoRealLength(seconds: Double) {
     #expect(WebLayerError.hostUnresponsive(seconds: seconds).errorDescription?.isEmpty == false)

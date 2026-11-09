@@ -40,6 +40,7 @@ public enum GhosttyError: Error, Hashable, Sendable, CustomStringConvertible {
 public final class GhosttyRuntime {
   private let parser = GhosttyParserThread()
   private static var instance: GhosttyRuntime?
+  private static var isInitialized = false
   private static let logger = Logger(subsystem: "ai.omnigent", category: "terminal")
 
   /// The shared runtime, created on first use.
@@ -64,9 +65,7 @@ public final class GhosttyRuntime {
   }
 
   private init(appearance: TerminalAppearance) throws(GhosttyError) {
-    // libghostty parses argv only for `ghostty +action` CLI use; the embedder passes none.
-    let status = unsafe ghostty_init(0, CommandLine.unsafeArgv)
-    guard status == 0 else { throw .initFailed(code: status) }
+    try Self.initialize()
     let config = unsafe try Self.makeConfig(appearance)
     var runtime = unsafe ghostty_runtime_config_s()
     unsafe runtime.userdata = nil
@@ -85,6 +84,15 @@ public final class GhosttyRuntime {
     unsafe self.config = config
     self.appearance = appearance
     unsafe ghostty_app_set_color_scheme(app, appearance.colorScheme.ghostty)
+  }
+
+  /// Starts libghostty, which every configuration call needs first.
+  private static func initialize() throws(GhosttyError) {
+    guard !isInitialized else { return }
+    // libghostty parses argv only for `ghostty +action` CLI use; the embedder passes none.
+    let status = unsafe ghostty_init(0, CommandLine.unsafeArgv)
+    guard status == 0 else { throw .initFailed(code: status) }
+    isInitialized = true
   }
 
   /// Builds and validates a finalized configuration.
@@ -115,6 +123,7 @@ public final class GhosttyRuntime {
   ///
   /// - Throws: ``GhosttyError/invalidConfiguration(_:)`` with Ghostty's messages.
   public static func validate(_ appearance: TerminalAppearance) throws(GhosttyError) {
+    try initialize()
     let config = unsafe try makeConfig(appearance)
     unsafe ghostty_config_free(config)
   }

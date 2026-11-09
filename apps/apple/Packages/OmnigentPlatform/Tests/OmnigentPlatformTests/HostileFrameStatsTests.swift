@@ -24,21 +24,21 @@ struct HostileFrameStatsTests {
     #expect(stats.summary.contains("refresh=inf"))
   }
 
-  @Test(.disabled("Traps: FrameStats.swift:49 Int(interval / expected) with an infinite interval"))
+  @Test
   func anInfiniteIntervalDoesNotTrap() {
     var stats = FrameStats()
     stats.record(interval: .infinity, expected: Self.at60)
     #expect(stats.frames == 1)
   }
 
-  @Test(.disabled("Traps: FrameStats.swift:49 Int(interval / expected) past Int.max"))
+  @Test
   func anIntervalManyRefreshesLongDoesNotTrap() {
     var stats = FrameStats()
     stats.record(interval: 1, expected: 1e-300)
     #expect(stats.frames == 1)
   }
 
-  @Test(.disabled("Traps: FrameStats.swift:49 dropped += overflows at Int.max"))
+  @Test
   func droppedFramesDoNotOverflow() {
     var stats = FrameStats()
     for _ in 0..<3 { stats.record(interval: 4e18, expected: 1) }

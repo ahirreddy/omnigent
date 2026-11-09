@@ -112,8 +112,6 @@
 
     @Test(
       "scroll metrics that overflow draw an indicator or none",
-      .disabled(
-        "Traps: CALayerInvalidGeometry, the thumb's frame comes out NaN in updateIndicator"),
       arguments: [
         // Valid JSON from a host: track height * viewport height overflows to infinity.
         RemoteScrollMetrics(

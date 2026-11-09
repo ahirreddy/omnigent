@@ -242,7 +242,7 @@ public final class WebAuthRequest: WebPromptRequest {
   init(id: UInt64, webView: WebView, fields: WireDecoder) {
     origin = fields.string(.origin).flatMap(URL.init(string:))
     host = fields.string(.host) ?? ""
-    port = Int(fields.u64(.port) ?? 0)
+    port = Int(clamping: fields.u64(.port) ?? 0)
     realm = fields.string(.realm) ?? ""
     scheme = fields.string(.scheme) ?? ""
     isProxy = fields.bool(.isProxy)
@@ -331,7 +331,9 @@ public final class WebColorRequest: WebPromptRequest {
 
   /// Sets the input to `hex` ("#rrggbb") and fires input and change events.
   public func choose(_ hex: String) {
-    guard hex.count == 7, hex.first == "#", hex.dropFirst().allSatisfy(\.isHexDigit) else {
+    guard hex.count == 7, hex.first == "#",
+      hex.dropFirst().allSatisfy({ $0.isASCII && $0.isHexDigit })
+    else {
       webView?.lastError = .invalidArgument("A color must be #rrggbb, not \(hex).")
       webView?.changed()
       cancel()

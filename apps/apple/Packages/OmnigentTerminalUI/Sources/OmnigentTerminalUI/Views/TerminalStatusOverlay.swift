@@ -57,7 +57,7 @@ struct TerminalStatusOverlay: View {
 
   private func reconnectText(failures: Int, delay: Int, reason: String) -> String {
     if delay <= 0 { return "Reconnecting…" }
-    let seconds = max(1, (delay + 999) / 1000)
+    let seconds = delay / 1000 + (delay % 1000 > 0 ? 1 : 0)
     return "Connection lost (\(reason)). Retrying in \(seconds)s…"
   }
 

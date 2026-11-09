@@ -39,6 +39,7 @@ public enum TerminalDemoContent {
   public static func harnessTUI(columns: Int = 80, rows: Int = 24) -> String {
     let width = max(40, min(columns, 120))
     let inner = width - 2
+    let rows = max(rows, 0)
     func line(_ text: String, visible: Int) -> String {
       "\(esc)[38;2;204;120;92m│\(esc)[0m\(text)\(String(repeating: " ", count: max(0, inner - visible)))"
         + "\(esc)[38;2;204;120;92m│\(esc)[0m\r\n"

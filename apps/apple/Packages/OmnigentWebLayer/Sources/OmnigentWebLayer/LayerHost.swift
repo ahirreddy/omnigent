@@ -77,14 +77,17 @@ public final class LayerHost {
   /// which the host may reuse.
   func present(_ frame: SurfaceFrame) -> [UInt32] {
     var released: [UInt32] = []
-    let size = CGSize(
-      width: frame.pixelSize.width / frame.scale, height: frame.pixelSize.height / frame.scale)
+    let width = frame.pixelSize.width / frame.scale
+    let height = frame.pixelSize.height / frame.scale
+    // CALayer raises on a frame that is not a number.
+    let size = width.isFinite && height.isFinite ? CGSize(width: width, height: height) : .zero
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     if frame.layer == .popup {
       if popupSurfaceID != 0, popupSurfaceID != frame.surfaceID { released.append(popupSurfaceID) }
       popupSurfaceID = frame.surfaceID
-      popupOrigin = frame.popupOrigin
+      popupOrigin =
+        frame.popupOrigin.x.isFinite && frame.popupOrigin.y.isFinite ? frame.popupOrigin : .zero
       popupVisible = frame.popupVisible
       popupLayer.contents = frame.surface
       popupLayer.frame = CGRect(origin: popupOrigin, size: size)

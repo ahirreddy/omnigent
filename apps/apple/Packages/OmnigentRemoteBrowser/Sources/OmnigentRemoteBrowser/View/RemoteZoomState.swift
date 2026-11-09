@@ -52,7 +52,7 @@ nonisolated public struct RemoteZoomState: Hashable, Sendable {
   public mutating func zoom(
     by factor: Double, anchor: CGPoint, fit: CGRect, bounds: CGSize, elastic: Bool = false
   ) {
-    guard factor.isFinite, factor > 0 else { return }
+    guard factor.isFinite, factor > 0, anchor.x.isFinite, anchor.y.isFinite else { return }
     let wanted =
       elastic ? Self.resisted(scale * factor) : min(max(scale * factor, 1), Self.maxScale)
     let rect = contentRect(fit: fit)
@@ -121,7 +121,7 @@ nonisolated public struct RemoteZoomState: Hashable, Sendable {
   /// Scale beyond the limits with resistance, as `UIScrollView` bounces a pinch.
   private static func resisted(_ scale: Double) -> Double {
     if scale < 1 { return max(0.5, 1 - (1 - scale) * 0.3) }
-    if scale > maxScale { return maxScale + (scale - maxScale) * 0.3 }
+    if scale > maxScale { return min(maxScale + (scale - maxScale) * 0.3, maxScale * 2) }
     return scale
   }
 }

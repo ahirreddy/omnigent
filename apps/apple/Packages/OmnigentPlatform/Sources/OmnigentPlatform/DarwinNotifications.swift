@@ -95,7 +95,7 @@
         return
       }
       let commands = Self.commands(in: text)
-      guard let newest = commands.last?.sequence else { return }
+      guard let newest = commands.map(\.sequence).max() else { return }
       defer { lastSequence = newest }
       // Commands left from an earlier launch are not for this one.
       if lastSequence == nil, let modified = Self.modified(file),
@@ -113,7 +113,8 @@
       text.split(whereSeparator: \.isNewline).compactMap { line in
         let parts = line.split(separator: " ", maxSplits: 1)
         guard parts.count == 2, let sequence = Int(parts[0]) else { return nil }
-        return (sequence, String(parts[1]).trimmingCharacters(in: .whitespaces))
+        let name = String(parts[1]).trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? nil : (sequence, name)
       }
     }
 

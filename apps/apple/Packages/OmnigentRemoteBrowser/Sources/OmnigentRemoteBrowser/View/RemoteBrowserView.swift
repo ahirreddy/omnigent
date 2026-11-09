@@ -137,7 +137,8 @@ public final class RemoteBrowserView: RemotePlatformView {
     CATransaction.begin()
     CATransaction.setDisableActions(!animated)
     if animated { CATransaction.setAnimationDuration(0.25) }
-    let rect = (displayGeometry?.contentRect ?? bounds).offsetBy(dx: rubberBand.x, dy: rubberBand.y)
+    let band = rubberBand.x.isFinite && rubberBand.y.isFinite ? rubberBand : .zero
+    let rect = (displayGeometry?.contentRect ?? bounds).offsetBy(dx: band.x, dy: band.y)
     renderer.layer.frame = rect
     stillLayer.frame = rect
     stillLayer.isHidden = showsVideo

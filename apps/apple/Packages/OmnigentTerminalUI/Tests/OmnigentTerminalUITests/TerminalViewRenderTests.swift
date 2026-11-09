@@ -39,8 +39,7 @@ struct TerminalViewRenderTests {
   }
 
   @Test(
-    "a retry delay near the largest Int reads as a long wait",
-    .disabled("Traps: TerminalStatusOverlay.swift:46 delay + 999 overflows past Int.max - 999"))
+    "a retry delay near the largest Int reads as a long wait")
   func hugeRetryDelay() {
     let state = TerminalConnectionState.reconnecting(
       failures: 1, retryInMilliseconds: .max, reason: "lost")
@@ -114,8 +113,7 @@ struct TerminalViewRenderTests {
   }
 
   @Test(
-    "a selected match at the largest Int reads as a count",
-    .disabled("Traps: TerminalFindBar.swift:48 selected + 1 overflows at Int.max"))
+    "a selected match at the largest Int reads as a count")
   func hugeSelectedMatch() throws {
     let controller = try TerminalSurfaceController(connection: EchoTerminalConnection())
     controller.search = TerminalSearch(needle: "", total: .max, selected: .max)

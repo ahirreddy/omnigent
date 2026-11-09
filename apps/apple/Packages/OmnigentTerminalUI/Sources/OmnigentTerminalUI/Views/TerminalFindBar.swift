@@ -45,7 +45,7 @@ struct TerminalFindBar: View {
 
   private func matchText(total: Int, selected: Int?) -> String {
     guard total > 0 else { return "No matches" }
-    if let selected { return "\(selected + 1) of \(total)" }
+    if let selected { return "\(min(selected, total - 1) + 1) of \(total)" }
     return "\(total) matches"
   }
 }

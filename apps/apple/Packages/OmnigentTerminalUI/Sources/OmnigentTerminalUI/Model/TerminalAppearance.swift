@@ -124,7 +124,9 @@ public enum GhosttyConfigText {
     if let family = appearance.fontFamily ?? systemFontFamily, !family.isEmpty {
       lines.append("font-family = \(quoted(family))")
     }
-    lines.append("font-size = \(formatted(appearance.fontSize))")
+    if appearance.fontSize.isFinite {
+      lines.append("font-size = \(formatted(appearance.fontSize))")
+    }
     lines.append("background = \(palette.background)")
     lines.append("foreground = \(palette.foreground)")
     lines.append("cursor-color = \(palette.cursor)")
@@ -186,10 +188,14 @@ public enum GhosttyConfigText {
   ]
 
   private static func quoted(_ value: String) -> String {
-    "\"" + value.replacingOccurrences(of: "\"", with: "") + "\""
+    // One line in quotes, so a family cannot end its string or add a line.
+    let refused = CharacterSet.controlCharacters.union(.newlines).union(["\""])
+    let kept = value.unicodeScalars.filter { !refused.contains($0) }
+    return "\"" + String(String.UnicodeScalarView(kept)) + "\""
   }
 
   private static func formatted(_ value: Double) -> String {
-    value.rounded() == value ? String(Int(value)) : String((value * 10).rounded() / 10)
+    if let whole = Int(exactly: value) { return String(whole) }
+    return String((value * 10).rounded() / 10)
   }
 }

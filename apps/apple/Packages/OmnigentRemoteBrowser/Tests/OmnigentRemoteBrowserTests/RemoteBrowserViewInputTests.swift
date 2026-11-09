@@ -153,8 +153,7 @@
     }
 
     @Test(
-      "a release with no position sends a real one",
-      .disabled("Behavior: cssPoint(clamped:) lets NaN through min and max, and the host gets NaN"))
+      "a release with no position sends a real one")
     func releaseWithNoPosition() async throws {
       let (hosted, view) = await inControl()
       defer { hosted.finish() }

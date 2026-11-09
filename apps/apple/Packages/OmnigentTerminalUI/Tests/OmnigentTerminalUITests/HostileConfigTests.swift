@@ -16,18 +16,18 @@ struct HostileConfigTests {
     #expect(configLines(TerminalAppearance(fontSize: 0)).contains("font-size = 0"))
     #expect(configLines(TerminalAppearance(fontSize: -3)).contains("font-size = -3"))
     #expect(configLines(TerminalAppearance(fontSize: 13.04)).contains("font-size = 13.0"))
-    #expect(configLines(TerminalAppearance(fontSize: .nan)).contains("font-size = nan"))
+    #expect(!configLines(TerminalAppearance(fontSize: .nan)).contains { $0.hasPrefix("font-size") })
     #expect(configLines(TerminalAppearance(fontSize: 1e-300)).contains("font-size = 0.0"))
   }
 
-  @Test("an infinite font size prints", .disabled("Traps: GhosttyConfigText.formatted Int(inf)"))
+  @Test("an infinite font size prints")
   func infiniteFontSize() {
     #expect(
       !GhosttyConfigText.make(TerminalAppearance(fontSize: .infinity), systemFontFamily: nil)
         .isEmpty)
   }
 
-  @Test("a font size past Int prints", .disabled("Traps: GhosttyConfigText.formatted Int(1e300)"))
+  @Test("a font size past Int prints")
   func fontSizePastInt() {
     #expect(
       !GhosttyConfigText.make(TerminalAppearance(fontSize: 1e300), systemFontFamily: nil).isEmpty)
@@ -40,8 +40,7 @@ struct HostileConfigTests {
   }
 
   @Test(
-    "a newline in a font family cannot add a configuration line",
-    .disabled("Behavior: quoted(_:) strips quotes only, so a family adds any configuration line"))
+    "a newline in a font family cannot add a configuration line")
   func familyCannotInjectLines() {
     let lines = configLines(TerminalAppearance(fontFamily: "Menlo\nclipboard-write = allow\nx"))
     #expect(!lines.contains("clipboard-write = allow"))
@@ -92,8 +91,7 @@ struct HostileConfigTests {
   }
 
   @Test(
-    "validating before the runtime starts reports instead of crashing",
-    .disabled("Traps: makeConfig runs before ghostty_init; run this test alone to see SIGSEGV"))
+    "validating before the runtime starts reports instead of crashing")
   func validateFirst() throws {
     try GhosttyRuntime.validate(TerminalAppearance())
   }

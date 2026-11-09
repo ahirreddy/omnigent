@@ -57,7 +57,6 @@ struct LayerHostTests {
 
   @Test(
     "A frame whose size is not a number is dropped, never a crash",
-    .disabled("Traps: LayerHost.present divides by the scale and CALayer raises on a NaN frame"),
     arguments: [
       (0.0, 0.0), (800.0, 0.0), (800.0, Double.nan),
       (Double.greatestFiniteMagnitude, Double.leastNonzeroMagnitude),
@@ -69,8 +68,7 @@ struct LayerHostTests {
   }
 
   @Test(
-    "A popup at no real place is dropped, never a crash",
-    .disabled("Traps: LayerHost.present sets the popup frame and CALayer raises on a NaN origin"))
+    "A popup at no real place is dropped, never a crash")
   func oddPopupOrigin() throws {
     let host = LayerHost()
     let origin = CGPoint(x: CGFloat.nan, y: CGFloat.infinity)

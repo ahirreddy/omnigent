@@ -112,8 +112,7 @@ struct HostileViewMessageTests {
   }
 
   @Test(
-    "A selection wider than Int reports without overflowing",
-    .disabled("Traps: textSelectionChanged subtracts RangeStart from RangeEnd unchecked"))
+    "A selection wider than Int reports without overflowing")
   func selectionPastInt() throws {
     let fixture = ProtocolFixture()
     try fixture.receive(
@@ -197,10 +196,7 @@ struct HostileViewMessageTests {
   }
 
   @Test(
-    "A kind this client does not know is a protocol error",
-    .disabled(
-      "Behavior: OWLMessageKind is an open C enum, so its rawValue init never fails and Session.handle's unknown-kind branch is dead"
-    ))
+    "A kind this client does not know is a protocol error")
   func unknownKindsAreReported() throws {
     let fixture = ProtocolFixture()
     fixture.session.handle(

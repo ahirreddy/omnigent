@@ -74,9 +74,7 @@
     }
 
     @Test(
-      "a line with only spaces after its number names nothing",
-      .disabled(
-        "Behavior: commands(in:) keeps it, so check() posts ai.omnigent.perf. with no suffix"))
+      "a line with only spaces after its number names nothing")
     func blankName() {
       #expect(PerfCommandFile.commands(in: "1  ").isEmpty)
     }
@@ -119,8 +117,7 @@
     }
 
     @Test(
-      "commands out of order post once",
-      .disabled("Behavior: lastSequence takes the last line, not the highest, so 5 repeats forever")
+      "commands out of order post once"
     )
     func outOfOrderCommands() async throws {
       try await withCommandFile {

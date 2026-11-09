@@ -139,9 +139,7 @@
     }
 
     @Test(
-      "a pinch of absurd size stays on the page",
-      .disabled(
-        "Traps: Int(zoom.scale * 100) in updateAccessibilityValue; no ceiling on elastic zoom"))
+      "a pinch of absurd size stays on the page")
     func absurdPinch() async throws {
       let hosted = HostedStore()
       defer { hosted.finish() }
@@ -154,8 +152,7 @@
     }
 
     @Test(
-      "a pinch whose centre is not a number stays on the page",
-      .disabled("Traps: CALayerInvalidGeometry, the NaN anchor survives clamp into the offset"))
+      "a pinch whose centre is not a number stays on the page")
     func pinchWithNoCentre() async throws {
       let hosted = HostedStore()
       defer { hosted.finish() }
@@ -169,8 +166,7 @@
     }
 
     @Test(
-      "a rubber band that is not a number stays on the page",
-      .disabled("Traps: CALayerInvalidGeometry, relayout offsets the page's frame by it"))
+      "a rubber band that is not a number stays on the page")
     func rubberBandOfNoSize() async {
       let hosted = HostedStore()
       defer { hosted.finish() }
@@ -193,7 +189,6 @@
 
     @Test(
       "a video picture of no real size implies a viewport",
-      .disabled("Traps: Int() of a non-finite or huge width in RemoteViewportGeometry.viewport"),
       arguments: [
         (CGSize(width: CGFloat.nan, height: 1), 1.0),
         (CGSize(width: CGFloat.infinity, height: 1), 1),
@@ -222,7 +217,7 @@
       #expect(
         RemoteViewportGeometry.viewport(
           videoSize: CGSize(width: 10, height: 10), deviceScale: .infinity
-        ).width == 0)
+        ).width == 10)
     }
   }
 
