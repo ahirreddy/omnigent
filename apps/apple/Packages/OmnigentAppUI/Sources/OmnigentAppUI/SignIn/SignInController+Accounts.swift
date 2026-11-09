@@ -74,13 +74,11 @@ extension SignInController {
       // A 404 manifest still discovers; without a version or auth mode nothing says Omnigent.
       if discovery.serverVersion == nil && discovery.authMode == nil { return .reachable }
       return .omnigent(name: discovery.serverName)
-    } catch let error as CoreError {
-      switch error {
+    } catch {
+      switch thrownByCore(error) {
       case .HttpStatus, .Decode: return .reachable
       default: return .unreachable
       }
-    } catch {
-      return .unreachable
     }
   }
 

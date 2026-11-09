@@ -112,11 +112,3 @@ nonisolated extension BrowserApproval {
     self.init(loginUrl: login.loginUrl, userCode: login.userCode, expiresAtMs: login.expiresAtMs)
   }
 }
-
-nonisolated extension ServerIdentity {
-  init(_ discovery: ServerDiscovery) {
-    self.init(
-      baseUrl: discovery.baseUrl, serverName: discovery.serverName,
-      serverVersion: discovery.serverVersion)
-  }
-}

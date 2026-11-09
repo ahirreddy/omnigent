@@ -15,10 +15,13 @@ extension ServerURLValidator {
     #endif
     do {
       return .success(try normalizeServerUrl(serverUrl: raw, policy: policy))
-    } catch let error as CoreError {
-      return .failure(ServerURLRejection(message: error.message))
     } catch {
-      return .failure(ServerURLRejection(message: String(describing: error)))
+      return .failure(ServerURLRejection(message: thrownByCore(error).message))
     }
   }
+}
+
+/// What a core call threw. Its calls declare only `throws`, and only ever throw ``CoreError``.
+nonisolated func thrownByCore(_ error: any Error) -> CoreError {
+  error as? CoreError ?? .InvalidState(message: String(describing: error))
 }
