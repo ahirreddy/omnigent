@@ -259,7 +259,32 @@ struct BrowserEnvironmentTests {
     environment.history(for: profileID).recordVisit(
       url: try testURL("https://b.example/"), title: "B")
     #expect(throws: BrowserError.self) { try environment.flush() }
+    environment.history(for: profileID).recordVisit(
+      url: try testURL("https://c.example/"), title: "C")
     NotificationCenter.default.post(name: NSApplication.willTerminateNotification, object: nil)
+  }
+
+  @Test("with no tab strip, a page's popup gets its own window")
+  func popupWithoutATabStrip() throws {
+    let (environment, provider) = try makeEnvironment()
+    SystemSideEffects.reset()
+    let model = environment.makeTab(url: try testURL("https://a.example/"))
+    model.activate()
+    let opener = try #require(provider.engines[.chromium]?.tabs.last)
+    let popup = try popup(provider, opener: opener, profile: opener.profile)
+    environment.presenter.tab(opener, didOpen: popup)
+    #expect(SystemSideEffects.record.shownWindowTitles.last == "a.example")
+    popup.tab.close()
+  }
+
+  @Test("a bookmark that can't be saved leaves its reason on the tab")
+  func bookmarkFailure() throws {
+    let blocker = try temporaryDirectory().appending(path: "blocker")
+    try Data("a file".utf8).write(to: blocker)
+    let (environment, _) = try makeEnvironment(directory: blocker.appending(path: "sub"))
+    let model = environment.makeTab(url: try testURL("https://a.example/"))
+    model.toggleBookmark()
+    #expect(model.lastError != nil)
   }
 
   @Test("the browser's data lives under Application Support")

@@ -161,6 +161,19 @@ struct SystemTabDownloadTests {
     #expect(throws: BrowserError.self) { try saved.record.cancel() }
   }
 
+  @Test("a page response that becomes a download is tracked too")
+  func responseBecomesDownload() async throws {
+    let fixture = try SystemTabFixture()
+    defer { fixture.tab.close() }
+    let download = try await startDownload(fixture, text: "x")
+    let response = FakeNavigationResponse(
+      response: URLResponse(
+        url: try testURL("https://a.example/f"), mimeType: nil, expectedContentLength: 1,
+        textEncodingName: nil))
+    fixture.tab.webView(fixture.tab.webView, navigationResponse: response, didBecome: download)
+    #expect(fixture.tab.downloadTrackers[ObjectIdentifier(download)] != nil)
+  }
+
   @Test("a download whose tab has gone is refused")
   func tabGone() async throws {
     var fixture: SystemTabFixture? = try SystemTabFixture()

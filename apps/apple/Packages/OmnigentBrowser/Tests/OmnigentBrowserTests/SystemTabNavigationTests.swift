@@ -200,3 +200,101 @@ struct SystemTabChallengeTests {
     #expect(fixture.delegate.requested.count == count)
   }
 }
+
+@MainActor
+@Suite("System tab odds and ends", .serialized)
+struct SystemTabOddsTests {
+  /// Stands in for a message from the page's script, whose body a test chooses.
+  private final class FakeScriptMessage: WKScriptMessage {
+    private let fakeBody: Any
+    private let fakeWebView: WKWebView?
+
+    init(body: Any, webView: WKWebView?) {
+      fakeBody = body
+      fakeWebView = webView
+      super.init()
+      _ = Unmanaged.passRetained(self)
+    }
+
+    override var body: Any { fakeBody }
+    override var webView: WKWebView? { fakeWebView }
+    override var frameInfo: WKFrameInfo { FakeFrame() }
+  }
+
+  @Test("a certificate the system trusts isn't asked about")
+  func trustedCertificate() throws {
+    let fixture = try SystemTabFixture()
+    defer { fixture.tab.close() }
+    let trust = try UntrustedCertificate.trust()
+    let chain = try #require(SecTrustCopyCertificateChain(trust))
+    #expect(SecTrustSetAnchorCertificates(trust, chain) == errSecSuccess)
+    let space = FakeProtectionSpace(method: NSURLAuthenticationMethodServerTrust, trust: trust)
+    let challenge = URLAuthenticationChallenge(
+      protectionSpace: space, proposedCredential: nil, previousFailureCount: 0,
+      failureResponse: nil, error: nil, sender: SilentChallengeSender())
+    var disposition: URLSession.AuthChallengeDisposition?
+    fixture.tab.webView(fixture.tab.webView, didReceive: challenge) { answer, _ in
+      disposition = answer
+    }
+    #expect(disposition == .performDefaultHandling)
+    #expect(fixture.delegate.requested.isEmpty)
+  }
+
+  @Test("a link with nobody to ask is reported and doesn't open")
+  func externalLinkWithoutADelegate() throws {
+    let fixture = try SystemTabFixture()
+    defer { fixture.tab.close() }
+    SystemSideEffects.reset()
+    fixture.tab.delegate = nil
+    var decided: WKNavigationActionPolicy?
+    fixture.tab.webView(
+      fixture.tab.webView,
+      decidePolicyFor: FakeNavigationAction(url: try testURL("mailto:a@example.com"))
+    ) { decided = $0 }
+    #expect(decided == .cancel)
+    guard case .featureUnsupported(let feature, .system)? = fixture.tab.state.lastError else {
+      Issue.record("expected the refusal to be reported")
+      return
+    }
+    #expect(feature.contains("no tab delegate"))
+    #expect(SystemSideEffects.record.openedURLs.isEmpty)
+  }
+
+  @Test("a plain reload loads the page again; a message that isn't an object is dropped")
+  func reloadAndBadMessage() async throws {
+    let fixture = try SystemTabFixture()
+    defer { fixture.tab.close() }
+    let tab = fixture.tab
+    try await fixture.load("<title>Page</title>")
+    tab.reload(ignoringCache: false)
+    #expect(try await waitUntil { !tab.state.isLoading && tab.state.title == "Page" })
+
+    let frames = tab.bridgeFrames.count
+    let controller = tab.webView.configuration.userContentController
+    SystemPageBridge.shared.userContentController(
+      controller, didReceive: FakeScriptMessage(body: "text", webView: tab.webView))
+    SystemPageBridge.shared.userContentController(
+      controller, didReceive: FakeScriptMessage(body: [:] as [String: Any], webView: nil))
+    #expect(tab.bridgeFrames.count == frames)
+    SystemPageBridge.shared.userContentController(
+      controller,
+      didReceive: FakeScriptMessage(
+        body: ["type": "ready", "frame": "fake"] as [String: Any], webView: tab.webView))
+    #expect(tab.bridgeFrames["fake"] != nil)
+  }
+
+  @Test("a saved store with no data is removed; deleting a saved profile clears its store")
+  func persistentStores() async throws {
+    SystemSideEffects.install()
+    let defaults = try isolatedDefaults()
+    let identifier = UUID()
+    SystemBrowserEngine.queueStoreRemoval(identifier, defaults: defaults)
+    await SystemBrowserEngine.removeQueuedStores(defaults: defaults)
+    #expect(defaults.stringArray(forKey: SystemBrowserEngine.pendingRemovalKey)?.isEmpty == true)
+
+    let engine = SystemBrowserEngine()
+    let profile = BrowserProfile(identifier: UUID().uuidString, persistence: .persistent)
+    try await engine.deleteProfileData(profile)
+    #expect(engine.dataStore(for: profile).isPersistent)
+  }
+}

@@ -207,9 +207,11 @@ struct BrowserValueGapTests {
       return
     }
     let privateRules = BrowserURLRules(blockPrivateAddresses: true)
-    guard case .deny = privateRules.evaluate(try testURL("https://224.0.0.1/")) else {
-      Issue.record("expected a multicast address to be refused")
-      return
+    for address in ["https://224.0.0.1/", "https://198.51.100.1/"] {
+      guard case .deny = privateRules.evaluate(try testURL(address)) else {
+        Issue.record("expected \(address) to be refused")
+        return
+      }
     }
   }
 

@@ -125,6 +125,18 @@ struct AgentBrowserEdgeTests {
     #expect(await wait.value?.contains("cancelled") == true)
   }
 
+  @Test("a page the engine is still creating is waited for")
+  func pageNotReadyYet() async throws {
+    let engine = AgentFakeEngine()
+    let agent = controller(engine)
+    _ = await agent.perform(request("screenshot"))
+    let tab = try #require(engine.tabs.first)
+    tab.pageNotReady = true
+    let result = await agent.perform(request("wait_for_load"))
+    #expect(result.ok)
+    #expect(!tab.pageNotReady)
+  }
+
   @Test("two actions in one conversation run in the order they came")
   func actionsRunInOrder() async throws {
     let engine = AgentFakeEngine()
