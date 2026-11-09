@@ -186,8 +186,12 @@ impl ChangesList {
                 ChangeStatus::Modified | ChangeStatus::Unknown(_) => totals.modified += 1,
                 ChangeStatus::Deleted => totals.deleted += 1,
             }
-            totals.lines_added += entry.lines_added.unwrap_or(0);
-            totals.lines_removed += entry.lines_removed.unwrap_or(0);
+            totals.lines_added = totals
+                .lines_added
+                .saturating_add(entry.lines_added.unwrap_or(0));
+            totals.lines_removed = totals
+                .lines_removed
+                .saturating_add(entry.lines_removed.unwrap_or(0));
         }
         totals
     }
@@ -599,6 +603,30 @@ mod tests {
         sort_for_tree(&mut entries);
         let names: Vec<_> = entries.iter().map(|entry| entry.name.as_str()).collect();
         assert_eq!(names, ["alpha", "Zeta", "A.md", "a.md", "b.rs"]);
+    }
+
+    #[test]
+    fn change_totals_saturate_at_the_integer_limit() {
+        let changed = |lines_added, lines_removed| ChangedFileEntry {
+            path: WorkspacePath::parse("a.rs").unwrap(),
+            status: ChangeStatus::Modified,
+            size: None,
+            modified_at: None,
+            lines_added,
+            lines_removed,
+        };
+        let list = ChangesList {
+            entries: vec![
+                changed(Some(u64::MAX), Some(u64::MAX)),
+                changed(Some(1), Some(1)),
+                changed(None, None),
+            ],
+            has_more: false,
+        };
+        let totals = list.totals();
+        assert_eq!(totals.modified, 3);
+        assert_eq!(totals.lines_added, u64::MAX);
+        assert_eq!(totals.lines_removed, u64::MAX);
     }
 
     #[test]
