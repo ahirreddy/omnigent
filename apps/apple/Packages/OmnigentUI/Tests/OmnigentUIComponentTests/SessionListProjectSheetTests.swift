@@ -136,10 +136,16 @@
       #expect(screen.window.attachedSheet != nil)
       let fields = screen.allViews.compactMap { $0 as? NSTextField }.filter(\.isEditable)
       #expect(fields.count == 2)
-      // Create isn't a control yet, so the last one is Cancel.
-      let cancel = try #require(screen.controlFrames.last)
-      try screen.click(CGPoint(x: cancel.midX, y: cancel.midY))
-      #expect(spy.calls.isEmpty)
+      let controlsWithoutCreate = screen.controlFrames.count
+      try screen.click(try #require(fields.first))
+      try screen.type(" Side ")
+      #expect(screen.controlFrames.count == controlsWithoutCreate + 1)
+      try screen.click(try #require(fields.last))
+      try screen.type("\u{1F680}\u{1F4A1}")
+      let create = try #require(screen.controlFrames.last)
+      try screen.click(CGPoint(x: create.midX, y: create.midY))
+      // The name is trimmed and the icon keeps the latest emoji.
+      #expect(spy.calls == ["create Side \u{1F4A1} -"])
       #expect(screen.window.attachedSheet == nil)
     }
 

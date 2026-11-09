@@ -47,12 +47,11 @@
           .environment(\.openCommandPalette, OpenCommandPaletteAction(presenter: presenter)),
         width: 300, height: 60)
       defer { screen.close() }
-      // Wordmark, then Search and Settings; the server menu is a pop-up.
-      #expect(screen.controlFrames.count == 3)
-      #expect(screen.popUps.count == 1)
+      // Wordmark, server menu, Search, Settings.
+      #expect(screen.controlFrames.count == 4)
       try screen.clickControl(at: 0)
       #expect(spy.calls == ["new session"])
-      try screen.click(screen.plainButtons[0])
+      try screen.clickControl(at: 2)
       #expect(opened == 1)
     }
 
