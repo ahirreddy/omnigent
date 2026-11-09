@@ -258,6 +258,15 @@ def unmeasured_files(document, sources):
     return sorted(rows, key=lambda row: -row[1])
 
 
+def screen_is_locked(registry=None):
+    """Whether the login session's screen is locked, which stops offscreen clicks landing."""
+    if registry is None:
+        registry = subprocess.run(
+            ["ioreg", "-n", "Root", "-d1", "-a"], capture_output=True, text=True, check=True
+        ).stdout
+    return re.search(r"<key>CGSSessionScreenIsLocked</key>\s*<true/>", registry) is not None
+
+
 def export_all_bundles(json_path):
     """Exports every test bundle of a package: SwiftPM's own JSON covers only one of them."""
     products = Path(json_path).parent.parent
@@ -321,6 +330,9 @@ def main():
         "--hosted", metavar="XCRESULT", help="Report the app target from this result bundle."
     )
     options = parser.parse_args()
+    if not options.no_test and not options.hosted and screen_is_locked():
+        # Clicks on borderless buttons and other controls fail while locked, as if broken.
+        raise SystemExit("The screen is locked: view tests can't click. Unlock it and run again.")
     if options.hosted:
         print_hosted(read_hosted(options.hosted), options)
         return 0

@@ -99,6 +99,12 @@ class CoverageTests(unittest.TestCase):
                 coverage.unmeasured_files(document, sources), [(str(sources / "Phone.swift"), 3)]
             )
 
+    def test_screen_lock_reads_the_session_flag(self):
+        locked = "<key>CGSSessionScreenIsLocked</key>\n\t\t\t<true/>"
+        self.assertTrue(coverage.screen_is_locked(locked))
+        self.assertFalse(coverage.screen_is_locked(locked.replace("true", "false")))
+        self.assertFalse(coverage.screen_is_locked("<key>Other</key><true/>"))
+
     def test_excluded_lines_take_whole_previews(self):
         source = (
             'let a = 1\n#Preview {\n  Text("x")\n}\nlet b = 2\n  #Preview("t") {\n  }\nlet c = 3\n'
