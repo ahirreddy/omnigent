@@ -33,7 +33,7 @@
     }
 
     private typealias OpenedHandler = @convention(block) (NSRunningApplication?, NSError?) -> Void
-    private typealias ResponseHandler = @convention(block) (Int) -> Void
+    typealias ResponseHandler = @convention(block) (Int) -> Void
     private typealias OpenConfigured =
       @convention(c) (
         NSWorkspace, Selector, NSURL, NSWorkspace.OpenConfiguration, OpenedHandler?
@@ -42,8 +42,6 @@
       @convention(c) (
         NSWorkspace, Selector, NSArray, NSURL, NSWorkspace.OpenConfiguration, OpenedHandler?
       ) -> Void
-    private typealias PanelSheet =
-      @convention(c) (NSSavePanel, Selector, NSWindow?, ResponseHandler?) -> Void
     private typealias AlertSheet =
       @convention(c) (NSAlert, Selector, NSWindow?, ResponseHandler?) -> Void
     private typealias WindowInit =
@@ -52,7 +50,7 @@
     private typealias MenuPopUp =
       @convention(c) (NSMenu, Selector, NSMenuItem?, NSPoint, NSView?) -> Bool
 
-    private struct State {
+    struct State {
       var record = Record()
       var alertResponse = NSApplication.ModalResponse.alertFirstButtonReturn
       var panelResponse = NSApplication.ModalResponse.cancel
@@ -60,9 +58,10 @@
       var opensFail = false
     }
 
-    private static let state = OSAllocatedUnfairLock(initialState: State())
+    static let state = OSAllocatedUnfairLock(initialState: State())
     private nonisolated(unsafe) static var originalWindowInit: IMP?
     private nonisolated(unsafe) static var originalSetAlpha: IMP?
+    nonisolated(unsafe) static var originalPanelURL: IMP?
     private static let installation = OSAllocatedUnfairLock(initialState: false)
 
     /// A private clipboard standing in for `NSPasteboard.general`, unique to this process.
@@ -119,13 +118,13 @@
       installInvisibleWindows()
     }
 
-    private static func note(_ change: (inout Record) -> Void) {
+    static func note(_ change: (inout Record) -> Void) {
       state.withLockUnchecked { change(&$0.record) }
     }
 
     /// Swaps a method's body for a C function taking the receiver and selector first. A selector
     /// this SDK lacks must fail the test run, not leak through.
-    private static func replace<Function>(
+    static func replace<Function>(
       _ owner: AnyClass, _ name: String, isClassMethod: Bool = false, with function: Function
     ) {
       let selector = NSSelectorFromString(name)
@@ -174,35 +173,6 @@
         Self.note { $0.revealedURLs.append(contentsOf: urls.compactMap { $0 as? URL }) }
       }
       replace(NSWorkspace.self, "activateFileViewerSelectingURLs:", with: reveal)
-    }
-
-    private static func installPanels() {
-      let run: @convention(c) (NSSavePanel, Selector) -> Int = { _, _ in
-        Self.note { $0.panelCount += 1 }
-        return Self.state.withLock { $0.panelResponse.rawValue }
-      }
-      replace(NSSavePanel.self, "runModal", with: run)
-      replace(NSOpenPanel.self, "runModal", with: run)
-      let sheet: PanelSheet = { _, _, _, done in
-        Self.note { $0.panelCount += 1 }
-        done?(Self.state.withLock { $0.panelResponse.rawValue })
-      }
-      replace(NSSavePanel.self, "beginSheetModalForWindow:completionHandler:", with: sheet)
-      let begin: @convention(c) (NSSavePanel, Selector, ResponseHandler?) -> Void = { _, _, done in
-        Self.note { $0.panelCount += 1 }
-        done?(Self.state.withLock { $0.panelResponse.rawValue })
-      }
-      replace(NSSavePanel.self, "beginWithCompletionHandler:", with: begin)
-      let chosenURL: @convention(c) (NSSavePanel, Selector) -> NSURL? = { _, _ in
-        Self.state.withLock { $0.panelURL }.map { $0 as NSURL }
-      }
-      replace(NSSavePanel.self, "URL", with: chosenURL)
-      replace(NSOpenPanel.self, "URL", with: chosenURL)
-      let chosenURLs: @convention(c) (NSOpenPanel, Selector) -> NSArray = { _, _ in
-        let urls = Self.state.withLock { $0.panelURL }.map { [$0 as NSURL] } ?? []
-        return urls as NSArray
-      }
-      replace(NSOpenPanel.self, "URLs", with: chosenURLs)
     }
 
     private static func installAlerts() {
