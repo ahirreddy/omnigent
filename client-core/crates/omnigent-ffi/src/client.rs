@@ -430,6 +430,8 @@ impl Inner {
                 server_url: server_url.to_owned(),
             },
         });
+        // Until a new connection is up, nothing may still reach the server being left.
+        self.sessions.disconnect();
         if self.demo.is_some() {
             return self.connect_demo(generation).await;
         }

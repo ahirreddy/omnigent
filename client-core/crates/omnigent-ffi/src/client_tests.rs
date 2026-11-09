@@ -1988,3 +1988,68 @@ fn signing_out_while_a_rotated_grant_saves_leaves_no_grant() {
     harness.pump();
     assert_signed_out_for_good(&mut harness);
 }
+
+/// A connected local server, about to move to a server that needs sign-in.
+fn connected_then_moving_to_a_sign_in_server() -> Harness {
+    let harness = writable();
+    harness.http.route(
+        "/.well-known/omnigent.json",
+        json(
+            200,
+            r#"{"manifest_version":1,"server_name":"Lab","auth":{"mode":"oidc","native_redirect_uris":["ai.omnigent.ios:/callback"]}}"#,
+        ),
+    );
+    harness.http.route(
+        "/v1/info",
+        json(
+            200,
+            r#"{"single_user":false,"accounts_enabled":false,"login_url":"/auth/login"}"#,
+        ),
+    );
+    harness
+}
+
+/// Nothing reaches the old server: a send and a read both stop before any request.
+fn assert_no_request_reaches_the_old_server(harness: &mut Harness) {
+    let lines = harness.http.lines().len();
+    let sent = harness.call(|core| async move {
+        core.send_message(SESSION.into(), "for the old server".into())
+            .await
+    });
+    assert!(matches!(sent, Err(CoreError::Session { .. })), "{sent:?}");
+    let read = harness.call(|core| async move { core.list_terminals(SESSION.into()).await });
+    assert!(read.is_err(), "{read:?}");
+    assert_eq!(
+        harness.http.lines().len(),
+        lines,
+        "{:?}",
+        harness.http.lines()
+    );
+}
+
+#[test]
+fn moving_to_a_server_that_needs_sign_in_ends_requests_to_the_old_one() {
+    let mut harness = connected_then_moving_to_a_sign_in_server();
+    let discovery = harness.http.hold("/.well-known/omnigent.json");
+    let core = Arc::clone(&harness.core);
+    let moving = harness.start(async move { core.connect(SERVER.into(), None).await });
+    assert_no_request_reaches_the_old_server(&mut harness);
+    discovery.send(()).unwrap();
+    harness.pump();
+    assert!(matches!(
+        moving.borrow_mut().take().unwrap(),
+        Ok(ConnectionPhase::SignInRequired { .. })
+    ));
+    assert_no_request_reaches_the_old_server(&mut harness);
+}
+
+#[test]
+fn a_server_that_cannot_be_reached_ends_requests_to_the_old_one_too() {
+    let mut harness = connected_then_moving_to_a_sign_in_server();
+    harness
+        .http
+        .route("/.well-known/omnigent.json", json(500, "{}"));
+    harness.http.route("/v1/info", json(500, "{}"));
+    assert!(connect(&mut harness).is_err());
+    assert_no_request_reaches_the_old_server(&mut harness);
+}
