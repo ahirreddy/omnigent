@@ -183,9 +183,7 @@
       "a date that doesn't exist has no day, instead of rolling over",
       arguments: ["2026-13-45", "2026-00-00", "9999-99-99", "-123-45-67", "99999-1-01"])
     func impossibleDates(label: String) {
-      withKnownIssue("The calendar rolls these over: 2026-13-45 charts as February 2027") {
-        #expect(UsageAmount(label: label, costUSD: 0).day(in: calendar) == nil)
-      }
+      #expect(UsageAmount(label: label, costUSD: 0).day(in: calendar) == nil)
     }
 
     @Test("the presets span their days; all time and custom have none")

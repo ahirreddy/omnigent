@@ -54,12 +54,21 @@ nonisolated public struct UsageAmount: Hashable, Sendable, Identifiable {
     self.costUSD = costUSD
   }
 
-  /// A daily amount's day, as the start of that calendar day in `calendar`, so the chart's date
-  /// axis labels it as the same day; `nil` for a label that is not `YYYY-MM-DD`.
+  /// A daily amount's day, as the start of that calendar day in `calendar`'s time zone, so the
+  /// chart's date axis labels it as the same day; `nil` for a label that is not a real
+  /// `YYYY-MM-DD` day. The report's days are Gregorian, whatever calendar the Mac is set to.
   func day(in calendar: Calendar = .current) -> Date? {
-    let parts = label.split(separator: "-").compactMap { Int($0) }
-    guard parts.count == 3, label.count == 10 else { return nil }
-    return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+    let parts = label.split(separator: "-", omittingEmptySubsequences: false)
+    guard parts.map(\.utf8.count) == [4, 2, 2],
+      parts.allSatisfy({ $0.utf8.allSatisfy { (48...57).contains($0) } })
+    else { return nil }
+    var gregorian = Calendar(identifier: .gregorian)
+    gregorian.timeZone = calendar.timeZone
+    let components = DateComponents(
+      calendar: gregorian, year: Int(parts[0]), month: Int(parts[1]), day: Int(parts[2]))
+    // The calendar would otherwise roll a day like February 30 over into March.
+    guard components.isValidDate else { return nil }
+    return components.date
   }
 }
 
