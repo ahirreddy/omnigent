@@ -169,6 +169,19 @@
       }
     }
 
+    /// A modal alert started from a task runs its loop inside a main-queue job, as this does.
+    @Test func aRunLoopNestedInAMainQueueJobIsNotAHang() throws {
+      let path = FileManager.default.temporaryDirectory
+        .appendingPathComponent("chaos-nested-\(UUID().uuidString).log").path
+      #expect(FileManager.default.createFile(atPath: path, contents: nil))
+      defer { try? FileManager.default.removeItem(atPath: path) }
+      let watch = ChaosHangWatch(path: path, threshold: 0.4, span: 0.1)
+      watch.start()
+      defer { watch.stop() }
+      RunLoop.main.run(until: Date().addingTimeInterval(1.2))
+      #expect(try String(contentsOfFile: path, encoding: .utf8).isEmpty)
+    }
+
     @Test func aStuckMainThreadIsLogged() throws {
       let path = FileManager.default.temporaryDirectory
         .appendingPathComponent("chaos-hang-\(UUID().uuidString).log").path

@@ -5,7 +5,7 @@
 
   /// Writes what layout is doing, and a sample of the stacks, when the main thread stops
   /// returning to its run loop, which no code on that thread can report. Its own thread beats
-  /// the main queue once a second.
+  /// the main run loop once a second.
   nonisolated final class ChaosHangWatch: @unchecked Sendable {
     private static let logger = Logger(subsystem: "ai.omnigent.mac.lab", category: "chaos")
     /// Hangs reported per run, so one that never ends is not logged again and again.
@@ -41,7 +41,12 @@
       var reported = 0
       var isHung = false
       while !lock.withLock({ isStopped }) {
-        DispatchQueue.main.async { [self] in lock.withLock { lastBeat = Date() } }
+        // A block on the run loop, not the main queue: a modal loop inside a main-queue job
+        // keeps the app alive but never drains that queue.
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) { [self] in
+          lock.withLock { lastBeat = Date() }
+        }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
         Thread.sleep(forTimeInterval: min(1, threshold / 4))
         let silent = Date().timeIntervalSince(lock.withLock { lastBeat })
         guard silent >= threshold else {
