@@ -204,8 +204,10 @@ struct AddPolicySheet: View {
   private func choose(_ template: PolicyTemplate?) {
     selected = template
     name = template?.suggestedName ?? ""
+    // A registry can repeat a parameter's name; the first one wins rather than trapping.
     values = Dictionary(
-      uniqueKeysWithValues: (template?.params ?? []).map { ($0.id, $0.defaultValue) })
+      (template?.params ?? []).map { ($0.id, $0.defaultValue) },
+      uniquingKeysWith: { first, _ in first })
     failed = false
   }
 
