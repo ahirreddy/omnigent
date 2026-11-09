@@ -19,7 +19,7 @@ nonisolated public enum BrowserError: Error, Hashable, Sendable {
   case navigationFailed(url: URL?, code: Int, message: String)
   /// A navigation was superseded or stopped. Reported, but not presented as a failure.
   case navigationCancelled(url: URL?)
-  /// The web content (renderer) process exited.
+  /// The web content (renderer) process exited. Reloading the tab starts a new one.
   case contentProcessTerminated(reason: String)
   /// Script evaluation threw or could not run.
   case scriptFailed(message: String)
@@ -90,7 +90,7 @@ extension BrowserError: LocalizedError {
     case .navigationCancelled(let url):
       "Loading \(url?.absoluteString ?? "the page") was cancelled."
     case .contentProcessTerminated(let reason):
-      "The page's web content process stopped: \(reason)"
+      "The page's web content process stopped. \(reason) Reload to restart it."
     case .scriptFailed(let message):
       "Script failed: \(message)"
     case .unsupportedScriptResult(let type):
