@@ -125,6 +125,35 @@ struct AgentBrowserEdgeTests {
     #expect(await wait.value?.contains("cancelled") == true)
   }
 
+  @Test("cancelling input ends the wait for its effect, with a reason")
+  func cancelledInput() async throws {
+    // One answer every script accepts: a visible field that took focus and is still empty.
+    let engine = engine(
+      answering:
+        #"{"x":1,"y":1,"width":5,"height":5,"editable":true,"tag":"input","focused":true,"value":"","hasValue":true}"#
+    )
+    let agent = controller(engine)
+    _ = await agent.perform(request("screenshot"))
+    let tab = try #require(engine.tabs.first)
+    let target: [String: AgentJSONValue] = ["selector": "button"]
+    for (action, args) in [
+      ("click", target), ("type", target.merging(["text": "hello"]) { first, _ in first }),
+    ] {
+      let parsed = try AgentAction(action: action, args: args)
+      let run = Task { () -> String? in
+        withUnsafeCurrentTask { $0?.cancel() }
+        do throws(BrowserError) {
+          _ = try await agent.run(parsed, on: tab)
+          return nil
+        } catch {
+          return error.localizedDescription
+        }
+      }
+      let message = await run.value
+      #expect(message?.contains("cancelled") == true, "\(action): \(message ?? "no failure")")
+    }
+  }
+
   @Test("a page the engine is still creating is waited for")
   func pageNotReadyYet() async throws {
     let engine = AgentFakeEngine()

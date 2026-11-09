@@ -110,12 +110,6 @@ final class SystemAgentInput: BrowserAgentInput {
 
   /// A JavaScript string literal for `text`.
   static func jsString(_ text: String) -> String {
-    let data: Data
-    do {
-      data = try JSONEncoder().encode(text)
-    } catch {
-      preconditionFailure("Encoding a String as JSON cannot fail: \(error)")
-    }
-    return String(bytes: data, encoding: .utf8) ?? "\"\""
+    AgentBrowserScripts.literal(text)
   }
 }

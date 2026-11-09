@@ -85,10 +85,16 @@ final class SystemBrowserTab: NSObject, BrowserTab {
   }
 
   /// `configuration` must be the one WebKit passes for a popup, so the opener link holds.
-  init(profile: BrowserProfile, configuration: WKWebViewConfiguration) {
+  /// `makeWebView` lets a test answer what a healthy web view never fails at.
+  init(
+    profile: BrowserProfile, configuration: WKWebViewConfiguration,
+    makeWebView: (WKWebViewConfiguration) -> WKWebView = {
+      WKWebView(frame: .zero, configuration: $0)
+    }
+  ) {
     self.profile = profile
     SystemPageBridge.shared.install(in: configuration.userContentController)
-    webView = WKWebView(frame: .zero, configuration: configuration)
+    webView = makeWebView(configuration)
     super.init()
     applyPopupPolicy()
     webView.navigationDelegate = self
@@ -180,11 +186,10 @@ final class SystemBrowserTab: NSObject, BrowserTab {
           continuation.resume(returning: .failure(Self.scriptError(error)))
           return
         }
-        do throws(BrowserError) {
-          continuation.resume(returning: .success(try BrowserScriptValue(foundationObject: value)))
-        } catch {
-          continuation.resume(returning: .failure(error))
-        }
+        continuation.resume(
+          returning: Result { () throws(BrowserError) in
+            try BrowserScriptValue(foundationObject: value)
+          })
       }
     }
     return try result.get()
@@ -220,13 +225,12 @@ final class SystemBrowserTab: NSObject, BrowserTab {
     configuration.backwards = !forward
     configuration.caseSensitive = caseSensitive
     configuration.wraps = true
-    let result: WKFindResult
-    do {
-      result = try await webView.find(text, configuration: configuration)
-    } catch {
-      throw .findFailed(error.localizedDescription)
+    let matchFound = await withCheckedContinuation { continuation in
+      webView.find(text, configuration: configuration) { result in
+        continuation.resume(returning: result.matchFound)
+      }
     }
-    return BrowserFindResult(matchFound: result.matchFound, matchCount: nil, activeMatch: nil)
+    return BrowserFindResult(matchFound: matchFound, matchCount: nil, activeMatch: nil)
   }
 
   func showDevTools() throws(BrowserError) {

@@ -152,6 +152,18 @@ import Testing
       }
     }
 
+    @Test("a bundled host starts, and the engine owns its session")
+    func startsABundledHost() throws {
+      let app = try fakeHost()
+      defer { try? FileManager.default.removeItem(at: app.deletingLastPathComponent()) }
+      let started = try ChromiumEngineFactory(configuration: configuration(app)).start()
+      let engine = try #require(started as? ChromiumBrowserEngine)
+      defer { engine.session.shutdown() }
+      #expect(engine.kind == .chromium)
+      #expect(engine.session.configuration.hostAppURL == app)
+      #expect(engine.session.process != nil || engine.session.state != .idle)
+    }
+
     @Test func insideAppSandboxTheHostNeedsItsOwnSandboxOff() throws {
       let app = try fakeHost()
       defer { try? FileManager.default.removeItem(at: app.deletingLastPathComponent()) }

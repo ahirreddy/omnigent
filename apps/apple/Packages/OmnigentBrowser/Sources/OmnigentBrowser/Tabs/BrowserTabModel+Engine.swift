@@ -31,11 +31,8 @@ extension BrowserTabModel {
     tab.load(BrowserRestorePlaceholder.startURL)
     let tabID = ObjectIdentifier(tab)
     Task { [weak self] in
-      do {
-        try await Task.sleep(for: .seconds(15))
-      } catch {
-        return
-      }
+      // Nothing holds this task, so nothing can cancel the wait.
+      try? await Task.sleep(for: .seconds(15))
       self?.restoreTimedOut(tabID)
     }
   }
@@ -110,7 +107,7 @@ extension BrowserTabModel {
       restore = .rebuilding(history)
       Task { [weak self] in
         do throws(BrowserError) {
-          let script = try BrowserRestorePlaceholder.rebuildScript(for: history)
+          let script = BrowserRestorePlaceholder.rebuildScript(for: history)
           _ = try await tab.evaluateJavaScript(script)
         } catch {
           self?.restoreFailed(error, history: history, tab: tab)

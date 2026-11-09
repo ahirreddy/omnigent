@@ -71,8 +71,13 @@ nonisolated public struct BrowserNavigationHistory: Codable, Hashable, Sendable 
 nonisolated public enum BrowserRestorePlaceholder {
   static let marker = "omnigent-restore"
 
-  /// The page a rebuild starts from. (The literal always parses; the fallback is unreachable.)
-  public static let startURL = URL(string: "about:blank#\(marker)") ?? URL(fileURLWithPath: "/")
+  /// The page a rebuild starts from.
+  public static let startURL = makeStartURL()
+
+  /// The literal always parses; the fallback is unreachable.
+  private static func makeStartURL() -> URL {
+    URL(string: "about:blank#\(marker)") ?? URL(fileURLWithPath: "/")
+  }
 
   /// Whether `url` is a placeholder or the start page.
   public static func isPlaceholder(_ url: URL?) -> Bool {
@@ -113,19 +118,8 @@ nonisolated public enum BrowserRestorePlaceholder {
   }
 
   /// Script that rebuilds `history` on the start page. Returns true.
-  public static func rebuildScript(for history: BrowserNavigationHistory) throws(BrowserError)
-    -> String
-  {
-    let fragments = history.entries.map(fragment(for:))
-    let data: Data
-    do {
-      data = try JSONEncoder().encode(fragments)
-    } catch {
-      throw .storageFailed("Encoding the history to restore failed: \(error.localizedDescription)")
-    }
-    guard let json = String(bytes: data, encoding: .utf8) else {
-      throw .storageFailed("The history to restore is not UTF-8.")
-    }
+  public static func rebuildScript(for history: BrowserNavigationHistory) -> String {
+    let json = AgentBrowserScripts.literal(history.entries.map(fragment(for:)))
     return """
       (() => {
         const entries = \(json);

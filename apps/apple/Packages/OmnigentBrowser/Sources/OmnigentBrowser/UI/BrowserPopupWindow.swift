@@ -47,14 +47,8 @@
       withObservationTracking {
         _ = tab.state.isClosed
       } onChange: { [weak self] in
-        Task { @MainActor in
-          guard let self else { return }
-          if self.tab.state.isClosed {
-            self.window?.close()
-          } else {
-            self.observeClose()
-          }
-        }
+        // A tab closes once and never reopens, so the one change is the close.
+        Task { @MainActor in self?.window?.close() }
       }
     }
 
@@ -65,7 +59,7 @@
   }
 
   /// A provider that only knows the popup's engine; the window never switches engines.
-  private final class PopupProvider: BrowserEngineProvider {
+  final class PopupProvider: BrowserEngineProvider {
     private let tab: any BrowserTab
 
     init(tab: any BrowserTab) {

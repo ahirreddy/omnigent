@@ -53,7 +53,7 @@
       }
       guard types.contains(.siteData) else { return }
       for origin in Set(origins.compactMap(Self.origin)) {
-        let params = try Self.json([
+        let params = Self.json([
           "origin": origin,
           "storageTypes":
             "local_storage,indexeddb,websql,service_workers,cache_storage,file_systems,shader_cache",
@@ -68,18 +68,22 @@
       case .ephemeral:
         session.existingProfile(identifier: profile.identifier, persistence: .ephemeral)?.close()
       case .persistent:
-        do {
-          // The host lets go of the context shortly after it is closed; until then Chromium may
-          // still write into the directory. Whatever is left goes before the next host starts.
-          for attempt in 0..<5 {
-            if try session.deletePersistentStorage(identifier: profile.identifier) { return }
-            try await Task.sleep(for: .milliseconds(200 * (attempt + 1)))
-          }
-        } catch let error as WebLayerError {
-          throw .storageFailed(error.localizedDescription)
-        } catch {
-          throw .storageFailed(error.localizedDescription)
+        try await deletePersistentStorage(profile.identifier)
+      }
+    }
+
+    /// The host lets go of the context shortly after it is closed; until then Chromium may still
+    /// write into the directory. Whatever is left goes before the next host starts.
+    func deletePersistentStorage(_ identifier: String, retryDelay: Duration = .milliseconds(200))
+      async throws(BrowserError)
+    {
+      do {
+        for attempt in 0..<5 {
+          if try session.deletePersistentStorage(identifier: identifier) { return }
+          try await Task.sleep(for: retryDelay * (attempt + 1))
         }
+      } catch {
+        throw .storageFailed(error.localizedDescription)
       }
     }
 
@@ -92,17 +96,10 @@
       return "\(scheme)://\(host)\(url.port.map { ":\($0)" } ?? "")"
     }
 
-    private static func json(_ object: [String: String]) throws(WebLayerError) -> String {
-      let data: Data
-      do {
-        data = try JSONEncoder().encode(object)
-      } catch {
-        throw .invalidArgument(error.localizedDescription)
-      }
-      guard let text = String(bytes: data, encoding: .utf8) else {
-        throw .invalidArgument("DevTools parameters are not UTF-8.")
-      }
-      return text
+    private static func json(_ object: [String: String]) -> String {
+      let data = try? JSONEncoder().encode(object)
+      precondition(data != nil, "Encoding strings as JSON cannot fail.")
+      return String(bytes: data ?? Data(), encoding: .utf8) ?? ""
     }
   }
 #endif

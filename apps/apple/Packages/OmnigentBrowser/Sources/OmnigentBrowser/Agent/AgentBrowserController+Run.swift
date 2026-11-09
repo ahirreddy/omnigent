@@ -214,7 +214,7 @@ extension AgentBrowserController {
   {
     let start = ContinuousClock.now
     var sawLoading = false
-    while true {
+    repeat {
       let state = tab.state
       if state.isClosed { throw .tabClosed }
       if let error = state.lastError, !error.isCancellation { throw error }
@@ -226,16 +226,14 @@ extension AgentBrowserController {
       {
         return document
       }
-      if elapsed > timeout {
-        throw .agentActionFailed(
-          "The page did not finish loading within \(timeout.components.seconds) seconds.")
-      }
       do {
         try await Task.sleep(for: .milliseconds(50))
       } catch {
         throw .agentActionFailed("The action was cancelled.")
       }
-    }
+    } while ContinuousClock.now - start <= timeout
+    throw .agentActionFailed(
+      "The page did not finish loading within \(timeout.components.seconds) seconds.")
   }
 
   /// The document state, or nil while the engine is still creating the page.

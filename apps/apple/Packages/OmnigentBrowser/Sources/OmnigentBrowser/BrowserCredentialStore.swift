@@ -13,6 +13,28 @@ public protocol BrowserCredentialStore: AnyObject {
   func removeCredential(for space: BrowserProtectionSpace) throws(BrowserError)
 }
 
+/// The Security calls behind the Keychain store, separate so its handling of each answer can be
+/// tested without touching the login Keychain.
+struct KeychainItemCalls {
+  /// `SecItemCopyMatching`: its status and the item it found.
+  var copyMatching: ([String: Any]) -> (status: OSStatus, item: CFTypeRef?)
+  /// `SecItemAdd`.
+  var add: ([String: Any]) -> OSStatus
+  /// `SecItemDelete`.
+  var delete: ([String: Any]) -> OSStatus
+
+  // coverage:off the login Keychain; KeychainCredentialStoreTests, run only in the VM
+  static let system = Self(
+    copyMatching: { query in
+      var item: CFTypeRef?
+      let status = SecItemCopyMatching(query as CFDictionary, &item)
+      return (status, item)
+    },
+    add: { item in SecItemAdd(item as CFDictionary, nil) },
+    delete: { query in SecItemDelete(query as CFDictionary) })
+  // coverage:on
+}
+
 /// Internet passwords in the user's Keychain, tagged so only this app's browser items are read.
 public final class KeychainBrowserCredentialStore: BrowserCredentialStore {
   /// The app-wide store.
@@ -21,9 +43,16 @@ public final class KeychainBrowserCredentialStore: BrowserCredentialStore {
   /// Marks the items this store owns (`kSecAttrDescription`).
   public let itemDescription: String
 
+  private let calls: KeychainItemCalls
+
   /// Creates a store; tests pass their own description to stay apart from real items.
-  public init(itemDescription: String = "Omnigent Browser Password") {
+  public convenience init(itemDescription: String = "Omnigent Browser Password") {
+    self.init(itemDescription: itemDescription, calls: .system)
+  }
+
+  init(itemDescription: String, calls: KeychainItemCalls) {
     self.itemDescription = itemDescription
+    self.calls = calls
   }
 
   private func query(for space: BrowserProtectionSpace) -> [String: Any] {
@@ -45,8 +74,7 @@ public final class KeychainBrowserCredentialStore: BrowserCredentialStore {
     request[kSecReturnAttributes as String] = true
     request[kSecReturnData as String] = true
     request[kSecMatchLimit as String] = kSecMatchLimitOne
-    var result: CFTypeRef?
-    let status = SecItemCopyMatching(request as CFDictionary, &result)
+    let (status, result) = calls.copyMatching(request)
     if status == errSecItemNotFound {
       return nil
     }
@@ -70,13 +98,13 @@ public final class KeychainBrowserCredentialStore: BrowserCredentialStore {
     item[kSecAttrAccount as String] = credential.username
     item[kSecValueData as String] = Data(credential.password.utf8)
     item[kSecAttrLabel as String] = "\(space.host) (\(itemDescription))"
-    let status = SecItemAdd(item as CFDictionary, nil)
+    let status = calls.add(item)
     guard status == errSecSuccess else { throw Self.failure("saving", status) }
   }
 
   /// See `BrowserCredentialStore.removeCredential(for:)`.
   public func removeCredential(for space: BrowserProtectionSpace) throws(BrowserError) {
-    let status = SecItemDelete(query(for: space) as CFDictionary)
+    let status = calls.delete(query(for: space))
     guard status == errSecSuccess || status == errSecItemNotFound else {
       throw Self.failure("removing", status)
     }

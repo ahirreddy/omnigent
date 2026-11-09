@@ -9,7 +9,8 @@ WebKit everywhere, including the App Store edition).
 ## One environment per app
 
 ```swift
-let browser = BrowserEnvironment.standard(
+let browser = BrowserEnvironment(
+  directory: BrowserEnvironment.standardDirectory,
   provider: services.browserProvider,        // DefaultBrowserEngineProvider (with or without Chromium)
   preferences: services.browserPreferences)  // the persisted engine choice
 ```

@@ -86,9 +86,7 @@ public final class DefaultBrowserEngineProvider: BrowserEngineProvider {
 
   /// See `BrowserEngineProvider.availability(of:)`.
   public func availability(of kind: BrowserEngineKind) -> BrowserEngineAvailability {
-    guard kind.isSupportedOnThisPlatform else {
-      return .unavailable(.engineUnsupported(kind))
-    }
+    guard kind.isSupportedOnThisPlatform else { return .unavailable(.engineUnsupported(kind)) }
     if kind == .system {
       return .available
     }
@@ -103,9 +101,7 @@ public final class DefaultBrowserEngineProvider: BrowserEngineProvider {
 
   /// See `BrowserEngineProvider.engine(for:)`.
   public func engine(for kind: BrowserEngineKind) throws(BrowserError) -> any BrowserEngine {
-    guard kind.isSupportedOnThisPlatform else {
-      throw .engineUnsupported(kind)
-    }
+    guard kind.isSupportedOnThisPlatform else { throw .engineUnsupported(kind) }
     if kind == .system {
       if let systemEngine {
         return systemEngine

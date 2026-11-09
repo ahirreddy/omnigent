@@ -48,6 +48,36 @@ struct TabModelEngineTests {
     #expect(tab.loads.count == loads)
   }
 
+  @Test("a restore waits for its start page, then for a real page, ignoring anything else")
+  func restoreSteps() async throws {
+    let restored = try restoredModel()
+    let (model, tab) = (restored.model, restored.tab)
+    tab.state.url = try testURL("https://elsewhere.example/")
+    model.advanceRestore(tab)
+    #expect(tab.scripts.isEmpty)
+    tab.state.url = BrowserRestorePlaceholder.startURL
+    #expect(try await waitUntil { tab.scripts.contains { $0.contains("history.pushState") } })
+    model.advanceRestore(tab)
+    let scripts = tab.scripts.count
+    tab.state.url = try testURL("about:blank")
+    model.advanceRestore(tab)
+    #expect(model.isLoading)
+    #expect(tab.scripts.count == scripts)
+  }
+
+  @Test("only a settled tab on a new placeholder has its page swapped in")
+  func placeholderGuards() throws {
+    let restored = try restoredModel()
+    let (model, tab) = (restored.model, restored.tab)
+    model.replacePlaceholder(try testURL("https://a.example/"), in: tab)
+    #expect(tab.scripts.isEmpty)
+    let placeholder = try testURL(
+      "about:blank\(BrowserRestorePlaceholder.fragment(for: restored.history.entries[0]))")
+    tab.state.isLoading = true
+    model.replacePlaceholder(placeholder, in: tab)
+    #expect(tab.scripts.isEmpty)
+  }
+
   @Test("a restore whose script fails reports it and loads the current page")
   func rebuildFails() async throws {
     let restored = try restoredModel()

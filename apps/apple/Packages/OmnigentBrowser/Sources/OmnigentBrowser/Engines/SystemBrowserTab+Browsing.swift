@@ -86,6 +86,7 @@ extension SystemBrowserTab {
       guard let window = webView.window else {
         throw .printFailed("The page is not in a window.")
       }
+      // coverage:off the print sheet; VM flow backlog "print a browser page"
       let operation = webView.printOperation(with: NSPrintInfo.shared)
       operation.view?.frame = webView.bounds
       operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
@@ -95,6 +96,7 @@ extension SystemBrowserTab {
       controller.present(animated: true)
     #endif
   }
+  // coverage:on
 
   func viewSourceURL() async throws(BrowserError) -> URL {
     let value = try await evaluateJavaScript("document.documentElement.outerHTML")
@@ -103,9 +105,8 @@ extension SystemBrowserTab {
     }
     let doctype = "<!DOCTYPE html>\n"
     let encoded = Data((doctype + html).utf8).base64EncodedString()
-    guard let url = URL(string: "data:text/plain;charset=utf-8;base64,\(encoded)") else {
-      throw .invalidURL("view-source")
-    }
+    let address = "data:text/plain;charset=utf-8;base64,\(encoded)"
+    guard let url = URL(string: address) else { throw .invalidURL("view-source") }
     return url
   }
 
@@ -283,25 +284,35 @@ extension SystemBrowserEngine {
     case .ephemeral:
       forgetEphemeralStore(profile)
     case .persistent:
-      // The network process lets go of a store shortly after its last web view; the data is
-      // already cleared, so a store still in use is removed at the next launch instead.
-      for attempt in 0..<5 {
-        do {
-          try await WKWebsiteDataStore.remove(forIdentifier: profile.dataStoreIdentifier)
-          return
-        } catch {
-          Logger.systemEngine.info(
-            "Data store busy (\(attempt)): \(error.localizedDescription, privacy: .public)")
-        }
-        do {
-          try await Task.sleep(for: .milliseconds(300 * (attempt + 1)))
-        } catch {
-          break
-        }
-      }
-      Self.queueStoreRemoval(profile.dataStoreIdentifier)
+      await Self.removeStore(profile.dataStoreIdentifier)
     }
   }
+
+  /// The network process lets go of a store shortly after its last web view; the data is already
+  /// cleared, so a store still in use is removed at the next launch instead.
+  static func removeStore(
+    _ identifier: UUID, remove: StoreRemoval = WKWebsiteDataStore.remove(forIdentifier:),
+    retryDelay: Duration = .milliseconds(300), defaults: UserDefaults = .standard
+  ) async {
+    for attempt in 0..<5 {
+      do {
+        try await remove(identifier)
+        return
+      } catch {
+        Logger.systemEngine.info(
+          "Data store busy (\(attempt)): \(error.localizedDescription, privacy: .public)")
+      }
+      do {
+        try await Task.sleep(for: retryDelay * (attempt + 1))
+      } catch {
+        break
+      }
+    }
+    queueStoreRemoval(identifier, defaults: defaults)
+  }
+
+  /// Removes a persistent profile's WebKit data store, or says why it couldn't.
+  typealias StoreRemoval = @MainActor (UUID) async throws -> Void
 
   static let pendingRemovalKey = "ai.omnigent.browser.webkit.pendingStoreRemovals"
 
@@ -313,14 +324,17 @@ extension SystemBrowserEngine {
 
   /// Removes data stores of profiles deleted while their store was in use. Called before any
   /// tab exists.
-  static func removeQueuedStores(defaults: UserDefaults = .standard) async {
+  static func removeQueuedStores(
+    remove: StoreRemoval = WKWebsiteDataStore.remove(forIdentifier:),
+    defaults: UserDefaults = .standard
+  ) async {
     let pending = defaults.stringArray(forKey: pendingRemovalKey) ?? []
     guard !pending.isEmpty else { return }
     var remaining: [String] = []
     for raw in pending {
       guard let identifier = UUID(uuidString: raw) else { continue }
       do {
-        try await WKWebsiteDataStore.remove(forIdentifier: identifier)
+        try await remove(identifier)
       } catch {
         Logger.systemEngine.error(
           "Removing the deleted profile's store \(raw, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"

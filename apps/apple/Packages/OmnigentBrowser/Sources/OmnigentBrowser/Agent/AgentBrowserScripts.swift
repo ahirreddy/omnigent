@@ -13,18 +13,11 @@ nonisolated enum AgentElementTarget: Sendable, Hashable {
 /// returns a JSON string; failures come back as `{"error": "..."}` rather than exceptions, so
 /// both engines report the same message.
 nonisolated enum AgentBrowserScripts {
-  /// A JavaScript literal for `value`.
-  static func literal(_ value: String) -> String {
-    let data: Data
-    do {
-      data = try JSONEncoder().encode(value)
-    } catch {
-      preconditionFailure("Encoding a String as JSON cannot fail: \(error)")
-    }
-    guard let text = String(bytes: data, encoding: .utf8) else {
-      preconditionFailure("JSONEncoder produced invalid UTF-8.")
-    }
-    return text
+  /// A JavaScript literal for `value`, which must be made of strings: those always encode.
+  static func literal(_ value: some Encodable) -> String {
+    let data = try? JSONEncoder().encode(value)
+    precondition(data != nil, "Encoding strings as JSON cannot fail.")
+    return String(bytes: data ?? Data(), encoding: .utf8) ?? ""
   }
 
   /// The accessibility-style tree with stable `[ref=N]` ids. Refs live in

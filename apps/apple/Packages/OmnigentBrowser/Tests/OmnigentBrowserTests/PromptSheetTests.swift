@@ -322,6 +322,22 @@
       #expect(tab.state.isClosed)
     }
 
+    @Test("a popup window's only engine is its tab's, and it never starts another")
+    func popupProvider() throws {
+      let fixture = try PresenterFixture()
+      let (_, tab) = popup(fixture)
+      let provider = PopupProvider(tab: tab)
+      #expect(provider.offeredEngines == [tab.engineKind])
+      #expect(provider.availability(of: tab.engineKind) == .available)
+      let other: BrowserEngineKind = tab.engineKind == .system ? .chromium : .system
+      let reason = "Popup windows keep their engine."
+      #expect(
+        provider.availability(of: other) == .unavailable(.engineNotBundled(other, reason: reason)))
+      #expect(throws: BrowserError.engineNotBundled(other, reason: reason)) {
+        try provider.engine(for: other)
+      }
+    }
+
     @Test("an app's popup handler takes the popup instead of a window")
     func handlerTakesThePopup() throws {
       let fixture = try PresenterFixture()

@@ -138,6 +138,27 @@ struct StoreFailureTests {
     #expect(BrowserBookmarkHTML.attribute("HREF", in: "NOPE=\"x\"") == nil)
   }
 
+  @Test("a bookmarks file in Latin-1 still reads; a parser that won't build says so")
+  func bookmarkFileEdges() throws {
+    let bytes: [UInt8] =
+      Array("<DL><A HREF=\"https://l.example/\">Caf".utf8) + [0xE9] + Array("</A></DL>".utf8)
+    let result = try BrowserBookmarkHTML.parse(Data(bytes))
+    #expect(result.other.first?.title == "Caf\u{E9}")
+    #expect(BrowserBookmarkHTML.attribute("HREF", in: "HREF=\"a\"") == "a")
+    #expect(throws: BrowserError.self) { try BrowserBookmarkHTML.tokenize("", pattern: "(") }
+  }
+
+  @Test("a result that can't be JSON says so instead of posting nonsense")
+  func unencodableResult() {
+    let result = AgentBrowserActionResult(ok: true, error: nil, data: ["value": .number(.nan)])
+    #expect {
+      try result.jsonData()
+    } throws: { error in
+      guard case .agentActionFailed(let message) = error as? BrowserError else { return false }
+      return message.hasPrefix("Encoding the action result failed")
+    }
+  }
+
   @Test("a visit's title updates once the page reports it")
   func historyTitleUpdates() throws {
     let store = BrowserHistoryStore(fileURL: nil)

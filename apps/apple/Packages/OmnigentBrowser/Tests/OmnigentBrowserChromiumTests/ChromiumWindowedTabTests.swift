@@ -129,6 +129,20 @@
       #expect(manager.fileExists(atPath: folder.path))
     }
 
+    @Test("a folder that never lets go is left for the next launch, without an error")
+    func persistentDeleteGivesUp() async throws {
+      let fixture = try ChromiumTabFixture()
+      let folder = fixture.root.appending(path: "Profile-\(Profile.storageKey(for: "stuck"))")
+      let manager = FileManager.default
+      try manager.createDirectory(
+        at: folder.appending(path: "Default"), withIntermediateDirectories: true)
+      try manager.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+      defer { try? manager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+      try await fixture.engine.deletePersistentStorage("stuck", retryDelay: .milliseconds(1))
+      #expect(manager.fileExists(atPath: folder.path))
+      #expect(manager.fileExists(atPath: fixture.session.pendingDeletionsURL.path))
+    }
+
     @Test("a damaged list of profiles to delete is reported rather than guessed at")
     func damagedDeletionList() async throws {
       let fixture = try ChromiumTabFixture()
