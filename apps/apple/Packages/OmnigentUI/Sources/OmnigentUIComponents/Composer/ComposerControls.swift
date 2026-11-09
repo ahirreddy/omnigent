@@ -191,6 +191,7 @@ struct ComposerTrayView: View {
           }
         } label: {
           Label(URL(filePath: directory).lastPathComponent, systemImage: "folder")
+            .contentShape(Rectangle())
         }
         .disabled(!canPickDirectory)
         .help(directory)
@@ -206,6 +207,7 @@ struct ComposerTrayView: View {
           }
         } label: {
           Label(worktree, systemImage: "arrow.triangle.branch")
+            .contentShape(Rectangle())
         }
         .disabled(actions.selectWorktree == nil)
         .help("Worktree: \(worktree)")

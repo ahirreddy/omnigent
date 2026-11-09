@@ -118,6 +118,8 @@
   ) -> OffscreenWindow<ComposerScreen> {
     let screen = OffscreenWindow(ComposerScreen(model: model, actions: actions, owner: owner))
     screen.focusEditor()
+    // Lets the first layout reach the focus proxies, or the first click can miss.
+    screen.settle()
     return screen
   }
 
@@ -184,7 +186,7 @@
       guard frames.indices.contains(index) else {
         throw OffscreenWindowError.notFound("chip \(index) of \(frames.count)")
       }
-      return try openMenu(CGPoint(x: frames[index].midX, y: frames[index].midY))
+      return try openMenu(clickPoint(frames[index]))
     }
 
     /// The editable text fields in reading order.
@@ -209,7 +211,13 @@
       guard frames.indices.contains(index) else {
         throw OffscreenWindowError.notFound("button \(index) of \(frames.count)")
       }
-      try click(CGPoint(x: frames[index].midX, y: frames[index].midY))
+      try click(clickPoint(frames[index]))
+    }
+
+    /// Just off a control's center: a row's exact middle can fall on the seam between two lines of
+    /// text beside it, and SwiftUI's hit test misses on that one line of points.
+    func clickPoint(_ frame: CGRect) -> CGPoint {
+      CGPoint(x: frame.midX, y: frame.midY + 0.5)
     }
 
     /// Opens a `Menu` by its position in `menus`, and returns it closed.
@@ -218,7 +226,7 @@
       guard frames.indices.contains(index) else {
         throw OffscreenWindowError.notFound("menu \(index) of \(frames.count)")
       }
-      return try openMenu(CGPoint(x: frames[index].midX, y: frames[index].midY))
+      return try openMenu(clickPoint(frames[index]))
     }
 
     /// Runs a key equivalent as the app's main menu pass does before any view sees the key.

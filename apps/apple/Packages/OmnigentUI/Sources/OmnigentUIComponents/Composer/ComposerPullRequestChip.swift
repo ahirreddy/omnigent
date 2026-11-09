@@ -21,6 +21,7 @@ struct ComposerPullRequestChip: View {
       Label(label, systemImage: PullRequestStatusIcon.symbol(status))
         .foregroundStyle(PullRequestStatusIcon.color(status))
         .monospacedDigit()
+        .contentShape(Rectangle())
     }
     .disabled(open == nil)
     .help(preview.isEmpty ? "Pull requests: \(label)" : "")
@@ -48,7 +49,7 @@ struct ComposerPullRequestChip: View {
 }
 
 /// The hover preview: each linked PR's repository, number, status and title.
-private struct ComposerPullRequestPreview: View {
+struct ComposerPullRequestPreview: View {
   let pullRequests: [PullRequestSummary]
 
   var body: some View {
