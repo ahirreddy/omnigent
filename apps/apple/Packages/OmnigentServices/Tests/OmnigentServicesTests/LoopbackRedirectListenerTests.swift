@@ -149,6 +149,90 @@
           == LoopbackRedirectListener.RequestLine(method: "", target: ""))
     }
 
+    @Test func startingTwiceIsRefusedAndTheFirstKeepsWorking() async throws {
+      let listener = LoopbackRedirectListener()
+      let redirect = try await listener.start(path: "/cb")
+      await #expect(throws: LoopbackRedirectError.alreadyStarted) {
+        _ = try await listener.start(path: "/other")
+      }
+      let waiter = Task { try await listener.waitForCallback() }
+      let (status, _) = try await get(try url("\(redirect.absoluteString)?code=x"))
+      #expect(status == 200)
+      #expect(try await waiter.value.query == "code=x")
+    }
+
+    /// Opens a raw connection to `listener`'s port.
+    private func connect(to redirect: URL) throws -> NWConnection {
+      let port = try #require(redirect.port)
+      let endpointPort = try #require(NWEndpoint.Port(rawValue: UInt16(port)))
+      let connection = NWConnection(host: "127.0.0.1", port: endpointPort, using: .tcp)
+      connection.start(queue: .global())
+      return connection
+    }
+
+    /// The first bytes the listener answers `connection` with.
+    private func answer(on connection: NWConnection) async throws -> String {
+      try await withCheckedThrowingContinuation { continuation in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1_024) { data, _, _, error in
+          if let error {
+            continuation.resume(throwing: error)
+          } else {
+            continuation.resume(returning: String(bytes: data ?? Data(), encoding: .utf8) ?? "")
+          }
+        }
+      }
+    }
+
+    @Test func aRequestLineThatMakesNoSenseIsRefusedAndTheWaitGoesOn() async throws {
+      let listener = LoopbackRedirectListener()
+      let redirect = try await listener.start(path: "/cb")
+      let waiter = Task { try await listener.waitForCallback() }
+      let connection = try connect(to: redirect)
+      defer { connection.cancel() }
+
+      try await send(connection, "nonsense\r\n\r\n")
+      #expect(try await answer(on: connection).hasPrefix("HTTP/1.1 400"))
+
+      let (status, _) = try await get(try url("\(redirect.absoluteString)?code=after"))
+      #expect(status == 200)
+      #expect(try await waiter.value.query == "code=after")
+    }
+
+    @Test func anOversizedRequestIsRefusedWithoutWaitingForItsEnd() async throws {
+      let listener = LoopbackRedirectListener()
+      let redirect = try await listener.start(path: "/cb")
+      let connection = try connect(to: redirect)
+      defer {
+        connection.cancel()
+        listener.cancel()
+      }
+      try await send(
+        connection,
+        String(repeating: "a", count: LoopbackRedirectListener.maximumHeadBytes + 1))
+      #expect(try await answer(on: connection).hasPrefix("HTTP/1.1 400"))
+    }
+
+    @Test func aClientThatHangsUpEarlyDoesNotEndTheWait() async throws {
+      let listener = LoopbackRedirectListener()
+      let redirect = try await listener.start(path: "/cb")
+      let waiter = Task { try await listener.waitForCallback() }
+      let connection = try connect(to: redirect)
+      try await send(connection, "GET /cb")
+      connection.cancel()
+
+      let (status, _) = try await get(try url("\(redirect.absoluteString)?code=later"))
+      #expect(status == 200)
+      #expect(try await waiter.value.query == "code=later")
+    }
+
+    @Test func bytesThatAreNotTextAreMalformed() {
+      var bytes = Data([0xFF, 0xFE])
+      bytes.append(Data("\r\n\r\n".utf8))
+      #expect(
+        LoopbackRedirectListener.requestLine(in: bytes)
+          == LoopbackRedirectListener.RequestLine(method: "", target: ""))
+    }
+
     /// Sends `text` on `connection`, waiting until the network has accepted it.
     private func send(_ connection: NWConnection, _ text: String) async throws {
       try await withCheckedThrowingContinuation { continuation in

@@ -9,6 +9,7 @@ final class StubURLProtocol: URLProtocol {
   enum Reply: Sendable {
     case response(status: Int, headers: [String: String], body: Data)
     case failure(URLError)
+    case notHTTP
   }
 
   struct Recorded: Sendable {
@@ -33,6 +34,12 @@ final class StubURLProtocol: URLProtocol {
     switch Self.reply.withLock({ $0 }) {
     case .failure(let error):
       client?.urlProtocol(self, didFailWithError: error)
+    case .notHTTP:
+      let response = URLResponse(
+        url: request.url ?? URL(filePath: "/"), mimeType: nil, expectedContentLength: 0,
+        textEncodingName: nil)
+      client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+      client?.urlProtocolDidFinishLoading(self)
     case .response(let status, let headers, let body):
       guard let url = request.url,
         let response = HTTPURLResponse(
@@ -114,6 +121,17 @@ struct URLSessionHttpTransportTests {
         Issue.record("expected offline, got \(error)")
         return
       }
+    }
+  }
+
+  @Test("A response that isn't HTTP is an error, not an empty success")
+  func notHTTPIsRejected() async {
+    let transport = makeTransport()
+    StubURLProtocol.reply.withLock { $0 = .notHTTP }
+    await #expect(throws: TransportError.self) {
+      _ = try await transport.send(
+        request: HttpRequest(method: "GET", url: "http://127.0.0.1:1/plain", headers: [], body: nil)
+      )
     }
   }
 
