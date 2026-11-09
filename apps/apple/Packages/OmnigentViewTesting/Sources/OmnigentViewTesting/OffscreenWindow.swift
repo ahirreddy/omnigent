@@ -207,7 +207,9 @@
       activeWindow.recalculateKeyViewLoop()
       settle(0.02)
       let root = activeRoot
-      let frames = allViews.filter(Self.isControl).map { $0.convert($0.bounds, to: root) }
+      // A lazy stack keeps the controls of a row it dropped, hidden, until it needs them again.
+      let shown = allViews.filter { Self.isControl($0) && !$0.isHiddenOrHasHiddenAncestor }
+      let frames = shown.map { $0.convert($0.bounds, to: root) }
       return Self.readingOrder(Self.oneFramePerControl(frames.filter { !$0.isEmpty }))
     }
 
