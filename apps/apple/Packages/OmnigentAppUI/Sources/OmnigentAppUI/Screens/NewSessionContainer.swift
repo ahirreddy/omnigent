@@ -177,17 +177,7 @@ struct NewSessionContainer: View {
       }
     }
     var extras = ComposerExtraActions(
-      selectHost: { host in
-        if let provider = NewSessionAdapter.sandboxProvider(hostID: host.id) {
-          if form.sandbox.provider != provider { form.sandbox.profile = nil }
-          form.sandbox.provider = provider
-          form.isSandbox = true
-        } else {
-          form.isSandbox = false
-          form.chooseHost(host.id, creation)
-          form.selectFolder(creation, form.folder)
-        }
-      },
+      selectHost: { host in form.chooseHostRow(host.id, creation) },
       connectHost: { isConnectingHost = true },
       selectApprovalMode: { option in
         form.selection.approvalMode = option.id
