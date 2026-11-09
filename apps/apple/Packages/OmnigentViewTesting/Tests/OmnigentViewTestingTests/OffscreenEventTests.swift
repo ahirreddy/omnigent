@@ -45,6 +45,39 @@
     }
   }
 
+  private struct ChangingControls: View {
+    @State private var name = ""
+    @State private var showsExtra = true
+
+    var body: some View {
+      VStack(spacing: 8) {
+        TextField("Name", text: $name)
+        Button("Save") {}.disabled(name.isEmpty)
+        Button("Hide") { showsExtra = false }
+        if showsExtra { Button("Extra") {} }
+      }
+      .frame(width: 200, height: 200)
+    }
+  }
+
+  private struct BorderedInContainers: View {
+    let log: Log
+
+    var body: some View {
+      VStack {
+        List(["Row"], id: \.self) { _ in
+          Button("In row") { log.deleted.append("row") }.buttonStyle(.bordered)
+        }
+        ScrollView {
+          LazyVStack {
+            Button("In lazy") { log.deleted.append("lazy") }
+              .buttonStyle(.bordered).controlSize(.small)
+          }
+        }
+      }
+    }
+  }
+
   @MainActor
   @Suite("Offscreen events", .serialized)
   struct OffscreenEventTests {
@@ -80,6 +113,28 @@
       let menu = try #require(try screen.contextMenu(at: CGPoint(x: row.midX, y: row.midY)))
       try screen.choose("Delete", in: menu)
       #expect(log.deleted == ["First"])
+    }
+
+    @Test("the control list follows controls enabling and going away")
+    func controlsChange() throws {
+      let screen = OffscreenWindow(ChangingControls(), width: 300, height: 300)
+      defer { screen.close() }
+      let before = screen.controlFrames.count
+      try screen.clickControl(at: 0)
+      try screen.type("a")
+      let enabled = screen.controlFrames.count
+      #expect(enabled == before + 1, "\(before) then \(enabled)")
+      try screen.clickControl(at: 2)
+      #expect(screen.controlFrames.count == enabled - 1)
+    }
+
+    @Test("bordered buttons in a list row and a lazy stack are listed and clickable")
+    func borderedInContainers() throws {
+      let log = Log()
+      let screen = OffscreenWindow(BorderedInContainers(log: log), width: 300, height: 300)
+      defer { screen.close() }
+      for index in screen.controlFrames.indices { try screen.clickControl(at: index) }
+      #expect(Set(log.deleted) == ["row", "lazy"], "\(log.deleted)")
     }
 
     @Test("hovering a view reports entering it, and ending the hover reports leaving")
