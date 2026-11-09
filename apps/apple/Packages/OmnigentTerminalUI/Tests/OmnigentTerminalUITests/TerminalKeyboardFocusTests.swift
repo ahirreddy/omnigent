@@ -220,6 +220,9 @@ struct TerminalKeyboardFocusTests {
     #expect(!TerminalFocusRequest.movesThroughList(arrowUp))
     #expect(!TerminalFocusRequest.movesThroughList(try Events.mouse(.leftMouseUp)))
     #expect(!TerminalFocusRequest.movesThroughList(nil))
+    // Return and Space press the launcher that opens a terminal, so the terminal takes the keys.
+    #expect(!TerminalFocusRequest.movesThroughList(try Events.key(characters: "\r", keyCode: 0x24)))
+    #expect(!TerminalFocusRequest.movesThroughList(try Events.key(characters: " ", keyCode: 0x31)))
 
     let request = TerminalFocusRequest()
     request.begin(after: arrow)

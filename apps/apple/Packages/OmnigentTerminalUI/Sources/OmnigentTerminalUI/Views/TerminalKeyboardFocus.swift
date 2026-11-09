@@ -74,11 +74,15 @@ extension View {
       window.makeFirstResponder(nil)
     }
 
+    /// Return, keypad Enter and Space, which press the focused control.
+    private static let activationKeys: Set<UInt16> = [0x24, 0x4C, 0x31]
+
     /// A plain key such as an arrow moving through the sidebar keeps that list's focus; a
-    /// shortcut such as Control-Tab or Shift-Command-] does not.
+    /// shortcut such as Control-Tab, or a key pressing a control that opens a terminal, does not.
     static func movesThroughList(_ event: NSEvent?) -> Bool {
       guard let event, event.type == .keyDown else { return false }
       return event.modifierFlags.isDisjoint(with: [.command, .control])
+        && !activationKeys.contains(event.keyCode)
     }
 
     /// The text field a shared field editor is editing, else `responder` itself.
