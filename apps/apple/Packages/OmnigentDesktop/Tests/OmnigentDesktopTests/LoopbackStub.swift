@@ -13,7 +13,9 @@ final class LoopbackStub: Sendable {
   let port: Int
 
   init(_ replies: [String: Reply]) async throws {
-    listener = try NWListener(using: .tcp, on: .any)
+    let parameters = NWParameters.tcp
+    parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+    listener = try NWListener(using: parameters)
     listener.newConnectionHandler = { connection in
       Self.serve(connection, replies: replies)
     }

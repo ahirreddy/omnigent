@@ -79,6 +79,7 @@ final class FakeRunner: LocalProcessRunning {
     var externalWaiters: [Int32: [CheckedContinuation<Void, Never>]] = [:]
     var busyPorts: Set<Int> = []
     var ignoresTerminate = false
+    var launchFailure: LocalServerError?
   }
 
   private let state = Mutex(State())
@@ -90,6 +91,11 @@ final class FakeRunner: LocalProcessRunning {
   /// Queues behaviors for the next launches, in order.
   func script(_ behaviors: Behavior...) {
     state.withLock { current in current.behaviors += behaviors }
+  }
+
+  /// Makes every later launch fail with `error`.
+  func failLaunches(with error: LocalServerError) {
+    state.withLock { $0.launchFailure = error }
   }
 
   func ignoreTerminate() {
@@ -118,6 +124,7 @@ final class FakeRunner: LocalProcessRunning {
   }
 
   func launch(_ launch: LocalProcessLaunch) throws(LocalServerError) -> any LocalProcessHandle {
+    if let failure = state.withLock({ $0.launchFailure }) { throw failure }
     let (process, behavior) = state.withLock { current -> (FakeProcess, Behavior?) in
       current.nextPID += 1
       let process = FakeProcess(
