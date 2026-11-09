@@ -12,11 +12,11 @@ import Testing
 
 /// What a server with every settings page says about itself. Read after connecting, since the
 /// default fake is a local server and these accounts would change how it signs in.
-private let everyPageInfo =
+let everyPageInfo =
   #"{"single_user":false,"accounts_enabled":true,"login_url":"/auth/login","enabled_connections":["mcp","github"],"archive_worktree_cleanup":true}"#
 
 /// A server with every settings page on it, as an administrator.
-private func settingsServer() -> AppServer {
+func settingsServer() -> AppServer {
   let server = AppServer()
   server.route(
     "/auth/users",

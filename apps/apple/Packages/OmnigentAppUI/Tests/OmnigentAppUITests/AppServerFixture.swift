@@ -61,13 +61,15 @@ nonisolated final class AppServer: Sendable {
 
 /// A store signed in to `server`.
 @MainActor
-func signedInStore(_ server: AppServer) async throws -> ConnectionStore {
+func signedInStore(
+  _ server: AppServer, url: String = "http://127.0.0.1:6767"
+) async throws -> ConnectionStore {
   let core = try ClientCore(
     http: server.http, streams: FakeEventStreamTransport(), sockets: FakeWebSocketTransport(),
     clock: SystemClock(), scheduler: TaskScheduler(), secureStore: InMemorySecureStore(),
     entropy: FixedEntropySource(), config: HostConfig(urlPolicy: .development, oidcRedirect: .none))
   let store = ConnectionStore(core: core)
-  await store.connect(serverURL: "http://127.0.0.1:6767")
+  await store.connect(serverURL: url)
   #expect(store.isSignedIn, "phase: \(store.phase)")
   return store
 }
