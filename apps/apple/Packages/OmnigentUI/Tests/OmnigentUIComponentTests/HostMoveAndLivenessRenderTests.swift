@@ -114,10 +114,8 @@
     }
 
     // Offscreen, hostChanged fires for "lab" but its Task never reaches actions.home.
-    @Test(
-      "the sheet reads the hosts and the default host's home when it appears",
-      .disabled("the home lookup task doesn't run before the offscreen settle ends"))
-    func sheetLoadsOnAppear() {
+    @Test("the sheet reads the hosts and the default host's home when it appears")
+    func sheetLoadsOnAppear() async throws {
       var homesRead: [String] = []
       let loading = HostMoveActions(
         loadHosts: { .success(Self.realisticHosts) },
@@ -127,7 +125,7 @@
         },
         browse: { _, _ in .failure(FolderBrowseError(message: "unused")) },
         submit: { _ in .moved })
-      ViewSettler.settle(
+      try await ViewSettler.settleLettingTasksRun(
         HostMoveSheet(kind: .switchHost(currentHostID: "here"), actions: loading, close: {}))
       #expect(homesRead == ["lab"], "the session's own host and offline hosts aren't offered")
     }

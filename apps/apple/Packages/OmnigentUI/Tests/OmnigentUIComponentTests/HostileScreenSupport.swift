@@ -107,6 +107,25 @@
       }
       window.contentView = nil
     }
+
+    /// As ``settle(_:updates:)``, suspending between updates so the view's own tasks run: a run
+    /// loop spun inside this job would hold them back on the main queue.
+    static func settleLettingTasksRun(_ view: some View, updates: Int = 6) async throws {
+      _ = NSApplication.shared
+      let host = NSHostingView(rootView: view.frame(width: 700, height: 600))
+      let window = NSWindow(
+        contentRect: CGRect(x: 0, y: 0, width: 700, height: 600), styleMask: [.borderless],
+        backing: .buffered, defer: false)
+      window.contentView = host
+      defer { window.contentView = nil }
+      for _ in 0..<updates {
+        host.layoutSubtreeIfNeeded()
+        if let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+          host.cacheDisplay(in: host.bounds, to: bitmap)
+        }
+        try await Task.sleep(for: .milliseconds(50))
+      }
+    }
   }
 
   /// Hosts `Section`-only content the way the app does, in a grouped form.
