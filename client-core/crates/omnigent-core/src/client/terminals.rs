@@ -5,6 +5,8 @@
 //! that arrives after the connection ended is [`TerminalError::NotConnected`], a `401` ends the
 //! connection, and redirects are never followed.
 
+use std::collections::BTreeSet;
+
 use url::Url;
 
 use super::{ClientCore, lock};
@@ -113,6 +115,7 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<Vec<TerminalResource>, TerminalError> {
         let mut terminals = Vec::new();
         let mut query = ListTerminals::default();
+        let mut cursors = BTreeSet::new();
         loop {
             let prepared =
                 self.terminal_request(session_id, |endpoint| endpoint.list_request(&query))?;
@@ -120,7 +123,7 @@ impl<T: HttpTransport> ClientCore<T> {
             terminals.extend(page.terminals);
             match page.last_id {
                 Some(last) if page.has_more => {
-                    if query.after.as_deref() == Some(last.as_str()) {
+                    if !cursors.insert(last.clone()) {
                         return Err(TerminalError::MalformedResponse {
                             detail: format!("the terminal list cursor {last:?} repeated"),
                         });
@@ -195,8 +198,29 @@ mod tests {
     use futures::executor::block_on;
 
     use super::*;
-    use crate::client::test_support::{MOUNT, RouteTransport, connected_hosted, header};
+    use crate::client::test_support::{MOUNT, Reply, RouteTransport, connected_hosted, header};
     use crate::terminal::attach_options;
+
+    #[test]
+    fn a_terminal_list_cursor_that_comes_back_ends_the_listing() {
+        let path = format!("{MOUNT}/v1/sessions/conv_a/resources/terminals");
+        let page = |last: &str| {
+            Reply::json(
+                200,
+                format!(r#"{{"object":"list","data":[],"has_more":true,"last_id":"{last}"}}"#),
+            )
+        };
+        let transport = RouteTransport::with_prefix(MOUNT, false);
+        transport.enqueue("GET", &path, vec![page("a"), page("b"), page("a")]);
+        let core = connected_hosted(transport);
+        assert!(
+            matches!(
+                block_on(core.list_terminals("conv_a")),
+                Err(TerminalError::MalformedResponse { detail }) if detail.contains("repeated")
+            ),
+            "a cycle of cursors must not page forever"
+        );
+    }
 
     #[test]
     fn terminal_calls_carry_the_connection_credentials_and_a_401_disconnects() {

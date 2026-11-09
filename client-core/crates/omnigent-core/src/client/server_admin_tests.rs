@@ -430,3 +430,29 @@ fn archived_page_asks_for_archived_and_drops_others() {
         Some("archived")
     );
 }
+
+#[test]
+fn mcp_services_stop_at_a_cursor_that_comes_back() {
+    let page =
+        |cursor: &str| Reply::json(200, format!(r#"{{"data":[],"next_cursor":"{cursor}"}}"#));
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        "/v1/mcp-registry/services",
+        vec![page("a"), page("b"), page("a")],
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.mcp_services()),
+        Err(SessionError::InvalidPagination)
+    );
+    core.transport().enqueue(
+        "GET",
+        "/v1/mcp-registry/services",
+        vec![page("a"), page("a")],
+    );
+    assert_eq!(
+        block_on(core.mcp_services()),
+        Err(SessionError::InvalidPagination)
+    );
+}

@@ -5,6 +5,8 @@
 //! after the connection ended is [`RemoteBrowserError::NotConnected`], a `401` ends the
 //! connection, and redirects are never followed.
 
+use std::collections::BTreeSet;
+
 use super::ClientCore;
 use super::terminals::Credentialed;
 use crate::http::{HttpRequest, HttpResponse, HttpTransport, TransportError};
@@ -63,6 +65,7 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<Vec<BrowserTab>, RemoteBrowserError> {
         let mut tabs = Vec::new();
         let mut after: Option<String> = None;
+        let mut cursors = BTreeSet::new();
         loop {
             let prepared = self.browser_request(session_id, |endpoint| {
                 endpoint.list_request(MAX_PAGE, after.as_deref())
@@ -71,7 +74,7 @@ impl<T: HttpTransport> ClientCore<T> {
             tabs.extend(page.tabs);
             match page.last_id {
                 Some(last) if page.has_more => {
-                    if after.as_deref() == Some(last.as_str()) {
+                    if !cursors.insert(last.clone()) {
                         return Err(RemoteBrowserError::MalformedResponse {
                             detail: format!("the browser list cursor {last:?} repeated"),
                         });
@@ -169,7 +172,28 @@ mod tests {
     use omnigent_protocol::remote_browser::AttachMode;
 
     use super::*;
-    use crate::client::test_support::{MOUNT, RouteTransport, connected_hosted, header};
+    use crate::client::test_support::{MOUNT, Reply, RouteTransport, connected_hosted, header};
+
+    #[test]
+    fn a_browser_list_cursor_that_comes_back_ends_the_listing() {
+        let path = format!("{MOUNT}/v1/sessions/conv_a/resources/browsers");
+        let page = |last: &str| {
+            Reply::json(
+                200,
+                format!(r#"{{"object":"list","data":[],"has_more":true,"last_id":"{last}"}}"#),
+            )
+        };
+        let transport = RouteTransport::with_prefix(MOUNT, false);
+        transport.enqueue("GET", &path, vec![page("a"), page("b"), page("a")]);
+        let core = connected_hosted(transport);
+        assert!(
+            matches!(
+                block_on(core.list_remote_browsers("conv_a")),
+                Err(RemoteBrowserError::MalformedResponse { detail }) if detail.contains("repeated")
+            ),
+            "a cycle of cursors must not page forever"
+        );
+    }
 
     #[test]
     fn browser_calls_carry_the_connection_credentials() {
