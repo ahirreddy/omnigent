@@ -111,7 +111,11 @@ struct SupportingScreensTests {
       width: 200, height: 100)
     try await pause(screen)
     #expect(menuBar.sessionsNeedingAttention.count == listed)
+    screen.host.rootView = Color.clear.menuBarSessions(
+      connection, serverURL: nil, instance: instance, in: menuBar)
+    try await settle(screen, until: "the server to go") {
+      menuBar.sessionsNeedingAttention.isEmpty
+    }
     screen.close()
-    try await eventually("the window to leave") { menuBar.sessionsNeedingAttention.isEmpty }
   }
 }

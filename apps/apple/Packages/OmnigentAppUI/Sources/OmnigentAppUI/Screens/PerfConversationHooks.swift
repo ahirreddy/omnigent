@@ -13,24 +13,29 @@
     var openSideChat: (@MainActor (String, Bool) -> Void)?
     @Environment(\.isTabContentHidden) private var isHidden
 
+    /// The hooks a shown conversation answers.
+    static var names: [String] {
+      ["panel.close", "browser", "sidechat.open", "sidechat.ask"]
+        + InspectorTab.allCases.map { "panel.\($0.rawValue)" }
+    }
+
     func body(content: Content) -> some View {
-      content.perfHooks(
-        ["panel.close", "browser", "sidechat.open", "sidechat.ask"]
-          + InspectorTab.allCases.map { "panel.\($0.rawValue)" }
-      ) { hook in
-        guard !isHidden else { return }
-        switch hook {
-        case "panel.close": showsInspector = false
-        case "browser": openBrowser?()
-        case "sidechat.open": openSideChat?("", false)
-        case "sidechat.ask": openSideChat?("What does a side chat see?", true)
-        default:
-          guard let tab = InspectorTab(rawValue: String(hook.dropFirst("panel.".count))) else {
-            return
-          }
-          inspectorTab = tab
-          showsInspector = true
+      content.perfHooks(Self.names) { if !isHidden { perform($0) } }
+    }
+
+    /// Does what `hook` measures.
+    func perform(_ hook: String) {
+      switch hook {
+      case "panel.close": showsInspector = false
+      case "browser": openBrowser?()
+      case "sidechat.open": openSideChat?("", false)
+      case "sidechat.ask": openSideChat?("What does a side chat see?", true)
+      default:
+        guard let tab = InspectorTab(rawValue: String(hook.dropFirst("panel.".count))) else {
+          return
         }
+        inspectorTab = tab
+        showsInspector = true
       }
     }
   }
