@@ -89,17 +89,35 @@ public struct SettingsDataSection: View {
   }
 
   private func importFile(_ url: URL) {
+    switch Self.importSettings(from: url) {
+    case .imported(let message):
+      reloadLivePreferences()
+      show(status: message)
+    case .failed(let message):
+      show(failure: message)
+    }
+  }
+
+  /// What reading a settings file did, in the words the section shows.
+  enum ImportResult: Equatable {
+    case imported(String)
+    case failed(String)
+  }
+
+  /// Applies a settings file to the store.
+  static func importSettings(
+    from url: URL, to defaults: UserDefaults = .standard
+  ) -> ImportResult {
     let scoped = url.startAccessingSecurityScopedResource()
     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
     do {
       let settings = try SettingsPortability.settings(in: Data(contentsOf: url))
-      let count = SettingsPortability.apply(settings)
-      reloadLivePreferences()
-      show(status: "Imported \(count) setting\(count == 1 ? "" : "s").")
+      let count = SettingsPortability.apply(settings, to: defaults)
+      return .imported("Imported \(count) setting\(count == 1 ? "" : "s").")
     } catch let error as SettingsPortability.ImportError {
-      show(failure: error.description)
+      return .failed(error.description)
     } catch {
-      show(failure: "Could not read the file: \(error.localizedDescription)")
+      return .failed("Could not read the file: \(error.localizedDescription)")
     }
   }
 

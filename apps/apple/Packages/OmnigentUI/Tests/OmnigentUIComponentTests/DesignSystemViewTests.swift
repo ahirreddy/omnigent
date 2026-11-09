@@ -158,6 +158,18 @@
       #expect(preferences.terminal == .dark)
     }
 
+    @Test("picking a color makes the theme Custom with that color")
+    func pickColor() throws {
+      let preferences = ThemePreferences(defaults: store)
+      let screen = screen(preferences)
+      defer { screen.close() }
+      let well = try #require(screen.allViews.lazy.compactMap { $0 as? NSColorWell }.first)
+      well.color = NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)
+      _ = well.sendAction(well.action, to: well.target)
+      screen.settle()
+      #expect(preferences.paletteID == "custom")
+    }
+
     @Test("a palette says what it is; Custom says what it's based on")
     func palette() throws {
       let preferences = ThemePreferences(defaults: store)

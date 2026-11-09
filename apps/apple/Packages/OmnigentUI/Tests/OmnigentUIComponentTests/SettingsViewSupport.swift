@@ -171,6 +171,11 @@
     }
   }
 
+  extension CGRect {
+    /// The point a click on this frame lands on.
+    var center: CGPoint { CGPoint(x: midX, y: midY) }
+  }
+
   /// Holds an async action open until the test lets it finish.
   @MainActor
   final class AsyncGate {

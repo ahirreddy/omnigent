@@ -225,6 +225,10 @@
       #expect(menu.items.map(\.title) == ["Delete\u{2026}", "Unarchive"])
       try screen.choose("Unarchive", in: menu)
       #expect(log.entries == ["unarchive [\"mine\"]", "open mine"])
+      SystemSideEffects.answer(alert: .alertSecondButtonReturn)
+      try screen.choose("Delete\u{2026}", in: menu)
+      #expect(SystemSideEffects.record.alertMessages.count == 1, "asks before deleting")
+      #expect(log.entries.count == 2, "declined")
     }
   }
 #endif

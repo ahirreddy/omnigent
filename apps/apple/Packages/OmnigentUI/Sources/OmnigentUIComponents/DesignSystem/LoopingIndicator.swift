@@ -266,6 +266,11 @@ final class LoopingLayerHost: LoopingPlatformView {
       content.removeAnimation(forKey: Self.animationKey)
       return
     }
+    runLoop(motion, restart: restart)
+  }
+
+  /// Starts `motion`, leaving a loop that's already running alone unless `restart` is set.
+  func runLoop(_ motion: LoopingMotion, restart: Bool) {
     switch motion {
     case .fade(let low, let duration, let stagger):
       let now = content.convertTime(CACurrentMediaTime(), from: nil)

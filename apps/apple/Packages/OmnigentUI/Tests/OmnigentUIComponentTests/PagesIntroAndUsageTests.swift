@@ -203,6 +203,24 @@
       #expect(try screen.shows("Daily cost"))
     }
 
+    @Test("hovering the chart names that day and its cost")
+    func hoverChart() throws {
+      let screen = OffscreenWindow(
+        UsageDailyChart(
+          daily: [
+            UsageAmount(label: "2026-11-01", costUSD: 3.5),
+            UsageAmount(label: "2026-11-02", costUSD: 7.25),
+          ],
+          formatCost: { "cost \($0)" }
+        ).frame(width: 400, height: 200), width: 400, height: 200)
+      defer { screen.close() }
+      #expect(try !screen.shows("cost 7.25"))
+      try screen.hover(CGPoint(x: 300, y: 100))
+      screen.settle(0.3)
+      #expect(try screen.shows("cost 7.25"))
+      #expect(try !screen.shows("cost 3.5"))
+    }
+
     @Test("a report of only unreadable days still draws its section")
     func unreadableDays() throws {
       let screen = page(UsageViewState(daily: [UsageAmount(label: "not-a-day", costUSD: 1)]))

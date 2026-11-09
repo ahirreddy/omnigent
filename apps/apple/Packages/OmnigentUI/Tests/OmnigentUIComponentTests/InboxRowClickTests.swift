@@ -57,39 +57,6 @@
       #expect(screen.fields.isEmpty)
     }
 
-    @Test("Send sends the draft as typed, and stays off until there's something to send")
-    func sendButton() throws {
-      let draft = EditedValue("")
-      let screen = row(repliable(), draft: draft)
-      defer { screen.close() }
-      let field = try #require(screen.fields.first)
-      try screen.replaceText(in: field, with: "   ")
-      #expect(log.entries.isEmpty)
-      // A blank draft leaves Send disabled, so Return can't send it either.
-      try screen.press(keyCode: 36, characters: "\r")
-      #expect(log.entries.isEmpty)
-      try screen.replaceText(in: field, with: "Ship it")
-      #expect(draft.value == "Ship it")
-      try screen.press(keyCode: 36, characters: "\r")
-      #expect(log.entries == ["reply a [Ship it]"])
-    }
-
-    @Test("with the Command-Return setting, Return is a new line and Command-Return sends")
-    func commandReturnSetting() throws {
-      bed.store.set(true, forKey: ComposerPreferences.submitWithCommandReturnKey)
-      let draft = EditedValue("")
-      let screen = row(repliable(), draft: draft)
-      defer { screen.close() }
-      let field = try #require(screen.fields.first)
-      try screen.replaceText(in: field, with: "One")
-      try screen.press(keyCode: 36, characters: "\r")
-      #expect(log.entries.isEmpty)
-      #expect(draft.value.hasPrefix("One"))
-      #expect(draft.value.contains("\n"))
-      try screen.press(keyCode: 36, characters: "\r", modifiers: .command)
-      #expect(log.entries == ["reply a [One\n]"])
-    }
-
     @Test("a reply in flight can't be sent twice or opened away from")
     func sending() throws {
       let screen = row(repliable(reply: .sending), draft: EditedValue("Ship it"))
@@ -281,6 +248,55 @@
       #expect(InboxKindTile(item: bed.item("o", kind: .comment)).symbol == "text.bubble")
       #expect(InboxKindTile(item: bed.item("u")).symbol == "checkmark.circle")
       #expect(InboxKindTile(item: failed).symbol == "exclamationmark.circle")
+    }
+  }
+
+  @MainActor
+  extension InboxRowClickTests {
+    @Test("Send sends the draft as typed, and stays off until there's something to send")
+    func sendButton() throws {
+      let draft = EditedValue("")
+      let screen = row(repliable(), draft: draft)
+      defer { screen.close() }
+      let field = try #require(screen.fields.first)
+      try screen.replaceText(in: field, with: "   ")
+      #expect(log.entries.isEmpty)
+      // A blank draft leaves Send disabled, so Return can't send it either.
+      try screen.press(keyCode: 36, characters: "\r")
+      #expect(log.entries.isEmpty)
+      try screen.replaceText(in: field, with: "Ship it")
+      #expect(draft.value == "Ship it")
+      try screen.press(keyCode: 36, characters: "\r")
+      #expect(log.entries == ["reply a [Ship it]"])
+    }
+
+    @Test("with the Command-Return setting, Return is a new line and Command-Return sends")
+    func commandReturnSetting() throws {
+      bed.store.set(true, forKey: ComposerPreferences.submitWithCommandReturnKey)
+      let draft = EditedValue("")
+      let screen = row(repliable(), draft: draft)
+      defer { screen.close() }
+      let field = try #require(screen.fields.first)
+      try screen.replaceText(in: field, with: "One")
+      try screen.press(keyCode: 36, characters: "\r")
+      #expect(log.entries.isEmpty)
+      #expect(draft.value.hasPrefix("One"))
+      #expect(draft.value.contains("\n"))
+      try screen.press(keyCode: 36, characters: "\r", modifiers: .command)
+      #expect(log.entries == ["reply a [One\n]"])
+    }
+
+    @Test("clicking Send sends what's typed")
+    func clickSend() throws {
+      let screen = row(repliable(), draft: EditedValue("Ship it"))
+      defer { screen.close() }
+      // Send sits beside the reply field.
+      let field = try #require(screen.fields.first)
+      let box = field.convert(field.bounds, to: screen.activeWindow.contentView)
+      let send = try #require(
+        screen.buttonFrames.first { $0.minX >= box.maxX && abs($0.midY - box.midY) < 20 })
+      try screen.click(send.center)
+      #expect(log.entries == ["reply a [Ship it]"])
     }
   }
 

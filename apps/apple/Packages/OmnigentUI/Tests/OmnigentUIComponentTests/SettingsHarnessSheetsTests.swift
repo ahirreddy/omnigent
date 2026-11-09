@@ -282,6 +282,16 @@
       #expect(log.entries == ["opened"])
     }
 
+    @Test("opening the form needs nothing from a host that doesn't care")
+    func formOpenedDefault() throws {
+      let state = credentialState()
+      let actions = HarnessSetupActions(install: {}, saveCredential: { _ in }, close: {})
+      let screen = sheetScreen { HarnessSetupSheet(state: state, actions: actions) }
+      defer { screen.close() }
+      try openForm(screen)
+      #expect(try screen.shows("Use an API key"))
+    }
+
     @Test("a found credential can be adopted, and the login command copied")
     func adopt() throws {
       let screen = screen(credentialState())
