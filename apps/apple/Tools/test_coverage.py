@@ -1,6 +1,7 @@
 """The coverage report reads llvm-cov's segments correctly."""
 
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -84,6 +85,18 @@ class CoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "A.swift: line 1"):
             coverage.summarize(
                 document, Path("/p/Sources"), read_source=lambda _path: "// coverage:on\n"
+            )
+
+    def test_unmeasured_lists_code_no_bundle_built(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sources = Path(directory)
+            (sources / "Built.swift").write_text("func a() {}\n")
+            (sources / "Phone.swift").write_text("#if os(iOS)\n// note\nfunc b() {}\n#endif\n")
+            (sources / "Types.swift").write_text("enum Kind { case one }\n")
+            (sources / "TabsPlayground.swift").write_text("func c() {}\n")
+            document = {"data": [{"files": [{"filename": str(sources / "Built.swift")}]}]}
+            self.assertEqual(
+                coverage.unmeasured_files(document, sources), [(str(sources / "Phone.swift"), 3)]
             )
 
     def test_excluded_lines_take_whole_previews(self):

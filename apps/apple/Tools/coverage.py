@@ -2,6 +2,7 @@
 """Line coverage of the Apple packages from their own fast tests.
 
 Usage: coverage.py [--package NAME ...] [--no-test] [--uncovered PATH_SUBSTRING] [--excluded]
+                   [--unmeasured]
 
 Runs each package's offscreen-safe tests with coverage on, then reports its source lines. Tests
 that open real windows or need a live server are left out, here and in CI's fast tier; the VM
@@ -30,6 +31,7 @@ EXCLUDED_SOURCES = re.compile(r"/Gallery/|/Preview/|Playground[^/]*\.swift$|Prev
 COVERAGE_OFF = re.compile(r"^\s*// coverage:off(?:\s+(.*\S))?\s*$")
 COVERAGE_ON = re.compile(r"^\s*// coverage:on\s*$")
 PREVIEW = re.compile(r"^(\s*)#Preview\b")
+EXECUTABLE_CODE = re.compile(r"\b(func|init|get|set|didSet|willSet)\b|\bvar \w+[^=\n]*\{")
 
 # Per-package `swift test` arguments.
 TEST_ARGUMENTS = {
@@ -156,6 +158,27 @@ def summarize(document, sources, read_source=None):
     return list(rows.values())
 
 
+def unmeasured_files(document, sources):
+    """`(path, code_lines)` of code under `sources` that no test bundle built, largest first.
+
+    Mostly `#if os(iOS)` files and targets without a test target. Their lines aren't in any total.
+    """
+    measured = {entry["filename"] for export in document["data"] for entry in export["files"]}
+    rows = []
+    for path in Path(sources).rglob("*.swift"):
+        if str(path) in measured or EXCLUDED_SOURCES.search(str(path)):
+            continue
+        text = path.read_text(encoding="utf-8")
+        code = [
+            line
+            for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith("//")
+        ]
+        if EXECUTABLE_CODE.search(text):
+            rows.append((str(path), len(code)))
+    return sorted(rows, key=lambda row: -row[1])
+
+
 def export_all_bundles(json_path):
     """Exports every test bundle of a package: SwiftPM's own JSON covers only one of them."""
     products = Path(json_path).parent.parent
@@ -169,7 +192,7 @@ def export_all_bundles(json_path):
 
 
 def run_package(name, should_test):
-    """Runs one package's tests and returns its coverage rows and whether they passed."""
+    """Runs one package's tests: its coverage rows, whether they passed, and unmeasured files."""
     path = PACKAGES / name
     base = ["swift", "test", "--package-path", str(path), "--enable-code-coverage"]
     if should_test:
@@ -183,17 +206,22 @@ def run_package(name, should_test):
             shown = "\n".join(failures[:40]) or output[-2000:]
             print(f"{name}: tests failed\n{shown}", file=sys.stderr)
             # A failed run may leave no profile to export, and the rest still need measuring.
-            return [], False
+            return [], False, []
     else:
         result = None
     codecov = subprocess.run(
         [*base, "--show-codecov-path"], capture_output=True, text=True, check=True
     ).stdout.strip()
-    rows = summarize(export_all_bundles(codecov), path / "Sources")
+    document = export_all_bundles(codecov)
+    rows = summarize(document, path / "Sources")
     # No lines means the export missed this package, which must not read as full coverage.
     if not any(row[2] for row in rows):
         raise SystemExit(f"{name}: coverage data has no lines for this package's sources.")
-    return rows, (result is None or result.returncode == 0)
+    return (
+        rows,
+        (result is None or result.returncode == 0),
+        unmeasured_files(document, path / "Sources"),
+    )
 
 
 def main():
@@ -207,6 +235,9 @@ def main():
     parser.add_argument(
         "--excluded", action="store_true", help="List code marked coverage:off and why."
     )
+    parser.add_argument(
+        "--unmeasured", action="store_true", help="List code no test bundle builds on this Mac."
+    )
     options = parser.parse_args()
     names = options.package or sorted(
         path.name
@@ -215,8 +246,10 @@ def main():
     )
     total_covered = total_lines = 0
     failed = []
+    unmeasured = []
     for name in names:
-        rows, passed = run_package(name, not options.no_test)
+        rows, passed, package_unmeasured = run_package(name, not options.no_test)
+        unmeasured += package_unmeasured
         if not passed:
             # The profile on disk may be from an older run, so it says nothing about this one.
             failed.append(name)
@@ -251,6 +284,13 @@ def main():
         print(f"{percent:6.1f}%  {total_covered:>6}/{total_lines:<6}  total")
     else:
         print("    n/a  no coverage measured")
+    if unmeasured:
+        # A total must not read as all the code: iOS files and untested targets aren't in it.
+        lines = sum(row[1] for row in unmeasured)
+        print(f"Not in the total: {lines} lines in {len(unmeasured)} files no test here builds.")
+        if options.unmeasured:
+            for path, code_lines in unmeasured:
+                print(f"        {code_lines:>5} lines  {path.split('/Sources/', 1)[1]}")
     if failed:
         print(f"Tests failed in: {', '.join(failed)}", file=sys.stderr)
         return 1
