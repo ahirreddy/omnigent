@@ -217,7 +217,7 @@
     private static func isControl(_ view: NSView) -> Bool {
       let name = String(describing: Swift.type(of: view))
       return name == "KeyViewProxy" || name == "SwiftUIAppKitButton"
-        || name.hasPrefix("_NSCoreHostingView<AppKit")
+        || name.hasPrefix("_NSCoreHostingView<AppKit") || view is NSPopUpButton
     }
 
     /// One control's views share a top left corner; its largest frame includes its label.
