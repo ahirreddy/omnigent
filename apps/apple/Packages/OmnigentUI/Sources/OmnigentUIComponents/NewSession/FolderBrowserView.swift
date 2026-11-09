@@ -41,6 +41,21 @@ nonisolated public struct FolderListing: Hashable, Sendable {
   }
 }
 
+nonisolated extension FolderListing {
+  /// The folders to offer: dot folders stay out of the way unless the listing is inside one.
+  var visibleFolders: [Entry] {
+    if let path, Self.isInDotFolder(path) { return folders }
+    return folders.filter { !$0.name.hasPrefix(".") }
+  }
+
+  /// Whether `path` runs through a dot folder, as `~/.claude/worktrees/x` does.
+  /// - Parameter path: An absolute path.
+  /// - Returns: Whether any of its folders is hidden.
+  static func isInDotFolder(_ path: String) -> Bool {
+    path.split(separator: "/").contains { $0.hasPrefix(".") && $0 != "." && $0 != ".." }
+  }
+}
+
 /// Why a host folder could not be read; shown as is.
 nonisolated public struct FolderBrowseError: Error, Hashable, Sendable {
   /// The message.
@@ -84,7 +99,7 @@ struct FolderBrowserView: View {
           .disabled(!typedPath.hasPrefix("/") || isLoading)
       }
       List(selection: $selection) {
-        ForEach(listing?.folders ?? []) { entry in
+        ForEach(listing?.visibleFolders ?? []) { entry in
           Label(entry.name, systemImage: "folder")
             .tag(entry.path)
             .contentShape(Rectangle())
@@ -99,7 +114,7 @@ struct FolderBrowserView: View {
           ContentUnavailableView(
             "Cannot Read Folder", systemImage: "exclamationmark.triangle",
             description: Text(error))
-        } else if listing?.folders.isEmpty == true {
+        } else if listing?.visibleFolders.isEmpty == true {
           ContentUnavailableView("No Folders", systemImage: "folder")
         }
       }

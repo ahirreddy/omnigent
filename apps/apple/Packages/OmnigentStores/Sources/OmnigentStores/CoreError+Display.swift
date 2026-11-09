@@ -56,6 +56,16 @@ extension CoreError {
     return false
   }
 
+  /// Whether the session's stream or snapshot answered 404: the session may no longer exist,
+  /// though a proxy also answers 404 while its backend restarts.
+  public var isSessionNotFound: Bool {
+    switch self {
+    case .Session(let kind, _, _, _, _): kind == .sessionNotFound
+    case .Link(let kind, _, _): kind == .notFound
+    default: false
+    }
+  }
+
   /// Whether a terminal or remote-browser read found the session's runner offline (HTTP 503
   /// `runner_unavailable`): the runner sleeps until the next message relaunches it.
   public var isRunnerUnavailable: Bool {

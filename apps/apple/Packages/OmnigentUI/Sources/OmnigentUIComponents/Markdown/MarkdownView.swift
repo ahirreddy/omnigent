@@ -269,10 +269,11 @@ struct CodeBlockView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: Theme.Spacing.small) {
-        Text(verbatim: language?.isEmpty == false ? (language ?? "Code") : "Code")
+        Text(verbatim: CodeLanguageName.label(for: language))
           .font(Theme.Typography.section)
           .foregroundStyle(.secondary)
           .lineLimit(1)
+          .layoutPriority(1)
         Spacer(minLength: Theme.Spacing.small)
         Toggle(isOn: $wrapsLines) {
           Image(systemName: "text.word.spacing")
@@ -306,7 +307,7 @@ struct CodeBlockView: View {
       RoundedRectangle(cornerRadius: Theme.Radius.large).strokeBorder(ThemeColor.border)
     }
     .accessibilityElement(children: .contain)
-    .accessibilityLabel("Code block\(language.map { ", \($0)" } ?? "")")
+    .accessibilityLabel("Code block, \(CodeLanguageName.label(for: language))")
   }
 
   @ViewBuilder private var codeBody: some View {

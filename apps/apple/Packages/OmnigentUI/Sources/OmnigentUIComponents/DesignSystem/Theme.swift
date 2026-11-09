@@ -232,9 +232,15 @@ private struct CopyLabelStyle: LabelStyle {
   let showsTitle: Bool
 
   func makeBody(configuration: Configuration) -> some View {
-    HStack(spacing: Theme.Spacing.extraSmall) {
+    // Where the title doesn't fit on one line, only the icon shows (the name stays in the tooltip).
+    ViewThatFits(in: .horizontal) {
+      if showsTitle {
+        HStack(spacing: Theme.Spacing.extraSmall) {
+          configuration.icon
+          configuration.title.lineLimit(1).fixedSize()
+        }
+      }
       configuration.icon
-      if showsTitle { configuration.title }
     }
     .font(Theme.Typography.section)
   }

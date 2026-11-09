@@ -611,7 +611,7 @@ pub fn format_next_run(next_run_at: i64, now: i64) -> String {
     if delta < MINUTE {
         return "soon".to_owned();
     }
-    let rounded = |unit: i64| (delta + unit / 2) / unit;
+    let rounded = |unit: i64| delta.saturating_add(unit / 2) / unit;
     let minutes = rounded(MINUTE);
     if minutes < 60 {
         return format!("in {}", plural(minutes, "min"));

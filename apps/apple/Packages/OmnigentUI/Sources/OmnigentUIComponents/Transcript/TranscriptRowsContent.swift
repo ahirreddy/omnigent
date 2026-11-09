@@ -121,19 +121,12 @@ struct TranscriptRowsContent<Header: View>: View {
       WorkingIndicator(
         isBlocked: !state.pendingDecisions.isEmpty, startedAt: TurnElapsed.start(in: state))
     }
-    if let failure = state.header.failureMessage, !Self.hasErrorRow(in: state, matching: failure) {
+    let failures = TranscriptFailures(state)
+    if let failure = failures.turnFailure {
       FailureBanner(message: failure, resume: actions.resume)
     }
-    if let error = state.errorMessage {
+    if let error = failures.sessionError {
       ErrorBanner(message: error, dismiss: actions.dismissError, retry: actions.retry)
-    }
-  }
-
-  private static func hasErrorRow(in state: ConversationViewState, matching failure: String)
-    -> Bool
-  {
-    state.rows.suffix(20).contains {
-      $0.activity?.isFailure == true && $0.activity?.summary == failure
     }
   }
 }

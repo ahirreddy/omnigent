@@ -184,7 +184,7 @@ struct ToolRowView: View {
         isExpanded: $isExpanded,
         systemImage: activity?.kind.systemImage ?? "wrench.and.screwdriver",
         tint: entry.isFailure ? Theme.failure : .secondary,
-        title: activity?.title ?? "Tool",
+        title: activity?.displayTitle ?? "Tool",
         subtitle: firstLine(entry.call?.activity?.summary ?? activity?.summary ?? ""),
         monospacedSubtitle: true, identifier: "tool-toggle-\(entry.id)"
       ) {
@@ -218,6 +218,7 @@ struct ToolRowView: View {
         .padding(.top, Theme.Spacing.tiny)
       }
     }
+    .help(activity?.title ?? "")
     .contextMenu {
       Button("Copy Input", systemImage: "doc.on.doc") {
         Pasteboard.copy(entry.call?.activity?.summary ?? "")

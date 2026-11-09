@@ -128,20 +128,16 @@ struct CLITranscriptRows<Header: View>: View {
       CLIWorkingLine(
         isBlocked: !state.pendingDecisions.isEmpty, startedAt: TurnElapsed.start(in: state))
     }
-    if let failure = state.header.failureMessage, !hasErrorRow(matching: failure) {
+    let failures = TranscriptFailures(state)
+    if let failure = failures.turnFailure {
       FailureBanner(message: failure, resume: actions.resume).transcriptColumn()
     }
-    if let error = state.errorMessage {
+    if let error = failures.sessionError {
       ErrorBanner(message: error, dismiss: actions.dismissError, retry: actions.retry)
         .transcriptColumn()
     }
   }
 
-  private func hasErrorRow(matching failure: String) -> Bool {
-    state.rows.suffix(20).contains {
-      $0.activity?.isFailure == true && $0.activity?.summary == failure
-    }
-  }
 }
 
 /// One CLI block; equatable so unchanged rows skip re-rendering while output streams.

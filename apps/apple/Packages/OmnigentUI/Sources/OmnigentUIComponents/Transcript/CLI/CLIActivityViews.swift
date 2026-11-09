@@ -57,7 +57,7 @@ struct CLIActivityLine: View, Equatable {
       line.append("Error: ", palette.failure, bold: true)
       line.append(activity.summary.isEmpty ? activity.title : activity.summary, palette.failure)
     default:
-      line.append(activity.title, activity.isFailure ? palette.failure : nil, bold: true)
+      line.append(activity.displayTitle, activity.isFailure ? palette.failure : nil, bold: true)
       if !activity.summary.isEmpty {
         line.append(" ")
         line.append(activity.summary, activity.kind == .command ? palette.path : palette.dim)

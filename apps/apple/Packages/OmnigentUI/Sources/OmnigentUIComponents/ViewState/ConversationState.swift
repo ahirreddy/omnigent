@@ -51,6 +51,10 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
   /// The status line's transcript facts when ``rows`` are read live instead; `nil` derives them
   /// from ``rows``.
   public var transcriptStatus: TranscriptStatus?
+  /// The name the composer's approval chip gives the session's mode, for the inspector to match.
+  public var approvalModeTitle: String?
+  /// The effort the composer's chip names, for the inspector to match.
+  public var effortTitle: String?
 
   /// Creates conversation state.
   /// - Parameters:

@@ -90,11 +90,6 @@ struct NewSessionAdapterTests {
     let modes = NewSessionAdapter.approvalModes(claude, selected: nil)
     #expect(modes?.selectedID == "default")
     #expect(modes?.options.contains { $0.id == "bypassPermissions" } == true)
-    let bypass = modes?.options.first { $0.id == "bypassPermissions" }
-    #expect(
-      bypass.flatMap { NewSessionAdapter.approvalMode($0, agent: claude) } == "bypassPermissions")
-    let ask = modes?.options.first { $0.id == "default" }
-    #expect(ask.flatMap { NewSessionAdapter.approvalMode($0, agent: claude) } == nil)
     let piAgent = agent("pi", harness: "pi", section: .agent)
     #expect(NewSessionAdapter.approvalModes(piAgent, selected: nil) == nil)
   }

@@ -79,6 +79,7 @@ let package = Package(
       name: "OmnigentUIComponentTests",
       dependencies: [
         .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+        .product(name: "OmnigentViewTextReading", package: "OmnigentViewTesting"),
         "OmnigentUIComponents", .product(name: "OmnigentAuthUI", package: "OmnigentAuthUI"),
         .product(name: "OmnigentWorkspaceUI", package: "OmnigentWorkspaceUI"),
       ],

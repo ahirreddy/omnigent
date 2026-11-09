@@ -50,6 +50,8 @@ public final class ConversationStore {
   public let sessionID: String
   /// Every row, in order: transcript and activity rows.
   public private(set) var rows: [Row] = []
+  /// Messages sent here that the server has not echoed yet.
+  public internal(set) var pendingMessages = PendingMessages()
   /// The session header, once known.
   public private(set) var header: SessionHeader? {
     didSet {
@@ -75,6 +77,10 @@ public final class ConversationStore {
   public private(set) var lastFailure: String?
   /// Failures in this session, newest last. Never dropped silently.
   public private(set) var errors: [CoreError] = []
+  /// The server answered 404 for a session this store never loaded, as a tab saved before the
+  /// session was deleted does.
+  public private(set) var answeredNotFoundBeforeLoading = false
+  private var hasLoaded = false
   /// The last terminal or browser read found the runner offline: the agent is asleep until a
   /// message relaunches it. A panel state, not a session error.
   public private(set) var runnerUnavailable: CoreError?
@@ -117,6 +123,7 @@ public final class ConversationStore {
     composer = ComposerStore(sessionID: sessionID, core: core)
     tools = SessionToolsStore(sessionID: sessionID, core: core)
     composer.conversationFacts = { [weak self] in self?.composerFacts }
+    composer.transcript = self
   }
 
   /// What the composer's `/context`, `/mcp` and held sends read. Read on demand, never while
@@ -141,6 +148,12 @@ public final class ConversationStore {
     // `_rows` is the untracked storage: a body calling this must not depend on every row.
     rowWatches.watch(rowID) { _rows }
   }
+
+  /// What the transcript shows: ``rows``, then the messages still waiting for their echo.
+  public var displayRows: [Row] { rows + pendingMessages.rows }
+
+  /// Changes whenever ``displayRows`` does, which ``revision`` alone misses for a message sent here.
+  public var displayRevision: UInt64 { revision &+ pendingMessages.generation }
 
   /// Rows that belong in the transcript.
   public var transcriptRows: [Row] { rows.filter { !$0.isActivityOnly } }
@@ -236,7 +249,9 @@ public final class ConversationStore {
     let header = Self.known(header)
     if header != self.header { self.header = header }
     if sections != self.sections { self.sections = sections }
+    relayReportedMode()
     decisions.replace(cards)
+    retireEchoedMessages()
     rowWatches.refreshAll(from: rows)
     timeTurn(observed: false)
     digestRows()
@@ -253,11 +268,20 @@ public final class ConversationStore {
     }
     // Setting an observed property notifies even when the value is unchanged.
     if let header = Self.known(change.header), header != self.header { self.header = header }
-    if let sections = change.sections, sections != self.sections { self.sections = sections }
+    if let sections = change.sections, sections != self.sections {
+      self.sections = sections
+      relayReportedMode()
+    }
     self.revision = revision
+    retireEchoedMessages()
     rowWatches.refresh(touchedBy: change.rows, in: rows)
     timeTurn(observed: true)
     digestRows()
+  }
+
+  /// Touches the observed list only when it holds something, as this runs for every delta.
+  func retireEchoedMessages() {
+    if !pendingMessages.entries.isEmpty { pendingMessages.retireEchoes(in: rows) }
   }
 
   /// The core's stand-in header, shown until the server's metadata loads, is no header: the
@@ -266,8 +290,8 @@ public final class ConversationStore {
     header?.isPlaceholder == true ? nil : header
   }
 
-  private func digestRows() {
-    let digest = TranscriptDigest(rows: rows)
+  func digestRows() {
+    let digest = TranscriptDigest(rows: displayRows)
     if digest != transcriptDigest { transcriptDigest = digest }
   }
 
@@ -290,13 +314,18 @@ public final class ConversationStore {
     if state != .live, isHydrated { isHydrated = false }
     switch state {
     case .reconnecting(let reason, _, _): record(reason)
-    case .failed(let error): record(error)
+    case .failed(let error):
+      record(error)
+      // The core retries 404s and gave up: the session is gone, not restarting.
+      if error.isSessionNotFound { closed() }
     default: break
     }
   }
 
   func hydrated() {
     if !isHydrated { isHydrated = true }
+    if answeredNotFoundBeforeLoading { answeredNotFoundBeforeLoading = false }
+    hasLoaded = true
     composer.streamReady()
   }
 
@@ -319,6 +348,11 @@ public final class ConversationStore {
   }
 
   func record(_ error: CoreError) {
+    if error.isSessionNotFound {
+      // The connection line says so while the core retries, and closing follows if it gives up.
+      if !hasLoaded { answeredNotFoundBeforeLoading = true }
+      return
+    }
     if error.isRunnerUnavailable {
       if error != runnerUnavailable { runnerUnavailable = error }
       return

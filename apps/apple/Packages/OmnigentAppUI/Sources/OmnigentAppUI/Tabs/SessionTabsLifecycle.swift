@@ -8,6 +8,7 @@ import SwiftUI
 ///
 /// Only changes between two loaded lists count, so a session that was never in the list (a
 /// sub-agent opened from its parent) or one opened from the Archived filter keeps its tabs.
+/// A tab saved before its session was deleted leaves when the server says the session is missing.
 struct SessionTabsLifecycle: ViewModifier {
   let session: ServerSession
 
@@ -20,6 +21,40 @@ struct SessionTabsLifecycle: ViewModifier {
       let gone = Self.departed(previous: known.archivedByID, current: current.archivedByID)
       if !gone.isEmpty { session.tabs.removeSessions(gone) }
     }
+    .onChange(of: missingSessions, initial: true) { _, missing in
+      if !missing.isEmpty { session.tabs.removeSessions(missing) }
+    }
+  }
+
+  /// The open sessions the server says no longer exist.
+  private var missingSessions: Set<String> {
+    let list = session.connection.sessionList
+    let answers = session.openSessionIDs.compactMap { id in
+      session.connection.conversations[id].map { conversation in
+        SessionAnswer(
+          id: id, isClosed: conversation.isClosed,
+          answeredNotFound: conversation.answeredNotFoundBeforeLoading)
+      }
+    }
+    return Self.missing(answers, isListLoaded: list.isLoaded, listed: Set(list.sessionsByID.keys))
+  }
+
+  /// A closed session is gone. A 404 alone can be a proxy whose backend is restarting, so it
+  /// counts once a loaded list, read from the same server, doesn't have the session either.
+  /// - Parameters:
+  ///   - answers: What the server said about each open session.
+  ///   - isListLoaded: Whether the session list has loaded.
+  ///   - listed: The sessions in that list.
+  /// - Returns: The sessions whose tabs should leave.
+  static func missing(
+    _ answers: [SessionAnswer], isListLoaded: Bool, listed: Set<String>
+  ) -> Set<String> {
+    Set(
+      answers.filter { answer in
+        if answer.isClosed { return true }
+        return answer.answeredNotFound && isListLoaded && !listed.contains(answer.id)
+      }
+      .map(\.id))
   }
 
   /// Each known session's archived flag, once the list has loaded.
@@ -41,6 +76,15 @@ struct SessionTabsLifecycle: ViewModifier {
         return !wasArchived && isArchived ? id : nil
       })
   }
+}
+
+/// What the server said about one open session.
+struct SessionAnswer: Equatable {
+  var id: String
+  /// The session was removed, or its stream gave up on repeated 404s.
+  var isClosed: Bool
+  /// It answered 404 before ever loading.
+  var answeredNotFound: Bool
 }
 
 /// The session list as far as tabs care: whether it has loaded, and which sessions are archived.

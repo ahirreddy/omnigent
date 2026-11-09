@@ -17,8 +17,8 @@ enum ConversationAdapter {
   ) -> ConversationViewState {
     let header = Self.header(store, summary: summary)
     var state = ConversationViewState(
-      revision: store.revision, header: header,
-      rows: store.rows.map(OmnigentUIComponents.Row.init),
+      revision: store.displayRevision, header: header,
+      rows: store.displayRows.map(OmnigentUIComponents.Row.init),
       decisions: store.decisions.cards.map(OmnigentUIComponents.DecisionCard.init),
       decisionPhases: decisionPhases(store.decisions),
       sections: store.sections.map(OmnigentUIComponents.EventSection.init),
@@ -29,6 +29,8 @@ enum ConversationAdapter {
       summary: summary.map(OmnigentUIComponents.SessionSummary.init),
       turnStartedAt: store.turnTimer.startedAt)
     state.isHydrating = isHydrating(store)
+    state.approvalModeTitle = approvalModeTitle(store)
+    state.effortTitle = ComposerAdapter.configuration(store.composer).effortTitle
     return state
   }
 
@@ -59,6 +61,8 @@ enum ConversationAdapter {
       isEmpty: digest.isEmpty, lastInterrupted: digest.lastInterrupted,
       activityTitle: digest.activityTitle)
     state.isHydrating = isHydrating(store)
+    state.approvalModeTitle = approvalModeTitle(store)
+    state.effortTitle = ComposerAdapter.configuration(store.composer).effortTitle
     return state
   }
 
@@ -105,21 +109,27 @@ enum ConversationAdapter {
     !store.isHydrated && !store.isClosed && store.transcriptDigest.isEmpty
   }
 
+  /// What the composer's chip calls the session's approval mode.
+  static func approvalModeTitle(_ store: ConversationStore) -> String? {
+    store.composer.approvalModeMenu.flatMap { ComposerAdapter.approvalModes($0).selected?.label }
+  }
+
   /// Reads the store's rows inside the transcript's body.
   /// - Parameter store: The conversation.
   /// - Returns: The reader.
   static func liveRows(_ store: ConversationStore) -> LiveTranscriptRows {
-    LiveTranscriptRows { (store.rows.map(OmnigentUIComponents.Row.init), store.revision) }
+    LiveTranscriptRows {
+      (store.displayRows.map(OmnigentUIComponents.Row.init), store.displayRevision)
+    }
   }
 
   /// The newest failure to show. Stream and transport failures describe a connection problem,
-  /// which the connection line covers while it lasts; once the stream is live again they are
-  /// history, not a current error. Every other failure stays until dismissed.
+  /// which the connection line under the composer shows while it lasts and which is history once
+  /// the stream is live, so neither is a card. Every other failure stays until dismissed.
   static func errorMessage(_ store: ConversationStore) -> String? {
-    let live = store.link == .live
     let current = store.errors.last { error in
       switch error {
-      case .Link, .Transport: !live
+      case .Link, .Transport: false
       default: true
       }
     }

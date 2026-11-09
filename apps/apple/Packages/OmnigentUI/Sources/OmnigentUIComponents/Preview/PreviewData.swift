@@ -320,7 +320,7 @@ enum PreviewData {
         DetailSection(id: "total_cost_usd", title: "Total cost (USD)", text: "0.42"),
         DetailSection(
           id: "usage_by_model", title: "Usage by model",
-          text: "gpt-5.2-codex: input_tokens: 80100, output_tokens: 4100"),
+          text: "gpt-5.2-codex: 80,100 input \u{00B7} 4,100 output"),
       ]),
     EventSection(
       id: "todos", title: "Tasks", summary: "2 of 4 complete",
