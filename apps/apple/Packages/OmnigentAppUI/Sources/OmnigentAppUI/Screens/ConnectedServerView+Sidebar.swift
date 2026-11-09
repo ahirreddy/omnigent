@@ -273,19 +273,27 @@ extension ConnectedServerView {
       case .pin(let id, let pinned):
         succeeded = await list.setPinned(id, pinned)
       case .archive(let ids, let archived):
+        var changed = Set<String>()
         for id in ids where succeeded {
           succeeded = await list.setArchived(
             id, archived, deleteWorktree: deletingWorktrees.contains(id))
+          if succeeded { changed.insert(id) }
         }
         if archived {
-          // An archived session's tabs leave with it, its primary chat among them.
-          session.tabs.removeSessions(Set(ids))
+          // An archived session's tabs leave with it, its primary chat among them. A session the
+          // server refused to archive keeps its tabs.
+          session.tabs.removeSessions(changed)
         }
       }
       if succeeded, recordUndo {
         model.undo = SidebarUndo(change: change, removesWorktrees: !deletingWorktrees.isEmpty)
       }
     }
+  }
+
+  /// Previous and Next Session, and the pinned-session shortcuts, show the session's tabs.
+  func showInPlace(_ sessionID: String) {
+    selectionBinding.wrappedValue = .session(sessionID)
   }
 
   /// Previous and next session in the sidebar's order, wrapping at the ends as on the web. The

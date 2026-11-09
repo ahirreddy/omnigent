@@ -64,6 +64,18 @@ public struct ConnectedServerView: View {
     self.serverSwitching = serverSwitching
   }
 
+  /// A view whose sidebar state the caller holds.
+  init(
+    session: ServerSession, selection: Binding<SidebarDestination?>, sidebar: SidebarModel,
+    opener: ExternalURLOpener, openInNewWindow: (@MainActor (String) -> Void)?,
+    serverSwitching: ServerSwitching?
+  ) {
+    self.init(
+      session: session, selection: selection, opener: opener, openInNewWindow: openInNewWindow,
+      serverSwitching: serverSwitching)
+    _sidebar = State(initialValue: sidebar)
+  }
+
   var connection: ConnectionStore { session.connection }
   /// The sidebar's display options, undo and fork sheet.
   var sidebarModel: SidebarModel { sidebar }
@@ -379,11 +391,6 @@ extension ConnectedServerView {
 
   /// A session the new-session form created shows in place of the form.
   private func showCreated(_ sessionID: String) {
-    selection = .session(sessionID)
-  }
-
-  /// Previous and Next Session, and the pinned-session shortcuts, show the session's tabs.
-  func showInPlace(_ sessionID: String) {
     selection = .session(sessionID)
   }
 }

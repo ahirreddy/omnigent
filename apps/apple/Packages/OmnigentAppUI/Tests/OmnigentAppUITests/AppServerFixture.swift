@@ -42,6 +42,14 @@ nonisolated final class AppServer: Sendable {
     }
   }
 
+  /// The JSON bodies patched to `path`.
+  func patched(_ path: String) throws -> [[String: Any]] {
+    try requests("PATCH", path).map { request in
+      let body = try #require(request.body)
+      return try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+    }
+  }
+
   /// The JSON bodies posted to `path`.
   func posted(_ path: String) throws -> [[String: Any]] {
     try requests("POST", path).map { request in
