@@ -71,7 +71,11 @@ public final class ReplayTerminalConnection: TerminalConnection {
   ///
   /// - Throws: ``RecordingError``.
   public static func recordedReplTUI() throws -> ReplayTerminalConnection {
-    guard let url = Bundle.module.url(forResource: "repl-tui", withExtension: "jsonl") else {
+    try recordedReplTUI(resources: .module)
+  }
+
+  static func recordedReplTUI(resources: Bundle) throws -> ReplayTerminalConnection {
+    guard let url = resources.url(forResource: "repl-tui", withExtension: "jsonl") else {
       throw RecordingError.missingResource("repl-tui.jsonl")
     }
     return try ReplayTerminalConnection(jsonl: try String(contentsOf: url, encoding: .utf8))

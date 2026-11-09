@@ -8,10 +8,17 @@ public struct TerminalSettingsView: View {
   @State private var families: [String] = []
   @AppStorage(TerminalClipboardPolicy.key) private var clipboard = TerminalClipboardPolicy.ask
 
+  private let runtimeSource: GhosttyRuntimeSource
+
   /// Settings for the shared runtime's current appearance.
   public init() {
+    self.init(runtimeSource: GhosttyRuntime.shared)
+  }
+
+  init(runtimeSource: @escaping GhosttyRuntimeSource) {
+    self.runtimeSource = runtimeSource
     do {
-      _appearance = State(initialValue: try GhosttyRuntime.shared().appearance)
+      _appearance = State(initialValue: try runtimeSource().appearance)
       _error = State(initialValue: nil)
     } catch {
       _appearance = State(initialValue: TerminalPreferences.load(over: .system()))
@@ -74,7 +81,7 @@ public struct TerminalSettingsView: View {
   /// Applies `value` to every terminal, and keeps it only once libghostty accepts it.
   private func apply(_ value: TerminalAppearance) {
     do {
-      let runtime = try GhosttyRuntime.shared()
+      let runtime = try runtimeSource()
       try runtime.update(appearance: TerminalPreferences.merge(value, into: runtime.appearance))
       TerminalPreferences.save(value)
       error = nil

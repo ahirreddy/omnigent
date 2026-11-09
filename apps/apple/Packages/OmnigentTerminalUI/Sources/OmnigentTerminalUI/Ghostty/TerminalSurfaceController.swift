@@ -101,8 +101,17 @@ public final class TerminalSurfaceController {
   /// A surface for `connection`. Starts the connection.
   ///
   /// - Throws: ``GhosttyError`` when libghostty cannot start or create the surface.
-  public init(
+  public convenience init(
     connection: any TerminalConnection, runtime: GhosttyRuntime? = nil
+  ) throws(GhosttyError) {
+    try unsafe self.init(connection: connection, runtime: runtime) {
+      unsafe ghostty_surface_new($0, $1)
+    }
+  }
+
+  init(
+    connection: any TerminalConnection, runtime: GhosttyRuntime?,
+    newSurface: (ghostty_app_t?, UnsafePointer<ghostty_surface_config_s>?) -> ghostty_surface_t?
   ) throws(GhosttyError) {
     let resolved: GhosttyRuntime
     if let runtime {
@@ -121,7 +130,7 @@ public final class TerminalSurfaceController {
     #else
       view = TerminalSurfaceUIView(frame: CGRect(x: 0, y: 0, width: 800, height: 600))
     #endif
-    try createSurface()
+    unsafe try createSurface(newSurface)
     view.controller = self
     runtime.register(self)
     startPumps(input: input)
@@ -143,7 +152,9 @@ public final class TerminalSurfaceController {
     try GhosttyRuntime.shared()
   }
 
-  private func createSurface() throws(GhosttyError) {
+  private func createSurface(
+    _ newSurface: (ghostty_app_t?, UnsafePointer<ghostty_surface_config_s>?) -> ghostty_surface_t?
+  ) throws(GhosttyError) {
     var config = unsafe ghostty_surface_config_new()
     #if os(macOS)
       unsafe config.platform_tag = GHOSTTY_PLATFORM_MACOS
@@ -161,7 +172,7 @@ public final class TerminalSurfaceController {
     unsafe config.io_mode = GHOSTTY_SURFACE_IO_MANUAL_MIRROR
     unsafe config.io_write_cb = unsafe ghosttyIOWrite
     unsafe config.io_write_userdata = unsafe Unmanaged.passUnretained(sink).toOpaque()
-    guard let surface = unsafe ghostty_surface_new(runtime.app, &config) else {
+    guard let surface = unsafe newSurface(runtime.app, &config) else {
       throw .surfaceCreationFailed
     }
     unsafe self.surface = surface

@@ -30,6 +30,13 @@ public enum GhosttyError: Error, Hashable, Sendable, CustomStringConvertible {
   }
 }
 
+/// Where a caller gets the runtime. A test swaps in one that fails, as a renderer that can't start.
+typealias GhosttyRuntimeSource = @MainActor () throws(GhosttyError) -> GhosttyRuntime
+
+/// Builds a finalized configuration for an appearance.
+typealias GhosttyConfigMaker =
+  @MainActor (TerminalAppearance) throws(GhosttyError) -> ghostty_config_t
+
 /// The process-wide libghostty runtime. Every terminal surface belongs to it.
 ///
 /// libghostty requires one app per process, ticked on the main thread whenever its wakeup
@@ -48,7 +55,7 @@ public final class GhosttyRuntime {
   /// - Throws: ``GhosttyError`` when libghostty cannot start or the configuration is invalid.
   public static func shared() throws(GhosttyError) -> GhosttyRuntime {
     if let instance { return instance }
-    let runtime = try GhosttyRuntime(
+    let runtime = unsafe try GhosttyRuntime(
       appearance: TerminalPreferences.load(over: TerminalAppearance.system()))
     instance = runtime
     return runtime
@@ -59,12 +66,21 @@ public final class GhosttyRuntime {
   /// The appearance every surface uses.
   public private(set) var appearance: TerminalAppearance
   private var surfaces: [ObjectIdentifier: WeakSurface] = [:]
+  /// Builds the configuration for an appearance change. A test swaps it to model a refusal.
+  var makeNextConfig: GhosttyConfigMaker = { appearance throws(GhosttyError) in
+    unsafe try makeConfig(appearance)
+  }
 
   private struct WeakSurface {
     weak var controller: TerminalSurfaceController?
   }
 
-  private init(appearance: TerminalAppearance) throws(GhosttyError) {
+  init(
+    appearance: TerminalAppearance,
+    newApp: (UnsafePointer<ghostty_runtime_config_s>?, ghostty_config_t?) -> ghostty_app_t? = {
+      unsafe ghostty_app_new($0, $1)
+    }
+  ) throws(GhosttyError) {
     try Self.initialize()
     let config = unsafe try Self.makeConfig(appearance)
     var runtime = unsafe ghostty_runtime_config_s()
@@ -76,7 +92,7 @@ public final class GhosttyRuntime {
     unsafe runtime.confirm_read_clipboard_cb = unsafe ghosttyConfirmReadClipboard
     unsafe runtime.write_clipboard_cb = unsafe ghosttyWriteClipboard
     unsafe runtime.close_surface_cb = unsafe ghosttyCloseSurface
-    guard let app = unsafe ghostty_app_new(&runtime, config) else {
+    guard let app = unsafe newApp(&runtime, config) else {
       unsafe ghostty_config_free(config)
       throw .appCreationFailed
     }
@@ -98,8 +114,14 @@ public final class GhosttyRuntime {
   /// Builds and validates a finalized configuration.
   static func makeConfig(_ appearance: TerminalAppearance) throws(GhosttyError) -> ghostty_config_t
   {
+    unsafe try makeConfig(
+      text: GhosttyConfigText.make(appearance, systemFontFamily: TerminalFonts.systemFamily))
+  }
+
+  /// Builds and validates a finalized configuration from config-file text.
+  static func makeConfig(text: String) throws(GhosttyError) -> ghostty_config_t {
+    try initialize()
     guard let config = unsafe ghostty_config_new() else { throw .appCreationFailed }
-    let text = GhosttyConfigText.make(appearance, systemFontFamily: TerminalFonts.systemFamily)
     text.withCString { pointer in
       unsafe ghostty_config_load_string(config, pointer, UInt(text.utf8.count), "omnigent")
     }
@@ -133,7 +155,7 @@ public final class GhosttyRuntime {
   /// - Throws: ``GhosttyError/invalidConfiguration(_:)``; the old appearance stays in effect.
   public func update(appearance: TerminalAppearance) throws(GhosttyError) {
     guard appearance != self.appearance else { return }
-    let next = unsafe try Self.makeConfig(appearance)
+    let next = unsafe try makeNextConfig(appearance)
     unsafe ghostty_app_update_config(app, next)
     unsafe ghostty_app_set_color_scheme(app, appearance.colorScheme.ghostty)
     for surface in surfaces.values.compactMap(\.controller) {
@@ -144,15 +166,21 @@ public final class GhosttyRuntime {
     self.appearance = appearance
   }
 
-  /// The current finalized configuration, for new surfaces.
-  var currentConfig: ghostty_config_t { unsafe config }
-
   func register(_ controller: TerminalSurfaceController) {
     surfaces[ObjectIdentifier(controller)] = WeakSurface(controller: controller)
   }
 
   func unregister(_ controller: TerminalSurfaceController) {
     surfaces[ObjectIdentifier(controller)] = nil
+  }
+
+  /// A wakeup: ticks the shared runtime, or logs that none could start.
+  static func tickAfterWakeup(from source: GhosttyRuntimeSource = shared) {
+    do {
+      try source().tick()
+    } catch {
+      log("wakeup without a runtime: \(error)")
+    }
   }
 
   /// Runs libghostty's app-thread work. Called after every wakeup.
@@ -197,13 +225,7 @@ private nonisolated func controller(
 }
 
 private nonisolated func ghosttyWakeup(_: UnsafeMutableRawPointer?) {
-  Task { @MainActor in
-    do {
-      try GhosttyRuntime.shared().tick()
-    } catch {
-      GhosttyRuntime.log("wakeup without a runtime: \(error)")
-    }
-  }
+  Task { @MainActor in GhosttyRuntime.tickAfterWakeup() }
 }
 
 private nonisolated func ghosttyAction(
@@ -236,7 +258,7 @@ private nonisolated func offMainThread(_ callback: String) {
   Task { @MainActor in GhosttyRuntime.log("\(callback) was called off the main thread") }
 }
 
-private nonisolated func ghosttyReadClipboard(
+nonisolated func ghosttyReadClipboard(
   _ userdata: UnsafeMutableRawPointer?, _ location: ghostty_clipboard_e,
   _ state: UnsafeMutableRawPointer?
 ) -> Bool {
@@ -254,7 +276,7 @@ private nonisolated func ghosttyReadClipboard(
   }
 }
 
-private nonisolated func ghosttyConfirmReadClipboard(
+nonisolated func ghosttyConfirmReadClipboard(
   _ userdata: UnsafeMutableRawPointer?, _ text: UnsafePointer<CChar>?,
   _ state: UnsafeMutableRawPointer?, _ request: ghostty_clipboard_request_e
 ) {
@@ -273,7 +295,7 @@ private nonisolated func ghosttyConfirmReadClipboard(
   }
 }
 
-private nonisolated func ghosttyWriteClipboard(
+nonisolated func ghosttyWriteClipboard(
   _ userdata: UnsafeMutableRawPointer?, _ location: ghostty_clipboard_e,
   _ contents: UnsafePointer<ghostty_clipboard_content_s>?, _ count: Int, _ confirm: Bool
 ) {
@@ -300,7 +322,7 @@ private nonisolated func ghosttyWriteClipboard(
   }
 }
 
-private nonisolated func ghosttyCloseSurface(_: UnsafeMutableRawPointer?, _: Bool) {
+nonisolated func ghosttyCloseSurface(_: UnsafeMutableRawPointer?, _: Bool) {
   // A remote (manual I/O) surface has no child process, so Ghostty never asks to close it for
   // an exit. The attach state machine reports a closed terminal instead.
 }

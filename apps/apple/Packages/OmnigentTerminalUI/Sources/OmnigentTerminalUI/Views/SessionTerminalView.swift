@@ -18,16 +18,25 @@ struct TerminalSurfaceRepresentable {
   }
 #endif
 
+/// Creates the surface controller for a connection.
+typealias TerminalControllerMaker =
+  (any TerminalConnection) throws(GhosttyError) -> TerminalSurfaceController
+
 /// Creates a surface controller once per view identity.
 @MainActor
 @Observable
 final class TerminalControllerHolder {
   var result: Result<TerminalSurfaceController, GhosttyError>?
 
-  func load(_ connection: any TerminalConnection) {
+  func load(
+    _ connection: any TerminalConnection,
+    make: TerminalControllerMaker = { connection throws(GhosttyError) in
+      try TerminalSurfaceController(connection: connection)
+    }
+  ) {
     guard result == nil else { return }
     do {
-      result = .success(try TerminalSurfaceController(connection: connection))
+      result = .success(try make(connection))
     } catch {
       result = .failure(error)
     }

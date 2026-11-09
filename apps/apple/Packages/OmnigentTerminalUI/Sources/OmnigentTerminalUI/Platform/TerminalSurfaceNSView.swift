@@ -212,9 +212,8 @@
       }
     }
 
-    func ringBell() {
-      NSSound.beep()
-    }
+    /// Sounds the bell. A test swaps it so a test run stays quiet.
+    var ringBell: @MainActor () -> Void = NSSound.beep
 
     /// macOS frames come from Ghostty's renderer thread; nothing to schedule.
     @discardableResult
