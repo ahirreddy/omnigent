@@ -91,7 +91,9 @@ struct ConversationContainer: View {
     ) {
       ConversationHarnessTerminal(
         surface: harnessSurface, harness: conversation.header?.settings?.harness,
-        error: terminals?.lastError)
+        error: terminals?.lastError
+      )
+      .modifier(TerminalPageFocus(surface: harnessSurface))
     }
     .modifier(MessageMediaEnvironment(fileLinks: fileLinks, conversation: conversation))
     .task(id: workspace.map(ObjectIdentifier.init)) {
