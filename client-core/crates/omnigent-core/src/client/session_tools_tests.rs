@@ -189,6 +189,46 @@ fn a_side_chat_names_its_source_from_its_labels() {
     assert_eq!(side_chat_inherited_before(None, None, 7), None);
 }
 
+/// One row this client cannot read must not hide the other sessions in the same frame.
+#[test]
+fn an_unreadable_row_leaves_the_rest_of_its_frame_applied() {
+    let core = connected(RouteTransport::local());
+    let row = |id: &str, status: &str| {
+        json!({"id": id, "agent_id": "agent", "status": status, "created_at": 1,
+            "updated_at": 2, "title": id})
+    };
+    let recorder = record(&core);
+    let error = core
+        .apply_session_rows(vec![
+            row("conv_first", "idle"),
+            row("conv_future", "from-the-future"),
+            json!({"id": "conv_broken", "created_at": "yesterday"}),
+            row("conv_last", "running"),
+        ])
+        .unwrap_err();
+    assert!(
+        matches!(&error, SessionError::MalformedResponse { detail }
+            if detail.contains("unknown session status")),
+        "{error:?}"
+    );
+    let listed: Vec<String> = recorder
+        .take()
+        .into_iter()
+        .find_map(|event| match event {
+            ClientEvent::SessionsChanged { sessions } => Some(sessions),
+            _ => None,
+        })
+        .unwrap()
+        .into_iter()
+        .map(|session| session.id)
+        .collect();
+    assert_eq!(listed, ["conv_first", "conv_last"]);
+
+    // A frame of nothing readable reports no change at all.
+    assert!(core.apply_session_rows(vec![json!({"id": 7})]).is_err());
+    assert_eq!(recorder.take(), []);
+}
+
 #[test]
 fn a_side_chat_from_the_updates_stream_stays_out_of_the_list() {
     let core = connected(RouteTransport::local());

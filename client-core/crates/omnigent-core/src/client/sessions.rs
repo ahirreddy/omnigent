@@ -1302,8 +1302,8 @@ impl<T: HttpTransport> ClientCore<T> {
     ///
     /// # Errors
     ///
-    /// [`SessionError::MalformedResponse`] for a row that is not a session row; nothing is
-    /// applied then.
+    /// [`SessionError::MalformedResponse`] for the first row that is not a session row. The
+    /// other rows of the frame still apply.
     pub fn apply_session_rows(
         &self,
         rows: Vec<Value>,
@@ -1314,18 +1314,22 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 
     fn apply_rows(&self, rows: Vec<Value>) -> Result<Vec<SessionSummary>, SessionError> {
-        let projections = rows
-            .into_iter()
-            .map(decode_list_row)
-            .collect::<Result<Vec<_>, String>>()
-            .map_err(malformed("session row"))?;
+        let mut unreadable = None;
         let mut state = lock(&self.state);
         let mut changed = Vec::new();
         let mut hydrate = Vec::new();
-        for projection in &projections {
-            let summary = projection
-                .summary(state.summaries.get(&projection.id))
-                .map_err(malformed("session row"))?;
+        for row in rows {
+            let decoded = decode_list_row(row).and_then(|projection| {
+                let summary = projection.summary(state.summaries.get(&projection.id))?;
+                Ok((projection, summary))
+            });
+            let (projection, summary) = match decoded {
+                Ok(decoded) => decoded,
+                Err(error) => {
+                    unreadable.get_or_insert_with(|| malformed("session row")(error));
+                    continue;
+                }
+            };
             let summary = state.record_summary(summary);
             state.cache_summary(&summary);
             if state.live_sessions.contains(&projection.id)
@@ -1338,16 +1342,18 @@ impl<T: HttpTransport> ClientCore<T> {
             }
             changed.push(summary);
         }
-        state.events.push(ClientEvent::SessionsChanged {
-            sessions: changed.clone(),
-        });
-        state.events.push(ClientEvent::InventoryInvalidated);
+        if !changed.is_empty() || unreadable.is_none() {
+            state.events.push(ClientEvent::SessionsChanged {
+                sessions: changed.clone(),
+            });
+            state.events.push(ClientEvent::InventoryInvalidated);
+        }
         for session_id in hydrate {
             state
                 .events
                 .push(ClientEvent::HydrationRequested { session_id });
         }
-        Ok(changed)
+        unreadable.map_or(Ok(changed), Err)
     }
 
     /// Applies a `/v1/sessions/updates` `removed` frame: the sessions are forgotten (and a live

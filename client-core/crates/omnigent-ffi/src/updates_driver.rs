@@ -215,18 +215,11 @@ impl Engine {
                     .into_iter()
                     .map(|row| Value::Object(row.into_raw()))
                     .collect();
-                let mut decoded = Vec::with_capacity(raw.len());
-                for row in &raw {
-                    match SessionListItem::from_value(row.clone()) {
-                        Ok(item) => decoded.push(item),
-                        Err(error) => self.error(
-                            ErrorScope::SessionList,
-                            CoreError::Decode {
-                                message: format!("session-updates row: {error}"),
-                            },
-                        ),
-                    }
-                }
+                // An unreadable row is reported once, by the list below.
+                let decoded: Vec<SessionListItem> = raw
+                    .iter()
+                    .filter_map(|row| SessionListItem::from_value(row.clone()).ok())
+                    .collect();
                 if let Err(error) = self.sessions.apply_session_rows(raw) {
                     self.error(ErrorScope::SessionList, error.into());
                 }

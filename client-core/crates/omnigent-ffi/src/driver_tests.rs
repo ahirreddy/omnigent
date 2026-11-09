@@ -1303,6 +1303,35 @@ fn the_socket_reports_each_frame_kind() {
 }
 
 #[test]
+fn a_changed_row_that_does_not_decode_is_reported_and_the_rest_apply() {
+    let mut harness = connected();
+    let (sink, _) = live_socket(&mut harness);
+    harness.events.take();
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({
+            "type": "changed",
+            "items": [
+                session_row("good_row", "idle", 2),
+                {"id": "bad_row", "status": "idle", "created_at": "yesterday"},
+            ],
+        }),
+    );
+    let events = harness.events.take();
+    assert_eq!(list_errors(&events).len(), 1, "{events:#?}");
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CoreEvent::SessionListChanged {
+                change: SessionListChange::Upsert { sessions },
+            } if sessions.iter().any(|session| session.id == "good_row")
+        )),
+        "{events:#?}"
+    );
+}
+
+#[test]
 fn a_removed_frame_closes_the_open_session_and_only_it() {
     let mut harness = live_session();
     let (_, handle, _) = harness.streams.last();
