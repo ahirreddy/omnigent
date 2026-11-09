@@ -223,3 +223,118 @@ fn an_unsaved_agent_needs_a_valid_draft_and_an_online_host() {
     ));
     assert_eq!(core.transport().writes().len(), 0);
 }
+
+#[test]
+fn an_installed_agent_acknowledgement_that_does_not_decode_is_uncertain() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .respond(Some("POST"), "/v1/agents", None, Reply::json(200, "nope"));
+    assert!(matches!(
+        block_on(core.install_agent_bundle(b"tar", "a.tar.gz", "B")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("/v1/agents")
+    ));
+    core.transport()
+        .respond(Some("POST"), "/v1/agents", None, Reply::json(200, "[]"));
+    assert!(matches!(
+        block_on(core.install_agent_bundle(b"tar", "a.tar.gz", "B")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("/v1/agents")
+    ));
+    assert!(matches!(
+        block_on(core.install_agent_bundle(&vec![0; 11 * 1024 * 1024], "a.tar.gz", "B")),
+        Err(SessionError::InvalidInput { reason }) if reason.contains("10 MB")
+    ));
+}
+
+#[test]
+fn a_saved_config_that_does_not_decode_is_uncertain() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .respond(Some("PATCH"), "/v1/agents/a1", None, Reply::json(200, "[]"));
+    let unreadable = block_on(core.update_agent_config("a1", None, &json!({"model": "m"})));
+    assert!(
+        matches!(&unreadable, Err(SessionError::DeliveryUncertain { .. })),
+        "{unreadable:?}"
+    );
+}
+
+#[test]
+fn removing_an_agent_passes_other_refusals_through() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .respond(None, "/v1/agents/a1", None, Reply::json(403, "{}"));
+    assert_eq!(
+        block_on(core.remove_agent("a1", false)),
+        Err(SessionError::Forbidden)
+    );
+}
+
+#[test]
+fn an_unsaved_agents_workspace_branch_and_project_are_checked_before_sending() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/hosts",
+        r#"{"hosts":[{"host_id":"host_a","name":"Mac","status":"online"}]}"#,
+    );
+    let create = |selection: &CreationSelection, title: &str| {
+        block_on(core.create_session_with_agent(&draft(), selection, title, "B"))
+    };
+    assert!(matches!(
+        create(&host_selection("relative"), ""),
+        Err(SessionError::Creation(_))
+    ));
+    let mut bad_branch = host_selection("/w");
+    bad_branch.git = Some(CreationGit {
+        branch_name: "..".into(),
+        base_branch: None,
+        existing_worktree: false,
+    });
+    assert!(matches!(
+        create(&bad_branch, ""),
+        Err(SessionError::Creation(_))
+    ));
+    let mut bad_project = host_selection("/w");
+    bad_project.project_id = Some("../p".into());
+    assert!(matches!(
+        create(&bad_project, ""),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+    assert_eq!(core.transport().writes().len(), 0);
+}
+
+#[test]
+fn an_unsaved_agent_carries_its_title_and_project_and_reports_a_failed_launch() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok(
+            "/v1/hosts",
+            r#"{"hosts":[{"host_id":"host_a","name":"Mac","status":"online"}]}"#,
+        )
+        .respond(
+            Some("POST"),
+            "/v1/sessions",
+            None,
+            Reply::json(
+                200,
+                r#"{"id":"conv_new","status":"idle","created_at":1,"permission_level":4}"#,
+            ),
+        )
+        .respond(
+            Some("POST"),
+            "/v1/hosts/host_a/runners",
+            None,
+            Reply::json(500, "{}"),
+        );
+    let mut selection = host_selection("/w");
+    selection.project_id = Some("p1".into());
+    let created =
+        block_on(core.create_session_with_agent(&draft(), &selection, " Title ", "B")).unwrap();
+    assert!(
+        matches!(created.launch, RunnerLaunch::Failed(_)),
+        "{:?}",
+        created.launch
+    );
+    let body =
+        String::from_utf8_lossy(core.transport().writes()[0].body.as_deref().unwrap()).into_owned();
+    assert!(body.contains(r#""project_id":"p1""#), "{body}");
+    assert!(body.contains(r#""title":"Title""#), "{body}");
+}

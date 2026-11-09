@@ -745,6 +745,38 @@ mod tests {
     }
 
     #[test]
+    fn ids_keys_and_the_selection_error_read_back() {
+        assert_eq!(HoldId::new(7).get(), 7);
+        let mut store = AttachmentDraftStore::default();
+        assert_eq!(store.draft(&key()).selection_error(), None);
+        store.record_selection_error(&key(), Some("too big".to_owned()));
+        assert_eq!(store.draft(&key()).selection_error(), Some("too big"));
+        store.record_selection_error(&key(), None);
+        assert_eq!(store.draft(&key()).selection_error(), None);
+    }
+
+    #[test]
+    fn upload_attempts_cannot_cross_each_other() {
+        let mut store = AttachmentDraftStore::default();
+        let item = store.add(file(), &key()).unwrap();
+        let attempt = store.begin_upload(&key(), item).unwrap();
+        assert_eq!(attempt.key(), &key());
+        assert_eq!(
+            store.begin_upload(&key(), item),
+            Err(DraftError::UploadInFlight)
+        );
+        assert_eq!(store.remove(&key(), item), Err(DraftError::UploadInFlight));
+        store
+            .finish_upload(&attempt, Err(UploadError::Rejected { status: 413 }))
+            .unwrap();
+        // A late progress report for an attempt that already ended.
+        assert_eq!(
+            store.update_progress(&attempt, 0.5),
+            Err(DraftError::StaleAttempt)
+        );
+    }
+
+    #[test]
     fn draft_count_and_aggregate_byte_limits() {
         let mut store = AttachmentDraftStore::new();
         for _ in 0..MAX_FILES_PER_DRAFT {

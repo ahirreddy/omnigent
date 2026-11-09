@@ -149,3 +149,40 @@ impl Serialize for NativeToolItem {
         self.fields.serialize(serializer)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn item(value: &Value) -> NativeToolItem {
+        NativeToolItem::from_fields(value.as_object().unwrap().clone()).unwrap()
+    }
+
+    #[test]
+    fn identity_fields_read_back() {
+        let mcp = item(&json!({"type": "mcp_call", "id": "m1", "server_label": "docs"}));
+        assert_eq!(mcp.id(), Some("m1"));
+        assert_eq!(mcp.server_label(), Some("docs"));
+    }
+
+    #[test]
+    fn an_unknown_tool_has_no_summary_field() {
+        assert_eq!(
+            item(&json!({"type": "brand_new", "code": "x"})).summary_value(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_generated_image_may_be_any_non_empty_result() {
+        let image = |result: Value| {
+            item(&json!({"type": "image_generation_call", "result": result})).has_generated_image()
+        };
+        assert!(image(json!("data")));
+        assert!(image(json!({"url": "x"})));
+        assert!(!image(json!("")));
+        assert!(!image(Value::Null));
+    }
+}

@@ -742,3 +742,89 @@ fn recorded_nested_snapshot_items_match_flat_pages() {
         assert_eq!(nested.data, flat.data, "{}", nested.id);
     }
 }
+
+#[test]
+fn resource_events_without_a_known_suffix_read_as_updated() {
+    let item = decode(
+        json!({"id": "i", "type": "resource_event", "event_type": "browser.moved",
+        "resource_id": "r", "resource_type": "browser"}),
+    );
+    let ItemData::ResourceEvent(event) = &item.data else {
+        panic!("{item:?}");
+    };
+    assert_eq!(event.action(), ResourceAction::Updated);
+}
+
+#[test]
+fn a_slash_command_without_arguments_is_just_its_name() {
+    let item = decode(json!({"id": "i", "type": "slash_command", "name": "/compact"}));
+    let ItemData::SlashCommand(command) = &item.data else {
+        panic!("{item:?}");
+    };
+    assert_eq!(command.invocation(), "/compact");
+}
+
+#[test]
+fn unknown_items_round_trip_and_never_count_as_context_free() {
+    let item = decode(json!({"id": "i", "type": "brand_new", "extra": 7}));
+    assert_eq!(item.data.wire_type(), "brand_new");
+    assert!(!item.data.is_context_free());
+    assert_eq!(item.native_tool_kind(), None);
+    assert_eq!(serde_json::to_value(&item).unwrap()["extra"], 7);
+    let compaction = decode(json!({"id": "c", "type": "compaction", "summary": "s"}));
+    assert_eq!(compaction.data.wire_type(), "compaction");
+}
+
+#[test]
+fn every_typed_item_serialises_with_its_type() {
+    for raw in [
+        json!({"id": "a", "type": "compaction", "summary": "s"}),
+        json!({"id": "b", "type": "routing_decision", "model": "m", "applied": true}),
+        json!({"id": "c", "type": "slash_command", "name": "x"}),
+        json!({"id": "d", "type": "terminal_command", "kind": "input", "input": "ls"}),
+    ] {
+        let item = decode(raw.clone());
+        assert_eq!(serde_json::to_value(&item).unwrap()["type"], raw["type"]);
+    }
+}
+
+#[test]
+fn a_data_field_that_is_not_an_object_stays_with_the_item() {
+    let item = decode(json!({"id": "i", "type": "web_search_call", "data": 7}));
+    let ItemData::NativeTool(native) = &item.data else {
+        panic!("{item:?}");
+    };
+    assert_eq!(native.item.fields["data"], 7);
+}
+
+#[test]
+fn a_native_tool_wrapper_needs_an_object_item() {
+    assert!(ConversationItem::from_value(json!({"id": "i", "type": "native_tool"})).is_err());
+    assert!(
+        ConversationItem::from_value(json!({"id": "i", "type": "native_tool", "item": 7})).is_err()
+    );
+    assert!(
+        ItemData::decode(
+            "native_tool",
+            Value::Null.as_object().cloned().unwrap_or_default()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn reasoning_summaries_of_the_wrong_shape_fail_to_decode() {
+    for summary in [
+        json!([7]),
+        json!([{"text": "no type"}]),
+        json!([{"type": "summary_text"}]),
+    ] {
+        assert!(
+            ConversationItem::from_value(json!({
+                "id": "i", "type": "reasoning", "summary": summary
+            }))
+            .is_err(),
+            "{summary}"
+        );
+    }
+}

@@ -286,3 +286,173 @@ fn managed_agents_label_their_harness() {
     assert_eq!(agent.created_at, Some(5));
     assert!(!agent.builtin);
 }
+
+#[test]
+fn a_draft_needs_a_harness_and_an_http_server_writes_its_headers() {
+    let unset = AgentDraft {
+        harness: " ".into(),
+        ..draft()
+    };
+    assert_eq!(unset.problem().as_deref(), Some("Choose a harness."));
+    let yaml = AgentDraft {
+        mcp_servers: vec![
+            McpServerDraft::Stdio {
+                name: "no_command".into(),
+                command: " ".into(),
+                args: Vec::new(),
+                env: BTreeMap::new(),
+            },
+            McpServerDraft::Stdio {
+                name: "plain".into(),
+                command: "run".into(),
+                args: Vec::new(),
+                env: BTreeMap::new(),
+            },
+            McpServerDraft::Http {
+                name: "docs".into(),
+                url: "https://docs.example".into(),
+                headers: key_value_lines("Authorization: secret"),
+            },
+        ],
+        ..draft()
+    }
+    .config_yaml();
+    assert!(!yaml.contains("no_command"), "{yaml}");
+    assert!(yaml.contains("  plain:"), "{yaml}");
+    assert!(!yaml.contains("args:"), "{yaml}");
+    assert!(yaml.contains("  docs:\n    type: mcp\n"), "{yaml}");
+    assert!(yaml.contains("    headers:\n"), "{yaml}");
+}
+
+#[test]
+fn an_unknown_harness_uses_the_shared_label() {
+    let agent =
+        ManagedAgent::from_value(&json!({"id": "a", "name": "n", "harness": "odd"})).unwrap();
+    assert_ne!(agent.harness_label(), "");
+}
+
+#[allow(clippy::too_many_lines, reason = "one table of refusals for one form")]
+#[test]
+fn a_patch_says_what_is_wrong_with_each_server_and_credential() {
+    let patch = |server: McpServerEdit| {
+        config_patch(
+            &mcp_config(),
+            &AgentConfigEdit {
+                mcp_servers: vec![server],
+                ..mcp_base()
+            },
+        )
+    };
+    let docs = || McpServerEdit {
+        name: "docs".into(),
+        transport: "http".into(),
+        description: "Docs".into(),
+        url: "https://docs.example/mcp".into(),
+        command: String::new(),
+        args: Vec::new(),
+        credentials: Vec::new(),
+    };
+    let credential = |name: &str, value: &str, action| CredentialEdit {
+        name: name.into(),
+        value: value.into(),
+        action,
+        existing: false,
+    };
+    assert_eq!(
+        patch(McpServerEdit {
+            transport: "smoke".into(),
+            ..docs()
+        }),
+        Err("docs: choose HTTP or a command.".to_owned())
+    );
+    assert_eq!(
+        patch(McpServerEdit {
+            url: " ".into(),
+            ..docs()
+        }),
+        Err("docs: url is required.".to_owned())
+    );
+    assert_eq!(
+        patch(McpServerEdit {
+            description: " ".into(),
+            ..docs()
+        }),
+        Ok(json!({"mcp_servers": {"docs": {"description": null}}}))
+    );
+    assert_eq!(
+        patch(McpServerEdit {
+            description: "New".into(),
+            ..docs()
+        }),
+        Ok(json!({"mcp_servers": {"docs": {"description": "New"}}}))
+    );
+    for (credentials, message) in [
+        (
+            vec![credential(" ", "v", CredentialAction::Replace)],
+            "docs: enter a credential name.",
+        ),
+        (
+            vec![
+                credential("A", "v", CredentialAction::Keep),
+                credential("A", "w", CredentialAction::Keep),
+            ],
+            "docs: credential names must be unique.",
+        ),
+        (
+            vec![credential("A", "[REDACTED]", CredentialAction::Replace)],
+            "Enter a credential value, not a redaction placeholder.",
+        ),
+    ] {
+        assert_eq!(
+            patch(McpServerEdit {
+                credentials,
+                ..docs()
+            }),
+            Err(message.to_owned())
+        );
+    }
+    let unsaved_removal = patch(McpServerEdit {
+        credentials: vec![credential("A", "", CredentialAction::Remove)],
+        ..docs()
+    });
+    assert_eq!(unsaved_removal, Ok(json!({})), "nothing to remove yet");
+    assert_eq!(
+        config_patch(
+            &mcp_config(),
+            &AgentConfigEdit {
+                mcp_servers: vec![
+                    McpServerEdit {
+                        description: "New".into(),
+                        ..docs()
+                    },
+                    McpServerEdit {
+                        description: "Newer".into(),
+                        ..docs()
+                    }
+                ],
+                ..mcp_base()
+            }
+        ),
+        Err("MCP server names must be unique.".to_owned())
+    );
+}
+
+#[test]
+fn a_changed_instruction_is_sent() {
+    let edit = AgentConfigEdit {
+        instructions: "New".into(),
+        ..mcp_base()
+    };
+    assert_eq!(
+        config_patch(&mcp_config(), &edit),
+        Ok(json!({"instructions": "New"}))
+    );
+    let described = AgentConfigEdit {
+        description: "About".into(),
+        ..mcp_base()
+    };
+    assert_eq!(
+        config_patch(&mcp_config(), &described),
+        Ok(json!({"description": "About"}))
+    );
+}

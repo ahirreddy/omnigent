@@ -324,6 +324,44 @@ mod tests {
     }
 
     #[test]
+    fn every_block_names_its_type() {
+        for (value, name) in [
+            (json!({"type": "output_text", "text": "x"}), "output_text"),
+            (json!({"type": "input_image"}), "input_image"),
+            (json!({"type": "brand_new"}), "brand_new"),
+        ] {
+            assert_eq!(part(value).part_type(), name);
+        }
+    }
+
+    #[test]
+    fn a_video_attachment_is_told_apart_and_a_refusal_serialises_under_its_key() {
+        let ContentPart::Attachment(video) = part(json!({"type": "input_video"})) else {
+            panic!("not an attachment");
+        };
+        assert_eq!(video.kind, AttachmentKind::Video);
+        let refusal = part(json!({"type": "refusal", "refusal": "No."}));
+        assert_eq!(serde_json::to_value(&refusal).unwrap()["refusal"], "No.");
+    }
+
+    #[test]
+    fn a_block_decodes_through_serde_and_names_a_wrong_shape() {
+        let decoded: ContentPart =
+            serde_json::from_value(json!({"type": "output_text", "text": "x"})).unwrap();
+        assert_eq!(decoded.text(), Some("x"));
+        for (value, name) in [
+            (json!(null), "null"),
+            (json!(true), "a boolean"),
+            (json!(1), "a number"),
+            (json!("x"), "a string"),
+            (json!([]), "an array"),
+            (json!({}), "an object"),
+        ] {
+            assert_eq!(json_kind(&value), name);
+        }
+    }
+
+    #[test]
     fn text_and_refusal_blocks_keep_their_text() {
         assert_eq!(
             part(json!({"type": "refusal", "refusal": "No."})).text(),

@@ -440,6 +440,43 @@ mod tests {
     }
 
     #[test]
+    fn every_image_kind_has_its_mime_type_and_magic_bytes() {
+        assert_eq!(ImageFormat::Png.mime_type(), "image/png");
+        assert_eq!(ImageFormat::Jpeg.mime_type(), "image/jpeg");
+        assert_eq!(ImageFormat::Gif.mime_type(), "image/gif");
+        assert_eq!(ImageFormat::Webp.mime_type(), "image/webp");
+        assert_eq!(ImageFormat::Bmp.mime_type(), "image/bmp");
+        assert_eq!(ImageFormat::Tiff.mime_type(), "image/tiff");
+        assert_eq!(ImageFormat::Heic.mime_type(), "image/heic");
+        assert_eq!(ImageFormat::Ico.mime_type(), "image/x-icon");
+        assert_eq!(
+            ImageFormat::sniff(b"BM0123456789012345"),
+            Some(ImageFormat::Bmp)
+        );
+        assert_eq!(ImageFormat::sniff(b"BM"), None, "too short for a header");
+        assert_eq!(ImageFormat::sniff(b"II*\0rest"), Some(ImageFormat::Tiff));
+        assert_eq!(ImageFormat::sniff(b"MM\0*rest"), Some(ImageFormat::Tiff));
+        assert_eq!(
+            ImageFormat::sniff(&[0, 0, 1, 0, 1, 0, 16]),
+            Some(ImageFormat::Ico)
+        );
+    }
+
+    #[test]
+    fn a_clip_inside_a_multibyte_character_backs_up_to_its_start() {
+        let limits = PreviewLimits {
+            max_text_bytes: 2,
+            ..PreviewLimits::default()
+        };
+        assert_eq!(clip("éé", &limits), ("é", true));
+        let tighter = PreviewLimits {
+            max_text_bytes: 1,
+            ..PreviewLimits::default()
+        };
+        assert_eq!(clip("é", &tighter), ("", true));
+    }
+
+    #[test]
     fn line_counting_and_endings() {
         assert_eq!(line_count(""), 0);
         assert_eq!(line_count("a"), 1);

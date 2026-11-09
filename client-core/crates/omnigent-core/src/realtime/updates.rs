@@ -1474,6 +1474,114 @@ mod tests {
         assert_eq!(connects(&outputs), [AttemptId(2)]);
     }
 
+    fn offline() -> TransportError {
+        TransportError::Offline {
+            message: "no route".into(),
+        }
+    }
+
+    #[test]
+    fn a_failed_connect_retries_and_a_stale_one_is_ignored() {
+        let mut harness = Harness::new();
+        harness.run(UpdatesInput::Start);
+        assert_eq!(
+            harness.run(UpdatesInput::Start),
+            Vec::new(),
+            "already connecting"
+        );
+        let attempt = harness.attempt();
+        let stale = harness.run(UpdatesInput::ConnectFailed {
+            attempt: AttemptId(99),
+            error: offline(),
+        });
+        assert_eq!(stale, Vec::new());
+        let outputs = harness.run(UpdatesInput::ConnectFailed {
+            attempt,
+            error: offline(),
+        });
+        assert!(matches!(
+            last_state(&outputs),
+            Some(ConnectionState::Reconnecting { .. } | ConnectionState::Connecting)
+        ));
+    }
+
+    #[test]
+    fn a_reconnect_timer_starts_the_next_attempt_and_an_old_watchdog_does_nothing() {
+        let mut harness = Harness::new();
+        let start = harness.run(UpdatesInput::Start);
+        let (old_watchdog, _) = timer(&start, TimerKind::Watchdog).unwrap();
+        let attempt = harness.attempt();
+        let outputs = harness.run(UpdatesInput::ConnectFailed {
+            attempt,
+            error: offline(),
+        });
+        let (token, _) = timer(&outputs, TimerKind::Reconnect).unwrap();
+        let next = harness.run(UpdatesInput::TimerFired { token });
+        assert_eq!(connects(&next).len(), 1);
+        assert_eq!(
+            harness.run(UpdatesInput::TimerFired {
+                token: old_watchdog
+            }),
+            Vec::new()
+        );
+    }
+
+    #[test]
+    fn an_open_reported_twice_ends_the_attempt() {
+        let mut harness = Harness::new();
+        harness.run(UpdatesInput::Start);
+        harness.open();
+        let outputs = harness.open();
+        assert!(matches!(
+            last_state(&outputs),
+            Some(ConnectionState::Failed {
+                error: LinkError::HostContract { .. }
+            })
+        ));
+    }
+
+    #[test]
+    fn a_snapshot_with_new_sessions_widens_the_watch() {
+        let mut harness = Harness::new();
+        harness.run(UpdatesInput::Start);
+        harness.open();
+        let outputs = harness.recv(&json!({"type": "snapshot", "items": [{"id": "conv_new"}]}));
+        assert_eq!(
+            sent(&outputs).iter().map(ids_of).collect::<Vec<_>>(),
+            [["conv_new".to_owned()]]
+        );
+    }
+
+    #[test]
+    fn frames_of_the_wrong_shape_reconnect() {
+        for frame in [
+            json!(7),
+            json!({"type": "changed", "items": [7]}),
+            json!({"type": "changed", "items": [{"id": 7}]}),
+        ] {
+            let mut harness = Harness::new();
+            harness.live();
+            let outputs = harness.recv(&frame);
+            assert!(
+                matches!(outputs[0], UpdatesOutput::Close { .. }),
+                "{frame}: {outputs:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stall_with_a_clock_that_went_backward_only_re_arms_the_watchdog() {
+        let mut harness = Harness::new();
+        let start = harness.run(UpdatesInput::Start);
+        let (watchdog, _) = timer(&start, TimerKind::Watchdog).unwrap();
+        harness.open();
+        harness.now = 0;
+        let outputs = harness.run(UpdatesInput::TimerFired { token: watchdog });
+        let (_, delay) = timer(&outputs, TimerKind::Watchdog).unwrap();
+        assert_eq!(delay, UpdatesConfig::default().silence_timeout_ms);
+        assert!(last_state(&outputs).is_none());
+    }
+
     #[test]
     fn send_failures_and_host_contract_violations_end_the_attempt() {
         let mut harness = Harness::new();

@@ -551,3 +551,207 @@ fn smart_routing_patches_the_cost_control_mode_and_checks_the_acknowledgement() 
         "{error:?}"
     );
 }
+
+fn patched(fields: &Value) -> Reply {
+    Reply::json(200, wire(fields, true).to_string())
+}
+
+fn switch_script() -> Vec<crate::client::test_support::Envelope> {
+    envelopes(&format!(
+        "{CONFIG}HarnessSwitchRetainsSessionAndChecksTargetAcknowledgement.jsonl"
+    ))
+}
+
+#[test]
+fn resetting_a_model_needs_the_server_to_drop_it() {
+    let transport = RouteTransport::local();
+    stub_session(&transport, &fields());
+    transport.respond(Some("PATCH"), PATH, None, patched(&fields()));
+    let core = live(transport);
+    let mut edit = edit_from(&fields());
+    edit.select_model(None);
+    assert!(matches!(
+        block_on(core.apply_configuration(&edit, "conv_a")),
+        Err(SessionError::DeliveryUncertain { .. })
+    ));
+}
+
+#[test]
+fn an_effort_only_edit_skips_the_model_patch() {
+    let transport = RouteTransport::local();
+    stub_session(&transport, &fields());
+    let acknowledged = merged(&json!({"reasoning_effort": "low"}));
+    transport.respond(Some("PATCH"), PATH, None, patched(&acknowledged));
+    let core = live(transport);
+    let mut edit = edit_from(&fields());
+    edit.effort = Some("low".into());
+    block_on(core.apply_configuration(&edit, "conv_a")).unwrap();
+    assert_eq!(
+        mutation_bodies(core.transport()),
+        [json!({"reasoning_effort": "low"})]
+    );
+}
+
+#[test]
+fn a_selection_changed_between_the_two_patches_stops_the_second() {
+    let transport = RouteTransport::local();
+    let acknowledged = merged(&json!({"model_override": "sample-fast"}));
+    transport.enqueue(
+        "GET",
+        PATH,
+        vec![
+            patched(&fields()),
+            patched(&merged(&json!({"model_override": "someone-elses"}))),
+        ],
+    );
+    transport.respond(Some("PATCH"), PATH, None, patched(&acknowledged));
+    let core = live(transport);
+    let mut edit = edit_from(&fields());
+    edit.select_model(Some("sample-fast".into()));
+    edit.effort = Some("low".into());
+    assert!(block_on(core.apply_configuration(&edit, "conv_a")).is_err());
+    assert_eq!(mutation_bodies(core.transport()).len(), 1, "only the model");
+}
+
+#[test]
+fn an_acknowledgement_naming_another_session_is_uncertain() {
+    let mut other = wire(&fields(), true);
+    other["id"] = json!("conv_b");
+    let other = Reply::json(200, other.to_string());
+
+    let transport = RouteTransport::local();
+    stub_session(&transport, &fields());
+    transport.respond(Some("PATCH"), PATH, None, other.clone());
+    let core = live(transport);
+    let mut edit = edit_from(&fields());
+    edit.select_model(Some("sample-fast".into()));
+    assert!(matches!(
+        block_on(core.apply_configuration(&edit, "conv_a")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("another session")
+    ));
+
+    let transport = RouteTransport::local();
+    stub_session(&transport, &claude_fields("default"));
+    transport.respond(Some("PATCH"), PATH, None, other.clone());
+    let core = live(transport);
+    assert!(matches!(
+        block_on(core.set_approval_mode("acceptEdits", "conv_a")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("another session")
+    ));
+
+    let baseline = summary(&fields()).configuration.unwrap();
+    let transport = RouteTransport::local();
+    for envelope in &switch_script()[..3] {
+        transport.respond(Some("GET"), &envelope.path, None, envelope.reply.clone());
+    }
+    transport.respond(
+        Some("POST"),
+        "/v1/sessions/conv_a/switch-agent",
+        None,
+        other,
+    );
+    let core = live(transport);
+    assert!(matches!(
+        block_on(core.switch_harness("target", &baseline, "conv_a")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("another session")
+    ));
+}
+
+#[test]
+fn a_crossing_event_makes_a_switch_or_approval_change_read_again() {
+    let event =
+        ServerStreamEvent::from_value(json!({"type": "session.model", "model": "new"})).unwrap();
+    let baseline = summary(&fields()).configuration.unwrap();
+    let transport = RouteTransport::local();
+    for envelope in &switch_script()[..3] {
+        transport.respond(Some("GET"), &envelope.path, None, envelope.reply.clone());
+    }
+    let switch = "/v1/sessions/conv_a/switch-agent";
+    transport.respond(Some("POST"), switch, None, patched(&fields()));
+    let gate = transport.gate("POST", switch);
+    let core = live(transport);
+    let mut operation = pin!(core.switch_harness("target", &baseline, "conv_a"));
+    assert!(still_pending(operation.as_mut()));
+    core.record_stream_event("conv_a", &event);
+    gate.open();
+    assert!(matches!(
+        block_on(operation),
+        Err(SessionError::DeliveryUncertain { .. })
+    ));
+
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        PATH,
+        vec![
+            patched(&claude_fields("default")),
+            patched(&claude_fields("acceptEdits")),
+        ],
+    );
+    transport.respond(
+        Some("PATCH"),
+        PATH,
+        None,
+        patched(&claude_fields("default")),
+    );
+    let gate = transport.gate("PATCH", PATH);
+    let core = live(transport);
+    let mut operation = pin!(core.set_approval_mode("acceptEdits", "conv_a"));
+    assert!(still_pending(operation.as_mut()));
+    core.record_stream_event("conv_a", &event);
+    gate.open();
+    let saved = block_on(operation).unwrap();
+    assert_eq!(
+        saved.configuration.unwrap().approval_mode.as_deref(),
+        Some("acceptEdits"),
+        "the fresh read wins over the stale acknowledgement"
+    );
+}
+
+#[test]
+fn approval_mode_needs_an_owner_a_live_unarchived_session_and_a_host() {
+    let transport = RouteTransport::local();
+    let mut read_only = wire(&claude_fields("default"), false);
+    read_only["permission_level"] = json!(1);
+    transport.respond(
+        Some("GET"),
+        PATH,
+        None,
+        Reply::json(200, read_only.to_string()),
+    );
+    let core = live(transport);
+    assert_eq!(
+        block_on(core.set_approval_mode("acceptEdits", "conv_a")).unwrap_err(),
+        SessionError::ReadOnly
+    );
+
+    let transport = RouteTransport::local();
+    let mut archived = claude_fields("default");
+    archived["archived"] = json!(true);
+    stub_session(&transport, &archived);
+    let core = live(transport);
+    assert_eq!(
+        block_on(core.set_approval_mode("acceptEdits", "conv_a")).unwrap_err(),
+        SessionError::Archived
+    );
+
+    let transport = RouteTransport::local();
+    stub_session(&transport, &claude_fields("default"));
+    let core = super::test_support::connected(transport);
+    assert_eq!(
+        block_on(core.set_approval_mode("acceptEdits", "conv_a")).unwrap_err(),
+        SessionError::StreamNotReady
+    );
+
+    let transport = RouteTransport::local();
+    let mut offline = claude_fields("default");
+    offline["host_online"] = json!(false);
+    offline["runner_online"] = json!(false);
+    stub_session(&transport, &offline);
+    let core = live(transport);
+    assert!(matches!(
+        block_on(core.set_approval_mode("acceptEdits", "conv_a")),
+        Err(SessionError::Configuration(ConfigurationError::Unavailable(reason)))
+            if reason.contains("Reconnect")
+    ));
+}

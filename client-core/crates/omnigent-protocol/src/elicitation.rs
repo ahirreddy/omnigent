@@ -281,6 +281,18 @@ mod tests {
     use crate::test_support::{all_fixtures, response};
 
     #[test]
+    fn an_unfamiliar_resolution_reason_is_kept() {
+        let resolved: ElicitationResolved =
+            serde_json::from_value(json!({"elicitation_id": "e", "reason": "brand_new"})).unwrap();
+        assert_eq!(
+            resolved.resolution(),
+            ElicitationResolution::Other {
+                reason: "brand_new".to_owned()
+            }
+        );
+    }
+
+    #[test]
     fn every_fixture_request_decodes_with_its_extras() {
         let mut count = 0;
         for (path, values) in all_fixtures() {
