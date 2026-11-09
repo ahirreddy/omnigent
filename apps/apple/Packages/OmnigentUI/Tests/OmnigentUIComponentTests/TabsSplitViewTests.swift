@@ -33,6 +33,21 @@
       return OffscreenWindow(AnyView(content), width: width, height: 400)
     }
 
+    /// A press and release through the application, where the pane's event monitor listens.
+    private func sendThroughApp(_ screen: OffscreenWindow<AnyView>, at point: CGPoint) throws {
+      let location = screen.host.convert(point, to: nil)
+      for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        let event = try #require(
+          NSEvent.mouseEvent(
+            with: type, location: location, modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: screen.window.windowNumber, context: nil, eventNumber: 1, clickCount: 1,
+            pressure: 1))
+        NSApp.sendEvent(event)
+      }
+      screen.settle(0.02)
+    }
+
     @Test("Without a split one pane shows, active")
     func single() throws {
       let screen = view(nil, TabSpy().actions)
@@ -78,13 +93,7 @@
       let spy = TabSpy()
       let screen = view(split, spy.actions)
       defer { screen.close() }
-      let point = screen.host.convert(CGPoint(x: 700, y: 200), to: nil)
-      let event = try #require(
-        NSEvent.mouseEvent(
-          with: .leftMouseDown, location: point, modifierFlags: [],
-          timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: screen.window.windowNumber,
-          context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
-      NSApp.sendEvent(event)
+      try sendThroughApp(screen, at: CGPoint(x: 700, y: 200))
       #expect(spy.calls == ["focus trailing"])
     }
 
@@ -93,7 +102,7 @@
       let spy = TabSpy()
       let screen = view(split, spy.actions)
       defer { screen.close() }
-      try screen.click(CGPoint(x: 200, y: 200))
+      try sendThroughApp(screen, at: CGPoint(x: 200, y: 200))
       #expect(spy.calls.isEmpty)
     }
 
