@@ -80,3 +80,13 @@ fn windows_and_filters_survive_extreme_values() {
     }
     assert_eq!(super::day_seconds("1970-01-02"), Some(86_400));
 }
+
+#[test]
+fn absent_or_null_usage_counts_are_zero() {
+    let object = serde_json::json!({"a": null});
+    let object = object.as_object().unwrap();
+    assert!(close(super::number(object, "a").unwrap(), 0.0));
+    assert!(close(super::number(object, "missing").unwrap(), 0.0));
+    assert_eq!(super::seconds(object, "a"), Ok(0));
+    assert_eq!(super::seconds(object, "missing"), Ok(0));
+}

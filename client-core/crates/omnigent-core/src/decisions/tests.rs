@@ -1371,3 +1371,14 @@ fn a_truncated_question_preview_fails_closed() {
         truncated.kind
     );
 }
+
+#[test]
+fn an_approval_does_not_accept_a_typed_answer() {
+    let approval = params(&json!({"message": "Approve?"}));
+    assert_eq!(
+        approval
+            .result_for(&DecisionResponse::Answer("yes".to_owned()))
+            .map(|_| ()),
+        Err(DecisionError::NotOffered)
+    );
+}

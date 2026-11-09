@@ -1134,6 +1134,17 @@ mod tests {
     }
 
     #[test]
+    fn a_connection_failure_reads_as_text() {
+        assert_eq!(
+            ConnectionFailure::AuthenticationRequired {
+                message: "sign in".to_owned()
+            }
+            .to_string(),
+            "authentication required: sign in"
+        );
+    }
+
+    #[test]
     fn a_second_response_head_fails_and_an_empty_chunk_changes_nothing() {
         let mut harness = Harness::new();
         harness.live();

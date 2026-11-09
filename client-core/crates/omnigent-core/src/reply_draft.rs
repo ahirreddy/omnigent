@@ -125,6 +125,13 @@ mod tests {
     }
 
     #[test]
+    fn edge_breaks_count_crlf_once_and_stop_at_two() {
+        assert_eq!(edge_breaks("\r\nx".chars()), 1);
+        assert_eq!(edge_breaks("\n\n\nx".chars()), 2);
+        assert_eq!(edge_breaks("x\n".chars()), 0);
+    }
+
+    #[test]
     fn a_quote_is_sent_as_a_block_quote_a_paragraph_apart() {
         let draft = ReplyDraft::default().quoting("one\r\ntwo\n");
         assert_eq!(draft.quotes, [quote("", "one\ntwo")]);

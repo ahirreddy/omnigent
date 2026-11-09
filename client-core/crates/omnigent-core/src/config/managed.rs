@@ -747,6 +747,18 @@ mod tests {
     const DESKTOP: ManagedDialect = ManagedDialect::Desktop;
 
     #[test]
+    fn a_non_boolean_flag_reads_as_a_sentence() {
+        assert_eq!(
+            ManagedConfigError::NotABoolean {
+                key: DATABRICKS_INTERNAL_FEATURES_KEY.to_owned(),
+                domain: None,
+            }
+            .to_string(),
+            format!("'{DATABRICKS_INTERNAL_FEATURES_KEY}' must be a boolean.")
+        );
+    }
+
+    #[test]
     fn entry_errors_read_as_sentences() {
         assert_eq!(
             ManagedEntryError::Credentials.to_string(),

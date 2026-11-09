@@ -43,3 +43,15 @@ fn continue_posts_the_continuation_and_resume_posts_retry_session() {
     );
     assert_eq!(bodies[1], json!({"type": "retry_session", "data": {}}));
 }
+
+#[test]
+fn an_unreadable_recovery_acknowledgement_is_uncertain() {
+    let transport = RouteTransport::local();
+    transport.writable_session("[]");
+    transport.ok("/v1/sessions/conv_a/events", "5");
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.recover_turn("conv_a", FailureRecovery::Resume)),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("acknowledgement")
+    ));
+}

@@ -1449,6 +1449,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_session_without_configuration_cannot_be_stopped_and_keeps_its_own_metadata() {
+        let bare = SessionSummary::new("conv_a", "t", "");
+        assert!(!bare.is_stoppable());
+        let newer = SessionSummary {
+            title: "fresh".to_owned(),
+            ..bare.clone()
+        };
+        assert_eq!(newer.clone().preserving_newer_metadata(Some(&bare)), newer);
+    }
+
+    #[test]
     fn list_rows_derive_status_permissions_and_defaults() {
         let row = decode_list_row(json!({
             "id": "conv_old", "status": "idle", "created_at": 5, "updated_at": 20,

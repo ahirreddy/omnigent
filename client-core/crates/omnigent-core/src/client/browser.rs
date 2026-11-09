@@ -154,6 +154,22 @@ mod tests {
     const RESULT: &str = "/v1/sessions/conv_a/browser/action_result/baction_1";
 
     #[test]
+    fn an_unreadable_result_acknowledgement_is_uncertain() {
+        let transport = RouteTransport::local();
+        transport.respond(
+            Some("POST"),
+            RESULT,
+            None,
+            Reply::json(200, r#"{"resolved":5}"#),
+        );
+        let core = connected(transport);
+        assert!(matches!(
+            block_on(core.post_browser_action_result("conv_a", "baction_1", "t", json!({}))),
+            Err(SessionError::DeliveryUncertain { detail }) if detail.contains("acknowledgement")
+        ));
+    }
+
+    #[test]
     fn one_claim_wins_and_its_token_carries_the_result() {
         let transport = RouteTransport::local();
         transport.respond(

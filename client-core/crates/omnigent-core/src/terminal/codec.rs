@@ -221,6 +221,18 @@ mod tests {
     }
 
     #[test]
+    fn clipboard_frames_must_carry_base64_text_that_decodes_to_something() {
+        let frame = |fields: Value| ServerFrame::decode(text(&fields));
+        assert!(
+            frame(json!({"type": "clipboard-write", "encoding": "base64", "data": 5})).is_err()
+        );
+        assert!(
+            frame(json!({"type": "clipboard-write", "encoding": "base64", "data": "===="}))
+                .is_err()
+        );
+    }
+
+    #[test]
     fn client_frames_match_the_bridge() {
         assert_eq!(
             ClientFrame::Input(b"ls\r".to_vec()).encode(),

@@ -937,3 +937,24 @@ fn every_lifecycle_event_names_its_response() {
         assert_eq!(event_response_id(&event), Some("r1"), "{kind}");
     }
 }
+
+#[test]
+fn records_ignore_an_empty_id_and_stay_bounded() {
+    use std::collections::BTreeMap;
+
+    use crate::reducer::MAX_RECORDS;
+    use crate::reducer::state::update_record;
+
+    let mut records: Option<BTreeMap<String, u32>> = None;
+    update_record(&mut records, "", Some(1));
+    assert_eq!(records, None);
+    for index in 0..=MAX_RECORDS {
+        update_record(&mut records, &format!("{index:08}"), Some(1));
+    }
+    let records = records.unwrap();
+    assert_eq!(records.len(), MAX_RECORDS);
+    assert!(
+        !records.contains_key("00000000"),
+        "the first key was dropped"
+    );
+}

@@ -344,6 +344,20 @@ mod tests {
     }
 
     #[test]
+    fn an_offline_runner_explains_itself_with_or_without_a_server_message() {
+        assert_eq!(
+            fail(
+                503,
+                r#"{"error":{"code":"runner_unavailable"}}"#,
+                NotFoundMeaning::Path
+            ),
+            WorkspaceError::RunnerOffline {
+                message: "The session's runner is offline. Reconnect it and try again.".to_owned()
+            }
+        );
+    }
+
+    #[test]
     fn reads_all_three_error_shapes() {
         assert_eq!(
             ServerFailure::from_body(br#"{"error":{"code":"not_found","message":"gone"}}"#),

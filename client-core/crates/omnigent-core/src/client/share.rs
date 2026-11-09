@@ -186,6 +186,56 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_repeated_cursor_is_refused_and_a_runaway_listing_stops_at_its_cap() {
+        let page = |cursor: &str| {
+            Reply::json(
+                200,
+                format!(r#"{{"permissions":[],"next_cursor":"{cursor}"}}"#),
+            )
+        };
+        let transport = RouteTransport::local();
+        transport.enqueue(
+            "GET",
+            "/v1/sessions/conv_a/permissions",
+            vec![page("a"), page("a")],
+        );
+        let core = connected(transport);
+        assert_eq!(
+            block_on(core.session_grants("conv_a")),
+            Err(SessionError::InvalidPagination)
+        );
+
+        let transport = RouteTransport::local();
+        transport.enqueue(
+            "GET",
+            "/v1/sessions/conv_a/permissions",
+            (0..=MAX_GRANT_PAGES)
+                .map(|index| page(&format!("c{index}")))
+                .collect(),
+        );
+        let core = connected(transport);
+        assert_eq!(block_on(core.session_grants("conv_a")).unwrap().len(), 0);
+        let reads = core
+            .transport()
+            .taken()
+            .iter()
+            .filter(|request| path_of(request).ends_with("/permissions"))
+            .count();
+        assert_eq!(reads, MAX_GRANT_PAGES);
+    }
+
+    #[test]
+    fn unreadable_grant_replies_are_reported_by_route() {
+        let transport = RouteTransport::local();
+        transport.ok("/v1/sessions/conv_a/permissions", "[]");
+        let core = connected(transport);
+        assert!(matches!(
+            block_on(core.session_grants("conv_a")),
+            Err(SessionError::MalformedResponse { detail }) if detail.contains("/permissions")
+        ));
+    }
+
+    #[test]
     fn grants_page_and_writes_send_the_servers_shape() {
         let transport = RouteTransport::local();
         transport.enqueue(

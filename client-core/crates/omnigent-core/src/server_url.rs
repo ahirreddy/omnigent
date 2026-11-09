@@ -214,6 +214,14 @@ mod tests {
     }
 
     #[test]
+    fn an_invalid_url_says_what_was_typed() {
+        assert_eq!(
+            ServerUrlError::Invalid("x y".to_owned()).to_string(),
+            "Invalid URL: x y"
+        );
+    }
+
+    #[test]
     fn databricks_workspace_roots_and_ui_urls_map_to_the_api_mount() {
         let root = |raw: &str| databricks_api_root(&Url::parse(raw).unwrap()).to_string();
         assert_eq!(

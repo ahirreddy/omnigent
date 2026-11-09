@@ -609,6 +609,16 @@ mod tests {
     // MARK: web/ios SettingsStoreTests.swift
 
     #[test]
+    fn saved_protocol_grants_of_the_wrong_shape_are_refused() {
+        let storage = MemoryStorage::default();
+        storage
+            .set(keys::ALLOWED_PROTOCOLS, Some(json!(5)))
+            .unwrap();
+        let settings = SettingsStore::load(storage).unwrap();
+        assert!(settings.is_protocol_allowed("mailto", "https://x").is_err());
+    }
+
+    #[test]
     fn errors_describe_what_was_stored_and_have_no_source_of_their_own() {
         use std::error::Error;
 

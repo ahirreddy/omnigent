@@ -559,3 +559,19 @@ fn a_patch_with_a_wrong_shape_or_an_unknown_reason_is_explained() {
         Err(SessionError::InvalidIdentifier { .. })
     ));
 }
+
+#[test]
+fn merge_methods_have_their_wire_names_and_team_reviewers_say_so() {
+    assert_eq!(MergeMethod::Merge.wire(), "merge");
+    assert_eq!(MergeMethod::Rebase.wire(), "rebase");
+    let core = connected(edit_routes());
+    let team = ReviewerTarget {
+        login: "core".into(),
+        kind: ReviewerKind::Team,
+    };
+    block_on(core.update_pull_request_reviewers("conv_a", PR, &[team], &[])).unwrap();
+    assert_eq!(
+        body_json(&core.transport().writes()[0])["add"][0]["kind"],
+        "team"
+    );
+}
