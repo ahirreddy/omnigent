@@ -600,6 +600,64 @@ async def test_discovery_process_captures_stderr_in_memory(
     assert await discovery.stderr_tail == "Error: provider unavailable"
 
 
+def _mise_shim(tmp_path: Path, which_exit: int = 0) -> tuple[Path, Path]:
+    """A ``codex`` shim linked to a fake mise, and the real Codex it names."""
+    real = tmp_path / "installs" / "codex"
+    real.parent.mkdir()
+    real.write_text(f"#!/bin/sh\necho launched > {tmp_path / 'launched'}\n")
+    real.chmod(0o755)
+    mise = tmp_path / "bin" / "mise"
+    mise.parent.mkdir()
+    mise.write_text(
+        '#!/bin/sh\n[ "$1 $2" = "which codex" ] || exit 2\necho no tool >&2\n'
+        f"[ {which_exit} = 0 ] || exit {which_exit}\necho {real}\n"
+    )
+    mise.chmod(0o755)
+    shim = tmp_path / "shims" / "codex"
+    shim.parent.mkdir()
+    shim.symlink_to(mise)
+    return shim, real
+
+
+async def test_discovery_launches_the_codex_behind_a_mise_shim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mise shim would reject the tagged argv[0], so the real Codex is launched."""
+    from omnigent.harnesses.codex_native import app_server as codex_native_app_server
+
+    shim, _ = _mise_shim(tmp_path)
+    monkeypatch.setattr(
+        codex_native_app_server, "acquire_codex_native_process_owner_lock", lambda: None
+    )
+
+    discovery = await codex_native_app_server._start_codex_model_discovery_process(
+        codex_path=str(shim),
+        listen_url="ws://127.0.0.1:12345",
+        env={},
+        cwd=tmp_path,
+    )
+    await discovery.process.wait()
+
+    assert (tmp_path / "launched").read_text() == "launched\n"
+
+
+async def test_mise_shim_that_cannot_resolve_reports_why(tmp_path: Path) -> None:
+    from omnigent.harnesses.codex_native.app_server import _codex_behind_argv0_shim
+
+    shim, _ = _mise_shim(tmp_path, which_exit=3)
+
+    with pytest.raises(RuntimeError, match=r"could not resolve .*\(3\): no tool"):
+        await _codex_behind_argv0_shim(str(shim), tmp_path)
+
+
+async def test_codex_that_is_no_shim_launches_as_is(tmp_path: Path) -> None:
+    from omnigent.harnesses.codex_native.app_server import _codex_behind_argv0_shim
+
+    _, real = _mise_shim(tmp_path)
+
+    assert await _codex_behind_argv0_shim(str(real), tmp_path) == str(real)
+
+
 async def test_discovery_spawn_failure_releases_owner_lock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

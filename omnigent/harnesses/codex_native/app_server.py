@@ -1631,6 +1631,7 @@ async def _start_codex_model_discovery_process(
 ) -> _CodexModelDiscoveryProcess:
     """Start the isolated Codex process used only for model discovery."""
     registry_tag = f"codex-model-probe-{uuid.uuid4().hex}"
+    codex_path = await _codex_behind_argv0_shim(codex_path, cwd)
     argv = _build_native_codex_app_server_argv(
         tagged_argv0=_tagged_codex_argv0(codex_path, registry_tag),
         listen_url=listen_url,
@@ -2333,6 +2334,36 @@ def _configured_app_server_command() -> tuple[str, ...]:
     return resolve_codex_app_server_command(load_effective_config())
 
 
+async def _codex_behind_argv0_shim(codex_path: str, cwd: Path) -> str:
+    """Return the real Codex behind a mise shim, else ``codex_path``.
+
+    A mise shim picks its tool from argv[0], so it rejects the crash-reap tag.
+
+    :param codex_path: The resolved Codex CLI, possibly a shim.
+    :param cwd: The directory Codex will run in, which selects mise's tool versions.
+    :returns: The path to launch with the tagged argv[0].
+    :raises RuntimeError: When mise cannot say which Codex the shim runs.
+    """
+    resolved = Path(codex_path).resolve()
+    if resolved.name != "mise":
+        return codex_path
+    process = await asyncio.create_subprocess_exec(
+        str(resolved),
+        "which",
+        Path(codex_path).name,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=str(cwd),
+    )
+    stdout, stderr = await process.communicate()
+    if process.returncode != 0:
+        raise RuntimeError(
+            f"mise could not resolve {codex_path} ({process.returncode}): "
+            f"{stderr.decode(errors='replace').strip()}"
+        )
+    return stdout.decode().strip()
+
+
 def _tagged_codex_argv0(codex_path: str, registry_tag: str) -> str:
     """Return the argv[0] carrying the crash-reap tag for a registered app-server."""
     return f"{Path(codex_path).name} {codex_native_session_tag_cmdline_arg(registry_tag)}"
@@ -2479,6 +2510,7 @@ class CodexNativeAppServer:
         """
         self.process_registry_tag = f"codex-native-{uuid.uuid4().hex}"
         executable, *launch_args = self.app_server_command or (self.codex_path,)
+        executable = await _codex_behind_argv0_shim(executable, self.cwd)
         argv = _build_native_codex_app_server_argv(
             tagged_argv0=_tagged_codex_argv0(executable, self.process_registry_tag),
             listen_url=resolved_listen,
