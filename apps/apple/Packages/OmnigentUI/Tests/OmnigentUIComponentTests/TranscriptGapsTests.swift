@@ -37,26 +37,26 @@
     func pacerHiddenBeforeTick() async throws {
       let store = RowStore()
       let pacer = TranscriptRowsPacer(interval: .milliseconds(30))
-      _ = pacer.rows(from: reader(store), isShown: true)
+      _ = pacer.rows(from: reader(store))
       store.append("first")
       try await spin { pacer.published == 1 }
-      _ = pacer.rows(from: reader(store), isShown: true)
+      _ = pacer.rows(from: reader(store))
       store.append("second")
       try await Task.sleep(for: .milliseconds(5))
-      _ = pacer.rows(from: reader(store), isShown: false)
+      pacer.setShown(false)
       try await Task.sleep(for: .milliseconds(60))
       #expect(pacer.published == 1, "nothing publishes to a hidden transcript")
-      _ = pacer.rows(from: reader(store), isShown: true)
+      pacer.setShown(true)
       try await spin { pacer.published == 2 }
       #expect(pacer.published == 2)
-      #expect(pacer.rows(from: reader(store), isShown: true).rows.count == 2)
+      #expect(pacer.rows(from: reader(store)).rows.count == 2)
     }
 
     @Test("A newer schedule replaces an update still waiting for its tick")
     func pacerRescheduled() async throws {
       let store = RowStore()
       let pacer = TranscriptRowsPacer(interval: .seconds(30))
-      _ = pacer.rows(from: reader(store), isShown: true)
+      _ = pacer.rows(from: reader(store))
       pacer.schedule(after: .seconds(30))
       try await Task.sleep(for: .milliseconds(10))
       pacer.schedule(after: .zero)
