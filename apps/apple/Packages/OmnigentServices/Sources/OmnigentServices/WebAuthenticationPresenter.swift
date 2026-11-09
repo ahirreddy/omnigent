@@ -1,5 +1,6 @@
 public import AuthenticationServices
 public import Foundation
+import Synchronization
 
 #if os(macOS)
   import AppKit
@@ -36,17 +37,57 @@ private typealias OutcomeContinuation = CheckedContinuation<
   Result<URL, WebAuthenticationError>, Never
 >
 
+/// The part of `ASWebAuthenticationSession` a sign-in drives.
+@MainActor
+protocol WebAuthenticationSessionRunning: AnyObject {
+  /// Supplies the window. The session holds it weakly.
+  var presentationContextProvider: (any ASWebAuthenticationPresentationContextProviding)? {
+    get set
+  }
+  /// Whether to skip the browser's shared cookies.
+  var prefersEphemeralWebBrowserSession: Bool { get set }
+  /// Shows the sign-in sheet.
+  /// - Returns: Whether the session started.
+  func start() -> Bool
+}
+
+extension ASWebAuthenticationSession: WebAuthenticationSessionRunning {}
+
 /// Runs an `ASWebAuthenticationSession` for OIDC sign-in and returns its callback URL.
 @MainActor
-public final class WebAuthenticationPresenter: NSObject,
-  ASWebAuthenticationPresentationContextProviding
-{
-  private var activeSession: ASWebAuthenticationSession?
-  private var presentingAnchor: ASPresentationAnchor?
+public final class WebAuthenticationPresenter {
+  /// Makes a session from its URL, callback and completion.
+  typealias SessionFactory =
+    @MainActor (
+      URL, WebAuthenticationCallback, @escaping @Sendable (URL?, (any Error)?) -> Void
+    ) -> any WebAuthenticationSessionRunning
+
+  private let makeSession: SessionFactory
+  private var activeSession: (any WebAuthenticationSessionRunning)?
+  private var presentationContext: SignInPresentationContext?
 
   /// Creates a presenter.
-  public override init() {
-    super.init()
+  public convenience init() {
+    self.init(makeSession: Self.makeSystemSession)
+  }
+
+  /// Creates a presenter over `makeSession`, so a sign-in can run without a sheet.
+  init(makeSession: @escaping SessionFactory) {
+    self.makeSession = makeSession
+  }
+
+  /// A system session, not started.
+  /// - Parameters:
+  ///   - url: The authorization URL.
+  ///   - callback: The redirect the session intercepts.
+  ///   - completion: Receives the callback URL or the error.
+  /// - Returns: The session.
+  static func makeSystemSession(
+    url: URL, callback: WebAuthenticationCallback,
+    completion: @escaping @Sendable (URL?, (any Error)?) -> Void
+  ) -> any WebAuthenticationSessionRunning {
+    ASWebAuthenticationSession(
+      url: url, callback: callback.sessionCallback, completionHandler: completion)
   }
 
   /// Presents the sign-in page and waits for the callback.
@@ -70,24 +111,24 @@ public final class WebAuthenticationPresenter: NSObject,
     guard let anchor = anchorProvider.presentationAnchor() else {
       throw .failed(message: "No window is available to present the sign-in sheet.")
     }
-    presentingAnchor = anchor
+    let context = SignInPresentationContext(anchor: anchor)
+    presentationContext = context
     defer {
       activeSession = nil
-      presentingAnchor = nil
+      presentationContext = nil
     }
 
     let outcome = await withCheckedContinuation { (continuation: OutcomeContinuation) in
-      let session = ASWebAuthenticationSession(
-        url: url, callback: callback.sessionCallback
-      ) { @Sendable callbackURL, error in
+      let waiter = OutcomeWaiter(continuation)
+      let session = makeSession(url, callback) { @Sendable callbackURL, error in
         // The completion's queue is undocumented, so it must not assume the main actor.
-        continuation.resume(returning: Self.outcome(callbackURL: callbackURL, error: error))
+        waiter.resume(returning: Self.outcome(callbackURL: callbackURL, error: error))
       }
-      session.presentationContextProvider = self
+      session.presentationContextProvider = context
       session.prefersEphemeralWebBrowserSession = prefersEphemeralSession
       activeSession = session
       guard session.start() else {
-        continuation.resume(
+        waiter.resume(
           returning: .failure(.failed(message: "The sign-in session could not start.")))
         return
       }
@@ -98,16 +139,6 @@ public final class WebAuthenticationPresenter: NSObject,
     case .failure(let error):
       throw error
     }
-  }
-
-  /// The anchor captured when the sign-in started.
-  /// - Parameter session: The session asking for its window.
-  /// - Returns: The window the sign-in sheet attaches to.
-  public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-    guard let presentingAnchor else {
-      preconditionFailure("The sign-in session asked for an anchor outside authenticate(url:).")
-    }
-    return presentingAnchor
   }
 
   /// Maps the session's completion values onto a typed outcome.
@@ -129,8 +160,42 @@ public final class WebAuthenticationPresenter: NSObject,
   }
 }
 
+/// Gives a session the window captured when its sign-in started.
+@MainActor
+private final class SignInPresentationContext: NSObject,
+  ASWebAuthenticationPresentationContextProviding
+{
+  private let anchor: ASPresentationAnchor
+
+  init(anchor: ASPresentationAnchor) {
+    self.anchor = anchor
+  }
+
+  func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+    anchor
+  }
+}
+
+/// Resumes a sign-in once. Apple doesn't say whether a session that fails to start also calls its
+/// completion, and a second resume would crash the app.
+private final class OutcomeWaiter: Sendable {
+  private let continuation: Mutex<OutcomeContinuation?>
+
+  init(_ continuation: OutcomeContinuation) {
+    self.continuation = Mutex(continuation)
+  }
+
+  func resume(returning outcome: Result<URL, WebAuthenticationError>) {
+    let waiting = continuation.withLock { continuation in
+      defer { continuation = nil }
+      return continuation
+    }
+    waiting?.resume(returning: outcome)
+  }
+}
+
 extension WebAuthenticationCallback {
-  fileprivate var sessionCallback: ASWebAuthenticationSession.Callback {
+  var sessionCallback: ASWebAuthenticationSession.Callback {
     switch self {
     case .customScheme(let scheme):
       .customScheme(scheme)
