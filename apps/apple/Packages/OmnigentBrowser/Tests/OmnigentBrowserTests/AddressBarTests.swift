@@ -5,6 +5,7 @@ import Testing
 
 #if os(macOS)
   import AppKit
+  import OmnigentViewTesting
   import SwiftUI
 #endif
 
@@ -57,6 +58,7 @@ struct AddressBarTests {
     private static func render(_ view: AnyView, width: CGFloat, scheme: ColorScheme) throws
       -> Data
     {
+      SystemSideEffects.install()
       _ = NSApplication.shared
       let host = NSHostingView(
         rootView: view.environment(\.colorScheme, scheme).frame(width: width)

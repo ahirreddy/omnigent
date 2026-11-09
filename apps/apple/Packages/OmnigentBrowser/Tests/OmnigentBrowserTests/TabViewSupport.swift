@@ -179,7 +179,10 @@
       }
     }
 
-    private func frame(of view: NSView) -> CGRect { view.convert(view.bounds, to: host) }
+    /// A view's frame from the top left of a sheet if one is up, as clicks expect.
+    private func frame(of view: NSView) -> CGRect {
+      view.convert(view.bounds, to: activeWindow.contentView ?? host)
+    }
   }
 
   extension CGPoint {
