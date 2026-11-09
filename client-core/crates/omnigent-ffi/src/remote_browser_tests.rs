@@ -60,7 +60,7 @@ fn connected() -> Harness {
 }
 
 #[derive(Default)]
-struct Recorder {
+pub(crate) struct Recorder {
     states: Mutex<Vec<RemoteBrowserSnapshot>>,
     video: Mutex<Vec<VideoFrame>>,
     stills: Mutex<Vec<StillImage>>,
@@ -1313,4 +1313,58 @@ fn viewport_helpers_place_and_fit() {
     assert_eq!(dom_code_for_mac_key_code(u16::MAX), None);
     assert_eq!(dom_code_for_hid_usage(0x04).as_deref(), Some("KeyA"));
     assert_eq!(dom_code_for_hid_usage(u32::MAX), None);
+}
+
+#[test]
+fn a_viewport_within_limits_is_sent() {
+    let (mut harness, _recorder, driver) = attached(RemoteBrowserMode::Control, "hello", true);
+    let (_, _, socket) = harness.sockets.last();
+    lock(&socket.sent).clear();
+    driver
+        .resize(RemoteViewport {
+            width: 800,
+            height: 600,
+            dpr: 2.0,
+        })
+        .unwrap();
+    harness.pump();
+    let sent = lock(&socket.sent).clone();
+    assert!(
+        sent.iter().any(|frame| frame.contains(r#""w":800"#)),
+        "{sent:?}"
+    );
+}
+
+#[test]
+fn a_video_wake_still_queued_when_the_tab_closes_is_dropped() {
+    let (mut harness, recorder, driver) = attached(RemoteBrowserMode::Control, "hello", false);
+    let (_, sink, _) = harness.sockets.last();
+    let shown = lock(&recorder.video).len();
+    sink.message(binary("h264_idr"));
+    drop(driver);
+    harness.pump();
+    assert_eq!(lock(&recorder.video).len(), shown);
+    drop(sink);
+    assert_eq!(Arc::strong_count(&recorder), 1);
+}
+
+#[test]
+fn the_rarer_tab_values_convert() {
+    use omnigent_protocol::remote_browser as wire;
+    assert_eq!(
+        crate::remote_browser::TabCreator::from(wire::CreatedBy::Unknown {
+            value: "robot".into()
+        }),
+        crate::remote_browser::TabCreator::Unknown {
+            value: "robot".into()
+        }
+    );
+    assert_eq!(
+        wire::MobileEmulation::from(RemoteMobileEmulation::Site),
+        wire::MobileEmulation::Site
+    );
+    assert_eq!(
+        RemoteMobileEmulation::from(wire::MobileEmulation::Site),
+        RemoteMobileEmulation::Site
+    );
 }

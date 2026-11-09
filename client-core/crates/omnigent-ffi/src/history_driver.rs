@@ -121,3 +121,7 @@ impl Engine {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "history_driver_tests.rs"]
+mod tests;

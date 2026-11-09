@@ -678,3 +678,228 @@ fn a_background_refresh_reports_its_failure_on_the_session() {
         before
     );
 }
+
+const TERMINALS: &str = "/v1/sessions/conv_a/resources/terminals";
+const TERMINAL_MAIN: &str =
+    r#"{"id":"terminal_main","type":"terminal","metadata":{"running":true}}"#;
+
+/// A connected harness with `conv_a` open and hydrated, and its stream's sink.
+fn opened_session() -> (Harness, Arc<crate::host::ByteSink>) {
+    let mut harness = connected();
+    harness.writable_session("conv_a");
+    harness.http.route(
+        TERMINALS,
+        json(
+            200,
+            &format!(r#"{{"object":"list","data":[{TERMINAL_MAIN}],"has_more":false}}"#),
+        ),
+    );
+    harness.core.open_session("conv_a".into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(
+        200,
+        vec![crate::http::HttpHeader {
+            name: "Content-Type".into(),
+            value: "text/event-stream".into(),
+        }],
+    );
+    sink.chunk(b"event: session.heartbeat\ndata: {\"type\":\"session.heartbeat\"}\n\n".to_vec());
+    harness.pump();
+    (harness, sink)
+}
+
+fn stream_frame(body: &serde_json::Value) -> Vec<u8> {
+    format!(
+        "event: {}\ndata: {body}\n\n",
+        body["type"].as_str().unwrap()
+    )
+    .into_bytes()
+}
+
+/// The badges of the last `TerminalsChanged` in `events`.
+fn last_badges(events: &[CoreEvent]) -> Option<Vec<(String, TerminalStatus)>> {
+    events.iter().rev().find_map(|event| match event {
+        CoreEvent::TerminalsChanged { terminals, .. } => Some(
+            terminals
+                .iter()
+                .map(|row| (row.terminal.id.clone(), row.status))
+                .collect(),
+        ),
+        _ => None,
+    })
+}
+
+#[test]
+fn a_terminal_listed_created_or_deleted_reaches_the_open_session() {
+    let (mut harness, _sink) = opened_session();
+    harness.events.take();
+    let core = Arc::clone(&harness.core);
+    let listed = harness
+        .run(async move { core.list_terminals("conv_a".into()).await })
+        .unwrap();
+    assert_eq!(listed[0].id, "terminal_main");
+    assert_eq!(
+        last_badges(&harness.events.take()),
+        Some(vec![("terminal_main".to_owned(), TerminalStatus::Idle)])
+    );
+
+    let created = r#"{"id":"terminal_two","type":"terminal","metadata":{"running":true}}"#;
+    harness
+        .http
+        .route_method("POST", TERMINALS, json(200, created));
+    let core = Arc::clone(&harness.core);
+    harness
+        .run(async move { core.create_terminal("conv_a".into(), "zsh".into()).await })
+        .unwrap();
+    let badges = last_badges(&harness.events.take()).unwrap();
+    assert_eq!(badges.len(), 2, "{badges:?}");
+
+    harness.http.route_method(
+        "DELETE",
+        &format!("{TERMINALS}/terminal_two"),
+        json(200, r#"{"id":"terminal_two"}"#),
+    );
+    let core = Arc::clone(&harness.core);
+    harness
+        .run(async move {
+            core.delete_terminal("conv_a".into(), "terminal_two".into())
+                .await
+        })
+        .unwrap();
+    assert_eq!(
+        last_badges(&harness.events.take()),
+        Some(vec![("terminal_main".to_owned(), TerminalStatus::Idle)])
+    );
+}
+
+#[test]
+fn a_terminal_event_that_cannot_be_read_is_reported_and_the_list_read_again() {
+    let (mut harness, sink) = opened_session();
+    harness.events.take();
+    let reads = harness.http.count(TERMINALS);
+    sink.chunk(stream_frame(&serde_json::json!({
+        "type": "session.resource.created",
+        "resource": {"type": "terminal"},
+    })));
+    harness.pump();
+    let events = harness.events.take();
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CoreEvent::Error {
+                scope: ErrorScope::Session { .. },
+                error: CoreError::Sync { .. },
+            }
+        )),
+        "{events:#?}"
+    );
+    assert_eq!(harness.http.count(TERMINALS), reads + 1);
+}
+
+#[test]
+fn an_activity_badge_lapses_after_the_last_pulse_and_stops_with_the_session() {
+    let (mut harness, sink) = opened_session();
+    let core = Arc::clone(&harness.core);
+    harness
+        .run(async move { core.list_terminals("conv_a".into()).await })
+        .unwrap();
+    let pulse = stream_frame(&serde_json::json!({
+        "type": "session.terminal.activity",
+        "terminal_id": "terminal_main",
+    }));
+    harness.events.take();
+    sink.chunk(pulse.clone());
+    harness.pump();
+    assert_eq!(
+        last_badges(&harness.events.take()),
+        Some(vec![("terminal_main".to_owned(), TerminalStatus::Active)])
+    );
+
+    // A second pulse moves the deadline; the first one's timer must not end the badge.
+    harness.advance(1_000);
+    sink.chunk(pulse.clone());
+    harness.pump();
+    harness.events.take();
+    harness.advance(1_000);
+    assert_eq!(last_badges(&harness.events.take()), None);
+    harness.advance(500);
+    assert_eq!(
+        last_badges(&harness.events.take()),
+        Some(vec![("terminal_main".to_owned(), TerminalStatus::Idle)])
+    );
+
+    sink.chunk(pulse);
+    harness.pump();
+    harness.core.close_session("conv_a".into());
+    harness.pump();
+    harness.events.take();
+    harness.advance(10_000);
+    assert_eq!(last_badges(&harness.events.take()), None);
+}
+
+#[test]
+fn the_reconnect_timer_dials_the_next_socket() {
+    let (mut harness, recorder, _driver) = attached(Some(4));
+    let before = harness.sockets.count();
+    let (_, sink, _) = harness.sockets.last();
+    sink.ended(SocketEnd::Failed {
+        failure: ConnectionFailure::Offline {
+            message: "gone".into(),
+        },
+    });
+    harness.pump();
+    assert!(matches!(
+        recorder.last(),
+        TerminalAttachState::Reconnecting { .. }
+    ));
+    harness.advance(120_000);
+    assert_eq!(harness.sockets.count(), before + 1);
+}
+
+/// A loop nothing runs yet, over `harness`'s fakes.
+fn idle_loop(
+    harness: &Harness,
+    listener: Arc<Recorder>,
+) -> (AttachLoop, UnboundedReceiver<AttachMsg>) {
+    let (tx, rx) = mpsc::unbounded();
+    let attach = AttachLoop {
+        machine: core::TerminalAttach::new(
+            core::AttachConfig::default(),
+            core::attach_options(Some(4), None),
+            SplitMix64::new(1),
+        ),
+        sessions: Arc::clone(&harness.core.inner.sessions),
+        host: harness.core.inner.host.clone(),
+        transport: Some(harness.sockets.clone()),
+        listener,
+        session_id: "conv_a".into(),
+        terminal_id: "terminal_main".into(),
+        tx,
+        sockets: HashMap::new(),
+        timers: HashMap::new(),
+    };
+    (attach, rx)
+}
+
+#[test]
+fn a_clipboard_write_that_is_not_text_becomes_a_notice() {
+    let harness = connected();
+    let recorder = Arc::new(Recorder::default());
+    let (mut attach, _queue) = idle_loop(&harness, recorder.clone());
+    attach.output(core::AttachOutput::ClipboardWrite { data: vec![0xff] });
+    assert_eq!(crate::engine::lock(&recorder.clipboard).len(), 0);
+    let notices = crate::engine::lock(&recorder.notices).clone();
+    assert!(notices[0].contains("not UTF-8"), "{notices:?}");
+}
+
+#[test]
+fn shutting_down_stops_a_timer_the_machine_left_behind() {
+    let harness = connected();
+    let (mut attach, queue) = idle_loop(&harness, Arc::new(Recorder::default()));
+    let (timer, _registration) = AbortHandle::new_pair();
+    attach.timers.insert(99, timer.clone());
+    attach.tx.unbounded_send(AttachMsg::Shutdown).unwrap();
+    futures::executor::block_on(attach.run(queue));
+    assert!(timer.is_aborted());
+}

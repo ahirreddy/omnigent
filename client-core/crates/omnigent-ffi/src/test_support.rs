@@ -7,20 +7,22 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use futures::channel::mpsc::UnboundedReceiver;
 use futures::channel::oneshot;
 use futures::executor::LocalPool;
 use futures::task::LocalSpawnExt;
 
 use crate::client::ClientCore;
 use crate::connection::{HostConfig, OidcRedirect, UrlPolicy};
-use crate::engine::lock;
+use crate::engine::{Engine, Listeners, Msg, Transports, lock};
 use crate::events::{ConnectionPhase, CoreEvent, CoreListener};
 use crate::host::{
-    ByteSink, Clock, CoreTask, EntropyError, EntropySource, EventStreamTransport, HttpTransport,
-    MessageSink, Scheduler, SecureStore, SecureStoreError, SecureStoreKey, StreamHandle,
-    WebSocketHandle, WebSocketTransport,
+    ByteSink, Clock, CoreTask, EntropyError, EntropySource, EventStreamTransport, ForeignHttp,
+    HttpTransport, MessageSink, Scheduler, SecureStore, SecureStoreError, SecureStoreKey,
+    StreamHandle, WebSocketHandle, WebSocketTransport,
 };
 use crate::http::{HttpHeader, HttpRequest, HttpResponse, TransportError};
+use crate::runtime::{CoreTransport, Host, Sessions};
 
 pub(crate) fn fixture(path: &str) -> String {
     let full = format!("{}/../../fixtures/{path}", env!("CARGO_MANIFEST_DIR"));
@@ -717,6 +719,41 @@ impl Harness {
             json(200, r#"{"queued":true,"item_id":"i1","pending_id":"p1"}"#),
         );
         self.core.sessions().set_live_session(session_id, true);
+    }
+
+    /// An engine over this harness's fakes that nothing runs: a test calls its handlers itself,
+    /// for orders a running engine's queue does not produce.
+    pub(crate) fn idle_engine(&self) -> (Engine, UnboundedReceiver<Msg>) {
+        let listeners = Arc::new(Listeners::default());
+        listeners.add(self.events.clone());
+        let sessions = Arc::new(Sessions::new(
+            CoreTransport::Foreign(ForeignHttp(self.http.clone())),
+            omnigent_core::CoreConfig {
+                allows_insecure_http: true,
+            },
+        ));
+        Engine::new(
+            Host {
+                clock: self.clock.clone(),
+                scheduler: self.scheduler.clone(),
+            },
+            Transports {
+                streams: Some(self.streams.clone()),
+                sockets: Some(self.sockets.clone()),
+                demo: None,
+            },
+            sessions,
+            listeners,
+            1,
+        )
+    }
+
+    /// Moves time forward and fires due timers, leaving the work they spawned queued, so a test
+    /// can act between a timer firing and its work running.
+    pub(crate) fn advance_stopping_before_spawned_work(&mut self, ms: u64) {
+        self.clock.now.fetch_add(ms, Ordering::SeqCst);
+        self.scheduler.fire_due();
+        self.pool.run_until_stalled();
     }
 
     /// Moves time back, as a host clock that is not monotonic would.

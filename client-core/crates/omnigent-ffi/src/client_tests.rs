@@ -1862,3 +1862,47 @@ fn attachment_previews_fetch_only_this_sessions_files() {
         .unwrap_err();
     assert!(matches!(error, CoreError::Session { .. }), "{error:?}");
 }
+
+#[test]
+fn a_renewal_scheduled_for_an_old_connection_is_cancelled_at_once() {
+    let mut harness = crate::test_support::connected();
+    let before = harness.scheduler.pending_timers();
+    let inner = Arc::clone(&harness.core.inner);
+    let timer = inner.host.after(1_000, || {});
+    harness.pump();
+    assert_eq!(harness.scheduler.pending_timers(), before + 1);
+    let stale = lock(&inner.auth).generation.wrapping_sub(1);
+    inner.install_renewal(stale, timer);
+    harness.pump();
+    assert_eq!(harness.scheduler.pending_timers(), before);
+}
+
+#[test]
+fn a_file_on_its_way_up_says_so_in_the_draft() {
+    let mut harness = writable();
+    let core = Arc::clone(&harness.core);
+    let id = core
+        .add_attachment(
+            SESSION.into(),
+            "notes.txt".into(),
+            Some("text/plain".into()),
+            b"notes".to_vec(),
+        )
+        .unwrap();
+    let files = format!("/v1/sessions/{SESSION}/resources/files");
+    harness
+        .http
+        .route(&files, json(400, r#"{"detail":"refused"}"#));
+    let gate = harness.http.hold(&files);
+    let upload = Arc::clone(&core);
+    let finished = harness.start(async move { upload.upload_attachment(SESSION.into(), id).await });
+    let draft = core.attachment_draft(SESSION.into()).unwrap();
+    assert!(
+        matches!(draft.items[0].status, UploadStatus::Uploading { .. }),
+        "{:?}",
+        draft.items[0].status
+    );
+    gate.send(()).unwrap();
+    harness.pump();
+    assert!(finished.borrow_mut().take().unwrap().is_err());
+}

@@ -226,3 +226,7 @@ impl Engine {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "updates_driver_tests.rs"]
+mod tests;

@@ -577,12 +577,13 @@ impl Engine {
 
     /// Session-list rows for the open sessions (a `snapshot` or `changed` frame).
     pub(crate) fn sync_list_rows(&mut self, rows: &[omnigent_protocol::SessionListItem]) {
-        let ids: Vec<String> = self.drivers.keys().cloned().collect();
-        for id in ids {
-            let Some(driver) = self.drivers.get(&id) else {
-                continue;
-            };
-            match driver.sync.handle_list_rows_raw(rows) {
+        let syncs: Vec<(String, Arc<ConversationSync>)> = self
+            .drivers
+            .iter()
+            .map(|(id, driver)| (id.clone(), Arc::clone(&driver.sync)))
+            .collect();
+        for (id, sync) in syncs {
+            match sync.handle_list_rows_raw(rows) {
                 Ok(applied) => {
                     self.publish(&id, applied);
                     self.publish_terminals(&id);
@@ -612,3 +613,7 @@ impl Engine {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "stream_driver_tests.rs"]
+mod tests;

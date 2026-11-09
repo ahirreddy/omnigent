@@ -3,10 +3,13 @@
 
 use std::sync::Arc;
 
+use futures::FutureExt as _;
+
+use crate::connection::UrlPolicy;
 use crate::decisions::DecisionResponse;
 use crate::engine::DEMO_TICK_MS;
-use crate::events::CoreEvent;
-use crate::test_support::Harness;
+use crate::events::{CoreEvent, ErrorScope};
+use crate::test_support::{Harness, json};
 
 fn unread_events(events: &[CoreEvent]) -> Vec<Vec<String>> {
     events
@@ -189,4 +192,122 @@ fn pending_decisions_read_fresh_without_opening_and_drop_answered_requests() {
     let core = Arc::clone(&harness.core);
     let invalid = harness.run(async move { core.pending_decisions("../x".into()).await });
     assert!(invalid.is_err());
+}
+
+/// A connected harness whose session list is `row`.
+fn connected_listing(row: &str) -> Harness {
+    let mut harness = Harness::new(UrlPolicy::Development);
+    harness.local_server();
+    harness.http.route(
+        "/v1/sessions",
+        json(
+            200,
+            &format!(r#"{{"object":"list","data":[{row}],"has_more":false}}"#),
+        ),
+    );
+    let core = Arc::clone(&harness.core);
+    harness
+        .run(async move { core.connect("http://127.0.0.1:6767".into(), None).await })
+        .unwrap();
+    harness
+}
+
+const ROW: &str = r#"{"id":"conv_a","status":"idle","title":"A","created_at":1,"updated_at":100,"permission_level":4}"#;
+
+/// A connected harness whose list says the server keeps this viewer's read state.
+fn connected_tracking_reads() -> Harness {
+    connected_listing(&ROW.replace(
+        r#""permission_level":4"#,
+        r#""permission_level":4,"viewer_last_seen":100"#,
+    ))
+}
+
+const READ_STATE: &str = "/v1/sessions/conv_a/read-state";
+
+fn set_unread(harness: &mut Harness, unread: bool) -> Result<(), crate::errors::CoreError> {
+    let core = Arc::clone(&harness.core);
+    harness.run(async move { core.set_session_unread("conv_a".into(), unread).await })
+}
+
+#[test]
+fn marking_unread_and_read_writes_to_the_server() {
+    let mut harness = connected_tracking_reads();
+    harness
+        .http
+        .route_method("PUT", READ_STATE, json(200, r#"{"ok":true}"#));
+    harness.events.take();
+    set_unread(&mut harness, true).unwrap();
+    assert_eq!(harness.http.count(READ_STATE), 1);
+    assert_eq!(unread_events(&harness.events.take()), [["conv_a"]]);
+    set_unread(&mut harness, false).unwrap();
+    assert_eq!(harness.http.count(READ_STATE), 2);
+    assert_eq!(
+        unread_events(&harness.events.take()),
+        [Vec::<String>::new()]
+    );
+}
+
+#[test]
+fn a_write_the_server_refuses_fails_the_caller_and_keeps_the_mark() {
+    let mut harness = connected_tracking_reads();
+    harness
+        .http
+        .route_method("PUT", READ_STATE, json(500, r#"{"detail":"boom"}"#));
+    harness.events.take();
+    assert!(set_unread(&mut harness, true).is_err());
+    assert_eq!(unread_events(&harness.events.take()), [["conv_a"]]);
+}
+
+#[test]
+fn a_write_nobody_waits_for_reports_its_failure_on_the_session() {
+    let mut harness = connected_tracking_reads();
+    harness
+        .http
+        .route_method("PUT", READ_STATE, json(200, r#"{"ok":true}"#));
+    set_unread(&mut harness, true).unwrap();
+    harness
+        .http
+        .route_method("PUT", READ_STATE, json(500, r#"{"detail":"boom"}"#));
+    harness.events.take();
+    harness.core.set_view(Some("conv_a".into()), true);
+    harness.pump();
+    let events = harness.events.take();
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CoreEvent::Error {
+                scope: ErrorScope::Session { session_id },
+                ..
+            } if session_id == "conv_a"
+        )),
+        "{events:#?}"
+    );
+}
+
+#[test]
+fn a_mark_is_only_written_to_a_connected_server_that_keeps_read_state() {
+    let mut harness = connected_listing(ROW);
+    set_unread(&mut harness, true).unwrap();
+    assert_eq!(harness.http.count(READ_STATE), 0);
+
+    let mut harness = connected_tracking_reads();
+    harness.core.disconnect();
+    harness.pump();
+    set_unread(&mut harness, true).unwrap();
+    assert_eq!(harness.http.count(READ_STATE), 0);
+}
+
+#[test]
+fn a_mark_whose_caller_went_away_is_kept() {
+    let mut harness = connected_tracking_reads();
+    harness
+        .http
+        .route_method("PUT", READ_STATE, json(200, r#"{"ok":true}"#));
+    harness.events.take();
+    let mut call = Box::pin(harness.core.set_session_unread("conv_a".into(), true));
+    assert_eq!(call.as_mut().now_or_never(), None);
+    drop(call);
+    harness.pump();
+    assert_eq!(harness.http.count(READ_STATE), 1);
+    assert_eq!(unread_events(&harness.events.take()), [["conv_a"]]);
 }

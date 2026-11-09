@@ -2,7 +2,9 @@
 
 use omnigent_protocol::remote_browser::HostError;
 
+use super::core;
 use super::*;
+use crate::test_support::Harness;
 
 fn message_of(notice: &core::Notice) -> (String, bool) {
     let described = describe(notice);
@@ -108,4 +110,67 @@ fn diagnostics_stay_out_of_the_users_way() {
     ));
     assert_eq!(message, "invalid browser input: x must be a finite number");
     assert!(!user_facing);
+}
+
+/// A loop nothing runs yet, over a connected harness's fakes.
+fn idle_loop(harness: &Harness) -> (Loop, UnboundedReceiver<Msg>) {
+    let (tx, rx) = mpsc::unbounded();
+    let (wake, _woken) = mpsc::unbounded::<()>();
+    let target = Target {
+        session_id: "conv_a".into(),
+        tab_id: "btab_7f3a9c2e".into(),
+        options: core::AttachOptions {
+            mode: wire::AttachMode::Control,
+            slice_key: None,
+        },
+    };
+    let attach = Loop {
+        machine: core::RemoteBrowserAttach::new(
+            core::AttachConfig::default(),
+            target.options.clone(),
+            SplitMix64::new(1),
+        ),
+        sessions: Arc::clone(&harness.core.inner.sessions),
+        host: harness.core.inner.host.clone(),
+        transport: Some(harness.sockets.clone()),
+        listener: Arc::new(crate::remote_browser_tests::Recorder::default()),
+        target,
+        tx,
+        sockets: HashMap::new(),
+        timers: HashMap::new(),
+        video: Arc::new(VideoPipe {
+            queue: Mutex::new(core::VideoQueue::new(VIDEO_QUEUE_FRAMES)),
+            armed: AtomicBool::new(false),
+            wake,
+        }),
+        state_dirty: false,
+    };
+    (attach, rx)
+}
+
+#[test]
+fn a_binary_frame_goes_out_as_binary() {
+    let mut harness = crate::test_support::connected();
+    let (mut attach, _queue) = idle_loop(&harness);
+    let attempt = AttemptId(1);
+    let options = attach.target.options.clone();
+    attach.output(core::AttachOutput::Connect { attempt, options });
+    attach.output(core::AttachOutput::Send {
+        attempt,
+        message: SocketMessage::Binary(vec![1, 2]),
+    });
+    harness.pump();
+    let (_, _, socket) = harness.sockets.last();
+    assert_eq!(*crate::engine::lock(&socket.sent_binary), [vec![1, 2]]);
+}
+
+#[test]
+fn shutting_down_stops_a_timer_the_machine_left_behind() {
+    let harness = crate::test_support::connected();
+    let (mut attach, queue) = idle_loop(&harness);
+    let (timer, _registration) = AbortHandle::new_pair();
+    attach.timers.insert(99, timer.clone());
+    attach.tx.unbounded_send(Msg::Shutdown).unwrap();
+    futures::executor::block_on(attach.run(queue));
+    assert!(timer.is_aborted());
 }

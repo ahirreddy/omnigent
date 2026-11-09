@@ -1995,3 +1995,172 @@ fn the_demo_reconnects_open_sessions_and_a_stray_tick_does_nothing() {
     real.pump();
     assert_eq!(real.events.take(), []);
 }
+
+#[test]
+fn a_bearer_no_request_can_carry_is_reported_and_retried() {
+    let mut harness = connected();
+    route_session(&harness);
+    let (_, socket_sink, _) = harness.sockets.last();
+    let dials = harness.sockets.count();
+    harness.events.take();
+    harness.core.post(crate::engine::Msg::BearerRotated {
+        bearer: omnigent_core::auth::SecretString::new("not a\nheader"),
+        expires_at_ms: None,
+    });
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    assert_eq!(harness.streams.count(), 0, "no stream carries it");
+    let events = harness.events.take();
+    assert!(!session_errors(&events).is_empty(), "{events:#?}");
+    assert!(
+        link_states(&events)
+            .iter()
+            .any(|state| matches!(state, LinkState::Reconnecting { .. })),
+        "{events:#?}"
+    );
+
+    socket_sink.ended(crate::host::SocketEnd::Failed {
+        failure: ConnectionFailure::Offline {
+            message: "gone".into(),
+        },
+    });
+    harness.pump();
+    harness.advance(60_000);
+    assert_eq!(harness.sockets.count(), dials, "no socket carries it");
+    let events = harness.events.take();
+    assert!(!list_errors(&events).is_empty(), "{events:#?}");
+}
+
+#[test]
+fn history_with_a_role_this_client_does_not_know_is_reported() {
+    let mut harness = connected();
+    route_session(&harness);
+    harness.http.route(
+        &format!("/v1/sessions/{SESSION}/items"),
+        json(
+            200,
+            r#"{"object":"list","data":[{"id":"msg_1","type":"message","role":"from-the-future","content":[]}],"has_more":false}"#,
+        ),
+    );
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    let events = harness.events.take();
+    let errors = session_errors(&events);
+    assert_eq!(errors.len(), 1, "{events:#?}");
+    assert!(
+        format!("{:?}", errors[0]).contains("from-the-future"),
+        "{errors:?}"
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, CoreEvent::SessionHydrated { .. })),
+        "{events:#?}"
+    );
+}
+
+#[test]
+fn an_older_page_that_fails_is_reported_and_can_be_asked_for_again() {
+    let mut harness = connected();
+    route_session(&harness);
+    let items = format!("/v1/sessions/{SESSION}/items");
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["msg_3", "msg_2"], true)));
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+    let seen = harness.events.all().len();
+
+    harness
+        .http
+        .route(&items, json(500, r#"{"detail":"boom"}"#));
+    harness.core.load_older_history(SESSION.into());
+    harness.pump();
+    let events = harness.events.all().split_off(seen);
+    assert_eq!(session_errors(&events).len(), 1, "{events:#?}");
+    assert_eq!(paging_events(&events), [(true, true), (true, false)]);
+    assert_eq!(row_ids(&harness), ["msg_2", "msg_3"]);
+
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["msg_1"], false)));
+    harness.core.load_older_history(SESSION.into());
+    harness.pump();
+    assert_eq!(row_ids(&harness), ["msg_1", "msg_2", "msg_3"]);
+}
+
+#[test]
+fn losing_the_sign_in_matters_only_while_connected() {
+    let mut harness = Harness::new(UrlPolicy::Development);
+    harness.local_server();
+    let phase = harness
+        .call(|core| async move { core.connect("http://127.0.0.1:6767".into(), None).await })
+        .unwrap();
+    harness.events.take();
+    let (mut engine, _queue) = harness.idle_engine();
+    let reason = CoreError::from(omnigent_core::SessionError::NotConnected);
+    engine.sign_in_lost(reason.clone());
+    assert_eq!(harness.events.take(), []);
+
+    // With nothing recorded to sign in to, the reason is all there is to show.
+    engine.phase = phase;
+    engine.sign_in_lost(reason.clone());
+    let phases = crate::test_support::phases(&harness.events.take());
+    assert_eq!(
+        phases,
+        [ConnectionPhase::Failed {
+            server_url: String::new(),
+            error: reason,
+        }]
+    );
+}
+
+#[test]
+fn a_notification_still_settling_at_disconnect_never_shows() {
+    let mut harness = connected();
+    let (sink, _) = live_socket(&mut harness);
+    harness.core.set_notifications_allowed(true);
+    harness.pump();
+    for status in ["running", "idle"] {
+        frame(
+            &mut harness,
+            &sink,
+            &serde_json::json!({"type": "changed", "items": [session_row("notify_me", status, 2)]}),
+        );
+    }
+    harness.core.disconnect();
+    harness.pump();
+    harness.events.take();
+    harness.advance(60_000);
+    let events = harness.events.take();
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, CoreEvent::Notification { .. })),
+        "{events:#?}"
+    );
+}
+
+#[test]
+fn a_pushed_row_that_cannot_be_watched_is_reported_and_the_list_reloads() {
+    let mut harness = connected();
+    let (sink, _) = live_socket(&mut harness);
+    harness.events.take();
+    let reads = harness.http.count("/v1/sessions");
+    frame(
+        &mut harness,
+        &sink,
+        &serde_json::json!({"type": "changed", "items": [session_row("not a valid id!", "idle", 2)]}),
+    );
+    let events = harness.events.take();
+    assert_eq!(list_errors(&events).len(), 1, "{events:#?}");
+    assert_eq!(harness.http.count("/v1/sessions"), reads + 1);
+}

@@ -3,9 +3,12 @@
 
 use std::sync::Arc;
 
+use futures::FutureExt as _;
+
 use super::*;
 use crate::api_tests::{WORKSPACE_HOST, databricks, route_databricks};
 use crate::connection::UrlPolicy;
+use crate::engine::lock;
 use crate::errors::DatabricksErrorKind;
 use crate::test_support::{Harness, json, phases};
 
@@ -445,5 +448,157 @@ fn a_kind_of_refusal_is_named() {
             }
         ),
         "{error:?}"
+    );
+}
+
+/// Overwrites every saved grant with bytes that are not a grant.
+fn corrupt_saved_grants(harness: &Harness) {
+    for value in lock(&harness.store.items).values_mut() {
+        *value = b"not a grant".to_vec();
+    }
+}
+
+#[test]
+fn a_connect_during_a_renewal_refresh_shares_its_answer() {
+    let mut harness = signed_in();
+    let gate = harness.http.hold(TOKEN);
+    harness.advance(3_600_000);
+    let refreshes = harness.http.count(TOKEN);
+    let core = Arc::clone(&harness.core);
+    let joined =
+        harness.start(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await });
+    assert!(joined.borrow().is_none(), "it waits for the same refresh");
+    gate.send(()).unwrap();
+    harness.pump();
+    assert!(matches!(
+        joined.borrow_mut().take().unwrap(),
+        Ok(ConnectionPhase::Connected { .. })
+    ));
+    assert_eq!(harness.http.count(TOKEN), refreshes, "one refresh only");
+}
+
+#[test]
+fn a_connect_while_a_rotated_grant_saves_writes_it_first() {
+    let mut harness = signed_in();
+    let saved_before = lock(&harness.store.items).clone();
+    let gate = harness.store.hold_set();
+    harness.advance(3_600_000);
+    assert_eq!(*lock(&harness.store.items), saved_before);
+    let phase = connect(&mut harness).unwrap();
+    assert!(
+        matches!(phase, ConnectionPhase::Connected { .. }),
+        "{phase:?}"
+    );
+    assert_ne!(
+        *lock(&harness.store.items),
+        saved_before,
+        "the second caller saved the rotated grant before using it"
+    );
+    gate.send(()).unwrap();
+    harness.pump();
+    assert!(matches!(
+        last_phase(&harness),
+        ConnectionPhase::Connected { .. }
+    ));
+}
+
+#[test]
+fn a_connect_abandoned_during_its_refresh_still_saves_the_rotated_grant() {
+    let mut harness = signed_in();
+    harness.core.disconnect();
+    harness.pump();
+    harness.advance(4_000_000);
+    let saved_before = lock(&harness.store.items).clone();
+    let refreshes = harness.http.count(TOKEN);
+    let gate = harness.http.hold(TOKEN);
+    let core = Arc::clone(&harness.core);
+    let mut call =
+        Box::pin(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await });
+    for _ in 0..20 {
+        assert!(call.as_mut().now_or_never().is_none());
+        harness.pump();
+        if harness.http.count(TOKEN) > refreshes {
+            break;
+        }
+    }
+    assert_eq!(harness.http.count(TOKEN), refreshes + 1);
+    drop(call);
+    gate.send(()).unwrap();
+    harness.pump();
+    assert_ne!(*lock(&harness.store.items), saved_before);
+}
+
+#[test]
+fn a_saved_grant_that_cannot_be_read_asks_to_sign_in_at_connect() {
+    let mut harness = signed_in();
+    harness.core.disconnect();
+    harness.pump();
+    corrupt_saved_grants(&harness);
+    let phase = connect(&mut harness).unwrap();
+    let ConnectionPhase::SignInRequired { reason, .. } = phase else {
+        panic!("{phase:?}");
+    };
+    assert!(reason.is_some());
+}
+
+#[test]
+fn a_saved_grant_that_cannot_be_read_at_renewal_ends_the_connection() {
+    let mut harness = signed_in();
+    corrupt_saved_grants(&harness);
+    harness.advance(3_600_000);
+    let phases = phases(&harness.events.take());
+    assert_eq!(phases[0], ConnectionPhase::Disconnected, "{phases:?}");
+    assert!(
+        matches!(phases[1], ConnectionPhase::SignInRequired { .. }),
+        "{phases:?}"
+    );
+}
+
+#[test]
+fn a_renewal_that_fires_as_the_user_disconnects_sends_nothing() {
+    let mut harness = signed_in();
+    let refreshes = harness.http.count(TOKEN);
+    harness.advance_stopping_before_spawned_work(3_600_000);
+    harness.core.disconnect();
+    harness.pump();
+    assert_eq!(harness.http.count(TOKEN), refreshes);
+    assert_eq!(last_phase(&harness), ConnectionPhase::Disconnected);
+}
+
+#[test]
+fn a_session_on_a_known_host_and_the_updates_socket_carry_the_routing_key() {
+    let (mut harness, challenge) = signing_in();
+    harness.http.route(
+        "/api/2.0/omnigent/v1/sessions",
+        json(
+            200,
+            r#"{"object":"list","data":[{"id":"conv_a","status":"idle","title":"A","created_at":1,"updated_at":1,"permission_level":4,"host_id":"host_a"}],"has_more":false}"#,
+        ),
+    );
+    complete(&mut harness, &challenge).unwrap();
+    harness.pump();
+    // The first socket opens before the first list names any host; the next one knows.
+    let (_, first_socket, _) = harness.sockets.last();
+    first_socket.ended(crate::host::SocketEnd::Failed {
+        failure: crate::host::ConnectionFailure::Offline {
+            message: "gone".into(),
+        },
+    });
+    harness.pump();
+    harness.advance(60_000);
+    let (socket_request, _, _) = harness.sockets.last();
+    assert!(
+        socket_request.url.contains("omnigent_slice_key=host_a"),
+        "{}",
+        socket_request.url
+    );
+    harness.core.open_session("conv_a".into());
+    harness.pump();
+    let (_, _, stream_request) = harness.streams.last();
+    assert!(
+        stream_request.headers.iter().any(
+            |header| header.name == omnigent_core::SLICE_KEY_HEADER && header.value == "host_a"
+        ),
+        "{stream_request:?}"
     );
 }

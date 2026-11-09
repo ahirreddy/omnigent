@@ -584,3 +584,7 @@ impl ForeignEntropy {
         Ok(u64::from_le_bytes(seed))
     }
 }
+
+#[cfg(test)]
+#[path = "host_tests.rs"]
+mod tests;

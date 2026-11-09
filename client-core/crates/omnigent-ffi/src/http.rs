@@ -188,3 +188,7 @@ impl From<core::http::TransportError> for TransportError {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "http_tests.rs"]
+mod tests;

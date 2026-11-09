@@ -440,14 +440,12 @@ fn describe(notice: &core::Notice) -> RemoteBrowserNotice {
             format!("dropped an unreadable video frame: {error}")
         }
         N::HostError(error) => format!("browser host error {}: {}", error.code, error.message),
-        N::InputDropped { input, reason } => {
-            let why = match reason {
-                core::DropReason::NotAttached => "the browser is not connected",
-                core::DropReason::ReadOnly => "this view is read-only",
-                core::DropReason::NotInControl => "take control first",
-                core::DropReason::Unsupported => "the browser host is too old for it",
-            };
-            format!("{} not sent: {why}", input_name(*input))
+        // `user_message` words every other reason.
+        N::InputDropped { input, .. } => {
+            format!(
+                "{} not sent: the browser is not connected",
+                input_name(*input)
+            )
         }
         N::InvalidInput(error) => format!("invalid browser input: {error}"),
     };
