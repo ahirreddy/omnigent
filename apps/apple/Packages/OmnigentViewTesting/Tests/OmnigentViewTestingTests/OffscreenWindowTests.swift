@@ -76,6 +76,29 @@
   @MainActor
   @Suite("A view in an offscreen window takes real input", .serialized)
   struct OffscreenWindowTests {
+    @Test("the runner's loop keeps going after a stop while a test is suspended")
+    func stopWhileSuspended() async throws {
+      let screen = OffscreenWindow(Text("Still"), width: 100, height: 100)
+      defer { screen.close() }
+      // Long enough for the shield's retry to find the runner's loop.
+      try await Task.sleep(for: .milliseconds(60))
+      CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue) {
+        CFRunLoopStop(CFRunLoopGetMain())
+      }
+      CFRunLoopWakeUp(CFRunLoopGetMain())
+      try await Task.sleep(for: .milliseconds(20))
+      #expect(screen.window.isVisible, "the process is still here to check")
+    }
+
+    @Test("only the runner's loop itself is taken over, never one inside a test")
+    func shieldChoosesItsLoop() {
+      let drain = "libswift_Concurrency swift_task_asyncMainDrainQueue + 40"
+      let job = "CoreFoundation __CFRUNLOOP_IS_SERVICING_THE_MAIN_DISPATCH_QUEUE__ + 16"
+      #expect(RunnerLoopShield.isDirectlyOnRunnerLoop(callStack: ["timer", drain]))
+      #expect(!RunnerLoopShield.isDirectlyOnRunnerLoop(callStack: ["timer", job, drain]))
+      #expect(!RunnerLoopShield.isDirectlyOnRunnerLoop(callStack: ["timer", "completeTask"]))
+    }
+
     @Test("a window doesn't animate: the animation's end would stop the test runner's run loop")
     func windowsDontAnimate() {
       let screen = OffscreenWindow(Text("Still"), width: 100, height: 100)
