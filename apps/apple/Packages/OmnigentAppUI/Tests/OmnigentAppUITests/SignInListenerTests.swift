@@ -237,7 +237,8 @@ struct SignInListenerTests {
   func aRefusedAddress() async throws {
     let controller = try controller(AppServer())
     await controller.connectNow("ftp://nowhere")
-    #expect(reason(controller) != nil)
+    // The core's failed phase reaches the store as an event, after the connect returns.
+    try await eventually("the failure") { reason(controller) != nil }
   }
 
   @Test("A server that can't be reached is unreachable in the list")
