@@ -250,7 +250,9 @@
         return false
       }
       let background = image.colorAt(x: image.pixelsWide - 2, y: row)?.usingColorSpace(.deviceRGB)
+      // Black text on a clear background differs only in alpha.
       return abs(color.redComponent - (background?.redComponent ?? 1)) > 0.08
+        || abs(color.alphaComponent - (background?.alphaComponent ?? 1)) > 0.08
     }
   }
 #endif

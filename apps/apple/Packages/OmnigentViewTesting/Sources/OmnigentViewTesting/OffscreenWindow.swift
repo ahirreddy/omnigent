@@ -48,7 +48,11 @@
     ///   - view: The view under test.
     ///   - width: The window's width.
     ///   - height: The window's height.
-    public init(_ view: Content, width: CGFloat = 800, height: CGFloat = 600) {
+    ///   - appearance: Light or dark, set here so a result never follows the system's setting.
+    public init(
+      _ view: Content, width: CGFloat = 800, height: CGFloat = 600,
+      appearance: NSAppearance.Name = .darkAqua
+    ) {
       SystemSideEffects.install()
       let app = NSApplication.shared
       if app.activationPolicy() != .accessory {
@@ -64,6 +68,7 @@
         contentRect: CGRect(origin: Self.origin, size: CGSize(width: width, height: height)),
         styleMask: [.borderless], backing: .buffered, defer: false)
       window.isReleasedWhenClosed = false
+      window.appearance = NSAppearance(named: appearance)
       window.contentView = host
       window.orderFrontRegardless()
       settle()
