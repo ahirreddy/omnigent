@@ -140,6 +140,61 @@
       #expect(try screen.shows("Search failed"))
     }
 
+    @Test("A slow search answering late can't replace a newer one, or leave the list searching")
+    func staleProfileSearch() async throws {
+      var held: [CheckedContinuation<Result<[SandboxProfileOption], FolderBrowseError>, Never>] = []
+      let late = profile("Late")
+      let fresh = profile("Fresh")
+      let screen = list(
+        SandboxProfilesState(profiles: [profile("One")]),
+        search: { text in
+          guard text == "slow" else { return .success([fresh]) }
+          return await withCheckedContinuation { held.append($0) }
+        })
+      defer { screen.close() }
+      try screen.type("slow", intoField: 0)
+      screen.settle(0.3)
+      await screen.drainTasks()
+      #expect(held.count == 1)
+      #expect(try screen.shows("Loading profiles"))
+
+      screen.fields[0].currentEditor()?.selectAll(nil)
+      try screen.type("quick", intoField: 0)
+      screen.settle(0.3)
+      await screen.drainTasks()
+      #expect(try screen.shows("Fresh"))
+
+      try #require(held.first).resume(returning: .success([late]))
+      await screen.drainTasks()
+      screen.settle(0.05)
+      #expect(try screen.shows("Fresh"))
+      #expect(try !screen.shows("Late"))
+      #expect(try !screen.shows("Loading profiles"))
+    }
+
+    @Test("Clearing the search while one is out shows the list again, not a search in progress")
+    func clearedProfileSearch() async throws {
+      var held: [CheckedContinuation<Result<[SandboxProfileOption], FolderBrowseError>, Never>] = []
+      let screen = list(
+        SandboxProfilesState(profiles: [profile("One")]),
+        search: { _ in await withCheckedContinuation { held.append($0) } })
+      defer { screen.close() }
+      try screen.type("slow", intoField: 0)
+      screen.settle(0.3)
+      await screen.drainTasks()
+      #expect(try screen.shows("Loading profiles"))
+
+      screen.fields[0].currentEditor()?.selectAll(nil)
+      try screen.press(keyCode: 51, characters: "\u{7F}")
+      screen.settle(0.05)
+      #expect(try !screen.shows("Loading profiles"))
+      #expect(try screen.shows("One"))
+      try #require(held.first).resume(returning: .success([]))
+      await screen.drainTasks()
+      screen.settle(0.05)
+      #expect(try screen.shows("One"))
+    }
+
     // MARK: Naming a branch
 
     private struct BranchHost: View {
