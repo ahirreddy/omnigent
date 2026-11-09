@@ -91,15 +91,16 @@ private struct KeptAliveLayout: Layout {
   }
 }
 
-/// A tab's content that ignores new values from above while it stays hidden: the window
-/// re-renders for the sidebar and the tab strip, and a hidden conversation need not follow.
-/// Its own observed state still updates it; it takes the latest values when it shows again.
+/// A tab's content that ignores new values from above while it is hidden: the window re-renders
+/// for the sidebar and the tab strip, and for the switch that hides the tab, and a hidden
+/// conversation need not follow. Its own observed state still updates it; it takes the latest
+/// values when it shows again.
 private struct HeldWhileHidden<Content: View>: View, Equatable {
   let content: Content
   let isHidden: Bool
 
   static func == (lhs: Self, rhs: Self) -> Bool {
-    lhs.isHidden && rhs.isHidden
+    rhs.isHidden
   }
 
   var body: some View { content }
@@ -113,6 +114,9 @@ private struct HiddenTabContent: ViewModifier {
     content
       .transformEnvironment(\.isActiveTabPane) { if isHidden { $0 = false } }
       .environment(\.isTabContentHidden, isHidden)
+      // One layer per tab: hiding it changes that layer. Without it, each AppKit view in the
+      // tab (text, scroll and glass views) is taken out of the window and put back.
+      .compositingGroup()
       .opacity(isHidden ? 0 : 1)
       .allowsHitTesting(!isHidden)
       .accessibilityHidden(isHidden)
