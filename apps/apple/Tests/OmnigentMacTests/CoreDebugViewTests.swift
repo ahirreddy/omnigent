@@ -1,3 +1,4 @@
+import AppKit
 import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentViewTesting
@@ -59,6 +60,17 @@ struct CoreDebugViewTests {
       try await Task.sleep(for: .milliseconds(20))
     }
     #expect(store.conversations["demo-notes"] != nil)
+    try await Task.sleep(for: .milliseconds(100))
+    let lists = screen.allViews.compactMap { $0 as? NSTableView }
+    #expect(lists.count == 2, "the sessions and the conversation's rows")
+    for list in lists {
+      // An offscreen table makes its rows only when asked, as a person scrolling them would.
+      for row in 0..<list.numberOfRows { _ = list.rowView(atRow: row, makeIfNecessary: true) }
+    }
+    screen.settle()
+    #expect(lists.contains { $0.numberOfRows == store.sessionList.visible.count })
+    let conversation = try #require(store.conversations["demo-notes"])
+    #expect(lists.contains { $0.numberOfRows == conversation.rows.count })
   }
 
   @Test func theInspectorShowsTheConnectedCoreAndItsSessions() async throws {
