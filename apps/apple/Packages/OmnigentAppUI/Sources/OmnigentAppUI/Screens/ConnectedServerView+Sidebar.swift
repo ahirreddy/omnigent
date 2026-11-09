@@ -1,4 +1,5 @@
 public import Foundation
+import OSLog
 import Observation
 import OmnigentAuthUI
 import OmnigentCoreFFI
@@ -79,12 +80,17 @@ enum SidebarDisplayDefaults {
   }
 
   /// Saves `options`.
-  static func save(_ options: SessionDisplayOptions, _ defaults: UserDefaults = .standard) {
+  static func save(
+    _ options: SessionDisplayOptions, _ defaults: UserDefaults = .standard,
+    encode: (SessionDisplayOptions) throws -> Data = { try JSONEncoder().encode($0) }
+  ) {
     do {
-      defaults.set(try JSONEncoder().encode(options), forKey: key)
+      defaults.set(try encode(options), forKey: key)
     } catch {
-      // Every field is a plain enum or set of them, so encoding cannot fail.
-      assertionFailure("Could not encode the sidebar display options: \(error)")
+      // The last saved options stay; the choice lasts until the window closes.
+      Logger(subsystem: "ai.omnigent.app", category: "sidebar").error(
+        "Could not encode the sidebar display options: \(String(describing: error), privacy: .public)"
+      )
     }
   }
 }
@@ -111,6 +117,16 @@ final class SidebarModel {
   var share: ShareStore?
   /// An archive waiting on whether to delete worktrees.
   var archiveRequest: ArchiveWorktreeRequest?
+  /// The session a chat tab's menu is renaming.
+  var renamingFromTab: OmnigentUIComponents.SessionSummary?
+  var renameText = ""
+
+  /// Asks for a new title for a chat tab's session, as the session menu does.
+  func askToRename(tabID: String, tabs: SessionTabGroups, list: SessionListStore) {
+    guard let id = tabs.tab(tabID)?.sessionID, let summary = list.session(id) else { return }
+    renameText = summary.title
+    renamingFromTab = OmnigentUIComponents.SessionSummary(summary)
+  }
 }
 
 // MARK: Actions

@@ -127,7 +127,8 @@ struct TabRestoration: ViewModifier {
   /// Closes the remote tab behind a closing remote browser tab, keeping its last URL so Reopen
   /// Closed Tab can offer to open it again.
   static func closeRemoteTab(
-    _ tab: AppTab, in remoteBrowsers: RemoteBrowserTabs?, persistence: TabPersistence?
+    _ tab: AppTab, in remoteBrowsers: RemoteBrowserTabs?, persistence: TabPersistence?,
+    encode: (RemoteBrowserTabRecord) throws -> Data = { try $0.encoded() }
   ) -> AppTab {
     guard case .remoteBrowser(let sessionID, let tabID) = tab.content, let remoteBrowsers else {
       return tab
@@ -135,9 +136,8 @@ struct TabRestoration: ViewModifier {
     var tab = tab
     if let store = remoteBrowsers.existingStore(sessionID: sessionID, tabID: tabID) {
       do {
-        tab.browserState = try RemoteBrowserTabRecord(
-          url: store.lastURL, profile: store.profile
-        ).encoded()
+        tab.browserState = try encode(
+          RemoteBrowserTabRecord(url: store.lastURL, profile: store.profile))
       } catch {
         persistence?.reportIssue("A closed remote tab's address could not be kept: \(error)")
       }

@@ -227,8 +227,10 @@ public final class TabStore {
   public func navigate(
     to content: AppTabContent, replacing replaceable: (AppTabContent) -> Bool = { _ in false }
   ) -> AppTab {
-    if let current = selected, current.content == .newTab || replaceable(current.content) {
-      return replace(current.id, with: content) ?? open(content)
+    if let current = selected, current.content == .newTab || replaceable(current.content),
+      let replaced = replace(current.id, with: content)
+    {
+      return replaced
     }
     return open(content)
   }
