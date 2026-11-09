@@ -175,7 +175,7 @@ struct IntegrationsPane: View {
           }
         } label: {
           Text(connection.name)
-          Text(connection.account.map { "Connected as \($0)" } ?? "Not connected")
+          Text(Self.status(connection))
         }
       }
     } footer: {
@@ -183,6 +183,14 @@ struct IntegrationsPane: View {
         "Connecting signs in on the server's web page in your browser. Refresh this pane afterwards."
       )
     }
+  }
+}
+
+extension IntegrationsPane {
+  /// Who is connected. A connected provider may not name its account.
+  static func status(_ connection: ProviderConnectionRow) -> String {
+    guard connection.isConnected else { return "Not connected" }
+    return connection.account.map { "Connected as \($0)" } ?? "Connected"
   }
 }
 
