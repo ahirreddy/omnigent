@@ -13,14 +13,24 @@ struct SystemTabDownloadTests {
       .appending(path: "system-download-\(UUID().uuidString).txt")
   }
 
-  /// Starts a real download of `text` from a data: address, tracked by the tab.
+  /// Starts a real download of `text` from a data: address, tracked by the tab. WebKit can drop
+  /// the reply while the network process changes over, so an unanswered start is tried again.
   private func startDownload(_ fixture: SystemTabFixture, text: String) async throws -> WKDownload {
     let encoded = Data(text.utf8).base64EncodedString()
     let url = try testURL("data:text/plain;base64,\(encoded)")
-    let download = await fixture.tab.webView.startDownload(using: URLRequest(url: url))
-    fixture.tab.webView(
-      fixture.tab.webView, navigationAction: FakeNavigationAction(url: url), didBecome: download)
-    return download
+    let webView = fixture.tab.webView
+    for _ in 0..<3 {
+      var started: WKDownload?
+      Task { started = await webView.startDownload(using: URLRequest(url: url)) }
+      guard try await waitUntil(timeout: .seconds(3), { started != nil }), let download = started
+      else {
+        continue
+      }
+      fixture.tab.webView(
+        webView, navigationAction: FakeNavigationAction(url: url), didBecome: download)
+      return download
+    }
+    throw BrowserError.downloadFailed("WebKit never started the download.")
   }
 
   @Test("a download asks where to save, then finishes with the file there")
