@@ -92,6 +92,8 @@ struct HostMoveSheet: View {
           text: Binding(
             get: { workspace },
             set: {
+              // Focusing the field writes its text back unchanged, which isn't an edit.
+              guard $0 != workspace else { return }
               edited = true
               workspace = $0
             }),

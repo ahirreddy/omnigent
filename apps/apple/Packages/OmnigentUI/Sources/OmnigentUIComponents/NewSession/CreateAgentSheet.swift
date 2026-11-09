@@ -163,7 +163,7 @@ public struct CreateAgentSheet: View {
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
     if let importBundle {
-      ToolbarItem(placement: .secondaryAction) {
+      ToolbarItem(placement: Self.importPlacement) {
         Button("Import Bundle\u{2026}", systemImage: "square.and.arrow.down", action: importBundle)
           .disabled(isSaving)
           .accessibilityIdentifier("create-agent-import")
@@ -181,6 +181,15 @@ public struct CreateAgentSheet: View {
           .accessibilityIdentifier("create-agent-submit")
       }
     }
+  }
+
+  /// A Mac sheet doesn't draw a secondary action at all, so it would have no way to import.
+  private static var importPlacement: ToolbarItemPlacement {
+    #if os(macOS)
+      .automatic
+    #else
+      .secondaryAction
+    #endif
   }
 
   /// The rule only once the user typed a name, so an empty form is not an error.

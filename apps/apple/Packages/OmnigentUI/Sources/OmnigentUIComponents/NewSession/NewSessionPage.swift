@@ -135,11 +135,16 @@ public struct NewSessionPage: View {
       guard !reduceMotion else { return }
       switch phase {
       case .active(let location):
-        gaze = CGSize(
-          width: (location.x / max(size.width, 1) - 0.5) * 2,
-          height: (location.y / max(size.height, 1) - 0.5) * 2)
+        gaze = Self.gaze(at: location, in: size)
       case .ended: gaze = .zero
       }
     }
+  }
+
+  /// Where the mascot looks for a pointer at `location`, each axis from -1 to 1 across `size`.
+  static func gaze(at location: CGPoint, in size: CGSize) -> CGSize {
+    CGSize(
+      width: (location.x / max(size.width, 1) - 0.5) * 2,
+      height: (location.y / max(size.height, 1) - 0.5) * 2)
   }
 }

@@ -79,6 +79,7 @@ struct FolderBrowserView: View {
   @State private var isLoading = false
   @State private var typedPath = ""
   @State private var selection: String?
+  @State private var latestLoad = 0
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
@@ -102,10 +103,13 @@ struct FolderBrowserView: View {
         ForEach(listing?.visibleFolders ?? []) { entry in
           Label(entry.name, systemImage: "folder")
             .tag(entry.path)
-            .contentShape(Rectangle())
-            .onTapGesture(count: 2) { open(entry.path) }
             .accessibilityIdentifier("folder-browser-row-\(entry.name)")
         }
+      }
+      // A tap gesture on the row would keep a single click from selecting it.
+      .contextMenu(forSelectionType: String.self) { _ in
+      } primaryAction: { paths in
+        if let path = paths.first { open(path) }
       }
       .overlay {
         if isLoading {
@@ -143,8 +147,12 @@ struct FolderBrowserView: View {
     let target = (trimmed?.isEmpty ?? true) ? nil : trimmed
     isLoading = true
     error = nil
+    latestLoad += 1
+    let thisLoad = latestLoad
     Task {
       let result = await load(target)
+      // A newer read took over; this answer is for a folder the user left.
+      guard thisLoad == latestLoad else { return }
       isLoading = false
       switch result {
       case .success(let value):

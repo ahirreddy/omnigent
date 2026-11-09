@@ -112,12 +112,16 @@ struct SandboxProfileList: View {
     let text = search.trimmingCharacters(in: .whitespaces)
     guard !text.isEmpty, let find = actions.search else {
       results = nil
+      isSearching = false
       return
     }
     // Waits for typing to pause, as the web's 200 ms debounce.
     do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
     isSearching = true
-    results = await find(text)
+    let found = await find(text)
+    // The text changed while this one was out, so its answer is out of date.
+    guard !Task.isCancelled else { return }
+    results = found
     isSearching = false
   }
 }

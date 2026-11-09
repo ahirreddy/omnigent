@@ -306,6 +306,10 @@ struct DecisionSheet: View {
     }
     .presentationDetents([.medium, .large])
     .presentationDragIndicator(.visible)
+    #if os(macOS)
+      // A narrow Mac window has no detents; a list on its own would collapse to no rows.
+      .frame(minWidth: 480, minHeight: 560)
+    #endif
     .environment(\.decisionIDPrefix, "sheet-")
     .accessibilityIdentifier("decision-sheet")
     .onChange(of: state.pendingDecisions.map(\.id)) { _, pending in

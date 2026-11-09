@@ -45,6 +45,8 @@ struct ComposerIndicatorsView: View {
         }
       }
       .foregroundStyle(.secondary)
+      // The row's buttons are plain, so the gap between the glyph and the count needs a shape.
+      .contentShape(Rectangle())
     }
     .menuIndicator(.hidden)
     .fixedSize()
@@ -66,6 +68,7 @@ struct ComposerIndicatorsView: View {
       }
       .labelStyle(GoalLabelStyle(showsTitle: showsGoalObjective))
       .foregroundStyle(.secondary)
+      .contentShape(Rectangle())
     }
     .disabled(actions.openGoal == nil)
     .help("Goal (\(goal.status)): \(goal.objective)")
@@ -93,6 +96,7 @@ private struct BackgroundTasksButton: View {
       Label("\(indicators.backgroundTasks)", systemImage: "apple.terminal")
         .monospacedDigit()
         .foregroundStyle(.secondary)
+        .contentShape(Rectangle())
     }
     .help("\(label) still running")
     .accessibilityLabel("\(label) still running")
