@@ -214,6 +214,9 @@ impl From<core::attachments::AttachmentDraft> for AttachmentDraft {
     }
 }
 
+/// How long a renewal that failed for a passing reason waits before the next attempt.
+pub(crate) const RENEWAL_RETRY_MS: u64 = 60_000;
+
 /// Sign-in work tied to the current connection; replaced by every connect.
 #[derive(Default)]
 pub(crate) struct AuthState {
@@ -539,10 +542,20 @@ impl Inner {
         let Some(delay) = session.renewal_delay_ms(self.host.unix_ms()) else {
             return;
         };
+        self.schedule_renewal_after(generation, resolved, server, delay);
+    }
+
+    fn schedule_renewal_after(
+        self: &Arc<Self>,
+        generation: u64,
+        resolved: &Resolved,
+        server: &OidcServer,
+        delay_ms: u64,
+    ) {
         let inner = Arc::clone(self);
         let resolved = resolved.clone();
         let server = server.clone();
-        let timer = self.host.after(delay, move || {
+        let timer = self.host.after(delay_ms, move || {
             let host = inner.host.clone();
             host.spawn(async move { inner.renew(generation, resolved, server).await });
         });
@@ -587,11 +600,27 @@ impl Inner {
                 }
             }
             Err(error) => {
-                self.sessions.disconnect();
-                self.post(Msg::Disconnected {
-                    phase: ConnectionPhase::Disconnected,
-                });
-                self.sign_in_required(&resolved, Some(error.into()));
+                // A dead grant needs the user; anything else (the network, a locked store) passes,
+                // and the session in hand keeps working meanwhile.
+                let dead = matches!(
+                    error.failure(),
+                    core::auth::errors::AuthFailure::Expired
+                        | core::auth::errors::AuthFailure::EndedByServer
+                        | core::auth::errors::AuthFailure::SignInRequired
+                );
+                if dead {
+                    self.post(Msg::Disconnected {
+                        phase: ConnectionPhase::Disconnected,
+                    });
+                    self.sessions.disconnect();
+                    self.sign_in_required(&resolved, Some(error.into()));
+                } else {
+                    self.post(Msg::Emit(CoreEvent::Error {
+                        scope: ErrorScope::Connection,
+                        error: error.into(),
+                    }));
+                    self.schedule_renewal_after(generation, &resolved, &server, RENEWAL_RETRY_MS);
+                }
             }
         }
     }

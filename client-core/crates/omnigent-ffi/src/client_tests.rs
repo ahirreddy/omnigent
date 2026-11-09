@@ -515,6 +515,60 @@ fn an_unreadable_store_asks_to_sign_in_with_the_reason() {
     );
 }
 
+/// The renewal timer fires while the laptop has no network: the session is still valid, so the
+/// connection stays and the renewal tries again.
+#[test]
+fn a_network_failure_during_renewal_keeps_the_connection_and_retries() {
+    let mut harness = oidc_server();
+    sign_in_oidc(&mut harness);
+    harness.events.take();
+    harness.http.fail_next("/oauth/token", offline());
+    harness.advance(3_600_000);
+    let events = harness.events.take();
+    assert_eq!(phases(&events), [], "{events:#?}");
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CoreEvent::Error {
+                scope: ErrorScope::Connection,
+                error: CoreError::Oidc { .. }
+            }
+        )),
+        "{events:#?}"
+    );
+
+    route_oidc_tokens(&harness, "token-2", 3_600);
+    harness.advance(60_000);
+    let events = harness.events.take();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, CoreEvent::CredentialRotated { .. })),
+        "{events:#?}"
+    );
+}
+
+/// A locked device cannot read the grant in the background; unlocking it must not need a sign-in.
+#[test]
+fn a_locked_store_during_renewal_keeps_the_connection_and_retries() {
+    let mut harness = oidc_server();
+    sign_in_oidc(&mut harness);
+    harness.events.take();
+    *lock(&harness.store.get_failure) = Some(locked());
+    harness.advance(3_600_000);
+    assert_eq!(phases(&harness.events.take()), []);
+    *lock(&harness.store.get_failure) = None;
+    route_oidc_tokens(&harness, "token-2", 3_600);
+    harness.advance(60_000);
+    assert!(
+        harness
+            .events
+            .take()
+            .iter()
+            .any(|event| matches!(event, CoreEvent::CredentialRotated { .. }))
+    );
+}
+
 /// Signing in again after a 401 must leave one renewal running, not two refreshing the same grant.
 #[test]
 fn signing_in_again_replaces_the_pending_renewal() {
@@ -541,6 +595,43 @@ fn signing_in_again_replaces_the_pending_renewal() {
     let refreshes = harness.http.count("/oauth/token");
     harness.advance(3_600_000);
     assert_eq!(harness.http.count("/oauth/token"), refreshes + 1);
+}
+
+#[test]
+fn a_rejected_grant_during_renewal_ends_the_connection_and_asks_to_sign_in() {
+    let mut harness = oidc_server();
+    sign_in_oidc(&mut harness);
+    harness
+        .http
+        .route("/oauth/token", json(400, r#"{"error":"invalid_grant"}"#));
+    harness.advance(3_600_000);
+    let phase = last_phase(&harness);
+    assert!(
+        matches!(
+            phase,
+            ConnectionPhase::SignInRequired {
+                reason: Some(CoreError::Oidc { .. }),
+                ..
+            }
+        ),
+        "{phase:?}"
+    );
+    assert!(!harness.core.sessions().is_connected());
+    // The only reason the app ever shows is the real one.
+    assert!(!phases(&harness.events.all()).iter().any(|phase| matches!(
+        phase,
+        ConnectionPhase::SignInRequired {
+            reason: Some(CoreError::Session { .. }),
+            ..
+        }
+    )));
+    let refreshes = harness.http.count("/oauth/token");
+    harness.advance(86_400_000);
+    assert_eq!(
+        harness.http.count("/oauth/token"),
+        refreshes,
+        "no more tries"
+    );
 }
 
 #[test]

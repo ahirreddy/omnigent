@@ -270,6 +270,20 @@ fn a_network_failure_at_renewal_keeps_the_connection_and_retries() {
 }
 
 #[test]
+fn a_rejected_grant_at_renewal_ends_the_connection_and_asks_to_sign_in() {
+    let mut harness = signed_in();
+    harness.http.route(TOKEN, token_error(400, "invalid_grant"));
+    harness.advance(3_600_000);
+    let phases = phases(&harness.events.take());
+    assert_eq!(phases[0], ConnectionPhase::Disconnected, "{phases:?}");
+    assert!(
+        matches!(phases[1], ConnectionPhase::SignInRequired { .. }),
+        "{phases:?}"
+    );
+    assert_eq!(phases.len(), 2, "{phases:?}");
+}
+
+#[test]
 fn a_rotated_grant_that_cannot_be_saved_is_reported() {
     let mut harness = signed_in();
     route_databricks(&harness, "access-2", 3_600);

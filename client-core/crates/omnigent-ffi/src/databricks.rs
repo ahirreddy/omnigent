@@ -35,14 +35,11 @@ use omnigent_core::auth::databricks::{
 };
 use url::Url;
 
-use crate::client::{ClientCore, Inner};
+use crate::client::{ClientCore, Inner, RENEWAL_RETRY_MS};
 use crate::connection::{DatabricksOAuthSettings, Resolved};
 use crate::engine::{Msg, lock};
 use crate::errors::{CoreError, DatabricksErrorKind};
 use crate::events::{ConnectedServer, ConnectionPhase, CoreEvent, DatabricksChallenge, ErrorScope};
-
-/// How long a failed background refresh waits before the next attempt.
-const RENEWAL_RETRY_MS: u64 = 60_000;
 
 type Answer = Result<Option<DatabricksTokens>, DatabricksError>;
 
@@ -390,10 +387,10 @@ impl Inner {
     }
 
     fn databricks_grant_lost_with(&self, resolved: &Resolved, error: CoreError) {
-        self.sessions.disconnect();
         self.post(Msg::Disconnected {
             phase: ConnectionPhase::Disconnected,
         });
+        self.sessions.disconnect();
         self.sign_in_required(resolved, Some(error));
     }
 
