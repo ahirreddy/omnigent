@@ -1322,6 +1322,61 @@ fn a_disconnect_stops_a_ticket_at_each_await() {
     assert_eq!(lock(&harness.store.items).len(), 0);
 }
 
+/// The user gave up on the ticket page and signed in another way. Ten minutes later the abandoned
+/// ticket expires; that must not put a connected app back on the sign-in screen.
+#[test]
+fn an_abandoned_ticket_cannot_disturb_a_connection_made_another_way() {
+    let mut harness = oidc_server();
+    connect(&mut harness).unwrap();
+    begin_ticket(&mut harness);
+    let challenge = harness.core.begin_oidc_sign_in(REDIRECT.into()).unwrap();
+    let attempt = challenge.attempt_id;
+    let callback = callback_for(&challenge);
+    harness
+        .call(|core| async move { core.complete_oidc_sign_in(attempt, callback).await })
+        .unwrap();
+    assert!(matches!(
+        last_phase(&harness),
+        ConnectionPhase::Connected { .. }
+    ));
+    let polls = harness.http.count("/auth/cli-poll");
+    harness.advance(600_000);
+    assert!(
+        matches!(last_phase(&harness), ConnectionPhase::Connected { .. }),
+        "{:?}",
+        last_phase(&harness)
+    );
+    assert!(
+        harness.http.count("/auth/cli-poll") <= polls + 1,
+        "the abandoned ticket stops polling"
+    );
+}
+
+/// Starting the ticket page again replaces the earlier ticket; its expiry says nothing about the
+/// new one.
+#[test]
+fn a_newer_ticket_replaces_the_older_one() {
+    let mut harness = oidc_server();
+    connect(&mut harness).unwrap();
+    begin_ticket(&mut harness);
+    harness.advance(500_000);
+    begin_ticket(&mut harness);
+    let polls_before = harness.http.count("/auth/cli-poll");
+    // The older ticket would have expired by now; the newer one still has 500 s.
+    harness.advance(100_000);
+    assert!(
+        matches!(
+            last_phase(&harness),
+            ConnectionPhase::AwaitingBrowserLogin { .. }
+        ),
+        "{:?}",
+        last_phase(&harness)
+    );
+    // One poller at a 2 s interval, not two.
+    let polled = harness.http.count("/auth/cli-poll") - polls_before;
+    assert!(polled <= 2, "{polled} polls in one tick");
+}
+
 #[test]
 fn signing_out_of_oidc_revokes_and_reports_what_failed() {
     let mut harness = oidc_server();

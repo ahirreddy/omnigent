@@ -225,6 +225,8 @@ pub(crate) struct AuthState {
     pub(crate) connected_user: Option<String>,
     attempts: HashMap<u64, OidcSignInAttempt>,
     next_attempt: u64,
+    /// The browser ticket whose poller is current; a new ticket or a connection retires it.
+    browser_ticket: u64,
     pub(crate) renewal: Option<AbortHandle>,
 }
 
@@ -401,7 +403,11 @@ impl Inner {
             user_id: server.user_id.clone(),
             mode: resolved.mode.clone().into(),
         };
-        lock(&self.auth).connected_user = Some(server.user_id);
+        {
+            let mut auth = lock(&self.auth);
+            auth.connected_user = Some(server.user_id);
+            auth.browser_ticket = auth.browser_ticket.wrapping_add(1);
+        }
         self.post(Msg::Connected {
             link: Link {
                 endpoint: resolved.endpoint.clone(),
@@ -683,6 +689,12 @@ impl Inner {
         }
     }
 
+    /// Whether a browser ticket is still the one being waited for.
+    fn ticket_is_current(&self, generation: u64, ticket_id: u64) -> bool {
+        let auth = lock(&self.auth);
+        auth.generation == generation && auth.browser_ticket == ticket_id
+    }
+
     /// Saves an accounts-style credential.
     async fn save_credential(
         &self,
@@ -703,12 +715,13 @@ impl Inner {
     async fn poll_browser_login(
         self: Arc<Self>,
         generation: u64,
+        ticket_id: u64,
         resolved: Resolved,
         login: BrowserLogin,
     ) {
         loop {
             self.host.scheduler.sleep(ticket::POLL_INTERVAL_MS).await;
-            if self.check_generation(generation).is_err() {
+            if !self.ticket_is_current(generation, ticket_id) {
                 return;
             }
             let now = self.host.unix_ms();
@@ -726,7 +739,7 @@ impl Inner {
                 },
                 Err(error) => Err(error),
             };
-            if self.check_generation(generation).is_err() {
+            if !self.ticket_is_current(generation, ticket_id) {
                 return;
             }
             match status {
@@ -1063,10 +1076,15 @@ impl ClientCore {
             base_url: resolved.endpoint.base_url().to_owned(),
             login: info.clone(),
         }));
+        let ticket_id = {
+            let mut auth = lock(&inner.auth);
+            auth.browser_ticket = auth.browser_ticket.wrapping_add(1);
+            auth.browser_ticket
+        };
         let poller = Arc::clone(inner);
         inner
             .host
-            .spawn(poller.poll_browser_login(generation, resolved, login));
+            .spawn(poller.poll_browser_login(generation, ticket_id, resolved, login));
         Ok(info)
     }
 
