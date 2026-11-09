@@ -10,6 +10,8 @@ nonisolated struct CanvasGeometry: Equatable {
   static let minZoom: CGFloat = 0.05
   static let maxZoom: CGFloat = 2.5
   static let zoomStep: CGFloat = 1.25
+  /// Past this many dots the lattice is left out; a huge board would redraw too slowly.
+  static let maxDots: CGFloat = 60_000
 
   /// The board point drawn at the content's top-left corner.
   let origin: CGPoint
@@ -34,8 +36,8 @@ nonisolated struct CanvasGeometry: Equatable {
     }
     origin = CGPoint(x: CGFloat(minX) - Self.margin, y: CGFloat(minY) - Self.margin)
     size = CGSize(
-      width: CGFloat(maxX - minX) + Self.cardWidth + 2 * Self.margin,
-      height: CGFloat(maxY - minY) + Self.cardHeight + 2 * Self.margin)
+      width: CGFloat(maxX) - CGFloat(minX) + Self.cardWidth + 2 * Self.margin,
+      height: CGFloat(maxY) - CGFloat(minY) + Self.cardHeight + 2 * Self.margin)
   }
 
   /// Where `card` is drawn in the content.
@@ -52,5 +54,22 @@ nonisolated struct CanvasGeometry: Equatable {
 
   static func clamp(_ zoom: CGFloat) -> CGFloat {
     min(max(zoom, minZoom), maxZoom)
+  }
+
+  /// A card's coordinate after a drag; a stored position at the limit of `Int` stays there.
+  static func moved(_ position: Int, by translation: CGFloat) -> Int {
+    guard translation.isFinite else { return position }
+    let distance = Int(exactly: translation.rounded()) ?? (translation < 0 ? .min : .max)
+    let (sum, overflowed) = position.addingReportingOverflow(distance)
+    guard overflowed else { return sum }
+    return distance < 0 ? .min : .max
+  }
+
+  /// How many dots fill `size`, or `nil` when there are too many to draw.
+  static func dotLattice(in size: CGSize) -> (columns: Int, rows: Int)? {
+    let columns = (size.width / gridStep).rounded(.down) + 1
+    let rows = (size.height / gridStep).rounded(.down) + 1
+    guard columns >= 1, rows >= 1, columns * rows <= maxDots else { return nil }
+    return (Int(columns), Int(rows))
   }
 }

@@ -42,6 +42,7 @@ struct CLIActionCluster<Content: View>: View {
 /// ``View/messageActionsHost(row:actions:pinned:showsOnTouch:focus:)`` instead.
 private struct CLIActionsHost: ViewModifier {
   let actions: [CLIAction]
+  var trailingClearance: CGFloat = 0
   @State private var isHovered = false
   @FocusState private var isFocused: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -74,6 +75,7 @@ private struct CLIActionsHost: ViewModifier {
                 .accessibilityIdentifier(action.identifier)
             }
           }
+          .padding(.trailing, trailingClearance)
         }
         #if os(macOS)
           .focusable(interactions: .activate)
@@ -137,10 +139,12 @@ struct CLITouchActionsButton: View {
 
 extension View {
   /// Hosts a CLI block's hover-revealed actions.
-  /// - Parameter actions: The actions, in cluster order.
+  /// - Parameters:
+  ///   - actions: The actions, in cluster order.
+  ///   - trailingClearance: Room left beside the cluster for a nested block's own cluster.
   /// - Returns: The host.
-  func cliActions(_ actions: [CLIAction]) -> some View {
-    modifier(CLIActionsHost(actions: actions))
+  func cliActions(_ actions: [CLIAction], trailingClearance: CGFloat = 0) -> some View {
+    modifier(CLIActionsHost(actions: actions, trailingClearance: trailingClearance))
   }
 
   /// Hangs `marker` in the gutter before the block's first line, so text stays on the column.

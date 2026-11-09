@@ -58,6 +58,8 @@ nonisolated indirect enum MarkdownBlock: Hashable, Sendable {
 /// block. Raw HTML is shown verbatim.
 nonisolated enum MarkdownParser {
   static let allowedLinkSchemes: Set<String> = ["http", "https", "mailto"]
+  /// Quotes and lists deeper than this draw as text: each level costs layout and width.
+  static let maxNesting = 16
 
   static func parse(_ text: String) -> [MarkdownBlock] {
     let document = Document(parsing: MarkdownMath.delimited(text), options: [.disableSmartOpts])
@@ -94,6 +96,7 @@ nonisolated enum MarkdownParser {
       if language?.lowercased() == "math" { return .math(body) }
       return .code(language: language?.isEmpty == true ? nil : language, code: body)
     case is BlockQuote, is OrderedList, is UnorderedList, is Markdown.Table:
+      if nestingDepth(of: markup) >= maxNesting { return plainText(markup) }
       return container(markup)
     case is ThematicBreak:
       return .rule
@@ -101,10 +104,25 @@ nonisolated enum MarkdownParser {
       let raw = html.rawHTML.trimmingCharacters(in: .newlines)
       return raw.isEmpty ? nil : .html(raw)
     default:
-      // Any other block (for example a doc directive) keeps its plain text.
-      let text = markup.format().trimmingCharacters(in: .whitespacesAndNewlines)
-      return text.isEmpty ? nil : .paragraph(AttributedString(text))
+      return plainText(markup)
     }
+  }
+
+  /// A block drawn as its source, for a doc directive or anything nested past ``maxNesting``.
+  private static func plainText(_ markup: any Markup) -> MarkdownBlock? {
+    let text = markup.format().trimmingCharacters(in: .whitespacesAndNewlines)
+    return text.isEmpty ? nil : .paragraph(AttributedString(text))
+  }
+
+  /// How many quotes and lists hold this block.
+  private static func nestingDepth(of markup: any Markup) -> Int {
+    var depth = 0
+    var ancestor = markup.parent
+    while let current = ancestor {
+      if current is BlockQuote || current is OrderedList || current is UnorderedList { depth += 1 }
+      ancestor = current.parent
+    }
+    return depth
   }
 
   /// An image block for a paragraph holding only one image from the workspace or a `data:` URL.

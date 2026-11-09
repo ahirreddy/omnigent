@@ -169,6 +169,10 @@ struct CLIWorkGroup: View, Equatable {
   let isLive: Bool
   let decorations: [String: MessageDecoration]
   @State private var isCollapsed = false
+  /// A tool line's cluster at its widest: its first line shares this group's top edge, and the
+  /// fold button on top of Copy output would fold the group instead of copying.
+  private static let lineClusterWidth =
+    3 * Theme.Control.target + 3 * Theme.Spacing.tiny + 2 * Theme.Spacing.extraSmall
 
   static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.id == rhs.id && lhs.items == rhs.items && lhs.isLive == rhs.isLive
@@ -185,7 +189,7 @@ struct CLIWorkGroup: View, Equatable {
         }
       }
     }
-    .cliActions(isLive ? [] : [toggle])
+    .cliActions(isLive ? [] : [toggle], trailingClearance: Self.lineClusterWidth)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("worked-\(items.first?.id ?? "empty")")
   }

@@ -116,14 +116,13 @@ private struct MarkdownBlockView: View {
         CodeBlockView(code: code, language: language)
       }
     case .quote(let blocks):
-      HStack(alignment: .top, spacing: Theme.Spacing.medium) {
+      MarkdownGutterLayout(gutter: .fullHeightRule, spacing: Theme.Spacing.medium) {
         RoundedRectangle(cornerRadius: 1.5)
           .fill(.tertiary)
           .frame(width: 3)
         MarkdownBlocksView(blocks: blocks)
           .foregroundStyle(.secondary)
       }
-      .fixedSize(horizontal: false, vertical: true)
     case .list(let ordered, let start, let items):
       MarkdownListView(ordered: ordered, start: start, items: items)
     case .table(let table):
@@ -158,7 +157,7 @@ private struct MarkdownListView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: TypeRamp.listSpacing) {
       ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.small) {
+        MarkdownGutterLayout(gutter: .baselineMarker, spacing: Theme.Spacing.small) {
           marker(index: index, item: item)
             .frame(minWidth: ordered ? 22 : 12, alignment: .trailing)
           MarkdownBlocksView(blocks: item.blocks)
