@@ -69,6 +69,7 @@ extension BrowserTabModel {
   public func findNext(forward: Bool = true) async {
     guard let tab, !find.query.isEmpty else {
       find.result = nil
+      tab?.stopFinding()
       return
     }
     do {
