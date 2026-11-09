@@ -8,6 +8,19 @@ import OmnigentStores
 // OIDC and Databricks), the sign-in sheet for a registered scheme or a Databricks HTTPS callback,
 // and the browser-ticket page. The core runs the protocol; failures become the screen's banner.
 extension SignInController {
+  /// What shows a sign-in page in a sheet and returns the URL it came back to.
+  typealias AuthenticateInSheet =
+    @MainActor (URL, WebAuthenticationCallback) async throws(WebAuthenticationError) -> URL
+
+  /// The system's web authentication sheet.
+  static func systemSheet() -> AuthenticateInSheet {
+    let presenter = WebAuthenticationPresenter()
+    return { url, callback throws(WebAuthenticationError) in
+      try await presenter.authenticate(
+        url: url, callback: callback, anchorProvider: KeyWindowAnchorProvider())
+    }
+  }
+
   func startBrowserSignIn(_ option: SignInOption) {
     stopBrowserSignIn()
     flowError = nil
@@ -59,9 +72,8 @@ extension SignInController {
       return
     }
     do {
-      let callback = try await presenter.authenticate(
-        url: url, callback: .https(host: challenge.callbackHost, path: challenge.callbackPath),
-        anchorProvider: KeyWindowAnchorProvider())
+      let callback = try await authenticateInSheet(
+        url, .https(host: challenge.callbackHost, path: challenge.callbackPath))
       let completedBefore = store.issues.count
       let server = await store.completeDatabricksSignIn(challenge, callbackURL: callback)
       signedIn(server, issuesBefore: completedBefore)
@@ -166,9 +178,7 @@ extension SignInController {
       return
     }
     do {
-      let callback = try await presenter.authenticate(
-        url: url, callback: .customScheme(challenge.callbackScheme),
-        anchorProvider: KeyWindowAnchorProvider())
+      let callback = try await authenticateInSheet(url, .customScheme(challenge.callbackScheme))
       await complete(challenge, callbackURL: callback)
     } catch {
       store.cancelBrowserSignIn(challenge)

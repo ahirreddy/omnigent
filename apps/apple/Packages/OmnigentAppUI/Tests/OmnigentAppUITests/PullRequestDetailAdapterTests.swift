@@ -131,3 +131,44 @@ struct PullRequestDetailAdapterTests {
     #expect(PullRequestAdapter.summary(merged, live: .checksFailing).status == .merged)
   }
 }
+
+/// Why a session's Pull Requests tab has nothing to show, and what the person can do about it.
+@MainActor
+struct PullRequestUnavailableTests {
+  private func shown(_ info: PullRequestInfo) throws -> (title: String, message: String) {
+    let content = PullRequestDetailAdapter.content(
+      detail: .loaded(info), files: nil, canEdit: true)
+    guard case .unavailable(let title, let message, _) = content else {
+      throw PullRequestError.notUnavailable("\(content)")
+    }
+    return (title, message)
+  }
+
+  private enum PullRequestError: Error {
+    case notUnavailable(String)
+  }
+
+  @Test func eachReasonSaysWhatToDo() throws {
+    #expect(try shown(info(nil, availability: .notAGitRepository)).title == "Not a git repository")
+    #expect(try shown(info(nil, availability: .hostOutdated)).title == "Update your host")
+    #expect(
+      try shown(info(nil, availability: .unsupportedRemote(remoteHost: "git.example"))).message
+        .contains("git.example"))
+    #expect(
+      try shown(info(nil, availability: .unsupportedRemote(remoteHost: nil))).title
+        == "No supported remote")
+    #expect(
+      try shown(info(nil, availability: .repositoryUnresolved(hint: "Run gh auth login"))).message
+        == "Run gh auth login")
+    #expect(
+      try shown(info(nil, availability: .repositoryUnresolved(hint: nil))).message
+        == "Sign in to GitHub on the session\u{2019}s host, then refresh.")
+    #expect(try shown(info(nil, availability: .unavailable)).title == "Pull request unavailable")
+  }
+
+  @Test func aHostsWarningExplainsAReadThatFailed() throws {
+    var warned = info(nil, availability: .unavailable)
+    warned.warnings = ["GitHub says no"]
+    #expect(try shown(warned).message == "GitHub says no")
+  }
+}
