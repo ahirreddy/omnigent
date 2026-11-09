@@ -2,6 +2,7 @@ import Foundation
 import OmnigentAppBrowser
 import OmnigentAppUI
 import OmnigentAuthUI
+import OmnigentCoreFFI
 import OmnigentDesktop
 import OmnigentStores
 import OmnigentUIComponents
@@ -184,6 +185,97 @@ struct AppServicesTests {
     let scratch = try TestScratch(launchArguments: ["-OmnigentDemo"])
     defer { scratch.remove() }
     #expect(scratch.services.makeServerSession().isDemo)
+  }
+
+  /// A demo that doesn't load is reported, and the window still gets a real session.
+  @Test func aDemoThatDoesNotLoadFallsBackToALiveSession() async throws {
+    let reason = "demo-load-\(UUID().uuidString)"
+    let scratch = try TestScratch(
+      launchArguments: ["-OmnigentDemo"],
+      makeDemoSession: { throw CoreError.InvalidState(message: reason) })
+    defer { scratch.remove() }
+    let session = scratch.services.makeServerSession()
+    #expect(!session.isDemo)
+    #expect(session.connection.browserActions?.performer === scratch.services.agentBrowser)
+    #expect(try await AppLog.waitFor(reason))
+  }
+
+  /// A launch that isn't a demo gets a session over the live services, not yet connected.
+  @Test func aRealLaunchGetsALiveSessionWithTheAgentBrowser() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let session = scratch.services.makeServerSession()
+    #expect(!session.isDemo)
+    #expect(!session.isSignedIn)
+    #expect(session.connection.browserActions?.performer === scratch.services.agentBrowser)
+  }
+
+  /// A failure to find Application Support is reported; tabs just aren't saved this run.
+  @Test func tabsThatCantBeSavedAreReportedAndTheAppRuns() async throws {
+    let reason = "no-support-\(UUID().uuidString)"
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    scratch.defaults.removeObject(forKey: AppServices.tabsDirectoryKey)
+    var demoAsked: [Bool] = []
+    let services = AppServices(
+      desktop: scratch.desktop, defaults: scratch.defaults,
+      browserDirectory: scratch.isolation.browserDirectory, flushDrafts: {},
+      notificationPermission: TestHost.DeniedNotifications(), launchArguments: ["-OmnigentDemo"],
+      applicationSupportTabs: { isDemo in
+        demoAsked.append(isDemo)
+        throw CocoaError(.fileReadUnknown, userInfo: [NSLocalizedDescriptionKey: reason])
+      })
+    #expect(services.tabPersistence == nil)
+    #expect(demoAsked == [true])
+    #expect(try await AppLog.waitFor(reason))
+  }
+
+  /// With no directory named, a demo's tabs live in Application Support's Demo Tabs, apart from
+  /// the user's; opening them writes nothing. Its windows get the offline server.
+  @Test func aDemoLaunchKeepsItsTabsApartAndOpensTheOfflineServer() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    scratch.defaults.removeObject(forKey: AppServices.tabsDirectoryKey)
+    let services = AppServices(
+      desktop: scratch.desktop, defaults: scratch.defaults,
+      browserDirectory: scratch.isolation.browserDirectory, flushDrafts: {},
+      notificationPermission: TestHost.DeniedNotifications(), launchArguments: ["-OmnigentDemo"])
+    #expect(services.tabPersistence != nil)
+    #expect(services.makeServerSession().isDemo)
+  }
+
+  /// A real launch's default for quitting isn't called here: it would rewrite the user's drafts.
+  @Test func quittingDefaultsToTheComposerDrafts() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let services = AppServices(
+      desktop: scratch.desktop, defaults: scratch.defaults,
+      browserDirectory: scratch.isolation.browserDirectory, launchArguments: [])
+    #expect(!services.isTerminating)
+  }
+
+  /// A theme the app can't read is reported at launch.
+  @Test func anUnreadableThemeIsLogged() async throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    scratch.defaults.set("{not json", forKey: ThemePreferences.customKey)
+    let services = scratch.isolation.makeServices(desktop: scratch.desktop)
+    let error = try #require(services.theme.readErrors.first)
+    services.bind()
+    #expect(try await AppLog.waitFor(error.description))
+  }
+
+  /// Settings' session links open in a window of the session's own server.
+  @Test func aSettingsSessionLinkOpensOnItsServer() async throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let url = try #require(serverURL)
+    var opened: [ServerWindowID] = []
+    scratch.desktop.router.requestWindow = {}
+    scratch.desktop.router.attachWindowOpener { opened.append($0) }
+    scratch.services.openSession(on: url, session: "session-1")
+    for _ in 0..<200 where opened.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+    #expect(opened.map(\.serverURL) == [url])
   }
 
   @Test func savedTabsLiveInTheChosenDirectory() throws {

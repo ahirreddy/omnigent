@@ -6,6 +6,7 @@ import OmnigentBrowser
 import OmnigentDesktop
 import OmnigentTerminalUI
 import OmnigentUIComponents
+import OmnigentWorkspaceUI
 import SwiftUI
 
 #if OMNIGENT_CHROMIUM
@@ -43,12 +44,17 @@ struct OmnigentMacApp: App {
       preferred: desktop.preferences.defaultServerURL)
   }
 
+  /// What a new window opens on, read each time one opens.
+  /// - Parameter desktop: The launch's desktop.
+  /// - Returns: Gives the server, or `nil` for the connect screen.
+  static func newWindowServerURL(desktop: DesktopController) -> () -> URL? {
+    { newWindowServerURL(demo: OmnigentMacAppDelegate.demoServerURL, desktop: desktop) }
+  }
+
   var body: some Scene {
     let services = appDelegate.services
     let desktop = services.desktop
-    let defaultServerURL = {
-      Self.newWindowServerURL(demo: OmnigentMacAppDelegate.demoServerURL, desktop: desktop)
-    }
+    let defaultServerURL = Self.newWindowServerURL(desktop: desktop)
     ServerWindowScene(
       defaultServerURL: defaultServerURL,
       content: { id in ServerWindowRoot(id: id, services: services) }
@@ -112,8 +118,13 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
     testHostIsolation?.makeServices(desktop: desktop) ?? AppServices(desktop: desktop)
 
   #if OMNIGENT_CHROMIUM
-    private(set) lazy var updater = SparkleUpdater { [weak self] issue in
-      self?.reportUpdater(issue)
+    private(set) lazy var updater = SparkleUpdater(reportIssue: updaterIssueReporter)
+
+    /// Where the updater's issues go; it must not keep the delegate alive.
+    var updaterIssueReporter: SparkleUpdaterIssueReporter {
+      { [weak self] issue in
+        self?.reportUpdater(issue)
+      }
     }
   #endif
 
@@ -132,10 +143,12 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
       try isolation.replaceStandardDefaults()
       try TestHostNotifications.install()
       return isolation
+      // coverage:off ends the process hosting the tests; TestHostTests pin each thrown failure
     } catch {
       fatalError(error.description)
     }
   }
+  // coverage:on
 
   /// The shell services of a launch.
   /// - Parameter isolation: The test host's private store; `nil` in a real launch.
@@ -158,7 +171,9 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   /// Omnigent > Check for Updates..., in the Developer ID edition only.
   var checkForUpdates: (() -> Void)? {
     #if OMNIGENT_CHROMIUM
+      // coverage:off Sparkle's real check and window; on the VM flow backlog (Check for Updates)
       { [weak self] in self?.updater.checkForUpdates() }
+    // coverage:on
     #else
       nil
     #endif
@@ -174,38 +189,23 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
     // windows join by default) also hand windows between full-screen spaces, which AppKit
     // throws on.
     NSWindow.allowsAutomaticWindowTabbing = false
-    if !ToolbarSwapGuard.install() {
-      services.logger.error(
-        "AppKit lacks the toolbar methods to guard; toolbar swaps are unguarded.")
-    }
-    if !MenuTitleGuard.install() {
-      services.logger.error("AppKit lacks the menu item title setter; nil titles are unguarded.")
-    }
-    if !TableRowGuard.install() {
-      services.logger.error(
-        "AppKit lacks the table row methods; drags and menus on removed rows quit.")
-    }
-    if !WindowsMenuGuard.install() {
-      services.logger.error(
-        "AppKit lacks the Windows menu methods; arranging while a window changes quits.")
-    }
     #if DEBUG
       // Lets a chaos run compare behavior without the guard.
       if !UserDefaults.standard.bool(forKey: "OmnigentNoTextUndoGuard") { TextUndoGuard.install() }
     #else
       TextUndoGuard.install()
     #endif
-    if !SingleLinePasteGuard.install() {
-      services.logger.error("AppKit lacks the text view paste method; pasted lines stay unjoined.")
-    }
-    #if OMNIGENT_CHROMIUM
-      if !ScrollMonitorGuard.install() {
-        services.logger.error(
-          "AppKit lacks the scroll monitor to guard; its resumes are unguarded.")
-      }
-    #endif
+    Self.install(Self.appKitGuards, logger: services.logger)
     services.bind()
-    TestHost.LaunchWork.takeNotificationTaps(isTestHost: Self.isTestHost) {
+    takeNotificationTaps(notification, isTestHost: Self.isTestHost)
+  }
+
+  /// Becomes the system's notification delegate, unless the process hosts tests.
+  /// - Parameters:
+  ///   - notification: The launch notification.
+  ///   - isTestHost: Whether the process hosts tests.
+  func takeNotificationTaps(_ notification: Notification, isTestHost: Bool) {
+    TestHost.LaunchWork.takeNotificationTaps(isTestHost: isTestHost) {
       super.applicationWillFinishLaunching(notification)
     }
   }
@@ -213,7 +213,9 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   override func applicationShouldTerminate(_ sender: NSApplication)
     -> NSApplication.TerminateReply
   {
-    askAboutUnsavedEdits(sender) { [self] in finishTerminating(sender) }
+    askAboutUnsavedEdits(
+      sender, quit: Self.isTestHost ? nil : UnsavedEditsQuit(), paths: UnsavedFileEdits.paths
+    ) { [self] in finishTerminating(sender) }
   }
 
   private func finishTerminating(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -222,12 +224,33 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   }
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
+    finishLaunching(notification, isTestHost: Self.isTestHost, startUpdates: startUpdates)
+  }
+
+  /// The work that finishes a launch.
+  /// - Parameters:
+  ///   - notification: The launch notification.
+  ///   - isTestHost: Whether the process hosts tests, which runs none of it.
+  ///   - startUpdates: Starts the updater's scheduled checks.
+  func finishLaunching(
+    _ notification: Notification, isTestHost: Bool, startUpdates: @escaping () throws -> Void
+  ) {
     TestHost.LaunchWork(
       startLocalServer: { super.applicationDidFinishLaunching(notification) },
       startChaos: startChaosIfRequested,
-      startUpdater: startUpdater
-    ).run(isTestHost: Self.isTestHost)
+      startUpdater: { [self] in startUpdater(startUpdates) }
+    ).run(isTestHost: isTestHost)
   }
+
+  // coverage:off Sparkle's real scheduled checks; a real launch in the VM starts them
+  /// Starts the updater's scheduled checks, in the Developer ID edition only. A hosted test must
+  /// never call it: the checks are real.
+  private func startUpdates() throws {
+    #if OMNIGENT_CHROMIUM
+      try updater.start()
+    #endif
+  }
+  // coverage:on
 
   private func startChaosIfRequested() {
     #if DEBUG
@@ -239,15 +262,13 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
     #endif
   }
 
-  private func startUpdater() {
-    #if OMNIGENT_CHROMIUM
-      do {
-        try updater.start()
-      } catch {
-        // `reportUpdater` already logged it and recorded it for Settings.
-        services.logger.notice("Automatic updates are off for this run.")
-      }
-    #endif
+  private func startUpdater(_ startUpdates: () throws -> Void) {
+    do {
+      try startUpdates()
+    } catch {
+      // `reportUpdater` already logged it and recorded it for Settings.
+      services.logger.notice("Automatic updates are off for this run.")
+    }
   }
 
   #if OMNIGENT_CHROMIUM
@@ -274,7 +295,7 @@ struct AppSettingsView: View {
     let updater: SparkleUpdater
   #endif
   /// Other windows open Settings at a tab or server pane through it.
-  @Bindable private var navigator = SettingsNavigator.shared
+  private var navigator: SettingsNavigator { .shared }
 
   var body: some View {
     OmnigentSettingsView(
@@ -296,12 +317,10 @@ struct AppSettingsView: View {
         },
         // Each signed-in server's settings, as the web's /settings server sections.
         SettingsTabItem(SettingsNavigator.serversTab, systemImage: "network", isWide: true) {
-          ServerSettingsContainer(openSession: { [desktop = services.desktop] server, session in
-            desktop.router.open(.conversation(sessionID: session), onServer: server)
-          })
+          ServerSettingsContainer(openSession: services.openSession)
         },
       ],
-      selection: $navigator.tab
+      selection: Bindable(navigator).tab
     ) {
       ComposerSettingsSection()
       SessionSettingsSection()

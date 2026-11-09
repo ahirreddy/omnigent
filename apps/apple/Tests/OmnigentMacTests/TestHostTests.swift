@@ -100,6 +100,24 @@ struct TestHostIsolationTests {
     }
   }
 
+  /// A method that isn't there fails the launch rather than leaving the user's preferences on.
+  @Test func standardDefaultsThatCantBeReplacedFailTheHost() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    #expect(throws: TestHost.IsolationError.standardDefaultsNotReplaced) {
+      try scratch.isolation.replaceStandardDefaults(
+        selector: NSSelectorFromString("noSuchDefaults"))
+    }
+  }
+
+  /// A test host's answer never asks the person.
+  @Test func deniedNotificationsNeverGrant() async throws {
+    let permission = TestHost.DeniedNotifications()
+    try await permission.refreshAuthorization()
+    #expect(permission.authorization == .denied)
+    #expect(try await !permission.requestAuthorization())
+  }
+
   @Test func errorsSayWhatFailed() {
     #expect(
       TestHost.IsolationError.defaultsUnavailable(suite: "a.suite").description.contains("a.suite"))

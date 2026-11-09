@@ -217,14 +217,16 @@ extension OmnigentMacAppDelegate {
   /// Cancel.
   /// - Parameters:
   ///   - sender: The app.
+  ///   - quit: What asks; `nil` in a test host, which quits without asking.
+  ///   - paths: The files with unsaved edits.
   ///   - proceed: Continues quitting.
   /// - Returns: The reply.
   func askAboutUnsavedEdits(
-    _ sender: NSApplication, then proceed: @escaping () -> NSApplication.TerminateReply
+    _ sender: NSApplication, quit: UnsavedEditsQuit?, paths: [String],
+    then proceed: @escaping () -> NSApplication.TerminateReply
   ) -> NSApplication.TerminateReply {
-    guard !Self.isTestHost else { return proceed() }
-    return UnsavedEditsQuit().run(
-      paths: UnsavedFileEdits.paths, reply: sender.reply(toApplicationShouldTerminate:),
-      proceed: proceed)
+    guard let quit else { return proceed() }
+    return quit.run(
+      paths: paths, reply: sender.reply(toApplicationShouldTerminate:), proceed: proceed)
   }
 }

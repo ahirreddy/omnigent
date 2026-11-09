@@ -1,5 +1,6 @@
 import Foundation
 import ObjectiveC
+import OmnigentAppUI
 import OmnigentDesktop
 
 /// Telling whether this process hosts the unit tests, and keeping what they touch away from the
@@ -87,9 +88,11 @@ enum TestHost {
 
     /// Makes `UserDefaults.standard` these preferences for the rest of the process, so no code
     /// and no framework, reaching for it directly, writes to the user's.
+    /// - Parameter selector: The method that answers `UserDefaults.standard`.
     /// - Throws: `IsolationError.standardDefaultsNotReplaced` when the method can't be replaced.
-    func replaceStandardDefaults() throws(IsolationError) {
-      let selector = #selector(getter: UserDefaults.standard)
+    func replaceStandardDefaults(
+      selector: Selector = #selector(getter: UserDefaults.standard)
+    ) throws(IsolationError) {
       guard let method = unsafe class_getClassMethod(UserDefaults.self, selector) else {
         throw .standardDefaultsNotReplaced
       }
@@ -100,9 +103,16 @@ enum TestHost {
 
     /// Shell services that can't reach the user's server, host, records or preferences: local
     /// processes are off, and the home and records they would use are private anyway.
-    /// - Parameter managedDomains: The domains organization servers come from.
+    /// - Parameters:
+    ///   - managedDomains: The domains organization servers come from.
+    ///   - localServerCapability: Whether local processes are on; a test turning them on must
+    ///     start none.
     /// - Returns: The services, with the menu bar extra off.
-    func makeDesktop(managedDomains: [String] = []) -> DesktopController {
+    func makeDesktop(
+      managedDomains: [String] = [],
+      localServerCapability: LocalServerCapability = .unavailable(
+        .disabled("This process hosts unit tests."))
+    ) -> DesktopController {
       var dependencies = LocalServerManager.Dependencies.live(
         records: LocalServerRecordStore(
           directory: root.appending(path: "LocalServer", directoryHint: .isDirectory)))
@@ -110,7 +120,7 @@ enum TestHost {
       dependencies.homeDirectory = root
       let desktop = DesktopController(
         defaults: defaults, managedDomains: managedDomains,
-        localServerCapability: .unavailable(.disabled("This process hosts unit tests.")),
+        localServerCapability: localServerCapability,
         localServerDependencies: dependencies)
       desktop.localServerPreferences.showsMenuBarExtra = false
       desktop.notifications.preferencesProvider = {
@@ -127,16 +137,18 @@ enum TestHost {
     ///     so no system prompt can appear.
     ///   - launchArguments: The arguments to behave as launched with; none by default, as the
     ///     test host's own hold nothing the tests chose.
+    ///   - makeDemoSession: Makes the sessions of a launch with `-OmnigentDemo`.
     /// - Returns: The services, with nothing kept in the user's Application Support.
     func makeServices(
       desktop: DesktopController, flushDrafts: @escaping () -> Void = {},
       notificationPermission: any NotificationAuthorizing = DeniedNotifications(),
-      launchArguments: [String] = []
+      launchArguments: [String] = [],
+      makeDemoSession: @escaping @MainActor () throws -> ServerSession = ServerSession.demo
     ) -> AppServices {
       AppServices(
         desktop: desktop, defaults: defaults, browserDirectory: browserDirectory,
         flushDrafts: flushDrafts, notificationPermission: notificationPermission,
-        launchArguments: launchArguments)
+        launchArguments: launchArguments, makeDemoSession: makeDemoSession)
     }
   }
 

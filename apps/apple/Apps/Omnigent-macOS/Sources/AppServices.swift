@@ -58,6 +58,7 @@ final class AppServices {
   @ObservationIgnored private let flushDrafts: () -> Void
   @ObservationIgnored private let notificationPermission: any NotificationAuthorizing
   @ObservationIgnored private let isDemo: Bool
+  @ObservationIgnored private let makeDemoSession: @MainActor () throws -> ServerSession
 
   /// Where UI tests and the test host keep saved tabs instead of Application Support.
   static let tabsDirectoryKey = "OmnigentTabsDirectory"
@@ -71,14 +72,23 @@ final class AppServices {
   ///   - notificationPermission: What asks for notification permission; `desktop`'s center when
   ///     `nil`.
   ///   - launchArguments: The process's arguments, where `-OmnigentDemo` asks for the demo.
+  ///   - makeDemoSession: Makes a demo launch's sessions.
+  ///   - applicationSupportTabs: Opens the saved tabs in Application Support, unless `defaults`
+  ///     names another directory.
   init(
     desktop: DesktopController, defaults: UserDefaults = .standard,
     browserDirectory: URL = BrowserEnvironment.standardDirectory,
+    // coverage:off rewrites the user's own drafts file; VM flow backlog: a draft survives quitting
     flushDrafts: @escaping () -> Void = { ComposerDraftArchive.shared?.flush() },
+    // coverage:on
     notificationPermission: (any NotificationAuthorizing)? = nil,
-    launchArguments: [String] = ProcessInfo.processInfo.arguments
+    launchArguments: [String] = ProcessInfo.processInfo.arguments,
+    makeDemoSession: @escaping @MainActor () throws -> ServerSession = ServerSession.demo,
+    applicationSupportTabs: @MainActor (_ isDemo: Bool) throws -> TabPersistence = AppServices
+      .standardTabs
   ) {
     isDemo = launchArguments.contains("-OmnigentDemo")
+    self.makeDemoSession = makeDemoSession
     self.desktop = desktop
     self.flushDrafts = flushDrafts
     self.notificationPermission = notificationPermission ?? desktop.notifications
@@ -94,18 +104,32 @@ final class AppServices {
       defaults: defaults)
     browserTabs = BrowserTabHost(
       environment: browser, agent: agentBrowser?.agentController, logger: logger)
+    tabPersistence = Self.openTabs(
+      directory: defaults.string(forKey: Self.tabsDirectoryKey), isDemo: isDemo, logger: logger,
+      applicationSupport: applicationSupportTabs)
+  }
+
+  /// The saved tabs under Application Support.
+  /// - Parameter isDemo: Whether this is a demo launch, whose tabs are kept apart.
+  /// - Returns: The tabs.
+  /// - Throws: When Application Support cannot be located.
+  static func standardTabs(isDemo: Bool) throws -> TabPersistence {
+    try TabPersistence.applicationSupport(
+      bundleID: Bundle.main.bundleIdentifier ?? "ai.omnigent.mac", isDemo: isDemo)
+  }
+
+  /// The saved tabs; UI tests pass `-OmnigentTabsDirectory <path>` to keep the user's untouched.
+  /// - Returns: The tabs, or `nil` (logged) when Application Support is unavailable.
+  private static func openTabs(
+    directory: String?, isDemo: Bool, logger: Logger,
+    applicationSupport: @MainActor (Bool) throws -> TabPersistence
+  ) -> TabPersistence? {
+    if let directory { return TabPersistence(directory: URL(filePath: directory)) }
     do {
-      // UI tests pass `-OmnigentTabsDirectory <path>` to keep the user's saved tabs untouched.
-      if let directory = defaults.string(forKey: Self.tabsDirectoryKey) {
-        tabPersistence = TabPersistence(directory: URL(filePath: directory))
-      } else {
-        tabPersistence = try TabPersistence.applicationSupport(
-          bundleID: Bundle.main.bundleIdentifier ?? "ai.omnigent.mac",
-          isDemo: isDemo)
-      }
+      return try applicationSupport(isDemo)
     } catch {
-      tabPersistence = nil
       logger.error("Tabs will not be saved: \(error.localizedDescription, privacy: .public)")
+      return nil
     }
   }
 
@@ -204,7 +228,7 @@ final class AppServices {
   func makeServerSession() -> ServerSession {
     if isDemo {
       do {
-        return try ServerSession.demo()
+        return try makeDemoSession()
       } catch {
         logger.error("The demo server did not load: \(String(describing: error), privacy: .public)")
       }
@@ -212,6 +236,14 @@ final class AppServices {
     let session = ServerSession.live(keychain: keychain)
     session.connection.browserActions?.performer = agentBrowser
     return session
+  }
+
+  /// Opens a conversation of a server in a window of its own, as Settings' session links do.
+  /// - Parameters:
+  ///   - server: The server.
+  ///   - session: The conversation.
+  func openSession(on server: URL, session: String) {
+    desktop.router.open(.conversation(sessionID: session), onServer: server)
   }
 
   /// Records a successful connection and, the first time, asks for notification permission:

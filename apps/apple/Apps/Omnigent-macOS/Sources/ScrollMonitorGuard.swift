@@ -19,10 +19,18 @@
     @MainActor @discardableResult
     static func install() -> Bool {
       guard unsafe !isInstalled else { return true }
+      unsafe isInstalled = NSClassFromString(className).map(guardResume(of:)) ?? false
+      return unsafe isInstalled
+    }
+
+    /// Puts the guard in front of `monitor`'s `resume`.
+    /// - Parameter monitor: The monitor's class.
+    /// - Returns: Whether the class has a `resume` to guard.
+    @MainActor
+    static func guardResume(of monitor: AnyClass) -> Bool {
       let resume = NSSelectorFromString("resume")
       let guarded = #selector(NSObject.scrollMonitorGuardResume)
-      guard let monitor = NSClassFromString(className),
-        let original = unsafe class_getInstanceMethod(monitor, resume),
+      guard let original = unsafe class_getInstanceMethod(monitor, resume),
         let replacement = unsafe class_getInstanceMethod(NSObject.self, guarded),
         unsafe class_addMethod(
           monitor, guarded, method_getImplementation(replacement),
@@ -30,7 +38,6 @@
         let added = unsafe class_getInstanceMethod(monitor, guarded)
       else { return false }
       unsafe method_exchangeImplementations(original, added)
-      unsafe isInstalled = true
       return true
     }
 

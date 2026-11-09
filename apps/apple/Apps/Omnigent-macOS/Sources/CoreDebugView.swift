@@ -166,21 +166,30 @@ private struct ConversationDebugView: View {
       .padding(8)
       Divider()
       List(conversation.rows, id: \.id) { row in
-        VStack(alignment: .leading, spacing: 2) {
-          HStack(spacing: 6) {
-            Text(verbatim: "\(row.role)").font(.caption.bold())
-            if let activity = row.activity {
-              Text(verbatim: "\(activity.kind): \(activity.title)").font(.caption)
-            }
-            if row.isStreaming {
-              Text("streaming").font(.caption).foregroundStyle(.orange)
-            }
-          }
-          Text(row.text).textSelection(.enabled).lineLimit(8)
-        }
-        .accessibilityIdentifier("debug.row.\(row.id)")
+        CoreDebugRow(row: row)
       }
       .accessibilityIdentifier("debug.rows")
     }
+  }
+}
+
+/// One row of a conversation, as the core published it.
+struct CoreDebugRow: View {
+  let row: Row
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 6) {
+        Text(verbatim: "\(row.role)").font(.caption.bold())
+        if let activity = row.activity {
+          Text(verbatim: "\(activity.kind): \(activity.title)").font(.caption)
+        }
+        if row.isStreaming {
+          Text("streaming").font(.caption).foregroundStyle(.orange)
+        }
+      }
+      Text(row.text).textSelection(.enabled).lineLimit(8)
+    }
+    .accessibilityIdentifier("debug.row.\(row.id)")
   }
 }

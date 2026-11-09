@@ -42,7 +42,7 @@ struct ServerWindowRoot: View {
   }
 
   /// "Use This Mac" in Connect a Host: hosts for the server where the edition runs the CLI.
-  private var useThisMachine: UseThisMachineAction? {
+  var useThisMachine: UseThisMachineAction? {
     let server = desktop.localServer
     guard server.capability.isAvailable else { return nil }
     return UseThisMachineAction { url in
@@ -59,10 +59,10 @@ struct ServerWindowRoot: View {
       openInNewWindow: { sessionID in openNewWindow(on: sessionID) },
       tabContext: TabWindowContext(
         window: id.instance, persistence: services.tabPersistence, browser: services.browserTabs),
-      serverSwitching: serverSwitching(session)
+      serverSwitching: serverSwitching(session, openSettingsAt: settingsWindow)
     )
     .environment(\.useThisMachine, useThisMachine)
-    .environment(\.openSettingsAt, .settingsWindow(openSettings: openSettings))
+    .environment(\.openSettingsAt, settingsWindow)
     .navigationTitle(Self.title(session, boundTo: id.serverURL))
     .sheet(isPresented: $showsCoreDebug) {
       CoreDebugView()
@@ -79,7 +79,8 @@ struct ServerWindowRoot: View {
       $id, desktop: desktop, isReady: isReady,
       viewedSessionID: isReady ? selection?.sessionID : nil,
       unreadCount: isReady ? notifications?.badgeCount ?? 0 : 0,
-      actions: actions(session), onRoute: { route in apply(route) }
+      actions: actions(session),
+      onRoute: { route in apply(route, in: session, openSettingsAt: settingsWindow) }
     )
     .desktopAttention(session.connection, serverURL: id.serverURL, desktop: desktop)
     .menuBarSessions(
@@ -95,6 +96,11 @@ struct ServerWindowRoot: View {
       if url == nil { session.signIn.directory = services.serverDirectory() }
     }
     .task { await reconnectOnSystemTriggers(session) }
+  }
+
+  /// The app's Settings window.
+  private var settingsWindow: OpenSettingsDestinationAction {
+    .settingsWindow(openSettings: openSettings)
   }
 
   /// Creates the window's session once and binds its sign-in to the window.
@@ -168,7 +174,13 @@ struct ServerWindowRoot: View {
 
   /// The sidebar's server switcher: known servers, switching this window in place, connecting
   /// another server (the server picker) and Settings.
-  func serverSwitching(_ session: ServerSession) -> ServerSwitching {
+  /// - Parameters:
+  ///   - session: The window's session.
+  ///   - openSettingsAt: Opens Settings at a server's pane.
+  /// - Returns: The switcher's contents and actions.
+  func serverSwitching(
+    _ session: ServerSession, openSettingsAt: OpenSettingsDestinationAction
+  ) -> ServerSwitching {
     ServerSwitching(
       servers: services.knownServers(), organizationServers: services.organizationServers(),
       switchTo: { url in
@@ -184,8 +196,7 @@ struct ServerWindowRoot: View {
       },
       openSettings: {
         // This window's server, not the first signed-in one.
-        OpenSettingsDestinationAction.settingsWindow(openSettings: openSettings)(
-          .server(url: session.connection.supervisedServerURL, pane: nil))
+        openSettingsAt(.server(url: session.connection.supervisedServerURL, pane: nil))
       })
   }
 
@@ -224,24 +235,32 @@ struct ServerWindowRoot: View {
       reset: { page.resetZoom() }, zoomIn: { page.zoomIn() }, zoomOut: { page.zoomOut() })
   }
 
-  private func apply(_ route: OmnigentDesktop.DeepLinkRoute) {
+  /// Shows a deep link's destination.
+  /// - Parameters:
+  ///   - route: The destination.
+  ///   - session: The window's session.
+  ///   - openSettingsAt: Opens Settings, for a link to it.
+  func apply(
+    _ route: OmnigentDesktop.DeepLinkRoute, in session: ServerSession,
+    openSettingsAt: OpenSettingsDestinationAction
+  ) {
     switch route {
     case .home: selection = nil
     case .conversation(let sessionID):
       // A link to a conversation shows its chat, whichever of its tabs was selected.
-      session?.tabs.showChat(sessionID)
+      session.tabs.showChat(sessionID)
       selection = .session(sessionID)
     case .message(let sessionID, let messageID):
-      session?.transcriptFocus.focus(messageID, in: sessionID)
-      session?.tabs.showChat(sessionID)
+      session.transcriptFocus.focus(messageID, in: sessionID)
+      session.tabs.showChat(sessionID)
       selection = .session(sessionID)
     case .page(let page): selection = DeepLinkDestinations.selection(for: page)
     case .settings(let section):
-      OpenSettingsDestinationAction.settingsWindow(openSettings: openSettings)(
+      openSettingsAt(
         DeepLinkDestinations.settings(
-          section: section, server: session?.connection.supervisedServerURL))
+          section: section, server: session.connection.supervisedServerURL))
     case .register(let invite):
-      guard let session, let serverURL = id.serverURL,
+      guard let serverURL = id.serverURL,
         let link = SceneLinkPlan.inviteLink(server: serverURL, invite: invite)
       else { return }
       session.signIn.openInvite(link)
@@ -278,9 +297,9 @@ struct ServerWindowRoot: View {
     monitor.stop()
   }
 
-  private func openNewWindow(on sessionID: String) {
+  func openNewWindow(on sessionID: String) {
     guard let serverURL = id.serverURL else { return }
-    desktop.router.open(.conversation(sessionID: sessionID), onServer: serverURL)
+    services.openSession(on: serverURL, session: sessionID)
   }
 
   /// Whether the core is signed in to the window's server.

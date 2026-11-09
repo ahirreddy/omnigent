@@ -1,3 +1,6 @@
+// The replaced method takes the Objective-C type.
+// swiftlint:disable legacy_objc_type
+
 import AppKit
 import Testing
 
@@ -11,6 +14,7 @@ import Testing
 /// row that is gone draws no highlight. A drag needs a shown window and the real mouse, so chaos
 /// runs check that part in AppKit.
 @MainActor
+@Suite(.serialized)
 struct TableRowGuardTests {
   /// Three rows, the one column's cells plain text fields.
   private final class Rows: NSObject, NSTableViewDataSource, NSTableViewDelegate {
@@ -56,4 +60,44 @@ struct TableRowGuardTests {
     #expect(path(table, selector, -1) == nil)
     #expect(path(table, selector, 2) != nil)
   }
+
+  /// Runs a guarded drag method with AppKit's drag replaced, so no real drag starts.
+  private func drag(
+    _ selector: Selector, replacing appKit: String, _ rows: IndexSet, hitRow: Int
+  ) throws -> (result: Bool, passedOn: [IndexSet]) {
+    #expect(TableRowGuard.install())
+    let source = Rows()
+    let table = NSTableView(frame: CGRect(x: 0, y: 0, width: 200, height: 120))
+    table.addTableColumn(NSTableColumn(identifier: .init("title")))
+    table.dataSource = source
+    table.reloadData()
+    var passedOn: [IndexSet] = []
+    let spy: @convention(block) (AnyObject, NSIndexSet, Int, NSEvent?) -> Bool = { _, rows, _, _ in
+      passedOn.append(rows as IndexSet)
+      return true
+    }
+    typealias Drag = @convention(c) (NSTableView, Selector, NSIndexSet, Int, NSEvent?) -> Bool
+    let run = unsafe unsafeBitCast(table.method(for: selector), to: Drag.self)
+    let result = try GuardedMethod.replacing([appKit: spy], of: NSTableView.self) {
+      run(table, selector, rows as NSIndexSet, hitRow, nil)
+    }
+    return (result, passedOn)
+  }
+
+  /// A drag starts only on the rows the list still has.
+  @Test(arguments: [
+    (TableRowGuard.flockedSelector, "tableRowGuardFlocked:hitRow:event:"),
+    (TableRowGuard.classicSelector, "tableRowGuardClassic:hitRow:event:"),
+  ])
+  func aDragPassesOnOnlyTheListedRows(selector: Selector, appKit: String) throws {
+    let dragged = try drag(selector, replacing: appKit, [0, 2, 9], hitRow: 2)
+    #expect(dragged.result)
+    #expect(dragged.passedOn == [[0, 2]])
+
+    let gone = try drag(selector, replacing: appKit, [0, 9], hitRow: 9)
+    #expect(!gone.result)
+    #expect(gone.passedOn.isEmpty, "a drag started on a row that is gone")
+  }
 }
+
+// swiftlint:enable legacy_objc_type

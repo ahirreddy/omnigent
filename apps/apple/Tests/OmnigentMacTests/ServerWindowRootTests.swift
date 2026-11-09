@@ -259,7 +259,8 @@ struct ServerWindowActionsTests {
     defer { scratch.remove() }
     let binding = WindowBinding(ServerWindowID(serverURL: demoURL))
     let session = try ServerSession.demo()
-    let switching = root(binding, scratch).serverSwitching(session)
+    let switching = root(binding, scratch).serverSwitching(
+      session, openSettingsAt: OpenSettingsDestinationAction { _ in })
     let same = try #require(URL(string: ServerSession.demoServerURL + "/"))
     let other = try #require(otherURL)
 
@@ -277,7 +278,8 @@ struct ServerWindowActionsTests {
     let other = try #require(otherURL)
     scratch.services.recentServers.record(other)
     let binding = WindowBinding(ServerWindowID(serverURL: nil))
-    let switching = root(binding, scratch).serverSwitching(try ServerSession.demo())
+    let switching = root(binding, scratch).serverSwitching(
+      try ServerSession.demo(), openSettingsAt: OpenSettingsDestinationAction { _ in })
     #expect(switching.servers == [other])
     #expect(switching.organizationServers.isEmpty)
   }

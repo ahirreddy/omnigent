@@ -150,6 +150,15 @@ struct SingleLinePasteGuardTests {
     }
   }
 
+  /// One short line needs no joining, so AppKit's own paste takes it.
+  @Test func aPlainPasteIsAppKits() throws {
+    #expect(SingleLinePasteGuard.install())
+    let editor = try Self.editor(for: NSTextField(string: ""))
+    editor.insertText("find ", replacementRange: editor.selectedRange())
+    #expect(editor.readSelection(from: Self.pasteboard("plain"), type: .string))
+    #expect(editor.string == "find plain")
+  }
+
   /// A field with tokens edits in an `NSTokenTextView`, whose own paste method calls the guarded one.
   @Test func aTokenFieldJoinsPastedLines() throws {
     #expect(SingleLinePasteGuard.install())
@@ -262,6 +271,43 @@ struct SingleLinePasteGuardTests {
     /// A later AppKit whose monitor answers other messages keeps its own resume.
     @Test func anUnknownMonitorResumes() {
       #expect(ScrollMonitorGuard.windowHasScreen(NSObject()))
+    }
+
+    /// A class like AppKit's monitor, with a `resume` for the guard to stand in front of.
+    private final class GuardedMonitor: NSObject {
+      @objc let constantData: Data?
+      var resumes = 0
+      init(constantData: Data?) { self.constantData = constantData }
+      @objc func resume() { resumes += 1 }
+    }
+
+    /// The guard skips the resume that would assert, and runs every other.
+    @Test func theResumeRunsOnlyWithAWindowOnAScreen() throws {
+      #expect(ScrollMonitorGuard.guardResume(of: GuardedMonitor.self))
+      let resume = NSSelectorFromString("resume")
+
+      let unknown = GuardedMonitor(constantData: nil)
+      _ = unsafe unknown.perform(resume)
+      #expect(unknown.resumes == 1)
+
+      let noWindow = GuardedMonitor(constantData: Data(window: nil))
+      _ = unsafe noWindow.perform(resume)
+      #expect(noWindow.resumes == 0)
+
+      let offScreen = Self.window(at: CGPoint(x: -40_000, y: -40_000))
+      let lost = GuardedMonitor(constantData: Data(window: offScreen))
+      _ = unsafe lost.perform(resume)
+      #expect(lost.resumes == 0)
+
+      let screen = try #require(NSScreen.screens.first)
+      let shown = GuardedMonitor(constantData: Data(window: Self.window(at: screen.frame.origin)))
+      _ = unsafe shown.perform(resume)
+      #expect(shown.resumes == 1)
+    }
+
+    /// A class with no `resume` has nothing to guard, and says so.
+    @Test func aMonitorWithoutResumeIsNotGuarded() {
+      #expect(!ScrollMonitorGuard.guardResume(of: Monitor.self))
     }
   }
 #endif
