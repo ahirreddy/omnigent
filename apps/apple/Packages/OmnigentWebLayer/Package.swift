@@ -24,9 +24,9 @@ let package = Package(
   ],
   dependencies: [
     // NSEvent translation and IME composition, shared with the remote browser.
-    .package(path: "../OmnigentInput")
+    .package(path: "../OmnigentInput"),
+    .package(path: "../OmnigentViewTesting"),
   ],
-  dependencies: [.package(path: "../OmnigentViewTesting")],
   targets: [
     // The wire schema and Mach transport, shared with the host (apps/apple/WebHost), which
     // compiles these same files.
