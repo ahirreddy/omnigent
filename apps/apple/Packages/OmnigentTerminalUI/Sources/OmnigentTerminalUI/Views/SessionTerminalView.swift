@@ -114,7 +114,17 @@ private struct AttachedTerminal: View {
     TerminalSurfaceRepresentable(controller: controller)
       .background(Color(white: controller.runtime.appearance.colorScheme == .dark ? 0.04 : 1))
       .overlay(alignment: .top) {
+        // The badge shares this stack so it can't sit on top of a banner's buttons.
         VStack(spacing: 8) {
+          if case .attached(readOnly: true) = controller.state {
+            Label("Read-only", systemImage: "eye")
+              .font(.caption.weight(.medium))
+              .padding(.horizontal, 8)
+              .padding(.vertical, 4)
+              .background(.thinMaterial, in: Capsule())
+              .accessibilityLabel("Read-only terminal")
+              .frame(maxWidth: .infinity, alignment: .trailing)
+          }
           if controller.search != nil {
             TerminalFindBar(controller: controller)
           }
@@ -126,17 +136,6 @@ private struct AttachedTerminal: View {
           }
         }
         .padding(8)
-      }
-      .overlay(alignment: .topTrailing) {
-        if case .attached(readOnly: true) = controller.state {
-          Label("Read-only", systemImage: "eye")
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(.thinMaterial, in: Capsule())
-            .padding(8)
-            .accessibilityLabel("Read-only terminal")
-        }
       }
       .overlay {
         TerminalStatusOverlay(state: controller.state) {
