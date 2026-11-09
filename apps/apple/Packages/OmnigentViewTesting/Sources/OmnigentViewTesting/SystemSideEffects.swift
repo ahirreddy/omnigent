@@ -46,6 +46,9 @@
       @convention(c) (NSSavePanel, Selector, NSWindow?, ResponseHandler?) -> Void
     private typealias AlertSheet =
       @convention(c) (NSAlert, Selector, NSWindow?, ResponseHandler?) -> Void
+    private typealias WindowInit =
+      @convention(c) (NSWindow, Selector, NSRect, UInt, UInt, Bool) -> NSWindow
+    private typealias SetAlpha = @convention(c) (NSWindow, Selector, CGFloat) -> Void
     private typealias MenuPopUp =
       @convention(c) (NSMenu, Selector, NSMenuItem?, NSPoint, NSView?) -> Bool
 
@@ -56,6 +59,8 @@
     }
 
     private static let state = OSAllocatedUnfairLock(initialState: State())
+    private nonisolated(unsafe) static var originalWindowInit: IMP?
+    private nonisolated(unsafe) static var originalSetAlpha: IMP?
     private static let installation = OSAllocatedUnfairLock(initialState: false)
 
     /// A private clipboard standing in for `NSPasteboard.general`, unique to this process.
@@ -99,6 +104,7 @@
       installAlerts()
       installApplication()
       installWindowsAndMenus()
+      installInvisibleWindows()
     }
 
     private static func note(_ change: (inout Record) -> Void) {
@@ -215,6 +221,37 @@
         return false
       }
       replace(NSMenu.self, "popUpMenuPositioningItem:atLocation:inView:", with: popUp)
+    }
+
+    /// Every window in the process is transparent and takes no real clicks from birth, whatever
+    /// shows it: sheets, dialogs and menus can move on screen, and tests still reach them by event.
+    private static func installInvisibleWindows() {
+      let selector = NSSelectorFromString("initWithContentRect:styleMask:backing:defer:")
+      guard let create = unsafe class_getInstanceMethod(NSWindow.self, selector) else {
+        preconditionFailure("SystemSideEffects: NSWindow has no designated initializer")
+      }
+      unsafe originalWindowInit = method_getImplementation(create)
+      let makeInvisible: WindowInit = { window, selector, frame, style, backing, deferred in
+        let original = unsafe unsafeBitCast(Self.originalWindowInit, to: WindowInit.self)
+        let created = original(window, selector, frame, style, backing, deferred)
+        MainActor.assumeIsolated {
+          created.alphaValue = 0
+          created.ignoresMouseEvents = true
+        }
+        return created
+      }
+      unsafe method_setImplementation(create, unsafeBitCast(makeInvisible, to: IMP.self))
+
+      let alpha = NSSelectorFromString("setAlphaValue:")
+      guard let setAlpha = unsafe class_getInstanceMethod(NSWindow.self, alpha) else {
+        preconditionFailure("SystemSideEffects: NSWindow has no setAlphaValue:")
+      }
+      unsafe originalSetAlpha = method_getImplementation(setAlpha)
+      let keepTransparent: SetAlpha = { window, selector, _ in
+        let original = unsafe unsafeBitCast(Self.originalSetAlpha, to: SetAlpha.self)
+        original(window, selector, 0)
+      }
+      unsafe method_setImplementation(setAlpha, unsafeBitCast(keepTransparent, to: IMP.self))
     }
   }
 #endif
