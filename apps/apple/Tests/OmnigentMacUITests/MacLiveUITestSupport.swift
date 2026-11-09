@@ -46,32 +46,42 @@ struct MacLiveUITestSupport {
 
   /// Launches the app on the server with no restored windows and tabs saved apart.
   func launch() -> XCUIApplication {
-    let tabs = FileManager.default.temporaryDirectory.appending(
-      path: "omnigent-mac-uitest-\(UUID().uuidString)", directoryHint: .isDirectory)
     let app = XCUIApplication()
-    app.launchArguments = [
-      "-desktop.defaultServerURL", server, "-ApplePersistenceIgnoreState", "YES",
-      "-OmnigentTabsDirectory", tabs.path, "-OmnigentNoNotificationPrompt", "YES",
-    ]
+    app.launchArguments =
+      ["-desktop.defaultServerURL", server, "-OmnigentTabsDirectory", Self.scratchDirectory().path]
+      + Self.freshStateArguments
     app.launch()
     XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 30), "no window")
     return app
   }
 
-  /// Launches the app on the core's offline demo server (`-OmnigentDemo`), with tabs saved apart.
-  func launchDemo() -> XCUIApplication {
-    let tabs = FileManager.default.temporaryDirectory.appending(
-      path: "omnigent-mac-uitest-\(UUID().uuidString)", directoryHint: .isDirectory)
+  /// Launches the app on the core's offline demo server (`-OmnigentDemo`).
+  /// - Parameter tabs: Where tabs are saved; pass the same folder to a relaunch to restore them.
+  /// - Returns: The app.
+  func launchDemo(tabs: URL = Self.scratchDirectory()) -> XCUIApplication {
     let app = XCUIApplication()
-    app.launchArguments = [
-      "-OmnigentDemo", "YES", "-desktop.defaultServerURL", "http://127.0.0.1:6767",
-      "-ApplePersistenceIgnoreState", "YES", "-OmnigentTabsDirectory", tabs.path,
-      "-OmnigentNoNotificationPrompt", "YES",
-    ]
+    app.launchArguments =
+      [
+        "-OmnigentDemo", "YES", "-desktop.defaultServerURL", "http://127.0.0.1:6767",
+        "-OmnigentTabsDirectory", tabs.path,
+      ] + Self.freshStateArguments
     app.launch()
     XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 30), "no window")
     return app
   }
+
+  /// A folder of this run's own for saved tabs, never the user's.
+  nonisolated static func scratchDirectory() -> URL {
+    FileManager.default.temporaryDirectory.appending(
+      path: "omnigent-mac-uitest-\(UUID().uuidString)", directoryHint: .isDirectory)
+  }
+
+  /// No restored windows or notification prompt, the right panel closed, and the sidebar's saved
+  /// options discarded (undecodable ones fall back to the defaults), so no test inherits a scope.
+  nonisolated static let freshStateArguments = [
+    "-ApplePersistenceIgnoreState", "YES", "-OmnigentNoNotificationPrompt", "YES",
+    "-omnigent:default-workspace-panel", "collapsed", "-omnigent:sidebar-view", "<7b7d>",
+  ]
 
   /// Opens a demo session (demo-notes, demo-design, demo-question) from the sidebar and waits for
   /// its composer.
