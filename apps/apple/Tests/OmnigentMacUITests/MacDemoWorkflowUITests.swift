@@ -37,21 +37,16 @@ final class MacDemoWorkflowUITests: XCTestCase {
   }
 
   /// A sent message shows in the transcript, the demo agent starts replying, and Command-Period
-  /// stops it.
+  /// stops it. The sample sessions take no message (one is read-only, two wait on a request), so
+  /// this starts its own.
   @MainActor
   func testSendingStreamsAReplyThatStopStops() {
     let live = MacLiveUITestSupport(self)
     let app = live.launchDemo()
     defer { app.terminate() }
-    live.openDemo("demo-notes", in: app)
 
-    let message = "UI check \(UUID().uuidString.prefix(6))"
-    live.click(live.element("composer-input", in: app), "the composer")
-    app.typeText(message)
-    app.typeKey(.return, modifierFlags: .command)
-    XCTAssertTrue(
-      live.text(containing: message, in: app).waitForExistence(timeout: 15),
-      "the sent message never showed")
+    let message = "UI check \(UUID().uuidString.prefix(6)) in detail"
+    live.startDemoSession(message, in: app)
     let stop = live.element("composer-stop", in: app)
     XCTAssertTrue(stop.waitForExistence(timeout: 15), "the demo agent never started replying")
     app.typeKey(".", modifierFlags: .command)
@@ -226,13 +221,14 @@ final class MacDemoWorkflowUITests: XCTestCase {
     live.assertRunning(app, "after Find")
   }
 
-  /// A draft stays with its session while another session is shown.
+  /// A draft stays with its session while another session is shown. Both sessions are writable;
+  /// demo-notes is read-only and has no composer.
   @MainActor
   func testDraftsStayWithTheirSession() {
     let live = MacLiveUITestSupport(self)
     let app = live.launchDemo()
     defer { app.terminate() }
-    live.openDemo("demo-notes", in: app)
+    live.openDemo("demo-question", in: app)
 
     let draft = "draft \(UUID().uuidString.prefix(6))"
     let input = live.element("composer-input", in: app)
@@ -241,7 +237,7 @@ final class MacDemoWorkflowUITests: XCTestCase {
     live.openDemo("demo-design", in: app)
     XCTAssertFalse(
       (input.value as? String ?? "").contains(draft), "the draft followed into another session")
-    live.openDemo("demo-notes", in: app)
+    live.openDemo("demo-question", in: app)
     XCTAssertTrue(
       live.waitUntil { (input.value as? String ?? "").contains(draft) },
       "the draft was lost: \(input.value ?? "nil")")

@@ -204,6 +204,7 @@ public struct WorkspaceInspector: View {
           .buttonStyle(.plain)
           .help(label(item))
           .accessibilityLabel(label(item))
+          .accessibilityIdentifier("inspector-tab-\(item.rawValue)")
           .accessibilityAddTraits(isSelected ? .isSelected : [])
         }
       }
