@@ -99,6 +99,8 @@
     @Bindable var model: ComposerScreenModel
     let actions: ComposerActions
     var owner: CommandReturnOwner?
+    var layout = ComposerLayoutStyle.platformDefault
+    var layoutWidth = LayoutWidth.regular
 
     var body: some View {
       ComposerView(
@@ -106,6 +108,8 @@
         focusRequest: model.focusRequest
       )
       .environment(\.commandReturnOwner, owner)
+      .environment(\.composerLayoutStyle, layout)
+      .environment(\.layoutWidth, layoutWidth)
       // A fixed size, so the window keeps its frame as the composer grows.
       .frame(width: 800, height: 600, alignment: .bottom)
     }
@@ -121,6 +125,15 @@
     // Lets the first layout reach the focus proxies, or the first click can miss.
     screen.settle()
     return screen
+  }
+
+  /// Presents a sheet over an empty window, so its toolbar's buttons exist as they do in the app.
+  struct ComposerSheetHost<Sheet: View>: View {
+    let sheet: Sheet
+
+    var body: some View {
+      Color.clear.sheet(isPresented: .constant(true)) { sheet }
+    }
   }
 
   /// Key codes the composer's editor reads.
@@ -186,12 +199,18 @@
       guard frames.indices.contains(index) else {
         throw OffscreenWindowError.notFound("chip \(index) of \(frames.count)")
       }
+      // A plain menu just after another closed can drop the click, so it gets a second one.
+      if let menu = try? openMenu(clickPoint(frames[index])) { return menu }
+      settle(0.05)
       return try openMenu(clickPoint(frames[index]))
     }
 
     /// The editable text fields in reading order.
     var fields: [NSTextField] {
-      allViews.compactMap { $0 as? NSTextField }.filter(\.isEditable)
+      let root = activeWindow.contentView
+      return allViews.compactMap { $0 as? NSTextField }.filter(\.isEditable).sorted {
+        $0.convert($0.bounds, to: root).minY < $1.convert($1.bounds, to: root).minY
+      }
     }
 
     /// Gives a field the keyboard, as a click on it does, and types into it.
@@ -203,6 +222,24 @@
       _ = activeWindow.makeFirstResponder(found[index])
       settle(0.05)
       try type(text)
+    }
+
+    /// Lets `Task`s a view started run: they queue on the main actor, which a test holds until it
+    /// suspends, so `settle` alone doesn't reach them.
+    func drainTasks() async {
+      for _ in 0..<4 {
+        await Task.yield()
+        settle(0.03)
+      }
+    }
+
+    /// Clicks a button counting back from the last, as a sheet's own buttons come last.
+    func tapButton(fromEnd offset: Int) throws {
+      let frames = buttons
+      guard frames.count > offset else {
+        throw OffscreenWindowError.notFound("button \(offset) from the end of \(frames.count)")
+      }
+      try click(clickPoint(frames[frames.count - 1 - offset]))
     }
 
     /// Clicks a button by its position in `buttons`.
