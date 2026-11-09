@@ -23,4 +23,21 @@ extension ConnectionStore {
       return nil
     }
   }
+
+  /// Drops what belongs to the account that was signed in, so the next one never sees it. The
+  /// core keeps open sessions for its next connect, so each is closed there too.
+  func forgetAccount() {
+    sessionList.clear()
+    for sessionID in conversations.keys { closeConversation(sessionID) }
+    workspaceStores = [:]
+    terminalStores = [:]
+    creationStore = nil
+    signedInUserID = nil
+  }
+
+  /// Records who connected. A different user than the last one starts with nothing of theirs.
+  func accountConnected(_ userID: String) {
+    if let signedInUserID, signedInUserID != userID { forgetAccount() }
+    signedInUserID = userID
+  }
 }

@@ -84,6 +84,8 @@ public final class ConnectionStore {
   private var preferenceWatch: Task<Void, Never>?
   private var attempt = 0
   private var nextIssueID = 0
+  /// Who connected last; open conversations belong to them.
+  var signedInUserID: String?
 
   /// Creates a store over an existing core and starts applying its events.
   /// - Parameter core: The Rust client core.
@@ -283,6 +285,7 @@ public final class ConnectionStore {
   /// Signs out and forgets the saved credential.
   public func signOut() async {
     guard let core else { return }
+    forgetAccount()
     do {
       try await core.signOut()
     } catch {
@@ -365,13 +368,6 @@ public final class ConnectionStore {
   /// Clears ``issues`` after the user has seen them.
   public func dismissIssues() {
     issues = []
-  }
-
-  /// A user-facing description of a failure.
-  /// - Parameter error: The error thrown by the core.
-  /// - Returns: Text suitable for display.
-  public static func describe(_ error: any Error) -> String {
-    coreError(error).message
   }
 
   private func startPump() {

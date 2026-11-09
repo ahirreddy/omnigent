@@ -4,6 +4,25 @@
 
   @testable import OmnigentInput
 
+  /// A key event that produced no characters, which AppKit's factory methods can't build.
+  nonisolated private final class CharacterlessKeyEvent: NSEvent {
+    private let eventType: NSEvent.EventType
+
+    init(_ eventType: NSEvent.EventType) {
+      self.eventType = eventType
+      super.init()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override var type: NSEvent.EventType { eventType }
+    override var keyCode: UInt16 { 9 }
+    override var modifierFlags: NSEvent.ModifierFlags { [] }
+    override var isARepeat: Bool { false }
+    override var characters: String? { nil }
+    override var charactersIgnoringModifiers: String? { nil }
+  }
+
   /// Every kind of event the translator takes. The events are built by hand and never posted.
   @MainActor
   @Suite("Input translation of each event")
@@ -207,8 +226,18 @@
       #expect(extreme.deltaY.isFinite)
     }
 
+    @Test("A key with no characters reports the key alone and inserts nothing")
+    func keysWithoutCharacters() {
+      let pressed = InputTranslator.keyInputs(for: CharacterlessKeyEvent(.keyDown))
+      #expect(pressed == [NativeKeyInput(kind: .rawKeyDown, nativeKeyCode: 9)])
+      let released = InputTranslator.keyInputs(for: CharacterlessKeyEvent(.keyUp))
+      #expect(released == [NativeKeyInput(kind: .keyUp, nativeKeyCode: 9)])
+    }
+
     @Test("Every page cursor has a system cursor; what has none is the arrow")
     func cursors() {
+      // Without an application the system cursors are nil, which ends this loop before it starts.
+      _ = NSApplication.shared
       let table: [(PageCursor, NSCursor)] = [
         (.pointer, .arrow), (.wait, .arrow), (.none, .arrow), (.help, .arrow),
         (.hand, .pointingHand), (.iBeam, .iBeam), (.crosshair, .crosshair),
@@ -216,11 +245,16 @@
         (.notAllowed, .operationNotAllowed), (.grab, .openHand), (.grabbing, .closedHand),
       ]
       #expect(table.count == PageCursor.allCases.count)
+      var checked = 0
       for (cursor, expected) in table {
+        checked += 1
         // Compared out here: `#expect` evaluates its operands outside the main actor.
         let matches = cursor.nsCursor === expected
         #expect(matches, "\(cursor)")
       }
+      #expect(checked == PageCursor.allCases.count)
+      let handIsNotTheArrow = PageCursor.hand.nsCursor !== PageCursor.pointer.nsCursor
+      #expect(handIsNotTheArrow)
     }
   }
 #endif

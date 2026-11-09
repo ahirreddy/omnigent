@@ -1,0 +1,311 @@
+import Foundation
+import OmnigentCoreFFI
+import OmnigentTestSupport
+import Testing
+
+@testable import OmnigentStores
+
+/// A created session answering every read the first message needs.
+let createdSnapshot =
+  #"{"id":"conv_created","status":"idle","created_at":1,"permission_level":4}"#
+
+let newSessionSelection = CreationSelection(
+  hostId: "host_a", agentId: "ag_codex", workspace: "/work/project", model: nil)
+
+func creationRoutes() throws -> RouteServer {
+  let server = RouteServer()
+  server.route("/v1/hosts", .json(try recorded("sessions/SessionCreation--_shared--hosts.json")))
+  server.route(
+    "/v1/agents", .json(try recorded("sessions/SessionCreation--_shared--agents.json")))
+  server.route(
+    "/v1/hosts/host_a/harnesses/codex-native/model-options",
+    .json(try recorded("sessions/SessionCreation--_shared--model-options.json")))
+  server.route(
+    "/v1/hosts/host_a/filesystem",
+    .json(
+      #"{"data":[{"name":"project","path":"/work/project","type":"directory"}],"has_more":false}"#
+    ))
+  server.route("/v1/sessions/conv_created", .json(createdSnapshot))
+  server.route("/v1/sessions/conv_created/items", .json(#"{"data":[],"has_more":false}"#))
+  return server
+}
+
+func acceptCreation(_ server: RouteServer) throws {
+  server.route(
+    "/v1/sessions", method: "POST",
+    .json(
+      try recorded(
+        "sessions/SessionCreation--201PostsExactExternalHostContractWithoutInitialPrompt.json"),
+      status: 201))
+}
+
+@MainActor
+func loadedCreation(_ server: RouteServer) async throws -> CreationStore {
+  let store = try await connectedStore(server)
+  let creation = try #require(store.creation())
+  await creation.loadCatalog()
+  await creation.selectionChanged(newSessionSelection)
+  return creation
+}
+
+@MainActor
+private func createdError(_ creation: CreationStore) -> CoreError? {
+  guard case .created(_, let error) = creation.phase else {
+    Issue.record("phase: \(creation.phase)")
+    return nil
+  }
+  return error
+}
+
+/// One creation at a time, never repeated, and the first message with its files.
+@MainActor
+@Suite("Starting a session", .timeLimit(.minutes(1)))
+struct CreationFlowTests {
+  private let selection = newSessionSelection
+
+  @Test("A first message goes out with the new session")
+  func sendsFirstMessage() async throws {
+    let server = try creationRoutes()
+    try acceptCreation(server)
+    server.route(
+      "/v1/sessions/conv_created/events", method: "POST", .json(#"{"queued":true}"#))
+    let creation = try await loadedCreation(server)
+    await creation.create(selection, title: "", firstMessage: "hello")
+    guard case .created(_, nil) = creation.phase else {
+      Issue.record("phase: \(creation.phase)")
+      return
+    }
+    #expect(server.requests(to: "/v1/sessions/conv_created/events", method: "POST").count == 1)
+  }
+
+  @Test("A session with no first message is created and no message is sent")
+  func createsWithoutMessage() async throws {
+    let server = try creationRoutes()
+    try acceptCreation(server)
+    let creation = try await loadedCreation(server)
+    await creation.create(selection, title: "", firstMessage: "   ")
+    #expect(createdError(creation) == nil)
+    #expect(server.requests(to: "/v1/sessions/conv_created/events", method: "POST").isEmpty)
+    #expect(creation.canCreate)
+    creation.reset()
+    #expect(creation.phase == .editing)
+  }
+
+  @Test("A definite refusal returns to the form; a reset clears it")
+  func refused() async throws {
+    let server = try creationRoutes()
+    server.fail("/v1/sessions", method: "POST", status: 400, detail: "bad")
+    let creation = try await loadedCreation(server)
+    await creation.create(selection, title: "", firstMessage: "hi")
+    guard case .failed = creation.phase else {
+      Issue.record("phase: \(creation.phase)")
+      return
+    }
+    #expect(creation.canCreate)
+    creation.reset()
+    #expect(creation.phase == .editing)
+  }
+
+  @Test("An uncertain creation can't be reset away, only acknowledged")
+  func uncertainStays() async throws {
+    let server = try creationRoutes()
+    server.dropConnection("/v1/sessions", method: "POST")
+    let creation = try await loadedCreation(server)
+    await creation.create(selection, title: "", firstMessage: "")
+    creation.reset()
+    guard case .uncertain = creation.phase else {
+      Issue.record("phase: \(creation.phase)")
+      return
+    }
+    creation.acknowledgeUncertain()
+    #expect(creation.phase == .editing)
+    creation.acknowledgeUncertain()
+    #expect(creation.phase == .editing)
+  }
+
+  @Test("A second creation can't start while one is in flight")
+  func oneAtATime() async throws {
+    let server = try creationRoutes()
+    try acceptCreation(server)
+    let gate = server.hold("/v1/sessions", method: "POST")
+    let creation = try await loadedCreation(server)
+    let first = Task { await creation.create(newSessionSelection, title: "", firstMessage: "") }
+    try await eventually("the post") { gate.arrivals == 1 }
+    #expect(!creation.canCreate)
+    await creation.create(selection, title: "", firstMessage: "")
+    creation.reset()
+    #expect(creation.phase == .creating, "a reset can't drop a request in flight")
+    await creation.createInSandbox(
+      selection, target: SandboxTarget(provider: nil, profile: nil, workspaces: []), title: "")
+    gate.release()
+    await first.value
+    #expect(server.requests(to: "/v1/sessions", method: "POST").count == 1)
+  }
+
+  @Test("Retrying the first message sends to the same session and never creates another")
+  func retriesFirstMessage() async throws {
+    let server = try creationRoutes()
+    try acceptCreation(server)
+    let creation = try await loadedCreation(server)
+    await creation.retryFirstMessage()
+    #expect(creation.phase == .editing, "nothing to retry yet")
+
+    await creation.create(selection, title: "", firstMessage: "hi")
+    #expect(createdError(creation) != nil)
+
+    server.route(
+      "/v1/sessions/conv_created/events", method: "POST", .json(#"{"queued":true}"#, status: 200))
+    await creation.retryFirstMessage()
+    #expect(createdError(creation) == nil)
+    #expect(server.requests(to: "/v1/sessions", method: "POST").count == 1)
+    await creation.retryFirstMessage()
+    #expect(server.requests(to: "/v1/sessions/conv_created/events", method: "POST").count <= 3)
+  }
+
+  @Test("A retry that fails again keeps the error to show")
+  func retryFailsAgain() async throws {
+    let server = try creationRoutes()
+    try acceptCreation(server)
+    let creation = try await loadedCreation(server)
+    await creation.create(selection, title: "", firstMessage: "hi")
+    await creation.retryFirstMessage()
+    #expect(createdError(creation) != nil)
+    #expect(server.requests(to: "/v1/sessions", method: "POST").count == 1)
+  }
+
+  @Test("Staged files upload with the first message and leave the form")
+  func stagedFiles() async throws {
+    let server = try creationRoutes()
+    try acceptCreation(server)
+    server.route(
+      "/v1/sessions/conv_created/resources/files", method: "POST",
+      .json(#"{"id":"file_1","session_id":"conv_created"}"#, status: 201))
+    server.route(
+      "/v1/sessions/conv_created/events", method: "POST", .json(#"{"queued":true}"#))
+    let creation = try await loadedCreation(server)
+    let file = PendingAttachment(filename: "a.txt", mediaType: "text/plain", data: Data("x".utf8))
+    let other = PendingAttachment(filename: "b.txt", mediaType: nil, data: Data("y".utf8))
+    creation.stageAttachment(file)
+    creation.stageAttachment(other)
+    creation.removeAttachment(other.id)
+    #expect(creation.attachments.map(\.filename) == ["a.txt"])
+
+    await creation.create(selection, title: "", firstMessage: "hi")
+    #expect(createdError(creation) == nil)
+    #expect(creation.attachments.isEmpty)
+    #expect(server.requests(to: "/v1/sessions/conv_created/resources/files").count == 1)
+    #expect(server.requests(to: "/v1/sessions/conv_created/events", method: "POST").count == 1)
+  }
+
+  @Test("A failed upload leaves the session created; the retry still carries the file")
+  func failedUpload() async throws {
+    let server = try creationRoutes()
+    try acceptCreation(server)
+    server.fail("/v1/sessions/conv_created/resources/files", method: "POST", status: 400)
+    let creation = try await loadedCreation(server)
+    creation.stageAttachment(
+      PendingAttachment(filename: "a.txt", mediaType: nil, data: Data("x".utf8)))
+    await creation.create(selection, title: "", firstMessage: "hi")
+    #expect(createdError(creation) != nil)
+    #expect(server.requests(to: "/v1/sessions", method: "POST").count == 1)
+
+    server.route(
+      "/v1/sessions/conv_created/resources/files", method: "POST",
+      .json(#"{"id":"file_1","session_id":"conv_created"}"#, status: 201))
+    server.route(
+      "/v1/sessions/conv_created/events", method: "POST", .json(#"{"queued":true}"#))
+    await creation.retryFirstMessage()
+    #expect(createdError(creation) == nil, "\(creation.phase)")
+    #expect(creation.attachments.isEmpty)
+    #expect(server.requests(to: "/v1/sessions", method: "POST").count == 1)
+    #expect(server.requests(to: "/v1/sessions/conv_created/resources/files").count == 2)
+    let post = try #require(
+      server.requests(to: "/v1/sessions/conv_created/events", method: "POST").last)
+    let body = try #require(post.body.flatMap { String(data: $0, encoding: .utf8) })
+    #expect(body.contains("file_1"), "the message carries the file")
+  }
+
+  @Test("Files that never made it stay with their session, not the next new session")
+  func staleFiles() async throws {
+    let server = try creationRoutes()
+    try acceptCreation(server)
+    server.fail("/v1/sessions/conv_created/resources/files", method: "POST", status: 400)
+    let creation = try await loadedCreation(server)
+    creation.stageAttachment(
+      PendingAttachment(filename: "a.txt", mediaType: nil, data: Data("x".utf8)))
+    await creation.create(selection, title: "", firstMessage: "hi")
+    #expect(creation.attachments.count == 1)
+    creation.reset()
+    #expect(creation.attachments.isEmpty)
+    #expect(creation.phase == .editing)
+  }
+
+  @Test("A definite refusal keeps the files on the form to try again")
+  func refusedKeepsFiles() async throws {
+    let server = try creationRoutes()
+    server.fail("/v1/sessions", method: "POST", status: 400)
+    let creation = try await loadedCreation(server)
+    creation.stageAttachment(
+      PendingAttachment(filename: "a.txt", mediaType: nil, data: Data("x".utf8)))
+    await creation.create(selection, title: "", firstMessage: "hi")
+    creation.reset()
+    #expect(creation.attachments.count == 1)
+  }
+
+  private func agentServer() throws -> RouteServer {
+    let server = try creationRoutes()
+    try acceptCreation(server)
+    server.route(
+      "/v1/sessions/conv_created/events", method: "POST", .json(#"{"queued":true}"#))
+    return server
+  }
+
+  private let draft = AgentDraft(
+    name: "reviewer", description: "", instructions: "", harness: "codex-native", model: "m",
+    mcpServers: [])
+
+  @Test("A session with a new custom agent starts, then is sent its first message")
+  func customAgent() async throws {
+    let server = try agentServer()
+    server.route(
+      "/v1/hosts/host_a/runners", method: "POST", .json(#"{"runner_id":"run_1"}"#, status: 201))
+    let creation = try await loadedCreation(server)
+    await creation.create(agent: draft, selection, firstMessage: "hello")
+    #expect(createdError(creation) == nil, "\(creation.phase)")
+    #expect(server.requests(to: "/v1/sessions/conv_created/events", method: "POST").count == 1)
+  }
+
+  @Test("A custom agent that can't start keeps the session and the message for the retry")
+  func customAgentNotStarted() async throws {
+    let server = try agentServer()
+    server.fail("/v1/hosts/host_a/runners", method: "POST")
+    let creation = try await loadedCreation(server)
+    await creation.create(agent: draft, selection, firstMessage: "hello")
+    #expect(createdError(creation) != nil, "\(creation.phase)")
+    #expect(server.requests(to: "/v1/sessions/conv_created/events", method: "POST").isEmpty)
+
+    await creation.retryFirstMessage()
+    #expect(createdError(creation) == nil, "\(creation.phase)")
+    #expect(server.requests(to: "/v1/sessions", method: "POST").count == 1)
+  }
+
+  @Test("A sandbox session is created, then sent its first message")
+  func sandbox() async throws {
+    let server = try creationRoutes()
+    server.route(
+      "/v1/info",
+      .json(
+        #"{"single_user":true,"accounts_enabled":false,"agent_install":true,"managed_sandboxes_enabled":true,"sandbox_providers":["modal"]}"#
+      ))
+    try acceptCreation(server)
+    server.route(
+      "/v1/sessions/conv_created/events", method: "POST", .json(#"{"queued":true}"#))
+    let creation = try await loadedCreation(server)
+    let target = SandboxTarget(
+      provider: "modal", profile: nil, workspaces: ["https://github.com/example/repo#main"])
+    await creation.createInSandbox(
+      selection, target: target, title: "Scratch", firstMessage: "hello")
+    #expect(createdError(creation) == nil, "\(creation.phase)")
+    #expect(server.requests(to: "/v1/sessions/conv_created/events", method: "POST").count == 1)
+  }
+}

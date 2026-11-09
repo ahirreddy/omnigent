@@ -4,47 +4,38 @@ import Testing
 
 @testable import OmnigentStores
 
+private let harnessFixHosts = #"""
+  {"hosts":[{"host_id":"h1","name":"Mac","status":"online","harness_login_supported":true,
+    "configured_harnesses":{"codex-native":true,"claude-native":true},
+    "harness_accounts":{"codex":{"kind":"chatgpt","email":"old@x.io"},
+      "claude":{"kind":"subscription","email":"me@x.io"}}}]}
+  """#
+
+/// A connected harness catalog and a fix flow that polls quickly.
+@MainActor
+func harnessFixStores(_ server: RouteServer) async throws -> (HarnessSetupStore, HarnessFixStore) {
+  server.route(
+    "/v1/info",
+    .json(
+      #"{"single_user":true,"accounts_enabled":false,"features":{"harness_install":true},"installable_harnesses":["codex-native"]}"#
+    ))
+  server.route("/v1/harnesses", .json(#"{"data":[]}"#))
+  server.route("/v1/hosts", .json(harnessFixHosts))
+  let connection = try await connectedStore(server)
+  let setup = try #require(connection.harnessSetup())
+  await setup.load()
+  let core = try #require(connection.core)
+  return (setup, HarnessFixStore(core: core, setup: setup, pollInterval: .milliseconds(5)))
+}
+
 /// Ports of the flows in web/src/pages/settings/HarnessFixDialog.test.tsx.
 @MainActor
 struct HarnessFixStoreTests {
-  private static let hosts = #"""
-    {"hosts":[{"host_id":"h1","name":"Mac","status":"online","harness_login_supported":true,
-      "configured_harnesses":{"codex-native":true,"claude-native":true},
-      "harness_accounts":{"codex":{"kind":"chatgpt","email":"old@x.io"},
-        "claude":{"kind":"subscription","email":"me@x.io"}}}]}
-    """#
-
-  private func stores(_ server: RouteServer) async throws -> (HarnessSetupStore, HarnessFixStore) {
-    server.route(
-      "/v1/info",
-      .json(
-        #"{"single_user":true,"accounts_enabled":false,"features":{"harness_install":true},"installable_harnesses":["codex-native"]}"#
-      ))
-    server.route("/v1/harnesses", .json(#"{"data":[]}"#))
-    server.route("/v1/hosts", .json(Self.hosts))
-    let connection = try await connectedStore(server)
-    let setup = try #require(connection.harnessSetup())
-    await setup.load()
-    let core = try #require(connection.core)
-    return (setup, HarnessFixStore(core: core, setup: setup, pollInterval: .milliseconds(5)))
-  }
-
-  private func waitUntil(_ condition: () -> Bool) async throws {
-    let deadline = ContinuousClock.now + .seconds(10)
-    while !condition() {
-      guard ContinuousClock.now < deadline else {
-        Issue.record("timed out")
-        return
-      }
-      try await Task.sleep(for: .milliseconds(5))
-    }
-  }
-
   @Test(.timeLimit(.minutes(1))) func switchingCodexSignsOutThenSignsInWithADeviceCode()
     async throws
   {
     let server = RouteServer()
-    let (setup, fix) = try await stores(server)
+    let (setup, fix) = try await harnessFixStores(server)
     server.route(
       "/v1/hosts/h1/harnesses/codex/logout",
       .json(#"{"configured_harnesses":{"codex-native":"needs-auth"},"harness_accounts":{}}"#))
@@ -69,7 +60,7 @@ struct HarnessFixStoreTests {
     } else {
       Issue.record("expected a device code, got \(fix.phase)")
     }
-    try await waitUntil {
+    try await eventually("the sign-in") {
       if case .done = fix.phase { return true }
       return false
     }
@@ -81,7 +72,7 @@ struct HarnessFixStoreTests {
     async throws
   {
     let server = RouteServer()
-    let (setup, fix) = try await stores(server)
+    let (setup, fix) = try await harnessFixStores(server)
     server.route(
       "/v1/hosts/h1/harnesses/claude/logout",
       .json(#"{"configured_harnesses":{"claude-native":"needs-auth"},"harness_accounts":null}"#))
@@ -108,7 +99,7 @@ struct HarnessFixStoreTests {
   @Test(.timeLimit(.minutes(1))) func updatingReportsTheVersionOrTheSetupStillNeeded() async throws
   {
     let server = RouteServer()
-    let (setup, fix) = try await stores(server)
+    let (setup, fix) = try await harnessFixStores(server)
     let detail = try #require(setup.detail(harness: "codex-native", name: "Codex", hostID: "h1"))
     server.route(
       "/v1/hosts/h1/harnesses/codex-native/install",
@@ -131,7 +122,7 @@ struct HarnessFixStoreTests {
 
   @Test(.timeLimit(.minutes(1))) func startupReadsOnceAndOlderHostsSaySo() async throws {
     let server = RouteServer()
-    let (_, fix) = try await stores(server)
+    let (_, fix) = try await harnessFixStores(server)
     server.route(
       "/v1/hosts/h1/harnesses/codex-native/startup", .json(#"{"detail":"x"}"#, status: 501))
     await fix.loadStartup(harness: "codex-native", hostID: "h1", hostName: "Mac")

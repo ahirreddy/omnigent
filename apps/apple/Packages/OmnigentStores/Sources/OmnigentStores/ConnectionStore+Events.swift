@@ -5,17 +5,7 @@ extension ConnectionStore {
     eventsApplied += 1
     switch event {
     case .connectionChanged(let phase):
-      if phase != self.phase { self.phase = phase }
-      if case .awaitingBrowserLogin(_, let login) = phase {
-        browserLogin = login
-      } else if browserLogin != nil {
-        browserLogin = nil
-      }
-      if case .connected(let server) = phase {
-        sessionList.viewerID = server.userId
-        markSavedDrafts()
-        loadServerLists(server)
-      }
+      connectionChanged(phase)
     case .updatesLinkChanged(let state):
       if state != updatesLink { updatesLink = state }
     case .sessionListChanged(let change):
@@ -24,6 +14,24 @@ extension ConnectionStore {
       sessionList.loaded()
     default:
       applySessionEvent(event)
+    }
+  }
+
+  private func connectionChanged(_ phase: ConnectionPhase) {
+    if phase != self.phase { self.phase = phase }
+    if case .awaitingBrowserLogin(_, let login) = phase {
+      browserLogin = login
+    } else if browserLogin != nil {
+      browserLogin = nil
+    }
+    // A routine reconnect passes through other phases; this one means the connection ended.
+    // Open conversations stay: the core reopens them on the next connect.
+    if phase == .disconnected { sessionList.clear() }
+    if case .connected(let server) = phase {
+      accountConnected(server.userId)
+      sessionList.viewerID = server.userId
+      markSavedDrafts()
+      loadServerLists(server)
     }
   }
 
@@ -121,7 +129,7 @@ extension ConnectionStore {
       if unknownUpdates.count > 20 { unknownUpdates.removeFirst() }
     case .error(let scope, let error):
       if case .session(let id) = scope, let conversation = conversations[id] {
-        conversation.record(error)
+        conversation.recordStreamFailure(error)
       } else {
         record(scope: scope, error)
       }

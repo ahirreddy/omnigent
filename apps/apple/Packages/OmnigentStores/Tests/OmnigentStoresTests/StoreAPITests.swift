@@ -20,51 +20,12 @@ nonisolated private let fixtureRoot = URL(fileURLWithPath: #filePath)
   .appending(path: "client-core/fixtures")
 
 /// The `response` of a recorded `{request, status, response}` envelope, as JSON text.
-nonisolated private func recorded(_ path: String) throws -> String {
+nonisolated func recorded(_ path: String) throws -> String {
   let data = try Data(contentsOf: fixtureRoot.appending(path: path))
   let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
   let response = try #require(object["response"])
   let encoded = try JSONSerialization.data(withJSONObject: response)
   return try #require(String(data: encoded, encoding: .utf8))
-}
-
-/// A loopback single-user server answering by method and path, then by path.
-/// Serves fixed responses by path, and by method and path.
-nonisolated final class RouteServer: Sendable {
-  private let routes = Mutex<[String: HttpResponse]>([:])
-
-  init() {
-    route("/.well-known/omnigent.json", .json(ManifestFixtures.localNoAuth))
-    route("/v1/info", .json(#"{"single_user":true,"accounts_enabled":false}"#))
-    route("/v1/me", .json(#"{"user_id":"local"}"#))
-    route("/v1/sessions", .json(#"{"object":"list","data":[],"has_more":false}"#))
-  }
-
-  func route(_ path: String, method: String? = nil, _ response: HttpResponse) {
-    routes.withLock { $0[(method.map { "\($0) " } ?? "") + path] = response }
-  }
-
-  func respond(_ request: HttpRequest) -> HttpResponse {
-    let path = URLComponents(string: request.url)?.path ?? ""
-    return routes.withLock { $0["\(request.method) \(path)"] ?? $0[path] }
-      ?? .json(#"{"detail":"not found"}"#, status: 404)
-  }
-}
-
-/// A store signed in to `server`.
-@MainActor
-func connectedStore(
-  _ server: RouteServer, sockets: FakeWebSocketTransport = FakeWebSocketTransport()
-) async throws -> ConnectionStore {
-  let http = FakeHttpTransport { request throws(TransportError) in server.respond(request) }
-  let core = try ClientCore(
-    http: http, streams: FakeEventStreamTransport(), sockets: sockets, clock: SystemClock(),
-    scheduler: TaskScheduler(), secureStore: InMemorySecureStore(),
-    entropy: FixedEntropySource(), config: HostConfig(urlPolicy: .development, oidcRedirect: .none))
-  let store = ConnectionStore(core: core)
-  await store.connect(serverURL: "http://127.0.0.1:6767")
-  #expect(store.isSignedIn, "phase: \(store.phase)")
-  return store
 }
 
 @MainActor

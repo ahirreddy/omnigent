@@ -313,9 +313,9 @@ public final class ConversationStore {
     if state != link { link = state }
     if state != .live, isHydrated { isHydrated = false }
     switch state {
-    case .reconnecting(let reason, _, _): record(reason)
+    case .reconnecting(let reason, _, _): recordStreamFailure(reason)
     case .failed(let error):
-      record(error)
+      recordStreamFailure(error)
       // The core retries 404s and gave up: the session is gone, not restarting.
       if error.isSessionNotFound { closed() }
     default: break
@@ -347,12 +347,17 @@ public final class ConversationStore {
     if target != supersededBy { supersededBy = target }
   }
 
-  func record(_ error: CoreError) {
+  /// A failure of the session's stream or snapshot, rather than of something the user asked for.
+  func recordStreamFailure(_ error: CoreError) {
     if error.isSessionNotFound {
       // The connection line says so while the core retries, and closing follows if it gives up.
       if !hasLoaded { answeredNotFoundBeforeLoading = true }
       return
     }
+    record(error)
+  }
+
+  func record(_ error: CoreError) {
     if error.isRunnerUnavailable {
       if error != runnerUnavailable { runnerUnavailable = error }
       return

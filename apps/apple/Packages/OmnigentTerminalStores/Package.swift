@@ -28,6 +28,7 @@ let package = Package(
     .package(path: "../OmnigentCoreFFI"),
     .package(path: "../OmnigentServices"),
     .package(path: "../OmnigentTestSupport"),
+    .package(path: "../OmnigentViewTesting"),
   ],
   targets: [
     .target(
@@ -48,6 +49,7 @@ let package = Package(
         .product(name: "OmnigentCoreFFI", package: "OmnigentCoreFFI"),
         .product(name: "OmnigentServices", package: "OmnigentServices"),
         .product(name: "OmnigentTestSupport", package: "OmnigentTestSupport"),
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
       ],
       swiftSettings: mainActorSwiftSettings
     ),

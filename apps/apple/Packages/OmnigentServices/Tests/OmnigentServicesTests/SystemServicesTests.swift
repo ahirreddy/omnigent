@@ -20,8 +20,7 @@ import Testing
   }
 }
 
-// `spawn` takes a Rust-created CoreTask, which only the core can construct, so it is covered by
-// the core's integration tests rather than here.
+// `spawn` takes a Rust-created CoreTask, which only the core can construct: see HostServicesTests.
 @Suite struct SchedulerAndClockTests {
   @Test func sleepCompletesAfterItsDelay() async {
     let started = ContinuousClock.now

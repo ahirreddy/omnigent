@@ -75,10 +75,13 @@ public final class UserDefaultsSettingsStorage: SettingsStorage, Sendable {
   /// before encoding: `JSONSerialization` raises an Objective-C exception on other types.
   static func isPropertyListJSONCompatible(_ value: Any) -> Bool {
     switch value {
+    case is String:
+      return true
     // NSNumber is the property-list number type, which Swift numeric types cannot stand in for.
     // swiftlint:disable:next legacy_objc_type
-    case is String, is NSNumber:
-      return true
+    case let number as NSNumber:
+      // JSON has no NaN or infinity, and encoding one raises an exception too.
+      return number.doubleValue.isFinite
     case let array as [Any]:
       return array.allSatisfy(isPropertyListJSONCompatible)
     case let dictionary as [String: Any]:

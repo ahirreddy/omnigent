@@ -45,7 +45,7 @@ struct MissingSessionTests {
     defer { connection.closeConversation(liveSessionID) }
     let stale = try #require(connection.conversation("later"))
     defer { connection.closeConversation("later") }
-    stale.record(notFound)
+    stale.recordStreamFailure(notFound)
     #expect(stale.answeredNotFoundBeforeLoading)
     stale.hydrated()
     #expect(!stale.answeredNotFoundBeforeLoading)
