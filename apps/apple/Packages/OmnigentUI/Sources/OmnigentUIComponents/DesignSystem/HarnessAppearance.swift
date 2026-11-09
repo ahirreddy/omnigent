@@ -45,7 +45,10 @@ nonisolated public struct HarnessAppearance: Hashable, Sendable {
       label = match.label
     } else {
       identifier = "fallback"
-      label = raw.isEmpty ? "Agent" : raw.replacingOccurrences(of: "-", with: " ").capitalized
+      // Spaces at either end would leave a blank monogram.
+      let words = raw.replacingOccurrences(of: "-", with: " ")
+        .trimmingCharacters(in: .whitespaces)
+      label = words.isEmpty ? "Agent" : words.capitalized
     }
   }
 
