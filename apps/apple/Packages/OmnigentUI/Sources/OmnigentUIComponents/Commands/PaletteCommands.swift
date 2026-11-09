@@ -13,7 +13,7 @@ public struct PaletteCommandActions {
   /// Creates scene-local presentation actions.
   public init(
     openPalette: @escaping @MainActor () -> Void, openShortcuts: @escaping @MainActor () -> Void,
-    findSession: @escaping @MainActor () -> Void = {}
+    findSession: @escaping @MainActor () -> Void
   ) {
     self.openPalette = openPalette
     self.openShortcuts = openShortcuts

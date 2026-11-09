@@ -138,7 +138,7 @@ struct TextExport: Identifiable {
   var id: String { name + String(text.hashValue) }
 }
 
-private struct TextExportDocument: FileDocument {
+struct TextExportDocument: FileDocument {
   static var readableContentTypes: [UTType] { [.plainText] }
   static var writableContentTypes: [UTType] { [.plainText, .commaSeparatedText] }
   let text: String
@@ -148,7 +148,7 @@ private struct TextExportDocument: FileDocument {
   }
 
   init(configuration: ReadConfiguration) throws {
-    guard let data = configuration.file.regularFileContents,
+    guard configuration.file.isRegularFile, let data = configuration.file.regularFileContents,
       let text = String(bytes: data, encoding: .utf8)
     else {
       throw CocoaError(.fileReadCorruptFile)
@@ -162,9 +162,20 @@ private struct TextExportDocument: FileDocument {
 }
 
 /// Saves an export when it is set, then clears it; a failure is shown in an alert.
-private struct TextExporter: ViewModifier {
+struct TextExporter: ViewModifier {
   @Binding var export: TextExport?
   @State private var failure: String?
+
+  init(export: Binding<TextExport?>, failure: String? = nil) {
+    _export = export
+    _failure = State(initialValue: failure)
+  }
+
+  /// What the alert says about a finished save; `nil` when it went through.
+  static func failureMessage(for result: Result<URL, any Error>) -> String? {
+    guard case .failure(let error) = result else { return nil }
+    return error.localizedDescription
+  }
 
   func body(content: Content) -> some View {
     content
@@ -174,9 +185,7 @@ private struct TextExporter: ViewModifier {
         document: export.map { TextExportDocument(text: $0.text) },
         contentType: export?.type ?? .plainText,
         defaultFilename: export?.name
-      ) { result in
-        if case .failure(let error) = result { failure = error.localizedDescription }
-      }
+      ) { failure = Self.failureMessage(for: $0) }
       .alert(
         "Could Not Save",
         isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })

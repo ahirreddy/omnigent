@@ -66,6 +66,8 @@ public final class FileEditor {
   public private(set) var conflict: Conflict?
   /// The pause after the last keystroke before saving; `nil` saves only on request.
   @ObservationIgnored public var autosaveDelay: Duration? = .milliseconds(1_500)
+  /// How long ``Status/saved`` shows before the status reads clean again.
+  @ObservationIgnored var savedNoticeDuration: Duration = .seconds(2)
 
   private let crlf: Bool
   private let write: (String, String?) async throws(WorkspaceFailure) -> FileSaveResult
@@ -235,9 +237,9 @@ public final class FileEditor {
 
   private func showSavedBriefly() {
     clearSaved?.cancel()
-    clearSaved = Task { [weak self] in
+    clearSaved = Task { [weak self, savedNoticeDuration] in
       do {
-        try await Task.sleep(for: .seconds(2))
+        try await Task.sleep(for: savedNoticeDuration)
       } catch {
         return  // Cancelled by the next save.
       }

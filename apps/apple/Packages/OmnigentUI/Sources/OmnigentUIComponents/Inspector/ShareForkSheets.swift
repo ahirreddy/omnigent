@@ -11,6 +11,8 @@ public struct ShareSheet: View {
   @State private var newPrincipal = ""
   @State private var newRole: ShareGrant.Role = .read
   @State private var copied = false
+  /// How long "Copied!" shows.
+  var copiedDuration: Duration = .seconds(2)
 
   /// Creates the sheet.
   /// - Parameters:
@@ -126,7 +128,7 @@ public struct ShareSheet: View {
               .task(id: copied) {
                 guard copied else { return }
                 do {
-                  try await Task.sleep(for: .seconds(2))
+                  try await Task.sleep(for: copiedDuration)
                 } catch {
                   // Cancelled because the sheet closed; nothing to reset.
                   return

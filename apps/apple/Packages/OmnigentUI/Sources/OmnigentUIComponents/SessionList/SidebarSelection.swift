@@ -60,8 +60,8 @@ struct SidebarSelectionBackground: View {
   var isHovered = false
   #if os(macOS)
     @Environment(\.appearsActive) private var appearsActive
-    private let cornerRadius = Theme.Radius.small
-    private let inset = Theme.Spacing.medium
+    private var cornerRadius: CGFloat { Theme.Radius.small }
+    private var inset: CGFloat { Theme.Spacing.medium }
   #else
     // The system's own sidebar selection shape: the full row, rounder.
     private let appearsActive = true

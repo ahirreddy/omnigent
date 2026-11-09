@@ -99,9 +99,10 @@ struct FocusedActionsRelayTests {
   func paletteCommandsStay() throws {
     let relay = FocusedActionsRelay<PaletteCommandActions>()
     var opened = 0
-    _ = relay.publish(PaletteCommandActions(openPalette: {}, openShortcuts: {}))
+    _ = relay.publish(PaletteCommandActions(openPalette: {}, openShortcuts: {}, findSession: {}))
     let published = try #require(
-      relay.publish(PaletteCommandActions(openPalette: { opened += 1 }, openShortcuts: {})))
+      relay.publish(
+        PaletteCommandActions(openPalette: { opened += 1 }, openShortcuts: {}, findSession: {})))
     #expect(relay.publications == 1)
     published.openPalette()
     #expect(opened == 1)

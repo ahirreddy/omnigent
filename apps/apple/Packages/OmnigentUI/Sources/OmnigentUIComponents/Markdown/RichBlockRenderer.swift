@@ -58,12 +58,20 @@ final class RichBlockRenderer: NSObject {
   /// Tallest block drawn.
   private static let maxHeight: CGFloat = 8192
 
+  /// Holds the page and libraries.
+  private let resources: Bundle
   private var page: Task<WKWebView, any Error>?
   private var pageLoad: CheckedContinuation<Void, any Error>?
   private var mermaidLoad: Task<Void, any Error>?
   private var queue: Task<Void, Never>?
   private var inFlight: [RichBlockRequest: Task<RenderedRichBlock, any Error>] = [:]
   private var cache = BoundedCache<RichBlockRequest, RenderedRichBlock>(limit: 160)
+
+  /// A renderer drawing with the page and libraries in `resources`.
+  init(resources: Bundle = .module) {
+    self.resources = resources
+    super.init()
+  }
 
   /// The drawn block, when it is already cached.
   func cached(_ request: RichBlockRequest) -> RenderedRichBlock? {
@@ -113,9 +121,7 @@ final class RichBlockRenderer: NSObject {
     let configuration = WKSnapshotConfiguration()
     configuration.rect = CGRect(origin: .zero, size: size)
     let snapshot = try await view.takeSnapshot(configuration: configuration)
-    guard let (image, scale) = Self.cgImage(snapshot, points: size) else {
-      throw RichBlockError.malformedResult
-    }
+    let (image, scale) = try Self.cgImage(snapshot, points: size)
     let baseline = fields["baseline"] as? Double ?? size.height
     return RenderedRichBlock(image: image, scale: scale, size: size, baseline: baseline)
   }
@@ -134,7 +140,7 @@ final class RichBlockRenderer: NSObject {
 
   private func makePage() async throws -> WKWebView {
     guard
-      let url = Bundle.module.url(
+      let url = resources.url(
         forResource: "render", withExtension: "html", subdirectory: "RichRender")
     else { throw RichBlockError.unavailable("math and diagram") }
     let configuration = WKWebViewConfiguration()
@@ -159,18 +165,11 @@ final class RichBlockRenderer: NSObject {
     }
     let task = Task { @MainActor in
       guard
-        let url = Bundle.module.url(
+        let url = resources.url(
           forResource: "mermaid.min.js", withExtension: "lzma", subdirectory: "RichRender")
       else { throw RichBlockError.unavailable("diagram") }
       let source = try await Task.detached(priority: .userInitiated) {
-        let packed = try Data(contentsOf: url)
-        // Foundation's LZMA decoder exists only on NSData.
-        // swiftlint:disable:next legacy_objc_type
-        let script = try (packed as NSData).decompressed(using: .lzma) as Data
-        guard let source = String(bytes: script, encoding: .utf8) else {
-          throw RichBlockError.unavailable("diagram")
-        }
-        return source
+        try Self.unpackMermaid(try Data(contentsOf: url))
       }.value
       _ = try await view.evaluateJavaScript(source + "\n;true")
     }
@@ -181,6 +180,17 @@ final class RichBlockRenderer: NSObject {
       mermaidLoad = nil
       throw error
     }
+  }
+
+  /// The script in the bundled Mermaid archive.
+  nonisolated static func unpackMermaid(_ packed: Data) throws -> String {
+    // Foundation's LZMA decoder exists only on NSData.
+    // swiftlint:disable:next legacy_objc_type
+    let script = try (packed as NSData).decompressed(using: .lzma) as Data
+    guard let source = String(bytes: script, encoding: .utf8) else {
+      throw RichBlockError.unavailable("diagram")
+    }
+    return source
   }
 
   /// Drops the page so the next request loads a fresh one.
@@ -204,17 +214,17 @@ final class RichBlockRenderer: NSObject {
   }
 
   #if os(macOS)
-    private static func cgImage(_ snapshot: NSImage, points: CGSize) -> (CGImage, CGFloat)? {
+    static func cgImage(_ snapshot: NSImage, points: CGSize) throws -> (CGImage, CGFloat) {
       // A nil proposed rect is the whole image; no pointer is dereferenced.
       guard let image = unsafe snapshot.cgImage(forProposedRect: nil, context: nil, hints: nil)
       else {
-        return nil
+        throw RichBlockError.malformedResult
       }
       return (image, CGFloat(image.width) / max(points.width, 1))
     }
   #else
-    private static func cgImage(_ snapshot: UIImage, points: CGSize) -> (CGImage, CGFloat)? {
-      guard let image = snapshot.cgImage else { return nil }
+    static func cgImage(_ snapshot: UIImage, points: CGSize) throws -> (CGImage, CGFloat) {
+      guard let image = snapshot.cgImage else { throw RichBlockError.malformedResult }
       return (image, CGFloat(image.width) / max(points.width, 1))
     }
   #endif

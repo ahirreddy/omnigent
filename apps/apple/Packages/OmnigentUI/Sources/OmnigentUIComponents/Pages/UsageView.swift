@@ -71,16 +71,16 @@ public struct UsageView: View {
 
   private var header: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
-      if isCompact {
-        Text("Usage").font(.largeTitle.weight(.semibold))
-        rangePicker
-      } else {
-        HStack {
+      #if os(iOS)
+        if isCompact {
           Text("Usage").font(.largeTitle.weight(.semibold))
-          Spacer()
-          rangePicker.fixedSize()
+          rangePicker
+        } else {
+          wideTitle
         }
-      }
+      #else
+        wideTitle
+      #endif
       if range == .custom {
         let dates =
           isCompact ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())
@@ -152,31 +152,49 @@ public struct UsageView: View {
   @ViewBuilder private var sessions: some View {
     if state.sessions.isEmpty {
       empty("No sessions in this range")
-    } else if isCompact {
-      // A table shows only its first column at iPhone width.
-      UsageSessionList(
-        sessions: state.sessions.sorted(using: sortOrder), sortOrder: $sortOrder,
-        openSession: actions.openSession)
     } else {
-      Table(state.sessions.sorted(using: sortOrder), sortOrder: $sortOrder) {
-        TableColumn("Session", value: \.title) { row in
-          Button(row.title) { actions.openSession?(row.id) }
-            .buttonStyle(.plain)
-            .foregroundStyle(.tint)
-            .disabled(actions.openSession == nil)
+      #if os(iOS)
+        if isCompact {
+          // A table shows only its first column at iPhone width.
+          UsageSessionList(
+            sessions: state.sessions.sorted(using: sortOrder), sortOrder: $sortOrder,
+            openSession: actions.openSession)
+        } else {
+          sessionTable
         }
-        TableColumn("Model", value: \.model)
-        TableColumn("Harness", value: \.harness)
-        TableColumn("Last active", value: \.updatedAt) { row in
-          Text(row.updatedAt, format: .relative(presentation: .named))
-        }
-        TableColumn("Cost", value: \.costUSD) { row in
-          Text(row.costText).monospacedDigit()
-        }
-        .width(min: 60, ideal: 80)
+      #else
+        sessionTable
+      #endif
+    }
+  }
+
+  private var sessionTable: some View {
+    Table(state.sessions.sorted(using: sortOrder), sortOrder: $sortOrder) {
+      TableColumn("Session", value: \.title) { row in
+        Button(row.title) { actions.openSession?(row.id) }
+          .buttonStyle(.plain)
+          .foregroundStyle(.tint)
+          .disabled(actions.openSession == nil)
       }
-      .frame(minHeight: 240, idealHeight: CGFloat(state.sessions.count) * 28 + 40)
-      .accessibilityIdentifier("usage-sessions")
+      TableColumn("Model", value: \.model)
+      TableColumn("Harness", value: \.harness)
+      TableColumn("Last active", value: \.updatedAt) { row in
+        Text(row.updatedAt, format: .relative(presentation: .named))
+      }
+      TableColumn("Cost", value: \.costUSD) { row in
+        Text(row.costText).monospacedDigit()
+      }
+      .width(min: 60, ideal: 80)
+    }
+    .frame(minHeight: 240, idealHeight: CGFloat(state.sessions.count) * 28 + 40)
+    .accessibilityIdentifier("usage-sessions")
+  }
+
+  private var wideTitle: some View {
+    HStack {
+      Text("Usage").font(.largeTitle.weight(.semibold))
+      Spacer()
+      rangePicker.fixedSize()
     }
   }
 
