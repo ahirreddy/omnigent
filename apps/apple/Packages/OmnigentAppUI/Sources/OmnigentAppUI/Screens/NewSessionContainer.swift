@@ -15,7 +15,7 @@ struct NewSessionContainer: View {
   let open: @MainActor (String) -> Void
 
   @State private var draft = ""
-  @State private var form = NewSessionForm()
+  @State private var form: NewSessionForm
   @State private var creation: CreationStore?
   @State private var coreMissing = false
   @State private var setupTarget: HarnessSetupTarget?
@@ -32,6 +32,15 @@ struct NewSessionContainer: View {
   @Environment(\.useThisMachine) private var useThisMachine
   @Environment(\.openURL) private var openURL
   @Environment(\.openSettingsAt) private var openSettingsAt
+
+  init(
+    connection: ConnectionStore, form: NewSessionForm = NewSessionForm(),
+    open: @escaping @MainActor (String) -> Void
+  ) {
+    self.connection = connection
+    self.open = open
+    _form = State(initialValue: form)
+  }
 
   var body: some View {
     Group {
