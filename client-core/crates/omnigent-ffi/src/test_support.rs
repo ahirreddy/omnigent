@@ -14,7 +14,7 @@ use futures::task::LocalSpawnExt;
 use crate::client::ClientCore;
 use crate::connection::{HostConfig, OidcRedirect, UrlPolicy};
 use crate::engine::lock;
-use crate::events::{CoreEvent, CoreListener};
+use crate::events::{ConnectionPhase, CoreEvent, CoreListener};
 use crate::host::{
     ByteSink, Clock, CoreTask, EntropyError, EntropySource, EventStreamTransport, HttpTransport,
     MessageSink, Scheduler, SecureStore, SecureStoreError, SecureStoreKey, StreamHandle,
@@ -329,6 +329,28 @@ impl Recorder {
     }
 }
 
+/// A configuration that reports nothing, with `harness`.
+pub(crate) fn configuration_on(harness: &str) -> crate::configuration::SessionConfiguration {
+    crate::configuration::SessionConfiguration {
+        harness: Some(harness.to_owned()),
+        ..omnigent_core::config::session::SessionConfiguration::default().into()
+    }
+}
+
+/// A core connected to a routed loopback single-user server.
+pub(crate) fn connected() -> Harness {
+    let mut harness = Harness::new(UrlPolicy::Development);
+    harness.local_server();
+    let phase = harness
+        .call(|core| async move { core.connect("http://127.0.0.1:6767".into(), None).await })
+        .unwrap();
+    assert!(
+        matches!(phase, ConnectionPhase::Connected { .. }),
+        "{phase:?}"
+    );
+    harness
+}
+
 /// A core over fakes, and the pump that runs its background work.
 pub(crate) struct Harness {
     pub(crate) core: Arc<ClientCore>,
@@ -454,6 +476,71 @@ impl Harness {
             }
         }
         result.borrow_mut().take().expect("the call did not finish")
+    }
+
+    /// Runs the core call `call` builds to completion.
+    pub(crate) fn call<T: 'static, F: Future<Output = T> + 'static>(
+        &mut self,
+        call: impl FnOnce(Arc<ClientCore>) -> F,
+    ) -> T {
+        let future = call(Arc::clone(&self.core));
+        self.run(future)
+    }
+
+    /// The last request as `METHOD path`.
+    pub(crate) fn last_request_line(&self) -> String {
+        self.http.lines().pop().expect("no request was sent")
+    }
+
+    /// The last request as `METHOD path` and its JSON body (`null` when it has none).
+    pub(crate) fn last_request(&self) -> (String, serde_json::Value) {
+        let request = lock(&self.http.requests)
+            .last()
+            .expect("no request was sent")
+            .clone();
+        let path = url::Url::parse(&request.url).unwrap().path().to_owned();
+        let body = request
+            .body
+            .as_ref()
+            .map_or(serde_json::Value::Null, |body| {
+                serde_json::from_slice(body).unwrap()
+            });
+        (format!("{} {path}", request.method), body)
+    }
+
+    /// A query parameter of the last request.
+    pub(crate) fn last_query(&self, name: &str) -> Option<String> {
+        let request = lock(&self.http.requests)
+            .last()
+            .expect("no request was sent")
+            .clone();
+        url::Url::parse(&request.url)
+            .unwrap()
+            .query_pairs()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.into_owned())
+    }
+
+    /// Routes what sending to the writable `session_id` reads and writes.
+    pub(crate) fn writable_session(&self, session_id: &str) {
+        self.http.route(
+            &format!("/v1/sessions/{session_id}"),
+            json(
+                200,
+                &format!(
+                    r#"{{"id":"{session_id}","status":"idle","created_at":1,"permission_level":4,"pending_elicitations":[]}}"#
+                ),
+            ),
+        );
+        self.http.route(
+            &format!("/v1/sessions/{session_id}/items"),
+            json(200, r#"{"data":[],"has_more":false}"#),
+        );
+        self.http.route(
+            &format!("/v1/sessions/{session_id}/events"),
+            json(200, r#"{"queued":true,"item_id":"i1","pending_id":"p1"}"#),
+        );
+        self.core.sessions().set_live_session(session_id, true);
     }
 
     /// Moves time forward and fires due timers.
