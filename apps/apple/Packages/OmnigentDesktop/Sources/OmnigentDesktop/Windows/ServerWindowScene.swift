@@ -105,10 +105,11 @@ struct ServerWindowModifier: ViewModifier {
 
   func body(content: Content) -> some View {
     let registry = desktop.registry
-    let pending = registry.pendingRoute(for: id.instance)
     content
       .focusedSceneValue(\.serverWindow, FocusedServerWindow(id: id, actions: actions))
       .onAppear {
+        // Routes reach the window through the registry, not an observed redraw that can be missed.
+        registry.setRouteHandler(for: id.instance, onRoute)
         report()
         let openWindow = openWindow
         desktop.router.attachWindowOpener { openWindow(value: $0) }
@@ -121,18 +122,11 @@ struct ServerWindowModifier: ViewModifier {
       .onChange(of: appearsActive, initial: true) {
         registry.setKey(id.instance, isKey: appearsActive)
       }
-      .onChange(of: pending, initial: true) { applyPendingRoute() }
   }
 
   private func report() {
     desktop.registry.update(
       id, isReady: isReady, viewedSessionID: viewedSessionID, unreadCount: unreadCount)
-    applyPendingRoute()
-  }
-
-  private func applyPendingRoute() {
-    guard let route = desktop.registry.takePendingRoute(for: id.instance) else { return }
-    onRoute(route)
   }
 }
 

@@ -31,6 +31,7 @@ public final class ServerWindowRegistry {
   @ObservationIgnored public var onUnreadTotalChange: (Int) -> Void = { _ in }
   @ObservationIgnored private let reportIssue: DesktopIssueReporter
   @ObservationIgnored private var lastUnreadTotal = 0
+  @ObservationIgnored private var routeHandlers: [UUID: (DeepLinkRoute) -> Void] = [:]
 
   /// Creates an empty registry.
   /// - Parameter reportIssue: Receives windows bound to invalid server URLs.
@@ -64,6 +65,18 @@ public final class ServerWindowRegistry {
       entries.append(entry)
     }
     publishUnreadTotal()
+    applyPendingRoute(for: id.instance)
+  }
+
+  /// Sets what shows a window's routes, and applies one already waiting if the window can.
+  /// - Parameters:
+  ///   - instance: The window's instance.
+  ///   - handler: Shows a route in the window.
+  public func setRouteHandler(
+    for instance: UUID, _ handler: @escaping (DeepLinkRoute) -> Void
+  ) {
+    routeHandlers[instance] = handler
+    applyPendingRoute(for: instance)
   }
 
   /// Forgets a closed window and any route waiting for it.
@@ -71,6 +84,7 @@ public final class ServerWindowRegistry {
   public func remove(_ instance: UUID) {
     entries.removeAll { $0.id.instance == instance }
     pendingRoutes[instance] = nil
+    routeHandlers[instance] = nil
     if keyWindow == instance { keyWindow = nil }
     publishUnreadTotal()
   }
@@ -94,15 +108,23 @@ public final class ServerWindowRegistry {
     entries.first { $0.id.instance == instance }
   }
 
-  /// Queues a route for a window. The window applies it once it is ready.
+  /// Queues a route for a window, which shows it through its route handler once it is ready.
   /// - Parameters:
   ///   - route: The destination.
   ///   - instance: The window's instance; it need not be open yet.
   public func deliver(_ route: DeepLinkRoute, to instance: UUID) {
     pendingRoutes[instance] = route
+    applyPendingRoute(for: instance)
   }
 
-  /// The route waiting for a window. Observed by the window.
+  /// Hands a waiting route to the window's handler when the window can take it.
+  private func applyPendingRoute(for instance: UUID) {
+    guard let handler = routeHandlers[instance], let route = takePendingRoute(for: instance)
+    else { return }
+    handler(route)
+  }
+
+  /// The route waiting for a window.
   /// - Parameter instance: The window's instance.
   /// - Returns: The route, if any.
   public func pendingRoute(for instance: UUID) -> DeepLinkRoute? {

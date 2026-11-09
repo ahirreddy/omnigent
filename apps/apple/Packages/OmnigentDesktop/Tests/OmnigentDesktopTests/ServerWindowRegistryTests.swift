@@ -72,6 +72,42 @@ struct ServerWindowRegistryTests {
     #expect(registry.takePendingRoute(for: workspace.instance) == nil)
   }
 
+  @Test("a window's handler gets a route as soon as the window can take it, once")
+  func routeHandler() {
+    let registry = ServerWindowRegistry()
+    var shown: [DeepLinkRoute] = []
+    registry.deliver(.conversation(sessionID: "c1"), to: workspace.instance)
+    registry.setRouteHandler(for: workspace.instance) { shown.append($0) }
+    #expect(shown.isEmpty, "no window yet")
+    registry.update(workspace, isReady: false, viewedSessionID: nil, unreadCount: 0)
+    #expect(shown.isEmpty, "not ready")
+    registry.update(workspace, isReady: true, viewedSessionID: nil, unreadCount: 0)
+    #expect(shown == [.conversation(sessionID: "c1")])
+    registry.deliver(.message(sessionID: "c2", messageID: "m1"), to: workspace.instance)
+    registry.deliver(.home, to: workspace.instance)
+    #expect(
+      shown == [
+        .conversation(sessionID: "c1"), .message(sessionID: "c2", messageID: "m1"), .home,
+      ])
+    #expect(registry.pendingRoute(for: workspace.instance) == nil)
+
+    registry.remove(workspace.instance)
+    registry.deliver(.home, to: workspace.instance)
+    registry.update(workspace, isReady: true, viewedSessionID: nil, unreadCount: 0)
+    #expect(shown.count == 3, "a closed window's handler is gone")
+    #expect(registry.pendingRoute(for: workspace.instance) == .home)
+  }
+
+  @Test("a handler set on a ready window takes the route already waiting")
+  func lateRouteHandler() {
+    let registry = ServerWindowRegistry()
+    registry.update(workspace, isReady: true, viewedSessionID: nil, unreadCount: 0)
+    registry.deliver(.home, to: workspace.instance)
+    var shown: [DeepLinkRoute] = []
+    registry.setRouteHandler(for: workspace.instance) { shown.append($0) }
+    #expect(shown == [.home])
+  }
+
   @Test("an invite reaches a window that is still signing in")
   func pendingInvite() {
     let registry = ServerWindowRegistry()
