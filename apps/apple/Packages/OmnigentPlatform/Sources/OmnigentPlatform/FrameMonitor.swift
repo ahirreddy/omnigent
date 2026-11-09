@@ -28,16 +28,21 @@
     private static var shared: FrameMonitor?
     private static let logger = Logger(subsystem: subsystem, category: "frames")
 
-    private var link: CADisplayLink?
+    private(set) var link: CADisplayLink?
     private var previous: (timestamp: CFTimeInterval, expected: CFTimeInterval)?
-    private var second = FrameStats()
+    private(set) var second = FrameStats()
     private var secondCounts: [String: Int] = [:]
     private struct Interval {
       let name: String
       var stats = FrameStats()
       var counts: [String: Int] = [:]
       /// The main thread's CPU time when the interval began.
-      let startCPU = FrameMonitor.mainThreadCPU()
+      let startCPU: TimeInterval
+
+      init(name: String) {
+        self.name = name
+        startCPU = FrameMonitor.mainThreadCPU()
+      }
     }
 
     private var interval: Interval?
@@ -52,7 +57,7 @@
       guard shared == nil, defaults.bool(forKey: launchArgument) else { return }
       let monitor = FrameMonitor()
       shared = monitor
-      monitor.start()
+      monitor.start(with: monitor.makeDisplayLink())
       MXMetricManager.shared.add(monitor.metrics)
     }
 
@@ -100,17 +105,22 @@
       return seconds(info.user_time) + seconds(info.system_time)
     }
 
-    private func start() {
+    private func makeDisplayLink() -> CADisplayLink? {
       #if os(iOS)
         let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
         link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        return link
       #elseif os(macOS)
-        guard let link = NSScreen.main?.displayLink(target: self, selector: #selector(tick(_:)))
-        else {
-          Self.logger.error("No screen to measure frames on")
-          return
-        }
+        return NSScreen.main?.displayLink(target: self, selector: #selector(tick(_:)))
       #endif
+    }
+
+    /// Starts measuring on `link`; a Mac with no screen has none, so nothing starts.
+    func start(with link: CADisplayLink?) {
+      guard let link else {
+        Self.logger.error("No screen to measure frames on")
+        return
+      }
       link.add(to: .main, forMode: .common)
       self.link = link
       observers = [
@@ -132,11 +142,15 @@
       Self.logger.notice("frame monitor started")
     }
 
-    @objc private func tick(_ link: CADisplayLink) {
-      let expected = link.targetTimestamp - link.timestamp
-      defer { previous = (link.timestamp, expected) }
+    @objc func tick(_ link: CADisplayLink) {
+      recordFrame(timestamp: link.timestamp, expected: link.targetTimestamp - link.timestamp)
+    }
+
+    /// Adds one delivered frame to the open second and interval, and logs a finished second.
+    func recordFrame(timestamp: CFTimeInterval, expected: CFTimeInterval) {
+      defer { previous = (timestamp, expected) }
       guard let previous else { return }
-      let elapsed = link.timestamp - previous.timestamp
+      let elapsed = timestamp - previous.timestamp
       second.record(interval: elapsed, expected: previous.expected)
       interval?.stats.record(interval: elapsed, expected: previous.expected)
       guard second.duration >= 1 else { return }
