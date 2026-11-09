@@ -229,3 +229,32 @@ fn next_run_text_survives_the_ends_of_the_64_bit_range() {
     // The difference itself overflows, and clamps the same way.
     assert_eq!(format_next_run(i64::MAX, -1), format!("in {days} days"));
 }
+
+#[test]
+fn a_date_with_an_enormous_year_is_rejected_rather_than_overflowing() {
+    for bad in [
+        "9223372036854775807-01-01T00:00:00Z",
+        "1000001-01-01T00:00:00Z",
+        "-1-01-01T00:00:00Z",
+        "2026-13-01T00:00:00Z",
+        "2026-01-32T00:00:00Z",
+        "2026-01-01T24:00:00Z",
+        "2026-01-01T00:60:00Z",
+        "2026-01-01T00:00:61Z",
+        "2026-01-01T00:00:00+24:00",
+        "2026-01-01T00:00:00+00:60",
+        "2026-01-01T00:00:00",
+        "2026-01-01",
+        "",
+    ] {
+        assert_eq!(parse_iso8601(bad), None, "{bad}");
+    }
+    assert!(parse_iso8601("1000000-12-31T23:59:59-23:59").is_some());
+}
+
+#[test]
+fn a_next_run_at_the_integer_limits_still_formats() {
+    assert_eq!(format_next_run(i64::MIN, i64::MAX), "soon");
+    assert!(format_next_run(i64::MAX, i64::MIN).ends_with("days"));
+    assert!(format_next_run(i64::MAX, 0).ends_with("days"));
+}

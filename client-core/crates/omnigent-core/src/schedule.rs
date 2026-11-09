@@ -349,7 +349,10 @@ fn rule_parts(rrule: &str) -> Option<BTreeMap<String, String>> {
     parts.contains_key("FREQ").then_some(parts)
 }
 
-fn number<T: std::str::FromStr + PartialOrd>(value: &str, range: &RangeInclusive<T>) -> Option<T> {
+pub(crate) fn number<T: std::str::FromStr + PartialOrd>(
+    value: &str,
+    range: &RangeInclusive<T>,
+) -> Option<T> {
     value
         .parse::<T>()
         .ok()
@@ -623,6 +626,9 @@ pub fn format_next_run(next_run_at: i64, now: i64) -> String {
     format!("in {}", plural(rounded(DAY), "day"))
 }
 
+/// The latest year a server date may name; beyond it the day arithmetic could overflow an `i64`.
+pub(crate) const MAX_DATE_YEAR: i64 = 1_000_000;
+
 /// Days from 1970-01-01 to a proleptic Gregorian date (Howard Hinnant's `days_from_civil`).
 pub(crate) const fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     let year = if month <= 2 { year - 1 } else { year };
@@ -641,7 +647,7 @@ pub fn parse_iso8601(value: &str) -> Option<i64> {
     let value = value.trim();
     let (date, rest) = value.split_once(['T', ' '])?;
     let mut date = date.splitn(3, '-');
-    let year: i64 = date.next()?.parse().ok()?;
+    let year = number(date.next()?, &(0_i64..=MAX_DATE_YEAR))?;
     let month = number(date.next()?, &(1_i64..=12))?;
     let day = number(date.next()?, &(1_i64..=31))?;
     let (time, offset_seconds) = if let Some(time) = rest.strip_suffix(['Z', 'z']) {

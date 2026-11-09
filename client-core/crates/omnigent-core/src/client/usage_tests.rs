@@ -62,3 +62,21 @@ fn costs_format_like_the_web() {
     assert_eq!(format_cost_usd(0.004), "<$0.01");
     assert_eq!(format_cost_usd(12.345), "$12.35");
 }
+
+#[test]
+fn windows_and_filters_survive_extreme_values() {
+    assert_eq!(window_start(u32::MAX, i64::MIN), utc_day(i64::MIN));
+    assert_eq!(utc_day(i64::MAX), "292277026596-12-04");
+    for bad in [
+        "9223372036854775807-01-01",
+        "2026-13-01",
+        "2026-00-01",
+        "2026-01-32",
+        "x-01-01",
+        "2026-01",
+        "",
+    ] {
+        assert_eq!(super::day_seconds(bad), None, "{bad}");
+    }
+    assert_eq!(super::day_seconds("1970-01-02"), Some(86_400));
+}
