@@ -30,6 +30,7 @@ use serde_json::{Map, Value, json};
 use url::Url;
 
 use super::errors::{ExchangeFailure, NetworkCause, OidcError, RevokeOutcome};
+use super::oidc_session::SignOutGenerations;
 use super::pkce::{self, CODE_CHALLENGE_METHOD, PkcePair};
 use super::{
     EntropySource, SecretString, SecureStore, SecureStoreError, SecureStoreKey,
@@ -508,6 +509,7 @@ pub struct OidcCredentials<T, S> {
     store: S,
     flights: Mutex<HashMap<String, Arc<Flight>>>,
     next_flight: AtomicU64,
+    sign_outs: Mutex<SignOutGenerations>,
 }
 
 #[derive(Debug)]
@@ -663,6 +665,7 @@ impl<T: HttpTransport, S: SecureStore> OidcCredentials<T, S> {
             transport,
             store,
             flights: Mutex::new(HashMap::new()),
+            sign_outs: Mutex::new(SignOutGenerations::default()),
             next_flight: AtomicU64::new(0),
         }
     }
@@ -699,7 +702,9 @@ impl<T: HttpTransport, S: SecureStore> OidcCredentials<T, S> {
     /// The callback errors of [`OidcSignInAttempt::authorization_code`] (no request is sent);
     /// [`OidcError::Network`] when the server cannot be reached; [`OidcError::ExchangeFailed`]
     /// for any non-200 (a 3xx is never followed) or an unsafe token; and
-    /// [`OidcError::GrantNotSaved`] when the store refuses the grant (it is then revoked).
+    /// [`OidcError::GrantNotSaved`] when the store refuses the grant (it is then revoked);
+    /// [`OidcError::Cancelled`] when a sign-out for the origin overtook the exchange (the grant
+    /// is revoked, not kept).
     pub async fn complete_sign_in(
         &self,
         attempt: &OidcSignInAttempt,
@@ -708,6 +713,8 @@ impl<T: HttpTransport, S: SecureStore> OidcCredentials<T, S> {
     ) -> Result<SignedIn, OidcError> {
         let server = &attempt.server;
         let code = attempt.authorization_code(callback_url)?;
+        let started = lock(&self.sign_outs).current(&server.origin);
+        let signed_out_since = || !lock(&self.sign_outs).is_current(started, &server.origin);
         let response = self.send(server, attempt.exchange_request(&code)?).await?;
         let body = json_body(&response);
         let exchange_failed = |cause| OidcError::ExchangeFailed {
@@ -729,6 +736,16 @@ impl<T: HttpTransport, S: SecureStore> OidcCredentials<T, S> {
                 refresh_token: SecretString::new(refresh_token),
                 user_id: user_id.clone(),
             };
+            // The user signed out while the server was answering: this grant stays unsaved.
+            // Revoking is best effort; nobody is left to tell how it went.
+            if signed_out_since() {
+                self.revoke(PendingRevocation {
+                    server: server.clone(),
+                    grant,
+                })
+                .await;
+                return Err(OidcError::Cancelled);
+            }
             if let Err(error) = self.store.set(server.grant_key(), grant.to_record()).await {
                 // A grant that cannot be kept must not stay live on the server.
                 let revocation = self
@@ -742,6 +759,9 @@ impl<T: HttpTransport, S: SecureStore> OidcCredentials<T, S> {
                     error,
                     revocation,
                 });
+            }
+            if signed_out_since() {
+                return Err(self.undo_save_after_sign_out(server, grant).await);
             }
         } else if let Err(error) = self.store.delete(server.grant_key()).await {
             stale_grant_error = Some(error);
@@ -851,6 +871,9 @@ impl<T: HttpTransport, S: SecureStore> OidcCredentials<T, S> {
                     .set(server.grant_key(), rotated.to_record())
                     .await
                     .map_err(|error| store_error(server, error))?;
+                if flight.cancelled.load(Ordering::Acquire) {
+                    return Err(self.undo_save_after_sign_out(server, rotated).await);
+                }
             }
             return Ok(session);
         }
@@ -871,6 +894,18 @@ impl<T: HttpTransport, S: SecureStore> OidcCredentials<T, S> {
         // the grant was not forgotten, so report the store failure instead.
         self.forget(server).await?;
         Err(dead)
+    }
+
+    /// A sign-out's delete may have run before this grant's save landed, which would sign the
+    /// user back in on the next launch. Returns why the sign-in or refresh ended.
+    async fn undo_save_after_sign_out(&self, server: &OidcServer, grant: OidcGrant) -> OidcError {
+        let forgotten = self.forget(server).await;
+        self.revoke(PendingRevocation {
+            server: server.clone(),
+            grant,
+        })
+        .await;
+        forgotten.err().unwrap_or(OidcError::Cancelled)
     }
 
     async fn forget(&self, server: &OidcServer) -> Result<(), OidcError> {
@@ -894,9 +929,11 @@ impl<T: HttpTransport, S: SecureStore> OidcCredentials<T, S> {
         Ok(stored.is_some_and(|bytes| OidcGrant::from_record(&bytes).is_some()))
     }
 
-    /// The local half of a sign-out: drops any refresh in flight for the origin (its callers get
-    /// [`OidcError::Cancelled`]), then deletes the stored grant before any network call.
+    /// The local half of a sign-out: drops any refresh or code exchange in flight for the origin
+    /// (their callers get [`OidcError::Cancelled`]), then deletes the stored grant before any
+    /// network call.
     pub async fn forget_grant(&self, server: &OidcServer) -> ForgottenGrant {
+        lock(&self.sign_outs).sign_out(&server.origin);
         let removed = lock(&self.flights).remove(&server.origin);
         if let Some(flight) = removed {
             flight.cancelled.store(true, Ordering::Release);

@@ -1906,3 +1906,85 @@ fn a_file_on_its_way_up_says_so_in_the_draft() {
     harness.pump();
     assert!(finished.borrow_mut().take().unwrap().is_err());
 }
+
+/// An OIDC server on the sign-in screen, its callback ready for `complete_oidc_sign_in`.
+fn oidc_sign_in_started() -> (Harness, u64, String) {
+    let mut harness = oidc_server();
+    connect(&mut harness).unwrap();
+    let challenge = harness.core.begin_oidc_sign_in(REDIRECT.into()).unwrap();
+    let callback = callback_for(&challenge);
+    (harness, challenge.attempt_id, callback)
+}
+
+/// What a user who signed out must find: no saved grant, and the sign-in screen on next launch.
+fn assert_signed_out_for_good(harness: &mut Harness) {
+    assert_eq!(lock(&harness.store.items).len(), 0, "no grant stays saved");
+    let phase = connect(harness).unwrap();
+    assert!(
+        matches!(phase, ConnectionPhase::SignInRequired { .. }),
+        "{phase:?}"
+    );
+}
+
+#[test]
+fn signing_out_during_the_code_exchange_leaves_no_grant() {
+    let (mut harness, attempt, callback) = oidc_sign_in_started();
+    let exchange = harness.http.hold("/auth/native-token");
+    let core = Arc::clone(&harness.core);
+    let completing =
+        harness.start(async move { core.complete_oidc_sign_in(attempt, callback).await });
+    harness
+        .call(|core| async move { core.sign_out().await })
+        .unwrap();
+    exchange.send(()).unwrap();
+    harness.pump();
+    assert!(completing.borrow_mut().take().unwrap().is_err());
+    assert_eq!(
+        harness.http.count("/oauth/revoke"),
+        1,
+        "the grant the server just issued does not stay live"
+    );
+    assert_signed_out_for_good(&mut harness);
+}
+
+#[test]
+fn signing_out_while_the_new_grant_saves_leaves_no_grant() {
+    let (mut harness, attempt, callback) = oidc_sign_in_started();
+    let saving = harness.store.hold_set();
+    let core = Arc::clone(&harness.core);
+    let completing =
+        harness.start(async move { core.complete_oidc_sign_in(attempt, callback).await });
+    harness
+        .call(|core| async move { core.sign_out().await })
+        .unwrap();
+    saving.send(()).unwrap();
+    harness.pump();
+    assert!(completing.borrow_mut().take().unwrap().is_err());
+    assert_eq!(
+        harness.http.count("/oauth/revoke"),
+        1,
+        "the grant saved after the sign-out does not stay live"
+    );
+    assert_signed_out_for_good(&mut harness);
+}
+
+#[test]
+fn signing_out_while_a_rotated_grant_saves_leaves_no_grant() {
+    let mut harness = oidc_server();
+    sign_in_oidc(&mut harness);
+    harness.http.route(
+        "/oauth/token",
+        json(
+            200,
+            r#"{"access_token":"token-2","refresh_token":"grant-2","expires_in":3600}"#,
+        ),
+    );
+    let saving = harness.store.hold_set();
+    harness.advance(3_600_000);
+    harness
+        .call(|core| async move { core.sign_out().await })
+        .unwrap();
+    saving.send(()).unwrap();
+    harness.pump();
+    assert_signed_out_for_good(&mut harness);
+}
