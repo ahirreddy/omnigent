@@ -3,10 +3,13 @@
 
 Usage: coverage.py [--package NAME ...] [--no-test] [--uncovered PATH_SUBSTRING] [--excluded]
                    [--unmeasured]
+       coverage.py --hosted XCRESULT [--files] [--uncovered PATH_SUBSTRING] [--excluded]
 
 Runs each package's offscreen-safe tests with coverage on, then reports its source lines. Tests
 that open real windows or need a live server are left out, here and in CI's fast tier; the VM
 flows in Tests/OmnigentMacUITests cover those.
+
+`--hosted` instead reads the macOS app target's own code from a result bundle of its hosted tests.
 
 Previews and the design gallery don't count. Code only a real window can reach goes between
 `// coverage:off <what reaches it instead>` and `// coverage:on`; `--excluded` lists those reasons.
@@ -32,6 +35,10 @@ COVERAGE_OFF = re.compile(r"^\s*// coverage:off(?:\s+(.*\S))?\s*$")
 COVERAGE_ON = re.compile(r"^\s*// coverage:on\s*$")
 PREVIEW = re.compile(r"^(\s*)#Preview\b")
 EXECUTABLE_CODE = re.compile(r"\b(func|init|get|set|didSet|willSet)\b|\bvar \w+[^=\n]*\{")
+
+# The app target the hosted tests measure; its VM-only chaos driver and generated code don't count.
+HOSTED_TARGET = "Omnigent.app"
+HOSTED_EXCLUDED_FILES = re.compile(r"/(Chaos[^/]*|TuistBundle[^/]*)\.swift$")
 
 # Per-package `swift test` arguments.
 TEST_ARGUMENTS = {
@@ -158,6 +165,69 @@ def summarize(document, sources, read_source=None):
     return list(rows.values())
 
 
+def hosted_files(listing):
+    """The source paths in xccov's `--files-for-target` listing, without those that don't count."""
+    paths = [file["path"] for target in listing for file in target["files"]]
+    return [path for path in paths if not HOSTED_EXCLUDED_FILES.search(path)]
+
+
+def summarize_hosted(paths, archive, read_source=None):
+    """Per-file `(path, covered, total, missing_lines, reasons)` from xccov's `--archive` lines."""
+    read_source = read_source or (lambda path: Path(path).read_text(encoding="utf-8"))
+    rows = []
+    for path in paths:
+        try:
+            excluded, reasons = excluded_lines(read_source(path))
+        except ValueError as error:
+            raise SystemExit(f"{path}: {error}") from error
+        counted = [
+            line
+            for line in archive.get(path, [])
+            if line["isExecutable"] and line["line"] not in excluded
+        ]
+        missing = sorted(line["line"] for line in counted if not line["executionCount"])
+        rows.append((path, len(counted) - len(missing), len(counted), missing, reasons))
+    return rows
+
+
+def read_hosted(result_bundle):
+    """Reads the app target's coverage rows from a result bundle."""
+
+    def view(*arguments):
+        command = ["xcrun", "xccov", "view", *arguments, "--json", str(result_bundle)]
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise SystemExit(f"{result_bundle}: xccov failed: {result.stderr.strip()}")
+        return json.loads(result.stdout)
+
+    listing = view("--report", "--files-for-target", HOSTED_TARGET)
+    rows = summarize_hosted(hosted_files(listing), view("--archive"))
+    # No lines means the bundle didn't measure the target, which must not read as full coverage.
+    if not any(row[2] for row in rows):
+        raise SystemExit(f"{result_bundle}: no coverage for {HOSTED_TARGET}.")
+    return rows
+
+
+def print_hosted(rows, options):
+    """Prints the app target's total and what `--files`, `--uncovered` and `--excluded` ask for."""
+    covered = sum(row[1] for row in rows)
+    lines = sum(row[2] for row in rows)
+    percent = 100 * covered / lines if lines else 100
+    print(f"{percent:6.1f}%  {covered:>6}/{lines:<6}  {HOSTED_TARGET}")
+    for path, file_covered, file_lines, missing, reasons in sorted(
+        rows, key=lambda row: row[1] - row[2]
+    ):
+        short = path.split("/Sources/", 1)[-1]
+        if options.excluded:
+            for start, end, reason in reasons:
+                print(f"        {short}:{start}-{end}  {reason}")
+        if options.files and missing:
+            share = 100 * file_covered / max(file_lines, 1)
+            print(f"        {share:5.1f}%  {len(missing):>5} missing  {short}")
+        if options.uncovered and options.uncovered in path and missing:
+            print(f"        {path}: {' '.join(line_ranges(missing))}")
+
+
 def unmeasured_files(document, sources):
     """`(path, code_lines)` of code under `sources` that no test bundle built, largest first.
 
@@ -238,7 +308,13 @@ def main():
     parser.add_argument(
         "--unmeasured", action="store_true", help="List code no test bundle builds on this Mac."
     )
+    parser.add_argument(
+        "--hosted", metavar="XCRESULT", help="Report the app target from this result bundle."
+    )
     options = parser.parse_args()
+    if options.hosted:
+        print_hosted(read_hosted(options.hosted), options)
+        return 0
     names = options.package or sorted(
         path.name
         for path in PACKAGES.iterdir()

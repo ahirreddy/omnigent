@@ -116,6 +116,48 @@ class CoverageTests(unittest.TestCase):
             with self.subTest(source=source), self.assertRaisesRegex(ValueError, message):
                 coverage.excluded_lines(source)
 
+    def test_hosted_files_leave_out_chaos_and_generated_files(self):
+        listing = [
+            {
+                "product": "Omnigent.app",
+                "files": [
+                    {"path": "/p/Sources/App.swift"},
+                    {"path": "/p/Sources/ChaosDriver.swift"},
+                    {"path": "/p/Derived/Sources/TuistBundle+Omnigent.swift"},
+                ],
+            }
+        ]
+        self.assertEqual(coverage.hosted_files(listing), ["/p/Sources/App.swift"])
+
+    def test_hosted_summary_counts_executable_lines_outside_markers(self):
+        source = "let a = 1\nlet b = 2\n// coverage:off VM flow testDrag\nc\n// coverage:on\n"
+        archive = {
+            "/p/Sources/App.swift": [
+                {"line": 1, "isExecutable": True, "executionCount": 4},
+                {"line": 2, "isExecutable": True, "executionCount": 0},
+                {"line": 3, "isExecutable": False},
+                {"line": 4, "isExecutable": True, "executionCount": 0},
+            ]
+        }
+        rows = coverage.summarize_hosted(
+            ["/p/Sources/App.swift", "/p/Sources/Unbuilt.swift"],
+            archive,
+            read_source=lambda _path: source,
+        )
+        self.assertEqual(
+            rows,
+            [
+                ("/p/Sources/App.swift", 1, 2, [2], [(3, 5, "VM flow testDrag")]),
+                ("/p/Sources/Unbuilt.swift", 0, 0, [], [(3, 5, "VM flow testDrag")]),
+            ],
+        )
+
+    def test_hosted_summary_names_the_file_with_a_bad_marker(self):
+        with self.assertRaisesRegex(SystemExit, "App.swift: line 1"):
+            coverage.summarize_hosted(
+                ["/p/Sources/App.swift"], {}, read_source=lambda _path: "// coverage:on\n"
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
