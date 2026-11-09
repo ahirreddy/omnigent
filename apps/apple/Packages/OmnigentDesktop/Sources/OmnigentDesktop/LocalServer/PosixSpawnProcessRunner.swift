@@ -342,15 +342,16 @@ nonisolated final class UnrelatedExitWatch: Sendable {
 
   func wait(isAlive: @escaping @Sendable () -> Bool) async {
     await withCheckedContinuation { continuation in
-      let source = DispatchSource.makeProcessSource(
-        identifier: pid, eventMask: .exit, queue: .global(qos: .utility))
-      let alreadyFinished = state.withLock { current -> Bool in
-        if current.finished { return true }
+      // A source released before it is resumed crashes, so a finished watch never makes one.
+      let armed = state.withLock { current -> (any DispatchSourceProcess)? in
+        if current.finished { return nil }
+        let source = DispatchSource.makeProcessSource(
+          identifier: pid, eventMask: .exit, queue: .global(qos: .utility))
         current.continuation = continuation
         current.source = source
-        return false
+        return source
       }
-      if alreadyFinished {
+      guard let source = armed else {
         continuation.resume()
         return
       }
