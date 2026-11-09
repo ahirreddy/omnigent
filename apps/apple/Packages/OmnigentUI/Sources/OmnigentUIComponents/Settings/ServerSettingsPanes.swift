@@ -263,7 +263,9 @@ struct ImportSessionsPane: View {
         Picker("Import", selection: $mode) {
           ForEach(ImportMode.allCases) { Text($0.title).tag($0) }
         }
-        .onChange(of: mode) { if mode == .session, source == "all" { source = "claude" } }
+        .onChange(of: mode) {
+          if mode == .session { source = Self.singleSource(source, in: sources) }
+        }
         .accessibilityIdentifier("settings.import.mode")
         Picker("Harness", selection: $source) {
           ForEach(sources.filter { mode == .recent || $0.id != "all" }) {
@@ -297,8 +299,21 @@ struct ImportSessionsPane: View {
           ? "Sessions already imported are skipped."
           : "The harness's own id for the session, as its CLI shows it.")
     }
-    .onAppear { if host == nil { host = hosts.first?.id } }
-    .onChange(of: hosts) { if host == nil { host = hosts.first?.id } }
+    .onAppear { host = Self.liveHost(host, in: hosts) }
+    .onChange(of: hosts) { host = Self.liveHost(host, in: hosts) }
+  }
+
+  /// The chosen machine while it stays online, else the first one, so Import never targets a
+  /// machine the picker no longer lists.
+  static func liveHost(_ host: String?, in hosts: [SettingChoice]) -> String? {
+    hosts.contains { $0.id == host } ? host : hosts.first?.id
+  }
+
+  /// One session comes from one harness: "All" becomes Claude when offered, else the first.
+  static func singleSource(_ source: String, in sources: [SettingChoice]) -> String {
+    guard source == "all" else { return source }
+    let named = sources.filter { $0.id != "all" }
+    return (named.first { $0.id == "claude" } ?? named.first)?.id ?? source
   }
 
   private var canImport: Bool {
