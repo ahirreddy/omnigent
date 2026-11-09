@@ -209,12 +209,15 @@ def workspace_crates():
     }
 
 
+def host_triple():
+    host_line = subprocess.check_output(["rustc", "-vV"], cwd=ROOT, text=True)
+    return re.search(r"^host: (.+)$", host_line, re.MULTILINE).group(1)
+
+
 def llvm_tool(name):
     """The rustup `llvm-tools` binary matching rustc; Xcode's LLVM is too old to read its data."""
     sysroot = subprocess.check_output(["rustc", "--print", "sysroot"], cwd=ROOT, text=True).strip()
-    host_line = subprocess.check_output(["rustc", "-vV"], cwd=ROOT, text=True)
-    host = re.search(r"^host: (.+)$", host_line, re.MULTILINE).group(1)
-    tool = Path(sysroot) / "lib" / "rustlib" / host / "bin" / name
+    tool = Path(sysroot) / "lib" / "rustlib" / host_triple() / "bin" / name
     if not tool.exists():
         sys.exit(f"{tool} is missing; run: rustup component add llvm-tools")
     return str(tool)
@@ -234,8 +237,10 @@ def coverage_environment():
     return environment
 
 
-def cargo_test_arguments(jobs):
+def cargo_test_arguments(jobs, host):
+    """An explicit target keeps RUSTFLAGS off proc macros, which would drop profiles in sources."""
     arguments = ["cargo", "test", "--workspace", "--lib", "--bins", "--tests", "-j", str(jobs)]
+    arguments += ["--target", host]
     for crate in sorted(EXCLUDED_CRATES):
         arguments += ["--exclude", crate]
     return arguments
@@ -245,7 +250,7 @@ def run_tests(jobs):
     """Runs every test with fresh profiles; returns whether they all passed."""
     shutil.rmtree(PROFILES, ignore_errors=True)
     PROFILES.mkdir(parents=True)
-    command = [*cargo_test_arguments(jobs), "--no-fail-fast"]
+    command = [*cargo_test_arguments(jobs, host_triple()), "--no-fail-fast"]
     result = subprocess.run(command, cwd=ROOT, env=coverage_environment(), check=False)
     return result.returncode == 0
 
@@ -272,7 +277,7 @@ def export_lcov(jobs):
     profiles = sorted(str(path) for path in PROFILES.glob("*.profraw"))
     if not profiles:
         sys.exit(f"no coverage profiles in {PROFILES}: the test binaries didn't run")
-    command = [*cargo_test_arguments(jobs), "--no-run", "--message-format=json"]
+    command = [*cargo_test_arguments(jobs, host_triple()), "--no-run", "--message-format=json"]
     messages = subprocess.run(
         command,
         cwd=ROOT,

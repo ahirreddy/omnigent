@@ -124,9 +124,13 @@ class CargoTests(unittest.TestCase):
         self.assertEqual(coverage.test_executables(messages), ["/t/a"])
 
     def test_excluded_crates_are_not_built(self):
-        arguments = coverage.cargo_test_arguments(4)
+        arguments = coverage.cargo_test_arguments(4, "host-triple")
         self.assertEqual(arguments[arguments.index("--exclude") + 1], "uniffi-bindgen")
         self.assertEqual(arguments[arguments.index("-j") + 1], "4")
+
+    def test_proc_macros_stay_uninstrumented_through_an_explicit_target(self):
+        arguments = coverage.cargo_test_arguments(4, "host-triple")
+        self.assertEqual(arguments[arguments.index("--target") + 1], "host-triple")
 
 
 if __name__ == "__main__":
