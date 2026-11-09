@@ -152,7 +152,9 @@ struct WindowTabs {
   var newTabState: NewTabPageState {
     let list = session.connection.sessionList
     let current = groups.currentSessionID
-    let others = list.visible.filter { $0.id != current }.sorted { $0.updatedAt > $1.updatedAt }
+    // Every session, since the sidebar's search and quick filter say nothing about this page.
+    let sessions = filterSessions(sessions: Array(list.sessionsByID.values), text: "", filter: .all)
+    let others = sessions.filter { $0.id != current }.sorted { $0.updatedAt > $1.updatedAt }
     let ordered = (current.flatMap(list.session).map { [$0] } ?? []) + others.prefix(11)
     let recent = ordered.map {
       OmnigentUIComponents.SessionSummary($0, attention: list.attention(of: $0.id))
