@@ -21,7 +21,13 @@ let package = Package(
     .library(name: "OmnigentViewTextReading", targets: ["OmnigentViewTextReading"]),
   ],
   targets: [
-    .target(name: "OmnigentViewTesting", swiftSettings: strictSwiftSettings),
+    .target(
+      name: "OmnigentViewTesting",
+      dependencies: ["OmnigentViewTestingBootstrap"],
+      swiftSettings: strictSwiftSettings
+    ),
+    // Guards the test runner's run loop from the moment a test bundle loads.
+    .target(name: "OmnigentViewTestingBootstrap"),
     // Tells SwiftUI to record its view tree, which must happen before the process's first view.
     .target(name: "OmnigentViewDebugBootstrap"),
     .target(
