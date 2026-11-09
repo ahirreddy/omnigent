@@ -72,12 +72,14 @@
         }
         return
       }
+      // One key can commit a syllable and open the next composition, so both can be sent.
       if !insertedText.isEmpty {
         sink.commitText(insertedText, replacementRange: insertedReplacement)
-      } else if hasMarkedText, !markedText.isEmpty {
+      }
+      if hasMarkedText, !markedText.isEmpty {
         sink.setComposition(
           markedText, selectedRange: markedSelection, replacementRange: markedReplacement)
-      } else if hadMarkedText, !hasMarkedText {
+      } else if hadMarkedText, !hasMarkedText, insertedText.isEmpty {
         if unmarkCalled {
           sink.finishComposing(keepSelection: false)
         } else {
