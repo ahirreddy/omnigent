@@ -197,5 +197,33 @@
       try screen.tapButton(fromEnd: 0)
       #expect(log.chosen == ["/home/me/src"])
     }
+
+    @Test("A read in flight shows progress, and a newer read wins however they finish")
+    func outOfOrder() async throws {
+      let screen = await open()
+      defer { screen.close() }
+      log.holdsReads = true
+      try screen.click(try rowPoint(screen, row: 0), clickCount: 2)
+      await screen.drainTasks()
+      #expect(screen.allViews.contains { $0 is NSProgressIndicator })
+      #expect(log.reads == [nil, "/home/me/src"])
+      // The path field stays live, so a second read can start while the first is out.
+      let field = try #require(screen.fields.first)
+      _ = screen.activeWindow.makeFirstResponder(field)
+      field.currentEditor()?.selectAll(nil)
+      try screen.type("/home")
+      try screen.pressReturn()
+      await screen.drainTasks()
+      #expect(log.reads == [nil, "/home/me/src", "/home"])
+      // The newer read finishes first; the older one must not replace it.
+      log.held[1].resume()
+      await screen.drainTasks()
+      #expect(field.stringValue == "/home")
+      log.held[0].resume()
+      await screen.drainTasks()
+      #expect(screen.fields.first?.stringValue == "/home")
+      try screen.tapButton(fromEnd: 0)
+      #expect(log.chosen == ["/home"])
+    }
   }
 #endif

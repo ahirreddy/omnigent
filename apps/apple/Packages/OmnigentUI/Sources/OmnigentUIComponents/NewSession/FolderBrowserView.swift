@@ -64,6 +64,7 @@ struct FolderBrowserView: View {
   @State private var isLoading = false
   @State private var typedPath = ""
   @State private var selection: String?
+  @State private var latestLoad = 0
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
@@ -131,8 +132,12 @@ struct FolderBrowserView: View {
     let target = (trimmed?.isEmpty ?? true) ? nil : trimmed
     isLoading = true
     error = nil
+    latestLoad += 1
+    let thisLoad = latestLoad
     Task {
       let result = await load(target)
+      // A newer read took over; this answer is for a folder the user left.
+      guard thisLoad == latestLoad else { return }
       isLoading = false
       switch result {
       case .success(let value):
