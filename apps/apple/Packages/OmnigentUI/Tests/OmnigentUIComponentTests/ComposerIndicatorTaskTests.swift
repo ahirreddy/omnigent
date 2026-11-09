@@ -67,17 +67,10 @@
       let count = try #require(screen.chips.first)
       try screen.click(screen.clickPoint(count))
       screen.settle(0.3)
-      let shown = popoverText()
-      #expect(shown != nil)
+      #expect(screen.popoverWindow != nil)
       model.state.tray?.indicators.backgroundTasks = 0
       screen.settle(0.3)
-      #expect(popoverText() == nil)
-    }
-
-    /// Whether a popover's window is up: it has its own window, which events don't reach.
-    private func popoverText() -> String? {
-      let popover = NSApp.windows.first { String(describing: type(of: $0)).contains("Popover") }
-      return popover?.isVisible == true ? "shown" : nil
+      #expect(screen.popoverWindow == nil)
     }
 
     @Test("the pull request chip opens the tab; without a handler it can't be pressed")
@@ -112,6 +105,34 @@
       #expect(try screen.shows("Fix the thing"))
     }
 
+    @Test("resting on the pull request chip shows the preview; passing over it doesn't")
+    func pullRequestHover() async throws {
+      var tray = ComposerTray(pullRequest: "#12")
+      tray.pullRequestPreview = [
+        PullRequestSummary(
+          id: "1", number: 12, title: "Fix the thing", repo: "omnigent", url: "https://x",
+          status: .open)
+      ]
+      let screen = self.tray(tray)
+      defer { screen.close() }
+      let chip = try #require(screen.chips.first)
+
+      try screen.hover(screen.clickPoint(chip))
+      try screen.endHover()
+      screen.settle(0.45)
+      await screen.drainTasks()
+      #expect(screen.popoverWindow == nil)
+
+      try screen.hover(screen.clickPoint(chip))
+      #expect(screen.popoverWindow == nil)
+      screen.settle(0.45)
+      await screen.drainTasks()
+      #expect(screen.popoverWindow != nil)
+      try screen.endHover()
+      screen.settle(0.3)
+      #expect(screen.popoverWindow == nil)
+    }
+
     @Test("the context line says where it runs and opens the details")
     func contextLine() throws {
       let state = ComposerViewState(context: ComposerSamples.context)
@@ -121,7 +142,7 @@
       let row = try #require(screen.chips.first)
       try screen.click(screen.clickPoint(row))
       screen.settle(0.3)
-      #expect(popoverText() != nil)
+      #expect(screen.popoverWindow != nil)
     }
 
     @Test("the context details name every part and say what wasn't reported")
