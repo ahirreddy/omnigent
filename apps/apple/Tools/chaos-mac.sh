@@ -6,7 +6,7 @@
 # in use. It needs no Accessibility or automation mode: the driver's input stays in the process.
 #
 # Usage: chaos-mac.sh --app PATH [--seeds FIRST-LAST or A,B,C] [--steps N] [--interval S]
-#                     [--server URL --sessions id,id [--outages]] [--script FILE] [--undo] [--out DIR]
+#                     [--server URL --sessions id,id [--outages]] [--script FILE] [--undo] [--no-undo-guard] [--out DIR]
 # --script replays the steps in FILE (ChaosScript.swift) instead of a random walk.
 # --undo presses undo after about one step in four, and logs what had the focus.
 # Without --server it runs on the app's offline demo server (-OmnigentDemo). --outages pauses the
@@ -22,6 +22,7 @@ sessions=""
 outages=0
 script=""
 undo=0
+undo_guard=1
 out="${TMPDIR:-/tmp}/omnigent-chaos-$(date +%Y%m%d-%H%M%S)"
 while (($#)); do
   case "$1" in
@@ -34,6 +35,7 @@ while (($#)); do
     --outages) outages=1; shift ;;
     --script) script="$2"; shift 2 ;;
     --undo) undo=1; shift ;;
+    --no-undo-guard) undo_guard=0; shift ;;
     --out) out="$2"; shift 2 ;;
     *) echo "unknown option $1" >&2; exit 64 ;;
   esac
@@ -119,6 +121,7 @@ run_seed() {
     -OmnigentTabsDirectory "$tabs" -NSQuitAlwaysKeepsWindows NO)
   [[ -z "$script" ]] || args+=(-OmnigentChaosScript "$script")
   ((undo == 0)) || args+=(-OmnigentChaosUndo YES)
+  ((undo_guard)) || args+=(-OmnigentNoTextUndoGuard YES)
   if [[ -n "$server" ]]; then
     args+=(-desktop.defaultServerURL "$server")
     [[ -z "$sessions" ]] || args+=(-OmnigentChaosSessions "$sessions")
@@ -128,7 +131,10 @@ run_seed() {
   # `open` starts the app from launchd, so a coverage build's profile path has to be handed over.
   local environment=()
   [[ -z "${LLVM_PROFILE_FILE:-}" ]] || environment=(--env "LLVM_PROFILE_FILE=$LLVM_PROFILE_FILE")
-  open -n -g ${environment[@]+"${environment[@]}"} "$app" --args "${args[@]}"
+  # A script's clicks have to focus fields, which takes an active app.
+  local placement=(-g)
+  [[ -z "$script" ]] || placement=()
+  open -n ${placement[@]+"${placement[@]}"} ${environment[@]+"${environment[@]}"} "$app" --args "${args[@]}"
   for _ in $(seq 1 60); do
     pid="$(running_pid)"
     [[ -z "$pid" ]] || break

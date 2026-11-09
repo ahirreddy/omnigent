@@ -140,7 +140,12 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
       services.logger.error(
         "AppKit lacks the Windows menu methods; arranging while a window changes quits.")
     }
-    TextUndoGuard.install()
+    #if DEBUG
+      // Lets a chaos run compare behavior without the guard.
+      if !UserDefaults.standard.bool(forKey: "OmnigentNoTextUndoGuard") { TextUndoGuard.install() }
+    #else
+      TextUndoGuard.install()
+    #endif
     if !SingleLinePasteGuard.install() {
       services.logger.error("AppKit lacks the text view paste method; pasted lines stay unjoined.")
     }

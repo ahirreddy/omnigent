@@ -12,7 +12,8 @@
       let holder = text?.isFieldEditor == true ? (text?.delegate as AnyObject?) : responder
       let name = (holder as? NSView)?.accessibilityIdentifier() ?? ""
       let undo = responder.undoManager?.canUndo == true ? " can undo" : ""
-      return "\(holder.map { String(describing: type(of: $0)) } ?? "none") \(name)\(undo)"
+      let length = text.map { " \($0.string.utf16.count) long" } ?? ""
+      return "\(holder.map { String(describing: type(of: $0)) } ?? "none") \(name)\(length)\(undo)"
     }
 
     /// A window's title, or its class and level when it has none (sheets, panels, popovers).

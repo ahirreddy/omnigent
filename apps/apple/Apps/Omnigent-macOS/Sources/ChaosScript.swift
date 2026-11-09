@@ -135,6 +135,8 @@
           log?.write("\(step): no window")
           return
         }
+        // Keys only reach a key window, and a launch in the background may have none.
+        if !window.isKeyWindow { window.makeKeyAndOrderFront(nil) }
         act(step, in: window)
         log?.write(
           "\(step), focus \(ChaosLog.focus(in: window)), in \(ChaosLog.describe(window)),"
