@@ -16,7 +16,7 @@ public final class TerminalStore {
   /// Surfaces by terminal id.
   public private(set) var controllers: [String: TerminalSurfaceController] = [:]
   /// The last surface failure (libghostty could not start or create the surface).
-  public private(set) var lastError: GhosttyError?
+  public internal(set) var lastError: GhosttyError?
 
   @ObservationIgnored private let runtime: GhosttyRuntime?
 

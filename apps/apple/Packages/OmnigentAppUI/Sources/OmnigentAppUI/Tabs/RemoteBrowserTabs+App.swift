@@ -77,7 +77,8 @@ struct RemoteBrowserTabContainer: View {
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
-    .onChange(of: header?.permissionLevel, initial: true) { attach() }
+    // The header's arrival, not its level: a header may report no level at all.
+    .onChange(of: header != nil, initial: true) { attach() }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("remote-browser-tab")
   }
