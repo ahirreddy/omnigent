@@ -1,8 +1,50 @@
 #if os(macOS)
   import AppKit
+  import CoreGraphics
+  import SwiftUI
   import Testing
 
   @testable import OmnigentViewTesting
+
+  /// A view that presents each kind of modal from a default-style button.
+  private struct Presenter: View {
+    @State private var showsSheet = false
+    @State private var showsDialog = false
+    @State private var showsAlert = false
+    let log: (String) -> Void
+
+    var body: some View {
+      VStack(spacing: 0) {
+        Button("Sheet") { showsSheet = true }.frame(height: 40)
+        Button("Dialog") { showsDialog = true }.frame(height: 40)
+        Button("Alert") { showsAlert = true }.frame(height: 40)
+        Menu("Menu") { Button("Item") { log("item") } }.frame(height: 40)
+      }
+      .sheet(isPresented: $showsSheet) {
+        Button("Close") {
+          log("close")
+          showsSheet = false
+        }
+        .frame(width: 200, height: 100)
+      }
+      .confirmationDialog("Sure?", isPresented: $showsDialog) {
+        Button("Do it") { log("dialog") }
+      }
+      .alert("Careful", isPresented: $showsAlert) {
+        Button("OK") { log("alert") }
+      }
+    }
+  }
+
+  /// Windows of this process that a person could see right now.
+  @MainActor
+  private func visibleWindows() -> [String] {
+    let options: CGWindowListOption = [.optionOnScreenOnly]
+    let all = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+    let ours = all.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == getpid() }
+    let shown = ours.filter { ($0[kCGWindowAlpha as String] as? Double ?? 0) > 0 }
+    return shown.map { "\($0[kCGWindowBounds as String] ?? "unknown bounds")" }
+  }
 
   @MainActor
   @Suite("Product code can't reach the person using this Mac", .serialized)
@@ -49,6 +91,48 @@
       #expect(SystemSideEffects.record.panelCount == 2)
       SystemSideEffects.reset()
       #expect(NSOpenPanel().runModal() == .cancel)
+    }
+
+    @Test("sheets, dialogs, alerts and menus never become visible", .timeLimit(.minutes(1)))
+    func invisibleModals() throws {
+      var log: [String] = []
+      let screen = OffscreenWindow(Presenter { log.append($0) }, width: 200, height: 200)
+      defer { screen.close() }
+      #expect(visibleWindows().isEmpty)
+      #expect(screen.window.alphaValue == 0)
+
+      try screen.clickControl(at: 0)
+      screen.settle(0.5)
+      #expect(screen.window.attachedSheet != nil)
+      #expect(visibleWindows().isEmpty)
+      #expect(screen.controlFrames.count == 1)
+      try screen.clickControl(at: 0)
+      screen.settle(0.5)
+      #expect(log == ["close"])
+      #expect(screen.window.attachedSheet == nil)
+
+      log = []
+      try screen.clickControl(at: 1)
+      screen.settle(0.5)
+      #expect(visibleWindows().isEmpty)
+      #expect(log == ["dialog"])
+      #expect(SystemSideEffects.record.alertMessages == ["Sure?"])
+
+      log = []
+      try screen.clickControl(at: 2)
+      screen.settle(0.5)
+      #expect(visibleWindows().isEmpty)
+      #expect(log == ["alert"])
+
+      var seenDuringMenu: [String] = []
+      let sample = Timer(timeInterval: 0.01, repeats: true) { _ in
+        MainActor.assumeIsolated { seenDuringMenu += visibleWindows() }
+      }
+      RunLoop.main.add(sample, forMode: .common)
+      defer { sample.invalidate() }
+      let menu = try screen.openMenu(CGPoint(x: 100, y: 160))
+      #expect(menu.items.map(\.title).contains("Item"))
+      #expect(seenDuringMenu.isEmpty, "\(seenDuringMenu)")
     }
 
     @Test("focus, new windows, menus and quitting are recorded")
