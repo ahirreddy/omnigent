@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Line coverage of the Apple packages from their own fast tests.
 
-Usage: coverage.py [--package NAME ...] [--no-test] [--uncovered PATH_SUBSTRING]
+Usage: coverage.py [--package NAME ...] [--no-test] [--uncovered PATH_SUBSTRING] [--excluded]
 
 Runs each package's offscreen-safe tests with coverage on, then reports its source lines. Tests
 that open real windows or need a live server are left out, here and in CI's fast tier; the VM
 flows in Tests/OmnigentMacUITests cover those.
+
+Previews and the design gallery don't count. Code only a real window can reach goes between
+`// coverage:off <what reaches it instead>` and `// coverage:on`; `--excluded` lists those reasons.
 """
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +23,13 @@ PACKAGES = ROOT / "Packages"
 
 # Generated bindings, a shim and test helpers are not product code.
 EXCLUDED_PACKAGES = {"OmnigentCoreFFI", "OmnigentGhosttyKit", "OmnigentTestSupport"}
+
+# Design samples, not reachable from the shipped app.
+EXCLUDED_DIRECTORIES = ("/Gallery/",)
+
+COVERAGE_OFF = re.compile(r"^\s*// coverage:off(?:\s+(.*\S))?\s*$")
+COVERAGE_ON = re.compile(r"^\s*// coverage:on\s*$")
+PREVIEW = re.compile(r"^(\s*)#Preview\b")
 
 # Per-package `swift test` arguments.
 TEST_ARGUMENTS = {
@@ -64,8 +75,8 @@ def line_ranges(lines):
     return ranges
 
 
-def uncovered_lines(segments):
-    """Lines with code and no hits, from llvm-cov's segments."""
+def line_coverage(segments):
+    """The `(covered, uncovered)` line sets from llvm-cov's segments; any hit covers a line."""
     uncovered, covered = set(), set()
     for index, segment in enumerate(segments):
         line, _column, count, has_count, _entry, gap = segment
@@ -74,21 +85,75 @@ def uncovered_lines(segments):
         end = segments[index + 1][0] if index + 1 < len(segments) else line
         for number in range(line, end + 1):
             (covered if count else uncovered).add(number)
-    return sorted(uncovered - covered)
+    return covered, uncovered - covered
 
 
-def summarize(document, sources):
-    """Per-file `(path, covered, total, segments)` for files under `sources`."""
+def uncovered_lines(segments):
+    """Lines with code and no hits, from llvm-cov's segments."""
+    return sorted(line_coverage(segments)[1])
+
+
+def excluded_lines(source):
+    """Lines that don't count, and the reasons given: `#Preview` blocks and marked ranges."""
+    lines = source.splitlines()
+    excluded, reasons = set(), []
+    open_from = reason = None
+    index = 0
+    while index < len(lines):
+        number = index + 1
+        off = COVERAGE_OFF.match(lines[index])
+        preview = PREVIEW.match(lines[index])
+        if off:
+            if open_from is not None:
+                raise ValueError(f"line {number}: coverage:off inside the one at {open_from}")
+            if not off.group(1):
+                raise ValueError(f"line {number}: coverage:off must say what reaches this code")
+            open_from, reason = number, off.group(1)
+        elif COVERAGE_ON.match(lines[index]):
+            if open_from is None:
+                raise ValueError(f"line {number}: coverage:on without coverage:off")
+            excluded.update(range(open_from, number + 1))
+            reasons.append((open_from, number, reason))
+            open_from = None
+        elif preview:
+            closing = preview.group(1) + "}"
+            end = next(
+                (
+                    later
+                    for later in range(index + 1, len(lines))
+                    if lines[later].rstrip() == closing
+                ),
+                None,
+            )
+            if end is None:
+                raise ValueError(f"line {number}: no closing brace for this #Preview")
+            excluded.update(range(number, end + 2))
+            index = end
+        index += 1
+    if open_from is not None:
+        raise ValueError(f"line {open_from}: coverage:off without coverage:on")
+    return excluded, reasons
+
+
+def summarize(document, sources, read_source=None):
+    """Per-file `(path, covered, total, segments, reasons)` for counted files under `sources`."""
+    read_source = read_source or (lambda path: Path(path).read_text(encoding="utf-8"))
     prefix = str(sources) + "/"
-    rows = []
+    rows = {}
     for export in document["data"]:
         for entry in export["files"]:
-            if entry["filename"].startswith(prefix):
-                lines = entry["summary"]["lines"]
-                rows.append(
-                    (entry["filename"], lines["covered"], lines["count"], entry["segments"])
-                )
-    return rows
+            path = entry["filename"]
+            if not path.startswith(prefix) or any(part in path for part in EXCLUDED_DIRECTORIES):
+                continue
+            try:
+                excluded, reasons = excluded_lines(read_source(path))
+            except ValueError as error:
+                raise SystemExit(f"{path}: {error}") from error
+            covered, uncovered = line_coverage(entry["segments"])
+            counted_covered = len(covered - excluded)
+            counted = counted_covered + len(uncovered - excluded)
+            rows[path] = (path, counted_covered, counted, entry["segments"], reasons)
+    return list(rows.values())
 
 
 def export_all_bundles(json_path):
@@ -139,6 +204,9 @@ def main():
     parser.add_argument(
         "--files", action="store_true", help="List every file, least covered first."
     )
+    parser.add_argument(
+        "--excluded", action="store_true", help="List code marked coverage:off and why."
+    )
     options = parser.parse_args()
     names = options.package or sorted(
         path.name
@@ -160,16 +228,24 @@ def main():
         total_lines += lines
         percent = 100 * covered / lines if lines else 100
         print(f"{percent:6.1f}%  {covered:>6}/{lines:<6}  {name}", flush=True)
-        for path, file_covered, file_lines, segments in sorted(
+        for path, file_covered, file_lines, segments, reasons in sorted(
             rows, key=lambda row: row[1] / max(row[2], 1)
         ):
+            if options.excluded:
+                short = path.split("/Sources/", 1)[1]
+                for start, end, reason in reasons:
+                    print(f"        {short}:{start}-{end}  {reason}")
             if options.files and file_covered < file_lines:
                 short = path.split("/Sources/", 1)[1]
                 share = 100 * file_covered / max(file_lines, 1)
                 missing = file_lines - file_covered
                 print(f"        {share:5.1f}%  {missing:>5} missing  {short}")
             if options.uncovered and options.uncovered in path:
-                print(f"        {path}: {' '.join(line_ranges(uncovered_lines(segments)))}")
+                excluded, _ = excluded_lines(Path(path).read_text(encoding="utf-8"))
+                missing_lines = [
+                    line for line in uncovered_lines(segments) if line not in excluded
+                ]
+                print(f"        {path}: {' '.join(line_ranges(missing_lines))}")
     if total_lines:
         percent = 100 * total_covered / total_lines
         print(f"{percent:6.1f}%  {total_covered:>6}/{total_lines:<6}  total")
