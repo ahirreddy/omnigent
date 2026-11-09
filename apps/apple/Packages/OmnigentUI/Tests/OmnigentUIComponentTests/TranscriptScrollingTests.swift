@@ -36,9 +36,13 @@
 
     private var jumpPill: CGPoint { CGPoint(x: Self.width / 2, y: Self.height - 34) }
 
-    /// The pill shows once the transcript has framed the latest question.
+    /// The pill shows once the transcript has framed the latest question. The test stops without
+    /// it: what follows would only report a click on nothing.
     private func clickJumpPill(on window: OffscreenWindow<AnyView>) async throws {
-      #expect(try await waitUntil(window) { try window.shows("Jump to latest") })
+      let viewport = TranscriptScrollDriver(screen: window)
+      try #require(
+        try await waitUntil(window) { try window.shows("Jump to latest") },
+        "No pill, at offset \(viewport.offset) of \(viewport.maximumOffset)")
       try window.click(jumpPill)
     }
 
