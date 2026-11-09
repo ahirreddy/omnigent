@@ -166,8 +166,17 @@ def summarize(document, sources, read_source=None):
 
 
 def hosted_files(listing):
-    """The source paths in xccov's `--files-for-target` listing, without those that don't count."""
-    paths = [file["path"] for target in listing for file in target["files"]]
+    """The source paths in xccov's `--files-for-target` listing, without those that don't count.
+
+    The name also matches the App Store edition's app, which builds the same sources.
+    """
+    product = f"/{HOSTED_TARGET}/"
+    paths = dict.fromkeys(
+        file["path"]
+        for target in listing
+        if product in target["product"]
+        for file in target["files"]
+    )
     return [path for path in paths if not HOSTED_EXCLUDED_FILES.search(path)]
 
 

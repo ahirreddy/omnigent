@@ -116,16 +116,15 @@ class CoverageTests(unittest.TestCase):
             with self.subTest(source=source), self.assertRaisesRegex(ValueError, message):
                 coverage.excluded_lines(source)
 
-    def test_hosted_files_leave_out_chaos_and_generated_files(self):
+    def test_hosted_files_are_the_developer_id_apps_once_without_chaos_or_generated(self):
+        files = [
+            {"path": "/p/Sources/App.swift"},
+            {"path": "/p/Sources/ChaosDriver.swift"},
+            {"path": "/p/Derived/Sources/TuistBundle+Omnigent.swift"},
+        ]
         listing = [
-            {
-                "product": "Omnigent.app",
-                "files": [
-                    {"path": "/p/Sources/App.swift"},
-                    {"path": "/p/Sources/ChaosDriver.swift"},
-                    {"path": "/p/Derived/Sources/TuistBundle+Omnigent.swift"},
-                ],
-            }
+            {"product": "/d/OmnigentAppStore.app/Contents/MacOS/OmnigentAppStore", "files": files},
+            {"product": "/d/Omnigent.app/Contents/MacOS/Omnigent", "files": files},
         ]
         self.assertEqual(coverage.hosted_files(listing), ["/p/Sources/App.swift"])
 
