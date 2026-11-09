@@ -71,7 +71,8 @@ public struct SessionInspectorView: View {
           }
         }
         LabeledContent("Model", value: settings.modelLabel)
-        LabeledContent("Reasoning", value: reported(settings.reasoningEffort))
+        LabeledContent(
+          "Reasoning", value: state.effortTitle ?? reported(settings.reasoningEffort))
         if let routing = settings.routingMode {
           LabeledContent("Routing", value: routing.capitalized)
         }

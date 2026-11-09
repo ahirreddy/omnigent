@@ -30,6 +30,7 @@ enum ConversationAdapter {
       turnStartedAt: store.turnTimer.startedAt)
     state.isHydrating = isHydrating(store)
     state.approvalModeTitle = approvalModeTitle(store)
+    state.effortTitle = ComposerAdapter.configuration(store.composer).effortTitle
     return state
   }
 
@@ -61,6 +62,7 @@ enum ConversationAdapter {
       activityTitle: digest.activityTitle)
     state.isHydrating = isHydrating(store)
     state.approvalModeTitle = approvalModeTitle(store)
+    state.effortTitle = ComposerAdapter.configuration(store.composer).effortTitle
     return state
   }
 
