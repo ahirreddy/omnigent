@@ -17,9 +17,7 @@ public struct SidebarView: View {
   @State private var confirmingLeave: SessionSummary?
   @State private var confirmingStop: SessionSummary?
   @State private var bulk = SidebarBulkSelection()
-  /// The session whose title is edited in place, and the text.
-  @State private var inlineRenaming: SessionSummary?
-  @State private var inlineText = ""
+  @State private var inlineEdit = SidebarInlineEdit()
   /// Expanded project folders (they start collapsed), newline-separated, kept across launches.
   @AppStorage(SidebarNavigationOrder.expandedProjectsKey) private var expandedProjectIDs = ""
   /// Rows each folder's Show more has revealed, by folder id.
@@ -91,6 +89,11 @@ public struct SidebarView: View {
     .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader(state: state, actions: actions) }
     .safeAreaInset(edge: .bottom, spacing: 0) { bottomBars }
     #if os(macOS)
+      .contextMenu(forSelectionType: SidebarDestination.self) { _ in
+        EmptyView()
+      } primaryAction: { destinations in
+        renameOnDoubleClick(destinations)
+      }
       .onDeleteCommand {
         guard !bulk.isActive, let id = selection?.sessionID, let session = summary(id),
           session.canArchive, let setArchived = actions.sessions.setArchived
@@ -355,12 +358,9 @@ extension SidebarView {
       session: session, info: info, isUnread: isUnread,
       attention: state.list.attentionCounts[session.id] ?? 0, details: state.display.details,
       now: now, menu: menu, isSelecting: bulk.isActive, isChecked: bulk.ids.contains(session.id),
-      inlineRename: inlineRenaming?.id == session.id ? inlineRename : nil,
-      beginInlineRename: canRenameInline(session, info: info)
-        ? {
-          inlineText = session.title
-          inlineRenaming = session
-        } : nil
+      inlineRename: inlineEdit.session?.id == session.id
+        ? SidebarInlineEdit.field($inlineEdit, rename: actions.sessions.rename) : nil,
+      beginInlineRename: canRenameInline(session, info: info) ? { inlineEdit.begin(session) } : nil
     )
     .tag(SidebarDestination.session(session.id))
     .sidebarSelection(
@@ -371,24 +371,18 @@ extension SidebarView {
     .modifier(SessionSwipeActions(session: session, isUnread: isUnread, menu: menu))
   }
 
-  /// Double-click renames in place, as the web: the owner only, never while selecting.
-  private func canRenameInline(_ session: SessionSummary, info: SessionRowInfo) -> Bool {
-    actions.sessions.rename != nil && session.canRename && !info.isShared && !bulk.isActive
+  /// A double-click on one session row renames it in place.
+  private func renameOnDoubleClick(_ destinations: Set<SidebarDestination>) {
+    guard destinations.count == 1, let id = destinations.first?.sessionID,
+      let session = summary(id),
+      canRenameInline(session, info: state.rowInfo[id] ?? SessionRowInfo())
+    else { return }
+    inlineEdit.begin(session)
   }
 
-  private var inlineRename: InlineRename {
-    InlineRename(
-      text: $inlineText,
-      commit: {
-        guard let session = inlineRenaming else { return }
-        inlineRenaming = nil
-        let title = inlineText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty, title != session.title,
-          title.count <= SessionDialogs.maxTitleLength
-        else { return }
-        actions.sessions.rename?(session, title)
-      },
-      cancel: { inlineRenaming = nil })
+  /// The owner only, as the web, and never while selecting.
+  private func canRenameInline(_ session: SessionSummary, info: SessionRowInfo) -> Bool {
+    actions.sessions.rename != nil && session.canRename && !info.isShared && !bulk.isActive
   }
 
   private func drop(_ item: SidebarDragItem, on target: SidebarDropTarget?) -> Bool {

@@ -110,6 +110,14 @@ public final class SignInController {
     }
   }
 
+  /// Starts this Mac's server and connects to it, when it is the server last used.
+  public func resumeLocalServer() {
+    guard let localSetup, let last = directory.recentServers.first,
+      LocalInstall.isLocalInstall(last)
+    else { return }
+    localSetup.actions(connect: { [weak self] in self?.connect($0) }).start()
+  }
+
   /// Connects to `serverURL` as typed. The core normalizes it, discovers the server, restores a
   /// saved sign-in when there is one, and reports progress through the phase.
   /// - Parameter serverURL: The server as typed.

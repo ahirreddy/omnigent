@@ -30,6 +30,10 @@ final class NewSessionForm {
   @ObservationIgnored var sandboxes: SandboxStore?
   /// A custom agent created on this page and not saved: it uploads with the session.
   var pendingAgent: OmnigentCoreFFI.AgentDraft?
+  /// The user picked the host, so it stays when another comes online.
+  @ObservationIgnored var hostWasChosen = false
+  /// The user picked the agent, so it stays when it isn't ready on a host.
+  @ObservationIgnored var agentWasChosen = false
   /// The project the session is filed in.
   var project: ProjectSummary?
   /// Why the project's defaults could not be read.
@@ -49,17 +53,43 @@ final class NewSessionForm {
   func load(_ creation: CreationStore) async {
     if creation.catalog.value == nil { await creation.loadCatalog() }
     guard let catalog = creation.catalog.value else { return }
-    if selection.hostId.isEmpty {
-      let host = catalog.hosts.first(where: \.isAvailable) ?? catalog.hosts.first
-      selection.hostId = rememberedHost(catalog) ?? host?.hostId ?? ""
-    }
-    if selection.agentId.isEmpty {
-      let ordered = NewSessionAdapter.agents(catalog, hostID: selection.hostId).choices
-      selection.agentId =
-        rememberedAgent(catalog)
-        ?? ordered.first { $0.unavailableReason == nil }?.id ?? ordered.first?.id ?? ""
-    }
+    applyDefaults(catalog)
     await creation.selectionChanged(selection)
+  }
+
+  /// Fills what the user hasn't chosen: an online host, then an agent ready on it. Runs again as
+  /// hosts change, since one can connect after the page opened with none to judge agents by.
+  func applyDefaults(_ catalog: OmnigentCoreFFI.CreationCatalog) {
+    let isOnline = catalog.hosts.contains { $0.hostId == selection.hostId && $0.isAvailable }
+    if !hostWasChosen, !isOnline {
+      let host = catalog.hosts.first(where: \.isAvailable) ?? catalog.hosts.first
+      selection.hostId = rememberedHost(catalog) ?? host?.hostId ?? selection.hostId
+    }
+    guard !agentWasChosen, !startsPendingAgent else { return }
+    let agent = defaultAgent(catalog)
+    if agent != selection.agentId { resetAgent(agent, in: &selection) }
+  }
+
+  /// The remembered agent or else the first one ready on the host; with none ready, the agent
+  /// to set up.
+  private func defaultAgent(_ catalog: OmnigentCoreFFI.CreationCatalog) -> String {
+    let ordered = NewSessionAdapter.agents(catalog, hostID: selection.hostId).choices
+    let ready = ordered.filter { $0.unavailableReason == nil }.map(\.id)
+    let remembered = rememberedAgent(catalog)
+    if let remembered, ready.contains(remembered) { return remembered }
+    if let first = ready.first { return first }
+    if let remembered { return remembered }
+    if ordered.contains(where: { $0.id == selection.agentId }) { return selection.agentId }
+    return ordered.first?.id ?? ""
+  }
+
+  /// The user picked `hostID`; an agent they didn't pick follows what is ready there.
+  func chooseHost(_ hostID: String, _ creation: CreationStore) {
+    hostWasChosen = true
+    selection.hostId = hostID
+    if let catalog = creation.catalog.value { applyDefaults(catalog) }
+    let selection = selection
+    Task { await creation.selectionChanged(selection) }
   }
 
   /// Edits the selection and reloads the host's folders and the agent's models.
@@ -73,18 +103,26 @@ final class NewSessionForm {
 
   /// Models, efforts and launch modes belong to the agent: a new agent starts on its defaults.
   func selectAgent(_ agentID: String, _ creation: CreationStore) {
-    change(creation) {
-      $0.agentId = agentID
-      $0.model = nil
-      $0.reasoningEffort = nil
-      $0.approvalMode = nil
-      $0.planMode = false
-    }
+    agentWasChosen = true
+    change(creation) { resetAgent(agentID, in: &$0) }
   }
 
-  /// Reloads hosts and agents after a setup, an install or a new host, keeping the selection.
+  private func resetAgent(_ agentID: String, in selection: inout OmnigentCoreFFI.CreationSelection)
+  {
+    selection.agentId = agentID
+    selection.model = nil
+    selection.reasoningEffort = nil
+    selection.approvalMode = nil
+    selection.planMode = false
+  }
+
+  static let hostCheckInterval = Duration.seconds(2)
+
+  /// Reloads hosts and agents after a setup, an install or a new host, keeping what the user
+  /// chose.
   func reloadCatalog(_ creation: CreationStore) async {
     await creation.loadCatalog()
+    if let catalog = creation.catalog.value { applyDefaults(catalog) }
     await creation.selectionChanged(selection)
   }
 
@@ -141,6 +179,31 @@ final class NewSessionForm {
         catalog: catalog, agentId: selection.agentId, hostId: selection.hostId) != nil
     else { return nil }
     return ("\(agent.name) isn't ready on \(host.name).", agent.name)
+  }
+
+  /// Nothing can run yet: no host is online and no managed sandbox is offered.
+  func needsHost(_ creation: CreationStore) -> Bool {
+    guard !isSandbox, let catalog = creation.catalog.value else { return false }
+    return !catalog.managedSandboxes && !catalog.hosts.contains(where: \.isAvailable)
+  }
+
+  /// Checks for a host until one connects, which nothing announces to this screen. Hosts connect
+  /// on their own moments after the app opens, and from a command run elsewhere.
+  func waitForHost(_ creation: CreationStore) async {
+    guard needsHost(creation) else { return }
+    while needsHost(creation) {
+      do {
+        try await Task.sleep(for: Self.hostCheckInterval)
+      } catch {
+        // Cancelled: the screen left, or a host connected.
+        return
+      }
+      await creation.refreshCatalog()
+    }
+    if let catalog = creation.catalog.value {
+      applyDefaults(catalog)
+      await creation.selectionChanged(selection)
+    }
   }
 
   /// The setup sheet's harness: the readiness key the host reports for the selected agent.
@@ -216,6 +279,7 @@ final class NewSessionForm {
       offersWorktrees: !(creation.worktrees.value ?? []).isEmpty, worktrees: worktrees,
       worktree: worktree, harnessNotice: notice?.text, setUpName: notice?.name,
       isPlanMode: isPlanOn, defaultBaseBranch: worktreeDefaults.base)
+    options.needsHost = needsHost(creation)
     options.project = project?.name
     options.projects = projects.map(\.name)
     return options

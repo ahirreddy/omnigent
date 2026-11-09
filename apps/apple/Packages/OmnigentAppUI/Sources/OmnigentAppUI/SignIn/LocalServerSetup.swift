@@ -67,9 +67,12 @@
 
     /// Hosts for `baseUrl` when the user chose this Mac for it before signing in.
     public func didSignIn(to baseUrl: String) {
-      guard let pending = pendingHost, Self.sameServer(pending, baseUrl) else { return }
-      pendingHost = nil
       guard let url = URL(string: baseUrl) else { return }
+      guard let pending = pendingHost, Self.sameServer(pending, baseUrl) else {
+        Task { await manager.resumeHost(serverURL: url) }
+        return
+      }
+      pendingHost = nil
       Task { await manager.startHost(serverURL: url) }
     }
 

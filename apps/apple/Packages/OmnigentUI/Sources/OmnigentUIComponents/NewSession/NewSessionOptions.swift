@@ -54,6 +54,8 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   public var harnessNotice: String?
   /// The Set Up button's agent name.
   public var setUpName: String?
+  /// No host is online, so offer to connect one.
+  public var needsHost = false
   /// Plan mode is armed for the launch.
   public var isPlanMode: Bool
   /// Settings › Git's default base branch, pre-filled when naming a new worktree branch.
@@ -125,6 +127,8 @@ public struct NewSessionOptionActions {
   public var profiles: SandboxProfilesActions?
   /// Open the harness setup sheet from the not-ready notice.
   public var setUpHarness: (@MainActor () -> Void)?
+  /// Open Connect a Host from the no-host notice.
+  public var connectHost: (@MainActor () -> Void)?
   /// Choose the project by name (`nil` for none).
   public var selectProject: (@MainActor (String?) -> Void)?
 
@@ -169,6 +173,9 @@ struct NewSessionOptionsBar: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+      if options.needsHost {
+        hostNoticeRow
+      }
       if let notice = options.harnessNotice {
         harnessNoticeRow(notice)
       }
@@ -215,6 +222,26 @@ struct NewSessionOptionsBar: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("new-session-options")
+  }
+
+  /// The amber line for a server with nowhere to run agents, and the way to fix it.
+  private var hostNoticeRow: some View {
+    HStack(spacing: Theme.Spacing.small) {
+      Label(
+        "No host is connected, so agents can't run yet.",
+        systemImage: "exclamationmark.triangle.fill"
+      )
+      .foregroundStyle(Theme.warning)
+      if let connect = actions.connectHost {
+        Button("Connect a Host\u{2026}", action: connect)
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .tint(Theme.warning)
+          .accessibilityIdentifier("new-session-connect-host")
+      }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("new-session-host-notice")
   }
 
   /// The web's amber "not ready" line with its Set Up button.

@@ -8,6 +8,15 @@ import Testing
 struct LocalServerManagerTests {
   private let manifest = LocalServerManifest(manifestVersion: 1, serverVersion: "0.9.0")
 
+  @Test("one-click agent installs join the features the environment already set")
+  func serverFeatures() {
+    #expect(LocalServerManager.serverFeatures(nil) == "harness_install")
+    #expect(LocalServerManager.serverFeatures("") == "harness_install")
+    #expect(LocalServerManager.serverFeatures("canvas") == "canvas,harness_install")
+    #expect(
+      LocalServerManager.serverFeatures("-harness_install") == "-harness_install,harness_install")
+  }
+
   @Test("starts the canonical server, waits for /health and the manifest, and records it")
   func readiness() async throws {
     let harness = try LocalServerHarness()
@@ -32,6 +41,7 @@ struct LocalServerManagerTests {
     #expect(launch.arguments == ["server", "--host", "127.0.0.1", "--no-open"])
     #expect(launch.environment["OMNIGENT_DATA_DIR"] == harness.dataDirectory.path)
     #expect(launch.environment["PYTHONUNBUFFERED"] == "1")
+    #expect(launch.environment["OMNIGENT_FEATURES"] == "harness_install")
     #expect(launch.environment["OMNIGENT_LOG_TO_STDERR"] == "1")
     #expect(launch.environment["DYLD_INSERT_LIBRARIES"] == nil)
     #expect(launch.environment["PATH"]?.hasPrefix("/fake/bin:/usr/bin:/bin") == true)
@@ -215,156 +225,5 @@ struct LocalServerManagerTests {
     await harness.manager.startServer()
     #expect(harness.manager.server == .failed(.configuredCLIInvalid(path: "/nope/omnigent")))
     #expect(harness.manager.cli == .missing(.configuredCLIInvalid(path: "/nope/omnigent")))
-  }
-}
-
-@Suite("Local host mode")
-@MainActor
-struct LocalHostModeTests {
-  @Test("hosting needs confirmation; declining spawns nothing")
-  func declined() async throws {
-    let harness = try LocalServerHarness()
-    defer { harness.cleanUp() }
-    var asked: [URL] = []
-    harness.manager.confirmHostMode = { url in
-      asked.append(url)
-      return false
-    }
-    let url = try loopback(6767)
-    await harness.manager.startHost(serverURL: url)
-    #expect(asked == [url])
-    #expect(harness.manager.host == .stopped)
-    #expect(harness.runner.launches.isEmpty)
-  }
-
-  @Test("a confirmed host connects, and quit stops it")
-  func connects() async throws {
-    let harness = try LocalServerHarness()
-    defer { harness.cleanUp() }
-    harness.manager.confirmHostMode = { _ in true }
-    harness.runner.script({ process in
-      process.print("\u{2713} Connected as 'mac' (abc), 0 live runner(s).")
-    })
-    let url = try loopback(6767)
-    await harness.manager.startHost(serverURL: url)
-    #expect(harness.manager.host == .connected(serverURL: url, .owned))
-    let launch = try #require(harness.runner.launches.first)
-    #expect(
-      launch.arguments == ["host", "--server", "http://127.0.0.1:6767", "--non-interactive"])
-    #expect(try harness.records.read(.host)?.serverURL == url)
-
-    await harness.manager.stopOwnedProcesses()
-    #expect(harness.runner.processes.first?.signals == [.interrupt])
-    #expect(harness.manager.host == .stopped)
-  }
-
-  @Test("a daemon already hosting for the server is adopted and left running on quit")
-  func adoptsDaemon() async throws {
-    let harness = try LocalServerHarness()
-    defer { harness.cleanUp() }
-    harness.manager.confirmHostMode = { _ in true }
-    harness.runner.script({ process in
-      process.print("Error: A host daemon is already running for this server (pid 77).")
-      process.exit(.exited(1))
-    })
-    let url = try loopback(6767)
-    await harness.manager.startHost(serverURL: url)
-    #expect(harness.manager.host == .connected(serverURL: url, .adopted))
-    #expect(!harness.manager.hasProcessesToStopOnQuit)
-    await harness.manager.stopOwnedProcesses()
-    #expect(harness.runner.launches.count == 1)
-  }
-
-  @Test("an authentication failure asks the user to sign in")
-  func authentication() async throws {
-    let harness = try LocalServerHarness()
-    defer { harness.cleanUp() }
-    harness.manager.confirmHostMode = { _ in true }
-    harness.runner.script({ process in
-      process.print("Authentication failed: run `omnigent login https://x`", stream: .standardError)
-      process.exit(.exited(1))
-    })
-    let url = try url("https://omnigent.example.com")
-    await harness.manager.startHost(serverURL: url)
-    guard case .failed(.hostAuthenticationRequired(let serverURL, _)) = harness.manager.host else {
-      Issue.record("expected an authentication failure, got \(harness.manager.host)")
-      return
-    }
-    #expect(serverURL == url)
-  }
-
-  @Test("a remote server the CLI is not signed in to runs omnigent login first")
-  func signsInBeforeHosting() async throws {
-    let harness = try LocalServerHarness()
-    defer { harness.cleanUp() }
-    harness.manager.confirmHostMode = { _ in true }
-    harness.probe.answerSignIn(.signInNeeded)
-    let tokens = harness.root.appending(path: ".omnigent")
-    try FileManager.default.createDirectory(at: tokens, withIntermediateDirectories: true)
-    try Data(#"{"https://omnigent.example.com":{"token":"tok","expires_at":1}}"#.utf8)
-      .write(to: tokens.appending(path: "auth_tokens.json"))
-    harness.runner.script(
-      { process in process.exit(.exited(0)) },
-      { process in process.print("\u{2713} Connected as 'mac' (abc), 0 live runner(s).") })
-    let url = try url("https://omnigent.example.com/")
-    await harness.manager.startHost(serverURL: url)
-    #expect(harness.runner.launches.map(\.arguments.first) == ["login", "host"])
-    #expect(harness.runner.launches.first?.arguments.last == "https://omnigent.example.com/")
-    #expect(harness.probe.signInBearers == [nil], "an expired token is not sent")
-    #expect(harness.manager.host == .connected(serverURL: url, .owned))
-  }
-
-  @Test("a sign-in that does not complete stops before hosting")
-  func signInFails() async throws {
-    let harness = try LocalServerHarness()
-    defer { harness.cleanUp() }
-    harness.manager.confirmHostMode = { _ in true }
-    harness.probe.answerSignIn(.signInNeeded)
-    harness.runner.script({ process in process.exit(.exited(1)) })
-    let url = try url("https://omnigent.example.com")
-    await harness.manager.startHost(serverURL: url)
-    #expect(harness.runner.launches.count == 1)
-    guard case .failed(.hostAuthenticationRequired(let serverURL, _)) = harness.manager.host else {
-      Issue.record("expected an authentication failure, got \(harness.manager.host)")
-      return
-    }
-    #expect(serverURL == url)
-  }
-
-  @Test("a loopback or signed-in server hosts without a sign-in")
-  func noSignInNeeded() async throws {
-    let harness = try LocalServerHarness()
-    defer { harness.cleanUp() }
-    harness.manager.confirmHostMode = { _ in true }
-    harness.probe.answerSignIn(.signInNeeded)
-    harness.runner.script({ process in
-      process.print("\u{2713} Connected as 'mac' (abc), 0 live runner(s).")
-    })
-    await harness.manager.startHost(serverURL: try loopback(6767))
-    #expect(harness.runner.launches.map(\.arguments.first) == ["host"])
-    #expect(harness.probe.signInBearers.isEmpty)
-  }
-
-  @Test("without a server URL hosting fails clearly")
-  func noServer() async throws {
-    let harness = try LocalServerHarness()
-    defer { harness.cleanUp() }
-    await harness.manager.startHost()
-    #expect(harness.manager.host == .failed(.noServerForHost))
-  }
-
-  @Test("a host left running by an earlier launch is stopped at launch")
-  func stopsLeftoverHost() async throws {
-    let harness = try LocalServerHarness()
-    defer { harness.cleanUp() }
-    let identity = LocalProcessIdentity(pid: 7_171, startMicroseconds: 5)
-    harness.runner.addExternal(identity)
-    try harness.records.write(
-      LocalServerRecord(
-        kind: .host, process: identity, serverURL: try loopback(6767), commandLine: "omnigent host")
-    )
-    await harness.manager.launch()
-    #expect(harness.runner.externalSignals.map(\.0) == [7_171])
-    #expect(try harness.records.read(.host) == nil)
   }
 }

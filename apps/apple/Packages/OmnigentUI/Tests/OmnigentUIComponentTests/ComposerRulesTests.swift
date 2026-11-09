@@ -7,6 +7,18 @@ import Testing
 struct ComposerRulesTests {
   // MARK: Approval modes
 
+  @Test func aNewSessionThatCannotStartStaysEditableButCannotSend() {
+    var start = ComposerViewState(purpose: .start)
+    start.availability = .unavailable(reason: "Configure this harness on the host.")
+    #expect(start.isEditable)
+    let rules = ComposerSendRules(state: start, draft: "hello", canQueue: false, layout: .card)
+    #expect(rules.blockedReason(for: .send) == "Configure this harness on the host.")
+
+    var session = ComposerViewState(purpose: .session)
+    session.availability = .unavailable(reason: "Waiting for the session.")
+    #expect(!session.isEditable)
+  }
+
   @Test("Modes read as states with shield symbols; the riskiest is full access")
   func modePresentation() {
     let codex = ComposerSamples.codexModes()

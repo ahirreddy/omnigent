@@ -100,6 +100,9 @@ extension NewSessionForm {
       if startsPendingAgent {
         return pendingAgentProblem(creation).map { .unavailable(reason: $0) } ?? .available
       }
+      if needsHost(creation) {
+        return .unavailable(reason: "Connect a host to run agents on.")
+      }
       if selection.workspace.isEmpty {
         return .unavailable(reason: "Choose the folder the session works in.")
       }

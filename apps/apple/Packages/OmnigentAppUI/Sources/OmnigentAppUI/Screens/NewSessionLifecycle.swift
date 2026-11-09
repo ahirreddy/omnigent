@@ -27,7 +27,10 @@ struct NewSessionLifecycle: ViewModifier {
         creation.pendingProject = nil
         Task { await form.applyProject(next, creation) }
       }
-      .task(id: form.selection.hostId) {
+      .task(id: form.needsHost(creation)) {
+        await form.waitForHost(creation)
+      }
+      .task(id: form.folderSeedTrigger(creation)) {
         await form.seedFolder(creation, sessions: connection.sessionList.visible)
       }
       .task(id: form.isSandbox ? form.sandbox.provider ?? "" : nil) {

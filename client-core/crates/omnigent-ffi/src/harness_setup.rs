@@ -25,6 +25,8 @@ pub enum HarnessAvailability {
     VersionTooLow,
     /// Not set up.
     NotConfigured,
+    /// Otherwise ready, but the host has no usable tmux.
+    TmuxUnavailable,
     /// Any other value; never ready.
     Other {
         /// The value as JSON text.
@@ -40,6 +42,7 @@ impl From<core::HarnessAvailability> for HarnessAvailability {
             core::HarnessAvailability::BinaryMissing => Self::BinaryMissing,
             core::HarnessAvailability::VersionTooLow => Self::VersionTooLow,
             core::HarnessAvailability::NotConfigured => Self::NotConfigured,
+            core::HarnessAvailability::TmuxUnavailable => Self::TmuxUnavailable,
             core::HarnessAvailability::Other(value) => Self::Other { value },
         }
     }
@@ -53,6 +56,7 @@ impl From<HarnessAvailability> for core::HarnessAvailability {
             HarnessAvailability::BinaryMissing => Self::BinaryMissing,
             HarnessAvailability::VersionTooLow => Self::VersionTooLow,
             HarnessAvailability::NotConfigured => Self::NotConfigured,
+            HarnessAvailability::TmuxUnavailable => Self::TmuxUnavailable,
             HarnessAvailability::Other { value } => Self::Other(value),
         }
     }

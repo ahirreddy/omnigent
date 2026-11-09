@@ -65,7 +65,7 @@ struct HarnessSetupAdapterTests {
 
   @Test func withoutTheFeatureStepsAreCommands() {
     let state = sheet(catalog(.binaryMissing, install: false))
-    #expect(state.steps.map(\.control) == [.none, .command("codex login")])
+    #expect(state.steps.map(\.control) == [.command("omni setup"), .command("codex login")])
     #expect(!state.needsOmniSetup)
   }
 

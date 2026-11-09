@@ -1,6 +1,6 @@
 public import AppKit
 
-/// The native confirmation before this Mac hosts agents for a server. It is a sheet on the key
+/// The native confirmation before this Mac hosts agents for another server. It is a sheet on the key
 /// window (an app-modal alert when there is none), and Cancel is the default button, because
 /// host mode lets the server run agents that execute commands and change files as this user.
 public enum HostModeConfirmation {
@@ -9,11 +9,10 @@ public enum HostModeConfirmation {
   /// - Returns: Title and message.
   public static func text(serverURL: URL) -> (title: String, message: String) {
     let server = serverURL.host(percentEncoded: false) ?? serverURL.absoluteString
-    let local = ["127.0.0.1", "localhost", "::1"].contains(server)
     return (
       "Allow agents to run on this Mac?",
       """
-      Host mode connects this Mac to \(local ? "the local server" : server) so its sessions can \
+      Host mode connects this Mac to \(server) so its sessions can \
       run agents here. Agents run commands, read and change files, and use the network with \
       your account's permissions.
 

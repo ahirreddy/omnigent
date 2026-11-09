@@ -5,7 +5,8 @@ extension LocalServerManager {
   /// The line `omnigent host` prints once its tunnel is up (`omnigent/host/connect.py`).
   static let hostConnectedMarker = "\u{2713} Connected"
 
-  /// Asks for confirmation, then connects this Mac as a host.
+  /// Connects this Mac as a host. Its own local server needs no permission; another server's
+  /// sessions could run anything here, so that asks first.
   /// - Parameter serverURL: The server to host for; defaults to the running local server.
   public func startHost(serverURL: URL? = nil) async {
     guard capability.isAvailable, host.canStart else { return }
@@ -13,12 +14,31 @@ extension LocalServerManager {
       failHost(.noServerForHost)
       return
     }
-    host = .awaitingConfirmation(serverURL: target)
-    guard await confirmHostMode(target) else {
-      hostLog.appendEvent("Hosting for \(target.absoluteString) was not allowed.")
-      host = .stopped
-      return
+    if isOwnServer(target) {
+      preferences.localHostingStopped = false
+    } else {
+      host = .awaitingConfirmation(serverURL: target)
+      guard await confirmHostMode(target) else {
+        hostLog.appendEvent("Hosting for \(target.absoluteString) was not allowed.")
+        host = .stopped
+        return
+      }
     }
+    await connectHost(target)
+  }
+
+  /// Hosts for this Mac's own local server, unless the user stopped hosting. Other servers wait
+  /// for the user to ask.
+  /// - Parameter serverURL: The server just signed in to.
+  public func resumeHost(serverURL: URL) async {
+    guard capability.isAvailable, host.canStart, isOwnServer(serverURL),
+      !preferences.localHostingStopped
+    else { return }
+    hostLog.appendEvent("Hosting for this Mac's local server, \(serverURL.absoluteString).")
+    await connectHost(serverURL)
+  }
+
+  private func connectHost(_ target: URL) async {
     hostCrashes = 0
     host = .connecting(serverURL: target)
     if case .failure(let error) = await signInCLI(to: target) {
@@ -28,9 +48,26 @@ extension LocalServerManager {
     await launchHost(target, restartAttempt: nil)
   }
 
-  /// Disconnects this Mac. A host the app started is signaled; one it found already running is
-  /// stopped with `omnigent host stop`, because the user asked.
+  /// Whether `url` is the local server running on this Mac. A loopback address alone isn't: it
+  /// can be a tunnel to another machine.
+  private func isOwnServer(_ url: URL) -> Bool {
+    guard let own = server.endpoint?.url else { return false }
+    return own.host(percentEncoded: false) == url.host(percentEncoded: false)
+      && own.port == url.port
+  }
+
+  /// The user stopped hosting: disconnects this Mac, and it stays disconnected from the local
+  /// server until the user starts hosting again.
   public func stopHost() async {
+    if let hosted = host.serverURL, isOwnServer(hosted) {
+      preferences.localHostingStopped = true
+    }
+    await disconnectHost()
+  }
+
+  /// Disconnects this Mac. A host the app started is signaled; one it found already running is
+  /// stopped with `omnigent host stop`.
+  func disconnectHost() async {
     hostRestart?.cancel()
     hostRestart = nil
     if let run = hostRun {

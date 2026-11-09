@@ -42,6 +42,13 @@ extension LocalServerManager {
     return environment
   }
 
+  /// The features for this app's own server, adding one-click agent installs: the server and
+  /// its host are this Mac, for this user. An explicit `-harness_install` still wins.
+  static func serverFeatures(_ existing: String?) -> String {
+    [existing, "harness_install"].compactMap { $0 }.filter { !$0.isEmpty }
+      .joined(separator: ",")
+  }
+
   /// Spawns a process and starts consuming its output and exit.
   /// - Parameters:
   ///   - launch: What to run.

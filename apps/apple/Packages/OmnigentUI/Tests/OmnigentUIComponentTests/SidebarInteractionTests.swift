@@ -166,3 +166,32 @@ struct SidebarInteractionTests {
     #expect(SidebarMarker.strongest(idle.suffix(0), list: list, rowInfo: rowInfo) == nil)
   }
 }
+
+@Suite("Sidebar inline rename")
+struct SidebarInlineEditTests {
+  private func session(_ title: String) -> SessionSummary {
+    var session = PreviewData.sessions[0]
+    session.title = title
+    return session
+  }
+
+  @Test func savesATrimmedNewTitleOnce() {
+    var edit = SidebarInlineEdit()
+    edit.begin(session("Old"))
+    #expect(edit.text == "Old")
+    edit.text = "  New  "
+    #expect(edit.finish()?.title == "New")
+    #expect(edit.session == nil)
+    #expect(edit.finish() == nil)
+  }
+
+  @Test func savesNothingForEmptyUnchangedOrOverlongTitles() {
+    for text in ["   ", "Old", String(repeating: "x", count: SessionDialogs.maxTitleLength + 1)] {
+      var edit = SidebarInlineEdit()
+      edit.begin(session("Old"))
+      edit.text = text
+      #expect(edit.finish() == nil)
+      #expect(edit.session == nil)
+    }
+  }
+}

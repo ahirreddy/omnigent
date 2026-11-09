@@ -184,7 +184,7 @@ struct NewSessionContainer: View {
           form.isSandbox = true
         } else {
           form.isSandbox = false
-          form.change(creation) { $0.hostId = host.id }
+          form.chooseHost(host.id, creation)
           form.selectFolder(creation, form.folder)
         }
       },
@@ -235,6 +235,7 @@ struct NewSessionContainer: View {
         Task { await harnessSetup?.load() }
         setupTarget = HarnessSetupTarget(harness: harness, hostID: form.selection.hostId)
       })
+    actions.connectHost = { isConnectingHost = true }
     actions.selectProject = { name in
       guard let project = name.flatMap({ name in list.projects.first { $0.name == name } }) else {
         form.project = nil

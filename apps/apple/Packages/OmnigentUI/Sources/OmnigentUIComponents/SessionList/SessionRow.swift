@@ -23,6 +23,8 @@ struct SessionRow: View {
   /// The title being edited in place, after a double-click.
   var inlineRename: InlineRename?
   /// Starts editing the title in place; `nil` when it cannot be renamed here.
+  /// Double-tap on iOS. On the Mac a tap gesture here would take the row's click from the list,
+  /// so the list starts the rename (`SidebarView.renameOnDoubleClick`).
   var beginInlineRename: (() -> Void)?
 
   @State private var isHovered = false
@@ -89,10 +91,12 @@ struct SessionRow: View {
     // Height comes from the list's `defaultMinListRowHeight`, the same for every sidebar row.
     .contentShape(Rectangle())
     .onHover { isHovered = $0 }
-    .simultaneousGesture(
-      TapGesture(count: 2).onEnded { beginInlineRename?() },
-      including: beginInlineRename == nil ? .subviews : .all
-    )
+    #if os(iOS)
+      .simultaneousGesture(
+        TapGesture(count: 2).onEnded { beginInlineRename?() },
+        including: beginInlineRename == nil ? .subviews : .all
+      )
+    #endif
     .help(tooltip)
     .contextMenu { menu.items }
     .accessibilityElement(children: .combine)
@@ -204,7 +208,15 @@ private struct InlineTitleField: View {
       #if os(macOS)
         .onExitCommand(perform: rename.cancel)
       #endif
-      .onAppear { isFocused = true }
+      .task {
+        // The list keeps the focus until the double-click that started this has finished.
+        do {
+          try await Task.sleep(for: .milliseconds(100))
+        } catch {
+          return
+        }
+        isFocused = true
+      }
       .onChange(of: isFocused) { _, focused in
         if !focused { rename.commit() }
       }

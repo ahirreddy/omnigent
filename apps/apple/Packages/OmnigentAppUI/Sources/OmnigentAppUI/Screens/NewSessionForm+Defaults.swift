@@ -45,19 +45,29 @@ extension NewSessionForm {
       .workspace
   }
 
+  /// What refills the folder: another host, or the host coming online.
+  func folderSeedTrigger(_ creation: CreationStore) -> String {
+    let isOnline = creation.catalog.value?.hosts.contains {
+      $0.hostId == selection.hostId && $0.isAvailable
+    }
+    return "\(selection.hostId)/\(isOnline == true)"
+  }
+
   /// Fills an empty folder once per host: the host's recent folder, else its home folder.
   func seedFolder(_ creation: CreationStore, sessions: [OmnigentCoreFFI.SessionSummary]) async {
     let hostID = selection.hostId
     guard !isSandbox, folder.isEmpty, !hostID.isEmpty, seededFolderHost != hostID else { return }
-    seededFolderHost = hostID
     if let recent = Self.recentFolder(hostID: hostID, sessions: sessions) {
+      seededFolderHost = hostID
       selectFolder(creation, recent)
       return
     }
-    // The home listing's own path; a host that cannot list it leaves the folder to choose.
+    // The home listing's own path. A host that can't list it, as one still offline, tries again
+    // when it comes online.
     if case .success(let home) = await creation.directory(hostID: hostID, path: nil),
       let path = home.path, folder.isEmpty, selection.hostId == hostID
     {
+      seededFolderHost = hostID
       selectFolder(creation, path)
     }
   }

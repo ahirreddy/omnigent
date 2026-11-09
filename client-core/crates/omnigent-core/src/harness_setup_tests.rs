@@ -109,12 +109,46 @@ fn without_the_feature_steps_are_commands_to_copy() {
         Some(&host(&json!("binary-missing"))),
         &SetupFeatures::default(),
     );
-    assert_eq!(plan.steps[0].control, SetupStepControl::None);
+    assert_eq!(
+        plan.steps[0].control,
+        SetupStepControl::Command("omni setup".into())
+    );
+    assert!(!plan.steps[0].detail.contains("We'll"));
     assert_eq!(
         plan.steps[1].control,
         SetupStepControl::Command("codex login".into())
     );
     assert!(!plan.needs_omni_setup);
+}
+
+#[test]
+fn a_host_without_tmux_adds_a_step_for_it_and_is_not_ready() {
+    let plan = setup_plan(
+        Some(&codex()),
+        "codex-native",
+        Some(&host(&json!("tmux-unavailable"))),
+        &SetupFeatures::default(),
+    );
+    assert!(!plan.all_done);
+    let statuses: Vec<_> = plan.steps.iter().map(|step| step.status).collect();
+    assert_eq!(
+        statuses,
+        [
+            SetupStepStatus::Done,
+            SetupStepStatus::Done,
+            SetupStepStatus::Todo
+        ]
+    );
+    let tmux = plan.steps.last().unwrap();
+    assert_eq!(tmux.kind, "tmux");
+    assert_eq!(
+        tmux.control,
+        SetupStepControl::Command("brew install tmux".into())
+    );
+    assert_eq!(
+        HarnessAvailability::from_value(&json!("tmux-unavailable")).label(),
+        "Needs tmux"
+    );
 }
 
 #[test]

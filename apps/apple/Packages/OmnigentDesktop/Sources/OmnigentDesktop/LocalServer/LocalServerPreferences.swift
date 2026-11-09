@@ -10,6 +10,7 @@ public final class LocalServerPreferences {
     static let port = "desktop.localServer.port"
     static let dataDirectory = "desktop.localServer.dataDirectory"
     static let restartOnCrash = "desktop.localServer.restartOnCrash"
+    static let localHostingStopped = "desktop.localServer.hostingStopped"
     static let showsMenuBarExtra = "desktop.menuBarExtra.shown"
   }
 
@@ -32,6 +33,11 @@ public final class LocalServerPreferences {
   public var dataDirectory: String? {
     didSet { persist(dataDirectory, oldValue, forKey: Key.dataDirectory) }
   }
+  /// The user stopped this Mac hosting its local server, which it otherwise does whenever the
+  /// app opens. Off by default.
+  public var localHostingStopped: Bool {
+    didSet { defaults.set(localHostingStopped, forKey: Key.localHostingStopped) }
+  }
   /// Restart a server or host the app started when it crashes. On by default.
   public var restartOnCrash: Bool {
     didSet { persist(restartOnCrash, oldValue, forKey: Key.restartOnCrash) }
@@ -51,6 +57,7 @@ public final class LocalServerPreferences {
       (1...65_535).contains($0) ? $0 : nil
     }
     dataDirectory = defaults.string(forKey: Key.dataDirectory).flatMap { $0.isEmpty ? nil : $0 }
+    localHostingStopped = defaults.bool(forKey: Key.localHostingStopped)
     restartOnCrash = defaults.object(forKey: Key.restartOnCrash) as? Bool ?? true
     showsMenuBarExtra = defaults.object(forKey: Key.showsMenuBarExtra) as? Bool ?? true
   }

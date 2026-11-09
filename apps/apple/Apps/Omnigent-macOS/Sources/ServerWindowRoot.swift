@@ -134,6 +134,12 @@ struct ServerWindowRoot: View {
       Task { await services.didConnect(to: url) }
     }
     self.session = session
+    // Quitting stopped the server this Mac runs for itself; reopening goes back to it.
+    let isBound = id.serverURL != nil
+    let isBoundElsewhere = id.serverURL.map { !LocalInstall.isLocalInstall($0.absoluteString) }
+    if !(isBoundElsewhere ?? false), !isBound || desktop.localServer.server.endpoint == nil {
+      session.signIn.resumeLocalServer()
+    }
   }
 
   /// The server's display name ("This Mac" for a loopback server, never `127.0.0.1`).

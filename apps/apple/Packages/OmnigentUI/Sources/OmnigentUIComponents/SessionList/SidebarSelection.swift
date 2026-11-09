@@ -129,3 +129,37 @@ struct SidebarSelectionBackground: View {
     }
   }
 #endif
+
+/// The session whose title is edited in place, and the text.
+struct SidebarInlineEdit {
+  var session: SessionSummary?
+  var text = ""
+
+  mutating func begin(_ session: SessionSummary) {
+    text = session.title
+    self.session = session
+  }
+
+  /// The field's hooks for the edit in `edit`.
+  static func field(
+    _ edit: Binding<Self>, rename: ((SessionSummary, String) -> Void)?
+  ) -> InlineRename {
+    InlineRename(
+      text: edit.text,
+      commit: {
+        if let (session, title) = edit.wrappedValue.finish() { rename?(session, title) }
+      },
+      cancel: { edit.wrappedValue.session = nil })
+  }
+
+  /// Ends the edit. Returns the session and its new title, trimmed; `nil` when there's nothing to
+  /// save (no edit, or a title that is empty, unchanged or too long).
+  mutating func finish() -> (session: SessionSummary, title: String)? {
+    guard let session else { return nil }
+    self.session = nil
+    let title = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !title.isEmpty, title != session.title, title.count <= SessionDialogs.maxTitleLength
+    else { return nil }
+    return (session, title)
+  }
+}

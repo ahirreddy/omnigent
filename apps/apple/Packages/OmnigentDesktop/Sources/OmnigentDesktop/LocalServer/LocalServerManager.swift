@@ -252,7 +252,7 @@ public final class LocalServerManager {
   /// Stops what the app started (owned and recovered processes) and leaves adopted ones running.
   /// Call when the app quits.
   public func stopOwnedProcesses() async {
-    if hostRun?.ownership.stopsOnQuit == true { await stopHost() }
+    if hostRun?.ownership.stopsOnQuit == true { await disconnectHost() }
     if serverRun?.ownership.stopsOnQuit == true { await stopServer() }
   }
 

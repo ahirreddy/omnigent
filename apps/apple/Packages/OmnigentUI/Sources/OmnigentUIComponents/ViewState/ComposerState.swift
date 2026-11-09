@@ -150,6 +150,11 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   public var queue: [QueuedMessage]
   /// In a session, or starting a new one (Start session).
   public var purpose: ComposerPurpose
+  /// Whether the draft and its menus take input. A new session keeps them while it can't start,
+  /// as choosing another agent or host is how it becomes able to; sending stays blocked.
+  public var isEditable: Bool {
+    purpose == .start || availability.reason == nil
+  }
   /// The "Submit with ⌘ + Enter" setting: Return inserts a newline instead of sending.
   public var submitWithCommandReturn: Bool
   /// Agent, host, workspace and server, for the context row.

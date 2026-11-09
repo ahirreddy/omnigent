@@ -351,6 +351,9 @@ fn warning(
         (HarnessAvailability::Other(_), _) => {
             format!("{name} isn\u{2019}t working on {host_name}. Run setup again to fix it.")
         }
+        (HarnessAvailability::TmuxUnavailable, _) => {
+            format!("{name} needs tmux on {host_name}, so new sessions can\u{2019}t use {name}.")
+        }
         (_, FixMode::Update) => format!(
             "{name} is out of date on {host_name}. Update it so new sessions can use {name}."
         ),

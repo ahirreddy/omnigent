@@ -52,10 +52,7 @@ public struct ComposerView: View {
     self.showsContextDetails = showsContextDetails
   }
 
-  private var isEditable: Bool {
-    if case .unavailable = state.availability { return false }
-    return true
-  }
+  private var isEditable: Bool { state.isEditable }
 
   private var rules: ComposerSendRules {
     ComposerSendRules(

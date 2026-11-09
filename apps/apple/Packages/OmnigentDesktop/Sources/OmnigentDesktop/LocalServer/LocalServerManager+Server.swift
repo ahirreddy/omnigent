@@ -62,7 +62,7 @@ extension LocalServerManager {
     if let url = run.port.flatMap(LocalServerEndpoint.loopbackURL(port:)),
       hostRun?.serverURL == url
     {
-      await stopHost()
+      await disconnectHost()
     }
     let result =
       run.ownership == .adopted
@@ -80,10 +80,12 @@ extension LocalServerManager {
   func serverLaunch(_ resolution: LocalCLIResolution) -> LocalProcessLaunch {
     var subcommand = ["server", "--host", "127.0.0.1", "--no-open"]
     if let port = preferences.port { subcommand += ["--port", String(port)] }
+    var environment = childEnvironment(resolution)
+    environment["OMNIGENT_FEATURES"] = Self.serverFeatures(environment["OMNIGENT_FEATURES"])
     return LocalProcessLaunch(
       executable: resolution.command.executable,
       arguments: resolution.command.arguments(subcommand),
-      environment: childEnvironment(resolution), workingDirectory: dependencies.homeDirectory)
+      environment: environment, workingDirectory: dependencies.homeDirectory)
   }
 
   private func spawnServer(_ resolution: LocalCLIResolution, trigger: LocalServerStartTrigger)

@@ -27,6 +27,8 @@ pub enum HarnessAvailability {
     VersionTooLow,
     /// `false`: not set up.
     NotConfigured,
+    /// `"tmux-unavailable"`: otherwise ready, but the host has no usable tmux for its terminal.
+    TmuxUnavailable,
     /// Any other value, as JSON text. Never ready.
     Other(String),
 }
@@ -42,6 +44,7 @@ impl HarnessAvailability {
                 "needs-auth" => Self::NeedsAuth,
                 "binary-missing" => Self::BinaryMissing,
                 "version-too-low" => Self::VersionTooLow,
+                "tmux-unavailable" => Self::TmuxUnavailable,
                 other => Self::Other(other.to_owned()),
             },
             other => Self::Other(other.to_string()),
@@ -64,6 +67,7 @@ impl HarnessAvailability {
             Self::NeedsAuth => "Needs sign-in",
             Self::BinaryMissing | Self::NotConfigured => "Not installed",
             Self::VersionTooLow => "Outdated",
+            Self::TmuxUnavailable => "Needs tmux",
             Self::Other(_) => "Needs setup",
         }
         .to_owned()
@@ -395,7 +399,14 @@ fn step_status(
     match key {
         "installed" if availability.is_not_installed() => SetupStepStatus::Todo,
         "installed" => SetupStepStatus::Done,
-        "authed" if *availability == HarnessAvailability::Ready => SetupStepStatus::Done,
+        "authed"
+            if matches!(
+                availability,
+                HarnessAvailability::Ready | HarnessAvailability::TmuxUnavailable
+            ) =>
+        {
+            SetupStepStatus::Done
+        }
         "authed" => SetupStepStatus::Todo,
         _ => SetupStepStatus::Unknown,
     }
@@ -406,6 +417,27 @@ fn done_detail(kind: &str) -> &'static str {
         "install" => "Installed on the host.",
         "auth" => "Signed in on the host.",
         _ => "Done.",
+    }
+}
+
+/// Oldest tmux native terminals accept (`MIN_TMUX_VERSION` in `omnigent/util/tmux_compat.py`).
+const MIN_TMUX_VERSION: &str = "3.3";
+
+/// Runs on the host when an install step has no button: the server cannot install there.
+const HOST_SETUP_COMMAND: &str = "omni setup";
+
+/// tmux is a host prerequisite with no server step, so it joins the list while it's the blocker.
+fn tmux_step() -> SetupStep {
+    SetupStep {
+        kind: "tmux".to_owned(),
+        title: format!("Install tmux {MIN_TMUX_VERSION} or newer"),
+        detail: "Native terminals run in tmux on the host. On Linux, use your package manager. \
+                 If Omnigent still can't find tmux after you install it, quit and reopen the \
+                 Omnigent app."
+            .to_owned(),
+        action: "command".to_owned(),
+        command: Some("brew install tmux".to_owned()),
+        status_key: None,
     }
 }
 
@@ -433,6 +465,9 @@ pub fn setup_plan(
                 .collect()
         })
         .unwrap_or_default();
+    if availability == Some(&HarnessAvailability::TmuxUnavailable) {
+        steps.push((tmux_step(), SetupStepStatus::Todo));
+    }
     if steps
         .iter()
         .any(|(_, status)| *status != SetupStepStatus::Unknown)
@@ -446,8 +481,15 @@ pub fn setup_plan(
         .all(|(step, status)| step.kind != "install" || *status == SetupStepStatus::Done);
     let resolved: Vec<ResolvedSetupStep> = steps
         .into_iter()
-        .map(|(step, status)| {
+        .map(|(mut step, status)| {
             let done = status == SetupStepStatus::Done;
+            // The server's detail promises an install it can't run here, so say what to do.
+            let installs_by_hand =
+                !done && step.action == "install" && !can_install && step.command.is_none();
+            if installs_by_hand {
+                step.command = Some(HOST_SETUP_COMMAND.to_owned());
+                "Run this on the host to install it.".clone_into(&mut step.detail);
+            }
             let control = if done {
                 SetupStepControl::None
             } else if step.action == "install" && can_install {

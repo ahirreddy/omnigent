@@ -103,6 +103,15 @@ public final class CreationStore {
     }
   }
 
+  /// Reloads the catalog with what's on screen left in place until the answer arrives.
+  public func refreshCatalog() async {
+    do {
+      catalog = .loaded(try await core.creationCatalog())
+    } catch {
+      catalog = .failed(coreError(error))
+    }
+  }
+
   /// The host or agent changed: loads the host's folders and the agent's models on it. A newer
   /// selection supersedes an older one's results.
   /// - Parameter selection: The current selection.
