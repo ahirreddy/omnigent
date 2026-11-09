@@ -1127,6 +1127,25 @@ fn a_stream_the_host_could_not_start_retries_with_backoff() {
 }
 
 #[test]
+fn a_finished_stream_does_not_keep_its_handle() {
+    let mut harness = live_session();
+    let (sink, handle, _) = harness.streams.last();
+    let before = Arc::strong_count(&handle);
+    sink.finish(Some(ConnectionFailure::Offline {
+        message: "gone".into(),
+    }));
+    harness.pump();
+    assert_eq!(
+        Arc::strong_count(&handle),
+        before - 1,
+        "a long-open tab must not keep a handle per reconnect"
+    );
+    harness.core.close_session(SESSION.into());
+    harness.pump();
+    assert_eq!(handle.cancels.load(Ordering::SeqCst), 0);
+}
+
+#[test]
 fn a_foreground_reopens_what_ended_and_ignores_what_is_live() {
     let mut harness = live_session();
     let (sink, _, _) = harness.streams.last();

@@ -190,11 +190,20 @@ impl Engine {
             self.sessions
                 .stream_refused(&format!("/v1/sessions/{session_id}/stream"), keyed);
         }
-        let Some(machine) = self
-            .drivers
-            .get_mut(session_id)
-            .and_then(|driver| driver.machine.as_mut())
-        else {
+        let Some(driver) = self.drivers.get_mut(session_id) else {
+            return;
+        };
+        // A finished attempt or a fired timer has nothing left to cancel.
+        match &input {
+            StreamInput::Finished { attempt, .. } => {
+                driver.handles.remove(attempt);
+            }
+            StreamInput::TimerFired { token } => {
+                driver.timers.remove(&token.id);
+            }
+            _ => {}
+        }
+        let Some(machine) = driver.machine.as_mut() else {
             return;
         };
         let outputs = machine.handle(now, input);
