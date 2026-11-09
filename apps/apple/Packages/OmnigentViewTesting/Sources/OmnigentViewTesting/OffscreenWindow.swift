@@ -47,6 +47,7 @@
     ///   - width: The window's width.
     ///   - height: The window's height.
     public init(_ view: Content, width: CGFloat = 800, height: CGFloat = 600) {
+      SystemSideEffects.install()
       let app = NSApplication.shared
       if app.activationPolicy() != .accessory {
         // AppKit would otherwise end the test process when its last window goes away.
