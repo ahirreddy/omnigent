@@ -1,5 +1,12 @@
 #if os(macOS)
   import Foundation
+  import OmnigentViewTestingBootstrap
+
+  /// The test bundle's load calls this from C, before any test runs.
+  @_cdecl("omnigent_view_testing_install_runner_loop_shield")
+  func installRunnerLoopShield() {
+    RunnerLoopShield.install()
+  }
 
   /// Keeps the test runner's own run loop from being stopped.
   ///
@@ -8,6 +15,9 @@
   /// run. So a run loop nested inside it takes the stops and starts again. Main actor jobs still
   /// run there, because it isn't inside a main queue job the way a test body is.
   enum RunnerLoopShield {
+    /// Whether the test bundle's load asked for the shield; fails if the linker dropped that code.
+    static var isRequested: Bool { omnigent_view_testing_shield_requested() == 1 }
+
     /// Takes over the runner's loop the next time no test is running on it.
     static func install() {
       let timer = CFRunLoopTimerCreateWithHandler(
