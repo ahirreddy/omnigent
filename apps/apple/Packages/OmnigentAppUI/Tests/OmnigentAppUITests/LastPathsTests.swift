@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
+import OmnigentAuthUI
 import OmnigentCoreFFI
-import OmnigentStores
 import OmnigentTestSupport
 import OmnigentUIComponents
 import OmnigentViewTesting
@@ -10,6 +10,7 @@ import SwiftUI
 import Testing
 
 @testable import OmnigentAppUI
+@testable import OmnigentStores
 
 /// Paths behind one person's rarer steps: quotes, side chats, torn-off tabs, older windows.
 @MainActor
@@ -21,6 +22,42 @@ struct LastPathsTests {
     store.composer.quote("the line")
     let state = ComposerAdapter.state(store, isStopping: false, dismissedError: nil)
     #expect(state.quotes.map(\.text) == ["the line"])
+  }
+
+  @Test("Dismiss on a connection problem's banner clears it")
+  func dismissingABanner() throws {
+    let connection = ConnectionStore(startupError: .InvalidState(message: "The disk is on fire"))
+    let screen = OffscreenWindow(ConnectionIssuesBanner(connection: connection), width: 500)
+    defer { screen.close() }
+    #expect(try screen.shows("The disk is on fire"))
+    let controls = screen.controlFrames
+    #expect(controls.count == 1, "\(controls)")
+    try screen.clickControl(at: controls.count - 1)
+    #expect(connection.issues.isEmpty)
+  }
+
+  @Test("Reopening on this Mac's server starts it and connects; another server isn't touched")
+  func resumingTheLocalServer() throws {
+    let local = "http://127.0.0.1:\(LocalInstall.port)"
+    let setup = StartsLocalServer(url: local)
+    let signIn = SignInController(
+      store: ConnectionStore(startupError: .InvalidState(message: "no core")),
+      defaults: try scratchDefaults())
+    signIn.directory.recentServers = [local]
+    signIn.resumeLocalServer()
+    #expect(setup.starts == 0, "nothing to start with until the app offers local setup")
+
+    signIn.localSetup = setup
+    signIn.directory.recentServers = ["https://omnigent.example.com", local]
+    signIn.resumeLocalServer()
+    #expect(setup.starts == 0, "the last server used is elsewhere")
+
+    signIn.directory.recentServers = [local]
+    signIn.resumeLocalServer()
+    #expect(setup.starts == 1)
+    #expect(signIn.state.lastServerUrl == local, "the window connects once it's up")
+    signIn.actions.localSetup?.start()
+    #expect(setup.starts == 2)
   }
 
   @Test("A session's agent tab keeps a name when the session isn't listed")
@@ -146,4 +183,25 @@ struct LastPathsTests {
         || session.sideChatDrafts.draft(tab.id).failure != nil
     }
   }
+}
+
+/// Stands in for this Mac's local server: starting it hands the window its address.
+private final class StartsLocalServer: LocalSetupSource {
+  let url: String
+  var starts = 0
+
+  init(url: String) { self.url = url }
+
+  var state: LocalSetupState { LocalSetupState(cli: .checking, server: .stopped) }
+
+  func actions(connect: @escaping @MainActor (String) -> Void) -> LocalSetupActions {
+    LocalSetupActions(
+      start: { [self] in
+        starts += 1
+        connect(url)
+      },
+      recheckCLI: {}, hostAfterSignIn: { _ in })
+  }
+
+  func didSignIn(to baseUrl: String) {}
 }

@@ -92,6 +92,41 @@
       #expect(offline.title == "Mac went offline")
     }
 
+    @Test("A went-offline host on an unreadable server is reported and not posted")
+    func offlineHostOnABadServer() async throws {
+      let connection = try await connectedDemo().connection
+      let notifications = try #require(connection.notifications)
+      let (desktop, issues) = try desktop()
+      let online = CreationHost(
+        hostId: "h1", name: "Mac", status: "online", sandboxProvider: nil,
+        configuredHarnesses: nil, isAvailable: true)
+      notifications.offlineHosts.observe([online])
+      var offline = online
+      offline.status = "offline"
+      notifications.offlineHosts.observe([offline])
+      let url = try #require(URL(string: "file:///nope"))
+      await DesktopAttention.deliverHostsWentOffline(connection, serverURL: url, desktop: desktop)
+      #expect(issues.all.contains { if case .invalidServerURL = $0 { true } else { false } })
+      #expect(issues.failedPosts == 0)
+    }
+
+    @Test("A failed action whose notification named an unreadable server says so and posts nothing")
+    func failureOnABadServer() async throws {
+      let connection = try await connectedDemo().connection
+      let (desktop, issues) = try desktop()
+      let connections = SupervisionConnections()
+      connections.register(connection)
+      let event = try await approval(connection)
+      var approve = try response(to: event, action: SupervisionAction.approve.rawValue)
+      let url = try #require(URL(string: "file:///nope"))
+      approve.activation = NotificationActivation(serverURL: url, route: approve.activation.route)
+      await DesktopSupervision.perform(
+        approve, desktop: desktop, connections: connections,
+        authenticate: { () async throws(SupervisionError) in throw .authenticationFailed })
+      #expect(issues.all.contains { if case .invalidServerURL = $0 { true } else { false } })
+      #expect(issues.failedPosts == 0)
+    }
+
     @Test("A request gets one notification with its buttons, and only once")
     func actionableOnce() async throws {
       let connection = try await connectedDemo().connection

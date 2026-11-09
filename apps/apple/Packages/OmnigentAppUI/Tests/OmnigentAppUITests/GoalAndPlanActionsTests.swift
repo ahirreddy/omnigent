@@ -60,6 +60,20 @@ struct GoalAndPlanActionsTests {
     #expect(store.tools.goal == nil)
   }
 
+  @Test("Pausing a goal asks the server and shows what it answered")
+  func pausingAGoal() async throws {
+    let server = server()
+    server.route(
+      "/v1/sessions/conv/codex_goal/status", method: "PATCH",
+      .json(goal.replacingOccurrences(of: #""status":"active""#, with: #""status":"paused""#)))
+    let store = try await codexStore(server)
+    let actions = SessionToolsAdapter.goalActions(
+      store, summary: nil, dismiss: {}, report: { _ in })
+    actions.setActive?(false)
+    try await eventually("the pause") { store.tools.goal?.status == "paused" }
+    #expect(server.requests("PATCH", "/v1/sessions/conv/codex_goal/status").count == 1)
+  }
+
   @Test("A goal that can't be cleared stays open and says why")
   func clearFails() async throws {
     let server = server()
