@@ -176,7 +176,9 @@ public final class TabStore {
       if let other = split.otherSelectedID, pane(of: other) == split.focused.other {
         self.split?.otherSelectedID = other
       } else {
-        self.split?.otherSelectedID = firstID(in: split.focused.other)
+        // Read first: finding the tab reads `split`, which this assignment holds for writing.
+        let first = firstID(in: split.focused.other)
+        self.split?.otherSelectedID = first
       }
       if let other = self.split?.otherSelectedID { materialized.insert(other) }
     }
