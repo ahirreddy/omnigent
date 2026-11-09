@@ -61,8 +61,7 @@
       if !ChaosToolbarProbe.install(write: { [driver] line in driver.write(line) }) {
         driver.write("TOOLBAR probe not installed")
       }
-      ChaosLog.recordExceptions()
-      ChaosWindows.probeFrames()
+      ChaosLog.startDiagnostics()
       LoopProbe.sink = { [driver] line in driver.write("\(line)\n  \(ChaosWindows.frames())") }
       Task { await driver.run() }
     }

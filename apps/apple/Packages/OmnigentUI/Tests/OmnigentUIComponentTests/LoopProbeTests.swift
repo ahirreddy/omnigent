@@ -81,5 +81,30 @@
         #expect(lines.all.count == LoopProbe.reportsPerName)
       }
     }
+
+    @Test func aHangReportListsTheBusiestPassesAndLatestChanges() {
+      HangTrace.reset()
+      defer { HangTrace.reset() }
+      HangTrace.isEnabled = true
+      HangTrace.pass("row quiet")
+      let before = HangTrace.passCounts()
+      for _ in 0..<3 { HangTrace.pass("row busy") }
+      HangTrace.pass("row slow")
+      for index in 0..<(HangTrace.keptChanges + 5) { HangTrace.change("change \(index)") }
+      let report = HangTrace.report(since: before)
+      #expect(report.hasPrefix("passes: row busy +3, row slow +1\n"))
+      #expect(!report.contains("row quiet"))
+      #expect(!report.contains("change 4 "))
+      #expect(report.hasSuffix("change \(HangTrace.keptChanges + 4)"))
+    }
+
+    @Test func aHangTraceKeepsNothingUntilEnabled() {
+      HangTrace.reset()
+      defer { HangTrace.reset() }
+      HangTrace.pass("row")
+      HangTrace.change("change")
+      #expect(HangTrace.passCounts().isEmpty)
+      #expect(HangTrace.report(since: [:]) == "passes: none\nchanges: ")
+    }
   }
 #endif

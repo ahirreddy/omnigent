@@ -15,6 +15,15 @@
     /// Throws logged so far; a loop that throws on every pass stops being logged after this.
     nonisolated(unsafe) private static var thrownCount = 0
 
+    /// Starts what a run records beyond its steps.
+    static func startDiagnostics() {
+      recordExceptions()
+      ChaosWindows.probeFrames()
+      if let path = UserDefaults.standard.string(forKey: "OmnigentChaosLog") {
+        ChaosHangWatch(path: path).start()
+      }
+    }
+
     /// Logs uncaught exceptions with their reasons, which the system log keeps private, and every
     /// throw before anything catches it: one AppKit catches still leaves Swift's exclusivity and
     /// executor records of the frames it unwound, and a later access crashes far away.

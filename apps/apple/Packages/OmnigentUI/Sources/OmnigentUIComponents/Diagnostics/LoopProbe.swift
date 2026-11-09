@@ -42,6 +42,8 @@
       _ name: String, at now: Date = Date(), _ detail: @autoclosure () -> String
     ) {
       guard let sink else { return }
+      let detail = detail()
+      HangTrace.change("\(name): \(detail)")
       if let quietUntil, now < quietUntil {
         windows[name] = nil
         return
@@ -55,7 +57,7 @@
           recent: window.recent)
       }
       window.changes += 1
-      window.recent = Array((window.recent + [detail()]).suffix(reportedChanges))
+      window.recent = Array((window.recent + [detail]).suffix(reportedChanges))
       if window.changes == limit, window.busyBefore + 1 >= busySeconds,
         window.reports < reportsPerName
       {

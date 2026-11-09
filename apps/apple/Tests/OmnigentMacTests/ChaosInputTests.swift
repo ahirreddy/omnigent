@@ -140,5 +140,19 @@
         names.contains { $0.hasPrefix("AXButton") && $0.hasSuffix("Send") },
         "\(ChaosTargets.census(of: window))")
     }
+
+    /// A main thread that stops returning to its run loop is reported from another thread.
+    @Test func aStuckMainThreadIsLogged() throws {
+      let path = FileManager.default.temporaryDirectory
+        .appendingPathComponent("chaos-hang-\(UUID().uuidString).log").path
+      #expect(FileManager.default.createFile(atPath: path, contents: nil))
+      defer { try? FileManager.default.removeItem(atPath: path) }
+      let watch = ChaosHangWatch(path: path, threshold: 0.4, span: 0.1)
+      watch.start()
+      defer { watch.stop() }
+      RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+      Thread.sleep(forTimeInterval: 1.2)
+      #expect(try String(contentsOfFile: path, encoding: .utf8).hasPrefix("HANG main thread"))
+    }
   }
 #endif
