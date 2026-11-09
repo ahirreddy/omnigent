@@ -17,7 +17,7 @@ extension View {
   ) -> some View {
     modifier(
       WorkspaceInspectorPresentation(
-        state: state, actions: actions, slots: slots, isPresented: isPresented, tab: tab))
+        state: state, actions: actions, slots: slots, shows: isPresented, tab: tab))
   }
 }
 
@@ -101,32 +101,42 @@ private struct WorkspaceInspectorPresentation: ViewModifier {
   let state: ConversationViewState
   let actions: ConversationActions
   let slots: WorkspaceSlots
-  @Binding var isPresented: Bool
+  @Binding var shows: Bool
   @Binding var tab: InspectorTab
   @Environment(\.isActiveTabPane) private var handlesShortcuts
+  @Environment(\.isTabContentHidden) private var isHiddenTab
   @State private var maximized = false
+  /// A hidden tab's panel stays closed (`.constant` counts as changed on every update).
+  @State private var hiddenPanel = false
 
   private var panel: WorkspaceInspector {
     WorkspaceInspector(
       state: state, actions: actions, slots: slots, tab: $tab, maximized: $maximized)
   }
 
+  /// Whether the panel shows: the conversation's choice while its tab is on screen. Read here
+  /// and not by the conversation, whose body then does not run when its tab hides or shows.
+  private var presented: Binding<Bool> { isHiddenTab ? $hiddenPanel : $shows }
+
   func body(content: Content) -> some View {
+    let isPresented = presented.wrappedValue
     content
       .unmeasuredMinimum(UnmeasuredMinimum.column)
       .overlay {
         if isPresented, maximized { panel }
       }
       .modifier(InspectorColumn(isPresented: sideColumnPresented) { panel })
-      .onChange(of: isPresented) { _, shows in
-        if !shows { maximized = false }
+      .onChange(of: isPresented) { _, isShowing in
+        if !isShowing { maximized = false }
       }
       .background { shortcuts }
   }
 
   /// The side column, hidden while the panel fills the screen.
   private var sideColumnPresented: Binding<Bool> {
-    Binding(get: { isPresented && !maximized }, set: { isPresented = $0 })
+    let presented = presented
+    return Binding(
+      get: { presented.wrappedValue && !maximized }, set: { presented.wrappedValue = $0 })
   }
 
   /// Shift-Command-F for Search and Option-Command-1 onward for the shown tabs, in order.
@@ -152,7 +162,7 @@ private struct WorkspaceInspectorPresentation: ViewModifier {
   private func show(_ panel: InspectorTab) {
     tab = panel
     slots.documents?.showPanel()
-    isPresented = true
+    shows = true
   }
 }
 

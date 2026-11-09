@@ -7,24 +7,47 @@
 
   @testable import OmnigentUIComponents
 
+  /// The trailing items a detail reports, changed from the test, and how often the shell built
+  /// its detail.
+  @MainActor
+  @Observable
+  private final class ReportedItems {
+    var count: Int?
+    @ObservationIgnored var detailBuilds = 0
+  }
+
+  /// Reports the trailing items the test set, without the shell's harness rendering for it.
+  private struct ReportsTrailingItems: ViewModifier {
+    let fixed: Int?
+    let items: ReportedItems?
+
+    func body(content: Content) -> some View {
+      content.preference(key: TitlebarTrailingItems.self, value: items.map(\.count) ?? fixed)
+    }
+  }
+
   private struct ShellHarness: View {
     let spy: SidebarSpy
     var tabs: (state: TabsState, actions: TabActions)?
     var toggle: SidebarToggle?
     var sizeClass: UserInterfaceSizeClass?
     var trailingItems: Int?
+    var items: ReportedItems?
 
     var body: some View {
       AppShell(
         sidebar: spy.state, selection: Binding(get: { spy.selection }, set: { spy.selection = $0 }),
         searchText: Binding(get: { spy.search }, set: { spy.search = $0 }), actions: spy.actions,
-        tabs: tabs
-      ) { destination in
-        Text("detail of \(destination.map { "\($0)" } ?? "nothing")")
-          .preference(key: TitlebarTrailingItems.self, value: trailingItems)
-      }
+        tabs: tabs, detail: detail
+      )
       .environment(\.sidebarToggle, toggle)
       .environment(\.horizontalSizeClass, sizeClass)
+    }
+
+    private func detail(_ destination: SidebarDestination?) -> some View {
+      items?.detailBuilds += 1
+      return Text("detail of \(destination.map { "\($0)" } ?? "nothing")")
+        .modifier(ReportsTrailingItems(fixed: trailingItems, items: items))
     }
   }
 
@@ -142,6 +165,29 @@
       let tight = try stripWidth(trailingItems: nil, windowWidth: 600)
       let tighter = try stripWidth(trailingItems: nil, windowWidth: 560)
       #expect(tight == tighter)
+    }
+
+    @Test("A tab with other trailing items resizes the strip without rendering the shell again")
+    func trailingItemsResizeOnlyTheStrip() throws {
+      let items = ReportedItems()
+      items.count = 2
+      let screen = titled(
+        ShellHarness(spy: SidebarSpy(SidebarFixture.state), tabs: tabs(), items: items))
+      defer { screen.close() }
+      // The detail column is measured again, at the window's new width.
+      screen.window.setContentSize(CGSize(width: 1_200, height: 700))
+      screen.settle(0.5)
+      let strip = try #require(toolbarItems(screen).first?.view)
+      let reported = strip.fittingSize.width
+      let builds = items.detailBuilds
+
+      // What switching from a conversation to a terminal or a web page does.
+      items.count = nil
+      screen.settle(0.5)
+
+      let itemsWidth = TitlebarMetrics.trailingWidth(items: 2)
+      #expect(reported - strip.fittingSize.width == TitlebarMetrics.trailingReserve - itemsWidth)
+      #expect(items.detailBuilds == builds, "the shell, sidebar and detail did not render again")
     }
 
     @Test("A compact window puts a Tabs button in the bar instead of the strip")

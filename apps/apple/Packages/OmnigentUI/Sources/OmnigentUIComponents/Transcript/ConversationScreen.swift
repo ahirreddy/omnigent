@@ -31,8 +31,6 @@ public struct ConversationScreen<Terminal: View>: View {
   @State private var draftHasText = false
   @State private var modelPickerRequest = 0
   @State private var localInspectorTab: InspectorTab = .files
-  /// A hidden tab's panel stays closed (`.constant` counts as changed on every update).
-  @State private var hiddenInspector = false
   private let externalInspectorTab: Binding<InspectorTab>?
   @State private var showsShare = false
   @State private var showsInfo = false
@@ -49,9 +47,7 @@ public struct ConversationScreen<Terminal: View>: View {
   @Environment(\.transcriptWindow) private var transcriptWindow
   @Environment(\.openAppearanceSettings) private var openAppearanceSettings
   @Environment(\.tabsInTitlebar) private var tabsInTitlebar
-  @Environment(\.isActiveTabPane) private var isActivePane
   @Environment(\.offersTerminalView) private var offersTerminalView
-  @Environment(\.isTabContentHidden) private var isHiddenTab
 
   /// Creates the screen.
   /// - Parameters:
@@ -116,10 +112,10 @@ public struct ConversationScreen<Terminal: View>: View {
         isEnabled: composerState.acceptsAttachments && composerState.availability == .available,
         add: composerActions.addAttachments
       )
-      .modifier(HiddenTabContent(isHidden: showsTerminal || isHiddenTab))
+      .modifier(HiddenUnderTerminal(showsTerminal: showsTerminal))
       // A hidden tab lets go of the terminal surface, as a terminal tab does.
-      if showsTerminal, !isHiddenTab {
-        TerminalPane(status: state.terminal, resume: actions.resume) { terminal }
+      if showsTerminal {
+        ShownTabOnly { TerminalPane(status: state.terminal, resume: actions.resume) { terminal } }
       }
     }
     .countsRenders("screen")
@@ -172,20 +168,18 @@ public struct ConversationScreen<Terminal: View>: View {
     .onPreferenceChange(ApproveShortcutCandidate.self) { approveCandidate = $0 }
     .workspaceInspector(
       state: state, actions: actions, slots: extras.slots,
-      isPresented: isHiddenTab ? $hiddenInspector : $showsInspector, tab: inspectorTab
+      isPresented: $showsInspector, tab: inspectorTab
     )
     // A hidden tab publishes no title, so the shown tab or full page keeps the window's.
-    .background { if !isHiddenTab { windowTitle } }
-    .preference(
-      key: TitlebarTrailingItems.self,
-      value: isHiddenTab
-        ? nil
-        : TitlebarTrailingItems.count(
+    .background { ShownTabOnly { windowTitle } }
+    .modifier(
+      ShownTabTrailingItems(
+        count: TitlebarTrailingItems.count(
           state, hasShare: extras.share != nil, tabsInTitlebar: tabsInTitlebar,
           isRegular: layoutWidth == .regular, projectTag: showsProjectTag)
-          + (showsViewSwitch ? TitlebarTrailingItems.viewSwitch : 0)
+          + (showsViewSwitch ? TitlebarTrailingItems.viewSwitch : 0))
     )
-    .conversationToolbar(toolbarItems)
+    .modifier(ActivePaneToolbar(items: toolbarItems))
     .sheet(isPresented: $showsShare) {
       if let share = extras.share {
         ShareSheet(state: share.state, actions: share.actions) { showsShare = false }
@@ -204,14 +198,12 @@ public struct ConversationScreen<Terminal: View>: View {
         actions: extras.sessionActions, branch: extras.menuContext.branch)
     )
     // In a split window only the focused pane's conversation drives the menus.
-    .focusedSceneValue(\.sessionCommands, commandRelay.publish(isActivePane ? commands : nil))
+    .modifier(ActivePaneCommands(commands: commands, relay: commandRelay))
   }
 
-  /// The trailing toolbar items; a split window's other pane leaves the toolbar to the focused
-  /// one, and a hidden tab shows none.
-  private var toolbarItems: ConversationToolbarItems? {
-    guard isActivePane else { return nil }
-    return ConversationToolbarItems(
+  /// The trailing toolbar items, shown for the focused pane's conversation.
+  private var toolbarItems: ConversationToolbarItems {
+    ConversationToolbarItems(
       state: state, extras: extras, offersTerminal: offersTerminal,
       tabsInTitlebar: tabsInTitlebar, isRegular: layoutWidth == .regular,
       showsProjectTag: showsProjectTag, mode: $mode, showsInspector: $showsInspector,
