@@ -6,8 +6,9 @@ use serde_json::json;
 use super::super::SessionError;
 use super::super::test_support::{Reply, RouteTransport, body_json, connected, path_of};
 use super::{
-    Automation, AutomationDraft, AutomationFilter, AutomationState, ServerPages,
-    arrange_automations, draft_body, format_run_duration,
+    Automation, AutomationDraft, AutomationFilter, AutomationRunStatus, AutomationState,
+    ServerPages, arrange_automations, automation_from, describe_run_failure, draft_body,
+    format_run_duration,
 };
 
 const TASK: &str = r#"{"id":"t1","name":"Standup","prompt":"Summarize","rrule":"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=8;BYMINUTE=0","agent_id":"a1","timezone":"America/New_York","session_mode":"continue","state":"active","last_run_at":1793800000,"last_run_status":"succeeded","last_run_conversation_id":"c9","next_run_at":"2026-11-05T08:00:00+00:00","updated_at":1793700000.5}"#;
@@ -377,4 +378,150 @@ fn pages_follow_what_the_server_advertises() {
     assert!(ServerPages::from_value(&json!({"features": {"usage_page": "yes"}})).is_err());
     assert!(ServerPages::from_value(&json!({"features": {"canvas": "yes"}})).is_err());
     assert!(ServerPages::from_value(&json!({"sharing_mode": 1})).is_err());
+}
+
+#[test]
+fn run_status_reads_every_wire_value_and_labels_only_the_in_flight_ones() {
+    use AutomationRunStatus as Status;
+    for (wire, status, label) in [
+        ("scheduled", Status::Scheduled, Some("Queued")),
+        ("starting", Status::Starting, Some("Starting")),
+        ("running", Status::Running, Some("Running")),
+        ("succeeded", Status::Succeeded, None),
+        ("failed", Status::Failed, None),
+        ("skipped", Status::Skipped, None),
+        ("incomplete", Status::Incomplete, None),
+    ] {
+        assert_eq!(Status::from_wire(wire), status);
+        assert_eq!(status.in_flight_label(), label, "{wire}");
+    }
+    assert_eq!(
+        Status::from_wire("paused_forever"),
+        Status::Unknown {
+            value: "paused_forever".into()
+        }
+    );
+}
+
+#[test]
+fn active_automations_without_a_next_run_sort_after_those_with_one() {
+    let all = [
+        automation("none_b", "B", AutomationState::Active, None),
+        automation("none_a", "A", AutomationState::Active, None),
+        automation("soon", "Z", AutomationState::Active, Some(10)),
+    ];
+    let ids: Vec<String> = arrange_automations(&all, AutomationFilter::All, "")
+        .into_iter()
+        .map(|automation| automation.id)
+        .collect();
+    assert_eq!(ids, ["soon", "none_a", "none_b"]);
+}
+
+#[test]
+fn a_time_that_is_not_a_number_fails_the_row() {
+    let task = |time: serde_json::Value| {
+        let mut value: serde_json::Value = serde_json::from_str(TASK).unwrap();
+        value["updated_at"] = time;
+        automation_from(&value)
+    };
+    assert_eq!(
+        task(json!(true)).unwrap_err(),
+        "`updated_at` is not a number"
+    );
+    assert_eq!(
+        task(json!(1e30)).unwrap_err(),
+        "`updated_at` is not a whole-second time"
+    );
+    assert_eq!(task(json!(-5.5)).unwrap().updated_at, -5);
+}
+
+#[test]
+fn an_edit_sends_the_session_mode_only_when_it_changed() {
+    let mut saved = automation("t1", "n", AutomationState::Active, None);
+    saved.agent_id = "a1".into();
+    saved.host_id = Some("h1".into());
+    let edit = |continues: Option<bool>| AutomationDraft {
+        continues_session: continues,
+        host_id: Some("h1".into()),
+        ..draft()
+    };
+    let body = draft_body(&edit(Some(true)), Some(&saved)).unwrap();
+    assert_eq!(body["session_mode"], "continue");
+    for same in [Some(false), None] {
+        let body = draft_body(&edit(same), Some(&saved)).unwrap();
+        assert!(body.get("session_mode").is_none(), "{same:?}");
+    }
+    saved.continues_session = true;
+    let body = draft_body(&edit(Some(false)), Some(&saved)).unwrap();
+    assert_eq!(body["session_mode"], "new");
+}
+
+#[test]
+fn run_failures_name_where_they_stopped() {
+    for (code, stage, reason) in [
+        (
+            "owner_identity_unavailable",
+            "Owner",
+            "Couldn't act as the owner. The next run tries again.",
+        ),
+        (
+            "reauthorization_required",
+            "Owner",
+            "The owner's authorization for this automation is no longer valid.",
+        ),
+        (
+            "invalid_input",
+            "Settings",
+            "The agent, model or workspace is invalid. Edit the automation to fix it.",
+        ),
+        (
+            "not_found",
+            "Settings",
+            "The agent or workspace no longer exists. Edit the automation to fix it.",
+        ),
+        (
+            "forbidden",
+            "Settings",
+            "You no longer have access to the agent or workspace.",
+        ),
+        (
+            "existing_sandbox_not_allowed",
+            "Host",
+            "Automations can't use an existing sandbox. Choose a new sandbox for each run.",
+        ),
+        (
+            "incomplete",
+            "Running",
+            "The agent stopped reporting before the run finished.",
+        ),
+    ] {
+        assert_eq!(
+            describe_run_failure(Some(code), &AutomationRunStatus::Failed),
+            (Some(stage), reason)
+        );
+    }
+    assert_eq!(
+        describe_run_failure(Some("brand_new_code"), &AutomationRunStatus::Failed),
+        (None, "Run failed.")
+    );
+    assert_eq!(
+        describe_run_failure(None, &AutomationRunStatus::Skipped),
+        (None, "Run skipped.")
+    );
+}
+
+#[test]
+fn server_pages_come_from_info_and_a_broken_body_says_so() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/info",
+        r#"{"automations_enabled":true,"features":{"usage_page":true}}"#,
+    );
+    let pages = block_on(core.server_pages()).unwrap();
+    assert!(pages.automations && pages.usage && !pages.canvas);
+    core.transport().ok("/v1/info", r#"{"features":7}"#);
+    assert!(matches!(
+        block_on(core.server_pages()),
+        Err(SessionError::MalformedResponse { detail }) if detail.starts_with("/v1/info: ")
+    ));
 }

@@ -222,3 +222,104 @@ fn terminal_requests_are_routed_like_the_rest() {
         "keyed by the session's host, then re-addressed keyless"
     );
 }
+
+#[test]
+fn a_demoted_host_that_still_refuses_is_keyed_again_next_time() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    let agent = format!("{MOUNT}/v1/sessions/conv_a/agent");
+    let terminals = Reply::json(200, r#"{"terminals":["bash"]}"#);
+    transport.enqueue(
+        "GET",
+        &agent,
+        vec![
+            Reply::json(400, WRONG_REPLICA),
+            terminals.clone(),
+            Reply::json(400, WRONG_REPLICA),
+            terminals,
+        ],
+    );
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+    block_on(core.declared_terminal_names("conv_a")).unwrap();
+    assert!(matches!(
+        block_on(core.declared_terminal_names("conv_a")),
+        Err(SessionError::HttpStatus { status: 400 } | SessionError::Rejected { status: 400, .. })
+    ));
+    block_on(core.declared_terminal_names("conv_a")).unwrap();
+    assert_eq!(
+        keys(&core.transport, &agent),
+        [
+            Some("host_a".to_owned()),
+            None,
+            None,
+            Some("host_a".to_owned())
+        ],
+        "keyed, keyless retry, keyless and refused, keyed again"
+    );
+}
+
+#[test]
+fn a_refusal_with_nothing_to_learn_is_reported_as_is() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    let core = workspace(transport);
+    // A route with no session of its own, before any list named a host.
+    let info = format!("{MOUNT}/v1/connections/github/status");
+    core.transport
+        .respond(None, &info, None, Reply::json(400, WRONG_REPLICA));
+    assert!(block_on(core.provider_connection("github")).is_err());
+    assert_eq!(keys(&core.transport, &info), [None], "not re-addressed");
+    block_on(core.sessions()).unwrap();
+
+    // A session whose snapshot is unreadable, or names no host through a parent cycle.
+    let agent = |id: &str| format!("{MOUNT}/v1/sessions/{id}/agent");
+    for id in ["conv_gone", "conv_loop", "conv_none"] {
+        core.transport
+            .respond(None, &agent(id), None, Reply::json(400, WRONG_REPLICA));
+    }
+    core.transport.respond(
+        None,
+        &format!("{MOUNT}/v1/sessions/conv_gone"),
+        None,
+        Reply::json(404, "{}"),
+    );
+    core.transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_loop"),
+        r#"{"id":"conv_loop","status":"idle","created_at":1,"parent_session_id":"conv_loop_b"}"#,
+    );
+    core.transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_loop_b"),
+        r#"{"id":"conv_loop_b","status":"idle","created_at":1,"parent_session_id":"conv_loop"}"#,
+    );
+    core.transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_none"),
+        r#"{"id":"conv_none","status":"idle","created_at":1}"#,
+    );
+    for id in ["conv_gone", "conv_loop", "conv_none"] {
+        assert!(block_on(core.declared_terminal_names(id)).is_err(), "{id}");
+        assert_eq!(keys(&core.transport, &agent(id)), [None], "{id}");
+    }
+}
+
+#[test]
+fn a_refused_stream_flips_between_keyed_and_keyless() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    let core = workspace(transport);
+    let stream = "/v1/sessions/conv_a/stream";
+    core.stream_refused(stream, true);
+    assert_eq!(core.slice_key(stream), None, "no host known yet");
+    block_on(core.sessions()).unwrap();
+    assert_eq!(core.slice_key(stream).as_deref(), Some("host_a"));
+    assert_eq!(core.modal_slice_key().as_deref(), Some("host_a"));
+    core.stream_refused(stream, true);
+    assert_eq!(core.slice_key(stream), None);
+    core.stream_refused(stream, false);
+    assert_eq!(core.slice_key(stream).as_deref(), Some("host_a"));
+
+    let local = super::test_support::connected(RouteTransport::local());
+    local.stream_refused(stream, true);
+    assert_eq!(local.slice_key(stream), None);
+    assert_eq!(local.modal_slice_key(), None);
+}

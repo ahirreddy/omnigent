@@ -198,8 +198,100 @@ mod tests {
     use futures::executor::block_on;
 
     use super::*;
-    use crate::client::test_support::{MOUNT, Reply, RouteTransport, connected_hosted, header};
+    use crate::client::test_support::{
+        MOUNT, Reply, RouteTransport, connected_hosted, header, still_pending,
+    };
     use crate::terminal::attach_options;
+
+    const TERMINALS: &str = "/api/2.0/omnigent/v1/sessions/conv_a/resources/terminals";
+
+    #[test]
+    fn terminals_list_every_page_then_create_and_close() {
+        let transport = RouteTransport::with_prefix(MOUNT, false);
+        transport.enqueue(
+            "GET",
+            TERMINALS,
+            vec![
+                Reply::json(
+                    200,
+                    r#"{"data":[{"id":"terminal_a"}],"has_more":true,"last_id":"terminal_a"}"#,
+                ),
+                Reply::json(200, r#"{"data":[{"id":"terminal_b"}],"has_more":false}"#),
+            ],
+        );
+        transport.respond(
+            Some("POST"),
+            TERMINALS,
+            None,
+            Reply::json(201, r#"{"id":"terminal_new","type":"terminal"}"#),
+        );
+        let closed = format!("{TERMINALS}/terminal_new");
+        transport.enqueue(
+            "DELETE",
+            &closed,
+            vec![
+                Reply::json(200, r#"{"id":"terminal_new","deleted":true}"#),
+                Reply::json(404, r#"{"detail":"gone"}"#),
+            ],
+        );
+        let core = connected_hosted(transport);
+        let ids: Vec<String> = block_on(core.list_terminals("conv_a"))
+            .unwrap()
+            .into_iter()
+            .map(|terminal| terminal.id)
+            .collect();
+        assert_eq!(ids, ["terminal_a", "terminal_b"]);
+        let create = CreateTerminal {
+            terminal: "bash".into(),
+            session_key: "u-1".into(),
+        };
+        let created = block_on(core.create_terminal("conv_a", &create)).unwrap();
+        assert_eq!(created.id, "terminal_new");
+        assert_eq!(
+            block_on(core.delete_terminal("conv_a", "terminal_new")),
+            Ok(DeleteOutcome::Deleted)
+        );
+        assert_eq!(
+            block_on(core.delete_terminal("conv_a", "terminal_new")),
+            Ok(DeleteOutcome::AlreadyGone)
+        );
+    }
+
+    #[test]
+    fn a_rejected_token_ends_the_connection_and_a_late_reply_is_dropped() {
+        let transport = RouteTransport::with_prefix(MOUNT, false);
+        transport.enqueue(
+            "GET",
+            TERMINALS,
+            vec![Reply::json(401, r#"{"detail":"expired"}"#)],
+        );
+        let core = connected_hosted(transport);
+        assert!(matches!(
+            block_on(core.list_terminals("conv_a")),
+            Err(TerminalError::Unauthorized { .. })
+        ));
+        assert_eq!(
+            block_on(core.list_terminals("conv_a")),
+            Err(TerminalError::NotConnected)
+        );
+
+        let transport = RouteTransport::with_prefix(MOUNT, false);
+        transport.ok(TERMINALS, r#"{"data":[],"has_more":false}"#);
+        let gate = transport.gate("GET", TERMINALS);
+        let core = connected_hosted(transport);
+        let mut listing = std::pin::pin!(core.list_terminals("conv_a"));
+        assert!(still_pending(listing.as_mut()));
+        core.disconnect();
+        gate.open();
+        assert_eq!(block_on(listing), Err(TerminalError::NotConnected));
+    }
+
+    #[test]
+    fn an_unusable_session_id_is_refused_before_sending() {
+        let core = connected_hosted(RouteTransport::with_prefix(MOUNT, false));
+        assert!(block_on(core.list_terminals("../x")).is_err());
+        assert_eq!(core.transport().writes().len(), 0);
+    }
 
     #[test]
     fn a_terminal_list_cursor_that_comes_back_ends_the_listing() {

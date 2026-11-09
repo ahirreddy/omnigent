@@ -12,6 +12,7 @@ use futures::executor::block_on;
 use super::*;
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
+use crate::auth::hosted::HostedConnection;
 use crate::client::SessionError;
 use crate::client::test_support::{
     Envelope, LOCAL, MOUNT, Reply, RouteTransport, TOKEN, connected, connected_hosted, envelopes,
@@ -950,4 +951,68 @@ fn a_save_stops_when_the_latest_read_fails() {
         core.transport().writes().is_empty(),
         "nothing is written over a file that could not be read"
     );
+}
+
+#[test]
+fn a_request_exposes_what_it_asks_for() {
+    let listing = request(WorkspaceOperation::ListChanges);
+    assert_eq!(listing.session_id(), SESSION);
+    assert_eq!(listing.environment_id(), DEFAULT_ENVIRONMENT_ID);
+    assert_eq!(listing.operation(), &WorkspaceOperation::ListChanges);
+}
+
+#[test]
+fn an_empty_page_cursor_is_refused_and_a_real_one_is_sent() {
+    let files = |after: Option<&str>| {
+        WorkspaceRequest::new(
+            SESSION,
+            DEFAULT_ENVIRONMENT_ID,
+            WorkspaceOperation::ListSessionFiles(SessionFilesQuery {
+                limit: 5,
+                after: after.map(str::to_owned),
+            }),
+        )
+    };
+    assert!(matches!(
+        files(Some("")),
+        Err(WorkspaceError::InvalidQuery { .. })
+    ));
+    let built = files(Some("file_9"))
+        .unwrap()
+        .build_for_endpoint(&ServerEndpoint::new(LOCAL).unwrap(), None)
+        .unwrap();
+    assert_eq!(query_value(&built, "after").as_deref(), Some("file_9"));
+}
+
+#[test]
+fn a_path_search_sends_its_globs() {
+    let search = request(WorkspaceOperation::SearchPaths(PathSearchQuery {
+        query: "main".into(),
+        under: WorkspacePath::root(),
+        limit: 5,
+        include: vec!["src/**".into()],
+        exclude: vec!["*.lock".into()],
+    }))
+    .build_for_endpoint(&ServerEndpoint::new(LOCAL).unwrap(), None)
+    .unwrap();
+    assert_eq!(query_value(&search, "include").as_deref(), Some("src/**"));
+    assert_eq!(query_value(&search, "exclude").as_deref(), Some("*.lock"));
+}
+
+#[test]
+fn a_hosted_connection_builds_the_same_route_with_its_bearer() {
+    let connection = HostedConnection::new(
+        ServerEndpoint::new("https://example.com/omni").unwrap(),
+        Some(SecretString::new("token")),
+        None,
+    )
+    .unwrap();
+    let write = request(WorkspaceOperation::WriteFile(FileWrite {
+        path: path("a.txt"),
+        content: "x".into(),
+    }));
+    assert!(matches!(
+        write.build(&connection),
+        Err(WorkspaceError::Session(SessionError::NotConnected))
+    ));
 }

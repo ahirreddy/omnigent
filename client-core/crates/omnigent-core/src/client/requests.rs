@@ -522,7 +522,68 @@ fn redact_query(url: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
+    use std::pin::pin;
+
+    use futures::executor::block_on;
+    use serde_json::json;
+
+    use super::super::test_support::{Reply, RouteTransport, connected, still_pending};
     use super::*;
+
+    const WRITE_PATH: &str = "/v1/sessions/conv_a/read-state";
+
+    fn write_reply(status: u16, body: &str) -> ClientCore<RouteTransport> {
+        let transport = RouteTransport::local();
+        transport.respond(Some("POST"), WRITE_PATH, None, Reply::json(status, body));
+        connected(transport)
+    }
+
+    #[test]
+    fn a_redirected_or_unreadable_write_is_uncertain_and_a_401_ends_the_session() {
+        let core = write_reply(302, "");
+        assert!(matches!(
+            block_on(core.write_json("POST", WRITE_PATH, &json!({}))),
+            Err(SessionError::DeliveryUncertain { detail }) if detail.contains("HTTP 302")
+        ));
+        let core = write_reply(200, "not json");
+        assert!(matches!(
+            block_on(core.write_json("POST", WRITE_PATH, &json!({}))),
+            Err(SessionError::DeliveryUncertain { detail }) if detail.contains("unreadable")
+        ));
+        let core = write_reply(401, r#"{"detail":"expired"}"#);
+        assert!(matches!(
+            block_on(core.write_json("POST", WRITE_PATH, &json!({}))),
+            Err(SessionError::Unauthorized { .. })
+        ));
+        assert!(!lock(&core.state).is_connected());
+    }
+
+    #[test]
+    fn a_write_answered_after_a_disconnect_is_uncertain() {
+        let core = write_reply(200, "{}");
+        let gate = core.transport().gate("POST", WRITE_PATH);
+        let body = json!({});
+        let mut write = pin!(core.write_json("POST", WRITE_PATH, &body));
+        assert!(still_pending(write.as_mut()));
+        core.disconnect();
+        gate.open();
+        assert!(matches!(
+            block_on(write),
+            Err(SessionError::DeliveryUncertain { detail })
+                if detail.contains("while the write was in flight")
+        ));
+    }
+
+    #[test]
+    fn a_read_that_does_not_parse_says_where() {
+        let transport = RouteTransport::local();
+        transport.ok("/v1/odd", "not json");
+        let core = connected(transport);
+        assert!(matches!(
+            block_on(core.get_json("/v1/odd", &[])),
+            Err(SessionError::MalformedResponse { detail }) if detail.starts_with("/v1/odd: ")
+        ));
+    }
 
     #[test]
     fn page_query_validates_limit_and_cursor() {

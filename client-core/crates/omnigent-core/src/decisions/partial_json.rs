@@ -419,6 +419,71 @@ mod tests {
     }
 
     #[test]
+    fn every_string_escape_decodes() {
+        assert_eq!(
+            parse(r#""\" \\ \/ \b \f \n \r \t \u00e9 \ud83d\ude00""#),
+            Ok(text("\" \\ / \u{8} \u{c} \n \r \t \u{e9} \u{1f600}"))
+        );
+    }
+
+    #[test]
+    fn a_broken_or_cut_unicode_escape_is_told_apart() {
+        for bad in [
+            r#""\uZZZZ""#,
+            r#""\ud83dX""#,
+            r#""\ud83d\u0041""#,
+            r#""\ud83d\uZZZZ""#,
+            r#""\udc00""#,
+        ] {
+            assert_eq!(parse(bad), Err(NotJson), "{bad}");
+        }
+        for cut in [
+            r#"["ab\u00"#,
+            r#"["ab\ud83d"#,
+            r#"["ab\ud83d\"#,
+            r#"["ab\ud83d\ude"#,
+            r#"["ab\"#,
+        ] {
+            assert_eq!(parse(cut), Ok(Json::Array(Vec::new(), true)), "{cut}");
+        }
+    }
+
+    #[test]
+    fn a_number_that_only_looks_like_one_is_not_json() {
+        assert_eq!(parse("[-]"), Err(NotJson));
+        assert_eq!(parse("[1.2.3]"), Err(NotJson));
+        assert_eq!(
+            parse("[1e999]"),
+            Ok(Json::Array(vec![Json::Number("1e999".into())], false)),
+            "kept as written, never turned into a float"
+        );
+        assert_eq!(
+            parse("-"),
+            Err(NotJson),
+            "a bare scalar that runs to the cut is dropped"
+        );
+    }
+
+    #[test]
+    fn cuts_at_every_container_boundary_are_kept_as_cuts() {
+        assert_eq!(parse("[1"), Ok(Json::Array(Vec::new(), true)));
+        assert_eq!(
+            parse("[1,"),
+            Ok(Json::Array(vec![Json::Number("1".into())], true))
+        );
+        assert_eq!(parse("["), Ok(Json::Array(Vec::new(), true)));
+        assert_eq!(
+            parse(r#"{"a":1 "#),
+            Ok(Json::Object(
+                vec![("a".into(), Json::Number("1".into()))],
+                true
+            ))
+        );
+        assert_eq!(parse(r#"{"a":1 x}"#), Err(NotJson));
+        assert_eq!(parse("[7]").unwrap().get("a"), None);
+    }
+
+    #[test]
     fn malformed_input_is_not_a_cut() {
         for bad in [
             r#"{"a" 1}"#,

@@ -1558,6 +1558,197 @@ mod tests {
         assert_eq!(older.clone().preserving_newer_metadata(Some(&other)), older);
     }
 
+    fn row(id: &str) -> Value {
+        json!({"id": id, "status": "idle", "created_at": 1, "updated_at": 2})
+    }
+
+    #[test]
+    fn a_session_list_cursor_that_comes_back_ends_the_read() {
+        use futures::executor::block_on;
+
+        use super::super::test_support::{Reply, RouteTransport, connected};
+
+        let page = |last: &str| {
+            Reply::json(
+                200,
+                json!({"data": [row(last)], "has_more": true, "last_id": last}).to_string(),
+            )
+        };
+        let transport = RouteTransport::local();
+        transport.enqueue("GET", "/v1/sessions", vec![page("a"), page("b"), page("a")]);
+        let core = connected(transport);
+        assert_eq!(
+            block_on(core.canvas_sessions(Some("me"))),
+            Err(SessionError::InvalidPagination)
+        );
+        core.transport()
+            .enqueue("GET", "/v1/sessions", vec![page("a"), page("b"), page("a")]);
+        assert_eq!(
+            block_on(core.session_inventory()),
+            Err(SessionError::InvalidPagination)
+        );
+    }
+
+    #[test]
+    fn removed_sessions_are_forgotten_and_stop_being_live() {
+        use super::super::test_support::{RouteTransport, live, record};
+
+        let transport = RouteTransport::local();
+        transport.writable_session("[]");
+        let core = live(transport);
+        let events = record(&core);
+        core.remove_sessions(&["conv_a".to_owned()]);
+        assert_eq!(
+            events.take(),
+            [
+                ClientEvent::SessionsRemoved {
+                    ids: vec!["conv_a".to_owned()]
+                },
+                ClientEvent::InventoryInvalidated,
+            ]
+        );
+        assert!(!lock(&core.state).summaries.contains_key("conv_a"));
+        assert!(!lock(&core.state).live_sessions.contains("conv_a"));
+    }
+
+    #[test]
+    fn a_snapshot_naming_another_session_is_malformed() {
+        use futures::executor::block_on;
+
+        use super::super::test_support::{RouteTransport, connected};
+
+        let transport = RouteTransport::local();
+        transport.ok("/v1/sessions/conv_a", row("conv_b").to_string());
+        let core = connected(transport);
+        assert!(matches!(
+            block_on(core.fetch_snapshot("conv_a")).map(|_| ()),
+            Err(SessionError::MalformedResponse { detail }) if detail.contains("conv_b")
+        ));
+    }
+
+    #[test]
+    fn a_read_only_session_refuses_to_be_pinned_or_filed() {
+        use futures::executor::block_on;
+
+        use super::super::test_support::{RouteTransport, connected};
+
+        let transport = RouteTransport::local();
+        let mut wire = row("conv_a");
+        wire["permission_level"] = json!(0);
+        transport.ok("/v1/sessions/conv_a", wire.to_string());
+        let core = connected(transport);
+        for change in [
+            SessionChange::Pinned {
+                pinned: true,
+                at_ms: 5,
+            },
+            SessionChange::PinnedAt(PinStamp::new(5.0).unwrap()),
+            SessionChange::Project(Some("p1".to_owned())),
+        ] {
+            assert_eq!(
+                block_on(core.edit_session("conv_a", change)),
+                Err(SessionError::ReadOnly)
+            );
+        }
+    }
+
+    #[test]
+    fn a_patch_acknowledgement_that_does_not_decode_is_uncertain() {
+        use futures::executor::block_on;
+
+        use super::super::test_support::{Reply, RouteTransport, connected};
+
+        let transport = RouteTransport::local();
+        transport.writable_session("[]");
+        transport.respond(
+            Some("PATCH"),
+            "/v1/sessions/conv_a",
+            None,
+            Reply::json(200, r#"{"model_options":7}"#),
+        );
+        let core = connected(transport);
+        assert!(matches!(
+            block_on(core.edit_session("conv_a", SessionChange::Pinned { pinned: true, at_ms: 5 })),
+            Err(SessionError::DeliveryUncertain { detail }) if detail.contains("acknowledgement")
+        ));
+    }
+
+    #[test]
+    fn null_fields_clear_what_a_previous_read_said() {
+        let list_row = |fields: Value, previous: Option<&SessionSummary>| {
+            let mut wire = row("conv_a");
+            for (key, value) in fields.as_object().unwrap() {
+                wire[key] = value.clone();
+            }
+            decode_list_row(wire).unwrap().summary(previous).unwrap()
+        };
+        let counted = list_row(json!({"comments_count": 4}), None);
+        assert_eq!(counted.comments_count, 4);
+        assert_eq!(
+            list_row(json!({"comments_count": null}), Some(&counted)).comments_count,
+            0
+        );
+        let previous = summary_of(&json!({"permission_level": 3, "agent_id": "a"}), None, true);
+        let cleared = summary_of(
+            &json!({"permission_level": null, "agent_id": null}),
+            Some(&previous),
+            false,
+        );
+        assert_eq!(cleared.permission_level, None);
+        assert!(cleared.is_read_only);
+        let launching = summary_of(&json!({"status": "launching"}), None, true);
+        assert_eq!(launching.status, SummaryStatus::Running);
+        assert_eq!(launching.preview, "Launching");
+    }
+
+    #[test]
+    fn snapshots_read_null_and_wrong_model_options_and_counts() {
+        let base = |field: &str, value: Value| {
+            let mut wire = row("conv_a");
+            wire[field] = value;
+            decode_snapshot_value(wire)
+        };
+        assert!(matches!(
+            base("model_options", Value::Null)
+                .unwrap()
+                .projection
+                .model_options,
+            Field::Null
+        ));
+        assert_eq!(
+            base("model_options", json!(7)).err().unwrap(),
+            "`model_options` is not an array"
+        );
+        assert_eq!(
+            base("pending_elicitations_count", Value::Null)
+                .unwrap()
+                .projection
+                .summary(None)
+                .unwrap()
+                .pending_requests,
+            0
+        );
+    }
+
+    #[test]
+    fn a_stream_event_for_another_conversation_does_not_mark_this_one_stale() {
+        use omnigent_protocol::FromWire;
+
+        let core =
+            super::super::test_support::core(super::super::test_support::RouteTransport::local());
+        let before = lock(&core.state).metadata_epoch("conv_a");
+        let event = |conversation: &str| {
+            ServerStreamEvent::from_value(json!({
+                "type": "session.model", "model": "new", "conversation_id": conversation
+            }))
+            .unwrap()
+        };
+        core.record_stream_event("conv_a", &event("conv_b"));
+        assert_eq!(lock(&core.state).metadata_epoch("conv_a"), before);
+        core.record_stream_event("conv_a", &event("conv_a"));
+        assert_ne!(lock(&core.state).metadata_epoch("conv_a"), before);
+    }
+
     #[test]
     fn canvas_sessions_page_through_the_viewers_own_top_level_rows() {
         use futures::executor::block_on;

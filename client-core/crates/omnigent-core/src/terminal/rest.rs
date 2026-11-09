@@ -553,6 +553,74 @@ mod tests {
     }
 
     #[test]
+    fn only_an_expired_connection_needs_a_new_sign_in() {
+        assert!(TerminalError::NotConnected.requires_sign_in());
+        assert!(
+            TerminalError::Unauthorized {
+                reason: String::new()
+            }
+            .requires_sign_in()
+        );
+        assert!(
+            !TerminalError::Forbidden {
+                reason: String::new()
+            }
+            .requires_sign_in()
+        );
+    }
+
+    #[test]
+    fn a_descending_page_resumes_after_a_valid_cursor() {
+        let query = ListTerminals {
+            limit: 5,
+            after: Some("terminal_a".into()),
+            order: ListOrder::Descending,
+        };
+        let listed = endpoint("https://ws.example").list_request(&query).unwrap();
+        assert!(
+            listed.url.ends_with("limit=5&order=desc&after=terminal_a"),
+            "{}",
+            listed.url
+        );
+        let bad = ListTerminals {
+            after: Some("../x".into()),
+            ..query
+        };
+        assert!(matches!(
+            endpoint("https://ws.example").list_request(&bad),
+            Err(TerminalError::InvalidIdentifier { .. })
+        ));
+    }
+
+    #[test]
+    fn a_read_only_attach_without_a_slice_key_has_only_the_flag() {
+        let request = endpoint("https://ws.example")
+            .attach_request(
+                "terminal_a",
+                &AttachOptions {
+                    read_only: true,
+                    slice_key: None,
+                },
+            )
+            .unwrap();
+        assert!(request.url.starts_with("wss://"));
+        assert!(
+            request.url.ends_with("/attach?read_only=true"),
+            "{}",
+            request.url
+        );
+    }
+
+    #[test]
+    fn a_validation_error_list_is_shown_as_sent() {
+        let error = list_response(response(422, &json!({"detail": [{"msg": "bad"}]}))).unwrap_err();
+        assert!(
+            matches!(error, TerminalError::Rejected { status: 422, ref message } if message.contains("bad")),
+            "{error:?}"
+        );
+    }
+
+    #[test]
     fn builds_routes_under_the_mount_path() {
         let endpoint = endpoint("https://ws.example/api/2.0/omnigent/");
         let list = endpoint.list_request(&ListTerminals::default()).unwrap();

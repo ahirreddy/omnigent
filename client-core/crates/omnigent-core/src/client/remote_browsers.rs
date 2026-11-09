@@ -172,7 +172,93 @@ mod tests {
     use omnigent_protocol::remote_browser::AttachMode;
 
     use super::*;
-    use crate::client::test_support::{MOUNT, Reply, RouteTransport, connected_hosted, header};
+    use crate::client::test_support::{
+        MOUNT, Reply, RouteTransport, connected_hosted, header, still_pending,
+    };
+
+    const BROWSERS: &str = "/api/2.0/omnigent/v1/sessions/conv_a/resources/browsers";
+
+    fn tab(id: &str) -> String {
+        format!(r#"{{"id":"{id}","type":"browser","metadata":{{"url":"about:blank"}}}}"#)
+    }
+
+    #[test]
+    fn tabs_list_every_page_then_close_and_read_profiles() {
+        let transport = RouteTransport::with_prefix(MOUNT, false);
+        transport.enqueue(
+            "GET",
+            BROWSERS,
+            vec![
+                Reply::json(
+                    200,
+                    format!(
+                        r#"{{"data":[{}],"has_more":true,"last_id":"btab_1"}}"#,
+                        tab("btab_1")
+                    ),
+                ),
+                Reply::json(
+                    200,
+                    format!(r#"{{"data":[{}],"has_more":false}}"#, tab("btab_2")),
+                ),
+            ],
+        );
+        let closed = format!("{BROWSERS}/btab_1");
+        transport.enqueue(
+            "DELETE",
+            &closed,
+            vec![
+                Reply::json(200, r#"{"id":"btab_1","deleted":true}"#),
+                Reply::json(404, r#"{"detail":"gone"}"#),
+            ],
+        );
+        let core = connected_hosted(transport);
+        let ids: Vec<String> = block_on(core.list_remote_browsers("conv_a"))
+            .unwrap()
+            .into_iter()
+            .map(|tab| tab.id)
+            .collect();
+        assert_eq!(ids, ["btab_1", "btab_2"]);
+        assert_eq!(
+            block_on(core.delete_remote_browser("conv_a", "btab_1")),
+            Ok(DeleteOutcome::Deleted)
+        );
+        assert_eq!(
+            block_on(core.delete_remote_browser("conv_a", "btab_1")),
+            Ok(DeleteOutcome::AlreadyGone)
+        );
+        let profiles = block_on(core.list_remote_browser_profiles("conv_a")).unwrap();
+        assert_eq!(profiles.len(), 1, "an older server only has the default");
+        assert_eq!(profiles[0].name, "default");
+    }
+
+    #[test]
+    fn a_rejected_token_ends_the_connection_and_a_late_reply_is_dropped() {
+        let transport = RouteTransport::with_prefix(MOUNT, false);
+        transport.enqueue(
+            "GET",
+            BROWSERS,
+            vec![Reply::json(401, r#"{"detail":"expired"}"#)],
+        );
+        let core = connected_hosted(transport);
+        assert!(matches!(
+            block_on(core.list_remote_browsers("conv_a")),
+            Err(RemoteBrowserError::Unauthorized { .. })
+        ));
+        assert_eq!(
+            block_on(core.list_remote_browsers("conv_a")),
+            Err(RemoteBrowserError::NotConnected)
+        );
+
+        let transport = RouteTransport::with_prefix(MOUNT, false);
+        transport.ok(BROWSERS, r#"{"data":[],"has_more":false}"#);
+        let gate = transport.gate("GET", BROWSERS);
+        let core = connected_hosted(transport);
+        let mut listing = std::pin::pin!(core.list_remote_browsers("conv_a"));
+        assert!(still_pending(listing.as_mut()));
+        core.disconnect();
+        gate.open();
+        assert_eq!(block_on(listing), Err(RemoteBrowserError::NotConnected));
+    }
 
     #[test]
     fn a_browser_list_cursor_that_comes_back_ends_the_listing() {
