@@ -32,6 +32,7 @@ let package = Package(
     // Keep equal to SPARKLE_VERSION in scripts/release/fetch-sparkle-tools.sh.
     .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
   ],
+  dependencies: [.package(path: "../OmnigentViewTesting")],
   targets: [
     .target(name: "OmnigentDeepLinks", swiftSettings: mainActorSwiftSettings),
     .target(
@@ -50,12 +51,16 @@ let package = Package(
     ),
     .testTarget(
       name: "OmnigentDeepLinksTests",
-      dependencies: ["OmnigentDeepLinks"],
+      dependencies: [
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentDeepLinks",
+      ],
       swiftSettings: strictSwiftSettings
     ),
     .testTarget(
       name: "OmnigentDesktopTests",
-      dependencies: ["OmnigentDesktop"],
+      dependencies: [
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentDesktop",
+      ],
       swiftSettings: strictSwiftSettings
     ),
   ],

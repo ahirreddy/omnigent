@@ -21,11 +21,14 @@ let package = Package(
   name: "OmnigentInput",
   platforms: [.iOS("26.0"), .macOS("26.0")],
   products: [.library(name: "OmnigentInput", targets: ["OmnigentInput"])],
+  dependencies: [.package(path: "../OmnigentViewTesting")],
   targets: [
     .target(name: "OmnigentInput", swiftSettings: mainActorSwiftSettings),
     .testTarget(
       name: "OmnigentInputTests",
-      dependencies: ["OmnigentInput"],
+      dependencies: [
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentInput",
+      ],
       swiftSettings: mainActorSwiftSettings
     ),
   ],

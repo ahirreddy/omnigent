@@ -22,7 +22,8 @@ let package = Package(
   platforms: [.iOS("26.0"), .macOS("26.0")],
   products: [.library(name: "OmnigentTerminalUI", targets: ["OmnigentTerminalUI"])],
   dependencies: [
-    .package(path: "../OmnigentGhosttyKit")
+    .package(path: "../OmnigentViewTesting"),
+    .package(path: "../OmnigentGhosttyKit"),
   ],
   targets: [
     .target(
@@ -33,7 +34,9 @@ let package = Package(
     ),
     .testTarget(
       name: "OmnigentTerminalUITests",
-      dependencies: ["OmnigentTerminalUI"],
+      dependencies: [
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentTerminalUI",
+      ],
       swiftSettings: mainActorSwiftSettings
     ),
   ],

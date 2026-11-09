@@ -329,6 +329,10 @@ apple-test: _ensure-apple
         -destination 'platform=macOS' -derivedDataPath {{ APPLE_DERIVED_DATA }} \
         -skip-testing:OmnigentMacUITests
 
+# Line coverage of the Apple packages from their fast tests; pass --package NAME, --files or --uncovered TEXT.
+apple-coverage *flags: _ensure-apple
+    python3 apps/apple/Tools/coverage.py {{ flags }}
+
 # Hosted tests of the Mac App Store edition (inside its sandboxed app).
 [group('client')]
 apple-test-appstore: _ensure-apple

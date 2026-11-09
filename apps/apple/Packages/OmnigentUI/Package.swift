@@ -26,6 +26,7 @@ let package = Package(
     .executable(name: "OmnigentPlayground", targets: ["OmnigentPlayground"]),
   ],
   dependencies: [
+    .package(path: "../OmnigentViewTesting"),
     .package(path: "../OmnigentStores"),
     .package(path: "../OmnigentPlatform"),
     .package(path: "../OmnigentCoreFFI"),
@@ -77,6 +78,7 @@ let package = Package(
     .testTarget(
       name: "OmnigentUIComponentTests",
       dependencies: [
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
         "OmnigentUIComponents", .product(name: "OmnigentAuthUI", package: "OmnigentAuthUI"),
         .product(name: "OmnigentWorkspaceUI", package: "OmnigentWorkspaceUI"),
       ],

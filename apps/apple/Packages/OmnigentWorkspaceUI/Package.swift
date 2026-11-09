@@ -23,6 +23,7 @@ let package = Package(
   name: "OmnigentWorkspaceUI",
   platforms: [.iOS("26.0"), .macOS("26.0")],
   products: [.library(name: "OmnigentWorkspaceUI", targets: ["OmnigentWorkspaceUI"])],
+  dependencies: [.package(path: "../OmnigentViewTesting")],
   targets: [
     .target(
       name: "OmnigentWorkspaceUI",
@@ -30,7 +31,10 @@ let package = Package(
     ),
     .testTarget(
       name: "OmnigentWorkspaceUITests",
-      dependencies: ["OmnigentWorkspaceUI"],
+      dependencies: [
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+        "OmnigentWorkspaceUI",
+      ],
       swiftSettings: mainActorSwiftSettings
     ),
   ],

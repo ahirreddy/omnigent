@@ -22,11 +22,14 @@ let package = Package(
   name: "OmnigentAuthUI",
   platforms: [.iOS("26.0"), .macOS("26.0")],
   products: [.library(name: "OmnigentAuthUI", targets: ["OmnigentAuthUI"])],
+  dependencies: [.package(path: "../OmnigentViewTesting")],
   targets: [
     .target(name: "OmnigentAuthUI", swiftSettings: mainActorSwiftSettings),
     .testTarget(
       name: "OmnigentAuthUITests",
-      dependencies: ["OmnigentAuthUI"],
+      dependencies: [
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentAuthUI",
+      ],
       swiftSettings: mainActorSwiftSettings
     ),
   ],

@@ -23,7 +23,8 @@ let package = Package(
     .library(name: "OmnigentBrowserChromium", targets: ["OmnigentBrowserChromium"]),
   ],
   dependencies: [
-    .package(path: "../OmnigentWebLayer")
+    .package(path: "../OmnigentViewTesting"),
+    .package(path: "../OmnigentWebLayer"),
   ],
   targets: [
     .target(
@@ -41,12 +42,17 @@ let package = Package(
     ),
     .testTarget(
       name: "OmnigentBrowserTests",
-      dependencies: ["OmnigentBrowser"],
+      dependencies: [
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentBrowser",
+      ],
       swiftSettings: strictSwift
     ),
     .testTarget(
       name: "OmnigentBrowserChromiumTests",
-      dependencies: ["OmnigentBrowser", "OmnigentBrowserChromium"],
+      dependencies: [
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentBrowser",
+        "OmnigentBrowserChromium",
+      ],
       swiftSettings: strictSwift
     ),
   ]

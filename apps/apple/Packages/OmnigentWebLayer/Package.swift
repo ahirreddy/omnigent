@@ -26,6 +26,7 @@ let package = Package(
     // NSEvent translation and IME composition, shared with the remote browser.
     .package(path: "../OmnigentInput")
   ],
+  dependencies: [.package(path: "../OmnigentViewTesting")],
   targets: [
     // The wire schema and Mach transport, shared with the host (apps/apple/WebHost), which
     // compiles these same files.
@@ -42,7 +43,8 @@ let package = Package(
     .testTarget(
       name: "OmnigentWebLayerTests",
       dependencies: [
-        "OmnigentWebLayer", "OWLProtocol",
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentWebLayer",
+        "OWLProtocol",
         .product(name: "OmnigentInput", package: "OmnigentInput"),
       ],
       swiftSettings: mainActorSwiftSettings

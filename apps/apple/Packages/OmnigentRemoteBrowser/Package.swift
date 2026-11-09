@@ -23,6 +23,7 @@ let package = Package(
   platforms: [.iOS("26.0"), .macOS("26.0")],
   products: [.library(name: "OmnigentRemoteBrowser", targets: ["OmnigentRemoteBrowser"])],
   dependencies: [
+    .package(path: "../OmnigentViewTesting"),
     .package(path: "../OmnigentInput"),
     .package(path: "../OmnigentCoreFFI"),
     // The omnibox's URL-or-search interpretation, shared with the local browser.
@@ -53,6 +54,7 @@ let package = Package(
     .testTarget(
       name: "OmnigentRemoteBrowserTests",
       dependencies: [
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
         "OmnigentRemoteBrowser", .product(name: "OmnigentInput", package: "OmnigentInput"),
         .product(name: "OmnigentCoreFFI", package: "OmnigentCoreFFI"),
         .product(name: "OmnigentServices", package: "OmnigentServices"),
