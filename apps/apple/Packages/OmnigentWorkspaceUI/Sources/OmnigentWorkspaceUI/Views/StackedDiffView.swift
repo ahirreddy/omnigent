@@ -101,8 +101,10 @@ public struct StackedDiffView: View {
       Button {
         collapsed = allCollapsed ? [] : Set(files.map(\.path))
       } label: {
-        Image(systemName: allCollapsed ? "chevron.up.chevron.down" : "chevron.down.chevron.up")
-          .accessibilityLabel(allCollapsed ? "Expand all files" : "Collapse all files")
+        Image(
+          systemName: allCollapsed ? "rectangle.expand.vertical" : "rectangle.compress.vertical"
+        )
+        .accessibilityLabel(allCollapsed ? "Expand all files" : "Collapse all files")
       }
       .buttonStyle(.borderless)
       .help(allCollapsed ? "Expand all files" : "Collapse all files")
