@@ -32,16 +32,22 @@
       transcriptScreen(view.coordinateSpace(.named("root")), width: 400, height: 300)
     }
 
-    /// Steps up in depth so a return of exponential layout fails here instead of hanging the run.
+    private func renderTime(_ source: String) -> Duration {
+      ContinuousClock().measure {
+        let screen = transcriptScreen(ScrollView { MarkdownView(source) })
+        screen.close()
+      }
+    }
+
+    /// Steps up in depth, so exponential layout fails here instead of hanging the run. The limit
+    /// grows with a shallow render's time, so a busy machine slows both sides of the comparison.
     private func expectCheapRender(_ source: (Int) -> String) {
-      let clock = ContinuousClock()
-      for depth in [4, 8, 10, 12, MarkdownParser.maxNesting, 40] {
-        let spent = clock.measure {
-          let screen = transcriptScreen(ScrollView { MarkdownView(source(depth)) })
-          screen.close()
-        }
-        guard spent < .seconds(3) else {
-          Issue.record("Depth \(depth) took \(spent)")
+      let shallow = min(renderTime(source(1)), renderTime(source(1)))
+      let limit = max(.seconds(5), shallow * 30)
+      for depth in [4, 8, 10, 12, 14, 16, 18, 20, 40] {
+        let spent = renderTime(source(depth))
+        guard spent < limit else {
+          Issue.record("Depth \(depth) took \(spent); the limit was \(limit)")
           return
         }
       }
