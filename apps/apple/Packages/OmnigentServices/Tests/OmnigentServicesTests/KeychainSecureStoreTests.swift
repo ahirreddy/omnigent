@@ -123,8 +123,8 @@ import Testing
     #expect(try store.get(key: item) == nil)
   }
 
-  /// Sign-out relies on delete, so a failure must surface. Reads go the same way.
-  @Test func aKeychainThatRefusesReportsReadsAndDeletes() throws {
+  /// Sign-out relies on delete, so a failure must surface.
+  @Test func aKeychainThatRefusesADeleteReportsIt() throws {
     let service = "ai.omnigent.tests.\(UUID().uuidString)"
     let store = KeychainSecureStore(mode: .dataProtection, serviceName: { _ in service })
     let item = SecureStoreKey(namespace: "oidc", account: "refused")
