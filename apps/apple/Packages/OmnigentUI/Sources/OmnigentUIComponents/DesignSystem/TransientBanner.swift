@@ -30,12 +30,12 @@ extension View {
   }
 }
 
-private struct TransientBannerPresenter: ViewModifier {
+struct TransientBannerPresenter: ViewModifier {
   @Binding var banner: TransientBanner?
   let action: (@MainActor (TransientBanner) -> Void)?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-  static let duration: Duration = .seconds(4)
+  var duration: Duration = .seconds(4)
 
   func body(content: Content) -> some View {
     content
@@ -46,7 +46,7 @@ private struct TransientBannerPresenter: ViewModifier {
             .task(id: current.id) {
               AccessibilityNotification.Announcement(current.message).post()
               do {
-                try await Task.sleep(for: Self.duration)
+                try await Task.sleep(for: duration)
               } catch {
                 return  // Replaced or dismissed; the newer banner owns the timer.
               }

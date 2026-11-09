@@ -117,9 +117,11 @@ public struct ServerSettingsView: View {
     }
   }
 
-  private var serverName: String {
-    state.servers.first { $0.id == selectedServer }?.name ?? "Server"
-  }
+  #if os(iOS)
+    private var serverName: String {
+      state.servers.first { $0.id == selectedServer }?.name ?? "Server"
+    }
+  #endif
 
   private var serverPicker: some View {
     Picker("Server", selection: $selectedServer) {

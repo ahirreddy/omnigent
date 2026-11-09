@@ -246,11 +246,8 @@ public final class ThemePreferences {
 
   static func decodeCustom(_ stored: String?) -> Result<CustomTheme, ReadError> {
     guard let stored else { return .success(.default) }
-    guard let data = stored.data(using: .utf8) else {
-      return .failure(.malformed(key: customKey))
-    }
     do {
-      return .success(try JSONDecoder().decode(CustomTheme.self, from: data))
+      return .success(try JSONDecoder().decode(CustomTheme.self, from: Data(stored.utf8)))
     } catch {
       return .failure(.malformed(key: customKey))
     }
@@ -268,17 +265,28 @@ public final class ThemePreferences {
   }
 
   private func writeCustom() {
+    switch Self.encodeCustom(custom) {
+    case .success(let json): defaults.set(json, forKey: Self.customKey)
+    case .failure(let error): readErrors.append(error)
+    }
+  }
+
+  /// The stored form of `custom`. Contrast is a `Double`, and JSON has no NaN or infinity.
+  static func encodeCustom(_ custom: CustomTheme) -> Result<String, ReadError> {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     do {
-      let data = try encoder.encode(custom)
-      guard let json = String(bytes: data, encoding: .utf8) else {
-        readErrors.append(.malformed(key: Self.customKey))
-        return
-      }
-      defaults.set(json, forKey: Self.customKey)
+      return storedJSON(try encoder.encode(custom))
     } catch {
-      readErrors.append(.malformed(key: Self.customKey))
+      return .failure(.malformed(key: customKey))
     }
+  }
+
+  /// An encoded theme's bytes as the text stored in defaults.
+  static func storedJSON(_ data: Data) -> Result<String, ReadError> {
+    guard let json = String(bytes: data, encoding: .utf8) else {
+      return .failure(.malformed(key: customKey))
+    }
+    return .success(json)
   }
 }

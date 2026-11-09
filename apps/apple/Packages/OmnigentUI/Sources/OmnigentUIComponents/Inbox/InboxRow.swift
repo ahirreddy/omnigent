@@ -9,8 +9,7 @@ struct InboxRow: View {
   @Binding var isExpanded: Bool
   @Binding var reply: String
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
-    false
+  @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var commandReturnSends = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
@@ -184,7 +183,7 @@ struct InboxRow: View {
         .lineLimit(1...6)
         .textFieldStyle(.roundedBorder)
         .disabled(sending)
-        .onSubmit { if !submitWithCommandReturn { submit(send) } }
+        .onSubmit { if !commandReturnSends { submit(send) } }
         .onKeyPress(.return, phases: .down) { press in returnKey(press, send) }
         .onChange(of: reply) {
           if case .failed = item.reply { actions.editReply?(item) }
@@ -210,7 +209,7 @@ struct InboxRow: View {
       submit(send)
       return .handled
     }
-    guard submitWithCommandReturn, press.modifiers.isEmpty else { return .ignored }
+    guard commandReturnSends, press.modifiers.isEmpty else { return .ignored }
     reply += "\n"
     return .handled
   }

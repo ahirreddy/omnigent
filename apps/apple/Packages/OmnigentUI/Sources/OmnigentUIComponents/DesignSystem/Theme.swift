@@ -128,7 +128,7 @@ enum Theme {
 struct CardSurface: ViewModifier {
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   @Environment(\.colorSchemeContrast) private var contrast
-  var cornerRadius: CGFloat = Theme.Radius.large
+  var cornerRadius: CGFloat
   var tint: ThemeColor?
   var stroke: ThemeColor?
 
@@ -196,6 +196,8 @@ struct CopyButton: View {
   /// The button's accessibility identifier.
   var identifier: String?
   var showsLabel = false
+  /// How long "Copied" shows.
+  var confirmationDuration: Duration = .seconds(1.5)
   @State private var copied = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -219,7 +221,7 @@ struct CopyButton: View {
     .task(id: copied) {
       guard copied else { return }
       do {
-        try await Task.sleep(for: .seconds(1.5))
+        try await Task.sleep(for: confirmationDuration)
       } catch {
         // Cancelled because the button went away; there is nothing left to reset.
         return
