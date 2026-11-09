@@ -124,7 +124,8 @@
       let screen = OffscreenWindow(install(missing, spy: spy), width: 620, height: 620)
       defer { screen.close() }
       #expect(try screen.allText().contains("Install it here"))
-      try screen.clickFromEnd()
+      let installButton = try #require(screen.controlFrames.last)
+      try screen.click(installButton)
       #expect(spy.log == ["setup install"])
       screen.host.rootView = install(
         LocalSetupState(cli: .missing("x"), server: .stopped, log: ["uv"], install: .installing),
@@ -135,7 +136,7 @@
       #expect(text.contains("Installing\u{2026}"))
       #expect(text.contains("uv"))
       spy.log.removeAll()
-      try screen.clickFromEnd()
+      try screen.click(installButton)
       #expect(spy.log.isEmpty, "Install doesn't start twice")
     }
 
