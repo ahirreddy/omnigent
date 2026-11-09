@@ -209,6 +209,15 @@ private struct FileTreeRow: View {
     HStack(spacing: 4) {
       content
       Spacer(minLength: 0)
+      // One flexible gap, so every size ends on the row's right edge whatever the name's length.
+      if case .entry(let entry, _) = row.content, let size = entry.size, !entry.kind.isDirectory {
+        Text(size.formatted(.byteCount(style: .file)))
+          .font(.system(size: 10))
+          .monospacedDigit()
+          .foregroundStyle(.tertiary)
+          .fixedSize()
+          .padding(.leading, 2)
+      }
     }
     .padding(.leading, CGFloat(row.depth) * 14 + 6)
     .padding(.trailing, 8)
@@ -243,12 +252,6 @@ private struct FileTreeRow: View {
         .lineLimit(1)
         .truncationMode(.middle)
         .font(.system(size: 12))
-      if let size = entry.size, !entry.kind.isDirectory {
-        Spacer(minLength: 6)
-        Text(size.formatted(.byteCount(style: .file)))
-          .font(.system(size: 10))
-          .foregroundStyle(.tertiary)
-      }
     case .loading:
       ProgressView()
         .controlSize(.small)
