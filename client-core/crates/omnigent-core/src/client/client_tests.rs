@@ -1305,6 +1305,7 @@ fn errors_say_whether_delivery_is_uncertain_and_whether_to_sign_in() {
         SessionError::Auth(HostedAuthError::Forbidden)
     );
     assert!(SessionError::NotConnected.requires_sign_in());
+    assert!(SessionError::Auth(HostedAuthError::IdentityMismatch).requires_sign_in());
     assert!(!SessionError::Cancelled.requires_sign_in());
 }
 

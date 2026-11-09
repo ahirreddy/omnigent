@@ -187,7 +187,9 @@ impl SessionError {
             Self::Unauthorized { .. }
                 | Self::NotConnected
                 | Self::Upload(UploadError::Unauthorized)
-                | Self::Auth(HostedAuthError::Unauthorized { .. })
+                | Self::Auth(
+                    HostedAuthError::Unauthorized { .. } | HostedAuthError::IdentityMismatch
+                )
         )
     }
 }

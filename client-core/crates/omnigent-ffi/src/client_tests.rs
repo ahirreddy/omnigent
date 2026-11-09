@@ -933,6 +933,37 @@ fn servers_this_client_cannot_sign_in_to_fail_clearly() {
     }
 }
 
+/// A saved account whose token now answers as somebody else can never connect again, so the user
+/// has to be offered sign-in rather than a Retry that repeats the mismatch.
+#[test]
+fn a_saved_credential_that_resolves_to_another_user_asks_to_sign_in() {
+    let mut harness = accounts_server();
+    connect(&mut harness).unwrap();
+    harness
+        .call(|core| async move { core.sign_in_with_password("ada".into(), "pw".into()).await })
+        .unwrap();
+    harness.core.disconnect();
+    harness.pump();
+    harness
+        .http
+        .route("/v1/me", json(200, r#"{"user_id":"somebody-else"}"#));
+    let error = harness
+        .call(|core| async move { core.connect(SERVER.into(), Some("u1".into())).await })
+        .unwrap_err();
+    assert!(error.requires_sign_in(), "{error:?}");
+    let phase = last_phase(&harness);
+    assert!(
+        matches!(
+            phase,
+            ConnectionPhase::SignInRequired {
+                reason: Some(CoreError::Session { .. }),
+                ..
+            }
+        ),
+        "{phase:?}"
+    );
+}
+
 #[test]
 fn a_rejected_token_asks_for_sign_in_and_a_broken_server_fails() {
     let mut harness = accounts_server();
