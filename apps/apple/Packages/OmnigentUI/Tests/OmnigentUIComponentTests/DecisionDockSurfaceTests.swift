@@ -30,11 +30,7 @@
     private func onScreen(_ ids: String...) -> DecisionSurfaces {
       let surfaces = DecisionSurfaces()
       for id in ids {
-        surfaces.report(
-          id,
-          placement: InlineDecisionPlacement(
-            card: CGRect(x: 0, y: 0, width: 100, height: 100),
-            viewport: CGRect(x: 0, y: 0, width: 100, height: 400), showsApprove: true))
+        surfaces.report(id, isOnScreen: true, showsApprove: true)
       }
       return surfaces
     }
@@ -78,7 +74,6 @@
           Color.clear.frame(height: 200).reportsInlineDecision("one", showsApprove: true)
         }
         DecisionDock(state: .requests([card]), actions: log.actions)
-          .decisionBottomBar(surfaces)
       }
       .environment(surfaces)
       .frame(width: 800, height: 600)
