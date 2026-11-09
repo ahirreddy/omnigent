@@ -326,6 +326,22 @@ mod tests {
     }
 
     #[test]
+    fn an_expired_or_nameless_credential_is_never_saved() {
+        let store = MemoryStore::default();
+        let endpoint = ServerEndpoint::new("https://omni.example/api/a").unwrap();
+        for invalid in [
+            credential("fixture-token", "alice", NOW),
+            credential("fixture-token", "  ", NOW + 1),
+        ] {
+            assert_eq!(
+                block_on(save_credential(&store, &endpoint, &invalid, NOW)),
+                Err(HostedAuthError::InvalidCredentialRecord)
+            );
+        }
+        assert_eq!(store.items.borrow().len(), 0);
+    }
+
+    #[test]
     fn account_login_uses_actual_contract_and_does_not_carry_ambient_credentials() {
         let transport = ScriptedTransport::new();
         transport

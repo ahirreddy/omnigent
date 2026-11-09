@@ -335,6 +335,20 @@ fn acknowledgements_that_do_not_decode_are_uncertain() {
 }
 
 #[test]
+fn an_install_acknowledged_with_an_unreadable_version_is_uncertain() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/hosts/h1/harnesses/codex-native/install",
+        r#"{"configured_harnesses":{"codex-native":true},"version":7}"#,
+    );
+    assert!(matches!(
+        block_on(core.install_harness_reporting("h1", "codex-native")),
+        Err(SessionError::DeliveryUncertain { detail })
+            if detail.contains("unreadable acknowledgement") && detail.contains("version")
+    ));
+}
+
+#[test]
 fn unreadable_detected_credentials_and_install_versions_name_their_route() {
     let core = connected(RouteTransport::local());
     core.transport()
