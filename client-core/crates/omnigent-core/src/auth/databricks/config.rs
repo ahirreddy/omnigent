@@ -193,6 +193,12 @@ mod tests {
 
     /// `DatabricksOAuthTests::testAcceptsBuildConfigurationOverrides`.
     #[test]
+    fn a_configuration_reports_its_redirect() {
+        let config = OAuthConfiguration::new("omnigent", LOOPBACK_REDIRECT).unwrap();
+        assert_eq!(config.redirect_url().as_str(), "http://localhost/");
+    }
+
+    #[test]
     fn databricks_oauth_config_accepts_overrides() {
         let config =
             OAuthConfiguration::new("custom-client", "https://auth.example.com/mobile/callback")

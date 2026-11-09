@@ -432,7 +432,10 @@ impl CoreError {
                 requires_sign_in, ..
             } => *requires_sign_in,
             Self::Auth { failure, .. } | Self::Oidc { failure, .. } => {
-                matches!(failure, AuthFailure::SignInRequired | AuthFailure::Expired)
+                matches!(
+                    failure,
+                    AuthFailure::SignInRequired | AuthFailure::Expired | AuthFailure::EndedByServer
+                )
             }
             _ => false,
         }

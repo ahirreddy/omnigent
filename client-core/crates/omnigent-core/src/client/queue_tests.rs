@@ -3,9 +3,10 @@
 use futures::executor::block_on;
 use serde_json::json;
 
-use super::SessionError;
 use super::test_support::{Reply, RouteTransport, body_json, live};
-use crate::attachments::{DraftError, UploadFile};
+use super::{SessionError, lock};
+use crate::attachments::{DraftError, DraftKey, UploadFile};
+use crate::ledger::SubmissionOutcome;
 
 const UPLOAD: &str = "/v1/sessions/conv_a/resources/files";
 
@@ -77,4 +78,31 @@ fn files_alone_are_a_queued_message_and_can_go_back_to_the_composer() {
         block_on(core.send_queued_message("conv_a", " ", None, None, &[])),
         Err(SessionError::EmptyMessage)
     ));
+}
+
+/// No public path has a files send in flight without its ledger entry, so this seeds one: a
+/// capture that fails after the ledger began must not leave the session unable to send.
+#[test]
+fn a_held_send_that_cannot_capture_its_files_leaves_nothing_in_flight() {
+    let core = live(transport());
+    let item = core.add_attachment("conv_a", file("plan.txt")).unwrap();
+    block_on(core.upload_attachment("conv_a", item, "boundary")).unwrap();
+    let (hold, _) = core.hold_attachments("conv_a").unwrap().unwrap();
+    let writes_before = core.transport().writes().len();
+    let stuck = {
+        let mut state = lock(&core.state);
+        let key = DraftKey::new(state.scope().unwrap(), "conv_a");
+        state.drafts.begin_submission(&key).unwrap()
+    };
+    assert_eq!(
+        block_on(core.send_queued_message("conv_a", "then this", Some(hold), None, &[])),
+        Err(SessionError::Draft(DraftError::NotReady))
+    );
+    assert_eq!(core.transport().writes().len(), writes_before);
+    lock(&core.state)
+        .drafts
+        .finish_submission(&stuck, SubmissionOutcome::Rejected)
+        .unwrap();
+    block_on(core.send_queued_message("conv_a", "then this", Some(hold), None, &[])).unwrap();
+    assert_eq!(core.transport().writes().len(), writes_before + 1);
 }

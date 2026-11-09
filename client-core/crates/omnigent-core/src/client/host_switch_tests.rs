@@ -182,3 +182,31 @@ fn sign_in_link_reads_the_pending_prompt_and_drops_non_web_links() {
             .pending
     );
 }
+
+#[test]
+fn an_unreadable_sign_in_link_is_malformed() {
+    let transport = RouteTransport::local();
+    transport.ok("/v1/sessions/conv_a/sign-in-link", "[]");
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.session_sign_in_link("conv_a")),
+        Err(SessionError::MalformedResponse { detail })
+            if detail.starts_with("/v1/sessions/conv_a/sign-in-link: ")
+    ));
+}
+
+#[test]
+fn a_session_cannot_move_onto_a_managed_sandbox() {
+    let transport = switching(Reply::json(200, "{}"));
+    transport.ok(
+        "/v1/hosts",
+        r#"{"hosts":[{"host_id":"host_b","name":"Box","status":"online","sandbox_provider":"modal"}]}"#,
+    );
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.switch_session_host("conv_a", "host_b", "/work/app")),
+        Err(SessionError::Creation(CreationError::Unavailable(reason)))
+            if reason.contains("managed sandbox")
+    ));
+    assert_eq!(writes(core.transport()).len(), 0);
+}

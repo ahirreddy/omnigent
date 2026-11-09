@@ -382,3 +382,208 @@ fn a_refused_edit_keeps_the_hosts_reason() {
         })
     );
 }
+
+fn detail(body: &str) -> super::pull_request_detail::PullRequestDetail {
+    super::pull_request_detail::PullRequestDetail::from_value(&serde_json::from_str(body).unwrap())
+        .unwrap()
+}
+
+#[test]
+fn conditions_sort_with_what_needs_the_user_first() {
+    use PullRequestCondition::{
+        ChecksFailing, ChecksRunning, Closed, Conflict, Draft, Merged, Open, Ready, Unknown,
+    };
+    let ordered = [
+        Conflict,
+        ChecksFailing,
+        Ready,
+        ChecksRunning,
+        Open,
+        Draft,
+        Unknown,
+        Merged,
+        Closed,
+    ];
+    let priorities: Vec<u8> = ordered
+        .iter()
+        .map(|condition| condition.priority())
+        .collect();
+    assert_eq!(priorities, (0..9).collect::<Vec<u8>>());
+}
+
+#[test]
+fn a_stored_pull_request_keeps_its_state_as_its_condition() {
+    use super::pull_request_detail::PullRequestCondition as Condition;
+    for (status, expected) in [
+        (PullRequestStatus::Open, Condition::Open),
+        (PullRequestStatus::Draft, Condition::Draft),
+        (PullRequestStatus::Merged, Condition::Merged),
+        (PullRequestStatus::Closed, Condition::Closed),
+        (PullRequestStatus::Unknown, Condition::Unknown),
+    ] {
+        assert_eq!(Condition::of_stored(status), expected);
+    }
+}
+
+#[test]
+fn a_detail_without_checks_or_a_known_state_still_decodes() {
+    let pull = detail(
+        r#"{"number":1,"url":"u","title":"t","state":"ODD","auto_merge":{"merge_method":"SQUASH","enabled_by":"ann"}}"#,
+    );
+    assert_eq!(pull.condition, PullRequestCondition::Unknown);
+    assert_eq!(pull.checks.total, 0);
+    let auto = pull.auto_merge.unwrap();
+    assert_eq!(auto.merge_method.as_deref(), Some("SQUASH"));
+    assert_eq!(auto.enabled_by.as_deref(), Some("ann"));
+}
+
+#[test]
+fn malformed_auto_merge_and_numbers_are_errors() {
+    let decode = |body: &str| {
+        super::pull_request_detail::PullRequestDetail::from_value(
+            &serde_json::from_str(body).unwrap(),
+        )
+    };
+    assert!(
+        decode(r#"{"number":1,"url":"u","title":"t","auto_merge":{"merge_method":7}}"#).is_err()
+    );
+    assert!(decode(r#"{"number":1,"url":"u","title":"t","auto_merge":{"enabled_by":7}}"#).is_err());
+    assert!(decode(r#"{"number":-1}"#).is_err());
+    assert!(decode(r#"{"number":1.5}"#).is_err());
+    assert!(decode(r#"{"title":"no number"}"#).is_err());
+    assert!(decode("7").is_err());
+    let huge = decode(&format!(
+        r#"{{"number":{},"url":"u","title":"t"}}"#,
+        u64::MAX
+    ))
+    .unwrap();
+    assert_eq!(huge.number, u64::MAX);
+}
+
+#[test]
+fn an_unknown_unavailable_reason_reads_as_unavailable() {
+    let unavailable = info(r#"{"available":false,"reason":"something_new"}"#);
+    assert_eq!(
+        unavailable.availability,
+        PullRequestAvailability::Unavailable
+    );
+}
+
+#[test]
+fn host_reads_map_every_failure() {
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        INFO,
+        vec![
+            Reply::Fail(crate::http::TransportError::Cancelled),
+            Reply::Fail(crate::http::TransportError::Offline {
+                message: "down".to_owned(),
+            }),
+            Reply::json(200, "not json"),
+            Reply::json(403, "{}"),
+            Reply::json(500, r#"{"detail":"exploded"}"#),
+            Reply::json(200, "[]"),
+            Reply::json(401, r#"{"detail":"expired"}"#),
+        ],
+    );
+    let core = connected(transport);
+    let read = || block_on(core.pull_request_info("conv_a", None));
+    assert_eq!(read(), Err(SessionError::Cancelled));
+    assert!(matches!(read(), Err(SessionError::Transport(_))));
+    assert!(matches!(
+        read(),
+        Err(SessionError::MalformedResponse { .. })
+    ));
+    assert_eq!(read(), Err(SessionError::Forbidden));
+    assert_eq!(
+        read(),
+        Err(SessionError::Rejected {
+            status: 500,
+            message: "exploded".to_owned()
+        })
+    );
+    assert!(matches!(
+        read(),
+        Err(SessionError::MalformedResponse { .. })
+    ));
+    assert!(matches!(read(), Err(SessionError::Unauthorized { .. })));
+    assert!(!core.is_connected());
+}
+
+#[test]
+fn a_reply_after_a_disconnect_is_not_used() {
+    let transport = RouteTransport::local();
+    transport.ok(INFO, READY);
+    let gate = transport.gate("GET", INFO);
+    let core = connected(transport);
+    let mut read = std::pin::pin!(core.pull_request_info("conv_a", None));
+    assert!(super::test_support::still_pending(read.as_mut()));
+    core.disconnect();
+    gate.open();
+    assert_eq!(block_on(read), Err(SessionError::NotConnected));
+}
+
+#[test]
+fn a_patch_with_a_wrong_shape_or_an_unknown_reason_is_explained() {
+    let path = format!("{INFO}/diff");
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        &path,
+        vec![
+            Reply::json(200, r#"{"patch":7}"#),
+            Reply::json(200, r#"{"patch":"","unavailable_reason":"new"}"#),
+            Reply::json(
+                200,
+                r#"{"patch":"","unavailable_reason":"new","message":"Custom"}"#,
+            ),
+        ],
+    );
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.pull_request_patch("conv_a", None)),
+        Err(SessionError::MalformedResponse { .. })
+    ));
+    let generic = block_on(core.pull_request_patch("conv_a", None)).unwrap();
+    assert!(
+        generic
+            .unavailable
+            .unwrap()
+            .contains("open the pull request")
+    );
+    let custom = block_on(core.pull_request_patch("conv_a", None)).unwrap();
+    assert_eq!(custom.unavailable.as_deref(), Some("Custom"));
+    assert!(matches!(
+        block_on(core.pull_request_patch("../x", None)),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}
+
+#[test]
+fn merge_methods_have_their_wire_names_and_team_reviewers_say_so() {
+    assert_eq!(MergeMethod::Merge.wire(), "merge");
+    assert_eq!(MergeMethod::Rebase.wire(), "rebase");
+    let core = connected(edit_routes());
+    let team = ReviewerTarget {
+        login: "core".into(),
+        kind: ReviewerKind::Team,
+    };
+    block_on(core.update_pull_request_reviewers("conv_a", PR, &[team], &[])).unwrap();
+    assert_eq!(
+        body_json(&core.transport().writes()[0])["add"][0]["kind"],
+        "team"
+    );
+}
+
+#[test]
+fn an_unreadable_label_list_names_its_route() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok("/v1/sessions/conv_a/resources/github/labels", "[]");
+    assert!(matches!(
+        block_on(core.pull_request_repository_labels("conv_a", "acme/app")),
+        Err(SessionError::MalformedResponse { detail })
+            if detail.starts_with("/v1/sessions/conv_a/resources/github/labels: ")
+    ));
+}

@@ -214,6 +214,9 @@ impl From<core::attachments::AttachmentDraft> for AttachmentDraft {
     }
 }
 
+/// How long a renewal that failed for a passing reason waits before the next attempt.
+pub(crate) const RENEWAL_RETRY_MS: u64 = 60_000;
+
 /// Sign-in work tied to the current connection; replaced by every connect.
 #[derive(Default)]
 pub(crate) struct AuthState {
@@ -222,6 +225,8 @@ pub(crate) struct AuthState {
     pub(crate) connected_user: Option<String>,
     attempts: HashMap<u64, OidcSignInAttempt>,
     next_attempt: u64,
+    /// The browser ticket whose poller is current; a new ticket or a connection retires it.
+    browser_ticket: u64,
     pub(crate) renewal: Option<AbortHandle>,
 }
 
@@ -256,6 +261,7 @@ impl fmt::Debug for ClientCore {
 
 impl Drop for ClientCore {
     fn drop(&mut self) {
+        self.inner.begin_generation();
         post(&self.inner.tx, Msg::Shutdown);
     }
 }
@@ -397,7 +403,11 @@ impl Inner {
             user_id: server.user_id.clone(),
             mode: resolved.mode.clone().into(),
         };
-        lock(&self.auth).connected_user = Some(server.user_id);
+        {
+            let mut auth = lock(&self.auth);
+            auth.connected_user = Some(server.user_id);
+            auth.browser_ticket = auth.browser_ticket.wrapping_add(1);
+        }
         self.post(Msg::Connected {
             link: Link {
                 endpoint: resolved.endpoint.clone(),
@@ -420,6 +430,8 @@ impl Inner {
                 server_url: server_url.to_owned(),
             },
         });
+        // Until a new connection is up, nothing may still reach the server being left.
+        self.sessions.disconnect();
         if self.demo.is_some() {
             return self.connect_demo(generation).await;
         }
@@ -500,6 +512,10 @@ impl Inner {
                 self.schedule_renewal(generation, resolved, &server, &session);
                 Ok(ConnectionPhase::Connected { server: connected })
             }
+            // Not reaching the server says nothing about the grant: offer Retry, not sign-in.
+            Err(error) if error.is_network_failure() => {
+                Err(self.fail(resolved.endpoint.base_url(), error.into()))
+            }
             Err(error) => Ok(self.sign_in_required(resolved, Some(error.into()))),
         }
     }
@@ -538,14 +554,36 @@ impl Inner {
         let Some(delay) = session.renewal_delay_ms(self.host.unix_ms()) else {
             return;
         };
+        self.schedule_renewal_after(generation, resolved, server, delay);
+    }
+
+    fn schedule_renewal_after(
+        self: &Arc<Self>,
+        generation: u64,
+        resolved: &Resolved,
+        server: &OidcServer,
+        delay_ms: u64,
+    ) {
         let inner = Arc::clone(self);
         let resolved = resolved.clone();
         let server = server.clone();
-        let timer = self.host.after(delay, move || {
+        let timer = self.host.after(delay_ms, move || {
             let host = inner.host.clone();
             host.spawn(async move { inner.renew(generation, resolved, server).await });
         });
-        lock(&self.auth).renewal = Some(timer);
+        self.install_renewal(generation, timer);
+    }
+
+    /// Makes `timer` the one pending renewal of `generation`.
+    pub(crate) fn install_renewal(&self, generation: u64, timer: AbortHandle) {
+        let mut auth = lock(&self.auth);
+        if auth.generation == generation {
+            if let Some(previous) = auth.renewal.replace(timer) {
+                previous.abort();
+            }
+        } else {
+            timer.abort();
+        }
     }
 
     async fn renew(self: Arc<Self>, generation: u64, resolved: Resolved, server: OidcServer) {
@@ -574,11 +612,27 @@ impl Inner {
                 }
             }
             Err(error) => {
-                self.sessions.disconnect();
-                self.post(Msg::Disconnected {
-                    phase: ConnectionPhase::Disconnected,
-                });
-                self.sign_in_required(&resolved, Some(error.into()));
+                // A dead grant needs the user; anything else (the network, a locked store) passes,
+                // and the session in hand keeps working meanwhile.
+                let dead = matches!(
+                    error.failure(),
+                    core::auth::errors::AuthFailure::Expired
+                        | core::auth::errors::AuthFailure::EndedByServer
+                        | core::auth::errors::AuthFailure::SignInRequired
+                );
+                if dead {
+                    self.post(Msg::Disconnected {
+                        phase: ConnectionPhase::Disconnected,
+                    });
+                    self.sessions.disconnect();
+                    self.sign_in_required(&resolved, Some(error.into()));
+                } else {
+                    self.post(Msg::Emit(CoreEvent::Error {
+                        scope: ErrorScope::Connection,
+                        error: error.into(),
+                    }));
+                    self.schedule_renewal_after(generation, &resolved, &server, RENEWAL_RETRY_MS);
+                }
             }
         }
     }
@@ -637,15 +691,39 @@ impl Inner {
         }
     }
 
+    /// Whether a browser ticket is still the one being waited for.
+    fn ticket_is_current(&self, generation: u64, ticket_id: u64) -> bool {
+        let auth = lock(&self.auth);
+        auth.generation == generation && auth.browser_ticket == ticket_id
+    }
+
+    /// Saves an accounts-style credential.
+    async fn save_credential(
+        &self,
+        resolved: &Resolved,
+        credential: &accounts::AccountCredential,
+    ) -> Result<(), CoreError> {
+        accounts::save_credential(
+            self.store()?,
+            &resolved.endpoint,
+            credential,
+            self.host.unix_ms(),
+        )
+        .await
+        .map(|_| ())
+        .map_err(CoreError::from)
+    }
+
     async fn poll_browser_login(
         self: Arc<Self>,
         generation: u64,
+        ticket_id: u64,
         resolved: Resolved,
         login: BrowserLogin,
     ) {
         loop {
             self.host.scheduler.sleep(ticket::POLL_INTERVAL_MS).await;
-            if self.check_generation(generation).is_err() {
+            if !self.ticket_is_current(generation, ticket_id) {
                 return;
             }
             let now = self.host.unix_ms();
@@ -663,30 +741,16 @@ impl Inner {
                 },
                 Err(error) => Err(error),
             };
-            if self.check_generation(generation).is_err() {
+            if !self.ticket_is_current(generation, ticket_id) {
                 return;
             }
             match status {
                 Ok(PollStatus::Pending) => {}
                 Ok(PollStatus::Complete(credential)) => {
-                    let store = match self.store() {
-                        Ok(store) => store,
-                        Err(error) => {
-                            self.sign_in_required(&resolved, Some(error));
-                            return;
-                        }
-                    };
-                    if let Err(error) = accounts::save_credential(
-                        store,
-                        &resolved.endpoint,
-                        &credential,
-                        self.host.unix_ms(),
-                    )
-                    .await
-                    {
+                    if let Err(error) = self.save_credential(&resolved, &credential).await {
                         self.post(Msg::Emit(CoreEvent::Error {
                             scope: ErrorScope::Connection,
-                            error: error.into(),
+                            error,
                         }));
                     }
                     let user = Some(credential.user_id.clone());
@@ -1014,10 +1078,15 @@ impl ClientCore {
             base_url: resolved.endpoint.base_url().to_owned(),
             login: info.clone(),
         }));
+        let ticket_id = {
+            let mut auth = lock(&inner.auth);
+            auth.browser_ticket = auth.browser_ticket.wrapping_add(1);
+            auth.browser_ticket
+        };
         let poller = Arc::clone(inner);
         inner
             .host
-            .spawn(poller.poll_browser_login(generation, resolved, login));
+            .spawn(poller.poll_browser_login(generation, ticket_id, resolved, login));
         Ok(info)
     }
 
@@ -1031,7 +1100,7 @@ impl ClientCore {
         let inner = &self.inner;
         let resolved = inner.resolved()?;
         let user = lock(&inner.auth).connected_user.clone();
-        inner.begin_generation();
+        let generation = inner.begin_generation();
         inner.post(Msg::Disconnected {
             phase: ConnectionPhase::Disconnected,
         });
@@ -1075,7 +1144,10 @@ impl ClientCore {
             }
             CoreMode::LocalSingleUser | CoreMode::Proxy | CoreMode::Unsupported { .. } => Ok(()),
         };
-        inner.sign_in_required(&resolved, None);
+        // A connect that began during a slow revoke owns the phase now.
+        if inner.check_generation(generation).is_ok() {
+            inner.sign_in_required(&resolved, None);
+        }
         result
     }
 
@@ -1412,8 +1484,10 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
-    /// Stops every connection and the engine. The core is unusable afterwards.
+    /// Stops every connection, sign-in and renewal, and the engine. The core is unusable
+    /// afterwards.
     pub fn shutdown(&self) {
+        self.inner.begin_generation();
         self.inner.post(Msg::Shutdown);
     }
 }
@@ -1484,18 +1558,7 @@ impl ClientCore {
                 return Err(error);
             }
         };
-        let saved = match inner.store() {
-            Ok(store) => accounts::save_credential(
-                store,
-                &resolved.endpoint,
-                &credential,
-                inner.host.unix_ms(),
-            )
-            .await
-            .map_err(CoreError::from),
-            Err(error) => Err(error),
-        };
-        if let Err(error) = saved {
+        if let Err(error) = inner.save_credential(&resolved, &credential).await {
             // Leave `SigningIn` (unless a newer connect owns the phase): the sign-in screen shows
             // why the credential was not kept. The caller gets the save error either way.
             if inner.check_generation(generation).is_ok() {
@@ -1594,3 +1657,7 @@ pub fn secure_store_namespaces() -> Vec<String> {
         SecureStoreKey::DATABRICKS_NAMESPACE.to_owned(),
     ]
 }
+
+#[cfg(test)]
+#[path = "client_tests.rs"]
+mod tests;

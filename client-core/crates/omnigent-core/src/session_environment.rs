@@ -147,6 +147,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn blank_lines_and_comments_inside_the_host_block_are_skipped() {
+        let id = "ab12cd34ef56ab12cd34ef56ab12cd34";
+        let block = format!("# top\n\nhost:\n\n  # the id\n  host_id: {id}\n");
+        assert_eq!(host_id_from_config(&block).as_deref(), Some(id));
+    }
+
+    #[test]
     fn reads_the_cli_host_id_from_config_yaml() {
         let id = "ab12cd34ef56ab12cd34ef56ab12cd34";
         let block = format!("server: x\nhost:\n  name: my-mac\n  host_id: {id}\nother: 1\n");

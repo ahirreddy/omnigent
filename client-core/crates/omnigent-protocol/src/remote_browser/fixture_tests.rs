@@ -408,3 +408,16 @@ fn h264_frame_tables_cover_their_streams() {
     }
     assert!(fixture_text(&format!("{ROOT}/README.md")).contains("libx264"));
 }
+
+#[test]
+fn unknown_messages_round_trip_with_their_fields() {
+    let text = r#"{"type":"brand_new","x":1}"#;
+    let HostMessage::Unknown { message_type, raw } = HostMessage::decode(text).unwrap() else {
+        panic!("not unknown");
+    };
+    assert_eq!(message_type, "brand_new");
+    assert_eq!(raw["x"], 1);
+    let again: Value =
+        serde_json::from_str(&ClientMessage::decode(text).unwrap().encode().unwrap()).unwrap();
+    assert_eq!(again, serde_json::json!({"type": "brand_new", "x": 1}));
+}

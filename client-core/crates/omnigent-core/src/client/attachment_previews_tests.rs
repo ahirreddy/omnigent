@@ -112,3 +112,43 @@ fn unauthorized_ends_the_connection() {
     );
     assert!(!core.is_connected());
 }
+
+#[test]
+fn a_preview_that_could_not_be_fetched_reports_why() {
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        CONTENT,
+        vec![
+            Reply::Fail(crate::http::TransportError::Cancelled),
+            Reply::Fail(crate::http::TransportError::Offline {
+                message: "gone".to_owned(),
+            }),
+        ],
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.attachment_preview("conv_a", "file_1")).map(|_| ()),
+        Err(SessionError::Cancelled)
+    );
+    assert!(matches!(
+        block_on(core.attachment_preview("conv_a", "file_1")),
+        Err(SessionError::Transport(_))
+    ));
+}
+
+#[test]
+fn a_preview_answered_after_a_disconnect_is_dropped() {
+    let transport = RouteTransport::local();
+    let gate = transport.gate("GET", CONTENT);
+    transport.enqueue("GET", CONTENT, vec![png(200)]);
+    let core = connected(transport);
+    let mut fetching = std::pin::pin!(core.attachment_preview("conv_a", "file_1"));
+    assert!(super::test_support::still_pending(fetching.as_mut()));
+    core.disconnect();
+    gate.open();
+    assert_eq!(
+        block_on(fetching).map(|_| ()),
+        Err(SessionError::NotConnected)
+    );
+}

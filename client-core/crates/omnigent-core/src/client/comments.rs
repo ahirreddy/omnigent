@@ -152,8 +152,10 @@ pub fn anchored_start(comment: &FileComment, text: &str) -> Option<u64> {
         return comment.start_index;
     };
     let anchor_length = anchor.chars().fold(0_u64, |count, _| count + 1);
-    let window =
-        stored.saturating_sub(ANCHOR_SEARCH_WINDOW)..=stored + anchor_length + ANCHOR_SEARCH_WINDOW;
+    let window = stored.saturating_sub(ANCHOR_SEARCH_WINDOW)
+        ..=stored
+            .saturating_add(anchor_length)
+            .saturating_add(ANCHOR_SEARCH_WINDOW);
     let mut first = None;
     let mut nearest: Option<u64> = None;
     let mut characters = 0_u64;
@@ -435,6 +437,25 @@ mod tests {
     ]"#;
 
     #[test]
+    fn an_unreadable_new_comment_is_malformed() {
+        let core = connected(RouteTransport::local());
+        core.transport()
+            .ok("/v1/sessions/conv_a/comments", r#"{"id":5}"#);
+        let draft = NewFileComment {
+            path: "a.rs".into(),
+            body: "why?".into(),
+            start_index: 3,
+            end_index: 5,
+            anchor: None,
+        };
+        assert!(matches!(
+            block_on(core.add_session_comment("conv_a", &draft)),
+            Err(SessionError::MalformedResponse { detail })
+                if detail.starts_with("/v1/sessions/conv_a/comments: ")
+        ));
+    }
+
+    #[test]
     fn line_ranges_count_characters_without_the_break() {
         assert_eq!(line_character_range("ab\ncd\n", 1), Some((0, 2)));
         assert_eq!(line_character_range("ab\ncd\n", 2), Some((3, 5)));
@@ -545,6 +566,11 @@ mod tests {
             Some(3)
         );
         assert_eq!(anchored_start(&comment_at(3, None), "abcd"), Some(3));
+        // A stored offset at the integer limit falls back to the first occurrence.
+        assert_eq!(
+            anchored_start(&comment_at(u64::MAX, Some("cd")), "abcd"),
+            Some(2)
+        );
         // Far away, the first occurrence wins; overlapping copies are found.
         let far = format!("{}aaa", "z".repeat(900));
         assert_eq!(anchored_start(&comment_at(0, Some("aa")), &far), Some(900));
@@ -598,6 +624,95 @@ mod tests {
             block_on(core.delete_session_comment("s1", "a/b")),
             Err(SessionError::InvalidIdentifier { .. })
         ));
+    }
+
+    #[test]
+    fn unreadable_replies_about_a_comment_are_malformed() {
+        let transport = RouteTransport::local();
+        transport.writable_session("[]");
+        transport.ok("/v1/sessions/conv_a/comments", r#"{"id":5}"#);
+        transport.ok("/v1/sessions/conv_a/comments/c1", r#"{"id":5}"#);
+        transport.ok(
+            "/v1/sessions/conv_a/comments/send",
+            r#"{"formatted_message":5}"#,
+        );
+        let core = connected(transport);
+        let ids = ["c1".to_owned()];
+        assert!(matches!(
+            block_on(core.update_session_comment(
+                "conv_a",
+                "c1",
+                &CommentUpdate { body: None, open: Some(true) }
+            )),
+            Err(SessionError::MalformedResponse { detail }) if detail.contains("/comments/c1")
+        ));
+        assert!(matches!(
+            block_on(core.send_comments_to_agent("conv_a", &ids)),
+            Err(SessionError::MalformedResponse { detail }) if detail.contains("formatted_message")
+        ));
+    }
+
+    #[test]
+    fn a_failed_send_stops_reopening_when_reopening_fails_too_and_keeps_the_first_error() {
+        let failing = RouteTransport::local();
+        failing.writable_session("[]");
+        failing.ok(
+            "/v1/sessions/conv_a/comments/send",
+            r#"{"formatted_message":"m"}"#,
+        );
+        failing.respond(
+            None,
+            "/v1/sessions/conv_a/events",
+            None,
+            Reply::json(400, r#"{"detail":"no"}"#),
+        );
+        failing.respond(
+            None,
+            "/v1/sessions/conv_a/comments/c1",
+            None,
+            Reply::json(500, "{}"),
+        );
+        let core = connected(failing);
+        let ids = ["c1".to_owned(), "c2".to_owned()];
+        assert!(matches!(
+            block_on(core.send_comments_to_agent("conv_a", &ids)),
+            Err(SessionError::Rejected { .. })
+        ));
+        assert_eq!(
+            core.transport()
+                .writes()
+                .iter()
+                .filter(|write| write.method == "PATCH")
+                .count(),
+            1,
+            "the second comment is not attempted"
+        );
+    }
+
+    #[test]
+    fn a_host_offline_failure_explains_the_comments_were_kept() {
+        let transport = RouteTransport::local();
+        transport.writable_session("[]");
+        transport.ok(
+            "/v1/sessions/conv_a/comments/send",
+            r#"{"formatted_message":"m"}"#,
+        );
+        transport.ok(
+            "/v1/sessions/conv_a/comments/c1",
+            r#"{"id":"c1","conversation_id":"conv_a","path":"a.rs","body":"b","status":"draft","created_at":1}"#,
+        );
+        transport.respond(
+            None,
+            "/v1/sessions/conv_a/events",
+            None,
+            Reply::json(503, r#"{"error":{"code":"host_offline","message":"Off"}}"#),
+        );
+        let core = connected(transport);
+        let outcome = block_on(core.send_comments_to_agent("conv_a", &["c1".to_owned()]));
+        assert!(
+            matches!(&outcome, Err(SessionError::HostOffline { message }) if message == HOST_OFFLINE_COMMENTS),
+            "{outcome:?}"
+        );
     }
 
     #[test]

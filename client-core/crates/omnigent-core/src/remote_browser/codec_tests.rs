@@ -236,3 +236,43 @@ proptest! {
         prop_assert!(streamed <= bytes.len());
     }
 }
+
+#[test]
+fn an_empty_assembler_has_nothing_to_finish() {
+    assert_eq!(AccessUnitAssembler::new().finish(), None);
+    assert_eq!(AccessUnitAssembler::new().push(Vec::new()), None);
+}
+
+#[test]
+fn a_start_code_split_across_chunks_is_found_and_buffers_stay_bounded() {
+    let mut splitter = NalSplitter::new();
+    assert_eq!(splitter.push(&[0xff; 4096]).len(), 0);
+    assert!(splitter.buffer.len() <= 2, "{}", splitter.buffer.len());
+    assert_eq!(splitter.push(&[0]).len(), 0);
+    assert_eq!(splitter.push(&[0]).len(), 0);
+    assert_eq!(splitter.push(&[1, 0x67]).len(), 0);
+    assert_eq!(splitter.push(&[0, 0, 1, 0x68]), vec![vec![0x67]]);
+    assert_eq!(splitter.finish(), Some(vec![0x68]));
+    assert_eq!(splitter.finish(), None);
+}
+
+#[test]
+fn a_keyframe_without_parameter_sets_forces_a_new_keyframe() {
+    let mut track = VideoTrack::new();
+    assert_eq!(track.stream_id(), None);
+    let outcome = track.accept(&header(true, 1, 0), &[0, 0, 1, 0x65, 0x88]);
+    assert_eq!(
+        outcome,
+        VideoOutcome::Dropped {
+            reason: VideoDrop::Malformed(CodecError::MissingParameterSets),
+            request: Some(KeyframeReason::Gap),
+        }
+    );
+    assert_eq!(track.stream_id(), None);
+}
+
+#[test]
+fn an_empty_queue_says_so() {
+    let queue = VideoQueue::new(2);
+    assert!(queue.is_empty());
+}

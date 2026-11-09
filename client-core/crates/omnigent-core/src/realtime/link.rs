@@ -278,6 +278,14 @@ mod tests {
     }
 
     #[test]
+    fn an_auth_challenge_while_hydrating_requires_sign_in() {
+        let challenge = ConnectionFailure::AuthenticationRequired {
+            message: "challenge".to_owned(),
+        };
+        assert!(LinkError::Hydration(HydrationFailure::Connection(challenge)).requires_sign_in());
+    }
+
+    #[test]
     fn statuses_classify_like_the_contract() {
         for status in [301, 302, 307, 401, 403] {
             let error = LinkError::HttpStatus { status };

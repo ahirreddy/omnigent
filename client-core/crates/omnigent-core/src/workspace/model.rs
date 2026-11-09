@@ -186,8 +186,12 @@ impl ChangesList {
                 ChangeStatus::Modified | ChangeStatus::Unknown(_) => totals.modified += 1,
                 ChangeStatus::Deleted => totals.deleted += 1,
             }
-            totals.lines_added += entry.lines_added.unwrap_or(0);
-            totals.lines_removed += entry.lines_removed.unwrap_or(0);
+            totals.lines_added = totals
+                .lines_added
+                .saturating_add(entry.lines_added.unwrap_or(0));
+            totals.lines_removed = totals
+                .lines_removed
+                .saturating_add(entry.lines_removed.unwrap_or(0));
         }
         totals
     }
@@ -599,6 +603,99 @@ mod tests {
         sort_for_tree(&mut entries);
         let names: Vec<_> = entries.iter().map(|entry| entry.name.as_str()).collect();
         assert_eq!(names, ["alpha", "Zeta", "A.md", "a.md", "b.rs"]);
+    }
+
+    #[test]
+    fn change_totals_saturate_at_the_integer_limit() {
+        let changed = |lines_added, lines_removed| ChangedFileEntry {
+            path: WorkspacePath::parse("a.rs").unwrap(),
+            status: ChangeStatus::Modified,
+            size: None,
+            modified_at: None,
+            lines_added,
+            lines_removed,
+        };
+        let list = ChangesList {
+            entries: vec![
+                changed(Some(u64::MAX), Some(u64::MAX)),
+                changed(Some(1), Some(1)),
+                changed(None, None),
+            ],
+            has_more: false,
+        };
+        let totals = list.totals();
+        assert_eq!(totals.modified, 3);
+        assert_eq!(totals.lines_added, u64::MAX);
+        assert_eq!(totals.lines_removed, u64::MAX);
+    }
+
+    #[test]
+    fn decoders_refuse_the_root_a_file_and_the_wrong_shape() {
+        assert_eq!(
+            entry(
+                &serde_json::json!({"path": "", "type": "dir"}),
+                &WorkspacePath::root(),
+                Rooting::Listing
+            ),
+            Err("an entry names the environment root".to_owned())
+        );
+        assert!(matches!(
+            changes(&serde_json::json!({"data": [{"path": ""}]})),
+            Err(WorkspaceError::MalformedResponse { detail }) if detail.contains("environment root")
+        ));
+        assert!(matches!(
+            changes(&serde_json::json!(5)),
+            Err(WorkspaceError::MalformedResponse { detail }) if detail.contains("not an object")
+        ));
+        let listed = changes(&serde_json::json!([
+            {"path": "a.rs"},
+            {"path": "b.rs", "status": "conflicted"},
+        ]))
+        .unwrap();
+        assert_eq!(
+            listed.entries[0].status,
+            ChangeStatus::Unknown(String::new())
+        );
+        assert_eq!(
+            listed.entries[1].status,
+            ChangeStatus::Unknown("conflicted".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_diff_must_be_for_the_file_asked_about_and_may_omit_the_path() {
+        let asked = WorkspacePath::parse("a.rs").unwrap();
+        let reply = serde_json::json!({"diff": "patch"});
+        assert_eq!(file_diff(&reply, &asked).unwrap().path, asked);
+        let other = serde_json::json!({"path": "b.rs", "diff": "patch"});
+        assert!(matches!(
+            file_diff(&other, &asked),
+            Err(WorkspaceError::MalformedResponse { detail }) if detail == "file diff: asked for a.rs, got b.rs"
+        ));
+    }
+
+    #[test]
+    fn a_file_falls_back_to_its_top_level_name() {
+        let file = session_file(&serde_json::json!({"id": "f", "name": "n.txt"})).unwrap();
+        assert_eq!(file.filename, "n.txt");
+        assert_eq!(
+            session_file(&serde_json::json!({"id": "f"})).unwrap_err(),
+            "`metadata.filename` is missing"
+        );
+    }
+
+    #[test]
+    fn a_listing_that_is_really_a_file_says_so() {
+        let path = WorkspacePath::parse("a.rs").unwrap();
+        let object = serde_json::json!({"object": "session.file_content"});
+        assert_eq!(
+            require_list(object.as_object().unwrap(), &path),
+            Err(WorkspaceError::UnexpectedKind {
+                path: "a.rs".to_owned(),
+                expected: "directory",
+                actual: "file",
+            })
+        );
     }
 
     #[test]

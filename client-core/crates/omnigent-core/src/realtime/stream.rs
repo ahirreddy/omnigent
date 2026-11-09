@@ -1134,6 +1134,45 @@ mod tests {
     }
 
     #[test]
+    fn a_connection_failure_reads_as_text() {
+        assert_eq!(
+            ConnectionFailure::AuthenticationRequired {
+                message: "sign in".to_owned()
+            }
+            .to_string(),
+            "authentication required: sign in"
+        );
+    }
+
+    #[test]
+    fn a_second_response_head_fails_and_an_empty_chunk_changes_nothing() {
+        let mut harness = Harness::new();
+        harness.live();
+        assert_eq!(harness.chunk(b""), Vec::new());
+        let outputs = harness.respond(200, "text/event-stream");
+        assert!(matches!(
+            last_state(&outputs),
+            Some(ConnectionState::Failed {
+                error: LinkError::HostContract { .. }
+            })
+        ));
+    }
+
+    #[test]
+    fn a_stall_timer_with_a_clock_that_went_backward_only_re_arms() {
+        let mut harness = Harness::new();
+        let start = harness.run(StreamInput::Start);
+        let (watchdog, _) = scheduled(&start, TimerKind::Watchdog)[0];
+        harness.now = 0;
+        let outputs = harness.run(StreamInput::TimerFired { token: watchdog });
+        assert_eq!(last_state(&outputs), None, "nothing stalled: {outputs:?}");
+        assert_eq!(
+            scheduled(&outputs, TimerKind::Watchdog)[0].1,
+            StreamConfig::default().stall_timeout_ms
+        );
+    }
+
+    #[test]
     fn host_contract_violations_fail_loudly() {
         let mut harness = Harness::new();
         harness.run(StreamInput::Start);

@@ -48,3 +48,23 @@ fn an_older_server_without_session_policies_lists_none() {
         Err(SessionError::HttpStatus { status: 500 })
     );
 }
+
+#[test]
+fn an_agent_without_a_name_or_a_list_of_servers_is_malformed() {
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        "/v1/agents/agent_1",
+        vec![
+            Reply::json(200, "{}"),
+            Reply::json(200, r#"{"name":"P","mcp_servers":5}"#),
+        ],
+    );
+    let core = connected(transport);
+    for expected in ["`name` is missing", "`mcp_servers` is not an array"] {
+        assert!(matches!(
+            block_on(core.agent_info("conv_a", "agent_1")),
+            Err(SessionError::MalformedResponse { detail }) if detail.contains(expected)
+        ));
+    }
+}

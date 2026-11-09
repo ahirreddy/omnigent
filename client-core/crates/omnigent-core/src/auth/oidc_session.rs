@@ -359,6 +359,31 @@ mod tests {
     }
 
     #[test]
+    fn a_session_cookie_needs_a_host_and_a_path_covering_the_api() {
+        let cookie = StoredCookie {
+            name: "s".to_owned(),
+            domain: "x.example.com".to_owned(),
+            path: "/v1/me".to_owned(),
+            secure: false,
+            has_value: true,
+            expires_at_ms: None,
+        };
+        assert!(is_session_cookie(
+            &cookie,
+            "s",
+            &url("https://x.example.com"),
+            0
+        ));
+        assert!(path_matches("/v1/me", "/v1/me"));
+        assert!(!is_session_cookie(
+            &cookie,
+            "s",
+            &url("data:text/plain,x"),
+            0
+        ));
+    }
+
+    #[test]
     fn oidc_auth_route_matches_login_logout_at_root() {
         let server = "https://omnigent.example.com";
         assert_eq!(

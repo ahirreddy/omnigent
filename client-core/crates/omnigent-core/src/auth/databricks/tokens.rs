@@ -248,6 +248,44 @@ mod tests {
     use super::*;
     use crate::auth::databricks::test_support::{ACCOUNT_ISSUER, TOKEN_BODY, tokens};
 
+    #[test]
+    fn a_stored_issuer_that_is_not_text_is_invalid_data() {
+        let record = serde_json::json!({
+            "version": 2,
+            "tokens": {"accessToken": "a", "refreshToken": "r", "expiresAt": 1.0, "issuer": 5},
+        });
+        assert_eq!(
+            decode_record(&serde_json::to_vec(&record).unwrap()),
+            Err(DatabricksError::InvalidCredentialData)
+        );
+    }
+
+    #[test]
+    fn a_bundle_converts_to_the_shared_token_set() {
+        let bundle = tokens("access", "refresh", 5_000, None);
+        let set = bundle.to_token_set();
+        assert_eq!(set.access_token.expose(), "access");
+        assert_eq!(set.refresh_token.unwrap().expose(), "refresh");
+        assert_eq!(set.expires_at_ms, Some(5_000));
+        assert_eq!(set.user_id, None);
+    }
+
+    #[test]
+    fn stored_expiry_edge_values_and_a_wrong_issuer_type_do_not_panic() {
+        assert_eq!(unix_ms_from_reference_seconds(f64::NAN), None);
+        assert_eq!(unix_ms_from_reference_seconds(f64::INFINITY), None);
+        assert_eq!(ms_from_f64(f64::NAN), None);
+        assert_eq!(ms_from_f64(-1.0), Some(0));
+        let record = serde_json::json!({
+            "version": 2, "access_token": "a", "refresh_token": "r",
+            "expires_at": 0.0, "issuer": 5,
+        });
+        assert_eq!(
+            decode_record(&serde_json::to_vec(&record).unwrap()),
+            Err(DatabricksError::InvalidCredentialData)
+        );
+    }
+
     /// `DatabricksOAuthClientTests::testDecodesOpaqueTokensAndUsesResponseExpiry`.
     #[test]
     fn databricks_token_response_decodes_opaque_tokens() {

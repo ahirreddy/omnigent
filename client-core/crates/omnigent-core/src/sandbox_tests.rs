@@ -244,3 +244,45 @@ fn a_repository_listed_twice_keeps_its_original_branch() {
     let forked = fork_sandbox_repos(&original, &live);
     assert_eq!(forked.repos, original);
 }
+
+#[test]
+fn an_overly_long_url_and_too_many_repositories_are_explained() {
+    let long = format!("https://github.com/o/{}.git", "x".repeat(4096));
+    assert_eq!(
+        sandbox_url_problem(&long, &[]).as_deref(),
+        Some(WORKSPACE_LENGTH_MESSAGE)
+    );
+    let problem = sandbox_repos_problem(
+        &[
+            repo("https://github.com/o/a.git", "main"),
+            repo("https://github.com/o/b.git", "main"),
+            repo("https://github.com/o/c.git", "main"),
+        ],
+        2,
+    )
+    .unwrap();
+    assert!(problem.contains("repositories"), "{problem}");
+}
+
+#[test]
+fn an_unpushed_branch_falls_back_to_the_repository_branch_the_session_named() {
+    let original = [repo("https://g.com/o/b", "main")];
+    let live = repository_branches(&json!({"repositories": [
+        {"url": "https://g.com/o/b", "branch": "local-only", "pushed": false},
+    ]}))
+    .unwrap();
+    let forked = fork_sandbox_repos(&original, &live);
+    assert_eq!(forked.repos[0].branch, "main");
+    assert!(
+        forked.notes[0].1.ends_with("Using main."),
+        "{:?}",
+        forked.notes
+    );
+}
+
+#[test]
+fn a_profile_page_with_unreadable_providers_is_refused() {
+    let page =
+        SandboxProfilePage::from_value(&json!({"profiles": [], "managed_providers": [1]}), "modal");
+    assert!(page.is_err());
+}

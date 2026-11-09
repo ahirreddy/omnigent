@@ -609,6 +609,79 @@ mod tests {
     // MARK: web/ios SettingsStoreTests.swift
 
     #[test]
+    fn a_failed_write_is_reported_when_suppressing_auto_open() {
+        let storage = MemoryStorage::default();
+        let mut store = store(&storage);
+        set(&mut store, "https://omnigent.example.com");
+        *storage.fail_writes.borrow_mut() = true;
+        assert!(
+            store
+                .suppress_auto_opening_oidc_server("https://omnigent.example.com")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn saved_protocol_grants_of_the_wrong_shape_are_refused() {
+        let storage = MemoryStorage::default();
+        storage
+            .set(keys::ALLOWED_PROTOCOLS, Some(json!(5)))
+            .unwrap();
+        let settings = SettingsStore::load(storage).unwrap();
+        assert!(settings.is_protocol_allowed("mailto", "https://x").is_err());
+    }
+
+    #[test]
+    fn errors_describe_what_was_stored_and_have_no_source_of_their_own() {
+        use std::error::Error;
+
+        let unexpected = SettingsError::UnexpectedValue {
+            key: "k".to_owned(),
+            expected: "a string",
+        };
+        assert_eq!(unexpected.to_string(), "stored setting k is not a string");
+        assert!(unexpected.source().is_none());
+        assert_eq!(
+            SettingsError::ImportNotAnObject.to_string(),
+            "the settings to import are not a JSON object"
+        );
+        assert!(SettingsError::ImportNotAnObject.source().is_none());
+    }
+
+    #[test]
+    fn an_import_reports_wrong_shapes_and_nulls_change_nothing() {
+        let storage = MemoryStorage::default();
+        let mut store = store(&storage);
+        assert_eq!(store.storage().get("nothing"), Ok(None));
+        assert_eq!(
+            store.import_electron_settings(&json!(7)),
+            Err(SettingsError::ImportNotAnObject)
+        );
+        let report = store
+            .import_electron_settings(&json!({"server_url": null, "recent_servers": null}))
+            .unwrap();
+        assert_eq!(report, ElectronImportReport::default());
+        let report = store
+            .import_electron_settings(&json!({"server_url": 7}))
+            .unwrap();
+        assert_eq!(report.skipped[0].reason, SkipReason::NotAString);
+        assert_eq!(report.skipped[0].value, "7");
+    }
+
+    #[test]
+    fn a_failed_write_during_an_import_keeps_the_old_recents() {
+        let storage = MemoryStorage::default();
+        let mut store = store(&storage);
+        *storage.fail_writes.borrow_mut() = true;
+        assert!(
+            store
+                .import_electron_settings(&json!({"recent_servers": ["http://a"]}))
+                .is_err()
+        );
+        assert_eq!(store.recent_servers().len(), 0);
+    }
+
+    #[test]
     fn settings_recent_servers_deduped_capped() {
         let mut store = store(&MemoryStorage::default());
         for host in ["a", "b", "c", "d", "e", "f", "c"] {

@@ -232,6 +232,38 @@ mod tests {
     };
     use crate::auth::testing::{FixedEntropy, header};
 
+    #[test]
+    fn an_attempt_reports_its_configuration_and_hides_the_code() {
+        let entropy = FixedEntropy::counting();
+        let attempt = attempt_for("https://test-workspace.cloud.databricks.com", &entropy);
+        assert_eq!(attempt.configuration(), &config());
+        let debug = format!(
+            "{:?}",
+            AuthorizationResponse {
+                code: SecretString::new("secret-code"),
+                issuer: OAuthIssuer::parse(ACCOUNT_ISSUER).unwrap(),
+            }
+        );
+        assert!(!debug.contains("secret-code"), "{debug}");
+    }
+
+    #[test]
+    fn an_unbound_loopback_client_cannot_start() {
+        let unbound =
+            OAuthConfiguration::new("client", crate::auth::databricks::config::LOOPBACK_REDIRECT)
+                .unwrap();
+        assert!(!unbound.is_usable());
+        assert_eq!(
+            OAuthAttempt::new(
+                &url("https://test-workspace.cloud.databricks.com"),
+                &unbound,
+                &FixedEntropy::counting()
+            )
+            .map(|_| ()),
+            Err(DatabricksError::InvalidRedirectUrl)
+        );
+    }
+
     fn query_map(raw: &str) -> BTreeMap<String, String> {
         let parsed = Url::parse(raw).unwrap();
         query::items(parsed.query().unwrap())

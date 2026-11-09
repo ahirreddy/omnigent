@@ -277,6 +277,30 @@ mod tests {
     }
 
     #[test]
+    fn a_folder_skill_read_is_addressed_to_the_host_it_names() {
+        let routing = ReplicaRouting::default();
+        let addressing = routing.address(
+            "GET",
+            "/v1/skills",
+            &[
+                ("host_id", "host_b".to_owned()),
+                ("session_id", String::new()),
+            ],
+            None,
+        );
+        assert_eq!(addressing.host.as_deref(), Some("host_b"));
+    }
+
+    #[test]
+    fn creates_and_imports_name_their_host_in_the_body() {
+        assert!(is_body_host_keyed("POST", "/v1/sessions"));
+        assert!(is_body_host_keyed("POST", "/v1/imports/local"));
+        assert!(is_body_host_keyed("POST", "/v1/imports/local/scan"));
+        assert!(!is_body_host_keyed("GET", "/v1/sessions"));
+        assert!(!is_body_host_keyed("POST", "/v1/imports"));
+    }
+
+    #[test]
     fn session_routes_key_by_the_sessions_host_or_its_ancestors() {
         let mut routing = ReplicaRouting::default();
         routing.record("conv_a", Reported::Value("host_a"), Reported::Unsaid, None);

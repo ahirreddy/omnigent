@@ -196,6 +196,12 @@ mod tests {
 
     /// `DatabricksWorkspaceBootstrapTests::testCancellationReturnsToSetupWithoutAnErrorMessage`.
     #[test]
+    fn only_a_cancellation_counts_as_cancelled() {
+        assert!(DatabricksError::Cancelled.is_cancelled());
+        assert!(!DatabricksError::InvalidCallback.is_cancelled());
+    }
+
+    #[test]
     fn error_cancellation_has_no_message() {
         assert_eq!(DatabricksError::Cancelled.user_message(), None);
         assert_eq!(

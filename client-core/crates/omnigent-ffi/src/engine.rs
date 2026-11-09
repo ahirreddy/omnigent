@@ -35,7 +35,7 @@ use crate::host::{EventStreamTransport, WebSocketTransport};
 use crate::list_driver::ListMsg;
 use crate::runtime::{Host, Sessions, post};
 use crate::sessions::SessionListChange;
-use crate::stream_driver::SessionDriver;
+use crate::stream_driver::{DriverInstance, SessionDriver};
 use crate::updates_driver::Socket;
 
 /// How long a burst of "inventory may be stale" hints waits before one list refresh.
@@ -138,11 +138,13 @@ pub(crate) enum Msg {
     /// An input for a session stream machine.
     Stream {
         session_id: String,
+        driver: DriverInstance,
         input: StreamInput,
     },
     /// A history read finished.
     Hydrated {
         session_id: String,
+        driver: DriverInstance,
         attempt: Option<AttemptId>,
         request: core::reconcile::HydrationRequest,
         result: Box<Result<ConversationPage, SessionError>>,
@@ -242,6 +244,7 @@ pub(crate) struct Engine {
     pub(crate) socket: Option<Socket>,
     pub(crate) updates_timers: HashMap<u64, AbortHandle>,
     pub(crate) drivers: HashMap<String, SessionDriver>,
+    pub(crate) next_driver: u64,
     pub(crate) attention: Attention,
     /// Read state of every known session, and the unread sessions last reported.
     pub(crate) read: core::read_state::ReadState,
@@ -276,6 +279,7 @@ impl Engine {
                 socket: None,
                 updates_timers: HashMap::new(),
                 drivers: HashMap::new(),
+                next_driver: 0,
                 attention: Attention::default(),
                 read: core::read_state::ReadState::new(),
                 unread: BTreeSet::new(),
@@ -324,15 +328,7 @@ impl Engine {
                 link,
                 server,
                 sign_in,
-            } => {
-                self.link = Some(link);
-                self.sign_in = Some(sign_in);
-                self.set_phase(ConnectionPhase::Connected { server });
-                self.read_reset();
-                self.reset_list_window();
-                self.start_realtime();
-                self.refresh_list();
-            }
+            } => self.connected(link, server, sign_in),
             Msg::Disconnected { phase } => {
                 self.stop_realtime();
                 self.link = None;
@@ -350,13 +346,18 @@ impl Engine {
             Msg::Client(event) => self.client_event(event),
             Msg::Open(session_id) => self.open_session(&session_id),
             Msg::Close(session_id) => self.close_session(&session_id),
-            Msg::Stream { session_id, input } => self.stream_input(&session_id, input),
+            Msg::Stream {
+                session_id,
+                driver,
+                input,
+            } => self.stream_message(&session_id, driver, input),
             Msg::Hydrated {
                 session_id,
+                driver,
                 attempt,
                 request,
                 result,
-            } => self.hydrated(&session_id, attempt, &request, *result),
+            } => self.hydrated(&session_id, driver, attempt, &request, *result),
             Msg::History(message) => self.history_message(message),
             Msg::Updates(input) => self.updates_input(input),
             Msg::List(message) => self.list_message(message),
@@ -395,6 +396,16 @@ impl Engine {
             }
         }
         true
+    }
+
+    fn connected(&mut self, link: Link, server: ConnectedServer, sign_in: SignInContext) {
+        self.link = Some(link);
+        self.sign_in = Some(sign_in);
+        self.set_phase(ConnectionPhase::Connected { server });
+        self.read_reset();
+        self.reset_list_window();
+        self.start_realtime();
+        self.refresh_list();
     }
 
     fn set_phase(&mut self, phase: ConnectionPhase) {
@@ -548,13 +559,16 @@ impl Engine {
                 .cmp(&left.updated_at)
                 .then_with(|| left.id.cmp(&right.id))
         });
-        let mut ids: Vec<String> = self.drivers.keys().cloned().collect();
-        for summary in summaries {
+        // One id the server would refuse must not freeze the watch for every other session.
+        let open = self.drivers.keys().cloned();
+        let known = summaries.into_iter().map(|summary| summary.id);
+        let mut ids: Vec<String> = Vec::new();
+        for id in open.chain(known) {
             if ids.len() >= MAX_WATCHED {
                 break;
             }
-            if !ids.contains(&summary.id) {
-                ids.push(summary.id);
+            if core::realtime::updates::is_valid_session_id(&id) && !ids.contains(&id) {
+                ids.push(id);
             }
         }
         match self.updates.set_watch(ids) {

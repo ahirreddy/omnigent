@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 use super::json::{as_object, opt_array, opt_object, opt_str, req_str};
 use super::{ClientCore, SessionError};
 use crate::http::HttpTransport;
-use crate::schedule::days_from_civil;
+use crate::schedule::{MAX_DATE_YEAR, days_from_civil, number as number_in};
 
 /// Spend on one UTC day.
 #[derive(Debug, Clone, PartialEq)]
@@ -97,14 +97,14 @@ pub fn utc_day(seconds: i64) -> String {
 /// The first day of a window of `days` days ending today (UTC), as the web's presets start it.
 #[must_use]
 pub fn window_start(days: u32, now: i64) -> String {
-    utc_day(now - i64::from(days.saturating_sub(1)) * 86_400)
+    utc_day(now.saturating_sub(i64::from(days.saturating_sub(1)) * 86_400))
 }
 
 fn day_seconds(day: &str) -> Option<i64> {
     let mut parts = day.splitn(3, '-');
-    let year: i64 = parts.next()?.parse().ok()?;
-    let month: i64 = parts.next()?.parse().ok()?;
-    let day: i64 = parts.next()?.parse().ok()?;
+    let year = number_in(parts.next()?, &(0_i64..=MAX_DATE_YEAR))?;
+    let month = number_in(parts.next()?, &(1_i64..=12))?;
+    let day = number_in(parts.next()?, &(1_i64..=31))?;
     Some(days_from_civil(year, month, day) * 86_400)
 }
 

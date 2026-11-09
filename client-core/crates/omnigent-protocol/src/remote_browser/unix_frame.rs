@@ -170,6 +170,24 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn an_oversized_frame_or_close_reason_is_refused() {
+        let huge = UnixFrame::Binary(vec![0; MAX_FRAME_BYTES + 1]);
+        assert_eq!(
+            huge.encode(),
+            Err(UnixFrameError::TooLarge {
+                len: MAX_FRAME_BYTES + 1
+            })
+        );
+        let mut payload = 4404_u16.to_le_bytes().to_vec();
+        payload.extend(vec![b'x'; MAX_CLOSE_REASON + 1]);
+        let len = payload.len();
+        assert_eq!(
+            UnixFrame::from_parts(KIND_CLOSE, payload),
+            Err(UnixFrameError::BadClose { len })
+        );
+    }
+
     fn frames() -> Vec<UnixFrame> {
         vec![
             UnixFrame::Text(r#"{"type":"attach"}"#.to_owned()),

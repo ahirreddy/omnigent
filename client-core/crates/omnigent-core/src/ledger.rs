@@ -258,6 +258,16 @@ mod tests {
     }
 
     #[test]
+    fn an_operation_reports_what_it_was_for() {
+        let mut ledger = SubmissionLedger::new();
+        let operation = ledger.begin(SCOPE, "conv_a", "hello").unwrap();
+        assert_eq!(operation.scope(), SCOPE);
+        assert_eq!(operation.session_id(), "conv_a");
+        assert_eq!(operation.draft(), "hello");
+        assert_eq!(operation.id().get(), 0);
+    }
+
+    #[test]
     fn pending_send_remains_blocked_when_reconnecting_to_same_scope() {
         let mut ledger = SubmissionLedger::new();
         ledger.begin(SCOPE, "session", "Hello").unwrap();

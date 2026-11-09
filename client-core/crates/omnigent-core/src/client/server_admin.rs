@@ -4,6 +4,8 @@
 //! default policies, sharing, the MCP registry, provider connections, password change and local
 //! session import.
 
+use std::collections::BTreeSet;
+
 use serde_json::{Map, Value, json};
 
 use super::json::{as_object, opt_array, opt_bool, opt_object, opt_str, opt_u64, req_str};
@@ -741,6 +743,7 @@ impl<T: HttpTransport> ClientCore<T> {
         const PATH: &str = "/v1/mcp-registry/services";
         let mut services = Vec::new();
         let mut after: Option<String> = None;
+        let mut cursors = BTreeSet::new();
         loop {
             let mut query = vec![("limit", "100".to_owned())];
             if let Some(cursor) = &after {
@@ -752,10 +755,12 @@ impl<T: HttpTransport> ClientCore<T> {
             }
             let next = page.get("next_cursor").and_then(Value::as_str);
             match next {
-                Some(cursor) if Some(cursor) == after.as_deref() => {
-                    return Err(SessionError::InvalidPagination);
+                Some(cursor) if !cursor.is_empty() => {
+                    if !cursors.insert(cursor.to_owned()) {
+                        return Err(SessionError::InvalidPagination);
+                    }
+                    after = Some(cursor.to_owned());
                 }
-                Some(cursor) if !cursor.is_empty() => after = Some(cursor.to_owned()),
                 _ => return Ok(services),
             }
         }

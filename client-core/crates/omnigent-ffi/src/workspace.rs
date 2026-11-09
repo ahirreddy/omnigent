@@ -1143,6 +1143,10 @@ impl ClientCore {
 }
 
 #[cfg(test)]
+#[path = "workspace_tests.rs"]
+mod workspace_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

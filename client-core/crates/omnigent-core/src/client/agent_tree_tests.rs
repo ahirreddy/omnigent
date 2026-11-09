@@ -4,8 +4,10 @@
 use futures::executor::block_on;
 use serde_json::{Value, json};
 
+use omnigent_protocol::FromWire;
+
 use super::*;
-use crate::client::test_support::{Reply, RouteTransport, connected};
+use crate::client::test_support::{Reply, RouteTransport, connected, path_of};
 
 fn row(fields: &Value) -> ChildSessionRow {
     let mut value = json!({"id": "conv_c", "busy": false});
@@ -265,4 +267,98 @@ fn an_older_server_without_a_root_id_walks_the_parent_chain() {
     assert_eq!(tree.nodes[0].name, "polly");
     assert_eq!(tree.nodes[0].status.activity, AgentActivity::Disconnected);
     assert_eq!(tree.nodes[0].preview, None);
+}
+
+#[test]
+fn statuses_cover_launching_failed_and_idle() {
+    let status = |value: &str| {
+        let snapshot = SessionSnapshot::from_value(
+            serde_json::from_str(&snapshot("conv_s", &json!({"status": value}))).unwrap(),
+        )
+        .unwrap();
+        root_status(&snapshot).activity
+    };
+    assert_eq!(status("launching"), AgentActivity::Launching);
+    assert_eq!(status("failed"), AgentActivity::Failed);
+    assert_eq!(status("idle"), AgentActivity::Idle);
+}
+
+#[test]
+fn previews_are_trimmed_cut_on_characters_and_may_be_absent() {
+    assert_eq!(preview("   "), None);
+    let long = "é".repeat(PREVIEW_CHARS + 5);
+    let cut = preview(&long).unwrap();
+    assert_eq!(cut.chars().count(), PREVIEW_CHARS + 1);
+    assert!(cut.ends_with('\u{2026}'));
+}
+
+fn lone_root(children_reply: Reply) -> RouteTransport {
+    let transport = RouteTransport::local();
+    respond(
+        &transport,
+        "/v1/sessions/conv_r",
+        Reply::json(
+            200,
+            snapshot("conv_r", &json!({"root_conversation_id": "conv_r"})),
+        ),
+    );
+    respond(
+        &transport,
+        "/v1/sessions/conv_r/items",
+        Reply::json(
+            200,
+            json!({"object": "list", "has_more": false, "data": [
+                {"id": "t", "type": "reasoning", "summary": []},
+                {"id": "m", "type": "message", "role": "assistant",
+                 "content": [{"type": "output_text", "text": "   "}]},
+            ]})
+            .to_string(),
+        ),
+    );
+    respond(
+        &transport,
+        "/v1/sessions/conv_r/child_sessions",
+        children_reply,
+    );
+    transport
+}
+
+#[test]
+fn a_root_snapshot_with_its_own_id_is_read_once_and_blank_messages_give_no_preview() {
+    let core = connected(lone_root(children(&json!([]))));
+    let tree = block_on(core.agent_tree("conv_r")).unwrap();
+    assert_eq!(tree.nodes[0].session_id, "conv_r");
+    assert_eq!(tree.nodes[0].preview, None);
+    assert_eq!(
+        core.transport()
+            .taken()
+            .iter()
+            .filter(|request| path_of(request).ends_with("/v1/sessions/conv_r"))
+            .count(),
+        1,
+        "not read a second time"
+    );
+}
+
+#[test]
+fn a_child_listing_itself_is_not_walked_forever() {
+    let transport = lone_root(children(&json!([{"id": "conv_c", "busy": false}])));
+    respond(
+        &transport,
+        "/v1/sessions/conv_c/child_sessions",
+        children(&json!([{"id": "conv_c", "busy": false}])),
+    );
+    let core = connected(transport);
+    let tree = block_on(core.agent_tree("conv_r")).unwrap();
+    assert_eq!(tree.nodes.len(), 3, "{:?}", tree.nodes);
+    assert_eq!(tree.nodes[2].child_count, 0);
+}
+
+#[test]
+fn a_child_list_of_the_wrong_shape_says_where() {
+    let core = connected(lone_root(Reply::json(200, "[]")));
+    assert!(matches!(
+        block_on(core.agent_tree("conv_r")),
+        Err(SessionError::MalformedResponse { detail }) if detail.contains("/child_sessions")
+    ));
 }

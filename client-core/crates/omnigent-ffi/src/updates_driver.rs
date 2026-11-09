@@ -31,7 +31,7 @@ impl Engine {
             return;
         }
         self.updates_input(UpdatesInput::Start);
-        self.update_watch_now();
+        self.update_watch();
     }
 
     pub(crate) fn stop_updates(&mut self) {
@@ -40,20 +40,6 @@ impl Engine {
             timer.abort();
         }
         self.updates_timers.clear();
-    }
-
-    fn update_watch_now(&mut self) {
-        let ids: Vec<String> = self
-            .sessions
-            .cached_summaries()
-            .into_iter()
-            .map(|summary| summary.id)
-            .take(omnigent_core::realtime::MAX_WATCHED_SESSIONS)
-            .collect();
-        match self.updates.set_watch(ids) {
-            Ok(outputs) => self.run_updates_outputs(outputs),
-            Err(error) => self.error(ErrorScope::SessionList, core_error(error)),
-        }
     }
 
     pub(crate) fn updates_input(&mut self, input: UpdatesInput) {
@@ -215,18 +201,11 @@ impl Engine {
                     .into_iter()
                     .map(|row| Value::Object(row.into_raw()))
                     .collect();
-                let mut decoded = Vec::with_capacity(raw.len());
-                for row in &raw {
-                    match SessionListItem::from_value(row.clone()) {
-                        Ok(item) => decoded.push(item),
-                        Err(error) => self.error(
-                            ErrorScope::SessionList,
-                            CoreError::Decode {
-                                message: format!("session-updates row: {error}"),
-                            },
-                        ),
-                    }
-                }
+                // An unreadable row is reported once, by the list below.
+                let decoded: Vec<SessionListItem> = raw
+                    .iter()
+                    .filter_map(|row| SessionListItem::from_value(row.clone()).ok())
+                    .collect();
                 if let Err(error) = self.sessions.apply_session_rows(raw) {
                     self.error(ErrorScope::SessionList, error.into());
                 }
@@ -247,3 +226,7 @@ impl Engine {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "updates_driver_tests.rs"]
+mod tests;

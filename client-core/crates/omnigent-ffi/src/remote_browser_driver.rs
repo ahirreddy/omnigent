@@ -111,6 +111,16 @@ impl Loop {
     }
 
     fn handle(&mut self, input: core::AttachInput) {
+        // An ended socket and a fired timer have nothing left to close or cancel.
+        match &input {
+            core::AttachInput::Ended { attempt, .. } => {
+                self.sockets.remove(attempt);
+            }
+            core::AttachInput::TimerFired { token } => {
+                self.timers.remove(&token.id);
+            }
+            _ => {}
+        }
         let outputs = self.machine.handle(self.host.now_ms(), input);
         for output in outputs {
             self.output(output);
@@ -430,14 +440,12 @@ fn describe(notice: &core::Notice) -> RemoteBrowserNotice {
             format!("dropped an unreadable video frame: {error}")
         }
         N::HostError(error) => format!("browser host error {}: {}", error.code, error.message),
-        N::InputDropped { input, reason } => {
-            let why = match reason {
-                core::DropReason::NotAttached => "the browser is not connected",
-                core::DropReason::ReadOnly => "this view is read-only",
-                core::DropReason::NotInControl => "take control first",
-                core::DropReason::Unsupported => "the browser host is too old for it",
-            };
-            format!("{} not sent: {why}", input_name(*input))
+        // `user_message` words every other reason.
+        N::InputDropped { input, .. } => {
+            format!(
+                "{} not sent: the browser is not connected",
+                input_name(*input)
+            )
         }
         N::InvalidInput(error) => format!("invalid browser input: {error}"),
     };
@@ -759,10 +767,15 @@ pub(super) fn spawn(
     };
     let machine =
         core::RemoteBrowserAttach::new(config, target.options.clone(), SplitMix64::new(seed));
-    let pipe = Arc::clone(&video);
+    // Weak: the pipe holds the wake sender, so a strong one would keep this task, and with it the
+    // listener, alive after the attach ends.
+    let pipe = Arc::downgrade(&video);
     let video_listener = Arc::clone(&listener);
     host.spawn(async move {
         while woken.next().await.is_some() {
+            let Some(pipe) = pipe.upgrade() else {
+                return;
+            };
             pipe.armed.store(false, Ordering::Release);
             while let Some(frame) = pipe.pop() {
                 video_listener.on_video(frame.into());
@@ -785,3 +798,7 @@ pub(super) fn spawn(
     host.spawn(attach.run(rx));
     Arc::new(RemoteBrowserDriver { tx })
 }
+
+#[cfg(test)]
+#[path = "remote_browser_driver_tests.rs"]
+mod tests;

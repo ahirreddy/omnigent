@@ -505,3 +505,7 @@ impl ConversationSync {
             .unwrap_or_default()
     }
 }
+
+#[cfg(test)]
+#[path = "sync_tests.rs"]
+mod tests;

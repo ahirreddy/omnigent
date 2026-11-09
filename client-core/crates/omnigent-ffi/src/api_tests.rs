@@ -14,26 +14,12 @@ use crate::engine::lock;
 use crate::errors::CoreError;
 use crate::events::{ChangedFilesUpdate, ConnectionPhase, CoreEvent, SignInMethod};
 use crate::sessions::{SessionChange, SessionListChange};
-use crate::test_support::{Harness, envelope_response, json};
+use crate::test_support::{Harness, connected, envelope_response, json};
 use crate::workspace::{FilePreview, WorkspaceEntryKind, WorkspaceErrorKind};
 
 const WORKSPACE_SESSION: &str = "207c660071e248e198c634aec763bb75";
 
-fn connected() -> Harness {
-    let mut harness = Harness::new(UrlPolicy::Development);
-    harness.local_server();
-    let core = Arc::clone(&harness.core);
-    let phase = harness
-        .run(async move { core.connect("http://127.0.0.1:6767".into(), None).await })
-        .unwrap();
-    assert!(
-        matches!(phase, ConnectionPhase::Connected { .. }),
-        "{phase:?}"
-    );
-    harness
-}
-
-fn route_creation(harness: &Harness) {
+pub(crate) fn route_creation(harness: &Harness) {
     for (path, fixture) in [
         ("/v1/hosts", "sessions/SessionCreation--_shared--hosts.json"),
         (
@@ -488,9 +474,9 @@ fn changed_files_invalidation_is_reported_as_an_event() {
     assert_eq!(files[0].path, "src/a.rs");
 }
 
-const WORKSPACE_HOST: &str = "https://dbc-1.cloud.databricks.com";
+pub(crate) const WORKSPACE_HOST: &str = "https://dbc-1.cloud.databricks.com";
 
-fn databricks() -> Harness {
+pub(crate) fn databricks() -> Harness {
     Harness::with_databricks(
         UrlPolicy::Release,
         Some(DatabricksOAuthSettings {
@@ -500,7 +486,7 @@ fn databricks() -> Harness {
     )
 }
 
-fn route_databricks(harness: &Harness, access: &str, expires_in: u64) {
+pub(crate) fn route_databricks(harness: &Harness, access: &str, expires_in: u64) {
     harness.http.route(
         "/oidc/.well-known/openid-configuration",
         json(

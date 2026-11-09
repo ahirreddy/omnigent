@@ -351,6 +351,34 @@ mod tests {
         ))
     }
 
+    #[test]
+    fn a_login_reply_without_a_usable_ticket_never_opens_a_browser() {
+        let attempt = |body: &str| {
+            browser_login_from_response(
+                &endpoint(),
+                &HttpResponse {
+                    status: 200,
+                    headers: vec![HttpHeader::new("Content-Type", "application/json")],
+                    body: body.as_bytes().to_vec(),
+                },
+                SecretString::new("verifier"),
+                NOW,
+            )
+        };
+        assert!(matches!(
+            attempt("not json"),
+            Err(HostedAuthError::MalformedResponse { detail }) if detail.starts_with("/auth/cli-login:")
+        ));
+        assert!(matches!(
+            attempt("{}"),
+            Err(HostedAuthError::MalformedResponse { detail }) if detail.contains("no ticket")
+        ));
+        assert!(matches!(
+            attempt(r#"{"ticket":"bad ticket/../x","login_url":"/auth/login"}"#),
+            Err(HostedAuthError::RedirectNotAllowed)
+        ));
+    }
+
     fn ticket_body(login_url: &str) -> String {
         json!({"ticket": "synthetic-ticket", "login_url": login_url}).to_string()
     }

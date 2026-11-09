@@ -469,3 +469,88 @@ fn read_only_and_unbound_sessions_cannot_fork() {
     };
     assert!(fork_unavailable_reason(&no_agent).is_some());
 }
+
+#[test]
+fn a_host_that_left_the_list_cannot_host_the_fork() {
+    let transport = forking(Reply::json(201, FORKED));
+    transport.ok("/v1/hosts", r#"{"hosts":[]}"#);
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.fork_session(&ForkRequest {
+            start: Some(start()),
+            ..request()
+        })),
+        Err(SessionError::Creation(CreationError::Unavailable(
+            "The original session's host is no longer registered.".into()
+        )))
+    );
+}
+
+#[test]
+fn a_runner_launch_acknowledged_without_an_id_is_uncertain_but_keeps_the_fork() {
+    let transport = forking(Reply::json(201, FORKED));
+    transport.ok("/v1/hosts", hosts("online"));
+    transport.respond(
+        Some("POST"),
+        RUNNERS,
+        None,
+        Reply::json(200, r#"{"status":"launching"}"#),
+    );
+    let core = connected(transport);
+    let forked = block_on(core.fork_session(&ForkRequest {
+        start: Some(start()),
+        ..request()
+    }))
+    .unwrap();
+    assert!(matches!(
+        forked.launch,
+        RunnerLaunch::Failed(SessionError::DeliveryUncertain { .. })
+    ));
+}
+
+#[test]
+fn an_existing_worktree_is_sent_instead_of_a_base_branch() {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("POST"),
+        RUNNERS,
+        None,
+        Reply::json(200, r#"{"runner_id":"r"}"#),
+    );
+    let core = connected(transport);
+    let git = crate::creation::CreationGit {
+        branch_name: " feature ".into(),
+        base_branch: Some("main".into()),
+        existing_worktree: true,
+    };
+    block_on(core.launch_session_runner("host_a", "conv_a", "/w", Some(&git))).unwrap();
+    assert_eq!(
+        core.transport().write_bodies()[0]["git"],
+        json!({"branch_name": "feature", "existing_worktree": true})
+    );
+}
+
+#[test]
+fn a_server_that_asks_clients_to_mint_sandbox_hosts_receives_the_id() {
+    let transport = forking(Reply::json(201, FORKED));
+    transport.ok(
+        "/v1/info",
+        r#"{"single_user":true,"accounts_enabled":false,"managed_sandboxes_enabled":true,
+            "request_managed_sandbox_host_id":true}"#,
+    );
+    let core = connected(transport);
+    block_on(core.fork_session(&ForkRequest {
+        sandbox: Some(ForkSandbox {
+            provider: None,
+            workspaces: None,
+            profile: None,
+            host_id: Some("0123456789abcdef0123456789abcdef".into()),
+        }),
+        ..request()
+    }))
+    .unwrap();
+    assert_eq!(
+        body_json(&core.transport().writes()[0])["host_id"],
+        "0123456789abcdef0123456789abcdef"
+    );
+}

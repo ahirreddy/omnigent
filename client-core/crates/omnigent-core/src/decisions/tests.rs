@@ -10,6 +10,8 @@ use omnigent_protocol::{
 };
 use serde_json::{Value, json};
 
+use super::form::{MAX_FIELD_OPTIONS, MAX_FORM_FIELDS};
+use super::ledger::MAX_RETIRED_IDS;
 use super::*;
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
@@ -1040,4 +1042,356 @@ fn unknown_mode_and_non_object_schema_fail_closed() {
         params(&json!({"requestedSchema": {"required": ["x"]}})).unsupported_reason(),
         Some(&UnsupportedReason::Schema(FormError::NotAnObjectSchema))
     );
+}
+
+fn schema_error(schema: &Value) -> FormError {
+    DecisionForm::from_schema(schema.as_object().unwrap()).unwrap_err()
+}
+
+#[test]
+#[allow(clippy::too_many_lines, reason = "one table of refused schemas")]
+fn schemas_the_native_form_cannot_express_are_refused() {
+    let many: Map<String, Value> = (0..=MAX_FORM_FIELDS)
+        .map(|index| (format!("field{index}"), json!({"type": "string"})))
+        .collect();
+    let options: Vec<String> = (0..=MAX_FIELD_OPTIONS)
+        .map(|index| format!("o{index}"))
+        .collect();
+    let property = |property: Value| json!({"type": "object", "properties": {"f": property}});
+    let unsupported = |keyword: &str| FormError::UnsupportedKeyword {
+        field: "f".to_owned(),
+        keyword: keyword.to_owned(),
+    };
+    let not_applicable = |keyword: &str| FormError::ConstraintNotApplicable {
+        field: "f".to_owned(),
+        keyword: keyword.to_owned(),
+    };
+    let unsupported_type = |type_name: &str| FormError::UnsupportedType {
+        field: "f".to_owned(),
+        type_name: type_name.to_owned(),
+    };
+    let malformed_options = FormError::MalformedOptions {
+        field: "f".to_owned(),
+    };
+    let cases = [
+        (
+            json!({"oneOf": [], "properties": {}}),
+            FormError::UnsupportedSchemaKeyword {
+                keyword: "oneOf".to_owned(),
+            },
+        ),
+        (
+            json!({"type": "array", "properties": {"f": {}}}),
+            FormError::NotAnObjectSchema,
+        ),
+        (
+            json!({"type": 7, "properties": {}}),
+            FormError::NotAnObjectSchema,
+        ),
+        (json!({"type": "object"}), FormError::NotAnObjectSchema),
+        (json!({"properties": []}), FormError::NotAnObjectSchema),
+        (json!({"properties": {}}), FormError::NoFields),
+        (
+            json!({"properties": many}),
+            FormError::TooManyFields {
+                count: MAX_FORM_FIELDS + 1,
+            },
+        ),
+        (
+            json!({"properties": {"f": {"type": "string"}}, "additionalProperties": {}}),
+            FormError::MalformedSchemaKeyword {
+                keyword: "additionalProperties".to_owned(),
+            },
+        ),
+        (
+            json!({"properties": {"f": {"type": "string"}}, "required": ["g"]}),
+            FormError::RequiredFieldMissing {
+                field: "g".to_owned(),
+            },
+        ),
+        (
+            json!({"properties": {"f": 7}}),
+            unsupported_type("non-object property"),
+        ),
+        (
+            property(json!({"type": "string", "pattern": "x"})),
+            unsupported("pattern"),
+        ),
+        (property(json!({})), unsupported_type("")),
+        (
+            property(json!({"type": ["string", "null"]})),
+            unsupported_type("union"),
+        ),
+        (
+            property(json!({"type": "object"})),
+            unsupported_type("object"),
+        ),
+        (
+            property(json!({"type": "boolean", "enum": ["a"]})),
+            not_applicable("enum"),
+        ),
+        (property(json!({"type": "array"})), unsupported("items")),
+        (
+            property(json!({"type": "array", "items": {"type": "string", "pattern": "x"}})),
+            unsupported("pattern"),
+        ),
+        (
+            property(json!({"type": "array", "items": {"type": "number", "enum": ["a"]}})),
+            unsupported_type("array of non-strings"),
+        ),
+        (
+            property(json!({"type": "string", "minimum": 1})),
+            not_applicable("minimum"),
+        ),
+        (
+            property(json!({"type": "number", "minLength": 1})),
+            not_applicable("minLength"),
+        ),
+        (
+            property(json!({"type": "string", "minItems": 1})),
+            not_applicable("minItems"),
+        ),
+        (
+            property(json!({
+                "type": "array",
+                "items": {"type": "string", "enum": ["a"]},
+                "uniqueItems": "yes",
+            })),
+            FormError::MalformedConstraint {
+                field: "f".to_owned(),
+                keyword: "uniqueItems".to_owned(),
+            },
+        ),
+        (property(json!({"enum": []})), malformed_options.clone()),
+        (
+            property(json!({"enum": options})),
+            malformed_options.clone(),
+        ),
+        (
+            property(json!({"enum": ["a", 1]})),
+            malformed_options.clone(),
+        ),
+        (property(json!({"enum": ["a", "a"]})), malformed_options),
+    ];
+    for (schema, expected) in cases {
+        assert_eq!(schema_error(&schema), expected, "{schema}");
+    }
+}
+
+#[test]
+fn enum_names_label_their_options_and_a_missing_label_falls_back_to_the_value() {
+    let form = DecisionForm::from_schema(
+        json!({"properties": {"f": {
+            "enum": ["a", "b", "c"],
+            "enumNames": ["Alpha", 7],
+        }}})
+        .as_object()
+        .unwrap(),
+    )
+    .unwrap();
+    let labels: Vec<&str> = form.fields[0]
+        .options
+        .iter()
+        .map(|option| option.label.as_str())
+        .collect();
+    assert_eq!(labels, ["Alpha", "b", "c"]);
+    assert_eq!(form.fields[0].kind, FieldKind::SingleChoice);
+    assert!(!form.fields[0].required);
+}
+
+#[test]
+fn answers_are_checked_against_each_kind() {
+    let optional = FormField {
+        required: false,
+        ..FormField::new("k", "Title", FieldKind::Text)
+    };
+    assert_eq!(optional.validate(None), Ok(()));
+    assert_eq!(optional.validate(Some(&ElicitationValue::Null)), Ok(()));
+    assert_eq!(
+        optional.validate(Some(&ElicitationValue::Text(String::new()))),
+        Ok(()),
+        "an optional text may be blank"
+    );
+
+    let required = FormField::new("k", "Title", FieldKind::Text);
+    let missing = AnswerError::Missing {
+        field: "Title".to_owned(),
+    };
+    assert_eq!(required.validate(None), Err(missing.clone()));
+    assert_eq!(
+        required.validate(Some(&ElicitationValue::Text(" \t\u{a0}\n".to_owned()))),
+        Err(missing),
+        "only whitespace, unicode included, is no answer"
+    );
+
+    let choice = FormField {
+        options: vec![FormOption {
+            value: "a".to_owned(),
+            label: "A".to_owned(),
+            detail: String::new(),
+        }],
+        ..FormField::new("k", "Title", FieldKind::SingleChoice)
+    };
+    assert_eq!(
+        choice.validate(Some(&ElicitationValue::Text("b".to_owned()))),
+        Err(AnswerError::NotAnOption {
+            field: "Title".to_owned()
+        })
+    );
+
+    let number = FormField {
+        minimum: Some(0.0),
+        maximum: Some(10.0),
+        ..FormField::new("k", "Title", FieldKind::Number)
+    };
+    assert_eq!(
+        number.validate(Some(&ElicitationValue::Number(5.5))),
+        Ok(())
+    );
+    for non_finite in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert_eq!(
+            number.validate(Some(&ElicitationValue::Number(non_finite))),
+            Err(AnswerError::NotANumber {
+                field: "Title".to_owned()
+            })
+        );
+    }
+}
+
+#[test]
+fn question_payloads_with_too_many_or_duplicate_entries_are_refused() {
+    let question = |text: &str| json!({"question": text, "options": [{"label": "x"}]});
+    let too_many: Vec<Value> = (0..=MAX_FORM_FIELDS)
+        .map(|index| question(&format!("q{index}")))
+        .collect();
+    assert_eq!(
+        DecisionForm::from_questions(&json!({"questions": too_many})),
+        Err(FormError::TooManyFields {
+            count: MAX_FORM_FIELDS + 1
+        })
+    );
+    assert_eq!(
+        DecisionForm::from_questions(&json!({"questions": [question("same"), question("same")]})),
+        Err(FormError::DuplicateFieldKey)
+    );
+    assert_eq!(
+        DecisionForm::from_questions(&json!({"questions": [{
+            "question": "same",
+            "options": [{"label": "x"}, {"label": "x"}],
+        }]})),
+        Err(FormError::MalformedOptions {
+            field: "same".to_owned()
+        })
+    );
+}
+
+#[test]
+fn every_field_kind_names_itself() {
+    let names = [
+        (FieldKind::Text, "text"),
+        (FieldKind::Number, "number"),
+        (FieldKind::Integer, "integer"),
+        (FieldKind::Boolean, "boolean"),
+        (FieldKind::SingleChoice, "single choice"),
+        (FieldKind::MultipleChoice, "multiple choice"),
+    ];
+    for (kind, name) in names {
+        assert_eq!(kind.to_string(), name);
+    }
+}
+
+#[test]
+fn an_answered_request_seen_again_is_stale_and_old_retired_ids_age_out() {
+    let mut decisions = SessionDecisions::new("session");
+    assert_eq!(decisions.session_id(), "session");
+    let ask = |id: &str| request(json!({"elicitation_id": id, "params": {"message": "Approve?"}}));
+    assert_eq!(decisions.apply_request(&ask("a")), RequestOutcome::Added);
+    decisions
+        .record_answered("a", DecisionResponse::Approve)
+        .unwrap();
+    assert_eq!(decisions.apply_request(&ask("a")), RequestOutcome::Stale);
+    assert!(matches!(
+        decisions.record_answered("missing", DecisionResponse::Approve),
+        Err(DecisionError::NotFound { .. })
+    ));
+
+    for index in 0..=MAX_RETIRED_IDS {
+        decisions.apply_resolved(
+            &serde_json::from_value(json!({
+                "elicitation_id": format!("gone-{index}")
+            }))
+            .unwrap(),
+        );
+    }
+    assert!(!decisions.is_retired("gone-0"), "the oldest id aged out");
+    assert!(decisions.is_retired(&format!("gone-{MAX_RETIRED_IDS}")));
+}
+
+#[test]
+fn a_decision_that_is_not_external_has_no_handoff_url() {
+    assert_eq!(params(&json!({"message": "Approve?"})).external_url(), None);
+}
+
+#[test]
+fn a_persist_list_with_no_entry_offers_nothing_and_a_bare_value_counts_once() {
+    let mcp = |persist: Option<Value>| {
+        let mut meta = json!({"codex_approval_kind": "mcp_tool_call"});
+        if let Some(persist) = persist {
+            meta["persist"] = persist;
+        }
+        meta
+    };
+    assert_eq!(codex_persist_modes(Some(&mcp(None))).len(), 0);
+    assert_eq!(
+        codex_persist_modes(Some(&mcp(Some(json!("session"))))).len(),
+        1
+    );
+}
+
+#[test]
+fn a_question_with_an_empty_enum_or_a_keyword_a_yes_no_answer_ignores_is_not_an_approval() {
+    let with_schema = |schema: Value| params(&json!({"message": "m", "requestedSchema": schema}));
+    let empty_enum = with_schema(json!({"type": "object", "properties": {
+        "choice": {"type": "string", "enum": []}
+    }}));
+    assert!(!matches!(empty_enum.kind, DecisionKind::Choice { .. }));
+    let extra_keyword = with_schema(json!({"type": "object", "if": {}}));
+    assert!(!matches!(extra_keyword.kind, DecisionKind::Approval));
+}
+
+#[test]
+fn a_truncated_question_preview_fails_closed() {
+    let truncated = params(&json!({
+        "message": "m",
+        "content_preview": "AskUserQuestion({\"questions\": [nope])",
+    }));
+    assert!(
+        !matches!(truncated.kind, DecisionKind::Approval),
+        "{:?}",
+        truncated.kind
+    );
+}
+
+#[test]
+fn an_approval_does_not_accept_a_typed_answer() {
+    let approval = params(&json!({"message": "Approve?"}));
+    assert_eq!(
+        approval
+            .result_for(&DecisionResponse::Answer("yes".to_owned()))
+            .map(|_| ()),
+        Err(DecisionError::NotOffered)
+    );
+}
+
+#[test]
+fn a_repeated_resolution_retires_its_id_once() {
+    let mut decisions = SessionDecisions::new("session_a");
+    let resolved: omnigent_protocol::elicitation::ElicitationResolved =
+        serde_json::from_value(json!({
+            "elicitation_id": "gone", "action": "accept",
+        }))
+        .unwrap();
+    decisions.apply_resolved(&resolved);
+    decisions.apply_resolved(&resolved);
+    assert!(decisions.is_retired("gone"));
 }

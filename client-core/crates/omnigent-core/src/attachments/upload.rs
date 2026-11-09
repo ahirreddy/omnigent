@@ -400,6 +400,50 @@ mod tests {
     }
 
     #[test]
+    fn an_upload_reply_with_wrongly_typed_fields_is_uncertain() {
+        let target = local();
+        let file = UploadFile::new("a.txt", None, b"a".to_vec()).unwrap();
+        let reply = |body: Value| {
+            target.response(
+                &file,
+                Ok(HttpResponse {
+                    status: 201,
+                    headers: Vec::new(),
+                    body: serde_json::to_vec(&body).unwrap(),
+                }),
+            )
+        };
+        for fields in [
+            serde_json::json!({"id": "f", "session_id": "session_a", "metadata": 5}),
+            serde_json::json!({"id": "f", "session_id": "session_a", "metadata": {"filename": 5}}),
+        ] {
+            assert!(
+                matches!(
+                    reply(fields.clone()),
+                    Err(UploadError::Uncertain(
+                        UploadUncertainty::MalformedBody { .. }
+                    ))
+                ),
+                "{fields}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_session_id_that_is_not_an_identifier_stops_a_send() {
+        let target = UploadTarget {
+            session_id: "../x".into(),
+            ..local()
+        };
+        assert_eq!(
+            target.validate_message_attachments(&[], true),
+            Err(UploadError::InvalidIdentifier {
+                value: "../x".into()
+            })
+        );
+    }
+
+    #[test]
     fn upload201_uses_exact_multipart_field_bytes_and_safe_session_transport() {
         let fixture = fixture_json(
             "LocalServerUpload--Upload201UsesExactMultipartFieldBytesAndSafeSessionTransport.json",

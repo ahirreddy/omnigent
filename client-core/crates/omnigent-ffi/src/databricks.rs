@@ -35,14 +35,11 @@ use omnigent_core::auth::databricks::{
 };
 use url::Url;
 
-use crate::client::{ClientCore, Inner};
+use crate::client::{ClientCore, Inner, RENEWAL_RETRY_MS};
 use crate::connection::{DatabricksOAuthSettings, Resolved};
 use crate::engine::{Msg, lock};
 use crate::errors::{CoreError, DatabricksErrorKind};
 use crate::events::{ConnectedServer, ConnectionPhase, CoreEvent, DatabricksChallenge, ErrorScope};
-
-/// How long a failed background refresh waits before the next attempt.
-const RENEWAL_RETRY_MS: u64 = 60_000;
 
 type Answer = Result<Option<DatabricksTokens>, DatabricksError>;
 
@@ -307,7 +304,15 @@ impl Inner {
                 Ok(ConnectionPhase::Connected { server })
             }
             Ok(None) => Ok(self.sign_in_required(resolved, None)),
-            Err(error) => Ok(self.sign_in_required(resolved, Some(error.into()))),
+            Err(error) => {
+                let error = CoreError::from(error);
+                // Not reaching the workspace says nothing about the grant: offer Retry.
+                if error.requires_sign_in() {
+                    Ok(self.sign_in_required(resolved, Some(error)))
+                } else {
+                    Err(self.fail(&base_url, error))
+                }
+            }
         }
     }
 
@@ -336,14 +341,7 @@ impl Inner {
             let host = inner.host.clone();
             host.spawn(async move { inner.renew_databricks(generation, resolved, scope).await });
         });
-        let mut auth = lock(&self.auth);
-        if auth.generation == generation {
-            if let Some(previous) = auth.renewal.replace(timer) {
-                previous.abort();
-            }
-        } else {
-            timer.abort();
-        }
+        self.install_renewal(generation, timer);
     }
 
     async fn renew_databricks(
@@ -397,10 +395,10 @@ impl Inner {
     }
 
     fn databricks_grant_lost_with(&self, resolved: &Resolved, error: CoreError) {
-        self.sessions.disconnect();
         self.post(Msg::Disconnected {
             phase: ConnectionPhase::Disconnected,
         });
+        self.sessions.disconnect();
         self.sign_in_required(resolved, Some(error));
     }
 
@@ -512,9 +510,13 @@ impl ClientCore {
             .attempts
             .remove(&attempt_id)
             .ok_or_else(|| CoreError::invalid_state("This sign-in is no longer in progress."))?;
+        // A login a newer one or a disconnect cancelled does not own the phase any more.
         let fail = |error: DatabricksError| {
+            let cancelled = error.is_cancelled();
             let error = CoreError::from(error);
-            inner.sign_in_required(&resolved, Some(error.clone()));
+            if !cancelled && inner.check_generation(generation).is_ok() {
+                inner.sign_in_required(&resolved, Some(error.clone()));
+            }
             error
         };
         let outcome = Url::parse(&callback_url)
@@ -582,3 +584,7 @@ impl ClientCore {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "databricks_tests.rs"]
+mod tests;

@@ -341,6 +341,17 @@ mod tests {
     }
 
     #[test]
+    fn a_note_is_only_appended_to_messages() {
+        let mut item: omnigent_protocol::ConversationItem = serde_json::from_value(json!({
+            "id": "i1", "type": "reasoning", "summary": [],
+        }))
+        .unwrap();
+        let before = item.clone();
+        append_text(&mut item, "stopped");
+        assert_eq!(item, before);
+    }
+
+    #[test]
     fn recovery_preserves_partial_text_and_ends_streaming() {
         let drafts = BTreeMap::from([("running".to_owned(), "Next question".to_owned())]);
         let recovered =

@@ -184,7 +184,25 @@ pub trait HttpTransport {
 
 #[cfg(test)]
 mod tests {
-    use super::{HttpHeader, HttpRequest, HttpResponse};
+    use super::{HttpHeader, HttpRequest, HttpResponse, TransportError};
+
+    #[test]
+    fn every_transport_failure_reads_as_text() {
+        assert_eq!(
+            TransportError::Tls {
+                message: "bad cert".to_owned()
+            }
+            .to_string(),
+            "TLS error: bad cert"
+        );
+        assert_eq!(
+            TransportError::Other {
+                message: "odd".to_owned()
+            }
+            .to_string(),
+            "odd"
+        );
+    }
 
     #[test]
     fn debug_redacts_credentials_query_and_body() {

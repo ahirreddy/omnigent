@@ -1157,3 +1157,40 @@ impl ClientMessage {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Refusing;
+
+    impl Serialize for Refusing {
+        fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom("refused"))
+        }
+    }
+
+    #[test]
+    fn a_bodyless_message_carries_only_its_type() {
+        assert_eq!(
+            encode_with_type("ping", Value::Null).unwrap(),
+            r#"{"type":"ping"}"#
+        );
+    }
+
+    #[test]
+    fn a_body_that_is_not_an_object_cannot_be_framed() {
+        assert!(matches!(
+            encode_with_type("ping", Value::Bool(true)),
+            Err(MessageError::Encode { message }) if message.contains("not an object")
+        ));
+    }
+
+    #[test]
+    fn a_value_that_refuses_to_serialize_is_an_encode_error() {
+        assert!(matches!(
+            to_value(&Refusing),
+            Err(MessageError::Encode { message }) if message.contains("refused")
+        ));
+    }
+}

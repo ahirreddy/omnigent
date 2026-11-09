@@ -430,3 +430,180 @@ fn archived_page_asks_for_archived_and_drops_others() {
         Some("archived")
     );
 }
+
+#[test]
+fn mcp_services_stop_at_a_cursor_that_comes_back() {
+    let page =
+        |cursor: &str| Reply::json(200, format!(r#"{{"data":[],"next_cursor":"{cursor}"}}"#));
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        "/v1/mcp-registry/services",
+        vec![page("a"), page("b"), page("a")],
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.mcp_services()),
+        Err(SessionError::InvalidPagination)
+    );
+    core.transport().enqueue(
+        "GET",
+        "/v1/mcp-registry/services",
+        vec![page("a"), page("a")],
+    );
+    assert_eq!(
+        block_on(core.mcp_services()),
+        Err(SessionError::InvalidPagination)
+    );
+}
+
+#[test]
+fn acknowledgements_that_do_not_decode_are_uncertain() {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("PATCH"),
+        "/v1/policies/p1",
+        None,
+        Reply::json(200, r#"{"id":7}"#),
+    );
+    transport.respond(
+        Some("POST"),
+        "/auth/users/u1/reset",
+        None,
+        Reply::json(200, "{}"),
+    );
+    transport.respond(Some("PUT"), "/v1/sharing", None, Reply::json(200, "[]"));
+    let core = connected(transport);
+    let unreadable = block_on(core.set_default_policy_enabled("p1", true));
+    assert!(
+        matches!(&unreadable, Err(SessionError::DeliveryUncertain { detail }) if detail.contains("/v1/policies/p1")),
+        "{unreadable:?}"
+    );
+    assert!(matches!(
+        block_on(core.reset_member_password("u1")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("no password")
+    ));
+    let update = SharingUpdate {
+        mode: Some("off".into()),
+        public_max_level: Some("view".into()),
+        default_public_sessions: Some("all".into()),
+        ..SharingUpdate::default()
+    };
+    assert!(matches!(
+        block_on(core.update_sharing(&update)),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("/v1/sharing")
+    ));
+    assert_eq!(
+        core.transport().write_bodies().last().unwrap(),
+        &json!({
+            "sharing_mode": "off",
+            "public_sharing_max_level": "view",
+            "default_public_sessions": "all",
+        })
+    );
+}
+
+#[test]
+fn disconnects_use_their_own_routes_and_check_the_name_first() {
+    let transport = RouteTransport::local();
+    transport.ok("/v1/mcp-registry/services/s1/connection", "{}");
+    transport.ok("/v1/connections/github/disconnect", "{}");
+    let core = connected(transport);
+    block_on(core.disconnect_mcp_service("s1")).unwrap();
+    block_on(core.disconnect_provider("github")).unwrap();
+    assert_eq!(
+        core.transport()
+            .writes()
+            .iter()
+            .map(|request| (request.method.clone(), path_of(request)))
+            .collect::<Vec<_>>(),
+        [
+            (
+                "DELETE".to_owned(),
+                "/v1/mcp-registry/services/s1/connection".to_owned()
+            ),
+            (
+                "POST".to_owned(),
+                "/v1/connections/github/disconnect".to_owned()
+            ),
+        ]
+    );
+    assert!(matches!(
+        block_on(core.disconnect_mcp_service("../x")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+    assert!(matches!(
+        block_on(core.disconnect_provider("slack")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}
+
+#[test]
+fn a_provider_may_name_only_a_user_or_only_a_host_and_is_silent_when_disconnected() {
+    let transport = RouteTransport::local();
+    let core = connected(transport);
+    for (body, account) in [
+        (
+            json!({"connected": true, "databricks_user": "ada"}),
+            Some("ada"),
+        ),
+        (json!({"connected": true, "workspace_host": "w"}), Some("w")),
+        (json!({"connected": true}), None),
+        (json!({"connected": false, "databricks_user": "ada"}), None),
+    ] {
+        core.transport()
+            .ok("/v1/connections/databricks/status", body.to_string());
+        assert_eq!(
+            block_on(core.provider_connection("databricks"))
+                .unwrap()
+                .account
+                .as_deref(),
+            account,
+            "{body}"
+        );
+    }
+    core.transport().ok(
+        "/v1/connections/databricks/status",
+        r#"{"connected":"yes"}"#,
+    );
+    assert!(matches!(
+        block_on(core.provider_connection("databricks")),
+        Err(SessionError::MalformedResponse { .. })
+    ));
+}
+
+#[test]
+fn an_import_reports_failures_with_or_without_a_session_id() {
+    let transport = RouteTransport::local();
+    transport.ok(
+        "/v1/imports/local",
+        r#"{"imported":0,"already_imported":0,"failed":2,
+            "failures":[{"external_session_id":"x1","reason":"bad"},{"reason":"odd"}]}"#,
+    );
+    let core = connected(transport);
+    let result = block_on(core.import_local_sessions("h1", "claude", 3, None)).unwrap();
+    assert_eq!(result.failures, ["x1: bad", "odd"]);
+    assert_eq!(
+        core.transport().write_bodies(),
+        [json!({"host_id": "h1", "source": "claude", "limit": 3})]
+    );
+}
+
+#[test]
+fn a_member_with_a_text_timestamp_is_malformed_and_an_odd_import_tally_is_uncertain() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok(
+            "/auth/users",
+            r#"{"users":[{"id":"u1","created_at":"yesterday"}]}"#,
+        )
+        .ok("/v1/imports/local", r#"{"imported":"many"}"#);
+    assert!(matches!(
+        block_on(core.members()),
+        Err(SessionError::MalformedResponse { detail }) if detail.contains("created_at")
+    ));
+    assert!(matches!(
+        block_on(core.import_local_sessions("h1", "claude", 3, None)),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("tally")
+    ));
+}

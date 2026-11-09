@@ -233,3 +233,143 @@ fn install_reports_the_version_and_startup_reads_or_is_absent() {
         StartupRead::NotReported
     );
 }
+
+#[test]
+fn a_catalog_with_the_wrong_shape_is_malformed_and_other_failures_pass_through() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok("/v1/harnesses", r#"{"harnesses":7}"#);
+    assert!(matches!(
+        block_on(core.harness_setup_catalog()),
+        Err(SessionError::MalformedResponse { detail }) if detail.starts_with("/v1/harnesses: ")
+    ));
+    core.transport()
+        .respond(None, "/v1/harnesses", None, Reply::json(500, "{}"));
+    assert!(block_on(core.harness_setup_catalog()).is_err());
+    core.transport()
+        .ok("/v1/harnesses", r#"{"data":[]}"#)
+        .ok("/v1/hosts", r#"{"hosts":[{}]}"#);
+    assert!(matches!(
+        block_on(core.harness_setup_catalog()),
+        Err(SessionError::MalformedResponse { detail }) if detail.starts_with("/v1/hosts: ")
+    ));
+    core.transport().ok("/v1/hosts", r#"{"hosts":7}"#);
+    assert!(block_on(core.harness_setup_catalog()).is_err());
+}
+
+#[test]
+fn logins_with_the_wrong_shape_are_malformed() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok("/v1/hosts/h1/harnesses/codex/login", "[]")
+        .ok("/v1/hosts/h1/harnesses/codex/login/l1", "[]");
+    assert!(matches!(
+        block_on(core.start_harness_login("h1", "codex-native")),
+        Err(SessionError::MalformedResponse { .. })
+    ));
+    assert!(matches!(
+        block_on(core.harness_login_status("h1", "codex-native", "l1")),
+        Err(SessionError::MalformedResponse { .. })
+    ));
+}
+
+#[test]
+fn a_refresh_reads_an_answered_snapshot_and_reports_other_failures() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/hosts/h1/harnesses/refresh",
+        r#"{"configured_harnesses":{"codex-native":true}}"#,
+    );
+    assert!(
+        block_on(core.refresh_harnesses("h1"))
+            .unwrap()
+            .is_ready("codex-native")
+    );
+    core.transport().respond(
+        None,
+        "/v1/hosts/h1/harnesses/refresh",
+        None,
+        Reply::json(403, "{}"),
+    );
+    assert_eq!(
+        block_on(core.refresh_harnesses("h1")),
+        Err(SessionError::Forbidden)
+    );
+    core.transport().ok("/v1/hosts/h1/harnesses/refresh", "[]");
+    core.transport().ok("/v1/hosts/h1", "[]");
+    assert!(block_on(core.refresh_harnesses("h1")).is_err());
+}
+
+#[test]
+fn a_startup_read_tells_outdated_hosts_from_failures() {
+    let core = connected(RouteTransport::local());
+    let path = "/v1/hosts/h1/harnesses/pi-native/startup";
+    core.transport()
+        .respond(None, path, None, Reply::json(501, "{}"));
+    assert_eq!(
+        block_on(core.harness_startup("h1", "pi-native", "Mac")),
+        Ok(StartupRead::HostOutdated)
+    );
+    core.transport()
+        .respond(None, path, None, Reply::json(500, "{}"));
+    assert!(block_on(core.harness_startup("h1", "pi-native", "Mac")).is_err());
+    core.transport().ok(path, "[]");
+    assert!(matches!(
+        block_on(core.harness_startup("h1", "pi-native", "Mac")),
+        Err(SessionError::MalformedResponse { .. })
+    ));
+}
+
+#[test]
+fn acknowledgements_that_do_not_decode_are_uncertain() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok("/v1/hosts/h1/harnesses/codex-native/install", "[]");
+    assert!(matches!(
+        block_on(core.install_harness("h1", "codex-native")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("acknowledgement")
+    ));
+    assert!(matches!(
+        block_on(core.install_harness_reporting("h1", "codex-native")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("acknowledgement")
+    ));
+}
+
+#[test]
+fn an_install_acknowledged_with_an_unreadable_version_is_uncertain() {
+    let core = connected(RouteTransport::local());
+    core.transport().ok(
+        "/v1/hosts/h1/harnesses/codex-native/install",
+        r#"{"configured_harnesses":{"codex-native":true},"version":7}"#,
+    );
+    assert!(matches!(
+        block_on(core.install_harness_reporting("h1", "codex-native")),
+        Err(SessionError::DeliveryUncertain { detail })
+            if detail.contains("unreadable acknowledgement") && detail.contains("version")
+    ));
+}
+
+#[test]
+fn unreadable_detected_credentials_and_install_versions_name_their_route() {
+    let core = connected(RouteTransport::local());
+    core.transport()
+        .ok("/v1/hosts/h1/credentials/detected", r#"{"credentials":7}"#)
+        .ok(
+            "/v1/hosts/h1/harnesses/codex-native/install",
+            r#"{"host_id":"h1","version":7}"#,
+        );
+    assert!(matches!(
+        block_on(core.detected_credentials("h1")),
+        Err(SessionError::MalformedResponse { detail })
+            if detail.starts_with("/v1/hosts/h1/credentials/detected: ")
+    ));
+    assert!(matches!(
+        block_on(core.install_harness_reporting("h1", "codex-native")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("unreadable")
+    ));
+    core.transport()
+        .ok("/v1/hosts/h1/harnesses/codex/login", "not json");
+    assert!(matches!(
+        block_on(core.start_harness_login("h1", "codex")),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("unreadable")
+    ));
+}

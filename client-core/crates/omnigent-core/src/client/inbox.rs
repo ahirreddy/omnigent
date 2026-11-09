@@ -115,6 +115,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_output_text_counts_as_the_reply() {
+        let item: ConversationItem = serde_json::from_value(serde_json::json!({
+            "id": "a", "type": "message", "role": "assistant",
+            "content": [
+                {"type": "input_text", "text": "typed"},
+                {"type": "output_text", "text": "said"},
+            ],
+        }))
+        .unwrap();
+        assert_eq!(latest_output(&[item]).unwrap().preview, "said");
+    }
+
+    #[test]
     fn previews_cut_lines_and_characters() {
         assert_eq!(preview_text("\n a \n\n b \n c \n d", 100, 3), "a\nb\nc");
         assert_eq!(preview_text("abcdef", 4, 3), "abc\u{2026}");

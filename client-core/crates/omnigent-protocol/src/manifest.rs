@@ -274,6 +274,27 @@ mod tests {
         ServerManifest::from_json(json.as_bytes())
     }
 
+    #[test]
+    fn every_kind_of_value_can_be_named_in_a_type_error() {
+        assert_eq!(
+            unexpected(&serde_json::json!(5)),
+            de::Unexpected::Other("number")
+        );
+        assert_eq!(unexpected(&serde_json::json!([])), de::Unexpected::Seq);
+        assert_eq!(unexpected(&serde_json::json!({})), de::Unexpected::Map);
+    }
+
+    #[test]
+    fn an_auth_mode_prints_as_sent_and_a_wrong_shape_is_named() {
+        assert_eq!(AuthMode::Oidc.to_string(), "oidc");
+        for wrong in ["1", "[]", "{}"] {
+            assert!(
+                parse(&format!(r#"{{"auth_mode":{wrong}}}"#)).is_err(),
+                "{wrong}"
+            );
+        }
+    }
+
     fn fixture(name: &str) -> Vec<u8> {
         let path = format!(
             "{}/../../fixtures/manifest/{name}",

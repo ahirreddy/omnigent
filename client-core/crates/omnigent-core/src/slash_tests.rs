@@ -421,3 +421,56 @@ fn smart_routing_needs_the_server_flag_and_a_top_level_agent_session() {
     assert!(!offers_smart_routing(&agent("claude-native"), &no_router));
     assert!(offers_smart_routing(&agent("openai-agents"), &no_router));
 }
+
+#[test]
+fn context_report_near_the_integer_limit_does_not_overflow() {
+    let full = context_report(
+        None,
+        ContextUsage {
+            tokens_used: Some(u64::MAX),
+            context_window: Some(u64::MAX),
+            items: u64::MAX,
+        },
+    );
+    assert!(full.contains("(100.0%)"), "{full}");
+    assert_eq!(full.matches('\u{2588}').count(), 20);
+    assert_eq!(full.matches('\u{2591}').count(), 0);
+    // More tokens than the window still shows a full bar, never a negative remainder.
+    let over = context_report(
+        None,
+        ContextUsage {
+            tokens_used: Some(u64::MAX),
+            context_window: Some(1),
+            items: 0,
+        },
+    );
+    assert!(over.contains("(100.0%)"), "{over}");
+    let half = context_report(
+        None,
+        ContextUsage {
+            tokens_used: Some(u64::MAX / 2),
+            context_window: Some(u64::MAX),
+            items: 0,
+        },
+    );
+    assert!(half.contains("(50.0%)"), "{half}");
+    assert_eq!(half.matches('\u{2588}').count(), 10);
+}
+
+#[test]
+fn a_skill_with_a_label_only_shows_it_and_an_override_says_so() {
+    let labelled = Skill {
+        display_name: Some("Pretty".to_owned()),
+        description: String::new(),
+        ..skill("plain")
+    };
+    assert_eq!(skill_description(&labelled), "Pretty");
+    let overridden = SessionConfiguration {
+        model_override: Some("fast".to_owned()),
+        ..session("claude-sdk")
+    };
+    assert!(matches!(
+        model_action("", &overridden),
+        SlashAction::Show { text } if text.contains("fast (override)")
+    ));
+}

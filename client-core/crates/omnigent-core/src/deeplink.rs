@@ -852,6 +852,104 @@ mod tests {
     const HEX: &str = "e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9";
     const DASHED: &str = "e4f5a6b7-c8d9-e0f1-a2b3-c4d5e6f7a8b9";
 
+    #[test]
+    fn a_session_route_with_an_empty_id_is_unsupported() {
+        assert!(
+            OmnigentDeepLink::parse_with("omnigent://localhost/c//", DeepLinkPolicy::Desktop)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn a_scheme_with_a_bad_first_character_is_not_a_url() {
+        assert!(UrlParts::split("1http://example.com").is_none());
+        assert!(UrlParts::split("ht tp://example.com").is_none());
+        assert!(UrlParts::split("http://example.com").is_some());
+    }
+
+    #[test]
+    fn every_error_reads_as_a_sentence() {
+        for (error, text) in [
+            (
+                ServerOriginError::UnsupportedScheme("ftp".into()).to_string(),
+                "unsupported scheme 'ftp'",
+            ),
+            (ServerOriginError::MissingHost.to_string(), "missing host"),
+            (
+                ServerOriginError::InvalidHost("a b".into()).to_string(),
+                "invalid host 'a b'",
+            ),
+            (
+                ServerOriginError::InvalidPort("x".into()).to_string(),
+                "invalid port 'x'",
+            ),
+            (
+                ServerOriginError::CredentialsNotAllowed.to_string(),
+                "credentials are not allowed",
+            ),
+            (
+                DeepLinkError::UnsupportedScheme.to_string(),
+                "not an omnigent:// link",
+            ),
+            (
+                DeepLinkError::MissingHost.to_string(),
+                "the link names no server",
+            ),
+            (
+                DeepLinkError::InvalidOrigin(ServerOriginError::MissingHost).to_string(),
+                "the link's server is invalid: missing host",
+            ),
+            (
+                DeepLinkError::UnsupportedPath("/x".into()).to_string(),
+                "unsupported deep link path '/x'",
+            ),
+            (
+                DeepLinkError::InvalidCharacters.to_string(),
+                "the link contains whitespace or control characters",
+            ),
+            (
+                DeepLinkBuildError::Mismatch.to_string(),
+                "the link would parse to a different destination",
+            ),
+            (
+                DeepLinkBuildError::NotRoundTrippable(DeepLinkError::MissingHost).to_string(),
+                "the link would be rejected: the link names no server",
+            ),
+            (
+                ConversationUrlError::NotHierarchical("mailto:a".into()).to_string(),
+                "'mailto:a' cannot hold a conversation path",
+            ),
+        ] {
+            assert_eq!(error, text);
+        }
+        assert!(
+            DeepLinkError::InvalidAcknowledgment("x".into())
+                .to_string()
+                .ends_with(" 'x'")
+        );
+        assert!(
+            DeepLinkBuildError::SchemeNotInferable(ServerOrigin::parse("http://a").unwrap())
+                .to_string()
+                .contains("http://a")
+        );
+    }
+
+    #[test]
+    fn hostile_authorities_and_paths_are_refused() {
+        assert_eq!(
+            ServerOrigin::parse("http://[::1]x"),
+            Err(ServerOriginError::InvalidHost("[::1]x".into()))
+        );
+        assert_eq!(
+            OmnigentDeepLink::parse("1bad:omnigent"),
+            Err(DeepLinkError::UnsupportedScheme)
+        );
+        assert!(matches!(
+            OmnigentDeepLink::parse("omnigent://example.com/c///"),
+            Err(DeepLinkError::UnsupportedPath(_))
+        ));
+    }
+
     fn ios(raw: &str) -> Result<OmnigentDeepLink, DeepLinkError> {
         OmnigentDeepLink::parse_with(raw, DeepLinkPolicy::Ios)
     }

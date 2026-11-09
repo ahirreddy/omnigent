@@ -638,6 +638,125 @@ mod tests {
         BrowserEndpoint::new(Url::parse("https://example.com/omni").unwrap(), "conv_a").unwrap()
     }
 
+    #[allow(
+        clippy::unnecessary_wraps,
+        reason = "mirrors the host transport result the decoders take"
+    )]
+    fn reply(status: u16, body: &str) -> Result<HttpResponse, TransportError> {
+        Ok(HttpResponse {
+            status,
+            headers: Vec::new(),
+            body: body.as_bytes().to_vec(),
+        })
+    }
+
+    #[test]
+    fn a_browser_with_no_profile_sends_only_its_url() {
+        let request = endpoint()
+            .create_request(Some("https://github.com/login"), None)
+            .unwrap();
+        let body: Value = serde_json::from_slice(request.body.as_deref().unwrap()).unwrap();
+        assert_eq!(body, serde_json::json!({"url": "https://github.com/login"}));
+    }
+
+    #[test]
+    fn a_browser_can_open_in_a_named_profile() {
+        let request = endpoint().create_request(None, Some("work")).unwrap();
+        let body: Value = serde_json::from_slice(request.body.as_deref().unwrap()).unwrap();
+        assert_eq!(body["profile"], "work");
+    }
+
+    #[test]
+    fn a_base_url_that_is_not_web_is_refused() {
+        for bad in ["ftp://example.com", "mailto:a@b.c"] {
+            assert!(matches!(
+                BrowserEndpoint::new(Url::parse(bad).unwrap(), "conv_a"),
+                Err(RemoteBrowserError::InvalidRequest { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn listing_resumes_after_a_valid_cursor_and_refuses_a_bad_one() {
+        let listed = endpoint().list_request(10, Some("btab_1")).unwrap();
+        assert!(
+            listed.url.ends_with("limit=10&order=asc&after=btab_1"),
+            "{}",
+            listed.url
+        );
+        assert!(matches!(
+            endpoint().list_request(10, Some("../x")),
+            Err(RemoteBrowserError::InvalidIdentifier { .. })
+        ));
+    }
+
+    #[test]
+    fn creating_in_a_named_profile_sends_it() {
+        let request = endpoint().create_request(None, Some("work")).unwrap();
+        assert_eq!(request.body.unwrap(), br#"{"profile":"work"}"#);
+    }
+
+    #[test]
+    fn every_failure_status_has_its_own_error() {
+        let list = |status: u16| list_response(reply(status, r#"{"detail":"why"}"#)).unwrap_err();
+        assert!(matches!(list(403), RemoteBrowserError::Forbidden { reason } if reason == "why"));
+        for status in [409, 502, 503] {
+            assert!(matches!(
+                list(status),
+                RemoteBrowserError::RunnerUnavailable { status: got, .. } if got == status
+            ));
+        }
+        assert!(matches!(
+            list(500),
+            RemoteBrowserError::HttpStatus { status: 500, .. }
+        ));
+    }
+
+    #[test]
+    fn bodies_of_the_wrong_shape_are_malformed() {
+        let malformed_list = |body: &str| {
+            matches!(
+                list_response(reply(200, body)),
+                Err(RemoteBrowserError::MalformedResponse { .. })
+            )
+        };
+        assert!(malformed_list("not json"));
+        assert!(malformed_list("{}"));
+        assert!(malformed_list(r#"{"data":[{"id":"t","type":"terminal"}]}"#));
+        assert!(malformed_list(r#"{"data":[7]}"#));
+        assert!(malformed_list(r#"{"data":[{"type":"browser"}]}"#));
+    }
+
+    #[test]
+    fn a_delete_must_confirm_the_same_tab() {
+        for body in [
+            r#"{"id":"other","deleted":true}"#,
+            r#"{"id":"btab_1","deleted":false}"#,
+            "{}",
+        ] {
+            assert!(matches!(
+                delete_response("btab_1", reply(200, body)),
+                Err(RemoteBrowserError::MalformedResponse { detail }) if detail.contains("btab_1")
+            ));
+        }
+        assert!(matches!(
+            delete_response("btab_1", reply(403, "{}")),
+            Err(RemoteBrowserError::Forbidden { .. })
+        ));
+    }
+
+    #[test]
+    fn profiles_fail_on_anything_but_the_missing_route() {
+        assert!(matches!(
+            profiles_response(reply(403, "{}")),
+            Err(RemoteBrowserError::Forbidden { .. })
+        ));
+        assert!(matches!(
+            profiles_response(reply(200, r#"{"data":[7]}"#)),
+            Err(RemoteBrowserError::MalformedResponse { .. })
+        ));
+    }
+
     fn recorded(name: &str) -> (Value, Result<HttpResponse, TransportError>) {
         let fixture = fixture_json(&format!("rest/{name}.json"));
         let status = u16::try_from(fixture["status"].as_u64().unwrap()).unwrap();

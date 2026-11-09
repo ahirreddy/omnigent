@@ -229,3 +229,152 @@ fn next_run_text_survives_the_ends_of_the_64_bit_range() {
     // The difference itself overflows, and clamps the same way.
     assert_eq!(format_next_run(i64::MAX, -1), format!("in {days} days"));
 }
+
+#[test]
+fn a_date_with_an_enormous_year_is_rejected_rather_than_overflowing() {
+    for bad in [
+        "9223372036854775807-01-01T00:00:00Z",
+        "1000001-01-01T00:00:00Z",
+        "-1-01-01T00:00:00Z",
+        "2026-13-01T00:00:00Z",
+        "2026-01-32T00:00:00Z",
+        "2026-01-01T24:00:00Z",
+        "2026-01-01T00:60:00Z",
+        "2026-01-01T00:00:61Z",
+        "2026-01-01T00:00:00+24:00",
+        "2026-01-01T00:00:00+00:60",
+        "2026-01-01T00:00:00",
+        "2026-01-01",
+        "",
+    ] {
+        assert_eq!(parse_iso8601(bad), None, "{bad}");
+    }
+    assert!(parse_iso8601("1000000-12-31T23:59:59-23:59").is_some());
+}
+
+#[test]
+fn a_next_run_at_the_integer_limits_still_formats() {
+    assert_eq!(format_next_run(i64::MIN, i64::MAX), "soon");
+    assert!(format_next_run(i64::MAX, i64::MIN).ends_with("days"));
+    assert!(format_next_run(i64::MAX, 0).ends_with("days"));
+}
+
+#[test]
+fn every_weekday_has_its_name() {
+    let names: Vec<&str> = Weekday::ALL.iter().map(|day| day.name()).collect();
+    assert_eq!(
+        names,
+        [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+        ]
+    );
+}
+
+#[test]
+fn custom_rules_build_for_every_unit_and_fall_back_to_the_first_of_the_month() {
+    let custom = |frequency, interval| ScheduleModel {
+        preset: SchedulePreset::Custom,
+        frequency,
+        interval,
+        hour: 8,
+        minute: 0,
+        ..ScheduleModel::default()
+    };
+    let weekly = ScheduleModel {
+        weekdays: vec![Weekday::Friday, Weekday::Monday],
+        ..custom(ScheduleFrequency::Weekly, 2)
+    };
+    assert_eq!(
+        build_rrule(&weekly),
+        "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,FR;BYHOUR=8;BYMINUTE=0"
+    );
+    let monthly = ScheduleModel {
+        month_days: vec![40, 0],
+        ..custom(ScheduleFrequency::Monthly, 1)
+    };
+    assert!(
+        build_rrule(&monthly).contains("BYMONTHDAY=1;"),
+        "{}",
+        build_rrule(&monthly)
+    );
+    assert_eq!(
+        validate_schedule(&monthly, 0, false).as_deref(),
+        Some("Pick at least one day of the month.")
+    );
+}
+
+#[test]
+fn a_rule_with_a_malformed_part_or_a_part_of_another_unit_is_left_alone() {
+    for rule in [
+        "FREQ=DAILY;BYHOUR=8=9;BYMINUTE=0",
+        "FREQ=DAILY;BYHOUR=8;BYHOUR=9;BYMINUTE=0",
+        "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;BYMONTHDAY=3",
+        "FREQ=DAILY;INTERVAL=0;BYHOUR=8;BYMINUTE=0",
+        "FREQ=DAILY;INTERVAL=367;BYHOUR=8;BYMINUTE=0",
+        "FREQ=MONTHLY;BYHOUR=8;BYMINUTE=0",
+        "FREQ=MONTHLY;BYHOUR=8;BYMINUTE=0;BYMONTHDAY=32",
+        "FREQ=YEARLY;BYHOUR=8;BYMINUTE=0;BYMONTHDAY=3",
+        "FREQ=YEARLY;BYHOUR=8;BYMINUTE=0;BYMONTHDAY=3;BYMONTH=13",
+    ] {
+        assert_eq!(parse_rrule(rule), None, "{rule}");
+    }
+}
+
+#[test]
+fn monthly_and_yearly_rules_parse_as_custom() {
+    let monthly = parse_rrule("FREQ=MONTHLY;BYHOUR=8;BYMINUTE=5;BYMONTHDAY=3,1").unwrap();
+    assert_eq!(monthly.preset, SchedulePreset::Custom);
+    assert_eq!(monthly.month_days, [1, 3]);
+    let yearly = parse_rrule("FREQ=YEARLY;BYHOUR=8;BYMINUTE=5;BYMONTHDAY=3;BYMONTH=12").unwrap();
+    assert_eq!(yearly.preset, SchedulePreset::Custom);
+    assert_eq!(yearly.month, 12);
+}
+
+#[test]
+fn an_until_needs_digits_in_both_halves() {
+    assert_eq!(parse_until("2026110xT000000Z"), None);
+    assert_eq!(parse_until("20261101T00000Z"), None);
+    assert_eq!(
+        parse_until(&format_until(1_793_800_000)),
+        Some(1_793_800_000)
+    );
+}
+
+#[test]
+fn descriptions_cover_every_week_and_year_shape() {
+    for (rule, text) in [
+        (
+            "FREQ=WEEKLY;INTERVAL=2;BYHOUR=9;BYMINUTE=0",
+            "Every 2 weeks at 9:00 AM",
+        ),
+        (
+            "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
+            "Every 2 weeks on Monday at 9:00 AM",
+        ),
+        ("FREQ=WEEKLY;BYHOUR=9;BYMINUTE=0", "Weekly at 9:00 AM"),
+        (
+            "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR,SA,SU;BYHOUR=9;BYMINUTE=0",
+            "Every day at 9:00 AM",
+        ),
+        ("FREQ=YEARLY;BYHOUR=9;BYMINUTE=0", "Yearly at 9:00 AM"),
+    ] {
+        assert_eq!(describe_schedule(rule), text, "{rule}");
+    }
+}
+
+#[test]
+fn a_timestamp_without_seconds_reads_as_the_top_of_the_minute() {
+    assert_eq!(
+        parse_iso8601("2026-11-01T00:00Z"),
+        parse_iso8601("2026-11-01T00:00:00Z")
+    );
+    assert_eq!(parse_iso8601("2026-11-01T00:00:61Z"), None);
+    assert_eq!(parse_iso8601("2026-11-01"), None);
+    assert_eq!(parse_iso8601("é-11-01T00:00:00Z"), None);
+}

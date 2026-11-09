@@ -186,3 +186,52 @@ fn invites_link_to_the_connected_server() {
     assert_eq!(plain.url, "https://x/mount/register?invite=t");
     assert!(!plain.is_admin && plain.expires_at.is_none());
 }
+
+#[test]
+fn string_defaults_and_schemas_without_properties_read_plainly() {
+    let transport = RouteTransport::local();
+    transport.ok(
+        "/v1/policy-registry",
+        r#"{"data":[
+            {"name":"a","handler":"h","params_schema":{"required":[]}},
+            {"name":"b","handler":"h","params_schema":{"properties":{
+                "note":{"type":"string","default":"hello"}}}}]}"#,
+    );
+    let core = connected(transport);
+    let entries = block_on(core.policy_registry()).unwrap();
+    assert_eq!(entries[0].params.len(), 0);
+    assert_eq!(entries[1].params[0].default_value, "hello");
+}
+
+#[test]
+fn a_broken_registry_or_acknowledgement_is_reported_by_route() {
+    let transport = RouteTransport::local();
+    transport.ok("/v1/policy-registry", "[]");
+    transport.respond(
+        Some("POST"),
+        "/v1/policies",
+        None,
+        Reply::json(200, r#"{"id":5}"#),
+    );
+    transport.respond(Some("POST"), "/auth/invite", None, Reply::json(200, "[]"));
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.policy_registry()),
+        Err(SessionError::MalformedResponse { detail }) if detail.contains("/v1/policy-registry")
+    ));
+    assert!(matches!(
+        block_on(core.add_default_policy(&registry()[1], "n", &values(&[("window", "5")]))),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("/v1/policies")
+    ));
+    assert!(matches!(
+        block_on(core.invite_member(false)),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("/auth/invite")
+    ));
+}
+
+#[test]
+fn an_object_parameter_must_be_json() {
+    let params = registry().remove(0).params;
+    let error = coerce_policy_params(&params, &values(&[("points", "{nope")])).unwrap_err();
+    assert!(error.contains("must be valid JSON"), "{error}");
+}

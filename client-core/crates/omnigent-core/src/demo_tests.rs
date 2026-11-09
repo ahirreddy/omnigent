@@ -8,7 +8,7 @@ use std::future::{Future, ready};
 use std::sync::Arc;
 
 use futures::executor::block_on;
-use omnigent_protocol::{ItemData, ItemStatus};
+use omnigent_protocol::{Field, ItemData, ItemStatus};
 
 use super::*;
 use crate::client::sessions::{SessionChange, SummaryStatus};
@@ -704,4 +704,479 @@ fn only_the_owner_deletes_a_session() {
     let demo = core.transport();
     assert!(demo.session("demo-design").is_none());
     assert!(demo.session("demo-notes").is_some());
+}
+
+/// A raw request to the demo server, as the client would make it.
+fn raw(transport: &DemoTransport, method: &str, path: &str, body: Option<&Value>) -> (u16, Value) {
+    let response = transport.handle(&HttpRequest {
+        method: method.to_owned(),
+        url: format!("https://demo.invalid{path}"),
+        headers: Vec::new(),
+        body: body.map(|body| serde_json::to_vec(body).unwrap()),
+    });
+    (
+        response.status,
+        serde_json::from_slice(&response.body).unwrap(),
+    )
+}
+
+fn first_session_id(transport: &DemoTransport) -> String {
+    let (status, listed) = raw(transport, "GET", "/v1/sessions", None);
+    assert_eq!(status, 200);
+    listed["data"][0]["id"].as_str().unwrap().to_owned()
+}
+
+/// A demo server whose only sessions are the sample, with `permission_level` set on all of them.
+fn at_permission(level: i64) -> DemoTransport {
+    let transport = DemoTransport::sample().unwrap();
+    for session in &mut transport.lock().sessions {
+        session.snapshot.permission_level = Field::Present(level);
+    }
+    transport
+}
+
+#[test]
+fn the_demo_server_refuses_what_a_real_server_refuses() {
+    let transport = DemoTransport::sample().unwrap();
+    let id = first_session_id(&transport);
+    let session = format!("/v1/sessions/{id}");
+    let events = format!("{session}/events");
+    let cases = [
+        ("GET", "/v1/nope".to_owned(), None, 404),
+        ("PATCH", session.clone(), Some(json!({"nope": 1})), 422),
+        ("PATCH", session.clone(), Some(json!([])), 422),
+        ("PATCH", session.clone(), Some(json!({"labels": 7})), 422),
+        (
+            "PATCH",
+            session.clone(),
+            Some(json!({"labels": {"a": 7}})),
+            422,
+        ),
+        ("PATCH", session, Some(json!({"model_override": 7})), 422),
+        ("POST", events.clone(), Some(json!({"type": "nope"})), 400),
+        ("POST", events, Some(json!({})), 400),
+        (
+            "POST",
+            "/v1/sessions".to_owned(),
+            Some(json!({"agent_id": "demo-codex", "host_id": "someone-else"})),
+            400,
+        ),
+    ];
+    for (method, path, body, status) in cases {
+        assert_eq!(
+            raw(&transport, method, &path, body.as_ref()).0,
+            status,
+            "{method} {path} {body:?}"
+        );
+    }
+}
+
+#[test]
+fn the_demo_server_answers_invalid_json_and_a_bad_url() {
+    let transport = DemoTransport::sample().unwrap();
+    let id = first_session_id(&transport);
+    let response = transport.handle(&HttpRequest {
+        method: "PATCH".to_owned(),
+        url: format!("https://demo.invalid/v1/sessions/{id}"),
+        headers: Vec::new(),
+        body: Some(b"{not json".to_vec()),
+    });
+    assert_eq!(response.status, 400);
+    let response = transport.handle(&HttpRequest {
+        method: "GET".to_owned(),
+        url: "not a url".to_owned(),
+        headers: Vec::new(),
+        body: None,
+    });
+    assert_eq!(response.status, 400);
+}
+
+#[test]
+fn each_permission_level_gets_only_what_it_may_do() {
+    let viewer = at_permission(0);
+    let id = first_session_id(&viewer);
+    let session = format!("/v1/sessions/{id}");
+    let decision = format!("{session}/elicitations/decision_1/resolve");
+    let writes = [
+        ("PATCH", session.clone(), json!({"title": "x"})),
+        ("DELETE", session.clone(), Value::Null),
+        (
+            "POST",
+            format!("{session}/events"),
+            json!({"type": "interrupt"}),
+        ),
+        ("POST", decision, json!({"action": "accept"})),
+        (
+            "POST",
+            format!("{session}/switch-agent"),
+            json!({"agent_id": "demo-claude"}),
+        ),
+    ];
+    for (method, path, body) in writes {
+        assert_eq!(
+            raw(&viewer, method, &path, Some(&body)).0,
+            403,
+            "{method} {path}"
+        );
+    }
+    let editor = at_permission(2);
+    assert_eq!(
+        raw(&editor, "PATCH", &session, Some(&json!({"archived": true}))).0,
+        403,
+        "archiving belongs to the owner"
+    );
+    assert_eq!(raw(&editor, "DELETE", &session, None).0, 403);
+}
+
+#[test]
+fn the_session_list_and_items_page_after_a_cursor() {
+    let transport = DemoTransport::sample().unwrap();
+    let (_, listed) = raw(&transport, "GET", "/v1/sessions?limit=1", None);
+    assert_eq!(listed["data"].as_array().unwrap().len(), 1);
+    assert_eq!(listed["has_more"], json!(true));
+    let last = listed["last_id"].as_str().unwrap();
+    let (_, next) = raw(
+        &transport,
+        "GET",
+        &format!("/v1/sessions?after={last}&limit=100"),
+        None,
+    );
+    assert!(
+        next["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row["id"] != json!(last)),
+        "the cursor row is not repeated"
+    );
+    assert_eq!(next["has_more"], json!(false));
+    let (_, gone) = raw(&transport, "GET", "/v1/sessions?after=sess_missing", None);
+    assert_eq!(gone["data"], json!([]), "an unknown cursor ends the list");
+
+    let id = first_session_id(&transport);
+    let items = format!("/v1/sessions/{id}/items");
+    let (_, page) = raw(&transport, "GET", &format!("{items}?limit=1"), None);
+    let first = page["data"][0]["id"].as_str().unwrap();
+    let (_, rest) = raw(
+        &transport,
+        "GET",
+        &format!("{items}?after={first}&limit=100"),
+        None,
+    );
+    assert!(
+        rest["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row["id"] != json!(first))
+    );
+    let (_, none) = raw(
+        &transport,
+        "GET",
+        &format!("{items}?after=item_missing"),
+        None,
+    );
+    assert_eq!(none["data"], json!([]));
+}
+
+#[test]
+fn the_demo_server_answers_the_read_routes_for_a_session() {
+    let transport = DemoTransport::sample().unwrap();
+    let id = first_session_id(&transport);
+    let (status, agent) = raw(&transport, "GET", &format!("/v1/sessions/{id}/agent"), None);
+    assert_eq!(status, 200);
+    assert_eq!(agent["terminals"], json!([]));
+    let changes = format!("/v1/sessions/{id}/resources/environments/env/changes");
+    assert_eq!(
+        raw(&transport, "GET", &changes, None).1,
+        json!({"entries": []})
+    );
+    let missing = "/v1/sessions/sess_missing/resources/environments/env/changes";
+    assert_eq!(raw(&transport, "GET", missing, None).0, 404);
+    assert_eq!(
+        raw(&transport, "GET", "/v1/sessions/sess_missing/agent", None).0,
+        404
+    );
+}
+
+#[test]
+fn patching_labels_and_overrides_clears_and_sets() {
+    let transport = DemoTransport::sample().unwrap();
+    let id = first_session_id(&transport);
+    let session = format!("/v1/sessions/{id}");
+    let (_, set) = raw(
+        &transport,
+        "PATCH",
+        &session,
+        Some(&json!({"labels": {"note": "x"}})),
+    );
+    assert_eq!(set["labels"]["note"], json!("x"));
+    let (_, cleared) = raw(
+        &transport,
+        "PATCH",
+        &session,
+        Some(&json!({"labels": {"note": ""}})),
+    );
+    assert_eq!(cleared["labels"].get("note"), None);
+
+    let (_, model) = raw(
+        &transport,
+        "PATCH",
+        &session,
+        Some(&json!({"model_override": "m1"})),
+    );
+    assert_eq!(model["model_override"], json!("m1"));
+    for clearing in [json!("default"), json!("off"), json!("reset"), Value::Null] {
+        raw(
+            &transport,
+            "PATCH",
+            &session,
+            Some(&json!({"model_override": "m1"})),
+        );
+        let (status, cleared) = raw(
+            &transport,
+            "PATCH",
+            &session,
+            Some(&json!({"model_override": clearing})),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(cleared["model_override"], Value::Null);
+    }
+    let (_, mode) = raw(
+        &transport,
+        "PATCH",
+        &session,
+        Some(&json!({"permission_mode": "plan"})),
+    );
+    assert_eq!(mode["labels"][PERMISSION_MODE_LABEL], json!("plan"));
+}
+
+#[test]
+fn an_empty_message_is_refused() {
+    let transport = DemoTransport::sample().unwrap();
+    let (_, created) = raw(
+        &transport,
+        "POST",
+        "/v1/sessions",
+        Some(&json!({"agent_id": "demo-codex", "host_id": DEMO_HOST_ID})),
+    );
+    let events = format!("/v1/sessions/{}/events", created["id"].as_str().unwrap());
+    let empty = json!({"type": "message", "content": [{"type": "input_text", "text": ""}]});
+    assert_eq!(raw(&transport, "POST", &events, Some(&empty)).0, 400);
+}
+
+#[test]
+fn an_archived_session_refuses_a_message() {
+    let transport = DemoTransport::sample().unwrap();
+    let id = first_session_id(&transport);
+    raw(
+        &transport,
+        "PATCH",
+        &format!("/v1/sessions/{id}"),
+        Some(&json!({"archived": true})),
+    );
+    let (status, body) = raw(
+        &transport,
+        "POST",
+        &format!("/v1/sessions/{id}/events"),
+        Some(&json!({"type": "message", "content": [{"type": "input_text", "text": "hi"}]})),
+    );
+    assert_eq!(status, 409);
+    assert!(
+        body["detail"].as_str().unwrap().contains("Restore"),
+        "{body}"
+    );
+}
+
+#[test]
+fn creating_with_a_model_and_a_harness_keeps_them() {
+    let transport = DemoTransport::sample().unwrap();
+    let (status, created) = raw(
+        &transport,
+        "POST",
+        "/v1/sessions",
+        Some(&json!({
+            "agent_id": "demo-claude",
+            "host_id": DEMO_HOST_ID,
+            "title": "  Trim me  ",
+            "model_override": "m1",
+        })),
+    );
+    assert_eq!(status, 201);
+    assert_eq!(created["model_override"], json!("m1"));
+    assert_eq!(created["harness"], json!("claude-native"));
+    assert_eq!(
+        created["labels"]["omnigent.wrapper"],
+        json!("claude-code-native-ui")
+    );
+    let (_, switched) = raw(
+        &transport,
+        "POST",
+        &format!(
+            "/v1/sessions/{}/switch-agent",
+            created["id"].as_str().unwrap()
+        ),
+        Some(&json!({"agent_id": "demo-codex"})),
+    );
+    assert_eq!(
+        switched["labels"]["omnigent.wrapper"],
+        json!("codex-native-ui")
+    );
+}
+
+#[test]
+fn the_catalog_lists_the_demo_host_and_agents() {
+    let catalog = demo_catalog();
+    assert_eq!(
+        catalog
+            .agents
+            .iter()
+            .map(|agent| agent.id.as_str())
+            .collect::<Vec<_>>(),
+        ["demo-codex", "demo-claude"]
+    );
+    assert_eq!(catalog.host.unwrap().host_id, DEMO_HOST_ID);
+}
+
+#[test]
+fn a_broken_fixture_is_a_workspace_error() {
+    for text in [
+        "{",
+        "{}",
+        r#"{"session": {}}"#,
+        r#"{"session": {"updatedAt": 1}}"#,
+    ] {
+        assert!(
+            matches!(fixture_session(text), Err(WorkspaceError::Corrupt { .. })),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn a_reply_whose_session_or_item_disappeared_stops_streaming() {
+    let core = sample();
+    let session = create(&core, "One");
+    send(&core, &session, "hello").unwrap();
+    let transport = core.transport();
+    assert!(transport.is_replying());
+    let mut state = transport.lock();
+    let reply_item = state.replies.values().next().unwrap().item_id.clone();
+    state
+        .sessions
+        .iter_mut()
+        .find(|row| row.snapshot.id == session)
+        .unwrap()
+        .snapshot
+        .items
+        .retain(|item| item.id != reply_item);
+    drop(state);
+    assert_eq!(transport.advance_replies(), Vec::<String>::new());
+    assert!(!transport.is_replying());
+
+    send(&core, &create(&core, "Two"), "hello").unwrap();
+    assert!(transport.is_replying());
+    transport.lock().sessions.clear();
+    assert_eq!(transport.advance_replies(), Vec::<String>::new());
+    assert!(!transport.is_replying());
+}
+
+#[test]
+fn a_decision_answer_is_checked_against_its_schema() {
+    let transport = DemoTransport::sample().unwrap();
+    let id = transport
+        .lock()
+        .sessions
+        .iter()
+        .find(|session| !session.snapshot.pending_elicitations.is_empty())
+        .map(|session| session.snapshot.id.clone())
+        .unwrap();
+    let decision = transport
+        .session(&id)
+        .unwrap()
+        .snapshot
+        .pending_elicitations[0]
+        .elicitation_id
+        .clone();
+    let route = format!("/v1/sessions/{id}/elicitations/{decision}/resolve");
+    for refused in [json!({}), json!({"action": "other"})] {
+        assert_eq!(
+            raw(&transport, "POST", &route, Some(&refused)).0,
+            422,
+            "{refused}"
+        );
+    }
+    assert_eq!(
+        raw(
+            &transport,
+            "POST",
+            &route,
+            Some(&json!({"action": "decline"}))
+        )
+        .0,
+        202
+    );
+    assert_eq!(
+        raw(
+            &transport,
+            "POST",
+            &route,
+            Some(&json!({"action": "decline"}))
+        )
+        .0,
+        404,
+        "a second answer finds it gone"
+    );
+}
+
+#[test]
+fn workspace_ids_list_every_session_and_item() {
+    let workspace = sample_workspace().unwrap();
+    let sessions = session_ids(&workspace);
+    assert_eq!(sessions.len(), workspace.sessions.len());
+    assert!(sessions.contains(&workspace.sessions[0].snapshot.id));
+    let items = item_ids(&workspace);
+    let total: usize = workspace
+        .sessions
+        .iter()
+        .map(|session| session.snapshot.items.len())
+        .sum();
+    assert_eq!(items.len(), total, "item ids never collide across sessions");
+}
+
+#[test]
+fn a_blank_message_with_nothing_attached_is_refused() {
+    let transport = DemoTransport::sample().unwrap();
+    let (_, created) = raw(
+        &transport,
+        "POST",
+        "/v1/sessions",
+        Some(&json!({"agent_id": "demo-codex", "host_id": DEMO_HOST_ID})),
+    );
+    let events = format!("/v1/sessions/{}/events", created["id"].as_str().unwrap());
+    let blank =
+        json!({"type": "message", "data": {"content": [{"type": "input_text", "text": "  "}]}});
+    let (status, body) = raw(&transport, "POST", &events, Some(&blank));
+    assert_eq!(status, 400);
+    assert!(
+        body["detail"].as_str().unwrap().contains("Write a message"),
+        "{body}"
+    );
+}
+
+#[test]
+fn accepting_a_decision_with_no_fields_takes_no_content() {
+    let transport = DemoTransport::sample().unwrap();
+    let found = transport.lock().sessions.iter_mut().find_map(|session| {
+        let pending = session.snapshot.pending_elicitations.first_mut()?;
+        pending.params.requested_schema =
+            serde_json::from_value(json!({"properties": {}})).unwrap();
+        Some((session.snapshot.id.clone(), pending.elicitation_id.clone()))
+    });
+    let (id, decision) = found.unwrap();
+    let route = format!("/v1/sessions/{id}/elicitations/{decision}/resolve");
+    let extra = json!({"action": "accept", "content": {"name": "x"}});
+    assert_eq!(raw(&transport, "POST", &route, Some(&extra)).0, 422);
+    let plain = json!({"action": "accept"});
+    assert_eq!(raw(&transport, "POST", &route, Some(&plain)).0, 202);
 }

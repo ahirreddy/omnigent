@@ -440,6 +440,207 @@ impl std::error::Error for OidcError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http::TransportError;
+    use std::error::Error as _;
+
+    #[test]
+    fn hosted_errors_tell_the_user_what_to_do() {
+        let cases = [
+            (HostedAuthError::InvalidBaseUrl, "Use an HTTPS API URL"),
+            (HostedAuthError::NotConnected, "Connect to the server"),
+            (HostedAuthError::IdentityUnavailable, "did not confirm"),
+            (HostedAuthError::IdentityMismatch, "differs from the saved"),
+            (
+                HostedAuthError::BrowserLoginExpired { reason: None },
+                "Browser login expired",
+            ),
+            (
+                HostedAuthError::BrowserLoginRejected {
+                    status: 403,
+                    reason: Some("no access".into()),
+                },
+                "Browser login failed: no access",
+            ),
+            (
+                HostedAuthError::BrowserLoginRejected {
+                    status: 403,
+                    reason: Some(String::new()),
+                },
+                "Browser login failed. Start a new sign-in.",
+            ),
+            (
+                HostedAuthError::LoginUpgradeRequired {
+                    message: Some("Update to 2.0".into()),
+                },
+                "Update to 2.0",
+            ),
+            (
+                HostedAuthError::LoginUpgradeRequired { message: None },
+                "needs a newer sign-in",
+            ),
+            (
+                HostedAuthError::MalformedResponse {
+                    detail: "hidden".into(),
+                },
+                "could not read",
+            ),
+            (HostedAuthError::RedirectNotAllowed, "redirected"),
+            (
+                HostedAuthError::Unauthorized { reason: None },
+                "Sign in again",
+            ),
+            (HostedAuthError::Forbidden, "denied access"),
+            (
+                HostedAuthError::HttpStatus { status: 500 },
+                "returned HTTP 500",
+            ),
+            (HostedAuthError::CredentialExpired, "has expired"),
+            (
+                HostedAuthError::InvalidCredentialRecord,
+                "could not be read",
+            ),
+            (
+                HostedAuthError::Entropy(EntropyError::Unavailable {
+                    message: "rng".into(),
+                }),
+                "secure sign-in",
+            ),
+        ];
+        for (error, expected) in cases {
+            let text = error.to_string();
+            assert!(text.contains(expected), "{error:?}: {text}");
+        }
+        assert!(
+            !HostedAuthError::MalformedResponse {
+                detail: "hidden".into()
+            }
+            .to_string()
+            .contains("hidden"),
+            "decoder detail stays out of the message"
+        );
+    }
+
+    #[test]
+    fn a_mismatched_identity_counts_as_ended_by_the_server() {
+        assert_eq!(
+            HostedAuthError::IdentityMismatch.failure(),
+            AuthFailure::EndedByServer
+        );
+    }
+
+    #[test]
+    fn hosted_errors_keep_their_source() {
+        let transport = TransportError::Cancelled;
+        assert_eq!(
+            HostedAuthError::Transport(transport.clone())
+                .source()
+                .map(ToString::to_string),
+            Some(transport.to_string())
+        );
+        let store = SecureStoreError::Unavailable {
+            message: "locked".into(),
+        };
+        assert_eq!(
+            HostedAuthError::Store(store.clone())
+                .source()
+                .map(ToString::to_string),
+            Some(store.to_string())
+        );
+        let entropy = EntropyError::Unavailable {
+            message: "rng".into(),
+        };
+        let from: HostedAuthError = entropy.clone().into();
+        assert_eq!(from, HostedAuthError::Entropy(entropy.clone()));
+        assert_eq!(
+            from.source().map(ToString::to_string),
+            Some(entropy.to_string())
+        );
+        assert!(HostedAuthError::Forbidden.source().is_none());
+    }
+
+    #[test]
+    fn oidc_errors_tell_the_user_what_to_do() {
+        let host = || "h.example".to_owned();
+        let store = SecureStoreError::Unavailable {
+            message: "locked".into(),
+        };
+        let cases = [
+            (OidcError::InvalidServerUrl, "valid server URL"),
+            (
+                OidcError::RedirectNotAccepted { host: host() },
+                "h.example doesn't support signing in",
+            ),
+            (
+                OidcError::BrowserUnavailable { host: host() },
+                "Couldn't open the sign-in page for h.example",
+            ),
+            (
+                OidcError::InvalidCallback { host: host() },
+                "Sign-in to h.example didn't complete",
+            ),
+            (
+                OidcError::SignInRefused {
+                    host: host(),
+                    description: Some("domain not allowed".into()),
+                },
+                "domain not allowed",
+            ),
+            (
+                OidcError::SignInRefused {
+                    host: host(),
+                    description: Some(String::new()),
+                },
+                "h.example didn't accept the sign-in",
+            ),
+            (
+                OidcError::SessionRejected { host: host() },
+                "h.example didn't accept the session",
+            ),
+            (
+                OidcError::Store {
+                    host: host(),
+                    error: store,
+                },
+                "Could not access the saved sign-in",
+            ),
+            (
+                OidcError::InvalidGrantRecord { host: host() },
+                "saved sign-in is invalid",
+            ),
+            (OidcError::Cancelled, "cancelled"),
+        ];
+        for (error, expected) in cases {
+            let text = error.to_string();
+            assert!(text.contains(expected), "{error:?}: {text}");
+        }
+        assert_eq!(OidcError::Cancelled.failure(), AuthFailure::Failed);
+    }
+
+    #[test]
+    fn oidc_errors_keep_their_source() {
+        let transport = TransportError::Cancelled;
+        let network = OidcError::Network {
+            host: "h".into(),
+            cause: NetworkCause::Transport(transport.clone()),
+        };
+        assert_eq!(
+            network.source().map(ToString::to_string),
+            Some(transport.to_string())
+        );
+        let store = SecureStoreError::Unavailable {
+            message: "locked".into(),
+        };
+        let saved = OidcError::GrantNotSaved {
+            host: "h".into(),
+            error: store.clone(),
+            revocation: RevokeOutcome::Revoked,
+        };
+        assert_eq!(
+            saved.source().map(ToString::to_string),
+            Some(store.to_string())
+        );
+        assert!(OidcError::Cancelled.source().is_none());
+    }
 
     #[test]
     fn taxonomy_maps_each_cause() {

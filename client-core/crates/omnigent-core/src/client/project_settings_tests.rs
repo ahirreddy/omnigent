@@ -209,3 +209,75 @@ fn sort_mode_reads_and_resets_the_order() {
         Ok(ProjectSortMode::Alphabetical)
     );
 }
+
+#[test]
+fn no_config_is_no_settings_and_an_unknown_sort_mode_is_alphabetical() {
+    assert_eq!(
+        ProjectSettings::from_config(None),
+        Ok(ProjectSettings::default())
+    );
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        "/v1/projects/order",
+        vec![
+            Reply::json(200, r#"{"sort_mode":"newest"}"#),
+            Reply::json(200, r#"{"sort_mode":5}"#),
+        ],
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.project_sort_mode()),
+        Ok(ProjectSortMode::Alphabetical)
+    );
+    assert!(matches!(
+        block_on(core.project_sort_mode()),
+        Err(SessionError::MalformedResponse { detail }) if detail.contains("/v1/projects/order")
+    ));
+}
+
+#[test]
+fn a_project_that_cannot_be_read_or_acknowledged_is_reported_by_route() {
+    let transport = RouteTransport::local();
+    stored(&transport, &json!({}));
+    transport.enqueue(
+        "PATCH",
+        "/v1/projects/p1",
+        vec![Reply::json(200, r#"{"id":5}"#)],
+    );
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.set_project_icon(&project(Some("p1"), "Alpha"), Some("x"))),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("acknowledgement")
+    ));
+
+    let transport = RouteTransport::local();
+    transport.ok("/v1/projects/p1", r#"{"config":5}"#);
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.project_settings(&project(Some("p1"), "Alpha"))),
+        Err(SessionError::MalformedResponse { detail }) if detail.contains("/v1/projects/p1")
+    ));
+}
+
+#[test]
+fn a_promotion_that_returns_no_id_is_uncertain() {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("GET"),
+        "/v1/sessions",
+        None,
+        Reply::json(200, r#"{"data":[],"has_more":false}"#),
+    );
+    transport.respond(
+        Some("POST"),
+        "/v1/projects",
+        None,
+        Reply::json(201, r#"{"name":"Legacy"}"#),
+    );
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.set_project_icon(&project(None, "Legacy"), Some("x"))),
+        Err(SessionError::DeliveryUncertain { detail }) if detail.contains("no id")
+    ));
+}

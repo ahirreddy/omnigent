@@ -320,3 +320,89 @@ fn startup_from_an_older_host() {
     assert_eq!(startup.environment, None);
     assert!(startup.host_outdated);
 }
+
+#[test]
+fn a_broken_or_tmuxless_harness_explains_itself() {
+    let row = host(&json!({"configured_harnesses": {"codex-native": "spawn-failed"}}));
+    let warning = harness_detail(&row, "codex-native", "Codex", &features())
+        .warning
+        .unwrap();
+    assert_eq!(
+        warning.message,
+        "Codex isn\u{2019}t working on Mac. Run setup again to fix it."
+    );
+    assert_eq!(warning.action_label, "Reconfigure");
+    let row = host(&json!({"configured_harnesses": {"codex-native": "tmux-unavailable"}}));
+    let warning = harness_detail(&row, "codex-native", "Codex", &features())
+        .warning
+        .unwrap();
+    assert_eq!(
+        warning.message,
+        "Codex needs tmux on Mac, so new sessions can\u{2019}t use Codex."
+    );
+    let row = host(&json!({"configured_harnesses": {"codex-native": false}}));
+    let warning = harness_detail(&row, "codex-native", "Codex", &features())
+        .warning
+        .unwrap();
+    assert_eq!(warning.action_label, "Install");
+}
+
+#[test]
+fn a_ready_harness_describes_its_account_kind() {
+    let detail = |account: Value| {
+        let row = host(&json!({
+            "configured_harnesses": {"pi": true},
+            "harness_accounts": {"pi": account},
+        }));
+        harness_detail(&row, "pi", "Pi", &features())
+    };
+    let providers = detail(json!({"kind": "providers", "providers": [
+        {"id": "a", "label": "Alpha", "auth_type": "api"},
+        {"id": "b", "label": "Beta", "auth_type": "oauth"},
+    ]}));
+    assert_eq!(providers.credential.label, "Providers");
+    assert_eq!(
+        providers.status.as_deref(),
+        Some("Configured \u{b7} Alpha, Beta")
+    );
+    let none = detail(json!({"kind": "providers", "providers": []}));
+    assert_eq!(none.credential.description, "No providers configured");
+    assert_eq!(none.status.as_deref(), Some("Configured"));
+    let key = detail(json!({"kind": "api_key"}));
+    assert_eq!(key.credential.label, "API key");
+    assert_eq!(
+        key.credential.description,
+        "Uses an API key configured on this host"
+    );
+}
+
+#[test]
+fn missing_credentials_name_what_the_harness_takes() {
+    let description = |harness: &str| {
+        let row = host(&json!({"configured_harnesses": {harness: "needs-auth"}}));
+        harness_detail(&row, harness, "Tool", &features())
+            .credential
+            .description
+    };
+    assert_eq!(
+        description("pi"),
+        "No API key or gateway credential on Mac, so new sessions can\u{2019}t use Tool."
+    );
+    assert_eq!(
+        description("goose-native"),
+        "No credentials on Mac, so new sessions can\u{2019}t use Tool."
+    );
+}
+
+#[test]
+fn a_snapshot_applies_its_gateway_report() {
+    let mut row = host(&json!({}));
+    let snapshot = HostSnapshot::from_object(
+        json!({"gateway_inference": {"pi": true}})
+            .as_object()
+            .unwrap(),
+    )
+    .unwrap();
+    snapshot.apply(&mut row);
+    assert_eq!(row.gateway("pi"), Some(true));
+}

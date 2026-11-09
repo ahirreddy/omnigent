@@ -226,6 +226,15 @@ mod tests {
     }
 
     #[test]
+    fn stripping_the_root_or_the_path_itself_and_locating_the_root_are_exact() {
+        let path = WorkspacePath::parse("a/b").unwrap();
+        assert_eq!(path.strip_ancestor(&WorkspacePath::root()), Some("a/b"));
+        assert_eq!(path.strip_ancestor(&path), Some(""));
+        assert_eq!(absolute_location("/", &WorkspacePath::root()), "/");
+        assert_eq!(absolute_location("/srv/", &WorkspacePath::root()), "/srv");
+    }
+
+    #[test]
     fn normalizes_like_the_runner() {
         assert_eq!(parsed(""), "");
         assert_eq!(parsed("."), "");

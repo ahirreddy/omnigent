@@ -524,3 +524,7 @@ impl From<core::notifications::attention::AttentionNotification> for AttentionNo
         }
     }
 }
+
+#[cfg(test)]
+#[path = "events_tests.rs"]
+mod tests;

@@ -1,6 +1,8 @@
 //! A session's transcript as JSON Lines, in the web's export format: one `session_meta` record,
 //! then every item oldest first, each as the server sent it.
 
+use std::collections::BTreeSet;
+
 use serde_json::{Map, Value};
 
 use super::requests::validate_identifier;
@@ -9,7 +11,7 @@ use crate::http::HttpTransport;
 
 const EXPORT_PAGE_LIMIT: u32 = 500;
 
-fn record(kind: &str, value: Value, path: &str) -> Result<String, SessionError> {
+pub(super) fn record(kind: &str, value: Value, path: &str) -> Result<String, SessionError> {
     let Value::Object(fields) = value else {
         return Err(SessionError::MalformedResponse {
             detail: format!("{path}: not an object"),
@@ -58,6 +60,7 @@ impl<T: HttpTransport> ClientCore<T> {
         let mut lines = vec![record("session_meta", meta, &path)?];
         let items_path = format!("{path}/items");
         let mut after: Option<String> = None;
+        let mut cursors = BTreeSet::new();
         loop {
             let mut query = vec![
                 ("limit", EXPORT_PAGE_LIMIT.to_string()),
@@ -84,7 +87,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 .map(str::to_owned);
             match last {
                 Some(last) if has_more => {
-                    if after.as_deref() == Some(last.as_str()) {
+                    if !cursors.insert(last.clone()) {
                         return Err(SessionError::InvalidPagination);
                     }
                     after = Some(last);

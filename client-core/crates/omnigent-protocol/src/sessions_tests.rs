@@ -311,3 +311,38 @@ fn recorded_sessions_snapshot() {
         .collect();
     insta::assert_json_snapshot!("recorded-updates-ws-rows", rows);
 }
+
+#[test]
+fn page_errors_read_as_sentences_and_a_page_decodes_through_serde() {
+    use crate::page::{Page, PageCursorError};
+
+    assert_eq!(
+        PageCursorError::MissingCursor.to_string(),
+        "page has more rows but no cursor"
+    );
+    assert_eq!(
+        PageCursorError::RepeatedCursor {
+            cursor: "a".to_owned()
+        }
+        .to_string(),
+        "page repeated cursor \"a\""
+    );
+    let page: Page<ConversationItem> =
+        serde_json::from_value(serde_json::json!({"data": [], "has_more": false})).unwrap();
+    assert_eq!(page.data.len(), 0);
+}
+
+#[test]
+fn a_syntax_error_says_it_is_not_json_and_a_null_field_has_no_value() {
+    use crate::error::DecodeError;
+    use crate::field::Field;
+
+    assert!(
+        DecodeError::Syntax {
+            message: "bad".to_owned()
+        }
+        .to_string()
+        .starts_with("not valid JSON")
+    );
+    assert_eq!(Field::<String>::Null.value(), None);
+}

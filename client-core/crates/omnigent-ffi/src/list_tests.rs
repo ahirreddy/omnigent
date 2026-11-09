@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
+use super::ListMsg;
 use crate::connection::UrlPolicy;
-use crate::engine::lock;
-use crate::events::{ConnectionPhase, CoreEvent};
+use crate::engine::{Msg, lock};
+use crate::events::{ConnectionPhase, CoreEvent, ErrorScope};
 use crate::sessions::SessionListChange;
 use crate::test_support::{Harness, envelope_response, json as respond};
 
@@ -153,4 +154,128 @@ fn a_reload_asks_for_every_loaded_row_within_the_server_limit() {
     assert_eq!(window(0).reload_limit(), 50);
     assert_eq!(window(150).reload_limit(), 150);
     assert_eq!(window(4_000).reload_limit(), 1_000);
+}
+
+#[test]
+fn a_new_connection_cancels_a_pending_reload() {
+    let harness = Harness::new(UrlPolicy::Development);
+    let (mut engine, _queue) = harness.idle_engine();
+    let (timer, _registration) = futures::future::AbortHandle::new_pair();
+    engine.list.refresh = Some(timer.clone());
+    engine.reset_list_window();
+    assert!(timer.is_aborted());
+    assert!(engine.list.refresh.is_none());
+}
+
+#[test]
+fn nothing_is_read_once_disconnected() {
+    let (mut harness, _) = connected_with_first_page();
+    harness.core.disconnect();
+    harness.pump();
+    let before = harness.http.count("/v1/sessions");
+    harness.core.post(Msg::List(ListMsg::Refresh));
+    harness.core.load_more_sessions();
+    harness.pump();
+    assert_eq!(harness.http.count("/v1/sessions"), before);
+}
+
+#[test]
+fn a_second_load_more_while_one_is_reading_adds_nothing() {
+    let (mut harness, _) = connected_with_first_page();
+    let gate = harness.http.hold("/v1/sessions");
+    let before = harness.http.count("/v1/sessions");
+    harness.core.load_more_sessions();
+    harness.pump();
+    harness.core.load_more_sessions();
+    harness.pump();
+    assert_eq!(harness.http.count("/v1/sessions"), before + 1);
+    gate.send(()).unwrap();
+    harness.pump();
+}
+
+#[test]
+fn a_failed_load_more_reports_it_and_can_be_asked_for_again() {
+    let (mut harness, _) = connected_with_first_page();
+    harness
+        .http
+        .route("/v1/sessions", respond(500, r#"{"detail":"boom"}"#));
+    harness.events.take();
+    harness.core.load_more_sessions();
+    harness.pump();
+    let events = harness.events.take();
+    assert_eq!(paging(&events), [(true, true), (true, false)]);
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CoreEvent::Error {
+                scope: ErrorScope::SessionList,
+                ..
+            }
+        )),
+        "{events:#?}"
+    );
+    let (_, rest) = pages(2);
+    harness.http.route("/v1/sessions", respond(200, &rest));
+    harness.core.load_more_sessions();
+    harness.pump();
+    assert_eq!(
+        paging(&harness.events.take()),
+        [(true, true), (false, false)]
+    );
+}
+
+#[test]
+fn a_rejected_token_on_a_reload_asks_to_sign_in() {
+    let (mut harness, _) = connected_with_first_page();
+    harness
+        .http
+        .route("/v1/sessions", respond(401, r#"{"detail":"expired"}"#));
+    harness.events.take();
+    harness.core.post(Msg::List(ListMsg::Refresh));
+    harness.pump();
+    let phases = crate::test_support::phases(&harness.events.take());
+    assert_eq!(phases.len(), 1, "{phases:?}");
+    assert!(
+        matches!(phases[0], ConnectionPhase::SignInRequired { .. }),
+        "{phases:?}"
+    );
+}
+
+#[test]
+fn a_rejected_token_on_load_more_asks_to_sign_in() {
+    let (mut harness, _) = connected_with_first_page();
+    harness
+        .http
+        .route("/v1/sessions", respond(401, r#"{"detail":"expired"}"#));
+    harness.events.take();
+    harness.core.load_more_sessions();
+    harness.pump();
+    let phases = crate::test_support::phases(&harness.events.take());
+    assert!(
+        matches!(phases.last(), Some(ConnectionPhase::SignInRequired { .. })),
+        "{phases:?}"
+    );
+}
+
+#[test]
+fn a_rejected_token_a_list_read_alone_noticed_still_asks_to_sign_in() {
+    let (harness, _) = connected_with_first_page();
+    let phase = crate::test_support::phases(&harness.events.all())
+        .pop()
+        .unwrap();
+    let (mut engine, _queue) = harness.idle_engine();
+    engine.phase = phase;
+    engine.sign_in = Some(crate::engine::SignInContext {
+        base_url: "http://127.0.0.1:6767".into(),
+        server_name: None,
+        mode: crate::events::AuthenticationMode::Accounts,
+        methods: Vec::new(),
+    });
+    harness.events.take();
+    engine.list_failed(omnigent_core::SessionError::Unauthorized { reason: None });
+    let phases = crate::test_support::phases(&harness.events.take());
+    assert!(
+        matches!(phases.as_slice(), [ConnectionPhase::SignInRequired { .. }]),
+        "{phases:?}"
+    );
 }

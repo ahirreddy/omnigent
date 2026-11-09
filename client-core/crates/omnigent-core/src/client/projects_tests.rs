@@ -268,3 +268,226 @@ fn saving_the_order_promotes_label_projects_and_puts_every_id() {
         ]
     );
 }
+
+#[test]
+fn a_project_page_lists_its_unarchived_sessions_and_publishes_them() {
+    let transport = RouteTransport::local();
+    transport.ok(
+        "/v1/sessions",
+        r#"{"data":[
+            {"id":"m1","status":"idle","created_at":1},
+            {"id":"m2","status":"idle","created_at":1,"archived":true}
+           ],"has_more":true,"last_id":"m2"}"#,
+    );
+    let core = connected(transport);
+    let recorder = super::super::test_support::record(&core);
+    let page = block_on(core.project_session_page("Alpha", None, 10)).unwrap();
+    assert_eq!(
+        page.sessions
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        ["m1"]
+    );
+    assert_eq!(page.next_cursor.as_deref(), Some("m2"));
+    let request = core.transport().taken().pop().unwrap();
+    assert_eq!(query_value(&request, "project").as_deref(), Some("Alpha"));
+    assert_eq!(query_value(&request, "visibility").as_deref(), Some("mine"));
+    assert_eq!(recorder.take().len(), 1, "both rows are published");
+
+    core.transport()
+        .ok("/v1/sessions", r#"{"data":[],"has_more":false}"#);
+    block_on(core.project_session_page("Alpha", None, 10)).unwrap();
+    assert_eq!(recorder.take().len(), 0, "an empty page publishes nothing");
+}
+
+#[test]
+fn a_project_with_a_non_string_id_is_unreadable() {
+    let transport = RouteTransport::local();
+    transport.ok("/v1/sessions/projects", r#"[{"id":7,"name":"Alpha"}]"#);
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.projects()),
+        Err(SessionError::MalformedResponse { .. })
+    ));
+}
+
+#[test]
+fn an_unreadable_create_acknowledgement_is_uncertain() {
+    let transport = RouteTransport::local();
+    transport.respond(Some("POST"), "/v1/projects", None, Reply::json(201, "[]"));
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.create_project("Alpha")),
+        Err(SessionError::DeliveryUncertain { .. })
+    ));
+}
+
+#[test]
+fn renaming_a_first_class_project_patches_it_and_refiles_every_page_of_members() {
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "GET",
+        "/v1/sessions",
+        vec![
+            Reply::json(
+                200,
+                r#"{"data":[{"id":"m1","status":"idle","created_at":1}],"has_more":true,"last_id":"m1"}"#,
+            ),
+            Reply::json(
+                200,
+                r#"{"data":[{"id":"m2","status":"idle","created_at":1}],"has_more":false}"#,
+            ),
+        ],
+    );
+    transport.respond(
+        Some("PATCH"),
+        "/v1/projects/p1",
+        None,
+        Reply::json(200, r#"{"id":"p1","name":"New"}"#),
+    );
+    for member in ["m1", "m2"] {
+        transport.respond(
+            Some("PATCH"),
+            &format!("/v1/sessions/{member}"),
+            None,
+            Reply::json(
+                200,
+                format!(r#"{{"id":"{member}","status":"idle","created_at":1}}"#),
+            ),
+        );
+    }
+    let core = connected(transport);
+    let renamed = block_on(core.rename_project(&project(Some("p1"), "Old"), "New")).unwrap();
+    assert_eq!(renamed.name, "New");
+    assert_eq!(core.transport().writes().len(), 3);
+}
+
+#[test]
+fn renames_fail_clearly_on_bad_replies_and_repeated_cursors() {
+    let rename = |transport: RouteTransport| {
+        let core = connected(transport);
+        block_on(core.rename_project(&project(Some("p1"), "Old"), "New"))
+    };
+    let unreadable = RouteTransport::local();
+    unreadable.respond(
+        Some("PATCH"),
+        "/v1/projects/p1",
+        None,
+        Reply::json(200, "7"),
+    );
+    assert!(matches!(
+        rename(unreadable),
+        Err(SessionError::DeliveryUncertain { .. })
+    ));
+
+    let nameless = RouteTransport::local();
+    nameless.respond(
+        Some("PATCH"),
+        "/v1/projects/p1",
+        None,
+        Reply::json(200, r#"{"name":"New"}"#),
+    );
+    assert!(matches!(
+        rename(nameless),
+        Err(SessionError::DeliveryUncertain { .. })
+    ));
+
+    let bad_id = connected(RouteTransport::local());
+    assert!(matches!(
+        block_on(bad_id.rename_project(&project(Some("../p"), "Old"), "New")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+
+    let looping = RouteTransport::local();
+    looping.respond(
+        Some("PATCH"),
+        "/v1/projects/p1",
+        None,
+        Reply::json(200, r#"{"id":"p1","name":"New"}"#),
+    );
+    looping.ok(
+        "/v1/sessions",
+        r#"{"data":[],"has_more":true,"last_id":"same"}"#,
+    );
+    let core = connected(looping);
+    assert_eq!(
+        block_on(core.rename_project(&project(Some("p1"), "Old"), "New")),
+        Err(SessionError::InvalidPagination),
+        "a server repeating its cursor cannot loop the rename forever"
+    );
+
+    let garbled = RouteTransport::local();
+    garbled.respond(
+        Some("PATCH"),
+        "/v1/projects/p1",
+        None,
+        Reply::json(200, r#"{"id":"p1","name":"New"}"#),
+    );
+    garbled.ok("/v1/sessions", "[]");
+    assert!(matches!(
+        rename(garbled),
+        Err(SessionError::MalformedResponse { .. })
+    ));
+}
+
+#[test]
+fn deleting_a_label_only_project_has_no_row_to_delete() {
+    let transport = RouteTransport::local();
+    transport.ok("/v1/sessions", r#"{"data":[],"has_more":false}"#);
+    let core = connected(transport);
+    block_on(core.delete_project(&project(None, "Legacy"))).unwrap();
+    assert_eq!(core.transport().writes().len(), 0);
+}
+
+#[test]
+fn a_member_patch_answered_with_garbage_is_uncertain() {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("POST"),
+        "/v1/projects",
+        None,
+        Reply::json(201, r#"{"id":"p2","name":"Renamed"}"#),
+    );
+    members_page(&transport);
+    transport.respond(
+        Some("PATCH"),
+        "/v1/sessions/m1",
+        None,
+        Reply::json(200, "[]"),
+    );
+    let core = connected(transport);
+    assert!(matches!(
+        block_on(core.rename_project(&project(None, "Legacy"), "Renamed")),
+        Err(SessionError::DeliveryUncertain { .. })
+    ));
+}
+
+#[test]
+fn renaming_stops_when_the_member_pages_cycle() {
+    let transport = RouteTransport::local();
+    let page = |last: &str| {
+        Reply::json(
+            200,
+            format!(
+                r#"{{"data":[{{"id":"m1","status":"idle","created_at":1}}],"has_more":true,"last_id":"{last}"}}"#
+            ),
+        )
+    };
+    transport.enqueue(
+        "GET",
+        "/v1/sessions",
+        vec![page("first"), page("second"), page("first")],
+    );
+    transport.respond(
+        Some("POST"),
+        "/v1/projects",
+        None,
+        Reply::json(201, r#"{"id":"p2","name":"New"}"#),
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.rename_project(&project(None, "Old"), "New")),
+        Err(SessionError::InvalidPagination)
+    );
+}

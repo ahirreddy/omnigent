@@ -341,3 +341,17 @@ impl<T: HttpTransport> ClientCore<T> {
         expect!(self.workspace(&request).await?, SessionFiles)
     }
 }
+
+#[cfg(test)]
+mod reply_kind_tests {
+    use super::*;
+
+    #[test]
+    fn a_reply_for_an_operation_of_another_kind_is_malformed() {
+        let answered = WorkspaceResponse::Environments(Vec::new());
+        assert!(matches!(
+            unexpected(&answered),
+            WorkspaceError::MalformedResponse { .. }
+        ));
+    }
+}

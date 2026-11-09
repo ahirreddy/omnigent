@@ -689,6 +689,23 @@ mod tests {
         DraftKey::new("server/account", "session_a")
     }
 
+    #[test]
+    fn an_accepted_send_for_a_session_that_never_staged_a_file_is_harmless() {
+        let mut store = AttachmentDraftStore::new();
+        let batch = store.begin_submission(&key()).unwrap();
+        assert_eq!(batch.attachments(), []);
+        assert_eq!(
+            store.finish_submission(&batch, SubmissionOutcome::Accepted),
+            Ok(())
+        );
+        assert_eq!(store.draft(&key()).items(), []);
+        assert!(store.can_submit(&key()));
+        assert_eq!(
+            store.finish_submission(&batch, SubmissionOutcome::Accepted),
+            Err(DraftError::StaleSubmission)
+        );
+    }
+
     fn file_named(name: &str) -> UploadFile {
         UploadFile::new(name, None, b"retained bytes".to_vec()).unwrap()
     }
@@ -742,6 +759,52 @@ mod tests {
     ) -> Result<(), DraftError> {
         let attempt = store.begin_upload(key, item)?;
         store.finish_upload(&attempt, Err(error))
+    }
+
+    #[test]
+    fn progress_for_an_attempt_whose_item_was_removed_elsewhere_is_stale() {
+        let mut store = AttachmentDraftStore::default();
+        let item = store.add(file(), &key()).unwrap();
+        let attempt = store.begin_upload(&key(), item).unwrap();
+        store
+            .finish_upload(&attempt, Err(UploadError::Rejected { status: 413 }))
+            .unwrap();
+        assert_eq!(
+            store.update_progress(&attempt, 0.5),
+            Err(DraftError::StaleAttempt)
+        );
+    }
+
+    #[test]
+    fn ids_keys_and_the_selection_error_read_back() {
+        assert_eq!(HoldId::new(7).get(), 7);
+        let mut store = AttachmentDraftStore::default();
+        assert_eq!(store.draft(&key()).selection_error(), None);
+        store.record_selection_error(&key(), Some("too big".to_owned()));
+        assert_eq!(store.draft(&key()).selection_error(), Some("too big"));
+        store.record_selection_error(&key(), None);
+        assert_eq!(store.draft(&key()).selection_error(), None);
+    }
+
+    #[test]
+    fn upload_attempts_cannot_cross_each_other() {
+        let mut store = AttachmentDraftStore::default();
+        let item = store.add(file(), &key()).unwrap();
+        let attempt = store.begin_upload(&key(), item).unwrap();
+        assert_eq!(attempt.key(), &key());
+        assert_eq!(
+            store.begin_upload(&key(), item),
+            Err(DraftError::UploadInFlight)
+        );
+        assert_eq!(store.remove(&key(), item), Err(DraftError::UploadInFlight));
+        store
+            .finish_upload(&attempt, Err(UploadError::Rejected { status: 413 }))
+            .unwrap();
+        // A late progress report for an attempt that already ended.
+        assert_eq!(
+            store.update_progress(&attempt, 0.5),
+            Err(DraftError::StaleAttempt)
+        );
     }
 
     #[test]

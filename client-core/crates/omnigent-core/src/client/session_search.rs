@@ -98,6 +98,24 @@ mod tests {
     use crate::client::test_support::{RouteTransport, connected, path_of, query_value};
 
     #[test]
+    fn a_title_search_says_so_and_an_unreadable_list_is_reported() {
+        let transport = RouteTransport::local();
+        transport.ok("/v1/sessions", "[5]");
+        let core = connected(transport);
+        assert!(matches!(
+            block_on(core.search_sessions("x", SearchScope::Title, 10)),
+            Err(crate::client::SessionError::MalformedResponse { detail })
+                if detail.contains("search_query")
+        ));
+        let request = core.transport().taken().pop().unwrap();
+        assert_eq!(path_of(&request), "/v1/sessions");
+        assert_eq!(
+            query_value(&request, "search_scope").as_deref(),
+            Some("title")
+        );
+    }
+
+    #[test]
     fn content_search_sends_the_scope_and_keeps_the_snippet() {
         let transport = RouteTransport::local();
         transport.ok(

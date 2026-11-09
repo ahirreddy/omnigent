@@ -22,8 +22,22 @@ use crate::host::{ByteSink, SinkEvent, StreamHandle};
 use crate::runtime::post;
 use crate::sync::{Applied, ConversationSync};
 
+/// Which opening of a session a late callback belongs to: attempt and read tokens restart when a
+/// session is closed and reopened, so they alone cannot tell the two apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DriverInstance(u64);
+
+#[cfg(test)]
+impl DriverInstance {
+    /// The instance of the first session an engine opens.
+    pub(crate) const fn first() -> Self {
+        Self(0)
+    }
+}
+
 /// The state of one open session.
 pub(crate) struct SessionDriver {
+    pub(crate) instance: DriverInstance,
     pub(crate) sync: Arc<ConversationSync>,
     /// Absent for the offline demo, which has no stream.
     machine: Option<SessionStream<SplitMix64>>,
@@ -70,9 +84,12 @@ impl Engine {
             let machine = (!self.is_demo()).then(|| {
                 SessionStream::new(StreamConfig::default(), Self::seeded(&mut self.jitter))
             });
+            let instance = DriverInstance(self.next_driver);
+            self.next_driver += 1;
             self.drivers.insert(
                 session_id.to_owned(),
                 SessionDriver {
+                    instance,
                     sync: ConversationSync::create(session_id),
                     machine,
                     handles: HashMap::new(),
@@ -141,6 +158,25 @@ impl Engine {
         self.sessions.set_live_session(session_id, false);
     }
 
+    /// Whether `session_id` is still open under the opening that `instance` names.
+    pub(crate) fn is_current_driver(&self, session_id: &str, instance: DriverInstance) -> bool {
+        self.drivers
+            .get(session_id)
+            .is_some_and(|driver| driver.instance == instance)
+    }
+
+    /// A stream input from a sink or timer, dropped when its opening has closed.
+    pub(crate) fn stream_message(
+        &mut self,
+        session_id: &str,
+        driver: DriverInstance,
+        input: StreamInput,
+    ) {
+        if self.is_current_driver(session_id, driver) {
+            self.stream_input(session_id, input);
+        }
+    }
+
     pub(crate) fn stream_input(&mut self, session_id: &str, input: StreamInput) {
         let now = self.host.now_ms();
         // A stream refused with 400 reached the wrong replica: re-address the next attempt.
@@ -154,11 +190,20 @@ impl Engine {
             self.sessions
                 .stream_refused(&format!("/v1/sessions/{session_id}/stream"), keyed);
         }
-        let Some(machine) = self
-            .drivers
-            .get_mut(session_id)
-            .and_then(|driver| driver.machine.as_mut())
-        else {
+        let Some(driver) = self.drivers.get_mut(session_id) else {
+            return;
+        };
+        // A finished attempt or a fired timer has nothing left to cancel.
+        match &input {
+            StreamInput::Finished { attempt, .. } => {
+                driver.handles.remove(attempt);
+            }
+            StreamInput::TimerFired { token } => {
+                driver.timers.remove(&token.id);
+            }
+            _ => {}
+        }
+        let Some(machine) = driver.machine.as_mut() else {
             return;
         };
         let outputs = machine.handle(now, input);
@@ -180,6 +225,10 @@ impl Engine {
                 }
             }
             StreamOutput::ScheduleTimer { token, delay_ms } => {
+                let Some(driver) = self.drivers.get(session_id).map(|driver| driver.instance)
+                else {
+                    return;
+                };
                 let tx = self.sender();
                 let id = session_id.to_owned();
                 let timer = self.host.after(delay_ms, move || {
@@ -187,6 +236,7 @@ impl Engine {
                         &tx,
                         Msg::Stream {
                             session_id: id,
+                            driver,
                             input: StreamInput::TimerFired { token },
                         },
                     );
@@ -224,9 +274,11 @@ impl Engine {
         };
         let path = format!("/v1/sessions/{session_id}/stream");
         let slice_key = self.sessions.slice_key(&path);
-        if let Some(driver) = self.drivers.get_mut(session_id) {
-            driver.stream_keyed = slice_key.is_some();
-        }
+        let Some(driver) = self.drivers.get_mut(session_id) else {
+            return;
+        };
+        driver.stream_keyed = slice_key.is_some();
+        let instance = driver.instance;
         let request = match link.endpoint.request_with(
             "GET",
             &path,
@@ -274,6 +326,7 @@ impl Engine {
                 &tx,
                 Msg::Stream {
                     session_id: id.clone(),
+                    driver: instance,
                     input,
                 },
             );
@@ -383,6 +436,9 @@ impl Engine {
         attempt: Option<AttemptId>,
         request: HydrationRequest,
     ) {
+        let Some(driver) = self.drivers.get(session_id).map(|driver| driver.instance) else {
+            return;
+        };
         let sessions = Arc::clone(&self.sessions);
         let tx = self.sender();
         let id = session_id.to_owned();
@@ -392,6 +448,7 @@ impl Engine {
                 &tx,
                 Msg::Hydrated {
                     session_id: id,
+                    driver,
                     attempt,
                     request,
                     result: Box::new(result),
@@ -403,11 +460,16 @@ impl Engine {
     pub(crate) fn hydrated(
         &mut self,
         session_id: &str,
+        instance: DriverInstance,
         attempt: Option<AttemptId>,
         request: &HydrationRequest,
         result: Result<ConversationPage, SessionError>,
     ) {
-        let Some(driver) = self.drivers.get(session_id) else {
+        let Some(driver) = self
+            .drivers
+            .get(session_id)
+            .filter(|driver| driver.instance == instance)
+        else {
             return;
         };
         let scope = ErrorScope::Session {
@@ -515,12 +577,13 @@ impl Engine {
 
     /// Session-list rows for the open sessions (a `snapshot` or `changed` frame).
     pub(crate) fn sync_list_rows(&mut self, rows: &[omnigent_protocol::SessionListItem]) {
-        let ids: Vec<String> = self.drivers.keys().cloned().collect();
-        for id in ids {
-            let Some(driver) = self.drivers.get(&id) else {
-                continue;
-            };
-            match driver.sync.handle_list_rows_raw(rows) {
+        let syncs: Vec<(String, Arc<ConversationSync>)> = self
+            .drivers
+            .iter()
+            .map(|(id, driver)| (id.clone(), Arc::clone(&driver.sync)))
+            .collect();
+        for (id, sync) in syncs {
+            match sync.handle_list_rows_raw(rows) {
                 Ok(applied) => {
                     self.publish(&id, applied);
                     self.publish_terminals(&id);
@@ -550,3 +613,7 @@ impl Engine {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "stream_driver_tests.rs"]
+mod tests;

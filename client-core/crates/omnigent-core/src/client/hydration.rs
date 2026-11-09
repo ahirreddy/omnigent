@@ -128,21 +128,7 @@ impl<T: HttpTransport> ClientCore<T> {
         environment_id: &str,
     ) -> Option<SyncUpdate> {
         let session_id = sync.session_id().to_owned();
-        let before = lock(&self.state).events.len();
-        self.load_changed_files(&session_id, environment_id).await;
-        let update = {
-            let state = lock(&self.state);
-            state.events.get(before..).and_then(|events| {
-                events.iter().rev().find_map(|event| match event {
-                    super::ClientEvent::ChangedFiles {
-                        session_id: id,
-                        environment_id: environment,
-                        update,
-                    } if *id == session_id && environment == environment_id => Some(update.clone()),
-                    _ => None,
-                })
-            })
-        };
+        let update = self.load_changed_files(&session_id, environment_id).await;
         self.dispatch();
         update.map(|update| sync.set_changed_files(environment_id, update.into()))
     }
@@ -155,7 +141,8 @@ mod tests {
     use super::*;
     use crate::client::test_support::{Reply, RouteTransport, connected};
     use crate::http::TransportError;
-    use crate::reconcile::HistoryPaging;
+    use crate::reconcile::{HistoryPaging, SyncError};
+    use crate::reducer::ProjectionError;
     use omnigent_protocol::{ConversationItem, FromWire};
 
     fn transport() -> RouteTransport {
@@ -173,6 +160,16 @@ mod tests {
             r#"{"entries":[{"path":"Sources/App.swift","status":"modified"}]}"#,
         );
         transport
+    }
+
+    #[test]
+    fn unavailable_changes_become_a_failed_row() {
+        assert_eq!(
+            ChangedFiles::from(ChangedFilesUpdate::Unavailable("no".to_owned())),
+            ChangedFiles::Failed {
+                message: "no".to_owned()
+            }
+        );
     }
 
     #[test]
@@ -200,6 +197,26 @@ mod tests {
             })
         );
         assert_eq!(core.transport().writes(), []);
+    }
+
+    #[test]
+    fn a_history_the_client_cannot_show_fails_hydration_and_the_session_stays_not_live() {
+        let transport = transport();
+        transport.ok(
+            "/v1/sessions/conv_a/items",
+            r#"{"data":[{"id":"msg_1","type":"message","role":"narrator","content":"Hi"}],"has_more":false}"#,
+        );
+        let core = connected(transport);
+        let mut sync = ConversationSync::new("conv_a");
+        let request = sync.open_stream();
+        assert!(matches!(
+            block_on(core.hydrate(&mut sync, &request)),
+            Err(SessionError::Sync(SyncError::Projection(
+                ProjectionError::UnknownRole { item_id, role }
+            ))) if item_id == "msg_1" && role == "narrator"
+        ));
+        assert!(!core.is_live_session("conv_a"));
+        assert!(sync.reducer().is_none());
     }
 
     fn message(id: &str) -> String {

@@ -12,6 +12,7 @@ use futures::executor::block_on;
 use super::*;
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
+use crate::auth::hosted::HostedConnection;
 use crate::client::SessionError;
 use crate::client::test_support::{
     Envelope, LOCAL, MOUNT, Reply, RouteTransport, TOKEN, connected, connected_hosted, envelopes,
@@ -816,4 +817,226 @@ fn saving_over_someone_elses_change_is_a_conflict_until_forced() {
         ),
         Err(WorkspaceError::InvalidPath(_))
     ));
+}
+
+#[test]
+fn the_client_reaches_the_environment_search_and_session_file_routes() {
+    let core = connected(local_with("recorded-environments"));
+    let environments = block_on(core.workspace_environments(SESSION)).unwrap();
+    assert_ne!(environments.len(), 0);
+
+    let core = connected(local_with("recorded-search-root"));
+    let found = block_on(core.search_workspace_paths(
+        SESSION,
+        DEFAULT_ENVIRONMENT_ID,
+        PathSearchQuery::new("main"),
+    ))
+    .unwrap();
+    assert_ne!(found.entries.len(), 0);
+
+    let core = connected(local_with("recorded-content-search"));
+    let lines = block_on(core.search_workspace_content(
+        SESSION,
+        DEFAULT_ENVIRONMENT_ID,
+        ContentSearchQuery::new("fixture needle"),
+    ))
+    .unwrap();
+    assert_ne!(lines.matches.len(), 0);
+
+    let core = connected(local_with("recorded-session-files"));
+    let files = block_on(core.session_files(
+        SESSION,
+        SessionFilesQuery {
+            limit: 100,
+            after: None,
+        },
+    ))
+    .unwrap();
+    assert_ne!(files.files.len(), 0);
+}
+
+#[test]
+fn invalid_identifiers_fail_before_any_request() {
+    let core = connected(RouteTransport::local());
+    let invalid =
+        |error: &WorkspaceError| matches!(error, WorkspaceError::InvalidIdentifier { .. });
+    for session in ["", "../x", "a/b"] {
+        assert!(invalid(
+            &block_on(core.workspace_environments(session)).unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.workspace_environment(session, DEFAULT_ENVIRONMENT_ID)).unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.list_workspace_directory(
+                session,
+                DEFAULT_ENVIRONMENT_ID,
+                DirectoryQuery::first_page(path("src")),
+            ))
+            .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.read_workspace_file(session, DEFAULT_ENVIRONMENT_ID, path("a.txt")))
+                .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.write_workspace_file(
+                session,
+                DEFAULT_ENVIRONMENT_ID,
+                path("a.txt"),
+                String::new()
+            ))
+            .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.workspace_file_diff(session, DEFAULT_ENVIRONMENT_ID, path("a.txt")))
+                .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.search_workspace_paths(
+                session,
+                DEFAULT_ENVIRONMENT_ID,
+                PathSearchQuery::new("x")
+            ))
+            .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.search_workspace_content(
+                session,
+                DEFAULT_ENVIRONMENT_ID,
+                ContentSearchQuery::new("x")
+            ))
+            .unwrap_err()
+        ));
+        assert!(invalid(
+            &block_on(core.session_files(
+                session,
+                SessionFilesQuery {
+                    limit: 1,
+                    after: None
+                }
+            ))
+            .unwrap_err()
+        ));
+    }
+    assert_eq!(
+        core.transport()
+            .taken()
+            .iter()
+            .filter(|request| path_of(request).contains("/sessions/"))
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn a_save_stops_when_the_latest_read_fails() {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("GET"),
+        &format!("/v1/sessions/{SESSION}/resources/environments/{DEFAULT_ENVIRONMENT_ID}/filesystem/a.txt"),
+        None,
+        Reply::json(500, "{}"),
+    );
+    let core = connected(transport);
+    let result = block_on(core.save_workspace_file(
+        SESSION,
+        DEFAULT_ENVIRONMENT_ID,
+        path("a.txt"),
+        "new".to_owned(),
+        Some("base"),
+    ));
+    assert!(result.is_err(), "{result:?}");
+    assert!(
+        core.transport().writes().is_empty(),
+        "nothing is written over a file that could not be read"
+    );
+}
+
+#[test]
+fn a_request_exposes_what_it_asks_for() {
+    let listing = request(WorkspaceOperation::ListChanges);
+    assert_eq!(listing.session_id(), SESSION);
+    assert_eq!(listing.environment_id(), DEFAULT_ENVIRONMENT_ID);
+    assert_eq!(listing.operation(), &WorkspaceOperation::ListChanges);
+}
+
+#[test]
+fn an_empty_page_cursor_is_refused_and_a_real_one_is_sent() {
+    let files = |after: Option<&str>| {
+        WorkspaceRequest::new(
+            SESSION,
+            DEFAULT_ENVIRONMENT_ID,
+            WorkspaceOperation::ListSessionFiles(SessionFilesQuery {
+                limit: 5,
+                after: after.map(str::to_owned),
+            }),
+        )
+    };
+    assert!(matches!(
+        files(Some("")),
+        Err(WorkspaceError::InvalidQuery { .. })
+    ));
+    let built = files(Some("file_9"))
+        .unwrap()
+        .build_for_endpoint(&ServerEndpoint::new(LOCAL).unwrap(), None)
+        .unwrap();
+    assert_eq!(query_value(&built, "after").as_deref(), Some("file_9"));
+}
+
+#[test]
+fn a_path_search_sends_its_globs() {
+    let search = request(WorkspaceOperation::SearchPaths(PathSearchQuery {
+        query: "main".into(),
+        under: WorkspacePath::root(),
+        limit: 5,
+        include: vec!["src/**".into()],
+        exclude: vec!["*.lock".into()],
+    }))
+    .build_for_endpoint(&ServerEndpoint::new(LOCAL).unwrap(), None)
+    .unwrap();
+    assert_eq!(query_value(&search, "include").as_deref(), Some("src/**"));
+    assert_eq!(query_value(&search, "exclude").as_deref(), Some("*.lock"));
+}
+
+#[test]
+fn a_hosted_connection_builds_the_same_route_with_its_bearer() {
+    let connection = HostedConnection::new(
+        ServerEndpoint::new("https://example.com/omni").unwrap(),
+        Some(SecretString::new("token")),
+        None,
+    )
+    .unwrap();
+    let write = request(WorkspaceOperation::WriteFile(FileWrite {
+        path: path("a.txt"),
+        content: "x".into(),
+    }));
+    assert!(matches!(
+        write.build(&connection),
+        Err(WorkspaceError::Session(SessionError::NotConnected))
+    ));
+}
+
+#[test]
+fn a_connected_build_signs_the_request_and_carries_a_write_body() {
+    let transport = crate::auth::testing::ScriptedTransport::new();
+    transport
+        .json(200, r#"{"single_user":false,"accounts_enabled":false}"#)
+        .json(200, r#"{"user_id":"alice"}"#);
+    let endpoint = ServerEndpoint::new("https://example.com").unwrap();
+    let mut connection =
+        HostedConnection::new(endpoint, Some(SecretString::new(TOKEN)), None).unwrap();
+    block_on(connection.connect(&transport)).unwrap();
+    let built = request(WorkspaceOperation::ListChanges)
+        .build(&connection)
+        .unwrap();
+    assert_eq!(built.body, None);
+    assert_eq!(
+        header(&built, "Authorization"),
+        Some(format!("Bearer {TOKEN}").as_str())
+    );
+
+    let with = request::with_body(built, Some(&serde_json::json!({"a": 1}))).unwrap();
+    assert_eq!(header(&with, "Content-Type"), Some("application/json"));
+    assert_eq!(with.body.as_deref(), Some(br#"{"a":1}"#.as_slice()));
 }

@@ -1055,6 +1055,35 @@ mod tests {
     }
 
     #[test]
+    fn parents_of_top_level_paths_and_the_sandbox_rows_follow_the_server() {
+        assert_eq!(parent_directory("/top").as_deref(), Some("/"));
+        assert_eq!(parent_directory("/a/b/").as_deref(), Some("/a"));
+        assert_eq!(parent_directory("/"), None);
+
+        let mut features = CreationCapabilities::default();
+        assert_eq!(features.sandbox_provider_options().len(), 0);
+        assert!(!features.sandbox_profiles_enabled());
+        features.managed_sandboxes = true;
+        features.default_sandbox_provider = Some("modal".to_owned());
+        assert_eq!(
+            features.sandbox_provider_options(),
+            vec![Some("modal".to_owned())]
+        );
+        features.sandbox_profiles = true;
+        assert!(features.sandbox_profiles_enabled());
+    }
+
+    #[test]
+    fn an_unknown_host_cannot_create() {
+        assert_eq!(
+            catalog()
+                .unavailable_reason("demo-codex", "no-such-host")
+                .as_deref(),
+            Some("Choose an existing host.")
+        );
+    }
+
+    #[test]
     fn codex_starts_in_plan_mode_only_when_the_server_supports_it() {
         let mut catalog = catalog();
         assert!(!catalog.starts_in_plan_mode("ag_codex"));
@@ -1228,6 +1257,24 @@ mod tests {
                 .validate(&value, &[model("id", Some("wire-value"), None)])
                 .is_err()
         );
+    }
+
+    #[test]
+    fn an_agent_without_a_native_wrapper_gets_no_terminal_labels_or_launch_arguments() {
+        let selection = CreationSelection {
+            approval_mode: Some("bypassPermissions".into()),
+            plan_mode: true,
+            ..selection()
+        };
+        let body = creation_body(
+            &selection,
+            "",
+            &agent("ag_sdk", Some("openai-agents")),
+            None,
+        );
+        assert_eq!(body["agent_id"], Value::String("ag_codex".into()));
+        assert!(body.get("labels").is_none());
+        assert!(body.get("terminal_launch_args").is_none());
     }
 
     #[test]

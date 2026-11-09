@@ -74,3 +74,35 @@ fn export_refuses_a_repeating_cursor_and_a_malformed_page() {
         Err(SessionError::MalformedResponse { .. })
     ));
 }
+
+#[test]
+fn export_stops_at_a_cursor_that_comes_back() {
+    let page = |last: &str| {
+        Reply::json(
+            200,
+            format!(
+                r#"{{"data":[{{"id":"{last}","type":"message"}}],"has_more":true,"last_id":"{last}"}}"#
+            ),
+        )
+    };
+    let transport = RouteTransport::local();
+    transport.ok("/v1/sessions/conv_a", r#"{"id":"conv_a"}"#);
+    transport.enqueue(
+        "GET",
+        "/v1/sessions/conv_a/items",
+        vec![page("i1"), page("i2"), page("i1")],
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.export_transcript("conv_a")),
+        Err(SessionError::InvalidPagination)
+    );
+}
+
+#[test]
+fn a_transcript_row_that_is_not_an_object_is_refused() {
+    assert!(matches!(
+        super::export::record("item", json!(5), "/v1/x"),
+        Err(SessionError::MalformedResponse { detail }) if detail == "/v1/x: not an object"
+    ));
+}

@@ -106,6 +106,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_json_type_has_a_short_name() {
+        assert_eq!(kind(&json!(null)), "null");
+        assert_eq!(kind(&json!({})), "object");
+        assert_eq!(kind(&json!(true)), "boolean");
+    }
+
+    #[test]
     fn missing_and_null_are_absent_but_wrong_types_are_errors() {
         let value = json!({"s": "x", "n": null, "b": true, "i": -3, "u": 4, "a": [], "o": {}});
         let object = value.as_object().unwrap();

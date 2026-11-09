@@ -72,6 +72,7 @@ pub(super) fn parse(text: &str) -> Result<Json, NotJson> {
         bytes: text.as_bytes(),
         text,
         at: 0,
+        depth: 0,
     };
     let value = reader.value()?.ok_or(NotJson)?;
     reader.whitespace();
@@ -85,7 +86,12 @@ struct Reader<'a> {
     bytes: &'a [u8],
     text: &'a str,
     at: usize,
+    depth: usize,
 }
+
+/// The deepest nesting read, as `serde_json`: a server's `[[[[...` must not overflow the stack,
+/// which would abort the app rather than fail the parse.
+const MAX_DEPTH: usize = 128;
 
 /// `Ok(None)`: the cut ran through a scalar, which is dropped.
 type Step = Result<Option<Json>, NotJson>;
@@ -115,8 +121,9 @@ impl Reader<'_> {
         self.whitespace();
         match self.peek() {
             None => Ok(None),
-            Some(b'{') => self.object().map(Some),
-            Some(b'[') => self.array().map(Some),
+            Some(b'{' | b'[') if self.depth >= MAX_DEPTH => Err(NotJson),
+            Some(b'{') => self.nested(Self::object),
+            Some(b'[') => self.nested(Self::array),
             Some(b'"') => Ok(self.string()?.map(Json::String)),
             Some(b't') => self.literal("true", Json::Bool(true)),
             Some(b'f') => self.literal("false", Json::Bool(false)),
@@ -124,6 +131,13 @@ impl Reader<'_> {
             Some(b'-' | b'0'..=b'9') => self.number(),
             Some(_) => Err(NotJson),
         }
+    }
+
+    fn nested(&mut self, container: fn(&mut Self) -> Result<Json, NotJson>) -> Step {
+        self.depth += 1;
+        let parsed = container(self);
+        self.depth -= 1;
+        parsed.map(Some)
     }
 
     fn literal(&mut self, word: &str, value: Json) -> Step {
@@ -335,6 +349,15 @@ mod tests {
     }
 
     #[test]
+    fn an_array_cut_after_a_finished_item_keeps_that_item() {
+        let Ok(Json::Array(items, cut)) = parse("[\"a\"  ") else {
+            panic!("expected an array");
+        };
+        assert_eq!(items.len(), 1);
+        assert!(cut);
+    }
+
+    #[test]
     fn complete_json_reads_exactly() {
         assert_eq!(
             parse(r#"{"a": "x\né😀", "b": [1, true, null], "c": {}}"#),
@@ -392,6 +415,81 @@ mod tests {
         let kept = parse(r#"{"a": "b", "#).unwrap();
         assert!(kept.is_cut());
         assert_eq!(kept.text(&["a"]), Some("b"));
+    }
+
+    #[test]
+    fn nesting_past_the_limit_is_not_json_instead_of_a_stack_overflow() {
+        assert_eq!(parse(&"[".repeat(2_000_000)), Err(NotJson));
+        assert_eq!(parse(&r#"{"a":"#.repeat(2_000_000)), Err(NotJson));
+        let at_limit = format!("{}{}", "[".repeat(MAX_DEPTH), "]".repeat(MAX_DEPTH));
+        assert!(matches!(parse(&at_limit), Ok(Json::Array(_, false))));
+        let past_limit = format!("{}{}", "[".repeat(MAX_DEPTH + 1), "]".repeat(MAX_DEPTH + 1));
+        assert_eq!(parse(&past_limit), Err(NotJson));
+    }
+
+    #[test]
+    fn every_string_escape_decodes() {
+        assert_eq!(
+            parse(r#""\" \\ \/ \b \f \n \r \t \u00e9 \ud83d\ude00""#),
+            Ok(text("\" \\ / \u{8} \u{c} \n \r \t \u{e9} \u{1f600}"))
+        );
+    }
+
+    #[test]
+    fn a_broken_or_cut_unicode_escape_is_told_apart() {
+        for bad in [
+            r#""\uZZZZ""#,
+            r#""\ud83dX""#,
+            r#""\ud83d\u0041""#,
+            r#""\ud83d\uZZZZ""#,
+            r#""\udc00""#,
+        ] {
+            assert_eq!(parse(bad), Err(NotJson), "{bad}");
+        }
+        for cut in [
+            r#"["ab\u00"#,
+            r#"["ab\ud83d"#,
+            r#"["ab\ud83d\"#,
+            r#"["ab\ud83d\ude"#,
+            r#"["ab\"#,
+        ] {
+            assert_eq!(parse(cut), Ok(Json::Array(Vec::new(), true)), "{cut}");
+        }
+    }
+
+    #[test]
+    fn a_number_that_only_looks_like_one_is_not_json() {
+        assert_eq!(parse("[-]"), Err(NotJson));
+        assert_eq!(parse("[1.2.3]"), Err(NotJson));
+        assert_eq!(
+            parse("[1e999]"),
+            Ok(Json::Array(vec![Json::Number("1e999".into())], false)),
+            "kept as written, never turned into a float"
+        );
+        assert_eq!(
+            parse("-"),
+            Err(NotJson),
+            "a bare scalar that runs to the cut is dropped"
+        );
+    }
+
+    #[test]
+    fn cuts_at_every_container_boundary_are_kept_as_cuts() {
+        assert_eq!(parse("[1"), Ok(Json::Array(Vec::new(), true)));
+        assert_eq!(
+            parse("[1,"),
+            Ok(Json::Array(vec![Json::Number("1".into())], true))
+        );
+        assert_eq!(parse("["), Ok(Json::Array(Vec::new(), true)));
+        assert_eq!(
+            parse(r#"{"a":1 "#),
+            Ok(Json::Object(
+                vec![("a".into(), Json::Number("1".into()))],
+                true
+            ))
+        );
+        assert_eq!(parse(r#"{"a":1 x}"#), Err(NotJson));
+        assert_eq!(parse("[7]").unwrap().get("a"), None);
     }
 
     #[test]

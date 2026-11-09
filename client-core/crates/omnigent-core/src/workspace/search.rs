@@ -341,6 +341,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn oversized_file_filters_are_refused() {
+        assert_eq!(joined_globs(&["a".repeat(4096)]).unwrap().len(), 4096);
+        assert!(joined_globs(&["a".repeat(4097)]).is_err());
+    }
+
+    #[test]
     fn utf16_offsets_become_byte_offsets() {
         let text = "😀 fixture needle again.";
         let range = utf16_to_utf8(text, TextRange { start: 11, end: 17 }).unwrap();

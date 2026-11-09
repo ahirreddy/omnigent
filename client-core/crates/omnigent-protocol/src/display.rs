@@ -290,6 +290,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn huge_or_wide_values_stop_at_their_budgets() {
+        assert_eq!(sanitized(&json!({"a": 1})), Some(json!({"a": 1})));
+        let large = format!("[{}]", "1,".repeat(MAX_NESTED_JSON_BYTES));
+        assert_eq!(
+            sanitized(&Value::String(large)),
+            Some(Value::String(OMITTED_LARGE_PAYLOAD.to_owned()))
+        );
+        // Each row spends budget, so the outer list stops before reaching the end.
+        let row: Vec<Value> = (0..MAX_ENTRIES).map(|index| json!(index)).collect();
+        let wide: Vec<Value> = (0..MAX_ENTRIES)
+            .map(|_| Value::Array(row.clone()))
+            .collect();
+        let cleaned = sanitized(&Value::Array(wide)).unwrap();
+        assert!(cleaned.as_array().unwrap().len() < MAX_ENTRIES);
+        let object: Map<String, Value> = (0..MAX_ENTRIES)
+            .map(|index| (format!("k{index:02}"), Value::Array(row.clone())))
+            .collect();
+        let cleaned = sanitized(&Value::Object(object)).unwrap();
+        assert!(cleaned.as_object().unwrap().len() < MAX_ENTRIES);
+    }
+
+    #[test]
+    fn a_text_field_beside_other_fields_is_shown_with_its_key() {
+        let text = safe_display_text(&json!({"text": "body", "kind": "note"}));
+        assert!(text.contains("body") && text.contains("kind"), "{text}");
+    }
+
+    #[test]
     fn credentials_private_reasoning_and_hidden_context_are_removed() {
         let value = json!({
             "result": "Kept result",

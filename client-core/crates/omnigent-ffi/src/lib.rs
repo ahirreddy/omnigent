@@ -86,11 +86,31 @@ mod updates_driver;
 #[cfg(test)]
 mod api_tests;
 #[cfg(test)]
+mod automations_tests;
+#[cfg(test)]
+mod custom_agents_tests;
+#[cfg(test)]
 mod driver_tests;
+#[cfg(test)]
+mod harness_setup_tests;
+#[cfg(test)]
+mod inbox_tests;
+#[cfg(test)]
+mod pull_request_detail_tests;
 #[cfg(test)]
 mod read_tests;
 #[cfg(test)]
 mod remote_browser_tests;
+#[cfg(test)]
+mod sandbox_tests;
+#[cfg(test)]
+mod server_admin_tests;
+#[cfg(test)]
+mod session_tools_tests;
+#[cfg(test)]
+mod sidebar_tests;
+#[cfg(test)]
+mod slash_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
@@ -112,3 +132,37 @@ mod tests {
         assert_eq!(super::core_version(), env!("CARGO_PKG_VERSION"));
     }
 }
+#[cfg(test)]
+mod agent_tree_tests;
+#[cfg(test)]
+mod approval_tests;
+#[cfg(test)]
+mod attention_tests;
+#[cfg(test)]
+mod browser_tests;
+#[cfg(test)]
+mod canvas_tests;
+#[cfg(test)]
+mod config_tests;
+#[cfg(test)]
+mod configuration_tests;
+#[cfg(test)]
+mod creation_tests;
+#[cfg(test)]
+mod decisions_tests;
+#[cfg(test)]
+mod deeplink_tests;
+#[cfg(test)]
+mod errors_tests;
+#[cfg(test)]
+mod fork_tests;
+#[cfg(test)]
+mod host_switch_tests;
+#[cfg(test)]
+mod policy_registry_tests;
+#[cfg(test)]
+mod queue_tests;
+#[cfg(test)]
+mod sessions_tests;
+#[cfg(test)]
+mod share_tests;

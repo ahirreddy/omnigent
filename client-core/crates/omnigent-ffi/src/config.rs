@@ -450,6 +450,12 @@ mod tests {
     }
 
     #[test]
+    fn host_storage_prints_its_name_only() {
+        let storage = ForeignSettings(Arc::new(MemorySettings::default()));
+        assert_eq!(format!("{storage:?}"), "ForeignSettings");
+    }
+
+    #[test]
     fn corrupt_stored_settings_are_errors() {
         let storage = Arc::new(MemorySettings::default());
         lock(&storage.0).insert(

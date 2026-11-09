@@ -539,6 +539,8 @@ pub struct RemoteBrowserAttach<J> {
     coalescer: InputCoalescer,
     visible: bool,
     wants_control: bool,
+    /// The user asked for control before the host's `hello`; it is sent once the hello arrives.
+    take_awaiting_hello: bool,
     stats_wanted: bool,
     desired_viewport: Option<ViewportRequest>,
     /// The last viewport `resize` sent on this connection, until the host answers.
@@ -571,6 +573,7 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
             video: VideoTrack::new(),
             visible: true,
             wants_control: false,
+            take_awaiting_hello: false,
             stats_wanted: false,
             desired_viewport: None,
             sent_viewport: None,
@@ -728,6 +731,7 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
     }
 
     fn stop(&mut self, out: &mut Vec<AttachOutput>) {
+        self.take_awaiting_hello = false;
         self.end_attempt(Some("client detached"), out);
         if let Some(token) = self.reconnect_timer.take() {
             out.push(AttachOutput::CancelTimer { token });
@@ -997,7 +1001,7 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
                 out,
             ),
             // Sent after the next host `hello`.
-            Err(DropReason::NotAttached) => {}
+            Err(DropReason::NotAttached) => self.take_awaiting_hello = true,
             Err(reason) => {
                 self.wants_control = false;
                 out.push(dropped(InputKind::Control, reason));
@@ -1007,6 +1011,7 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
 
     fn release_control(&mut self, now_ms: u64, out: &mut Vec<AttachOutput>) {
         self.wants_control = false;
+        self.take_awaiting_hello = false;
         if let Ok(attempt) = self.gate(true) {
             self.flush_input(now_ms, attempt, out);
             // A v1 host keeps any size; give the agent its own back before handing over.
@@ -1189,8 +1194,10 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
             current.hello = true;
         }
         self.retry.on_live();
-        let reclaim =
-            self.wants_control && mode == AttachMode::Control && self.tab.in_grace_period();
+        let asked = std::mem::take(&mut self.take_awaiting_hello);
+        let reclaim = self.wants_control
+            && mode == AttachMode::Control
+            && (asked || self.tab.in_grace_period());
         self.set_state(ConnectionState::Attached { mode }, out);
         if reclaim {
             send(
@@ -1201,6 +1208,9 @@ impl<J: JitterSource> RemoteBrowserAttach<J> {
                 out,
             );
         } else {
+            if asked {
+                out.push(dropped(InputKind::Control, DropReason::ReadOnly));
+            }
             self.wants_control = false;
         }
         if self.stats_wanted {

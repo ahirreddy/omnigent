@@ -433,3 +433,166 @@ fn large_files_with_scattered_edits_diff_exactly() {
     assert_eq!(result.hunks.len(), 12);
     assert_eq!(apply(&before, &result), after);
 }
+
+#[test]
+fn a_hunk_header_past_the_integer_limit_is_malformed_not_an_overflow() {
+    let max = u64::MAX;
+    for header in [
+        format!("@@ -{max},0 +1 @@"),
+        format!("@@ -1 +{max},0 @@"),
+        format!("@@ -{max},2 +1,2 @@"),
+        format!("@@ -1,2 +{max},2 @@"),
+        format!("@@ -{max} +1 @@"),
+    ] {
+        let patch = format!("--- a/f\n+++ b/f\n{header}\n x\n");
+        let error = parse_unified(&patch).unwrap_err();
+        assert!(
+            error.to_string().contains("malformed hunk header"),
+            "{error}"
+        );
+    }
+    let last = max - 1;
+    let patch = format!("--- a/f\n+++ b/f\n@@ -{last} +{last} @@\n x\n");
+    let parsed = parse_unified(&patch).unwrap();
+    assert_eq!(parsed[0].hunks[0].lines[0].old_number, Some(last));
+}
+
+#[test]
+fn a_hunk_header_keeps_its_section_title() {
+    let patch = "--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@ fn main()\n-a\n+b\n";
+    let files = parse_unified(patch).unwrap();
+    assert_eq!(files[0].hunks[0].header(), "@@ -1 +1 @@ fn main()");
+}
+
+#[test]
+fn unified_output_round_trips_each_kind_of_change() {
+    let cases = [
+        "diff --git a/n b/n\nnew file mode 100644\n--- /dev/null\n+++ b/n\n@@ -0,0 +1 @@\n+x\n",
+        "diff --git a/d b/d\ndeleted file mode 100644\n--- a/d\n+++ /dev/null\n@@ -1 +0,0 @@\n-x\n",
+        "diff --git a/o b/r\nrename from o\nrename to r\n",
+        "diff --git a/o b/c\ncopy from o\ncopy to c\n",
+        "diff --git a/b.png b/b.png\nBinary files a/b.png and b/b.png differ\n",
+        "diff --git a/m b/m\n",
+    ];
+    for patch in cases {
+        let files = parse_unified(patch).unwrap();
+        assert_eq!(files.len(), 1, "{patch}");
+        let rendered = files[0].to_unified();
+        assert_eq!(
+            parse_unified(&rendered).unwrap(),
+            files,
+            "{patch} -> {rendered}"
+        );
+    }
+    let copied = parse_unified(cases[3]).unwrap();
+    assert_eq!(copied[0].change, FileChangeKind::Copied);
+    assert_eq!(copied[0].old_path.as_deref(), Some("o"));
+    assert_eq!(copied[0].new_path.as_deref(), Some("c"));
+}
+
+#[test]
+fn a_git_binary_patch_body_is_skipped_and_marks_the_file_binary() {
+    let patch = "diff --git a/b b/b\nGIT binary patch\nliteral 5\nMcmV?d00001\n--- not a header\n\ndiff --git a/t b/t\n--- a/t\n+++ b/t\n@@ -1 +1 @@\n-a\n+b\n";
+    let files = parse_unified(patch).unwrap();
+    assert!(files[0].binary);
+    assert_eq!(files[0].hunks.len(), 0);
+    assert_eq!(files[1].stats().added, 1);
+}
+
+#[test]
+fn a_removal_after_an_addition_starts_a_new_side_by_side_block() {
+    let patch = "--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-one\n+uno\n-two\n+dos\n";
+    let rows = parse_unified(patch).unwrap()[0].side_by_side();
+    let pairs: Vec<(Option<String>, Option<String>)> = rows
+        .iter()
+        .filter_map(|row| match row {
+            SplitRow::Line { left, right } => Some((
+                left.as_ref().map(|cell| cell.text.clone()),
+                right.as_ref().map(|cell| cell.text.clone()),
+            )),
+            SplitRow::Hunk { .. } => None,
+        })
+        .collect();
+    assert_eq!(
+        pairs,
+        [
+            (Some("one".to_owned()), Some("uno".to_owned())),
+            (Some("two".to_owned()), Some("dos".to_owned())),
+        ]
+    );
+}
+
+#[test]
+fn quoted_paths_decode_escapes_and_survive_garbage() {
+    assert_eq!(unquote(r#""a\tb\nc\"d\\e""#), "a\tb\nc\"d\\e");
+    assert_eq!(unquote(r#""\303\251""#), "\u{e9}", "octal bytes are UTF-8");
+    assert_eq!(
+        unquote(r#""\777""#),
+        "?",
+        "an out of range octal is replaced"
+    );
+    assert_eq!(unquote(r#""\7x""#), "\u{7}x");
+    assert_eq!(unquote(r#""\q""#), "\\q", "an unknown escape is kept");
+    assert_eq!(unquote(r#""trail\""#), "trail\\", "a lone backslash stays");
+    assert_eq!(unquote("plain"), "plain");
+    assert_eq!(
+        unquote("\"caf\u{e9}\""),
+        "caf\u{e9}",
+        "raw UTF-8 passes through"
+    );
+    assert_eq!(
+        split_quoted(r#""a b" "c\"d""#),
+        Some(("a b".to_owned(), "c\"d".to_owned()))
+    );
+    assert_eq!(
+        split_quoted(r#""a\\" "c""#),
+        Some(("a\\".to_owned(), "c".to_owned()))
+    );
+    assert_eq!(split_quoted(r#""never closed"#), None);
+}
+
+#[test]
+fn a_rename_with_quoted_unicode_paths_parses() {
+    let patch = "diff --git \"a/caf\\303\\251\" \"b/th\\303\\251\"\nrename from \"caf\\303\\251\"\nrename to \"th\\303\\251\"\n";
+    let files = parse_unified(patch).unwrap();
+    assert_eq!(files[0].old_path.as_deref(), Some("caf\u{e9}"));
+    assert_eq!(files[0].new_path.as_deref(), Some("th\u{e9}"));
+}
+
+#[test]
+fn a_tiny_edit_budget_falls_back_without_panicking_and_common_edges_stay_equal() {
+    let before: String = (0..50).map(|n| format!("line {n}\n")).collect();
+    let after: String = (0..50).map(|n| format!("other {n}\n")).collect();
+    let result = diff_texts(
+        Some("f"),
+        Some("f"),
+        Some(&before),
+        Some(&after),
+        &DiffOptions {
+            max_edit_cost: 1,
+            ..DiffOptions::default()
+        },
+    );
+    assert_eq!(apply(&before, &result), after);
+    // Matching prefixes reach the top of the backtrack as plain equal lines.
+    let same_start = diff("a\nb\nc\n", "a\nb\nd\n");
+    assert_eq!(lines(&same_start.hunks[0]), [" a", " b", "-c", "+d"]);
+}
+
+#[test]
+fn a_patch_with_more_lines_than_its_header_is_refused() {
+    let patch = "--- a/x\n+++ b/x\n@@ -1,2 +1,1 @@\n a\n b\n";
+    assert!(
+        parse_unified(patch)
+            .unwrap_err()
+            .to_string()
+            .contains("more lines than its header says")
+    );
+}
+
+#[test]
+fn a_shared_prefix_left_for_the_edit_script_reads_as_equal_lines() {
+    let ops = myers(&[1, 2, 3], &[1, 2, 4], 100).unwrap();
+    assert_eq!(ops[..2], [Op::Equal, Op::Equal]);
+    assert_eq!(ops.len(), 4);
+}

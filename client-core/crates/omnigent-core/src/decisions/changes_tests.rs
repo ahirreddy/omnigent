@@ -4,6 +4,7 @@
 use omnigent_protocol::{ElicitationRequest, FromWire};
 use serde_json::{Value, json};
 
+use super::changes::format_preview;
 use super::*;
 
 const SESSION_RS: &str = "/Users/dev/omnigent/client-core/crates/omnigent-core/src/auth/session.rs";
@@ -267,4 +268,197 @@ fn other_preview_shapes_never_invent_files() {
         })),
         vec![change("/b", Some(Write), Some(0), None)]
     );
+}
+
+fn request_changes(params: &Value) -> Vec<FileChange> {
+    let request =
+        ElicitationRequest::from_value(json!({"elicitation_id": "x", "params": params})).unwrap();
+    Decision::from_request(&request, "conv_a")
+        .permissions
+        .file_changes
+}
+
+fn tool_changes(preview: &str) -> Vec<FileChange> {
+    request_changes(&json!({"content_preview": preview}))
+}
+
+fn codex_changes(preview: &str, files: Option<Value>) -> Vec<FileChange> {
+    let mut params = json!({"phase": "codex_apply_patch_approval", "content_preview": preview});
+    if let Some(files) = files {
+        params["files"] = files;
+    }
+    request_changes(&params)
+}
+
+#[test]
+fn a_multi_edit_skips_no_ops_and_stops_counting_at_a_cut_edit() {
+    let body = json!({"file_path": "/a", "edits": [
+        {"old_string": "x", "new_string": "y"},
+        {"old_string": "same", "new_string": "same"},
+        {"old_string": 7},
+    ]});
+    assert_eq!(
+        tool_changes(&format!("MultiEdit({body})")),
+        vec![change("/a", Some(Modify), Some(1), Some(1))]
+    );
+    let cut = r#"MultiEdit({"file_path": "/a", "edits": [{"old_string": "x", "new_str"#;
+    assert_eq!(
+        tool_changes(cut),
+        vec![change("/a", Some(Modify), None, None)],
+        "a cut edit list has no reliable count"
+    );
+}
+
+#[test]
+fn notebook_edits_count_by_mode() {
+    let notebook = |fields: Value| {
+        let mut input = json!({"notebook_path": "/n.ipynb", "new_source": "a\nb\n"});
+        for (key, value) in fields.as_object().unwrap() {
+            input[key] = value.clone();
+        }
+        tool_changes(&format!("NotebookEdit({input})"))
+    };
+    let counts = |changes: Vec<FileChange>| (changes[0].lines_added, changes[0].lines_removed);
+    assert_eq!(
+        counts(notebook(json!({}))),
+        (Some(2), None),
+        "replace is the default"
+    );
+    assert_eq!(
+        counts(notebook(json!({"edit_mode": "replace"}))),
+        (Some(2), None)
+    );
+    assert_eq!(
+        counts(notebook(json!({"edit_mode": "insert"}))),
+        (Some(2), Some(0))
+    );
+    assert_eq!(
+        counts(notebook(json!({"edit_mode": "delete"}))),
+        (Some(0), None)
+    );
+    assert_eq!(
+        counts(notebook(json!({"edit_mode": "other"}))),
+        (None, None)
+    );
+    let cut = r#"NotebookEdit({"notebook_path": "/n.ipynb", "new_source": "a"#;
+    assert_eq!(counts(tool_changes(cut)), (None, None));
+}
+
+#[test]
+fn apply_patch_entries_of_every_shape() {
+    let patch = |changes: Value| {
+        tool_changes(&json!({"name": "apply_patch", "arguments": {"changes": changes}}).to_string())
+    };
+    assert_eq!(
+        patch(json!([
+            {"kind": {"type": "add"}, "diff": "x"},
+            {"path": "/mystery", "kind": 7, "diff": "x"},
+            {"path": "/odd", "kind": {"type": "brand_new"}, "diff": "x"},
+            {"path": "/s", "kind": "add", "diff": "one\n"},
+        ])),
+        vec![change("/s", Some(Create), Some(1), Some(0))],
+    );
+    let unchanged = patch(json!([
+        {"path": "/same", "kind": {"type": "update"}, "diff": "@@ -1 +1 @@\n unchanged\n"},
+        {"path": "/moved", "kind": {"type": "update", "move_path": "/new"}, "diff": "@@ -1 +1 @@\n x\n"},
+        {"path": "/stay", "kind": {"type": "update", "move_path": "/stay"}, "diff": "@@ -1 +1 @@\n x\n"},
+    ]));
+    assert_eq!(
+        unchanged
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect::<Vec<_>>(),
+        ["/moved"],
+        "an unchanged, unrenamed update changes nothing"
+    );
+}
+
+#[test]
+fn legacy_codex_changes_read_each_shape() {
+    let entries = json!({"fileChanges": {
+        "/add": {"add": {"content": "one\ntwo\n"}},
+        "/del": {"delete": {"content": "one\n"}},
+        "/upd": {"update": {"unified_diff": "--- a\n+++ b\n+new\n-old\n"}},
+        "/typed": {"type": "add", "content": "x\n"},
+        "/none": {},
+    }})
+    .to_string();
+    let files = codex_changes(&entries, None);
+    let shown: Vec<(&str, Option<u32>, Option<u32>)> = files
+        .iter()
+        .map(|file| (file.path.as_str(), file.lines_added, file.lines_removed))
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            ("/add", Some(2), Some(0)),
+            ("/del", Some(0), Some(1)),
+            ("/none", None, None),
+            ("/typed", Some(1), Some(0)),
+            ("/upd", Some(1), Some(1)),
+        ]
+    );
+    assert_eq!(
+        codex_changes("[1]", None),
+        Vec::new(),
+        "no files and no map"
+    );
+    assert_eq!(codex_changes("{}", Some(json!([]))), Vec::new());
+    assert_eq!(
+        codex_changes("{", None),
+        Vec::new(),
+        "a cut map may miss files"
+    );
+    assert_eq!(
+        codex_changes("{}", Some(json!(["/listed", "", 7]))),
+        vec![change("/listed", None, None, None)]
+    );
+}
+
+#[test]
+fn a_diff_without_a_hunk_header_is_counted_after_its_file_headers() {
+    let counts = |diff: &str| {
+        let body = json!({"name": "apply_patch", "arguments": {"changes": [
+            {"path": "/f", "kind": "update", "diff": diff},
+        ]}});
+        let files = tool_changes(&body.to_string());
+        files
+            .first()
+            .map(|file| (file.lines_added, file.lines_removed))
+    };
+    assert_eq!(counts("--- a\n+++ b\n+added\n"), Some((Some(1), Some(0))));
+    assert_eq!(counts("+added\n-removed\n"), Some((Some(1), Some(1))));
+    assert_eq!(counts("--- a\nnot a header\n"), Some((Some(0), Some(1))));
+    assert_eq!(counts(""), None, "an empty update changes nothing");
+}
+
+#[test]
+fn reindenting_keeps_empty_containers_and_strings_intact() {
+    assert_eq!(format_preview("{}").as_deref(), Some("{}"));
+    assert_eq!(
+        format_preview(r#"{"a": [], "b": {   "c": "x { y"}}"#).as_deref(),
+        Some("{\n  \"a\": [],\n  \"b\": {\n    \"c\": \"x { y\"\n  }\n}")
+    );
+    assert_eq!(
+        format_preview(r#"{ "a": "\"}"}"#).as_deref(),
+        Some("{\n  \"a\": \"\\\"}\"\n}"),
+    );
+    assert_eq!(format_preview("   "), None);
+    assert_eq!(
+        format_preview("plain (text)").as_deref(),
+        Some("plain (text)")
+    );
+    assert_eq!(
+        format_preview(r#"Tool({"a": 1}"#).as_deref(),
+        Some("Tool({\n  \"a\": 1\n}")
+    );
+    assert_eq!(format_preview("]]]").as_deref(), Some("]]]"));
+}
+
+#[test]
+fn deep_nesting_cannot_inflate_a_preview_without_bound() {
+    // Each level used to add a line indented by its depth: 50k brackets asked for 2.5 GB.
+    let formatted = format_preview(&"[".repeat(50_000)).unwrap();
+    assert!(formatted.len() < 50_000 * 200, "{}", formatted.len());
+    assert!(formatted.starts_with("[\n  [\n    [\n"));
 }

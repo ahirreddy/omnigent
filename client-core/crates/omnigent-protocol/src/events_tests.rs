@@ -313,3 +313,23 @@ fn recorded_stream_frames_snapshot() {
         insta::assert_json_snapshot!(name, events);
     }
 }
+
+#[test]
+fn todos_with_an_unknown_status_are_skipped() {
+    let event = decode(json!({"type": "session.todos", "todos": [
+        {"content": "a", "status": "pending"},
+        {"content": "b", "status": "brand_new"},
+    ]}));
+    let ServerStreamEvent::SessionTodos(todos) = &event else {
+        panic!("{event:?}");
+    };
+    assert_eq!(todos.valid_todos().len(), 1);
+}
+
+#[test]
+fn only_an_unknown_event_has_a_fallback_and_it_serialises_as_sent() {
+    let unknown = decode(json!({"type": "brand_new", "x": 1}));
+    assert_eq!(serde_json::to_value(&unknown).unwrap()["x"], 1);
+    let known = decode(json!({"type": "session.model", "model": "m"}));
+    assert_eq!(known.unknown_display_text(), None);
+}
