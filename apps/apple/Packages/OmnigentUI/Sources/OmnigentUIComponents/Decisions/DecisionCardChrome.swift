@@ -10,7 +10,7 @@ struct ApproveButton: View {
   let identifier: String
   var controlSize: ControlSize = .large
   /// Pink. A list of rows keeps pink for the one request that owns the shortcut.
-  var isProminent = true
+  let isProminent: Bool
   let action: () -> Void
 
   var body: some View {

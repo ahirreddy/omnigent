@@ -5,7 +5,7 @@ nonisolated struct CLILineText {
   struct Part {
     var text: String
     var color: SRGB?
-    var bold = false
+    var bold: Bool
   }
 
   var parts: [Part] = []
@@ -34,7 +34,7 @@ struct CLIBulletLine: View {
   var marker: SRGB?
   var isLive = false
   @Environment(\.cliPalette) private var palette
-  private let size = CLIFontSize()
+  private(set) var size = CLIFontSize()
 
   var body: some View {
     Text(line.attributed)
@@ -77,7 +77,7 @@ struct CLIDetailText: View {
   var maxLines = 40
   @State private var showsAll = false
   @Environment(\.cliPalette) private var palette
-  private let size = CLIFontSize()
+  private(set) var size = CLIFontSize()
 
   var body: some View {
     let lines = text.split(separator: "\n", omittingEmptySubsequences: false)

@@ -61,8 +61,8 @@ nonisolated enum CLIInline {
 
 private struct CLIBlocks: View {
   let blocks: [MarkdownBlock]
-  var cursor = false
-  private let size = CLIFontSize()
+  let cursor: Bool
+  private(set) var size = CLIFontSize()
 
   var body: some View {
     VStack(alignment: .leading, spacing: size.line) {
@@ -76,9 +76,9 @@ private struct CLIBlocks: View {
 
 private struct CLIMarkdownBlockView: View {
   let block: MarkdownBlock
-  var cursor = false
+  let cursor: Bool
   @Environment(\.cliPalette) private var palette
-  private let size = CLIFontSize()
+  private(set) var size = CLIFontSize()
 
   var body: some View {
     switch block {
@@ -164,9 +164,9 @@ private struct CLIListView: View {
   let ordered: Bool
   let start: Int
   let items: [MarkdownListItem]
-  var cursor = false
+  let cursor: Bool
   @Environment(\.cliPalette) private var palette
-  private let size = CLIFontSize()
+  private(set) var size = CLIFontSize()
 
   var body: some View {
     let width =
@@ -203,7 +203,7 @@ private struct CLIListView: View {
 private struct CLITableView: View {
   let table: MarkdownTable
   @Environment(\.cliPalette) private var palette
-  private let size = CLIFontSize()
+  private(set) var size = CLIFontSize()
 
   var body: some View {
     ScrollView(.horizontal) {

@@ -187,11 +187,15 @@ struct HostMoveSheet: View {
     }
     ToolbarItemGroup(placement: .confirmationAction) {
       if isSubmitting { ProgressView().controlSize(.small) }
-      Button(isSwitch ? "Switch Host" : "Start Session") { Task { await submit() } }
-        .primaryActionStyle()
-        .disabled(hostID == nil || resolved == nil || isSubmitting || targets.isEmpty)
-        .accessibilityIdentifier(isSwitch ? "switch-host-button" : "resume-dir-bind-button")
+      confirmButton
     }
+  }
+
+  private var confirmButton: some View {
+    Button(isSwitch ? "Switch Host" : "Start Session") { Task { await submit() } }
+      .primaryActionStyle()
+      .disabled(hostID == nil || resolved == nil || isSubmitting || targets.isEmpty)
+      .accessibilityIdentifier(isSwitch ? "switch-host-button" : "resume-dir-bind-button")
   }
 
   private var description: String {

@@ -42,7 +42,7 @@ struct CLIActionCluster<Content: View>: View {
 /// ``View/messageActionsHost(row:actions:pinned:showsOnTouch:focus:)`` instead.
 private struct CLIActionsHost: ViewModifier {
   let actions: [CLIAction]
-  var trailingClearance: CGFloat = 0
+  let trailingClearance: CGFloat
   @State private var isHovered = false
   @FocusState private var isFocused: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -155,7 +155,7 @@ extension View {
 
 private struct CLIMarkerModifier<Marker: View>: ViewModifier {
   let marker: Marker
-  private let size = CLIFontSize()
+  private(set) var size = CLIFontSize()
 
   func body(content: Content) -> some View {
     content.overlay(alignment: .topLeading) {

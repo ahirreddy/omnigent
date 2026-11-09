@@ -156,23 +156,11 @@ public struct CLIComposer: View {
     .dropDestination(for: URL.self, isEnabled: canAttach) { urls, _ in
       add(urls.map { ComposerAttachmentInput.file(url: $0) })
     }
-    .fileImporter(
-      isPresented: $isImporting, allowedContentTypes: [.item], allowsMultipleSelection: true
-    ) { result in
-      switch result {
-      case .success(let urls): add(urls.map { .file(url: $0) })
-      case .failure(let error):
-        attachmentError = "Could not open the files: \(error.localizedDescription)"
-      }
-    }
-    .photosPicker(
-      isPresented: $isPickingPhotos, selection: $photoItems, matching: .any(of: [.images, .videos])
+    .modifier(
+      ComposerAttachmentPickers(
+        isImporting: $isImporting, isPickingPhotos: $isPickingPhotos, photoItems: $photoItems,
+        loaded: apply)
     )
-    .onChange(of: photoItems) { _, items in
-      guard !items.isEmpty else { return }
-      photoItems = []
-      Task { await loadPhotos(items) }
-    }
     #if os(macOS)
       .onPasteCommand(of: [.fileURL, .image]) { providers in
         Task { await loadProviders(providers) }
@@ -305,8 +293,7 @@ public struct CLIComposer: View {
     addAttachments(inputs)
   }
 
-  private func loadPhotos(_ items: [PhotosPickerItem]) async {
-    let result = await AttachmentLoading.photos(items)
+  private func apply(_ result: AttachmentLoading.Result) {
     add(result.inputs)
     if !result.failures.isEmpty { attachmentError = result.failures.joined(separator: "\n") }
   }
@@ -316,8 +303,6 @@ public struct CLIComposer: View {
       attachmentError = AttachmentLoading.unavailable(state.availability.reason)
       return
     }
-    let result = await AttachmentLoading.providers(providers)
-    add(result.inputs)
-    if !result.failures.isEmpty { attachmentError = result.failures.joined(separator: "\n") }
+    apply(await AttachmentLoading.providers(providers))
   }
 }

@@ -182,7 +182,8 @@ public struct TabOverviewSheet: View {
       .joined(separator: " \u{00B7} ")
   }
 
-  private func move(from source: IndexSet, to destination: Int) {
+  /// A row of the list was dragged to `destination`.
+  func move(from source: IndexSet, to destination: Int) {
     if let move = Self.move(from: source, to: destination, visible: matches, in: state.tabs) {
       actions.move(move.id, move.index)
     }

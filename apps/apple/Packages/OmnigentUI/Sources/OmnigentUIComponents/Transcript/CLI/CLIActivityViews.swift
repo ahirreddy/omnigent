@@ -9,7 +9,7 @@ struct CLIActivityLine: View, Equatable {
   @Environment(\.cliPalette) private var palette
   @Environment(\.transcriptAppearance) private var appearance
   @Environment(\.conversationActions) private var conversationActions
-  private let size = CLIFontSize()
+  private(set) var size = CLIFontSize()
 
   static func == (lhs: Self, rhs: Self) -> Bool { lhs.row == rhs.row }
 
