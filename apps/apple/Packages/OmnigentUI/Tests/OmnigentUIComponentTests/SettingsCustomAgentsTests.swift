@@ -218,6 +218,32 @@
       #expect(try !screen.shows("wiki"))
     }
 
+    @Test("renaming a server just added replaces it instead of leaving both")
+    func renameAdded() throws {
+      var empty = form
+      empty.mcpServers = []
+      let screen = screen(editorState(empty))
+      defer { screen.close() }
+      try screen.clickButton(at: 1)
+      screen.settle(0.3)
+      try screen.replaceText(in: try #require(screen.fields.first), with: "wiki")
+      try screen.replaceText(
+        in: try #require(screen.fields.dropFirst().first), with: "https://w.test")
+      try screen.click(try #require(screen.sheetButtons.last).center)
+      screen.settle(0.3)
+      // Back, Add, then the added row's Edit.
+      try screen.clickButton(at: 2)
+      screen.settle(0.3)
+      try screen.replaceText(in: try #require(screen.fields.first), with: "docs2")
+      try screen.click(try #require(screen.sheetButtons.last).center)
+      screen.settle(0.3)
+      #expect(try screen.shows("docs2"))
+      #expect(try !screen.shows("wiki"))
+      let save = try #require(screen.buttonFrames.last)
+      try screen.click(save.center)
+      #expect(log.entries.last?.contains(#"edits=["docs2"]"#) == true, "\(log.entries)")
+    }
+
     @Test("Edit opens the stored server, whose name can't change")
     func editServer() throws {
       let screen = screen(editorState())
