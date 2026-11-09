@@ -171,12 +171,44 @@
       return found
     }
 
-    /// The frames of the controls that take focus, from the top left and in layout order: every
-    /// button of any style, toggle, menu and field. SwiftUI keeps one proxy view for each.
+    /// The frames of the controls in reading order, top to bottom and then left to right: every
+    /// button of any style, toggle, menu and field, including those inside a scroll view.
     public var controlFrames: [CGRect] {
-      let proxies = allViews.filter { String(describing: Swift.type(of: $0)) == "KeyViewProxy" }
       let root = activeRoot
-      return proxies.map { $0.convert($0.bounds, to: root) }
+      let frames = allViews.filter(Self.isControl).map { $0.convert($0.bounds, to: root) }
+      return Self.readingOrder(Self.oneFramePerControl(frames.filter { !$0.isEmpty }))
+    }
+
+    /// SwiftUI keeps a focus proxy for most controls and hosts the rest in AppKit, some in both.
+    private static func isControl(_ view: NSView) -> Bool {
+      let name = String(describing: Swift.type(of: view))
+      return name == "KeyViewProxy" || name == "SwiftUIAppKitButton"
+        || name.hasPrefix("_NSCoreHostingView<AppKit")
+    }
+
+    /// One control's views share a top left corner; its largest frame includes its label.
+    private static func oneFramePerControl(_ frames: [CGRect]) -> [CGRect] {
+      var kept: [CGRect] = []
+      for frame in frames.sorted(by: { $0.width * $0.height > $1.width * $1.height }) {
+        let isSameControl = kept.contains {
+          abs($0.minX - frame.minX) < 2 && abs($0.minY - frame.minY) < 2
+        }
+        if !isSameControl { kept.append(frame) }
+      }
+      return kept
+    }
+
+    /// Controls centered on one line differ by a few points, so they group into a row first.
+    private static func readingOrder(_ frames: [CGRect]) -> [CGRect] {
+      var rows: [[CGRect]] = []
+      for frame in frames.sorted(by: { $0.midY < $1.midY }) {
+        if let last = rows.last?.first, abs(last.midY - frame.midY) < 8 {
+          rows[rows.count - 1].append(frame)
+        } else {
+          rows.append([frame])
+        }
+      }
+      return rows.flatMap { row in row.sorted { $0.minX < $1.minX } }
     }
 
     /// Clicks the middle of a control by its position in `controlFrames`.
