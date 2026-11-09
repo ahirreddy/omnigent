@@ -13,11 +13,11 @@
     /// - Throws: `OffscreenWindowError` when SwiftUI doesn't report its tree.
     public func shownText() throws -> [String] {
       let tree = host._viewDebugData()
-      guard omnigent_view_debug_is_enabled() != 0, !tree.isEmpty,
-        let data = _ViewDebug.serializedData(tree)
-      else { throw OffscreenWindowError.notFound("SwiftUI's view tree") }
+      guard omnigent_view_debug_is_enabled() != 0, !tree.isEmpty else {
+        throw OffscreenWindowError.notFound("SwiftUI's view tree")
+      }
       var found: [String] = []
-      ShownTextReader.collect(try JSONSerialization.jsonObject(with: data), into: &found)
+      for node in tree { try ShownTextReader.collect(node, into: &found) }
       return found
     }
 
@@ -30,38 +30,31 @@
     }
   }
 
-  /// Walks the JSON of `_ViewDebug` for the resolved strings of the views that draw text.
+  /// Walks `_ViewDebug` values for the strings of the views that draw text. Its JSON form is no use
+  /// here: one value it can't encode replaces the whole tree with an error, which reads as no text.
   private enum ShownTextReader {
-    static func collect(_ value: Any, into found: inout [String]) {
-      if let nodes = value as? [Any] {
-        for node in nodes { collect(node, into: &found) }
-        return
+    static func collect(_ node: _ViewDebug.Data, into found: inout [String]) throws {
+      let mirror = Mirror(reflecting: node)
+      // A SwiftUI that lays this out differently must fail the test, not read as showing nothing.
+      guard let properties = mirror.descendant("data") as? [_ViewDebug.Property: Any],
+        let children = mirror.descendant("childData") as? [_ViewDebug.Data]
+      else { throw OffscreenWindowError.notFound("SwiftUI's view tree") }
+      if let value = properties[.value], "\(type(of: value))" == "StyledTextContentView",
+        let string = attributedString(in: value, depth: 0)
+      {
+        found.append(string)
       }
-      guard let node = value as? [String: Any] else { return }
-      for property in node["properties"] as? [[String: Any]] ?? [] {
-        guard let attribute = property["attribute"] as? [String: Any],
-          attribute["type"] as? String == "SwiftUI.StyledTextContentView",
-          let string = cachedString(in: attribute)
-        else { continue }
-        found.append(plainText(string))
-      }
-      if let children = node["children"] { collect(children, into: &found) }
+      for child in children { try collect(child, into: &found) }
     }
 
-    /// The `string` under the attribute's text cache, as `NSAttributedString` describes itself.
-    private static func cachedString(in attribute: [String: Any]) -> String? {
-      if attribute["name"] as? String == "string", let value = attribute["value"] as? String {
-        return value
-      }
-      for child in attribute["subattributes"] as? [[String: Any]] ?? [] {
-        if let found = cachedString(in: child) { return found }
+    /// The resolved string a text view caches, a few levels into its private storage.
+    private static func attributedString(in value: Any, depth: Int) -> String? {
+      if let text = value as? NSAttributedString { return text.string }
+      guard depth < 6 else { return nil }
+      for child in Mirror(reflecting: value).children {
+        if let found = attributedString(in: child.value, depth: depth + 1) { return found }
       }
       return nil
-    }
-
-    /// Drops the attribute dictionary after each run: `text{\n  attributes\n}more{\n ...\n}`.
-    private static func plainText(_ description: String) -> String {
-      description.replacing(/\{\n[\s\S]*?\n\}/, with: "")
     }
   }
 #endif
