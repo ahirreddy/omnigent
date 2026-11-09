@@ -55,6 +55,7 @@ let package = Package(
       name: "OmnigentRemoteBrowserTests",
       dependencies: [
         .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+        .product(name: "OmnigentViewTextReading", package: "OmnigentViewTesting"),
         "OmnigentRemoteBrowser", .product(name: "OmnigentInput", package: "OmnigentInput"),
         .product(name: "OmnigentCoreFFI", package: "OmnigentCoreFFI"),
         .product(name: "OmnigentServices", package: "OmnigentServices"),
