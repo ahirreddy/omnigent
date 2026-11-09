@@ -17,7 +17,7 @@ struct SidebarUndo: Identifiable {
   let change: Change
   /// The archive also removes worktrees once the grace passes.
   var removesWorktrees = false
-  let createdAt = Date.now
+  var createdAt = Date.now
 
   var banner: UndoBanner? {
     switch change {
