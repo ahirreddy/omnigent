@@ -18,20 +18,27 @@ struct ChatDropTarget: ViewModifier {
       .modifier(DropTargetTracking(isTargeted: $isTargeted))
       .overlay {
         if isTargeted, isEnabled {
-          RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous)
-            .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
-            .foregroundStyle(.tint)
-            .background(.tint.opacity(0.06), in: .rect(cornerRadius: Theme.Radius.large))
-            .overlay {
-              Label("Drop files here", systemImage: "arrow.down.doc")
-                .font(.headline)
-                .foregroundStyle(.tint)
-            }
-            .padding(Theme.Spacing.medium)
-            .allowsHitTesting(false)
-            .accessibilityIdentifier("chat-drop-target")
+          ChatDropHighlight()
         }
       }
+  }
+}
+
+/// The "Drop files here" outline over the chat.
+struct ChatDropHighlight: View {
+  var body: some View {
+    RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous)
+      .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+      .foregroundStyle(.tint)
+      .background(.tint.opacity(0.06), in: .rect(cornerRadius: Theme.Radius.large))
+      .overlay {
+        Label("Drop files here", systemImage: "arrow.down.doc")
+          .font(.headline)
+          .foregroundStyle(.tint)
+      }
+      .padding(Theme.Spacing.medium)
+      .allowsHitTesting(false)
+      .accessibilityIdentifier("chat-drop-target")
   }
 }
 

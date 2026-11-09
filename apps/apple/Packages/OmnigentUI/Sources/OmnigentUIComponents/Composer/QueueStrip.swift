@@ -99,12 +99,21 @@ struct QueueStrip: View {
 
   /// Moves the dragged message `id` to just before `target` (after it when dragged downward).
   private func move(_ id: String, before target: String) -> Bool {
-    guard let move = actions.moveQueued, id != target,
-      let from = queue.firstIndex(where: { $0.id == id }),
-      let to = queue.firstIndex(where: { $0.id == target }), queue[from].state != .sending
+    guard let move = actions.moveQueued,
+      let change = Self.reorder(queue, moving: id, before: target)
     else { return false }
-    move(IndexSet([from]), from < to ? to + 1 : to)
+    move(IndexSet([change.from]), change.to)
     return true
+  }
+
+  /// Where a dragged message goes: `nil` when it is the target, gone, or already sending.
+  static func reorder(
+    _ queue: [QueuedMessage], moving id: String, before target: String
+  ) -> (from: Int, to: Int)? {
+    guard id != target, let from = queue.firstIndex(where: { $0.id == id }),
+      let to = queue.firstIndex(where: { $0.id == target }), queue[from].state != .sending
+    else { return nil }
+    return (from, from < to ? to + 1 : to)
   }
 
   @ViewBuilder

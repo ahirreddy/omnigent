@@ -181,8 +181,6 @@
       let row = name.convert(name.bounds, to: screen.activeWindow.contentView)
       let remove = try #require(
         screen.buttons.last { abs($0.midY - row.midY) < 16 && $0.minX > row.maxX })
-      // A menu an earlier test opened leaves a mouse up queued, which would end this click.
-      NSApp.discardEvents(matching: .leftMouseUp, before: nil)
       try screen.click(screen.clickPoint(remove))
       // The form animates the row out.
       screen.settle(0.3)

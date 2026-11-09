@@ -77,6 +77,15 @@
       #expect(try screen.shows("$ cargo test"))
     }
 
+    @Test("The status line says an answer is waiting for the server")
+    func answeredFooter() throws {
+      let screen = OffscreenWindow(
+        DecisionFooter(
+          card: .command(), phase: .answered(summary: "Approved"), isReadOnly: false))
+      defer { screen.close() }
+      #expect(try screen.shows("Approved. Waiting for the server to confirm."))
+    }
+
     @Test("A row shows the phase in place of its actions")
     func rowPhases() throws {
       let resolving = compact(.command(), model: DecisionCardModel(phase: .resolving))
