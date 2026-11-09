@@ -36,6 +36,33 @@
         params: [PolicyTemplate.Param(id: "limit", kind: .text, defaultValue: "10")])
     }
 
+    @Test("the switch and Delete act on that policy, and Delete asks first")
+    func rows() throws {
+      let rows = [
+        ServerSettingRow(id: "p1", name: "One", detail: "First"),
+        ServerSettingRow(id: "p2", name: "Managed", isReadOnly: true),
+      ]
+      let actions = actions()
+      let screen = settingsForm(store: store) { PoliciesPane(policies: rows, actions: actions) }
+      defer { screen.close() }
+      #expect(try screen.shows("From the server's config file"))
+      let toggles = screen.switches
+      try screen.click(toggles[0])
+      #expect(log.entries == ["enabled p1 false"])
+      try screen.click(toggles[1])
+      #expect(log.entries.count == 1, "a managed policy can't change")
+      // Add Policy, then this row's Delete; the managed row has none.
+      let buttons = screen.buttonFrames
+      #expect(buttons.count == 2)
+      SystemSideEffects.answer(alert: .alertSecondButtonReturn)
+      try screen.clickButton(at: 1)
+      #expect(SystemSideEffects.record.alertMessages == ["Remove One?"])
+      #expect(log.entries.count == 1)
+      SystemSideEffects.answer(alert: .alertFirstButtonReturn)
+      try screen.clickButton(at: 1)
+      #expect(log.entries.last == "delete p1")
+    }
+
     @Test("no policies says so")
     func none() throws {
       let screen = settingsForm(store: store) {
