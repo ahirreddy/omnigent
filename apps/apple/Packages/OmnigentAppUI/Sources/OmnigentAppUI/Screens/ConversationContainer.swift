@@ -52,17 +52,21 @@ struct ConversationContainer: View {
   @State private var textSource = ComposerTextSource()
   @State private var isStopping = false
   @State private var dismissedSendError: CoreError?
-  @State private var failures: [String] = []
+  // Not private: a test passes its own objects to watch them.
+  // swiftlint:disable:next private_swiftui_state
+  @State var failureList = ConversationFailures()
   @State private var harnessSurface: TerminalSurfaceController?
-  @State private var forkFlow = ForkFlow()
+  // swiftlint:disable:next private_swiftui_state
+  @State var forkFlow = ForkFlow()
   @State private var export: TranscriptExport?
   @State private var shareStore: ShareStore?
   @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
     false
   @AppStorage(ComposerPreferences.alwaysSteerKey) private var alwaysSteer = true
   @State private var fileLinks: WorkspaceFileLinks?
-  /// The liveness row's open sheet; a send can open Resume on a Machine.
-  @State private var livenessSheets = SessionLivenessSheets()
+  // The liveness row's open sheet; a send can open Resume on a Machine.
+  // swiftlint:disable:next private_swiftui_state
+  @State var livenessSheets = SessionLivenessSheets()
 
   var body: some View {
     let composer = conversation.composer
@@ -175,7 +179,7 @@ struct ConversationContainer: View {
   }
 
   /// What the Add menu and the tray's indicators open.
-  private var toolRoutes: SessionToolsAdapter.Routes {
+  var toolRoutes: SessionToolsAdapter.Routes {
     SessionToolsAdapter.Routes(
       openSession: tabRoutes?.openSession ?? openSession,
       openNewSideChat: tabRoutes?.openNewSideChat,
@@ -198,7 +202,7 @@ struct ConversationContainer: View {
   }
 
   /// Reads the whole transcript, then asks where to save it.
-  private func exportTranscript() {
+  func exportTranscript() {
     let conversation = conversation
     Task {
       do throws(CoreError) {
@@ -234,7 +238,7 @@ struct ConversationContainer: View {
   }
 
   /// The right panel's tabs, open files and "Open new" menu.
-  private var workspaceSlots: WorkspaceSlots {
+  var workspaceSlots: WorkspaceSlots {
     WorkspacePanelSlots(
       workspace: workspace, panel: panel, terminals: terminals, tabRoutes: tabRoutes,
       terminalNames: terminalNames, permissionLevel: conversation.header?.permissionLevel,
@@ -248,7 +252,7 @@ struct ConversationContainer: View {
 
   /// Side questions open in their own tab; sub-agents and the "Back to the parent session"
   /// capsule open or focus their session's chat tab next to this one.
-  private func routed(_ actions: ConversationActions) -> ConversationActions {
+  func routed(_ actions: ConversationActions) -> ConversationActions {
     var actions = actions
     if let tabRoutes {
       actions.openSideChat = { row in
@@ -274,7 +278,7 @@ struct ConversationContainer: View {
   }
 
   /// The fork opens as a chat tab next to this one, focused.
-  private var forkActions: ForkActions {
+  var forkActions: ForkActions {
     let flow = forkFlow
     let open = tabRoutes?.openSession ?? openSession
     return flow.withSandboxActions(
@@ -290,7 +294,7 @@ struct ConversationContainer: View {
 }
 
 extension ConversationContainer {
-  private var actions: ConversationActions {
+  var actions: ConversationActions {
     let conversation = conversation
     let opener = opener
     var actions = ConversationActions(
@@ -334,7 +338,7 @@ extension ConversationContainer {
     }
   }
 
-  private var composerActions: ComposerActions {
+  var composerActions: ComposerActions {
     let conversation = conversation
     let composer = conversation.composer
     return ComposerActions(
@@ -367,7 +371,7 @@ extension ConversationContainer {
       extras: extras)
   }
 
-  private var extras: ComposerExtraActions {
+  var extras: ComposerExtraActions {
     let conversation = conversation
     var extras = ComposerAdapter.extras(
       conversation.composer, isRunning: { conversation.isRunning }, reconnect: retry,
@@ -387,13 +391,9 @@ extension ConversationContainer {
     }
   }
 
-  /// Switches the harness when the core allows it; otherwise says why.
-  private func switchHarness(to agentID: String) {
-    let composer = conversation.composer
-    if let reason = composer.harnessOptions.first(where: { $0.id == agentID })?.unavailableReason {
-      failures.append(reason)
-      return
-    }
-    Task { await composer.switchHarness(to: agentID) }
+  /// What the alert reports.
+  var failures: [String] {
+    get { failureList.messages }
+    nonmutating set { failureList.messages = newValue }
   }
 }
