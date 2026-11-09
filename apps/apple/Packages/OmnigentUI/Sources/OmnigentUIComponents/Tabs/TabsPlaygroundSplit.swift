@@ -1,7 +1,8 @@
 import Foundation
 
 /// The scenario's split view, mirroring the app's tab store: each pane shows one of its tabs,
-/// a pane left empty closes the split, and a split of one tab gets a new-tab page.
+/// a pane's only tab trades places with the other pane's when moved, closing a pane's last tab
+/// closes the split, and a split of one tab gets a new-tab page.
 extension TabsPlaygroundModel {
   /// The tab a pane shows; the selected tab when not split.
   func tab(in pane: TabPane) -> TabItemState? {
@@ -55,16 +56,17 @@ extension TabsPlaygroundModel {
       return
     }
     let rest = tabs.filter { $0.pane == source && $0.id != id }
-    guard let replacement = rest.first(where: { $0.id == split?.activeID(source) }) ?? rest.first
-    else {
-      closeSplit()
-      selectedID = id
-      return
+    var replacement = (rest.first { $0.id == split?.activeID(source) } ?? rest.first)?.id
+    // The pane's only tab trades places with the tab the target pane shows.
+    let shown = split?.activeID(target)
+    if replacement == nil, let traded = tabs.firstIndex(where: { $0.id == shown }) {
+      tabs[traded].pane = source
+      replacement = tabs[traded].id
     }
     tabs[index].pane = target
     split = TabSplitState(
-      leadingID: target == .leading ? id : replacement.id,
-      trailingID: target == .trailing ? id : replacement.id, focused: target,
+      leadingID: target == .leading ? id : replacement,
+      trailingID: target == .trailing ? id : replacement, focused: target,
       fraction: split?.fraction ?? 0.5)
     selectedID = id
     sortByPane()

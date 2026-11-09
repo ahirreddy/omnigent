@@ -15,9 +15,9 @@ public import SwiftUI
 /// A split window's strip has a section per pane, sized like the panes below it, so each tab
 /// sits over the pane that shows it.
 ///
-/// On the Mac, drag a tab sideways to reorder it, into the other section to move it to that
-/// pane, onto either edge of the content to show it in that pane, and down into the middle of
-/// the content to move it to a new window.
+/// On the Mac, drag a tab sideways to reorder it, and onto the other section or the other pane
+/// to move it there. In a window that is not split, either edge of the content shows it in that
+/// pane and the middle of the content moves it to a new window.
 public struct TabStrip: View {
   private let state: TabsState
   private let actions: TabActions
@@ -192,18 +192,17 @@ public struct TabStrip: View {
       TabDrag.Pointer(translation: value.translation, location: value.location), tab: tab,
       group: group, widthOf: widthOf,
       drops: TabDrag.Drops(
-        tracker: tracker, canShowInPane: actions.showInPane != nil,
-        canTear: actions.moveToNewWindow != nil))
+        tracker: tracker, section: otherSection(under: value.location, for: tab),
+        canShowInPane: actions.showInPane != nil, canTear: actions.moveToNewWindow != nil))
     if let neighbour { move(tab.id, besides: neighbour) }
     drag = current
   }
 
   private func dragEnded(_ value: DragGesture.Value, tab: TabItemState) {
-    let otherSection = tab.pane.flatMap { sectionFrames[$0.other] }
     let release = TabDragRelease(
       target: tracker?.target, isTearing: drag?.isTearing == true,
       canShowInPane: actions.showInPane != nil, isSplit: state.split != nil, pane: tab.pane,
-      isOverOtherSection: otherSection?.contains(value.location) == true)
+      isOverOtherSection: otherSection(under: value.location, for: tab) != nil)
     tracker?.end()
     withAnimation(reduceMotion ? nil : Theme.Motion.feedback) { drag = nil }
     switch release {
@@ -211,6 +210,14 @@ public struct TabStrip: View {
     case .newWindow: actions.moveToNewWindow?(tab.id)
     case .stay: break
     }
+  }
+
+  /// The other pane, while the pointer is over its section of a split strip.
+  private func otherSection(under location: CGPoint, for tab: TabItemState) -> TabPane? {
+    guard state.split != nil, actions.showInPane != nil, let other = tab.pane?.other,
+      sectionFrames[other]?.contains(location) == true
+    else { return nil }
+    return other
   }
 
   private func move(_ id: String, besides neighbour: String) {
@@ -243,6 +250,8 @@ struct TabDrag: Equatable {
   struct Drops {
     /// The content's view of the drag.
     var tracker: TabDragTracker?
+    /// The other pane, while the pointer is over its section of the strip.
+    var section: TabPane?
     /// A release on the content can show the tab in a pane.
     var canShowInPane: Bool
     /// A release below the strip can move the tab to a new window.
@@ -280,7 +289,9 @@ struct TabDrag: Equatable {
     }
     offset = pointer.translation.width - shift
     lift = pointer.translation.height
-    drops.tracker?.update(id: tab.id, pane: tab.pane, location: isBelow ? pointer.location : nil)
+    drops.tracker?.update(
+      id: tab.id, pane: tab.pane, location: isBelow ? pointer.location : nil,
+      section: drops.section)
     let dropsInPane = drops.canShowInPane && drops.tracker?.target != nil
     isTearing = drops.canTear && tab.isClosable && isBelow && !dropsInPane
     return neighbour
@@ -293,10 +304,10 @@ enum TabDragRelease: Equatable {
   case newWindow
   case stay
 
-  /// A release onto a content edge shows the tab in that pane, onto the other section moves it
-  /// there, and well below the strip elsewhere moves it to a new window.
+  /// A release onto a pane the content offers shows the tab there, onto the other section moves
+  /// it there, and well below the strip elsewhere moves it to a new window.
   /// - Parameters:
-  ///   - target: The content edge under the pointer.
+  ///   - target: The pane the content offers under the pointer.
   ///   - isTearing: The tab is torn off the strip.
   ///   - canShowInPane: The window can show a tab in a pane.
   ///   - isSplit: The window is split.
