@@ -256,3 +256,26 @@ fn a_rejected_token_on_load_more_asks_to_sign_in() {
         "{phases:?}"
     );
 }
+
+#[test]
+fn a_rejected_token_a_list_read_alone_noticed_still_asks_to_sign_in() {
+    let (harness, _) = connected_with_first_page();
+    let phase = crate::test_support::phases(&harness.events.all())
+        .pop()
+        .unwrap();
+    let (mut engine, _queue) = harness.idle_engine();
+    engine.phase = phase;
+    engine.sign_in = Some(crate::engine::SignInContext {
+        base_url: "http://127.0.0.1:6767".into(),
+        server_name: None,
+        mode: crate::events::AuthenticationMode::Accounts,
+        methods: Vec::new(),
+    });
+    harness.events.take();
+    engine.list_failed(omnigent_core::SessionError::Unauthorized { reason: None });
+    let phases = crate::test_support::phases(&harness.events.take());
+    assert!(
+        matches!(phases.as_slice(), [ConnectionPhase::SignInRequired { .. }]),
+        "{phases:?}"
+    );
+}
