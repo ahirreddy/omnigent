@@ -41,6 +41,39 @@ struct SessionListNotificationTests {
     #expect(store.attention(of: "a").state == .unread)
   }
 
+  /// Whether reading `read` is notified by `change`.
+  private func notifies(_ read: () -> Void, when change: () -> Void) -> Bool {
+    let notified = Mutex(false)
+    withObservationTracking(read) { notified.withLock { $0 = true } }
+    change()
+    return notified.withLock { $0 }
+  }
+
+  @Test("a view that read one session is not notified for another session's row")
+  func oneSessionsReaderIgnoresOtherSessions() {
+    let store = SessionListStore()
+    store.apply(.reset(sessions: [summary("a", updatedAt: 1), summary("b", updatedAt: 2)]))
+    let readsA = { _ = (store.session("a"), store.attention(of: "a"), store.parent(of: "a")) }
+    let changeB = { store.apply(.upsert(sessions: [self.summary("b", updatedAt: 3)])) }
+    #expect(!notifies(readsA, when: changeB))
+    #expect(!notifies(readsA) { store.apply(.upsert(sessions: [self.summary("c", updatedAt: 4)])) })
+    #expect(!notifies(readsA) { store.apply(.remove(ids: ["c"])) })
+    #expect(!notifies(readsA) { store.unreadIDs = ["b"] })
+    // Its own row, read state and removal reach it.
+    #expect(notifies(readsA) { store.apply(.upsert(sessions: [self.summary("a", updatedAt: 5)])) })
+    #expect(store.session("a")?.updatedAt == 5)
+    #expect(notifies({ _ = store.attention(of: "a") }, when: { store.unreadIDs = ["a", "b"] }))
+    #expect(store.attention(of: "a").state == .unread)
+    // A changed row that leaves the attention alone notifies the summary's reader only.
+    let rowOfB = { store.apply(.upsert(sessions: [self.summary("b", updatedAt: 6)])) }
+    #expect(!notifies({ _ = store.attention(of: "b") }, when: rowOfB))
+    #expect(notifies(readsA) { store.apply(.remove(ids: ["a"])) })
+    #expect(store.session("a") == nil)
+    // A session that arrives reaches the view that asked for it before it was known.
+    let rowOfD = { store.apply(.upsert(sessions: [self.summary("d", updatedAt: 7)])) }
+    #expect(notifies({ _ = store.session("d") }, when: rowOfD))
+  }
+
   @Test("the sessions needing the user are kept, and notify only when they change")
   func needsResponseIsStored() {
     let store = SessionListStore()
