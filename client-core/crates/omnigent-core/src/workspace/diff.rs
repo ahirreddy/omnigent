@@ -933,7 +933,11 @@ impl OpenHunk {
         };
         let (old_start, old_count) = range(old).ok_or_else(malformed)?;
         let (new_start, new_count) = range(new).ok_or_else(malformed)?;
-        let next = |start: u64, count: u64| if count == 0 { start + 1 } else { start };
+        // Line numbers past the integer limit name no real file.
+        let next = |start: u64, count: u64| {
+            let after_last = start.checked_add(count.max(1)).ok_or_else(malformed)?;
+            Ok(if count == 0 { after_last } else { start })
+        };
         Ok(Self {
             hunk: DiffHunk {
                 old_start,
@@ -945,8 +949,8 @@ impl OpenHunk {
             },
             old_left: old_count,
             new_left: new_count,
-            old_next: next(old_start, old_count),
-            new_next: next(new_start, new_count),
+            old_next: next(old_start, old_count)?,
+            new_next: next(new_start, new_count)?,
         })
     }
 

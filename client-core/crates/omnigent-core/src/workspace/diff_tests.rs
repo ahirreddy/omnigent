@@ -433,3 +433,26 @@ fn large_files_with_scattered_edits_diff_exactly() {
     assert_eq!(result.hunks.len(), 12);
     assert_eq!(apply(&before, &result), after);
 }
+
+#[test]
+fn a_hunk_header_past_the_integer_limit_is_malformed_not_an_overflow() {
+    let max = u64::MAX;
+    for header in [
+        format!("@@ -{max},0 +1 @@"),
+        format!("@@ -1 +{max},0 @@"),
+        format!("@@ -{max},2 +1,2 @@"),
+        format!("@@ -1,2 +{max},2 @@"),
+        format!("@@ -{max} +1 @@"),
+    ] {
+        let patch = format!("--- a/f\n+++ b/f\n{header}\n x\n");
+        let error = parse_unified(&patch).unwrap_err();
+        assert!(
+            error.to_string().contains("malformed hunk header"),
+            "{error}"
+        );
+    }
+    let last = max - 1;
+    let patch = format!("--- a/f\n+++ b/f\n@@ -{last} +{last} @@\n x\n");
+    let parsed = parse_unified(&patch).unwrap();
+    assert_eq!(parsed[0].hunks[0].lines[0].old_number, Some(last));
+}
