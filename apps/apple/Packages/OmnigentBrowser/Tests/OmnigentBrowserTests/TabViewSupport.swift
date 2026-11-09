@@ -1,0 +1,129 @@
+#if os(macOS)
+  import AppKit
+  import OmnigentViewTesting
+  import SwiftUI
+  import Testing
+
+  @testable import OmnigentBrowser
+
+  /// A tab in a fresh environment with an active engine tab, for driving its views off screen.
+  @MainActor
+  struct TabFixture {
+    let environment: BrowserEnvironment
+    let provider: FakeProvider
+    let model: BrowserTabModel
+
+    init(url: String? = "https://a.example/page", engine: BrowserEngineKind = .system) throws {
+      (environment, provider) = try makeEnvironment(engine: engine)
+      model = environment.makeTab(url: try url.map(testURL))
+      model.activate()
+    }
+
+    var tab: FakeTab {
+      get throws { try #require(model.tab as? FakeTab) }
+    }
+  }
+
+  extension OffscreenWindow {
+    /// Sends a key equivalent as `NSApplication` does: to the window, not its first responder.
+    /// - Returns: Whether something took it.
+    @discardableResult
+    func shortcut(
+      _ characters: String, keyCode: UInt16 = 0, modifiers: NSEvent.ModifierFlags = .command
+    ) throws -> Bool {
+      let event = NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: modifiers,
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+        context: nil, characters: characters, charactersIgnoringModifiers: characters,
+        isARepeat: false, keyCode: keyCode)
+      let handled = window.performKeyEquivalent(with: try #require(event))
+      settle(0.02)
+      return handled
+    }
+
+    /// The buttons AppKit draws (the borderless style's), top to bottom and left to right. Popup
+    /// buttons are left out, since clicking one opens its menu.
+    var buttons: [NSButton] {
+      allViews.compactMap { $0 as? NSButton }
+        .filter { !($0 is NSPopUpButton) && !$0.isHiddenOrHasHiddenAncestor }
+        .sorted { frame(of: $0).origin.isBefore(frame(of: $1).origin) }
+    }
+
+    /// The editable text fields, top to bottom and left to right.
+    var fields: [NSTextField] {
+      allViews.compactMap { $0 as? NSTextField }.filter(\.isEditable)
+        .sorted { frame(of: $0).origin.isBefore(frame(of: $1).origin) }
+    }
+
+    /// A `Menu`'s items, built as for opening it but without opening it.
+    /// - Parameter index: The menu's position among the popup buttons, top to bottom.
+    /// - Returns: The menu; run an item with `choose(_:in:)`.
+    /// - Throws: `OffscreenWindowError.notFound` when there is no such menu.
+    func popupMenu(at index: Int = 0) throws -> NSMenu {
+      let popups = allViews.compactMap { $0 as? NSPopUpButton }
+        .sorted { frame(of: $0).origin.isBefore(frame(of: $1).origin) }
+      guard popups.indices.contains(index), let menu = popups[index].menu else {
+        throw OffscreenWindowError.notFound("menu \(index) of \(popups.count)")
+      }
+      // SwiftUI fills the menu when its button's cell says it will show; nothing is shown here.
+      let willShow = Selector(("popUpButtonCell:willShowMenu:"))
+      guard let delegate = menu.delegate as? NSObject, delegate.responds(to: willShow) else {
+        throw OffscreenWindowError.notFound("a SwiftUI menu at \(index)")
+      }
+      _ = delegate.perform(willShow, with: popups[index].cell, with: menu)
+      return menu
+    }
+
+    /// Clicks a button by its position in `buttons`.
+    func clickButton(at index: Int) throws {
+      let found = buttons
+      guard found.indices.contains(index) else {
+        throw OffscreenWindowError.notFound("button \(index) of \(found.count)")
+      }
+      try click(found[index])
+    }
+
+    /// Focuses a field by its position in `fields`.
+    func focusField(at index: Int = 0) throws {
+      let found = fields
+      guard found.indices.contains(index) else {
+        throw OffscreenWindowError.notFound("field \(index) of \(found.count)")
+      }
+      try click(found[index])
+    }
+
+    func pressReturn() throws { try press(keyCode: 36, characters: "\r") }
+    func pressEscape() throws { try press(keyCode: 53, characters: "\u{1b}") }
+    func pressDownArrow() throws { try press(keyCode: 125, characters: "\u{F701}") }
+    func pressUpArrow() throws { try press(keyCode: 126, characters: "\u{F700}") }
+
+    /// Lets `Task`s started by the view run. `settle` alone can't: a test on the main actor is
+    /// itself main queue work, which a nested run loop doesn't interleave with.
+    func catchUp() async {
+      await letTasksRun()
+      settle(0.02)
+      await letTasksRun()
+    }
+
+    /// No window of this process may show on a real display.
+    var nothingOnScreen: Bool {
+      NSApp.windows.filter(\.isVisible).allSatisfy { window in
+        NSScreen.screens.allSatisfy { !$0.frame.intersects(window.frame) }
+      }
+    }
+
+    private func frame(of view: NSView) -> CGRect { view.convert(view.bounds, to: host) }
+  }
+
+  extension CGPoint {
+    fileprivate func isBefore(_ other: CGPoint) -> Bool {
+      abs(y - other.y) > 8 ? y < other.y : x < other.x
+    }
+  }
+
+  /// Lets queued main-actor work run.
+  @MainActor
+  func letTasksRun() async {
+    for _ in 0..<40 { await Task.yield() }
+  }
+#endif

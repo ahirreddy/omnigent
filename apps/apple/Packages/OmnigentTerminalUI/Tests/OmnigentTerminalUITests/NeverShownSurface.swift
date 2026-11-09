@@ -1,4 +1,5 @@
 import AppKit
+import OmnigentViewTesting
 import SwiftUI
 import Testing
 
@@ -18,6 +19,7 @@ struct NeverShownSurface {
     connection: EchoTerminalConnection = EchoTerminalConnection(prompt: "$ ", banner: "ready"),
     width: CGFloat = 480, height: CGFloat = 240
   ) throws {
+    SystemSideEffects.install()
     _ = NSApplication.shared
     self.connection = connection
     controller = try TerminalSurfaceController(connection: connection)
@@ -62,6 +64,7 @@ enum OffscreenRender {
     _ view: some View, width: CGFloat = 500, height: CGFloat = 400,
     settle: TimeInterval = 0.05
   ) -> Int {
+    SystemSideEffects.install()
     _ = NSApplication.shared
     let host = NSHostingView(rootView: view.frame(width: width, height: height))
     let size = CGSize(width: width, height: height)

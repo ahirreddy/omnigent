@@ -1,4 +1,5 @@
 import Foundation
+import OmnigentViewTesting
 import Testing
 
 @testable import OmnigentBrowser
@@ -8,6 +9,7 @@ func makeEnvironment(
   directory: URL? = nil, provider: FakeProvider = FakeProvider(),
   engine: BrowserEngineKind = .chromium
 ) throws -> (BrowserEnvironment, FakeProvider) {
+  SystemSideEffects.install()
   let defaults = try isolatedDefaults()
   let presenter = BrowserPromptPresenter(
     permissionStore: BrowserPermissionStore(defaults: defaults),

@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import OmnigentViewTesting
 import SwiftUI
 
 @testable import OmnigentWebLayer
@@ -8,6 +9,7 @@ import SwiftUI
 @MainActor
 enum Offscreen {
   static func window(size: CGSize = CGSize(width: 400, height: 300)) -> NSWindow {
+    SystemSideEffects.install()
     _ = NSApplication.shared
     return NSWindow(
       contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered,

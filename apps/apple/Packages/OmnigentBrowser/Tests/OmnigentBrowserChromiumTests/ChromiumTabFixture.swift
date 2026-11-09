@@ -4,6 +4,7 @@
   import Foundation
   import OWLProtocol
   import OmnigentBrowser
+  import OmnigentViewTesting
   import Testing
 
   @testable import OmnigentBrowserChromium
@@ -33,6 +34,7 @@
     }
 
     init(withDelegate: Bool = true) throws {
+      SystemSideEffects.install()
       root = FileManager.default.temporaryDirectory
         .appending(path: "owl-chromium-tests-\(UUID().uuidString)")
       session = Session(
