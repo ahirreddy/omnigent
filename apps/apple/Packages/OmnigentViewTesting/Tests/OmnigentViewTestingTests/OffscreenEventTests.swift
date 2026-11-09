@@ -137,6 +137,17 @@
       #expect(Set(log.deleted) == ["row", "lazy"], "\(log.deleted)")
     }
 
+    @Test("a borderless button-style menu is listed and opens")
+    func borderlessMenu() throws {
+      let screen = OffscreenWindow(
+        Menu("More") { Button("Item") {} }.menuStyle(.button).buttonStyle(.borderless),
+        width: 200, height: 100)
+      defer { screen.close() }
+      let frame = try #require(screen.controlFrames.first)
+      let menu = try screen.openMenu(CGPoint(x: frame.midX, y: frame.midY))
+      #expect(menu.items.map(\.title).contains("Item"))
+    }
+
     @Test("hovering a view reports entering it, and ending the hover reports leaving")
     func hover() throws {
       let log = Log()
