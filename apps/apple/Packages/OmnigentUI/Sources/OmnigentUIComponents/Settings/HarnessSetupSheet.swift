@@ -330,7 +330,7 @@ struct HarnessCredentialForm: View {
             .onSubmit(saveKey)
             .accessibilityIdentifier("harness-credential-key")
           Button("Save", action: saveKey)
-            .disabled(isSaving || apiKey.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(isSaving || Self.trimmed(apiKey).isEmpty)
             .accessibilityIdentifier("harness-credential-save")
         }
       }
@@ -346,8 +346,7 @@ struct HarnessCredentialForm: View {
               .onSubmit(saveGateway)
             Button("Save", action: saveGateway)
               .disabled(
-                isSaving || gatewayURL.trimmingCharacters(in: .whitespaces).isEmpty
-                  || gatewayKey.trimmingCharacters(in: .whitespaces).isEmpty
+                isSaving || Self.trimmed(gatewayURL).isEmpty || Self.trimmed(gatewayKey).isEmpty
               )
               .accessibilityIdentifier("harness-credential-gateway-save")
           }
@@ -370,15 +369,23 @@ struct HarnessCredentialForm: View {
     }
   }
 
+  /// A pasted credential often brings a stray space or newline, which the provider would reject.
+  private static func trimmed(_ text: String) -> String {
+    text.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
   private func saveKey() {
-    guard !isSaving, !apiKey.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-    save(.apiKey(apiKey))
+    guard !isSaving, !Self.trimmed(apiKey).isEmpty else { return }
+    save(.apiKey(Self.trimmed(apiKey)))
     apiKey = ""
   }
 
+  /// Return in the key field gets here too, so it checks what the Save button checks.
   private func saveGateway() {
-    guard !isSaving else { return }
-    save(.gateway(baseURL: gatewayURL, apiKey: gatewayKey))
+    guard !isSaving, !Self.trimmed(gatewayURL).isEmpty, !Self.trimmed(gatewayKey).isEmpty else {
+      return
+    }
+    save(.gateway(baseURL: Self.trimmed(gatewayURL), apiKey: Self.trimmed(gatewayKey)))
     gatewayKey = ""
   }
 }
