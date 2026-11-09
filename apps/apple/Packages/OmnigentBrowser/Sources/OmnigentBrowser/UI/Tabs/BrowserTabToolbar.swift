@@ -58,37 +58,50 @@ struct BrowserProfileMenu: View {
     .buttonStyle(.plain)
     .help("Profile: \(model.profile?.name ?? "deleted")")
     .popover(isPresented: $showing, arrowEdge: .bottom) {
-      VStack(alignment: .leading, spacing: 6) {
-        Text("New Tab in Profile").font(.caption).foregroundStyle(.secondary)
-        ForEach(environment.profiles.profiles) { profile in
-          Button {
-            showing = false
-            environment.openTab(url: nil, profileID: profile.id, opener: model)
-          } label: {
-            HStack {
-              BrowserProfileAvatarView(profile: profile, size: 18)
-              Text(profile.name)
-              if profile.id == environment.profiles.defaultProfileID {
-                Text("default").font(.caption).foregroundStyle(.secondary)
-              }
-              Spacer()
-            }
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .accessibilityIdentifier("browser.profileMenu.\(profile.name)")
-        }
-        Divider()
-        Button("Manage Profiles…") {
-          showing = false
-          sheet = .profiles
-        }
-        .buttonStyle(.plain)
-      }
-      .padding(12)
-      .frame(minWidth: 220)
+      BrowserProfileMenuContent(
+        model: model, environment: environment, sheet: $sheet, close: { showing = false })
     }
     .accessibilityIdentifier("browser.profileChip")
+  }
+}
+
+/// The profile chip's popover: a new tab in any profile, or the profile manager.
+struct BrowserProfileMenuContent: View {
+  let model: BrowserTabModel
+  let environment: BrowserEnvironment
+  @Binding var sheet: BrowserTabSheet?
+  let close: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text("New Tab in Profile").font(.caption).foregroundStyle(.secondary)
+      ForEach(environment.profiles.profiles) { profile in
+        Button {
+          close()
+          environment.openTab(url: nil, profileID: profile.id, opener: model)
+        } label: {
+          HStack {
+            BrowserProfileAvatarView(profile: profile, size: 18)
+            Text(profile.name)
+            if profile.id == environment.profiles.defaultProfileID {
+              Text("default").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+          }
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("browser.profileMenu.\(profile.name)")
+      }
+      Divider()
+      Button("Manage Profiles…") {
+        close()
+        sheet = .profiles
+      }
+      .buttonStyle(.plain)
+    }
+    .padding(12)
+    .frame(minWidth: 220)
   }
 }
 

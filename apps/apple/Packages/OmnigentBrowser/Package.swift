@@ -43,7 +43,9 @@ let package = Package(
     .testTarget(
       name: "OmnigentBrowserTests",
       dependencies: [
-        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentBrowser",
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+        .product(name: "OmnigentViewTextReading", package: "OmnigentViewTesting"),
+        "OmnigentBrowser",
       ],
       swiftSettings: strictSwift
     ),

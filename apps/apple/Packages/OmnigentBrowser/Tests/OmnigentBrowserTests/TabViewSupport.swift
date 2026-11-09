@@ -92,6 +92,44 @@
       try click(found[index])
     }
 
+    /// The progress bars, top to bottom.
+    var progressBars: [NSProgressIndicator] {
+      allViews.compactMap { $0 as? NSProgressIndicator }
+    }
+
+    /// Whether a sheet is up.
+    var hasSheet: Bool { window.attachedSheet != nil }
+
+    /// Waits out the sheet's slide, which runs on timers.
+    func letSheetSettle() async {
+      for _ in 0..<8 {
+        await catchUp()
+        settle(0.05)
+      }
+    }
+
+    /// Buttons of the default style over a platform view, which SwiftUI draws itself and marks
+    /// only with a focus ring view; `controlFrames` doesn't list them.
+    var drawnButtons: [CGRect] {
+      allViews.filter { String(describing: Swift.type(of: $0)) == "_FocusRingView" }
+        .map { frame(of: $0) }
+        .sorted { $0.origin.isBefore($1.origin) }
+    }
+
+    /// Clicks a button by its position in `drawnButtons`.
+    func clickDrawnButton(at index: Int) throws {
+      let found = drawnButtons
+      guard found.indices.contains(index) else {
+        throw OffscreenWindowError.notFound("drawn button \(index) of \(found.count)")
+      }
+      try click(CGPoint(x: found[index].midX, y: found[index].midY))
+    }
+
+    /// Selects the focused field's text, so typing replaces it.
+    func selectFieldText() {
+      (window.firstResponder as? NSText)?.selectAll(nil)
+    }
+
     func pressReturn() throws { try press(keyCode: 36, characters: "\r") }
     func pressEscape() throws { try press(keyCode: 53, characters: "\u{1b}") }
     func pressDownArrow() throws { try press(keyCode: 125, characters: "\u{F701}") }
@@ -105,9 +143,9 @@
       await letTasksRun()
     }
 
-    /// No window of this process may show on a real display.
+    /// Nothing of this process can be seen: a window on a display must be fully transparent.
     var nothingOnScreen: Bool {
-      NSApp.windows.filter(\.isVisible).allSatisfy { window in
+      NSApp.windows.filter { $0.isVisible && $0.alphaValue > 0 }.allSatisfy { window in
         NSScreen.screens.allSatisfy { !$0.frame.intersects(window.frame) }
       }
     }
