@@ -17,12 +17,11 @@ nonisolated struct DecisionShortcutTarget: Hashable, Sendable {
   let surface: DecisionSurface
 }
 
-/// An inline card's frame and its scroll view's visible bounds, both in global coordinates.
+/// An inline card's frame and the part of its scroll view that isn't under a bar (the dock and
+/// composer inset the scroll view), in the card's own coordinates.
 nonisolated struct InlineDecisionPlacement: Hashable, Sendable {
   var card: CGRect
   var viewport: CGRect
-  /// The inline surface shows Approve without expanding (a full card, or a row answering in place).
-  var showsApprove: Bool
 }
 
 /// The inline cards on screen, as the dock and the shortcut need them.
@@ -32,20 +31,16 @@ nonisolated struct InlineDecisionVisibility: Hashable, Sendable {
   var approvable: Set<String> = []
 
   /// Whether a card counts as on screen. It enters once half of it (or half the viewport, for a
-  /// card taller than that) is visible above the bottom bar, and leaves below a fifth, so the
-  /// dock resizing as a card crosses the line never makes it flicker. A sliver never counts
-  /// (``minimumVisible``): over a short viewport the dock collapsing would scroll the card away
-  /// and bring it back, without end.
+  /// card taller than that) is visible, and leaves below a fifth, so the dock resizing as a card
+  /// crosses the line never makes it flicker. A sliver never counts (``minimumVisible``): over a
+  /// short viewport the dock collapsing would scroll the card away and bring it back, without end.
   /// - Parameters:
   ///   - placement: The card and its viewport.
-  ///   - bottomBarTop: The top of the dock and composer, which cover the viewport's bottom.
   ///   - wasOnScreen: The card counted as on screen before this change.
   /// - Returns: Whether it is on screen now.
-  static func isOnScreen(
-    _ placement: InlineDecisionPlacement, bottomBarTop: CGFloat?, wasOnScreen: Bool
-  ) -> Bool {
+  static func isOnScreen(_ placement: InlineDecisionPlacement, wasOnScreen: Bool) -> Bool {
     let top = placement.viewport.minY
-    let bottom = min(placement.viewport.maxY, bottomBarTop ?? .infinity)
+    let bottom = placement.viewport.maxY
     guard bottom > top, placement.card.height > 0 else { return false }
     let visible = min(placement.card.maxY, bottom) - max(placement.card.minY, top)
     guard visible > 0 else { return false }
@@ -59,35 +54,33 @@ nonisolated struct InlineDecisionVisibility: Hashable, Sendable {
   static let minimumVisible: CGFloat = 88
 }
 
-/// Tracks which inline decision cards are on screen for one conversation. The transcript's
-/// cards report their placement and the screen reports the bottom bar; the dock reads
-/// ``visibility``, which only changes when a card enters or leaves.
+/// Tracks which inline decision cards are on screen for one conversation. Each card decides for
+/// itself; the dock reads ``visibility``, which only changes when a card enters or leaves.
 @Observable
 public final class DecisionSurfaces {
   private(set) var visibility = InlineDecisionVisibility()
-  @ObservationIgnored private var placements: [String: InlineDecisionPlacement] = [:]
-  @ObservationIgnored private var bottomBarTop: CGFloat?
 
   /// Creates an empty tracker.
   public init() {}
 
-  /// Records where an inline card is, or that it left the transcript (`nil`).
-  func report(_ cardID: String, placement: InlineDecisionPlacement?) {
-    if placements[cardID] == placement { return }
-    placements[cardID] = placement
-    update()
-  }
-
-  /// Records the top of the dock and composer in global coordinates.
-  func setBottomBarTop(_ top: CGFloat?) {
-    if bottomBarTop == top { return }
+  /// Records whether an inline card is on screen, and whether it shows Approve when it is.
+  func report(_ cardID: String, isOnScreen: Bool, showsApprove: Bool) {
+    var next = visibility
+    if isOnScreen {
+      next.onScreen.insert(cardID)
+    } else {
+      next.onScreen.remove(cardID)
+    }
+    if isOnScreen, showsApprove {
+      next.approvable.insert(cardID)
+    } else {
+      next.approvable.remove(cardID)
+    }
+    guard next != visibility else { return }
     #if DEBUG
-      LoopProbe.record(
-        "decision bottom bar \(probeTag)",
-        "top \(String(describing: bottomBarTop)) -> \(String(describing: top))")
+      LoopProbe.record("decision visibility \(probeTag)", "on screen \(next.onScreen.sorted())")
     #endif
-    bottomBarTop = top
-    update()
+    visibility = next
   }
 
   #if DEBUG
@@ -96,25 +89,6 @@ public final class DecisionSurfaces {
       String(UInt(bitPattern: ObjectIdentifier(self).hashValue) % 10_000)
     }
   #endif
-
-  private func update() {
-    var next = InlineDecisionVisibility()
-    for (id, placement) in placements
-    where InlineDecisionVisibility.isOnScreen(
-      placement, bottomBarTop: bottomBarTop, wasOnScreen: visibility.onScreen.contains(id))
-    {
-      next.onScreen.insert(id)
-      if placement.showsApprove { next.approvable.insert(id) }
-    }
-    guard next != visibility else { return }
-    #if DEBUG
-      LoopProbe.record(
-        "decision visibility \(probeTag)",
-        "on screen \(next.onScreen.sorted()), bar top \(String(describing: bottomBarTop)), "
-          + "placements \(placements)")
-    #endif
-    visibility = next
-  }
 }
 
 extension View {
@@ -127,43 +101,38 @@ extension View {
       target?.cardID, isLive: owner != .send && target?.surface == surface)
   }
 
-  /// Reports this inline card's placement to the conversation's ``DecisionSurfaces``.
+  /// Tells the conversation's ``DecisionSurfaces`` whether this inline card is on screen.
   func reportsInlineDecision(_ cardID: String, showsApprove: Bool) -> some View {
     modifier(InlineDecisionReporter(cardID: cardID, showsApprove: showsApprove))
   }
-
-  /// Marks the bar under the transcript (the dock and composer) so cards behind it are not
-  /// counted as on screen.
-  /// - Parameter surfaces: The conversation's tracker.
-  /// - Returns: The view.
-  public func decisionBottomBar(_ surfaces: DecisionSurfaces) -> some View {
-    onGeometryChange(for: CGFloat.self) { proxy in
-      proxy.frame(in: .global).minY.rounded()
-    } action: { top in
-      surfaces.setBottomBarTop(top)
-    }
-  }
 }
 
+/// Reports whether its card is on screen rather than where it is: a resize's layout passes
+/// disagree by a point and a bottom-anchored scroll view moves its content by more, so positions
+/// flip within a frame, which SwiftUI logs as a cycling geometry action.
 private struct InlineDecisionReporter: ViewModifier {
   let cardID: String
   let showsApprove: Bool
   @Environment(DecisionSurfaces.self) private var surfaces: DecisionSurfaces?
+  @State private var isOnScreen = false
 
   func body(content: Content) -> some View {
     if let surfaces {
-      let showsApprove = showsApprove
       content
-        .onGeometryChange(for: InlineDecisionPlacement?.self) { proxy in
-          guard let viewport = proxy.bounds(of: .scrollView) else { return nil }
-          let card = proxy.frame(in: .global).integral
-          return InlineDecisionPlacement(
-            card: card, viewport: viewport.offsetBy(dx: card.minX, dy: card.minY).integral,
-            showsApprove: showsApprove)
-        } action: { placement in
-          surfaces.report(cardID, placement: placement)
+        .onGeometryChange(for: Bool.self) { [isOnScreen] proxy in
+          guard let viewport = proxy.bounds(of: .scrollView) else { return false }
+          let card = CGRect(origin: .zero, size: proxy.size)
+          return InlineDecisionVisibility.isOnScreen(
+            InlineDecisionPlacement(card: card, viewport: viewport), wasOnScreen: isOnScreen)
+        } action: { shows in
+          isOnScreen = shows
+          surfaces.report(cardID, isOnScreen: shows, showsApprove: showsApprove)
         }
-        .onDisappear { surfaces.report(cardID, placement: nil) }
+        .onChange(of: showsApprove) { _, approves in
+          surfaces.report(cardID, isOnScreen: isOnScreen, showsApprove: approves)
+        }
+        .onAppear { surfaces.report(cardID, isOnScreen: isOnScreen, showsApprove: showsApprove) }
+        .onDisappear { surfaces.report(cardID, isOnScreen: false, showsApprove: showsApprove) }
     } else {
       content
     }

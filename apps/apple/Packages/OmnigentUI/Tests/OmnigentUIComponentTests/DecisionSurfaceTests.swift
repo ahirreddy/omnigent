@@ -5,45 +5,40 @@ import Testing
 
 @Suite("One decision surface at a time")
 struct DecisionSurfaceTests {
-  private static let viewport = CGRect(x: 0, y: 100, width: 400, height: 600)
+  /// What the dock and composer leave of the scroll view.
+  private static let viewport = CGRect(x: 0, y: 100, width: 400, height: 400)
 
   private static func placement(minY: CGFloat, height: CGFloat) -> InlineDecisionPlacement {
     InlineDecisionPlacement(
-      card: CGRect(x: 0, y: minY, width: 400, height: height), viewport: viewport,
-      showsApprove: true)
+      card: CGRect(x: 0, y: minY, width: 400, height: height), viewport: viewport)
   }
 
   @Test("A card is on screen once half of it shows above the bottom bar")
   func visibilityRule() {
-    let bar: CGFloat = 500
     // Fully above the bar.
     #expect(
       InlineDecisionVisibility.isOnScreen(
-        Self.placement(minY: 200, height: 200), bottomBarTop: bar, wasOnScreen: false))
-    // Behind the bar: inside the scroll view's bounds, but covered by the dock and composer.
+        Self.placement(minY: 200, height: 200), wasOnScreen: false))
+    // Behind the bar, which ends the viewport.
     #expect(
       !InlineDecisionVisibility.isOnScreen(
-        Self.placement(minY: 520, height: 160), bottomBarTop: bar, wasOnScreen: false))
+        Self.placement(minY: 520, height: 160), wasOnScreen: false))
     // Scrolled above the viewport.
     #expect(
       !InlineDecisionVisibility.isOnScreen(
-        Self.placement(minY: -300, height: 200), bottomBarTop: bar, wasOnScreen: false))
+        Self.placement(minY: -300, height: 200), wasOnScreen: false))
     // A third visible: not yet on screen, but one already on screen stays (no flicker).
     let third = Self.placement(minY: 400, height: 300)
-    #expect(!InlineDecisionVisibility.isOnScreen(third, bottomBarTop: bar, wasOnScreen: false))
-    #expect(InlineDecisionVisibility.isOnScreen(third, bottomBarTop: bar, wasOnScreen: true))
+    #expect(!InlineDecisionVisibility.isOnScreen(third, wasOnScreen: false))
+    #expect(InlineDecisionVisibility.isOnScreen(third, wasOnScreen: true))
     // A tenth visible leaves.
     #expect(
       !InlineDecisionVisibility.isOnScreen(
-        Self.placement(minY: 470, height: 300), bottomBarTop: bar, wasOnScreen: true))
+        Self.placement(minY: 470, height: 300), wasOnScreen: true))
     // A card taller than the viewport counts once it fills half of the viewport.
     #expect(
       InlineDecisionVisibility.isOnScreen(
-        Self.placement(minY: 280, height: 1_200), bottomBarTop: bar, wasOnScreen: false))
-    // Without a bar the whole viewport counts.
-    #expect(
-      InlineDecisionVisibility.isOnScreen(
-        Self.placement(minY: 520, height: 160), bottomBarTop: nil, wasOnScreen: false))
+        Self.placement(minY: 280, height: 1_200), wasOnScreen: false))
   }
 
   @Test("A sliver of a card over a short viewport is not on screen")
@@ -51,30 +46,32 @@ struct DecisionSurfaceTests {
     // A tall dock leaves the transcript 60 points; the card fills them.
     let short = InlineDecisionPlacement(
       card: CGRect(x: 0, y: 90, width: 400, height: 205),
-      viewport: CGRect(x: 0, y: 100, width: 400, height: 60), showsApprove: true)
-    #expect(!InlineDecisionVisibility.isOnScreen(short, bottomBarTop: 160, wasOnScreen: false))
+      viewport: CGRect(x: 0, y: 100, width: 400, height: 60))
+    #expect(!InlineDecisionVisibility.isOnScreen(short, wasOnScreen: false))
     // Ten points of it: one already on screen leaves.
-    #expect(!InlineDecisionVisibility.isOnScreen(short, bottomBarTop: 110, wasOnScreen: true))
+    let tenPoints = InlineDecisionPlacement(
+      card: short.card, viewport: CGRect(x: 0, y: 100, width: 400, height: 10))
+    #expect(!InlineDecisionVisibility.isOnScreen(tenPoints, wasOnScreen: true))
     // A card shorter than the minimum counts once enough of it shows.
     #expect(
       InlineDecisionVisibility.isOnScreen(
-        Self.placement(minY: 200, height: 40), bottomBarTop: 500, wasOnScreen: false))
+        Self.placement(minY: 200, height: 40), wasOnScreen: false))
   }
 
   @Test("The tracker publishes only entries and exits")
   func tracker() {
     let surfaces = DecisionSurfaces()
-    surfaces.setBottomBarTop(500)
-    surfaces.report("a", placement: Self.placement(minY: 200, height: 200))
-    var compact = Self.placement(minY: 250, height: 100)
-    compact.showsApprove = false
-    surfaces.report("b", placement: compact)
+    surfaces.report("a", isOnScreen: true, showsApprove: true)
+    surfaces.report("b", isOnScreen: true, showsApprove: false)
     #expect(surfaces.visibility.onScreen == ["a", "b"])
     #expect(surfaces.visibility.approvable == ["a"])
-    // The bar rises over "b" (the keyboard, or a taller dock).
-    surfaces.setBottomBarTop(240)
+    // A row that starts answering in place shows Approve from then on.
+    surfaces.report("b", isOnScreen: true, showsApprove: true)
+    #expect(surfaces.visibility.approvable == ["a", "b"])
+    surfaces.report("b", isOnScreen: false, showsApprove: true)
     #expect(surfaces.visibility.onScreen == ["a"])
-    surfaces.report("a", placement: nil)
+    #expect(surfaces.visibility.approvable == ["a"])
+    surfaces.report("a", isOnScreen: false, showsApprove: true)
     #expect(surfaces.visibility.onScreen.isEmpty)
   }
 
