@@ -117,8 +117,8 @@ const CODEX_WRAPPER: &str = "codex-native-ui";
 const DEVIN_WRAPPER: &str = "devin-native-ui";
 
 /// The labels the server writes after a confirmed switch.
-const PERMISSION_MODE_LABEL: &str = "omnigent.claude_native.permission_mode";
-const APPROVAL_MODE_LABEL: &str = "omnigent.codex_native.approval_mode";
+pub(crate) const PERMISSION_MODE_LABEL: &str = "omnigent.claude_native.permission_mode";
+pub(crate) const APPROVAL_MODE_LABEL: &str = "omnigent.codex_native.approval_mode";
 /// The launch flag a Claude Code or Devin session restores its mode from.
 const PERMISSION_MODE_FLAG: &str = "--permission-mode";
 

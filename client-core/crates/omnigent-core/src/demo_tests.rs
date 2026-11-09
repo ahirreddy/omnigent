@@ -657,3 +657,51 @@ fn asking_for_detail_streams_the_longer_reply() {
     let session = demo.session(&created).unwrap();
     assert_eq!(texts(&session).last().unwrap(), DEMO_DETAILED_REPLY_TEXT);
 }
+
+#[test]
+fn a_session_launches_in_the_chosen_approval_mode() {
+    let core = sample();
+    let chosen = CreationSelection {
+        agent_id: "demo-claude".into(),
+        approval_mode: Some("acceptEdits".into()),
+        ..selection()
+    };
+    let created = block_on(core.create_session(&chosen, "Mode")).unwrap();
+    let transport = core.transport();
+    let snapshot = transport.session(&created.session_id).unwrap().snapshot;
+    assert_eq!(
+        snapshot.terminal_launch_args.value().cloned(),
+        Some(vec![
+            "--permission-mode".to_owned(),
+            "acceptEdits".to_owned()
+        ])
+    );
+}
+
+#[test]
+fn a_running_session_switches_approval_mode_through_its_label() {
+    let transport = DemoTransport::sample().unwrap();
+    let request = HttpRequest {
+        method: "PATCH".into(),
+        url: format!("{DEMO_SERVER_URL}/v1/sessions/demo-design"),
+        headers: Vec::new(),
+        body: Some(br#"{"approval_mode":"full-access"}"#.to_vec()),
+    };
+    assert_eq!(block_on(transport.send(request)).unwrap().status, 200);
+    let snapshot = transport.session("demo-design").unwrap().snapshot;
+    assert_eq!(
+        snapshot.labels.value().unwrap().get(APPROVAL_MODE_LABEL),
+        Some(&"full-access".to_owned())
+    );
+}
+
+#[test]
+fn only_the_owner_deletes_a_session() {
+    let core = sample();
+    let notes = block_on(core.delete_session("demo-notes"));
+    assert!(notes.is_err(), "a read-only session was deleted");
+    block_on(core.delete_session("demo-design")).unwrap();
+    let demo = core.transport();
+    assert!(demo.session("demo-design").is_none());
+    assert!(demo.session("demo-notes").is_some());
+}

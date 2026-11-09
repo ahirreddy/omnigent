@@ -34,6 +34,7 @@ use url::Url;
 
 use crate::auth::endpoint::ServerEndpoint;
 use crate::auth::errors::HostedAuthError;
+use crate::config::approval::{APPROVAL_MODE_LABEL, PERMISSION_MODE_LABEL};
 use crate::config::session::{
     ConfigurationCatalog, ConfigurationHost, HarnessChoice, ModelChoice, ReasoningChoice,
     SessionConfiguration,
@@ -91,12 +92,14 @@ pub const DEFAULT_TITLE: &str = "New conversation";
 /// Seconds between the Swift reference date (2001-01-01) and the Unix epoch.
 const SWIFT_REFERENCE_OFFSET: f64 = 978_307_200.0;
 /// The `PATCH /v1/sessions/{id}` fields the demo supports; anything else is a 422.
-const PATCH_FIELDS: [&str; 5] = [
+const PATCH_FIELDS: [&str; 7] = [
     "title",
     "labels",
     "archived",
     "model_override",
     "reasoning_effort",
+    "permission_mode",
+    "approval_mode",
 ];
 /// The demo's time until the host sets one: the fixtures' reference instant.
 pub const DEFAULT_NOW: i64 = 1_700_000_000;
@@ -574,6 +577,7 @@ impl DemoTransport {
             ("POST", ["v1", "sessions"]) => state.create(&body()?),
             ("GET", ["v1", "sessions", id]) => state.snapshot(id),
             ("PATCH", ["v1", "sessions", id]) => state.patch(id, &body()?),
+            ("DELETE", ["v1", "sessions", id]) => state.delete(id),
             ("GET", ["v1", "sessions", id, "items"]) => state.items(id, &query),
             // The sample agents declare no terminals.
             ("GET", ["v1", "sessions", id, "agent"]) => state
@@ -901,6 +905,21 @@ impl DemoState {
                 "model_override" | "reasoning_effort" => {
                     object.insert(key.clone(), clearable(value)?);
                 }
+                // A harness confirms a switched mode through its label.
+                "permission_mode" | "approval_mode" => {
+                    let label = if key == "permission_mode" {
+                        PERMISSION_MODE_LABEL
+                    } else {
+                        APPROVAL_MODE_LABEL
+                    };
+                    let labels = object
+                        .entry("labels")
+                        .or_insert_with(|| Value::Object(Map::new()));
+                    let Value::Object(labels) = labels else {
+                        return Err(Reject(500, "labels are not an object"));
+                    };
+                    labels.insert(label.to_owned(), value.clone());
+                }
                 _ => {
                     object.insert(key.clone(), value.clone());
                 }
@@ -912,6 +931,16 @@ impl DemoState {
         session.snapshot = snapshot;
         session.revision = session.revision.saturating_add(1);
         Ok((200, snapshot_json(session, false)))
+    }
+
+    fn delete(&mut self, id: &str) -> Routed {
+        if permission(self.find(id)?) < 4 {
+            return Err(Reject(403, "Only the owner can delete this session."));
+        }
+        self.sessions.retain(|session| session.snapshot.id != id);
+        self.replies.remove(id);
+        self.reads.remove(id);
+        Ok((200, json!({"deleted": true})))
     }
 
     fn event(&mut self, id: &str, body: &Value) -> Routed {
@@ -1128,6 +1157,10 @@ impl DemoState {
             }
             if let Some(model) = body.get("model_override") {
                 fields.insert("model_override".into(), model.clone());
+            }
+            // The mode a session launches in reaches it through these arguments.
+            if let Some(args) = body.get("terminal_launch_args") {
+                fields.insert("terminal_launch_args".into(), args.clone());
             }
         }
         let snapshot = SessionSnapshot::from_value(object)
