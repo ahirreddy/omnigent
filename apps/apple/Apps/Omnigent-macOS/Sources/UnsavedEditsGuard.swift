@@ -1,5 +1,6 @@
 import AppKit
 import OmnigentAppUI
+import OmnigentDesktop
 import OmnigentWorkspaceUI
 import SwiftUI
 
@@ -44,7 +45,7 @@ enum UnsavedEditsAlert {
     if let window {
       alert.beginSheetModal(for: window)
     } else {
-      alert.runModal()
+      Task { _ = await ModalLoop.run { alert.runModal() } }
     }
   }
 }

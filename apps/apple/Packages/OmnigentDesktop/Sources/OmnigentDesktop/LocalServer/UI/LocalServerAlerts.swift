@@ -56,13 +56,30 @@ public enum LocalServerReadyAlert {
 
 /// Presents alerts as a sheet on the main window, or app-modally when none is open (for example
 /// when the request came from the menu bar extra, whose panel cannot hold a sheet).
+/// Runs a modal loop for a task. A loop run from inside the task's own job holds the main queue,
+/// so every other main-actor task (server streams, the transcript) waits for its answer. Started
+/// from the run loop instead, those tasks carry on underneath it.
+public enum ModalLoop {
+  /// - Parameter body: Runs the modal loop.
+  /// - Returns: What `body` returns.
+  public static func run<Result: Sendable>(
+    _ body: @escaping @MainActor @Sendable () -> Result
+  ) async -> Result {
+    await withCheckedContinuation { continuation in
+      RunLoop.main.perform(inModes: [.common]) {
+        MainActor.assumeIsolated { continuation.resume(returning: body()) }
+      }
+    }
+  }
+}
+
 enum DesktopAlert {
   static func present(_ alert: NSAlert) async -> NSApplication.ModalResponse {
     NSApplication.shared.activate()
     guard let window = NSApplication.shared.mainWindow, window.isVisible,
       window.attachedSheet == nil
     else {
-      return alert.runModal()
+      return await ModalLoop.run { alert.runModal() }
     }
     return await withCheckedContinuation { continuation in
       alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }

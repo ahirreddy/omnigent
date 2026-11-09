@@ -20,7 +20,7 @@ public final class DesktopRouter {
   public var rememberServer: (URL) -> Void = { _ in }
   /// Asks before trusting a never-used server with a window. Defaults to `DeepLinkConsentAlert`.
   public var confirmUnknownServer: (ServerOrigin) async -> Bool = { origin in
-    DeepLinkConsentAlert.confirm(origin)
+    await ModalLoop.run { DeepLinkConsentAlert.confirm(origin) }
   }
   /// Opens a server window. A launch by a link opens none, so queued links ask for one when no
   /// window attached in `windowRequestDelay`. Defaults to File > New Window.
