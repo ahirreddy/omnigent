@@ -153,7 +153,7 @@ struct ConnectedAppTests {
   @Test(
     "Every kind of tab shows in its session",
     arguments: [
-      (AppTabContent.newTab, "RECENT SESSIONS"),
+      (AppTabContent.newTab, "Opens in"),
       (.harness(sessionID: "demo-design"), "Terminal surface placeholder"),
       (.terminal(sessionID: "demo-design", terminalID: "t1"), "Connecting…"),
       (.sideChat(sessionID: "demo-design", rowID: "row"), "Side Chat Unavailable"),
