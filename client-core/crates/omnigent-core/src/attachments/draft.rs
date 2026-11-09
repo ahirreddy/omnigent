@@ -501,13 +501,7 @@ impl AttachmentDraftStore {
         let batch = AttachmentSubmission {
             id,
             key: key.clone(),
-            attachments: items
-                .iter()
-                .filter_map(|item| match &item.state {
-                    UploadState::Uploaded(uploaded) => Some(uploaded.clone()),
-                    _ => None,
-                })
-                .collect(),
+            attachments: uploaded_attachments(items),
             item_ids: items.iter().map(|item| item.id).collect(),
             hold: None,
         };
@@ -647,13 +641,7 @@ impl AttachmentDraftStore {
         if self.submissions.contains_key(key) || self.uncertain_submissions.contains(key) {
             return Err(DraftError::NotReady);
         }
-        let attachments = items
-            .iter()
-            .filter_map(|item| match &item.state {
-                UploadState::Uploaded(uploaded) => Some(uploaded.clone()),
-                _ => None,
-            })
-            .collect();
+        let attachments = uploaded_attachments(items);
         let item_ids = items.iter().map(|item| item.id).collect();
         let batch = AttachmentSubmission {
             id: self.allocate()?,
@@ -671,6 +659,17 @@ impl AttachmentDraftStore {
     pub fn acknowledge_uncertainty(&mut self, key: &DraftKey) -> bool {
         self.uncertain_submissions.remove(key)
     }
+}
+
+/// The upload references among `items`; an item without one has nothing to send.
+fn uploaded_attachments(items: &[DraftItem]) -> Vec<UploadedAttachment> {
+    items
+        .iter()
+        .filter_map(|item| match &item.state {
+            UploadState::Uploaded(uploaded) => Some(uploaded.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -1038,5 +1037,42 @@ mod tests {
             store.begin_upload(&key(), DraftItemId(999)),
             Err(DraftError::UnknownItem)
         );
+    }
+
+    #[test]
+    fn an_item_showing_an_upload_in_flight_cannot_start_another() {
+        let mut store = AttachmentDraftStore::default();
+        let item = store.add(file(), &key()).unwrap();
+        store
+            .set_state(&key(), item, UploadState::Uploading { progress: 0.1 })
+            .unwrap();
+        assert_eq!(
+            store.begin_upload(&key(), item).map(|_| ()),
+            Err(DraftError::UploadInFlight)
+        );
+    }
+
+    #[test]
+    fn progress_for_an_item_no_longer_uploading_or_gone_is_refused() {
+        let mut store = AttachmentDraftStore::default();
+        let item = store.add(file(), &key()).unwrap();
+        let attempt = store.begin_upload(&key(), item).unwrap();
+        store.set_state(&key(), item, UploadState::Staged).unwrap();
+        assert_eq!(
+            store.update_progress(&attempt, 0.5),
+            Err(DraftError::StaleAttempt)
+        );
+        store.drafts.clear();
+        assert_eq!(
+            store.update_progress(&attempt, 0.5),
+            Err(DraftError::UnknownItem)
+        );
+    }
+
+    #[test]
+    fn only_uploaded_items_have_references_to_send() {
+        let mut store = AttachmentDraftStore::default();
+        store.add(file(), &key()).unwrap();
+        assert_eq!(uploaded_attachments(store.draft(&key()).items()), []);
     }
 }

@@ -740,6 +740,14 @@ impl ConversationSync {
 
     /// Replaces the reducer, reporting the changes against what was published.
     fn replace_reducer(&mut self, next: LiveReducer) -> ChangeSet {
+        let changes = self.changes_to(&next);
+        self.reducer = Some(next);
+        self.displaced = None;
+        changes
+    }
+
+    /// What showing `next` changes from what is published.
+    fn changes_to(&self, next: &LiveReducer) -> ChangeSet {
         let next_snapshot = next.snapshot();
         let mut changes = ChangeSet {
             rows: diff_rows(&[], &next_snapshot.rows),
@@ -756,36 +764,32 @@ impl ConversationSync {
             changes.sections =
                 (sections(&old.event_state) != next.sections()).then(|| next.sections().to_vec());
         }
-        self.reducer = Some(next);
-        self.displaced = None;
         changes
     }
 
     /// A reducer for a live event when none exists: the committed part of what was shown, or an
     /// empty read-only conversation until metadata loads.
-    fn ensure_reducer(&mut self) -> ChangeSet {
-        if self.reducer.is_some() {
-            return ChangeSet::default();
-        }
-        let snapshot = match &self.displaced {
-            Some(old) => {
+    fn fresh_reducer(&self) -> LiveReducer {
+        LiveReducer::new(self.displaced.as_ref().map_or_else(
+            || {
+                ConversationSnapshot::new(
+                    self.ledger
+                        .header(&self.session_id)
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            let mut header =
+                                SessionHeader::new(self.session_id.clone(), PLACEHOLDER_TITLE);
+                            header.read_only = true;
+                            header
+                        }),
+                )
+            },
+            |old| {
                 let mut old = old.clone();
                 old.rows.retain(|row| !row.is_ephemeral());
                 old
-            }
-            None => ConversationSnapshot::new(
-                self.ledger
-                    .header(&self.session_id)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        let mut header =
-                            SessionHeader::new(self.session_id.clone(), PLACEHOLDER_TITLE);
-                        header.read_only = true;
-                        header
-                    }),
-            ),
-        };
-        self.replace_reducer(LiveReducer::new(snapshot))
+            },
+        ))
     }
 
     /// The stream (re)connected: start a fresh reducer and read history. Events that arrive before
@@ -884,11 +888,17 @@ impl ConversationSync {
                 limit: MAX_BUFFERED_EVENTS,
             });
         }
-        let mut changes = self.ensure_reducer();
-        let Some(reducer) = self.reducer.as_mut() else {
-            return Ok(self.publish(changes));
+        let (mut reducer, mut changes) = if let Some(reducer) = self.reducer.take() {
+            (reducer, ChangeSet::default())
+        } else {
+            let fresh = self.fresh_reducer();
+            let changes = self.changes_to(&fresh);
+            self.displaced = None;
+            (fresh, changes)
         };
-        let mut outcome = reducer.apply(&event)?;
+        let applied = reducer.apply(&event);
+        self.reducer = Some(reducer);
+        let mut outcome = applied?;
         self.ledger.record_event(&self.session_id, &event);
         if let Some(request) = &outcome.effects.browser_action {
             if self.browser_actions.contains(&request.action_id) {

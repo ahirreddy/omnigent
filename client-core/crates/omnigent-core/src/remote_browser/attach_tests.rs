@@ -1417,3 +1417,70 @@ fn a_clock_that_jumps_backward_rearms_the_watchdog_without_declaring_a_stall() {
     assert_eq!(state(&fired), None);
     assert!(timer(&fired, TimerKind::Watchdog).is_some());
 }
+
+/// The steps behind `handle`'s current-attempt check do nothing once no attempt is left.
+#[test]
+fn steps_without_an_attempt_change_nothing() {
+    let mut harness = Harness::control();
+    let before = harness.machine.connection().clone();
+    let mut out = Vec::new();
+    harness.machine.opened(1, &mut out);
+    harness
+        .machine
+        .message(1, SocketMessage::Text("{}".to_owned()), &mut out);
+    let loss = Loss::Retry(LinkError::Stalled { silent_ms: 1 });
+    harness.machine.lose(1, loss, true, &mut out);
+    assert_eq!(out, Vec::new());
+    assert_eq!(harness.machine.connection(), &before);
+}
+
+/// A watchdog firing with no open socket has nothing to judge, so it stops without rearming.
+#[test]
+fn a_watchdog_with_no_open_socket_stops_without_rearming() {
+    let mut harness = Harness::control();
+    let token = TimerToken {
+        kind: TimerKind::Watchdog,
+        id: 77,
+    };
+    harness.machine.watchdog_timer = Some(token);
+    assert_eq!(harness.run(AttachInput::TimerFired { token }), Vec::new());
+    assert_eq!(harness.machine.watchdog_timer, None);
+}
+
+/// Only the discrete input kinds are sent from there; anything else is ignored.
+#[test]
+fn discrete_input_ignores_a_lifecycle_input() {
+    let mut harness = Harness::attached();
+    let mut out = Vec::new();
+    harness
+        .machine
+        .discrete_input(harness.now, AttachInput::Foreground, &mut out);
+    assert_eq!(out, Vec::new());
+}
+
+/// Settings without a stats choice still send, and leave the shown stats alone.
+#[test]
+fn a_settings_update_without_stats_keeps_them_and_sends_the_rest() {
+    let mut harness = Harness::attached();
+    harness.run(AttachInput::UpdateSettings(SettingsUpdate {
+        stats: Some(true),
+        ..SettingsUpdate::default()
+    }));
+    harness.host("stats");
+    let update = SettingsUpdate {
+        max_fps: Some(12),
+        ..SettingsUpdate::default()
+    };
+    let sent_outputs = harness.run(AttachInput::UpdateSettings(update.clone()));
+    assert_eq!(sent(&sent_outputs), [ClientMessage::Settings(update)]);
+    assert!(harness.machine.tab().stats.is_some());
+}
+
+/// A message that can't be encoded is reported instead of being sent or lost silently.
+#[test]
+fn an_unencodable_message_is_reported_not_sent() {
+    let mut out = Vec::new();
+    let error = ClientMessage::decode("not json").unwrap_err();
+    queue_encoded(AttemptId(1), Err(error.clone()), &mut out);
+    assert_eq!(out, [AttachOutput::Notice(Notice::MalformedMessage(error))]);
+}

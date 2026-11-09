@@ -405,6 +405,7 @@ struct DemoState {
 }
 
 /// Why a demo route failed: an HTTP status and a `detail`.
+#[derive(Debug)]
 struct Reject(u16, &'static str);
 
 type Routed = Result<(u16, Value), Reject>;
@@ -653,13 +654,40 @@ fn agents() -> Value {
 
 /// Gives a session saved before configuration existed the demo configuration.
 fn upgrade(session: &mut WorkspaceSession) {
-    let Ok(Value::Object(mut object)) = serde_json::to_value(&session.snapshot) else {
-        return;
-    };
-    configure_snapshot(&mut object);
-    if let Ok(snapshot) = SessionSnapshot::from_value(Value::Object(object)) {
+    if let Some(snapshot) = configured_snapshot(&session.snapshot) {
         session.snapshot = snapshot;
         session.revision = session.revision.saturating_add(1);
+    }
+}
+
+/// `snapshot` with the demo configuration; `None` leaves a session that won't round-trip as saved.
+fn configured_snapshot(snapshot: &SessionSnapshot) -> Option<SessionSnapshot> {
+    let mut object = snapshot_fields(snapshot).ok()?;
+    configure_snapshot(&mut object);
+    SessionSnapshot::from_value(Value::Object(object)).ok()
+}
+
+/// A snapshot's JSON fields.
+fn snapshot_fields(snapshot: &SessionSnapshot) -> Result<Map<String, Value>, Reject> {
+    encoded_fields(serde_json::to_value(snapshot))
+}
+
+/// The fields of an encoded session; anything but an object is the server's fault.
+fn encoded_fields(encoded: Result<Value, serde_json::Error>) -> Result<Map<String, Value>, Reject> {
+    match encoded {
+        Ok(Value::Object(fields)) => Ok(fields),
+        _ => Err(Reject(500, "Could not encode the session")),
+    }
+}
+
+/// A session object's labels, created when absent.
+fn labels_mut(object: &mut Map<String, Value>) -> Result<&mut Map<String, Value>, Reject> {
+    match object
+        .entry("labels")
+        .or_insert_with(|| Value::Object(Map::new()))
+    {
+        Value::Object(labels) => Ok(labels),
+        _ => Err(Reject(500, "labels are not an object")),
     }
 }
 
@@ -694,6 +722,24 @@ fn append_word(item: &mut ConversationItem, word: &str) {
         kind: TextPartKind::OutputText,
         text,
     }];
+}
+
+/// A session as the list shows it: the summary fields plus the viewer's read state.
+fn list_row(mut row: Value, pending_count: usize, read: Option<&(i64, bool)>) -> Value {
+    if let Value::Object(object) = &mut row {
+        object.remove("items");
+        object.remove("pending_elicitations");
+        object.insert("pending_elicitations_count".into(), json!(pending_count));
+        object.insert(
+            "viewer_last_seen".into(),
+            json!(read.map(|(last_seen, _)| last_seen)),
+        );
+        object.insert(
+            "viewer_unread".into(),
+            json!(read.is_some_and(|(_, unread)| *unread)),
+        );
+    }
+    row
 }
 
 fn snapshot_json(session: &WorkspaceSession, include_items: bool) -> Value {
@@ -767,25 +813,11 @@ impl DemoState {
             .skip(start)
             .take(limit)
             .map(|session| {
-                let mut row = snapshot_json(session, false);
-                if let Value::Object(object) = &mut row {
-                    object.remove("items");
-                    object.remove("pending_elicitations");
-                    object.insert(
-                        "pending_elicitations_count".into(),
-                        json!(session.snapshot.pending_elicitations.len()),
-                    );
-                    let read = self.reads.get(&session.snapshot.id);
-                    object.insert(
-                        "viewer_last_seen".into(),
-                        json!(read.map(|(last_seen, _)| last_seen)),
-                    );
-                    object.insert(
-                        "viewer_unread".into(),
-                        json!(read.is_some_and(|(_, unread)| *unread)),
-                    );
-                }
-                row
+                list_row(
+                    snapshot_json(session, false),
+                    session.snapshot.pending_elicitations.len(),
+                    self.reads.get(&session.snapshot.id),
+                )
             })
             .collect();
         let has_more = start.saturating_add(page.len()) < rows.len();
@@ -875,21 +907,14 @@ impl DemoState {
         if fields.contains_key("archived") && level < 4 {
             return Err(Reject(403, "Only the owner can archive this session."));
         }
-        let Ok(Value::Object(mut object)) = serde_json::to_value(&session.snapshot) else {
-            return Err(Reject(500, "Could not encode the session"));
-        };
+        let mut object = snapshot_fields(&session.snapshot)?;
         for (key, value) in fields {
             match key.as_str() {
                 "labels" => {
                     let updates = value
                         .as_object()
                         .ok_or(Reject(422, "labels must be an object"))?;
-                    let labels = object
-                        .entry("labels")
-                        .or_insert_with(|| Value::Object(Map::new()));
-                    let Value::Object(labels) = labels else {
-                        return Err(Reject(500, "labels are not an object"));
-                    };
+                    let labels = labels_mut(&mut object)?;
                     for (label, text) in updates {
                         match text.as_str() {
                             Some("") => {
@@ -912,13 +937,7 @@ impl DemoState {
                     } else {
                         APPROVAL_MODE_LABEL
                     };
-                    let labels = object
-                        .entry("labels")
-                        .or_insert_with(|| Value::Object(Map::new()));
-                    let Value::Object(labels) = labels else {
-                        return Err(Reject(500, "labels are not an object"));
-                    };
-                    labels.insert(label.to_owned(), value.clone());
+                    labels_mut(&mut object)?.insert(label.to_owned(), value.clone());
                 }
                 _ => {
                     object.insert(key.clone(), value.clone());
@@ -1133,7 +1152,7 @@ impl DemoState {
         let sequence = self.allocate();
         let id = format!("demo-session-{sequence}");
         let now = self.now;
-        let mut object = json!({
+        let mut fields = encoded_fields(Ok(json!({
             "id": id,
             "status": "idle",
             "created_at": now,
@@ -1146,24 +1165,22 @@ impl DemoState {
             "permission_level": 4,
             "items": [],
             "pending_elicitations": [],
-        });
-        if let Value::Object(fields) = &mut object {
-            configure_snapshot(fields);
-            fields.insert("agent_id".into(), json!(agent.id));
-            let harness = agent.harness.unwrap_or_default();
-            fields.insert("harness".into(), json!(harness));
-            if let Some(Value::Object(labels)) = fields.get_mut("labels") {
-                labels.insert("omnigent.wrapper".into(), json!(wrapper_for(&harness)));
-            }
-            if let Some(model) = body.get("model_override") {
-                fields.insert("model_override".into(), model.clone());
-            }
-            // The mode a session launches in reaches it through these arguments.
-            if let Some(args) = body.get("terminal_launch_args") {
-                fields.insert("terminal_launch_args".into(), args.clone());
-            }
+        })))?;
+        configure_snapshot(&mut fields);
+        fields.insert("agent_id".into(), json!(agent.id));
+        let harness = agent.harness.unwrap_or_default();
+        fields.insert("harness".into(), json!(harness));
+        if let Some(Value::Object(labels)) = fields.get_mut("labels") {
+            labels.insert("omnigent.wrapper".into(), json!(wrapper_for(&harness)));
         }
-        let snapshot = SessionSnapshot::from_value(object)
+        if let Some(model) = body.get("model_override") {
+            fields.insert("model_override".into(), model.clone());
+        }
+        // The mode a session launches in reaches it through these arguments.
+        if let Some(args) = body.get("terminal_launch_args") {
+            fields.insert("terminal_launch_args".into(), args.clone());
+        }
+        let snapshot = SessionSnapshot::from_value(Value::Object(fields))
             .map_err(|_| Reject(500, "Could not create the session"))?;
         let session = WorkspaceSession {
             revision: 1,
@@ -1184,9 +1201,7 @@ impl DemoState {
             .and_then(Value::as_str)
             .and_then(|agent_id| demo_agents().into_iter().find(|agent| agent.id == agent_id))
             .ok_or(Reject(400, "Unknown agent"))?;
-        let Ok(Value::Object(mut object)) = serde_json::to_value(&session.snapshot) else {
-            return Err(Reject(500, "Could not encode the session"));
-        };
+        let mut object = snapshot_fields(&session.snapshot)?;
         let harness = target.harness.clone().unwrap_or_default();
         object.insert("agent_id".into(), json!(target.id));
         object.insert("agent_name".into(), json!(target.name));

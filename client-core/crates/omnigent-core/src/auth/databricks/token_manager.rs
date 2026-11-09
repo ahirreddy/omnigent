@@ -1145,4 +1145,18 @@ mod tests {
         // Foundation's reference date is after the Unix epoch, so `expiresAt` 0 is negative.
         assert_eq!(APPLE_REFERENCE_DATE_UNIX_MS, 978_307_200_000);
     }
+
+    #[test]
+    fn a_refreshed_bundle_that_cannot_be_stored_keeps_the_saved_grant() {
+        let mut harness = TokenHarness::new(NOW);
+        let scope = default_scope();
+        let saved = tokens("a", "r", NOW, None);
+        harness.put(&scope, &saved);
+        harness.auto_refresh = Some(Ok(tokens("", "next", 3_000_000, None)));
+        assert_eq!(
+            harness.tokens(&scope),
+            Err(DatabricksError::InvalidCredentialData)
+        );
+        assert_eq!(harness.stored(&scope), Some(saved));
+    }
 }

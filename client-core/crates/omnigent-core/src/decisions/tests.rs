@@ -1395,3 +1395,26 @@ fn a_repeated_resolution_retires_its_id_once() {
     decisions.apply_resolved(&resolved);
     assert!(decisions.is_retired("gone"));
 }
+
+#[test]
+fn a_property_less_schema_with_a_keyword_an_approval_would_ignore_is_unsupported() {
+    let card = params(&json!({"requestedSchema": {"type": "object", "minProperties": 1}}));
+    assert!(
+        matches!(card.kind, DecisionKind::Unsupported { .. }),
+        "{:?}",
+        card.kind
+    );
+    let plain = params(&json!({"requestedSchema": {"type": "object", "title": "Allow?"}}));
+    assert_eq!(plain.kind, DecisionKind::Approval);
+}
+
+#[test]
+fn answering_a_card_needs_it_pending_and_known() {
+    let mut decisions = SessionDecisions::new("conv_a");
+    assert_eq!(
+        decisions.record_answered("absent", DecisionResponse::Approve),
+        Err(DecisionError::NotFound {
+            decision_id: "absent".to_owned()
+        })
+    );
+}

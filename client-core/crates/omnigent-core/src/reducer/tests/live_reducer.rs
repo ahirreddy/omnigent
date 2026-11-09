@@ -988,3 +988,55 @@ fn sections_list_fully_described_tasks_and_bare_resources() {
     state.resources = None;
     assert_eq!(crate::reducer::sections(&state).len(), 1);
 }
+
+#[test]
+fn a_consumed_input_that_does_not_decode_is_an_error_and_changes_nothing() {
+    let mut harness = Harness::new(SESSION);
+    let outcome = harness.try_send(json!({
+        "type": "session.input.consumed",
+        "data": {"item_id": "i1", "type": "function_call", "data": {"name": 7}},
+    }));
+    assert!(
+        matches!(outcome, Err(ReducerError::Decode(_))),
+        "{outcome:?}"
+    );
+}
+
+#[test]
+fn replacing_a_row_past_the_end_changes_nothing() {
+    let mut harness = Harness::with_rows(SESSION, vec![user("u1", "hi")]);
+    let before = harness.snapshot().rows.clone();
+    harness.reducer.replace_row(5, assistant("a1", "late"));
+    assert_eq!(harness.snapshot().rows, before);
+}
+
+#[test]
+fn closing_a_reasoning_section_whose_row_is_gone_still_ends_the_section() {
+    let mut harness = Harness::new(SESSION);
+    harness.reducer.active_reasoning = Some("gone".to_owned());
+    harness.reducer.close_reasoning_section();
+    assert_eq!(harness.reducer.active_reasoning, None);
+}
+
+#[test]
+fn a_preview_with_no_earlier_row_is_not_put_back() {
+    let mut harness = Harness::new(SESSION);
+    let orphan = assistant("orphan", "streaming");
+    harness
+        .reducer
+        .reinsert_previews(&[], vec![orphan], &std::collections::BTreeMap::new());
+    assert_eq!(harness.snapshot().rows, []);
+}
+
+#[test]
+fn a_committed_message_with_an_unknown_role_is_an_error_and_changes_nothing() {
+    let mut harness = Harness::new(SESSION);
+    let outcome = harness.try_send(json!({
+        "type": "response.output_item.done",
+        "item": {"id": "m1", "type": "message", "data": {"role": "narrator", "content": []}},
+    }));
+    assert!(
+        matches!(outcome, Err(ReducerError::Projection(_))),
+        "{outcome:?}"
+    );
+}

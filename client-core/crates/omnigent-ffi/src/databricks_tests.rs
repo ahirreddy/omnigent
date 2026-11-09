@@ -602,3 +602,45 @@ fn a_session_on_a_known_host_and_the_updates_socket_carry_the_routing_key() {
         "{stream_request:?}"
     );
 }
+
+#[test]
+fn a_shared_refresh_with_no_waiter_left_still_saves_its_grant() {
+    let mut harness = signed_in();
+    let gate = harness.http.hold(TOKEN);
+    route_databricks(&harness, "access-2", 3_600);
+    harness.advance(3_600_000);
+    let core = Arc::clone(&harness.core);
+    let joined =
+        harness.start(async move { core.connect(format!("{WORKSPACE_HOST}/?o=42"), None).await });
+    let auth = harness.core.inner.databricks.clone().unwrap();
+    let waiting = {
+        let mut state = lock(&auth.state);
+        let waiting = state.waiters.len();
+        state.waiters.clear();
+        waiting
+    };
+    assert!(waiting >= 1, "{waiting}");
+    let saved_before = lock(&harness.store.items).clone();
+    gate.send(()).unwrap();
+    harness.pump();
+    assert_ne!(*lock(&harness.store.items), saved_before);
+    assert!(joined.borrow().is_some(), "the caller is not left hanging");
+}
+
+#[test]
+fn a_build_with_no_secure_store_reports_it_when_reading_a_grant() {
+    let mut harness = Harness::demo();
+    let inner = Arc::clone(&harness.core.inner);
+    let key = omnigent_core::auth::SecureStoreKey::new(
+        omnigent_core::auth::SecureStoreKey::OIDC_NAMESPACE,
+        "origin".to_owned(),
+    );
+    let loaded = harness.run(async move { inner.load_saved(key).await });
+    assert!(
+        matches!(
+            loaded,
+            Err(omnigent_core::auth::SecureStoreError::Other { .. })
+        ),
+        "{loaded:?}"
+    );
+}

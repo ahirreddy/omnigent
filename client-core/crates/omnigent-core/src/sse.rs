@@ -197,17 +197,11 @@ impl SseParser {
                     continue;
                 }
             }
-            let Some(end) = bytes.iter().position(|&b| b == b'\n' || b == b'\r') else {
+            let Some((content, terminator, rest)) = split_line(bytes) else {
                 self.append(bytes)?;
                 break;
             };
-            let Some((content, terminated)) = bytes.split_at_checked(end) else {
-                break;
-            };
             self.append(content)?;
-            let Some((&terminator, rest)) = terminated.split_first() else {
-                break;
-            };
             self.after_cr = terminator == b'\r';
             bytes = rest;
             self.end_line(out)?;
@@ -232,9 +226,7 @@ impl SseParser {
                 };
             } else {
                 self.bom = BomState::Done;
-                if let Some(prefix) = BOM.get(..matched) {
-                    self.append(prefix)?;
-                }
+                self.append(BOM.get(..matched).unwrap_or_default())?;
             }
         }
         Ok(bytes)
@@ -303,6 +295,14 @@ impl SseParser {
             id: self.last_event_id.clone(),
         });
     }
+}
+
+/// The line content, its terminator and what follows, when `bytes` holds a whole line.
+fn split_line(bytes: &[u8]) -> Option<(&[u8], u8, &[u8])> {
+    let end = bytes.iter().position(|&b| b == b'\n' || b == b'\r')?;
+    let (content, terminated) = bytes.split_at_checked(end)?;
+    let (&terminator, rest) = terminated.split_first()?;
+    Some((content, terminator, rest))
 }
 
 #[cfg(test)]
@@ -666,5 +666,29 @@ mod tests {
             );
             prop_assert_eq!(split, whole);
         }
+    }
+
+    #[test]
+    fn a_line_splits_at_its_first_terminator() {
+        assert_eq!(
+            split_line(b"ab\ncd"),
+            Some((b"ab".as_slice(), b'\n', b"cd".as_slice()))
+        );
+        assert_eq!(
+            split_line(b"\r"),
+            Some((b"".as_slice(), b'\r', b"".as_slice()))
+        );
+        assert_eq!(split_line(b"no terminator"), None);
+    }
+
+    #[test]
+    fn a_partial_bom_that_turns_out_not_to_be_one_is_ordinary_content() {
+        let mut parser = SseParser::default();
+        let mut out = Vec::new();
+        parser.push(&[0xEF, 0xBB], &mut out).unwrap();
+        assert!(matches!(
+            parser.push(b"data: x\n\n", &mut out),
+            Err(SseError::InvalidUtf8 { line: 1, .. })
+        ));
     }
 }

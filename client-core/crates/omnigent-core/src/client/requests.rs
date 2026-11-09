@@ -23,6 +23,7 @@
 use std::collections::BTreeSet;
 
 use serde_json::Value;
+use url::Url;
 
 use super::routing::{self, Addressing, SLICE_KEY_HEADER};
 use super::sessions::decode_snapshot;
@@ -44,6 +45,22 @@ pub(crate) struct Prepared {
     pub(crate) epoch: u64,
     /// How it was addressed, on a host-sharded server.
     pub(crate) addressing: Option<Addressing>,
+}
+
+/// JSON for a request body.
+pub(super) fn encoded_body(
+    encoded: Result<Vec<u8>, serde_json::Error>,
+) -> Result<Vec<u8>, SessionError> {
+    encoded.map_err(|error| SessionError::MalformedResponse {
+        detail: format!("could not encode the request body: {error}"),
+    })
+}
+
+/// The connected server's base URL, which is only ever read back from a confirmed connection.
+pub(super) fn connected_base_url(base_url: &str) -> Result<Url, SessionError> {
+    Url::parse(base_url).map_err(|error| SessionError::MalformedResponse {
+        detail: format!("connected base URL: {error}"),
+    })
 }
 
 /// `value` is usable as one path segment.
@@ -146,7 +163,7 @@ pub(super) fn address_built_request(
         return None;
     }
     let endpoint = state.connection.as_ref()?.endpoint();
-    let url = url::Url::parse(&request.url).ok()?;
+    let url = Url::parse(&request.url).ok()?;
     let path = url
         .path()
         .strip_prefix(endpoint.mount())
@@ -209,11 +226,7 @@ impl<T: HttpTransport> ClientCore<T> {
             request
                 .headers
                 .push(HttpHeader::new("Content-Type", "application/json"));
-            request.body = Some(serde_json::to_vec(body).map_err(|error| {
-                SessionError::MalformedResponse {
-                    detail: format!("could not encode the request body: {error}"),
-                }
-            })?);
+            request.body = Some(encoded_body(serde_json::to_vec(body))?);
         }
         Ok(Prepared {
             request,

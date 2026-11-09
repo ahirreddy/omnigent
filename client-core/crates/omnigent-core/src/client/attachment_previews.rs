@@ -2,9 +2,7 @@
 //! does: only a file of the session on the connected server, within the preview MIME and size
 //! limits ([`crate::attachments::preview`]).
 
-use url::Url;
-
-use super::requests::validate_identifier;
+use super::requests::{connected_base_url, validate_identifier};
 use super::{ClientCore, SessionError, lock};
 use crate::attachments::{
     AttachmentPreview, PreviewError, attachment_file_id, preview_from_response,
@@ -84,10 +82,7 @@ impl<T: HttpTransport> ClientCore<T> {
             .filter(|connection| connection.is_connected())
             .ok_or(SessionError::NotConnected)?
             .endpoint();
-        let base =
-            Url::parse(endpoint.base_url()).map_err(|error| SessionError::MalformedResponse {
-                detail: format!("connected base URL: {error}"),
-            })?;
+        let base = connected_base_url(endpoint.base_url())?;
         attachment_file_id(
             &base,
             endpoint.databricks_org_id(),

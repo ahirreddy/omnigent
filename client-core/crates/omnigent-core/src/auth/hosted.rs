@@ -294,11 +294,7 @@ impl HostedConnection {
         query: &[(&str, &str)],
     ) -> Result<Value, HostedAuthError> {
         let request = self.request("GET", path, query, "application/json")?;
-        let generation = self.generation;
         let response = transport.send(request).await?;
-        if generation != self.generation {
-            return Err(HostedAuthError::NotConnected);
-        }
         let response = self.check_response(&response)?;
         serde_json::from_slice(&response.body).map_err(|error| HostedAuthError::MalformedResponse {
             detail: format!("{path}: {error}"),

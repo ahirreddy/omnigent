@@ -16,6 +16,10 @@ use crate::remote_browser::rest::{
     create_response, delete_response, list_response, profiles_response,
 };
 
+pub(super) const fn invalid_request(detail: String) -> RemoteBrowserError {
+    RemoteBrowserError::InvalidRequest { detail }
+}
+
 impl<T: HttpTransport> ClientCore<T> {
     fn browser_request(
         &self,
@@ -25,7 +29,7 @@ impl<T: HttpTransport> ClientCore<T> {
         self.credentialed_request(
             |root| build(&BrowserEndpoint::new(root, session_id)?),
             RemoteBrowserError::NotConnected,
-            |detail| RemoteBrowserError::InvalidRequest { detail },
+            invalid_request,
         )
     }
 

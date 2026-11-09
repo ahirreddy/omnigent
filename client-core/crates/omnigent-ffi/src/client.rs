@@ -240,7 +240,7 @@ pub(crate) struct Inner {
     listeners: Arc<Listeners>,
     tx: UnboundedSender<Msg>,
     oidc: Option<OidcCredentials<CoreTransport, ForeignStore>>,
-    pub(crate) databricks: Option<DatabricksAuth>,
+    pub(crate) databricks: Option<Arc<DatabricksAuth>>,
     /// The WebSocket transport, for terminal attaches; absent in the demo.
     pub(crate) sockets: Option<Arc<dyn WebSocketTransport>>,
     demo: Option<Arc<DemoTransport>>,
@@ -268,6 +268,12 @@ impl Drop for ClientCore {
 
 fn superseded() -> CoreError {
     CoreError::invalid_state("A newer connect or sign-out replaced this one.")
+}
+
+fn sample_failed(error: impl fmt::Display) -> CoreError {
+    CoreError::Decode {
+        message: format!("offline sample: {error}"),
+    }
 }
 
 fn demo_only_error() -> CoreError {
@@ -691,6 +697,22 @@ impl Inner {
         }
     }
 
+    /// One poll of a browser login's ticket.
+    async fn poll_ticket(
+        &self,
+        resolved: &Resolved,
+        login: &BrowserLogin,
+        now: u64,
+    ) -> Result<PollStatus, HostedAuthError> {
+        let request = ticket::poll_request(&resolved.endpoint, login, now)?;
+        let response = self
+            .transport
+            .send(request)
+            .await
+            .map_err(HostedAuthError::Transport)?;
+        ticket::poll_status_from_response(login, &response)
+    }
+
     /// Whether a browser ticket is still the one being waited for.
     fn ticket_is_current(&self, generation: u64, ticket_id: u64) -> bool {
         let auth = lock(&self.auth);
@@ -734,13 +756,7 @@ impl Inner {
                 );
                 return;
             }
-            let status = match ticket::poll_request(&resolved.endpoint, &login, now) {
-                Ok(request) => match self.transport.send(request).await {
-                    Ok(response) => ticket::poll_status_from_response(&login, &response),
-                    Err(error) => Err(HostedAuthError::Transport(error)),
-                },
-                Err(error) => Err(error),
-            };
+            let status = self.poll_ticket(&resolved, &login, now).await;
             if !self.ticket_is_current(generation, ticket_id) {
                 return;
             }
@@ -826,7 +842,10 @@ impl ClientCore {
         let transport = CoreTransport::Foreign(ForeignHttp(http));
         let store = ForeignStore(secure_store);
         let oidc = OidcCredentials::new(transport.clone(), store.clone());
-        let databricks = config.databricks.as_ref().map(DatabricksAuth::new);
+        let databricks = config
+            .databricks
+            .as_ref()
+            .map(|settings| Arc::new(DatabricksAuth::new(settings)));
         Ok(Self::build(
             Host { clock, scheduler },
             config,
@@ -855,9 +874,7 @@ impl ClientCore {
         clock: Arc<dyn Clock>,
         scheduler: Arc<dyn Scheduler>,
     ) -> Result<Arc<Self>, CoreError> {
-        let demo = Arc::new(DemoTransport::sample().map_err(|error| CoreError::Decode {
-            message: format!("offline sample: {error}"),
-        })?);
+        let demo = Arc::new(DemoTransport::sample().map_err(sample_failed)?);
         demo.set_now(i64::try_from(clock.unix_time_ms() / 1_000).unwrap_or(i64::MAX));
         Ok(Self::build(
             Host { clock, scheduler },
@@ -1604,7 +1621,7 @@ impl ClientCore {
         store: Option<ForeignStore>,
         entropy: Option<ForeignEntropy>,
         oidc: Option<OidcCredentials<CoreTransport, ForeignStore>>,
-        databricks: Option<DatabricksAuth>,
+        databricks: Option<Arc<DatabricksAuth>>,
         seed: u64,
     ) -> Arc<Self> {
         let sessions = Arc::new(Sessions::new(

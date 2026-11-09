@@ -346,10 +346,11 @@ impl<T: HttpTransport> ClientCore<T> {
         if edit.effort != current.effort {
             let latest = self.config_snapshot(session_id).await?;
             self.mutation_allowed(&latest)?;
-            let consistent = match (&latest.configuration, &summary.configuration) {
-                (Some(actual), Some(acknowledged)) => actual.same_selection(acknowledged),
-                _ => false,
-            };
+            let consistent = latest
+                .configuration
+                .as_ref()
+                .zip(summary.configuration.as_ref())
+                .is_some_and(|(actual, acknowledged)| actual.same_selection(acknowledged));
             if !consistent {
                 return Err(ConfigurationError::ChangedElsewhere.into());
             }

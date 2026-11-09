@@ -1361,3 +1361,20 @@ fn an_upload_to_a_databricks_workspace_names_its_org() {
         upload.headers
     );
 }
+
+#[test]
+fn connecting_again_while_connected_reports_the_old_connection_ended() {
+    let core = connected(RouteTransport::local());
+    let recorder = record(&core);
+    let endpoint = crate::auth::endpoint::ServerEndpoint::new(super::test_support::LOCAL).unwrap();
+    block_on(core.connect(endpoint, None, None)).unwrap();
+    let changes: Vec<bool> = recorder
+        .take()
+        .iter()
+        .filter_map(|event| match event {
+            ClientEvent::ConnectionChanged { connected } => Some(*connected),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(changes.first(), Some(&false), "{changes:?}");
+}

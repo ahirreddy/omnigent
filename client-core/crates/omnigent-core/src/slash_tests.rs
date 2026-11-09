@@ -474,3 +474,12 @@ fn a_skill_with_a_label_only_shows_it_and_an_override_says_so() {
         SlashAction::Show { text } if text.contains("fast (override)")
     ));
 }
+
+#[test]
+fn a_name_that_is_no_built_in_has_no_action() {
+    let configuration = SessionConfiguration::default();
+    assert_eq!(
+        builtin_action("nonsense", String::new(), "", &[], &configuration),
+        None
+    );
+}

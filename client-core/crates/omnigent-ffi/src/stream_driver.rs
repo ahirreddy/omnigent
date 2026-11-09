@@ -267,6 +267,20 @@ impl Engine {
         }
     }
 
+    /// Holds an opened stream's handle, or cancels it when its session has closed.
+    pub(crate) fn keep_stream_handle(
+        &mut self,
+        session_id: &str,
+        attempt: AttemptId,
+        handle: Arc<dyn StreamHandle>,
+    ) {
+        if let Some(driver) = self.drivers.get_mut(session_id) {
+            driver.handles.insert(attempt, handle);
+        } else {
+            handle.cancel();
+        }
+    }
+
     fn open_stream(&mut self, session_id: &str, attempt: AttemptId) {
         let (Some(link), Some(streams)) = (self.link.clone(), self.transports.streams.clone())
         else {
@@ -332,13 +346,7 @@ impl Engine {
             );
         });
         match streams.open_stream(request.into(), sink) {
-            Ok(handle) => {
-                if let Some(driver) = self.drivers.get_mut(session_id) {
-                    driver.handles.insert(attempt, handle);
-                } else {
-                    handle.cancel();
-                }
-            }
+            Ok(handle) => self.keep_stream_handle(session_id, attempt, handle),
             Err(error) => self.stream_input(
                 session_id,
                 StreamInput::OpenFailed {

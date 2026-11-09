@@ -1052,3 +1052,36 @@ fn oidc_a_token_that_cannot_be_a_header_is_rejected_without_a_request() {
     );
     assert_eq!(credentials.transport().take().len(), 0);
 }
+
+#[test]
+fn oidc_settling_a_finished_flight_wakes_nobody_and_keeps_the_new_state() {
+    let flight = Flight {
+        id: 1,
+        cancelled: AtomicBool::new(false),
+        state: Mutex::new(FlightState::Abandoned),
+    };
+    flight.settle(FlightState::Done(Err(OidcError::Cancelled)));
+    assert!(matches!(
+        *lock(&flight.state),
+        FlightState::Done(Err(OidcError::Cancelled))
+    ));
+}
+
+#[test]
+fn oidc_a_revoke_route_the_server_cannot_serve_fails_without_a_request() {
+    let credentials = credentials();
+    let outcome = block_on(credentials.revoke_at(
+        PendingRevocation {
+            server: server(),
+            grant: grant("refresh", None),
+        },
+        "no-leading-slash",
+    ));
+    assert_eq!(
+        outcome,
+        RevokeOutcome::Failed(NetworkCause::Transport(TransportError::Other {
+            message: "server URL has no revoke endpoint".into(),
+        }))
+    );
+    assert_eq!(credentials.transport.requests.borrow().len(), 0);
+}

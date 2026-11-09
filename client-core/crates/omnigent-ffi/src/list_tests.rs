@@ -279,3 +279,23 @@ fn a_rejected_token_a_list_read_alone_noticed_still_asks_to_sign_in() {
         "{phases:?}"
     );
 }
+
+#[test]
+fn a_refused_watch_list_is_reported_on_the_session_list() {
+    let harness = Harness::new(UrlPolicy::Development);
+    let (mut engine, _queue) = harness.idle_engine();
+    engine.apply_watch(Err(omnigent_core::realtime::WatchError::InvalidSessionId {
+        id: "../x".to_owned(),
+    }));
+    let events = harness.events.take();
+    assert!(
+        matches!(
+            events.as_slice(),
+            [CoreEvent::Error {
+                scope: ErrorScope::SessionList,
+                ..
+            }]
+        ),
+        "{events:?}"
+    );
+}

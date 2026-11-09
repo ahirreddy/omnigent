@@ -31,6 +31,13 @@ impl PinStamp {
     }
 }
 
+/// The stamp for a computed pin key; a key that isn't finite stops the reorder partway.
+fn pin_stamp(key: f64) -> Result<PinStamp, SessionError> {
+    PinStamp::new(key).ok_or_else(|| SessionError::DeliveryUncertain {
+        detail: format!("pin key {key} is not finite"),
+    })
+}
+
 /// A session's pin key, `NaN` when unpinned or unreadable (the web's `Number(label)`).
 fn key(session: &SessionSummary) -> f64 {
     session
@@ -196,12 +203,11 @@ impl<T: HttpTransport> ClientCore<T> {
             writes.insert(0, moved);
         }
         for write in writes {
-            let stamp =
-                PinStamp::new(write.key).ok_or_else(|| SessionError::DeliveryUncertain {
-                    detail: format!("pin key {} is not finite", write.key),
-                })?;
-            self.edit(&write.session_id, SessionChange::PinnedAt(stamp))
-                .await?;
+            self.edit(
+                &write.session_id,
+                SessionChange::PinnedAt(pin_stamp(write.key)?),
+            )
+            .await?;
         }
         Ok(())
     }

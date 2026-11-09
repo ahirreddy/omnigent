@@ -66,8 +66,13 @@ pub fn normalize(raw: &str, allows_insecure_http: bool) -> Result<Url, ServerUrl
         "http" => return Err(ServerUrlError::InsecureHttpNotAllowed),
         other => return Err(ServerUrlError::UnsupportedScheme(other.to_owned())),
     }
+    require_host(url, with_scheme)
+}
+
+/// `url`, unless it has no host to connect to.
+fn require_host(url: Url, raw: String) -> Result<Url, ServerUrlError> {
     if url.host_str().is_none_or(str::is_empty) {
-        return Err(ServerUrlError::Invalid(with_scheme));
+        return Err(ServerUrlError::Invalid(raw));
     }
     Ok(url)
 }
@@ -497,5 +502,17 @@ mod tests {
         assert_eq!(origin(&url), "http://localhost:6767");
         let https = normalize("https://h.example.com:443/a", false).unwrap();
         assert_eq!(origin(&https), "https://h.example.com");
+    }
+
+    #[test]
+    fn a_url_with_no_host_is_invalid() {
+        assert_eq!(
+            require_host(url("custom:path"), "custom:path".to_owned()),
+            Err(ServerUrlError::Invalid("custom:path".to_owned()))
+        );
+        assert_eq!(
+            require_host(url("https://h/"), "https://h/".to_owned()),
+            Ok(url("https://h/"))
+        );
     }
 }

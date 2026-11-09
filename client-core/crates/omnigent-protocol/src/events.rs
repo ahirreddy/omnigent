@@ -16,7 +16,7 @@ use serde_json::{Map, Value};
 
 use crate::display;
 use crate::elicitation::{ElicitationRequest, ElicitationResolved};
-use crate::error::{DecodeError, FromWire, decode_as};
+use crate::error::{DecodeError, FromWire, decode_as, serialized_object};
 use crate::field::{Field, null_as_default};
 use crate::items::{ConversationItem, ErrorSource};
 use crate::sessions::{
@@ -900,9 +900,7 @@ macro_rules! stream_events {
                     Self::Unknown { raw, .. } => return raw.serialize(serializer),
                 }
                 .map_err(S::Error::custom)?;
-                let Value::Object(fields) = payload else {
-                    return Err(S::Error::custom("event payload must serialise as an object"));
-                };
+                let fields = serialized_object(payload, "event payload")?;
                 let mut map = serializer.serialize_map(Some(fields.len() + 1))?;
                 map.serialize_entry("type", self.event_type())?;
                 for (key, value) in &fields {

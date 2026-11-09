@@ -873,4 +873,20 @@ mod tests {
         .unwrap_err();
         assert!(unauthorized.requires_sign_in());
     }
+
+    #[test]
+    fn a_server_url_with_no_websocket_form_is_an_invalid_attach() {
+        let endpoint = BrowserEndpoint {
+            server_url: Url::parse("custom://example.com/omni").unwrap(),
+            session_id: "conv_a".to_owned(),
+        };
+        let options = AttachOptions {
+            mode: AttachMode::Control,
+            slice_key: None,
+        };
+        assert!(matches!(
+            endpoint.attach_request("tab_1", &options),
+            Err(RemoteBrowserError::InvalidRequest { .. })
+        ));
+    }
 }

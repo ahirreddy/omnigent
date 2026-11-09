@@ -136,15 +136,18 @@ pub enum WorkspaceError {
     },
 }
 
+fn encode_error(error: &serde_json::Error) -> WorkspaceError {
+    WorkspaceError::Encode {
+        message: error.to_string(),
+    }
+}
+
 /// Encodes `workspace` as JSON.
 ///
 /// # Errors
 ///
 /// [`WorkspaceError::Encode`].
 pub fn encode(workspace: &Workspace) -> Result<Vec<u8>, WorkspaceError> {
-    let encode_error = |error: serde_json::Error| WorkspaceError::Encode {
-        message: error.to_string(),
-    };
     let sessions = workspace
         .sessions
         .iter()
@@ -153,7 +156,7 @@ pub fn encode(workspace: &Workspace) -> Result<Vec<u8>, WorkspaceError> {
             entry.insert("revision".into(), Value::from(session.revision));
             entry.insert(
                 "session".into(),
-                serde_json::to_value(&session.snapshot).map_err(encode_error)?,
+                serde_json::to_value(&session.snapshot).map_err(|error| encode_error(&error))?,
             );
             Ok(Value::Object(entry))
         })
@@ -171,7 +174,7 @@ pub fn encode(workspace: &Workspace) -> Result<Vec<u8>, WorkspaceError> {
                 .collect(),
         ),
     );
-    serde_json::to_vec(&Value::Object(object)).map_err(encode_error)
+    serde_json::to_vec(&Value::Object(object)).map_err(|error| encode_error(&error))
 }
 
 /// Decodes [`encode`]'s output, without recovery.
@@ -428,5 +431,12 @@ mod tests {
     fn missing_store_loads_nothing() {
         let store = WorkspaceStore::new(MemoryFile::default());
         assert_eq!(block_on(store.load()), Ok(None));
+    }
+
+    #[test]
+    fn an_encoder_failure_reads_as_an_encode_error() {
+        let failure = serde_json::from_str::<Value>("{").unwrap_err();
+        let message = failure.to_string();
+        assert_eq!(encode_error(&failure), WorkspaceError::Encode { message });
     }
 }

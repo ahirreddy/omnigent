@@ -836,3 +836,17 @@ fn a_native_tool_wrapper_that_is_not_an_object_is_refused() {
         Err(DecodeError::NotAnObject { context }) if context == "item `native_tool`"
     ));
 }
+
+#[test]
+fn a_value_that_must_serialize_as_an_object_says_what_it_was() {
+    let refused: Result<Map<String, Value>, serde_json::Error> =
+        serialized_object(Value::Null, "item data");
+    assert_eq!(
+        refused.unwrap_err().to_string(),
+        "item data must serialise as an object"
+    );
+    let fields = Map::from_iter([("a".to_owned(), Value::Bool(true))]);
+    let kept: Result<Map<String, Value>, serde_json::Error> =
+        serialized_object(Value::Object(fields.clone()), "item data");
+    assert_eq!(kept.unwrap(), fields);
+}

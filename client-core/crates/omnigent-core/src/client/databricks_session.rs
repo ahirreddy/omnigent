@@ -113,7 +113,8 @@ pub async fn create_workspace_session<T: HttpTransport>(
         .map(str::to_owned);
     let mut jar: Vec<SessionCookie> = Vec::new();
     let mut updates: Vec<SessionCookie> = Vec::new();
-    for hop in 0..=MAX_SESSION_REDIRECTS {
+    let mut hop = 0;
+    loop {
         let bearer = (hop == 0).then_some(tokens);
         let response = transport
             .send(hop_request(&current, &jar, bearer, now_ms))
@@ -133,6 +134,7 @@ pub async fn create_workspace_session<T: HttpTransport>(
                 return Err(DatabricksError::UnsafeRedirect);
             }
             current = follow(&response, &current, context, &mut workspace_id)?;
+            hop += 1;
             continue;
         }
         if !(200..=299).contains(&response.status) {
@@ -150,7 +152,6 @@ pub async fn create_workspace_session<T: HttpTransport>(
             now_ms,
         );
     }
-    Err(DatabricksError::UnsafeRedirect)
 }
 
 /// One hop's `GET`: the bearer on the first hop only, then the applicable cookies, longest path

@@ -291,12 +291,7 @@ impl<T: HttpTransport> ClientCore<T> {
         } else {
             self.rename_project_rows(project, &project.name).await?
         };
-        let Some(id) = project.id.as_deref() else {
-            return Err(SessionError::DeliveryUncertain {
-                detail: "the promoted project has no id".into(),
-            });
-        };
-        let path = format!("/v1/projects/{id}");
+        let path = format!("/v1/projects/{}", promoted_id(&project)?);
         let acknowledgement = self
             .write_json("PATCH", &path, &json!({"config": update(&config)}))
             .await?;
@@ -306,6 +301,16 @@ impl<T: HttpTransport> ClientCore<T> {
             }
         })
     }
+}
+
+/// The id a promoted project must now have.
+fn promoted_id(project: &ProjectSummary) -> Result<&str, SessionError> {
+    project
+        .id
+        .as_deref()
+        .ok_or_else(|| SessionError::DeliveryUncertain {
+            detail: "the promoted project has no id".into(),
+        })
 }
 
 #[cfg(test)]

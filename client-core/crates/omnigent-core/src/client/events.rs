@@ -18,10 +18,9 @@
 //! offline: that refusal is [`SessionError::HostOffline`], and the caller keeps the message.
 
 use serde_json::{Value, json};
-use url::Url;
 
 use super::json::{as_object, opt_bool, opt_str};
-use super::requests::{HOST_OFFLINE_HOLD_HEADER, validate_identifier};
+use super::requests::{HOST_OFFLINE_HOLD_HEADER, connected_base_url, validate_identifier};
 use super::{ChangedFilesFetch, ClientCore, ClientEvent, SessionError, lock};
 use crate::attachments::{
     AttachmentDraft, AttachmentSubmission, DraftError, DraftItem, DraftItemId, DraftKey, HoldId,
@@ -29,8 +28,8 @@ use crate::attachments::{
 };
 use crate::auth::endpoint::DATABRICKS_ORG_HEADER;
 use crate::auth::hosted::HostedConnection;
-use crate::decisions::{Decision, DecisionError, DecisionResponse, ResolveRoute};
-use crate::http::{HttpHeader, HttpTransport, TransportError};
+use crate::decisions::{Decision, DecisionError, DecisionResponse, ResolveError, ResolveRoute};
+use crate::http::{HttpHeader, HttpRequest, HttpTransport, TransportError};
 use crate::ledger::{SubmissionOperation, SubmissionOutcome};
 
 /// An Inbox reply refused because the session's host is offline (the web's wording).
@@ -192,6 +191,32 @@ enum AttachmentSource {
     Held(HoldId),
 }
 
+/// An upload's org and authorization headers, from the connection still current as it leaves.
+pub(super) fn add_connection_headers(
+    connection: Option<&HostedConnection>,
+    request: &mut HttpRequest,
+) {
+    if let Some(connection) = connection {
+        if let Some(org) = connection.endpoint().databricks_org_id() {
+            request
+                .headers
+                .push(HttpHeader::new(DATABRICKS_ORG_HEADER, org));
+        }
+        if let Some(authorization) = connection.authorization() {
+            request
+                .headers
+                .push(HttpHeader::new("Authorization", authorization.expose()));
+        }
+    }
+}
+
+/// An answer that can't be encoded never reaches the server.
+pub(super) fn malformed_answer(error: &ResolveError) -> SessionError {
+    SessionError::MalformedResponse {
+        detail: error.to_string(),
+    }
+}
+
 /// What a send captured before its request went out.
 struct SendGate {
     operation: SubmissionOperation,
@@ -214,10 +239,7 @@ impl<T: HttpTransport> ClientCore<T> {
             .connection
             .as_ref()
             .is_some_and(HostedConnection::is_single_user);
-        let server_url =
-            Url::parse(&server.base_url).map_err(|error| SessionError::MalformedResponse {
-                detail: format!("connected base URL: {error}"),
-            })?;
+        let server_url = connected_base_url(&server.base_url)?;
         Ok((
             UploadTarget {
                 server_url,
@@ -420,21 +442,7 @@ impl<T: HttpTransport> ClientCore<T> {
             };
             (attempt, file, request, state.epoch)
         };
-        {
-            let state = lock(&self.state);
-            if let Some(connection) = state.connection.as_ref() {
-                if let Some(org) = connection.endpoint().databricks_org_id() {
-                    request
-                        .headers
-                        .push(HttpHeader::new(DATABRICKS_ORG_HEADER, org));
-                }
-                if let Some(authorization) = connection.authorization() {
-                    request
-                        .headers
-                        .push(HttpHeader::new("Authorization", authorization.expose()));
-                }
-            }
-        }
+        add_connection_headers(lock(&self.state).connection.as_ref(), &mut request);
         let result = self.transport.send(request).await;
         let mut state = lock(&self.state);
         let mapped = if state.epoch == epoch {
@@ -827,13 +835,9 @@ impl<T: HttpTransport> ClientCore<T> {
     async fn interrupt_session(&self, session_id: &str) -> Result<(), SessionError> {
         self.editable(session_id).await?;
         let path = format!("/v1/sessions/{session_id}/events");
-        self.write(self.prepare(
-            "POST",
-            &path,
-            &[],
-            Some(&json!({"type": "interrupt", "data": {}})),
-        )?)
-        .await?;
+        let body = json!({"type": "interrupt", "data": {}});
+        self.write(self.prepare("POST", &path, &[], Some(&body))?)
+            .await?;
         lock(&self.state).request_rehydration(session_id);
         Ok(())
     }
@@ -887,11 +891,9 @@ impl<T: HttpTransport> ClientCore<T> {
         if request.session_id != session_id {
             self.editable(&request.session_id).await?;
         }
-        let body = request.body(ResolveRoute::Dedicated).map_err(|error| {
-            SessionError::MalformedResponse {
-                detail: error.to_string(),
-            }
-        })?;
+        let body = request
+            .body(ResolveRoute::Dedicated)
+            .map_err(|error| malformed_answer(&error))?;
         let path = format!(
             "/v1/sessions/{}/elicitations/{}/resolve",
             request.session_id, request.elicitation_id

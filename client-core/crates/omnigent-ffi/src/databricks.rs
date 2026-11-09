@@ -150,9 +150,15 @@ fn not_databricks() -> CoreError {
     CoreError::invalid_state("Connect to a Databricks workspace server before signing in.")
 }
 
+fn store_unavailable(error: CoreError) -> omnigent_core::auth::SecureStoreError {
+    omnigent_core::auth::SecureStoreError::Other {
+        message: error.to_string(),
+    }
+}
+
 impl Inner {
     fn databricks_auth(&self) -> Result<&DatabricksAuth, CoreError> {
-        self.databricks.as_ref().ok_or_else(not_configured)
+        self.databricks.as_deref().ok_or_else(not_configured)
     }
 
     fn databricks_scope(&self, resolved: &Resolved) -> Result<CredentialScope, CoreError> {
@@ -164,15 +170,18 @@ impl Inner {
         CredentialScope::new(workspace, configuration).map_err(CoreError::from)
     }
 
+    async fn load_saved(
+        &self,
+        key: omnigent_core::auth::SecureStoreKey,
+    ) -> Result<Option<Vec<u8>>, omnigent_core::auth::SecureStoreError> {
+        self.store().map_err(store_unavailable)?.get(key).await
+    }
+
     async fn perform_write(
         &self,
         write: &StoreWrite,
     ) -> Result<(), omnigent_core::auth::SecureStoreError> {
-        let store = self
-            .store()
-            .map_err(|error| omnigent_core::auth::SecureStoreError::Other {
-                message: error.to_string(),
-            })?;
+        let store = self.store().map_err(store_unavailable)?;
         match &write.value {
             Some(bytes) => store.set(write.key.clone(), bytes.clone()).await,
             None => store.delete(write.key.clone()).await,
@@ -217,12 +226,7 @@ impl Inner {
                     state.settle(step)
                 }
                 Next::Load(ticket) => {
-                    let loaded = match self.store() {
-                        Ok(store) => store.get(ticket.key()).await,
-                        Err(error) => Err(omnigent_core::auth::SecureStoreError::Other {
-                            message: error.to_string(),
-                        }),
-                    };
+                    let loaded = self.load_saved(ticket.key()).await;
                     let now = self.host.unix_ms();
                     let mut state = lock(&auth.state);
                     let step = state.tokens.loaded(ticket, loaded, now)?;
@@ -230,9 +234,9 @@ impl Inner {
                 }
                 Next::Ready(tokens) => return Ok(tokens),
                 Next::Refresh(refresh, answer) => {
-                    let inner = Arc::clone(self);
+                    let (inner, auth) = (Arc::clone(self), Arc::clone(auth));
                     self.host
-                        .spawn(async move { inner.run_refresh(refresh).await });
+                        .spawn(async move { inner.run_refresh(&auth, refresh).await });
                     return answer.await.unwrap_or(Err(DatabricksError::Cancelled));
                 }
                 Next::Wait(answer) => {
@@ -244,10 +248,7 @@ impl Inner {
 
     /// Sends one refresh and persists its outcome. Runs on its own task so a cancelled caller
     /// cannot lose a rotated grant.
-    async fn run_refresh(self: Arc<Self>, refresh: RefreshTicket) {
-        let Some(auth) = self.databricks.as_ref() else {
-            return;
-        };
+    async fn run_refresh(self: Arc<Self>, auth: &DatabricksAuth, refresh: RefreshTicket) {
         let now = self.host.unix_ms();
         let result = OAuthClient::new(&self.transport)
             .refresh(
