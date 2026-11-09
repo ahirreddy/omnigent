@@ -47,3 +47,9 @@ private struct SamplePreview: View {
   AccountChip(account: AuthSamples.account, actions: .inert)
     .padding()
 }
+
+#Preview("Account, sidebar footer") {
+  AccountChip(account: AuthSamples.account, style: .sidebarFooter, signOut: {})
+    .frame(width: 248)
+    .padding()
+}

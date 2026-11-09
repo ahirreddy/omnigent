@@ -149,8 +149,43 @@ struct ConnectedWindowFlowTests {
     }
   }
 
-  @Test("A window signed in to an account offers Sign Out, which signs out")
+  /// The window over `session` with a titlebar, so the shell's toolbar has somewhere to go.
+  private func titledWindow(_ session: ServerSession) async throws -> OffscreenWindow<
+    AppWindowRoot
+  > {
+    let screen = OffscreenWindow(
+      AppWindowRoot(session: session, selection: WindowSelection()), width: 900, height: 600)
+    let frame = screen.window.frame
+    screen.window.contentView = nil
+    screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
+    screen.window.setFrame(frame, display: false)
+    screen.host.sceneBridgingOptions = [.toolbars, .title]
+    screen.window.contentView = screen.host
+    try await pause(screen, .milliseconds(300))
+    return screen
+  }
+
+  @Test("A signed-in account sits at the sidebar's foot, not in the toolbar, and signs out there")
   func signingOut() async throws {
+    let local = try await titledWindow(try await signedInSession(AppServer()))
+    defer { local.close() }
+    #expect(try !local.shows("Local user"), "a single-user server has no account to show")
+    let localItems = local.window.toolbar?.items.count ?? 0
+
+    let session = try await accountSession()
+    let screen = try await titledWindow(session)
+    defer { screen.close() }
+    #expect(try screen.shows("u1"))
+    #expect(
+      screen.window.toolbar?.items.count ?? 0 == localItems, "the toolbar has no account item")
+    let footer = try #require(screen.controlFrames.last { $0.maxX < 330 })
+    #expect(footer.minX < 20 && footer.maxY > 580, "the sidebar's bottom left: \(footer)")
+    try screen.choose("Sign Out", in: try screen.openMenu(CGPoint(x: footer.midX, y: footer.midY)))
+    try await settle(screen, until: "the sign-out") { !session.connection.isSignedIn }
+  }
+
+  /// A window's session signed in to an OIDC account as `u1`.
+  private func accountSession() async throws -> ServerSession {
     SystemSideEffects.install()
     let server = AppServer()
     server.route("/.well-known/omnigent.json", .json(ManifestFixtures.oidc))
@@ -180,15 +215,7 @@ struct ConnectedWindowFlowTests {
       }
       return false
     }
-
-    let selection = WindowSelection()
-    let screen = OffscreenWindow(
-      AppWindowRoot(session: session, selection: selection), width: 900, height: 600)
-    defer { screen.close() }
-    try await pause(screen, .milliseconds(150))
-    let signOut = try #require(connectedView(session, selection).sidebarActions.signOut)
-    signOut()
-    try await settle(screen, until: "the sign-out") { !connection.isSignedIn }
+    return session
   }
 
   private func signInCore(_ server: AppServer) throws -> ClientCore {
