@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import OmnigentViewTesting
+import OmnigentViewTextReading
 import SwiftUI
 import Testing
 
@@ -15,6 +16,26 @@ func settle<Content: View>(
   while !condition() {
     guard ContinuousClock.now < deadline else {
       Issue.record("timed out waiting for \(description)")
+      return
+    }
+    screen.settle(0.005)
+    try await Task.sleep(for: .milliseconds(5))
+  }
+}
+
+/// Lets the screen's tasks and the core's events run until the window shows `text`.
+@MainActor
+func settle<Content: View>(
+  _ screen: OffscreenWindow<Content>, untilShowing text: String, contains: Bool = false,
+  timeout: Duration = .seconds(5)
+) async throws {
+  let deadline = ContinuousClock.now + timeout
+  func isShowing() throws -> Bool {
+    contains ? try screen.shownText().contains { $0.contains(text) } : try screen.shows(text)
+  }
+  while try !isShowing() {
+    guard ContinuousClock.now < deadline else {
+      Issue.record("timed out waiting to show \(text) in \(try screen.shownText().prefix(60))")
       return
     }
     screen.settle(0.005)
