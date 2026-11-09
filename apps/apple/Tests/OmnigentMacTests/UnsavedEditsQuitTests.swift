@@ -210,6 +210,14 @@ struct UnsavedEditsPromptAnswerTests {
     #expect(SystemSideEffects.record.alertMessages.last == "Some files could not be saved.")
   }
 
+  /// The quit question runs modally; the answer comes back as the person's choice.
+  @Test func theQuitQuestionReturnsTheButtonsChoice() {
+    _ = window()
+    SystemSideEffects.answer(alert: .alertSecondButtonReturn)
+    #expect(UnsavedEditsQuit().ask(["/work/a.rs"]) == .discard)
+    #expect(SystemSideEffects.record.alertMessages.count == 1)
+  }
+
   @Test func aFailureWithNoWindowStillTells() async throws {
     _ = window()
     UnsavedEditsAlert.showFailure(["/work/a.rs"], in: nil)

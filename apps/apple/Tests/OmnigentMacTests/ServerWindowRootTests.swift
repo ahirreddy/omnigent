@@ -1,7 +1,12 @@
+import AppKit
+import OmnigentAppBrowser
 import OmnigentAppUI
 import OmnigentAuthUI
+import OmnigentBrowser
+import OmnigentCoreFFI
 import OmnigentDesktop
 import OmnigentStores
+import OmnigentUIComponents
 import OmnigentViewTesting
 import SwiftUI
 import Testing
@@ -54,6 +59,13 @@ struct ServerWindowRootTests {
     return (screen, binding)
   }
 
+  /// What a failed route wait reports: whether the route was taken and what the window shows.
+  private func state(of instance: UUID, in registry: ServerWindowRegistry) -> Comment {
+    let pending = registry.pendingRoute(for: instance)
+    return
+      "entry \(String(describing: registry.entry(instance))), pending \(String(describing: pending))"
+  }
+
   private func demoScratch() throws -> TestScratch {
     try TestScratch(launchArguments: ["-OmnigentDemo"])
   }
@@ -81,10 +93,16 @@ struct ServerWindowRootTests {
     #expect(try await waitFor { registry.entry(instance)?.viewedSessionID == "demo-notes" })
 
     registry.deliver(.message(sessionID: "demo-design", messageID: "m1"), to: instance)
-    #expect(try await waitFor { registry.entry(instance)?.viewedSessionID == "demo-design" })
+    #expect(
+      try await waitFor { registry.entry(instance)?.viewedSessionID == "demo-design" },
+      state(of: instance, in: registry)
+    )
 
     registry.deliver(.home, to: instance)
-    #expect(try await waitFor { registry.entry(instance)?.viewedSessionID == nil })
+    #expect(
+      try await waitFor { registry.entry(instance)?.viewedSessionID == nil },
+      state(of: instance, in: registry)
+    )
   }
 
   @Test func aWindowWithNoServerShowsTheConnectScreenAndIsNotReady() async throws {
@@ -141,6 +159,33 @@ struct ServerWindowRootTests {
     #expect(try await waitFor { !recents.urls.isEmpty })
     #expect(
       recents.urls.map(\.absoluteString).first?.hasPrefix(ServerSession.demoServerURL) == true)
+  }
+
+  @Test func aWindowBackOnTheConnectScreenIsNotReady() async throws {
+    let scratch = try demoScratch()
+    defer { scratch.remove() }
+    let (screen, binding) = open(on: demoURL, scratch: scratch)
+    defer { screen.close() }
+    let registry = scratch.desktop.registry
+    let instance = binding.id.instance
+    #expect(try await waitFor { registry.entry(instance)?.isReady == true })
+    binding.id = binding.id.rebound(to: nil)
+    #expect(try await waitFor { registry.entry(instance)?.isReady == false })
+  }
+
+  /// Waking the Mac reopens a signed-in window's streams and leaves it on its server.
+  @Test func aWakeKeepsASignedInWindowReady() async throws {
+    let scratch = try demoScratch()
+    defer { scratch.remove() }
+    let (screen, binding) = open(on: demoURL, scratch: scratch)
+    defer { screen.close() }
+    let registry = scratch.desktop.registry
+    let instance = binding.id.instance
+    #expect(try await waitFor { registry.entry(instance)?.isReady == true })
+    NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(registry.entry(instance)?.isReady == true)
+    #expect(binding.id.serverURL == demoURL)
   }
 
   @Test func anInviteLinkKeepsTheWindowOnItsServer() async throws {
@@ -252,6 +297,51 @@ struct ServerWindowActionsTests {
     #expect(binding.id == instanceAfterChange)
     session.signIn.onServerChange(nil)
     #expect(binding.id.serverURL == nil)
+  }
+
+  /// A server that reports an address this can't read is logged, not recorded.
+  @Test func aSignInWithAnUnreadableAddressRecordsNothing() async throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let session = ServerSession(connection: try await PreviewData.connectedDemoStore())
+    root(WindowBinding(ServerWindowID(serverURL: nil)), scratch).configure(session)
+    let connected = try #require(session.connection.connectedServer)
+    var unreadable = connected
+    unreadable.baseUrl = ""
+    session.signIn.onSignedIn(unreadable)
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(scratch.services.recentServers.urls.isEmpty)
+  }
+
+  /// Edit > Find and View > Zoom act on the selected browser tab, and only then.
+  @Test func findAndZoomFollowTheSelectedBrowserTab() throws {
+    let scratch = try TestScratch()
+    defer { scratch.remove() }
+    let session = try ServerSession.demo()
+    let window = root(WindowBinding(ServerWindowID(serverURL: demoURL)), scratch)
+    #expect(window.actions(session).zoom == nil)
+    let url = try #require(URL(string: "https://example.com"))
+    let pageID = scratch.services.browserTabs.makePage(url: url).id
+    let page = try #require(scratch.services.browserTabs.page(pageID))
+    session.tabs.show(.session("session"))
+    session.tabs.open(.browser(browserID: pageID))
+
+    let actions = window.actions(session)
+    let zoom = try #require(actions.zoom)
+    zoom.zoomIn()
+    #expect(page.zoomFactor > 1)
+    zoom.zoomOut()
+    zoom.zoomOut()
+    #expect(page.zoomFactor < 1)
+    zoom.reset()
+    #expect(page.zoomFactor == 1)
+    let find = try #require(actions.find)
+    #expect(!page.find.isVisible)
+    find.show()
+    #expect(page.find.isVisible)
+    find.next()
+    find.previous()
+    #expect(try scratch.services.browserTabs.close(pageID) != nil)
   }
 
   @Test func forgettingAServerUpdatesThePicker() throws {

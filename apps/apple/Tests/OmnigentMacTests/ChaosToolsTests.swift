@@ -184,3 +184,60 @@
     }
   }
 #endif
+
+#if DEBUG
+  /// A chaos run's record of toolbar swaps. The exchange is process-wide, so a test undoes it.
+  @MainActor
+  struct ChaosToolbarProbeTests {
+    @Test func aToolbarSwapIsLoggedWithWhatItReplaces() {
+      var lines: [String] = []
+      #expect(ChaosToolbarProbe.install { lines.append($0) })
+      let window = NSWindow(
+        contentRect: CGRect(x: -20_000, y: -20_000, width: 300, height: 200),
+        styleMask: [.titled], backing: .buffered, defer: true)
+      window.isReleasedWhenClosed = false
+      window.title = "Probed"
+      let toolbar = NSToolbar(identifier: "probe.toolbar")
+      window.toolbar = toolbar
+      window.toolbar = nil
+      #expect(ChaosToolbarProbe.install { _ in }, "the exchange was not undone")
+      #expect(window.toolbar == nil)
+      window.toolbar = toolbar
+      #expect(window.toolbar === toolbar, "the original setter is back")
+      window.toolbar = nil
+      #expect(
+        lines == [
+          "TOOLBAR depth=1 window=\"Probed\" sheet=false none -> probe.toolbar items=0",
+          "TOOLBAR depth=1 window=\"Probed\" sheet=false probe.toolbar items=0 -> none",
+        ])
+    }
+  }
+
+  /// The controls a walk can act on, found in a window's own accessibility tree.
+  @MainActor
+  struct ChaosTargetsTests {
+    @Test func aFieldIsATextControlAndACensusCountsIt() throws {
+      let window = NSWindow(
+        contentRect: CGRect(x: -20_000, y: -20_000, width: 300, height: 200),
+        styleMask: .titled, backing: .buffered, defer: false)
+      window.isReleasedWhenClosed = false
+      let field = NSTextField(string: "")
+      field.frame = CGRect(x: 0, y: 0, width: 200, height: 24)
+      field.setAccessibilityLabel("Named field")
+      window.contentView?.addSubview(field)
+      ChaosTargets.buildAccessibilityTree()
+      let names = ChaosTargets.textControls(in: window).map(\.name)
+      #expect(names.contains { $0.hasPrefix("AXTextField") }, "\(names)")
+      #expect(!ChaosTargets.census(of: window).isEmpty)
+    }
+
+    @Test func aVisibleWindowsFrameIsReported() {
+      let window = NSWindow(
+        contentRect: CGRect(x: -20_000, y: -20_000, width: 300, height: 200),
+        styleMask: .titled, backing: .buffered, defer: true)
+      window.isReleasedWhenClosed = false
+      window.title = "Never ordered in"
+      #expect(!ChaosWindows.frames().contains("Never ordered in"))
+    }
+  }
+#endif
