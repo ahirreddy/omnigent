@@ -191,6 +191,8 @@ public final class FileEditor {
   private func replaceText(_ new: String) {
     text = new
     textRevision += 1
+    // Typing never updated the stored text, so assigning the saved text may change nothing.
+    updateDirty()
   }
 
   private func raiseConflict(_ raw: String?) {
