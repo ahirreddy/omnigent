@@ -651,6 +651,15 @@ mod tests {
     }
 
     #[test]
+    fn a_browser_with_no_profile_sends_only_its_url() {
+        let request = endpoint()
+            .create_request(Some("https://github.com/login"), None)
+            .unwrap();
+        let body: Value = serde_json::from_slice(request.body.as_deref().unwrap()).unwrap();
+        assert_eq!(body, serde_json::json!({"url": "https://github.com/login"}));
+    }
+
+    #[test]
     fn a_browser_can_open_in_a_named_profile() {
         let request = endpoint().create_request(None, Some("work")).unwrap();
         let body: Value = serde_json::from_slice(request.body.as_deref().unwrap()).unwrap();

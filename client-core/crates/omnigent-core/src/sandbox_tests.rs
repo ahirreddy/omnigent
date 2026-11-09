@@ -279,3 +279,10 @@ fn an_unpushed_branch_falls_back_to_the_repository_branch_the_session_named() {
         forked.notes
     );
 }
+
+#[test]
+fn a_profile_page_with_unreadable_providers_is_refused() {
+    let page =
+        SandboxProfilePage::from_value(&json!({"profiles": [], "managed_providers": [1]}), "modal");
+    assert!(page.is_err());
+}

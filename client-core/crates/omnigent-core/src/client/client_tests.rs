@@ -1328,3 +1328,35 @@ fn a_missing_session_and_an_unreadable_history_page_read_differently() {
         Err(SessionError::MalformedResponse { detail }) if detail.contains("/items")
     ));
 }
+
+#[test]
+fn an_upload_to_a_databricks_workspace_names_its_org() {
+    let transport = upload_stub();
+    transport.ok(
+        "/v1/info",
+        r#"{"single_user":false,"accounts_enabled":false,"login_url":"/auth/login"}"#,
+    );
+    let core = core(transport);
+    let workspace =
+        crate::auth::endpoint::ServerEndpoint::new("https://w.cloud.databricks.com/?o=123")
+            .unwrap();
+    block_on(core.connect(
+        workspace,
+        Some(crate::auth::SecretString::new("workspace-token")),
+        None,
+    ))
+    .unwrap();
+    core.set_live_session("conv_a", true);
+    let item = core.add_attachment("conv_a", notes("plan.txt")).unwrap();
+    block_on(core.upload_attachment("conv_a", item, "boundary-1")).unwrap();
+    let writes = core.transport().writes();
+    let upload = writes.last().unwrap();
+    assert!(
+        upload.headers.iter().any(
+            |header| header.name.eq_ignore_ascii_case("X-Databricks-Org-Id")
+                && header.value == "123"
+        ),
+        "{:?}",
+        upload.headers
+    );
+}

@@ -747,6 +747,13 @@ mod tests {
     const DESKTOP: ManagedDialect = ManagedDialect::Desktop;
 
     #[test]
+    fn a_desktop_entry_may_carry_a_question_mark_in_its_query_but_needs_a_host() {
+        let parsed = parse_server("https://example.com/a?b=c?d", ManagedDialect::Desktop);
+        assert!(parsed.is_ok(), "{parsed:?}");
+        assert!(parse_server("https://:443/", ManagedDialect::Desktop).is_err());
+    }
+
+    #[test]
     fn preferences_report_their_domains_in_order() {
         let preferences = ManagedPreferences::new(
             vec!["first".to_owned(), "second".to_owned()],

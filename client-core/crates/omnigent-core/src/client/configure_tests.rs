@@ -755,3 +755,19 @@ fn approval_mode_needs_an_owner_a_live_unarchived_session_and_a_host() {
             if reason.contains("Reconnect")
     ));
 }
+
+#[test]
+fn an_expired_sign_in_during_the_host_preview_ends_the_read() {
+    let transport = RouteTransport::local();
+    transport.script(&format!(
+        "{CONFIG}HostPreviewFailureDoesNotHideHarnessCatalog.jsonl"
+    ));
+    transport.enqueue("GET", MODEL_OPTIONS, vec![Reply::json(401, "{}")]);
+    let core = live(transport);
+    assert!(block_on(core.configuration_catalog("conv_a")).is_ok());
+    let got = block_on(core.configuration_catalog("conv_a"));
+    assert!(
+        matches!(got, Err(SessionError::Unauthorized { .. })),
+        "{got:?}"
+    );
+}

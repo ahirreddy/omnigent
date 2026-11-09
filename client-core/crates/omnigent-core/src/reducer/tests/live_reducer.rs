@@ -965,3 +965,26 @@ fn every_attachment_kind_has_a_stable_name() {
     assert_eq!(AttachmentKind::File.as_str(), "file");
     assert_eq!(AttachmentKind::Image.as_str(), "image");
 }
+
+#[test]
+fn sections_list_fully_described_tasks_and_bare_resources() {
+    let mut state = crate::reducer::SessionEventState {
+        background_task_count: Some(1),
+        background_tasks: serde_json::from_value(
+            json!([{"id": "t1", "description": "Watch", "command": "tail -f log"}]),
+        )
+        .unwrap(),
+        resources: serde_json::from_value(json!({"r1": {"type": "terminal", "name": "Shell"}}))
+            .unwrap(),
+        ..crate::reducer::SessionEventState::default()
+    };
+    let sections = crate::reducer::sections(&state);
+    let tasks = sections
+        .iter()
+        .find(|section| section.id == "background-tasks")
+        .unwrap();
+    assert_eq!(tasks.details.len(), 1);
+    assert!(format!("{sections:?}").contains("Shell"));
+    state.resources = None;
+    assert_eq!(crate::reducer::sections(&state).len(), 1);
+}

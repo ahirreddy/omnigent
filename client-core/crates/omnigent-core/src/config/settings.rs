@@ -609,6 +609,19 @@ mod tests {
     // MARK: web/ios SettingsStoreTests.swift
 
     #[test]
+    fn a_failed_write_is_reported_when_suppressing_auto_open() {
+        let storage = MemoryStorage::default();
+        let mut store = store(&storage);
+        set(&mut store, "https://omnigent.example.com");
+        *storage.fail_writes.borrow_mut() = true;
+        assert!(
+            store
+                .suppress_auto_opening_oidc_server("https://omnigent.example.com")
+                .is_err()
+        );
+    }
+
+    #[test]
     fn saved_protocol_grants_of_the_wrong_shape_are_refused() {
         let storage = MemoryStorage::default();
         storage
