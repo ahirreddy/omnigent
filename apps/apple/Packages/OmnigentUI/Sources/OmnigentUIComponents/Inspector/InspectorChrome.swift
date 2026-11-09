@@ -55,6 +55,11 @@ private struct InspectorColumn<Panel: View>: ViewModifier {
       content.inspector(isPresented: $isPresented) {
         panel().inspectorColumnWidth(min: 260, ideal: 360, max: 600)
       }
+      #if DEBUG
+        .onChange(of: isPresented) { old, new in
+          LoopProbe.record("right panel shown", "\(old) -> \(new)")
+        }
+      #endif
     #endif
   }
 }

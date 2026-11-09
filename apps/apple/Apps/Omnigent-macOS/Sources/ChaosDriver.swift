@@ -1,7 +1,6 @@
 #if DEBUG
   import AppKit
   import ObjectiveC
-  import OSLog
   import OmnigentDesktop
   import OmnigentUIComponents
 
@@ -17,7 +16,6 @@
   @MainActor
   final class ChaosDriver {
     private static var shared: ChaosDriver?
-    private static let logger = Logger(subsystem: "ai.omnigent.chaos", category: "driver")
     private static let demoSessions = ["demo-notes", "demo-design", "demo-question"]
 
     private var random: SplitMix
@@ -28,7 +26,7 @@
     private let sessions: [String]
     private let serverURL: () -> URL?
     private let router: DesktopRouter
-    private let log: FileHandle?
+    private let log: ChaosLogFile?
     private var step = 0
 
     private init(
@@ -48,7 +46,7 @@
       sessions = listed.isEmpty ? Self.demoSessions : listed
       self.router = router
       self.serverURL = serverURL
-      log = defaults.string(forKey: "OmnigentChaosLog").flatMap(Self.openLog)
+      log = defaults.string(forKey: "OmnigentChaosLog").flatMap(ChaosLogFile.init)
     }
 
     /// Starts the walk when the launch asks for one.
@@ -66,23 +64,8 @@
       Task { await driver.run() }
     }
 
-    private static func openLog(_ path: String) -> FileHandle? {
-      guard FileManager.default.createFile(atPath: path, contents: nil) else {
-        logger.error("Cannot write the chaos log at \(path, privacy: .public)")
-        return nil
-      }
-      return FileHandle(forWritingAtPath: path)
-    }
-
     private func write(_ line: String) {
-      Self.logger.notice("\(line, privacy: .public)")
-      guard let log else { return }
-      do {
-        try log.seekToEnd()
-        try log.write(contentsOf: Data((line + "\n").utf8))
-      } catch {
-        Self.logger.error("Chaos log write failed: \(error.localizedDescription, privacy: .public)")
-      }
+      log?.write(line)
     }
 
     private func run() async {

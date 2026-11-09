@@ -168,8 +168,9 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
     super.applicationDidFinishLaunching(notification)
     #if DEBUG
       let desktop = services.desktop
-      ChaosDriver.startIfRequested(router: desktop.router) {
-        Self.demoServerURL ?? desktop.preferences.defaultServerURL
+      let serverURL = { Self.demoServerURL ?? desktop.preferences.defaultServerURL }
+      if !ChaosScript.startIfRequested(router: desktop.router, serverURL: serverURL) {
+        ChaosDriver.startIfRequested(router: desktop.router, serverURL: serverURL)
       }
     #endif
     #if OMNIGENT_CHROMIUM

@@ -142,6 +142,33 @@
     }
 
     /// A main thread that stops returning to its run loop is reported from another thread.
+    @Test func aScriptIsReadStepByStep() throws {
+      let steps = try ChaosScript.parse(
+        """
+        # A panel toggled twice in a narrow window.
+        session demo-notes
+        resize 923 672
+
+        doubleclick toggle-inspector
+        click toggle-inspector
+        twice right panel
+        wait 1.5
+        """)
+      #expect(
+        steps == [
+          .session("demo-notes"), .resize(width: 923, height: 672),
+          .click("toggle-inspector", count: 2), .click("toggle-inspector", count: 1),
+          .shortcut("right panel", count: 2), .wait(1.5),
+        ])
+    }
+
+    @Test(arguments: ["frobnicate", "wait soon", "resize 900", "resize wide 600", "click"])
+    func aMalformedScriptLineIsNamed(line: String) {
+      #expect(throws: ChaosScript.Malformed(line: line)) {
+        try ChaosScript.parse("session demo-notes\n\(line)\nwait 1")
+      }
+    }
+
     @Test func aStuckMainThreadIsLogged() throws {
       let path = FileManager.default.temporaryDirectory
         .appendingPathComponent("chaos-hang-\(UUID().uuidString).log").path
@@ -153,6 +180,12 @@
       RunLoop.main.run(until: Date().addingTimeInterval(0.1))
       Thread.sleep(forTimeInterval: 1.2)
       #expect(try String(contentsOfFile: path, encoding: .utf8).hasPrefix("HANG main thread"))
+      let sample = "\(path).hang-1.txt"
+      defer { try? FileManager.default.removeItem(atPath: sample) }
+      for _ in 0..<300 where !FileManager.default.fileExists(atPath: sample) {
+        Thread.sleep(forTimeInterval: 0.1)
+      }
+      #expect(try String(contentsOfFile: sample, encoding: .utf8).contains("Call graph"))
     }
   }
 #endif

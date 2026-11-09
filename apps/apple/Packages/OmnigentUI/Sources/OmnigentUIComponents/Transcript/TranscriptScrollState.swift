@@ -171,11 +171,13 @@ extension View {
     @Environment(\.transcriptScrollState) private var scroll
 
     func body(content: Content) -> some View {
-      content.onGeometryChange(for: CGFloat.self) { [id] proxy in
+      content.onGeometryChange(for: CGSize.self) { [id] proxy in
         HangTrace.pass("row \(id)")
-        return proxy.size.height
+        return proxy.size
       } action: { old, new in
-        scroll?.probe("transcript row height", "\(id) \(old) -> \(new)")
+        scroll?.probe(
+          "transcript row height",
+          "\(id) \(old.width)x\(old.height) -> \(new.width)x\(new.height)")
       }
     }
   }

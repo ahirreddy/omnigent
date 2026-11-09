@@ -1,5 +1,6 @@
 #if DEBUG
   import AppKit
+  import OSLog
   import ObjectiveC
 
   /// What ``ChaosDriver`` writes besides its steps: window names and every Objective-C exception.
@@ -188,6 +189,32 @@
         try log.write(contentsOf: Data(text.utf8))
       } catch {
         FileHandle.standardError.write(Data("chaos log write failed: \(error)\n\(text)".utf8))
+      }
+    }
+  }
+  /// The log a chaos run writes each step to, also sent to the unified log.
+  final class ChaosLogFile {
+    private static let logger = Logger(subsystem: "ai.omnigent.chaos", category: "driver")
+    private let file: FileHandle
+
+    /// Starts an empty log at `path`, or is `nil` (and says so) when it cannot be written.
+    init?(path: String) {
+      guard FileManager.default.createFile(atPath: path, contents: nil),
+        let file = FileHandle(forWritingAtPath: path)
+      else {
+        Self.logger.error("Cannot write the chaos log at \(path, privacy: .public)")
+        return nil
+      }
+      self.file = file
+    }
+
+    func write(_ line: String) {
+      Self.logger.notice("\(line, privacy: .public)")
+      do {
+        try file.seekToEnd()
+        try file.write(contentsOf: Data((line + "\n").utf8))
+      } catch {
+        Self.logger.error("Chaos log write failed: \(error.localizedDescription, privacy: .public)")
       }
     }
   }
