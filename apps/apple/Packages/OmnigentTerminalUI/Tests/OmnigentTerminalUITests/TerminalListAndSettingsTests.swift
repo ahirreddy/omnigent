@@ -303,8 +303,40 @@ struct AttachedTerminalOverlayTests {
   }
 }
 
-@Suite("The surface's right click", .serialized)
+@Suite("The surface's edit menu and shortcuts", .serialized)
 struct SurfaceContextMenuTests {
+  @Test("the app's shortcuts pass through a focused terminal; its own chords don't")
+  func appShortcuts() async throws {
+    let surface = try NeverShownSurface()
+    #expect(await surface.ready())
+    surface.window.makeFirstResponder(surface.view)
+    // Letters with their key codes: new tab, new window, close, quit, settings, reload.
+    let appChords: [(String, UInt16)] = [
+      ("t", 17), ("n", 45), ("w", 13), ("q", 12), (",", 43), ("r", 15),
+    ]
+    for (letter, keyCode) in appChords {
+      let event = try Events.key(characters: letter, keyCode: keyCode, flags: .command)
+      #expect(!surface.view.performKeyEquivalent(with: event), "\(letter)")
+    }
+    // Copy with nothing selected does nothing, and must not reach the program as a byte.
+    let copy = try Events.key(characters: "c", keyCode: 8, flags: .command)
+    _ = surface.view.performKeyEquivalent(with: copy)
+    #expect(surface.connection.received.isEmpty)
+
+    let find = try Events.key(characters: "f", keyCode: 3, flags: .command)
+    #expect(surface.view.performKeyEquivalent(with: find))
+    #expect(await eventually { surface.controller.search != nil })
+  }
+
+  @Test("a surface can share a runtime it was given")
+  func givenRuntime() throws {
+    SystemSideEffects.install()
+    let runtime = try GhosttyRuntime.shared()
+    let controller = try TerminalSurfaceController(
+      connection: EchoTerminalConnection(), runtime: runtime)
+    #expect(controller.runtime === runtime)
+  }
+
   @Test("the edit menu's Copy needs a selection and its Paste needs something to paste")
   func editMenu() async throws {
     let surface = try NeverShownSurface()
