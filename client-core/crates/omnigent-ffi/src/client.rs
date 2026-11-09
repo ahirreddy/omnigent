@@ -256,6 +256,7 @@ impl fmt::Debug for ClientCore {
 
 impl Drop for ClientCore {
     fn drop(&mut self) {
+        self.inner.begin_generation();
         post(&self.inner.tx, Msg::Shutdown);
     }
 }
@@ -1415,8 +1416,10 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
-    /// Stops every connection and the engine. The core is unusable afterwards.
+    /// Stops every connection, sign-in and renewal, and the engine. The core is unusable
+    /// afterwards.
     pub fn shutdown(&self) {
+        self.inner.begin_generation();
         self.inner.post(Msg::Shutdown);
     }
 }

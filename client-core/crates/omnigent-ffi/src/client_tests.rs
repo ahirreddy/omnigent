@@ -536,6 +536,31 @@ fn a_disconnect_cancels_the_renewal_and_a_racing_one_is_dropped() {
     assert_eq!(last_phase(&harness), ConnectionPhase::Disconnected);
 }
 
+/// A closed window's core must not go on refreshing a grant the next window shares.
+#[test]
+fn a_shut_down_core_stops_renewing() {
+    let mut harness = oidc_server();
+    sign_in_oidc(&mut harness);
+    harness.core.shutdown();
+    harness.pump();
+    let refreshes = harness.http.count("/oauth/token");
+    harness.advance(86_400_000);
+    assert_eq!(harness.http.count("/oauth/token"), refreshes);
+}
+
+#[test]
+fn a_dropped_core_stops_renewing_and_is_released() {
+    let mut harness = oidc_server();
+    sign_in_oidc(&mut harness);
+    let inner = Arc::downgrade(&harness.core.inner);
+    harness.core = ClientCore::new_demo(harness.clock.clone(), harness.scheduler.clone()).unwrap();
+    harness.pump();
+    let refreshes = harness.http.count("/oauth/token");
+    harness.advance(86_400_000);
+    assert_eq!(harness.http.count("/oauth/token"), refreshes);
+    assert_eq!(inner.strong_count(), 0, "nothing keeps the old core alive");
+}
+
 #[test]
 fn a_401_that_races_the_renewal_reconnects_with_the_new_token() {
     let mut harness = oidc_server();
