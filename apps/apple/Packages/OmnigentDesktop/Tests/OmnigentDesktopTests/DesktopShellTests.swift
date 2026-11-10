@@ -77,6 +77,58 @@
       #expect(fixture.desktop.registry.pendingRoute(for: window.instance) == nil)
     }
 
+    /// A window's root that passes its selection on without reading it, and counts its renders.
+    private struct ShownContent: View {
+      let id: ServerWindowID
+      let desktop: DesktopController
+      let shown: ShownWindow
+      @State private var selection: String?
+
+      var body: some View {
+        shown.rootRenders += 1
+        return Color.clear
+          .serverWindow(
+            .constant(id), desktop: desktop, selection: $selection,
+            status: { viewed in
+              ServerWindowStatus(isReady: true, viewedSessionID: viewed, unreadCount: shown.unread)
+            },
+            onRoute: { _ in }
+          )
+          .onAppear { shown.select = { selection = $0 } }
+      }
+    }
+
+    /// What a test changes in a ``ShownContent`` window, and what the window counted.
+    @Observable
+    final class ShownWindow {
+      var unread = 0
+      @ObservationIgnored var rootRenders = 0
+      @ObservationIgnored var select: (String?) -> Void = { _ in }
+    }
+
+    @Test("a session or a badge that changes is reported without rendering the window's root")
+    func reportsWithoutTheRoot() async throws {
+      let fixture = try DesktopFixture()
+      defer { fixture.cleanUp() }
+      let window = ServerWindowID.newWindow(serverURL: try url("https://a.test"))
+      let registry = fixture.desktop.registry
+      let shown = ShownWindow()
+      let screen = OffscreenWindow(
+        ShownContent(id: window, desktop: fixture.desktop, shown: shown), width: 200, height: 100)
+      defer { screen.close() }
+      await flush(screen)
+      let rendersAtRest = shown.rootRenders
+      #expect(registry.entry(window.instance)?.viewedSessionID == nil)
+
+      shown.select("s1")
+      await flush(screen)
+      #expect(registry.entry(window.instance)?.viewedSessionID == "s1")
+      shown.unread = 4
+      await flush(screen)
+      #expect(registry.entry(window.instance)?.unreadCount == 4)
+      #expect(shown.rootRenders == rendersAtRest, "the root read neither")
+    }
+
     @Test("the frame autosave name is taken once, and a second window lets it be")
     func frameAutosave() throws {
       let name = "OmnigentTest-\(UUID().uuidString)"
