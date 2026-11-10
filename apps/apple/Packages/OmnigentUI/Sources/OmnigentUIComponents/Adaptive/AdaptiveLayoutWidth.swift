@@ -45,9 +45,7 @@ private struct AdaptiveLayoutWidth: ViewModifier {
         .onGeometryChange(for: LayoutWidth.self) { [measured, compactBelow] proxy in
           LayoutWidth.measuring(proxy.size.width, compactBelow: compactBelow, previous: measured)
         } action: { width in
-          #if DEBUG
-            LoopProbe.record("layout width", "\(measured) -> \(width)")
-          #endif
+          LoopProbe.record("layout width", "\(measured) -> \(width)")
           measured = width
         }
     #endif

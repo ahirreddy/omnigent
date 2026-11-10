@@ -5,11 +5,18 @@ import os
 
 /// One folded segment with what its row needs: message decorations and the turn's duration.
 nonisolated struct SegmentEntry: Hashable, Sendable, Identifiable {
+  /// The segment's id, kept: the lazy stack reads every row's on each measuring pass.
+  let id: String
   let segment: TurnSegment
   let decorations: [String: MessageDecoration]
   let duration: TimeInterval?
 
-  var id: String { segment.id }
+  init(segment: TurnSegment, decorations: [String: MessageDecoration], duration: TimeInterval?) {
+    id = segment.id
+    self.segment = segment
+    self.decorations = decorations
+    self.duration = duration
+  }
 }
 
 /// One CLI block with its message decorations.

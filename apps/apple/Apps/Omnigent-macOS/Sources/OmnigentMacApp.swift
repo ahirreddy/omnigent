@@ -237,7 +237,7 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
   ) {
     TestHost.LaunchWork(
       startLocalServer: { super.applicationDidFinishLaunching(notification) },
-      startChaos: startChaosIfRequested,
+      startChaos: startDiagnostics,
       startUpdater: { [self] in startUpdater(startUpdates) }
     ).run(isTestHost: isTestHost)
   }
@@ -251,6 +251,12 @@ final class OmnigentMacAppDelegate: OmnigentDesktopAppDelegate {
     #endif
   }
   // coverage:on
+
+  /// Watches the main thread for stalls, in every build, before any chaos run.
+  private func startDiagnostics() {
+    MainThreadWatch.shared.start()
+    startChaosIfRequested()
+  }
 
   private func startChaosIfRequested() {
     #if DEBUG

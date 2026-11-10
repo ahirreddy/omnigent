@@ -71,6 +71,20 @@ struct WorkedFold: View {
   }
 }
 
+struct TranscriptItemView: View {
+  let item: TranscriptItem
+  let decorations: [String: MessageDecoration]
+
+  var body: some View {
+    switch item {
+    case .message(let row):
+      MessageRowView(row: row, decoration: decorations[row.id] ?? MessageDecoration())
+    case .tools(_, let entries): ToolGroupView(entries: entries)
+    case .activity(let row): ActivityRowView(row: row)
+    }
+  }
+}
+
 /// The live turn's one working line: typing dots and "Working · 12s", or the blocked-state text.
 /// Otto stays in empty states; a mascot is not a spinner.
 struct WorkingIndicator: View {
