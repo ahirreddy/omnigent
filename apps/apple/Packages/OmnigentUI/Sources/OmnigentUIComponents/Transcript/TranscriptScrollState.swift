@@ -5,25 +5,39 @@ import SwiftUI
 /// transcript) update them without re-rendering it. Not observed.
 @MainActor
 final class TranscriptScrollState {
+  /// The limits a new transcript's layout scrolls get; a test lifts them to watch layout
+  /// unchecked.
+  static var layoutScrollLimits = LayoutScrollBudget.Limits()
+
   var follow = TranscriptFollow()
   /// Scrolls a row to an anchor; the transcript sets it to its scroll view's proxy.
   var scrollToRow: (String, UnitPoint) -> Void = { _, _ in }
   private var followedHeights = FollowedHeights()
+  private var budget = LayoutScrollBudget(TranscriptScrollState.layoutScrollLimits)
+  /// A block on the main run loop will end the budget's turn.
+  private var awaitsTurnEnd = false
+  /// A timer will look whether layout has come to rest.
+  private var awaitsRestCheck = false
   /// The row under the viewport's middle at the current width, and at the width before it.
   private var anchor: TranscriptReadingAnchor?
   private var anchorBefore: TranscriptReadingAnchor?
   /// A restored anchor waiting for its row's height at the new width.
   private var pending: (anchor: TranscriptReadingAnchor, width: CGFloat)?
+  /// A short number for this transcript in loop reports.
+  private(set) lazy var probeTag = Int(UInt(bitPattern: ObjectIdentifier(self).hashValue) % 10_000)
 
   /// Records the row under the viewport's middle, and finishes a pending restore once that
   /// row reports its height at the new width.
   func record(_ sample: TranscriptReadingAnchor) {
+    probe("transcript reading anchor", "\(sample)")
     if let anchor, anchor.viewportWidth != sample.viewportWidth { anchorBefore = anchor }
     anchor = sample
     guard let pending, pending.anchor.id == sample.id, pending.width == sample.viewportWidth
     else { return }
     self.pending = nil
-    scrollToRow(sample.id, pending.anchor.unitPoint(in: sample))
+    if allowsScroll("restore", keepsBottom: false) {
+      scrollToRow(sample.id, pending.anchor.unitPoint(in: sample))
+    }
   }
 
   /// The row that was under the viewport's middle while it was `width` wide.
@@ -34,11 +48,9 @@ final class TranscriptScrollState {
   /// After a width change, puts what was at the viewport's middle back there: at once with
   /// the row's old proportions, then exactly when the row reports its new height.
   func restoreReading(from oldWidth: CGFloat, to newWidth: CGFloat) {
-    #if DEBUG
-      LoopProbe.record(
-        "transcript width", "\(oldWidth) -> \(newWidth), anchor \(String(describing: anchor))")
-    #endif
-    guard let before = readingAnchor(atWidth: oldWidth) else { return }
+    probe("transcript width", "\(oldWidth) -> \(newWidth), anchor \(String(describing: anchor))")
+    guard let before = readingAnchor(atWidth: oldWidth), allowsScroll("width", keepsBottom: false)
+    else { return }
     if let now = anchor, now.id == before.id, now.viewportWidth == newWidth {
       scrollToRow(before.id, before.unitPoint(in: now))
     } else {
@@ -52,22 +64,110 @@ final class TranscriptScrollState {
     followedHeights.follows(height, from: start)
   }
 
-  /// Records a scroll geometry change for ``LoopProbe``, in Debug builds, counted for this
-  /// transcript alone so several windows changing at once do not add up to a loop.
-  func probe(_ name: String, _ detail: @autoclosure () -> String) {
-    #if DEBUG
-      LoopProbe.record("\(name) \(probeTag)", detail())
-    #endif
+  /// New output arrived or rows changed, which pays for the scrolls its layout asks for.
+  func contentChanged() {
+    probe("transcript rows changed", "\(budget)")
+    budget.contentChanged()
   }
 
-  /// A short tag for this transcript in loop reports.
-  var probeTag: String { String(UInt(bitPattern: ObjectIdentifier(self).hashValue) % 10_000) }
+  /// The reader scrolled, jumped or opened another session.
+  func readerMoved() {
+    budget.readerMoved()
+  }
+
+  /// The reader jumped to a row. An animated jump lays out the rows on the way at every
+  /// frame, so a stall that follows one should name it.
+  func jumped(to target: String) {
+    probe("transcript jump", target)
+    readerMoved()
+  }
+
+  /// The first row changed, as it does when older rows land above the ones in view.
+  func firstRowChanged() {
+    probe("transcript first row", "\(budget)")
+  }
+
+  /// The viewport's width changed.
+  func widthChanged(to width: CGFloat) {
+    budget.viewportChanged(.width, to: width)
+  }
+
+  /// The content's height changed.
+  /// - Returns: Whether a following transcript scrolls to the bottom for it.
+  func contentHeightChanged(_ height: CGFloat, from start: CGFloat) -> Bool {
+    budget.layoutChanged()
+    return height > start && follow.layoutGrew() && follows(height, from: start)
+      && allowsScroll("content height", keepsBottom: true)
+  }
+
+  /// The dock's inset changed.
+  /// - Returns: Whether a following transcript scrolls to the bottom, its newest rows covered.
+  func dockChanged(_ inset: CGFloat, from old: CGFloat) -> Bool {
+    budget.viewportChanged(.dock, to: inset)
+    return inset > old && follow.layoutGrew() && allowsScroll("dock inset", keepsBottom: true)
+  }
+
+  /// Whether a scroll that layout asked for may run (``LayoutScrollBudget``).
+  /// - Parameters:
+  ///   - reason: What asked, for loop reports.
+  ///   - keepsBottom: The scroll keeps a reader at the bottom.
+  /// - Returns: Whether to scroll.
+  func allowsScroll(_ reason: String, keepsBottom: Bool) -> Bool {
+    if !awaitsTurnEnd {
+      awaitsTurnEnd = true
+      MainRunLoop.perform { [weak self] in
+        MainActor.assumeIsolated { self?.turnEnded() }
+      }
+    }
+    let allowed = budget.spend(keepsBottom: keepsBottom)
+    if allowed {
+      probe("transcript layout scroll", "\(reason), \(budget)")
+    } else {
+      probe("transcript scroll refused", "\(reason), \(budget)")
+      checkForRest()
+    }
+    return allowed
+  }
+
+  /// A scroll to the bottom refused with the budget spent runs once layout has been still
+  /// for the budget's quiet time, so a long run of late-sizing rows still ends at the bottom.
+  private func checkForRest() {
+    guard budget.awaitsRest, !awaitsRestCheck else { return }
+    awaitsRestCheck = true
+    MainRunLoop.perform(after: budget.untilRest() + budget.limits.quiet * 0.1) { [weak self] in
+      MainActor.assumeIsolated { self?.restChecked() }
+    }
+  }
+
+  private func restChecked() {
+    awaitsRestCheck = false
+    guard budget.rested() else {
+      checkForRest()
+      return
+    }
+    guard follow.layoutGrew(), allowsScroll("rest", keepsBottom: true) else { return }
+    scrollToRow(TranscriptView.bottomID, .bottom)
+  }
+
+  /// The main thread is back at its run loop: a scroll to the bottom refused only for the
+  /// turn that ended runs now, unless the reader took over.
+  private func turnEnded() {
+    awaitsTurnEnd = false
+    guard budget.turnEnded(), !follow.isUserScrolling, allowsScroll("turn end", keepsBottom: true)
+    else { return }
+    scrollToRow(TranscriptView.bottomID, .bottom)
+  }
+
+  /// Records a scroll geometry change for ``LoopProbe``, counted for this transcript alone so
+  /// several windows changing at once do not add up to a loop. `detail` must hold nothing a
+  /// conversation says: a loop's line reaches the unified log.
+  func probe(_ name: String, _ detail: @autoclosure () -> String) {
+    LoopProbe.record(name, tag: probeTag, detail())
+  }
 
   /// A resize that pins the bottom drops a pending restore.
   func cancelRestore() {
-    #if DEBUG
-      LoopProbe.record("transcript keeps bottom", "anchor \(String(describing: anchor))")
-    #endif
+    probe("transcript keeps bottom", "anchor \(String(describing: anchor))")
     pending = nil
   }
 }
