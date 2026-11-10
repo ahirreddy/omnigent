@@ -68,10 +68,14 @@ import Testing
       notes.scrollViews = screen.allViews.compactMap { $0 as? NSScrollView }
     }
 
-    /// How many of the noted scroll views the window no longer holds: it built them again.
-    var rebuiltScrollViews: Int {
+    /// The noted scroll views the window no longer holds, by what each showed: it built them
+    /// again.
+    var rebuiltScrollViews: [String] {
       let held = Set(screen.allViews.map(ObjectIdentifier.init))
-      return notes.scrollViews.count { !held.contains(ObjectIdentifier($0)) }
+      return notes.scrollViews.filter { !held.contains(ObjectIdentifier($0)) }.map { dropped in
+        let shown = dropped.documentView.map { "\(type(of: $0))" } ?? "nothing"
+        return "\(type(of: dropped)) of \(shown)"
+      }
     }
 
     /// Notes the widths before a step that changes them.

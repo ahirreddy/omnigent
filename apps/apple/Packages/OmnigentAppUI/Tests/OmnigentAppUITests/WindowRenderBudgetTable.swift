@@ -194,7 +194,8 @@ import Testing
           let text = try window.screen.shownText()
           #expect(text.contains("Alpha reply"), "the chat that was kept behind: \(text)")
           #expect(window.notes.scrollViews.count >= 3, "three chats had scroll views to keep")
-          #expect(window.rebuiltScrollViews == 0, "the new tab took no chat's place")
+          let rebuilt = window.rebuiltScrollViews
+          #expect(rebuilt.isEmpty, "the new tab took no chat's place: \(rebuilt)")
         }),
       WindowInteraction(
         name: "a session switch",

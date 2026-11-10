@@ -18,14 +18,18 @@ import Testing
       WindowInteraction(
         name: "a page without a session",
         budget: toPage,
-        prepare: { $0.noteScrollViews() },
-        perform: { $0.selection.page = .usage },
+        perform: {
+          $0.noteScrollViews()
+          $0.selection.page = .usage
+        },
         verify: { try pageIsShown(.usage, in: $0) }),
       WindowInteraction(
         name: "a page chosen in the sidebar",
         budget: toPage.merging(["inbox": 1]) { $1 },
-        prepare: { $0.noteScrollViews() },
-        perform: { try $0.chooseSidebarRow("Inbox") },
+        perform: {
+          $0.noteScrollViews()
+          try $0.chooseSidebarRow("Inbox")
+        },
         verify: { window in
           try pageIsShown(.inbox, in: window)
           let text = try window.screen.shownText()
@@ -34,8 +38,10 @@ import Testing
       WindowInteraction(
         name: "a page the tab model shows by itself",
         budget: toPage.merging(["composer": 1]) { $1 },
-        prepare: { $0.noteScrollViews() },
-        perform: { $0.session.tabs.show(.usage) },
+        perform: {
+          $0.noteScrollViews()
+          $0.session.tabs.show(.usage)
+        },
         verify: { try pageIsShown(.usage, in: $0) }),
       WindowInteraction(
         name: "back from a page without a session",
@@ -95,7 +101,8 @@ import Testing
       let toolbar = try window.screen.toolbarText()
       #expect(!toolbar.contains("Alpha"), "no strip over a page: \(toolbar)")
       #expect(!window.notes.scrollViews.isEmpty, "the chats had scroll views to keep")
-      #expect(window.rebuiltScrollViews == 0, "the chats stay built under the page")
+      let rebuilt = window.rebuiltScrollViews
+      #expect(rebuilt.isEmpty, "the chats stay built under the page, not \(rebuilt)")
     }
 
     private static let sessionIsBack: Check = { window in
@@ -105,7 +112,8 @@ import Testing
       #expect(toolbar.contains("Alpha"), "the strip's tab is back: \(toolbar)")
       let text = try window.screen.shownText()
       #expect(text.contains("Alpha reply"), "the chat that was kept behind: \(text)")
-      #expect(window.rebuiltScrollViews == 0, "the same chat, not one built again")
+      let rebuilt = window.rebuiltScrollViews
+      #expect(rebuilt.isEmpty, "the same chat, not one built again: \(rebuilt)")
     }
   }
 #endif
