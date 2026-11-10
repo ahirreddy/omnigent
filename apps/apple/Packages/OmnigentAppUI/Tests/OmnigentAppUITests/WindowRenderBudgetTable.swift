@@ -170,12 +170,16 @@ import Testing
       WindowInteraction(
         name: "a session chosen in the sidebar",
         budget: [
-          "composer": 3, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
-          "sidebar": 1, "strip": 3, "tab": 2, "tab controls": 2, "transcript": 2, "window": 1,
+          "composer": 4, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
+          "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 2, "transcript": 3, "window": 1,
         ],
-        perform: { $0.choose(.session(BudgetWindow.other)) },
+        perform: { try $0.choose(session: BudgetWindow.other) },
         verify: { window in
+          #expect(window.selection.page == .session(BudgetWindow.other), "the host's selection")
+          #expect(window.session.tabs.page == .session(BudgetWindow.other), "the tab model's")
           #expect(window.title == "Gamma")
+          let toolbar = try window.screen.toolbarText()
+          #expect(toolbar.contains("Gamma"), "the strip's tab: \(toolbar)")
           let text = try await window.text(afterReply: "Gamma reply", in: BudgetWindow.other)
           #expect(text.contains("Gamma reply"), "the chat that opened after its tab: \(text)")
         }),

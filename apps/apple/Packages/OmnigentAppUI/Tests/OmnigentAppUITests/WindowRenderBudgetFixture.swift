@@ -132,11 +132,22 @@ import Testing
       for composer in composers { composer.text = "" }
     }
 
-    /// Shows `page` the way a sidebar row's click does: the host's selection and the window's
-    /// page in one step.
-    func choose(_ page: SidebarDestination) {
-      selection.page = page
-      session.tabs.show(page)
+    /// Selects the sidebar row that draws `title` in the sidebar's own list, as a click on it
+    /// does: the list writes the selection it was given.
+    func chooseSidebarRow(_ title: String) throws {
+      let list = try #require(screen.allViews.lazy.compactMap { $0 as? NSTableView }.first)
+      let row = try (0..<list.numberOfRows).first { row in
+        guard let view = list.rowView(atRow: row, makeIfNecessary: false) else { return false }
+        return try screen.shownText(under: view).contains(title)
+      }
+      list.selectRowIndexes(
+        IndexSet(integer: try #require(row, "no sidebar row \(title)")),
+        byExtendingSelection: false)
+    }
+
+    /// Chooses `sessionID`'s row in the sidebar.
+    func choose(session sessionID: String) throws {
+      try chooseSidebarRow(Self.titles[sessionID, default: sessionID])
     }
 
     /// Shows the other sessions in turn until the first one shown is no longer kept open.

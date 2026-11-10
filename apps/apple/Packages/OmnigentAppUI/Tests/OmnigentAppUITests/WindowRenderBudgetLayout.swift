@@ -177,7 +177,7 @@ import Testing
         name: "a preference no view reads, over the new session page",
         budget: [:],
         prepare: { window in
-          window.choose(.newSession)
+          try window.chooseSidebarRow("New session")
           window.screen.settle(0.3)
         },
         perform: { $0.store(true, forKey: unreadKey) },
