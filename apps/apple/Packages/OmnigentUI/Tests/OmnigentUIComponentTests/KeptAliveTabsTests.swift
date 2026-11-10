@@ -56,6 +56,23 @@
       #expect(sizes.byID["hidden"] == column)
     }
 
+    /// A new window's column is at the placeholder first, where nothing has to be built twice.
+    @Test(arguments: [
+      UnmeasuredMinimum.column, CGSize(width: 800, height: UnmeasuredMinimum.column.height),
+    ])
+    func tabsAreBuiltOnceTheColumnHasItsSize(placeholder: CGSize) {
+      _ = NSApplication.shared
+      let sizes = Sizes()
+      let column = CGSize(width: 800, height: 600)
+      let view = NSHostingView(rootView: tabs(["hidden", "shown"], sizes: sizes))
+      layOut(view, at: placeholder)
+      #expect(sizes.byID.isEmpty)
+      layOut(view, at: column)
+
+      #expect(sizes.byID["shown"] == column)
+      #expect(sizes.byID["hidden"] == column)
+    }
+
     /// A new window's first passes can be smaller than any size the window keeps.
     @Test func aTabMountedHiddenFollowsTheColumnUntilItShows() {
       _ = NSApplication.shared
