@@ -54,7 +54,7 @@ enum TabAdapter {
     case .chat, .harness, .agentBrowser, .sideChat, .sideChatSession:
       sessionItem(&item, tab: tab, session: session)
     case .terminal(let sessionID, let terminalID):
-      let store = session.terminalStores[sessionID]
+      let store = session.terminals(of: sessionID)
       let row = store?.terminals.rows.first { $0.terminal.id == terminalID }
       item.title =
         store?.controllers[terminalID]?.title ?? row?.terminal.displayLabel ?? tab.title
@@ -130,7 +130,7 @@ enum TabAdapter {
       item.status = attention
       item.canDuplicate = false
     case .sideChat(_, let rowID):
-      let activity = connection.conversations[id]?.watchRow(rowID).row?.activity
+      let activity = connection.openConversation(id)?.watchRow(rowID).row?.activity
       item.title =
         activity.map { SideChatTabContainer.detail("question", in: $0) ?? $0.summary }
         ?? tab.title ?? "Side Chat"
@@ -139,7 +139,7 @@ enum TabAdapter {
       item.title = TabKind.sideChat.label
       item.subtitle = summary?.title
       item.canDuplicate = false
-      if let childID, connection.conversations[childID]?.isRunning == true {
+      if let childID, connection.openConversation(childID)?.isRunning == true {
         item.status = .running
       }
     default:
@@ -157,7 +157,7 @@ enum TabAdapter {
   static func statusDetails(_ session: ServerSession) -> TabStatusDetails {
     TabStatusDetails(owner: session) { tabID in
       guard case .chat(let id) = session.tabs.tab(tabID)?.tab.content,
-        let conversation = session.connection.conversations[id]
+        let conversation = session.connection.openConversation(id)
       else { return nil }
       let summary = session.connection.sessionList.sessionWithoutActivity(id)
       return ConversationAdapter.statusLine(conversation, summary: summary).text

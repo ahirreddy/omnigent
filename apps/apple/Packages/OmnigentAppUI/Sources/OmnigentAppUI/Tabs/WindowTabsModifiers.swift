@@ -53,6 +53,17 @@ struct ViewedSessionReport: ViewModifier {
   }
 }
 
+/// Hands the host a page the model changed (a removed session, a tab opened in another session):
+/// showing another session then renders this and not the window.
+struct ShownPageReport: ViewModifier {
+  let tabs: SessionTabGroups
+  let changed: (SidebarDestination?) -> Void
+
+  func body(content: Content) -> some View {
+    content.onChange(of: tabs.page) { _, page in changed(page) }
+  }
+}
+
 extension SessionTabGroups {
   /// The session whose chat is on screen, for notification suppression.
   var viewedSessionID: String? {

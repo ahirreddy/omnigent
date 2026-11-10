@@ -76,6 +76,55 @@ struct ViewedSessionReportTests {
     #expect(inbox == [Report(sessionID: nil, isFocused: false)], "a page without a chat")
   }
 
+  final class Pages {
+    var all: [SidebarDestination?] = []
+  }
+
+  struct PageHarness: View {
+    let tabs: SessionTabGroups
+    let focus: WindowFocus
+    let pages: Pages
+
+    var body: some View {
+      Text("window \(focus.unrelated)")
+        .modifier(ShownPageReport(tabs: tabs) { pages.all.append($0) })
+    }
+  }
+
+  @Test("A page the model changes is handed over once; the window's other renders hand nothing")
+  func handsOverEachPage() {
+    let tabs = SessionTabGroups()
+    tabs.show(.session("a"))
+    let focus = WindowFocus()
+    let pages = Pages()
+    let screen = OffscreenWindow(
+      PageHarness(tabs: tabs, focus: focus, pages: pages), width: 300, height: 200)
+    defer { screen.close() }
+    screen.settle(0.1)
+    #expect(pages.all.isEmpty, "the page the window opened on is the host's already")
+
+    /// The pages `change` handed over.
+    func handed(_ change: () -> Void) -> [SidebarDestination?] {
+      pages.all = []
+      change()
+      screen.settle(0.2)
+      return pages.all
+    }
+    let opened = handed { tabs.open(.terminal(sessionID: "b", terminalID: "t")) }
+    #expect(opened == [.session("b")], "a tab opened in another session shows that session")
+    let chat = tabs.current?.tabs.first?.id ?? ""
+    let selected = handed { tabs.current?.select(chat) }
+    #expect(selected.isEmpty, "a tab of the same session")
+    let unrelated = handed { focus.unrelated += 1 }
+    #expect(unrelated.isEmpty, "the window rendered for something else")
+    let removed = handed { tabs.removeSessions(["b"]) }
+    #expect(removed == [.session("a")], "the session shown before the removed one")
+    let inbox = handed { tabs.show(.inbox) }
+    #expect(inbox == [.inbox])
+    let reset = handed { tabs.reset() }
+    #expect(reset == [nil])
+  }
+
   #if DEBUG
     @Test("Coming back to a chat's tab in the mounted window reads its session")
     func tabSwitchReadsTheSession() async throws {

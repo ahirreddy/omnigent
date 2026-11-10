@@ -89,7 +89,7 @@ import Testing
     }
 
     /// A question and its reply in `sessionID`'s transcript.
-    private func feed(_ sessionID: String, reply: String, streaming: Bool) throws {
+    func feed(_ sessionID: String, reply: String, streaming: Bool) throws {
       let store = try conversation(sessionID)
       let rows = [
         ConversationFixtures.userRow("u1", text: "Question"),
@@ -123,6 +123,43 @@ import Testing
       }
       try #require(!composers[0].text.isEmpty, "no editor reached the shown chat's composer")
       for composer in composers { composer.text = "" }
+    }
+
+    /// Shows `page` the way a sidebar row's click does: the host's selection and the window's
+    /// page in one step.
+    func choose(_ page: SidebarDestination) {
+      selection.page = page
+      session.tabs.show(page)
+    }
+
+    /// Shows the other sessions in turn until the first one shown is no longer kept open.
+    func leaveUntilClosed() throws {
+      for sessionID in [Self.other, Self.another, Self.hidden] {
+        selection.page = .session(sessionID)
+        screen.settle(0.3)
+      }
+      try #require(session.connection.conversations[Self.shown] == nil, "still open")
+    }
+
+    /// Replaces the reply `sessionID`'s transcript ends on, as its next delta does.
+    func stream(_ text: String, in sessionID: String, streaming: Bool = true) throws {
+      let store = try conversation(sessionID)
+      let update = RowOp.update(
+        index: Self.streamIndex, row: Self.reply(text, streaming: streaming))
+      store.apply(
+        revision: store.revision + 1,
+        change: TranscriptChange(rows: [update], header: nil, sections: nil))
+    }
+
+    /// What the window draws once `reply` arrives in `sessionID`'s transcript.
+    func text(afterReply reply: String, in sessionID: String) async throws -> [String] {
+      if try conversation(sessionID).rows.isEmpty {
+        try feed(sessionID, reply: reply, streaming: false)
+      } else {
+        try stream(reply, in: sessionID, streaming: false)
+      }
+      try await pause(screen, .milliseconds(400))
+      return try screen.shownText()
     }
 
     /// Changes `sessionID`'s row the way the server's next list event would.

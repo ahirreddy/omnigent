@@ -35,7 +35,7 @@ struct CloseShellConfirmation: ViewModifier {
 
   func closeShell() {
     guard let tabs, let id = tabs.closingShell, let shell = tabs.closeShell(id),
-      let terminals = session.terminalStores[shell.sessionID]?.terminals
+      let terminals = session.terminals(of: shell.sessionID)?.terminals
     else { return }
     Task {
       await terminals.delete(shell.terminalID)

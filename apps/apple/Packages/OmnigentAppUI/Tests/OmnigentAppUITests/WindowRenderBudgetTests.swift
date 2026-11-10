@@ -25,7 +25,7 @@ import Testing
     /// Does it, the way the server's event or the user's input reaches the window.
     let perform: Step
     /// Reads what it changed from what the window draws.
-    let verify: Step
+    let verify: @MainActor @Sendable (BudgetWindow) async throws -> Void
 
     var testDescription: String { name }
   }
@@ -55,7 +55,7 @@ import Testing
       let over = renders.filter { $0.value > interaction.budget[$0.key, default: 0] }
       #expect(over.isEmpty, "over budget: \(over.sorted { $0.key < $1.key }) of \(renders)")
       try await pause(window.screen, .milliseconds(200))
-      try interaction.verify(window)
+      try await interaction.verify(window)
     }
 
     @Test("Every interaction has a name of its own")

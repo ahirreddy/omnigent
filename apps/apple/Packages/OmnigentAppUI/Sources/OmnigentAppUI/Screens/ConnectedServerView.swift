@@ -115,7 +115,7 @@ public struct ConnectedServerView: View {
     .modifier(NewTabOptionsLoading(session: session))
     .modifier(CloseShellConfirmation(session: session) { tabFailure = $0 })
     .onChange(of: selection) { _, current in session.tabs.show(current) }
-    .onChange(of: session.tabs.page) { _, page in pageChanged(page) }
+    .modifier(ShownPageReport(tabs: session.tabs) { pageChanged($0) })
     .modifier(viewedSessionReport)
     .modifier(BusyTabsReport(tabs: tabs))
     .task(id: connection.connectedServer?.baseUrl) {
@@ -142,9 +142,15 @@ public struct ConnectedServerView: View {
     }
   }
 
-  /// The strip's tabs for the shown session, read when the strip asks for them.
+  /// The strip's tabs for the shown session, read when the strip asks for them; a session-less
+  /// page has no strip.
   private func strip(of tabs: WindowTabs) -> (() -> TabStripContent)? {
-    tabs.store.map { store in { (tabs.state(store), renamable(tabs.actions(store))) } }
+    guard session.tabs.showsSessionTabs else { return nil }
+    return {
+      tabs.store.map { (tabs.state($0), renamable(tabs.actions($0))) } ?? (
+        TabsState(), TabActions()
+      )
+    }
   }
 
   /// A chat tab's menu renames its session, as the session menu and Option-Command-R do.
@@ -196,11 +202,11 @@ public struct ConnectedServerView: View {
   ) -> some View {
     switch destination {
     case .session(let id):
-      if let conversation = connection.conversations[id] {
+      if let conversation = connection.openConversation(id) {
         ConversationContainer(
           conversation: conversation, summary: connection.sessionList.sessionWithoutActivity(id),
-          terminals: session.terminalStores[id], workspace: session.workspaces[id],
-          panel: session.panels[id],
+          terminals: session.terminals(of: id), workspace: session.workspace(of: id),
+          panel: session.panel(of: id),
           changedFilesRevision: connection.changedFilesRevision,
           navigation: navigation(from: id),
           opener: linkOpener(in: id),

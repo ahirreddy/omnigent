@@ -168,7 +168,7 @@ struct WindowTabs {
   func newTabActions(replacing id: String?) -> NewTabPageActions {
     var actions = NewTabPageActions()
     guard let current = groups.currentSessionID else { return actions }
-    if let conversation = session.connection.conversations[current],
+    if let conversation = session.connection.openConversation(current),
       SessionToolsAdapter.offersSideChat(conversation)
     {
       actions.newSideChat = { startSideChat(conversation, in: current, replacing: id) }
@@ -290,7 +290,7 @@ struct WindowTabs {
     case .terminal:
       open(.chat(sessionID: sessionID))
     default:
-      let terminals = session.terminalStores[sessionID]?.terminals
+      let terminals = session.terminals(of: sessionID)?.terminals
       if case .ready = terminals?.harness {
         groups.setViewMode(
           groups.viewMode(sessionID) == .terminal ? .chat : .terminal, for: sessionID)
@@ -307,7 +307,7 @@ struct WindowTabs {
   /// conventional "Shell" while the declared names are unknown.
   func newTerminal(in sessionID: String, named name: String?, replacing id: String?) async {
     session.open(sessionID)
-    guard let terminals = session.terminalStores[sessionID]?.terminals else {
+    guard let terminals = session.terminals(of: sessionID)?.terminals else {
       fail("The session's terminals are not available.")
       return
     }

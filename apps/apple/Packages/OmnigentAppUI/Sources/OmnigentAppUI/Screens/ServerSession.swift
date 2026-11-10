@@ -89,16 +89,18 @@ public final class ServerSession {
     // `connection.issues`, which the screen shows.
     guard connection.conversation(sessionID) != nil else { return }
     openSessionIDs.insert(sessionID)
-    if terminalStores[sessionID] == nil, let terminals = connection.terminals(sessionID) {
-      terminalStores[sessionID] = TerminalStore(terminals: terminals)
+    changingStores(of: sessionID) {
+      if terminalStores[sessionID] == nil, let terminals = connection.terminals(sessionID) {
+        terminalStores[sessionID] = TerminalStore(terminals: terminals)
+      }
+      if workspaces[sessionID] == nil, let workspace = connection.workspace(sessionID) {
+        workspaces[sessionID] = WorkspaceBrowserModel(source: workspace)
+      }
+      if let pending = pendingFiles.removeValue(forKey: sessionID) {
+        openFile(pending.path, at: pending.offset, in: sessionID)
+      }
+      if panels[sessionID] == nil { panels[sessionID] = connection.makePanelStore(sessionID) }
     }
-    if workspaces[sessionID] == nil, let workspace = connection.workspace(sessionID) {
-      workspaces[sessionID] = WorkspaceBrowserModel(source: workspace)
-    }
-    if let pending = pendingFiles.removeValue(forKey: sessionID) {
-      openFile(pending.path, at: pending.offset, in: sessionID)
-    }
-    if panels[sessionID] == nil { panels[sessionID] = connection.makePanelStore(sessionID) }
     Task { await loadDeclaredTerminalNames([sessionID]) }
   }
 
@@ -130,21 +132,68 @@ public final class ServerSession {
   public func close(_ sessionID: String) {
     connection.closeConversation(sessionID)
     openSessionIDs.remove(sessionID)
-    if let terminals = terminalStores.removeValue(forKey: sessionID) {
-      for id in terminals.controllers.keys { terminals.close(id) }
-    }
-    if let workspace = workspaces[sessionID], !workspace.unsavedPaths.isEmpty {
-      Task { [weak self] in
-        let unsaved = await workspace.saveAll()
-        guard let self, unsaved.isEmpty, !self.openSessionIDs.contains(sessionID),
-          self.workspaces[sessionID] === workspace
-        else { return }
-        self.workspaces[sessionID] = nil
+    changingStores(of: sessionID) {
+      if let terminals = terminalStores.removeValue(forKey: sessionID) {
+        for id in terminals.controllers.keys { terminals.close(id) }
       }
-    } else {
-      workspaces[sessionID] = nil
+      if let workspace = workspaces[sessionID], !workspace.unsavedPaths.isEmpty {
+        saveThenDrop(workspace, of: sessionID)
+      } else {
+        workspaces[sessionID] = nil
+      }
+      panels[sessionID] = nil
     }
-    panels[sessionID] = nil
+  }
+
+  /// Saves a closed session's unsaved edits, then drops its workspace unless the session
+  /// reopened meanwhile.
+  private func saveThenDrop(_ workspace: WorkspaceBrowserModel, of sessionID: String) {
+    Task { [weak self] in
+      let unsaved = await workspace.saveAll()
+      guard let self, unsaved.isEmpty, !self.openSessionIDs.contains(sessionID),
+        self.workspaces[sessionID] === workspace
+      else { return }
+      self.changingStores(of: sessionID) { self.workspaces[sessionID] = nil }
+    }
+  }
+
+  /// A session's terminal surfaces, for a reader that another session opening or closing should
+  /// not redraw; ``workspace(of:)`` and ``panel(of:)`` read the same way.
+  /// - Parameter sessionID: The session.
+  /// - Returns: Its store while the session is open.
+  public func terminals(of sessionID: String) -> TerminalStore? {
+    access(keyPath: \.[storesOf: sessionID])
+    return _terminalStores[sessionID]
+  }
+
+  /// A session's workspace browser.
+  /// - Parameter sessionID: The session.
+  /// - Returns: Its model while the session is open, or while it holds edits that did not save.
+  public func workspace(of sessionID: String) -> WorkspaceBrowserModel? {
+    access(keyPath: \.[storesOf: sessionID])
+    return _workspaces[sessionID]
+  }
+
+  /// A session's right panel data.
+  /// - Parameter sessionID: The session.
+  /// - Returns: Its store while the session is open.
+  public func panel(of sessionID: String) -> SessionPanelStore? {
+    access(keyPath: \.[storesOf: sessionID])
+    return _panels[sessionID]
+  }
+
+  /// One session's stores as the observation registrar knows them: whether it has any.
+  private subscript(storesOf sessionID: String) -> Bool {
+    _terminalStores[sessionID] != nil || _workspaces[sessionID] != nil || _panels[sessionID] != nil
+  }
+
+  private subscript(declaredTerminalsOf sessionID: String) -> [String] {
+    _declaredTerminals[sessionID] ?? []
+  }
+
+  /// Applies `change` to `sessionID`'s stores, telling the views that read that session.
+  private func changingStores(of sessionID: String, _ change: () -> Void) {
+    withMutation(keyPath: \.[storesOf: sessionID], change)
   }
 
   /// Opens and closes sessions so exactly `wanted` are open: the sessions the window showed
@@ -164,7 +213,8 @@ public final class ServerSession {
   /// - Parameter sessionID: The session.
   /// - Returns: The declared names.
   public func declaredTerminalNames(in sessionID: String) -> DeclaredTerminals {
-    declaredTerminals[sessionID].map(DeclaredTerminals.names) ?? .unknown
+    access(keyPath: \.[declaredTerminalsOf: sessionID])
+    return _declaredTerminals[sessionID].map(DeclaredTerminals.names) ?? .unknown
   }
 
   /// Reads the declared terminal names of sessions not read yet. A failure stays on the
@@ -176,7 +226,9 @@ public final class ServerSession {
       guard let terminals = connection.terminals(id) else { continue }
       if !terminals.knowsDeclaredTerminalNames { await terminals.loadDeclaredTerminalNames() }
       if terminals.knowsDeclaredTerminalNames {
-        declaredTerminals[id] = terminals.declaredTerminalNames
+        withMutation(keyPath: \.[declaredTerminalsOf: id]) {
+          declaredTerminals[id] = terminals.declaredTerminalNames
+        }
       }
     }
   }

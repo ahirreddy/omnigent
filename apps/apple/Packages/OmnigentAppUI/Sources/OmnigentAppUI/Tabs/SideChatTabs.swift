@@ -77,7 +77,7 @@ struct PendingSideChatTab: View {
     guard !drafts.draft(tabID).isStarting,
       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return }
-    guard let parent = session.connection.conversations[parentID] else {
+    guard let parent = session.connection.openConversation(parentID) else {
       drafts.update(tabID) { $0.failure = "The conversation isn't open." }
       return
     }

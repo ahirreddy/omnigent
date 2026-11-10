@@ -150,7 +150,8 @@ struct ScreenDetailsTests {
     editor.textEdited { "changed" }
     #expect(!workspace.unsavedPaths.isEmpty)
     session.close("conv_a")
-    try await eventually("the save") { session.workspaces["conv_a"] == nil }
+    #expect(session.workspace(of: "conv_a") === workspace, "kept while its edits save")
+    try await eventually("the save") { session.workspace(of: "conv_a") == nil }
     #expect(!server.requests("PUT", "\(base)/filesystem/notes.txt").isEmpty)
   }
 }

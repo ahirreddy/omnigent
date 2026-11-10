@@ -1,4 +1,5 @@
 import Foundation
+import OmnigentTestSupport
 import OmnigentUIComponents
 import Testing
 
@@ -40,6 +41,30 @@ struct SessionTabGroupsTests {
     #expect(groups.selected?.id == shell.id)
     let page = try #require(groups.open(.browser(browserID: UUID())))
     #expect(groups.tab(page.id)?.sessionID == "a", "a browser tab joins the shown session")
+  }
+
+  @Test("Whether a session's tabs show changes between a session and a page, not between sessions")
+  func showsSessionTabs() {
+    let groups = SessionTabGroups()
+    let reads = { _ = groups.showsSessionTabs }
+    #expect(!groups.showsSessionTabs)
+    #expect(observationNotifies(reads) { groups.show(.session("a")) })
+    #expect(groups.showsSessionTabs)
+    #expect(!observationNotifies(reads) { groups.show(.session("b")) }, "another session")
+    #expect(groups.showsSessionTabs)
+    #expect(observationNotifies(reads) { groups.show(.inbox) })
+    #expect(!groups.showsSessionTabs)
+    #expect(!observationNotifies(reads) { groups.show(.usage) }, "another page")
+    groups.show(.session("b"))
+    #expect(!observationNotifies(reads) { groups.removeSessions(["b"]) }, "the one before shows")
+    #expect(groups.page == .session("a"))
+    #expect(groups.showsSessionTabs)
+    #expect(observationNotifies(reads) { groups.removeSessions(["a"]) })
+    #expect(groups.page == nil)
+    #expect(!groups.showsSessionTabs)
+    groups.show(.session("c"))
+    #expect(observationNotifies(reads) { groups.reset() })
+    #expect(!groups.showsSessionTabs)
   }
 
   @Test("Links to a conversation show its chat, whichever tab was selected")

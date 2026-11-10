@@ -58,7 +58,7 @@ struct RemoteBrowserTabContainer: View {
   @State private var store: RemoteBrowserStore?
 
   private var header: OmnigentCoreFFI.SessionHeader? {
-    session.connection.conversations[sessionID]?.header
+    session.connection.openConversation(sessionID)?.header
   }
 
   var body: some View {

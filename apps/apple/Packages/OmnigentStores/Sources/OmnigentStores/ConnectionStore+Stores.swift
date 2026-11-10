@@ -107,4 +107,14 @@ extension ConnectionStore {
     terminalStores[sessionID] = store
     return store
   }
+
+  /// Reloads the session list.
+  public func refreshSessions() {
+    core?.refreshSessions()
+  }
+
+  /// The app returned to the foreground: streams reopen and reconcile.
+  public func foreground() {
+    core?.foreground()
+  }
 }

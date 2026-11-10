@@ -98,14 +98,7 @@ import Testing
       WindowInteraction(
         name: "a streamed delta",
         budget: [:],
-        perform: { window in
-          let store = try window.conversation(BudgetWindow.shown)
-          let row = BudgetWindow.reply("Alpha reply and one more delta", streaming: true)
-          let update = RowOp.update(index: BudgetWindow.streamIndex, row: row)
-          store.apply(
-            revision: store.revision + 1,
-            change: TranscriptChange(rows: [update], header: nil, sections: nil))
-        },
+        perform: { try $0.stream("Alpha reply and one more delta", in: BudgetWindow.shown) },
         verify: { window in
           let text = try window.screen.shownText()
           #expect(text.contains { $0.contains("one more delta") }, "\(text)")
@@ -152,14 +145,119 @@ import Testing
       WindowInteraction(
         name: "a session switch",
         budget: [
-          "composer": 6, "detail": 3, "rows": 5, "screen": 5, "session row": 8, "shell": 2,
-          "sidebar": 2, "strip": 4, "tab": 5, "tab controls": 3, "transcript": 5, "window": 2,
+          "composer": 4, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
+          "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 2, "transcript": 3, "window": 1,
         ],
         perform: { $0.selection.page = .session(BudgetWindow.other) },
         verify: { window in
           #expect(window.title == "Gamma")
           let toolbar = try window.screen.toolbarText()
           #expect(toolbar.contains("Gamma"), "the strip's tab: \(toolbar)")
+          let text = try await window.text(afterReply: "Gamma reply", in: BudgetWindow.other)
+          #expect(text.contains("Gamma reply"), "the chat that opened after its tab: \(text)")
+        }),
+      WindowInteraction(
+        name: "a session chosen in the sidebar",
+        budget: [
+          "composer": 3, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
+          "sidebar": 1, "strip": 3, "tab": 2, "tab controls": 2, "transcript": 2, "window": 1,
+        ],
+        perform: { $0.choose(.session(BudgetWindow.other)) },
+        verify: { window in
+          #expect(window.title == "Gamma")
+          let text = try await window.text(afterReply: "Gamma reply", in: BudgetWindow.other)
+          #expect(text.contains("Gamma reply"), "the chat that opened after its tab: \(text)")
+        }),
+      WindowInteraction(
+        name: "a session the window shows by itself",
+        budget: [
+          "composer": 3, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
+          "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 2, "transcript": 2, "window": 1,
+        ],
+        perform: { $0.session.tabs.show(.session(BudgetWindow.other)) },
+        verify: { window in
+          #expect(window.selection.page == .session(BudgetWindow.other), "the host follows")
+          #expect(window.title == "Gamma")
+          let text = try await window.text(afterReply: "Gamma reply", in: BudgetWindow.other)
+          #expect(text.contains("Gamma reply"), "the chat that opened after its tab: \(text)")
+        }),
+      WindowInteraction(
+        name: "back to a session kept open",
+        budget: [
+          "composer": 3, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
+          "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 2, "transcript": 2, "window": 1,
+        ],
+        prepare: { window in
+          window.selection.page = .session(BudgetWindow.other)
+          window.screen.settle(0.3)
+        },
+        perform: { $0.selection.page = .session(BudgetWindow.shown) },
+        verify: { window in
+          #expect(window.title == "Alpha")
+          let text = try window.screen.shownText()
+          #expect(text.contains("Alpha reply"), "the chat that was kept behind: \(text)")
+        }),
+      WindowInteraction(
+        name: "back to a session that closed",
+        budget: [
+          "composer": 4, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
+          "sidebar": 1, "strip": 2, "tab": 3, "tab controls": 2, "transcript": 3, "window": 1,
+        ],
+        prepare: { try $0.leaveUntilClosed() },
+        perform: { $0.selection.page = .session(BudgetWindow.shown) },
+        verify: { window in
+          #expect(window.title == "Alpha")
+          let text = try await window.text(afterReply: "Alpha again", in: BudgetWindow.shown)
+          #expect(text.contains("Alpha again"), "the chat that opened again: \(text)")
+        }),
+      WindowInteraction(
+        name: "another session opening behind the window",
+        budget: [:],
+        perform: { $0.session.open(BudgetWindow.another) },
+        verify: { window in
+          #expect(window.session.terminals(of: BudgetWindow.another) != nil)
+          let text = try await window.text(afterReply: "Alpha goes on", in: BudgetWindow.shown)
+          #expect(text.contains("Alpha goes on"), "the shown chat still draws: \(text)")
+        }),
+      WindowInteraction(
+        name: "another session closing behind the window",
+        budget: [:],
+        prepare: { $0.session.open(BudgetWindow.another) },
+        perform: { $0.session.close(BudgetWindow.another) },
+        verify: { window in
+          #expect(window.session.terminals(of: BudgetWindow.another) == nil)
+          let text = try await window.text(afterReply: "Alpha goes on", in: BudgetWindow.shown)
+          #expect(text.contains("Alpha goes on"), "the shown chat still draws: \(text)")
+        }),
+      WindowInteraction(
+        name: "a page without a session",
+        budget: [
+          "composer": 5, "detail": 4, "markdown": 6, "row": 6, "rows": 7, "screen": 7,
+          "session row": 8, "shell": 2, "sidebar": 2, "strip": 1, "tab": 6, "tab controls": 1,
+          "transcript": 7, "window": 2,
+        ],
+        perform: { $0.selection.page = .usage },
+        verify: { window in
+          let toolbar = try window.screen.toolbarText()
+          #expect(!toolbar.contains("Alpha"), "no strip over a page: \(toolbar)")
+        }),
+      WindowInteraction(
+        name: "back from a page without a session",
+        budget: [
+          "composer": 5, "detail": 4, "markdown": 6, "row": 6, "rows": 6, "screen": 7,
+          "session row": 8, "shell": 2, "sidebar": 2, "strip": 1, "tab": 5, "tab controls": 1,
+          "transcript": 6, "window": 2,
+        ],
+        prepare: { window in
+          window.selection.page = .usage
+          window.screen.settle(0.3)
+        },
+        perform: { $0.selection.page = .session(BudgetWindow.shown) },
+        verify: { window in
+          let toolbar = try window.screen.toolbarText()
+          #expect(toolbar.contains("Alpha"), "the strip's tab is back: \(toolbar)")
+          let text = try window.screen.shownText()
+          #expect(text.contains("Alpha reply"), "the chat that was kept behind: \(text)")
         }),
     ]
 

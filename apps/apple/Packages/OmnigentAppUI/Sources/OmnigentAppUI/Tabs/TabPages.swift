@@ -17,9 +17,9 @@ struct TerminalTabView: View {
   @State private var surface: TerminalSurfaceController?
   @Environment(\.isActiveTabPane) private var isActivePane
 
-  private var store: TerminalStore? { session.terminalStores[sessionID] }
+  private var store: TerminalStore? { session.terminals(of: sessionID) }
   private var header: OmnigentCoreFFI.SessionHeader? {
-    session.connection.conversations[sessionID]?.header
+    session.connection.openConversation(sessionID)?.header
   }
 
   var body: some View {
@@ -87,7 +87,7 @@ struct SideChatTabContainer: View {
   private var state: SideChatTabState {
     let title =
       session.connection.sessionList.sessionWithoutActivity(sessionID)?.title ?? "the conversation"
-    guard let conversation = session.connection.conversations[sessionID] else {
+    guard let conversation = session.connection.openConversation(sessionID) else {
       return SideChatTabState(phase: .loading, sessionTitle: title)
     }
     // The watched row alone: reading `rows` would re-render this tab for every streamed delta.
