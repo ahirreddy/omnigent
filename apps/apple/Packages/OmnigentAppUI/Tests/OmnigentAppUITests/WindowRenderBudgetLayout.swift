@@ -33,6 +33,8 @@ import Testing
     var stored: Any?
     /// The chats' scroll views as they were built before the step.
     var scrollViews: [NSScrollView] = []
+    /// How many requests the server had taken before the step.
+    var requests = 0
   }
 
   extension BudgetWindow {

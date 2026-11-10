@@ -16,7 +16,8 @@ struct ConversationContainer: View {
   let workspace: WorkspaceBrowserModel?
   /// The right panel's server data (panel features, pull requests).
   let panel: SessionPanelStore?
-  let changedFilesRevision: Int
+  /// The connection's count of file changes, read by ``ChangedFilesFollower`` and not here.
+  let changedFilesRevision: @MainActor () -> Int
   let navigation: SessionCommandActions
   let opener: ExternalURLOpener
   /// Opens a sign-in page: always the system browser, whatever the in-app links setting says,
@@ -137,10 +138,7 @@ struct ConversationContainer: View {
           showsInspector: showsInspector, inspectorTab: $inspectorTab,
           openBrowser: tabRoutes?.openBrowser, openSideChat: tabRoutes?.openNewSideChat))
     #endif
-    .onChange(of: changedFilesRevision) {
-      guard let workspace else { return }
-      Task { await workspace.changedFilesInvalidated() }
-    }
+    .modifier(ChangedFilesFollower(revision: changedFilesRevision, workspace: workspace))
   }
 
   /// Whether the right panel shows: the chat's choice, else the default where it is a column.

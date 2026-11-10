@@ -31,6 +31,23 @@ import Testing
           #expect(text.contains("Gamma renamed") && text.contains("7m"), "\(text)")
         }),
       WindowInteraction(
+        name: "another session's files change",
+        budget: [:],
+        prepare: { $0.notes.requests = $0.server.http.requests.count },
+        perform: { window in
+          window.session.connection.apply(
+            .changedFiles(
+              sessionId: BudgetWindow.other, environmentId: "default", update: .loaded(files: [])))
+        },
+        verify: { window in
+          // Sessions can share a workspace, so the shown chat's panel asks for its changes again.
+          let asked = window.server.http.requests.dropFirst(window.notes.requests).map(\.url)
+          let changes = "/v1/sessions/\(BudgetWindow.shown)/resources/environments/default/changes"
+          #expect(asked.contains { $0.hasSuffix(changes) }, "\(asked)")
+          let text = try window.screen.shownText()
+          #expect(text.contains("Alpha reply"), "the chat still draws: \(text)")
+        }),
+      WindowInteraction(
         name: "the shown session's preview and time",
         budget: ["session row": 4, "sidebar": 1],
         perform: { try $0.activity(in: BudgetWindow.shown, minutesAgo: 5) },
