@@ -91,9 +91,7 @@ public struct TabSplitView<Content: View>: View {
     .onGeometryChange(for: CGFloat.self) {
       $0.size.width
     } action: { width in
-      #if DEBUG
-        LoopProbe.record("tab split width", "\(width)")
-      #endif
+      LoopProbe.record("tab split width", "\(width)")
       #if os(iOS)
         measured.value = width
       #endif

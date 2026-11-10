@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import Testing
 import os
 
@@ -183,6 +184,47 @@ struct HangDiagnosticsTests {
     watch.beat(at: start + 3.2)
     watch.check(at: start + 3.5)
     #expect(lines.all.last == "STALL ended: the main thread was busy for 2.6 s")
+  }
+
+  @Test("A stall after rows change, older rows land or the reader jumps names each of them")
+  func stallNamesRowChangesAndJumps() {
+    let lines = Lines()
+    let watch = MainThreadWatch(
+      threshold: 1, interval: 0.5, write: { lines.add($0) }, onMain: { _ in })
+    let scroll = TranscriptScrollState()
+    let start = ProcessInfo.processInfo.systemUptime
+    watch.check(at: start + 0.5)
+    watch.beat(at: start + 0.5)
+    scroll.contentChanged()
+    scroll.contentChanged()
+    scroll.firstRowChanged()
+    scroll.jumped(to: TranscriptView.bottomID)
+    watch.check(at: start + 1)
+    watch.check(at: start + 1.6)
+    let changed = [
+      ("transcript rows changed", 2), ("transcript first row", 1), ("transcript jump", 1),
+    ]
+    .map { "\(HangTrace.Source(name: $0.0, tag: scroll.probeTag).label) +\($0.1)" }
+    #expect(
+      lines.all == [
+        "STALL main thread busy for 1.1 s; changed meanwhile: \(changed.joined(separator: ", "))"
+      ])
+  }
+
+  @Test("A watch given no writer sends its lines where the documented log predicate finds them")
+  func watchWritesToTheLog() throws {
+    let watch = MainThreadWatch(threshold: 1, onMain: { _ in })
+    let asked = Date()
+    watch.check(at: ProcessInfo.processInfo.systemUptime + 1.5)
+    let store = try OSLogStore(scope: .currentProcessIdentifier)
+    let entries = try store.getEntries(
+      at: store.position(date: asked.addingTimeInterval(-1)),
+      matching: NSPredicate(
+        format: "subsystem == %@ AND category == %@", "ai.omnigent.performance", "hang"))
+    let stalls = entries.map(\.composedMessage).filter {
+      $0.hasPrefix("STALL main thread busy for 1.5 s; changed meanwhile: ")
+    }
+    #expect(!stalls.isEmpty)
   }
 
   @Test("A watch that was itself held up, as a napping process is, reports nothing")

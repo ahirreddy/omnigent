@@ -66,12 +66,25 @@ final class TranscriptScrollState {
 
   /// New output arrived or rows changed, which pays for the scrolls its layout asks for.
   func contentChanged() {
+    probe("transcript rows changed", "\(budget)")
     budget.contentChanged()
   }
 
   /// The reader scrolled, jumped or opened another session.
   func readerMoved() {
     budget.readerMoved()
+  }
+
+  /// The reader jumped to a row. An animated jump lays out the rows on the way at every
+  /// frame, so a stall that follows one should name it.
+  func jumped(to target: String) {
+    probe("transcript jump", target)
+    readerMoved()
+  }
+
+  /// The first row changed, as it does when older rows land above the ones in view.
+  func firstRowChanged() {
+    probe("transcript first row", "\(budget)")
   }
 
   /// The viewport's width changed.

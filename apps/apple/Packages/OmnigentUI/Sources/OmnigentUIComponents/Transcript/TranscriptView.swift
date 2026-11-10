@@ -249,6 +249,7 @@ public struct TranscriptView: View {
 
   /// Older rows landed above: put the row that was on top back at the top.
   private func holdReadingPosition(_ proxy: ScrollViewProxy) {
+    scroll.firstRowChanged()
     guard position.awaitsPage else { return }
     position.awaitsPage = false
     if let anchor = position.prependAnchor, !position.seeksTop {
@@ -259,7 +260,7 @@ public struct TranscriptView: View {
   /// Jump to top pages in the rest of the history first, as the web does.
   private func jumpToTop(_ proxy: ScrollViewProxy) {
     follow.readEarlier()
-    scroll.readerMoved()
+    scroll.jumped(to: Self.topID)
     if state.hasMoreHistory, actions.loadOlder != nil {
       position.seeksTop = true
       loadOlder()
@@ -297,7 +298,7 @@ public struct TranscriptView: View {
       return
     }
     follow.readEarlier()
-    scroll.readerMoved()
+    scroll.jumped(to: target)
     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
       proxy.scrollTo(target, anchor: .top)
     }
@@ -305,7 +306,7 @@ public struct TranscriptView: View {
 
   private func jumpToLatest(_ proxy: ScrollViewProxy) {
     follow.jumpToLatest()
-    scroll.readerMoved()
+    scroll.jumped(to: Self.bottomID)
     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
       proxy.scrollTo(Self.bottomID, anchor: .bottom)
     }
@@ -338,7 +339,7 @@ extension TranscriptView {
       model: rail,
       jump: { id in
         follow.readEarlier()
-        scroll.readerMoved()
+        scroll.jumped(to: id)
         focus?.flash(id)
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
           proxy.scrollTo(id, anchor: .top)
@@ -370,7 +371,7 @@ extension TranscriptView {
       show: { target in
         position.prependAnchor = nil
         follow.readEarlier()
-        scroll.readerMoved()
+        scroll.jumped(to: target)
         proxy.scrollTo(target, anchor: .center)
       })
   }

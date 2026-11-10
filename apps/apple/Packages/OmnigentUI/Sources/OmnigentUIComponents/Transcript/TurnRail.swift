@@ -118,6 +118,7 @@ struct TurnRail: View {
       .onScrollPhaseChange { _, phase in tracker.isInteracting = phase.isScrolling }
       .onContinuousHover { phase in hover(phase) }
       .onChange(of: model.activeID) { _, id in
+        LoopProbe.record("turn rail active", id ?? "none")
         guard let id, hoveredID == nil else { return }
         proxy.scrollTo(id, anchor: .center)
       }
