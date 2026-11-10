@@ -18,6 +18,8 @@
     var draft = ""
     /// The commands the menus would run.
     @ObservationIgnored var commands: SessionCommandActions?
+    /// How many times the menus were handed commands to rebuild from.
+    @ObservationIgnored var publications = 0
 
     init(_ state: ConversationViewState) {
       self.state = state
@@ -31,6 +33,7 @@
 
     var body: some View {
       model.commands = commands
+      model.publications += 1
       return Color.clear.frame(width: 1, height: 1)
     }
   }
@@ -98,8 +101,10 @@
       #expect(log.responses == ["one:Approved"])
       #expect(sent.entries.isEmpty)
 
+      let published = model.publications
       model.draft = "A reply"
       try await letTasksRun(window)
+      #expect(model.publications > published, "the menus hear that Send took the key")
       #expect(try !window.shows(Self.shortcutHint))
       #expect(model.commands?.approveOwnsCommandReturn == false)
       #expect(model.commands?.send != nil)
@@ -146,6 +151,37 @@
       try await letTasksRun(window)
       #expect(model.commands?.send == nil, "a message is on its way")
       #expect(model.commands?.approveOwnsCommandReturn == true)
+    }
+
+    @Test("With no request waiting, a draft's first and last key leave the menus alone")
+    func noRequestNothingRepublished() async throws {
+      let model = CommandReturnModel(
+        ConversationViewState(header: SessionHeader(id: "session", title: "Session")))
+      let window = try await open(model)
+      defer { window.close() }
+      #expect(model.commands?.approveOwnsCommandReturn == false)
+      let send = try #require(model.commands?.send)
+      send()
+      #expect(sent.entries.isEmpty, "an empty draft is not sent")
+
+      let published = model.publications
+      for text in ["k", "", "  "] {
+        model.draft = text
+        try await letTasksRun(window)
+        #expect(model.publications == published, "\(text.debugDescription)")
+      }
+      try pressCommandReturn(window)
+      #expect(sent.entries.isEmpty, "a blank draft is not sent")
+
+      model.draft = "A reply"
+      try await letTasksRun(window)
+      #expect(model.publications == published)
+      try pressCommandReturn(window)
+      #expect(sent.entries == ["send"])
+
+      model.composer.delivery = .sending
+      try await letTasksRun(window)
+      #expect(model.commands?.send == nil, "a message is on its way")
     }
 
     #if DEBUG

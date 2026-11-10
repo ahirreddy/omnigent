@@ -521,6 +521,13 @@ What changed, with the renders counted in the mounted window:
 - **A draft's first character renders the composer and the sidebar's draft pencil.** The
   screen kept "the draft has text" in its state to decide who answers Command-Return; the
   flag is now in a small observable (`DraftPresence`) read by the three places that use it.
+- **A draft's first and last character leave the menu bar alone while no request waits.**
+  Send Message was enabled only while the draft had something to send, so the first character
+  and the last one deleted each published new session commands and SwiftUI rebuilt the menus.
+  With no request waiting, Send Message now stays enabled whenever the composer would send and
+  checks the draft when it is chosen, so an empty draft is still never sent. With a request
+  waiting, the draft still decides whether Send or Approve owns Command-Return. The menu
+  rebuild happens only in the running app, so its cost is not in the budget tables.
 - **A write to the defaults no longer renders every open chat.** `@AppStorage` renders its
   view on every write to the store when its key has a dot in it, and the chat read
   `composer.submitWithCommandReturn`: showing the right panel, a sidebar option or a

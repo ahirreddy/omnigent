@@ -193,20 +193,26 @@
       #expect(inTerminal.focusComposer == nil)
     }
 
-    @Test("Send is offered only while the draft can go")
+    @Test("Send stays offered in a chat, and sends only a draft that can go")
     func sendCommand() async throws {
-      let model = chat()
+      let model = chat(terminal: .ready)
       let window = try await screen(model)
       defer { window.close() }
-      #expect(model.commands?.send == nil)
+      let send = try #require(model.commands?.send)
+      send()
+      #expect(log.entries.isEmpty, "an empty draft is not sent")
       model.draft = "A message"
       try await letTasksRun(window)
-      let send = try #require(model.commands?.send)
       send()
       #expect(log.entries == ["send"])
       model.draft = "   "
       try await letTasksRun(window)
-      #expect(model.commands?.send == nil)
+      send()
+      #expect(log.entries == ["send"], "a blank draft is not sent")
+
+      model.mode = .terminal
+      try await letTasksRun(window)
+      #expect(model.commands?.send == nil, "the terminal has no composer to send from")
     }
 
     @Test("With messages queued, the send command sends them all with the draft")

@@ -30,9 +30,17 @@ struct CommandReturnArbitration {
     return sendIsOpen && (hasText || hasAttachedContent)
   }
 
-  /// Send while the draft can go, else the active request's Approve.
+  /// Whether the menus offer Send Message. With no request waiting it is offered whenever the
+  /// composer would send, without reading the draft: a first or last character changes nothing.
+  var offersSend: Bool {
+    approvableCardID == nil ? sendIsOpen : canSend
+  }
+
+  /// Send while the draft can go, else the active request's Approve. With no request waiting
+  /// Send owns the key whatever the draft holds, so the draft is not read.
   var owner: CommandReturnOwner {
-    .resolve(canSend: canSend, approvableCardID: approvableCardID)
+    guard let approvableCardID else { return .send }
+    return .resolve(canSend: canSend, approvableCardID: approvableCardID)
   }
 }
 

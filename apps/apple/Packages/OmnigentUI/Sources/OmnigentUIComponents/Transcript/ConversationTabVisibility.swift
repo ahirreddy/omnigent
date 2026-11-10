@@ -58,11 +58,17 @@ struct ActivePaneCommands: ViewModifier {
     content.focusedSceneValue(\.sessionCommands, relay.publish(isActivePane ? resolved : nil))
   }
 
-  /// Send Message while the draft can go; otherwise the request's Approve may own the key.
+  /// Send Message while it is offered; otherwise the request's Approve may own the key.
   private var resolved: SessionCommandActions {
     var commands = commands
-    if !commandReturn.canSend { commands.send = nil }
-    commands.approveOwnsCommandReturn = commandReturn.owner == .approve
+    let arbitration = commandReturn
+    if !arbitration.offersSend {
+      commands.send = nil
+    } else if let send = commands.send {
+      // Checked when chosen: an empty draft is not sent.
+      commands.send = { if arbitration.canSend { send() } }
+    }
+    commands.approveOwnsCommandReturn = arbitration.owner == .approve
     return commands
   }
 }
