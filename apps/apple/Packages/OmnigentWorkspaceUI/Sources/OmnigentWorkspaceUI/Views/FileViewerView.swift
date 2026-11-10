@@ -12,11 +12,18 @@ public struct FileViewerView: View {
   private let actions: WorkspaceActions
   private let editor: FileEditor?
   private let review: FileReviewContext?
-  @AppStorage("workspace.fileViewMode") private var viewMode = FileViewMode.preview
+  @State private var viewMode = UserDefaults.standard.choice(
+    Self.viewModeKey, default: FileViewMode.preview)
   @State private var commenting: FileTextSpan?
-  @AppStorage("workspace.showsComments") private var showsComments = false
+  @State private var showsComments = UserDefaults.standard.bool(
+    forKey: Self.showsCommentsKey)
   @State private var selectedCommentID: String?
   @State private var width: CGFloat = 0
+
+  /// The chosen mode, kept across files and launches.
+  static let viewModeKey = "workspace.fileViewMode"
+  /// Whether the comments panel shows, kept across files and launches.
+  static let showsCommentsKey = "workspace.showsComments"
 
   /// A viewer.
   /// - Parameters:
@@ -69,6 +76,12 @@ public struct FileViewerView: View {
     // A container, so the header, editor and comments keep their own identifiers.
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("workspace.viewer")
+    .modifier(
+      StoredPreference($viewMode, stored: AppStorage(wrappedValue: .preview, Self.viewModeKey))
+    )
+    .modifier(
+      StoredPreference(
+        $showsComments, stored: AppStorage(wrappedValue: false, Self.showsCommentsKey)))
   }
 
   @ViewBuilder private func content(_ text: TextPreview) -> some View {

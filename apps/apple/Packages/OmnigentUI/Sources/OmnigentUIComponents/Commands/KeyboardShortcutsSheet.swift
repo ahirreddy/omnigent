@@ -4,8 +4,7 @@ public import SwiftUI
 /// keys do; send keys follow the composer's send preference.
 public struct KeyboardShortcutsSheet: View {
   @Environment(\.dismiss) private var dismiss
-  @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
-    false
+  @State private var submitWithCommandReturn = ComposerPreferences.commandReturnSends
 
   /// Creates shortcut help.
   public init() {}
@@ -48,6 +47,7 @@ public struct KeyboardShortcutsSheet: View {
     }
     .frame(idealWidth: 540, idealHeight: 620)
     .accessibilityIdentifier("keyboard-shortcuts")
+    .commandReturnPreference($submitWithCommandReturn)
   }
 
   private func shortcut(_ row: ShortcutRow) -> some View {

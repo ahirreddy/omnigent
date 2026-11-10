@@ -286,6 +286,21 @@
       #expect(log.entries == ["reply a [One\n]"])
     }
 
+    @Test("the Command-Return setting turned on under a shown row is the row's from then on")
+    func commandReturnSettingChanges() throws {
+      let draft = EditedValue("")
+      let screen = row(repliable(), draft: draft)
+      defer { screen.close() }
+      let field = try #require(screen.textFields.first)
+      try screen.replaceText(in: field, with: "One")
+      bed.store.set(true, forKey: ComposerPreferences.submitWithCommandReturnKey)
+      screen.settle()
+      try screen.press(keyCode: 36, characters: "\r")
+      #expect(log.entries.isEmpty)
+      try screen.press(keyCode: 36, characters: "\r", modifiers: .command)
+      #expect(log.entries == ["reply a [One\n]"])
+    }
+
     @Test("clicking Send sends what's typed")
     func clickSend() throws {
       let screen = row(repliable(), draft: EditedValue("Ship it"))

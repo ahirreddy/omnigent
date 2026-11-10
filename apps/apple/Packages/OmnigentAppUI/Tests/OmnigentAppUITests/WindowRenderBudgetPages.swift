@@ -23,7 +23,7 @@ import Testing
         verify: { try pageIsShown(.usage, in: $0) }),
       WindowInteraction(
         name: "a page chosen in the sidebar",
-        budget: toPage,
+        budget: toPage.merging(["inbox": 1]) { $1 },
         prepare: { $0.noteScrollViews() },
         perform: { try $0.chooseSidebarRow("Inbox") },
         verify: { window in

@@ -199,6 +199,19 @@ import Testing
           #expect(text.contains("What should we build?"), "the page still draws: \(text)")
         }),
       WindowInteraction(
+        name: "a preference no view reads, over the Inbox",
+        budget: [:],
+        prepare: { window in
+          try window.chooseSidebarRow("Inbox")
+          window.screen.settle(0.3)
+        },
+        perform: { $0.store(true, forKey: unreadKey) },
+        afterwards: { try $0.putBack(unreadKey) },
+        verify: { window in
+          let text = try window.screen.shownText()
+          #expect(text.contains("Nothing waiting on you"), "the page still draws: \(text)")
+        }),
+      WindowInteraction(
         name: "the Command-Return setting",
         budget: ["composer": 2, "rows": 2, "screen": 2, "transcript": 2],
         prepare: { window in
