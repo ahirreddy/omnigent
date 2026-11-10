@@ -9,9 +9,16 @@ final class TranscriptScrollState {
   /// unchecked.
   static var layoutScrollLimits = LayoutScrollBudget.Limits()
 
-  var follow = TranscriptFollow()
+  var follow = TranscriptFollow() {
+    didSet { if follow.pill != oldValue.pill { showPill(follow.pill) } }
+  }
+  /// Shows the follow rules' pill; the transcript sets it.
+  var showPill: (TranscriptFollow.Pill) -> Void = { _ in }
   /// Scrolls a row to an anchor; the transcript sets it to its scroll view's proxy.
   var scrollToRow: (String, UnitPoint) -> Void = { _, _ in }
+  /// Scrolls to the content's end by its edge, and lets go of it (``EndByEdge``).
+  var scrollToEnd: () -> Void = {}
+  var releaseEnd: () -> Void = {}
   /// The transcript's row ids, top to bottom; the transcript sets it.
   var rowOrder: () -> [String] = { [] }
   private var followedHeights = FollowedHeights()
@@ -33,8 +40,8 @@ final class TranscriptScrollState {
   let rowWidth = TranscriptRowWidth()
   /// The scroll view is at its top.
   private var isAtTop = false
-  /// The scroll view is at its end; it opens there.
-  private var isAtEnd = true
+  /// The scroll view against its content's end, and a return to it by edge.
+  var end = TranscriptEnd()
   /// The row under the viewport's middle.
   private var anchor: TranscriptReadingAnchor?
   /// The reader a width change is putting back where they were.
@@ -71,10 +78,9 @@ final class TranscriptScrollState {
     continueRestore(at: now)
   }
 
-  /// The scroll view reached or left its end, as it does when a scroll there lands short of
-  /// where the rows then turn out to end.
-  func endReached(_ isAtEnd: Bool, at now: Date = Date()) {
-    self.isAtEnd = isAtEnd
+  /// The scroll view reached or left its end or its bottom row, as it does when a scroll there
+  /// lands short of where the rows then turn out to end.
+  func endChanged(at now: Date = Date()) {
     continueRestore(at: now)
   }
 
@@ -89,6 +95,11 @@ final class TranscriptScrollState {
   /// Scrolls a width change's reader back again unless they are there: to the end, or to
   /// their row, by its own layout once it is in view, which is exact, and by its old one before.
   private func continueRestore(at now: Date) {
+    // The edge holds the scroll view at the end while the rows there are measured.
+    guard !end.returnsByEdge else {
+      if end.isAtEnd { restOnBottomRow() }
+      return
+    }
     guard var restore = activeRestore(at: now), !isRestored(restore) else { return }
     restore.scrollsLeft -= 1
     self.restore = restore
@@ -96,6 +107,7 @@ final class TranscriptScrollState {
     awaitTurnEnd()
     probe("transcript restore", "\(restore.anchor?.id ?? "end"), \(restore.scrollsLeft) left")
     guard let wanted = restore.anchor else {
+      end.awaitsLanding = true
       scrollToRow(TranscriptView.bottomID, .bottom)
       return
     }
@@ -116,7 +128,7 @@ final class TranscriptScrollState {
 
   /// Whether the reader of `restore` is where it wants them.
   private func isRestored(_ restore: Restore) -> Bool {
-    guard let wanted = restore.anchor else { return isAtEnd }
+    guard let wanted = restore.anchor else { return !end.wantsBottomRow }
     guard let anchor, anchor.id == wanted.id else { return false }
     return abs(anchor.fraction - wanted.fraction) <= Self.restoreReach
   }
@@ -136,7 +148,7 @@ final class TranscriptScrollState {
     guard rowWidth.passage == nil else { return }
     // A reader still being put back is going where that restore takes them.
     let pending = activeRestore(at: now)
-    let toEnd = pending.map { $0.anchor == nil } ?? (follow.isNearBottom || follow.layoutGrew())
+    let toEnd = pending.map { $0.anchor == nil } ?? (end.isNearBottom || follow.layoutGrew())
     let place = pending?.anchor ?? anchor
     // At the top no row lies above.
     guard !isAtTop, toEnd || place != nil else {
@@ -199,8 +211,11 @@ final class TranscriptScrollState {
       return
     }
     restore = Restore(anchor: passage.anchor, since: now)
+    // By edge the scroll view builds the rows at its end alone. A scroll to the bottom row
+    // from the top builds every row on the way when the rows' estimated heights disagree.
     guard let anchor = passage.anchor else {
-      scrollToRow(TranscriptView.bottomID, .bottom)
+      end.returnsByEdge = true
+      scrollToEnd()
       return
     }
     scrollToRow(anchor.id, anchor.unitPoint(in: anchor))
@@ -222,6 +237,7 @@ final class TranscriptScrollState {
   func readerMoved() {
     budget.readerMoved()
     restore = nil
+    leaveEdge()
   }
 
   /// The reader jumped to a row, where a passage under way then ends. An animated jump lays
@@ -278,7 +294,8 @@ final class TranscriptScrollState {
     return allowed
   }
 
-  private func awaitTurnEnd() {
+  /// Has the main thread's return to its run loop end this turn.
+  func awaitTurnEnd() {
     guard !awaitsTurnEnd else { return }
     awaitsTurnEnd = true
     let ended: @Sendable () -> Void = { [weak self] in
@@ -316,12 +333,14 @@ final class TranscriptScrollState {
     awaitsTurnEnd = false
     isEndingTurn = true
     defer { isEndingTurn = false }
+    settleFollow()
+    end.awaitsLanding = false
     // A passage ends in the layout pass it began in; one still open is not left at the top.
     // Otherwise the rows' heights have settled, and a scroll to the reader's place lands on it.
     if rowWidth.passage != nil {
       probe(Self.latePassage, "\(follow)")
       endPassage(at: now)
-    } else {
+    } else if !restOnBottomRow() {
       continueRestore(at: now)
     }
     passedThisTurn = false
@@ -373,27 +392,3 @@ extension View {
     }
   }
 #endif
-
-/// The viewport's width and whether its bottom is near the content's end, compared together so
-/// a width change (rotation, split or sidebar resize) knows where the reader was before it.
-nonisolated struct TranscriptViewport: Equatable {
-  var width: CGFloat
-  var isNearBottom: Bool
-
-  /// How close to the content's end, in points, counts as the bottom.
-  static let bottomReach: CGFloat = 80
-
-  /// The viewport of `geometry`; the composer and dock inset the bottom, and rows under them
-  /// are not being read.
-  init(_ geometry: ScrollGeometry) {
-    self.init(
-      width: geometry.containerSize.width,
-      visibleBottom: geometry.visibleRect.maxY - geometry.contentInsets.bottom,
-      contentHeight: geometry.contentSize.height)
-  }
-
-  init(width: CGFloat, visibleBottom: CGFloat, contentHeight: CGFloat) {
-    self.width = width.rounded()
-    isNearBottom = visibleBottom >= contentHeight - Self.bottomReach
-  }
-}
