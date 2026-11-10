@@ -566,6 +566,14 @@ the rows that may render it. The scopes today: window, shell, sidebar, session r
 field, strip, tab controls, tab switcher, detail, tab, screen, transcript, rows, row,
 markdown, composer, sidechat.
 
+A count depends on nothing outside its window. The window keeps its preferences in a store
+of its own (`scratchDefaults()`): every `swift test` process shares one defaults domain, and
+another run's write there renders each scope that reads `@AppStorage`. Before the count and
+before `verify`, the test waits until the window has rendered nothing and asked its server
+nothing for 300 ms and 20 run loop passes (`settleUntilQuiet`), and fails after 10 s naming
+what still rendered. A row over its budget prints the scopes over, the whole tally and the
+budget.
+
 | Interaction | May render |
 | --- | --- |
 | Another session's row (title and time) | sidebar 1, session row 5 |
@@ -582,8 +590,9 @@ markdown, composer, sidechat.
 | A session chosen in the sidebar; one the window shows by itself; back to a kept one | as a session switch, with screen, transcript and rows 2 |
 | Back to a session that closed | as a session switch, with tab 3 |
 | Another session opening or closing behind the window | nothing |
-| A page without a session; one the tab model shows by itself | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 2, transcript 2, rows 2, composer 2 and 1; no strip, no row, no markdown, and the chats' scroll views are the same objects |
+| A page without a session; one chosen in the sidebar; one the tab model shows by itself | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 2, transcript 2, rows 2, composer 2, 1 and 1; no strip, no row, no markdown, and the chats' scroll views are the same objects |
 | Back from a page without a session | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 3, transcript 3, rows 3, composer 1, strip 2, tab controls 1; no row, no markdown, and the chats' scroll views are the same objects |
+| A session chosen in the sidebar over a page; one the tab model shows by itself over a page | as back from a page, with composer 2, strip 1 and tab 3: 2, or 3 when SwiftUI runs the leaving page's body once more (see "Left as it is") |
 | Sidebar search text set; typed into the field; cleared | sidebar 1-2, session row 2-6, search field 1-2 |
 | A sidebar filter; a page of sessions loaded; an empty last page | sidebar 1, session row 2-4 |
 | A window resize step; a sidebar divider step | strip 1 |
@@ -674,8 +683,9 @@ chat no longer does. All other keys use a colon.
   The choice sets the host's selection and the tab model's page together, so the page's tab
   leaves in the pass that renders the window, and in some of those passes SwiftUI runs the
   leaving tab's body again with its old content. A session the tab model shows by itself
-  over a page does the same (4 of 25). A switch that reaches the window as the host's
-  selection alone never did (75 of 75), and that is the one with a budget.
+  over a page does the same (4 of 25). Both have a budget with tab 3 as its ceiling, so a
+  second window render there still fails. A switch that reaches the window as the host's
+  selection alone never did (75 of 75); its budget is tab 2.
 - **A session switch** still builds the new session's tabs and renders the window once; the
   first pass of opening another session is 150-170 ms, most of it the new chat's first
   layout.
@@ -688,12 +698,65 @@ chat no longer does. All other keys use a colon.
   15 ms, each for a whole run of the same binary) go with the state of the processor core
   the main thread is given: a fixed loop of arithmetic timed beside the keys changes level
   with them. Nothing the app renders differs between the levels.
-- **One window resize step in 40 costs about 430 ms** once the chats behind have been
-  scrolled and switched, before this pass and after it. The full run before hides it: its
-  page visit builds every chat again first. Not looked into here.
+- **One window resize step in 40 costs 440-580 ms** in Release once the chats behind have
+  been scrolled and switched, before this pass and after it. The full run before hides it:
+  its page visit builds every chat again first. The cause is known and it is not fixed; see
+  "The slow resize step" below.
+- **A widening window step costs twice a narrowing one** at the same widths (57 against
+  28 ms in Release, where no row changes width). In one sampled step, 25 of 45 samples are
+  `NSToolbarView layout` adding an item's view again and the SwiftUI toolbar item updating
+  for it; a narrowing step spends an eighth of its time there. Not looked into further.
 - `LoopProbe.record` costs 170-360 ns a call in Release and its detail is an autoclosure;
   the busiest probe changes 55-85 times over 40 resize steps, under 0.02% of the main
   thread.
+
+### The slow resize step
+
+A reader at the end of a long chat whose last row is very tall (a streamed answer of
+2056 pt here) resizes the window through the widths where the rows change width (a pane
+under 768 pt). One step of the first pass over those widths takes 440-580 ms; the same step
+of the next pass 155-210 ms; the steps around it 60-145 ms. It is the second step of the
+rows narrowing in one build (443-543 ms in five runs) and the last step of their widening
+in another (579 and 580 ms in two runs).
+
+It is one layout of the shown transcript's lazy stack: `NSWindow _setFrameCommon`,
+`NSHostingView.layout`, one `LazySubviewPlacements` update, `LazyStack.place` (330 of 416
+samples), which builds and measures 152 rows in that pass. The kept chats behind are not
+it: with one chat fewer the step is 540 ms.
+
+A new row width sends the transcript to its top, where the rows take the width, and a
+reader who was at the end is then returned to the bottom marker by id
+(`TranscriptScrollState.endPassage`). The lazy stack estimates its length as the average
+height of the rows it has measured times the row count. After a landing at the end it has
+measured the first few rows and the last few, so with a very tall last row the estimate is
+two to three times the real length (155732 pt for about 62000). In most steps the estimate
+has fallen back to the top rows' average by the time of the return, and the stack lands on
+the last rows directly (9 rows built or fewer). In the slow step it has not: the stack
+picks its first row by the inflated average, places it by the top rows' average and builds
+every row from there to the viewport. It goes with the composer's dock changing height with
+the width, on that step or the one after. A chat without a very tall last row has no such
+step.
+
+To see it without the app: 150 turns and a very tall last row in a transcript with a bottom
+bar whose height changes with the width, the reader at the end, the pane going from 900 pt
+down 12 pt a step and back. One step of the first pass builds 211 rows (305 ms in Debug
+against 22-88 ms for the others).
+
+What was tried, in a copy of the package, and why none of it is in:
+
+- Returning with `ScrollPosition.scrollTo(edge: .bottom)` in place of the marker's id lands
+  without the walk (5-6 rows built; the slowest step 167-191 ms in Release). SwiftUI then
+  does not run the scroll geometry actions for where the scroll view comes to rest, so the
+  transcript takes itself to be away from the end: every later step repeats its return
+  scroll eight times (the steps that change row width go from 68-100 to 105-167 ms, two
+  passes from 5142 to 5551-5656 ms) and following stays off after a resize.
+- Keeping the scroll view pinned to its bottom edge rests the transcript 24 pt lower.
+- Scrolling to the last row, scrolling twice and scrolling one pass later build the same
+  rows.
+
+What is left: finding the end without the geometry action, so the return can go by edge;
+holding the row width through a live resize and taking it once at its end, which the user
+would see; a stack laid out from its bottom.
 
 ### Not checked in a real window
 
@@ -724,6 +787,8 @@ resize; a turn rail jump after Reduce Motion changes.
   (`NSHostingView.layout`, with the titlebar's toolbar layout about a tenth of it), 50-80 ms per
   step in Debug under load. Toggling the sidebar or the right panel animates the same relayout.
   Text measuring is under 1% of a resize, so a fixed-width transcript column would not help.
+  With a long chat that ends in a very tall row, one step of a resize through the widths
+  where rows change width takes about half a second (see "The slow resize step").
 - While a reply streams, each paced render still costs 10-15 ms in Debug, spread over SwiftUI's
   graph update, the lazy stack's layout and the text overlays.
 - A changed session-list row still sends every session through the core twice (filter and

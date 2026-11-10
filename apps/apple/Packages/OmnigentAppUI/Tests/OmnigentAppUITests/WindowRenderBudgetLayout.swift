@@ -91,15 +91,15 @@ import Testing
 
     /// Writes a preference the way Settings does, noting what it replaces.
     func store(_ value: Any, forKey key: String) {
-      notes.stored = UserDefaults.standard.object(forKey: key)
-      UserDefaults.standard.set(value, forKey: key)
+      notes.stored = preferences.object(forKey: key)
+      preferences.set(value, forKey: key)
     }
 
-    /// Notes what the window draws, then puts the noted preference back. A step's `afterwards`
-    /// does this, so no other test runs while the preference is changed.
+    /// Notes what the window draws, then puts the noted preference back: a step's `afterwards`
+    /// does this, and its check reads both.
     func putBack(_ key: String) throws {
       notes.text = try screen.shownText()
-      UserDefaults.standard.set(notes.stored, forKey: key)
+      preferences.set(notes.stored, forKey: key)
     }
   }
 
@@ -141,16 +141,16 @@ import Testing
           try #require(open == 0, "a panel is open before its shortcut")
         },
         perform: { window in
-          window.notes.stored = UserDefaults.standard.object(forKey: panelKey)
           let handled = try pressShortcut(
             window.screen, keyCode: 30, characters: "]", modifiers: [.command, .option])
           try #require(handled, "nothing answered the right panel's shortcut")
         },
-        // Showing it becomes the default for the next chat, which other tests would open with.
-        afterwards: { try $0.putBack(panelKey) },
         verify: { window in
           let open = try window.openPanels
           #expect(open == 1, "the shown chat's panel, and not the hidden one's")
+          // Showing it becomes the default for the next chat, in the window's own preferences.
+          let stored = window.preferences.string(forKey: panelKey)
+          #expect(stored == WorkspacePanelDefault.open.rawValue)
         }),
     ]
 

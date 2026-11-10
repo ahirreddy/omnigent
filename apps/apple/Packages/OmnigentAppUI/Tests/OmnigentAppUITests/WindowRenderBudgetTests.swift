@@ -43,7 +43,7 @@ import Testing
       let window = try await BudgetWindow.open()
       defer { window.screen.close() }
       try interaction.prepare(window)
-      try await pause(window.screen, .milliseconds(300))
+      try await window.settleUntilQuiet()
       var failure: (any Error)?
       let renders = RenderTally.recording {
         do {
@@ -56,9 +56,36 @@ import Testing
       try interaction.afterwards(window)
       if let failure { throw failure }
       let over = renders.filter { $0.value > interaction.budget[$0.key, default: 0] }
-      #expect(over.isEmpty, "over budget: \(over.sorted { $0.key < $1.key }) of \(renders)")
-      try await pause(window.screen, .milliseconds(200))
+      if !over.isEmpty {
+        Issue.record(
+          BudgetFailure.overBudget(over, rendered: renders, budget: interaction.budget))
+      }
+      try await window.settleUntilQuiet()
       try await interaction.verify(window)
+    }
+
+    @Test("A window that keeps rendering fails the wait for it, naming what rendered")
+    func neverQuietIsNamed() async throws {
+      let window = try await BudgetWindow.open()
+      defer { window.screen.close() }
+      // A size change renders the strip in the run loop pass that takes it, on any machine.
+      var isNarrow = false
+      let resizing = Timer(timeInterval: 0.02, repeats: true) { _ in
+        MainActor.assumeIsolated {
+          isNarrow.toggle()
+          window.screen.window.setContentSize(CGSize(width: isNarrow ? 860 : 900, height: 600))
+        }
+      }
+      RunLoop.main.add(resizing, forMode: .common)
+      defer { resizing.invalidate() }
+      await #expect {
+        try await window.settleUntilQuiet(timeout: .seconds(1))
+      } throws: { error in
+        guard case BudgetFailure.neverQuiet(let rendered) = error else { return false }
+        return rendered["strip", default: 0] > 1
+      }
+      resizing.invalidate()
+      try await window.settleUntilQuiet()
     }
 
     @Test("Every interaction has a name of its own")
