@@ -214,10 +214,11 @@ struct ConnectedWindowFlowTests {
 /// The window over `session` with a titlebar, so the shell's toolbar and title have somewhere to go.
 @MainActor
 func titledWindow(
-  _ session: ServerSession, selection: WindowSelection = WindowSelection()
+  _ session: ServerSession, selection: WindowSelection = WindowSelection(),
+  preferences: UserDefaults = .standard
 ) async throws -> OffscreenWindow<AppWindowRoot> {
-  let screen = OffscreenWindow(
-    AppWindowRoot(session: session, selection: selection), width: 900, height: 600)
+  let root = AppWindowRoot(session: session, selection: selection, preferences: preferences)
+  let screen = OffscreenWindow(root, width: 900, height: 600)
   let frame = screen.window.frame
   screen.window.contentView = nil
   screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]

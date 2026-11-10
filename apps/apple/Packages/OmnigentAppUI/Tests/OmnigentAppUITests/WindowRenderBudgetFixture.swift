@@ -17,6 +17,9 @@ import Testing
   @MainActor
   struct BudgetWindow {
     let screen: OffscreenWindow<AppWindowRoot>
+    let server: AppServer
+    /// The window's own preferences: no other test, in this process or another, writes them.
+    let preferences: UserDefaults
     let session: ServerSession
     let selection: WindowSelection
     let chatTabID: String
@@ -68,9 +71,11 @@ import Testing
     }
 
     static func open() async throws -> Self {
-      let session = try await signedInSession(server())
+      let server = server()
+      let preferences = try scratchDefaults()
+      let session = try await signedInSession(server)
       let selection = WindowSelection(.session(shown))
-      let screen = try await titledWindow(session, selection: selection)
+      let screen = try await titledWindow(session, selection: selection, preferences: preferences)
       let tabs = session.tabs.group(shown)
       let chat = try #require(tabs.tabs.first)
       tabs.open(.sideChatSession(parentID: shown, childID: hidden))
@@ -80,8 +85,8 @@ import Testing
       let sideChat = try #require(tabs.selectedID)
       tabs.select(chat.id)
       let window = Self(
-        screen: screen, session: session, selection: selection, chatTabID: chat.id,
-        sideChatTabID: sideChat)
+        screen: screen, server: server, preferences: preferences, session: session,
+        selection: selection, chatTabID: chat.id, sideChatTabID: sideChat)
       try window.feed(shown, reply: "Alpha reply", streaming: true)
       try window.feed(hidden, reply: "Beta reply", streaming: false)
       try await pause(screen, .milliseconds(400))
@@ -160,7 +165,7 @@ import Testing
       } else {
         try stream(reply, in: sessionID, streaming: false)
       }
-      try await pause(screen, .milliseconds(400))
+      try await settleUntilQuiet()
       return try screen.shownText()
     }
 

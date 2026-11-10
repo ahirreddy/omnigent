@@ -31,11 +31,16 @@ struct AppWindowRoot: View {
   var tabContext = TabWindowContext()
   var serverSwitching: ServerSwitching?
   var openInNewWindow: (@MainActor (String) -> Void)?
+  /// What `@AppStorage` reads in the window. The process's own defaults are one file shared by
+  /// every test process on the machine, so a write from any of them renders the views reading it.
+  var preferences = UserDefaults.standard
 
   var body: some View {
     ServerRootView(
       session: session, selection: selection.binding, openInNewWindow: openInNewWindow,
-      tabContext: tabContext, serverSwitching: serverSwitching)
+      tabContext: tabContext, serverSwitching: serverSwitching
+    )
+    .defaultAppStorage(preferences)
   }
 }
 

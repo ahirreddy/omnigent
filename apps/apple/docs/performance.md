@@ -566,6 +566,14 @@ the rows that may render it. The scopes today: window, shell, sidebar, session r
 field, strip, tab controls, tab switcher, detail, tab, screen, transcript, rows, row,
 markdown, composer, sidechat.
 
+A count depends on nothing outside its window. The window keeps its preferences in a store
+of its own (`scratchDefaults()`): every `swift test` process shares one defaults domain, and
+another run's write there renders each scope that reads `@AppStorage`. Before the count and
+before `verify`, the test waits until the window has rendered nothing and asked its server
+nothing for 300 ms and 20 run loop passes (`settleUntilQuiet`), and fails after 10 s naming
+what still rendered. A row over its budget prints the scopes over, the whole tally and the
+budget.
+
 | Interaction | May render |
 | --- | --- |
 | Another session's row (title and time) | sidebar 1, session row 5 |
