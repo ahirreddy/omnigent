@@ -344,7 +344,7 @@ extension ConnectedServerView {
   }
 
   func report() {
-    connection.setView(sessionID: viewedSessionID, focused: isWindowFocused)
+    connection.setView(sessionID: session.tabs.viewedSessionID, focused: isWindowFocused)
   }
 }
 

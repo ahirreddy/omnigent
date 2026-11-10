@@ -16,7 +16,7 @@ public import SwiftUI
 public struct AppShell<Detail: View>: View {
   private let sidebar: () -> SidebarViewState
   @Binding private var selection: SidebarDestination?
-  @Binding private var searchText: String
+  private let searchText: () -> Binding<String>
   private let actions: SidebarActions
   private let tabs: (() -> TabStripContent)?
   private let detail: (SidebarDestination?) -> Detail
@@ -43,28 +43,29 @@ public struct AppShell<Detail: View>: View {
     @ViewBuilder detail: @escaping (SidebarDestination?) -> Detail
   ) {
     self.init(
-      sidebar: { sidebar }, selection: selection, searchText: searchText, actions: actions,
+      sidebar: { sidebar }, selection: selection, searchText: { searchText }, actions: actions,
       tabs: tabs.map { tabs in { tabs } }, detail: detail)
   }
 
   /// Creates a shell that reads the sidebar and the tabs where it shows them: a change to a
-  /// session's row or a tab's title then renders the sidebar or the strip, not the window.
+  /// session's row, the search text or a tab's title then renders the sidebar or the strip, not
+  /// the window.
   /// - Parameters:
   ///   - sidebar: Sidebar state, read by the sidebar.
   ///   - selection: The selected destination.
-  ///   - searchText: Session search.
+  ///   - searchText: Session search, read by the sidebar: making a binding reads its value.
   ///   - actions: Sidebar actions.
   ///   - tabs: The window's tabs and their actions, read by the strip; `nil` shows no tabs.
   ///   - detail: The detail column for a destination.
   public init(
     sidebar: @escaping () -> SidebarViewState, selection: Binding<SidebarDestination?>,
-    searchText: Binding<String>, actions: SidebarActions,
+    searchText: @escaping () -> Binding<String>, actions: SidebarActions,
     tabs: (() -> TabStripContent)? = nil,
     @ViewBuilder detail: @escaping (SidebarDestination?) -> Detail
   ) {
     self.sidebar = sidebar
     _selection = selection
-    _searchText = searchText
+    self.searchText = searchText
     self.actions = actions
     self.tabs = tabs
     self.detail = detail
@@ -126,7 +127,7 @@ public struct AppShell<Detail: View>: View {
   private var sidebarColumn: some View {
     ObservationScope("sidebar") {
       SidebarView(
-        state: sidebar(), selection: $selection, searchText: $searchText, actions: actions)
+        state: sidebar(), selection: $selection, searchText: searchText(), actions: actions)
     }
   }
 }

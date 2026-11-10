@@ -38,3 +38,29 @@ struct WindowTabOverview: ViewModifier {
       actions: strip?.actions ?? TabActions())
   }
 }
+
+/// Reports the session whose chat is on screen, and whether its window has focus, when either
+/// changes: a tab switch then renders this and not the window.
+struct ViewedSessionReport: ViewModifier {
+  let tabs: SessionTabGroups
+  let isWindowFocused: Bool
+  let report: (String?, Bool) -> Void
+
+  func body(content: Content) -> some View {
+    content
+      .onChange(of: tabs.viewedSessionID) { _, viewed in report(viewed, isWindowFocused) }
+      .onChange(of: isWindowFocused) { _, focused in report(tabs.viewedSessionID, focused) }
+  }
+}
+
+extension SessionTabGroups {
+  /// The session whose chat is on screen, for notification suppression.
+  var viewedSessionID: String? {
+    guard let tabs = current else { return nil }
+    let visible = tabs.visibleIDs.compactMap(tabs.tab)
+    return visible.lazy.compactMap { tab -> String? in
+      if case .chat(let id) = tab.content { return id }
+      return nil
+    }.first
+  }
+}

@@ -140,8 +140,8 @@ import Testing
       WindowInteraction(
         name: "a tab switch",
         budget: [
-          "composer": 2, "rows": 1, "screen": 1, "session row": 4, "shell": 1, "sidebar": 1,
-          "strip": 2, "tab": 1, "tab controls": 2, "transcript": 1, "window": 1,
+          "composer": 2, "detail": 1, "rows": 1, "screen": 1, "strip": 1, "tab": 1,
+          "tab controls": 1, "transcript": 1,
         ],
         perform: { $0.tabs.select($0.sideChatTabID) },
         verify: { window in
@@ -152,8 +152,8 @@ import Testing
       WindowInteraction(
         name: "a session switch",
         budget: [
-          "composer": 6, "rows": 5, "screen": 5, "session row": 8, "shell": 2, "sidebar": 2,
-          "strip": 4, "tab": 5, "tab controls": 3, "transcript": 5, "window": 2,
+          "composer": 6, "detail": 3, "rows": 5, "screen": 5, "session row": 8, "shell": 2,
+          "sidebar": 2, "strip": 4, "tab": 5, "tab controls": 3, "transcript": 5, "window": 2,
         ],
         perform: { $0.selection.page = .session(BudgetWindow.other) },
         verify: { window in
@@ -167,10 +167,7 @@ import Testing
     private static let sidebar: [WindowInteraction] = [
       WindowInteraction(
         name: "sidebar search text",
-        budget: [
-          "composer": 1, "rows": 1, "screen": 1, "session row": 2, "shell": 1, "sidebar": 1,
-          "strip": 1, "tab": 1, "tab controls": 1, "transcript": 1, "window": 1,
-        ],
+        budget: ["session row": 2, "sidebar": 1],
         perform: { $0.list.searchText = "ta" },
         verify: { window in
           let text = try window.screen.shownText()

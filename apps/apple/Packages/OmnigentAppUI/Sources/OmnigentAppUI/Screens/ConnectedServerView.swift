@@ -82,21 +82,23 @@ public struct ConnectedServerView: View {
   /// The connected server’s sidebar and selected destination.
   public var body: some View {
     let tabs = windowTabs
-    // The sidebar and the strip read their state where they show it: a session's row or a tab's
-    // title that changes then renders the sidebar or the strip, not the window.
+    // The sidebar, the strip and the detail read their state where they show it: a session's
+    // row, a tab's title or the shown tab that changes then renders that part, not the window.
     AppShell(
-      sidebar: { sidebarState }, selection: pageBinding, searchText: searchBinding,
+      sidebar: { sidebarState }, selection: pageBinding, searchText: { searchBinding },
       actions: sidebarActions, tabs: strip(of: tabs),
       detail: { _ in
-        tabDetail
-          .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-              ConnectionIssuesBanner(connection: connection)
-              if let tabFailure {
-                TabFailureBanner(message: tabFailure) { self.tabFailure = nil }
+        ObservationScope("detail") {
+          tabDetail
+            .safeAreaInset(edge: .top, spacing: 0) {
+              VStack(spacing: 0) {
+                ConnectionIssuesBanner(connection: connection)
+                if let tabFailure {
+                  TabFailureBanner(message: tabFailure) { self.tabFailure = nil }
+                }
               }
             }
-          }
+        }
       }
     )
     .countsRenders("window")
@@ -114,9 +116,8 @@ public struct ConnectedServerView: View {
     .modifier(CloseShellConfirmation(session: session) { tabFailure = $0 })
     .onChange(of: selection) { _, current in session.tabs.show(current) }
     .onChange(of: session.tabs.page) { _, page in pageChanged(page) }
-    .onChange(of: viewedSessionID) { report() }
+    .modifier(viewedSessionReport)
     .modifier(BusyTabsReport(tabs: tabs))
-    .onChange(of: isWindowFocused) { report() }
     .task(id: connection.connectedServer?.baseUrl) {
       if connection.connectedServer != nil { await connection.loadOfferedPages() }
     }
@@ -269,14 +270,12 @@ extension ConnectedServerView {
       })
   }
 
-  /// The session whose chat is on screen, for notification suppression.
-  var viewedSessionID: String? {
-    guard let tabs = session.tabs.current else { return nil }
-    let visible = tabs.visibleIDs.compactMap(tabs.tab)
-    return visible.lazy.compactMap { tab -> String? in
-      if case .chat(let id) = tab.content { return id }
-      return nil
-    }.first
+  /// Tells the core which session's chat is on screen, for notifications and the badge.
+  private var viewedSessionReport: ViewedSessionReport {
+    let connection = connection
+    return ViewedSessionReport(tabs: session.tabs, isWindowFocused: isWindowFocused) {
+      connection.setView(sessionID: $0, focused: $1)
+    }
   }
 
   /// The shown session's tabs, or a session-less page over them. The tabs stay mounted under a
