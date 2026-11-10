@@ -243,23 +243,25 @@ import Testing
       WindowInteraction(
         name: "a page without a session",
         budget: [
-          "composer": 5, "detail": 4, "markdown": 6, "row": 6, "rows": 7, "screen": 7,
-          "session row": 8, "shell": 2, "sidebar": 2, "strip": 1, "tab": 6, "tab controls": 1,
-          "transcript": 7, "window": 2,
+          "composer": 2, "detail": 3, "rows": 3, "screen": 3, "session row": 8, "shell": 2,
+          "sidebar": 2, "strip": 1, "tab": 3, "tab controls": 1, "transcript": 3, "window": 2,
         ],
+        prepare: { $0.noteScrollViews() },
         perform: { $0.selection.page = .usage },
         verify: { window in
           let toolbar = try window.screen.toolbarText()
           #expect(!toolbar.contains("Alpha"), "no strip over a page: \(toolbar)")
+          #expect(!window.notes.scrollViews.isEmpty, "the chats had scroll views to keep")
+          #expect(window.rebuiltScrollViews == 0, "the chats stay built under the page")
         }),
       WindowInteraction(
         name: "back from a page without a session",
         budget: [
-          "composer": 5, "detail": 4, "markdown": 6, "row": 6, "rows": 6, "screen": 7,
-          "session row": 8, "shell": 2, "sidebar": 2, "strip": 1, "tab": 5, "tab controls": 1,
-          "transcript": 6, "window": 2,
+          "composer": 2, "detail": 3, "rows": 3, "screen": 3, "session row": 8, "shell": 2,
+          "sidebar": 2, "strip": 1, "tab": 3, "tab controls": 1, "transcript": 3, "window": 2,
         ],
         prepare: { window in
+          window.noteScrollViews()
           window.selection.page = .usage
           window.screen.settle(0.3)
         },
@@ -269,6 +271,7 @@ import Testing
           #expect(toolbar.contains("Alpha"), "the strip's tab is back: \(toolbar)")
           let text = try window.screen.shownText()
           #expect(text.contains("Alpha reply"), "the chat that was kept behind: \(text)")
+          #expect(window.rebuiltScrollViews == 0, "the same chat, not one built again")
         }),
     ]
 

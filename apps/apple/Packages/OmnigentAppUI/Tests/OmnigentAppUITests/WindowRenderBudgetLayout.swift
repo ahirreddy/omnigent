@@ -31,6 +31,8 @@ import Testing
     var text: [String] = []
     /// A stored preference as it was before the step wrote it.
     var stored: Any?
+    /// The chats' scroll views as they were built before the step.
+    var scrollViews: [NSScrollView] = []
   }
 
   extension BudgetWindow {
@@ -57,6 +59,17 @@ import Testing
           transcript: try #require(scrolls.map(\.frame.width).max()),
           strip: try #require(items.map(\.frame.width).max()))
       }
+    }
+
+    /// Notes the scroll views the window has built, before a step that must keep them.
+    func noteScrollViews() {
+      notes.scrollViews = screen.allViews.compactMap { $0 as? NSScrollView }
+    }
+
+    /// How many of the noted scroll views the window no longer holds: it built them again.
+    var rebuiltScrollViews: Int {
+      let held = Set(screen.allViews.map(ObjectIdentifier.init))
+      return notes.scrollViews.count { !held.contains(ObjectIdentifier($0)) }
     }
 
     /// Notes the widths before a step that changes them.

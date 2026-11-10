@@ -319,11 +319,9 @@ private struct TitlelessToolbar: ViewModifier {
   let isActive: Bool
 
   func body(content: Content) -> some View {
-    if isActive {
-      edged(content.toolbar(removing: .title))
-    } else {
-      edged(content)
-    }
+    // One view either way: a branch here would build the whole detail again, kept chats
+    // included, each time the tabs come or go.
+    edged(content.toolbar(removing: isActive ? .title : nil))
   }
 
   private func edged(_ content: some View) -> some View {
