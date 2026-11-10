@@ -119,6 +119,18 @@ import Testing
           #expect(try window.widths == narrower, "from \(before)")
         }),
       WindowInteraction(
+        name: "a widening window resize step",
+        budget: ["strip": 1],
+        prepare: { try $0.noteWidths() },
+        perform: { $0.screen.window.setContentSize(CGSize(width: 940, height: 600)) },
+        verify: { window in
+          let before = try #require(window.notes.widths)
+          var wider = before
+          wider.transcript += 40
+          wider.strip += 40
+          #expect(try window.widths == wider, "from \(before)")
+        }),
+      WindowInteraction(
         name: "a sidebar divider step",
         budget: ["strip": 1],
         prepare: { try $0.noteWidths() },
