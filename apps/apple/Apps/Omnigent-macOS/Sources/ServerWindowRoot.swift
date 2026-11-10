@@ -53,7 +53,6 @@ struct ServerWindowRoot: View {
 
   private func window(_ session: ServerSession) -> some View {
     let isReady = Self.isReady(session, boundTo: id.serverURL)
-    let notifications = session.connection.notifications
     return ServerRootView(
       session: session, selection: $selection, isWindowFocused: appearsActive,
       openInNewWindow: { sessionID in openNewWindow(on: sessionID) },
@@ -75,11 +74,11 @@ struct ServerWindowRoot: View {
         }
     }
     .focusedSceneValue(\.coreDebug, CoreDebugToggle { showsCoreDebug.toggle() })
+    // The selection, the badge and the selected tab are read where they are reported: a body
+    // that reads them here builds the whole window again on every session and tab switch.
     .serverWindow(
-      $id, desktop: desktop, isReady: isReady,
-      viewedSessionID: isReady ? selection?.sessionID : nil,
-      unreadCount: isReady ? notifications?.badgeCount ?? 0 : 0,
-      actions: actions(session),
+      $id, desktop: desktop, selection: $selection,
+      status: { shown in status(session, showing: shown) },
       onRoute: { route in apply(route, in: session, openSettingsAt: settingsWindow) }
     )
     .desktopAttention(session.connection, serverURL: id.serverURL, desktop: desktop)
@@ -323,5 +322,18 @@ struct ServerWindowRoot: View {
   /// Two server URLs name the same server, ignoring case and a trailing slash.
   static func sameServer(_ lhs: URL?, _ rhs: URL?) -> Bool {
     ServerSession.sameServer(lhs, rhs)
+  }
+}
+
+extension ServerWindowRoot {
+  /// What the window tells the desktop shell while it shows `selection`.
+  private func status(
+    _ session: ServerSession, showing selection: SidebarDestination?
+  ) -> ServerWindowStatus {
+    let isReady = Self.isReady(session, boundTo: id.serverURL)
+    return ServerWindowStatus(
+      isReady: isReady, viewedSessionID: isReady ? selection?.sessionID : nil,
+      unreadCount: isReady ? session.connection.notifications?.badgeCount ?? 0 : 0,
+      actions: actions(session))
   }
 }
