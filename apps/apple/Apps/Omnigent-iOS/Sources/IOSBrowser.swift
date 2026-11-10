@@ -15,7 +15,9 @@ enum IOSBrowser {
   static let tabs: BrowserTabHost = {
     let provider = DefaultBrowserEngineProvider()
     let preferences = BrowserPreferences(defaults: .standard, provider: provider)
-    let environment = BrowserEnvironment.standard(provider: provider, preferences: preferences)
+    let environment = BrowserEnvironment(
+      directory: BrowserEnvironment.standardDirectory, provider: provider,
+      preferences: preferences)
     // iOS may end a backgrounded app without notice: write history and closed tabs now.
     NotificationCenter.default.addObserver(
       forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
