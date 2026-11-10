@@ -75,4 +75,25 @@ struct IdleSurfaceRenderingTests {
     surface.controller.setFocused(false)
     #expect(try await surface.framesWhileIdle() <= 2)
   }
+
+  /// The surface exists before its view can take the keyboard, so the view's report comes after
+  /// the surface was told at creation that it has none, and wins.
+  @Test("a new terminal given the keyboard at once draws as the focused one")
+  func newSurfaceTakesTheKeyboard() async throws {
+    let surface = try CountedSurface()
+    surface.controller.focus()
+    #expect(surface.window.firstResponder === surface.controller.view)
+    #expect(try await surface.framesWhileIdle() > 10)
+  }
+
+  @Test(
+    "a terminal given the keyboard after sitting idle draws, and stops when another view has it")
+  func idleSurfaceTakesTheKeyboardLater() async throws {
+    let surface = try CountedSurface()
+    #expect(try await surface.framesWhileIdle() <= 2)
+    surface.controller.focus()
+    #expect(try await surface.framesWhileIdle() > 10)
+    #expect(surface.window.makeFirstResponder(nil))
+    #expect(try await surface.framesWhileIdle() <= 2)
+  }
 }
