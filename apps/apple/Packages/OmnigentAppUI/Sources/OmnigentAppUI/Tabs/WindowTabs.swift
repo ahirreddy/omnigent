@@ -278,21 +278,22 @@ struct WindowTabs {
   /// and from a terminal back. Side chats and browsers have no terminal view.
   static func offersTerminal(_ content: AppTabContent) -> Bool {
     switch content {
-    case .chat, .terminal, .harness: true
+    case .chat, .terminal: true
     default: false
     }
   }
 
-  /// Control-`: from a session's chat to its terminal (the harness TUI, else its first shell),
-  /// and from a terminal back to the chat.
+  /// Control-`: from a session's chat to its terminal (the harness TUI in the chat's Terminal
+  /// view, else its first shell), and from a terminal back to the chat.
   func toggleTerminal(_ sessionID: String) {
     switch groups.group(sessionID).selected?.content {
-    case .terminal, .harness:
+    case .terminal:
       open(.chat(sessionID: sessionID))
     default:
       let terminals = session.terminalStores[sessionID]?.terminals
       if case .ready = terminals?.harness {
-        open(.harness(sessionID: sessionID))
+        groups.setViewMode(
+          groups.viewMode(sessionID) == .terminal ? .chat : .terminal, for: sessionID)
       } else if let shell = terminals?.userShells.first {
         open(.terminal(sessionID: sessionID, terminalID: shell.terminal.id))
       } else {

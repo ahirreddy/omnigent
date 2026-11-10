@@ -25,6 +25,17 @@ struct TranscriptRowEvents {
   var turnsChanged: ([TranscriptTurn]) -> Void
 }
 
+/// Tells the pacer when the transcript's tab hides and shows. The row list does not read the
+/// tab's state itself, so switching tabs does not run its body.
+private struct PacedWhileShown: ViewModifier {
+  let pacer: TranscriptRowsPacer
+  @Environment(\.isTabContentHidden) private var isHidden
+
+  func body(content: Content) -> some View {
+    content.onChange(of: isHidden, initial: true) { _, isHidden in pacer.setShown(!isHidden) }
+  }
+}
+
 /// The transcript's scrolling content. It reads the rows in its own body (paced, see
 /// ``TranscriptRowsPacer``), so a row change re-renders this list and not the scroll view's
 /// modifiers and overlays in ``TranscriptView``.
@@ -38,7 +49,6 @@ struct TranscriptRowsContent<Header: View>: View {
   let events: TranscriptRowEvents
   let header: Header
 
-  @Environment(\.isTabContentHidden) private var isHidden
   @Environment(\.transcriptAppearance) private var appearance
   @Environment(\.transcriptFocus) private var focus
 
@@ -46,7 +56,7 @@ struct TranscriptRowsContent<Header: View>: View {
     let state = rowsState
     current.state = state
     pacer.warmup.warm(state.rows)
-    return list(state)
+    return list(state).countsRenders("rows")
   }
 
   private func list(_ state: ConversationViewState) -> some View {
@@ -80,13 +90,14 @@ struct TranscriptRowsContent<Header: View>: View {
     .onChange(of: layout.turns(for: state), initial: true) { _, turns in
       events.turnsChanged(turns)
     }
+    .modifier(PacedWhileShown(pacer: pacer))
   }
 
   /// The state with the live rows, when the transcript reads them itself.
   private var rowsState: ConversationViewState {
     guard let liveRows else { return state }
     var state = state
-    let live = pacer.rows(from: liveRows, isShown: !isHidden)
+    let live = pacer.rows(from: liveRows)
     state.rows = live.rows
     state.revision = live.revision
     if pacer.isPreparing { state.isHydrating = true }

@@ -5,13 +5,13 @@ import OmnigentRemoteBrowser
 import OmnigentStores
 import OmnigentTerminalStores
 import OmnigentTestSupport
-import OmnigentUIComponents
 import OmnigentViewTesting
 import OmnigentViewTextReading
 import SwiftUI
 import Testing
 
 @testable import OmnigentAppUI
+@testable import OmnigentUIComponents
 
 /// What the mounted window does with its tabs: their failures and their menus.
 extension ConnectedWindowFlowTests {
@@ -76,6 +76,27 @@ extension ConnectedWindowFlowTests {
       !server.requests("PATCH", "/v1/sessions/conv_a").isEmpty
     }
   }
+
+  #if DEBUG
+    @Test("Switching to a chat that stayed built renders it once")
+    func switchingRendersTheShownChatOnce() async throws {
+      let mounted = try await mounted()
+      defer { mounted.screen.close() }
+      let group = mounted.session.tabs.group("conv_a")
+      let chat = try #require(group.tabs.first)
+      group.open(.sideChatSession(parentID: "conv_a", childID: "conv_b"))
+      try await settle(mounted.screen, until: "the side chat") {
+        mounted.session.connection.conversations["conv_b"] != nil
+      }
+      try await pause(mounted.screen, .milliseconds(300))
+
+      let renders = RenderTally.recording {
+        group.select(chat.id)
+        mounted.screen.settle(0)
+      }
+      #expect(renders["screen"] == 1, "\(renders)")
+    }
+  #endif
 
   @Test("A remote tab that ended opens again in its place")
   func reopeningARemoteTab() async throws {

@@ -31,8 +31,6 @@ public struct ConversationScreen<Terminal: View>: View {
   @State private var draftHasText = false
   @State private var modelPickerRequest = 0
   @State private var localInspectorTab: InspectorTab = .files
-  /// A hidden tab's panel stays closed (`.constant` counts as changed on every update).
-  @State private var hiddenInspector = false
   private let externalInspectorTab: Binding<InspectorTab>?
   @State private var showsShare = false
   @State private var showsInfo = false
@@ -49,9 +47,7 @@ public struct ConversationScreen<Terminal: View>: View {
   @Environment(\.transcriptWindow) private var transcriptWindow
   @Environment(\.openAppearanceSettings) private var openAppearanceSettings
   @Environment(\.tabsInTitlebar) private var tabsInTitlebar
-  @Environment(\.isActiveTabPane) private var isActivePane
   @Environment(\.offersTerminalView) private var offersTerminalView
-  @Environment(\.isTabContentHidden) private var isHiddenTab
 
   /// Creates the screen.
   /// - Parameters:
@@ -92,33 +88,43 @@ public struct ConversationScreen<Terminal: View>: View {
 
   private var showsTerminal: Bool { mode == .terminal && offersTerminal }
 
-  /// Only a session's primary chat has the terminal view; side chats and other tabs do not.
+  /// Only a chat whose harness has a terminal offers the terminal view; other tabs do not.
   private var offersTerminal: Bool { state.terminalAvailable && offersTerminalView }
+
+  /// The Chat / Terminal switch shows among the trailing toolbar items, beside the tabs.
+  private var showsViewSwitch: Bool {
+    offersTerminal && tabsInTitlebar && layoutWidth == .regular
+  }
 
   private var inspectorTab: Binding<InspectorTab> { externalInspectorTab ?? $localInspectorTab }
 
   /// The screen.
   public var body: some View {
-    Group {
+    ZStack {
+      // A request answers inline while its card is on screen, else in the dock. The transcript
+      // stays built under the terminal, so going back to Chat shows it where it was.
+      LiveTranscript(
+        state: state, liveRows: liveRows, actions: transcriptActions,
+        scrollToLatestRequest: scrollRequest
+      )
+      .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
+      .chatDropTarget(
+        isEnabled: composerState.acceptsAttachments && composerState.availability == .available,
+        add: composerActions.addAttachments
+      )
+      .modifier(HiddenUnderTerminal(showsTerminal: showsTerminal))
+      // A hidden tab lets go of the terminal surface, as a terminal tab does.
       if showsTerminal {
-        TerminalPane(status: state.terminal, resume: actions.resume) { terminal }
-      } else {
-        // A request answers inline while its card is on screen, else in the dock.
-        LiveTranscript(
-          state: state, liveRows: liveRows, actions: transcriptActions,
-          scrollToLatestRequest: scrollRequest
-        )
-        .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
-        .chatDropTarget(
-          isEnabled: composerState.acceptsAttachments && composerState.availability == .available,
-          add: composerActions.addAttachments)
+        ShownTabOnly { TerminalPane(status: state.terminal, resume: actions.resume) { terminal } }
       }
     }
     .countsRenders("screen")
     // A bar: the transcript fades under the dock and composer, its inset following them.
     .safeAreaBar(edge: .bottom, spacing: 0) {
       VStack(spacing: 0) {
+        // Under the terminal no card is on screen, so every request answers in the dock.
         DecisionDock(state: state, actions: actions)
+          .environment(showsTerminal ? nil : decisionSurfaces)
         if !showsTerminal {
           TranscriptComposer(
             draft: draft, state: composerState, actions: composerActions,
@@ -162,19 +168,18 @@ public struct ConversationScreen<Terminal: View>: View {
     .onPreferenceChange(ApproveShortcutCandidate.self) { approveCandidate = $0 }
     .workspaceInspector(
       state: state, actions: actions, slots: extras.slots,
-      isPresented: isHiddenTab ? $hiddenInspector : $showsInspector, tab: inspectorTab
+      isPresented: $showsInspector, tab: inspectorTab
     )
     // A hidden tab publishes no title, so the shown tab or full page keeps the window's.
-    .background { if !isHiddenTab { windowTitle } }
-    .preference(
-      key: TitlebarTrailingItems.self,
-      value: isHiddenTab
-        ? nil
-        : TitlebarTrailingItems.count(
+    .background { ShownTabOnly { windowTitle } }
+    .modifier(
+      ShownTabTrailingItems(
+        count: TitlebarTrailingItems.count(
           state, hasShare: extras.share != nil, tabsInTitlebar: tabsInTitlebar,
           isRegular: layoutWidth == .regular, projectTag: showsProjectTag)
+          + (showsViewSwitch ? TitlebarTrailingItems.viewSwitch : 0))
     )
-    .conversationToolbar(toolbarItems)
+    .modifier(ActivePaneToolbar(items: toolbarItems))
     .sheet(isPresented: $showsShare) {
       if let share = extras.share {
         ShareSheet(state: share.state, actions: share.actions) { showsShare = false }
@@ -193,14 +198,12 @@ public struct ConversationScreen<Terminal: View>: View {
         actions: extras.sessionActions, branch: extras.menuContext.branch)
     )
     // In a split window only the focused pane's conversation drives the menus.
-    .focusedSceneValue(\.sessionCommands, commandRelay.publish(isActivePane ? commands : nil))
+    .modifier(ActivePaneCommands(commands: commands, relay: commandRelay))
   }
 
-  /// The trailing toolbar items; a split window's other pane leaves the toolbar to the focused
-  /// one, and a hidden tab shows none.
-  private var toolbarItems: ConversationToolbarItems? {
-    guard isActivePane else { return nil }
-    return ConversationToolbarItems(
+  /// The trailing toolbar items, shown for the focused pane's conversation.
+  private var toolbarItems: ConversationToolbarItems {
+    ConversationToolbarItems(
       state: state, extras: extras, offersTerminal: offersTerminal,
       tabsInTitlebar: tabsInTitlebar, isRegular: layoutWidth == .regular,
       showsProjectTag: showsProjectTag, mode: $mode, showsInspector: $showsInspector,

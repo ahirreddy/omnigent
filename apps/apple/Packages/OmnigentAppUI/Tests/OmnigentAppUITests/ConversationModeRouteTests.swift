@@ -15,24 +15,37 @@ struct ConversationModeRouteTests {
     #expect(route.mode == .chat)
   }
 
-  @Test func withTabsTerminalOpensTheHarnessAndStaysOnChat() {
+  @Test func withTabsTheWindowKeepsTheMode() {
+    let groups = SessionTabGroups()
     let route = ConversationModeRoute()
-    var opened = 0
-    route.openHarness = { opened += 1 }
-    route.mode = .terminal
-    #expect(opened == 1)
+    route.remembered = groups.viewChoice("s")
     #expect(route.mode == .chat)
-    route.mode = .chat
-    #expect(opened == 1)
+    route.mode = .terminal
+    #expect(route.mode == .terminal)
+    #expect(groups.viewMode("s") == .terminal)
+    #expect(groups.viewMode("other") == .chat)
+
+    // Another view of the same chat (rebuilt after its tab was let go) shows the same mode.
+    let rebuilt = ConversationModeRoute()
+    rebuilt.remembered = groups.viewChoice("s")
+    #expect(rebuilt.mode == .terminal)
+    rebuilt.mode = .chat
+    #expect(route.mode == .chat)
   }
 
-  @Test func modeBindingSetsTheHarnessOpener() {
+  @Test func modeBindingUsesTheWindowsChoice() {
+    let groups = SessionTabGroups()
     let route = ConversationModeRoute()
-    var opened = 0
-    let binding = route.mode({ opened += 1 }, .constant(route))
+    let binding = route.mode(groups.viewChoice("s"), .constant(route))
     binding.wrappedValue = .terminal
-    #expect(opened == 1)
-    #expect(binding.wrappedValue == .chat)
+    #expect(binding.wrappedValue == .terminal)
+    #expect(groups.viewMode("s") == .terminal)
+
+    // Without tabs the route keeps the mode itself.
+    let alone = ConversationModeRoute()
+    let own = alone.mode(nil, .constant(alone))
+    own.wrappedValue = .terminal
+    #expect(own.wrappedValue == .terminal)
   }
 
   @Test func panelFollowsTheDefaultUntilTheChatChooses() {

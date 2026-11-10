@@ -99,21 +99,80 @@
       #expect(spy.calls.isEmpty)
     }
 
-    @Test("In a split window, a release on the other pane's section moves the tab to that pane")
-    func movesToOtherSection() throws {
-      let spy = TabSpy()
-      let state = TabsState(
+    /// "one" shown on the left with focus, "two" on the right.
+    private var sideBySide: TabsState {
+      TabsState(
         tabs: [
           TabFixture.tab("one", pane: .leading), TabFixture.tab("two", pane: .trailing),
         ],
         selectedID: "one",
         split: TabSplitState(leadingID: "one", trailingID: "two", focused: .leading))
-      let screen = screen(state, spy.actions)
+    }
+
+    /// What the app's windows offer: panes to show a tab in, no new window for it.
+    private func paneActions(_ spy: TabSpy) -> TabActions {
+      var actions = spy.actions
+      actions.moveToNewWindow = nil
+      return actions
+    }
+
+    @Test("In a split window, a release on the other pane's section moves the tab to that pane")
+    func movesToOtherSection() throws {
+      let spy = TabSpy()
+      let tracker = TabDragTracker()
+      let screen = screen(sideBySide, spy.actions, tracker: tracker)
+      defer { screen.close() }
+      try screen.dragGesture(
+        from: CGPoint(x: 60, y: Self.stripY),
+        through: [CGPoint(x: 70, y: Self.stripY), CGPoint(x: 600, y: Self.stripY)],
+        releases: false)
+      #expect(tracker.target == .trailing, "the right pane previews the drop")
+      try screen.sendMouse(.leftMouseUp, CGPoint(x: 600, y: Self.stripY))
+      #expect(spy.calls == ["show one trailing"])
+      #expect(tracker.target == nil)
+    }
+
+    @Test("Without a tracker, a release on the other pane's section still moves the tab")
+    func movesToOtherSectionAlone() throws {
+      let spy = TabSpy()
+      let strip = TabStrip(state: sideBySide, actions: spy.actions)
+        .frame(width: Self.width, height: 38)
+      let screen = OffscreenWindow(AnyView(strip), width: Self.width, height: 38)
       defer { screen.close() }
       try screen.dragGesture(
         from: CGPoint(x: 60, y: Self.stripY),
         through: [CGPoint(x: 70, y: Self.stripY), CGPoint(x: 600, y: Self.stripY)])
-      #expect(spy.calls.contains("show one trailing"))
+      #expect(spy.calls == ["show one trailing"])
+    }
+
+    @Test("In a split window, a tab dropped anywhere on the other pane moves there")
+    func dropsOnOtherPane() throws {
+      // Just right of the divider, and the right pane's tab just left of it: neither is an edge.
+      for (start, drop, call) in [
+        (CGPoint(x: 60, y: Self.stripY), CGPoint(x: 480, y: 200), "show one trailing"),
+        (CGPoint(x: 520, y: Self.stripY), CGPoint(x: 420, y: 200), "show two leading"),
+      ] {
+        let spy = TabSpy()
+        let tracker = TabDragTracker()
+        let screen = screen(sideBySide, paneActions(spy), tracker: tracker)
+        defer { screen.close() }
+        try screen.dragGesture(
+          from: start, through: [CGPoint(x: start.x, y: start.y + 10), drop], releases: false)
+        #expect(tracker.target != nil, "\(call)")
+        try screen.sendMouse(.leftMouseUp, drop)
+        #expect(spy.calls == [call])
+      }
+    }
+
+    @Test("In a split window, a tab dropped on its own pane stays")
+    func dropsOnOwnPane() throws {
+      let spy = TabSpy()
+      let screen = screen(sideBySide, paneActions(spy))
+      defer { screen.close() }
+      let start = CGPoint(x: 60, y: Self.stripY)
+      try screen.dragGesture(
+        from: start, through: [CGPoint(x: start.x, y: start.y + 10), CGPoint(x: 300, y: 200)])
+      #expect(spy.calls.isEmpty)
     }
 
     @Test("In a split window a tab swaps only with the tabs of its own pane")

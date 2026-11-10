@@ -154,6 +154,51 @@ struct SessionTabGroupsTests {
     #expect(SessionTabGroups.isDefault(SessionTabGroups.normalized(TabWindowSnapshot(), for: "s")))
   }
 
+  @Test("A chat's Chat or Terminal choice is kept per session, until the session leaves")
+  func viewChoices() {
+    let groups = SessionTabGroups()
+    #expect(groups.viewMode("a") == .chat, "a chat starts in its chat view")
+    #expect(groups.viewChoice("a").mode == nil, "nothing is chosen yet")
+    let choice = groups.viewChoice("a")
+    #expect(groups.viewChoice("a") === choice, "one choice per session")
+    groups.setViewMode(.terminal, for: "a")
+    groups.setViewMode(.terminal, for: "a")
+    groups.setViewMode(.chat, for: "b")
+    #expect(groups.viewMode("a") == .terminal)
+    #expect(groups.viewChoice("b").mode == .chat)
+
+    groups.removeSessions(["a"])
+    #expect(groups.viewChoice("a").mode == nil, "an archived session's choice goes with it")
+    #expect(groups.viewMode("b") == .chat)
+    groups.setViewMode(.terminal, for: "b")
+    groups.reset()
+    #expect(groups.viewChoice("b").mode == nil, "another server starts over")
+  }
+
+  @Test("Tabs saved with the agent's terminal in a tab of its own show it in the chat instead")
+  func savedHarnessTab() {
+    let chat = AppTab(content: .chat(sessionID: "s"))
+    let harness = AppTab(content: .harness(sessionID: "s"))
+    let onHarness = TabWindowSnapshot(
+      tabs: [chat, harness], selectedID: harness.id, closed: [harness])
+    let onChat = TabWindowSnapshot(tabs: [chat, harness], selectedID: chat.id)
+    #expect(SessionTabGroups.selectsHarness(onHarness))
+    #expect(!SessionTabGroups.selectsHarness(onChat))
+    #expect(!SessionTabGroups.selectsHarness(TabWindowSnapshot()))
+    #expect(!SessionTabGroups.belongsInGroup(harness.content))
+
+    let groups = SessionTabGroups()
+    groups.loadSaved = { $0 == "s" ? onHarness : onChat }
+    let group = groups.group("s")
+    #expect(group.tabs.map(\.content) == [chat.content], "the terminal's own tab is gone")
+    #expect(group.selected?.content == chat.content)
+    #expect(group.closed.isEmpty, "and cannot be reopened")
+    #expect(groups.viewMode("s") == .terminal, "the chat shows the terminal it was left on")
+
+    #expect(groups.group("other").tabs.map(\.content) == [.chat(sessionID: "other")])
+    #expect(groups.viewChoice("other").mode == nil, "left on the chat, it stays on the chat")
+  }
+
   @Test("A page another window shows gets a page of its own, from the same saved state")
   func reassignsPagesInUse() throws {
     let shown = UUID()

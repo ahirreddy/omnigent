@@ -3,7 +3,7 @@ import OmnigentUIComponents
 
 /// How a conversation opens its session's other tabs.
 struct ConversationTabRoutes {
-  /// The agent's TUI.
+  /// The agent's TUI: the chat's Terminal view.
   var openHarness: @MainActor () -> Void
   /// A terminal by id.
   var openTerminal: @MainActor (String) -> Void
@@ -20,8 +20,10 @@ struct ConversationTabRoutes {
   var newTerminal: (@MainActor (String?) -> Void)?
   /// Opens a browser tab; `nil` when the window has no browser.
   var openBrowser: (@MainActor () -> Void)?
-  /// A terminal-backed chat showed: opens its terminal the first time, per Settings.
+  /// A terminal-backed chat showed: shows its terminal the first time, per Settings.
   var applyDefaultView: (@MainActor () -> Void)?
+  /// The chat's Chat or Terminal choice, kept by the window; `nil` keeps it in the chat's view.
+  var viewChoice: SessionViewChoice?
 }
 
 extension WindowTabs {
@@ -29,10 +31,11 @@ extension WindowTabs {
   func routes(for sessionID: String) -> ConversationTabRoutes {
     let groups = groups
     var routes = ConversationTabRoutes(
-      openHarness: { groups.open(.harness(sessionID: sessionID)) },
+      openHarness: { groups.setViewMode(.terminal, for: sessionID) },
       openTerminal: { groups.open(.terminal(sessionID: sessionID, terminalID: $0)) },
       openSideChat: { groups.open(.sideChat(sessionID: sessionID, rowID: $0), title: $1) },
       openSession: { groups.show(.session($0)) })
+    routes.viewChoice = groups.viewChoice(sessionID)
     routes.openNewSideChat = { openPendingSideChat(sessionID, draft: $0, sendNow: $1) }
     routes.newTerminal = { name in
       Task { await newTerminal(in: sessionID, named: name, replacing: nil) }

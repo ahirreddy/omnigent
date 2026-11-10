@@ -291,7 +291,7 @@ What changed:
 - **A resize step no longer re-renders the window.** `AppShell` kept the detail column's width
   in its state for the titlebar's tab strip, so every step re-ran the shell, the sidebar's 650
   rows, the conversation screen and composer. The width now lives in an observable box
-  (`DetailColumnWidth`) that only the strip reads. `TabSplitView` and the transcript's message
+  (`TitlebarStripSpace`) that only the strip reads. `TabSplitView` and the transcript's message
   navigator likewise keep whether the width fits, not the width. In samples of a resize, view
   bodies fell from 14% to 5% of each step and the sidebar's outline updates are gone.
 - **Markdown parses and code tokenizes off the main actor.** `MarkdownCache` and
@@ -312,8 +312,77 @@ Tried and left out:
 - One selectable text view per message instead of one overlay per `Text` (3-5% of samples)
   needs a TextKit view in place of SwiftUI `Text`, a larger change than this pass.
 
+## Fifth pass: switching tabs (November 2026)
+
+Measured in a view test, not the app: the connected window in an offscreen titled window (a
+300-row chat, a side chat, a terminal, a browser and a New Tab page in one session, 153
+sessions in the sidebar), thread CPU from selecting a tab through the layout pass that shows
+it. Debug with coverage instrumentation, so several times a Release build's cost, and within
+about 50% between runs; the render and view counts are exact.
+
+| Switch | Before | After |
+| --- | --- | --- |
+| Chat to side chat, either way | 250-285 ms | 65-69 ms |
+| Chat to terminal | 210-280 ms | 64-72 ms |
+| Terminal to chat | 300 ms | 86-92 ms |
+| Chat to New Tab | 190-250 ms | 56 ms |
+| New Tab to chat | 280 ms | 84-94 ms |
+| Chat to browser | 155-180 ms | 55-67 ms |
+| Browser to terminal | 113-128 ms | 51-66 ms |
+| AppKit views made and dropped per switch between kept chats | 30 | 5 (focus rings) |
+| Renders of each kept conversation (screen, transcript, rows) per switch | 3 | 1, the one that shows |
+
+What changed:
+
+- **A hidden tab is one layer** (`HiddenTabContent`'s `compositingGroup`). Hiding a tab turns
+  off its hit testing, and SwiftUI answered by taking every AppKit view in both tabs (text
+  overlays, scroll views, the composer's glass) out of the window and putting it back: 30 views
+  made and dropped and about 47 kinds of superview moves per switch. This was the largest cost.
+- **The conversation that hides does not render.** `HeldWhileHidden` compared the tab as it was
+  with the tab as it is now, so the switch itself (shown before, hidden now) passed the window's
+  new closures to the tab that was leaving; it now holds whenever the tab is hidden now. The
+  screen and the row list also read whether their tab is hidden in their own bodies, so both
+  conversations re-rendered for the flag. Small views read it instead
+  (`ConversationTabVisibility`, `PacedWhileShown`, `WorkspaceInspectorPresentation`).
+- **A tab with other toolbar items no longer renders the window twice.** A terminal, browser or
+  New Tab page reports no trailing toolbar items and a conversation reports its count, which
+  `AppShell` kept in its state, so each switch between the two kinds rendered the shell, the
+  sidebar and the shown tab a second time. The count sits with the detail width in
+  `TitlebarStripSpace`, which only the strip reads.
+- **The conversation that shows renders once, not twice.** `ConnectedServerView` read the
+  selected tab and the kept list inside the closure it gives `TabSplitView`, so the split view
+  followed the selection too and built the kept tabs again after the window had. It reads them
+  before making the split view.
+
+Each has a counting test (`KeptAliveTabsSwitchTests`, `AdaptiveShellTests`,
+`ConnectedWindowTabsTests`); `RenderTally` (Debug) gives a test the renders one change caused,
+by `countsRenders` name.
+
+Left as it is:
+
+- One render of the shell, the sidebar, the tab strip and the conversation that shows, most
+  of what is left: `ConnectedServerView` and `AppShell` read the selected tab in their
+  bodies, so a switch re-runs both and hands the sidebar and the shown tab new closures.
+  Holding those needs the closures made stable first.
+- The flip itself, about 55 ms spread over SwiftUI's graph update, the toolbar and the display
+  list, with no single symbol standing out.
+- Terminals, browsers and the New Tab page are not kept: each selection builds the page again,
+  a terminal tab asks the server for its terminals and the New Tab page for the session's
+  agent. That is a request after the switch, not time in its frame.
+- A chat left in Terminal mode lets go of its terminal surface while its tab is hidden, so
+  coming back builds the surface again: 100-165 ms, the slowest switch. Its transcript stays
+  built. Going from Terminal back to Chat builds the composer again (about 250 ms over the
+  following frames), since the composer is removed under the terminal.
+- The kept tabs' order (`zIndex`) changes on a switch, about 10 ms, so the shown tab's
+  overlays are never under a hidden one's.
+
+Ruled out: tab persistence (debounced, off the switch), tab thumbnails, the opacity change and
+hiding from accessibility.
+
 ## Where the time still goes
 
+- **Switching tabs** renders the shell, the sidebar and the tab that shows once (see the fifth
+  pass); a terminal, browser or New Tab page is built again on each selection.
 - Opening a long session (about 1 s quiet, 2-3 s under load) is SwiftUI building and laying
   out about 27 transcript segments and their markdown: code blocks' text layout (one typesetter
   pass over each whole block) is the largest single cost, then view and attribute setup and

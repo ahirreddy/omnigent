@@ -286,15 +286,16 @@ extension ConnectedServerView {
     let keepsAlive = store?.split == nil
     // A session-less page shows among the kept-alive tabs, which stay built underneath it.
     let page = store == nil && keepsAlive ? tabs.page.map(Self.pageTab) : nil
+    // Read here, not in the pane's content: the split view would follow the selection as well,
+    // and render the shown tab a second time for each switch.
+    let kept = keepsAlive ? keptAlive(page: page, isCompact: sizeClass == .compact) : []
+    let shownID = store?.selectedID ?? page?.id ?? ""
     ZStack {
       TabSplitView(
         split: store?.splitState, actions: store.map(routes.actions) ?? TabActions()
       ) { pane in
         if keepsAlive {
-          KeptAliveTabs(
-            keptAlive(page: page, isCompact: sizeClass == .compact),
-            shownID: store?.selectedID ?? page?.id ?? ""
-          ) { tab in
+          KeptAliveTabs(kept, shownID: shownID) { tab in
             tabContent(tab, routes: routes)
           }
         } else if let store, let tab = paneTab(pane, in: store) {
@@ -322,9 +323,9 @@ extension ConnectedServerView {
         TerminalTabView(
           session: session, sessionID: sessionID, terminalID: terminalID,
           showChat: { tabs.showChat(sessionID) })
+      // The agent's terminal shows in its session's chat; a tab left for it shows that chat.
       case .harness(let sessionID):
-        HarnessTabView(
-          session: session, sessionID: sessionID, showChat: { tabs.showChat(sessionID) })
+        detail(.session(sessionID))
       case .sideChat(let sessionID, let rowID):
         SideChatTabContainer(
           session: session, sessionID: sessionID, rowID: rowID,

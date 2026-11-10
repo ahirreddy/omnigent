@@ -66,7 +66,7 @@ extension ConversationWiringTests {
     #expect(wired.container.failures == ["Could not save the transcript: The disk is full."])
   }
 
-  @Test("A session's terminal shows the agent's surface once it's ready, on its page and tab")
+  @Test("A session's terminal shows the agent's surface once it's ready")
   func harnessReady() async throws {
     let session = try await signedInSession(threeSessionServer())
     session.open("conv_a")
@@ -78,15 +78,9 @@ extension ConversationWiringTests {
     let row = terminalRow()
     terminals.terminals.apply(terminals: [row], harness: .ready(terminal: row.terminal))
 
-    // One surface shows in one place at a time, so the page goes before the tab opens.
     let page = OffscreenWindow(terminalPage(store, terminals: terminals), width: 900, height: 600)
+    defer { page.close() }
     try await settle(page, until: "the surface") { showsSurface(page) }
-    page.close()
-
-    let tab = OffscreenWindow(
-      HarnessTabView(session: session, sessionID: "conv_a", showChat: {}), width: 500, height: 400)
-    defer { tab.close() }
-    try await settle(tab, until: "the tab's surface") { showsSurface(tab) }
   }
 
   @Test("Share offers the session's link once it has a store, unless it's turned off")

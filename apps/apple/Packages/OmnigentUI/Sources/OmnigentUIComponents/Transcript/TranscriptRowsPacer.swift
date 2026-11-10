@@ -43,25 +43,28 @@ final class TranscriptRowsPacer {
     self.preparingLimit = preparingLimit
   }
 
-  /// The rows to render. Call it from the transcript's body: while shown, the body is told
-  /// about the next update; while hidden, it keeps the rows it last showed.
-  /// - Parameters:
-  ///   - reader: Reads the rows.
-  ///   - isShown: The transcript is on screen.
+  /// The rows to render. Call it from the transcript's body, which is then told about the next
+  /// update.
+  /// - Parameter reader: Reads the rows.
   /// - Returns: The rows as of the last update.
-  func rows(from reader: LiveTranscriptRows, isShown: Bool) -> Rows {
+  func rows(from reader: LiveTranscriptRows) -> Rows {
     self.reader = reader
-    self.isShown = isShown
     if lastPublished == nil {
       latest = track(reader)
       lastPublished = clock.now
-    } else if isShown, isStale {
-      isStale = false
-      // Not in this body: reading the rows here would subscribe it to every delta.
-      schedule(after: .zero)
     }
-    if isShown { _ = published }
+    _ = published
     return latest
+  }
+
+  /// Says whether the transcript is on screen. A hidden one keeps the rows it last showed, and
+  /// takes what it missed when it shows again, without its body running for the change itself.
+  /// - Parameter isShown: The transcript is on screen.
+  func setShown(_ isShown: Bool) {
+    self.isShown = isShown
+    guard isShown, isStale else { return }
+    isStale = false
+    schedule(after: .zero)
   }
 
   /// Reads the rows and asks to hear about their next change.

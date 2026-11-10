@@ -23,8 +23,7 @@ public struct AppShell<Detail: View>: View {
 
   @State private var columns: NavigationSplitViewVisibility =
     SidebarLaunchState.current == nil ? .all : .detailOnly
-  @State private var detailWidth = DetailColumnWidth()
-  @State private var trailingItems: Int?
+  @State private var stripSpace = TitlebarStripSpace()
   /// A tab dragged from the strip onto the content, for the split view's drop targets.
   @State private var tabDrag = TabDragTracker()
   @Environment(\.horizontalSizeClass) private var sizeClass
@@ -75,7 +74,9 @@ public struct AppShell<Detail: View>: View {
           .environment(\.tabsInTitlebar, showsStrip)
           .toolbar { tabsToolbar }
           .modifier(TitlelessToolbar(isActive: showsStrip))
-          .onPreferenceChange(TitlebarTrailingItems.self) { trailingItems = $0 }
+          .onPreferenceChange(TitlebarTrailingItems.self) { [stripSpace] items in
+            stripSpace.trailingItems = items
+          }
       }
       .unmeasuredMinimum(UnmeasuredMinimum.column)
       // A shown sidebar takes its width from the content (split panes too) on Mac.
@@ -85,9 +86,9 @@ public struct AppShell<Detail: View>: View {
         $0.size.width
       } action: { width in
         #if DEBUG
-          LoopProbe.record("detail width", "\(detailWidth.value) -> \(width)")
+          LoopProbe.record("detail width", "\(stripSpace.detailWidth) -> \(width)")
         #endif
-        if detailWidth.value != width { detailWidth.value = width }
+        if stripSpace.detailWidth != width { stripSpace.detailWidth = width }
       }
     }
     .adaptiveLayoutWidth()
@@ -156,8 +157,7 @@ extension AppShell {
       if showsStrip {
         ToolbarItem(placement: .navigation) {
           TitlebarTabStrip(
-            tabs: tabs, detailWidth: detailWidth, isSidebarHidden: columns == .detailOnly,
-            trailingItems: trailingItems)
+            tabs: tabs, space: stripSpace, isSidebarHidden: columns == .detailOnly)
         }
         .sharedBackgroundVisibility(.hidden)
         ToolbarSpacer(.flexible)
@@ -184,20 +184,23 @@ extension AppShell {
   }
 }
 
-/// The detail column's width. Only the titlebar's tab strip reads it, so resizing the window or
-/// animating a column re-renders the strip instead of the shell and everything it builds.
+/// What the titlebar's tab strip is sized from. Only the strip reads it, so resizing the window,
+/// animating a column or showing a tab with other toolbar items re-renders the strip instead of
+/// the shell and everything it builds.
 @MainActor
 @Observable
-final class DetailColumnWidth {
-  var value: CGFloat = 0
+final class TitlebarStripSpace {
+  /// The detail column's width.
+  var detailWidth: CGFloat = 0
+  /// The button widths the shown screen's trailing toolbar items take, if it reports them.
+  var trailingItems: Int?
 }
 
 /// The tab strip at the width the titlebar has for it.
 private struct TitlebarTabStrip: View {
   let tabs: (state: TabsState, actions: TabActions)
-  let detailWidth: DetailColumnWidth
+  let space: TitlebarStripSpace
   let isSidebarHidden: Bool
-  let trailingItems: Int?
 
   var body: some View {
     TabStrip(
@@ -208,8 +211,8 @@ private struct TitlebarTabStrip: View {
 
   private var stripWidth: CGFloat {
     TitlebarMetrics.stripWidth(
-      detailWidth: detailWidth.value, isSidebarHidden: isSidebarHidden,
-      trailingItems: trailingItems)
+      detailWidth: space.detailWidth, isSidebarHidden: isSidebarHidden,
+      trailingItems: space.trailingItems)
   }
 }
 

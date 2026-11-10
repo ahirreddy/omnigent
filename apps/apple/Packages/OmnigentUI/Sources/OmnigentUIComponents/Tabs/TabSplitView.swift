@@ -5,16 +5,16 @@ public import SwiftUI
 #endif
 
 /// A window's tab content in one pane or two side by side, each showing its own tab, with a
-/// draggable divider. The other pane is dimmed a little, as Claude Code does, and the focused one
-/// publishes its menu commands (``EnvironmentValues/isActiveTabPane``); a click or tap in the
-/// other pane focuses it.
+/// draggable divider. Both panes look the same; the strip marks the focused pane's tab. The
+/// focused pane publishes its menu commands (``EnvironmentValues/isActiveTabPane``); a click or
+/// tap in the other pane focuses it.
 ///
 /// At compact widths, and where both panes would be narrower than
 /// ``TabSplitState/minimumPaneWidth``, only the focused pane shows; the split comes back when
 /// the window widens. On an unfolded iPhone Duo the panes sit either side of the hinge.
 ///
 /// While a tab is dragged out of the strip (``TabDragTracker``), the content previews where it
-/// would land: either edge shows it in that pane.
+/// would land: the other pane of a split, or either edge of a single pane.
 public struct TabSplitView<Content: View>: View {
   private let split: TabSplitState?
   private let actions: TabActions
@@ -117,7 +117,6 @@ public struct TabSplitView<Content: View>: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .clipped()
       .environment(\.isActiveTabPane, isFocused)
-      .overlay { PaneDim(isDimmed: !isFocused) }
       .modifier(PaneFocusOnClick(isFocused: isFocused) { actions.focusPane?(pane) })
       // A marker beside the content, so the content keeps its own accessibility elements.
       .background {
@@ -225,30 +224,6 @@ struct TabSplitLayout: Equatable {
   }
 }
 
-/// A wash of the theme's canvas over the pane without focus, so the focused one reads first. It
-/// takes no clicks and is lighter with Increase Contrast, which needs the text legible.
-private struct PaneDim: View {
-  let isDimmed: Bool
-  @Environment(\.omnigentTheme) private var theme
-  @Environment(\.colorScheme) private var colorScheme
-  @Environment(\.colorSchemeContrast) private var contrast
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-  /// How much of the canvas covers the other pane.
-  static let strength = 0.3
-
-  var body: some View {
-    let canvas =
-      theme.palette(for: colorScheme).canvas ?? Color(white: colorScheme == .dark ? 0.08 : 1)
-    let strength = contrast == .increased ? Self.strength / 2 : Self.strength
-    Rectangle()
-      .fill(canvas.opacity(isDimmed ? strength : 0))
-      .allowsHitTesting(false)
-      .accessibilityHidden(true)
-      .animation(reduceMotion ? nil : Theme.Motion.feedback, value: isDimmed)
-  }
-}
-
 /// Focuses a pane when it is clicked or tapped, without taking the click from its content. On
 /// the Mac it watches mouse-down events, so pages and terminals (AppKit views) focus it too.
 private struct PaneFocusOnClick: ViewModifier {
@@ -320,7 +295,7 @@ private struct PaneFocusOnClick: ViewModifier {
   }
 #endif
 
-/// The highlight over the half a dragged tab would land in.
+/// The highlight over the pane a dragged tab would land in.
 private struct TabDropPreview: View {
   let isSplit: Bool
   let fraction: Double
