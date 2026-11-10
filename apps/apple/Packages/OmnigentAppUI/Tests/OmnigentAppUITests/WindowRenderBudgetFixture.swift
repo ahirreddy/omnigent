@@ -162,6 +162,14 @@ import Testing
       return try screen.shownText()
     }
 
+    /// The sidebar's row under its sessions while their next page loads.
+    func showLoadingMore() throws {
+      list.paging.pagingChanged(hasMore: true, isLoading: true)
+      screen.settle(0.2)
+      let text = try screen.shownText()
+      try #require(text.contains("Loading\u{2026}"), "no row for the page that is loading: \(text)")
+    }
+
     /// Changes `sessionID`'s row the way the server's next list event would.
     func change(_ sessionID: String, _ edit: (inout OmnigentCoreFFI.SessionSummary) -> Void) throws
     {

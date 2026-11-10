@@ -286,6 +286,24 @@ import Testing
           #expect(text.contains("Gamma") && text.contains("Delta"), "the running: \(text)")
           #expect(!text.contains("Beta"), "only the running: \(text)")
         }),
+      WindowInteraction(
+        name: "a page of sessions that finished loading",
+        budget: ["session row": 4, "sidebar": 1],
+        prepare: { try $0.showLoadingMore() },
+        perform: { $0.list.paging.pagingChanged(hasMore: true, isLoading: false) },
+        verify: { window in
+          let text = try window.screen.shownText()
+          #expect(text.contains("Load more") && !text.contains("Loading\u{2026}"), "\(text)")
+        }),
+      WindowInteraction(
+        name: "the last page of sessions, with none in it",
+        budget: ["session row": 4, "sidebar": 1],
+        prepare: { try $0.showLoadingMore() },
+        perform: { $0.list.paging.pagingChanged(hasMore: false, isLoading: false) },
+        verify: { window in
+          let text = try window.screen.shownText()
+          #expect(!text.contains("Load more") && !text.contains("Loading\u{2026}"), "\(text)")
+        }),
     ]
   }
 #endif

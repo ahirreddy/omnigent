@@ -43,7 +43,11 @@ final class SidebarStateMemo {
       projects: list.projects, viewerID: list.viewerID, environments: list.hostEnvironments,
       drafts: list.draftSessionIDs, phase: SidebarAdapter.phase(list), display: display,
       server: server, servers: servers)
-    if let cached, current == inputs { return cached }
+    // Paging is a store of its own and cheap to read, so a reused state takes it afresh.
+    if var cached, current == inputs {
+      cached.paging = SidebarAdapter.paging(list.paging)
+      return cached
+    }
     let state = SidebarAdapter.state(list: list, display: display, server: server, servers: servers)
     inputs = current
     cached = state
