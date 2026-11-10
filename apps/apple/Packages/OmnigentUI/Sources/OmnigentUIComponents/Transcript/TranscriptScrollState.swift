@@ -50,6 +50,8 @@ final class TranscriptScrollState {
   private var passedThisTurn = false
   /// A passage is under way or just ended: its own scrolls put the reader back.
   private var isPassing: Bool { rowWidth.passage != nil || passedThisTurn }
+  /// The tab's content is hidden: the rows hold their width and nothing scrolls until it shows.
+  private(set) var isHidden = false
 
   private struct Restore {
     /// The row to put back at the viewport's middle; `nil` for a reader at the end.
@@ -67,6 +69,8 @@ final class TranscriptScrollState {
   /// Records the row under the viewport's middle, and scrolls again while a width change's
   /// reader is not back where they were.
   func record(_ sample: TranscriptReadingAnchor, at now: Date = Date()) {
+    // A hidden transcript's reader is where they were when it hid.
+    guard !isHidden else { return }
     probe("transcript reading anchor", "\(sample)")
     // Rows passed at the top on a width change's way are not what the reader reads.
     guard rowWidth.passage == nil else {
@@ -95,6 +99,7 @@ final class TranscriptScrollState {
   /// Scrolls a width change's reader back again unless they are there: to the end, or to
   /// their row, by its own layout once it is in view, which is exact, and by its old one before.
   private func continueRestore(at now: Date) {
+    guard !isHidden else { return }
     // The edge holds the scroll view at the end while the rows there are measured.
     guard !end.returnsByEdge else {
       if end.isAtEnd { restOnBottomRow() }
@@ -135,7 +140,8 @@ final class TranscriptScrollState {
 
   /// The viewport offers the rows `width`, which they have not been laid out at yet.
   func rowWidthOffered(_ width: CGFloat, at now: Date = Date()) {
-    guard rowWidth.offer(width) else { return }
+    // A hidden tab's rows take the width it is shown at.
+    guard rowWidth.offer(width), !isHidden else { return }
     budget.viewportChanged(.width, to: width)
     probe("transcript width", "\(width), \(follow)")
     takeWidth(at: now)
@@ -145,7 +151,7 @@ final class TranscriptScrollState {
   /// one a turn, and in place otherwise.
   private func takeWidth(at now: Date) {
     // A passage under way takes the latest width at the top.
-    guard rowWidth.passage == nil else { return }
+    guard rowWidth.passage == nil, !isHidden else { return }
     // A reader still being put back is going where that restore takes them.
     let pending = activeRestore(at: now)
     let toEnd = pending.map { $0.anchor == nil } ?? (end.isNearBottom || follow.layoutGrew())
@@ -265,7 +271,7 @@ final class TranscriptScrollState {
   /// - Returns: Whether a following transcript scrolls to the bottom for it.
   func contentHeightChanged(_ height: CGFloat, from start: CGFloat) -> Bool {
     budget.layoutChanged()
-    return height > start && !isPassing && follow.layoutGrew()
+    return height > start && !isHidden && !isPassing && follow.layoutGrew()
       && follows(height, from: start) && allowsScroll("content height", keepsBottom: true)
   }
 
@@ -283,6 +289,7 @@ final class TranscriptScrollState {
   ///   - keepsBottom: The scroll keeps a reader at the bottom.
   /// - Returns: Whether to scroll.
   func allowsScroll(_ reason: String, keepsBottom: Bool) -> Bool {
+    guard !isHidden else { return false }
     awaitTurnEnd()
     let allowed = budget.spend(keepsBottom: keepsBottom)
     if allowed {
@@ -359,36 +366,24 @@ final class TranscriptScrollState {
   }
 }
 
+extension TranscriptScrollState {
+  /// The tab's content hid or shows again. Shown, the rows take the width the viewport came to
+  /// meanwhile, and a follower whom layout took from the end is put back on the bottom row.
+  func tabContent(isHidden: Bool, at now: Date = Date()) {
+    guard self.isHidden != isHidden else { return }
+    self.isHidden = isHidden
+    probe("transcript tab", isHidden ? "hidden" : "shown, \(follow)")
+    guard !isHidden else { return }
+    if let width = rowWidth.offered, rowWidth.isBehind {
+      rowWidthOffered(width, at: now)
+    } else if follow.layoutGrew(), !end.isAtEnd {
+      restore = Restore(anchor: nil, since: now)
+      continueRestore(at: now)
+    }
+  }
+}
+
 extension EnvironmentValues {
   /// The transcript's scroll state, for rows reporting the reading anchor.
   @Entry var transcriptScrollState: TranscriptScrollState?
 }
-
-extension View {
-  /// Records this row's height for ``LoopProbe`` in Debug builds, so a loop names the row.
-  @ViewBuilder func probesRowHeight(_ id: String) -> some View {
-    #if DEBUG
-      modifier(RowHeightProbe(id: id))
-    #else
-      self
-    #endif
-  }
-}
-
-#if DEBUG
-  private struct RowHeightProbe: ViewModifier {
-    let id: String
-    @Environment(\.transcriptScrollState) private var scroll
-
-    func body(content: Content) -> some View {
-      content.onGeometryChange(for: CGSize.self) { [id] proxy in
-        HangTrace.pass("row \(id)")
-        return proxy.size
-      } action: { old, new in
-        scroll?.probe(
-          "transcript row height",
-          "\(id) \(old.width)x\(old.height) -> \(new.width)x\(new.height)")
-      }
-    }
-  }
-#endif

@@ -700,8 +700,8 @@ chat no longer does. All other keys use a colon.
   with them. Nothing the app renders differs between the levels.
 - **One window resize step in 40 cost 440-580 ms** in Release once the chats behind had
   been scrolled and switched, before this pass and after it. The full run before hid it:
-  its page visit builds every chat again first. It now costs 131-156 ms, and the steps
-  around it pay for that; see "The slow resize step" below.
+  its page visit builds every chat again first. It now costs 112-126 ms, and the steps
+  around it what they did; see "The slow resize step" below.
 - **A widening window step costs twice a narrowing one** at the same widths (57 against
   28 ms in Release, where no row changes width). In one sampled step, 25 of 45 samples are
   `NSToolbarView layout` adding an item's view again and the SwiftUI toolbar item updating
@@ -748,19 +748,54 @@ the bottom row or at the edge, and near the bottom or not) and acts on it when a
 runs and, for what no action reported, when the main thread returns to its run loop.
 
 In Release, the twelve steps of the first pass that change the rows' width
-(`PERF_ONLY=streaming,resize-window PERF_STEPS=1 PERF_REPEAT=2`, two runs of each build on a
-loaded machine, a step with the work it leaves behind):
+(`PERF_ONLY=streaming,resize-window PERF_STEPS=1 PERF_REPEAT=2`, two to five runs of each
+build taken in turn on a loaded machine, one under a load average of 6 left out; a step
+with the work it leaves behind):
+
+| | Return by id | Return by the edge | And hidden chats hold their width |
+| --- | --- | --- | --- |
+| The slow step | 566-601 ms | 141-146 ms | 112-118 ms |
+| The eleven other row-width steps | 58-122 ms | 72-131 ms | 49-116 ms |
+| Two passes, 80 steps | 4719-4766 ms | 4752-4891 ms | 4005-4324 ms |
+
+The return by the edge alone left a steady row-width step slower than it was: the shown
+transcript and each kept one placed their rows two or three times in a step (the top, the
+edge, the bottom row) where a return by id that landed placed them once. With the kept
+chats out of the step it costs what it did, and two passes cost a tenth less.
+
+### A hidden chat holds its row width
+
+A kept chat whose tab is hidden, or whose terminal shows, took every new row width as the
+shown one did: a passage to its top and back for rows nobody sees. Its scroll state now
+knows it is hidden (`TranscriptScrollState.tabContent(isHidden:)`, told by a view under
+the rows that alone reads the tab's state, so a switch runs neither the row list's body nor
+the frames around it). Hidden, it records the width the viewport offers and takes none,
+starts no passage, scrolls for nothing and schedules no turn end for geometry it ignores.
+Its layout size still follows the column, as it must for the window's constraints to settle;
+only the rows' own frame keeps the width they were shown at.
+
+Shown again, it takes the viewport's width in the pass that shows it, through the same
+passage a resize runs and the same scroll budget. A follower whom the hidden layout took
+from the end without changing the rows' width (the message navigator's inset comes and goes
+with the pane's width) is put back by a restore, one scroll of the eight it may.
+`TranscriptHiddenTabFramesTests` holds it: hidden, a drag to another width builds no row
+and scrolls nothing; shown, one frame is committed, at the new width, with a reader at the
+end still there and one in the middle on their row.
+
+What a switch back to a 600-row chat costs in Release (`PERF_ONLY=switch-resized`, the
+median of ten switches from a side chat, two or three runs of each build, one under a
+load average of 15 left out):
 
 | | Before | After |
 | --- | --- | --- |
-| The slow step | 576-586 ms | 140-156 ms |
-| The eleven other row-width steps | 59-129 ms | 72-148 ms |
-| Two passes, 80 steps | 4744, 4950 ms | 4970, 4663 ms |
+| Back at the same width, reader at the end | 49-52 ms | 53-57 ms |
+| Back at the same width, reader in the middle | 50-57 ms | 52-56 ms |
+| A 100 pt window step while the chat is hidden | 109-141 ms | 89-94 ms |
+| Back after that step, reader at the end | 61-65 ms | 95-99 ms |
+| Back after that step, reader in the middle | 61-64 ms | 92-94 ms |
 
-The slow step is gone and two passes cost the same, but **a steady row-width step is slower
-than it was**, by 1 to 58 ms and 27 ms in the middle: the shown transcript and each kept
-one place their rows two or three times in a step (the top, the edge, the bottom row) where
-a return by id that landed placed them once.
+A switch back after a resize pays once, about 30 ms, what every step of the resize paid
+before. At the same width the difference is within the runs' spread on a loaded machine.
 
 `TranscriptEdgeReturnTests` holds it without the app: 150 turns and a very tall last row
 over a bottom bar whose height changes with the width, the reader at the end, the pane going
@@ -783,15 +818,15 @@ What else was tried for the return, in a copy of the package, and why none of it
 
 What is left for the steady steps: rows without their 24 pt of padding below, so the edge
 is where the transcript rests and one scroll returns to it, which changes how far a reader
-can scroll past the last row; holding a hidden kept chat's row width until it is shown;
-holding the row width through a live resize and taking it once at its end, which the user
-would see; a stack laid out from its bottom.
+can scroll past the last row; holding the row width through a live resize and taking it
+once at its end, which the user would see; a stack laid out from its bottom.
 
 ### Not checked in a real window
 
 These tests mount the window offscreen. What only a key window on a display shows was not
 checked: the titlebar's title and strip as a session gives way to a page and back, and a
-kept chat's scroll position after that visit; typing in the real search field (marked text,
+kept chat's scroll position after that visit; a kept chat shown again after the window or
+the sidebar was resized while it hid; typing in the real search field (marked text,
 the clear button, Command-F); Command-Return sending or approving as a draft gains and
 loses its text; the composer following Settings live; a real divider drag and window
 resize; a turn rail jump after Reduce Motion changes.
@@ -799,7 +834,8 @@ resize; a turn rail jump after Reduce Motion changes.
 ## Where the time still goes
 
 - **Switching tabs** renders the detail and the tab that shows once, 80 ms in Release to a
-  600-row chat; a terminal, browser or New Tab page is built again on each selection, 220 ms
+  600-row chat and about 30 ms more when the pane's width changed while the chat hid; a
+  terminal, browser or New Tab page is built again on each selection, 220 ms
   for a terminal (see the fifth and seventh passes).
 - **Any session's activity** (preview, time, status) renders the sidebar, 22-26 ms in Release
   with 250 sessions, whether it is the shown session's, a kept tab's or another's. Most of it
@@ -816,9 +852,9 @@ resize; a turn rail jump after Reduce Motion changes.
   (`NSHostingView.layout`, with the titlebar's toolbar layout about a tenth of it), 50-80 ms per
   step in Debug under load. Toggling the sidebar or the right panel animates the same relayout.
   Text measuring is under 1% of a resize, so a fixed-width transcript column would not help.
-  Through the widths where rows change width a step costs 72-156 ms, the price of a long
-  chat that ends in a very tall row no longer taking half a second in one of them (see
-  "The slow resize step").
+  Through the widths where rows change width a step costs 49-118 ms, and a long chat that
+  ends in a very tall row no longer takes half a second in one of them (see "The slow
+  resize step").
 - While a reply streams, each paced render still costs 10-15 ms in Debug, spread over SwiftUI's
   graph update, the lazy stack's layout and the text overlays.
 - A changed session-list row still sends every session through the core twice (filter and

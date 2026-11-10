@@ -36,7 +36,7 @@ final class TranscriptRowWidth {
   /// The rows' width; `nil` before the viewport's first report, when they take what they get.
   private(set) var held: CGFloat?
   /// The viewport's latest width.
-  @ObservationIgnored private var offered: CGFloat?
+  @ObservationIgnored private(set) var offered: CGFloat?
   @ObservationIgnored var passage: Passage?
 
   /// The rows are at another width than the viewport's.
@@ -57,12 +57,13 @@ final class TranscriptRowWidth {
 }
 
 /// Lays the transcript's rows out at their held width in the column they are offered, and
-/// reports that column's width and the rows taking a new one.
+/// reports that column's width, the rows taking a new one, and the tab hiding and showing.
 struct HeldRowWidth: ViewModifier {
   @Environment(\.transcriptScrollState) private var scroll
 
   func body(content: Content) -> some View {
     content
+      .background { TabContentWatch(scroll: scroll) }
       .frame(width: scroll?.rowWidth.held)
       .onGeometryChange(for: CGFloat.self) { proxy in
         proxy.size.width
@@ -75,6 +76,19 @@ struct HeldRowWidth: ViewModifier {
       } action: { width in
         scroll?.rowWidthOffered(width)
       }
+  }
+}
+
+/// Tells the scroll state when its tab hides and shows. The tab's state is read here, so a
+/// switch runs neither the row list's body nor the frames that hold the rows' width.
+private struct TabContentWatch: View {
+  let scroll: TranscriptScrollState?
+  @Environment(\.isTabContentHidden) private var isHidden
+
+  var body: some View {
+    Color.clear.onChange(of: isHidden, initial: true) { _, isHidden in
+      scroll?.tabContent(isHidden: isHidden)
+    }
   }
 }
 
