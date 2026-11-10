@@ -121,6 +121,7 @@ private struct WorkspaceInspectorPresentation: ViewModifier {
   func body(content: Content) -> some View {
     let isPresented = presented.wrappedValue
     content
+      .holdsSizeWhileTabHidden()
       .unmeasuredMinimum(UnmeasuredMinimum.column)
       .overlay {
         if isPresented, maximized { panel }

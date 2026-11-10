@@ -55,8 +55,8 @@ public struct KeptAliveTabs<Item: Identifiable, Content: View>: View {
   }
 }
 
-/// The column's last measured size, kept outside observation: layout reads and writes it, on
-/// the main thread only.
+/// A size a layout last had, kept outside observation: layout reads and writes it, on the main
+/// thread only.
 nonisolated private final class KeptAliveSizes: @unchecked Sendable {
   var lastMeasured: CGSize?
 }
@@ -130,6 +130,54 @@ private struct HeldWhileHidden<Content: View>: View, Equatable {
 
   var body: some View { content }
 }
+
+extension View {
+  /// On Mac, keeps the view at the size it last had on screen while its tab is hidden
+  /// (``HeldTabSize``). Elsewhere the view is unchanged.
+  @ViewBuilder func holdsSizeWhileTabHidden() -> some View {
+    #if os(macOS)
+      modifier(HoldsSizeWhileTabHidden())
+    #else
+      self
+    #endif
+  }
+}
+
+#if os(macOS)
+  /// Reads the tab's state for ``HeldTabSize``, so a switch runs this body and not the content's.
+  private struct HoldsSizeWhileTabHidden: ViewModifier {
+    @Environment(\.isTabContentHidden) private var isHidden
+    @State private var sizes = KeptAliveSizes()
+
+    func body(content: Content) -> some View {
+      HeldTabSize(isHidden: isHidden, sizes: sizes) { content }
+    }
+  }
+
+  /// Lays a hidden tab's content out at the size it last had on screen, so resizing the window
+  /// behind another tab moves nothing in it. It takes the size it is offered either way: what
+  /// holds it, such as the right panel's column, still follows the window.
+  private struct HeldTabSize: Layout {
+    let isHidden: Bool
+    let sizes: KeptAliveSizes
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+      let offered = proposal.replacingUnspecifiedDimensions()
+      return isHidden ? offered : subviews.first?.sizeThatFits(proposal) ?? offered
+    }
+
+    func placeSubviews(
+      in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    ) {
+      // Not a pass at the split view's placeholder: content held that small is not the tab's.
+      if !isHidden, KeptAliveLayout.isMeasured(bounds.size) { sizes.lastMeasured = bounds.size }
+      let size = isHidden ? sizes.lastMeasured ?? bounds.size : bounds.size
+      for subview in subviews {
+        subview.place(at: bounds.origin, proposal: ProposedViewSize(size))
+      }
+    }
+  }
+#endif
 
 /// A kept tab's content while another tab shows: invisible, inert and quiet.
 struct HiddenTabContent: ViewModifier {

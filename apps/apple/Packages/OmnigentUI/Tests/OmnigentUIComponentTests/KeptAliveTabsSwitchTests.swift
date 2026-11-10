@@ -106,6 +106,8 @@
     let switcher: TabSwitcher
     let rows: [String: [Row]]
     let passes: WindowPasses
+    /// The pane's width, where a test resizes it; the window's otherwise.
+    var width: PaneWidth?
 
     var body: some View {
       passes.count += 1
@@ -113,6 +115,7 @@
       return KeptAliveTabs(["a", "b"].map(SwitchedTab.init(id:)), shownID: switcher.shown) { tab in
         ConversationTab(rows: rows[tab.id] ?? [], pass: pass)
       }
+      .frame(width: width?.value)
     }
   }
 
@@ -179,6 +182,59 @@
       window.settle()
       #expect(renders.counts == ["a": 2, "b": 3])
       #expect(renders.labels["a"] == "third", "showing again takes what it missed")
+    }
+
+    /// The views a conversation scrolls and types in, in the tab drawn at no opacity.
+    private func hiddenScrollAndTextViews(_ window: OffscreenWindow<AnyView>) -> [NSView] {
+      window.allViews.filter { view in
+        guard view is NSScrollView || view is NSTextView else { return false }
+        var current: NSView? = view
+        while let next = current {
+          if next.alphaValue == 0 || next.layer?.opacity == 0 { return true }
+          current = unsafe next.superview
+        }
+        return false
+      }
+    }
+
+    /// A hidden conversation follows the pane only once it shows: until then a resize step
+    /// lays out its scroll view, composer and rows for nobody.
+    @Test("A resize behind another tab moves nothing in the hidden conversation until it shows")
+    func resizingLeavesTheHiddenConversation() async throws {
+      let switcher = TabSwitcher()
+      let width = PaneWidth(900)
+      let rows = ["a": TranscriptFixture.turns(6), "b": TranscriptFixture.turns(40)]
+      let window = transcriptScreen(
+        ConversationTabs(switcher: switcher, rows: rows, passes: WindowPasses(), width: width),
+        width: 900, height: 600)
+      defer { window.close() }
+      try await letTasksRun(window, milliseconds: 300)
+      for shown in ["b", "a"] {
+        switcher.shown = shown
+        try await letTasksRun(window, milliseconds: 300)
+      }
+      let hidden = hiddenScrollAndTextViews(window)
+      let transcript = try #require(
+        hidden.compactMap { $0 as? NSScrollView }.max { $0.frame.height < $1.frame.height })
+      let sizes = hidden.map(\.frame.size)
+      #expect(transcript.frame.width == 900)
+
+      for narrower in [860, 820] as [CGFloat] {
+        width.value = narrower
+        window.settle(0.1)
+      }
+      #expect(hidden.map(\.frame.size) == sizes)
+
+      let recorder = try CommittedFrames(window, transcript: transcript)
+      let frames = recorder.recording {
+        switcher.shown = "b"
+        commitFrames(for: 0.5)
+      }
+      // The frame that shows it has it at the pane's width, on its last row.
+      #expect(frames.map(\.viewport.width) == [820])
+      let last = try #require(frames.last)
+      #expect(last.lines.last?.text == recorder.settled.lines.last?.text)
+      #expect(transcript.frame.width == 820)
     }
 
     #if DEBUG

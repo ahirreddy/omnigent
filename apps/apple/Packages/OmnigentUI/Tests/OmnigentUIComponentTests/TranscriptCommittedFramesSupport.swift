@@ -95,8 +95,10 @@
     let settled: CommittedFrame
     private var frames: [CommittedFrame] = []
 
-    init(_ screen: OffscreenWindow<AnyView>) throws {
-      guard let scrollView = TranscriptScrollDriver(screen: screen).scrollView else {
+    /// Reads `transcript` where the window has more than one conversation, and the window's
+    /// tallest scroll view otherwise.
+    init(_ screen: OffscreenWindow<AnyView>, transcript: NSScrollView? = nil) throws {
+      guard let scrollView = transcript ?? TranscriptScrollDriver(screen: screen).scrollView else {
         throw OffscreenWindowError.notFound("transcript scroll view")
       }
       self.scrollView = scrollView

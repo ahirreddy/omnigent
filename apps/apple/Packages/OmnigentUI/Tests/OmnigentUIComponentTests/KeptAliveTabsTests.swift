@@ -111,5 +111,50 @@
       #expect(sizes.byID["b"] == CGSize(width: 588, height: 665))
       #expect(sizes.byID["a"] == CGSize(width: 588, height: 665))
     }
+
+    /// Content that holds its size while its tab is hidden, as a conversation beside its right
+    /// panel does.
+    private func held(isHidden: Bool, sizes: Sizes) -> some View {
+      Color.clear.onGeometryChange(for: CGSize.self) {
+        $0.size
+      } action: { size in
+        sizes.byID["held"] = size
+      }
+      .holdsSizeWhileTabHidden()
+      .environment(\.isTabContentHidden, isHidden)
+    }
+
+    /// The tab's own size still follows the column, so nothing around the content waits for it.
+    @Test func heldContentKeepsItsShownSizeWhileHiddenAndTakesTheColumnsWhenShown() {
+      _ = NSApplication.shared
+      let sizes = Sizes()
+      let shown = CGSize(width: 800, height: 600)
+      let resized = CGSize(width: 700, height: 500)
+      let view = NSHostingView(rootView: held(isHidden: false, sizes: sizes))
+      layOut(view, at: shown)
+      #expect(sizes.byID["held"] == shown)
+      // A pass at the split view's placeholder is not a size to keep.
+      layOut(view, at: UnmeasuredMinimum.column)
+      #expect(sizes.byID["held"] == UnmeasuredMinimum.column)
+
+      view.rootView = held(isHidden: true, sizes: sizes)
+      layOut(view, at: resized)
+      #expect(sizes.byID["held"] == shown)
+
+      view.rootView = held(isHidden: false, sizes: sizes)
+      layOut(view, at: resized)
+      #expect(sizes.byID["held"] == resized)
+    }
+
+    /// A tab opened behind another has no size of its own to keep.
+    @Test func heldContentThatNeverShowedFollowsTheColumn() {
+      _ = NSApplication.shared
+      let sizes = Sizes()
+      let view = NSHostingView(rootView: held(isHidden: true, sizes: sizes))
+      layOut(view, at: CGSize(width: 600, height: 400))
+      layOut(view, at: CGSize(width: 500, height: 300))
+
+      #expect(sizes.byID["held"] == CGSize(width: 500, height: 300))
+    }
   }
 #endif
