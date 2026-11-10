@@ -15,6 +15,8 @@ public import SwiftUI
 /// core is told which session's chat is visible for notifications and the badge.
 public struct ConnectedServerView: View {
   let session: ServerSession
+  /// What the detail shows. The window's body never reads it: a body that does runs again each
+  /// time a session or a page is chosen.
   @Binding private var selection: SidebarDestination?
   let isWindowFocused: Bool
   private let opener: ExternalURLOpener
@@ -83,11 +85,12 @@ public struct ConnectedServerView: View {
   public var body: some View {
     let tabs = windowTabs
     // The sidebar, the strip and the detail read their state where they show it: a session's
-    // row, a tab's title or the shown tab that changes then renders that part, not the window.
+    // row, a tab's title, the shown tab or the selection that changes then renders that part,
+    // not the window.
     AppShell(
       sidebar: { sidebarState }, selection: selectionBinding, searchText: { searchBinding },
       actions: sidebarActions, tabs: strip(of: tabs),
-      detail: { _ in
+      detail: {
         ObservationScope("detail") {
           tabDetail
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -114,7 +117,7 @@ public struct ConnectedServerView: View {
     .modifier(SessionTabsLifecycle(session: session))
     .modifier(NewTabOptionsLoading(session: session))
     .modifier(CloseShellConfirmation(session: session) { tabFailure = $0 })
-    .onChange(of: selection) { _, current in session.tabs.show(current) }
+    .modifier(SelectedPageShown(selection: selectionBinding, tabs: session.tabs))
     .modifier(ShownPageReport(tabs: session.tabs) { pageChanged($0) })
     .modifier(viewedSessionReport)
     .modifier(BusyTabsReport(tabs: tabs))
@@ -142,14 +145,16 @@ public struct ConnectedServerView: View {
     }
   }
 
-  /// The strip's tabs for the shown session, read when the strip asks for them; a session-less
-  /// page has no strip. The selection says which, so the strip comes and goes in the render the
-  /// selection already causes.
-  private func strip(of tabs: WindowTabs) -> (() -> TabStripContent)? {
-    guard selection?.sessionID != nil else { return nil }
-    return {
-      tabs.strip.map { ($0.state, renamable($0.actions)) } ?? (TabsState(), TabActions())
-    }
+  /// The strip's tabs, read when the titlebar asks for them; a session-less page has no strip.
+  /// They are the last shown session's, which a page leaves as they were: going to a page then
+  /// takes the strip away without rendering it first.
+  private func strip(of tabs: WindowTabs) -> ShellTabs {
+    ShellTabs(
+      isShown: { tabs.groups.currentSessionID != nil },
+      content: {
+        guard let store = tabs.groups.lastShown else { return (TabsState(), TabActions()) }
+        return (tabs.state(store), renamable(tabs.actions(store)))
+      })
   }
 
   /// A chat tab's menu renames its session, as the session menu and Option-Command-R do.

@@ -51,6 +51,10 @@ public final class SessionTabGroups {
   /// The shown session.
   public var currentSessionID: String? { page?.sessionID }
 
+  /// The tabs of the session shown last: the shown session's, and still that session's under a
+  /// session-less page, so the titlebar's strip has nothing to read when a page covers it.
+  public var lastShown: TabStore? { recentSessions.first.flatMap { groups[$0] } }
+
   /// The selected tab of the shown session.
   public var selected: AppTab? { current?.selected }
 

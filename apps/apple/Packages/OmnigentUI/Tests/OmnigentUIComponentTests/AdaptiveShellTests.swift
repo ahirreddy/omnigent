@@ -54,7 +54,7 @@
   @Suite("Adaptive: the window's shell", .serialized)
   @MainActor
   struct AdaptiveShellTests {
-    private func shell(_ harness: some View, width: CGFloat = 1_100) -> OffscreenWindow<AnyView> {
+    func shell(_ harness: some View, width: CGFloat = 1_100) -> OffscreenWindow<AnyView> {
       OffscreenWindow(AnyView(harness), width: width, height: 700)
     }
 
@@ -112,7 +112,7 @@
     }
 
     /// A window with a titlebar, so the shell's toolbar has somewhere to go.
-    private func titled(_ harness: some View, width: CGFloat = 1_100) -> OffscreenWindow<AnyView> {
+    func titled(_ harness: some View, width: CGFloat = 1_100) -> OffscreenWindow<AnyView> {
       let screen = shell(harness, width: width)
       screen.window.contentView = nil
       screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
@@ -126,7 +126,7 @@
       (TabsState(tabs: [TabFixture.tab("a")], selectedID: "a"), TabSpy().actions)
     }
 
-    private func toolbarItems(_ screen: OffscreenWindow<AnyView>) -> [NSToolbarItem] {
+    func toolbarItems(_ screen: OffscreenWindow<AnyView>) -> [NSToolbarItem] {
       screen.window.toolbar?.items ?? []
     }
 
@@ -268,71 +268,4 @@
       #expect(reported == 2)
     }
   }
-
-  #if DEBUG
-    /// The sidebar's rows and the tabs a host holds, changed from the test.
-    @MainActor
-    @Observable
-    private final class HostContent {
-      var sidebar = SidebarFixture.state
-      var tabs = TabsState(tabs: [TabFixture.tab("a")], selectedID: "a")
-      var search = ""
-    }
-
-    /// A shell whose host hands it the sidebar and the tabs to read, as the connected window does.
-    private struct ReadingShellHarness: View {
-      let content: HostContent
-      let spy: SidebarSpy
-
-      var body: some View {
-        AppShell(
-          sidebar: { content.sidebar },
-          selection: Binding(get: { spy.selection }, set: { spy.selection = $0 }),
-          searchText: { Binding(get: { content.search }, set: { content.search = $0 }) },
-          actions: spy.actions, tabs: { (content.tabs, TabActions()) },
-          detail: { _ in Text("detail") })
-      }
-    }
-
-    extension AdaptiveShellTests {
-      @Test("A session's row renders the sidebar and a tab's title the strip, not the shell")
-      func hostStateRendersWhereItShows() throws {
-        let content = HostContent()
-        let screen = titled(
-          ReadingShellHarness(content: content, spy: SidebarSpy(SidebarFixture.state)))
-        defer { screen.close() }
-        let forRow = RenderTally.recording {
-          content.sidebar = SidebarViewState(
-            list: SessionListViewState(sessions: [SidebarFixture.beta]))
-          screen.settle(0.2)
-        }
-        #expect(forRow == ["sidebar": 1, "session row": 1], "\(forRow)")
-        #expect(try screen.shows("Beta"))
-        #expect(try !screen.shows("Gamma"))
-        #expect(try screen.toolbarText().contains("A"))
-        let forTitle = RenderTally.recording {
-          content.tabs = TabsState(tabs: [TabFixture.tab("b")], selectedID: "b")
-          screen.settle(0.2)
-        }
-        #expect(forTitle == ["strip": 1, "tab controls": 1], "\(forTitle)")
-        #expect(try screen.toolbarText().contains("B"), "the strip shows the new tab")
-        #expect(try !screen.toolbarText().contains("A"), "and not the one it replaced")
-      }
-
-      @Test("The search text renders the sidebar, which shows it, and not the shell")
-      func searchTextRendersTheSidebar() throws {
-        let content = HostContent()
-        let screen = titled(
-          ReadingShellHarness(content: content, spy: SidebarSpy(SidebarFixture.state)))
-        defer { screen.close() }
-        let forSearch = RenderTally.recording {
-          content.search = "zeta"
-          screen.settle(0.2)
-        }
-        #expect(forSearch == ["sidebar": 1, "session row": 3, "search field": 1], "\(forSearch)")
-        let fields = screen.allViews.compactMap { $0 as? NSSearchField }
-        #expect(fields.map(\.stringValue) == ["zeta"], "the search field shows the host's text")
-      }
-    }
-  #endif
 #endif

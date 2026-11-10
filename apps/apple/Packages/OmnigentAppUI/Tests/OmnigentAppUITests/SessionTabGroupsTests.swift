@@ -43,6 +43,21 @@ struct SessionTabGroupsTests {
     #expect(groups.tab(page.id)?.sessionID == "a", "a browser tab joins the shown session")
   }
 
+  @Test("The session shown last keeps its tabs for the strip while a page covers it")
+  func lastShown() throws {
+    let groups = SessionTabGroups()
+    #expect(groups.lastShown == nil)
+    groups.show(.session("a"))
+    let groupA = try #require(groups.current)
+    #expect(groups.lastShown === groupA)
+    groups.show(.usage)
+    #expect(groups.current == nil)
+    #expect(groups.lastShown === groupA, "going to a page changes nothing the strip reads")
+    groups.show(.session("b"))
+    #expect(groups.lastShown === groups.current)
+    #expect(groups.lastShown !== groupA)
+  }
+
   @Test("Links to a conversation show its chat, whichever tab was selected")
   func showChat() throws {
     let groups = SessionTabGroups()
