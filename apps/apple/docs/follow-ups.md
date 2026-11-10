@@ -360,6 +360,18 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   markdown block); streaming into a long session uses 30-40% of the main thread (the transcript
   body re-renders per delta); a changed session-list row still sends every session through the
   core twice (an incremental filter in the core would avoid it).
+- [ ] **Mac rendering, measured and left** (numbers in [performance.md](performance.md), "Left
+  as it is" and the eighth pass):
+  - A session's row change costs 18-21 ms with 250 sessions. Rows that observe their own
+    session, and a filter the core keeps up to date and reports as changed ids, would take it
+    to about 5 ms; it changes the core, the store and the sidebar together.
+  - A widening window resize step costs twice a narrowing one because the toolbar tries its
+    folded trailing items again at each size. Take the tab strip out of the toolbar item, or
+    size it before the toolbar lays out.
+  - A chat left in Terminal mode drops its terminal surface while hidden (100-165 ms to come
+    back), and Terminal back to Chat builds the composer again (about 250 ms).
+  - A file an agent changes reloads every kept chat's workspace. A count per workspace, not
+    per connection, would reload the ones that show the file.
 
 ## Product decisions
 
