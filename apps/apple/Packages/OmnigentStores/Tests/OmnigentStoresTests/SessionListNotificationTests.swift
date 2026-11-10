@@ -74,6 +74,24 @@ struct SessionListNotificationTests {
     #expect(notifies({ _ = store.session("d") }, when: rowOfD))
   }
 
+  @Test("a view asking only whether there are several sessions hears of the second, not of rows")
+  func severalVisibleNotifiesWhenItFlips() {
+    let store = SessionListStore()
+    let several = { _ = store.hasSeveralVisible }
+    #expect(!store.hasSeveralVisible)
+    #expect(!notifies(several) { store.apply(.reset(sessions: [self.summary("a", updatedAt: 1)])) })
+    #expect(!store.hasSeveralVisible)
+    #expect(notifies(several) { store.apply(.upsert(sessions: [self.summary("b", updatedAt: 2)])) })
+    #expect(store.hasSeveralVisible)
+    // A row that changes, and a third session, leave the answer as it is.
+    #expect(
+      !notifies(several) { store.apply(.upsert(sessions: [self.summary("a", updatedAt: 3)])) })
+    #expect(
+      !notifies(several) { store.apply(.upsert(sessions: [self.summary("c", updatedAt: 4)])) })
+    #expect(notifies(several) { store.apply(.remove(ids: ["b", "c"])) })
+    #expect(!store.hasSeveralVisible)
+  }
+
   @Test("the sessions needing the user are kept, and notify only when they change")
   func needsResponseIsStored() {
     let store = SessionListStore()

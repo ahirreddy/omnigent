@@ -30,6 +30,8 @@ public final class SessionListStore {
   }
   /// The sessions matching ``searchText`` and ``filter``: pinned first, then most recent.
   public private(set) var visible: [SessionSummary] = []
+  /// Whether more than one session is shown, for views that need only that of the list.
+  public private(set) var hasSeveralVisible = false
   /// Sessions that need the user (``AttentionState/needsYou``), archived or not, in display
   /// order. Its count is ``attentionTotals``' `sessionsNeedingYou`. Kept current here, so the
   /// views reading it (the palette, the Inbox) cost nothing per read.
@@ -343,6 +345,8 @@ public final class SessionListStore {
     let all = Array(sessions.values)
     let shown = filterSessions(sessions: all, text: searchText, filter: filter)
     if shown != visible { visible = shown }
+    let several = shown.count > 1
+    if several != hasSeveralVisible { hasSeveralVisible = several }
     // Only the sessions that need the user go through the core, for its display order.
     let needing = sessions.values.filter { attention[$0.id]?.state == .needsYou }
     let ordered =
