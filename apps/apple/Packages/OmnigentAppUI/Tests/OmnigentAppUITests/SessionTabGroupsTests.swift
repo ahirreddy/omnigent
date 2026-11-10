@@ -121,12 +121,11 @@ struct SessionTabGroupsTests {
     #expect(groups.liveSessionIDs == ["b", "c", "d"])
     let kept = groups.keptAlive().map(\.content)
     #expect(Set(kept) == [.chat(sessionID: "c"), .chat(sessionID: "d"), .chat(sessionID: "b")])
-    // A terminal shown in d replaces nothing but itself: d's chat stays built underneath.
+    // A terminal shown in d takes no chat's place: all three stay built behind it.
     let shell = try #require(groups.open(.terminal(sessionID: "d", terminalID: "t")))
-    let withShell = groups.keptAlive()
-    #expect(withShell.map(\.id).contains(shell.id))
-    #expect(withShell.map(\.content).contains(.chat(sessionID: "d")))
-    #expect(withShell.count == TabStore.keptAliveLimit)
+    #expect(Set(groups.keptAlive().map(\.content)) == Set(kept + [shell.content]))
+    #expect(
+      Set(groups.keptAlive(limit: 1).map(\.content)) == [shell.content, .chat(sessionID: "d")])
     // Under a session-less page the chats stay built, all hidden.
     groups.show(.inbox)
     #expect(groups.keptAlive().contains { $0.content == .chat(sessionID: "d") })

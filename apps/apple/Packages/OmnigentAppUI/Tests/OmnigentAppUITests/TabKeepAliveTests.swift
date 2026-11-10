@@ -33,6 +33,19 @@ struct TabKeepAliveTests {
     #expect(store.keptAlive().map(\.id) == [chat.id, shell.id])
   }
 
+  @Test("A selected terminal takes no chat's place, so the way back builds no chat again")
+  func otherKindsTakeNoPlace() {
+    let store = TabStore()
+    let chats = ["s1", "s2", "s3"].map { store.open(.chat(sessionID: $0), placement: .end).id }
+    let shell = store.open(.terminal(sessionID: "s1", terminalID: "t1"), placement: .end)
+    #expect(store.keptAlive().map(\.id) == chats + [shell.id])
+    #expect(store.keptAlive(limit: 1).map(\.id) == [chats[2], shell.id])
+    #expect(store.keptAlive(limit: 0).map(\.id) == [shell.id])
+    store.select(chats[2])
+    #expect(store.keptAlive().map(\.id) == chats, "the same chats as behind the terminal")
+    #expect(store.keptAlive(limit: 0).map(\.id) == [chats[2]], "the selected tab always stays")
+  }
+
   @Test("A split window keeps only its panes' tabs")
   func split() {
     let store = TabStore()

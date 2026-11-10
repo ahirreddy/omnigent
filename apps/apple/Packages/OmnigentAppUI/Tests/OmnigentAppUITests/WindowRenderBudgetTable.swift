@@ -154,6 +154,32 @@ import Testing
           #expect(text.contains("Beta reply"), "the tab that was kept behind: \(text)")
         }),
       WindowInteraction(
+        name: "back to a chat from a tab of another kind, three chats kept",
+        // The strip renders again once the chat's toolbar items take their room beside it.
+        budget: [
+          "composer": 1, "detail": 1, "rows": 1, "screen": 1, "strip": 2, "tab": 1,
+          "tab controls": 1, "transcript": 1,
+        ],
+        prepare: { window in
+          window.tabs.open(
+            .sideChatSession(parentID: BudgetWindow.shown, childID: BudgetWindow.other))
+          window.screen.settle(0.5)
+          _ = try window.conversation(BudgetWindow.other)
+          window.tabs.select(window.chatTabID)
+          window.screen.settle(0.3)
+          window.noteScrollViews()
+          window.tabs.open(.newTab)
+          window.screen.settle(0.3)
+        },
+        perform: { $0.tabs.select($0.chatTabID) },
+        verify: { window in
+          #expect(window.title == "Alpha")
+          let text = try window.screen.shownText()
+          #expect(text.contains("Alpha reply"), "the chat that was kept behind: \(text)")
+          #expect(window.notes.scrollViews.count >= 3, "three chats had scroll views to keep")
+          #expect(window.rebuiltScrollViews == 0, "the new tab took no chat's place")
+        }),
+      WindowInteraction(
         name: "a session switch",
         budget: [
           "composer": 4, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
