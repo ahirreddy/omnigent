@@ -21,6 +21,19 @@
   /// Receives `SparkleUpdaterIssue`s. The app binds this to its logger.
   public typealias SparkleUpdaterIssueReporter = @MainActor (SparkleUpdaterIssue) -> Void
 
+  /// What `SparkleUpdater` uses of Sparkle's `SPUUpdater`, so a test can stand in for it.
+  protocol SparkleUpdaterDriver: AnyObject {
+    var canCheckForUpdates: Bool { get }
+    var automaticallyChecksForUpdates: Bool { get set }
+    var automaticallyDownloadsUpdates: Bool { get set }
+    var allowsAutomaticUpdates: Bool { get }
+    var lastUpdateCheckDate: Date? { get }
+    func start() throws
+    func checkForUpdates()
+  }
+
+  extension SPUUpdater: SparkleUpdaterDriver {}
+
   /// Owns Sparkle's updater for the app's lifetime and backs Omnigent > Check for Updates....
   ///
   /// ```swift
@@ -30,17 +43,30 @@
   /// ```
   public final class SparkleUpdater {
     // Sparkle holds its delegate weakly, so this strong reference keeps it alive.
-    private let callbacks: Callbacks
-    private let updater: SPUUpdater
+    let callbacks: Callbacks
+    let updater: any SparkleUpdaterDriver
 
     /// Creates the updater for the main bundle. It does nothing until `start()`.
     /// - Parameter reportIssue: Receives start failures and aborted update cycles.
-    public init(reportIssue: @escaping SparkleUpdaterIssueReporter) {
+    public convenience init(reportIssue: @escaping SparkleUpdaterIssueReporter) {
+      self.init(reportIssue: reportIssue) { callbacks in
+        SPUUpdater(
+          hostBundle: .main, applicationBundle: .main,
+          userDriver: SPUStandardUserDriver(hostBundle: .main, delegate: nil),
+          delegate: callbacks)
+      }
+    }
+
+    /// Creates the updater over the driver `makeUpdater` builds around these callbacks.
+    /// - Parameters:
+    ///   - reportIssue: Receives start failures and aborted update cycles.
+    ///   - makeUpdater: Builds the driver, given the delegate it should report aborts to.
+    init(
+      reportIssue: @escaping SparkleUpdaterIssueReporter,
+      makeUpdater: (Callbacks) -> any SparkleUpdaterDriver
+    ) {
       callbacks = Callbacks(reportIssue: reportIssue)
-      updater = SPUUpdater(
-        hostBundle: .main, applicationBundle: .main,
-        userDriver: SPUStandardUserDriver(hostBundle: .main, delegate: nil),
-        delegate: callbacks)
+      updater = makeUpdater(callbacks)
     }
 
     /// Starts scheduled background checks, honoring the user's Sparkle preferences.
@@ -89,8 +115,8 @@
       updater.lastUpdateCheckDate
     }
 
-    /// The `SPUUpdaterDelegate`; private so `Sparkle` stays an internal import.
-    private final class Callbacks: NSObject, SPUUpdaterDelegate {
+    /// The `SPUUpdaterDelegate`; not public, so `Sparkle` stays an internal import.
+    final class Callbacks: NSObject, SPUUpdaterDelegate {
       let reportIssue: SparkleUpdaterIssueReporter
 
       init(reportIssue: @escaping SparkleUpdaterIssueReporter) {

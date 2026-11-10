@@ -65,6 +65,16 @@ let package = Package(
       ],
       swiftSettings: strictSwiftSettings
     ),
+    .testTarget(
+      name: "OmnigentDesktopUpdateTests",
+      dependencies: [
+        .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"),
+        .product(name: "OmnigentViewTextReading", package: "OmnigentViewTesting"),
+        .product(name: "Sparkle", package: "Sparkle"),
+        "OmnigentDesktopUpdate",
+      ],
+      swiftSettings: strictSwiftSettings
+    ),
   ],
   swiftLanguageModes: [.v6]
 )
