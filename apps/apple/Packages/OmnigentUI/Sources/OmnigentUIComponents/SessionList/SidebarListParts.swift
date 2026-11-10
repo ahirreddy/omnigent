@@ -42,7 +42,11 @@ struct SidebarEmptyState: View {
         Text(title).font(.callout).foregroundStyle(.secondary)
         if let setQuickFilter {
           Button("Show All Sessions") { setQuickFilter(nil) }
-            .buttonStyle(.link)
+            #if os(macOS)
+              .buttonStyle(.link)
+            #else
+              .buttonStyle(.borderless)
+            #endif
             .font(.callout)
             .accessibilityIdentifier("sidebar-clear-filter")
         }
