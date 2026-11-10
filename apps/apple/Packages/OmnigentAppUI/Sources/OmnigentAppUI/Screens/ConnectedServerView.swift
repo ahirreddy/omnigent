@@ -143,9 +143,10 @@ public struct ConnectedServerView: View {
   }
 
   /// The strip's tabs for the shown session, read when the strip asks for them; a session-less
-  /// page has no strip.
+  /// page has no strip. The selection says which, so the strip comes and goes in the render the
+  /// selection already causes.
   private func strip(of tabs: WindowTabs) -> (() -> TabStripContent)? {
-    guard session.tabs.showsSessionTabs else { return nil }
+    guard selection?.sessionID != nil else { return nil }
     return {
       tabs.strip.map { ($0.state, renamable($0.actions)) } ?? (TabsState(), TabActions())
     }

@@ -243,8 +243,8 @@ import Testing
       WindowInteraction(
         name: "a page without a session",
         budget: [
-          "composer": 2, "detail": 3, "rows": 3, "screen": 3, "session row": 8, "shell": 2,
-          "sidebar": 2, "strip": 1, "tab": 3, "tab controls": 1, "transcript": 3, "window": 2,
+          "composer": 2, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
+          "sidebar": 1, "tab": 2, "transcript": 2, "window": 1,
         ],
         prepare: { $0.noteScrollViews() },
         perform: { $0.selection.page = .usage },
@@ -257,8 +257,8 @@ import Testing
       WindowInteraction(
         name: "back from a page without a session",
         budget: [
-          "composer": 2, "detail": 3, "rows": 3, "screen": 3, "session row": 8, "shell": 2,
-          "sidebar": 2, "strip": 1, "tab": 3, "tab controls": 1, "transcript": 3, "window": 2,
+          "composer": 1, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
+          "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 1, "transcript": 3, "window": 1,
         ],
         prepare: { window in
           window.noteScrollViews()
@@ -272,6 +272,23 @@ import Testing
           let text = try window.screen.shownText()
           #expect(text.contains("Alpha reply"), "the chat that was kept behind: \(text)")
           #expect(window.rebuiltScrollViews == 0, "the same chat, not one built again")
+        }),
+      WindowInteraction(
+        name: "a page the tab model shows by itself",
+        budget: [
+          "composer": 1, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
+          "sidebar": 1, "tab": 2, "transcript": 2, "window": 1,
+        ],
+        perform: { $0.session.tabs.show(.usage) },
+        verify: { window in
+          #expect(window.selection.page == .usage, "the host's selection follows")
+          let toolbar = try window.screen.toolbarText()
+          #expect(!toolbar.contains("Alpha"), "no strip over a page: \(toolbar)")
+          // The strip follows the host's selection, which follows the tab model back as well.
+          window.session.tabs.show(.session(BudgetWindow.shown))
+          window.screen.settle(0.3)
+          let shown = try window.screen.toolbarText()
+          #expect(shown.contains("Alpha"), "the strip's tab is back: \(shown)")
         }),
     ]
 
