@@ -197,7 +197,7 @@ public struct ConnectedServerView: View {
     case .session(let id):
       if let conversation = connection.conversations[id] {
         ConversationContainer(
-          conversation: conversation, summary: connection.sessionList.session(id),
+          conversation: conversation, summary: connection.sessionList.sessionWithoutActivity(id),
           terminals: session.terminalStores[id], workspace: session.workspaces[id],
           panel: session.panels[id],
           changedFilesRevision: connection.changedFilesRevision,
@@ -211,7 +211,7 @@ public struct ConnectedServerView: View {
           sessionActions: sidebarActions.sessions,
           makeForkStore: { connection.makeForkStore() },
           menuContext: ConversationContainer.menuContext(
-            connection.sessionList, session: connection.sessionList.session(id),
+            connection.sessionList, session: connection.sessionList.sessionWithoutActivity(id),
             sideChatOf: source),
           makeShareStore: { connection.share(sessionID: id) },
           offersShare: source == nil && ShareAdapter.offered(connection.pages?.offered),

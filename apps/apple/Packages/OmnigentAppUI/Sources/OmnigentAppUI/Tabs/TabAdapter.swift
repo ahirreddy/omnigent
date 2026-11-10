@@ -59,7 +59,7 @@ enum TabAdapter {
       item.title =
         store?.controllers[terminalID]?.title ?? row?.terminal.displayLabel ?? tab.title
         ?? "Terminal"
-      item.subtitle = session.connection.sessionList.session(sessionID)?.title
+      item.subtitle = session.connection.sessionList.sessionWithoutActivity(sessionID)?.title
       item.status = row.map(terminalStatus) ?? .none
       item.canDuplicate = false
     case .remoteBrowser(let sessionID, let tabID):
@@ -89,7 +89,7 @@ enum TabAdapter {
     _ item: inout TabItemState, tab: AppTab, session: ServerSession, sessionID: String,
     tabID: String
   ) {
-    item.subtitle = session.connection.sessionList.session(sessionID)?.title
+    item.subtitle = session.connection.sessionList.sessionWithoutActivity(sessionID)?.title
     item.canDuplicate = false
     guard let store = session.remoteBrowsers?.existingStore(sessionID: sessionID, tabID: tabID)
     else {
@@ -114,7 +114,7 @@ enum TabAdapter {
     let connection = session.connection
     let list = connection.sessionList
     guard let id = tab.content.sessionID else { return }
-    let summary = list.session(id)
+    let summary = list.sessionWithoutActivity(id)
     let attention = status(list.attention(of: id).state, known: summary != nil)
     switch tab.content {
     case .chat:
@@ -159,7 +159,7 @@ enum TabAdapter {
       guard case .chat(let id) = session.tabs.tab(tabID)?.tab.content,
         let conversation = session.connection.conversations[id]
       else { return nil }
-      let summary = session.connection.sessionList.session(id)
+      let summary = session.connection.sessionList.sessionWithoutActivity(id)
       return ConversationAdapter.statusLine(conversation, summary: summary).text
     }
   }

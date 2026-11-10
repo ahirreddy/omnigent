@@ -238,7 +238,7 @@ extension ConnectedServerView {
     // (Open in New Window), so the rows offer no Open in Split View.
     actions.shareUnavailableReason = shareUnavailableReason
     actions.forkUnavailableReason = { summary in
-      list.session(summary.id).flatMap { forkUnavailableReason(source: $0) }
+      list.sessionWithoutActivity(summary.id).flatMap { forkUnavailableReason(source: $0) }
     }
     return actions
   }

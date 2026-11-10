@@ -156,7 +156,7 @@ struct WindowTabs {
       }
     let profiles = session.remoteBrowsers?.profiles[current] ?? []
     return NewTabPageState(
-      sessionTitle: session.connection.sessionList.session(current)?.title,
+      sessionTitle: session.connection.sessionList.sessionWithoutActivity(current)?.title,
       canOpenBrowser: browser != nil, terminals: terminals,
       remoteBrowserProfiles: Self.profileNames(profiles.map(\.name)))
   }

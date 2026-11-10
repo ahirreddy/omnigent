@@ -226,13 +226,6 @@ public final class SessionListStore {
     return self[summaryOf: sessionID]
   }
 
-  /// The parent of a sub-agent session, when the server reported one.
-  /// - Parameter sessionID: The session.
-  /// - Returns: The parent's id, or `nil` for a top-level (or unknown) session.
-  public func parent(of sessionID: String) -> String? {
-    session(sessionID)?.configuration?.parentId.flatMap { $0.isEmpty ? nil : $0 }
-  }
-
   /// The attention of `sessionID`; Idle for a session the list does not know.
   /// - Parameter sessionID: The session.
   /// - Returns: Its state and the pending decisions the caller can answer.
@@ -244,12 +237,21 @@ public final class SessionListStore {
   /// One session's summary and attention as the observation registrar knows them: a view that
   /// read one session is not redrawn for another session's row.
   private subscript(summaryOf sessionID: String) -> SessionSummary? { _sessionsByID[sessionID] }
+  /// The summary without its preview and time, for a reader that a new message should not redraw.
+  subscript(withoutActivityOf sessionID: String) -> SessionSummary? {
+    _sessionsByID[sessionID]?.withoutActivity
+  }
   private subscript(attentionOf sessionID: String) -> SessionAttention? {
     _attentionByID[sessionID]
   }
 
   private func summaryKey(_ sessionID: String) -> KeyPath<SessionListStore, SessionSummary?> {
     \.[summaryOf: sessionID]
+  }
+
+  private func withoutActivityKey(_ sessionID: String) -> KeyPath<SessionListStore, SessionSummary?>
+  {
+    \.[withoutActivityOf: sessionID]
   }
 
   private func attentionKey(_ sessionID: String) -> KeyPath<SessionListStore, SessionAttention?> {
@@ -259,12 +261,14 @@ public final class SessionListStore {
   /// The sessions whose summary or attention a recompute changed.
   private struct ChangedSessions {
     var summaries: [String] = []
+    var withoutActivity: [String] = []
     var attention: [String] = []
   }
 
   /// Applies `change` to the dictionaries, notifying the readers of each changed session.
   private func notifying(_ changed: ChangedSessions, _ change: () -> Void) {
-    let summaries = changed.summaries.map(summaryKey)
+    let summaries =
+      changed.summaries.map(summaryKey) + changed.withoutActivity.map(withoutActivityKey)
     let attention = changed.attention.map(attentionKey)
     for keyPath in summaries { _$observationRegistrar.willSet(self, keyPath: keyPath) }
     for keyPath in attention { _$observationRegistrar.willSet(self, keyPath: keyPath) }
@@ -292,34 +296,6 @@ public final class SessionListStore {
         expectations[id] = nil
       }
     }
-    recompute()
-  }
-
-  func loaded() {
-    isLoaded = true
-    lastError = nil
-  }
-
-  func failed(_ error: CoreError) {
-    lastError = error
-  }
-
-  /// Forgets everything of the account that was signed in.
-  func clear() {
-    serverSessions = [:]
-    expectations = [:]
-    isLoaded = false
-    lastError = nil
-    editError = nil
-    viewerID = nil
-    unreadIDs = []
-    draftSessionIDs = []
-    paging.clear()
-    projects = []
-    projectsError = nil
-    projectSortMode = nil
-    hostEnvironments = [:]
-    hostsError = nil
     recompute()
   }
 
@@ -375,13 +351,47 @@ public final class SessionListStore {
         attention: sessionAttention(session: session, isUnread: isUnread))
       computed[id] = current
       if previous?.session != session { changed.summaries.append(id) }
+      if previous?.session.withoutActivity != session.withoutActivity {
+        changed.withoutActivity.append(id)
+      }
       if previous?.attention != current.attention { changed.attention.append(id) }
     }
     for id in computedAttention.keys where sessions[id] == nil {
       changed.summaries.append(id)
+      changed.withoutActivity.append(id)
       changed.attention.append(id)
     }
     computedAttention = computed
     return changed
+  }
+}
+
+extension SessionListStore {
+  func loaded() {
+    isLoaded = true
+    lastError = nil
+  }
+
+  func failed(_ error: CoreError) {
+    lastError = error
+  }
+
+  /// Forgets everything of the account that was signed in.
+  func clear() {
+    serverSessions = [:]
+    expectations = [:]
+    isLoaded = false
+    lastError = nil
+    editError = nil
+    viewerID = nil
+    unreadIDs = []
+    draftSessionIDs = []
+    paging.clear()
+    projects = []
+    projectsError = nil
+    projectSortMode = nil
+    hostEnvironments = [:]
+    hostsError = nil
+    recompute()
   }
 }

@@ -74,6 +74,26 @@ struct SessionListNotificationTests {
     #expect(notifies({ _ = store.session("d") }, when: rowOfD))
   }
 
+  @Test("a view that read a session without its activity hears of its title, not of a message")
+  func readerWithoutActivityIgnoresPreviewAndTime() {
+    let store = SessionListStore()
+    store.apply(.reset(sessions: [summary("a", updatedAt: 1), summary("b", updatedAt: 2)]))
+    let reads = { _ = store.sessionWithoutActivity("a") }
+    var row = summary("a", updatedAt: 9)
+    row.preview = "A new message"
+    #expect(!notifies(reads) { store.apply(.upsert(sessions: [row])) })
+    #expect(store.session("a")?.preview == "A new message")
+    #expect(store.sessionWithoutActivity("a")?.preview.isEmpty == true)
+    #expect(store.sessionWithoutActivity("a")?.updatedAt == 0)
+    row.title = "Renamed"
+    #expect(notifies(reads) { store.apply(.upsert(sessions: [row])) })
+    #expect(store.sessionWithoutActivity("a")?.title == "Renamed")
+    #expect(!notifies(reads) { store.apply(.upsert(sessions: [self.summary("b", updatedAt: 3)])) })
+    #expect(notifies(reads) { store.apply(.remove(ids: ["a"])) })
+    #expect(store.sessionWithoutActivity("a") == nil)
+    #expect(notifies(reads) { store.apply(.upsert(sessions: [row])) })
+  }
+
   @Test("a view asking only whether there are several sessions hears of the second, not of rows")
   func severalVisibleNotifiesWhenItFlips() {
     let store = SessionListStore()

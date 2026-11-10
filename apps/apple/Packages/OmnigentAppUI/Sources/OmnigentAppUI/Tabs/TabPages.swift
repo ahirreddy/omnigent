@@ -63,7 +63,7 @@ struct TerminalTabView: View {
   }
 
   private var sessionTitle: String {
-    session.connection.sessionList.session(sessionID)?.title ?? ""
+    session.connection.sessionList.sessionWithoutActivity(sessionID)?.title ?? ""
   }
 
   private func attach() {
@@ -85,7 +85,8 @@ struct SideChatTabContainer: View {
   }
 
   private var state: SideChatTabState {
-    let title = session.connection.sessionList.session(sessionID)?.title ?? "the conversation"
+    let title =
+      session.connection.sessionList.sessionWithoutActivity(sessionID)?.title ?? "the conversation"
     guard let conversation = session.connection.conversations[sessionID] else {
       return SideChatTabState(phase: .loading, sessionTitle: title)
     }

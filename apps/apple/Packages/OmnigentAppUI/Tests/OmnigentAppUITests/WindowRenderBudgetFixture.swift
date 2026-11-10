@@ -13,7 +13,7 @@ import Testing
 
 #if DEBUG
   /// The mounted window the render budgets are measured in: Alpha's chat shown with a reply
-  /// streaming, a side chat on Beta kept built behind it, and Gamma only in the sidebar.
+  /// streaming, a side chat on Beta kept built behind it, and Gamma and Delta only in the sidebar.
   @MainActor
   struct BudgetWindow {
     let screen: OffscreenWindow<AppWindowRoot>
@@ -25,7 +25,8 @@ import Testing
     static let shown = "conv_a"
     static let hidden = "conv_b"
     static let other = "conv_c"
-    static let titles = [shown: "Alpha", hidden: "Beta", other: "Gamma"]
+    static let another = "conv_d"
+    static let titles = [shown: "Alpha", hidden: "Beta", other: "Gamma", another: "Delta"]
     /// The streaming reply's row in Alpha's transcript.
     static let streamIndex: UInt32 = 2
 
@@ -41,14 +42,14 @@ import Testing
     var editor: NSTextView? { screen.window.firstResponder as? NSTextView }
 
     /// How long ago each session was last active, in minutes: its row's time until it changes.
-    static let minutesAgo: [String: Int64] = [shown: 3, hidden: 4, other: 6]
+    static let minutesAgo: [String: Int64] = [shown: 3, hidden: 4, other: 6, another: 8]
 
     /// A time `minutes` ago that reads as that many minutes for the next half minute.
     static func time(minutesAgo minutes: Int64) -> Int64 {
       Int64(Date().timeIntervalSince1970) - minutes * 60 - 20
     }
 
-    /// A server with the three titled sessions on one online host.
+    /// A server with the titled sessions on one online host.
     private static func server() -> AppServer {
       let server = newSessionServer()
       let rows = titles.keys.sorted().map { id in
