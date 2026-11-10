@@ -14,11 +14,11 @@ public import SwiftUI
 /// selected tab carries the title and status, so the toolbar shows no title. Compact widths show
 /// a Tabs button that opens the tab overview, and the detail shows the selected tab.
 public struct AppShell<Detail: View>: View {
-  private let sidebar: SidebarViewState
+  private let sidebar: () -> SidebarViewState
   @Binding private var selection: SidebarDestination?
   @Binding private var searchText: String
   private let actions: SidebarActions
-  private let tabs: (state: TabsState, actions: TabActions)?
+  private let tabs: (() -> TabStripContent)?
   private let detail: (SidebarDestination?) -> Detail
 
   @State private var columns: NavigationSplitViewVisibility =
@@ -39,7 +39,27 @@ public struct AppShell<Detail: View>: View {
   ///   - detail: The detail column for a destination.
   public init(
     sidebar: SidebarViewState, selection: Binding<SidebarDestination?>, searchText: Binding<String>,
-    actions: SidebarActions, tabs: (state: TabsState, actions: TabActions)? = nil,
+    actions: SidebarActions, tabs: TabStripContent? = nil,
+    @ViewBuilder detail: @escaping (SidebarDestination?) -> Detail
+  ) {
+    self.init(
+      sidebar: { sidebar }, selection: selection, searchText: searchText, actions: actions,
+      tabs: tabs.map { tabs in { tabs } }, detail: detail)
+  }
+
+  /// Creates a shell that reads the sidebar and the tabs where it shows them: a change to a
+  /// session's row or a tab's title then renders the sidebar or the strip, not the window.
+  /// - Parameters:
+  ///   - sidebar: Sidebar state, read by the sidebar.
+  ///   - selection: The selected destination.
+  ///   - searchText: Session search.
+  ///   - actions: Sidebar actions.
+  ///   - tabs: The window's tabs and their actions, read by the strip; `nil` shows no tabs.
+  ///   - detail: The detail column for a destination.
+  public init(
+    sidebar: @escaping () -> SidebarViewState, selection: Binding<SidebarDestination?>,
+    searchText: Binding<String>, actions: SidebarActions,
+    tabs: (() -> TabStripContent)? = nil,
     @ViewBuilder detail: @escaping (SidebarDestination?) -> Detail
   ) {
     self.sidebar = sidebar
@@ -57,7 +77,7 @@ public struct AppShell<Detail: View>: View {
     let columns = settledColumns
     sidebarToggle?.toggle = { columns.wrappedValue = SidebarToggle.toggled(columns.wrappedValue) }
     return NavigationSplitView(columnVisibility: columns) {
-      SidebarView(state: sidebar, selection: $selection, searchText: $searchText, actions: actions)
+      sidebarColumn
         .navigationSplitViewColumnWidth(
           min: AppShellMetrics.sidebarMinWidth, ideal: AppShellMetrics.sidebarIdealWidth,
           max: AppShellMetrics.sidebarMaxWidth
@@ -92,18 +112,29 @@ public struct AppShell<Detail: View>: View {
       }
     }
     .adaptiveLayoutWidth()
+    .countsRenders("shell")
     #if os(macOS)
       .modifier(
         SidebarPeekOverlay(
           isCollapsed: columns.wrappedValue == .detailOnly,
           startsShown: SidebarLaunchState.current == .peek
         ) {
-          SidebarView(
-            state: sidebar, selection: $selection, searchText: $searchText, actions: actions)
+          sidebarColumn
         })
     #endif
   }
+
+  /// The sidebar, reading its state in a view of its own.
+  private var sidebarColumn: some View {
+    ObservationScope("sidebar") {
+      SidebarView(
+        state: sidebar(), selection: $selection, searchText: $searchText, actions: actions)
+    }
+  }
 }
+
+/// The tab strip's tabs and what they do.
+public typealias TabStripContent = (state: TabsState, actions: TabActions)
 
 /// How the sidebar starts, for UI tests and screenshots: `-OmnigentSidebar collapsed` or
 /// `-OmnigentSidebar peek` (collapsed, peeking until the pointer moves over the window).
@@ -163,12 +194,18 @@ extension AppShell {
         ToolbarSpacer(.flexible)
         // New Tab sits by the trailing items, not wherever the tabs end.
         ToolbarItem(placement: .primaryAction) {
-          TabStripControls(state: tabs.state, actions: tabs.actions)
+          ObservationScope("tab controls") {
+            let tabs = tabs()
+            TabStripControls(state: tabs.state, actions: tabs.actions)
+          }
         }
         .sharedBackgroundVisibility(.hidden)
       } else {
         ToolbarItem(placement: Self.switcherPlacement) {
-          TabSwitcherButton(state: tabs.state, actions: tabs.actions)
+          ObservationScope("tab switcher") {
+            let tabs = tabs()
+            TabSwitcherButton(state: tabs.state, actions: tabs.actions)
+          }
         }
       }
     }
@@ -198,15 +235,17 @@ final class TitlebarStripSpace {
 
 /// The tab strip at the width the titlebar has for it.
 private struct TitlebarTabStrip: View {
-  let tabs: (state: TabsState, actions: TabActions)
+  let tabs: () -> TabStripContent
   let space: TitlebarStripSpace
   let isSidebarHidden: Bool
 
   var body: some View {
+    let tabs = tabs()
     TabStrip(
       state: tabs.state, actions: tabs.actions, isInTitlebar: true, includesControls: false
     )
     .frame(width: stripWidth)
+    .countsRenders("strip")
   }
 
   private var stripWidth: CGFloat {
