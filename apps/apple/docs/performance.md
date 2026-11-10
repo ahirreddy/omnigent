@@ -363,7 +363,7 @@ Left as it is:
 - One render of the shell, the sidebar, the tab strip and the conversation that shows, most
   of what is left: `ConnectedServerView` and `AppShell` read the selected tab in their
   bodies, so a switch re-runs both and hands the sidebar and the shown tab new closures.
-  Holding those needs the closures made stable first.
+  (The seventh pass took the shell and the sidebar out of a switch.)
 - The flip itself, about 55 ms spread over SwiftUI's graph update, the toolbar and the display
   list, with no single symbol standing out.
 - Terminals, browsers and the New Tab page are not kept: each selection builds the page again,
@@ -425,14 +425,15 @@ What changed:
   starts a surface focused, with a blinking cursor and a render loop; the app now tells it the
   surface is unfocused until it gets the keyboard. Its cursor is hollow until then.
 
-Each has a counting test: `ConnectedWindowRenderScopeTests` and `AdaptiveShellTests` (which
+Each has a counting test: `WindowRenderBudgetTests` and `AdaptiveShellTests` (which
 scope renders for a row, a kept tab's session, the shown session and a title),
 `SessionListNotificationTests` (which readers a change tells) and
 `IdleSurfaceRenderingTests`.
 
 State that changes on an interaction has to be read by one scope on any chain of ancestors. A
 scope around the detail column as well rendered the shown chat twice on a tab switch, because
-the root reads the selected tab too; the detail is built in the shell's body as before.
+the root reads the selected tab too; the detail is built in the shell's body as before. (The
+seventh pass moved the root's read out and gave the detail its scope.)
 
 Left as it is:
 
@@ -440,19 +441,268 @@ Left as it is:
   through the core, the sidebar state built again and the list of 250 rows compared.
 - The shown session's own row still renders its whole conversation screen and its side chat,
   and a hidden tab's session renders that tab: `ConversationContainer` takes the session's
-  summary as one value, so a new preview or time is a new input to the screen. Narrowing it to
-  the fields the screen shows is the next step.
+  summary as one value, so a new preview or time is a new input to the screen.
 - A tab switch still renders the shell and the sidebar once (the fifth pass's first item).
 - A key in the composer costs either about 7 ms or about 15 ms for a whole run of the same
   binary; the cause was not found.
 
+The seventh pass did the last three.
+
+## Seventh pass: one change renders the views that show it (November 2026)
+
+The aim of this pass was that each change renders only the views that draw it, with a test
+for each way that goes wrong: a view that stops updating because its read was narrowed too
+far, and a broad read put back at a root later.
+
+Measured as the sixth pass (Release, offscreen, 250 sessions, a 600-row chat with a terminal,
+a browser and a side chat; median main-thread CPU per step through its layout pass). Before
+is the tree this pass started from with the transcript width-change fix merged; before and
+after ran back to back, twice. Differences under about 20% are noise.
+
+| One step | Before | After |
+| --- | --- | --- |
+| The shown session's own row changes | 45-46 ms | 23 ms |
+| The session of a hidden, kept tab changes | 33 ms | 23 ms |
+| Another session's row changes (status; preview) | 26; 22-23 ms | 26; 23 ms |
+| A tab switch to a chat | 100 ms | 81-82 ms |
+| A tab switch to a terminal | 259-265 ms | 220-223 ms |
+| A switch between two open sessions | 126-127 ms | 115 ms |
+| Opening another session, first pass (to settled) | 214-218 (445-449) ms | 153-165 (392-398) ms |
+| A page without a session, or back (with the frames after) | 696-710 (966-985) ms | 159-176 (341-360) ms |
+| A character of sidebar search (the slowest tenth) | 45-46 (97-101) ms | 27-28 (79-80) ms |
+| A write to the defaults that no view shows | 35 ms | 1.4 ms |
+| A key in the composer | 15-16 ms | 16 ms |
+| A streamed delta | 11-12 ms | 11 ms |
+| A scroll step (the slowest tenth) | 6-7 (19-24) ms | 6 (21) ms |
+| A window resize step (the slowest tenth) | 55-56 (114-116) ms | 53-54 (111-116) ms |
+| A sidebar divider step | 30-32 ms | 29 ms |
+| A tab's title | 0.3 ms | 0.25 ms |
+| The first frame | 612-633 ms | 598-599 ms |
+| A 600-row transcript arrives, first pass (to settled) | 49-50 (243) ms | 48-55 (244-270) ms |
+
+One of the two runs after had the main thread at its faster level throughout (a key 5.7 ms, a
+delta 7.8, a scroll step 3.9, a session switch 90); those four rows give the other run. Three
+more runs of the session switch alone gave 122-127 ms before and 110-113 after. Another
+session's row and the rows from "A key in the composer" down did not change. The sixth
+pass's 70-118 ms for a sidebar divider step was the test laying the split out twice; a step
+is about 30 ms.
+
+What changed, with the renders counted in the mounted window:
+
+- **A message in an open tab's session renders the sidebar and nothing else.** The strip,
+  the tab's chat and its menus read the session's whole summary, so each new preview or time
+  rendered the strip, the tab, the screen, the transcript and the composer, also for a tab
+  kept behind. `SessionListStore.sessionWithoutActivity(_:)` is observed under its own key
+  and told only when something other than the preview and the time changed; the sidebar row
+  still reads the whole summary.
+- **A tab switch renders the detail, the tab that shows and the strip.** The root read the
+  shown tab to build the detail and to tell the core which chat is on screen. The detail
+  reads it in an `ObservationScope` of its own and the report is a modifier
+  (`ViewedSessionReport`). No window, shell, sidebar or session rows.
+- **A session switch renders the window once**, where a switch from the palette, a deep
+  link, a notification or Next and Previous Session rendered it twice. The root reads only
+  whether the shown page has tabs (`SessionTabGroups.showsSessionTabs`); the page the tab
+  model moves to by itself is handed to the host by a modifier (`ShownPageReport`).
+- **A session opening or closing behind the window renders nothing.** The open chats,
+  terminals, workspaces and panels are read per session
+  (`ConnectionStore.openConversation(_:)`, `ServerSession.terminals(of:)`, `workspace(of:)`,
+  `panel(of:)`), each observed under a key for that session.
+- **Search text renders the sidebar, its rows and the search field.** Making the search
+  binding in the root read its text, so each character rendered the window. The shell takes
+  the binding as a closure the sidebar calls. A binding made in a body never compares equal
+  to the last one, so the field's modifier then ran with every sidebar render (5 ms a row
+  change, for the commits in between); `SidebarSearchField` keeps the latest binding in a
+  relay and its inner modifier takes the text, so it runs when the text changes.
+- **A draft's first character renders the composer and the sidebar's draft pencil.** The
+  screen kept "the draft has text" in its state to decide who answers Command-Return; the
+  flag is now in a small observable (`DraftPresence`) read by the three places that use it.
+- **A write to the defaults no longer renders every open chat.** `@AppStorage` renders its
+  view on every write to the store when its key has a dot in it, and the chat read
+  `composer.submitWithCommandReturn`: showing the right panel, a sidebar option or a
+  remembered window frame rendered each open conversation from its container down.
+  `ComposerPreferencesReader` holds the two composer settings and writes the screen's copy
+  only when one changes.
+- **A chat kept behind a page is not built again.** `TitlelessToolbar` chose between two
+  branches over the whole detail column by whether the tab strip shows. A branch gives what
+  is under it a new identity, so going to Usage, Inbox or Automations and back tore down
+  and rebuilt every kept chat, both ways. It passes the choice as a value to one
+  `toolbar(removing:)`. A chat's view state now survives the visit.
+
+Two stale views were found on the way and fixed, each with a test that failed first:
+
+- The sidebar's Load more row did not follow the page that was loading: the sidebar state is
+  reused while its sessions are unchanged, and the reused state carried the paging it was
+  built with. It takes the paging afresh.
+- A turn rail tick kept calling the jump it was built with. `TurnTick` compares its turn,
+  hover and active state, not its action, and the transcript's jump captures Reduce Motion
+  and the message focus. The ticks call through the rail's latest jump
+  (`TurnRailClickTests`).
+
+### The render budgets
+
+`WindowRenderBudgetTests` (OmnigentAppUI) mounts the connected window with four sessions,
+one shown and one in a kept tab behind it, and runs one interaction per row of
+`WindowInteraction.all`
+(`WindowRenderBudgetTable.swift`, `WindowRenderBudgetLayout.swift`). A row names the most
+each scope may render and then reads what it changed from what the window draws:
+
+```swift
+WindowInteraction(
+  name: "a hidden tab's session's title",
+  budget: ["session row": 5, "sidebar": 1, "tab": 1, "screen": 1, …],
+  perform: { try $0.change(BudgetWindow.hidden) { $0.title = "Beta renamed" } },
+  verify: { window in /* the new title in the sidebar's row, and in the tab once it shows */ })
+```
+
+A scope that a row does not list may not render at all, so a broad read put back at a root
+fails the rows it now renders in, by name, and a new scope starts at none everywhere. Adding
+a scope is one `.countsRenders("name")` (or an `ObservationScope("name")`) and one entry in
+the rows that may render it. The scopes today: window, shell, sidebar, session row, search
+field, strip, tab controls, tab switcher, detail, tab, screen, transcript, rows, row,
+markdown, composer, sidechat.
+
+| Interaction | May render |
+| --- | --- |
+| Another session's row (title and time) | sidebar 1, session row 5 |
+| The shown session's preview and time | sidebar 1, session row 4 |
+| A hidden tab's session's preview and time | sidebar 1, session row 4 |
+| The shown session's title | sidebar 1, session row 5, strip 1, tab controls 1, tab 2, screen 2, transcript 2, rows 2, composer 2 |
+| A hidden tab's session's title | sidebar 1, session row 5, tab 1, screen 1, transcript 1, rows 1, composer 1 |
+| A session that needs the user; a session marked unread | sidebar 1, session row 5 and 4 |
+| A streamed delta | nothing counted (the streaming row's text only) |
+| A composer keystroke | composer 1 |
+| A draft's first keystroke; its last character deleted | composer 1, sidebar 1, session row 4 |
+| A tab switch | detail 1, tab 1, screen 1, transcript 1, rows 1, composer 2, strip 1, tab controls 1 |
+| A session switch | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 3, transcript 3, rows 3, composer 4, strip 2, tab controls 2 |
+| A session chosen in the sidebar; one the window shows by itself; back to a kept one | as a session switch, with screen, transcript and rows 2 |
+| Back to a session that closed | as a session switch, with tab 3 |
+| Another session opening or closing behind the window | nothing |
+| A page without a session, and back | window 2, shell 2, sidebar 2, session row 8, detail 3, tab 3, screen 3, transcript 3, rows 3, composer 2, strip 1, tab controls 1; no row, no markdown, and the chats' scroll views are the same objects |
+| Sidebar search text set; typed into the field; cleared | sidebar 1-2, session row 2-6, search field 1-2 |
+| A sidebar filter; a page of sessions loaded; an empty last page | sidebar 1, session row 2-4 |
+| A window resize step; a sidebar divider step | strip 1 |
+| The right panel shown | screen 1, transcript 1, rows 1, composer 1 |
+| A preference no view reads, over a chat and over the new session page | nothing |
+| The Command-Return setting | screen 2, transcript 2, rows 2, composer 2 |
+
+A terminal's output is covered by `IdleSurfaceRenderingTests` rather than this table.
+
+### What reads what
+
+Reads of observable state at or above a screen's root. "Scope" is the view whose body the
+read invalidates.
+
+| Scope | Reads | Invalidated by | Verdict |
+| --- | --- | --- | --- |
+| Window root (`ConnectedServerView.body`) | the host's selection | a session or page switch | fine: the switch renders the window once (budget) |
+| | `session.tabs.showsSessionTabs` | a session to a page without tabs, and back | fine: structural, it adds and removes the strip (budget: window 2 with the selection) |
+| | `connection.connectedServer?.baseUrl` | connecting to another server | fine |
+| | `sidebar.fork`, `projectSettings`, `archiveRequest`, `renamingFromTab`, `renameText`, `sessionList.editError` (read when their sheet and alert bindings are made) | opening one of those sheets or alerts | fine: each presents over the window |
+| | `tabFailure`, `showsTabOverview` (view state), size class, two `@AppStorage` keys without a dot | a failed tab action, the overview, a compact width, those two settings | fine |
+| Root modifiers, each its own scope | `TabCommandsPublishing`: the tabs' commands. `BusyTabsReport`: busy tab ids. `WindowTabOverview`: the strip's state. `ViewedSessionReport`: the viewed session, window focus. `ShownPageReport`: the tab model's page. `TabRestoration`: server URL, live session ids. `CloseShellConfirmation`: the shown tabs, the closing shell. `NewTabOptionsLoading`: the shown session id. `PaletteAdapter`: built only while the palette shows | tab, session and title changes | fine: none renders content, each runs a closure |
+| | `SessionTabsLifecycle`: every session's archived flag, the open session ids | every session row | fine for now: a dictionary of 250 flags per row, no view under it; an incremental core API would remove it |
+| Shell (`AppShell.body`) | column visibility, size class, whether there are tabs | the sidebar toggle, a compact width, a page without tabs | fine |
+| "sidebar" | the sidebar state: the session list, display options, offered pages, the search binding | every session row, search text, filters, paging | fine: it is what draws them. Every row on screen runs its body for each change (the budgets' "session row 4" is all four rows of the test's sidebar), under 2 ms of the 20: see "Left as it is" |
+| "search field" | the search text, through the relay | search text | fine (budget) |
+| "tab controls", "tab switcher", "strip" | the shown session's tabs and titles; the strip also the detail's width | a tab's title, a tab switch, a resize step | fine: a resize step renders the strip once and nothing else |
+| "detail" | the shown tab group, its selected tab, its split, the kept list, the page, the connection's issues | a tab or session switch, a split, a connection issue | fine |
+| "tab" (one per kept tab) | its session's open conversation, `sessionWithoutActivity(id)`, its terminals, workspace and panel, `changedFilesRevision`, the connected server, declared terminal names, offered pages | its own session's title, status or stores; a file change in any session (`changedFilesRevision`) | fine; `changedFilesRevision` is one counter for the connection, so a file change renders every kept tab's container (rare, not narrowed) |
+| `ConversationContainer` | its `ConversationStore`, panel route, composer preferences copy, fork and share flows | its conversation's state other than the transcript, the right panel, the two composer settings | fine (budget: right panel, Command-Return) |
+| `ConversationScreen` ("screen") | the conversation's header and mode, not the draft and not "has a draft" | title, status, mode | fine: a keystroke renders the composer only |
+| "transcript", "rows" | the transcript state; streamed text is read by the streaming row | a new row, a page of history | fine: a delta renders no counted scope |
+
+Views compared with `==`. SwiftUI uses a view's `Equatable` conformance for a view that
+holds anything but plain data even without `.equatable()`, so each of these skips its body
+when `==` says so, and a field `==` leaves out is a stale view waiting.
+
+| View | `==` compares | Body also uses | Verdict |
+| --- | --- | --- | --- |
+| `TurnSegmentView`, `CLIBlockView` (`.equatable()`) | every stored value (synthesized) | environment | fine |
+| `MessageRowView`, `CLIUserBand`, `CLIAssistantBlock` | row, decoration | environment (actions, palette, width), focus state | fine: no stored input is left out |
+| `ActivityRowView`, `CLIActivityLine` | row | environment, expansion state | fine |
+| `ToolGroupView`, `CLIToolLines` | entries | expansion state | fine |
+| `CLIWorkGroup` | id, items, live, decorations | collapse state | fine |
+| `TurnTick` | turn, hover, active | its action closure | fixed: the action reaches the latest jump through the rail (`TurnRailClickTests`) |
+| `HeldWhileHidden` (`KeptAliveTabs`) | only whether the tab is hidden now | the tab's whole content, closures included | fine by design: a hidden tab ignores new inputs and takes the latest when it shows, because the tab that shows is never equal. A shown tab cannot be skipped: its content holds closures that cannot be compared |
+| `SidebarSearchFieldContent` (no `==` of its own) | the text and the relay's identity, by SwiftUI | the binding, through the relay | fine (budget: three search rows) |
+| `TabStatusDetails`, `PickerVisibilitySource`, `WorkspaceMarkdownRenderer`, the presenter-identity environment values, `TranscriptWindowControls` | an owner or presenter identity, or an id | closures of that same owner | fine: one owner per window or server, and the closures do not capture view state |
+
+`@AppStorage` renders its view for every write to the defaults when its key contains a dot
+(any key, any writer); a key without one renders it for that key only. Keys with a dot that
+views still read: `composer.submitWithCommandReturn` (`InboxRow`, `KeyboardShortcutsSheet`,
+the settings pane), `omnigent.inbox.filter` (`InboxView`), `workspace.fileViewMode` and
+`workspace.showsComments` (`FileViewerView`), `omnigent.serverURL` (`ConnectView`,
+`SettingsView`). The inbox and the file viewer are the two worth moving behind a reader like
+`ComposerPreferencesReader`, each inbox row and each open file renders for any write; the
+chat no longer does. All other keys use a colon.
+
+### Rules this pass relied on
+
+- State that changes on an interaction is read by one scope on any chain of ancestors.
+- A read made in a closure counts for the body that calls the closure, and
+  `Binding(get:set:)` calls `get` when it is made: a binding built in a root reads its value
+  there.
+- A binding made in a body never equals the last one, so whatever takes it runs with every
+  render of its parent. Keep the latest in a reference (`SearchTextRelay`,
+  `FocusedActionsRelay`) and pass the value.
+- A view holding closures runs whenever its parent does. Only values, or a reference that
+  stays the same, let SwiftUI skip it.
+- An `if` over `content` in a modifier, or any branch above a subtree, rebuilds the subtree
+  when the condition changes. Pass the condition down as a value.
+- A view's `==` must compare everything its body uses, or route what it leaves out through
+  a reference that is always current.
+- `Self._printChanges()` reports a functional binding as changed on every pass and does not
+  name every trigger; "@identity changed" with every state name means the view was built
+  again, not updated.
+
+### Left as it is
+
+- **Another session's row, about 20 ms with 250 sessions.** Where it goes (one sample): the
+  store's two passes through the core 3 ms, the sidebar state 1.7 ms, the hosting view's
+  layout 10 ms (the outline's row diff 1.4-1.8 ms of it, the visible rows' bodies under
+  2 ms), the commit 1.6 ms. Skipping unchanged rows with `==` would save 15-20% at most and
+  is unsafe while rows take fresh closures and the current time; it needs the sidebar's
+  actions behind a stable reference first. The filter needs an incremental core API.
+- **A page without tabs renders the window twice**, once for the host's selection and once
+  for the strip leaving, and each kept chat's container once. No rows are built.
+- **A session switch** still builds the new session's tabs and renders the window once; the
+  first pass of opening another session is 150-170 ms, most of it the new chat's first
+  layout.
+- **A tab switch to a terminal** (190-240 ms) builds the terminal again; no app symbol
+  stands out in a sample (view layout 22%, SwiftUI's render 18%, hosting layout 18%, the
+  attribute graph 15%, the commit 9%, the toolbar 4%).
+- **A resize step** renders only the strip. A window step is 72% layout: the toolbar's
+  bridge about 24% of the step and the transcript's lazy stack about 20%, app code under 3%.
+- **A key in the composer** renders the composer once. Its cost levels (about 6, 10 and
+  15 ms, each for a whole run of the same binary) go with the state of the processor core
+  the main thread is given: a fixed loop of arithmetic timed beside the keys changes level
+  with them. Nothing the app renders differs between the levels.
+- **One window resize step in 40 costs about 430 ms** once the chats behind have been
+  scrolled and switched, before this pass and after it. The full run before hides it: its
+  page visit builds every chat again first. Not looked into here.
+- `LoopProbe.record` costs 170-360 ns a call in Release and its detail is an autoclosure;
+  the busiest probe changes 55-85 times over 40 resize steps, under 0.02% of the main
+  thread.
+
+### Not checked in a real window
+
+These tests mount the window offscreen. What only a key window on a display shows was not
+checked: the titlebar's title and strip as a session gives way to a page and back, and a
+kept chat's scroll position after that visit; typing in the real search field (marked text,
+the clear button, Command-F); Command-Return sending or approving as a draft gains and
+loses its text; the composer following Settings live; a real divider drag and window
+resize; a turn rail jump after Reduce Motion changes.
+
 ## Where the time still goes
 
-- **Switching tabs** renders the shell, the sidebar and the tab that shows once (see the fifth
-  pass); a terminal, browser or New Tab page is built again on each selection.
-- **A session's own activity** renders its whole conversation screen for each new row of the
-  session list (preview, time, status), 32-50 ms in Release with a 600-row chat; another
-  session's activity renders the sidebar, about 20 ms with 250 sessions (see the sixth pass).
+- **Switching tabs** renders the detail and the tab that shows once, 80 ms in Release to a
+  600-row chat; a terminal, browser or New Tab page is built again on each selection, 220 ms
+  for a terminal (see the fifth and seventh passes).
+- **Any session's activity** (preview, time, status) renders the sidebar, 22-26 ms in Release
+  with 250 sessions, whether it is the shown session's, a kept tab's or another's. Most of it
+  is the sidebar's layout, not the rows (see the seventh pass).
+- **Switching sessions** is 115 ms between two open ones and 150-165 ms for the first pass of
+  one not yet open; a page without a session and back is 160-175 ms each way.
 - Opening a long session (about 1 s quiet, 2-3 s under load) is SwiftUI building and laying
   out about 27 transcript segments and their markdown: code blocks' text layout (one typesetter
   pass over each whole block) is the largest single cost, then view and attribute setup and
