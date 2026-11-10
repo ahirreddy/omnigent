@@ -14,7 +14,8 @@ import Testing
 #if DEBUG
   nonisolated extension WindowInteraction {
     /// The budget table: every interaction the window is held to.
-    static let all: [WindowInteraction] = sessionRows + chat + navigation + sidebar
+    static let all: [WindowInteraction] =
+      sessionRows + chat + navigation + sidebar + layout + preferences
 
     /// The server's news about one session.
     private static let sessionRows: [WindowInteraction] = [

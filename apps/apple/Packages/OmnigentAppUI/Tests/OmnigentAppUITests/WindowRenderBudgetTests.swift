@@ -24,6 +24,8 @@ import Testing
     var prepare: Step = { _ in }
     /// Does it, the way the server's event or the user's input reaches the window.
     let perform: Step
+    /// Puts back what it changed outside the window, before any other test can run.
+    var afterwards: Step = { _ in }
     /// Reads what it changed from what the window draws.
     let verify: @MainActor @Sendable (BudgetWindow) async throws -> Void
 
@@ -51,6 +53,7 @@ import Testing
         }
         window.screen.settle(0.3)
       }
+      try interaction.afterwards(window)
       if let failure { throw failure }
       let over = renders.filter { $0.value > interaction.budget[$0.key, default: 0] }
       #expect(over.isEmpty, "over budget: \(over.sorted { $0.key < $1.key }) of \(renders)")

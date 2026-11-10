@@ -21,6 +21,8 @@ import Testing
     let selection: WindowSelection
     let chatTabID: String
     let sideChatTabID: String
+    /// What a step measured before it ran, for its check afterwards.
+    let notes = BudgetNotes()
 
     static let shown = "conv_a"
     static let hidden = "conv_b"
