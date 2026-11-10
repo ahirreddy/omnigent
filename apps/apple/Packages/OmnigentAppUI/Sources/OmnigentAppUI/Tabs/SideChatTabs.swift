@@ -58,7 +58,7 @@ struct PendingSideChatTab: View {
         get: { drafts.draft(tabID).text },
         set: { text in drafts.update(tabID) { $0.text = text } }),
       parent: CreatingSession(
-        id: parentID, title: session.connection.sessionList.session(parentID)?.title),
+        id: parentID, title: session.connection.sessionList.sessionWithoutActivity(parentID)?.title),
       isStarting: draft.isStarting, failure: draft.failure,
       send: { Self.start(session: session, tabID: tabID, parentID: parentID, fail: fail) },
       dismissFailure: { drafts.update(tabID) { $0.failure = nil } },
@@ -77,7 +77,7 @@ struct PendingSideChatTab: View {
     guard !drafts.draft(tabID).isStarting,
       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return }
-    guard let parent = session.connection.conversations[parentID] else {
+    guard let parent = session.connection.openConversation(parentID) else {
       drafts.update(tabID) { $0.failure = "The conversation isn't open." }
       return
     }

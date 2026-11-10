@@ -3,6 +3,7 @@ import Foundation
 import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentTestSupport
+import OmnigentUIComponents
 import OmnigentViewTesting
 import OmnigentViewTextReading
 import SwiftUI
@@ -85,6 +86,33 @@ struct NewSessionScreenTests {
     let shown = try screen.shownText()
     #expect(shown.contains { $0.contains("What should we build?") }, "\(shown)")
     #expect(!shown.contains { $0.contains("hello") }, "the composer is empty for the next session")
+  }
+
+  @Test("The Command-Return setting reaches the page while it shows, and so does turning it off")
+  func commandReturnSettingArrives() async throws {
+    let server = startableServer()
+    let (screen, _) = try await page(server)
+    defer { screen.close() }
+    let key = ComposerPreferences.submitWithCommandReturnKey
+    let saved = UserDefaults.standard.object(forKey: key)
+    // Nothing here waits while the setting is on, so no other test runs with it.
+    UserDefaults.standard.set(true, forKey: key)
+    screen.settle(0.2)
+    try screen.type("hello")
+    try screen.press(keyCode: 36, characters: "\r")
+    screen.settle(0.1)
+    let drafts = screen.allViews.compactMap { $0 as? NSTextView }.filter(\.isEditable)
+    let withSetting = drafts.map(\.string)
+    UserDefaults.standard.set(saved, forKey: key)
+    screen.settle(0.2)
+    #expect(withSetting == ["hello\n"], "Return adds a line while Command-Return sends")
+    try await pause(screen, .milliseconds(150))
+    #expect(server.requests("POST", "/v1/sessions").isEmpty, "and starts nothing")
+
+    try screen.press(keyCode: 36, characters: "\r")
+    try await settle(screen, until: "the create") {
+      !server.requests("POST", "/v1/sessions").isEmpty
+    }
   }
 
   @Test("The agent, model and mode picked in their menus are what the request sends")

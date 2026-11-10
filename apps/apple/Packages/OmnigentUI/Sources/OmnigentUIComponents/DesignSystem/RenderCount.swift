@@ -1,9 +1,11 @@
 import OmnigentPlatform
-import SwiftUI
+public import SwiftUI
 
 extension View {
   /// Counts a body evaluation under `name` for the Debug frame monitor; does nothing in Release.
-  func countsRenders(_ name: String) -> Self {
+  /// - Parameter name: The scope's name in the render counts.
+  /// - Returns: The view, unchanged.
+  public func countsRenders(_ name: String) -> Self {
     #if DEBUG
       FrameMonitor.count(name)
       RenderTally.count(name)

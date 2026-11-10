@@ -60,7 +60,7 @@ public final class ConnectionStore {
   public let notifications: NotificationsStore?
   /// Agent browser actions; install its `performer` to run them.
   public let browserActions: BrowserActionStore?
-  /// Open conversations, by session id.
+  /// Open conversations, by session id; ``openConversation(_:)`` reads one session's.
   public private(set) var conversations: [String: ConversationStore] = [:]
   /// Workspace stores of open sessions, by session id.
   public internal(set) var workspaceStores: [String: WorkspaceStore] = [:]
@@ -305,16 +305,6 @@ public final class ConnectionStore {
     core?.disconnect()
   }
 
-  /// Reloads the session list.
-  public func refreshSessions() {
-    core?.refreshSessions()
-  }
-
-  /// The app returned to the foreground: streams reopen and reconcile.
-  public func foreground() {
-    core?.foreground()
-  }
-
   /// The session the user is looking at, for notifications and the badge.
   /// - Parameters:
   ///   - sessionID: The visible session.
@@ -351,15 +341,25 @@ public final class ConnectionStore {
       listStatus: ListStatusExpectation(list: sessionList, sessionID: sessionID))
     store.composer.draftChanged = { [weak sessionList] in sessionList?.setDraft(sessionID, $0) }
     keepDraft(of: store)
-    conversations[sessionID] = store
+    withMutation(keyPath: \.[open: sessionID]) { conversations[sessionID] = store }
     core.openSession(sessionId: sessionID)
     return store
   }
 
+  /// One session's open conversation: another session opening or closing leaves its reader alone.
+  /// - Parameter sessionID: The session.
+  /// - Returns: Its store while the session is open.
+  public func openConversation(_ sessionID: String) -> ConversationStore? {
+    access(keyPath: \.[open: sessionID])
+    return self[open: sessionID]
+  }
+
+  private subscript(open sessionID: String) -> ConversationStore? { _conversations[sessionID] }
+
   /// Closes `sessionID`'s stream and drops its store.
   /// - Parameter sessionID: The session.
   public func closeConversation(_ sessionID: String) {
-    conversations[sessionID] = nil
+    withMutation(keyPath: \.[open: sessionID]) { conversations[sessionID] = nil }
     workspaceStores[sessionID] = nil
     terminalStores[sessionID] = nil
     core?.closeSession(sessionId: sessionID)

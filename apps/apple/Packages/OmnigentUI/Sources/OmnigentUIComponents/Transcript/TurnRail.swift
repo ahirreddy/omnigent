@@ -80,6 +80,12 @@ struct TurnRail: View {
   static let maxHeight: CGFloat = 288
 
   var body: some View {
+    // A tick is not built again for a new jump, so it reaches the latest one through here.
+    tracker.jump = jump
+    return content
+  }
+
+  @ViewBuilder private var content: some View {
     if model.turns.count >= 2 {
       rail
         .overlay(alignment: .topLeading) { previewBox }
@@ -97,7 +103,7 @@ struct TurnRail: View {
             TurnTick(
               turn: turn, isHovered: hoveredID == turn.id,
               isActive: hoveredID == nil && model.activeID == turn.id
-            ) { jump(turn.id) }
+            ) { [tracker] in tracker.jump(turn.id) }
             .id(turn.id)
           }
         }
@@ -159,12 +165,13 @@ struct TurnRail: View {
   }
 }
 
-/// The rail's scroll offset and whether the reader is scrolling it, read by the hover and
-/// paging logic without re-rendering the rail.
+/// The rail's scroll offset, whether the reader is scrolling it and the transcript's latest
+/// jump, read by the hover, the paging and the ticks without re-rendering the rail.
 @MainActor
 private final class TurnRailScroll {
   var offset: CGFloat = 0
   var isInteracting = false
+  var jump: (String) -> Void = { _ in }
 }
 
 extension ScrollPhase {
@@ -176,6 +183,7 @@ private struct TurnTick: View, Equatable {
   let turn: TranscriptTurn
   let isHovered: Bool
   let isActive: Bool
+  /// Left out of `==`, so it must do the same thing however old the tick is.
   let action: () -> Void
 
   nonisolated static func == (left: Self, right: Self) -> Bool {

@@ -63,6 +63,25 @@ struct SidebarBenchmarks {
     #expect(memo.builds == 3)
   }
 
+  @Test("A page loading or ending, with the sessions as they were, reaches a reused state")
+  func pagingIsNeverReused() {
+    let list = Self.list(40)
+    let memo = SidebarStateMemo()
+    let first = memo.state(list: list, display: SessionDisplayOptions(), server: nil)
+    #expect(!first.paging.hasMore && !first.paging.isLoading)
+    list.paging.pagingChanged(hasMore: true, isLoading: false)
+    let more = memo.state(list: list, display: SessionDisplayOptions(), server: nil)
+    #expect(more.paging.hasMore && !more.paging.isLoading, "Load more shows")
+    list.paging.pagingChanged(hasMore: true, isLoading: true)
+    let loading = memo.state(list: list, display: SessionDisplayOptions(), server: nil)
+    #expect(loading.paging.isLoading, "the row reads Loading")
+    list.paging.pagingChanged(hasMore: false, isLoading: false)
+    let ended = memo.state(list: list, display: SessionDisplayOptions(), server: nil)
+    #expect(!ended.paging.hasMore && !ended.paging.isLoading, "the last page was empty")
+    #expect(memo.builds == 1, "the sessions were not walked again")
+    #expect(ended == first)
+  }
+
   @Test("benchmark: sidebar state for 650 sessions", .enabled(if: isEnabled))
   func sidebarState() {
     let sessions = Self.sessions(650)

@@ -19,6 +19,9 @@ public final class SessionTabGroups {
 
   /// What the window shows: a session's tabs or a session-less page; `nil` for nothing.
   public private(set) var page: SidebarDestination?
+  /// Whether the page is a session, whose tabs the strip shows: it changes only between a
+  /// session and a session-less page, so its reader is not redrawn for each session shown.
+  public private(set) var showsSessionTabs = false
   /// Each session's tabs, made the first time the session shows in this window.
   public private(set) var groups: [String: TabStore] = [:]
   /// Sessions in the order they were last shown, the most recent first.
@@ -80,7 +83,7 @@ public final class SessionTabGroups {
   public func show(_ destination: SidebarDestination?) {
     if let sessionID = destination?.sessionID { _ = group(sessionID) }
     guard page != destination else { return }
-    page = destination
+    setPage(destination)
     if let sessionID = destination?.sessionID { noteShown(sessionID) }
     onChange?(nil)
   }
@@ -170,7 +173,7 @@ public final class SessionTabGroups {
     recentSessions.removeAll(where: sessionIDs.contains)
     viewChoices = viewChoices.filter { !sessionIDs.contains($0.key) }
     if let shown = currentSessionID, sessionIDs.contains(shown) {
-      page = recentSessions.first.map(SidebarDestination.session)
+      setPage(recentSessions.first.map(SidebarDestination.session))
       onChange?(nil)
     }
     onRemove?(sessionIDs)
@@ -185,10 +188,16 @@ public final class SessionTabGroups {
     recentSessions = []
     recentTabs = []
     viewChoices = [:]
-    if page != nil { page = nil }
+    if page != nil { setPage(nil) }
   }
 
   // MARK: Internals
+
+  private func setPage(_ destination: SidebarDestination?) {
+    page = destination
+    let showsTabs = destination?.sessionID != nil
+    if showsSessionTabs != showsTabs { showsSessionTabs = showsTabs }
+  }
 
   /// Releases a dropped group's live content (browser pages, remote tabs).
   private func retire(_ group: TabStore) {

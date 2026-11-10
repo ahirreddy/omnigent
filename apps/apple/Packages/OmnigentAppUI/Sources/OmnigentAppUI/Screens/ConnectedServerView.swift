@@ -82,23 +82,26 @@ public struct ConnectedServerView: View {
   /// The connected server’s sidebar and selected destination.
   public var body: some View {
     let tabs = windowTabs
-    // The sidebar and the strip read their state where they show it: a session's row or a tab's
-    // title that changes then renders the sidebar or the strip, not the window.
+    // The sidebar, the strip and the detail read their state where they show it: a session's
+    // row, a tab's title or the shown tab that changes then renders that part, not the window.
     AppShell(
-      sidebar: { sidebarState }, selection: pageBinding, searchText: searchBinding,
+      sidebar: { sidebarState }, selection: pageBinding, searchText: { searchBinding },
       actions: sidebarActions, tabs: strip(of: tabs),
       detail: { _ in
-        tabDetail
-          .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-              ConnectionIssuesBanner(connection: connection)
-              if let tabFailure {
-                TabFailureBanner(message: tabFailure) { self.tabFailure = nil }
+        ObservationScope("detail") {
+          tabDetail
+            .safeAreaInset(edge: .top, spacing: 0) {
+              VStack(spacing: 0) {
+                ConnectionIssuesBanner(connection: connection)
+                if let tabFailure {
+                  TabFailureBanner(message: tabFailure) { self.tabFailure = nil }
+                }
               }
             }
-          }
+        }
       }
     )
+    .countsRenders("window")
     .environment(\.tabStatusDetails, TabAdapter.statusDetails(session))
     .environment(\.tabOverviewPresenter, overviewPresenter)
     .onAppear { overviewPresenter.open = { showsTabOverview = true } }
@@ -112,10 +115,9 @@ public struct ConnectedServerView: View {
     .modifier(NewTabOptionsLoading(session: session))
     .modifier(CloseShellConfirmation(session: session) { tabFailure = $0 })
     .onChange(of: selection) { _, current in session.tabs.show(current) }
-    .onChange(of: session.tabs.page) { _, page in pageChanged(page) }
-    .onChange(of: viewedSessionID) { report() }
+    .modifier(ShownPageReport(tabs: session.tabs) { pageChanged($0) })
+    .modifier(viewedSessionReport)
     .modifier(BusyTabsReport(tabs: tabs))
-    .onChange(of: isWindowFocused) { report() }
     .task(id: connection.connectedServer?.baseUrl) {
       if connection.connectedServer != nil { await connection.loadOfferedPages() }
     }
@@ -140,9 +142,13 @@ public struct ConnectedServerView: View {
     }
   }
 
-  /// The strip's tabs for the shown session, read when the strip asks for them.
+  /// The strip's tabs for the shown session, read when the strip asks for them; a session-less
+  /// page has no strip.
   private func strip(of tabs: WindowTabs) -> (() -> TabStripContent)? {
-    tabs.store.map { store in { (tabs.state(store), renamable(tabs.actions(store))) } }
+    guard session.tabs.showsSessionTabs else { return nil }
+    return {
+      tabs.strip.map { ($0.state, renamable($0.actions)) } ?? (TabsState(), TabActions())
+    }
   }
 
   /// A chat tab's menu renames its session, as the session menu and Option-Command-R do.
@@ -194,11 +200,11 @@ public struct ConnectedServerView: View {
   ) -> some View {
     switch destination {
     case .session(let id):
-      if let conversation = connection.conversations[id] {
+      if let conversation = connection.openConversation(id) {
         ConversationContainer(
-          conversation: conversation, summary: connection.sessionList.session(id),
-          terminals: session.terminalStores[id], workspace: session.workspaces[id],
-          panel: session.panels[id],
+          conversation: conversation, summary: connection.sessionList.sessionWithoutActivity(id),
+          terminals: session.terminals(of: id), workspace: session.workspace(of: id),
+          panel: session.panel(of: id),
           changedFilesRevision: connection.changedFilesRevision,
           navigation: navigation(from: id),
           opener: linkOpener(in: id),
@@ -210,7 +216,7 @@ public struct ConnectedServerView: View {
           sessionActions: sidebarActions.sessions,
           makeForkStore: { connection.makeForkStore() },
           menuContext: ConversationContainer.menuContext(
-            connection.sessionList, session: connection.sessionList.session(id),
+            connection.sessionList, session: connection.sessionList.sessionWithoutActivity(id),
             sideChatOf: source),
           makeShareStore: { connection.share(sessionID: id) },
           offersShare: source == nil && ShareAdapter.offered(connection.pages?.offered),
@@ -268,14 +274,12 @@ extension ConnectedServerView {
       })
   }
 
-  /// The session whose chat is on screen, for notification suppression.
-  var viewedSessionID: String? {
-    guard let tabs = session.tabs.current else { return nil }
-    let visible = tabs.visibleIDs.compactMap(tabs.tab)
-    return visible.lazy.compactMap { tab -> String? in
-      if case .chat(let id) = tab.content { return id }
-      return nil
-    }.first
+  /// Tells the core which session's chat is on screen, for notifications and the badge.
+  private var viewedSessionReport: ViewedSessionReport {
+    let connection = connection
+    return ViewedSessionReport(tabs: session.tabs, isWindowFocused: isWindowFocused) {
+      connection.setView(sessionID: $0, focused: $1)
+    }
   }
 
   /// The shown session's tabs, or a session-less page over them. The tabs stay mounted under a

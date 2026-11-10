@@ -22,11 +22,23 @@
     /// - Returns: The strings; they are not in layout order.
     /// - Throws: `OffscreenWindowError` when SwiftUI doesn't report its tree.
     public func shownText() throws -> [String] {
+      try text(under: [window.contentView, window.attachedSheet?.contentView].compactMap(\.self))
+    }
+
+    /// The text the window's toolbar items draw now, which `shownText()` leaves out: a toolbar's
+    /// views sit in the titlebar, outside the content view.
+    /// - Returns: The strings; they are not in layout order.
+    /// - Throws: `OffscreenWindowError` when SwiftUI doesn't report its tree.
+    public func toolbarText() throws -> [String] {
+      try text(under: window.toolbar?.items.compactMap(\.view) ?? [])
+    }
+
+    private func text(under roots: [NSView]) throws -> [String] {
       guard omnigent_view_debug_is_enabled() != 0, !host._viewDebugData().isEmpty else {
         throw OffscreenWindowError.notFound("SwiftUI's view tree")
       }
       var found: [String] = []
-      var pending = [window.contentView, window.attachedSheet?.contentView].compactMap(\.self)
+      var pending = roots
       while let view = pending.popLast() {
         if let hosting = view as? any ViewTreeHosting {
           for node in hosting.viewTree { try ShownTextReader.collect(node, into: &found) }

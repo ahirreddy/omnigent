@@ -64,9 +64,7 @@ struct ConversationContainer: View {
   @State var forkFlow = ForkFlow()
   @State private var export: TranscriptExport?
   @State private var shareStore: ShareStore?
-  @AppStorage(wrappedValue: false, ComposerPreferences.submitWithCommandReturnKey)
-  private var submitWithCommandReturn: Bool
-  @AppStorage(ComposerPreferences.alwaysSteerKey) private var alwaysSteer = true
+  @State private var composerPreferences = StoredComposerPreferences.stored()
   @State private var fileLinks: WorkspaceFileLinks?
   // The liveness row's open sheet; a send can open Resume on a Machine.
   // swiftlint:disable:next private_swiftui_state
@@ -132,6 +130,7 @@ struct ConversationContainer: View {
     }
     .onChange(of: terminals?.terminals.harness, initial: true) { attachHarness() }
     .modifier(WorkspacePanelDefaults(workspace: workspace, choice: $panelRoute.choice))
+    .modifier(ComposerPreferencesReader(preferences: $composerPreferences))
     #if DEBUG
       .modifier(
         PerfConversationHooks(
@@ -167,8 +166,8 @@ struct ConversationContainer: View {
   private func composerState(_ screen: ConversationViewState) -> ComposerViewState {
     var composer = ComposerAdapter.state(
       conversation, isStopping: isStopping, dismissedError: dismissedSendError, server: server,
-      submitWithCommandReturn: submitWithCommandReturn)
-    composer.prefersSteer = alwaysSteer
+      submitWithCommandReturn: composerPreferences.submitWithCommandReturn)
+    composer.prefersSteer = composerPreferences.alwaysSteer
     if conversation.header?.settings?.sideChatSourceId != nil {
       composer.placeholder = SideChatCopy.placeholder
     }

@@ -99,7 +99,7 @@ extension ConversationContainer {
     sideChatOf source: String? = nil
   ) -> SessionMenuContext {
     if let source {
-      let title = list.session(source)?.title
+      let title = list.sessionWithoutActivity(source)?.title
       return SessionMenuContext(parent: CreatingSession(id: source, title: title))
     }
     guard let session else { return SessionMenuContext() }
@@ -111,10 +111,10 @@ extension ConversationContainer {
     }
     let current = zip(projects, groups).first { $0.1.contains(session.id) }?.0
     let creator = session.createdBySessionId.map {
-      CreatingSession(id: $0, title: list.session($0)?.title)
+      CreatingSession(id: $0, title: list.sessionWithoutActivity($0)?.title)
     }
     let parent = list.parent(of: session.id).map {
-      CreatingSession(id: $0, title: list.session($0)?.title)
+      CreatingSession(id: $0, title: list.sessionWithoutActivity($0)?.title)
     }
     return SessionMenuContext(
       projects: projects, projectID: current?.id, isShared: !list.isOwned(session),

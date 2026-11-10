@@ -144,32 +144,72 @@ nonisolated enum SessionRowTooltip {
   }
 }
 
-/// The sidebar's search field. iPhone and iPad keep one search entry point: where the header's
-/// Search opens the palette (titles and message content), the field is left out, so a compact
-/// width does not also float a search button beside the list. A sidebar peeking over the
-/// content on Mac is outside the split view, so it draws its own field.
+/// The sidebar's search field. The sidebar makes a new binding with every render and a new
+/// binding never compares equal to the last, so the field is a modifier of its own that takes
+/// the text and one relay: it updates when the text changes, not with every row.
 struct SidebarSearchField: ViewModifier {
-  @Binding var text: String
+  @Binding private var text: String
+  @State private var relay: SearchTextRelay
+
+  init(text: Binding<String>) {
+    _text = text
+    _relay = State(initialValue: SearchTextRelay(text))
+  }
+
+  func body(content: Content) -> some View {
+    relay.latest = $text
+    return content.modifier(SidebarSearchFieldContent(text: text, relay: relay))
+  }
+}
+
+/// The sidebar's latest search binding, behind a reference that stays the same between renders.
+@MainActor
+final class SearchTextRelay {
+  var latest: Binding<String>
+
+  init(_ latest: Binding<String>) {
+    self.latest = latest
+  }
+
+  /// Reads and writes through whichever binding is the latest when it is used.
+  var binding: Binding<String> {
+    Binding(get: { self.latest.wrappedValue }, set: { self.latest.wrappedValue = $0 })
+  }
+}
+
+/// The field itself. iPhone and iPad keep one search entry point: where the header's Search
+/// opens the palette (titles and message content), the field is left out, so a compact width
+/// does not also float a search button beside the list. A sidebar peeking over the content on
+/// Mac is outside the split view, so it draws its own field.
+private struct SidebarSearchFieldContent: ViewModifier {
+  /// What the field shows. The body reads it through the relay; a new value is what runs it.
+  let text: String
+  let relay: SearchTextRelay
   @Environment(\.openCommandPalette) private var openPalette
   @Environment(\.isSidebarPeek) private var isPeek
 
   func body(content: Content) -> some View {
+    field(content).countsRenders("search field")
+  }
+
+  @ViewBuilder
+  private func field(_ content: Content) -> some View {
     #if os(iOS)
       if openPalette != nil {
         content
       } else {
-        content.searchable(text: $text, placement: .sidebar, prompt: "Search sessions")
+        content.searchable(text: relay.binding, placement: .sidebar, prompt: "Search sessions")
       }
     #else
       if isPeek {
         content.safeAreaInset(edge: .top, spacing: 0) {
-          TextField("Search sessions", text: $text)
+          TextField("Search sessions", text: relay.binding)
             .textFieldStyle(.roundedBorder)
             .padding(.horizontal, Theme.Spacing.medium)
             .padding(.vertical, Theme.Spacing.small)
         }
       } else {
-        content.searchable(text: $text, placement: .sidebar, prompt: "Search sessions")
+        content.searchable(text: relay.binding, placement: .sidebar, prompt: "Search sessions")
       }
     #endif
   }

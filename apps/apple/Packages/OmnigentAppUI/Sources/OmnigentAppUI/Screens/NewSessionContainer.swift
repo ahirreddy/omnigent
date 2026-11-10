@@ -27,8 +27,7 @@ struct NewSessionContainer: View {
   @State private var isConnectingHost = false
   /// Observed so turning Settings › Git's random worktree on or off reseeds the form.
   @AppStorage(GitPreferences.alwaysUseWorktreeKey) private var alwaysUseWorktree = false
-  @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
-    false
+  @State private var composerPreferences = StoredComposerPreferences.stored()
   @Environment(\.useThisMachine) private var useThisMachine
   @Environment(\.openURL) private var openURL
   @Environment(\.openSettingsAt) private var openSettingsAt
@@ -55,6 +54,7 @@ struct NewSessionContainer: View {
         ProgressView()
       }
     }
+    .modifier(ComposerPreferencesReader(preferences: $composerPreferences))
     .task {
       guard let creation = connection.creation() else {
         coreMissing = true
@@ -73,7 +73,7 @@ struct NewSessionContainer: View {
       draft: $draft,
       composer: form.composerState(
         creation, connection: connection, launch: launch,
-        submitWithCommandReturn: submitWithCommandReturn),
+        submitWithCommandReturn: composerPreferences.submitWithCommandReturn),
       actions: actions(creation),
       // The web's hero: the project's name, else "What should we build?".
       heading: form.project?.name ?? NewSessionPage.defaultHeading,

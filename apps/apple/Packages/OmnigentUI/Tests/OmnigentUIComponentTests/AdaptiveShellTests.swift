@@ -276,6 +276,7 @@
     private final class HostContent {
       var sidebar = SidebarFixture.state
       var tabs = TabsState(tabs: [TabFixture.tab("a")], selectedID: "a")
+      var search = ""
     }
 
     /// A shell whose host hands it the sidebar and the tabs to read, as the connected window does.
@@ -287,8 +288,8 @@
         AppShell(
           sidebar: { content.sidebar },
           selection: Binding(get: { spy.selection }, set: { spy.selection = $0 }),
-          searchText: Binding(get: { spy.search }, set: { spy.search = $0 }), actions: spy.actions,
-          tabs: { (content.tabs, TabActions()) },
+          searchText: { Binding(get: { content.search }, set: { content.search = $0 }) },
+          actions: spy.actions, tabs: { (content.tabs, TabActions()) },
           detail: { _ in Text("detail") })
       }
     }
@@ -305,13 +306,32 @@
             list: SessionListViewState(sessions: [SidebarFixture.beta]))
           screen.settle(0.2)
         }
-        #expect(forRow == ["sidebar": 1], "\(forRow)")
+        #expect(forRow == ["sidebar": 1, "session row": 1], "\(forRow)")
+        #expect(try screen.shows("Beta"))
         #expect(try !screen.shows("Gamma"))
+        #expect(try screen.toolbarText().contains("A"))
         let forTitle = RenderTally.recording {
           content.tabs = TabsState(tabs: [TabFixture.tab("b")], selectedID: "b")
           screen.settle(0.2)
         }
         #expect(forTitle == ["strip": 1, "tab controls": 1], "\(forTitle)")
+        #expect(try screen.toolbarText().contains("B"), "the strip shows the new tab")
+        #expect(try !screen.toolbarText().contains("A"), "and not the one it replaced")
+      }
+
+      @Test("The search text renders the sidebar, which shows it, and not the shell")
+      func searchTextRendersTheSidebar() throws {
+        let content = HostContent()
+        let screen = titled(
+          ReadingShellHarness(content: content, spy: SidebarSpy(SidebarFixture.state)))
+        defer { screen.close() }
+        let forSearch = RenderTally.recording {
+          content.search = "zeta"
+          screen.settle(0.2)
+        }
+        #expect(forSearch == ["sidebar": 1, "session row": 3, "search field": 1], "\(forSearch)")
+        let fields = screen.allViews.compactMap { $0 as? NSSearchField }
+        #expect(fields.map(\.stringValue) == ["zeta"], "the search field shows the host's text")
       }
     }
   #endif
