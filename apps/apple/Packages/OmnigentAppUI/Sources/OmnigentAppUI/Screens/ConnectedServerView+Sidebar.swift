@@ -170,6 +170,7 @@ extension ConnectedServerView {
       requestArchive(sessions.map(\.id), archived: archived)
     }
     actions.dropSession = { session, action in drop(session, action) }
+    actions.live = SidebarAdapter.live(connection.sessionList)
     let paging = connection.sessionList.paging
     actions.loadMoreSessions = { paging.loadMore() }
     actions.loadProjectPage = { project in

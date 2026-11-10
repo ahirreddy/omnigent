@@ -34,11 +34,11 @@
         _ sessions: [SessionSummary], unread: Set<String> = [], counts: [String: Int] = [:],
         info: [String: SessionRowInfo] = [:]
       ) -> SidebarMarker? {
-        SidebarMarker.strongest(
-          sessions,
+        let state = SidebarViewState(
           list: SessionListViewState(
             sessions: sessions, unreadIds: unread, attentionCounts: counts),
           rowInfo: info)
+        return SidebarMarker.strongest(sessions.map(state.rowContent))
       }
       let needs = summary("n", .needsYou)
       let working = summary("w", .working)

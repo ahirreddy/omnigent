@@ -21,7 +21,7 @@ import Testing
     private static let sessionRows: [WindowInteraction] = [
       WindowInteraction(
         name: "another session's row",
-        budget: ["session row": 5, "sidebar": 1],
+        budget: ["session row": 1],
         perform: { window in
           try window.change(BudgetWindow.other) { $0.title = "Gamma renamed" }
           try window.activity(in: BudgetWindow.other, minutesAgo: 7)
@@ -67,25 +67,36 @@ import Testing
         }),
       WindowInteraction(
         name: "the shown session's preview and time",
-        budget: ["session row": 4, "sidebar": 1],
+        budget: ["session row": 1],
+        perform: { try $0.activity(in: BudgetWindow.shown, minutesAgo: 2) },
+        verify: { window in
+          let text = try window.screen.shownText()
+          #expect(text.contains("2m") && !text.contains("3m"), "the sidebar's row: \(text)")
+        }),
+      WindowInteraction(
+        name: "a hidden tab's session's preview and time",
+        budget: ["session row": 1],
+        perform: { try $0.activity(in: BudgetWindow.hidden, minutesAgo: 5) },
+        verify: { window in
+          let text = try window.screen.shownText()
+          #expect(text.contains("5m") && !text.contains("4m"), "the sidebar's row: \(text)")
+        }),
+      WindowInteraction(
+        name: "activity that moves a session's row",
+        // The row renders for what it says and again where the list puts it.
+        budget: ["session row": 5, "sidebar": 1],
         perform: { try $0.activity(in: BudgetWindow.shown, minutesAgo: 5) },
         verify: { window in
           let text = try window.screen.shownText()
           #expect(text.contains("5m") && !text.contains("3m"), "the sidebar's row: \(text)")
-        }),
-      WindowInteraction(
-        name: "a hidden tab's session's preview and time",
-        budget: ["session row": 4, "sidebar": 1],
-        perform: { try $0.activity(in: BudgetWindow.hidden, minutesAgo: 9) },
-        verify: { window in
-          let text = try window.screen.shownText()
-          #expect(text.contains("9m") && !text.contains("4m"), "the sidebar's row: \(text)")
+          let rows = try ["Beta", "Alpha", "Gamma"].map(window.sidebarRow)
+          #expect(rows == rows.sorted(), "Alpha under Beta, which was active since: \(rows)")
         }),
       WindowInteraction(
         name: "the shown session's title",
         budget: [
-          "composer": 2, "rows": 2, "screen": 2, "session row": 5, "sidebar": 1, "strip": 1,
-          "tab": 2, "tab controls": 1, "transcript": 2,
+          "composer": 2, "rows": 2, "screen": 2, "session row": 1, "strip": 1, "tab": 2,
+          "tab controls": 1, "transcript": 2,
         ],
         perform: { try $0.change(BudgetWindow.shown) { $0.title = "Alpha renamed" } },
         verify: { window in
@@ -98,8 +109,7 @@ import Testing
       WindowInteraction(
         name: "a hidden tab's session's title",
         budget: [
-          "composer": 1, "rows": 1, "screen": 1, "session row": 5, "sidebar": 1, "tab": 1,
-          "transcript": 1,
+          "composer": 1, "rows": 1, "screen": 1, "session row": 1, "tab": 1, "transcript": 1,
         ],
         perform: { try $0.change(BudgetWindow.hidden) { $0.title = "Beta renamed" } },
         verify: { window in
@@ -112,7 +122,7 @@ import Testing
         }),
       WindowInteraction(
         name: "a session that needs the user",
-        budget: ["session row": 5, "sidebar": 1],
+        budget: ["session row": 1],
         perform: { try $0.change(BudgetWindow.other) { $0.pendingRequests = 7 } },
         verify: { window in
           let text = try window.screen.shownText()
@@ -121,7 +131,7 @@ import Testing
         }),
       WindowInteraction(
         name: "a session marked unread",
-        budget: ["session row": 4, "sidebar": 1],
+        budget: ["session row": 1],
         perform: { $0.list.unreadIDs.insert(BudgetWindow.other) },
         verify: { window in
           let text = try window.screen.shownText()
@@ -141,7 +151,7 @@ import Testing
         }),
       WindowInteraction(
         name: "a draft's first keystroke",
-        budget: ["composer": 1, "session row": 4, "sidebar": 1],
+        budget: ["composer": 1],
         perform: { try $0.screen.type("k") },
         verify: { window in
           #expect(window.editor?.string == "k")
@@ -152,7 +162,7 @@ import Testing
         }),
       WindowInteraction(
         name: "a draft's last character deleted",
-        budget: ["composer": 1, "session row": 4, "sidebar": 1],
+        budget: ["composer": 1],
         prepare: { try $0.screen.type("j") },
         perform: { try $0.screen.press(keyCode: 51, characters: "\u{7F}") },
         verify: { window in

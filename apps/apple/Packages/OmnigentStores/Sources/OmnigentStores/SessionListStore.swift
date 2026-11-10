@@ -1,8 +1,9 @@
 public import Observation
 public import OmnigentCoreFFI
 
-/// The server's sessions, kept in step with the core's `SessionListChanged` events. Ordering and
-/// filtering are the core's (`filterSessions`).
+/// The server's sessions, kept in step with the core's `SessionListChanged` events. Ordering,
+/// filtering and attention are the core's (`SessionIndex`), which is handed the rows that changed
+/// and says what each change altered.
 ///
 /// The list's status comes from the server's session rows, which arrive a moment after a
 /// decision is answered or a turn is stopped. Those two actions record the status they expect
@@ -26,7 +27,7 @@ public final class SessionListStore {
   /// the server's per-viewer read state, with this device's marks as the fallback. Opening or
   /// focusing a session (`ConnectionStore.setView`) marks it seen.
   public var unreadIDs: Set<String> = [] {
-    didSet { if unreadIDs != oldValue { recompute() } }
+    didSet { if unreadIDs != oldValue { unreadChanged(from: oldValue) } }
   }
   /// The sessions matching ``searchText`` and ``filter``: pinned first, then most recent.
   public private(set) var visible: [SessionSummary] = []
@@ -40,12 +41,15 @@ public final class SessionListStore {
   public private(set) var isLoaded = false
   /// Search text, matched by the core.
   public var searchText = "" {
-    didSet { if searchText != oldValue { recompute() } }
+    didSet { if searchText != oldValue { queryChanged() } }
   }
   /// Which sessions show.
   public var filter: SessionFilter = .all {
-    didSet { if filter != oldValue { recompute() } }
+    didSet { if filter != oldValue { queryChanged() } }
   }
+  /// Counts the changes that can move a row in a list of the sessions: the visible sessions or
+  /// their order changed, or a session's facts beyond what its own row says (its `placement`).
+  public private(set) var placementRevision = 0
   /// The last list failure, until the next successful load.
   public private(set) var lastError: CoreError?
   /// The last rename, pin or archive failure, until the next edit.
@@ -75,7 +79,9 @@ public final class SessionListStore {
   /// The last host list failure, until the next successful read.
   public internal(set) var hostsError: CoreError?
   /// Sessions whose composer holds an unsent draft.
-  public internal(set) var draftSessionIDs: Set<String> = []
+  public internal(set) var draftSessionIDs: Set<String> = [] {
+    didSet { if draftSessionIDs != oldValue { draftsChanged(from: oldValue) } }
+  }
 
   /// The server's rows, as the core last reported them.
   private var serverSessions: [String: SessionSummary] = [:]
@@ -92,61 +98,16 @@ public final class SessionListStore {
 
   @ObservationIgnored private var nextToken: UInt64 = 0
 
-  /// What the derived values were last computed from, so an unchanged list skips the core.
-  private struct Inputs: Equatable {
-    var sessions: [String: SessionSummary]
-    var searchText: String
-    var filter: SessionFilter
-    var unreadIDs: Set<String>
-  }
-
-  /// A session's attention and the row and read state it came from.
-  private struct ComputedAttention {
-    var session: SessionSummary
-    var isUnread: Bool
-    var attention: SessionAttention
-  }
-
-  @ObservationIgnored private var computedFrom: Inputs?
-  @ObservationIgnored private var computedAttention: [String: ComputedAttention] = [:]
+  /// The core's copy of the sessions in display order, with each one's attention.
+  @ObservationIgnored private let index = SessionIndex()
+  /// Where each session of ``visible`` is in it.
+  @ObservationIgnored private var visiblePositions: [String: Int] = [:]
+  /// Who is told after each change (``follow(_:)``).
+  @ObservationIgnored var followers: [WeakSessionListFollower] = []
 
   /// Creates an empty list.
   public init() {
     paging.reportFailure = { [weak self] in self?.reportFailure($0) }
-  }
-
-  /// Renames `sessionID` (edit permission). The title is trimmed and must be 1 to 120
-  /// characters; the list updates from the core's acknowledgement.
-  /// - Parameters:
-  ///   - sessionID: The session.
-  ///   - title: The new title.
-  /// - Returns: Whether the rename was saved; a failure is in ``editError``.
-  @discardableResult
-  public func rename(_ sessionID: String, to title: String) async -> Bool {
-    await edit(sessionID, .title(title: title))
-  }
-
-  /// Pins or unpins `sessionID` (view permission). A pin is stamped with the current time.
-  /// - Parameters:
-  ///   - sessionID: The session.
-  ///   - pinned: Pin or unpin.
-  /// - Returns: Whether the change was saved; a failure is in ``editError``.
-  @discardableResult
-  public func setPinned(_ sessionID: String, _ pinned: Bool) async -> Bool {
-    await edit(sessionID, .pinned(pinned: pinned))
-  }
-
-  /// Archives or restores `sessionID` (owner permission).
-  /// - Parameters:
-  ///   - sessionID: The session.
-  ///   - archived: Archive or restore.
-  ///   - deleteWorktree: When archiving, also remove its git worktree (the branch is kept).
-  /// - Returns: Whether the change was saved; a failure is in ``editError``.
-  @discardableResult
-  public func setArchived(_ sessionID: String, _ archived: Bool, deleteWorktree: Bool = false)
-    async -> Bool
-  {
-    await edit(sessionID, .archived(archived: archived, deleteWorktree: deleteWorktree))
   }
 
   /// Records `error` as the edit failure; `nil` clears it.
@@ -178,7 +139,7 @@ public final class SessionListStore {
     nextToken += 1
     let token = nextToken
     expectations[sessionID] = Expectation(status: status, token: token)
-    recompute()
+    refresh([sessionID])
     let lifetime = expectationLifetime
     Task { [weak self] in
       await sleepUnlessCancelled(for: lifetime)
@@ -195,7 +156,7 @@ public final class SessionListStore {
   public func withdrawExpectation(_ token: UInt64, for sessionID: String) {
     guard expectations[sessionID]?.token == token else { return }
     expectations[sessionID] = nil
-    recompute()
+    refresh([sessionID])
   }
 
   func edit(_ sessionID: String, _ change: SessionChange) async -> Bool {
@@ -209,7 +170,7 @@ public final class SessionListStore {
       let updated = try await core.editSession(sessionId: sessionID, change: change)
       serverSessions[updated.id] = updated
       expectations[updated.id] = nil
-      recompute()
+      refresh([updated.id])
       editError = nil
       return true
     } catch {
@@ -218,151 +179,180 @@ public final class SessionListStore {
     }
   }
 
-  /// The summary of `sessionID`, if known.
-  /// - Parameter sessionID: The session.
-  /// - Returns: Its summary.
-  public func session(_ sessionID: String) -> SessionSummary? {
-    access(keyPath: summaryKey(sessionID))
-    return self[summaryOf: sessionID]
-  }
-
-  /// The attention of `sessionID`; Idle for a session the list does not know.
-  /// - Parameter sessionID: The session.
-  /// - Returns: Its state and the pending decisions the caller can answer.
-  public func attention(of sessionID: String) -> SessionAttention {
-    access(keyPath: attentionKey(sessionID))
-    return self[attentionOf: sessionID] ?? SessionAttention(state: .idle, requests: 0)
+  /// The rows and marks as they are now, read without observing them: for a reader that observes
+  /// ``placementRevision`` or is told of changes (``follow(_:)``) instead.
+  public var contents: SessionListContents {
+    SessionListContents(
+      visible: _visible, attention: _attentionByID, totals: _attentionTotals,
+      unreadIDs: _unreadIDs, draftSessionIDs: _draftSessionIDs)
   }
 
   /// One session's summary and attention as the observation registrar knows them: a view that
   /// read one session is not redrawn for another session's row.
-  private subscript(summaryOf sessionID: String) -> SessionSummary? { _sessionsByID[sessionID] }
+  subscript(summaryOf sessionID: String) -> SessionSummary? { _sessionsByID[sessionID] }
   /// The summary without its preview and time, for a reader that a new message should not redraw.
   subscript(withoutActivityOf sessionID: String) -> SessionSummary? {
     _sessionsByID[sessionID]?.withoutActivity
   }
-  private subscript(attentionOf sessionID: String) -> SessionAttention? {
+  subscript(attentionOf sessionID: String) -> SessionAttention? {
     _attentionByID[sessionID]
   }
+  subscript(unreadOf sessionID: String) -> Bool { _unreadIDs.contains(sessionID) }
+  subscript(draftOf sessionID: String) -> Bool { _draftSessionIDs.contains(sessionID) }
 
-  private func summaryKey(_ sessionID: String) -> KeyPath<SessionListStore, SessionSummary?> {
-    \.[summaryOf: sessionID]
-  }
-
-  private func withoutActivityKey(_ sessionID: String) -> KeyPath<SessionListStore, SessionSummary?>
-  {
-    \.[withoutActivityOf: sessionID]
-  }
-
-  private func attentionKey(_ sessionID: String) -> KeyPath<SessionListStore, SessionAttention?> {
-    \.[attentionOf: sessionID]
-  }
-
-  /// The sessions whose summary or attention a recompute changed.
+  /// The sessions whose summary, attention or marks a change altered.
   private struct ChangedSessions {
     var summaries: [String] = []
     var withoutActivity: [String] = []
     var attention: [String] = []
+    var marks: [KeyPath<SessionListStore, Bool>] = []
   }
 
   /// Applies `change` to the dictionaries, notifying the readers of each changed session.
   private func notifying(_ changed: ChangedSessions, _ change: () -> Void) {
-    let summaries =
-      changed.summaries.map(summaryKey) + changed.withoutActivity.map(withoutActivityKey)
-    let attention = changed.attention.map(attentionKey)
+    let summaries: [KeyPath<SessionListStore, SessionSummary?>] =
+      changed.summaries.map { \.[summaryOf: $0] }
+      + changed.withoutActivity.map { \.[withoutActivityOf: $0] }
+    let attention: [KeyPath<SessionListStore, SessionAttention?>] =
+      changed.attention.map { \.[attentionOf: $0] }
     for keyPath in summaries { _$observationRegistrar.willSet(self, keyPath: keyPath) }
     for keyPath in attention { _$observationRegistrar.willSet(self, keyPath: keyPath) }
+    for keyPath in changed.marks { _$observationRegistrar.willSet(self, keyPath: keyPath) }
     change()
     for keyPath in summaries { _$observationRegistrar.didSet(self, keyPath: keyPath) }
     for keyPath in attention { _$observationRegistrar.didSet(self, keyPath: keyPath) }
+    for keyPath in changed.marks { _$observationRegistrar.didSet(self, keyPath: keyPath) }
   }
 
   func apply(_ change: SessionListChange) {
     // Every server row settles its session's expectation.
     switch change {
     case .reset(let sessions):
+      let known = Set(serverSessions.keys)
       serverSessions = Dictionary(
         sessions.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
       expectations = [:]
       paging.listReset()
+      refresh(known.union(serverSessions.keys), resetting: true)
     case .upsert(let sessions):
       for session in sessions {
         serverSessions[session.id] = session
         expectations[session.id] = nil
       }
+      refresh(Set(sessions.map(\.id)))
     case .remove(let ids):
       for id in ids {
         serverSessions[id] = nil
         expectations[id] = nil
       }
+      refresh(Set(ids))
     }
-    recompute()
   }
 
-  private func recompute() {
-    var sessions = serverSessions
-    for (id, expectation) in expectations {
-      sessions[id]?.status = expectation.status
-      // An answered decision clears its request now; the next server row confirms the count.
-      if expectation.status != .needsResponse { sessions[id]?.pendingRequests = 0 }
-    }
-    let inputs = Inputs(
-      sessions: sessions, searchText: searchText, filter: filter, unreadIDs: unreadIDs)
-    guard inputs != computedFrom else { return }
-    computedFrom = inputs
-    let changed = computeAttention(of: sessions)
-    let attention = computedAttention.mapValues(\.attention)
-    // Each assignment notifies every view that read the property, even with an equal value: the
-    // sidebar, tab strip, menu bar and Dock would redraw for every server row.
-    notifying(changed) {
-      if sessions != sessionsByID { sessionsByID = sessions }
-      if attention != attentionByID { attentionByID = attention }
-    }
-    let all = Array(sessions.values)
-    let shown = filterSessions(sessions: all, text: searchText, filter: filter)
-    if shown != visible { visible = shown }
-    let several = shown.count > 1
-    if several != hasSeveralVisible { hasSeveralVisible = several }
-    // Only the sessions that need the user go through the core, for its display order.
-    let needing = sessions.values.filter { attention[$0.id]?.state == .needsYou }
-    let ordered =
-      needing.isEmpty ? [] : filterSessions(sessions: needing, text: "", filter: .needsResponse)
-    if ordered != needsResponse { needsResponse = ordered }
-    let totals = OmnigentCoreFFI.attentionTotals(sessions: all, unreadIds: Array(unreadIDs))
-    if totals != attentionTotals { attentionTotals = totals }
+  /// The row of `sessionID` as it shows: the server's, with any expected status applied.
+  private func shownRow(_ sessionID: String) -> SessionSummary? {
+    guard var session = serverSessions[sessionID] else { return nil }
+    guard let expectation = expectations[sessionID] else { return session }
+    session.status = expectation.status
+    // An answered decision clears its request now; the next server row confirms the count.
+    if expectation.status != .needsResponse { session.pendingRequests = 0 }
+    return session
   }
 
-  /// Computes each session's attention, one core call per changed session rather than one per
-  /// known session for every row that arrives.
-  /// - Returns: The sessions whose summary or attention changed, arrived or left.
-  private func computeAttention(of sessions: [String: SessionSummary]) -> ChangedSessions {
-    var computed: [String: ComputedAttention] = [:]
-    computed.reserveCapacity(sessions.count)
+  /// Brings the sessions of `ids` up to date with the server's rows and the expectations. Only
+  /// the rows that differ cross to the core's index, unless every row was replaced.
+  private func refresh(_ ids: Set<String>, resetting: Bool = false) {
+    var rows: [SessionSummary] = []
+    var removed: [String] = []
     var changed = ChangedSessions()
-    for (id, session) in sessions {
-      let isUnread = unreadIDs.contains(id)
-      let previous = computedAttention[id]
-      if let previous, previous.isUnread == isUnread, previous.session == session {
-        computed[id] = previous
-        continue
-      }
-      let current = ComputedAttention(
-        session: session, isUnread: isUnread,
-        attention: sessionAttention(session: session, isUnread: isUnread))
-      computed[id] = current
-      if previous?.session != session { changed.summaries.append(id) }
-      if previous?.session.withoutActivity != session.withoutActivity {
-        changed.withoutActivity.append(id)
-      }
-      if previous?.attention != current.attention { changed.attention.append(id) }
-    }
-    for id in computedAttention.keys where sessions[id] == nil {
+    var moves = false
+    for id in ids {
+      let row = shownRow(id)
+      let previous = sessionsByID[id]
+      guard row != previous else { continue }
       changed.summaries.append(id)
-      changed.withoutActivity.append(id)
-      changed.attention.append(id)
+      if row?.withoutActivity != previous?.withoutActivity { changed.withoutActivity.append(id) }
+      if row?.placement != previous?.placement { moves = true }
+      if let row { rows.append(row) } else { removed.append(id) }
     }
-    computedAttention = computed
-    return changed
+    guard !changed.summaries.isEmpty else { return }
+    let change =
+      resetting
+      ? index.reset(sessions: Array(serverSessions.values), unreadIds: Array(unreadIDs))
+      : index.update(upserted: rows, removed: removed)
+    changed.attention = change.attention.map(\.sessionId)
+    notifying(changed) {
+      withMutation(keyPath: \.sessionsByID) {
+        for row in rows { _sessionsByID[row.id] = row }
+        for id in removed { _sessionsByID[id] = nil }
+      }
+      setAttention(change.attention)
+    }
+    replace(rows, keptBy: change)
+    settle(change, moves: moves)
+  }
+
+  /// Puts the changed `rows` where they already are in each list whose order the change kept.
+  private func replace(_ rows: [SessionSummary], keptBy change: SessionIndexChange) {
+    if change.visible == nil {
+      let shown = rows.compactMap { row in visiblePositions[row.id].map { ($0, row) } }
+      if !shown.isEmpty {
+        withMutation(keyPath: \.visible) {
+          for (position, row) in shown { _visible[position] = row }
+        }
+      }
+    }
+    guard change.needsResponse == nil else { return }
+    let needing = rows.compactMap { row in
+      needsResponse.firstIndex { $0.id == row.id }.map { ($0, row) }
+    }
+    guard !needing.isEmpty else { return }
+    withMutation(keyPath: \.needsResponse) {
+      for (position, row) in needing { _needsResponse[position] = row }
+    }
+  }
+
+  private func setAttention(_ changes: [SessionAttentionChange]) {
+    guard !changes.isEmpty else { return }
+    withMutation(keyPath: \.attentionByID) {
+      for change in changes { _attentionByID[change.sessionId] = change.attention }
+    }
+  }
+
+  /// Applies what the index reported: the lists it reordered and the totals. Each assignment
+  /// notifies every view that read the property, so an unchanged value is not assigned.
+  private func settle(_ change: SessionIndexChange, moves: Bool = false) {
+    if let ids = change.visible {
+      visible = ids.compactMap { sessionsByID[$0] }
+      visiblePositions = Dictionary(
+        zip(visible.map(\.id), visible.indices), uniquingKeysWith: { first, _ in first })
+      let several = visible.count > 1
+      if several != hasSeveralVisible { hasSeveralVisible = several }
+    }
+    if let ids = change.needsResponse { needsResponse = ids.compactMap { sessionsByID[$0] } }
+    if change.totals != attentionTotals { attentionTotals = change.totals }
+    if change.visible != nil || moves { placementRevision += 1 }
+    tellFollowers()
+  }
+
+  private func unreadChanged(from previous: Set<String>) {
+    let change = index.setUnread(unreadIds: Array(unreadIDs))
+    var changed = ChangedSessions()
+    changed.attention = change.attention.map(\.sessionId)
+    changed.marks = unreadIDs.symmetricDifference(previous).map { \.[unreadOf: $0] }
+    notifying(changed) { setAttention(change.attention) }
+    settle(change)
+  }
+
+  private func draftsChanged(from previous: Set<String>) {
+    var changed = ChangedSessions()
+    changed.marks = draftSessionIDs.symmetricDifference(previous).map { \.[draftOf: $0] }
+    notifying(changed) {}
+    tellFollowers()
+  }
+
+  private func queryChanged() {
+    settle(index.setQuery(text: searchText, filter: filter))
   }
 }
 
@@ -392,6 +382,6 @@ extension SessionListStore {
     projectSortMode = nil
     hostEnvironments = [:]
     hostsError = nil
-    recompute()
+    refresh(Set(sessionsByID.keys), resetting: true)
   }
 }

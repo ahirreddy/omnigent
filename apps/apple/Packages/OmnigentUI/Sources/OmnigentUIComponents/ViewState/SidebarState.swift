@@ -318,6 +318,8 @@ public struct SidebarActions {
   public var loadMoreSessions: (@MainActor () -> Void)?
   /// Load a folder's first page, or its next one.
   public var loadProjectPage: (@MainActor (SessionProject) -> Void)?
+  /// Rows and counts read as they are now; `nil` draws them from the state.
+  public var live: SidebarLive?
 
   /// Creates actions.
   /// - Parameters:

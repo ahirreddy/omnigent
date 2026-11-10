@@ -14,7 +14,8 @@ struct SessionRow: View {
   /// Pending decisions the user can answer, shown in the Needs you capsule when more than one.
   let attention: Int
   let details: Set<SessionRowDetail>
-  let now: Date
+  /// The time the row's age is counted from; `nil` follows the clock.
+  let now: Date?
   let menu: SessionRowMenu
   /// Selecting sessions: the row shows a check mark instead of its hover buttons.
   var isSelecting = false
@@ -151,10 +152,13 @@ struct SessionRow: View {
         .help("Draft")
         .accessibilityLabel("Draft")
     } else if details.contains(.updated) {
-      Text(RelativeTime.short(session.updatedDate, now: now))
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .monospacedDigit()
+      // A quiet row is not drawn again, so its age follows the clock by itself.
+      TimelineView(.periodic(from: .now, by: 60)) { context in
+        Text(RelativeTime.short(session.updatedDate, now: now ?? context.date))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .monospacedDigit()
+      }
     }
   }
 
@@ -168,7 +172,7 @@ struct SessionRow: View {
   }
 
   private var tooltip: String {
-    SessionRowTooltip.text(session, info: info, now: now)
+    SessionRowTooltip.text(session, info: info, now: now ?? Date())
   }
 
   private var accessibilityLabel: String {
@@ -182,7 +186,7 @@ struct SessionRow: View {
     if info.isDisconnected { parts.append("Disconnected") }
     if session.isPinned { parts.append("Pinned") }
     if info.isShared { parts.append("Shared") }
-    parts.append("updated \(RelativeTime.short(session.updatedDate, now: now)) ago")
+    parts.append("updated \(RelativeTime.short(session.updatedDate, now: now ?? Date())) ago")
     return parts.joined(separator: ", ")
   }
 }

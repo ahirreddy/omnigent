@@ -64,11 +64,15 @@ struct BulkActionBar: View {
   let clear: () -> Void
   let confirmDelete: ([SessionSummary]) -> Void
 
+  /// The selected rows as they are now: a row read or shared since the list was drawn counts.
+  private var rows: [SidebarRowContent] {
+    selected.map { actions.live?.row($0.id, false) ?? state.rowContent($0) }
+  }
   private var owned: [SessionSummary] {
-    selected.filter { state.rowInfo[$0.id]?.isShared != true }
+    rows.filter { !$0.info.isShared }.map(\.session)
   }
   private var unread: [SessionSummary] {
-    selected.filter { state.list.unreadIds.contains($0.id) }
+    rows.filter(\.isUnread).map(\.session)
   }
   private var archived: [SessionSummary] { owned.filter(\.isArchived) }
   private var active: [SessionSummary] { owned.filter { !$0.isArchived } }

@@ -52,9 +52,9 @@ struct ProjectFolder<Row: View>: View {
   let drop: (SidebarDragItem) -> Bool
   @ViewBuilder let row: (SessionSummary) -> Row
   /// The strongest state of its sessions, while it is collapsed.
-  var folderMarker: SidebarMarker?
+  var folderMarker: SidebarHiddenMarker?
   /// The strongest state of the sessions under Show more.
-  var moreMarker: SidebarMarker?
+  var moreMarker: SidebarHiddenMarker?
 
   @State private var isHovered = false
 
@@ -88,8 +88,8 @@ struct ProjectFolder<Row: View>: View {
         Spacer(minLength: 4)
         if isHovered {
           hoverButtons
-        } else if let folderMarker {
-          SidebarMarkerView(marker: folderMarker)
+        } else {
+          folderMarker
         }
       }
       .contentShape(Rectangle())
@@ -117,7 +117,7 @@ struct ProjectFolder<Row: View>: View {
       HStack {
         Text(isWaiting ? "Loading\u{2026}" : "Show more")
         Spacer(minLength: 4)
-        if let moreMarker { SidebarMarkerView(marker: moreMarker) }
+        moreMarker
       }
     }
     .buttonStyle(.borderless)

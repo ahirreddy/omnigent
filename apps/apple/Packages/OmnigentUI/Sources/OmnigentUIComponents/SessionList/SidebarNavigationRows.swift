@@ -8,6 +8,8 @@ struct SidebarNavigationRows: View {
   let actions: SidebarActions
 
   var body: some View {
+    // Read here, so a count that changes draws these rows and not the list.
+    let counts = actions.live?.counts() ?? state.counts
     Label("New session", systemImage: "plus.bubble")
       .neutralSidebarIcon()
       .fontWeight(.medium)
@@ -23,7 +25,7 @@ struct SidebarNavigationRows: View {
     }
     Label("Inbox", systemImage: "tray")
       .neutralSidebarIcon()
-      .badge(state.inboxCount)
+      .badge(counts.inbox)
       .tag(SidebarDestination.inbox)
       .sidebarSelection(selection == .inbox)
       .accessibilityIdentifier("sidebar-inbox")
@@ -44,13 +46,13 @@ struct SidebarNavigationRows: View {
     if let setQuickFilter = actions.setQuickFilter {
       QuickFilterRow(
         filter: .running, isActive: state.quickFilter == .running,
-        count: state.list.filterCounts[.running]
+        count: counts.filters[.running]
       ) {
         setQuickFilter(state.quickFilter == .running ? nil : .running)
       }
       QuickFilterRow(
         filter: .needsResponse, isActive: state.quickFilter == .needsResponse,
-        count: state.list.filterCounts[.needsResponse]
+        count: counts.filters[.needsResponse]
       ) {
         setQuickFilter(state.quickFilter == .needsResponse ? nil : .needsResponse)
       }
