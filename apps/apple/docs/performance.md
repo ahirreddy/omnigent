@@ -379,10 +379,80 @@ Left as it is:
 Ruled out: tab persistence (debounced, off the switch), tab thumbnails, the opacity change and
 hiding from accessibility.
 
+## Sixth pass: what one session's change renders (November 2026)
+
+Measured in a scratch test package against a Release build of the packages
+(`swift test -c release -Xswiftc -enable-testing`), not the app: the connected window in an
+offscreen window with 250 sessions in the sidebar, a 600-row chat, a terminal, a browser and
+a side chat in one session. Each number is the main thread's CPU time
+(`CLOCK_THREAD_CPUTIME_ID`) for one step through the layout pass that follows it, the median
+of 30-60 steps; before and after ran back to back, twice. It counts view bodies and layout,
+little of the drawing, and other builds were running, so differences under about 20% are
+noise.
+
+| One step | Before | After |
+| --- | --- | --- |
+| Another session's row changes (status, preview or time) | 57-72 ms | 19-26 ms |
+| A row that is filtered out of the sidebar changes | 57 ms | 19-24 ms |
+| The session of a hidden, kept tab changes | 62-64 ms | 35-41 ms |
+| The shown session's own row changes | 57-58 ms | 46-50 ms |
+| Six terminals that never had the keyboard, 4 s idle | 61.8 ms | 6.3 ms |
+
+The row changes compare the tree before and after the first two changes below; the terminals
+were measured on their own (whole-process CPU).
+
+No measurable change, either way: a key in the composer (7-15 ms, see below), a streamed
+delta (10-12 ms), a scroll step (5-7 ms, a tenth of them 20-30 ms), switching sessions
+(127-136 ms), opening another session (220-350 ms), a window resize step (58-84 ms), a
+sidebar resize step (70-118 ms), the first frame (650-860 ms) and idle with the four tabs open
+(about 10 ms of main thread a second, most of it the test's own polling).
+
+What changed:
+
+- **The window's root no longer follows the session list or the tabs' titles.**
+  `ConnectedServerView.body` built the sidebar's state and the tab strip's state and passed
+  both to `AppShell` as values, so every row the server sent and every tab title rendered the
+  root, the shell, the toolbar and each open tab. `AppShell` now takes them as closures and
+  calls each inside an `ObservationScope`, a small view whose body is the only reader. The
+  root's tab commands, busy-tab report and tab overview read the tabs in view modifiers of
+  their own (`WindowTabsModifiers.swift`), and each kept tab is built in its own scope.
+- **Next and Previous Session ask one question.** The open chats read the whole visible list to
+  know whether there were two sessions; `SessionListStore.hasSeveralVisible` changes only when
+  that answer does.
+- **A view that reads one session hears about that session.** `SessionListStore.session(_:)`
+  registered its reader on the whole list, so each open chat rendered for every row.
+- **A terminal that has not had the keyboard does not draw every display refresh.** Ghostty
+  starts a surface focused, with a blinking cursor and a render loop; the app now tells it the
+  surface is unfocused until it gets the keyboard. Its cursor is hollow until then.
+
+Each has a counting test: `ConnectedWindowRenderScopeTests` and `AdaptiveShellTests` (which
+scope renders for a row, a kept tab's session, the shown session and a title),
+`SessionListNotificationTests` (which readers a change tells) and
+`IdleSurfaceRenderingTests`.
+
+State that changes on an interaction has to be read by one scope on any chain of ancestors. A
+scope around the detail column as well rendered the shown chat twice on a tab switch, because
+the root reads the selected tab too; the detail is built in the shell's body as before.
+
+Left as it is:
+
+- The remaining 19-26 ms for another session's row is the sidebar: the store's two passes
+  through the core, the sidebar state built again and the list of 250 rows compared.
+- The shown session's own row still renders its whole conversation screen and its side chat,
+  and a hidden tab's session renders that tab: `ConversationContainer` takes the session's
+  summary as one value, so a new preview or time is a new input to the screen. Narrowing it to
+  the fields the screen shows is the next step.
+- A tab switch still renders the shell and the sidebar once (the fifth pass's first item).
+- A key in the composer costs either about 7 ms or about 15 ms for a whole run of the same
+  binary; the cause was not found.
+
 ## Where the time still goes
 
 - **Switching tabs** renders the shell, the sidebar and the tab that shows once (see the fifth
   pass); a terminal, browser or New Tab page is built again on each selection.
+- **A session's own activity** renders its whole conversation screen for each new row of the
+  session list (preview, time, status), 35-50 ms in Release with a 600-row chat; another
+  session's activity renders the sidebar, about 20 ms with 250 sessions (see the sixth pass).
 - Opening a long session (about 1 s quiet, 2-3 s under load) is SwiftUI building and laying
   out about 27 transcript segments and their markdown: code blocks' text layout (one typesetter
   pass over each whole block) is the largest single cost, then view and attribute setup and
