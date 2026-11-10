@@ -322,7 +322,7 @@ extension ConnectedServerView {
   /// Previous and next session in the sidebar's order, wrapping at the ends as on the web. The
   /// order is read when the key is pressed, so a list update doesn't republish the menus.
   func navigation(from id: String) -> SessionCommandActions {
-    guard connection.sessionList.visible.count > 1 else { return SessionCommandActions() }
+    guard connection.sessionList.hasSeveralVisible else { return SessionCommandActions() }
     var actions = SessionCommandActions()
     actions.previousSession = { stepSession(from: id, by: -1) }
     actions.nextSession = { stepSession(from: id, by: 1) }
