@@ -306,12 +306,16 @@
           screen.settle(0.2)
         }
         #expect(forRow == ["sidebar": 1], "\(forRow)")
+        #expect(try screen.shows("Beta"))
         #expect(try !screen.shows("Gamma"))
+        #expect(try screen.toolbarText().contains("A"))
         let forTitle = RenderTally.recording {
           content.tabs = TabsState(tabs: [TabFixture.tab("b")], selectedID: "b")
           screen.settle(0.2)
         }
         #expect(forTitle == ["strip": 1, "tab controls": 1], "\(forTitle)")
+        #expect(try screen.toolbarText().contains("B"), "the strip shows the new tab")
+        #expect(try !screen.toolbarText().contains("A"), "and not the one it replaced")
       }
     }
   #endif

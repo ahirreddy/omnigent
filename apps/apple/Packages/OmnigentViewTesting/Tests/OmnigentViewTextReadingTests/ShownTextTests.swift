@@ -34,6 +34,20 @@
     }
   }
 
+  @MainActor
+  @Observable
+  private final class ToolbarTitle {
+    var text = "Old title"
+  }
+
+  private struct ToolbarAndContent: View {
+    let title: ToolbarTitle
+
+    var body: some View {
+      Text("Content").toolbar { ToolbarItem(placement: .principal) { Text(title.text) } }
+    }
+  }
+
   @Suite("Shown text", .serialized)
   @MainActor
   struct ShownTextTests {
@@ -83,6 +97,25 @@
       #expect(try !screen.shows("Sheet text"))
       try screen.clickControl(at: 1)
       #expect(try screen.shows("Sheet text"))
+    }
+
+    @Test("Reads the toolbar apart from the content, and follows its state")
+    func toolbar() throws {
+      let title = ToolbarTitle()
+      let screen = OffscreenWindow(ToolbarAndContent(title: title), width: 400, height: 200)
+      defer { screen.close() }
+      #expect(try screen.toolbarText().isEmpty, "a window with no titlebar has no toolbar")
+      screen.window.contentView = nil
+      screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
+      screen.host.sceneBridgingOptions = [.toolbars, .title]
+      screen.window.contentView = screen.host
+      screen.settle(0.5)
+      #expect(try screen.toolbarText() == ["Old title"])
+      #expect(try !screen.shows("Old title"))
+      title.text = "New title"
+      screen.settle(0.2)
+      #expect(try screen.toolbarText() == ["New title"])
+      #expect(try screen.shownText() == ["Content"])
     }
   }
 #endif
