@@ -153,7 +153,7 @@ public struct TranscriptView: View {
       .modifier(messageFocus(proxy))
       .task(id: state.header.id) {
         follow.reset()
-        scroll.readerMoved()
+        scroll.sessionOpened()
         position.reset()
         // Lazy rows size themselves after the first layout; anchor once they have.
         await Task.yield()

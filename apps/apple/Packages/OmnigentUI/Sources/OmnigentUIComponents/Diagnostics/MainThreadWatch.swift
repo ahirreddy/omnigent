@@ -18,6 +18,22 @@ nonisolated enum MainRunLoop {
     let timer = CFRunLoopTimerCreateWithHandler(nil, fires, 0, 0, 0) { _ in block() }
     CFRunLoopAddTimer(CFRunLoopGetMain(), timer, .commonModes)
   }
+
+  /// After Core Animation's own observer, which lays out and commits a frame at 2 000 000.
+  static let afterDisplayOrder: CFIndex = 2_500_000
+
+  /// Runs `block` back at the run loop once the main thread has laid out and committed its
+  /// next frame, which it does before the loop waits or exits.
+  static func performAfterDisplay(_ block: @escaping @Sendable () -> Void) {
+    let activities = CFRunLoopActivity.beforeWaiting.rawValue | CFRunLoopActivity.exit.rawValue
+    let observer = CFRunLoopObserverCreateWithHandler(
+      nil, activities, false, afterDisplayOrder
+    ) { _, _ in
+      perform(block)
+    }
+    CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+    CFRunLoopWakeUp(CFRunLoopGetMain())
+  }
 }
 
 /// Which lines a stall of the main thread is worth: one once it has lasted ``threshold``,

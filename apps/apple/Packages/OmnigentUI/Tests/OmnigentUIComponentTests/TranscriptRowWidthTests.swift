@@ -302,12 +302,80 @@ extension TranscriptRowWidthTests {
     returnToRunLoop()
   }
 
-  @Test("A reader who moves during a passage keeps where they went, with the rows at the width")
-  func readerMovesDuringAPassage() {
+  @Test("A reader whose scroll begins or ends during a passage is still put back at their row")
+  func readerScrollsDuringAPassage() {
     let (state, scrolls) = readingState()
     state.rowWidthOffered(900)
     state.readerMoved()
+    // The rows wait for the top: at the reader's place every row above would be built.
+    #expect(state.rowWidth.held == 500)
+    state.topReached(true)
     #expect(state.rowWidth.held == 900)
+    state.rowsResized()
+    #expect(scrolls.all == [Self.top, "m 0.4"])
+    returnToRunLoop()
+  }
+
+  @Test("A jump during a passage ends it at the row jumped to, or at the end as a follower's")
+  func jumpDuringAPassage() {
+    let (state, scrolls) = readingState()
+    state.rowWidthOffered(900)
+    state.jumped(to: "u7")
+    #expect(state.rowWidth.held == 500)
+    state.topReached(true)
+    state.rowsResized()
+    #expect(scrolls.all == [Self.top, "u7 0.0"])
+    returnToRunLoop()
+    // The reader is where they jumped, not being put back anywhere.
+    state.record(anchor("x"))
+    #expect(scrolls.all == [Self.top, "u7 0.0"])
+
+    let (latest, latestScrolls) = readingState()
+    latest.rowWidthOffered(900)
+    latest.jumped(to: TranscriptView.bottomID)
+    latest.topReached(true)
+    latest.rowsResized()
+    latest.endReached(false)
+    #expect(latestScrolls.all == [Self.top, Self.end, Self.end])
+    returnToRunLoop()
+  }
+
+  @Test("A width owed after a passage is not taken where a reader scrolls, but at the turn's end")
+  func owedWidthWaitsForTheTurn() {
+    let (state, scrolls) = readingState()
+    pass(state, to: 900)
+    state.rowWidthOffered(700)
+    state.readerMoved()
+    #expect(state.rowWidth.held == 900)
+    #expect(scrolls.all == [Self.top, "m 0.4"])
+    returnToRunLoop()
+    #expect(scrolls.all.dropFirst(2).first == Self.top)
+    #expect(state.rowWidth.held == 700)
+  }
+
+  @Test("A passage begun at a turn's end is left to the display's layout, not ended before it")
+  func owedPassageWaitsForTheDisplay() {
+    let (state, scrolls) = readingState()
+    pass(state, to: 900)
+    state.rowWidthOffered(700)
+    // A pass with no time to wait: the turn ends, and the loop's blocks run again before layout.
+    CFRunLoopRunInMode(.defaultMode, 0, false)
+    #expect(scrolls.all.last == Self.top)
+    #expect(state.rowWidth.held == 900)
+    state.topReached(true)
+    state.rowsResized()
+    #expect(state.rowWidth.held == 700)
+    #expect(scrolls.all.last == "m 0.4")
+    returnToRunLoop()
+  }
+
+  @Test("Another session opening during a passage ends it, its rows at the viewport's width")
+  func sessionOpensDuringAPassage() {
+    let (state, scrolls) = readingState()
+    state.rowWidthOffered(900)
+    state.sessionOpened()
+    #expect(state.rowWidth.held == 900)
+    #expect(state.rowWidth.passage == nil)
     state.topReached(true)
     state.rowsResized()
     returnToRunLoop()

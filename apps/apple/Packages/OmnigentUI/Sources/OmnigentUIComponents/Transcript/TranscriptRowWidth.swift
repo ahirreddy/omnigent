@@ -12,10 +12,18 @@ final class TranscriptRowWidth {
   struct Passage: Equatable {
     /// The row to put back at the viewport's middle; `nil` for a reader at the end.
     var anchor: TranscriptReadingAnchor?
+    /// The row the reader jumped to on the way, whose top the passage ends at instead.
+    private(set) var jump: String?
     /// The rows have the new width; before that the scroll view is on its way to the top.
     var hasWidth = false
     /// Scrolls to the top left for one the scroll view did not follow.
     var topScrollsLeft = 2
+
+    /// The reader jumped to `target` on the way. A jump to `end` ends as a follower's passage.
+    mutating func jump(to target: String, end: String) {
+      anchor = nil
+      jump = target == end ? nil : target
+    }
 
     /// Whether the scroll view, short of the top, is sent there again.
     mutating func takesTopScroll() -> Bool {

@@ -18,12 +18,16 @@ final class TranscriptScrollState {
   private var budget = LayoutScrollBudget(TranscriptScrollState.layoutScrollLimits)
   /// A block on the main run loop will end the budget's turn.
   private var awaitsTurnEnd = false
+  /// A turn is ending: what it scrolls is laid out by the display's next pass.
+  private var isEndingTurn = false
   /// A timer will look whether layout has come to rest.
   private var awaitsRestCheck = false
   /// How long a width change keeps putting its reader back.
   static let restoreWindow: TimeInterval = 1
   /// How close to the wanted point of a row, as a fraction of the row, counts as there.
   static let restoreReach = 0.01
+  /// The loop report's name for a passage the turn's end had to end, short of its layout pass.
+  static let latePassage = "transcript passage late"
 
   /// The width the rows are laid out at, which follows the viewport's.
   let rowWidth = TranscriptRowWidth()
@@ -181,15 +185,20 @@ final class TranscriptScrollState {
   }
 
   /// Puts a passage's reader back with the rows at the viewport's width: at the end, or at
-  /// their row, by its old height first.
+  /// their row, by its old height first; one who jumped on the way goes where they jumped.
   private func endPassage(at now: Date = Date()) {
     guard let passage = rowWidth.passage else { return }
     rowWidth.passage = nil
     rowWidth.catchUp()
-    probe("transcript passage", "ends at \(passage.anchor?.id ?? "end")")
+    probe("transcript passage", "ends at \(passage.jump ?? passage.anchor?.id ?? "end")")
     passedThisTurn = true
-    restore = Restore(anchor: passage.anchor, since: now)
     awaitTurnEnd()
+    // A jump that landed on the way is where the reader goes.
+    if let jump = passage.jump {
+      scrollToRow(jump, .top)
+      return
+    }
+    restore = Restore(anchor: passage.anchor, since: now)
     guard let anchor = passage.anchor else {
       scrollToRow(TranscriptView.bottomID, .bottom)
       return
@@ -208,20 +217,27 @@ final class TranscriptScrollState {
     budget.contentChanged()
   }
 
-  /// The reader scrolled, jumped or opened another session.
+  /// The reader scrolled or jumped. A passage under way goes on: its own scrolls end a
+  /// gesture's phase too, and rows taking their width where the reader is would all be built.
   func readerMoved() {
     budget.readerMoved()
     restore = nil
-    // What layout owed is void, but not the rows' width; the reader chose where they are.
-    rowWidth.passage = nil
-    rowWidth.catchUp()
   }
 
-  /// The reader jumped to a row. An animated jump lays out the rows on the way at every
-  /// frame, so a stall that follows one should name it.
+  /// The reader jumped to a row, where a passage under way then ends. An animated jump lays
+  /// out the rows on the way at every frame, so a stall that follows one should name it.
   func jumped(to target: String) {
     probe("transcript jump", target)
     readerMoved()
+    rowWidth.passage?.jump(to: target, end: TranscriptView.bottomID)
+  }
+
+  /// Another session's rows replaced the ones a passage set out from, and take the width as
+  /// they open.
+  func sessionOpened() {
+    readerMoved()
+    rowWidth.passage = nil
+    rowWidth.catchUp()
   }
 
   /// The first row changed, as it does when older rows land above the ones in view.
@@ -265,9 +281,11 @@ final class TranscriptScrollState {
   private func awaitTurnEnd() {
     guard !awaitsTurnEnd else { return }
     awaitsTurnEnd = true
-    MainRunLoop.perform { [weak self] in
+    let ended: @Sendable () -> Void = { [weak self] in
       MainActor.assumeIsolated { self?.turnEnded() }
     }
+    // The turn after one that scrolled as it ended ends once the display has laid that out.
+    if isEndingTurn { MainRunLoop.performAfterDisplay(ended) } else { MainRunLoop.perform(ended) }
   }
 
   /// A scroll to the bottom refused with the budget spent runs once layout has been still
@@ -296,9 +314,16 @@ final class TranscriptScrollState {
   /// unless the reader took over.
   private func turnEnded(at now: Date = Date()) {
     awaitsTurnEnd = false
+    isEndingTurn = true
+    defer { isEndingTurn = false }
     // A passage ends in the layout pass it began in; one still open is not left at the top.
     // Otherwise the rows' heights have settled, and a scroll to the reader's place lands on it.
-    if rowWidth.passage != nil { endPassage(at: now) } else { continueRestore(at: now) }
+    if rowWidth.passage != nil {
+      probe(Self.latePassage, "\(follow)")
+      endPassage(at: now)
+    } else {
+      continueRestore(at: now)
+    }
     passedThisTurn = false
     if budget.turnEnded(), !follow.isUserScrolling, allowsScroll("turn end", keepsBottom: true) {
       scrollToRow(TranscriptView.bottomID, .bottom)
