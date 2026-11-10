@@ -16,6 +16,9 @@ public struct KeptAliveTabs<Item: Identifiable, Content: View>: View {
   private let shownID: Item.ID
   private let content: (Item) -> Content
   @State private var sizes = KeptAliveSizes()
+  /// The column has had a size of its own. A conversation built during the split view's
+  /// placeholder pass builds rows at that width, and takes the column's width after them.
+  @State private var hasColumnSize = !KeptAliveLayout.startsAtPlaceholder
 
   /// Creates the view.
   /// - Parameters:
@@ -33,13 +36,20 @@ public struct KeptAliveTabs<Item: Identifiable, Content: View>: View {
   /// The view.
   public var body: some View {
     KeptAliveLayout(sizes: sizes) {
-      ForEach(items) { item in
-        let isHidden = item.id != shownID
-        HeldWhileHidden(content: content(item), isHidden: isHidden)
-          .equatable()
-          .modifier(HiddenTabContent(isHidden: isHidden))
-          .layoutValue(key: KeptAliveKey.self, value: isHidden)
+      if hasColumnSize {
+        ForEach(items) { item in
+          let isHidden = item.id != shownID
+          HeldWhileHidden(content: content(item), isHidden: isHidden)
+            .equatable()
+            .modifier(HiddenTabContent(isHidden: isHidden))
+            .layoutValue(key: KeptAliveKey.self, value: isHidden)
+        }
       }
+    }
+    .onGeometryChange(for: Bool.self) { proxy in
+      KeptAliveLayout.isColumnHeight(proxy.size.height)
+    } action: { isColumnHeight in
+      if isColumnHeight { hasColumnSize = true }
     }
     .hostsConversationToolbar()
   }
@@ -81,6 +91,21 @@ private struct KeptAliveLayout: Layout {
       let size = subview[KeptAliveKey.self] ? hiddenSize : bounds.size
       subview.place(at: bounds.origin, proposal: ProposedViewSize(size))
     }
+  }
+
+  /// Whether a column is first laid out at the placeholder: on Mac, where the split view is.
+  static var startsAtPlaceholder: Bool {
+    #if os(macOS)
+      true
+    #else
+      false
+    #endif
+  }
+
+  /// Whether `height` is a column's own: no window is short enough for a column of the
+  /// placeholder's height.
+  static func isColumnHeight(_ height: CGFloat) -> Bool {
+    height > UnmeasuredMinimum.column.height
   }
 
   /// Whether `size` is the column's, not that of a pass made while the split view sized the

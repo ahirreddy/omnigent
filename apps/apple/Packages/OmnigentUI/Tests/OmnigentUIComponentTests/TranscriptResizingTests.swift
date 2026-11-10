@@ -19,15 +19,6 @@
     }
   }
 
-  extension TranscriptScrollDriver {
-    /// How far through the content the middle of the viewport is, from 0 to 1.
-    fileprivate var fractionRead: CGFloat {
-      guard let scrollView else { return 0 }
-      let viewport = scrollView.contentView.bounds.height
-      return (offset + viewport / 2) / (maximumOffset + viewport)
-    }
-  }
-
   private struct ResizingTranscriptHost: View {
     let conversation: LiveConversation
     let column: TranscriptColumn

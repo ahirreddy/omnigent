@@ -48,6 +48,8 @@
   struct TranscriptLayoutChurnTests {
     private static let wide: CGFloat = 900
     private static let height: CGFloat = 220
+    /// The widths a dragged window passes through in ``resize(_:in:)``.
+    private static let dragSteps = 40
 
     /// Turns whose rows differ widely in height, so the lazy rows' estimates are far off.
     private func unevenSession(turns: Int) -> LiveConversation {
@@ -109,7 +111,7 @@
 
     /// Changes the pane's size many times a frame apart, as dragging a window's corner does.
     private func resize(_ pane: TranscriptPane, in window: OffscreenWindow<AnyView>) {
-      for index in 0..<40 {
+      for index in 0..<Self.dragSteps {
         pane.width = 380 + CGFloat((index * 53) % 400)
         pane.dock = 40 + CGFloat((index * 17) % 130)
         window.settle(0.016)
@@ -163,8 +165,8 @@
       try await letTasksRun(window, milliseconds: Int(FollowedHeights.memory * 1000) + 500)
       let dragged = churn(since: before)
       #expect(viewport.distanceToEnd() < 2, "\(dragged)")
-      // The drag asked for more scrolls than a turn of the main thread gets.
-      #expect(dragged.refused > 0)
+      // A step of the drag takes at most one scroll for its width and one for its dock.
+      #expect(dragged.scrolls <= 2 * Self.dragSteps)
 
       // New output is followed as before.
       try await letTasksRun(window, milliseconds: Int(FollowedHeights.memory * 1000) + 500)

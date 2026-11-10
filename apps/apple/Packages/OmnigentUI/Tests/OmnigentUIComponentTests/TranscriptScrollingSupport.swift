@@ -60,6 +60,13 @@
       return max(0, document.frame.height - scrollView.contentView.bounds.height)
     }
 
+    /// How far through the content the middle of the viewport is, from 0 to 1.
+    var fractionRead: CGFloat {
+      guard let scrollView else { return 0 }
+      let viewport = scrollView.contentView.bounds.height
+      return (offset + viewport / 2) / (maximumOffset + viewport)
+    }
+
     /// How far the reader is from the real end. Lazy rows above the viewport only estimate the
     /// content's height, so this goes to the end, where the estimate settles, and comes back.
     func distanceToEnd() -> CGFloat {
