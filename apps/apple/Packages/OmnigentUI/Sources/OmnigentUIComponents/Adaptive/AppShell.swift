@@ -217,6 +217,11 @@ struct TitlebarTabStrip: View {
       state: tabs.state, actions: tabs.actions, isInTitlebar: true, includesControls: false
     )
     .frame(width: stripWidth)
+    #if os(macOS)
+      .background {
+        TitlebarStripAnchor(space: space, isSidebarHidden: isSidebarHidden, width: stripWidth)
+      }
+    #endif
     .countsRenders("strip")
   }
 
