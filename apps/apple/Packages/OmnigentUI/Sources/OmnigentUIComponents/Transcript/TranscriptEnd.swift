@@ -66,15 +66,16 @@ nonisolated struct TranscriptEnd: Equatable {
 
 extension TranscriptScrollState {
   /// SwiftUI computed a scroll geometry at `place`. Its action for a change does not run for
-  /// every one, so the turn's end acts on what was seen last.
+  /// every one, so the turn's end acts on what was seen last. A hidden transcript acts on none.
   func sees(end place: TranscriptEnd.Place) -> TranscriptEnd.Place {
-    if end.see(place) { awaitTurnEnd() }
+    if end.see(place), !isHidden { awaitTurnEnd() }
     return place
   }
 
-  /// As ``sees(end:)``, for the viewport's bottom near the end.
+  /// As ``sees(end:)``, for the viewport's bottom near the end. A hidden transcript's reader
+  /// stays where they were when it hid, whatever its viewport comes to.
   func sees(_ viewport: TranscriptViewport) -> TranscriptViewport {
-    if end.see(nearBottom: viewport.isNearBottom) { awaitTurnEnd() }
+    if !isHidden, end.see(nearBottom: viewport.isNearBottom) { awaitTurnEnd() }
     return viewport
   }
 
