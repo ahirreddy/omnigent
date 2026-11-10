@@ -394,8 +394,8 @@ noise.
 | --- | --- | --- |
 | Another session's row changes (status, preview or time) | 57-72 ms | 19-26 ms |
 | A row that is filtered out of the sidebar changes | 57 ms | 19-24 ms |
-| The session of a hidden, kept tab changes | 62-64 ms | 35-41 ms |
-| The shown session's own row changes | 57-58 ms | 46-50 ms |
+| The session of a hidden, kept tab changes | 60-64 ms | 32-41 ms |
+| The shown session's own row changes | 57-58 ms | 44-50 ms |
 | Six terminals that never had the keyboard, 4 s idle | 61.8 ms | 6.3 ms |
 
 The row changes compare the tree before and after the first two changes below; the terminals
@@ -451,7 +451,7 @@ Left as it is:
 - **Switching tabs** renders the shell, the sidebar and the tab that shows once (see the fifth
   pass); a terminal, browser or New Tab page is built again on each selection.
 - **A session's own activity** renders its whole conversation screen for each new row of the
-  session list (preview, time, status), 35-50 ms in Release with a 600-row chat; another
+  session list (preview, time, status), 32-50 ms in Release with a 600-row chat; another
   session's activity renders the sidebar, about 20 ms with 250 sessions (see the sixth pass).
 - Opening a long session (about 1 s quiet, 2-3 s under load) is SwiftUI building and laying
   out about 27 transcript segments and their markdown: code blocks' text layout (one typesetter
