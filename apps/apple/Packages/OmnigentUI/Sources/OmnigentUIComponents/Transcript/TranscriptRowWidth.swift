@@ -78,8 +78,8 @@ struct HeldRowWidth: ViewModifier {
   }
 }
 
-/// Tells the scroll state when the transcript's scroll view reaches and leaves its top and
-/// its end.
+/// Tells the scroll state when the transcript's scroll view reaches and leaves its top, its
+/// end and the reach of its bottom.
 struct ScrollEdgeWatch: ViewModifier {
   let scroll: TranscriptScrollState
 
@@ -94,11 +94,19 @@ struct ScrollEdgeWatch: ViewModifier {
       } action: { _, isAtTop in
         scroll.topReached(isAtTop)
       }
-      .onScrollGeometryChange(for: Bool.self) { geometry in
-        let visibleBottom = geometry.visibleRect.maxY - geometry.contentInsets.bottom
-        return visibleBottom >= geometry.contentSize.height - Self.reach
-      } action: { _, isAtEnd in
-        scroll.endReached(isAtEnd)
+      .onScrollGeometryChange(for: TranscriptEnd.Place.self) { geometry in
+        scroll.sees(
+          end: TranscriptEnd.Place(
+            visibleBottom: geometry.visibleRect.maxY - geometry.contentInsets.bottom,
+            contentHeight: geometry.contentSize.height))
+      } action: { _, _ in
+        scroll.endChanged()
+      }
+      .onScrollGeometryChange(for: TranscriptViewport.self) { geometry in
+        scroll.sees(TranscriptViewport(geometry))
+      } action: { old, new in
+        scroll.probe("transcript viewport", "\(old) -> \(new)")
+        scroll.settleFollow()
       }
   }
 }

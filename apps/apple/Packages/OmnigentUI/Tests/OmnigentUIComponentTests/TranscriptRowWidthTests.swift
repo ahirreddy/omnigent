@@ -8,34 +8,57 @@ import Testing
 @MainActor
 @Suite("Transcript row width", .serialized)
 struct TranscriptRowWidthTests {
-  private static let top = "\(TranscriptView.topID) 0.0"
-  private static let end = "\(TranscriptView.bottomID) 1.0"
+  static let top = "\(TranscriptView.topID) 0.0"
+  static let end = "\(TranscriptView.bottomID) 1.0"
+  /// The scroll to the end by its edge, and letting go of that edge.
+  static let edge = "edge"
+  static let released = "released"
 
-  private final class Scrolls {
+  final class Scrolls {
     var all: [String] = []
   }
 
   /// A transcript's state with rows at 500 points, and the scrolls it made.
-  private func state() -> (TranscriptScrollState, Scrolls) {
+  func state() -> (TranscriptScrollState, Scrolls) {
     let state = TranscriptScrollState()
     let scrolls = Scrolls()
     state.scrollToRow = { id, anchor in scrolls.all.append("\(id) \(anchor.y)") }
+    state.scrollToEnd = { scrolls.all.append(Self.edge) }
+    state.releaseEnd = { scrolls.all.append(Self.released) }
     state.rowWidthOffered(500)
     return (state, scrolls)
   }
 
+  /// The scroll view's geometry is at the end or away from it, and the action for that runs.
+  func end(_ state: TranscriptScrollState, reached: Bool) {
+    end(state, at: reached ? .bottomRow : .away)
+  }
+
+  /// The scroll view's geometry is at `place`, and the action for that runs.
+  func end(_ state: TranscriptScrollState, at place: TranscriptEnd.Place) {
+    _ = state.sees(end: place)
+    state.endChanged()
+  }
+
+  /// The viewport's bottom is near the end or far from it, and the action for that runs.
+  func bottom(_ state: TranscriptScrollState, near: Bool) {
+    _ = state.sees(
+      TranscriptViewport(width: 500, visibleBottom: near ? 1_000 : 0, contentHeight: 1_000))
+    state.settleFollow()
+  }
+
   /// A state whose reader went to an earlier message and has row `m` under the middle.
-  private func readingState() -> (TranscriptScrollState, Scrolls) {
+  func readingState() -> (TranscriptScrollState, Scrolls) {
     let (state, scrolls) = state()
     state.follow.readEarlier()
-    state.follow.geometryChanged(isNearBottom: false)
-    state.endReached(false)
+    bottom(state, near: false)
+    end(state, reached: false)
     state.record(anchor("m"))
     return (state, scrolls)
   }
 
   /// A row as tall as the viewport, which a scroll puts back by its fraction alone.
-  private func anchor(_ id: String, _ fraction: Double = 0.4, row: CGFloat = 1_000)
+  func anchor(_ id: String, _ fraction: Double = 0.4, row: CGFloat = 1_000)
     -> TranscriptReadingAnchor
   {
     TranscriptReadingAnchor(
@@ -43,12 +66,12 @@ struct TranscriptRowWidthTests {
   }
 
   /// Lets blocks waiting on the main run loop run.
-  private func returnToRunLoop() {
+  func returnToRunLoop() {
     CFRunLoopRunInMode(.defaultMode, 0.02, false)
   }
 
   /// Takes the state through a passage to `width`, as one layout pass does.
-  private func pass(_ state: TranscriptScrollState, to width: CGFloat) {
+  func pass(_ state: TranscriptScrollState, to width: CGFloat) {
     state.rowWidthOffered(width)
     state.topReached(true)
     state.rowsResized()
@@ -101,44 +124,6 @@ struct TranscriptRowWidthTests {
     #expect(scrolls.all == [Self.top, "m 0.4"])
   }
 
-  @Test("A reader at the end is taken to the top for the new width, then back to the end")
-  func passageForAFollower() {
-    let (state, scrolls) = state()
-    state.rowWidthOffered(900)
-    state.endReached(false)
-    state.topReached(true)
-    state.rowsResized()
-    #expect(scrolls.all == [Self.top, Self.end])
-    state.endReached(true)
-    // Rows measured after the scroll move the end away.
-    state.endReached(false)
-    #expect(scrolls.all == [Self.top, Self.end, Self.end])
-    state.endReached(true)
-    returnToRunLoop()
-    #expect(scrolls.all.count == 3)
-  }
-
-  @Test("A reader the scrolls never bring to the end is scrolled there eight times, then left")
-  func endNeverReached() {
-    let (state, scrolls) = state()
-    state.rowWidthOffered(900)
-    state.endReached(false)
-    state.topReached(true)
-    state.rowsResized()
-    for _ in 0..<5 { returnToRunLoop() }
-    #expect(scrolls.all == [Self.top] + Array(repeating: Self.end, count: 9))
-  }
-
-  @Test("A reader near the end who does not follow yet ends at the end as well")
-  func framedReaderEndsAtTheEnd() {
-    let (state, scrolls) = state()
-    state.follow.frameLatest()
-    state.record(anchor("m"))
-    pass(state, to: 900)
-    #expect(scrolls.all == [Self.top, Self.end])
-    returnToRunLoop()
-  }
-
   @Test("At the top, or with no row to come back to, the rows take the width where they are")
   func widthInPlace() {
     let (atTop, topScrolls) = readingState()
@@ -149,7 +134,7 @@ struct TranscriptRowWidthTests {
 
     let (unread, unreadScrolls) = state()
     unread.follow.readEarlier()
-    unread.follow.geometryChanged(isNearBottom: false)
+    bottom(unread, near: false)
     unread.rowWidthOffered(900)
     #expect(unread.rowWidth.held == 900)
     #expect(unreadScrolls.all.isEmpty)
@@ -335,9 +320,11 @@ extension TranscriptRowWidthTests {
     latest.jumped(to: TranscriptView.bottomID)
     latest.topReached(true)
     latest.rowsResized()
-    latest.endReached(false)
-    #expect(latestScrolls.all == [Self.top, Self.end, Self.end])
+    end(latest, at: .edge)
+    #expect(latestScrolls.all == [Self.top, Self.edge, Self.released, Self.end])
+    end(latest, reached: true)
     returnToRunLoop()
+    #expect(latestScrolls.all.count == 4)
   }
 
   @Test("A width owed after a passage is not taken where a reader scrolls, but at the turn's end")
@@ -380,21 +367,5 @@ extension TranscriptRowWidthTests {
     state.rowsResized()
     returnToRunLoop()
     #expect(scrolls.all == [Self.top])
-  }
-
-  @Test("Content and the dock growing do not scroll a follower while a passage puts them back")
-  func passageKeepsOtherScrollsOut() {
-    let (state, scrolls) = state()
-    state.rowWidthOffered(900)
-    #expect(!state.contentHeightChanged(500, from: 400))
-    #expect(!state.dockChanged(120, from: 100))
-    state.topReached(true)
-    state.rowsResized()
-    #expect(!state.contentHeightChanged(600, from: 500))
-    #expect(scrolls.all == [Self.top, Self.end])
-    returnToRunLoop()
-    #expect(state.contentHeightChanged(700, from: 600))
-    #expect(state.dockChanged(140, from: 120))
-    returnToRunLoop()
   }
 }

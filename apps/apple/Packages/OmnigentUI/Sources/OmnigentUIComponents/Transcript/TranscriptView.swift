@@ -63,13 +63,10 @@ public struct TranscriptView: View {
     _current = State(initialValue: TranscriptCurrentState(state))
   }
 
-  /// The follow rules; writing them publishes only a change of the pill.
+  /// The follow rules; the scroll state publishes only a change of the pill.
   private var follow: TranscriptFollow {
     get { scroll.follow }
-    nonmutating set {
-      scroll.follow = newValue
-      if pill != newValue.pill { pill = newValue.pill }
-    }
+    nonmutating set { scroll.follow = newValue }
   }
 
   /// The rows as the list last showed them, for scroll actions outside a body.
@@ -97,20 +94,14 @@ public struct TranscriptView: View {
       .environment(\.transcriptScrollState, scroll)
       .defaultScrollAnchor(.bottom, for: .initialOffset)
       .modifier(ScrollEdgeWatch(scroll: scroll))
+      .modifier(EndByEdge(scroll: scroll))
       .scrollDismissesKeyboard(.interactively)
       .onScrollPhaseChange { _, phase in
         let scrolling = phase == .tracking || phase == .interacting || phase == .decelerating
         if scrolling || follow.isUserScrolling { scroll.readerMoved() }
+        scroll.settleFollow()
         if follow.scrollPhaseChanged(isUserScrolling: scrolling) {
           proxy.scrollTo(Self.bottomID, anchor: .bottom)
-        }
-      }
-      .onScrollGeometryChange(for: TranscriptViewport.self) { geometry in
-        TranscriptViewport(geometry)
-      } action: { old, new in
-        scroll.probe("transcript viewport", "\(old) -> \(new)")
-        if old.isNearBottom != new.isNearBottom {
-          follow.geometryChanged(isNearBottom: new.isNearBottom)
         }
       }
       // The one scroll path while following: new output and late-sizing rows both grow the
@@ -191,6 +182,7 @@ public struct TranscriptView: View {
   private func rowEvents(_ proxy: ScrollViewProxy) -> TranscriptRowEvents {
     // Rows reporting the reading anchor restore it through this body's proxy.
     scroll.scrollToRow = { proxy.scrollTo($0, anchor: $1) }
+    scroll.showPill = { if pill != $0 { pill = $0 } }
     scroll.rowOrder = { layout.entries(for: shown).map(\.id) }
     return TranscriptRowEvents(
       revisionChanged: {
@@ -388,6 +380,7 @@ extension TranscriptView {
     } catch {
       return  // Cancelled: another session opened, and its own task frames it.
     }
+    scroll.settleFollow()
     follow.frameLandingWaitEnded()
   }
 }

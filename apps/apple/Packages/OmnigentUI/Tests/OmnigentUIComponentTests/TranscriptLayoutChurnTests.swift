@@ -1,38 +1,11 @@
 #if os(macOS)
   import AppKit
-  import Observation
   import OmnigentViewTesting
   import OmnigentViewTextReading
   import SwiftUI
   import Testing
 
   @testable import OmnigentUIComponents
-
-  /// The pane a transcript sits in: its width and the dock under it, which a test changes as a
-  /// resize and a growing composer do.
-  @MainActor
-  @Observable
-  private final class TranscriptPane {
-    var width: CGFloat
-    var dock: CGFloat
-
-    init(width: CGFloat, dock: CGFloat) {
-      self.width = width
-      self.dock = dock
-    }
-  }
-
-  /// The transcript over a dock that insets it, as the conversation screen lays it out.
-  private struct DockedTranscriptHost: View {
-    let conversation: LiveConversation
-    let pane: TranscriptPane
-
-    var body: some View {
-      LiveTranscriptHost(conversation: conversation, actions: ConversationActions())
-        .safeAreaBar(edge: .bottom, spacing: 0) { Color.clear.frame(height: pane.dock) }
-        .frame(width: pane.width)
-    }
-  }
 
   /// What layout did to a transcript while nothing new arrived.
   private struct Churn: CustomStringConvertible {
