@@ -42,6 +42,11 @@ import Testing
       }
     }
 
+    /// The sidebar's search field.
+    func searchField() throws -> NSSearchField {
+      try #require(screen.allViews.compactMap { $0 as? NSSearchField }.first)
+    }
+
     /// The widths the window draws at now.
     var widths: ShownWidths {
       get throws {

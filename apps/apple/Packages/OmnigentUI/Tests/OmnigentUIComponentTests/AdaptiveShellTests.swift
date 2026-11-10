@@ -329,7 +329,7 @@
           content.search = "zeta"
           screen.settle(0.2)
         }
-        #expect(forSearch == ["sidebar": 1, "session row": 3], "\(forSearch)")
+        #expect(forSearch == ["sidebar": 1, "session row": 3, "search field": 1], "\(forSearch)")
         let fields = screen.allViews.compactMap { $0 as? NSSearchField }
         #expect(fields.map(\.stringValue) == ["zeta"], "the search field shows the host's text")
       }

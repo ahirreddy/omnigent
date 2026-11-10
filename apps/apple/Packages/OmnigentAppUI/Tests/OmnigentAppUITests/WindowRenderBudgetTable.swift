@@ -276,12 +276,36 @@ import Testing
     private static let sidebar: [WindowInteraction] = [
       WindowInteraction(
         name: "sidebar search text",
-        budget: ["session row": 2, "sidebar": 1],
+        budget: ["search field": 1, "session row": 2, "sidebar": 1],
         perform: { $0.list.searchText = "ta" },
         verify: { window in
           let text = try window.screen.shownText()
           #expect(text.contains("Beta") && text.contains("Delta"), "the matches: \(text)")
           #expect(!text.contains("Gamma"), "only the matches: \(text)")
+          #expect(try window.searchField().stringValue == "ta", "the field shows it")
+        }),
+      WindowInteraction(
+        name: "search text typed into the sidebar's field",
+        budget: ["search field": 2, "session row": 6, "sidebar": 2],
+        prepare: { window in
+          let hasKeyboard = window.screen.window.makeFirstResponder(try window.searchField())
+          try #require(hasKeyboard, "the search field takes the keyboard")
+        },
+        perform: { try $0.screen.type("ta") },
+        verify: { window in
+          #expect(window.list.searchText == "ta", "the field writes the session list's search")
+          let text = try window.screen.shownText()
+          #expect(text.contains("Beta") && !text.contains("Gamma"), "the matches: \(text)")
+        }),
+      WindowInteraction(
+        name: "sidebar search text cleared",
+        budget: ["search field": 1, "session row": 4, "sidebar": 1],
+        prepare: { $0.list.searchText = "ta" },
+        perform: { $0.list.searchText = "" },
+        verify: { window in
+          let text = try window.screen.shownText()
+          #expect(text.contains("Gamma") && text.contains("Beta"), "every session: \(text)")
+          #expect(try window.searchField().stringValue.isEmpty, "the field is empty again")
         }),
       WindowInteraction(
         name: "a sidebar filter",
