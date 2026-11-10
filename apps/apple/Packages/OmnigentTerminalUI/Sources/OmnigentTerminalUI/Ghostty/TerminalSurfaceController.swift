@@ -177,6 +177,9 @@ public final class TerminalSurfaceController {
     }
     unsafe self.surface = surface
     unsafe ghostty_surface_set_color_scheme(surface, runtime.appearance.colorScheme.ghostty)
+    // libghostty starts a surface focused, drawing every display refresh. Ours has the keyboard
+    // only once its view becomes first responder, which reports it.
+    unsafe ghostty_surface_set_focus(surface, false)
   }
 
   private func startPumps(input: AsyncStream<[UInt8]>) {

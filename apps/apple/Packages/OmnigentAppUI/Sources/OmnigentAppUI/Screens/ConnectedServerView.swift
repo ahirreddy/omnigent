@@ -82,21 +82,23 @@ public struct ConnectedServerView: View {
   /// The connected server’s sidebar and selected destination.
   public var body: some View {
     let tabs = windowTabs
-    let strip = tabs.strip
+    // The sidebar and the strip read their state where they show it: a session's row or a tab's
+    // title that changes then renders the sidebar or the strip, not the window.
     AppShell(
-      sidebar: sidebarState, selection: pageBinding, searchText: searchBinding,
-      actions: sidebarActions, tabs: strip.map { ($0.state, renamable($0.actions)) }
-    ) { _ in
-      tabDetail
-        .safeAreaInset(edge: .top, spacing: 0) {
-          VStack(spacing: 0) {
-            ConnectionIssuesBanner(connection: connection)
-            if let tabFailure {
-              TabFailureBanner(message: tabFailure) { self.tabFailure = nil }
+      sidebar: { sidebarState }, selection: pageBinding, searchText: searchBinding,
+      actions: sidebarActions, tabs: strip(of: tabs),
+      detail: { _ in
+        tabDetail
+          .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+              ConnectionIssuesBanner(connection: connection)
+              if let tabFailure {
+                TabFailureBanner(message: tabFailure) { self.tabFailure = nil }
+              }
             }
           }
-        }
-    }
+      }
+    )
     .environment(\.tabStatusDetails, TabAdapter.statusDetails(session))
     .environment(\.tabOverviewPresenter, overviewPresenter)
     .onAppear { overviewPresenter.open = { showsTabOverview = true } }
@@ -104,7 +106,7 @@ public struct ConnectedServerView: View {
     .background { PinnedSessionShortcuts(open: openPinnedSession) }
     .copyConfirmations()
     .environment(\.transcriptFocus, session.transcriptFocus)
-    .focusedSceneValue(\.tabCommands, tabCommandRelay.publish(tabs.commands))
+    .modifier(TabCommandsPublishing(tabs: tabs, relay: tabCommandRelay))
     .modifier(TabRestoration(session: session, context: tabContext) { restore($0) })
     .modifier(SessionTabsLifecycle(session: session))
     .modifier(NewTabOptionsLoading(session: session))
@@ -112,18 +114,12 @@ public struct ConnectedServerView: View {
     .onChange(of: selection) { _, current in session.tabs.show(current) }
     .onChange(of: session.tabs.page) { _, page in pageChanged(page) }
     .onChange(of: viewedSessionID) { report() }
-    // A background tab whose work settles gets the unread dot until it is shown.
-    .onChange(of: strip?.state.busyIDs ?? [], initial: true) { _, busy in
-      session.tabs.current?.noteBusy(busy)
-    }
+    .modifier(BusyTabsReport(tabs: tabs))
     .onChange(of: isWindowFocused) { report() }
     .task(id: connection.connectedServer?.baseUrl) {
       if connection.connectedServer != nil { await connection.loadOfferedPages() }
     }
-    .tabOverview(
-      isPresented: $showsTabOverview, state: strip?.state ?? TabsState(),
-      actions: strip?.actions ?? TabActions()
-    )
+    .modifier(WindowTabOverview(tabs: tabs, isPresented: $showsTabOverview))
     .alert(
       "Could Not Update the Session", isPresented: editErrorPresented,
       actions: { Button("OK") { connection.sessionList.dismissEditError() } },
@@ -142,6 +138,11 @@ public struct ConnectedServerView: View {
     .sessionRenamePrompt($sidebar.renamingFromTab, text: $sidebar.renameText) { summary, title in
       rename(summary.id, to: title)
     }
+  }
+
+  /// The strip's tabs for the shown session, read when the strip asks for them.
+  private func strip(of tabs: WindowTabs) -> (() -> TabStripContent)? {
+    tabs.store.map { store in { (tabs.state(store), renamable(tabs.actions(store))) } }
   }
 
   /// A chat tab's menu renames its session, as the session menu and Option-Command-R do.
@@ -295,8 +296,9 @@ extension ConnectedServerView {
         split: store?.splitState, actions: store.map(routes.actions) ?? TabActions()
       ) { pane in
         if keepsAlive {
+          // Each tab reads its own session, so one session's change leaves the other tabs alone.
           KeptAliveTabs(kept, shownID: shownID) { tab in
-            tabContent(tab, routes: routes)
+            ObservationScope("tab") { tabContent(tab, routes: routes) }
           }
         } else if let store, let tab = paneTab(pane, in: store) {
           tabContent(tab, routes: routes)

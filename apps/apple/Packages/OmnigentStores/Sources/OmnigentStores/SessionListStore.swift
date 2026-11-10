@@ -30,6 +30,8 @@ public final class SessionListStore {
   }
   /// The sessions matching ``searchText`` and ``filter``: pinned first, then most recent.
   public private(set) var visible: [SessionSummary] = []
+  /// Whether more than one session is shown, for views that need only that of the list.
+  public private(set) var hasSeveralVisible = false
   /// Sessions that need the user (``AttentionState/needsYou``), archived or not, in display
   /// order. Its count is ``attentionTotals``' `sessionsNeedingYou`. Kept current here, so the
   /// views reading it (the palette, the Inbox) cost nothing per read.
@@ -220,21 +222,55 @@ public final class SessionListStore {
   /// - Parameter sessionID: The session.
   /// - Returns: Its summary.
   public func session(_ sessionID: String) -> SessionSummary? {
-    sessionsByID[sessionID]
+    access(keyPath: summaryKey(sessionID))
+    return self[summaryOf: sessionID]
   }
 
   /// The parent of a sub-agent session, when the server reported one.
   /// - Parameter sessionID: The session.
   /// - Returns: The parent's id, or `nil` for a top-level (or unknown) session.
   public func parent(of sessionID: String) -> String? {
-    sessionsByID[sessionID]?.configuration?.parentId.flatMap { $0.isEmpty ? nil : $0 }
+    session(sessionID)?.configuration?.parentId.flatMap { $0.isEmpty ? nil : $0 }
   }
 
   /// The attention of `sessionID`; Idle for a session the list does not know.
   /// - Parameter sessionID: The session.
   /// - Returns: Its state and the pending decisions the caller can answer.
   public func attention(of sessionID: String) -> SessionAttention {
-    attentionByID[sessionID] ?? SessionAttention(state: .idle, requests: 0)
+    access(keyPath: attentionKey(sessionID))
+    return self[attentionOf: sessionID] ?? SessionAttention(state: .idle, requests: 0)
+  }
+
+  /// One session's summary and attention as the observation registrar knows them: a view that
+  /// read one session is not redrawn for another session's row.
+  private subscript(summaryOf sessionID: String) -> SessionSummary? { _sessionsByID[sessionID] }
+  private subscript(attentionOf sessionID: String) -> SessionAttention? {
+    _attentionByID[sessionID]
+  }
+
+  private func summaryKey(_ sessionID: String) -> KeyPath<SessionListStore, SessionSummary?> {
+    \.[summaryOf: sessionID]
+  }
+
+  private func attentionKey(_ sessionID: String) -> KeyPath<SessionListStore, SessionAttention?> {
+    \.[attentionOf: sessionID]
+  }
+
+  /// The sessions whose summary or attention a recompute changed.
+  private struct ChangedSessions {
+    var summaries: [String] = []
+    var attention: [String] = []
+  }
+
+  /// Applies `change` to the dictionaries, notifying the readers of each changed session.
+  private func notifying(_ changed: ChangedSessions, _ change: () -> Void) {
+    let summaries = changed.summaries.map(summaryKey)
+    let attention = changed.attention.map(attentionKey)
+    for keyPath in summaries { _$observationRegistrar.willSet(self, keyPath: keyPath) }
+    for keyPath in attention { _$observationRegistrar.willSet(self, keyPath: keyPath) }
+    change()
+    for keyPath in summaries { _$observationRegistrar.didSet(self, keyPath: keyPath) }
+    for keyPath in attention { _$observationRegistrar.didSet(self, keyPath: keyPath) }
   }
 
   func apply(_ change: SessionListChange) {
@@ -298,30 +334,19 @@ public final class SessionListStore {
       sessions: sessions, searchText: searchText, filter: filter, unreadIDs: unreadIDs)
     guard inputs != computedFrom else { return }
     computedFrom = inputs
+    let changed = computeAttention(of: sessions)
+    let attention = computedAttention.mapValues(\.attention)
     // Each assignment notifies every view that read the property, even with an equal value: the
     // sidebar, tab strip, menu bar and Dock would redraw for every server row.
-    if sessions != sessionsByID { sessionsByID = sessions }
+    notifying(changed) {
+      if sessions != sessionsByID { sessionsByID = sessions }
+      if attention != attentionByID { attentionByID = attention }
+    }
     let all = Array(sessions.values)
     let shown = filterSessions(sessions: all, text: searchText, filter: filter)
     if shown != visible { visible = shown }
-    // One core call per changed session, not one per known session for every row that arrives.
-    var computed: [String: ComputedAttention] = [:]
-    computed.reserveCapacity(sessions.count)
-    for (id, session) in sessions {
-      let isUnread = unreadIDs.contains(id)
-      if let previous = computedAttention[id], previous.isUnread == isUnread,
-        previous.session == session
-      {
-        computed[id] = previous
-      } else {
-        computed[id] = ComputedAttention(
-          session: session, isUnread: isUnread,
-          attention: sessionAttention(session: session, isUnread: isUnread))
-      }
-    }
-    computedAttention = computed
-    let attention = computed.mapValues(\.attention)
-    if attention != attentionByID { attentionByID = attention }
+    let several = shown.count > 1
+    if several != hasSeveralVisible { hasSeveralVisible = several }
     // Only the sessions that need the user go through the core, for its display order.
     let needing = sessions.values.filter { attention[$0.id]?.state == .needsYou }
     let ordered =
@@ -329,5 +354,34 @@ public final class SessionListStore {
     if ordered != needsResponse { needsResponse = ordered }
     let totals = OmnigentCoreFFI.attentionTotals(sessions: all, unreadIds: Array(unreadIDs))
     if totals != attentionTotals { attentionTotals = totals }
+  }
+
+  /// Computes each session's attention, one core call per changed session rather than one per
+  /// known session for every row that arrives.
+  /// - Returns: The sessions whose summary or attention changed, arrived or left.
+  private func computeAttention(of sessions: [String: SessionSummary]) -> ChangedSessions {
+    var computed: [String: ComputedAttention] = [:]
+    computed.reserveCapacity(sessions.count)
+    var changed = ChangedSessions()
+    for (id, session) in sessions {
+      let isUnread = unreadIDs.contains(id)
+      let previous = computedAttention[id]
+      if let previous, previous.isUnread == isUnread, previous.session == session {
+        computed[id] = previous
+        continue
+      }
+      let current = ComputedAttention(
+        session: session, isUnread: isUnread,
+        attention: sessionAttention(session: session, isUnread: isUnread))
+      computed[id] = current
+      if previous?.session != session { changed.summaries.append(id) }
+      if previous?.attention != current.attention { changed.attention.append(id) }
+    }
+    for id in computedAttention.keys where sessions[id] == nil {
+      changed.summaries.append(id)
+      changed.attention.append(id)
+    }
+    computedAttention = computed
+    return changed
   }
 }

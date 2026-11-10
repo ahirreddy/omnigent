@@ -54,8 +54,7 @@
   @Suite("Adaptive: the window's shell", .serialized)
   @MainActor
   struct AdaptiveShellTests {
-    private func shell(_ harness: ShellHarness, width: CGFloat = 1_100) -> OffscreenWindow<AnyView>
-    {
+    private func shell(_ harness: some View, width: CGFloat = 1_100) -> OffscreenWindow<AnyView> {
       OffscreenWindow(AnyView(harness), width: width, height: 700)
     }
 
@@ -113,8 +112,7 @@
     }
 
     /// A window with a titlebar, so the shell's toolbar has somewhere to go.
-    private func titled(_ harness: ShellHarness, width: CGFloat = 1_100) -> OffscreenWindow<AnyView>
-    {
+    private func titled(_ harness: some View, width: CGFloat = 1_100) -> OffscreenWindow<AnyView> {
       let screen = shell(harness, width: width)
       screen.window.contentView = nil
       screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
@@ -270,4 +268,51 @@
       #expect(reported == 2)
     }
   }
+
+  #if DEBUG
+    /// The sidebar's rows and the tabs a host holds, changed from the test.
+    @MainActor
+    @Observable
+    private final class HostContent {
+      var sidebar = SidebarFixture.state
+      var tabs = TabsState(tabs: [TabFixture.tab("a")], selectedID: "a")
+    }
+
+    /// A shell whose host hands it the sidebar and the tabs to read, as the connected window does.
+    private struct ReadingShellHarness: View {
+      let content: HostContent
+      let spy: SidebarSpy
+
+      var body: some View {
+        AppShell(
+          sidebar: { content.sidebar },
+          selection: Binding(get: { spy.selection }, set: { spy.selection = $0 }),
+          searchText: Binding(get: { spy.search }, set: { spy.search = $0 }), actions: spy.actions,
+          tabs: { (content.tabs, TabActions()) },
+          detail: { _ in Text("detail") })
+      }
+    }
+
+    extension AdaptiveShellTests {
+      @Test("A session's row renders the sidebar and a tab's title the strip, not the shell")
+      func hostStateRendersWhereItShows() throws {
+        let content = HostContent()
+        let screen = titled(
+          ReadingShellHarness(content: content, spy: SidebarSpy(SidebarFixture.state)))
+        defer { screen.close() }
+        let forRow = RenderTally.recording {
+          content.sidebar = SidebarViewState(
+            list: SessionListViewState(sessions: [SidebarFixture.beta]))
+          screen.settle(0.2)
+        }
+        #expect(forRow == ["sidebar": 1], "\(forRow)")
+        #expect(try !screen.shows("Gamma"))
+        let forTitle = RenderTally.recording {
+          content.tabs = TabsState(tabs: [TabFixture.tab("b")], selectedID: "b")
+          screen.settle(0.2)
+        }
+        #expect(forTitle == ["strip": 1, "tab controls": 1], "\(forTitle)")
+      }
+    }
+  #endif
 #endif
