@@ -45,6 +45,8 @@ extension InputTranslator {
     if modifiers.contains(.alt) { flags.insert(.option) }
     if modifiers.contains(.command) { flags.insert(.command) }
     if modifiers.contains(.capsLock) { flags.insert(.capsLock) }
+    // Globe is not on the wire; the key-down that was sent says whether it was held.
+    if template?.modifierFlags.contains(.function) == true { flags.insert(.function) }
     let characters =
       template?.characters ?? String(decoding: character == 0 ? [] : [character], as: UTF16.self)
     let unmodified =

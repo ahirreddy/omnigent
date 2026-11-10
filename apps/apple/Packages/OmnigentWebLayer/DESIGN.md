@@ -254,6 +254,20 @@ Modifiers map to `cef_event_flags_t`, including held mouse buttons, which CEF ne
 3. The client rebuilds an NSEvent, reusing the original event's characters when it has them, and
    dispatches it to `NSApp.mainMenu.performKeyEquivalent`, then to the responder chain.
 
+The host returns every unconsumed key-down, and a text field leaves the RawKeyDown of each typed
+character unconsumed (the Char inserts the text). `UnhandledKeyRouting` therefore decides what
+step 3 does:
+
+- A key that only types (a printable character without Command, Control or Globe) stops there.
+  AppKit never offers such a key as a key equivalent, and `NSMenu.performKeyEquivalent` called
+  directly runs the system's Globe items for it: a plain E opens Emoji & Symbols, D starts
+  dictation, F enters full screen.
+- NSMenu ignores Globe when matching, so a chord that matches a Globe item (Control-C against
+  Window > Center) skips the main menu unless Globe was held. Globe is not on the wire; the
+  rebuilt event takes it from the key-down that was sent.
+- Everything else (Command and Control chords, Escape, Return, arrows, function keys) goes to the
+  window, the main menu and the responder chain as above.
+
 The `keys` proof shows Cmd+Shift+U reaching a menu item after the page declined it.
 
 **IME and dead keys (1.1).** `WebSurfaceView` is an `NSTextInputClient`, on the model of

@@ -58,6 +58,24 @@ final class SilentResponder: NSResponder {
   override func noResponder(for eventSelector: Selector) {}
 }
 
+/// A page's surface in a far-offscreen window, with a responder after it that counts keys.
+@MainActor
+struct HostedSurface {
+  let fixture = ProtocolFixture()
+  let surface: WebSurfaceView
+  let window: NSWindow
+  let sink = SilentResponder()
+
+  init(window: NSWindow = Offscreen.window()) {
+    self.window = window
+    window.setFrameOrigin(CGPoint(x: -60_000, y: -60_000))
+    surface = WebSurfaceView(webView: fixture.webView)
+    window.contentView = surface
+    unsafe surface.nextResponder = sink
+    fixture.sent.removeAll()
+  }
+}
+
 /// What AppKit passes while a drag hovers over a view, without starting one.
 final class FakeDragInfo: NSObject, NSDraggingInfo {
   let draggingPasteboard: NSPasteboard

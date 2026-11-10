@@ -108,7 +108,9 @@ struct WebSurfaceViewTests {
     window.makeFirstResponder(surface)
     #expect(surface.performKeyEquivalent(with: event))
     // The page gave it back: the app's menus and the responder chain see it.
-    try fixture.receive(.keyUnhandled, WireEncoder().u64(.nativeKeyCode, 0))
+    try fixture.receive(
+      .keyUnhandled,
+      WireEncoder().u64(.nativeKeyCode, 0).u64(.modifiers, InputModifiers.command.rawValue))
     #expect(host.sink.keyDowns == 1)
     window.contentView = nil
   }

@@ -230,6 +230,9 @@ class WebSurfaceView: NSView {
   }
 
   private func redispatch(_ event: NSEvent) {
+    // The host returns every key-down the page did not consume, typed characters included.
+    // AppKit never treats those as shortcuts, and neither does this.
+    guard !UnhandledKeyRouting.typesText(event) else { return }
     redispatching = true
     defer { redispatching = false }
     // The window first, as AppKit orders key equivalents: shortcuts of SwiftUI controls in the
@@ -238,7 +241,9 @@ class WebSurfaceView: NSView {
     {
       return
     }
-    if NSApp.mainMenu?.performKeyEquivalent(with: event) == true {
+    if let menu = NSApp.mainMenu, UnhandledKeyRouting.mayOffer(event, to: menu),
+      menu.performKeyEquivalent(with: event)
+    {
       return
     }
     unsafe nextResponder?.keyDown(with: event)
