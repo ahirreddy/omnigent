@@ -30,13 +30,11 @@ Everything else is "match the web".
   under `apps/apple/Apps/`, and the playground captures
   `/private/tmp/claude-502/playground*.png` and `ui-*.png`.
 
-One important fact about native today: none of the conversation, list,
-composer, new-session, decision or inspector views are mounted by an app
-target. `Apps/Omnigent-iOS/Sources/OmnigentApp.swift:11` and
-`Apps/Omnigent-macOS/Sources/ServerWindowRoot.swift:36` render only
-`OmnigentUI/Root/RootView.swift`, which is a server list, a connect form and a
-placeholder detail ("Transcripts are not available in this build yet."). The
-components exist and render in the playground, gallery and previews only. In
+One important fact about "native today" in this doc: it was written when the
+app targets mounted only a placeholder root (a server list, a connect form and
+a placeholder detail), and the conversation, list, composer, new-session,
+decision and inspector views rendered in the playground, gallery and previews
+only. The apps now mount them through `OmnigentAppUI`'s `ServerRootView`. In
 this doc, "native has X" means the component exists. It does not mean the
 component ships.
 
@@ -488,9 +486,8 @@ Native today:
   list | detail (`UC/Gallery/PlaygroundView.swift:279-301`, `playground.png`).
   The inspector is a grouped `Form` of session facts, not tabs
   (`UC/Inspector/SessionInspectorView.swift:27-227`).
-- The apps use a 3-column server, connect, placeholder split
-  (`OmnigentUI/Root/RootView.swift:27-64`), one window per server on Mac
-  (`ServerWindowRoot.swift:17-55`).
+- When this was written, the apps used a 3-column server, connect,
+  placeholder split, one window per server on Mac (`ServerWindowRoot.swift`).
 
 Changes needed:
 

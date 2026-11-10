@@ -636,9 +636,8 @@ when `==` says so, and a field `==` leaves out is a stale view waiting.
 (any key, any writer); a key without one renders it for that key only. Keys with a dot that
 views still read: `composer.submitWithCommandReturn` (`InboxRow`, `KeyboardShortcutsSheet`,
 the settings pane), `omnigent.inbox.filter` (`InboxView`), `workspace.fileViewMode` and
-`workspace.showsComments` (`FileViewerView`), `omnigent.serverURL` (`ConnectView`,
-`SettingsView`). The inbox and the file viewer are the two worth moving behind a reader like
-`ComposerPreferencesReader`, each inbox row and each open file renders for any write; the
+`workspace.showsComments` (`FileViewerView`). The inbox and the file viewer are the two worth
+moving behind a reader like `ComposerPreferencesReader`, each inbox row and each open file renders for any write; the
 chat no longer does. All other keys use a colon.
 
 ### Rules this pass relied on
