@@ -165,7 +165,8 @@ enum TestHost {
   struct LaunchWork {
     /// Reuses or starts the local server.
     let startLocalServer: () -> Void
-    /// Runs a chaos walk or script when the launch asks for one (Debug builds).
+    /// Starts the stall watch, and a chaos walk or script when the launch asks for one (Debug
+    /// builds).
     let startChaos: () -> Void
     /// Starts the updater's scheduled checks.
     let startUpdater: () -> Void

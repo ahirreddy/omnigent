@@ -99,6 +99,7 @@ public struct TranscriptView: View {
       .scrollDismissesKeyboard(.interactively)
       .onScrollPhaseChange { _, phase in
         let scrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+        if scrolling || follow.isUserScrolling { scroll.readerMoved() }
         if follow.scrollPhaseChanged(isUserScrolling: scrolling) {
           proxy.scrollTo(Self.bottomID, anchor: .bottom)
         }
@@ -110,22 +111,25 @@ public struct TranscriptView: View {
         if old.isNearBottom != new.isNearBottom {
           follow.geometryChanged(isNearBottom: new.isNearBottom)
         }
+        if old.width != new.width { scroll.widthChanged(to: new.width) }
         // A rotation or resize lays the rows out again: a reader at the bottom stays there, one
         // reading earlier keeps what was at the middle of the screen on screen.
         if new.keepsBottom(after: old) {
           scroll.cancelRestore()
-          proxy.scrollTo(Self.bottomID, anchor: .bottom)
+          if scroll.allowsScroll("keeps bottom", keepsBottom: true) {
+            proxy.scrollTo(Self.bottomID, anchor: .bottom)
+          }
         } else if old.width > 0, old.width != new.width {
           scroll.restoreReading(from: old.width, to: new.width)
         }
       }
       // The one scroll path while following: new output and late-sizing rows both grow the
-      // content. A revision only updates the follow state.
+      // content. A revision only updates the follow state and pays for those scrolls.
       .onScrollGeometryChange(for: CGFloat.self) { geometry in
         geometry.contentSize.height
       } action: { previous, current in
         scroll.probe("transcript content height", "\(previous) -> \(current), \(follow)")
-        if current > previous, follow.layoutGrew(), scroll.follows(current, from: previous) {
+        if scroll.contentHeightChanged(current, from: previous) {
           proxy.scrollTo(Self.bottomID, anchor: .bottom)
         }
       }
@@ -135,7 +139,7 @@ public struct TranscriptView: View {
         $0.contentInsets.bottom
       } action: { old, new in
         scroll.probe("transcript dock inset", "\(old) -> \(new)")
-        if new > old, follow.layoutGrew() { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+        if scroll.dockChanged(new, from: old) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
       }
       .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.01) { ids in
         scroll.probe("transcript visible rows", "\(ids.count): \(ids.prefix(3)) ...")
@@ -156,6 +160,7 @@ public struct TranscriptView: View {
       .modifier(messageFocus(proxy))
       .task(id: state.header.id) {
         follow.reset()
+        scroll.readerMoved()
         position.reset()
         // Lazy rows size themselves after the first layout; anchor once they have.
         await Task.yield()
@@ -194,7 +199,10 @@ public struct TranscriptView: View {
     // Rows reporting the reading anchor restore it through this body's proxy.
     scroll.scrollToRow = { proxy.scrollTo($0, anchor: $1) }
     return TranscriptRowEvents(
-      revisionChanged: { _ = follow.contentChanged() },
+      revisionChanged: {
+        scroll.contentChanged()
+        _ = follow.contentChanged()
+      },
       firstRowChanged: { holdReadingPosition(proxy) },
       ownMessageChanged: { previous, latest in
         // The reader's own new message takes them to the latest, wherever they were reading.
@@ -241,6 +249,7 @@ public struct TranscriptView: View {
 
   /// Older rows landed above: put the row that was on top back at the top.
   private func holdReadingPosition(_ proxy: ScrollViewProxy) {
+    scroll.firstRowChanged()
     guard position.awaitsPage else { return }
     position.awaitsPage = false
     if let anchor = position.prependAnchor, !position.seeksTop {
@@ -251,6 +260,7 @@ public struct TranscriptView: View {
   /// Jump to top pages in the rest of the history first, as the web does.
   private func jumpToTop(_ proxy: ScrollViewProxy) {
     follow.readEarlier()
+    scroll.jumped(to: Self.topID)
     if state.hasMoreHistory, actions.loadOlder != nil {
       position.seeksTop = true
       loadOlder()
@@ -288,6 +298,7 @@ public struct TranscriptView: View {
       return
     }
     follow.readEarlier()
+    scroll.jumped(to: target)
     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
       proxy.scrollTo(target, anchor: .top)
     }
@@ -295,11 +306,14 @@ public struct TranscriptView: View {
 
   private func jumpToLatest(_ proxy: ScrollViewProxy) {
     follow.jumpToLatest()
+    scroll.jumped(to: Self.bottomID)
     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
       proxy.scrollTo(Self.bottomID, anchor: .bottom)
     }
   }
+}
 
+extension TranscriptView {
   /// The transcript after turn folding.
   static func segments(for state: ConversationViewState) -> [TurnSegment] {
     TurnLayout.segments(
@@ -318,15 +332,14 @@ public struct TranscriptView: View {
   static func lastAnswerID(_ rows: [Row]) -> String? {
     rows.last { $0.role == .assistant && !$0.isStreaming && !$0.text.isEmpty }?.id
   }
-}
 
-extension TranscriptView {
   /// The turn rail at the leading edge: a tick scrolls to its turn and flashes it.
   private func turnRail(_ proxy: ScrollViewProxy) -> TurnRailOverlay {
     TurnRailOverlay(
       model: rail,
       jump: { id in
         follow.readEarlier()
+        scroll.jumped(to: id)
         focus?.flash(id)
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
           proxy.scrollTo(id, anchor: .top)
@@ -358,6 +371,7 @@ extension TranscriptView {
       show: { target in
         position.prependAnchor = nil
         follow.readEarlier()
+        scroll.jumped(to: target)
         proxy.scrollTo(target, anchor: .center)
       })
   }
@@ -381,19 +395,5 @@ extension TranscriptView {
       return  // Cancelled: another session opened, and its own task frames it.
     }
     follow.frameLandingWaitEnded()
-  }
-}
-
-struct TranscriptItemView: View {
-  let item: TranscriptItem
-  let decorations: [String: MessageDecoration]
-
-  var body: some View {
-    switch item {
-    case .message(let row):
-      MessageRowView(row: row, decoration: decorations[row.id] ?? MessageDecoration())
-    case .tools(_, let entries): ToolGroupView(entries: entries)
-    case .activity(let row): ActivityRowView(row: row)
-    }
   }
 }
