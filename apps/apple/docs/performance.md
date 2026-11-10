@@ -582,8 +582,9 @@ markdown, composer, sidechat.
 | A session chosen in the sidebar; one the window shows by itself; back to a kept one | as a session switch, with screen, transcript and rows 2 |
 | Back to a session that closed | as a session switch, with tab 3 |
 | Another session opening or closing behind the window | nothing |
-| A page without a session; one the tab model shows by itself | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 2, transcript 2, rows 2, composer 2 and 1; no strip, no row, no markdown, and the chats' scroll views are the same objects |
+| A page without a session; one chosen in the sidebar; one the tab model shows by itself | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 2, transcript 2, rows 2, composer 2, 1 and 1; no strip, no row, no markdown, and the chats' scroll views are the same objects |
 | Back from a page without a session | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 3, transcript 3, rows 3, composer 1, strip 2, tab controls 1; no row, no markdown, and the chats' scroll views are the same objects |
+| A session chosen in the sidebar over a page; one the tab model shows by itself over a page | as back from a page, with composer 2, strip 1 and tab 3: 2, or 3 when SwiftUI runs the leaving page's body once more (see "Left as it is") |
 | Sidebar search text set; typed into the field; cleared | sidebar 1-2, session row 2-6, search field 1-2 |
 | A sidebar filter; a page of sessions loaded; an empty last page | sidebar 1, session row 2-4 |
 | A window resize step; a sidebar divider step | strip 1 |
@@ -675,8 +676,9 @@ chat no longer does. All other keys use a colon.
   The choice sets the host's selection and the tab model's page together, so the page's tab
   leaves in the pass that renders the window, and in some of those passes SwiftUI runs the
   leaving tab's body again with its old content. A session the tab model shows by itself
-  over a page does the same (4 of 25). A switch that reaches the window as the host's
-  selection alone never did (75 of 75), and that is the one with a budget.
+  over a page does the same (4 of 25). Both have a budget with tab 3 as its ceiling, so a
+  second window render there still fails. A switch that reaches the window as the host's
+  selection alone never did (75 of 75); its budget is tab 2.
 - **A session switch** still builds the new session's tabs and renders the window once; the
   first pass of opening another session is 150-170 ms, most of it the new chat's first
   layout.

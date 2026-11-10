@@ -15,7 +15,7 @@ import Testing
   nonisolated extension WindowInteraction {
     /// The budget table: every interaction the window is held to.
     static let all: [WindowInteraction] =
-      sessionRows + chat + navigation + sidebar + layout + preferences
+      sessionRows + chat + navigation + pages + sidebar + layout + preferences
 
     /// The server's news about one session.
     private static let sessionRows: [WindowInteraction] = [
@@ -239,56 +239,6 @@ import Testing
           #expect(window.session.terminals(of: BudgetWindow.another) == nil)
           let text = try await window.text(afterReply: "Alpha goes on", in: BudgetWindow.shown)
           #expect(text.contains("Alpha goes on"), "the shown chat still draws: \(text)")
-        }),
-      WindowInteraction(
-        name: "a page without a session",
-        budget: [
-          "composer": 2, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
-          "sidebar": 1, "tab": 2, "transcript": 2, "window": 1,
-        ],
-        prepare: { $0.noteScrollViews() },
-        perform: { $0.selection.page = .usage },
-        verify: { window in
-          let toolbar = try window.screen.toolbarText()
-          #expect(!toolbar.contains("Alpha"), "no strip over a page: \(toolbar)")
-          #expect(!window.notes.scrollViews.isEmpty, "the chats had scroll views to keep")
-          #expect(window.rebuiltScrollViews == 0, "the chats stay built under the page")
-        }),
-      WindowInteraction(
-        name: "back from a page without a session",
-        budget: [
-          "composer": 1, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
-          "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 1, "transcript": 3, "window": 1,
-        ],
-        prepare: { window in
-          window.noteScrollViews()
-          window.selection.page = .usage
-          window.screen.settle(0.3)
-        },
-        perform: { $0.selection.page = .session(BudgetWindow.shown) },
-        verify: { window in
-          let toolbar = try window.screen.toolbarText()
-          #expect(toolbar.contains("Alpha"), "the strip's tab is back: \(toolbar)")
-          let text = try window.screen.shownText()
-          #expect(text.contains("Alpha reply"), "the chat that was kept behind: \(text)")
-          #expect(window.rebuiltScrollViews == 0, "the same chat, not one built again")
-        }),
-      WindowInteraction(
-        name: "a page the tab model shows by itself",
-        budget: [
-          "composer": 1, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
-          "sidebar": 1, "tab": 2, "transcript": 2, "window": 1,
-        ],
-        perform: { $0.session.tabs.show(.usage) },
-        verify: { window in
-          #expect(window.selection.page == .usage, "the host's selection follows")
-          let toolbar = try window.screen.toolbarText()
-          #expect(!toolbar.contains("Alpha"), "no strip over a page: \(toolbar)")
-          // The strip follows the host's selection, which follows the tab model back as well.
-          window.session.tabs.show(.session(BudgetWindow.shown))
-          window.screen.settle(0.3)
-          let shown = try window.screen.toolbarText()
-          #expect(shown.contains("Alpha"), "the strip's tab is back: \(shown)")
         }),
     ]
 
