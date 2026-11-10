@@ -246,16 +246,19 @@ struct LayoutScrollBudgetTests {
 
   @Test("Content, the reader and a new viewport size each pay for more scrolls")
   func causes() {
-    let (state, _) = state(perCause: 1, perTurn: 10)
+    let (state, scrolls) = state(perCause: 1, perTurn: 10)
+    state.rowWidthOffered(900)
     #expect(state.allowsScroll("content height", keepsBottom: true))
     #expect(!state.allowsScroll("content height", keepsBottom: true))
     state.contentChanged()
     #expect(state.allowsScroll("content height", keepsBottom: true))
     state.readerMoved()
     #expect(state.allowsScroll("content height", keepsBottom: true))
-    state.widthChanged(to: 640)
-    #expect(state.allowsScroll("keeps bottom", keepsBottom: true))
-    #expect(!state.allowsScroll("keeps bottom", keepsBottom: true))
+    #expect(scrolls().isEmpty)
+    // A new width pays for the scroll that takes the rows to it.
+    state.rowWidthOffered(640)
+    #expect(scrolls() == ["\(TranscriptView.topID) 0.0"])
+    #expect(!state.allowsScroll("content height", keepsBottom: true))
     returnToRunLoop()
   }
 
@@ -271,32 +274,6 @@ struct LayoutScrollBudgetTests {
     state.follow.readEarlier()
     #expect(!state.contentHeightChanged(900, from: 800))
     #expect(!state.dockChanged(140, from: 100))
-    returnToRunLoop()
-  }
-
-  private func anchor(_ id: String, width: CGFloat) -> TranscriptReadingAnchor {
-    TranscriptReadingAnchor(
-      id: id, fraction: 0.5, rowHeight: 100, viewportWidth: width, viewportHeight: 300)
-  }
-
-  @Test("A width change with the budget spent leaves the reading position alone")
-  func restoreRefused() {
-    let (state, scrolls) = state(perCause: 2, perTurn: 10)
-    state.record(anchor("row", width: 900))
-    state.restoreReading(from: 900, to: 400)
-    #expect(scrolls() == ["row 0.5"])
-    // The row's height at the new width finishes the restore with the last scroll paid for.
-    state.record(anchor("row", width: 400))
-    #expect(scrolls().count == 2)
-
-    state.restoreReading(from: 400, to: 900)
-    #expect(scrolls().count == 2)
-    state.contentChanged()
-    state.restoreReading(from: 400, to: 900)
-    #expect(state.allowsScroll("content height", keepsBottom: false))
-    // The restore still waits for the row, and finds the budget spent.
-    state.record(anchor("row", width: 900))
-    #expect(scrolls().count == 3)
     returnToRunLoop()
   }
 }

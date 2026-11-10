@@ -22,9 +22,10 @@
   private struct ResizedTranscriptHost: View {
     let conversation: LiveConversation
     let width: PaneWidth
+    var actions = ConversationActions()
 
     var body: some View {
-      LiveTranscriptHost(conversation: conversation, actions: ConversationActions())
+      LiveTranscriptHost(conversation: conversation, actions: actions)
         .frame(width: width.value)
     }
   }
@@ -62,14 +63,17 @@
             "a\(turn)", answer.joined(separator: "\n\n"), responseID: "r\(turn)"),
         ]
       }
-      return LiveConversation(ConversationViewState(header: TranscriptFixture.header, rows: rows))
+      var state = ConversationViewState(header: TranscriptFixture.header, rows: rows)
+      state.hasMoreHistory = true
+      return LiveConversation(state)
     }
 
     /// The conversation open in a narrow pane, at its end as opening leaves it.
-    private func narrowPane(_ width: PaneWidth) async throws -> OffscreenWindow<AnyView> {
-      let window = transcriptScreen(
-        ResizedTranscriptHost(conversation: session(), width: width), width: Self.wide,
-        height: Self.height)
+    private func narrowPane(
+      _ width: PaneWidth, actions: ConversationActions = ConversationActions()
+    ) async throws -> OffscreenWindow<AnyView> {
+      let host = ResizedTranscriptHost(conversation: session(), width: width, actions: actions)
+      let window = transcriptScreen(host, width: Self.wide, height: Self.height)
       window.settle(0.5)
       try await letTasksRun(window, milliseconds: 600)
       return window
@@ -95,18 +99,30 @@
     @Test("Widening the pane of a reader mid-conversation builds the rows on screen, not the rest")
     func wideningMidConversationBuildsVisibleRows() async throws {
       let width = PaneWidth(Self.narrow)
-      let window = try await narrowPane(width)
+      let log = HostLog()
+      var actions = ConversationActions()
+      actions.loadOlder = { log.add("older") }
+      let window = try await narrowPane(width, actions: actions)
       defer { window.close() }
       let viewport = TranscriptScrollDriver(screen: window)
+      // A reader who scrolled up, which is what stops following.
+      let scroll = try #require(viewport.scrollView)
+      window.liveScroll(scroll, began: true)
       viewport.move(to: viewport.maximumOffset / 2)
+      window.liveScroll(scroll, began: false)
       try await letTasksRun(window, milliseconds: 300)
+      let before = viewport.fractionRead
 
       let widening = RenderTally.recording {
         width.value = Self.wide
         window.settle(0.5)
       }
-      // Three screens: what was on screen, and what the new width brings into view.
+      // Three screens: the first rows, where the rows take the width, and the reader's own.
       #expect(widening["row", default: 0] <= 3 * Self.rowsOnScreen)
+      // The turns are much alike, so the same place is the same share of the conversation.
+      #expect(abs(viewport.fractionRead - before) < 0.1)
+      // The rows' trip to the top is not a reader asking for older history.
+      #expect(log.entries.isEmpty)
     }
   }
 #endif

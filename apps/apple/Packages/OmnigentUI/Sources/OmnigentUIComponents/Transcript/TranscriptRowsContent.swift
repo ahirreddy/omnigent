@@ -74,6 +74,7 @@ struct TranscriptRowsContent<Header: View>: View {
     }
     .scrollTargetLayout()
     .padding(.vertical, Theme.Spacing.extraLarge)
+    .modifier(HeldRowWidth())
     // CLI rows set their own column, so user bands reach the edges.
     .transcriptStackColumn()
     .onChange(of: state.revision) { _, _ in events.revisionChanged() }
