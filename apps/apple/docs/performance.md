@@ -698,10 +698,10 @@ chat no longer does. All other keys use a colon.
   15 ms, each for a whole run of the same binary) go with the state of the processor core
   the main thread is given: a fixed loop of arithmetic timed beside the keys changes level
   with them. Nothing the app renders differs between the levels.
-- **One window resize step in 40 costs 440-580 ms** in Release once the chats behind have
-  been scrolled and switched, before this pass and after it. The full run before hides it:
-  its page visit builds every chat again first. The cause is known and it is not fixed; see
-  "The slow resize step" below.
+- **One window resize step in 40 cost 440-580 ms** in Release once the chats behind had
+  been scrolled and switched, before this pass and after it. The full run before hid it:
+  its page visit builds every chat again first. It now costs 131-156 ms, and the steps
+  around it pay for that; see "The slow resize step" below.
 - **A widening window step costs twice a narrowing one** at the same widths (57 against
   28 ms in Release, where no row changes width). In one sampled step, 25 of 45 samples are
   `NSToolbarView layout` adding an item's view again and the SwiftUI toolbar item updating
@@ -714,47 +714,76 @@ chat no longer does. All other keys use a colon.
 
 A reader at the end of a long chat whose last row is very tall (a streamed answer of
 2056 pt here) resizes the window through the widths where the rows change width (a pane
-under 768 pt). One step of the first pass over those widths takes 440-580 ms; the same step
-of the next pass 155-210 ms; the steps around it 60-145 ms. It is the second step of the
-rows narrowing in one build (443-543 ms in five runs) and the last step of their widening
-in another (579 and 580 ms in two runs).
+under 768 pt). One step of the first pass over those widths took 440-580 ms; the steps
+around it 60-145 ms.
 
-It is one layout of the shown transcript's lazy stack: `NSWindow _setFrameCommon`,
+It was one layout of the shown transcript's lazy stack: `NSWindow _setFrameCommon`,
 `NSHostingView.layout`, one `LazySubviewPlacements` update, `LazyStack.place` (330 of 416
-samples), which builds and measures 152 rows in that pass. The kept chats behind are not
-it: with one chat fewer the step is 540 ms.
+samples), which built and measured 152 rows in that pass.
 
 A new row width sends the transcript to its top, where the rows take the width, and a
-reader who was at the end is then returned to the bottom marker by id
-(`TranscriptScrollState.endPassage`). The lazy stack estimates its length as the average
+reader who was at the end is then returned there (`TranscriptScrollState.endPassage`). The
+return went to the bottom marker by id. The lazy stack estimates its length as the average
 height of the rows it has measured times the row count. After a landing at the end it has
 measured the first few rows and the last few, so with a very tall last row the estimate is
-two to three times the real length (155732 pt for about 62000). In most steps the estimate
-has fallen back to the top rows' average by the time of the return, and the stack lands on
-the last rows directly (9 rows built or fewer). In the slow step it has not: the stack
-picks its first row by the inflated average, places it by the top rows' average and builds
-every row from there to the viewport. It goes with the composer's dock changing height with
-the width, on that step or the one after. A chat without a very tall last row has no such
+two to three times the real length (155732 pt for about 62000). When the return finds the
+stack's estimates disagreeing, the stack picks its first row by the inflated average, places
+it by the top rows' average and builds every row from there to the viewport. It went with
+the composer's dock changing height with the width, but no rule says ahead which step it
+is: a return by id on the steps where the dock keeps its height moves the walk to another
 step.
 
-To see it without the app: 150 turns and a very tall last row in a transcript with a bottom
-bar whose height changes with the width, the reader at the end, the pane going from 900 pt
-down 12 pt a step and back. One step of the first pass builds 211 rows (305 ms in Debug
-against 22-88 ms for the others).
+The return now goes by the content's edge (`ScrollPosition.scrollTo(edge: .bottom)`), which
+builds the rows at the end alone, and from the edge to the bottom marker, 24 pt above it,
+where every other scroll to the end rests. The edge is let go of there: held, it would keep
+the scroll view at the end through every later change.
 
-What was tried, in a copy of the package, and why none of it is in:
+SwiftUI runs a scroll geometry's action once a layout pass, with the first change of that
+pass. A scroll view that leaves the end and is back within one pass, as on every such
+return, never reports being back, and a transcript that listened to the action took itself
+to be away from the end: it repeated its return scroll eight times a step and stopped
+following. The geometry's transform runs for every geometry SwiftUI computes, so the
+transcript now keeps what the transforms last saw (`TranscriptEnd`: away from the end, on
+the bottom row or at the edge, and near the bottom or not) and acts on it when an action
+runs and, for what no action reported, when the main thread returns to its run loop.
 
-- Returning with `ScrollPosition.scrollTo(edge: .bottom)` in place of the marker's id lands
-  without the walk (5-6 rows built; the slowest step 167-191 ms in Release). SwiftUI then
-  does not run the scroll geometry actions for where the scroll view comes to rest, so the
-  transcript takes itself to be away from the end: every later step repeats its return
-  scroll eight times (the steps that change row width go from 68-100 to 105-167 ms, two
-  passes from 5142 to 5551-5656 ms) and following stays off after a resize.
-- Keeping the scroll view pinned to its bottom edge rests the transcript 24 pt lower.
+In Release, the twelve steps of the first pass that change the rows' width
+(`PERF_ONLY=streaming,resize-window PERF_STEPS=1 PERF_REPEAT=2`, two runs of each build on a
+loaded machine, a step with the work it leaves behind):
+
+| | Before | After |
+| --- | --- | --- |
+| The slow step | 576-586 ms | 140-156 ms |
+| The eleven other row-width steps | 59-129 ms | 72-148 ms |
+| Two passes, 80 steps | 4744, 4950 ms | 4970, 4663 ms |
+
+The slow step is gone and two passes cost the same, but **a steady row-width step is slower
+than it was**, by 1 to 58 ms and 27 ms in the middle: the shown transcript and each kept
+one place their rows two or three times in a step (the top, the edge, the bottom row) where
+a return by id that landed placed them once.
+
+`TranscriptEdgeReturnTests` holds it without the app: 150 turns and a very tall last row
+over a bottom bar whose height changes with the width, the reader at the end, the pane going
+from 900 pt down 12 pt a step and back. Every step builds at most 11 rows where one built
+225, commits every frame with the last line where opening the chat left it, and scrolls
+back at most five times of the eight it may.
+
+What else was tried for the return, in a copy of the package, and why none of it is in:
+
+- Holding the edge until the step's end scrolls once a step, and commits two frames in
+  every step, 24 pt apart.
+- Going to the bottom marker with `ScrollPosition.scrollTo(id:)` lands as the edge does and
+  costs the same.
+- Letting go of the edge when the bottom marker is among the visible rows: that action does
+  not run for the landing either.
+- Giving the rows their width in place while the edge holds the end builds 132 rows in a
+  step and commits frames away from the end.
 - Scrolling to the last row, scrolling twice and scrolling one pass later build the same
-  rows.
+  rows as the return by id.
 
-What is left: finding the end without the geometry action, so the return can go by edge;
+What is left for the steady steps: rows without their 24 pt of padding below, so the edge
+is where the transcript rests and one scroll returns to it, which changes how far a reader
+can scroll past the last row; holding a hidden kept chat's row width until it is shown;
 holding the row width through a live resize and taking it once at its end, which the user
 would see; a stack laid out from its bottom.
 
@@ -787,8 +816,9 @@ resize; a turn rail jump after Reduce Motion changes.
   (`NSHostingView.layout`, with the titlebar's toolbar layout about a tenth of it), 50-80 ms per
   step in Debug under load. Toggling the sidebar or the right panel animates the same relayout.
   Text measuring is under 1% of a resize, so a fixed-width transcript column would not help.
-  With a long chat that ends in a very tall row, one step of a resize through the widths
-  where rows change width takes about half a second (see "The slow resize step").
+  Through the widths where rows change width a step costs 72-156 ms, the price of a long
+  chat that ends in a very tall row no longer taking half a second in one of them (see
+  "The slow resize step").
 - While a reply streams, each paced render still costs 10-15 ms in Debug, spread over SwiftUI's
   graph update, the lazy stack's layout and the text overlays.
 - A changed session-list row still sends every session through the core twice (filter and
