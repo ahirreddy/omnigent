@@ -40,10 +40,28 @@ import Testing
               sessionId: BudgetWindow.other, environmentId: "default", update: .loaded(files: [])))
         },
         verify: { window in
-          // Sessions can share a workspace, so the shown chat's panel asks for its changes again.
-          let asked = window.server.http.requests.dropFirst(window.notes.requests).map(\.url)
-          let changes = "/v1/sessions/\(BudgetWindow.shown)/resources/environments/default/changes"
-          #expect(asked.contains { $0.hasSuffix(changes) }, "\(asked)")
+          // Each session works in a directory of its own, so no kept chat asks for its changes.
+          let asked = window.changesAsked()
+          #expect(asked.isEmpty, "\(asked)")
+          let text = try window.screen.shownText()
+          #expect(text.contains("Alpha reply"), "the chat still draws: \(text)")
+        }),
+      WindowInteraction(
+        name: "a file changes in a session that shares the shown chat's workspace",
+        budget: [:],
+        prepare: { window in
+          try window.change(BudgetWindow.other) { $0.workspace = "/work/\(BudgetWindow.shown)" }
+          window.screen.settle(0.3)
+          window.notes.requests = window.server.http.requests.count
+        },
+        perform: { window in
+          window.session.connection.apply(
+            .changedFiles(
+              sessionId: BudgetWindow.other, environmentId: "default", update: .loaded(files: [])))
+        },
+        verify: { window in
+          let asked = window.changesAsked()
+          #expect(asked == [BudgetWindow.shown], "the chat in that directory, and no other")
           let text = try window.screen.shownText()
           #expect(text.contains("Alpha reply"), "the chat still draws: \(text)")
         }),

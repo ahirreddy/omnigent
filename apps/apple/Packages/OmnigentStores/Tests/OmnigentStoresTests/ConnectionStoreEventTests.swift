@@ -159,6 +159,6 @@ struct ConnectionStoreEventTests {
     #expect(store.updatesLink == .live)
     store.apply(
       .changedFiles(sessionId: "x", environmentId: "default", update: .unavailable(message: "x")))
-    #expect(store.changedFilesRevision == 1)
+    #expect(store.fileChanges(in: "x") == 0, "no workspace of it is open")
   }
 }

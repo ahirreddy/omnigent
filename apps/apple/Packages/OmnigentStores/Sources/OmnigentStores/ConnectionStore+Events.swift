@@ -66,7 +66,7 @@ extension ConnectionStore {
     switch event {
     case .changedFiles(let id, let environment, let update):
       workspaceStores[id]?.changedFilesInvalidated(environmentID: environment, update: update)
-      changedFilesRevision += 1
+      countFileChange(in: id)
     case .credentialRotated(let expiresAt):
       credentialExpiresAtMs = expiresAt
       credentialRotations += 1

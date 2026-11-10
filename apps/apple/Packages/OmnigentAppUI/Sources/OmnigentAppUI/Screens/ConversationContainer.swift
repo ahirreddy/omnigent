@@ -16,7 +16,8 @@ struct ConversationContainer: View {
   let workspace: WorkspaceBrowserModel?
   /// The right panel's server data (panel features, pull requests).
   let panel: SessionPanelStore?
-  /// The connection's count of file changes, read by ``ChangedFilesFollower`` and not here.
+  /// The file changes that reached this chat's workspace, read by ``ChangedFilesFollower`` and
+  /// not here.
   let changedFilesRevision: @MainActor () -> Int
   let navigation: SessionCommandActions
   let opener: ExternalURLOpener
