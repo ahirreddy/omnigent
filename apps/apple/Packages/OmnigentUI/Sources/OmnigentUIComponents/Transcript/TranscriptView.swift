@@ -96,6 +96,7 @@ public struct TranscriptView: View {
       .environment(\.openURL, environmentRelay.openURL)
       .environment(\.transcriptScrollState, scroll)
       .defaultScrollAnchor(.bottom, for: .initialOffset)
+      .modifier(ScrollEdgeWatch(scroll: scroll))
       .scrollDismissesKeyboard(.interactively)
       .onScrollPhaseChange { _, phase in
         let scrolling = phase == .tracking || phase == .interacting || phase == .decelerating
@@ -110,17 +111,6 @@ public struct TranscriptView: View {
         scroll.probe("transcript viewport", "\(old) -> \(new)")
         if old.isNearBottom != new.isNearBottom {
           follow.geometryChanged(isNearBottom: new.isNearBottom)
-        }
-        if old.width != new.width { scroll.widthChanged(to: new.width) }
-        // A rotation or resize lays the rows out again: a reader at the bottom stays there, one
-        // reading earlier keeps what was at the middle of the screen on screen.
-        if new.keepsBottom(after: old) {
-          scroll.cancelRestore()
-          if scroll.allowsScroll("keeps bottom", keepsBottom: true) {
-            proxy.scrollTo(Self.bottomID, anchor: .bottom)
-          }
-        } else if old.width > 0, old.width != new.width {
-          scroll.restoreReading(from: old.width, to: new.width)
         }
       }
       // The one scroll path while following: new output and late-sizing rows both grow the
@@ -150,8 +140,11 @@ public struct TranscriptView: View {
         geometry.visibleRect.minY - geometry.contentInsets.top < Self.olderHistoryReach
       } action: { _, isNearTop in
         scroll.probe("transcript near top", "\(isNearTop), \(follow)")
-        // Only a reader moving up asks for more, not a short transcript that fits.
-        if isNearTop, follow.isUserScrolling || !follow.follows { loadOlder() }
+        // Only a reader moving up asks for more: not a short transcript that fits, nor a width
+        // change passing through the top.
+        if isNearTop, scroll.rowWidth.passage == nil, follow.isUserScrolling || !follow.follows {
+          loadOlder()
+        }
       }
       .onChange(of: state.isLoadingHistory) { _, isLoading in
         if !isLoading { olderHistoryEnded(proxy) }
@@ -160,7 +153,7 @@ public struct TranscriptView: View {
       .modifier(messageFocus(proxy))
       .task(id: state.header.id) {
         follow.reset()
-        scroll.readerMoved()
+        scroll.sessionOpened()
         position.reset()
         // Lazy rows size themselves after the first layout; anchor once they have.
         await Task.yield()
@@ -198,6 +191,7 @@ public struct TranscriptView: View {
   private func rowEvents(_ proxy: ScrollViewProxy) -> TranscriptRowEvents {
     // Rows reporting the reading anchor restore it through this body's proxy.
     scroll.scrollToRow = { proxy.scrollTo($0, anchor: $1) }
+    scroll.rowOrder = { layout.entries(for: shown).map(\.id) }
     return TranscriptRowEvents(
       revisionChanged: {
         scroll.contentChanged()

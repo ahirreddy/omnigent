@@ -276,4 +276,16 @@ struct HangDiagnosticsTests {
     MainThreadWatch.shared.check()
     CFRunLoopRunInMode(.defaultMode, 0.02, false)
   }
+
+  @Test("A block for after the display runs once, after the run loop has been by its frame")
+  func mainRunLoopBlockAfterDisplay() {
+    let ran = Lines()
+    MainRunLoop.performAfterDisplay { ran.add("ran") }
+    // A pass with no time to wait commits its frame as it exits, the last thing it does.
+    CFRunLoopRunInMode(.defaultMode, 0, false)
+    #expect(ran.all.isEmpty)
+    CFRunLoopRunInMode(.defaultMode, 0.02, false)
+    CFRunLoopRunInMode(.defaultMode, 0.02, false)
+    #expect(ran.all == ["ran"])
+  }
 }

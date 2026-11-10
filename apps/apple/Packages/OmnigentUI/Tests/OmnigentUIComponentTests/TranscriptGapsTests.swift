@@ -64,22 +64,6 @@
       #expect(pacer.published == 1, "published without waiting 30 seconds")
     }
 
-    private func anchor(id: String, width: CGFloat) -> TranscriptReadingAnchor {
-      TranscriptReadingAnchor(
-        id: id, fraction: 0.25, rowHeight: 100, viewportWidth: width, viewportHeight: 300)
-    }
-
-    @Test("Back at a width whose row height is known, the row goes straight to its place")
-    func restoreAtKnownWidth() {
-      let scroll = TranscriptScrollState()
-      var scrolled: [String] = []
-      scroll.scrollToRow = { id, point in scrolled.append("\(id) \(point.y)") }
-      let sample = anchor(id: "row", width: 400)
-      scroll.record(sample)
-      scroll.restoreReading(from: 400, to: 400)
-      #expect(scrolled == ["row \(sample.unitPoint(in: sample).y)"])
-    }
-
     @Test("A reply's preview skips empty and non-assistant messages until a reply has text")
     func responsePreview() {
       func entry(_ id: String, _ role: RowRole, _ text: String) -> SegmentEntry {
