@@ -147,9 +147,7 @@ public struct ConnectedServerView: View {
   private func strip(of tabs: WindowTabs) -> (() -> TabStripContent)? {
     guard session.tabs.showsSessionTabs else { return nil }
     return {
-      tabs.store.map { (tabs.state($0), renamable(tabs.actions($0))) } ?? (
-        TabsState(), TabActions()
-      )
+      tabs.strip.map { ($0.state, renamable($0.actions)) } ?? (TabsState(), TabActions())
     }
   }
 

@@ -5,9 +5,9 @@ import SwiftUI
 /// The composer's stored preferences, as the screen that builds a composer holds them.
 nonisolated struct StoredComposerPreferences: Equatable {
   /// Return inserts a newline and Command-Return sends.
-  var submitWithCommandReturn = false
+  var submitWithCommandReturn: Bool
   /// A message sent mid-turn goes into the running turn.
-  var alwaysSteer = true
+  var alwaysSteer: Bool
 
   /// The stored values, for a screen's first render.
   @MainActor
@@ -24,13 +24,12 @@ nonisolated struct StoredComposerPreferences: Equatable {
 /// render costs nothing, and the screen renders only when one of these changes.
 struct ComposerPreferencesReader: ViewModifier {
   @Binding var preferences: StoredComposerPreferences
-  @AppStorage(ComposerPreferences.submitWithCommandReturnKey)
-  private var submitWithCommandReturn = false
+  @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var commandReturnSends = false
   @AppStorage(ComposerPreferences.alwaysSteerKey) private var alwaysSteer = true
 
   func body(content: Content) -> some View {
     let stored = StoredComposerPreferences(
-      submitWithCommandReturn: submitWithCommandReturn, alwaysSteer: alwaysSteer)
+      submitWithCommandReturn: commandReturnSends, alwaysSteer: alwaysSteer)
     content.onChange(of: stored, initial: true) {
       if preferences != stored { preferences = stored }
     }

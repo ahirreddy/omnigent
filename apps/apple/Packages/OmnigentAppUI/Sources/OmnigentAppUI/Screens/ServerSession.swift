@@ -163,7 +163,7 @@ public final class ServerSession {
   /// - Returns: Its store while the session is open.
   public func terminals(of sessionID: String) -> TerminalStore? {
     access(keyPath: \.[storesOf: sessionID])
-    return _terminalStores[sessionID]
+    return self[storesOf: sessionID].terminals
   }
 
   /// A session's workspace browser.
@@ -171,7 +171,7 @@ public final class ServerSession {
   /// - Returns: Its model while the session is open, or while it holds edits that did not save.
   public func workspace(of sessionID: String) -> WorkspaceBrowserModel? {
     access(keyPath: \.[storesOf: sessionID])
-    return _workspaces[sessionID]
+    return self[storesOf: sessionID].workspace
   }
 
   /// A session's right panel data.
@@ -179,16 +179,24 @@ public final class ServerSession {
   /// - Returns: Its store while the session is open.
   public func panel(of sessionID: String) -> SessionPanelStore? {
     access(keyPath: \.[storesOf: sessionID])
-    return _panels[sessionID]
+    return self[storesOf: sessionID].panel
   }
 
-  /// One session's stores as the observation registrar knows them: whether it has any.
-  private subscript(storesOf sessionID: String) -> Bool {
-    _terminalStores[sessionID] != nil || _workspaces[sessionID] != nil || _panels[sessionID] != nil
+  /// One session's stores, which its readers are told about together.
+  private struct SessionStores {
+    let terminals: TerminalStore?
+    let workspace: WorkspaceBrowserModel?
+    let panel: SessionPanelStore?
   }
 
-  private subscript(declaredTerminalsOf sessionID: String) -> [String] {
-    _declaredTerminals[sessionID] ?? []
+  private subscript(storesOf sessionID: String) -> SessionStores {
+    SessionStores(
+      terminals: _terminalStores[sessionID], workspace: _workspaces[sessionID],
+      panel: _panels[sessionID])
+  }
+
+  private subscript(declaredTerminalsOf sessionID: String) -> DeclaredTerminals {
+    _declaredTerminals[sessionID].map(DeclaredTerminals.names) ?? .unknown
   }
 
   /// Applies `change` to `sessionID`'s stores, telling the views that read that session.
@@ -214,7 +222,7 @@ public final class ServerSession {
   /// - Returns: The declared names.
   public func declaredTerminalNames(in sessionID: String) -> DeclaredTerminals {
     access(keyPath: \.[declaredTerminalsOf: sessionID])
-    return _declaredTerminals[sessionID].map(DeclaredTerminals.names) ?? .unknown
+    return self[declaredTerminalsOf: sessionID]
   }
 
   /// Reads the declared terminal names of sessions not read yet. A failure stays on the
