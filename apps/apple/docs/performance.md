@@ -500,9 +500,14 @@ What changed, with the renders counted in the mounted window:
   reads it in an `ObservationScope` of its own and the report is a modifier
   (`ViewedSessionReport`). No window, shell, sidebar or session rows.
 - **A session switch renders the window once**, where a switch from the palette, a deep
-  link, a notification or Next and Previous Session rendered it twice. The root reads only
-  whether the shown page has tabs (`SessionTabGroups.showsSessionTabs`); the page the tab
-  model moves to by itself is handed to the host by a modifier (`ShownPageReport`).
+  link, a notification or Next and Previous Session rendered it twice. The root reads the
+  host's selection and nothing of the tab model; the page the tab model moves to by itself
+  is handed to the host by a modifier (`ShownPageReport`).
+- **A page without a session renders the window once, and so does the way back.** Whether
+  there is a strip follows the host's selection, which the root reads already, where it
+  followed the tab model's page and rendered the window a second time. On the way back the
+  strip renders twice in the one layout pass, empty and then with the session's tabs. Not
+  timed again: the table's 159-176 ms is with the second render.
 - **A session opening or closing behind the window renders nothing.** The open chats,
   terminals, workspaces and panels are read per session
   (`ConnectionStore.openConversation(_:)`, `ServerSession.terminals(of:)`, `workspace(of:)`,
@@ -577,7 +582,8 @@ markdown, composer, sidechat.
 | A session chosen in the sidebar; one the window shows by itself; back to a kept one | as a session switch, with screen, transcript and rows 2 |
 | Back to a session that closed | as a session switch, with tab 3 |
 | Another session opening or closing behind the window | nothing |
-| A page without a session, and back | window 2, shell 2, sidebar 2, session row 8, detail 3, tab 3, screen 3, transcript 3, rows 3, composer 2, strip 1, tab controls 1; no row, no markdown, and the chats' scroll views are the same objects |
+| A page without a session; one the tab model shows by itself | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 2, transcript 2, rows 2, composer 2 and 1; no strip, no row, no markdown, and the chats' scroll views are the same objects |
+| Back from a page without a session | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 3, transcript 3, rows 3, composer 1, strip 2, tab controls 1; no row, no markdown, and the chats' scroll views are the same objects |
 | Sidebar search text set; typed into the field; cleared | sidebar 1-2, session row 2-6, search field 1-2 |
 | A sidebar filter; a page of sessions loaded; an empty last page | sidebar 1, session row 2-4 |
 | A window resize step; a sidebar divider step | strip 1 |
@@ -594,8 +600,7 @@ read invalidates.
 
 | Scope | Reads | Invalidated by | Verdict |
 | --- | --- | --- | --- |
-| Window root (`ConnectedServerView.body`) | the host's selection | a session or page switch | fine: the switch renders the window once (budget) |
-| | `session.tabs.showsSessionTabs` | a session to a page without tabs, and back | fine: structural, it adds and removes the strip (budget: window 2 with the selection) |
+| Window root (`ConnectedServerView.body`) | the host's selection | a session or page switch | fine: the switch renders the window once (budget), and a selection without a session takes the strip away in that render |
 | | `connection.connectedServer?.baseUrl` | connecting to another server | fine |
 | | `sidebar.fork`, `projectSettings`, `archiveRequest`, `renamingFromTab`, `renameText`, `sessionList.editError` (read when their sheet and alert bindings are made) | opening one of those sheets or alerts | fine: each presents over the window |
 | | `tabFailure`, `showsTabOverview` (view state), size class, two `@AppStorage` keys without a dot | a failed tab action, the overview, a compact width, those two settings | fine |
@@ -663,8 +668,15 @@ chat no longer does. All other keys use a colon.
   2 ms), the commit 1.6 ms. Skipping unchanged rows with `==` would save 15-20% at most and
   is unsafe while rows take fresh closures and the current time; it needs the sidebar's
   actions behind a stable reference first. The filter needs an incremental core API.
-- **A page without tabs renders the window twice**, once for the host's selection and once
-  for the strip leaving, and each kept chat's container once. No rows are built.
+- **A page without tabs renders each kept chat's container once**, and the window once. No
+  rows are built.
+- **A session chosen in the sidebar over a page without tabs sometimes renders the page that
+  leaves once more** (7 of 25 choices in the mounted window, about 14 ms in a Debug build).
+  The choice sets the host's selection and the tab model's page together, so the page's tab
+  leaves in the pass that renders the window, and in some of those passes SwiftUI runs the
+  leaving tab's body again with its old content. A session the tab model shows by itself
+  over a page does the same (4 of 25). A switch that reaches the window as the host's
+  selection alone never did (75 of 75), and that is the one with a budget.
 - **A session switch** still builds the new session's tabs and renders the window once; the
   first pass of opening another session is 150-170 ms, most of it the new chat's first
   layout.
