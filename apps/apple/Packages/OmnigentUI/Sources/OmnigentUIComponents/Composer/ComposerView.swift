@@ -163,6 +163,7 @@ public struct ComposerView: View {
       }
     }
     .padding(.vertical, layout == .touch ? ComposerBarMetrics.outerPadding : Theme.Spacing.medium)
+    .countsRenders("composer")
     .readingColumn()
     .dropDestination(for: URL.self, isEnabled: canAttach) { urls, _ in
       add(urls.map { ComposerAttachmentInput.file(url: $0) })

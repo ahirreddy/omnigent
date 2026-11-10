@@ -99,6 +99,7 @@ public struct ConnectedServerView: View {
           }
       }
     )
+    .countsRenders("window")
     .environment(\.tabStatusDetails, TabAdapter.statusDetails(session))
     .environment(\.tabOverviewPresenter, overviewPresenter)
     .onAppear { overviewPresenter.open = { showsTabOverview = true } }

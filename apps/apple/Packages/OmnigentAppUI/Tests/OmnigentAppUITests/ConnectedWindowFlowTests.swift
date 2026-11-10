@@ -149,22 +149,6 @@ struct ConnectedWindowFlowTests {
     }
   }
 
-  /// The window over `session` with a titlebar, so the shell's toolbar has somewhere to go.
-  func titledWindow(
-    _ session: ServerSession, page: SidebarDestination? = nil
-  ) async throws -> OffscreenWindow<AppWindowRoot> {
-    let screen = OffscreenWindow(
-      AppWindowRoot(session: session, selection: WindowSelection(page)), width: 900, height: 600)
-    let frame = screen.window.frame
-    screen.window.contentView = nil
-    screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
-    screen.window.setFrame(frame, display: false)
-    screen.host.sceneBridgingOptions = [.toolbars, .title]
-    screen.window.contentView = screen.host
-    try await pause(screen, .milliseconds(300))
-    return screen
-  }
-
   @Test("A signed-in account sits at the sidebar's foot, not in the toolbar, and signs out there")
   func signingOut() async throws {
     let local = try await titledWindow(try await signedInSession(AppServer()))
@@ -225,4 +209,21 @@ struct ConnectedWindowFlowTests {
       secureStore: InMemorySecureStore(), entropy: FixedEntropySource(),
       config: HostConfig(urlPolicy: .development, oidcRedirect: .none))
   }
+}
+
+/// The window over `session` with a titlebar, so the shell's toolbar and title have somewhere to go.
+@MainActor
+func titledWindow(
+  _ session: ServerSession, selection: WindowSelection = WindowSelection()
+) async throws -> OffscreenWindow<AppWindowRoot> {
+  let screen = OffscreenWindow(
+    AppWindowRoot(session: session, selection: selection), width: 900, height: 600)
+  let frame = screen.window.frame
+  screen.window.contentView = nil
+  screen.window.styleMask = [.titled, .resizable, .fullSizeContentView]
+  screen.window.setFrame(frame, display: false)
+  screen.host.sceneBridgingOptions = [.toolbars, .title]
+  screen.window.contentView = screen.host
+  try await pause(screen, .milliseconds(300))
+  return screen
 }
