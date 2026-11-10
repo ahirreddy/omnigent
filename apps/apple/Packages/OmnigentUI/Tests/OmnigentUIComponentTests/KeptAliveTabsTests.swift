@@ -73,6 +73,21 @@
       #expect(sizes.byID["hidden"] == column)
     }
 
+    /// A column never laid out at the placeholder, however little taller than it.
+    @Test(arguments: [
+      CGSize(width: 800, height: 600),
+      CGSize(width: 800, height: UnmeasuredMinimum.column.height + 1),
+    ])
+    func tabsAreBuiltInAColumnThatOpensAtItsSize(column: CGSize) {
+      _ = NSApplication.shared
+      let sizes = Sizes()
+      let view = NSHostingView(rootView: tabs(["hidden", "shown"], sizes: sizes))
+      layOut(view, at: column)
+
+      #expect(sizes.byID["shown"] == column)
+      #expect(sizes.byID["hidden"] == column)
+    }
+
     /// A new window's first passes can be smaller than any size the window keeps.
     @Test func aTabMountedHiddenFollowsTheColumnUntilItShows() {
       _ = NSApplication.shared
