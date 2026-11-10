@@ -105,9 +105,7 @@ import Testing
         }),
       WindowInteraction(
         name: "a draft's first keystroke",
-        budget: [
-          "composer": 1, "rows": 1, "screen": 1, "session row": 4, "sidebar": 1, "transcript": 1,
-        ],
+        budget: ["composer": 1, "session row": 4, "sidebar": 1],
         perform: { try $0.screen.type("k") },
         verify: { window in
           #expect(window.editor?.string == "k")
@@ -115,6 +113,18 @@ import Testing
           window.screen.settle(0.3)
           let text = try window.screen.shownText()
           #expect(!text.contains("3m"), "a pencil for the row's time once it is left: \(text)")
+        }),
+      WindowInteraction(
+        name: "a draft's last character deleted",
+        budget: ["composer": 1, "session row": 4, "sidebar": 1],
+        prepare: { try $0.screen.type("j") },
+        perform: { try $0.screen.press(keyCode: 51, characters: "\u{7F}") },
+        verify: { window in
+          #expect(window.editor?.string.isEmpty == true)
+          window.selection.page = .session(BudgetWindow.other)
+          window.screen.settle(0.3)
+          let text = try window.screen.shownText()
+          #expect(text.contains("3m"), "the row's time again, with no draft left: \(text)")
         }),
       WindowInteraction(
         name: "a composer keystroke",

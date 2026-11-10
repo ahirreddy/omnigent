@@ -48,11 +48,21 @@ struct ActivePaneToolbar: ViewModifier {
 
 /// The focused pane's conversation drives the menus; another pane and a hidden tab do not.
 struct ActivePaneCommands: ViewModifier {
+  /// Every command but who answers Command-Return, which this reads itself.
   let commands: SessionCommandActions
+  let commandReturn: CommandReturnArbitration
   let relay: FocusedActionsRelay<SessionCommandActions>
   @Environment(\.isActiveTabPane) private var isActivePane
 
   func body(content: Content) -> some View {
-    content.focusedSceneValue(\.sessionCommands, relay.publish(isActivePane ? commands : nil))
+    content.focusedSceneValue(\.sessionCommands, relay.publish(isActivePane ? resolved : nil))
+  }
+
+  /// Send Message while the draft can go; otherwise the request's Approve may own the key.
+  private var resolved: SessionCommandActions {
+    var commands = commands
+    if !commandReturn.canSend { commands.send = nil }
+    commands.approveOwnsCommandReturn = commandReturn.owner == .approve
+    return commands
   }
 }

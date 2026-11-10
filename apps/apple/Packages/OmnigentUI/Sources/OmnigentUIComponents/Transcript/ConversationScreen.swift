@@ -28,7 +28,7 @@ public struct ConversationScreen<Terminal: View>: View {
 
   @State private var scrollRequest = 0
   @State private var focusRequest = 0
-  @State private var draftHasText = false
+  @State private var draftPresence = DraftPresence()
   @State private var modelPickerRequest = 0
   @State private var localInspectorTab: InspectorTab = .files
   private let externalInspectorTab: Binding<InspectorTab>?
@@ -107,7 +107,7 @@ public struct ConversationScreen<Terminal: View>: View {
         state: state, liveRows: liveRows, actions: transcriptActions,
         scrollToLatestRequest: scrollRequest
       )
-      .decisionApproveShortcut(approveCandidate, on: .inline, owner: commandReturnOwner)
+      .modifier(InlineApproveShortcut(target: approveCandidate))
       .chatDropTarget(
         isEnabled: composerState.acceptsAttachments && composerState.availability == .available,
         add: composerActions.addAttachments
@@ -129,7 +129,7 @@ public struct ConversationScreen<Terminal: View>: View {
           TranscriptComposer(
             draft: draft, state: composerState, actions: composerActions,
             focusRequest: focusRequest
-          ) { hasText in if hasText != draftHasText { draftHasText = hasText } }
+          ) { [draftPresence] in draftPresence.report($0) }
         } else if !state.decisions.isEmpty {
           Spacer().frame(height: 10)
         }
@@ -164,7 +164,7 @@ public struct ConversationScreen<Terminal: View>: View {
     .themeCanvas()
     .cliPalette()
     .environment(drafts).environment(decisionSurfaces)
-    .environment(\.commandReturnOwner, commandReturnOwner)
+    .modifier(CommandReturnOwnership(arbitration: commandReturn))
     .onPreferenceChange(ApproveShortcutCandidate.self) { approveCandidate = $0 }
     .workspaceInspector(
       state: state, actions: actions, slots: extras.slots,
@@ -198,7 +198,8 @@ public struct ConversationScreen<Terminal: View>: View {
         actions: extras.sessionActions, branch: extras.menuContext.branch)
     )
     // In a split window only the focused pane's conversation drives the menus.
-    .modifier(ActivePaneCommands(commands: commands, relay: commandRelay))
+    .modifier(
+      ActivePaneCommands(commands: commands, commandReturn: commandReturn, relay: commandRelay))
   }
 
   /// The trailing toolbar items, shown for the focused pane's conversation.
@@ -280,14 +281,15 @@ extension ConversationScreen {
     return menu
   }
 
-  private var canSendDraft: Bool {
-    !showsTerminal && composer.availability == .available && composer.delivery == .idle
-      && (draftHasText || !composer.attachments.isEmpty || !composer.mentions.isEmpty)
-  }
-
-  /// Send while the draft can go, else the active request's Approve.
-  private var commandReturnOwner: CommandReturnOwner {
-    .resolve(canSend: canSendDraft, approvableCardID: approveCandidate?.cardID)
+  /// Who answers Command-Return, resolved where it is used: the draft gaining or losing its
+  /// text reaches Send and Approve without running this screen's body.
+  private var commandReturn: CommandReturnArbitration {
+    CommandReturnArbitration(
+      presence: draftPresence,
+      sendIsOpen: !showsTerminal && composer.availability == .available
+        && composer.delivery == .idle,
+      hasAttachedContent: !composer.attachments.isEmpty || !composer.mentions.isEmpty,
+      approvableCardID: approveCandidate?.cardID)
   }
 
   /// A reply to selected text lands in the composer, focused for typing.
@@ -304,7 +306,6 @@ extension ConversationScreen {
 
   private var commands: SessionCommandActions {
     let chat = !showsTerminal
-    let canSend = canSendDraft
     var jump: (@MainActor () -> Void)?
     var focus: (@MainActor () -> Void)?
     if chat {
@@ -317,7 +318,7 @@ extension ConversationScreen {
       toggleMode = { binding.wrappedValue = binding.wrappedValue == .chat ? .terminal : .chat }
     }
     var actions = SessionCommandActions(
-      send: canSend ? sendCommand : nil,
+      send: sendCommand,
       interrupt: composer.isRunning ? composerActions.interrupt : nil,
       jumpToLatest: jump, focusComposer: focus,
       toggleInspector: { showsInspector.toggle() },
@@ -329,7 +330,6 @@ extension ConversationScreen {
         extras.slots.documents?.showPanel()
         showsInspector = true
       })
-    actions.approveOwnsCommandReturn = commandReturnOwner == .approve
     if chat, let configuration = composer.configuration, !configuration.isApplying {
       addModelCommands(to: &actions, configuration: configuration)
     }
