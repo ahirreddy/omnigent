@@ -31,6 +31,23 @@ import Testing
           #expect(text.contains("Gamma renamed") && text.contains("7m"), "\(text)")
         }),
       WindowInteraction(
+        name: "another session's files change",
+        budget: [:],
+        prepare: { $0.notes.requests = $0.server.http.requests.count },
+        perform: { window in
+          window.session.connection.apply(
+            .changedFiles(
+              sessionId: BudgetWindow.other, environmentId: "default", update: .loaded(files: [])))
+        },
+        verify: { window in
+          // Sessions can share a workspace, so the shown chat's panel asks for its changes again.
+          let asked = window.server.http.requests.dropFirst(window.notes.requests).map(\.url)
+          let changes = "/v1/sessions/\(BudgetWindow.shown)/resources/environments/default/changes"
+          #expect(asked.contains { $0.hasSuffix(changes) }, "\(asked)")
+          let text = try window.screen.shownText()
+          #expect(text.contains("Alpha reply"), "the chat still draws: \(text)")
+        }),
+      WindowInteraction(
         name: "the shown session's preview and time",
         budget: ["session row": 4, "sidebar": 1],
         perform: { try $0.activity(in: BudgetWindow.shown, minutesAgo: 5) },
@@ -154,6 +171,33 @@ import Testing
           #expect(text.contains("Beta reply"), "the tab that was kept behind: \(text)")
         }),
       WindowInteraction(
+        name: "back to a chat from a tab of another kind, three chats kept",
+        // The strip renders again once the chat's toolbar items take their room beside it.
+        budget: [
+          "composer": 1, "detail": 1, "rows": 1, "screen": 1, "strip": 2, "tab": 1,
+          "tab controls": 1, "transcript": 1,
+        ],
+        prepare: { window in
+          window.tabs.open(
+            .sideChatSession(parentID: BudgetWindow.shown, childID: BudgetWindow.other))
+          window.screen.settle(0.5)
+          _ = try window.conversation(BudgetWindow.other)
+          window.tabs.select(window.chatTabID)
+          window.screen.settle(0.3)
+          window.noteScrollViews()
+          window.tabs.open(.newTab)
+          window.screen.settle(0.3)
+        },
+        perform: { $0.tabs.select($0.chatTabID) },
+        verify: { window in
+          #expect(window.title == "Alpha")
+          let text = try window.screen.shownText()
+          #expect(text.contains("Alpha reply"), "the chat that was kept behind: \(text)")
+          #expect(window.notes.scrollViews.count >= 3, "three chats had scroll views to keep")
+          let rebuilt = window.rebuiltScrollViews
+          #expect(rebuilt.isEmpty, "the new tab took no chat's place: \(rebuilt)")
+        }),
+      WindowInteraction(
         name: "a session switch",
         budget: [
           "composer": 4, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
@@ -170,12 +214,16 @@ import Testing
       WindowInteraction(
         name: "a session chosen in the sidebar",
         budget: [
-          "composer": 3, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
-          "sidebar": 1, "strip": 3, "tab": 2, "tab controls": 2, "transcript": 2, "window": 1,
+          "composer": 4, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
+          "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 2, "transcript": 3, "window": 1,
         ],
-        perform: { $0.choose(.session(BudgetWindow.other)) },
+        perform: { try $0.choose(session: BudgetWindow.other) },
         verify: { window in
+          #expect(window.selection.page == .session(BudgetWindow.other), "the host's selection")
+          #expect(window.session.tabs.page == .session(BudgetWindow.other), "the tab model's")
           #expect(window.title == "Gamma")
+          let toolbar = try window.screen.toolbarText()
+          #expect(toolbar.contains("Gamma"), "the strip's tab: \(toolbar)")
           let text = try await window.text(afterReply: "Gamma reply", in: BudgetWindow.other)
           #expect(text.contains("Gamma reply"), "the chat that opened after its tab: \(text)")
         }),

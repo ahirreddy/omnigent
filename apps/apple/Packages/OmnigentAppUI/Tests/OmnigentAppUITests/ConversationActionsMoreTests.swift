@@ -12,21 +12,11 @@ import Testing
 @testable import OmnigentAppUI
 @testable import OmnigentStores
 
-/// A session's revision of changed files, told to the container from outside.
+/// The connection's count of file changes, moved from outside the container.
 @MainActor
 @Observable
 private final class RevisionSource {
   var revision = 0
-}
-
-/// A conversation in a window whose changed-files revision moves.
-private struct RevisingConversation: View {
-  let source: RevisionSource
-  let make: @MainActor (Int) -> ConversationContainer
-
-  var body: some View {
-    make(source.revision)
-  }
 }
 
 extension ConversationWiringTests {
@@ -120,15 +110,14 @@ extension ConversationWiringTests {
     let workspace = WorkspaceBrowserModel(source: data)
     let source = RevisionSource()
     let store = wired.store
+    // Nothing above the container renders for the count: the container follows it by itself.
     let screen = OffscreenWindow(
-      RevisingConversation(source: source) { revision in
-        ConversationContainer(
-          conversation: store, summary: nil, terminals: nil, workspace: workspace, panel: nil,
-          changedFilesRevision: revision, navigation: SessionCommandActions(),
-          opener: ExternalURLOpener { _ in true }, openSession: { _ in }, retry: {}, server: nil,
-          tabRoutes: nil, makeForkStore: { nil }, failureList: ConversationFailures(),
-          forkFlow: ForkFlow(), livenessSheets: SessionLivenessSheets())
-      },
+      ConversationContainer(
+        conversation: store, summary: nil, terminals: nil, workspace: workspace, panel: nil,
+        changedFilesRevision: { source.revision }, navigation: SessionCommandActions(),
+        opener: ExternalURLOpener { _ in true }, openSession: { _ in }, retry: {}, server: nil,
+        tabRoutes: nil, makeForkStore: { nil }, failureList: ConversationFailures(),
+        forkFlow: ForkFlow(), livenessSheets: SessionLivenessSheets()),
       width: 1000, height: 600)
     defer { screen.close() }
     try await pause(screen)

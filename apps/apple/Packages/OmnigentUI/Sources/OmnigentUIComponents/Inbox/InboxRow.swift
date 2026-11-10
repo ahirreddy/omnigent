@@ -9,7 +9,7 @@ struct InboxRow: View {
   @Binding var isExpanded: Bool
   @Binding var reply: String
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var commandReturnSends = false
+  @State private var commandReturnSends = ComposerPreferences.commandReturnSends
 
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
@@ -27,6 +27,8 @@ struct InboxRow: View {
     }
     .padding(.vertical, Theme.Spacing.medium)
     .hoverHighlight()
+    .commandReturnPreference($commandReturnSends)
+    .countsRenders("inbox row")
     .listRowBackground(Rectangle().fill(ThemeColor.hover.opacity(isSelected ? 1 : 0)))
     .contextMenu { rowActions }
     #if os(iOS)

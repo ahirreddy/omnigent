@@ -85,7 +85,7 @@ public struct ConnectedServerView: View {
     // The sidebar, the strip and the detail read their state where they show it: a session's
     // row, a tab's title or the shown tab that changes then renders that part, not the window.
     AppShell(
-      sidebar: { sidebarState }, selection: pageBinding, searchText: { searchBinding },
+      sidebar: { sidebarState }, selection: selectionBinding, searchText: { searchBinding },
       actions: sidebarActions, tabs: strip(of: tabs),
       detail: { _ in
         ObservationScope("detail") {
@@ -206,7 +206,7 @@ public struct ConnectedServerView: View {
           conversation: conversation, summary: connection.sessionList.sessionWithoutActivity(id),
           terminals: session.terminals(of: id), workspace: session.workspace(of: id),
           panel: session.panel(of: id),
-          changedFilesRevision: connection.changedFilesRevision,
+          changedFilesRevision: { connection.changedFilesRevision },
           navigation: navigation(from: id),
           opener: linkOpener(in: id),
           openSession: { selection = .session($0) },
@@ -260,19 +260,6 @@ extension ConnectedServerView {
       session: session, context: tabContext, showAll: { showsTabOverview = true },
       fail: { tabFailure = $0 }, supportsSplit: sizeClass != .compact,
       openInNewWindow: openInNewWindow)
-  }
-
-  /// The sidebar's selection: the window's page. A choice shows its page at once, before the
-  /// host's selection reaches `onChange`.
-  private var pageBinding: Binding<SidebarDestination?> {
-    let tabs = session.tabs
-    let selection = selectionBinding
-    return Binding(
-      get: { selection.wrappedValue },
-      set: { page in
-        selection.wrappedValue = page
-        tabs.show(page)
-      })
   }
 
   /// Tells the core which session's chat is on screen, for notifications and the badge.

@@ -3,8 +3,7 @@ public import SwiftUI
 /// Settings > General > Composer: the send shortcut and Always steer, read by every composer
 /// through ``ComposerPreferences``.
 public struct ComposerSettingsSection: View {
-  @AppStorage(ComposerPreferences.submitWithCommandReturnKey) private var submitWithCommandReturn =
-    false
+  @State private var submitWithCommandReturn = ComposerPreferences.commandReturnSends
   @AppStorage(ComposerPreferences.alwaysSteerKey) private var alwaysSteer = true
 
   /// Creates the section.
@@ -31,6 +30,7 @@ public struct ComposerSettingsSection: View {
     } header: {
       Text("Composer")
     }
+    .commandReturnPreference($submitWithCommandReturn)
   }
 }
 

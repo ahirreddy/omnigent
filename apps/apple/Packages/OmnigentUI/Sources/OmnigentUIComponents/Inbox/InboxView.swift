@@ -1,10 +1,12 @@
+import OmnigentWorkspaceUI
 public import SwiftUI
 
 /// A keyboard and touch triage list, with read state separate from pending requests.
 public struct InboxView: View {
   private let state: InboxViewState
   private let actions: InboxActions
-  @AppStorage("omnigent.inbox.filter") private var filter: InboxFilter = .all
+  @State private var filter = UserDefaults.standard.choice(
+    Self.filterKey, default: InboxFilter.all)
   @State private var search = ""
   @State private var selection: String?
   @State private var expanded: Set<String> = []
@@ -12,6 +14,9 @@ public struct InboxView: View {
   @FocusState private var focus: Focus?
 
   private enum Focus: Hashable { case list, search }
+
+  /// The chosen filter, kept across visits and launches.
+  static let filterKey = "omnigent.inbox.filter"
 
   /// Creates the Inbox from adapter state and supported actions.
   public init(state: InboxViewState, actions: InboxActions) {
@@ -106,6 +111,8 @@ public struct InboxView: View {
       selection = InboxTriage.selection(selection, previous: previous, current: current)
       if let selection { expanded.insert(selection) }
     }
+    .modifier(StoredPreference($filter, stored: AppStorage(wrappedValue: .all, Self.filterKey)))
+    .countsRenders("inbox")
   }
 
   /// Loading until the items are read; the empty state only once nothing is left to read and

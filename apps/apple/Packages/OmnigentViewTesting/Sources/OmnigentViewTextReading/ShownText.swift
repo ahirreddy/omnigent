@@ -1,4 +1,5 @@
 #if os(macOS)
+  public import AppKit
   import Foundation
   public import OmnigentViewTesting
   import SwiftUI
@@ -31,6 +32,14 @@
     /// - Throws: `OffscreenWindowError` when SwiftUI doesn't report its tree.
     public func toolbarText() throws -> [String] {
       try text(under: window.toolbar?.items.compactMap(\.view) ?? [])
+    }
+
+    /// The text drawn under one view of the window, such as one row of a `List`.
+    /// - Parameter view: A view in this window.
+    /// - Returns: The strings; they are not in layout order.
+    /// - Throws: `OffscreenWindowError` when SwiftUI doesn't report its tree.
+    public func shownText(under view: NSView) throws -> [String] {
+      try text(under: [view])
     }
 
     private func text(under roots: [NSView]) throws -> [String] {

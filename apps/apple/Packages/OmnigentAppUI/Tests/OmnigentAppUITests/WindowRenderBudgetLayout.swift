@@ -33,6 +33,8 @@ import Testing
     var stored: Any?
     /// The chats' scroll views as they were built before the step.
     var scrollViews: [NSScrollView] = []
+    /// How many requests the server had taken before the step.
+    var requests = 0
   }
 
   extension BudgetWindow {
@@ -66,10 +68,14 @@ import Testing
       notes.scrollViews = screen.allViews.compactMap { $0 as? NSScrollView }
     }
 
-    /// How many of the noted scroll views the window no longer holds: it built them again.
-    var rebuiltScrollViews: Int {
+    /// The noted scroll views the window no longer holds, by what each showed: it built them
+    /// again.
+    var rebuiltScrollViews: [String] {
       let held = Set(screen.allViews.map(ObjectIdentifier.init))
-      return notes.scrollViews.count { !held.contains(ObjectIdentifier($0)) }
+      return notes.scrollViews.filter { !held.contains(ObjectIdentifier($0)) }.map { dropped in
+        let shown = dropped.documentView.map { "\(type(of: $0))" } ?? "nothing"
+        return "\(type(of: dropped)) of \(shown)"
+      }
     }
 
     /// Notes the widths before a step that changes them.
@@ -117,6 +123,18 @@ import Testing
           narrower.transcript -= 40
           narrower.strip -= 40
           #expect(try window.widths == narrower, "from \(before)")
+        }),
+      WindowInteraction(
+        name: "a widening window resize step",
+        budget: ["strip": 1],
+        prepare: { try $0.noteWidths() },
+        perform: { $0.screen.window.setContentSize(CGSize(width: 940, height: 600)) },
+        verify: { window in
+          let before = try #require(window.notes.widths)
+          var wider = before
+          wider.transcript += 40
+          wider.strip += 40
+          #expect(try window.widths == wider, "from \(before)")
         }),
       WindowInteraction(
         name: "a sidebar divider step",
@@ -177,7 +195,7 @@ import Testing
         name: "a preference no view reads, over the new session page",
         budget: [:],
         prepare: { window in
-          window.choose(.newSession)
+          try window.chooseSidebarRow("New session")
           window.screen.settle(0.3)
         },
         perform: { $0.store(true, forKey: unreadKey) },
@@ -185,6 +203,19 @@ import Testing
         verify: { window in
           let text = try window.screen.shownText()
           #expect(text.contains("What should we build?"), "the page still draws: \(text)")
+        }),
+      WindowInteraction(
+        name: "a preference no view reads, over the Inbox",
+        budget: [:],
+        prepare: { window in
+          try window.chooseSidebarRow("Inbox")
+          window.screen.settle(0.3)
+        },
+        perform: { $0.store(true, forKey: unreadKey) },
+        afterwards: { try $0.putBack(unreadKey) },
+        verify: { window in
+          let text = try window.screen.shownText()
+          #expect(text.contains("Nothing waiting on you"), "the page still draws: \(text)")
         }),
       WindowInteraction(
         name: "the Command-Return setting",

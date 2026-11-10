@@ -32,7 +32,7 @@ extension ConversationWiringTests {
     route.mode = .terminal
     return ConversationContainer(
       conversation: store, summary: nil, terminals: terminals, workspace: nil, panel: nil,
-      changedFilesRevision: 0, navigation: SessionCommandActions(),
+      changedFilesRevision: { 0 }, navigation: SessionCommandActions(),
       opener: ExternalURLOpener { _ in true }, openSession: { _ in }, retry: {},
       modeRoute: route, failureList: ConversationFailures(), forkFlow: ForkFlow(),
       livenessSheets: SessionLivenessSheets())

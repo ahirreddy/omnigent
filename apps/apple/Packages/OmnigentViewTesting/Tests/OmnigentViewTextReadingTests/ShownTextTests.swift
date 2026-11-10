@@ -90,6 +90,17 @@
       #expect(try !screen.shows("Removed row"))
     }
 
+    @Test("Reads one list row apart from the others")
+    func oneRow() throws {
+      let screen = OffscreenWindow(RowsAndSheet(), width: 300, height: 300)
+      defer { screen.close() }
+      let list = try #require(screen.allViews.lazy.compactMap { $0 as? NSTableView }.first)
+      let rows = try (0..<list.numberOfRows).map { row in
+        try screen.shownText(under: #require(list.rowView(atRow: row, makeIfNecessary: false)))
+      }
+      #expect(rows == [["Kept row"], ["Removed row"]])
+    }
+
     @Test("Reads a sheet over the window")
     func sheet() throws {
       let screen = OffscreenWindow(RowsAndSheet(), width: 300, height: 300)

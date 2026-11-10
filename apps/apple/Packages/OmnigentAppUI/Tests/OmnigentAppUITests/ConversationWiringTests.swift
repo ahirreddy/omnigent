@@ -45,7 +45,7 @@ struct ConversationWiringTests {
     let sheets = SessionLivenessSheets()
     let container = ConversationContainer(
       conversation: store, summary: connection.sessionList.session("conv_a"), terminals: nil,
-      workspace: nil, panel: nil, changedFilesRevision: 0, navigation: SessionCommandActions(),
+      workspace: nil, panel: nil, changedFilesRevision: { 0 }, navigation: SessionCommandActions(),
       opener: ExternalURLOpener { url in
         opened.urls.append(url)
         return opened.succeeds
@@ -173,7 +173,7 @@ struct ConversationWiringTests {
     let sheets = SessionLivenessSheets()
     let container = ConversationContainer(
       conversation: empty, summary: nil, terminals: nil, workspace: nil, panel: nil,
-      changedFilesRevision: 0, navigation: SessionCommandActions(),
+      changedFilesRevision: { 0 }, navigation: SessionCommandActions(),
       opener: ExternalURLOpener { _ in true }, openSession: { _ in }, retry: {})
     container.addHostMoves(to: &live, sheets: sheets)
     #expect(live.sheets === sheets)
