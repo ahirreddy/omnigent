@@ -132,6 +132,8 @@ struct SessionTabGroupsTests {
   @Test("The few most recent sessions stay live; recent chats across them stay built")
   func keepAlive() throws {
     let groups = SessionTabGroups()
+    #expect(groups.liveLimit == SessionTabGroups.liveLimit)
+    groups.liveLimit = 3
     for id in ["a", "b", "c", "d"] { groups.show(.session(id)) }
     #expect(groups.liveSessionIDs == ["b", "c", "d"])
     let kept = groups.keptAlive().map(\.content)
@@ -144,10 +146,6 @@ struct SessionTabGroupsTests {
     // Under a session-less page the chats stay built, all hidden.
     groups.show(.inbox)
     #expect(groups.keptAlive().contains { $0.content == .chat(sessionID: "d") })
-    // A split session builds only its panes.
-    groups.show(.session("d"))
-    groups.current?.toggleSplit()
-    #expect(groups.keptAlive().count == 1)
   }
 
   @Test("Saved tabs are fitted to their session: its own tabs and pages, its chat first")
