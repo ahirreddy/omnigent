@@ -248,7 +248,7 @@ pub enum CoreError {
         detail: Option<String>,
         /// The connection ended; sign in again.
         requires_sign_in: bool,
-        /// A write may have landed; it is never retried automatically.
+        /// A write may have landed, and nothing sends it again once this is reported.
         delivery_uncertain: bool,
     },
     /// Hosted sign-in or identity confirmation failed.
