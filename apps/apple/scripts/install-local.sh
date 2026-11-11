@@ -4,7 +4,7 @@
 # Electron "Omnigent". For day-to-day use before Developer ID builds exist. Debug, because its
 # incremental builds take seconds where an optimized build of a shared module takes minutes.
 #
-# Usage: install-local.sh [--release] [--skip-prereqs] [--no-launch] [--full-priority]
+# Usage: install-local.sh [--release] [--skip-prereqs] [--no-launch] [--full-priority] [--stage-only]
 #
 # --release builds optimized (Release, release Rust core) for daily use: slower to build, much
 # faster to run. It keeps the Debug build's bundle id, so settings, servers and tabs carry over;
@@ -13,6 +13,8 @@
 # stays off. Everything runs at background priority with two Rust jobs so the Mac stays usable;
 # --full-priority drops both limits when nobody is using the Mac.
 # --skip-prereqs reuses the current Rust core, CEF and generated workspace.
+# --stage-only builds and signs build/LocalInstall/Omnigent Native.app and stops: the installed
+# copy is left alone, for when it is in use.
 # OMNIGENT_INSTALL_DIR names another folder to install into, such as /Applications.
 set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=release/common.sh
@@ -22,13 +24,15 @@ skip_prereqs=0
 release=0
 launch=1
 full_priority=0
+stage_only=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --release) release=1; shift ;;
     --skip-prereqs) skip_prereqs=1; shift ;;
     --no-launch) launch=0; shift ;;
     --full-priority) full_priority=1; shift ;;
-    -h | --help) sed -n '2,16p' "$0" >&2; exit 64 ;;
+    --stage-only) stage_only=1; shift ;;
+    -h | --help) sed -n '2,18p' "$0" >&2; exit 64 ;;
     *) die "unknown argument '$1'" ;;
   esac
 done
@@ -111,6 +115,10 @@ background bash "$release_dir/sign-mac-developer-id.sh" --app "$staged" --identi
   --app-entitlements "$apple_root/Apps/Omnigent-macOS/OmnigentMac-Debug.entitlements" \
   --no-hardened-runtime
 codesign --verify --deep --strict "$staged"
+if [[ $stage_only -eq 1 ]]; then
+  log "staged $staged (build $build_number); not installed"
+  exit 0
+fi
 
 install_dir="${OMNIGENT_INSTALL_DIR:-$HOME/Applications}"
 installed="$install_dir/Omnigent Native.app"
