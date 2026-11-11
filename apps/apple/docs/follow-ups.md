@@ -415,6 +415,30 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     six and eight. Their memory with more was not measured.
   - The tenth pass's counts are from a hosted offscreen window; the list of what to
     measure in a real window is at the end of that pass in performance.md.
+  - A switch from a chat to a browser, terminal or New Tab page removes the conversation's
+    two toolbar items and the switch back creates them (88 menu forms, three toolbar
+    layouts; a third of the switch in the real window), and the strip moves to the 236 pt
+    reserve between. Kept invisible, the items leave an empty glass capsule and push Show
+    Chat into the overflow menu. The session's items shown disabled on those tabs would
+    make the switch an update in place; a design decision (eleventh pass).
+  - A resize across 560 pt of detail column removes a terminal chat's Chat / Terminal
+    switch from the toolbar and puts it back, and at the strip's 220 pt minimum a trailing
+    item folds or shows again: 19-30 menu forms and item viewers moved, a hitch of a step
+    each. A switch that stayed in the toolbar at compact width would fold instead.
+  - A resize step lays the toolbar out twice where AppKit alone lays out once, both inside
+    one window frame change (1-2 ms of a hosted step). Not the strip's SwiftUI size: a
+    strip sized only by its anchor's constraint had the same two.
+  - A terminal-style chat takes each resize step's width through the top of the
+    transcript and back, so a step measures two viewports of rows. Holding the rows' width
+    through a live resize leaves them short of the window's edge or clipped until it ends.
+  - In a transcript of a thousand rows a resize step walks every row: `scrollTo` of the
+    marker after the rows looks its id up through the `ForEach`, and the turn rail and
+    `updateActiveTurn()` map every entry per visibility change. 74-93 ms a step hosted
+    against 20 ms; under 2% of the real profile's samples.
+  - A hidden tab that never showed follows the column's width class, so a session restored
+    behind the window renders at a resize across the compact width.
+  - The eleventh pass's counts are from a hosted offscreen window and the existing Release
+    samples; what to measure in a real window is at the end of that pass in performance.md.
   - A file an agent changes reloads the kept chats whose session directory is the changed
     session's, holds it or is inside it. An agent that writes outside its own directory, into
     another open session's unrelated one, no longer reloads that session's panel. Deciding
