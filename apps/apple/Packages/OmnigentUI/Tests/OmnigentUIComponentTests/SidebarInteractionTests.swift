@@ -154,16 +154,14 @@ struct SidebarInteractionTests {
 
   @Test("A collapsed header shows its rows' strongest state, as the web's projectMarkerState")
   func hiddenMarker() {
-    let list = PreviewData.sessionList
-    let rowInfo = PreviewData.rowInfo
-    #expect(
-      SidebarMarker.strongest(list.sessions, list: list, rowInfo: rowInfo)
-        == .needsYou(requests: 2))
-    let quiet = list.sessions.filter { $0.attention != .needsYou }
-    #expect(SidebarMarker.strongest(quiet, list: list, rowInfo: rowInfo) == .working)
-    let idle = list.sessions.filter { $0.id == "sess_m1" || $0.id == "sess_y1" }
-    #expect(SidebarMarker.strongest(idle, list: list, rowInfo: rowInfo) == .disconnected)
-    #expect(SidebarMarker.strongest(idle.suffix(0), list: list, rowInfo: rowInfo) == nil)
+    let state = SidebarViewState(list: PreviewData.sessionList, rowInfo: PreviewData.rowInfo)
+    let rows = state.list.sessions.map(state.rowContent)
+    #expect(SidebarMarker.strongest(rows) == .needsYou(requests: 2))
+    let quiet = rows.filter { $0.session.attention != .needsYou }
+    #expect(SidebarMarker.strongest(quiet) == .working)
+    let idle = rows.filter { $0.session.id == "sess_m1" || $0.session.id == "sess_y1" }
+    #expect(SidebarMarker.strongest(idle) == .disconnected)
+    #expect(SidebarMarker.strongest(idle.suffix(0)) == nil)
   }
 }
 

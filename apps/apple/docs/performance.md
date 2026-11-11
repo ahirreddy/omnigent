@@ -562,7 +562,7 @@ each scope may render and then reads what it changed from what the window draws:
 ```swift
 WindowInteraction(
   name: "a hidden tab's session's title",
-  budget: ["session row": 5, "sidebar": 1, "tab": 1, "screen": 1, …],
+  budget: ["session row": 1, "tab": 1, "screen": 1, …],
   perform: { try $0.change(BudgetWindow.hidden) { $0.title = "Beta renamed" } },
   verify: { window in /* the new title in the sidebar's row, and in the tab once it shows */ })
 ```
@@ -584,16 +584,17 @@ budget.
 
 | Interaction | May render |
 | --- | --- |
-| Another session's row (title and time) | sidebar 1, session row 5 |
-| Another session's files change | nothing; the shown chat's workspace asks the server for its changes again |
-| The shown session's preview and time | sidebar 1, session row 4 |
-| A hidden tab's session's preview and time | sidebar 1, session row 4 |
-| The shown session's title | sidebar 1, session row 5, strip 1, tab controls 1, tab 2, screen 2, transcript 2, rows 2, composer 2 |
-| A hidden tab's session's title | sidebar 1, session row 5, tab 1, screen 1, transcript 1, rows 1, composer 1 |
-| A session that needs the user; a session marked unread | sidebar 1, session row 5 and 4 |
+| Another session's row (title and time) | session row 1 |
+| Another session's files change | nothing, and no kept chat's workspace asks the server for its changes |
+| A file changes in a session that shares the shown chat's workspace | nothing; the shown chat's workspace asks for its changes again, and no other |
+| The shown session's preview and time; a hidden tab's session's | session row 1 |
+| Activity that moves a session's row | sidebar 1, session row 5 (the row for what it says, then the four where the list puts them) |
+| The shown session's title | session row 1, strip 1, tab controls 1, tab 2, screen 2, transcript 2, rows 2, composer 2 |
+| A hidden tab's session's title | session row 1, tab 1, screen 1, transcript 1, rows 1, composer 1 |
+| A session that needs the user; a session marked unread | session row 1 |
 | A streamed delta | nothing counted (the streaming row's text only) |
 | A composer keystroke | composer 1 |
-| A draft's first keystroke; its last character deleted | composer 1, sidebar 1, session row 4 |
+| A draft's first keystroke; its last character deleted | composer 1 (the open session's row hides its pencil and does not read the draft) |
 | A tab switch | detail 1, tab 1, screen 1, transcript 1, rows 1, composer 2, strip 1, tab controls 1 |
 | Back to a chat from a New Tab page, three chats kept | detail 1, tab 1, screen 1, transcript 1, rows 1, composer 1, strip 2, tab controls 1; the three chats' scroll views are the same objects |
 | A session switch; a session chosen in the sidebar; a session the window shows by itself | session row 4, detail 1, tab 1, screen 2, transcript 2, rows 2, composer 3, strip 1, tab controls 1; no window, no shell, no sidebar |
@@ -625,13 +626,15 @@ read invalidates.
 | | `SessionTabsLifecycle`: every session's archived flag, the open session ids | every session row | fine: the flags and the ids built and compared are 10-11 microseconds a row change in Release with 253 sessions, and no view is under it |
 | Shell (`AppShell.body`) | column visibility | the sidebar toggle | fine. The selection passes through it as a binding |
 | `TitlebarTabs` (the detail's toolbar) | whether a page covers the tabs (`ShellTabs.isShown`), size class | a page without a session and the way back, a compact width | fine: its body makes the toolbar's items, and the detail under it is not rendered (budget). The strip's tabs are the last shown session's, so a page takes the strip away without rendering it |
-| "sidebar" | the sidebar state: the session list, display options, offered pages, the search binding | every session row, search text, filters, paging | fine: it is what draws them. Every row on screen runs its body for each change (the budgets' "session row 4" is all four rows of the test's sidebar), under 2 ms of the 20: see "Left as it is" |
+| "sidebar" | the kept sidebar state (`SidebarStateMemo`): the list's `placementRevision`, the filter, display options, projects, paging, offered pages, the search binding | a row that moves (order, section, pin, workspace, filter membership), search text, filters, paging | fine: a change that moves no row does not reach it (budget). Under status and updated grouping the memo builds a state for each list change and renders only when the arrangement differs |
+| "session row" (one per row on screen) | its own session, attention, read mark and draft, each under the session's key (`SidebarLive.row`); the open session's row does not read its draft | that session's title, preview, time, status, requests, read mark, draft | fine (budget: one row) |
+| `SidebarCountedRow` (Inbox and the two quick filters), `SidebarHiddenMarker` | the attention totals, each row for itself; the sessions hidden in a collapsed section or folder | a total that changes; one of those sessions | fine: neither is under a counted scope's body, and `SidebarLiveTests` checks what each draws and that each of the three rows reads the totals. Read in the body that yields the top rows (`SidebarNavigationRows`), a total made the list update, about 10 ms with 250 sessions |
 | The sidebar's list (`List(selection:)`, under "sidebar") | the selection | a session or page switch | the list's rows all run (session row 4) and the "sidebar" scope does not: see "Left as it is" |
 | "search field" | the search text, through the relay | search text | fine (budget) |
 | "tab controls", "tab switcher", "strip" | the shown session's tabs and titles; the strip also the detail's width | a tab's title, a tab switch, a resize step | fine: a resize step renders the strip once and nothing else |
 | "detail" | the shown tab group, its selected tab, its split, the kept list, the page, the connection's issues | a tab or session switch, a split, a connection issue | fine |
 | "tab" (one per kept tab) | its session's open conversation, `sessionWithoutActivity(id)`, its terminals, workspace and panel, the connected server, declared terminal names, offered pages | its own session's title, status or stores | fine (budget) |
-| `ChangedFilesFollower` (a modifier on each kept chat) | `connection.changedFilesRevision`, one counter for the connection | a file change in any session | fine: its body runs and reloads the chat's workspace, and no view renders (budget). Every kept chat reloads for a change in any session; see "Left as it is" |
+| `ChangedFilesFollower` (a modifier on each kept chat) | `connection.fileChanges(in:)`, a count for its own session | a file change by its session's agent, or by an open session's whose directory is the same or one inside the other | fine: its body runs and reloads the chat's workspace, and no view renders (budget, with the requests counted) |
 | `ConversationContainer` | its `ConversationStore`, panel route, composer preferences copy, fork and share flows | its conversation's state other than the transcript, the right panel, the two composer settings | fine (budget: right panel, Command-Return) |
 | `ConversationScreen` ("screen") | the conversation's header and mode, not the draft and not "has a draft" | title, status, mode | fine: a keystroke renders the composer only |
 | "transcript", "rows" | the transcript state; streamed text is read by the streaming row | a new row, a page of history | fine: a delta renders no counted scope |
@@ -685,16 +688,30 @@ use a colon.
 
 ### Left as it is
 
-- **Another session's row, 18-21 ms with 250 sessions.** Where it goes, each part timed by
-  itself in Release: the store's two passes through the core and the 250 summaries read back
-  3.8 ms, the sidebar state built again 2.3 ms, the list's children made again 2.5 ms, the
-  outline's row diff 2.5 ms, the visible rows' bodies 1.5 ms; the rest is the hosting view's
-  layout and the commit. What each idea not taken can save at most: rows skipped with
-  `.equatable()` 8.6% (1.5 ms, and unsafe while rows take fresh closures and the current
-  time), the sidebar state kept between changes 13%, a core filter that returns ids only
-  11%; the three together take 17.7 ms to about 12.5. Rows that observe their own session
-  and a filter the core keeps up to date would take it to about 5 ms. That is a change to
-  the core, the store and the sidebar together, and it is in `docs/follow-ups.md`.
+- **A session's change that moves its row** (it becomes the most recent, changes section, is
+  pinned, enters or leaves the filter) renders the list once and the rows on screen, 14-18 ms
+  with 250 sessions against 19-22 before the ninth pass: the sidebar state is built again,
+  the list's children made again and the outline's rows diffed. The moved row renders
+  twice, once for what it says and once where the list puts it (budget: session row 5). One
+  running session moves once and then stays first. Two that run at the same time pass each
+  other at each event, so each of those events is a move.
+- **Grouped by status or by last update, each list change builds the sidebar state** to
+  compare where the rows are, and the list renders when that differs. A draft's first
+  character is such a change under status grouping: an idle, read session goes from Done to
+  Draft. The default grouping does neither.
+- **A count in the sidebar's top rows** (Inbox, Running, Needs response) draws the three
+  rows that show one, 2.7-5.9 ms, whichever count changed.
+- **A draft's first character and its last one deleted cost about twice a key**, 11-13 ms
+  against 5-6. The sidebar and the session list are not in a sample of it, and app code is
+  under 1% of it. What a sample of it has that a key's does not, over 8 s of each loop:
+  hosting views laid out in the window's layout pass (531 samples against 188), the
+  toolbar's items updated (101 against 8) and values marked changed in the graph (157
+  against 55). Send, which the Mac's pill shows only with a draft, was measured three ways,
+  two runs each, first character and last together against a key in the same run: never
+  disabled 10.9 and 15.8 ms against 5.3 and 7.3; without its shortcut 14.6 and 14.6 against
+  6.2 and 7.3; kept in the pill and hidden 10.4 and 12.7 against 7.6 and 7.0. None takes it
+  to a key's cost. Not measured: the placeholder leaving and coming back, and the menu bar,
+  which the measured window does not have.
 - **A page without tabs rendered each kept chat's container once**, and the window once,
   until the ninth pass: it now renders the detail and the page's tab. No rows are built.
 - **A session the tab model shows by itself over a page without tabs sometimes rendered the
@@ -725,11 +742,13 @@ use a colon.
   (100-165 ms to come back), and Terminal back to Chat builds the composer again (about
   250 ms over the following frames). Both are in the conversation screen, with the
   transcript's sources, and were not changed in the eighth pass.
-- **A file an agent changes reloads every kept chat's workspace** (its changes, its tree and
-  its open document), 24-31 ms after the event with three chats kept, whichever session
-  the file is in. The connection has one count of file changes. A count per session would
-  reload one workspace, and a chat that shares a workspace with the session that changed
-  the file would then stay stale, so it is as it was.
+- **A file an agent changes reloads the kept chats that share its session's directory**
+  (each one's changes, tree and open document), 17-18 ms after the event for one chat and
+  nothing when no kept chat shares it. Two sessions share when they are on the same host and
+  one's directory is the other's or inside it; a session, host or directory the list does
+  not know counts as shared. An agent that writes outside its own directory, into another
+  open session's unrelated one, does not reload that session's panel: it shows the change at
+  its next reload.
 - **A resize step** renders only the strip. A window step is 72% layout: the toolbar's
   bridge about 24% of the step and the transcript's lazy stack about 20%, app code under 3%.
   The ninth pass went through that layout: what a hidden chat added is out, and the
@@ -959,7 +978,7 @@ chats (90% of the samples are one layout pass, and letting SwiftUI skip the show
 not make it cheaper); `SessionTabsLifecycle` (10-11 microseconds a row change); a key in
 the composer (no new cause).
 
-## Ninth pass: what a switch renders, and what a resize lays out (November 2026)
+## Ninth pass, the window: what a switch renders, and what a resize lays out (November 2026)
 
 Two of the costs the eighth pass left: a session or page switch rendered the window, and a
 resize step and a tab switch were mostly layout. Measured as the eighth pass
@@ -1095,15 +1114,85 @@ changed. What was found and taken is above. What is left is SwiftUI's and AppKit
   environment, its toolbar items, its focus); the toolbar's items are about 13% and the
   lazy stack under 1%. Nothing in it is the app's to take out.
 
+## Ninth pass, the sidebar: one row, one workspace (November 2026)
+
+The eighth pass left two costs that needed the core, the store and the views changed
+together: any session's change rendered the sidebar, and any agent's file change reloaded
+every kept chat's workspace.
+
+Measured as the seventh pass, 250 sessions, three chats kept. Before is the tree this pass
+started from; before and after ran back to back four times each, in turn. A key in the
+composer was at 12.8 and 15.7 ms in the first two runs before and at 5.2-6.9 ms in the
+other six (see "Left as it is"); the rows below it do not follow that level.
+
+| One step | Before | After |
+| --- | --- | --- |
+| Another session's preview and time, its row on screen | 16.4-20.2 ms | 0.6-2.4 ms |
+| The shown session's preview and time | 15.8-20.1 ms | 0.6-0.8 ms |
+| A kept tab's session's preview and time | 15.2-20.1 ms | 0.6-2.0 ms |
+| A session whose row is off screen | 16.1-20.4 ms | 0.25-0.32 ms |
+| A session on screen starts or stops (its row and the Running count) | 18.1-23.4 ms | 3.7-5.3 ms |
+| A session off screen starts or stops (the Running count) | 17.7-22.0 ms | 2.7-5.9 ms |
+| The same summary again | 0.14-0.65 ms | 0.06-0.11 ms |
+| A session becomes the most recent (its row moves) | 18.8-22.3 ms | 14.3-18.5 ms |
+| A character of sidebar search (the slowest tenth) | 20.7-24.8 (70-73) ms | 19.3-23.3 (61-71) ms |
+| A draft's first character | 26.8-31.9 ms | 12.4-13.2 ms |
+| A draft's last character deleted | 24.9-29.7 ms | 11.2-12.2 ms |
+| A key in the composer | 5.7-15.7 ms | 5.2-6.2 ms |
+| An agent's file change, no kept chat in its directory (with the reloads after) | 0.2 (24-30) ms | 0.1-0.2 (0.1) ms |
+| An agent's file change in the shown chat's directory (with the reload after) | 0.2 (24-34) ms | 0.2 (17-18) ms |
+
+The two draft rows after are from three of the four runs; the first run timed both
+together, 12.7 ms. The row that moves ran three times before and five after: 14.3-14.4 ms
+in the three runs that followed the ones before, 18.4 and 18.5 ms in two earlier ones.
+
+What changed, each with a row in the render budgets that fails without it:
+
+- **The core keeps the filtered list.** A changed row sent every session through the core
+  twice, for the filter and for the totals, and the store read 250 summaries back. The core
+  holds an index (`SessionIndex`) that takes the rows that changed and answers with the
+  totals, each changed session's attention, and the new order only when a row moved,
+  entered or left. The store counts those (`placementRevision`).
+- **A row reads its own session.** The sidebar's state held every row's title, preview,
+  time, status and marks, so any of them rendered the list. The list reads the kept state
+  (`SidebarStateMemo`), which follows the placement count, the filter, the display options
+  and the projects; each row reads its session, attention, read mark and draft under that
+  session's key (`SidebarLive.row`), and the store tells readers of that key only. A
+  collapsed section's or folder's marker reads the sessions hidden in it
+  (`SidebarHiddenMarker`), and Inbox and the two quick filters each read the totals
+  (`SidebarCountedRow`).
+- **The open session's row does not read its draft.** It hides the pencil, so a first
+  character and a last one deleted render the composer and no row. Another session's draft
+  renders its own row.
+- **A file change is counted for the sessions that can show it.** The connection had one
+  count. It keeps one per session with an open workspace, and a change adds to the changed
+  session's and to those that share its directory (`ConnectionStore.fileChanges(in:)`).
+  `ConnectionFileChangeTests` covers a chat that shares the directory, one inside it and one
+  on another host.
+
+Seen in the window after this pass: a row's time follows the clock by itself, where it
+followed the next list change; a count and a collapsed section's marker change without the
+list rendering.
+
+A draft's first character and its last cost 11-13 ms where they cost 25-32. The part that
+was the sidebar, about 14 ms with the processor at the same level, is gone; they still cost
+about twice a key, and "Left as it is" has where a sample puts the rest. With the menu
+bar's change for the same two keys applied as well (two runs) they cost 12.1 and 14.2 ms:
+the measured window has no menu bar.
+
+Left, with the numbers under "Left as it is": a row that moves; the state built for each
+change under status and updated grouping; the three counted rows; a draft's first and last
+character; a file changed outside its session's directory.
+
 ## Where the time still goes
 
 - **Switching tabs** renders the detail and the tab that shows once, 50-80 ms in Release to a
   600-row chat, about 30 ms more when the pane's width changed while the chat hid, and
   60-95 ms to a terminal or back. A terminal, browser or New Tab page is built again on each
   selection, about 12 ms of it for a terminal (see the eighth pass).
-- **Any session's activity** (preview, time, status) renders the sidebar, 22-26 ms in Release
-  with 250 sessions, whether it is the shown session's, a kept tab's or another's. Most of it
-  is the sidebar's layout, not the rows (see the seventh pass).
+- **A session's activity that moves its row** renders the sidebar, 14-18 ms in Release with
+  250 sessions; activity that does not renders the row, 0.6-2.4 ms, and 3.7-5.3 ms when a
+  count changes with it (see the ninth pass).
 - **Switching sessions** is 70-100 ms between two open ones and 150-165 ms for the first pass
   of one not yet open; a page without a session and back is 110-135 ms each way. Each still
   renders every sidebar row on screen (see the ninth pass).
@@ -1123,9 +1212,6 @@ changed. What was found and taken is above. What is left is SwiftUI's and AppKit
   resize step").
 - While a reply streams, each paced render still costs 10-15 ms in Debug, spread over SwiftUI's
   graph update, the lazy stack's layout and the text overlays.
-- A changed session-list row still sends every session through the core twice (filter and
-  totals), about 22 ms with 650 sessions. A turn changes its session's row a few times, so it
-  was not worth an incremental core API in this pass.
 - Markdown parsing and code highlighting run on the main actor only on a warm-up miss: a row
   scrolled to before the background task reached it, or a streaming row's open block.
 - Debug is several times slower than Release for this generic SwiftUI and value-type code;

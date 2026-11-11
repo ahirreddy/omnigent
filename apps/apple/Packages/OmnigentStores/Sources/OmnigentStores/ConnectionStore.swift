@@ -42,8 +42,8 @@ public final class ConnectionStore {
   public internal(set) var hostsRevision = 0
   /// Bumped when the server's project list changes.
   public internal(set) var projectsRevision = 0
-  /// Bumped when an open session's changed files were re-read.
-  public internal(set) var changedFilesRevision = 0
+  /// File changes that reached each open session's workspace; read with `fileChanges(in:)`.
+  @ObservationIgnored var fileChangeCounts: [String: Int] = [:]
   /// Bumped when the bearer was renewed in place (no reconnect).
   public internal(set) var credentialRotations = 0
   /// When the current credential expires, in ms since the Unix epoch, after a renewal.

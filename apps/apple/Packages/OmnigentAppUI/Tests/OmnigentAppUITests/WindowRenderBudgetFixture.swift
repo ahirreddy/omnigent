@@ -135,14 +135,32 @@ import Testing
     /// Selects the sidebar row that draws `title` in the sidebar's own list, as a click on it
     /// does: the list writes the selection it was given.
     func chooseSidebarRow(_ title: String) throws {
-      let list = try #require(screen.allViews.lazy.compactMap { $0 as? NSTableView }.first)
+      try sidebarList().selectRowIndexes(
+        IndexSet(integer: try sidebarRow(title)), byExtendingSelection: false)
+    }
+
+    private func sidebarList() throws -> NSTableView {
+      try #require(screen.allViews.lazy.compactMap { $0 as? NSTableView }.first)
+    }
+
+    /// Where the sidebar's own list draws `title`, counted from its top.
+    func sidebarRow(_ title: String) throws -> Int {
+      let list = try sidebarList()
       let row = try (0..<list.numberOfRows).first { row in
         guard let view = list.rowView(atRow: row, makeIfNecessary: false) else { return false }
         return try screen.shownText(under: view).contains(title)
       }
-      list.selectRowIndexes(
-        IndexSet(integer: try #require(row, "no sidebar row \(title)")),
-        byExtendingSelection: false)
+      return try #require(row, "no sidebar row \(title)")
+    }
+
+    /// The sessions whose changed files the server was asked for since the step's note.
+    func changesAsked() -> [String] {
+      let asked = server.http.requests.dropFirst(notes.requests).map(\.url)
+      return Self.titles.keys.sorted().filter { sessionID in
+        asked.contains {
+          $0.hasSuffix("/v1/sessions/\(sessionID)/resources/environments/default/changes")
+        }
+      }
     }
 
     /// Chooses `sessionID`'s row in the sidebar.

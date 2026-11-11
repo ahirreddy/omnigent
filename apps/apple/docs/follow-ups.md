@@ -358,32 +358,45 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   opening a long session costs about 3 s of main-thread CPU in Debug and switching back to its
   tab about 1.5 s, because a tab's content is rebuilt (keep recent tabs alive, or fewer views per
   markdown block); streaming into a long session uses 30-40% of the main thread (the transcript
-  body re-renders per delta); a changed session-list row still sends every session through the
-  core twice (an incremental filter in the core would avoid it).
+  body re-renders per delta).
 - [ ] **Mac rendering, measured and left** (numbers in [performance.md](performance.md), "Left
   as it is", the eighth pass and the ninth):
-  - A session's row change costs 18-21 ms with 250 sessions. Rows that observe their own
-    session, and a filter the core keeps up to date and reports as changed ids, would take it
-    to about 5 ms; it changes the core, the store and the sidebar together.
+  - A session's change that moves its row (it becomes the most recent, changes section, is
+    pinned, enters or leaves the filter) still renders the sidebar list once, and the moved
+    row twice. Two running sessions that pass each other in the order do it at each event.
+    An outline that takes a move as a move, or an order that holds while a session runs,
+    would avoid it; the second is a product choice.
+  - Grouped by status or by last update, the sidebar builds its state for each list change
+    to see whether a row regrouped. The core's index knows the order; it could report the
+    section too.
+  - A count in the sidebar's top rows draws the three rows that show counts (Inbox, Running,
+    Needs response), whichever count changed. A reader per count would draw one.
+  - A draft's first character and its last one deleted cost about twice a key (11-13 ms
+    against 5-6 in the measured window, which has no menu bar). It is not the sidebar: the
+    time is in the window's layout pass and the toolbar's items updating. Send's enabled
+    state, its shortcut and its place in the pill were each measured and are not it; the
+    placeholder was not measured.
   - A resize step still rebuilds the tab strip's toolbar item menu form (9-11% of a step's
     layout samples), which SwiftUI does for any toolbar item whose content changes. A strip
     drawn outside the toolbar item would not pay it; the strip, its drag region and the
     overflow behaviour then have to be rebuilt by hand.
   - A session or page switch renders every sidebar row on screen, not the two whose
     selection changed: `List(selection:)` runs the view that holds its binding. It needs
-    rows SwiftUI can skip (no closures made in the list's body), with the row work above.
+    rows SwiftUI can skip (no closures made in the list's body).
   - A tab switch between two chats is 45-80 ms, about three quarters of it SwiftUI's
     graph update for the tab that shows and an eighth the toolbar's items; no hidden chat
     and no row is laid out in it. Nothing found to take out.
   - A chat under its own terminal follows every window size (its tab is shown), where a
     chat behind another tab keeps its size until it shows.
   - `Apps/Omnigent-macOS/Sources/ServerWindowRoot.swift` hands the selection, the badge and
-    the selected tab to `serverWindow(_:desktop:selection:status:onRoute:)`. It was written
-    without building the Mac app target; build it and run the hosted tests in a VM.
+    the selected tab to `serverWindow(_:desktop:selection:status:onRoute:)`. The Mac app
+    target builds with it; its hosted tests have not run (they run in a VM).
   - A chat left in Terminal mode drops its terminal surface while hidden (100-165 ms to come
     back), and Terminal back to Chat builds the composer again (about 250 ms).
-  - A file an agent changes reloads every kept chat's workspace. A count per workspace, not
-    per connection, would reload the ones that show the file.
+  - A file an agent changes reloads the kept chats whose session directory is the changed
+    session's, holds it or is inside it. An agent that writes outside its own directory, into
+    another open session's unrelated one, no longer reloads that session's panel. Deciding
+    by the changed file's path, not the session's directory, would cover it.
 
 ## Product decisions
 

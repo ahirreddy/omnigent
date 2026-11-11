@@ -66,28 +66,61 @@ nonisolated enum SidebarMarker: Hashable {
   case disconnected
   case unread
 
-  /// The marker for `sessions`, or `nil` when none has anything to show.
-  static func strongest(
-    _ sessions: some Sequence<SessionSummary>, list: SessionListViewState,
-    rowInfo: [String: SessionRowInfo]
-  ) -> Self? {
+  /// The marker for `rows`, or `nil` when none has anything to show.
+  static func strongest(_ rows: some Sequence<SidebarRowContent>) -> Self? {
     var requests = 0
     var found: Set<Self> = []
-    for session in sessions {
-      switch session.attention {
-      case .needsYou: requests += max(1, list.attentionCounts[session.id] ?? 1)
+    for row in rows {
+      switch row.session.attention {
+      case .needsYou: requests += max(1, row.requests ?? 1)
       case .working: found.insert(.working)
       case .failed: found.insert(.failed)
       case .unread, .idle:
-        if rowInfo[session.id]?.isDisconnected == true {
+        if row.info.isDisconnected {
           found.insert(.disconnected)
-        } else if session.attention == .unread || list.unreadIds.contains(session.id) {
+        } else if row.session.attention == .unread || row.isUnread {
           found.insert(.unread)
         }
       }
     }
     if requests > 0 { return .needsYou(requests: requests) }
     return [Self.working, .failed, .disconnected, .unread].first(where: found.contains)
+  }
+}
+
+/// The marker of a collapsed section's or folder's hidden rows. It reads those rows as they are
+/// now, so a hidden session's change draws the marker and not the list.
+struct SidebarHiddenMarker: View {
+  let sessions: [SessionSummary]
+  let state: SidebarViewState
+  let live: SidebarLive?
+
+  var body: some View {
+    let rows = sessions.map { live?.row($0.id, false) ?? state.rowContent($0) }
+    if let marker = SidebarMarker.strongest(rows) {
+      SidebarMarkerView(marker: marker)
+    }
+  }
+}
+
+/// One session's row, drawn from the session as it is now. Only this view reads the session, so
+/// its new text, status or mark draws this row and leaves the list alone.
+struct SidebarLiveRow<Content: View>: View {
+  /// The row as the list's state has it, drawn when there is no live reader.
+  let snapshot: SidebarRowContent
+  let live: SidebarLive?
+  /// The open session's composer already shows its draft, so its row does not.
+  let showsDraft: Bool
+  @ViewBuilder let content: (SidebarRowContent) -> Content
+
+  var body: some View {
+    content(current)
+  }
+
+  private var current: SidebarRowContent {
+    var row = live?.row(snapshot.session.id, showsDraft) ?? snapshot
+    row.info.hasDraft = row.info.hasDraft && showsDraft
+    return row
   }
 }
 

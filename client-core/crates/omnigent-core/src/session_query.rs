@@ -44,7 +44,7 @@ impl SessionFilter {
         }
     }
 
-    fn includes(self, session: &SessionSummary) -> bool {
+    pub(crate) fn includes(self, session: &SessionSummary) -> bool {
         match self {
             Self::All => !session.is_archived,
             Self::Running => {
@@ -61,7 +61,7 @@ impl SessionFilter {
 
 /// Folds case and diacritics the way Foundation's `localizedStandardContains` does for the
 /// Latin text session titles use: lower case, and accented Latin letters reduced to their base.
-fn fold(text: &str) -> String {
+pub(crate) fn fold(text: &str) -> String {
     text.chars()
         .flat_map(char::to_lowercase)
         .map(|character| match character {
@@ -80,7 +80,7 @@ fn fold(text: &str) -> String {
         .collect()
 }
 
-fn order(left: &SessionSummary, right: &SessionSummary) -> Ordering {
+pub(crate) fn order(left: &SessionSummary, right: &SessionSummary) -> Ordering {
     right
         .is_pinned
         .cmp(&left.is_pinned)
@@ -107,22 +107,26 @@ pub fn matching(
     let query = fold(text.trim());
     let mut result: Vec<SessionSummary> = sessions
         .iter()
-        .filter(|session| filter.includes(session))
-        .filter(|session| {
-            query.is_empty()
-                || [
-                    &session.title,
-                    &session.preview,
-                    &session.workspace,
-                    &session.agent_name,
-                ]
-                .iter()
-                .any(|field| fold(field).contains(&query))
-        })
+        .filter(|session| matches(session, &query, filter))
         .cloned()
         .collect();
     result.sort_by(order);
     result
+}
+
+/// Whether `session` passes `filter` and its title, preview, workspace or agent contains `query`,
+/// which is already trimmed and folded.
+pub(crate) fn matches(session: &SessionSummary, query: &str, filter: SessionFilter) -> bool {
+    filter.includes(session)
+        && (query.is_empty()
+            || [
+                &session.title,
+                &session.preview,
+                &session.workspace,
+                &session.agent_name,
+            ]
+            .iter()
+            .any(|field| fold(field).contains(query)))
 }
 
 #[cfg(test)]

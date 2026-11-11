@@ -4,11 +4,13 @@ import OmnigentStores
 import OmnigentUIComponents
 
 /// Builds the sidebar's view state from the session list. Ordering, search and filtering stay the
-/// core's (`filterSessions`); every attention glyph and count comes from the list's shared
+/// core's (its session index); every attention glyph and count comes from the list's shared
 /// attention model (`SessionListStore.attention(of:)` and `attentionTotals`), so the row, the
 /// Running and Needs you counts and the Inbox badge agree with the Dock and menu bar.
 enum SidebarAdapter {
-  /// The sidebar's view state.
+  /// The sidebar's view state. It reads the list's rows and marks without observing them
+  /// (`SessionListStore.contents`): a view that draws from it reads `placementRevision`, and
+  /// each row reads its own session through ``live(_:)``.
   /// - Parameters:
   ///   - list: The session list.
   ///   - display: The user's display options.
@@ -19,24 +21,20 @@ enum SidebarAdapter {
     list: SessionListStore, display: SessionDisplayOptions, server: ConnectedServer?,
     servers: [ServerChoice] = []
   ) -> SidebarViewState {
-    let totals = list.attentionTotals
-    // Only the quick filters show a count.
-    let counts: [OmnigentUIComponents.SessionFilter: Int] = [
-      .running: Int(totals.working), .needsResponse: Int(totals.sessionsNeedingYou),
-    ]
-    let requests = list.attentionByID.compactMapValues { attention in
-      attention.state == .needsYou ? Int(attention.requests) : nil
-    }
+    let contents = list.contents
+    let badges = counts(contents.totals)
+    let pending = contents.attention.compactMapValues(requests)
     let filter = OmnigentUIComponents.SessionFilter(list.filter)
     let layout = layout(
-      sessions: list.visible, projects: list.projects, display: display,
+      sessions: contents.visible, projects: list.projects, display: display,
       members: list.members, isOwned: list.isOwned)
+    let idle = SessionAttention(state: .idle, requests: 0)
     let listState = SessionListViewState(
       sessions: layout.sessions.map {
-        OmnigentUIComponents.SessionSummary($0, attention: list.attention(of: $0.id))
+        OmnigentUIComponents.SessionSummary($0, attention: contents.attention[$0.id] ?? idle)
       },
-      filter: filter, unreadIds: list.unreadIDs, attentionCounts: requests, filterCounts: counts,
-      phase: phase(list))
+      filter: filter, unreadIds: contents.unreadIDs, attentionCounts: pending,
+      filterCounts: badges.filters, phase: phase(list))
     let current = server.map(ServerChoice.init)
     var choices = current.map { [$0] } ?? []
     choices += servers.filter { choice in choice.id != current?.id }
@@ -47,15 +45,47 @@ enum SidebarAdapter {
           let info = rowInfo(
             session, isOwned: list.isOwned(session),
             environments: list.hostEnvironments,
-            hasDraft: list.draftSessionIDs.contains(session.id))
+            hasDraft: contents.draftSessionIDs.contains(session.id))
           return (session.id, info)
         },
         uniquingKeysWith: { first, _ in first }),
-      projects: layout.projects, inboxCount: Int(totals.sessionsNeedingYou), showsCanvas: false,
+      projects: layout.projects, inboxCount: badges.inbox, showsCanvas: false,
       display: display, quickFilter: filter == .all || filter == .archived ? nil : filter,
       servers: choices, currentServerID: current?.id)
     state.paging = paging(list.paging)
     return state
+  }
+
+  /// The Inbox badge and the quick filters' counts; only those two filters show one.
+  static func counts(_ totals: AttentionTotals) -> SidebarCounts {
+    SidebarCounts(
+      inbox: Int(totals.sessionsNeedingYou),
+      filters: [.running: Int(totals.working), .needsResponse: Int(totals.sessionsNeedingYou)])
+  }
+
+  /// The decisions a row's Needs you capsule counts; `nil` for a session that needs none.
+  static func requests(_ attention: SessionAttention) -> Int? {
+    attention.state == .needsYou ? Int(attention.requests) : nil
+  }
+
+  /// The sidebar's readers of `list` as it is now. Each reads one session, or the totals, so
+  /// the view that calls one is drawn again for that session or those totals alone.
+  static func live(_ list: SessionListStore) -> SidebarLive {
+    SidebarLive(
+      row: { id, showsDraft in row(id, list: list, showsDraft: showsDraft) },
+      counts: { counts(list.attentionTotals) })
+  }
+
+  /// One session's row from the list; `nil` for a session it does not have.
+  static func row(_ id: String, list: SessionListStore, showsDraft: Bool) -> SidebarRowContent? {
+    guard let session = list.session(id) else { return nil }
+    let attention = list.attention(of: id)
+    let info = rowInfo(
+      session, isOwned: list.isOwned(session), environments: list.hostEnvironments,
+      hasDraft: showsDraft && list.hasDraft(id))
+    return SidebarRowContent(
+      session: OmnigentUIComponents.SessionSummary(session, attention: attention), info: info,
+      isUnread: list.isUnread(id), requests: requests(attention))
   }
 
   /// Load more and each folder's pages.

@@ -275,3 +275,20 @@ struct SidebarLoadMoreRow: View {
     .accessibilityIdentifier("sidebar-load-more")
   }
 }
+
+/// New session and Select sessions, on the Sessions header (the web's header actions).
+struct SessionsHeaderButtons: View {
+  let newSession: (@MainActor () -> Void)?
+  let select: () -> Void
+
+  var body: some View {
+    if let newSession {
+      Button("New session", systemImage: "plus.bubble", action: newSession)
+        .help("New session")
+        .accessibilityIdentifier("sessions-new-session")
+    }
+    Button("Select sessions", systemImage: "checklist", action: select)
+      .help("Select sessions")
+      .accessibilityIdentifier("toggle-selection-mode")
+  }
+}

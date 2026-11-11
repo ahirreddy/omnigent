@@ -8,6 +8,7 @@ struct SidebarNavigationRows: View {
   let actions: SidebarActions
 
   var body: some View {
+    let counts: @MainActor () -> SidebarCounts = { actions.live?.counts() ?? state.counts }
     Label("New session", systemImage: "plus.bubble")
       .neutralSidebarIcon()
       .fontWeight(.medium)
@@ -21,12 +22,14 @@ struct SidebarNavigationRows: View {
         .sidebarSelection(selection == .automations)
         .accessibilityIdentifier("sidebar-automations")
     }
-    Label("Inbox", systemImage: "tray")
-      .neutralSidebarIcon()
-      .badge(state.inboxCount)
-      .tag(SidebarDestination.inbox)
-      .sidebarSelection(selection == .inbox)
-      .accessibilityIdentifier("sidebar-inbox")
+    SidebarCountedRow(counts: counts) { counts in
+      Label("Inbox", systemImage: "tray")
+        .neutralSidebarIcon()
+        .badge(counts.inbox)
+    }
+    .tag(SidebarDestination.inbox)
+    .sidebarSelection(selection == .inbox)
+    .accessibilityIdentifier("sidebar-inbox")
     if state.showsCanvas {
       Label("Canvas", systemImage: "square.grid.2x2")
         .neutralSidebarIcon()
@@ -42,18 +45,30 @@ struct SidebarNavigationRows: View {
         .accessibilityIdentifier("sidebar-usage")
     }
     if let setQuickFilter = actions.setQuickFilter {
+      quickFilter(.running, counts: counts, set: setQuickFilter)
+      quickFilter(.needsResponse, counts: counts, set: setQuickFilter)
+    }
+  }
+
+  private func quickFilter(
+    _ filter: SessionFilter, counts: @escaping @MainActor () -> SidebarCounts,
+    set: @escaping @MainActor (SessionFilter?) -> Void
+  ) -> some View {
+    SidebarCountedRow(counts: counts) { counts in
       QuickFilterRow(
-        filter: .running, isActive: state.quickFilter == .running,
-        count: state.list.filterCounts[.running]
+        filter: filter, isActive: state.quickFilter == filter, count: counts.filters[filter]
       ) {
-        setQuickFilter(state.quickFilter == .running ? nil : .running)
-      }
-      QuickFilterRow(
-        filter: .needsResponse, isActive: state.quickFilter == .needsResponse,
-        count: state.list.filterCounts[.needsResponse]
-      ) {
-        setQuickFilter(state.quickFilter == .needsResponse ? nil : .needsResponse)
+        set(state.quickFilter == filter ? nil : filter)
       }
     }
   }
+}
+
+/// A top row that shows a count. The count is read in this body, so a new one draws this row
+/// and not the list around it.
+private struct SidebarCountedRow<Row: View>: View {
+  let counts: @MainActor () -> SidebarCounts
+  @ViewBuilder let row: (SidebarCounts) -> Row
+
+  var body: some View { row(counts()) }
 }

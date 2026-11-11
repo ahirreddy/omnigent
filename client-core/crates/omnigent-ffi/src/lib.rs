@@ -61,6 +61,7 @@ pub mod queue;
 pub mod remote_browser;
 pub mod sandbox;
 pub mod server_admin;
+pub mod session_index;
 pub mod session_tools;
 pub mod sessions;
 pub mod share;
@@ -162,6 +163,8 @@ mod host_switch_tests;
 mod policy_registry_tests;
 #[cfg(test)]
 mod queue_tests;
+#[cfg(test)]
+mod session_index_tests;
 #[cfg(test)]
 mod sessions_tests;
 #[cfg(test)]

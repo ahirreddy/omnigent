@@ -211,7 +211,7 @@ public struct ConnectedServerView: View {
           conversation: conversation, summary: connection.sessionList.sessionWithoutActivity(id),
           terminals: session.terminals(of: id), workspace: session.workspace(of: id),
           panel: session.panel(of: id),
-          changedFilesRevision: { connection.changedFilesRevision },
+          changedFilesRevision: { connection.fileChanges(in: id) },
           navigation: navigation(from: id),
           opener: linkOpener(in: id),
           openSession: { selection = .session($0) },

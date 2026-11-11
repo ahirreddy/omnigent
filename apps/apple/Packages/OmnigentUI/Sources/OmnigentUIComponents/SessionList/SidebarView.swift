@@ -47,8 +47,6 @@ public struct SidebarView: View {
     self.actions = actions
   }
 
-  private var now: Date { state.list.now ?? Date() }
-
   /// The sidebar.
   public var body: some View {
     List(selection: listSelection) {
@@ -97,7 +95,7 @@ public struct SidebarView: View {
         renameOnDoubleClick(destinations)
       }
       .onDeleteCommand {
-        guard !bulk.isActive, let id = selection?.sessionID, let session = summary(id),
+        guard !bulk.isActive, let id = selection?.sessionID, let session = current(id),
           session.canArchive, let setArchived = actions.sessions.setArchived
         else { return }
         setArchived(session, !session.isArchived)
@@ -166,14 +164,14 @@ public struct SidebarView: View {
           .font(Theme.Typography.section)
           .foregroundStyle(Theme.mutedText)
           .textCase(nil)
-        if let marker = hiddenMarker(section) {
-          SidebarMarkerView(marker: marker)
-        }
+        hiddenMarker(section)
         if section.isProjects, !bulk.isActive {
           projectsHeaderButtons
         }
         if section.showsDisplayMenu {
-          sessionsHeaderButtons
+          if !bulk.isActive {
+            SessionsHeaderButtons(newSession: actions.sessions.newSession) { bulk.begin() }
+          }
           if let setDisplay = actions.setDisplay {
             DisplayMenu(
               options: state.display, showsShared: state.showsSharedScope, set: setDisplay)
@@ -186,20 +184,6 @@ public struct SidebarView: View {
       .buttonStyle(.borderless)
       .foregroundStyle(.secondary)
       .sidebarDropTarget { item in drop(item, on: dropHandler.sectionTarget(section)) }
-    }
-  }
-
-  /// New session and Select sessions, on the Sessions header (the web's header actions).
-  @ViewBuilder private var sessionsHeaderButtons: some View {
-    if !bulk.isActive {
-      if let newSession = actions.sessions.newSession {
-        Button("New session", systemImage: "plus.bubble", action: newSession)
-          .help("New session")
-          .accessibilityIdentifier("sessions-new-session")
-      }
-      Button("Select sessions", systemImage: "checklist") { bulk.begin() }
-        .help("Select sessions")
-        .accessibilityIdentifier("toggle-selection-mode")
     }
   }
 
@@ -245,16 +229,23 @@ public struct SidebarView: View {
   }
 
   /// The strongest state hidden under a collapsed section, for its header.
-  private func hiddenMarker(_ section: SidebarSections.Section) -> SidebarMarker? {
-    guard collapsedTitles.contains(section.title) else { return nil }
-    let sessions =
-      section.isProjects
-      ? state.projects.flatMap(\.sessionIds).compactMap(summary) : section.sessions
-    return SidebarMarker.strongest(sessions, list: state.list, rowInfo: state.rowInfo)
+  @ViewBuilder
+  private func hiddenMarker(_ section: SidebarSections.Section) -> some View {
+    if collapsedTitles.contains(section.title) {
+      let sessions =
+        section.isProjects
+        ? state.projects.flatMap(\.sessionIds).compactMap(summary) : section.sessions
+      SidebarHiddenMarker(sessions: sessions, state: state, live: actions.live)
+    }
   }
 
   private func summary(_ id: String) -> SessionSummary? {
     state.list.sessions.first { $0.id == id }
+  }
+
+  /// A session as it is now; the list's own copy can be a message behind.
+  private func current(_ id: String) -> SessionSummary? {
+    actions.live?.row(id, false)?.session ?? summary(id)
   }
 
   @ViewBuilder private var bottomBars: some View {
@@ -294,7 +285,7 @@ extension SidebarView {
   private func projectGroup(_ project: SessionProject) -> some View {
     let sessions = project.sessionIds.compactMap(summary)
     let marker = { (rows: ArraySlice<SessionSummary>) in
-      SidebarMarker.strongest(rows, list: state.list, rowInfo: state.rowInfo)
+      SidebarHiddenMarker(sessions: Array(rows), state: state, live: actions.live)
     }
     let pages = ProjectFolderPages(
       project: project, sessions: sessions, paging: state.paging,
@@ -327,10 +318,21 @@ extension SidebarView {
   }
 
   private func row(_ session: SessionSummary, target: SidebarDropTarget?) -> some View {
-    var info = state.rowInfo[session.id] ?? SessionRowInfo()
-    // The open session's composer already shows its draft.
-    info.hasDraft = info.hasDraft && selection != .session(session.id)
-    let isUnread = state.list.unreadIds.contains(session.id)
+    let isOpen = selection == .session(session.id)
+    return SidebarLiveRow(
+      snapshot: state.rowContent(session), live: actions.live, showsDraft: !isOpen
+    ) { row in
+      sessionRow(row)
+    }
+    .tag(SidebarDestination.session(session.id))
+    .sidebarSelection(bulk.isActive ? bulk.ids.contains(session.id) : isOpen)
+    .draggable(SidebarDragItem.session(session.id).payload)
+    .sidebarDropTarget { item in target.map { drop(item, on: $0) } ?? false }
+  }
+
+  /// A row and its menu for the session as it is now.
+  private func sessionRow(_ row: SidebarRowContent) -> some View {
+    let session = row.session
     var sessionActions = actions.sessions
     if let move = sessionActions.moveToProject {
       // The session shows in the folder it moved to, not hidden in a collapsed one.
@@ -340,7 +342,7 @@ extension SidebarView {
       }
     }
     let menu = SessionRowMenu(
-      session: session, isUnread: isUnread, isShared: info.isShared,
+      session: session, isUnread: row.isUnread, isShared: row.info.isShared,
       pinLimitReached: state.pinnedCount >= state.pinLimit,
       projects: state.projects, actions: sessionActions,
       rename: {
@@ -358,28 +360,23 @@ extension SidebarView {
         }
       }, shareUnavailableReason: sessionActions.shareUnavailableReason)
     return SessionRow(
-      session: session, info: info, isUnread: isUnread,
-      attention: state.list.attentionCounts[session.id] ?? 0, details: state.display.details,
-      now: now, menu: menu, isSelecting: bulk.isActive, isChecked: bulk.ids.contains(session.id),
+      session: session, info: row.info, isUnread: row.isUnread, attention: row.requests ?? 0,
+      details: state.display.details, now: state.list.now, menu: menu,
+      isSelecting: bulk.isActive, isChecked: bulk.ids.contains(session.id),
       inlineRename: inlineEdit.session?.id == session.id
         ? SidebarInlineEdit.field($inlineEdit, rename: actions.sessions.rename) : nil,
-      beginInlineRename: canRenameInline(session, info: info) ? { inlineEdit.begin(session) } : nil
+      beginInlineRename: canRenameInline(session, info: row.info)
+        ? { inlineEdit.begin(session) } : nil
     )
-    .tag(SidebarDestination.session(session.id))
-    .sidebarSelection(
-      bulk.isActive ? bulk.ids.contains(session.id) : selection == .session(session.id)
-    )
-    .draggable(SidebarDragItem.session(session.id).payload)
-    .sidebarDropTarget { item in target.map { drop(item, on: $0) } ?? false }
     #if os(iOS)
-      .modifier(SessionSwipeActions(session: session, isUnread: isUnread, menu: menu))
+      .modifier(SessionSwipeActions(session: session, isUnread: row.isUnread, menu: menu))
     #endif
   }
 
   /// A double-click on one session row renames it in place.
   private func renameOnDoubleClick(_ destinations: Set<SidebarDestination>) {
     guard destinations.count == 1, let id = destinations.first?.sessionID,
-      let session = summary(id),
+      let session = current(id),
       canRenameInline(session, info: state.rowInfo[id] ?? SessionRowInfo())
     else { return }
     inlineEdit.begin(session)

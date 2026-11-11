@@ -1,9 +1,43 @@
 public import OmnigentCoreFFI
 
-/// The sidebar row menu's actions beyond rename, pin and archive, and the project folders. Each
+/// Rename, pin and archive, the sidebar row menu's other actions, and the project folders. Each
 /// reports a failure in ``SessionListStore/editError`` and returns whether it succeeded; the
 /// list itself changes through the core's events.
 extension SessionListStore {
+  /// Renames `sessionID` (edit permission). The title is trimmed and must be 1 to 120
+  /// characters; the list updates from the core's acknowledgement.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - title: The new title.
+  /// - Returns: Whether the rename was saved; a failure is in ``editError``.
+  @discardableResult
+  public func rename(_ sessionID: String, to title: String) async -> Bool {
+    await edit(sessionID, .title(title: title))
+  }
+
+  /// Pins or unpins `sessionID` (view permission). A pin is stamped with the current time.
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - pinned: Pin or unpin.
+  /// - Returns: Whether the change was saved; a failure is in ``editError``.
+  @discardableResult
+  public func setPinned(_ sessionID: String, _ pinned: Bool) async -> Bool {
+    await edit(sessionID, .pinned(pinned: pinned))
+  }
+
+  /// Archives or restores `sessionID` (owner permission).
+  /// - Parameters:
+  ///   - sessionID: The session.
+  ///   - archived: Archive or restore.
+  ///   - deleteWorktree: When archiving, also remove its git worktree (the branch is kept).
+  /// - Returns: Whether the change was saved; a failure is in ``editError``.
+  @discardableResult
+  public func setArchived(_ sessionID: String, _ archived: Bool, deleteWorktree: Bool = false)
+    async -> Bool
+  {
+    await edit(sessionID, .archived(archived: archived, deleteWorktree: deleteWorktree))
+  }
+
   /// Marks `sessionID` unread, or read.
   /// - Parameters:
   ///   - sessionID: The session.
