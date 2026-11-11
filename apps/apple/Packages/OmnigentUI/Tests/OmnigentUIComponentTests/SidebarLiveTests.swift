@@ -41,13 +41,19 @@ struct SidebarArrangementTests {
     var counts = SidebarCounts()
     /// Whether each session's row was last read with its draft.
     @ObservationIgnored var draftReads: [String: Bool] = [:]
+    /// How many times the counts were read.
+    @ObservationIgnored var countReads = 0
 
     var live: SidebarLive {
       SidebarLive(
         row: { [self] sessionID, showsDraft in
           draftReads[sessionID] = showsDraft
           return rows[sessionID]
-        }, counts: { [self] in counts })
+        },
+        counts: { [self] in
+          countReads += 1
+          return counts
+        })
     }
   }
 
@@ -146,10 +152,14 @@ struct SidebarArrangementTests {
       defer { screen.close() }
       var shown = try screen.shownText()
       #expect(shown.contains("55") && shown.contains("89") && !shown.contains("21"))
+      #expect(shown.contains("34"), "the Inbox badge: \(shown)")
+      let reads = source.countReads
       source.counts.filters[.running] = 144
       screen.settle()
       shown = try screen.shownText()
       #expect(shown.contains("144") && !shown.contains("55"))
+      // The Inbox row and the two filters read it; one read would be the rows' parent drawing.
+      #expect(source.countReads == reads + 3, "each row that shows a count reads it")
     }
 
     @Test("A collapsed section's header marks a hidden session that needs the user now")
