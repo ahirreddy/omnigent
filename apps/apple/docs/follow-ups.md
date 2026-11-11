@@ -120,6 +120,10 @@ Details: [remote-browser-design.md](remote-browser-design.md).
   status (only transport errors are caught, then it deletes server-side anyway), so a runner
   `resource_cleanup_failed` 500 (for example a browser host that failed to close tabs) is not
   surfaced (`omnigent/server/routes/sessions/routes_events.py`, around line 3835).
+- [ ] **Message retry:** an exact retry of a user message (same `data.stable_id`) is stored
+  once, but on regular sessions it is forwarded to the runner again, so the turn can run twice
+  (read from `omnigent/server/routes/_sessions/orchestration.py`, not observed). Until the
+  server stops forwarding it, the apps never retry a message by themselves.
 
 - [ ] **APNs push for phone supervision.** Device registration, the outbox and delivery for
   input requests and turn ends, with the identifier-only payload and the security model in
