@@ -56,6 +56,33 @@ struct ComposerAdapterStateTests {
     #expect(ComposerAdapter.delivery(composer, dismissed: nil) == .sending)
   }
 
+  @Test("A message that waits to be restored keeps its banner until it is restored")
+  func offeredMessage() async throws {
+    let store = try await Fixtures.store()
+    let composer = store.composer
+    func isOffered() -> Bool {
+      ComposerAdapter.state(store, isStopping: false, dismissedError: nil).offersUnsentMessage
+    }
+    #expect(!isOffered())
+
+    var offer = UnsentSend(draft: SavedDraft(text: "the first"))
+    offer.failure = "Refused"
+    composer.unsentOffers = [offer]
+    composer.text = "newer"
+    let failure = CoreError.InvalidState(message: "A newer failure")
+    composer.lastError = failure
+    #expect(
+      ComposerAdapter.delivery(composer, dismissed: nil) == .failed(message: "A newer failure"))
+    let state = ComposerAdapter.state(store, isStopping: false, dismissedError: failure)
+    #expect(state.offersUnsentMessage)
+    #expect(state.delivery == .failed(message: "Refused"))
+
+    ComposerAdapter.extras(composer, isRunning: { true }).restoreUnsent?()
+    #expect(composer.text == "newer\n\nthe first")
+    #expect(ComposerAdapter.delivery(composer, dismissed: failure) == .idle)
+    #expect(!isOffered())
+  }
+
   @Test("Every upload status has a chip; the largest size stays representable")
   func attachments() {
     func attachment(_ status: UploadStatus, isImage: Bool = false) -> DraftAttachmentState {

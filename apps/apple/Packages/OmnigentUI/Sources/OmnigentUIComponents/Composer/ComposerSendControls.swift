@@ -25,7 +25,10 @@ struct ComposerSendRules {
   var sendBlockedReason: String? {
     if let reason = state.availability.reason { return reason }
     switch state.delivery {
-    case .sending: return state.purpose == .start ? "Starting session" : "Sending"
+    case .sending:
+      // A message sent while another is on its way waits in the queue behind it.
+      if state.purpose == .start { return "Starting session" }
+      if !canQueue || !hasContent { return "Sending" }
     case .uncertain: return "Check the conversation before sending again."
     case .idle, .failed: break
     }
@@ -100,6 +103,18 @@ struct ComposerSendRules {
     case .send: state.purpose == .start ? "Start session" : "Send"
     case .steer: "Send now and steer"
     case .queue: canQueue ? "Queue after this turn" : "Send after this turn"
+    }
+  }
+}
+
+extension DeliveryState {
+  /// Whether a send may start, were there something to send: not while an unclear send awaits
+  /// review, and during a send only where the message can wait in the queue behind it.
+  func acceptsSend(canQueue: Bool) -> Bool {
+    switch self {
+    case .idle, .failed: true
+    case .sending: canQueue
+    case .uncertain: false
     }
   }
 }
@@ -181,7 +196,7 @@ struct ComposerSendControls: View {
       perform(intent)
     } label: {
       Group {
-        if state.delivery == .sending {
+        if state.delivery == .sending, blocked != nil {
           ProgressView().controlSize(.small).tint(ThemeColor.onAccent)
         } else {
           Image(systemName: intent == .queue ? "text.append" : "arrow.up")

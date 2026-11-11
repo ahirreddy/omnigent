@@ -282,6 +282,9 @@ struct ErrorBanner: View {
   var title: String?
   var dismiss: (@MainActor () -> Void)?
   var retry: (@MainActor () -> Void)?
+  /// What the two buttons say, where the banner's own words fit better.
+  var dismissTitle = "Dismiss"
+  var retryTitle = "Retry"
   /// The banner's identifier; its buttons append `-retry` and `-dismiss`.
   var identifier = "session-error"
 
@@ -296,11 +299,11 @@ struct ErrorBanner: View {
           kind: .failure, title: title, detail: message, copyText: message, identifier: identifier
         ) {
           if let dismiss {
-            Button("Dismiss", action: dismiss).buttonStyle(.borderless)
+            Button(dismissTitle, action: dismiss).buttonStyle(.borderless)
               .accessibilityIdentifier("\(identifier)-dismiss")
           }
           if let retry {
-            Button("Retry", action: retry).buttonStyle(.bordered)
+            Button(retryTitle, action: retry).buttonStyle(.bordered)
               .accessibilityIdentifier("\(identifier)-retry")
           }
         }

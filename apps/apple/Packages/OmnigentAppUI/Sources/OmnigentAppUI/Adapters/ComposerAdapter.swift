@@ -34,6 +34,7 @@ enum ComposerAdapter {
       submitWithCommandReturn: submitWithCommandReturn,
       context: context(store, server: server), canSteer: composer.supportsSteering)
     state.isReadOnly = isReadOnly(store)
+    state.offersUnsentMessage = !composer.unsentOffers.isEmpty
     state.commandNotice = composer.commandNotice
     state.slashCommandsNote = composer.skillsProblem
     state.mentionsNote = composer.mentionProblem
@@ -200,6 +201,7 @@ enum ComposerAdapter {
       },
       reconnect: reconnect,
       dismissCommandNotice: { composer.dismissCommandNotice() })
+    extras.restoreUnsent = { composer.restoreUnsent() }
     extras.history = history(composer, prompts: prompts)
     extras.attachMention = { composer.addMention($0) }
     extras.removeMention = { composer.removeMention($0) }
@@ -230,6 +232,8 @@ enum ComposerAdapter {
           ?? "The last message may not have been delivered. Check the transcript, then continue.")
     }
     if let error { return .failed(message: error.message) }
+    // A message that waits to be restored keeps its banner after the failure is dismissed.
+    if let note = composer.unsentOffers.last?.failure { return .failed(message: note) }
     return .idle
   }
 

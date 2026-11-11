@@ -65,7 +65,7 @@ struct MessageQueueTests {
     #expect(item.text.isEmpty && item.extras == files)
     try queue.edit(item.id, text: "")
     #expect(try queue.begin(item.id).extras.holdID == 7)
-    try queue.hold("", extras: MessageQueue.Extras(mentions: ["src/"]))
+    queue.hold("", extras: MessageQueue.Extras(mentions: ["src/"]))
     #expect(queue.items.first?.extras.mentions == ["src/"])
   }
 
@@ -85,8 +85,8 @@ struct MessageQueueTests {
   func hostHold() throws {
     var queue = MessageQueue()
     let queued = try queue.enqueue("queued")
-    try queue.hold("held first")
-    try queue.hold("held second")
+    queue.hold("held first")
+    queue.hold(" held second ")
     #expect(queue.items.map(\.text) == ["held first", "held second", "queued"])
     #expect(queue.isHoldingForHost)
     #expect(queue.next(isRunning: false, isBlocked: false) == nil)
@@ -99,6 +99,5 @@ struct MessageQueueTests {
     _ = try queue.begin(queued.id)
     queue.waitForHost(queued.id)
     #expect(queue.items.last?.state == .waitingForHost)
-    #expect(throws: MessageQueue.Refusal.empty) { try queue.hold("  ") }
   }
 }

@@ -53,6 +53,71 @@ struct ComposerCommandTests {
     #expect(try eventBodies(live).count == 1)
   }
 
+  @Test("A refused /compact returns to the field, and newer text is not overwritten")
+  func compactRefused() async throws {
+    let live = try await LiveComposer(fields: codexFields)
+    live.server.fail("/v1/sessions/conv_a/events", method: "POST", status: 400, detail: "no")
+    let composer = live.composer
+    await composer.loadConfiguration()
+    composer.text = "/compact"
+    await composer.send()
+    #expect(composer.text == "/compact")
+    #expect(composer.lastError != nil)
+
+    let gate = live.server.hold("/v1/sessions/conv_a/events", method: "POST")
+    let sending = Task { _ = await composer.send() }
+    try await eventually("the post") { gate.arrivals == 1 }
+    #expect(composer.text.isEmpty, "the command leaves the field at once")
+    composer.text = "newer"
+    gate.release()
+    await sending.value
+    #expect(composer.text == "newer")
+    #expect(composer.unsentOffers.map(\.draft.text) == ["/compact"])
+    #expect(try eventBodies(live).last?["type"] as? String != "message")
+  }
+
+  /// Sends a message, and `command` while the server's answer to it is held.
+  private func send(_ command: String, duringASendIn live: LiveComposer) async throws {
+    live.acceptMessages()
+    let composer = live.composer
+    let gate = live.server.hold("/v1/sessions/conv_a/events", method: "POST")
+    composer.text = "first"
+    let sending = Task { _ = await composer.send() }
+    try await eventually("the post") { gate.arrivals == 1 }
+
+    composer.text = command
+    await composer.send()
+    #expect(composer.text == command)
+    #expect(composer.lastError?.message == "Wait for the current send to finish.")
+    #expect(composer.queue.isEmpty, "a command is not queued as text")
+
+    composer.text = ""
+    gate.release()
+    await sending.value
+    #expect(try eventBodies(live).count == 1)
+  }
+
+  @Test("/compact waits for the send in flight: it stays in the field with the reason")
+  func compactWaitsForTheSend() async throws {
+    let live = try await LiveComposer(fields: codexFields)
+    await live.composer.loadConfiguration()
+    try await send("/compact", duringASendIn: live)
+  }
+
+  @Test("/clear waits for the send in flight: it stays in the field with the reason")
+  func clearWaitsForTheSend() async throws {
+    let server = RouteServer()
+    server.route(
+      "/v1/info",
+      .json(
+        #"{"single_user":true,"accounts_enabled":false,"session_event_types":["message","clear"]}"#
+      ))
+    let live = try await LiveComposer(server: server, fields: claudeFields("default"))
+    await live.composer.loadConfiguration()
+    await live.composer.loadSkills()
+    try await send("/clear", duringASendIn: live)
+  }
+
   @Test("On a native harness a skill goes as text, and read failures explain the missing ones")
   func skills() async throws {
     let live = try await LiveComposer(fields: claudeFields("default"))

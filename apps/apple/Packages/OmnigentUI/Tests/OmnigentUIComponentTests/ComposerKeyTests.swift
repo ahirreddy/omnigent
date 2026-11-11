@@ -73,7 +73,6 @@
     @Test("a send that is blocked stays in the draft")
     func blockedSends() throws {
       let blocked: [ComposerViewState] = [
-        with { $0.delivery = .sending },
         with { $0.delivery = .uncertain(message: "Unknown") },
         with {
           $0.attachments = [
@@ -94,6 +93,23 @@
         try screen.pressReturn()
         #expect(log.events.isEmpty, "\(state.delivery) sent")
       }
+    }
+
+    @Test("Return during a send sends the new draft to wait behind it, where there is a queue")
+    func returnDuringASend() throws {
+      var unqueued = log.actions
+      unqueued.extras.queueDraft = nil
+      let alone = openComposer(
+        ComposerScreenModel(draft: "text", state: with { $0.delivery = .sending }), unqueued)
+      defer { alone.close() }
+      try alone.pressReturn()
+      #expect(log.events.isEmpty)
+
+      let screen = openComposer(
+        ComposerScreenModel(draft: "text", state: with { $0.delivery = .sending }), log.actions)
+      defer { screen.close() }
+      try screen.pressReturn()
+      #expect(log.events == ["send"])
     }
 
     private func with(_ change: (inout ComposerViewState) -> Void) -> ComposerViewState {

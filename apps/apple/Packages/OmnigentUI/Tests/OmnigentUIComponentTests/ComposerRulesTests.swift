@@ -199,6 +199,31 @@ struct ComposerRulesTests {
     #expect(quoted.sendBlockedReason == nil && quoted.hasContent)
   }
 
+  @Test("While a message is on its way, the next one may be sent where it can wait in the queue")
+  func sendingRules() {
+    var state = ComposerSamples.idle
+    state.delivery = .sending
+    #expect(ComposerSendRules(state: state, draft: "next", canQueue: true).sendBlockedReason == nil)
+    #expect(
+      ComposerSendRules(state: state, draft: "", canQueue: true).sendBlockedReason == "Sending")
+    #expect(
+      ComposerSendRules(state: state, draft: " ", canQueue: true).sendBlockedReason
+        == "Type a message.")
+    #expect(
+      ComposerSendRules(state: state, draft: "next", canQueue: false).sendBlockedReason
+        == "Sending")
+    state.purpose = .start
+    #expect(
+      ComposerSendRules(state: state, draft: "next", canQueue: true).sendBlockedReason
+        == "Starting session")
+
+    #expect(DeliveryState.idle.acceptsSend(canQueue: false))
+    #expect(DeliveryState.failed(message: "Refused").acceptsSend(canQueue: false))
+    #expect(DeliveryState.sending.acceptsSend(canQueue: true))
+    #expect(!DeliveryState.sending.acceptsSend(canQueue: false))
+    #expect(!DeliveryState.uncertain(message: "Unclear").acceptsSend(canQueue: true))
+  }
+
   @Test("With Always steer off, a mid-turn send queues and steering is the alternative")
   func alwaysSteerOff() {
     var state = ComposerSamples.running

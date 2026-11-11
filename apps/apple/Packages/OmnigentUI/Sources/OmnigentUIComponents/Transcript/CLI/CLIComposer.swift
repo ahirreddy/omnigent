@@ -122,7 +122,8 @@ public struct CLIComposer: View {
       VStack(alignment: .leading, spacing: Theme.Spacing.small) {
         DeliveryBanner(
           delivery: state.delivery, acknowledge: actions.acknowledgeUncertainDelivery,
-          dismiss: actions.dismissDeliveryError)
+          dismiss: actions.dismissDeliveryError,
+          restore: state.offersUnsentMessage ? actions.extras.restoreUnsent : nil)
         if let attachmentError {
           ErrorBanner(
             message: attachmentError, dismiss: { self.attachmentError = nil },

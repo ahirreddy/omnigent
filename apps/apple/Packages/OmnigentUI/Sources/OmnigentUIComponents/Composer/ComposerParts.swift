@@ -3,11 +3,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The delivery state above the composer: an uncertain send (blocking until acknowledged) or a
-/// failed one.
+/// failed one. A failed message that could not return to the field, as the user had typed since,
+/// is offered here: Restore puts it back and Discard drops it.
 struct DeliveryBanner: View {
   let delivery: DeliveryState
   let acknowledge: (@MainActor () -> Void)?
   let dismiss: (@MainActor () -> Void)?
+  /// Puts the offered message back in the field; `nil` when none is offered.
+  var restore: (@MainActor () -> Void)?
 
   var body: some View {
     switch delivery {
@@ -32,8 +35,9 @@ struct DeliveryBanner: View {
       }
     case .failed(let message):
       ErrorBanner(
-        message: message, title: "Message not sent", dismiss: dismiss,
-        identifier: "composer-delivery-error")
+        message: message, title: "Message not sent", dismiss: dismiss, retry: restore,
+        dismissTitle: restore == nil ? "Dismiss" : "Discard message",
+        retryTitle: "Restore message", identifier: "composer-delivery-error")
     }
   }
 }

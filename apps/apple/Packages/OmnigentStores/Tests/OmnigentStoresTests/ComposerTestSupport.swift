@@ -81,6 +81,16 @@ struct LiveComposer {
       .json(#"{"error":{"code":"host_offline","message":"The host is offline."}}"#, status: 503))
   }
 
+  /// Stages a file in the draft and uploads it, so a send or the queue can take it.
+  func attachUploadedFile() async throws {
+    server.route(
+      "/v1/sessions/conv_a/resources/files", method: "POST",
+      .json(#"{"id":"file_1","session_id":"conv_a"}"#, status: 201))
+    composer.addAttachment(filename: "a.txt", mediaType: "text/plain", data: Data("hi".utf8))
+    let item = try #require(composer.attachments.items.first)
+    await composer.upload(item.id)
+  }
+
   /// Every message text posted so far, in order.
   var postedTexts: [String] {
     server.requests(to: "/v1/sessions/conv_a/events", method: "POST").compactMap { request in
