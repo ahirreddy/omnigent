@@ -13,6 +13,7 @@
 # stays off. Everything runs at background priority with two Rust jobs so the Mac stays usable;
 # --full-priority drops both limits when nobody is using the Mac.
 # --skip-prereqs reuses the current Rust core, CEF and generated workspace.
+# OMNIGENT_INSTALL_DIR names another folder to install into, such as /Applications.
 set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=release/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/release/common.sh"
@@ -27,7 +28,7 @@ while [[ $# -gt 0 ]]; do
     --skip-prereqs) skip_prereqs=1; shift ;;
     --no-launch) launch=0; shift ;;
     --full-priority) full_priority=1; shift ;;
-    -h | --help) sed -n '2,17p' "$0" >&2; exit 64 ;;
+    -h | --help) sed -n '2,16p' "$0" >&2; exit 64 ;;
     *) die "unknown argument '$1'" ;;
   esac
 done
@@ -111,7 +112,8 @@ background bash "$release_dir/sign-mac-developer-id.sh" --app "$staged" --identi
   --no-hardened-runtime
 codesign --verify --deep --strict "$staged"
 
-installed="$HOME/Applications/Omnigent Native.app"
+install_dir="${OMNIGENT_INSTALL_DIR:-$HOME/Applications}"
+installed="$install_dir/Omnigent Native.app"
 if pgrep -qf "$installed/Contents/MacOS/"; then
   log "quitting the running Omnigent Native"
   osascript -e "tell application id \"$(plutil -extract CFBundleIdentifier raw "$installed/Contents/Info.plist")\" to quit"
@@ -121,7 +123,7 @@ if pgrep -qf "$installed/Contents/MacOS/"; then
   done
   ! pgrep -qf "$installed/Contents/MacOS/" || die "Omnigent Native is still running; quit it and rerun"
 fi
-mkdir -p "$HOME/Applications"
+mkdir -p "$install_dir"
 rm -rf "$installed"
 ditto "$staged" "$installed"
 log "installed $installed (build $build_number)"
