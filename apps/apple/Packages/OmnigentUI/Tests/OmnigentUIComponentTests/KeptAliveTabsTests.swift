@@ -146,6 +146,64 @@
       #expect(sizes.byID["held"] == resized)
     }
 
+    /// The width class each tab's content reads, and how often it rendered.
+    private final class WidthClasses {
+      var byID: [String: LayoutWidth] = [:]
+      var renders: [String: Int] = [:]
+    }
+
+    private struct WidthClassReader: View {
+      let id: String
+      let classes: WidthClasses
+      @Environment(\.layoutWidth) private var layoutWidth
+
+      var body: some View {
+        classes.byID[id] = layoutWidth
+        classes.renders[id, default: 0] += 1
+        return Color.clear
+      }
+    }
+
+    private func tabs(shown: String, classes: WidthClasses) -> some View {
+      KeptAliveTabs(["a", "b"].map(Tab.init(id:)), shownID: shown) { tab in
+        WidthClassReader(id: tab.id, classes: classes)
+      }
+      .adaptiveLayoutWidth()
+    }
+
+    /// The window crosses the compact width while one tab is kept behind the other.
+    @Test func aHiddenTabKeepsItsWidthClassAndTakesTheColumnsWhenShown() {
+      _ = NSApplication.shared
+      let classes = WidthClasses()
+      let regular = CGSize(width: 800, height: 600)
+      let compact = CGSize(width: 500, height: 600)
+      let view = NSHostingView(rootView: tabs(shown: "a", classes: classes))
+      layOut(view, at: regular)
+      view.rootView = tabs(shown: "b", classes: classes)
+      layOut(view, at: regular)
+      #expect(classes.byID == ["a": .regular, "b": .regular])
+
+      classes.renders = [:]
+      layOut(view, at: compact)
+      #expect(classes.byID == ["a": .regular, "b": .compact])
+      #expect(classes.renders == ["b": 1])
+
+      view.rootView = tabs(shown: "a", classes: classes)
+      layOut(view, at: compact)
+      #expect(classes.byID == ["a": .compact, "b": .compact])
+    }
+
+    /// A tab opened behind another has no width class of its own to keep.
+    @Test func aTabThatNeverShowedFollowsTheColumnsWidthClass() {
+      _ = NSApplication.shared
+      let classes = WidthClasses()
+      let view = NSHostingView(rootView: tabs(shown: "a", classes: classes))
+      layOut(view, at: CGSize(width: 800, height: 600))
+      layOut(view, at: CGSize(width: 500, height: 600))
+
+      #expect(classes.byID == ["a": .compact, "b": .compact])
+    }
+
     /// A tab opened behind another has no size of its own to keep.
     @Test func heldContentThatNeverShowedFollowsTheColumn() {
       _ = NSApplication.shared
