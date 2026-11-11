@@ -8,9 +8,16 @@ extension ConversationStore {
   ///   - attachments: Its files.
   /// - Returns: Its row's id, or `nil` for a message with nothing to show.
   func showSending(_ text: String, attachments: [Attachment] = []) -> String? {
+    sendCount += 1
     let rowID = pendingMessages.add(text: text, attachments: attachments, transcript: rows)
     digestRows()
     return rowID
+  }
+
+  /// A command the server runs (a skill, `/compact`) is being posted. It shows no row until the
+  /// server echoes one, and is something the user sent all the same.
+  func commandPosted() {
+    sendCount += 1
   }
 
   /// The server accepted the message on `rowID`. The echo may already have arrived.

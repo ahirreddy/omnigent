@@ -349,6 +349,7 @@ struct SteeringFlowModel {
 
   private mutating func append(user text: String) {
     conversation.rows.append(Row(id: "flow-u\(nextID)", role: .user, text: text))
+    conversation.sendCount += 1
     nextID += 1
     conversation.revision += 1
   }

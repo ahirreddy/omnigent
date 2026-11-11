@@ -29,6 +29,7 @@ enum ConversationAdapter {
       summary: summary.map(OmnigentUIComponents.SessionSummary.init),
       turnStartedAt: store.turnTimer.startedAt)
     state.isHydrating = isHydrating(store)
+    state.sendCount = store.sendCount
     state.approvalModeTitle = approvalModeTitle(store)
     state.effortTitle = ComposerAdapter.configuration(store.composer).effortTitle
     return state
@@ -61,6 +62,7 @@ enum ConversationAdapter {
       isEmpty: digest.isEmpty, lastInterrupted: digest.lastInterrupted,
       activityTitle: digest.activityTitle)
     state.isHydrating = isHydrating(store)
+    state.sendCount = store.sendCount
     state.approvalModeTitle = approvalModeTitle(store)
     state.effortTitle = ComposerAdapter.configuration(store.composer).effortTitle
     return state

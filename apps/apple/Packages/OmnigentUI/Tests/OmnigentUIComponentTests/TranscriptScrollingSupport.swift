@@ -27,6 +27,26 @@
       state.rows.append(contentsOf: rows)
       state.revision += 1
     }
+
+    /// Sends a message from here, as the store does: the send is counted and its row shows.
+    func send(_ row: Row) {
+      state.sendCount += 1
+      append(row)
+    }
+
+    /// The server's echo takes the place of the row a send showed.
+    func echo(_ sentID: String, as row: Row) {
+      state.rows.removeAll { $0.id == sentID }
+      append(row)
+    }
+
+    /// The streaming reply `id` now reads `text`; its row is added the first time.
+    func stream(_ id: String, _ text: String) {
+      var reply = TranscriptFixture.answer(id, text, responseID: id)
+      reply.isStreaming = true
+      state.rows.removeAll { $0.id == id }
+      append(reply)
+    }
   }
 
   /// The transcript over a ``LiveConversation``.
@@ -150,6 +170,13 @@
   }
 
   extension TranscriptFixture {
+    /// A message being sent: shown before the server has it, so with no author yet.
+    static func sending(_ id: String, _ text: String) -> Row {
+      var row = user(id, text)
+      row.isEphemeral = true
+      return row
+    }
+
     /// `count` turns of a question and an answer long enough that a few fill the window.
     static func turns(_ count: Int, startingAt first: Int = 0) -> [Row] {
       (first..<(first + count)).flatMap { index in

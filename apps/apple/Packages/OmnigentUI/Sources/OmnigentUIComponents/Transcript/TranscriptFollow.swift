@@ -7,6 +7,8 @@
 /// - A user scroll that ends away from the bottom stops following. From then on incoming output
 ///   never moves the reading position; it marks that there is something new, and "Jump to
 ///   latest" shows until the user jumps or scrolls back to the bottom.
+/// - A message the user sends is such a jump: it follows again from the newest row, until a
+///   scroll of theirs ends away from the bottom.
 nonisolated struct TranscriptFollow: Equatable {
   /// Incoming output scrolls to the newest row.
   private(set) var follows = true

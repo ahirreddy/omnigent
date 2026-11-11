@@ -312,6 +312,7 @@ struct CLIPreviewScreen: View {
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty else { return }
     state.rows.append(Row(id: "local-\(state.rows.count)", role: .user, text: text))
+    state.sendCount += 1
     state.revision += 1
     draft = ""
   }

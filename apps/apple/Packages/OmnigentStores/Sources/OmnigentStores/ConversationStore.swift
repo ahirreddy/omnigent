@@ -52,6 +52,9 @@ public final class ConversationStore {
   public private(set) var rows: [Row] = []
   /// Messages sent here that the server has not echoed yet.
   public internal(set) var pendingMessages = PendingMessages()
+  /// How many messages and commands were posted from here. The transcript goes to its newest
+  /// row for each one, which rows alone cannot tell from a message that arrived.
+  public internal(set) var sendCount = 0
   /// The session header, once known.
   public private(set) var header: SessionHeader? {
     didSet {

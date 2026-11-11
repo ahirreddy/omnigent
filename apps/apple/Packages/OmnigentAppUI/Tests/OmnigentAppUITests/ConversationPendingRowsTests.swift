@@ -21,7 +21,11 @@ struct ConversationPendingRowsTests {
     #expect(live.revision != before)
     let state = ConversationAdapter.state(store, summary: nil)
     #expect(state.rows.map(\.text) == ["Ship it"])
-    #expect(ConversationAdapter.screenState(store, summary: nil).transcriptStatus?.isEmpty == false)
+    let screen = ConversationAdapter.screenState(store, summary: nil)
+    #expect(screen.transcriptStatus?.isEmpty == false)
+    // Both states count the send, which takes the transcript to its end.
+    #expect(state.sendCount == 1)
+    #expect(screen.sendCount == 1)
   }
 }
 

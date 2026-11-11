@@ -232,6 +232,7 @@ public final class PlaygroundModel {
       return
     }
     conversation.rows.append(Row(id: "local-\(UUID().uuidString)", role: .user, text: text))
+    conversation.sendCount += 1
     conversation.rows.append(
       Row(
         id: "live:\(UUID().uuidString)", role: .assistant, text: "", isStreaming: true,

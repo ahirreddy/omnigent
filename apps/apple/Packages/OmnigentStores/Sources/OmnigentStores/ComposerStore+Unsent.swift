@@ -57,6 +57,7 @@ extension ComposerStore {
     guard !refusesDuringSend() else { return }
     let text = draftMessage
     let unsent = UnsentSend(draft: fieldDraft)
+    transcript?.commandPosted()
     let failure = await deliver(unsent) { core, session in
       _ = try await post(core, session, text)
     }

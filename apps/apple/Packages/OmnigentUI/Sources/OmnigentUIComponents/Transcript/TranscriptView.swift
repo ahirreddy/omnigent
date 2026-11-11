@@ -5,7 +5,8 @@ public import SwiftUI
 /// and only visible markdown is parsed.
 ///
 /// It follows the newest row until the user scrolls up; from then on incoming output never moves
-/// the reading position and "Jump to latest" offers the way back (``TranscriptFollow``).
+/// the reading position and "Jump to latest" offers the way back (``TranscriptFollow``). A
+/// message the user sends takes them to the newest row, to follow it again.
 public struct TranscriptView: View {
   private let state: ConversationViewState
   private let liveRows: LiveTranscriptRows?
@@ -141,6 +142,10 @@ public struct TranscriptView: View {
         if !isLoading { olderHistoryEnded(proxy) }
       }
       .onChange(of: scrollToLatestRequest) { _, _ in jumpToLatest(proxy) }
+      // The reader's own send takes them to the latest, wherever they were reading.
+      .onChange(of: TranscriptSends(state)) { previous, latest in
+        if latest.hasNewSend(since: previous), scroll.userSent() { jumpToLatest(proxy) }
+      }
       .modifier(messageFocus(proxy))
       .task(id: state.header.id) {
         follow.reset()
@@ -190,10 +195,6 @@ public struct TranscriptView: View {
         _ = follow.contentChanged()
       },
       firstRowChanged: { holdReadingPosition(proxy) },
-      ownMessageChanged: { previous, latest in
-        // The reader's own new message takes them to the latest, wherever they were reading.
-        if latest != nil, previous != nil, latest != previous { jumpToLatest(proxy) }
-      },
       hasUserMessagesChanged: { hasUser in
         if hasUserMessages != hasUser { hasUserMessages = hasUser }
       },
@@ -304,14 +305,6 @@ extension TranscriptView {
   static func segments(for state: ConversationViewState) -> [TurnSegment] {
     TurnLayout.segments(
       TranscriptLayout.items(for: state.rows), isRunning: state.header.status == .running)
-  }
-
-  /// The viewer's newest message; it changes when they send one (older history loads earlier
-  /// rows and leaves it alone).
-  static func ownMessageID(_ state: ConversationViewState) -> String? {
-    state.rows.last {
-      $0.role == .user && ($0.author == nil || $0.author == state.viewerName)
-    }?.id
   }
 
   /// The last settled assistant answer, whose actions stay visible while idle.

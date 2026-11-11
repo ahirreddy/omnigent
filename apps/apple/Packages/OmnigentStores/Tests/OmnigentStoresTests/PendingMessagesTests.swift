@@ -170,6 +170,7 @@ struct OptimisticSendTests {
     #expect(conversation.displayRows.map(\.text) == ["Ship it"])
     #expect(conversation.displayRows.first?.isEphemeral == true)
     #expect(conversation.rows.isEmpty)
+    #expect(conversation.sendCount == 1)
     #expect(!conversation.transcriptDigest.isEmpty)
     #expect(conversation.displayRevision != revision)
 
@@ -178,6 +179,8 @@ struct OptimisticSendTests {
     _ = await sending.value
     try await LiveConversationFixture.waitUntil("the echo") { conversation.rows.count == 1 }
     #expect(conversation.displayRows.map(\.id) == ["item_1"])
+    // The echo taking the sent row's place is not another send.
+    #expect(conversation.sendCount == 1)
     #expect(conversation.composer.lastError == nil)
     #expect(conversation.composer.text.isEmpty)
   }
@@ -195,6 +198,7 @@ struct OptimisticSendTests {
     gate.release(.json(#"{"detail":"no"}"#, status: 400))
     _ = await sending.value
     #expect(conversation.displayRows.isEmpty)
+    #expect(conversation.sendCount == 1)
     #expect(conversation.composer.lastError != nil)
     #expect(conversation.composer.text == "Ship it")
   }
@@ -208,10 +212,12 @@ struct OptimisticSendTests {
     conversation.composer.text = "Ship it"
     conversation.composer.queueDraft()
     #expect(conversation.displayRows.isEmpty)
+    #expect(conversation.sendCount == 0)
     let id = try #require(conversation.composer.queue.items.first?.id)
     let sending = Task { await conversation.composer.sendQueuedNow(id) }
     try await LiveConversationFixture.waitUntil("the POST") { gate.isWaiting }
     #expect(conversation.displayRows.map(\.text) == ["Ship it"])
+    #expect(conversation.sendCount == 1)
     gate.release(.json(#"{"detail":"no"}"#, status: 400))
     await sending.value
     #expect(conversation.displayRows.isEmpty)
@@ -230,6 +236,7 @@ struct OptimisticSendTests {
     try await LiveConversationFixture.waitUntil("the POST") { gate.isWaiting }
     #expect(creation.phase == .created(sessionID: liveSessionID, firstMessageError: nil))
     #expect(conversation.displayRows.map(\.text) == ["Ship it"])
+    #expect(conversation.sendCount == 1)
 
     gate.setItems(Self.echo)
     gate.release(.json(#"{"queued":true,"item_id":"item_1"}"#))

@@ -38,6 +38,8 @@ struct ComposerCommandTests {
     await composer.send()
     #expect(composer.text.isEmpty)
     #expect(try eventBodies(live).last?["type"] as? String == "clear")
+    // Clearing the context sends no message for the transcript to follow.
+    #expect(live.conversation.sendCount == 0)
   }
 
   @Test("/compact goes through the send ledger and clears the draft")
@@ -51,6 +53,7 @@ struct ComposerCommandTests {
     #expect(composer.text.isEmpty)
     #expect(composer.lastError == nil)
     #expect(try eventBodies(live).count == 1)
+    #expect(live.conversation.sendCount == 1)
   }
 
   @Test("A refused /compact returns to the field, and newer text is not overwritten")
@@ -95,6 +98,8 @@ struct ComposerCommandTests {
     gate.release()
     await sending.value
     #expect(try eventBodies(live).count == 1)
+    // The command that was refused is not a send; the message before it is the only one.
+    #expect(live.conversation.sendCount == 1)
   }
 
   @Test("/compact waits for the send in flight: it stays in the field with the reason")

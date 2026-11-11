@@ -17,8 +17,6 @@ struct TranscriptRowEvents {
   var revisionChanged: () -> Void
   /// The first row changed (older history landed above).
   var firstRowChanged: () -> Void
-  /// The viewer's newest message changed, from the old id to the new one.
-  var ownMessageChanged: (String?, String?) -> Void
   /// Whether any user message is loaded, for the previous and next message buttons.
   var hasUserMessagesChanged: (Bool) -> Void
   /// The user turns changed, for the turn rail.
@@ -104,9 +102,6 @@ struct TranscriptRowsContent<Header: View>: View {
     .transcriptStackColumn()
     .onChange(of: state.revision) { _, _ in events.revisionChanged() }
     .onChange(of: state.rows.first?.id) { _, _ in events.firstRowChanged() }
-    .onChange(of: TranscriptView.ownMessageID(state)) { previous, latest in
-      events.ownMessageChanged(previous, latest)
-    }
     // Previous and next need a second message to move between.
     .onChange(of: state.rows.count { $0.role == .user } > 1, initial: true) { _, hasSeveral in
       events.hasUserMessagesChanged(hasSeveral)

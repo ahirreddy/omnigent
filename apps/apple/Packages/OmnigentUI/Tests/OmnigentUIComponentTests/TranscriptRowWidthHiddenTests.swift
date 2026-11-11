@@ -81,6 +81,22 @@ extension TranscriptRowWidthTests {
     #expect(scrolls.all == [Self.end])
   }
 
+  @Test("A send from a hidden tab scrolls nothing; shown, its reader is put at the end to follow")
+  func hiddenSendIsFollowedWhenShown() {
+    let (state, scrolls) = readingState()
+    state.tabContent(isHidden: true)
+    #expect(!state.userSent())
+    #expect(state.follow.follows)
+    returnToRunLoop()
+    #expect(scrolls.all.isEmpty)
+
+    state.tabContent(isHidden: false)
+    #expect(scrolls.all == [Self.end])
+    end(state, reached: true)
+    returnToRunLoop()
+    #expect(scrolls.all == [Self.end])
+  }
+
   @Test("A follower at the content's edge is at the end, and not scrolled when its tab shows")
   func followerAtTheEdgeShown() {
     let (state, scrolls) = state()

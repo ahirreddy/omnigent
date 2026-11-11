@@ -22,6 +22,9 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
   public var isLoadingHistory: Bool
   /// The first read of the conversation is in flight: no row is known yet to be all there is.
   public var isHydrating = false
+  /// How many messages and commands the user has sent from here. A new one takes the transcript
+  /// to its newest row, which it then follows until the reader scrolls away.
+  public var sendCount = 0
   /// A session-level error to show (load, stream or send failure). Never swallowed.
   public var errorMessage: String?
   /// Live stream status, for example `Connected` or `Reconnecting in 4 s`.

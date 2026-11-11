@@ -206,20 +206,6 @@
 
     // MARK: Pure rules
 
-    @Test("The viewer's newest message ignores other people's")
-    func ownMessage() {
-      var theirs = TranscriptFixture.user("theirs")
-      theirs.author = "Sam"
-      var mine = TranscriptFixture.user("mine")
-      mine.author = "Me"
-      var conversation = state(rows: [mine, theirs])
-      #expect(TranscriptView.ownMessageID(conversation) == nil)
-      conversation.viewerName = "Me"
-      #expect(TranscriptView.ownMessageID(conversation) == "mine")
-      conversation.rows.append(TranscriptFixture.user("no-author"))
-      #expect(TranscriptView.ownMessageID(conversation) == "no-author")
-    }
-
     @Test("The last answer skips a streaming or empty one")
     func lastAnswer() {
       var streaming = TranscriptFixture.answer("streaming")

@@ -166,17 +166,6 @@
       #expect(try await jumpReachesEnd(from: 0, viewport, on: window))
     }
 
-    @Test("Sending a message takes the reader to it, wherever they were reading")
-    func ownMessageJumps() async throws {
-      let conversation = longSession()
-      let (window, viewport) = try await screen(conversation)
-      defer { window.close() }
-      viewport.move(to: 0)
-      conversation.append(TranscriptFixture.user("mine", "My new question"))
-      #expect(try await jumpReachesEnd(from: 0, viewport, on: window))
-      #expect(try window.shows("My new question"))
-    }
-
     @Test("Someone else's message doesn't move the reader")
     func othersMessageStays() async throws {
       var state = ConversationViewState(
@@ -273,6 +262,90 @@
       try window.click(try navigatorButton(.previous, on: window))
       try await letTasksRun(window)
       #expect(log.entries.first == "older")
+    }
+  }
+
+  // MARK: Sending
+
+  extension TranscriptScrollingTests {
+    /// A long session as a signed-in server gives it: every message names its author.
+    private func signedInSession() -> LiveConversation {
+      let rows = TranscriptFixture.turns(8).map { row in
+        var row = row
+        if row.role == .user { row.author = "me@example.com" }
+        return row
+      }
+      return LiveConversation(ConversationViewState(header: TranscriptFixture.header, rows: rows))
+    }
+
+    /// Sends "My new question" from the top of `conversation` and waits to be taken to it.
+    private func sendFromTheTop(
+      _ conversation: LiveConversation, _ viewport: TranscriptScrollDriver,
+      on window: OffscreenWindow<AnyView>
+    ) async throws {
+      viewport.move(to: 0)
+      conversation.send(TranscriptFixture.sending("sending-1", "My new question"))
+      try #require(try await jumpReachesEnd(from: 0, viewport, on: window))
+    }
+
+    @Test("Sending a message takes the reader to it, wherever they were reading")
+    func sendJumps() async throws {
+      let conversation = signedInSession()
+      let (window, viewport) = try await screen(conversation)
+      defer { window.close() }
+      try await sendFromTheTop(conversation, viewport, on: window)
+      #expect(try window.shows("My new question"))
+      #expect(try await waitUntil(window) { try !window.shows("Jump to latest") })
+    }
+
+    @Test("After a send, a reply growing taller than the window keeps its end in view")
+    func sendFollowsTheReply() async throws {
+      let conversation = longSession()
+      let (window, viewport) = try await screen(conversation)
+      defer { window.close() }
+      try await sendFromTheTop(conversation, viewport, on: window)
+      conversation.echo("sending-1", as: TranscriptFixture.user("item-1", "My new question"))
+      for lines in [4, 12, 24] {
+        let text = (0..<lines).map { "Reply line \($0)" }.joined(separator: "\n\n")
+        conversation.stream("reply", text)
+        try await letTasksRun(window, milliseconds: 200)
+      }
+      #expect(viewport.distanceToEnd() < 80)
+      #expect(try !window.shows("Jump to latest"))
+    }
+
+    @Test("A reader who moves up after sending stays there through the echo and the reply")
+    func readerLeavesAfterSending() async throws {
+      let conversation = longSession()
+      let (window, viewport) = try await screen(conversation)
+      defer { window.close() }
+      try await sendFromTheTop(conversation, viewport, on: window)
+      try window.click(try navigatorButton(.previous, on: window))
+      try await letTasksRun(window, milliseconds: 300)
+      let reading = viewport.offset
+      #expect(try window.shows("Jump to latest"))
+
+      conversation.echo("sending-1", as: TranscriptFixture.user("item-1", "My new question"))
+      conversation.stream("reply", "The reply starts")
+      try await letTasksRun(window, milliseconds: 300)
+      #expect(abs(viewport.offset - reading) < 2)
+      #expect(try window.shows("New output"))
+    }
+
+    @Test("A message and a reply that arrive with no send leave a reader of earlier rows alone")
+    func arrivalsWithoutASendStay() async throws {
+      let conversation = longSession()
+      let (window, viewport) = try await screen(conversation)
+      defer { window.close() }
+      viewport.move(to: 0)
+      let reading = viewport.offset
+      // A user row with no author, as another agent's forward is on a single-user server.
+      conversation.append(TranscriptFixture.user("forwarded", "A sub-agent's result"))
+      conversation.stream("reply", "A reply to it")
+      try await letTasksRun(window, milliseconds: 300)
+      #expect(abs(viewport.offset - reading) < 2)
+      #expect(viewport.distanceToEnd() > 80)
+      #expect(try window.shows("New output"))
     }
   }
 #endif
