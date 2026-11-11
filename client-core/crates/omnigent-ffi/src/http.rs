@@ -66,7 +66,9 @@ impl fmt::Debug for HttpResponse {
 /// Why the host could not produce a response. A 4xx/5xx is a response, not a transport error.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
 pub enum TransportError {
-    /// No network path to the server.
+    /// No connection to the server was made, so nothing was sent: no network path, or the
+    /// server refused the connection or could not be found. A request that may have left
+    /// before the connection dropped is not this.
     #[error("offline: {message}")]
     Offline {
         /// Host detail.
