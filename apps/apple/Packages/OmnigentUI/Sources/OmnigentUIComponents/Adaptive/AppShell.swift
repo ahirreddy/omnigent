@@ -92,6 +92,8 @@ public struct AppShell<Detail: View>: View {
     } detail: {
       NavigationStack {
         detailColumn
+          // Every page: a transcript, a terminal and a browser all start where the tabs end.
+          .belowTitlebar()
           .adaptiveLayoutWidth()
           .modifier(
             TitlebarTabs(
@@ -290,9 +292,10 @@ struct TitlebarTrailingItems: PreferenceKey {
   }
 }
 
-/// Hides the toolbar's title when the selected tab shows it. The bars are the system's: content
-/// scrolls under them with the soft scroll edge effect, and Liquid Glass backs their controls
-/// (solid under Reduce Transparency, bordered under Increase Contrast).
+/// Hides the toolbar's title when the selected tab shows it. The bars are the system's: Liquid
+/// Glass backs their controls (solid under Reduce Transparency, bordered under Increase
+/// Contrast). On iOS content scrolls under them; on Mac it stops below them (`belowTitlebar()`),
+/// and the soft edge is for a bar pinned in the content, such as the transcript's plan.
 struct TitlelessToolbar: ViewModifier {
   let isActive: Bool
 
