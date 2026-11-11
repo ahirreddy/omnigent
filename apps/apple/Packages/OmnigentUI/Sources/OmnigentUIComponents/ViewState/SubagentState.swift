@@ -167,6 +167,10 @@ nonisolated public struct SubagentGroup: Hashable, Sendable {
   /// Finished children; they fold to "2 done" while others are still active.
   public var done: [SubagentChild] { children.filter { $0.status == .ready } }
 
+  /// Whether the transcript shows the group's row: only while a child is still in play. Once
+  /// every child is ready there is nothing to watch or answer, so the row goes.
+  public var showsInTranscript: Bool { !active.isEmpty }
+
   /// The mirrored requests the group renders, which the transcript's inline list then skips.
   public var decisionIDs: Set<String> {
     Set(children.flatMap { $0.decisions.map(\.id) })

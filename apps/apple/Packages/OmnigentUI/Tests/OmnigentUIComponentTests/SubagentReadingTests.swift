@@ -58,6 +58,20 @@ struct SubagentGroupTests {
     #expect(group?.headline == "1 agent \u{00B7} 1 starting")
   }
 
+  @Test("the transcript shows the group only while a child is still in play")
+  func showsInTranscript() {
+    var state = PreviewData.conversation
+    state.sections = [
+      PreviewData.childSection("a", title: "A", state: .ready),
+      PreviewData.childSection("b", title: "B", state: .ready),
+    ]
+    #expect(SubagentGroup(state: state)?.showsInTranscript == false)
+    state.sections.append(PreviewData.childSection("c", title: "C", state: .running))
+    #expect(SubagentGroup(state: state)?.showsInTranscript == true)
+    // A child waiting on the user is in play too.
+    #expect(SubagentGroup(state: PreviewData.subagentConversation)?.showsInTranscript == true)
+  }
+
   @Test("a mirrored request for an unknown child stays inline and keeps the generic context")
   func unknownChild() {
     var state = PreviewData.subagentConversation
