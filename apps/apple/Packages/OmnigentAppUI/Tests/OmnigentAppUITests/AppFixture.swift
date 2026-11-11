@@ -24,7 +24,8 @@ final class WindowSelection {
   }
 }
 
-/// A window's root over `session`, the way the host mounts it.
+/// A window's root over `session`, the way the host mounts it: the page is the root's own
+/// state, which its body never reads.
 struct AppWindowRoot: View {
   let session: ServerSession
   let selection: WindowSelection
@@ -34,13 +35,46 @@ struct AppWindowRoot: View {
   /// What `@AppStorage` reads in the window. The process's own defaults are one file shared by
   /// every test process on the machine, so a write from any of them renders the views reading it.
   var preferences = UserDefaults.standard
+  @State private var page: SidebarDestination?
+
+  init(
+    session: ServerSession, selection: WindowSelection,
+    tabContext: TabWindowContext = TabWindowContext(), serverSwitching: ServerSwitching? = nil,
+    openInNewWindow: (@MainActor (String) -> Void)? = nil,
+    preferences: UserDefaults = .standard
+  ) {
+    self.session = session
+    self.selection = selection
+    self.tabContext = tabContext
+    self.serverSwitching = serverSwitching
+    self.openInNewWindow = openInNewWindow
+    self.preferences = preferences
+    _page = State(initialValue: selection.page)
+  }
 
   var body: some View {
     ServerRootView(
-      session: session, selection: selection.binding, openInNewWindow: openInNewWindow,
+      session: session, selection: $page, openInNewWindow: openInNewWindow,
       tabContext: tabContext, serverSwitching: serverSwitching
     )
+    .modifier(HostedSelection(selection: selection, page: $page))
     .defaultAppStorage(preferences)
+  }
+}
+
+/// Keeps the root's page and the test's ``WindowSelection`` the same, in a body of its own.
+private struct HostedSelection: ViewModifier {
+  let selection: WindowSelection
+  @Binding var page: SidebarDestination?
+
+  func body(content: Content) -> some View {
+    content
+      .onChange(of: selection.page) { _, chosen in
+        if page != chosen { page = chosen }
+      }
+      .onChange(of: page) { _, shown in
+        if selection.page != shown { selection.page = shown }
+      }
   }
 }
 

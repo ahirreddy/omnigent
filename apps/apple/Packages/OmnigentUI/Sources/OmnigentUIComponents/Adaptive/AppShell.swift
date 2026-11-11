@@ -15,18 +15,19 @@ public import SwiftUI
 /// a Tabs button that opens the tab overview, and the detail shows the selected tab.
 public struct AppShell<Detail: View>: View {
   private let sidebar: () -> SidebarViewState
+  /// Passed to the sidebar and the detail, which show it. The shell's body never reads it: a
+  /// view that does runs again each time it changes.
   @Binding private var selection: SidebarDestination?
   private let searchText: () -> Binding<String>
   private let actions: SidebarActions
-  private let tabs: (() -> TabStripContent)?
-  private let detail: (SidebarDestination?) -> Detail
+  private let tabs: ShellTabs?
+  private let detail: ShellDetail<Detail>
 
   @State private var columns: NavigationSplitViewVisibility =
     SidebarLaunchState.current == nil ? .all : .detailOnly
   @State private var stripSpace = TitlebarStripSpace()
   /// A tab dragged from the strip onto the content, for the split view's drop targets.
   @State private var tabDrag = TabDragTracker()
-  @Environment(\.horizontalSizeClass) private var sizeClass
   @Environment(\.sidebarToggle) private var sidebarToggle
 
   /// Creates the shell.
@@ -42,36 +43,36 @@ public struct AppShell<Detail: View>: View {
     actions: SidebarActions, tabs: TabStripContent? = nil,
     @ViewBuilder detail: @escaping (SidebarDestination?) -> Detail
   ) {
-    self.init(
-      sidebar: { sidebar }, selection: selection, searchText: { searchText }, actions: actions,
-      tabs: tabs.map { tabs in { tabs } }, detail: detail)
+    self.sidebar = { sidebar }
+    _selection = selection
+    self.searchText = { searchText }
+    self.actions = actions
+    self.tabs = tabs.map { tabs in ShellTabs(isShown: { true }, content: { tabs }) }
+    self.detail = .selected(detail)
   }
 
-  /// Creates a shell that reads the sidebar and the tabs where it shows them: a change to a
-  /// session's row, the search text or a tab's title then renders the sidebar or the strip, not
-  /// the window.
+  /// Creates a shell that reads the sidebar, the tabs and the detail where it shows them: a
+  /// change to a session's row, the search text, a tab's title or the selection then renders the
+  /// sidebar, the strip or the detail, not the window.
   /// - Parameters:
   ///   - sidebar: Sidebar state, read by the sidebar.
-  ///   - selection: The selected destination.
+  ///   - selection: The selected destination, read by the sidebar.
   ///   - searchText: Session search, read by the sidebar: making a binding reads its value.
   ///   - actions: Sidebar actions.
-  ///   - tabs: The window's tabs and their actions, read by the strip; `nil` shows no tabs.
-  ///   - detail: The detail column for a destination.
+  ///   - tabs: The window's tabs, read by the titlebar; `nil` shows no tabs.
+  ///   - detail: The detail column, which reads what it shows itself.
   public init(
     sidebar: @escaping () -> SidebarViewState, selection: Binding<SidebarDestination?>,
     searchText: @escaping () -> Binding<String>, actions: SidebarActions,
-    tabs: (() -> TabStripContent)? = nil,
-    @ViewBuilder detail: @escaping (SidebarDestination?) -> Detail
+    tabs: ShellTabs? = nil, @ViewBuilder detail: @escaping () -> Detail
   ) {
     self.sidebar = sidebar
     _selection = selection
     self.searchText = searchText
     self.actions = actions
     self.tabs = tabs
-    self.detail = detail
+    self.detail = .unselected(detail)
   }
-
-  private var showsStrip: Bool { tabs != nil && sizeClass != .compact }
 
   /// The shell.
   public var body: some View {
@@ -90,11 +91,12 @@ public struct AppShell<Detail: View>: View {
         #endif
     } detail: {
       NavigationStack {
-        detail(selection)
+        detailColumn
           .adaptiveLayoutWidth()
-          .environment(\.tabsInTitlebar, showsStrip)
-          .toolbar { tabsToolbar }
-          .modifier(TitlelessToolbar(isActive: showsStrip))
+          .modifier(
+            TitlebarTabs(
+              tabs: tabs, space: stripSpace, isSidebarHidden: self.columns == .detailOnly)
+          )
           .onPreferenceChange(TitlebarTrailingItems.self) { [stripSpace] items in
             stripSpace.trailingItems = items
           }
@@ -128,6 +130,14 @@ public struct AppShell<Detail: View>: View {
     ObservationScope("sidebar") {
       SidebarView(
         state: sidebar(), selection: $selection, searchText: searchText(), actions: actions)
+    }
+  }
+
+  /// The detail column. Only a detail built for the selection reads it, in a view of its own.
+  @ViewBuilder private var detailColumn: some View {
+    switch detail {
+    case .selected(let detail): SelectedDetail(selection: $selection, detail: detail)
+    case .unselected(let detail): detail()
     }
   }
 }
@@ -181,43 +191,6 @@ extension AppShell {
       }
     #endif
   }
-
-  @ToolbarContentBuilder private var tabsToolbar: some ToolbarContent {
-    if let tabs {
-      if showsStrip {
-        ToolbarItem(placement: .navigation) {
-          TitlebarTabStrip(
-            tabs: tabs, space: stripSpace, isSidebarHidden: columns == .detailOnly)
-        }
-        .sharedBackgroundVisibility(.hidden)
-        ToolbarSpacer(.flexible)
-        // New Tab sits by the trailing items, not wherever the tabs end.
-        ToolbarItem(placement: .primaryAction) {
-          ObservationScope("tab controls") {
-            let tabs = tabs()
-            TabStripControls(state: tabs.state, actions: tabs.actions)
-          }
-        }
-        .sharedBackgroundVisibility(.hidden)
-      } else {
-        ToolbarItem(placement: Self.switcherPlacement) {
-          ObservationScope("tab switcher") {
-            let tabs = tabs()
-            TabSwitcherButton(state: tabs.state, actions: tabs.actions)
-          }
-        }
-      }
-    }
-  }
-
-  /// Compact widths: beside the back button, where the bar never folds it into its overflow.
-  private static var switcherPlacement: ToolbarItemPlacement {
-    #if os(iOS)
-      .topBarLeading
-    #else
-      .automatic
-    #endif
-  }
 }
 
 /// What the titlebar's tab strip is sized from. Only the strip reads it, so resizing the window,
@@ -233,7 +206,7 @@ final class TitlebarStripSpace {
 }
 
 /// The tab strip at the width the titlebar has for it.
-private struct TitlebarTabStrip: View {
+struct TitlebarTabStrip: View {
   let tabs: () -> TabStripContent
   let space: TitlebarStripSpace
   let isSidebarHidden: Bool
@@ -244,6 +217,11 @@ private struct TitlebarTabStrip: View {
       state: tabs.state, actions: tabs.actions, isInTitlebar: true, includesControls: false
     )
     .frame(width: stripWidth)
+    #if os(macOS)
+      .background {
+        TitlebarStripAnchor(space: space, isSidebarHidden: isSidebarHidden, width: stripWidth)
+      }
+    #endif
     .countsRenders("strip")
   }
 
@@ -315,7 +293,7 @@ struct TitlebarTrailingItems: PreferenceKey {
 /// Hides the toolbar's title when the selected tab shows it. The bars are the system's: content
 /// scrolls under them with the soft scroll edge effect, and Liquid Glass backs their controls
 /// (solid under Reduce Transparency, bordered under Increase Contrast).
-private struct TitlelessToolbar: ViewModifier {
+struct TitlelessToolbar: ViewModifier {
   let isActive: Bool
 
   func body(content: Content) -> some View {

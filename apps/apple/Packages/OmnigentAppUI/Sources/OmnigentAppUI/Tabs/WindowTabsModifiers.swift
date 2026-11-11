@@ -53,6 +53,17 @@ struct ViewedSessionReport: ViewModifier {
   }
 }
 
+/// Shows the page the host selects (the sidebar's list, a deep link). The selection is read
+/// here, so choosing a session renders this and not the window.
+struct SelectedPageShown: ViewModifier {
+  @Binding var selection: SidebarDestination?
+  let tabs: SessionTabGroups
+
+  func body(content: Content) -> some View {
+    content.onChange(of: selection) { _, selected in tabs.show(selected) }
+  }
+}
+
 /// Hands the host a page the model changed (a removed session, a tab opened in another session):
 /// showing another session then renders this and not the window.
 struct ShownPageReport: ViewModifier {

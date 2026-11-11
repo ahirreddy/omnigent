@@ -243,10 +243,19 @@
     private var activeRoot: NSView { activeWindow.contentView ?? host }
 
     /// Every view under the active window's content, in depth-first order.
-    public var allViews: [NSView] {
+    public var allViews: [NSView] { views { _ in true } }
+
+    /// The views nothing above them draws at no opacity, in depth-first order. A tab kept
+    /// behind the shown one is hidden that way, so its views stay in ``allViews``.
+    public var drawnViews: [NSView] { views { $0.alphaValue != 0 && $0.layer?.opacity != 0 } }
+
+    /// The views under the active window's content, leaving out what is under a view that
+    /// `isIncluded` rejects.
+    private func views(where isIncluded: (NSView) -> Bool) -> [NSView] {
       var found: [NSView] = []
       var pending: [NSView] = [activeRoot]
       while let view = pending.popLast() {
+        guard isIncluded(view) else { continue }
         found.append(view)
         pending.append(contentsOf: view.subviews.reversed())
       }

@@ -249,7 +249,8 @@ Tried and dropped:
   conditions), so the hidden tabs are not what makes a resize slow, and the suite was slower
   with it. Memory with three long chats open is 162-197 MB before and 171-184 MB after
   (`footprint`, two launches each), so the kept tabs cost less than the 45 MB measured in the
-  second pass.
+  second pass. The ninth pass holds a hidden chat's content, not its tab, and counts what
+  that takes out of a step (see "A hidden chat keeps its size").
 - Passing the composer's `mode` and `fork` as accessors like `ComposerDraft`: typing no longer
   re-renders the screen (it never reads them per keystroke), and every other pass re-renders the
   screen anyway for its closures, so there was nothing to cut.
@@ -595,13 +596,12 @@ budget.
 | A draft's first keystroke; its last character deleted | composer 1, sidebar 1, session row 4 |
 | A tab switch | detail 1, tab 1, screen 1, transcript 1, rows 1, composer 2, strip 1, tab controls 1 |
 | Back to a chat from a New Tab page, three chats kept | detail 1, tab 1, screen 1, transcript 1, rows 1, composer 1, strip 2, tab controls 1; the three chats' scroll views are the same objects |
-| A session switch; a session chosen in the sidebar | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 3, transcript 3, rows 3, composer 4, strip 2, tab controls 2 |
-| A session the window shows by itself; back to a kept one | as a session switch, with composer 3 and screen, transcript and rows 2 |
-| Back to a session that closed | as a session switch, with tab 3 |
+| A session switch; a session chosen in the sidebar; a session the window shows by itself | session row 4, detail 1, tab 1, screen 2, transcript 2, rows 2, composer 3, strip 1, tab controls 1; no window, no shell, no sidebar |
+| Back to a session kept open | session row 4, detail 1, tab 1, screen 1, transcript 1, rows 1, composer 2, strip 1, tab controls 1 |
+| Back to a session that closed | as a session switch, with tab 2 |
 | Another session opening or closing behind the window | nothing |
-| A page without a session; one chosen in the sidebar (the Inbox); one the tab model shows by itself | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 2, transcript 2, rows 2, composer 2, 2 and 1, and inbox 1 for the Inbox; no strip, no row, no markdown, and the chats' scroll views are the same objects |
-| Back from a page without a session; a session chosen in the sidebar over a page | window 1, shell 1, sidebar 1, session row 4, detail 2, tab 2, screen 3, transcript 3, rows 3, composer 1, strip 2, tab controls 1; no row, no markdown, and the chats' scroll views are the same objects |
-| A session the tab model shows by itself over a page | as back from a page, with composer 2, strip 1 and tab 3: 2, or 3 when SwiftUI runs the leaving page's body once more (see "Left as it is") |
+| A page without a session; one chosen in the sidebar (the Inbox); one the tab model shows by itself | session row 4, detail 1, tab 1, composer 1, and inbox 1 for the Inbox; no window, shell, sidebar, strip, screen, transcript, rows, row or markdown, and the chats' scroll views are the same objects |
+| Back from a page without a session; a session chosen in the sidebar over a page; one the tab model shows by itself | session row 4, detail 1, tab 1, screen 1, transcript 1, rows 1, composer 1, strip 1, tab controls 1; no window, shell, sidebar, row or markdown, and the chats' scroll views are the same objects |
 | Sidebar search text set; typed into the field; cleared | sidebar 1-2, session row 2-6, search field 1-2 |
 | A sidebar filter; a page of sessions loaded; an empty last page | sidebar 1, session row 2-4 |
 | A window resize step, narrowing and widening; a sidebar divider step | strip 1 |
@@ -618,14 +618,15 @@ read invalidates.
 
 | Scope | Reads | Invalidated by | Verdict |
 | --- | --- | --- | --- |
-| Window root (`ConnectedServerView.body`) | the host's selection | a session or page switch | fine: the switch renders the window once (budget), and a selection without a session takes the strip away in that render |
-| | `connection.connectedServer?.baseUrl` | connecting to another server | fine |
+| Window root (`ConnectedServerView.body`) | `connection.connectedServer?.baseUrl` | connecting to another server | fine. It hands the host's selection on as a binding and never reads it: a session or page switch does not render the window (budget) |
 | | `sidebar.fork`, `projectSettings`, `archiveRequest`, `renamingFromTab`, `renameText`, `sessionList.editError` (read when their sheet and alert bindings are made) | opening one of those sheets or alerts | fine: each presents over the window |
 | | `tabFailure`, `showsTabOverview` (view state), size class, two `@AppStorage` keys without a dot | a failed tab action, the overview, a compact width, those two settings | fine |
-| Root modifiers, each its own scope | `TabCommandsPublishing`: the tabs' commands. `BusyTabsReport`: busy tab ids. `WindowTabOverview`: the strip's state. `ViewedSessionReport`: the viewed session, window focus. `ShownPageReport`: the tab model's page. `TabRestoration`: server URL, live session ids. `CloseShellConfirmation`: the shown tabs, the closing shell. `NewTabOptionsLoading`: the shown session id. `PaletteAdapter`: built only while the palette shows | tab, session and title changes | fine: none renders content, each runs a closure |
+| Root modifiers, each its own scope | `SelectedPageShown`: the host's selection. `TabCommandsPublishing`: the tabs' commands. `BusyTabsReport`: busy tab ids. `WindowTabOverview`: the strip's state. `ViewedSessionReport`: the viewed session, window focus. `ShownPageReport`: the tab model's page. `TabRestoration`: server URL, live session ids. `CloseShellConfirmation`: the shown tabs, the closing shell. `NewTabOptionsLoading`: the shown session id. `PaletteAdapter`: built only while the palette shows | tab, session and title changes | fine: none renders content, each runs a closure |
 | | `SessionTabsLifecycle`: every session's archived flag, the open session ids | every session row | fine: the flags and the ids built and compared are 10-11 microseconds a row change in Release with 253 sessions, and no view is under it |
-| Shell (`AppShell.body`) | column visibility, size class, whether there are tabs | the sidebar toggle, a compact width, a page without tabs | fine |
+| Shell (`AppShell.body`) | column visibility | the sidebar toggle | fine. The selection passes through it as a binding |
+| `TitlebarTabs` (the detail's toolbar) | whether a page covers the tabs (`ShellTabs.isShown`), size class | a page without a session and the way back, a compact width | fine: its body makes the toolbar's items, and the detail under it is not rendered (budget). The strip's tabs are the last shown session's, so a page takes the strip away without rendering it |
 | "sidebar" | the sidebar state: the session list, display options, offered pages, the search binding | every session row, search text, filters, paging | fine: it is what draws them. Every row on screen runs its body for each change (the budgets' "session row 4" is all four rows of the test's sidebar), under 2 ms of the 20: see "Left as it is" |
+| The sidebar's list (`List(selection:)`, under "sidebar") | the selection | a session or page switch | the list's rows all run (session row 4) and the "sidebar" scope does not: see "Left as it is" |
 | "search field" | the search text, through the relay | search text | fine (budget) |
 | "tab controls", "tab switcher", "strip" | the shown session's tabs and titles; the strip also the detail's width | a tab's title, a tab switch, a resize step | fine: a resize step renders the strip once and nothing else |
 | "detail" | the shown tab group, its selected tab, its split, the kept list, the page, the connection's issues | a tab or session switch, a split, a connection issue | fine |
@@ -694,19 +695,25 @@ use a colon.
   11%; the three together take 17.7 ms to about 12.5. Rows that observe their own session
   and a filter the core keeps up to date would take it to about 5 ms. That is a change to
   the core, the store and the sidebar together, and it is in `docs/follow-ups.md`.
-- **A page without tabs renders each kept chat's container once**, and the window once. No
-  rows are built.
-- **A session the tab model shows by itself over a page without tabs sometimes renders the
+- **A page without tabs rendered each kept chat's container once**, and the window once,
+  until the ninth pass: it now renders the detail and the page's tab. No rows are built.
+- **A session the tab model shows by itself over a page without tabs sometimes rendered the
   page that leaves once more** (4 of 25 in the mounted window, about 14 ms in a Debug
-  build). The tab model's page changes in the pass that renders the window, so the page's
-  tab leaves in that pass, and in some of those passes SwiftUI runs the leaving tab's body
-  again with its old content. Its budget has tab 3 as a ceiling, so a second window render
-  there still fails. A switch that reaches the window as the host's selection alone never
-  did (75 of 75), and since the eighth pass a choice in the sidebar is one of those; their
-  budget is tab 2.
-- **A session switch** still builds the new session's tabs and renders the window once; the
-  first pass of opening another session is 150-170 ms, most of it the new chat's first
-  layout.
+  build). The tab model's page changed in the pass that rendered the window, so the page's
+  tab left in that pass, and in some of those passes SwiftUI ran the leaving tab's body
+  again with its old content. Since the ninth pass no switch renders the window, and the
+  three ways back from a page share one budget with tab 1.
+- **A session switch** still builds the new session's tabs; the first pass of opening
+  another session is 150-170 ms, most of it the new chat's first layout. Since the ninth
+  pass it renders neither the window nor the shell.
+- **A session or page switch renders every sidebar row on screen** (the budgets' "session
+  row 4"), not the two whose selection changed. `List(selection:)` is why: a view that
+  holds the list's selection binding runs its body when the selection changes, whether or
+  not the body reads it. A list of four plain rows in a view that only passes the binding
+  to `List` ran that view's body once per selection and none of its rows; the sidebar's
+  rows take closures made in that body, so each of them runs too. The sidebar's "sidebar"
+  scope above the list no longer runs. Two rows need rows that SwiftUI can skip, which is
+  the row work in `docs/follow-ups.md`.
 - **A tab switch to a terminal and back** was 190-240 ms because the terminal took a kept
   chat's place, and going back built that chat again; the eighth pass fixed it. What is
   left is 60-95 ms each way, the same layout pass a switch between two chats pays. The
@@ -725,6 +732,8 @@ use a colon.
   the file would then stay stale, so it is as it was.
 - **A resize step** renders only the strip. A window step is 72% layout: the toolbar's
   bridge about 24% of the step and the transcript's lazy stack about 20%, app code under 3%.
+  The ninth pass went through that layout: what a hidden chat added is out, and the
+  toolbar's share is SwiftUI's own (see "What a resize step and a tab switch lay out").
 - **A key in the composer** renders the composer once. Its cost levels (about 6, 10 and
   15 ms, each for a whole run of the same binary) go with the state of the processor core
   the main thread is given: a fixed loop of arithmetic timed beside the keys changes level
@@ -733,19 +742,13 @@ use a colon.
   been scrolled and switched, before this pass and after it. The full run before hid it:
   its page visit builds every chat again first. It now costs 112-126 ms, and the steps
   around it what they did; see "The slow resize step" below.
-- **A widening window step costs twice a narrowing one** at the same widths (48-51 against
-  20-25 ms in Release, where no row changes width). The cause is the toolbar's overflow.
-  In the measured window the strip leaves the toolbar's trailing items 88 pt and they need
-  89, so "Session" and "Right panel" are folded into the overflow menu, and at each wider
-  size AppKit tries them again: it adds each item's view, the SwiftUI item updates for it,
-  and the item is folded again. With 4 pt more left for them nothing is folded and a
-  widening step is 18-21 ms, but a narrowing step then lays out the two shown items
-  (36-41 ms): a narrow and wide pair goes from about 70 ms to about 56. With 60 pt more
-  the result is the same, and a strip with a flexible width does not change it. The step
-  renders the strip once either way (budget). Not changed: the reserve is a layout choice
-  the user sees, and the gain is in one direction. The fix that would help both
-  directions is a strip outside the toolbar item, or one sized before the toolbar lays
-  out.
+- **A widening window step cost twice a narrowing one** at the same widths (48-51 against
+  20-25 ms in Release, where no row changes width), and no longer does: see "The toolbar
+  meets the strip at its new width" in the ninth pass. In the measured window the strip
+  leaves the toolbar's trailing items 88 pt and they need 89, so "Session" and "Right
+  panel" sit in the overflow menu at every width; that is as it was. More room for them
+  (4 pt or 60) only moved the cost to the narrowing step, and a strip with a flexible
+  width changed nothing.
 - `LoopProbe.record` costs 170-360 ns a call in Release and its detail is an autoclosure;
   the busiest probe changes 55-85 times over 40 resize steps, under 0.02% of the main
   thread.
@@ -875,6 +878,16 @@ window; the Inbox's filter and an open file's view mode following a change made 
 window; a chat's scroll position and focus on the way back from a terminal, a browser or a
 New Tab page with three chats kept.
 
+From the ninth pass: the toolbar's trailing items through a live resize in both directions
+(none should fold or come back mid-drag), and near the strip's 220 pt minimum, where the
+toolbar squeezes the strip's item against its width constraint; the strip and a chat's
+toolbar items as a session gives way to Usage or the Inbox and comes back; the sidebar
+hidden, shown and peeking with the strip's constraint in place; a kept chat shown after
+the window, the sidebar or its right panel was resized while it hid (it takes its new size
+in the pass that shows it), with the reader at the end and in the middle; the Mac host's
+window title, Dock badge and Tab menu following a switch, which `ServerWindowRoot` now
+reports through a modifier and which was not built here.
+
 ## Eighth pass: the costs the seventh left (November 2026)
 
 The seventh pass ended with a list of costs it had measured and not changed. This pass
@@ -946,6 +959,142 @@ chats (90% of the samples are one layout pass, and letting SwiftUI skip the show
 not make it cheaper); `SessionTabsLifecycle` (10-11 microseconds a row change); a key in
 the composer (no new cause).
 
+## Ninth pass: what a switch renders, and what a resize lays out (November 2026)
+
+Two of the costs the eighth pass left: a session or page switch rendered the window, and a
+resize step and a tab switch were mostly layout. Measured as the eighth pass
+(`PERF_STEPS=1`, a 1200 pt window, 250 sessions, a 600-row chat), each build's runs taken
+in turn with the other's, load averages 1.9-6.5 from other builds on the machine. A number
+is a run's median step in main-thread milliseconds; a range is across runs.
+
+### A switch renders the detail and the strip
+
+The window's root and the shell's body read the selection: the root to report it to the
+desktop shell and to choose the strip's tabs, the shell to build the detail and to hide
+the strip under a page. A switch built the window, the shell, the sidebar's scope and the
+detail for it.
+
+- The shell passes the selection on and never reads it. `SelectedDetail` reads it for the
+  detail, the sidebar's list for its rows.
+- `TitlebarTabs` shows or hides the strip from `ShellTabs.isShown`, which it alone reads,
+  and under a page the strip keeps the last shown session's tabs
+  (`SessionTabGroups.lastShown`), so going to a page changes nothing the strip reads.
+- The detail is told it sits under a strip whether or not a page covers it, so the chats
+  kept under a page are not rendered for the page.
+- The window's root hands the selection, the unread count and the selected tab to
+  modifiers that read them (`SelectedPageShown`, and `ServerWindowStatus` in the desktop
+  package for the Mac host's `ServerWindowRoot`).
+
+The budgets, for a switch, a choice in the sidebar and the way back from a page: detail 1,
+tab 1, strip 1, tab controls 1 and the chat that shows; no window, shell or sidebar. A page
+renders detail 1, tab 1 and the composer once. "Session row" stays 4, every row on screen:
+see "Left as it is".
+
+Four runs of each build:
+
+| One step | Before | After |
+| --- | --- | --- |
+| A switch between two open sessions | 89-119 ms | 69-102 ms |
+| A session chosen in the sidebar | 84-116 ms | 68-99 ms |
+| A page without a session, or back (with the frames after) | 147-177 (164-193) ms | 110-121 (115-136) ms |
+| The same with the tab model set in the same write (with the frames after) | 136-146 (306-330) ms | 102-134 (114-157) ms |
+| A tab switch to a chat | 44-78 ms | 48-81 ms |
+| A tab switch to a terminal or back | 61-86 ms | 64-93 ms |
+
+The tab switches are in the table to show they did not move: their two levels (about 45
+and 78 ms to a chat) are the processor's, as for a key in the composer.
+
+### The toolbar meets the strip at its new width
+
+A widening step cost 48-51 ms where a narrowing one cost 20-25 ms. AppKit lays the toolbar
+out at the window's new width before SwiftUI has measured the detail column, so the
+toolbar met the strip at its old width. Wider, that left room for a folded trailing item,
+which the toolbar put into the window and took out again in the same step. Narrower, it
+folded a shown item, which then stayed in the overflow menu until the next wider step.
+
+The strip's toolbar item now takes its new width when the window's content view does: a
+view inside the strip (`TitlebarStripAnchorView`) holds a width constraint on the item's
+view and sets it from the content view's frame change, before the toolbar's layout. The
+other columns keep their widths through a window resize, so the detail's width moves by
+what the window's did; the measured width still corrects it when a column moves. The
+constraint is one below required, so the toolbar can still squeeze the item in a window
+too narrow for it. The items, their order and the strip's width at rest are as they were.
+
+`AppShellResizeTests.resizeKeepsTrailingItems` holds it: a shell with one trailing item
+shown and one folded goes through three narrower widths and back, and no step puts either
+item's view into the window again, changes which items show, or leaves the strip's item at
+another width than the window's change. Without the constraint it fails.
+
+Twelve-point steps, three runs before and four after, the 13 steps of each direction
+where no row changes width:
+
+| | Before | After |
+| --- | --- | --- |
+| A narrowing step | 19.4-21.2 ms | 20.2-21.3 ms |
+| A widening step | 49.0-50.9 ms | 20.4-21.2 ms |
+| A widening step where rows change width | 58.6-62.7 ms | 28.6-28.9 ms |
+| 40 steps | 1559-1612 ms | 1011-1044 ms |
+
+### A hidden chat keeps its size
+
+The eighth pass's width hold took a hidden chat's rows out of a step. The rest of the chat
+still followed every window size: its conversation, its composer and its transcript's
+scroll view took each new frame. Counted as AppKit frame changes in one 12 pt step with one
+chat hidden behind the shown one: 133-144, against 25-70 with no hidden chat.
+
+The chat's content inside its right panel's column now keeps the size it last had on
+screen while its tab is hidden (`holdsSizeWhileTabHidden`, a layout around the content in
+`WorkspaceInspectorPresentation`). The layout itself takes the size it is offered, so the
+tab, the column and the right panel still follow the window and nothing waits on a tab at
+an old size; a pass at the split view's placeholder size is never the size kept; a tab
+that never showed follows the column. Shown, the content takes the column's size in the
+pass that shows it. A chat under its own terminal is not covered: its tab is shown.
+
+With it a step changes 49-80 frames with one chat hidden: the hidden chat's own containers,
+which follow the column by design. `KeptAliveTabsSwitchTests.resizingLeavesTheHiddenConversation`
+holds it: two resizes behind another tab change the size of no scroll or text view of the
+hidden conversation, and showing it commits one frame, at the pane's new width, on its
+last row. Without the hold it fails. The resize budgets read their widths from the views
+that are drawn (`OffscreenWindow.drawnViews`): a kept chat's are the old ones until it
+shows.
+
+Without and with the hold, the rest of this pass in both builds, two or three runs each:
+
+| | Without | With |
+| --- | --- | --- |
+| A window step, one chat hidden (13 steady steps) | 17.4-18.3 ms | 16.4-17.4 ms |
+| A window step, the usual four tabs (39 steps) | 21.7-21.8 ms | 19.3-20.3 ms |
+| A sidebar divider step, the usual four tabs | 23.7-25.4 ms | 22.0 ms |
+| A tab switch away and a 12 pt step while the chat hides | 66.5 ms | 63.4-67.9 ms |
+| The switch back after that step | 43.8-44.2 ms | 45.9-47.9 ms |
+
+The switch back after a resize pays the hidden chat's layout once, 2-4 ms, where each step
+paid about 1-2 ms. One run of each build at the processor's slower level (105 and 102 ms
+away, 81 and 83 ms back) is left out of the last two rows. Against the tree this pass
+started from, a sidebar divider step went from 27.9-35.0 ms (five runs) to 22.0-25.3 (six).
+
+### What a resize step and a tab switch lay out
+
+Looked for: anything laid out in a step or a tab switch that is not on screen or has not
+changed. What was found and taken is above. What is left is SwiftUI's and AppKit's own.
+
+- **The toolbar's share of a resize step.** The strip is a toolbar item whose content
+  changes width, and SwiftUI rebuilds an item's menu form whenever its hosting view asks
+  for an update: `AppKitToolbarItem.hostingViewDidRequestUpdate`,
+  `updateMenuFormRepresentation`, `PlatformItemList.menuItems`, down to
+  `GraphicsImage.makePlatformImage` for the tabs' icons, 9.4-10.7% of a step's layout
+  samples, inside `-[NSToolbarView layout]` at 19-21%. Observed on the item, its menu form
+  is set once or twice per 12 pt step. A strip that did not render per step (its width
+  from the constraint alone) had the same counts, so it is not the strip's body. Only a
+  strip outside the toolbar item avoids it; that is in `docs/follow-ups.md`.
+- **A tab switch between two chats.** 14 views change frame: five focus-ring views of the
+  tab that hides and nine in the toolbar. None is in a chat's content, shown or hidden, and
+  no row is built. A switch to a chat of one turn costs 53.7 ms where one to 150 turns costs
+  58.1, so the transcript is not the cost either. About three quarters of the samples are
+  `GraphHost.flushTransactions`, SwiftUI updating the graph for the tab that shows (its
+  environment, its toolbar items, its focus); the toolbar's items are about 13% and the
+  lazy stack under 1%. Nothing in it is the app's to take out.
+
 ## Where the time still goes
 
 - **Switching tabs** renders the detail and the tab that shows once, 50-80 ms in Release to a
@@ -955,8 +1104,9 @@ the composer (no new cause).
 - **Any session's activity** (preview, time, status) renders the sidebar, 22-26 ms in Release
   with 250 sessions, whether it is the shown session's, a kept tab's or another's. Most of it
   is the sidebar's layout, not the rows (see the seventh pass).
-- **Switching sessions** is 115 ms between two open ones and 150-165 ms for the first pass of
-  one not yet open; a page without a session and back is 160-175 ms each way.
+- **Switching sessions** is 70-100 ms between two open ones and 150-165 ms for the first pass
+  of one not yet open; a page without a session and back is 110-135 ms each way. Each still
+  renders every sidebar row on screen (see the ninth pass).
 - Opening a long session (about 1 s quiet, 2-3 s under load) is SwiftUI building and laying
   out about 27 transcript segments and their markdown: code blocks' text layout (one typesetter
   pass over each whole block) is the largest single cost, then view and attribute setup and
@@ -964,8 +1114,9 @@ the composer (no new cause).
   code stays under 2%.
 - **Resizing the window** is still the worst interaction, though no longer re-rendering view
   bodies: each size step is SwiftUI's attribute-graph and layout pass over the whole window
-  (`NSHostingView.layout`, with the titlebar's toolbar layout about a tenth of it), 50-80 ms per
-  step in Debug under load. Toggling the sidebar or the right panel animates the same relayout.
+  (`NSHostingView.layout`, with the titlebar's toolbar layout about a fifth of it), 50-80 ms per
+  step in Debug under load and about 20 ms in Release, in either direction since the ninth
+  pass. Toggling the sidebar or the right panel animates the same relayout.
   Text measuring is under 1% of a resize, so a fixed-width transcript column would not help.
   Through the widths where rows change width a step costs 49-118 ms, and a long chat that
   ends in a very tall row no longer takes half a second in one of them (see "The slow

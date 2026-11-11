@@ -37,7 +37,7 @@ import Testing
         }),
       WindowInteraction(
         name: "a page the tab model shows by itself",
-        budget: toPage.merging(["composer": 1]) { $1 },
+        budget: toPage,
         perform: {
           $0.noteScrollViews()
           $0.session.tabs.show(.usage)
@@ -57,7 +57,7 @@ import Testing
         verify: sessionIsBack),
       WindowInteraction(
         name: "a session the tab model shows by itself over a page",
-        budget: backInTheWindowPass,
+        budget: backFromPage,
         prepare: showPage,
         perform: { $0.session.tabs.show(.session(BudgetWindow.shown)) },
         verify: sessionIsBack),
@@ -65,26 +65,15 @@ import Testing
 
     private typealias Check = @MainActor @Sendable (BudgetWindow) async throws -> Void
 
-    /// Going to a page from the host's selection, as the sidebar's list sets it: the window
-    /// once, and no strip.
-    private static let toPage = [
-      "composer": 2, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
-      "sidebar": 1, "tab": 2, "transcript": 2, "window": 1,
-    ]
+    /// Going to a page: the detail and the sidebar's rows, whose list reads the selection. The
+    /// strip leaves without rendering, and the chats kept under the page are not rendered.
+    private static let toPage = ["composer": 1, "detail": 1, "session row": 4, "tab": 1]
 
-    /// Back to the session from the host's selection: the tab model follows it in a second
-    /// pass, which renders the strip again and never the leaving page's body.
+    /// Back to the session: the detail, the strip and the chat that was kept, once each, and
+    /// never the leaving page's body or the chats kept behind the shown one.
     private static let backFromPage = [
-      "composer": 1, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
-      "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 1, "transcript": 3, "window": 1,
-    ]
-
-    /// Back to the session when the tab model changes first, so the page leaves in the pass
-    /// that renders the window. Tab is 2, or 3 when SwiftUI runs the leaving page's body once
-    /// more before dropping it: the ceiling, not a figure to raise.
-    private static let backInTheWindowPass = [
-      "composer": 2, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
-      "sidebar": 1, "strip": 1, "tab": 3, "tab controls": 1, "transcript": 3, "window": 1,
+      "composer": 1, "detail": 1, "rows": 1, "screen": 1, "session row": 4, "strip": 1,
+      "tab": 1, "tab controls": 1, "transcript": 1,
     ]
 
     /// Shows the Usage page over the shown session, noting the chats' scroll views first.

@@ -54,7 +54,8 @@ import Testing
     /// The widths the window draws at now.
     var widths: ShownWidths {
       get throws {
-        let scrolls = screen.allViews.compactMap { $0 as? NSScrollView }
+        // The shown chat's: one kept behind it holds the size it last had on screen.
+        let scrolls = screen.drawnViews.compactMap { $0 as? NSScrollView }
         let items = screen.window.toolbar?.items.compactMap(\.view) ?? []
         return ShownWidths(
           sidebar: try split.arrangedSubviews[0].frame.width,

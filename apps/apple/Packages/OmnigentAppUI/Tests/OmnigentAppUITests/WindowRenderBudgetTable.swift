@@ -156,6 +156,13 @@ import Testing
         }),
     ]
 
+    /// A session that opens in the detail: its chat, the strip and the sidebar's rows, whose
+    /// list reads the selection. The window, the shell and the sidebar's scope stay as they are.
+    private static let sessionSwitch = [
+      "composer": 3, "detail": 1, "rows": 2, "screen": 2, "session row": 4, "strip": 1,
+      "tab": 1, "tab controls": 1, "transcript": 2,
+    ]
+
     /// Moving between tabs and sessions.
     private static let navigation: [WindowInteraction] = [
       WindowInteraction(
@@ -199,10 +206,7 @@ import Testing
         }),
       WindowInteraction(
         name: "a session switch",
-        budget: [
-          "composer": 4, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
-          "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 2, "transcript": 3, "window": 1,
-        ],
+        budget: sessionSwitch,
         perform: { $0.selection.page = .session(BudgetWindow.other) },
         verify: { window in
           #expect(window.title == "Gamma")
@@ -213,10 +217,7 @@ import Testing
         }),
       WindowInteraction(
         name: "a session chosen in the sidebar",
-        budget: [
-          "composer": 4, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
-          "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 2, "transcript": 3, "window": 1,
-        ],
+        budget: sessionSwitch,
         perform: { try $0.choose(session: BudgetWindow.other) },
         verify: { window in
           #expect(window.selection.page == .session(BudgetWindow.other), "the host's selection")
@@ -229,10 +230,7 @@ import Testing
         }),
       WindowInteraction(
         name: "a session the window shows by itself",
-        budget: [
-          "composer": 3, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
-          "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 2, "transcript": 2, "window": 1,
-        ],
+        budget: sessionSwitch,
         perform: { $0.session.tabs.show(.session(BudgetWindow.other)) },
         verify: { window in
           #expect(window.selection.page == .session(BudgetWindow.other), "the host follows")
@@ -243,8 +241,8 @@ import Testing
       WindowInteraction(
         name: "back to a session kept open",
         budget: [
-          "composer": 3, "detail": 2, "rows": 2, "screen": 2, "session row": 4, "shell": 1,
-          "sidebar": 1, "strip": 2, "tab": 2, "tab controls": 2, "transcript": 2, "window": 1,
+          "composer": 2, "detail": 1, "rows": 1, "screen": 1, "session row": 4, "strip": 1,
+          "tab": 1, "tab controls": 1, "transcript": 1,
         ],
         prepare: { window in
           window.selection.page = .session(BudgetWindow.other)
@@ -258,10 +256,7 @@ import Testing
         }),
       WindowInteraction(
         name: "back to a session that closed",
-        budget: [
-          "composer": 4, "detail": 2, "rows": 3, "screen": 3, "session row": 4, "shell": 1,
-          "sidebar": 1, "strip": 2, "tab": 3, "tab controls": 2, "transcript": 3, "window": 1,
-        ],
+        budget: sessionSwitch.merging(["tab": 2]) { $1 },
         prepare: { try $0.leaveUntilClosed() },
         perform: { $0.selection.page = .session(BudgetWindow.shown) },
         verify: { window in
