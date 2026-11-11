@@ -883,6 +883,17 @@ is where the transcript rests and one scroll returns to it, which changes how fa
 can scroll past the last row; holding the row width through a live resize and taking it
 once at its end, which the user would see; a stack laid out from its bottom.
 
+### What holds it
+
+The window's budgets (`WindowRenderBudgetKept.swift`, in the table of
+`WindowRenderBudgetTests`) count renders, the app's layouts and scroll views built again
+for: a switch away from a split session and back, a key in a split with another session
+kept, a delta into a hidden tab's chat and into a kept session's (nothing, until the window
+is quiet), and the way back to a kept session that changed, whose new text must be laid out
+before any task of the app has run. Which tabs stay built is in `TabKeepAliveTests`; the
+stack's places in `KeptAliveTabsPaneTests` and `TabsSplitKeptTests`; the pacer's turn in
+`TranscriptRowsPacerTests`.
+
 ### Not checked in a real window
 
 These tests mount the window offscreen. What only a key window on a display shows was not
@@ -1188,6 +1199,161 @@ Left, with the numbers under "Left as it is": a row that moves; the state built 
 change under status and updated grouping; the three counted rows; a draft's first and last
 character; a file changed outside its session's directory.
 
+## Tenth pass: chats kept built across splits and sessions (November 2026)
+
+A Release profile of the real window (a VM, long transcripts, 295 sessions, the owner's five
+session groups, two of them split with a browser) found what the offscreen figures above do
+not show:
+
+- a session switch that misses the kept stack costs 0.7-1.4 s of main thread (0.23-0.69 s of
+  it unbroken) where a kept one costs 84 ms. It missed to and from any session whose tabs
+  are split (1073 ms leaving, 1246 ms returning), with more than three sessions in rotation
+  (907-974 ms per switch with five) and on a first open (717-974 ms);
+- a key costs 14.9 ms with one chat built, 22.3 ms with two more kept and 24.9-26.8 ms in a
+  split with a browser;
+- a streaming chat kept hidden costs 3.5-4.5% of the main thread each, beside the shown
+  one's 17.3%.
+
+This pass counts in the hosted window (Debug, offscreen, 900 x 600 and 1300 x 700 for a
+split): renders by scope, the app's own layouts by name (`LayoutTally`, counted in
+`KeptAliveLayout` and `HeldTabSize`), scroll views built again, and run-loop passes with
+either. A step is counted until the window is quiet, its tasks included: the budgets' own
+count stops at the end of the pass that applies the step. No real-window time was taken; see
+"Not checked in a real window" below.
+
+| One step | Before | After |
+| --- | --- | --- |
+| A split opens beside the shown chat | composer 4, screen 4, transcript 4, rows 4, row 6, markdown 6; 4 scroll views built again | composer 2, screen 2, transcript 2, rows 4, row 3, markdown 3 (the side chat's first rows); none built again |
+| A switch away from a split session | composer 6, screen 6, transcript 6, rows 6, row 6, markdown 6, strip 3, tab 3 | as a switch to that session from a single chat; no row, none built again |
+| The switch back to it | composer 4, screen 4, transcript 4, rows 4, row 6, markdown 6; 4 scroll views built again | composer 3, screen 2, transcript 2, rows 2, tab 2; no row, none built again |
+| A page over a split, narrowing to one pane, unsplitting, splitting again | each builds the panes' chats | no chat built again |
+| A key in a split, a chat in the other pane | composer 1; both panes measured and placed | composer 1; the typing pane measured and placed once |
+| A key with another session kept (CPU per key, 40 keys) | - | 7.34 ms against 7.35 ms with none kept |
+| A delta into a hidden tab's chat or a kept session's | nothing rendered or laid out in its pass | the same, counted until the window is quiet: nothing, after the one render of its rows that a chat's first change costs |
+| Back to a kept session that changed behind the window | the rows it hid with, then the change one task later | the change in the pass that shows it: row 2, rows 2, markdown 1 |
+| A window resize step, per chat kept | one measure and one place of the hidden tab; nothing inside it | the same |
+
+### One stack for panes and whole tabs
+
+A split session's two panes were built by the split view, outside the stack that keeps
+tabs, and the stack kept only the selected tab while a split showed. So a session switch
+across a split replaced one subtree with the other and built every chat in both.
+
+`TabSplitView` now places its tabs through `KeptAliveTabs`: one `ForEach` over the kept
+tabs, each placed whole, in a pane, or hidden (`KeptTabPlace`). The same views serve a tab
+whether it is alone, in a pane or behind another, so a split that opens, closes, folds to
+one pane in a narrow window, hides under a page, or belongs to the session that shows next
+builds nothing that was built. A pane's content is clipped to its pane by a rectangle that
+reaches past everything when the tab is whole, so a whole tab still draws under the toolbar
+and a floating sidebar. The pane without focus stays built, hidden, when the window is too
+narrow for two; before, it was dropped and built again on widening.
+
+Both panes holding chats: both stay built and both count against the conversations kept
+(`TabStore.shownTabs`); the pane without focus publishes no toolbar or commands, as before. A
+browser, terminal or New Tab page in a pane takes no place and is built when it shows, as it
+is alone.
+
+### Six sessions, eight conversations
+
+Kept on a Mac: the six most recently shown sessions stay open (`SessionTabGroups.liveLimit`)
+and eight conversations stay built (`TabStore.keptAliveLimit`), the shown tabs always among
+them. Both were three. iPhone and iPad keep three and three: memory there was not measured.
+The limit is per window and can be lowered (`liveLimit` is a property; the tests do).
+
+What one more kept chat costs, measured here:
+
+| | Per kept chat |
+| --- | --- |
+| A key in the shown chat | nothing: not rendered, measured or placed (7.34 against 7.35 ms CPU per key with and without) |
+| A streamed delta into it | nothing in the window; the store applies it, 0.005 ms at 3 rows and 0.25 ms at 603 (`digestRows` reads every row) |
+| A window resize step | one measure and one place of its outer layout, nothing inside it |
+| Memory, a 603-row chat (300 turns) | about 30 MB of `phys_footprint` in the hosted Debug process, about 10 MB of it the rows an open session's store holds whether or not its chat is built; 4-7 MB for a short chat |
+| The server and the core | one event stream per open session, with its terminal list and workspace stores |
+
+Six covers the five session groups the profile ran with and one more; eight leaves each of
+two split sessions both of its chats, with four others. The worst case is eight long chats,
+about 240 MB by the figure above. A cap was chosen over "every open group" because the
+groups a window remembers are not bounded and each open one holds a stream.
+
+A session that closed and shows again builds what it shows and nothing behind it: its other
+chats are forgotten as recently shown when it closes, so the larger limit does not build a
+side chat nobody looks at in the slowest switch there is.
+
+### A hidden chat applies nothing until it shows
+
+A chat kept behind another already stopped reading its rows (`TranscriptRowsPacer`), so a
+delta into it rendered nothing. What was left: its rows body read the rows once inside
+SwiftUI's own tracking, so the first change after it was built rendered it once more; and
+showing it again published what it missed one task later, a frame with the rows it hid with.
+
+Kept as it is: a hidden chat takes no change while hidden, at any pace. A slower pace would
+still lay out rows nobody sees, and catching up costs one render of the rows that changed
+(row 2, rows 2, markdown 1 for a changed reply) whatever was missed. Changed: the chat takes
+what it missed in the pass that shows it (`setShown`), also when the change's notice has not
+run yet, so it never draws the rows it hid with. A chat that never had rows on screen still
+waits for its first page's markdown, as a chat that opens does.
+
+The 3.5-4.5% of main thread per hidden streaming chat in the profile is therefore not the
+window's rendering, by these counts. The store's per-delta digest (above) and the core's
+events are what is left to look at there.
+
+### What a key reaches
+
+Counted, a key mid-draft renders the composer once and measures and places the shown tab
+once: no hidden tab, no other pane, not the stack. That was already so offscreen with one
+chat; it now holds in a split (the other pane was measured and placed with it) and with
+sessions kept. A key that grows the composer by a line lays out the shown tab's column, as
+it must move the transcript's inset; holding that inside the composer was left alone (the
+transcript's bottom inset is the composer's height).
+
+The profile's 22-27 ms per key with chats kept is not reproduced by these counts, which put
+nothing of a kept chat in a key. It has to be measured again in the window. These counts
+rule out only SwiftUI's renders and the app's own layouts of hidden tabs: AppKit's layout
+and the commit of a hidden tab's layers were not counted.
+
+### A session not open: eight passes
+
+The first pass of a switch to a session that is not open renders composer 2, screen 2,
+transcript 2 and builds the chat. Counted on until the window is quiet, with the session's
+header, rows, turns and terminals arriving: composer 7, screen 5, transcript 5, rows 5 over
+8 passes that lay out, with the stack measured 20 times and placed 26 and the shown tab
+measured 17-18 and placed 22-23. A 603-row transcript arriving adds 3-6 passes that build
+13-15 rows each. So the 150-165 ms above is one pass of eight or more, and each later pass
+lays out the window again; that, with a long transcript's first rows, is where 0.7-1.4 s in
+the window can come from. Nothing was changed: each render follows a different piece of the
+session arriving, and batching them is a change to how a session hydrates.
+
+### What holds it
+
+The window's budgets (`WindowRenderBudgetKept.swift`, in the table of
+`WindowRenderBudgetTests`) count renders, the app's layouts and scroll views built again
+for: a switch away from a split session and back, a key in a split with another session
+kept, a delta into a hidden tab's chat and into a kept session's (nothing, until the window
+is quiet), and the way back to a kept session that changed, whose new text must be laid out
+before any task of the app has run. Which tabs stay built is in `TabKeepAliveTests`; the
+stack's places in `KeptAliveTabsPaneTests` and `TabsSplitKeptTests`; the pacer's turn in
+`TranscriptRowsPacerTests`.
+
+### Not checked in a real window
+
+Everything above is a count in a hosted, offscreen window in Debug. To confirm in the VM
+(Release, the profile's data set):
+
+- a switch to and from a split session, and between a split session and another: main-thread
+  time and hangs, against 1073 and 1246 ms;
+- five session groups in rotation: time per switch and hangs of 100 ms or more per five
+  switches, against 907-974 ms and 10-13;
+- a key with one chat built, with two and five more kept, and in a split with a browser,
+  against 14.9, 22.3 and 24.9-26.8 ms;
+- main thread while one, two and three hidden kept chats stream, against 3.5-4.5% each;
+- a kept chat that streamed while hidden: no frame with its old last row when it shows;
+- a split's panes: neither draws over the other or the divider, a whole tab still draws
+  under the toolbar and a floating sidebar, a click focuses its pane, the divider drags,
+  and a narrow window shows the focused pane alone and both again when widened;
+- a seventh session shown, then the first one again, with a side chat it had open: time
+  against a first open, and the side chat built only when its tab is selected;
+- `footprint` with six long sessions open, against three.
+
 ## Where the time still goes
 
 - **Switching tabs** renders the detail and the tab that shows once, 50-80 ms in Release to a
@@ -1199,7 +1365,12 @@ character; a file changed outside its session's directory.
   count changes with it (see the ninth pass).
 - **Switching sessions** is 70-100 ms between two open ones and 150-165 ms for the first pass
   of one not yet open; a page without a session and back is 110-135 ms each way. Each still
-  renders every sidebar row on screen (see the ninth pass).
+  renders every sidebar row on screen (see the ninth pass). On a Mac the six most recently
+  shown sessions are open and eight conversations built, a split's panes among them (see the
+  tenth pass); a seventh session, or a first open, pays the whole build.
+- **A session that is not open** renders and lays out the window in eight or more passes as
+  its header, rows and terminals arrive, 0.7-1.4 s in a real window with a long transcript
+  (see the tenth pass). Nothing is built twice; each pass lays the window out again.
 - Opening a long session (about 1 s quiet, 2-3 s under load) is SwiftUI building and laying
   out about 27 transcript segments and their markdown: code blocks' text layout (one typesetter
   pass over each whole block) is the largest single cost, then view and attribute setup and
