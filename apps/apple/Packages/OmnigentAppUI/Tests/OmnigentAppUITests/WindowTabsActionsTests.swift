@@ -20,7 +20,7 @@ struct WindowTabsActionsTests {
 
   private struct Window {
     let session: ServerSession
-    let tabs: WindowTabs
+    var tabs: WindowTabs
     let browser: FakeBrowserHost
     let failures: Failures
     let server: AppServer
@@ -59,6 +59,46 @@ struct WindowTabsActionsTests {
     #expect(hasBrowser(window.session.tabs.group("conv_a")))
     #expect(window.session.tabs.page == .session("conv_a"))
     #expect(window.tabs.routes(for: "conv_a").openBrowser != nil)
+  }
+
+  @Test("A link from a chat opens beside it: the window splits, the chat stays on its side")
+  func linkOpensBesideTheChat() async throws {
+    let window = try await window()
+    window.session.tabs.open(.chat(sessionID: "conv_a"))
+    let group = window.session.tabs.group("conv_a")
+    let chat = try #require(group.selected)
+    let address = try #require(URL(string: "https://example.com/a"))
+    window.tabs.openLinkBeside(address, in: "conv_a")
+    #expect(window.browser.madeURLs == [address])
+    let page = try #require(group.selected)
+    #expect(page.id != chat.id)
+    #expect(group.pane(of: page.id) == .trailing)
+    #expect(group.pane(of: chat.id) == .leading)
+    #expect(group.split?.otherSelectedID == chat.id, "the chat still shows in its pane")
+    // A second link joins the first in the same pane; the chat's pane is untouched.
+    let next = try #require(URL(string: "https://example.com/b"))
+    window.tabs.openLinkBeside(next, in: "conv_a")
+    let second = try #require(group.selected)
+    #expect(group.pane(of: second.id) == .trailing)
+    #expect(group.split?.otherSelectedID == chat.id)
+    // With the chat moved to the right pane, a link opens on the left.
+    group.show(chat.id, in: .trailing)
+    window.tabs.openLinkBeside(address, in: "conv_a")
+    let third = try #require(group.selected)
+    #expect(group.pane(of: third.id) == .leading)
+    #expect(group.pane(of: chat.id) == .trailing)
+  }
+
+  @Test("A window that cannot split opens a chat's link in a tab")
+  func linkOpensInATabWithoutSplit() async throws {
+    var window = try await window()
+    window.tabs.supportsSplit = false
+    window.session.tabs.open(.chat(sessionID: "conv_a"))
+    let group = window.session.tabs.group("conv_a")
+    window.tabs.openLinkBeside(try #require(URL(string: "https://example.com/a")), in: "conv_a")
+    #expect(group.split == nil)
+    #expect(hasBrowser(group))
+    #expect(group.tabs.count == 2)
   }
 
   @Test("Duplicate on a browser tab makes another page at the same address")
