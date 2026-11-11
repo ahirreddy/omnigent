@@ -130,6 +130,27 @@ struct ComposerAdapterStateTests {
     #expect(fromComposer.configuration?.modelOptions.isEmpty == true)
   }
 
+  @Test("A busy session's menu says why it takes no change; an idle one takes them")
+  func busyConfiguration() async throws {
+    let reasons: [(OmnigentCoreFFI.TurnStatus, String)] = [
+      (.running, "The agent is working"), (.needsResponse, "A request is waiting"),
+    ]
+    for (status, reason) in reasons {
+      let busy = try await Fixtures.store(
+        header: Fixtures.header(settings: Fixtures.settings(), status: status))
+      let configuration = ComposerAdapter.state(busy, isStopping: false, dismissedError: nil)
+        .configuration
+      #expect(configuration?.busyReason?.hasPrefix(reason) == true)
+      #expect(configuration?.acceptsChanges == false)
+    }
+    let idle = try await Fixtures.store(header: Fixtures.header(settings: Fixtures.settings()))
+    let configuration = ComposerAdapter.state(idle, isStopping: false, dismissedError: nil)
+      .configuration
+    #expect(configuration?.busyReason == nil)
+    #expect(configuration?.acceptsChanges == true)
+    #expect(ComposerAdapter.configurationBusyReason(try await Fixtures.store()) == nil)
+  }
+
   @Test("Smart Routing shows while it is on, whatever the core offers")
   func smartRouting() async throws {
     let composer = try await Fixtures.store().composer

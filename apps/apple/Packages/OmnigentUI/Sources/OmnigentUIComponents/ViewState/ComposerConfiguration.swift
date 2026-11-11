@@ -50,6 +50,12 @@ nonisolated public struct ComposerConfiguration: Hashable, Sendable {
   public var agentGroups: [String: AgentPickerGroup] = [:]
   /// Smart Routing's toggle in the picker.
   public var smartRouting = SmartRoutingState.unavailable
+  /// Why the session takes no agent, model, routing or effort change now (a turn is running or
+  /// a request is waiting); `nil` when it takes them.
+  public var busyReason: String?
+
+  /// Whether a choice made now would be sent: no change is in flight and the session is free.
+  public var acceptsChanges: Bool { !isApplying && busyReason == nil }
 
   /// The web's name for Smart Routing, which the chip shows while it is on.
   public static let smartRoutingTitle = "Smart Routing"

@@ -22,21 +22,11 @@ struct ConfigurationMenu: View {
 
   var body: some View {
     Menu {
-      if let selectAgent = actions.selectAgent, !configuration.harnessChoices.isEmpty {
-        if configuration.agentGroups.isEmpty {
-          Section("Agent") { agentRows(configuration.harnessChoices, selectAgent) }
-        } else {
-          groupedAgentRows(selectAgent)
-        }
+      // A busy session refuses every change here, so the choices say why and take no click.
+      if let reason = configuration.busyReason {
+        Section { Text(reason) }
       }
-      SmartRoutingToggle(configuration: configuration, set: actions.extras.setSmartRouting)
-      if let selectModel = actions.selectModel, !configuration.visibleModels.isEmpty {
-        Section("Model") { modelPicker(selectModel) }
-      }
-      if let selectEffort = actions.selectEffort, !configuration.efforts.isEmpty {
-        Section("Effort") { effortPicker(selectEffort) }
-          .disabled(configuration.isSmartRoutingOn)
-      }
+      choices.disabled(configuration.busyReason != nil)
       if let error = configuration.errorMessage {
         Section {
           Text(error)
@@ -56,6 +46,24 @@ struct ConfigurationMenu: View {
     .accessibilityLabel("Agent, model and effort, \(configuration.title)")
     .accessibilityHint("Chooses the agent, then its model and reasoning effort")
     .accessibilityIdentifier("composer-configuration")
+  }
+
+  @ViewBuilder private var choices: some View {
+    if let selectAgent = actions.selectAgent, !configuration.harnessChoices.isEmpty {
+      if configuration.agentGroups.isEmpty {
+        Section("Agent") { agentRows(configuration.harnessChoices, selectAgent) }
+      } else {
+        groupedAgentRows(selectAgent)
+      }
+    }
+    SmartRoutingToggle(configuration: configuration, set: actions.extras.setSmartRouting)
+    if let selectModel = actions.selectModel, !configuration.visibleModels.isEmpty {
+      Section("Model") { modelPicker(selectModel) }
+    }
+    if let selectEffort = actions.selectEffort, !configuration.efforts.isEmpty {
+      Section("Effort") { effortPicker(selectEffort) }
+        .disabled(configuration.isSmartRoutingOn)
+    }
   }
 
   private var label: some View {

@@ -79,6 +79,25 @@
       #expect(menuTitles(list).contains("Models unavailable"))
     }
 
+    @Test("A busy session's menu says why first, and its choices take no click until it is free")
+    func busyMenu() throws {
+      var working = Self.configuration
+      working.busyReason = "The agent is working."
+      #expect(!working.acceptsChanges)
+      let busy = menu(working, layout: .touch)
+      defer { busy.close() }
+      let refused = try busy.openMenu(busy.clickPoint(try #require(busy.controlFrames.first)))
+      #expect(menuTitles(refused).first == "The agent is working.")
+      #expect(refused.item(named: "High")?.isEnabled == false)
+
+      #expect(Self.configuration.acceptsChanges)
+      let idle = menu(Self.configuration, layout: .touch)
+      defer { idle.close() }
+      let offered = try idle.openMenu(idle.clickPoint(try #require(idle.controlFrames.first)))
+      #expect(menuTitles(offered).first != "The agent is working.")
+      #expect(offered.item(named: "High")?.isEnabled == true)
+    }
+
     private struct ExpandHost: View {
       @State private var isExpanded = false
 

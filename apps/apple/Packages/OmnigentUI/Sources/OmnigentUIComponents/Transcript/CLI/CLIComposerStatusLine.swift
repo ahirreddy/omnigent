@@ -172,30 +172,9 @@ private struct CLIModelMenu: View {
 
   var body: some View {
     Menu {
-      SmartRoutingToggle(configuration: configuration, set: actions.extras.setSmartRouting)
-      if let selectModel = actions.selectModel, !configuration.visibleModels.isEmpty {
-        Picker(
-          "Model",
-          selection: Binding(get: { configuration.pickedModelId }, set: { selectModel($0) })
-        ) {
-          Text(configuration.defaultModelTitle).tag(String?.none)
-          ForEach(configuration.visibleModels) { Text($0.label).tag(Optional($0.id)) }
-        }
-        .pickerStyle(.inline)
-      }
-      if let selectEffort = actions.selectEffort, !configuration.efforts.isEmpty {
-        Picker(
-          "Effort",
-          selection: Binding<String?>(
-            get: { configuration.pickedEffort }, set: { selectEffort($0) })
-        ) {
-          Text(configuration.defaultEffortTitle).tag(String?.none)
-          ForEach(configuration.efforts, id: \.self) { (effort: String) in
-            Text(ComposerConfiguration.effortLabel(effort)).tag(String?.some(effort))
-          }
-        }
-        .pickerStyle(.inline)
-      }
+      // A busy session refuses every change here, so the choices say why and take no click.
+      if let reason = configuration.busyReason { Section { Text(reason) } }
+      choices.disabled(configuration.busyReason != nil)
       if let error = configuration.errorMessage { Section { Text(error) } }
     } label: {
       Text(
@@ -212,6 +191,33 @@ private struct CLIModelMenu: View {
     .help("Model and effort: \(configuration.title)")
     .accessibilityLabel("Model and effort, \(configuration.title)")
     .accessibilityIdentifier("composer-configuration")
+  }
+
+  @ViewBuilder private var choices: some View {
+    SmartRoutingToggle(configuration: configuration, set: actions.extras.setSmartRouting)
+    if let selectModel = actions.selectModel, !configuration.visibleModels.isEmpty {
+      Picker(
+        "Model",
+        selection: Binding(get: { configuration.pickedModelId }, set: { selectModel($0) })
+      ) {
+        Text(configuration.defaultModelTitle).tag(String?.none)
+        ForEach(configuration.visibleModels) { Text($0.label).tag(Optional($0.id)) }
+      }
+      .pickerStyle(.inline)
+    }
+    if let selectEffort = actions.selectEffort, !configuration.efforts.isEmpty {
+      Picker(
+        "Effort",
+        selection: Binding<String?>(
+          get: { configuration.pickedEffort }, set: { selectEffort($0) })
+      ) {
+        Text(configuration.defaultEffortTitle).tag(String?.none)
+        ForEach(configuration.efforts, id: \.self) { (effort: String) in
+          Text(ComposerConfiguration.effortLabel(effort)).tag(String?.some(effort))
+        }
+      }
+      .pickerStyle(.inline)
+    }
   }
 }
 
