@@ -4,6 +4,7 @@ import OmnigentAppUI
 import OmnigentUIComponents
 import OmnigentViewTesting
 import OmnigentViewTextReading
+import SwiftUI
 import Testing
 
 @testable import OmnigentAppBrowser
@@ -261,3 +262,88 @@ extension BrowserTabHostTests {
     #expect(stray.isClosed)
   }
 }
+
+#if os(macOS)
+  /// Which page takes the keyboard when its tab shows, so typing reaches it without a click.
+  extension BrowserTabHostTests {
+    /// A page that loads without the network.
+    private static let localPage = URL(string: "data:text/html,page")
+
+    /// Runs the window and the page's tasks, which need the main actor free, until `condition`
+    /// holds or `seconds` pass.
+    private func settle<Content: View>(
+      _ screen: OffscreenWindow<Content>, for seconds: Double = 3, until condition: () -> Bool
+    ) async throws -> Bool {
+      let deadline = ContinuousClock.now + .seconds(seconds)
+      while !condition(), ContinuousClock.now < deadline {
+        screen.settle(0.005)
+        try await Task.sleep(for: .milliseconds(5))
+      }
+      return condition()
+    }
+
+    /// Whether the keyboard is in `model`'s page.
+    private func hasKeyboard(_ model: BrowserTabModel, in window: NSWindow) -> Bool {
+      guard let page = model.tab?.keyboardView, let responder = window.firstResponder as? NSView
+      else { return false }
+      return responder.isDescendant(of: page)
+    }
+
+    @Test func aBuiltPageTakesTypingAndAnEmptyOneLeavesItToTheAddressField() throws {
+      let fixture = try Fixture()
+      defer { fixture.removeDefaults() }
+      fixture.environment.settings.newTabURL = nil
+      let empty = try #require(fixture.host.page(fixture.host.makePage(url: nil).id))
+      empty.activate()
+      #expect(empty.tab != nil)
+      #expect(BrowserPageFocus.keyboardView(of: empty) == nil)
+
+      let loaded = try #require(fixture.host.page(fixture.host.makePage(url: Self.localPage).id))
+      #expect(BrowserPageFocus.keyboardView(of: loaded) == nil, "the page is not built yet")
+      loaded.activate()
+      let tab = try #require(loaded.tab)
+      #expect(BrowserPageFocus.keyboardView(of: loaded) === tab.keyboardView)
+    }
+
+    @Test func aPageShownInTheFocusedPaneTakesTheKeyboard() async throws {
+      let fixture = try Fixture()
+      defer { fixture.removeDefaults() }
+      let page = fixture.host.makePage(url: Self.localPage)
+      let model = try #require(fixture.host.page(page.id))
+      let screen = OffscreenWindow(
+        fixture.host.content(for: page.id, restoring: page.state, navigation: nil) {},
+        width: 700, height: 500)
+      defer { screen.close() }
+      #expect(try await settle(screen) { hasKeyboard(model, in: screen.window) })
+    }
+
+    @Test func aPageInTheOtherPaneLeavesTheKeyboardWhereItIs() async throws {
+      let fixture = try Fixture()
+      defer { fixture.removeDefaults() }
+      let page = fixture.host.makePage(url: Self.localPage)
+      let model = try #require(fixture.host.page(page.id))
+      let screen = OffscreenWindow(
+        fixture.host.content(for: page.id, restoring: page.state, navigation: nil) {}
+          .environment(\.isActiveTabPane, false),
+        width: 700, height: 500)
+      defer { screen.close() }
+      #expect(try await settle(screen) { model.tab != nil })
+      // Longer than the wait before a shown page takes the keyboard.
+      #expect(try await !settle(screen, for: 0.5) { hasKeyboard(model, in: screen.window) })
+    }
+
+    @Test func anEmptyPageShownLeavesTheKeyboardToTheAddressField() async throws {
+      let fixture = try Fixture()
+      defer { fixture.removeDefaults() }
+      fixture.environment.settings.newTabURL = nil
+      let page = fixture.host.makePage(url: nil)
+      let model = try #require(fixture.host.page(page.id))
+      let screen = OffscreenWindow(
+        fixture.host.content(for: page.id, restoring: page.state, navigation: nil) {},
+        width: 700, height: 500)
+      defer { screen.close() }
+      #expect(try await settle(screen) { screen.window.firstResponder is NSText })
+      #expect(try await !settle(screen, for: 0.5) { hasKeyboard(model, in: screen.window) })
+    }
+  }
+#endif

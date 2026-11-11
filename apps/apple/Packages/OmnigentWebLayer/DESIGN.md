@@ -258,6 +258,11 @@ The host returns every unconsumed key-down, and a text field leaves the RawKeyDo
 character unconsumed (the Char inserts the text). `UnhandledKeyRouting` therefore decides what
 step 3 does:
 
+- A modifier key pressed by itself (Shift, Caps Lock, Command, Option, Control) stops there. It
+  is sent as the RawKeyDown of a `flagsChanged` and comes back like any other key-down, but
+  AppKit never delivers one as a key-down. Rebuilt as one it has no characters, and
+  `NSMenu.performKeyEquivalent` runs the first item that has no key equivalent and the same
+  modifiers, Shift and Caps Lock ignored: for Shift, the app menu's About.
 - A key that only types (a printable character without Command, Control or Globe) stops there.
   AppKit never offers such a key as a key equivalent, and `NSMenu.performKeyEquivalent` called
   directly runs the system's Globe items for it: a plain E opens Emoji & Symbols, D starts

@@ -5,6 +5,13 @@ internal import OmnigentInput
 enum UnhandledKeyRouting {
   private static let chordFlags: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
 
+  /// Whether `event` is a modifier key (Shift, Caps Lock, Command) going down by itself, which
+  /// AppKit reports as flagsChanged and never as a key-down. Rebuilt as one it has no characters,
+  /// and NSMenu runs its first item without a key equivalent for it: the app menu's About.
+  static func isModifierKey(_ event: NSEvent) -> Bool {
+    InputTranslator.modifierFlag(forKeyCode: event.keyCode) != nil
+  }
+
   /// Whether `event` only types a character: a printable key without Command, Control or Globe.
   /// Typing belongs to the page alone and is never a shortcut.
   static func typesText(_ event: NSEvent) -> Bool {

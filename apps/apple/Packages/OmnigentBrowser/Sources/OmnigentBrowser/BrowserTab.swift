@@ -97,6 +97,8 @@ public protocol BrowserTab: AnyObject {
   var state: BrowserTabState { get }
   /// The native view to embed. Each tab owns exactly one.
   var platformView: BrowserPlatformView { get }
+  /// The view that takes typing for the page: `platformView`, or the view inside it that does.
+  var keyboardView: BrowserPlatformView { get }
 
   /// Starts a main-frame navigation.
   func load(_ url: URL)
@@ -151,4 +153,9 @@ public protocol BrowserTab: AnyObject {
   var urlPolicy: (any BrowserURLPolicy)? { get set }
   /// Input for agents, kept apart from user input.
   var agentInput: any BrowserAgentInput { get }
+}
+
+extension BrowserTab {
+  /// Engines whose `platformView` takes typing itself need no view of their own for it.
+  public var keyboardView: BrowserPlatformView { platformView }
 }

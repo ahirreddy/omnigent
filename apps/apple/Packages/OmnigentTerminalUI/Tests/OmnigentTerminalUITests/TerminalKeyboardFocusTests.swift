@@ -41,6 +41,36 @@ private struct FocusHost: View {
   }
 }
 
+/// A page that is no terminal: one view that takes typing, as a browser page has.
+private final class TypingView: NSView {
+  override var acceptsFirstResponder: Bool { true }
+}
+
+@MainActor
+@Observable
+private final class OtherPage {
+  var view: TypingView?
+  var isActive = true
+}
+
+private struct OtherPageHost: View {
+  let page: OtherPage
+
+  private struct Typing: NSViewRepresentable {
+    let view: TypingView
+    func makeNSView(context: Context) -> TypingView { view }
+    func updateNSView(_ nsView: TypingView, context: Context) {}
+  }
+
+  var body: some View {
+    Group {
+      if let view = page.view { Typing(view: view) } else { Text("Starting the page") }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .keyboardFocusOnShow(page.view, isShown: true, isActive: page.isActive)
+  }
+}
+
 @MainActor
 @Suite("A terminal takes the keyboard as it comes on screen", .serialized)
 struct TerminalKeyboardFocusTests {
@@ -59,7 +89,9 @@ struct TerminalKeyboardFocusTests {
   }
 
   /// Runs the window and the view's tasks, which need the main actor free, for `seconds`.
-  private func run(_ screen: Screen, _ seconds: Double = 0.1) async throws {
+  private func run<Content: View>(
+    _ screen: OffscreenWindow<Content>, _ seconds: Double = 0.1
+  ) async throws {
     let deadline = ContinuousClock.now + .seconds(seconds)
     while ContinuousClock.now < deadline {
       screen.settle(0.005)
@@ -68,7 +100,9 @@ struct TerminalKeyboardFocusTests {
   }
 
   /// Runs the window and its tasks until `condition` holds, or three seconds.
-  private func settle(_ screen: Screen, until condition: () -> Bool) async throws -> Bool {
+  private func settle<Content: View>(
+    _ screen: OffscreenWindow<Content>, until condition: () -> Bool
+  ) async throws -> Bool {
     let deadline = ContinuousClock.now + .seconds(3)
     while !condition(), ContinuousClock.now < deadline {
       screen.settle(0.005)
@@ -100,6 +134,21 @@ struct TerminalKeyboardFocusTests {
     #expect(try await settle(screen) { connection.state == .attached(readOnly: false) })
     try screen.type("a")
     #expect(try await settle(screen) { connection.received.last == 0x61 })
+  }
+
+  @Test("another page's view takes the keyboard too, once it is in the focused pane")
+  func anotherPagesView() async throws {
+    SystemSideEffects.install()
+    let page = OtherPage()
+    page.isActive = false
+    let screen = OffscreenWindow(OtherPageHost(page: page), width: 600, height: 400)
+    defer { screen.close() }
+    let view = TypingView()
+    page.view = view
+    try await run(screen, 0.4)
+    #expect(screen.window.firstResponder === screen.window, "shown, but not in the focused pane")
+    page.isActive = true
+    #expect(try await settle(screen) { screen.window.firstResponder === view })
   }
 
   @Test("a terminal that becomes ready after it shows takes the keyboard then")

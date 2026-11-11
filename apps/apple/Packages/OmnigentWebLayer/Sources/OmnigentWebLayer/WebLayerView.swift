@@ -32,6 +32,10 @@ public final class WebLayerView: NSView {
     overlay.frame = bounds
   }
 
+  /// The view that takes typing for the page, for a host that decides when the page gets the
+  /// keyboard. Chromium is told it has focus while this is the window's first responder.
+  public var keyboardView: NSView { surface }
+
   /// Gives keyboard focus to the page.
   public func focusPage() {
     hostWindow?.makeFirstResponder(surface)
@@ -230,9 +234,12 @@ class WebSurfaceView: NSView {
   }
 
   private func redispatch(_ event: NSEvent) {
-    // The host returns every key-down the page did not consume, typed characters included.
-    // AppKit never treats those as shortcuts, and neither does this.
-    guard !UnhandledKeyRouting.typesText(event) else { return }
+    // The host returns every key-down the page did not consume, typed characters and modifier
+    // keys pressed by themselves included. AppKit never treats those as shortcuts, and neither
+    // does this.
+    guard !UnhandledKeyRouting.isModifierKey(event), !UnhandledKeyRouting.typesText(event) else {
+      return
+    }
     redispatching = true
     defer { redispatching = false }
     // The window first, as AppKit orders key equivalents: shortcuts of SwiftUI controls in the

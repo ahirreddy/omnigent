@@ -37,6 +37,16 @@ struct UnhandledKeyRoutingTests {
     PressedKey(characters: "\u{F702}", keyCode: 123),
   ]
 
+  /// Modifier keys pressed by themselves: both Shifts, Caps Lock, Command, Option and Control.
+  nonisolated private static let modifierKeys = [
+    PressedKey(characters: "", keyCode: 56, flags: .shift),
+    PressedKey(characters: "", keyCode: 60, flags: .shift),
+    PressedKey(characters: "", keyCode: 57, flags: .capsLock),
+    PressedKey(characters: "", keyCode: 55, flags: .command),
+    PressedKey(characters: "", keyCode: 58, flags: .option),
+    PressedKey(characters: "", keyCode: 59, flags: .control),
+  ]
+
   /// A key-down sent to the page, then returned by the host as one the page did not use.
   private func giveBack(_ key: PressedKey, to host: HostedSurface) throws {
     let event = try Offscreen.keyEvent(
@@ -135,6 +145,52 @@ struct UnhandledKeyRoutingTests {
     #expect(!target.ran)
     #expect(host.sink.keyDowns == 0)
     host.window.contentView = nil
+  }
+
+  @Test(
+    "a modifier key pressed by itself runs no menu item and reaches no responder",
+    arguments: modifierKeys)
+  private func modifierKeyIsNotAKeyDown(key: PressedKey) throws {
+    let host = HostedSurface()
+    let target = MenuActionRecorder()
+    // The app menu's About as SwiftUI builds it: no key equivalent, so NSMenu runs it for a key
+    // without characters whose modifiers, Shift and Caps Lock aside, are the item's.
+    let item = NSMenuItem(
+      title: "About", action: #selector(MenuActionRecorder.act), keyEquivalent: "")
+    item.keyEquivalentModifierMask = key.flags.subtracting([.shift, .capsLock])
+    let restore = mainMenu(item, target: target)
+    defer { restore() }
+    host.surface.flagsChanged(
+      with: try Offscreen.keyEvent(
+        .flagsChanged, characters: "", keyCode: key.keyCode, flags: key.flags, window: host.window))
+    let sent = try #require(host.fixture.last(.inputKey))
+    #expect(sent.u64(.keyKind) == KeyEventKind.rawKeyDown.rawValue)
+    // The host returns the RawKeyDown like any other the page did not consume.
+    try host.fixture.receive(
+      .keyUnhandled,
+      WireEncoder().u64(.nativeKeyCode, UInt64(key.keyCode))
+        .u64(.modifiers, InputTranslator.modifiers(key.flags).rawValue)
+        .u64(.character, 0).u64(.unmodifiedCharacter, 0))
+    #expect(!target.ran)
+    #expect(host.sink.keyDowns == 0)
+    host.window.contentView = nil
+  }
+
+  @Test("which keys are modifier keys")
+  func modifierKeyCodes() throws {
+    for key in Self.modifierKeys {
+      #expect(
+        UnhandledKeyRouting.isModifierKey(
+          try Offscreen.keyEvent(characters: "", keyCode: key.keyCode, flags: key.flags)))
+    }
+    // Shift-2 types "@"; Escape and a dead key (no characters yet) are keys of their own.
+    for other in [
+      try Offscreen.keyEvent(characters: "@", keyCode: 19, flags: .shift),
+      try Offscreen.keyEvent(characters: "\u{1B}", keyCode: 53),
+      try Offscreen.keyEvent(characters: "", keyCode: 14, flags: .option),
+    ] {
+      #expect(!UnhandledKeyRouting.isModifierKey(other))
+    }
   }
 
   @Test(

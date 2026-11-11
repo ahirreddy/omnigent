@@ -59,8 +59,10 @@ struct BrowserOmniboxField: View {
       // tap that focused the field places its caret.
       Task { selection = TextSelection(range: text.startIndex..<text.endIndex) }
     }
-    .onChange(of: model.omniboxFocusRequest, initial: true) { _, request in
-      if request > 0 { focused = true }
+    .onChange(of: model.omniboxFocusRequest, initial: true) { previous, request in
+      // The field is built again each time its tab shows. A request from before that still
+      // holds on a new tab's empty page only; a page that has loaded takes the keyboard itself.
+      if request != previous || (request > 0 && model.showsEmptyPage) { focused = true }
     }
     .popover(
       isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })

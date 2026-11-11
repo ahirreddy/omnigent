@@ -64,6 +64,21 @@ struct WebSurfaceViewTests {
     window.contentView = nil
   }
 
+  @Test func theKeyboardViewTellsThePageItHasFocusWithoutAClick() {
+    let fixture = ProtocolFixture()
+    let view = WebLayerView(webView: fixture.webView)
+    let window = Offscreen.window()
+    window.contentView = view
+    #expect(view.keyboardView is WebSurfaceView)
+    #expect(window.makeFirstResponder(view.keyboardView))
+    #expect(fixture.webView.isFocused)
+    #expect(fixture.last(.viewFocus)?.bool(.focused) == true)
+    #expect(window.makeFirstResponder(nil))
+    #expect(!fixture.webView.isFocused)
+    #expect(fixture.last(.viewFocus)?.bool(.focused, missing: true) == false)
+    window.contentView = nil
+  }
+
   @Test func mouseEventsReachThePage() throws {
     let host = hosted()
     let (fixture, surface, window) = (host.fixture, host.surface, host.window)

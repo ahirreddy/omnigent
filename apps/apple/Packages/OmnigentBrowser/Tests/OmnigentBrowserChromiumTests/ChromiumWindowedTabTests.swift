@@ -79,6 +79,20 @@
       #expect(await fixture.eventually { fixture.last(.contextMenuReply) != nil })
     }
 
+    @Test("the tab's keyboard view, made first responder, tells Chromium the page has focus")
+    func keyboardView() throws {
+      let fixture = try ChromiumTabFixture()
+      let window = window(for: fixture)
+      defer { window.close() }
+      let tab = fixture.tab
+      #expect(tab.keyboardView !== tab.platformView)
+      #expect(tab.keyboardView.isDescendant(of: tab.platformView))
+      #expect(window.makeFirstResponder(tab.keyboardView))
+      #expect(fixture.webView.isFocused)
+      #expect(window.makeFirstResponder(nil))
+      #expect(!fixture.webView.isFocused)
+    }
+
     @Test("a link's menu items open it in a new tab or copy it; no link, no items")
     func linkItems() throws {
       let fixture = try ChromiumTabFixture()
@@ -92,6 +106,8 @@
       #expect(items.map(\.title) == ["Open Link in New Tab", "Copy Link"])
       items[0].action()
       #expect(fixture.recorder.popups.first?.targetURL == link)
+      // As in Chrome: the strip adds a background tab, and this one stays selected.
+      #expect(fixture.recorder.popups.first?.disposition == .backgroundTab)
       items[1].action()
       #expect(SystemSideEffects.pasteboard.string(forType: .string) == link.absoluteString)
     }

@@ -343,7 +343,7 @@ import Testing
       fixture.tab.openInNewTab(link)
       let popup = try #require(fixture.recorder.popups.first)
       #expect(popup.targetURL == link)
-      #expect(popup.disposition == .foregroundTab)
+      #expect(popup.disposition == .backgroundTab)
       #expect(popup.tab.popupPolicy == .block)
     }
 

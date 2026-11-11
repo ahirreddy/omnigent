@@ -12,6 +12,7 @@
     let state = BrowserTabState()
     let webView: WebView
     let platformView: BrowserPlatformView
+    let keyboardView: BrowserPlatformView
     weak var delegate: (any BrowserTabDelegate)?
     private(set) weak var engine: ChromiumBrowserEngine?
     /// Web-layer prompt ID to the engine-neutral prompt handed to the delegate.
@@ -32,7 +33,9 @@
       self.profile = profile
       self.webView = webView
       self.engine = engine
-      platformView = WebLayerView(webView: webView)
+      let layerView = WebLayerView(webView: webView)
+      platformView = layerView
+      keyboardView = layerView.keyboardView
       webView.uiDelegate = self
       webView.onStateChange = { [weak self] in self?.syncState() }
       syncState()

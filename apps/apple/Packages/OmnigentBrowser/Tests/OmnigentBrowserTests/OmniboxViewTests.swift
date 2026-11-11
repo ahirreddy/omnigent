@@ -184,6 +184,43 @@
       #expect(environment.makeTab().omniboxFocusRequest == 1)
     }
 
+    @Test(
+      "an empty page's address field takes the keyboard each time it shows; a loaded page's doesn't"
+    )
+    func keyboardWhenTheTabShows() throws {
+      let fixture = try TabFixture(url: nil)
+      #expect(fixture.model.omniboxFocusRequest == 1)
+      #expect(fixture.model.showsEmptyPage)
+      // The tab's views are built again each time it is selected.
+      for _ in 0..<2 {
+        let empty = OffscreenWindow(field(fixture), width: 700, height: 400)
+        empty.settle()
+        #expect(empty.window.firstResponder is NSText)
+        empty.close()
+      }
+      fixture.model.load(try testURL("https://a.example/page"))
+      #expect(!fixture.model.showsEmptyPage)
+      let loaded = OffscreenWindow(field(fixture), width: 700, height: 400)
+      defer { loaded.close() }
+      loaded.settle()
+      #expect(
+        loaded.window.firstResponder is NSWindow, "the page takes the keyboard, not the field")
+      fixture.model.focusOmnibox()
+      loaded.settle()
+      #expect(loaded.window.firstResponder is NSText)
+    }
+
+    @Test("a page is empty until it has an address other than about:blank")
+    func emptyPages() throws {
+      let fixture = try TabFixture()
+      #expect(!fixture.model.showsEmptyPage)
+      #expect(try fixture.tab.keyboardView === fixture.tab.platformView)
+      fixture.model.load(try testURL("about:blank"))
+      #expect(fixture.model.showsEmptyPage)
+      let unbuilt = fixture.environment.makeTab(url: try testURL("https://b.example/"))
+      #expect(!unbuilt.showsEmptyPage)
+    }
+
     @Test("the toolbar field's star bookmarks, and a saved icon replaces the globe")
     func starAndIcon() throws {
       let fixture = try TabFixture()

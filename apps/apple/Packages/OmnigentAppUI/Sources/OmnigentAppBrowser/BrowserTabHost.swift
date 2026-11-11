@@ -4,6 +4,10 @@ public import OmnigentAppUI
 public import OmnigentBrowser
 public import SwiftUI
 
+#if os(macOS)
+  import AppKit
+#endif
+
 /// The app's browser tabs over `OmnigentBrowser`: one `BrowserTabModel` per tab, app-wide. Pages
 /// build when their tab is first shown, restoring from the tab's saved `BrowserTabRestoreState`.
 ///
@@ -69,12 +73,16 @@ public final class BrowserTabHost: BrowserTabHosting {
             description: Text("The saved page could not be read: \(String(describing: error))")))
       }
     }
-    return AnyView(
-      BrowserTabContentView(
-        model: model, environment: environment, keyboardShortcuts: keyboardShortcuts,
-        showSessions: navigation?.showSessions, tabsButton: navigation?.tabsButton
-      )
-      .onChange(of: model.restoreRevision) { onChange() })
+    let page = BrowserTabContentView(
+      model: model, environment: environment, keyboardShortcuts: keyboardShortcuts,
+      showSessions: navigation?.showSessions, tabsButton: navigation?.tabsButton
+    )
+    .onChange(of: model.restoreRevision) { onChange() }
+    #if os(macOS)
+      return AnyView(page.modifier(BrowserPageFocus(model: model)))
+    #else
+      return AnyView(page)
+    #endif
   }
 
   /// See ``BrowserTabHosting``.
@@ -233,3 +241,21 @@ public final class BrowserTabHost: BrowserTabHosting {
     location.window.close(location.tab.id)
   }
 }
+
+#if os(macOS)
+  /// Puts the keyboard in a browser page when its tab shows in the focused pane, so typing
+  /// reaches what the page has focused without a click.
+  struct BrowserPageFocus: ViewModifier {
+    let model: BrowserTabModel
+
+    func body(content: Content) -> some View {
+      content.modifier(TabPageKeyboardFocus(view: Self.keyboardView(of: model)))
+    }
+
+    /// The view that takes typing for the page; `nil` before the page is built, and on a new
+    /// tab's empty page, where the address field takes the keyboard.
+    static func keyboardView(of model: BrowserTabModel) -> NSView? {
+      model.showsEmptyPage ? nil : model.tab?.keyboardView
+    }
+  }
+#endif

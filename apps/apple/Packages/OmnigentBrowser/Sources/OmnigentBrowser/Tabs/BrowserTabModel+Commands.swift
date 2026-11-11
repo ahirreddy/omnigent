@@ -28,6 +28,13 @@ extension BrowserTabModel {
   /// Asks the content view to focus the omnibox.
   public func focusOmnibox() { omniboxFocusRequest += 1 }
 
+  /// Whether the tab is still on a new tab's empty page. There is nothing to type into, so the
+  /// address field takes the keyboard when the tab shows; on any other page the page does.
+  public var showsEmptyPage: Bool {
+    guard let url else { return true }
+    return !BrowserRestorePlaceholder.isRestorable(url)
+  }
+
   /// Goes back.
   public func goBack() { tab?.goBack() }
   /// Goes forward.

@@ -1,7 +1,7 @@
 public import SwiftUI
 
 #if os(macOS)
-  import AppKit
+  public import AppKit
 #endif
 
 extension View {
@@ -18,11 +18,24 @@ extension View {
     _ surface: TerminalSurfaceController?, isShown: Bool, isActive: Bool
   ) -> some View {
     #if os(macOS)
-      modifier(TerminalKeyboardFocus(surface: surface, isShown: isShown, isActive: isActive))
+      keyboardFocusOnShow(surface?.view, isShown: isShown, isActive: isActive)
     #else
       self
     #endif
   }
+
+  #if os(macOS)
+    /// The same for another page that takes typing, such as a browser page: `view` gets the
+    /// keyboard by a terminal's rules, and gives it up when the page leaves the screen.
+    /// - Parameters:
+    ///   - view: The view that takes typing; `nil` while the page has none.
+    ///   - isShown: Whether the page is on screen, not a hidden kept tab.
+    ///   - isActive: Whether it is in the window's focused pane.
+    /// - Returns: The view.
+    public func keyboardFocusOnShow(_ view: NSView?, isShown: Bool, isActive: Bool) -> some View {
+      modifier(TerminalKeyboardFocus(view: view, isShown: isShown, isActive: isActive))
+    }
+  #endif
 }
 
 #if os(macOS)
@@ -100,30 +113,30 @@ extension View {
     }
   }
 
-  /// Runs a ``TerminalFocusRequest`` each time the terminal comes on screen in the focused pane.
+  /// Runs a ``TerminalFocusRequest`` each time the page comes on screen in the focused pane.
   private struct TerminalKeyboardFocus: ViewModifier {
-    let surface: TerminalSurfaceController?
+    /// The terminal's surface view, or another page's view that takes typing.
+    let view: NSView?
     let isShown: Bool
     let isActive: Bool
     @State private var request = TerminalFocusRequest()
 
-    /// A focus attempt: again when the surface becomes ready or the terminal shows again.
+    /// A focus attempt: again when the view becomes ready or the page shows again.
     private struct Attempt: Equatable {
-      let surface: ObjectIdentifier?
+      let view: ObjectIdentifier?
       let wantsKeyboard: Bool
     }
 
     func body(content: Content) -> some View {
       let wantsKeyboard = isShown && isActive
-      let attempt = Attempt(
-        surface: surface.map(ObjectIdentifier.init), wantsKeyboard: wantsKeyboard)
+      let attempt = Attempt(view: view.map(ObjectIdentifier.init), wantsKeyboard: wantsKeyboard)
       content
         .background { FocusWindowReader(request: request) }
         .onChange(of: wantsKeyboard, initial: true) { _, wants in
           if wants { request.begin(after: NSApp.currentEvent) } else { request.cancel() }
         }
         .task(id: attempt) {
-          guard wantsKeyboard, let view = surface?.view else { return }
+          guard wantsKeyboard, let view else { return }
           do {
             try await Task.sleep(for: TerminalFocusRequest.settleDelay)
           } catch {
@@ -132,7 +145,7 @@ extension View {
           request.complete(view)
         }
         .onChange(of: isShown) { _, shown in
-          if !shown, let view = surface?.view { TerminalFocusRequest.release(view) }
+          if !shown, let view { TerminalFocusRequest.release(view) }
         }
     }
   }

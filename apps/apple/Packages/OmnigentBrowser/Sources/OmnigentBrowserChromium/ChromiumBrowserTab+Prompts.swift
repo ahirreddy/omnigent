@@ -240,7 +240,8 @@
       ]
     }
 
-    /// Opens `url` in a new tab of this profile, without an opener.
+    /// Opens `url` in a new tab of this profile, without an opener. As in Chrome, the tab opens
+    /// in the background: this tab stays selected and keeps the keyboard.
     func openInNewTab(_ url: URL) {
       guard let engine else { return }
       let tab = engine.makeTab(profile: profile, initialURL: url)
@@ -249,7 +250,7 @@
       delegate?.tab(
         self,
         didOpen: BrowserPopup(
-          tab: tab, opener: self, targetURL: url, disposition: .foregroundTab, requestedSize: nil))
+          tab: tab, opener: self, targetURL: url, disposition: .backgroundTab, requestedSize: nil))
     }
 
     private static func dialogKind(_ kind: WebDialogKind) -> BrowserDialogKind {
