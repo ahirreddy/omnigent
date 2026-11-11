@@ -4,10 +4,13 @@ public import SwiftUI
   import AppKit
 #endif
 
-/// A window's tab content in one pane or two side by side, each showing its own tab, with a
-/// draggable divider. Both panes look the same; the strip marks the focused pane's tab. The
-/// focused pane publishes its menu commands (``EnvironmentValues/isActiveTabPane``); a click or
-/// tap in the other pane focuses it.
+/// A window's tabs: one shown, or two side by side in panes with a draggable divider, and the
+/// rest kept built out of sight (``KeptAliveTabs``). Both panes look the same; the strip marks
+/// the focused pane's tab. The focused pane publishes its menu commands
+/// (``EnvironmentValues/isActiveTabPane``); a click or tap in the other pane focuses it.
+///
+/// A tab is the same view shown whole, in a pane or hidden, so splitting, unsplitting and
+/// showing another session's tabs build nothing that was built.
 ///
 /// At compact widths, and where both panes would be narrower than
 /// ``TabSplitState/minimumPaneWidth``, only the focused pane shows; the split comes back when
@@ -15,22 +18,44 @@ public import SwiftUI
 ///
 /// While a tab is dragged out of the strip (``TabDragTracker``), the content previews where it
 /// would land: the other pane of a split, or either edge of a single pane.
-public struct TabSplitView<Content: View>: View {
+public struct TabSplitView<Item: Identifiable, Content: View>: View {
+  private let items: [Item]
+  private let shownID: Item.ID
+  private let paneOf: (Item) -> TabPane?
   private let split: TabSplitState?
   private let actions: TabActions
-  private let content: (TabPane) -> Content
+  private let content: (Item) -> Content
 
   /// Whether the content is wide enough for both panes; assumed so until measured, so a split
   /// never starts single. A flag, not the width, so resizing re-renders only when it flips.
   @State private var fitsBoth = true
-  #if os(iOS)
-    @State private var measured = MeasuredWidth()
-  #endif
+  @State private var measured = MeasuredWidth()
   @State private var liveFraction: Double?
+  /// An unfolded Duo's hinge, in the content's coordinates.
+  @State private var hinge: CGRect?
   @Environment(\.horizontalSizeClass) private var sizeClass
   @Environment(TabDragTracker.self) private var tracker: TabDragTracker?
 
-  /// Creates the view.
+  /// Creates the view over tabs that stay built.
+  /// - Parameters:
+  ///   - tabs: The tabs to keep built, the shown ones among them, in a stable order.
+  ///   - shownID: The tab on screen, or the focused pane's when split.
+  ///   - split: The panes and their tabs; `nil` shows one pane.
+  ///   - actions: Focus, divider and drop actions.
+  ///   - content: A tab's content.
+  public init(
+    _ tabs: [Item], shownID: String, split: TabSplitState?, actions: TabActions,
+    @ViewBuilder content: @escaping (Item) -> Content
+  ) where Item.ID == String {
+    items = tabs
+    self.shownID = shownID
+    paneOf = { tab in TabPane.allCases.first { split?.activeID($0) == tab.id } }
+    self.split = split
+    self.actions = actions
+    self.content = content
+  }
+
+  /// Creates the view over one tab per pane, with nothing kept beside them.
   /// - Parameters:
   ///   - split: The panes; `nil` shows one pane.
   ///   - actions: Focus, divider and drop actions.
@@ -38,7 +63,10 @@ public struct TabSplitView<Content: View>: View {
   public init(
     split: TabSplitState?, actions: TabActions,
     @ViewBuilder content: @escaping (TabPane) -> Content
-  ) {
+  ) where Item == TabPane {
+    items = split == nil ? [.leading] : TabPane.allCases
+    shownID = split?.focused ?? .leading
+    paneOf = { $0 }
     self.split = split
     self.actions = actions
     self.content = content
@@ -49,80 +77,100 @@ public struct TabSplitView<Content: View>: View {
     split != nil && sizeClass != .compact && fitsBoth
   }
 
+  /// The left pane's share, following the divider while it is dragged.
+  private var fraction: Double {
+    liveFraction ?? split?.fraction ?? 0.5
+  }
+
+  /// Where a tab goes: its pane while both show, else the whole content for the shown one.
+  private func place(_ item: Item) -> KeptTabPlace {
+    if let split, showsBoth {
+      return paneOf(item).map { .pane($0, isFocused: $0 == split.focused) } ?? .hidden
+    }
+    return item.id == shownID ? .whole : .hidden
+  }
+
   /// The view.
   public var body: some View {
-    Group {
-      if let split, showsBoth {
-        // The panes share the safe area; the outer panes' backgrounds and scroll views still
-        // reach under a floating sidebar or inspector, as one pane's do. An unfolded Duo's
-        // hinge is read here, in the panes' coordinates.
-        GeometryReader { proxy in
-          let inner = proxy.size.width
-          let hinge = TabSplitLayout.hinge(in: proxy)
-          let frames = TabSplitLayout(
-            width: inner, fraction: liveFraction ?? split.fraction, hinge: hinge)
-          HStack(spacing: 0) {
-            pane(.leading, split: split).frame(width: frames.leading)
-            divider(frames: frames, total: inner).zIndex(1)
-              .onGeometryChange(for: CGFloat.self) {
-                $0.frame(in: .global).midX
-              } action: {
-                tracker?.dividerX = $0
-              }
-            pane(.trailing, split: split).frame(width: frames.trailing)
-          }
-          .coordinateSpace(.named(TabSplitLayout.space))
-        }
-      } else {
-        content(split?.focused ?? .leading)
-          .environment(\.isActiveTabPane, true)
-      }
-    }
-    .overlay { TabDropPreview(isSplit: showsBoth, fraction: split?.fraction ?? 0.5) }
-    #if os(iOS)
-      .dropDestination(for: String.self) { items, location in
-        guard let showInPane = actions.showInPane,
-          let id = items.lazy.compactMap(TabDropPayload.tabID(in:)).first
-        else { return false }
-        showInPane(id, location.x < measured.value / 2 ? .leading : .trailing)
-        return true
-      }
-    #endif
-    .onGeometryChange(for: CGFloat.self) {
-      $0.size.width
-    } action: { width in
-      LoopProbe.record("tab split width", "\(width)")
+    // The panes share the safe area; the outer panes' backgrounds and scroll views still
+    // reach under a floating sidebar or inspector, as one pane's do.
+    KeptAliveTabs(items, fraction: fraction, hinge: hinge, place: place, content: content)
+      .environment(\.isActiveTabPane, true)
+      .modifier(PaneFocusOnClick(isActive: showsBoth) { focusPane(at: $0) })
+      // Markers beside the content, so the content keeps its own accessibility elements.
+      .background { if let split, showsBoth { paneMarkers(split) } }
+      .overlay { if showsBoth { dividerLayer } }
+      .overlay { TabDropPreview(isSplit: showsBoth, fraction: split?.fraction ?? 0.5) }
       #if os(iOS)
-        measured.value = width
+        .dropDestination(for: String.self) { items, location in
+          guard let showInPane = actions.showInPane,
+            let id = items.lazy.compactMap(TabDropPayload.tabID(in:)).first
+          else { return false }
+          showInPane(id, location.x < measured.value / 2 ? .leading : .trailing)
+          return true
+        }
       #endif
-      let fits = TabSplitState.fits(width: width)
-      if fitsBoth != fits { fitsBoth = fits }
-    }
-    .onGeometryChange(for: CGRect.self) {
-      $0.frame(in: .global)
-    } action: {
-      tracker?.contentFrame = $0
-    }
-    .onChange(of: showsBoth, initial: true) { _, both in
-      tracker?.isSplit = both
-      if !both { tracker?.dividerX = nil }
+      .onGeometryChange(for: CGFloat.self) {
+        $0.size.width
+      } action: { width in
+        LoopProbe.record("tab split width", "\(width)")
+        measured.value = width
+        let fits = TabSplitState.fits(width: width)
+        if fitsBoth != fits { fitsBoth = fits }
+      }
+      .onGeometryChange(for: CGRect?.self) {
+        TabSplitLayout.hinge(in: $0)
+      } action: {
+        hinge = $0
+      }
+      .onGeometryChange(for: CGRect.self) {
+        $0.frame(in: .global)
+      } action: {
+        tracker?.contentFrame = $0
+      }
+      .onChange(of: showsBoth, initial: true) { _, both in
+        tracker?.isSplit = both
+        if !both { tracker?.dividerX = nil }
+      }
+  }
+
+  /// Focuses the pane a click or tap at `position` landed in, when the other has focus.
+  private func focusPane(at position: CGFloat) {
+    let frames = TabSplitLayout(width: measured.value, fraction: fraction, hinge: hinge)
+    guard let pane = frames.pane(at: position), pane != split?.focused else { return }
+    actions.focusPane?(pane)
+  }
+
+  private func paneMarkers(_ split: TabSplitState) -> some View {
+    GeometryReader { proxy in
+      let frames = TabSplitLayout(width: proxy.size.width, fraction: fraction, hinge: hinge)
+      HStack(spacing: frames.gap) {
+        ForEach(TabPane.allCases, id: \.self) { pane in
+          let isFocused = split.focused == pane
+          Color.clear
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(isFocused ? "\(pane.label) pane, focused" : "\(pane.label) pane")
+            .accessibilityIdentifier("tab-pane-\(pane.rawValue)")
+            .frame(width: pane == .leading ? frames.leading : frames.trailing)
+        }
+      }
     }
   }
 
-  private func pane(_ pane: TabPane, split: TabSplitState) -> some View {
-    let isFocused = split.focused == pane
-    return content(pane)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .clipped()
-      .environment(\.isActiveTabPane, isFocused)
-      .modifier(PaneFocusOnClick(isFocused: isFocused) { actions.focusPane?(pane) })
-      // A marker beside the content, so the content keeps its own accessibility elements.
-      .background {
-        Color.clear
-          .accessibilityElement(children: .ignore)
-          .accessibilityLabel(isFocused ? "\(pane.label) pane, focused" : "\(pane.label) pane")
-          .accessibilityIdentifier("tab-pane-\(pane.rawValue)")
-      }
+  /// The divider between the panes, over their content.
+  private var dividerLayer: some View {
+    GeometryReader { proxy in
+      let inner = proxy.size.width
+      let frames = TabSplitLayout(width: inner, fraction: fraction, hinge: hinge)
+      divider(frames: frames, total: inner)
+        .onGeometryChange(for: CGFloat.self) {
+          $0.frame(in: .global).midX
+        } action: {
+          tracker?.dividerX = $0
+        }
+        .padding(.leading, frames.leading)
+        .coordinateSpace(.named(TabSplitLayout.space))
+    }
   }
 
   /// The divider: a hairline with a wider grip, fixed at the hinge on an unfolded Duo.
@@ -143,7 +191,7 @@ public struct TabSplitView<Content: View>: View {
             #endif
             .accessibilityElement()
             .accessibilityLabel("Split divider")
-            .accessibilityValue("\(Int((liveFraction ?? split?.fraction ?? 0.5) * 100)) percent")
+            .accessibilityValue("\(Int(fraction * 100)) percent")
             .accessibilityAdjustableAction { direction in
               actions.setSplitFraction?(
                 TabSplitLayout.adjusted(split?.fraction ?? 0.5, direction: direction))
@@ -167,72 +215,25 @@ public struct TabSplitView<Content: View>: View {
 
 }
 
-/// Where the panes and the divider go for a width: the share, kept so both panes stay at least
-/// ``TabSplitState/minimumPaneWidth``, or either side of a hinge that leaves both that wide.
-struct TabSplitLayout: Equatable {
-  /// The coordinate space the divider is dragged in.
-  static let space = "tab-split"
-  /// How far VoiceOver's adjust moves the divider.
-  static let adjustStep = 0.05
-
-  /// The divider's fraction after VoiceOver adjusts it.
-  /// - Parameters:
-  ///   - fraction: The current fraction.
-  ///   - direction: Increment or decrement.
-  /// - Returns: The new fraction.
-  static func adjusted(_ fraction: Double, direction: AccessibilityAdjustmentDirection) -> Double {
-    fraction + (direction == .increment ? adjustStep : -adjustStep)
-  }
-
-  var leading: CGFloat
-  var gap: CGFloat
-  var trailing: CGFloat
-  var isAtHinge = false
-
-  init(width: CGFloat, fraction: Double, hinge: CGRect? = nil) {
-    let minimum = TabSplitState.minimumPaneWidth
-    if let hinge, hinge.minX >= minimum, width - hinge.maxX >= minimum {
-      leading = hinge.minX
-      gap = hinge.width
-      trailing = width - hinge.maxX
-      isAtHinge = true
-      return
-    }
-    gap = TabSplitMetrics.divider
-    let room = max(0, width - gap)
-    let wanted = (room * TabSplitState.clamp(fraction)).rounded()
-    leading = min(max(wanted, minimum), max(minimum, room - minimum))
-    trailing = max(0, room - leading)
-  }
-
-  /// The hinge's frame when it splits the content side by side.
-  nonisolated static func hinge(in proxy: GeometryProxy) -> CGRect? {
-    #if os(iOS)
-      if #available(iOS 27.1, *) { return proxy.sideBySideHinge() }
-    #endif
-    return nil
-  }
-
-  /// The left pane's share for a divider dragged to `position`.
-  static func fraction(at position: CGFloat, width: CGFloat) -> Double {
-    guard width > 0 else { return 0.5 }
-    let minimum = TabSplitState.minimumPaneWidth
-    let clamped = min(max(position, minimum), max(minimum, width - minimum))
-    return TabSplitState.clamp(Double(clamped / width))
-  }
+nonisolated extension TabPane: Identifiable {
+  /// The pane itself: a split has one of each.
+  public var id: Self { self }
 }
 
-/// Focuses a pane when it is clicked or tapped, without taking the click from its content. On
-/// the Mac it watches mouse-down events, so pages and terminals (AppKit views) focus it too.
+/// Reports where the panes are clicked or tapped, without taking the click from their content,
+/// so the pane under it can take focus. On the Mac it watches mouse-down events, so pages and
+/// terminals (AppKit views) focus their pane too.
 private struct PaneFocusOnClick: ViewModifier {
-  let isFocused: Bool
-  let focus: @MainActor () -> Void
+  let isActive: Bool
+  /// Called with the click's horizontal position in the content.
+  let focus: @MainActor (CGFloat) -> Void
 
   func body(content: Content) -> some View {
     #if os(macOS)
-      content.background { PaneClickMonitor(isActive: !isFocused, onClick: focus) }
+      content.background { PaneClickMonitor(isActive: isActive, onClick: focus) }
     #else
-      content.simultaneousGesture(TapGesture().onEnded { if !isFocused { focus() } })
+      content.simultaneousGesture(
+        SpatialTapGesture().onEnded { if isActive { focus($0.location.x) } })
     #endif
   }
 }
@@ -241,7 +242,7 @@ private struct PaneFocusOnClick: ViewModifier {
   /// Calls `onClick` for a mouse-down inside its frame while `isActive`.
   private struct PaneClickMonitor: NSViewRepresentable {
     let isActive: Bool
-    let onClick: @MainActor () -> Void
+    let onClick: @MainActor (CGFloat) -> Void
 
     func makeNSView(context: Context) -> MonitorView {
       let view = MonitorView()
@@ -260,7 +261,7 @@ private struct PaneFocusOnClick: ViewModifier {
     }
 
     final class MonitorView: NSView {
-      var onClick: (@MainActor () -> Void)?
+      var onClick: (@MainActor (CGFloat) -> Void)?
       var isActive = false
       private var monitor: Any?
 
@@ -287,7 +288,7 @@ private struct PaneFocusOnClick: ViewModifier {
       private func handle(_ event: NSEvent) {
         guard isActive, let window = unsafe window, event.window === window else { return }
         let point = convert(event.locationInWindow, from: nil)
-        if bounds.contains(point) { onClick?() }
+        if bounds.contains(point) { onClick?(point.x) }
       }
     }
   }
@@ -330,10 +331,9 @@ private struct TabDropPreview: View {
   }
 }
 
-#if os(iOS)
-  /// The content's latest width, read only when a tab drops, so it never re-renders the view.
-  @MainActor
-  private final class MeasuredWidth {
-    var value = CGFloat.greatestFiniteMagnitude
-  }
-#endif
+/// The content's latest width, read only when a tab drops or a pane is clicked, so it never
+/// re-renders the view.
+@MainActor
+private final class MeasuredWidth {
+  var value = CGFloat.greatestFiniteMagnitude
+}
