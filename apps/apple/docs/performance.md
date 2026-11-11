@@ -1036,8 +1036,12 @@ view inside the strip (`TitlebarStripAnchorView`) holds a width constraint on th
 view and sets it from the content view's frame change, before the toolbar's layout. The
 other columns keep their widths through a window resize, so the detail's width moves by
 what the window's did; the measured width still corrects it when a column moves. The
-constraint is one below required, so the toolbar can still squeeze the item in a window
-too narrow for it. The items, their order and the strip's width at rest are as they were.
+constraint's priority is 999.95: above the 999.9 of the width limits SwiftUI keeps on the
+item's view, which hold the old width until SwiftUI's next update, and below required, so
+the toolbar can still squeeze the item in a window too narrow for it. At 999 the constraint
+lost to those limits and the step depended on SwiftUI updating before the toolbar's layout,
+which it did on some runs of the same build and not on others. The items, their order and
+the strip's width at rest are as they were.
 
 `AppShellResizeTests.resizeKeepsTrailingItems` holds it: a shell with one trailing item
 shown and one folded goes through three narrower widths and back, and no step puts either

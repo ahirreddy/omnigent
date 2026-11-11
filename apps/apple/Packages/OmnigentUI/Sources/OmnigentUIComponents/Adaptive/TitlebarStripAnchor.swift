@@ -11,6 +11,11 @@
     private var contentWidth: CGFloat?
     private var itemWidth: NSLayoutConstraint?
 
+    /// Above the 999.9 of SwiftUI's own width limits on the item, which hold the old width until
+    /// its next update. Below required, so the toolbar can still squeeze the item in a window
+    /// too narrow for it.
+    static let itemWidthPriority = NSLayoutConstraint.Priority(999.95)
+
     override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
       let center = NotificationCenter.default
@@ -46,8 +51,7 @@
       let item = unsafe window?.toolbar?.items.compactMap(\.view).first { isDescendant(of: $0) }
       guard let item else { return }
       let constraint = item.widthAnchor.constraint(equalToConstant: width)
-      // Below required, so the toolbar can still squeeze the item in a window too narrow for it.
-      constraint.priority = .required - 1
+      constraint.priority = Self.itemWidthPriority
       constraint.isActive = true
       itemWidth = constraint
     }
