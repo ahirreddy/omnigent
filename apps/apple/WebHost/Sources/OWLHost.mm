@@ -165,6 +165,14 @@ OWLHostApplication* HostApplication() {
 
 }  // namespace
 
+int DisplayFrameRate() {
+  NSInteger rate = 60;
+  for (NSScreen* screen in NSScreen.screens) {
+    rate = std::max(rate, screen.maximumFramesPerSecond);
+  }
+  return static_cast<int>(rate);
+}
+
 ScopedInputEvent::ScopedInputEvent(double event_time) {
   OWLHostApplication* application = HostApplication();
   NSEvent* event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
@@ -632,7 +640,7 @@ void Host::CreateView(uint64_t view_id, const Decoder& fields) {
   window_info.shared_texture_enabled = true;
   window_info.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
   CefBrowserSettings browser_settings;
-  browser_settings.windowless_frame_rate = 60;
+  browser_settings.windowless_frame_rate = DisplayFrameRate();
   browser_settings.background_color = CefColorSetARGB(255, 255, 255, 255);
   if (!CefBrowserHost::CreateBrowser(window_info, client, url, browser_settings, nullptr,
                                      found->second)) {

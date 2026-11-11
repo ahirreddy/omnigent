@@ -37,6 +37,10 @@ struct SessionConfig {
   uint64_t client_minor = 0;
 };
 
+/// The rate pages draw at, in frames a second: that of the fastest display attached (120 on a
+/// 120 Hz screen), and at least 60.
+int DisplayFrameRate();
+
 /// While alive, `[NSApp currentEvent]` is a fresh event that happened at `event_time` (seconds
 /// of system uptime). CEF stamps the input it is handed with the current event's time, and the
 /// host's own current event is nil or left over from minutes ago.

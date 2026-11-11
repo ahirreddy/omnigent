@@ -29,7 +29,7 @@ void ConfigureWindowless(CefWindowInfo* window_info, CefBrowserSettings* setting
   window_info->SetAsWindowless(nullptr);
   window_info->shared_texture_enabled = true;
   window_info->runtime_style = CEF_RUNTIME_STYLE_ALLOY;
-  settings->windowless_frame_rate = 60;
+  settings->windowless_frame_rate = DisplayFrameRate();
   settings->background_color = CefColorSetARGB(255, 255, 255, 255);
 }
 
