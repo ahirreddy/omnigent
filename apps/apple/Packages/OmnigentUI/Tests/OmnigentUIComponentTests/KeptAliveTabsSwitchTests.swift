@@ -89,7 +89,8 @@
         composer: ComposerViewState(), draft: ComposerDraft($draft),
         showsInspector: $showsInspector, mode: $mode, fork: $fork,
         actions: ConversationActions(), composerActions: ComposerActions(send: {}),
-        liveRows: LiveTranscriptRows { (rows: rows, revision: UInt64(pass)) }
+        // The revision counts changes of the rows, and these never change.
+        liveRows: LiveTranscriptRows { (rows: rows, revision: UInt64(rows.count)) }
       ) {
         EmptyView()
       }

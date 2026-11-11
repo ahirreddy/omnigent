@@ -1,22 +1,34 @@
 import Foundation
 
 extension TabStore {
-  /// How many conversations stay built at most, a shown one included. A long conversation's
-  /// views cost about a second to build again in Debug, so recently shown chats are kept; the
-  /// cap bounds their memory.
-  public static let keptAliveLimit = 3
+  /// How many conversations stay built at most, shown ones included: a chat for each session
+  /// kept open (``SessionTabGroups/liveLimit``) and two side chats on a Mac. A hidden one costs
+  /// nothing until it shows again; the cap bounds their memory (a long one holds tens of MB).
+  public static let keptAliveLimit: Int = {
+    #if os(macOS)
+      return 8
+    #else
+      return 3
+    #endif
+  }()
 
-  /// The tabs whose content stays built: the selected tab and the most recently selected chats
-  /// and side chats, `limit` conversations at most, in strip order. A selected tab of another
-  /// kind takes no conversation's place. A split window keeps only its panes' tabs.
-  /// - Parameter limit: The most conversations to keep, a selected one included.
+  /// The tabs on screen: the selected tab, and the other pane's tab of a split.
+  var shownTabs: [AppTab] {
+    guard let selected else { return [] }
+    return [selected] + (split?.otherSelectedID.flatMap(tab).map { [$0] } ?? [])
+  }
+
+  /// The tabs whose content stays built: the shown tabs (one, or a split's two) and the most
+  /// recently selected chats and side chats, `limit` conversations at most, in strip order. A
+  /// shown tab of another kind takes no conversation's place.
+  /// - Parameter limit: The most conversations to keep, shown ones included.
   /// - Returns: The tabs; empty when none is selected.
   public func keptAlive(limit: Int = keptAliveLimit) -> [AppTab] {
-    guard let selected, split == nil else { return selected.map { [$0] } ?? [] }
+    let shown = shownTabs
     var places = KeptPlaces(conversations: limit)
-    var kept: Set<String> = [selected.id]
-    places.take(selected.content)
-    for id in recentIDs where !places.isFull && id != selected.id {
+    var kept = Set(shown.map(\.id))
+    for tab in shown { places.take(tab.content) }
+    for id in recentIDs where !places.isFull && !kept.contains(id) {
       if let tab = tab(id), places.take(tab.content) { kept.insert(id) }
     }
     return tabs.filter { kept.contains($0.id) }

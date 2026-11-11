@@ -14,8 +14,19 @@ public import OmnigentUIComponents
 /// shown chats stay built (``keptAlive(limit:)``), so switching back is immediate.
 @Observable
 public final class SessionTabGroups {
-  /// How many recently shown sessions stay open (conversation, terminals, workspace).
-  public static let liveLimit = 3
+  /// How many recently shown sessions stay open (conversation, terminals, workspace) unless a
+  /// window says otherwise: the session groups a Mac window's owner moves among, each a stream
+  /// from the server, and fewer where memory is tighter.
+  public static let liveLimit: Int = {
+    #if os(macOS)
+      return 6
+    #else
+      return 3
+    #endif
+  }()
+
+  /// How many recently shown sessions this window keeps open.
+  @ObservationIgnored public var liveLimit = SessionTabGroups.liveLimit
 
   /// What the window shows: a session's tabs or a session-less page; `nil` for nothing.
   public private(set) var page: SidebarDestination?
@@ -61,7 +72,7 @@ public final class SessionTabGroups {
   /// Sessions to keep open: the shown one and the most recently shown others, with the side
   /// chats their built tabs show.
   public var liveSessionIDs: Set<String> {
-    let recent = recentSessions.prefix(Self.liveLimit)
+    let recent = recentSessions.prefix(liveLimit)
     return recent.reduce(into: Set(recent)) { live, sessionID in
       live.formUnion(groups[sessionID]?.liveSessionIDs ?? [])
     }
@@ -201,18 +212,27 @@ public final class SessionTabGroups {
   }
 
   private func groupChanged(_ sessionID: String) {
-    if sessionID == currentSessionID, let selected = groups[sessionID]?.selectedID {
-      noteTab(selected)
-    }
+    if sessionID == currentSessionID, let current { noteShownTabs(of: current) }
     onChange?(sessionID)
   }
 
+  /// Puts a session's shown tabs first in ``recentTabs``: a split's other pane counts as
+  /// shown as recently as the focused one, so both stay built when another session shows.
+  private func noteShownTabs(of group: TabStore) {
+    for tab in group.shownTabs.reversed() { noteTab(tab.id) }
+  }
+
   private func noteShown(_ sessionID: String) {
+    let group = group(sessionID)
     if recentSessions.first != sessionID {
+      // A session that closed has nothing built: its hidden tabs wait until they show.
+      if !liveSessionIDs.contains(sessionID) {
+        recentTabs.removeAll(where: Set(group.tabs.map(\.id)).contains)
+      }
       recentSessions.removeAll { $0 == sessionID }
       recentSessions.insert(sessionID, at: 0)
     }
-    if let selected = groups[sessionID]?.selectedID { noteTab(selected) }
+    noteShownTabs(of: group)
   }
 
   private func noteTab(_ id: String) {

@@ -68,6 +68,48 @@ struct TranscriptRowsPacerTests {
     #expect(pacer.rows(from: Self.reader(store)).revision == 2)
   }
 
+  @Test("A transcript that had rows takes what it missed in the turn that shows it again")
+  func catchesUpInTheTurnItShows() async throws {
+    let store = Store()
+    store.append("shown before")
+    let pacer = TranscriptRowsPacer(interval: .milliseconds(40))
+    #expect(pacer.rows(from: Self.reader(store)).revision == 1)
+    pacer.setShown(false)
+    store.append("while hidden")
+    try await Self.settle()
+    #expect(pacer.published == 0)
+    pacer.setShown(true)
+    // No turn in between: a frame drawn now already has the row.
+    #expect(pacer.published == 1)
+    #expect(
+      pacer.rows(from: Self.reader(store)).rows.map(\.text) == ["shown before", "while hidden"])
+    try await Self.settle()
+    #expect(pacer.published == 1, "nothing more follows")
+  }
+
+  @Test("A change whose notice has not run yet still shows with the tab")
+  func catchesUpBeforeTheChangeIsNoticed() async throws {
+    let store = Store()
+    store.append("shown before")
+    let pacer = TranscriptRowsPacer(interval: .milliseconds(40))
+    _ = pacer.rows(from: Self.reader(store))
+    pacer.setShown(false)
+    store.append("just now")
+    pacer.setShown(true)
+    #expect(pacer.published == 1)
+    #expect(pacer.rows(from: Self.reader(store)).revision == 2)
+    try await Self.settle()
+    #expect(pacer.published <= 2, "the late notice costs one update at most")
+    #expect(pacer.rows(from: Self.reader(store)).revision == 2)
+  }
+
+  @Test("Shown before it has read any rows, it publishes nothing")
+  func shownBeforeReading() {
+    let pacer = TranscriptRowsPacer(interval: .milliseconds(40))
+    pacer.setShown(true)
+    #expect(pacer.published == 0)
+  }
+
   @Test("Hiding and showing a transcript whose rows did not change publishes nothing")
   func showingAgainUnchangedPublishesNothing() async throws {
     let store = Store()

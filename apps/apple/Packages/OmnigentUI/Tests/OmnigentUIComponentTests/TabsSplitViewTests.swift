@@ -7,13 +7,14 @@
 
   @testable import OmnigentUIComponents
 
-  /// Draws a pane's name and whether it's the active one.
+  /// Draws a pane's name and whether it's the active one, the other one, or out of sight.
   private struct PaneProbe: View {
     let pane: TabPane
     @Environment(\.isActiveTabPane) private var isActive
+    @Environment(\.isTabContentHidden) private var isHidden
 
     var body: some View {
-      Text("\(pane.label) \(isActive ? "active" : "idle")")
+      Text("\(pane.label) \(isHidden ? "hidden" : isActive ? "active" : "idle")")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }
@@ -64,7 +65,7 @@
       #expect(try screen.shows("Right idle"))
     }
 
-    @Test("Too narrow for both, only the focused pane shows, and the tracker hears it")
+    @Test("Too narrow for both, only the focused pane shows; the other stays built for later")
     func narrow() throws {
       let tracker = TabDragTracker()
       tracker.dividerX = 300
@@ -72,7 +73,7 @@
       let screen = view(focused, TabSpy().actions, tracker: tracker, width: 500)
       defer { screen.close() }
       #expect(try screen.shows("Right active"))
-      #expect(try !screen.shows("Left"))
+      #expect(try screen.shows("Left hidden"))
       #expect(!tracker.isSplit)
       #expect(tracker.dividerX == nil)
     }
@@ -103,6 +104,15 @@
       let screen = view(split, spy.actions)
       defer { screen.close() }
       try sendThroughApp(screen, at: CGPoint(x: 200, y: 200))
+      #expect(spy.calls.isEmpty)
+    }
+
+    @Test("A click on the divider focuses neither pane")
+    func clickDivider() throws {
+      let spy = TabSpy()
+      let screen = view(split, spy.actions)
+      defer { screen.close() }
+      try sendThroughApp(screen, at: CGPoint(x: 450.5, y: 200))
       #expect(spy.calls.isEmpty)
     }
 

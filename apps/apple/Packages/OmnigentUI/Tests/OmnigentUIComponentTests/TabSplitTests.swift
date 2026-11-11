@@ -35,11 +35,36 @@ struct TabSplitTests {
     #expect(!offCenter.isAtHinge)
   }
 
+  @Test("Each pane has its frame in the content, and a position its pane; the divider has none")
+  func paneFrames() {
+    let layout = TabSplitLayout(width: 1_001, fraction: 0.4)
+    let bounds = CGRect(x: 20, y: 10, width: 1_001, height: 600)
+    #expect(layout.frame(of: .leading, in: bounds) == CGRect(x: 20, y: 10, width: 400, height: 600))
+    #expect(
+      layout.frame(of: .trailing, in: bounds) == CGRect(x: 421, y: 10, width: 600, height: 600))
+    #expect(layout.pane(at: 0) == .leading)
+    #expect(layout.pane(at: 399.5) == .leading)
+    #expect(layout.pane(at: 400.5) == nil, "on the divider")
+    #expect(layout.pane(at: 401) == .trailing)
+  }
+
+  @Test("A kept tab's place says its pane, and whether it is the quiet one of two")
+  func keptTabPlaces() {
+    #expect(KeptTabPlace.hidden.pane == nil)
+    #expect(KeptTabPlace.whole.pane == nil)
+    #expect(KeptTabPlace.pane(.trailing, isFocused: true).pane == .trailing)
+    #expect(!KeptTabPlace.hidden.isUnfocusedPane)
+    #expect(!KeptTabPlace.whole.isUnfocusedPane)
+    #expect(!KeptTabPlace.pane(.leading, isFocused: true).isUnfocusedPane)
+    #expect(KeptTabPlace.pane(.leading, isFocused: false).isUnfocusedPane)
+  }
+
   @Test("Dragging the divider keeps the share in range and both panes wide enough")
   func dividerDrag() {
     #expect(TabSplitLayout.fraction(at: 500, width: 1_000) == 0.5)
     #expect(TabSplitLayout.fraction(at: 10, width: 1_000) == 0.32)
     #expect(TabSplitLayout.fraction(at: 990, width: 1_000) == 0.68)
+    #expect(TabSplitLayout.fraction(at: 10, width: 0) == 0.5, "before the content has a width")
     #expect(TabSplitState.clamp(.nan) == 0.5)
     #expect(TabSplitState(leadingID: "a", trailingID: "b", fraction: 2).fraction == 0.8)
   }

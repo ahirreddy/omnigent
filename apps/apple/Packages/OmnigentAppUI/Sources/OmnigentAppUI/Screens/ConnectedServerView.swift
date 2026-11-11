@@ -276,30 +276,25 @@ extension ConnectedServerView {
   }
 
   /// The shown session's tabs, or a session-less page over them. The tabs stay mounted under a
-  /// page, so recently shown chats (``KeptAliveTabs``) are still built when a session comes back.
+  /// page, and a split session's panes are tabs of the same stack, so recently shown chats
+  /// (``KeptAliveTabs``) are still built when a session comes back, split or not.
   @ViewBuilder private var tabDetail: some View {
     let tabs = session.tabs
     let routes = windowTabs
     let store = tabs.current
-    let keepsAlive = store?.split == nil
     // A session-less page shows among the kept-alive tabs, which stay built underneath it.
-    let page = store == nil && keepsAlive ? tabs.page.map(Self.pageTab) : nil
-    // Read here, not in the pane's content: the split view would follow the selection as well,
+    let page = store == nil ? tabs.page.map(Self.pageTab) : nil
+    // Read here, not in a tab's content: the split view would follow the selection as well,
     // and render the shown tab a second time for each switch.
-    let kept = keepsAlive ? keptAlive(page: page, isCompact: sizeClass == .compact) : []
+    let kept = keptAlive(page: page, isCompact: sizeClass == .compact)
     let shownID = store?.selectedID ?? page?.id ?? ""
     ZStack {
+      // Each tab reads its own session, so one session's change leaves the other tabs alone.
       TabSplitView(
-        split: store?.splitState, actions: store.map(routes.actions) ?? TabActions()
-      ) { pane in
-        if keepsAlive {
-          // Each tab reads its own session, so one session's change leaves the other tabs alone.
-          KeptAliveTabs(kept, shownID: shownID) { tab in
-            ObservationScope("tab") { tabContent(tab, routes: routes) }
-          }
-        } else if let store, let tab = paneTab(pane, in: store) {
-          tabContent(tab, routes: routes)
-        }
+        kept, shownID: shownID, split: store?.splitState,
+        actions: store.map(routes.actions) ?? TabActions()
+      ) { tab in
+        ObservationScope("tab") { tabContent(tab, routes: routes) }
       }
       if store == nil, page == nil {
         detail(tabs.page)

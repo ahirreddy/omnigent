@@ -41,9 +41,10 @@ extension ConnectedServerView {
       state: strip?.state ?? TabsState(), actions: strip?.actions ?? TabActions())
   }
 
-  /// The tabs built in the detail: the shown tab with the recently shown chats of the live
-  /// sessions, and a session-less page over them. Compact keeps only what shows, in the same
-  /// container, so a size-class change (rotating a large iPhone) does not rebuild it.
+  /// The tabs built in the detail: the shown tab (both panes' tabs of a split) with the
+  /// recently shown chats of the live sessions, and a session-less page over them. Compact
+  /// keeps only what shows, in the same container, so a size-class change (rotating a large
+  /// iPhone) does not rebuild it.
   func keptAlive(page: AppTab?, isCompact: Bool) -> [AppTab] {
     let tabs = session.tabs
     guard isCompact else { return tabs.keptAlive() + (page.map { [$0] } ?? []) }
@@ -53,12 +54,6 @@ extension ConnectedServerView {
   /// A session-less page as a tab of the kept-alive stack, under one stable id.
   static func pageTab(_ destination: SidebarDestination) -> AppTab {
     AppTab(id: "page", content: AppTabContent(destination))
-  }
-
-  /// The tab a pane shows: the selected tab when the session is not split.
-  func paneTab(_ pane: TabPane, in tabs: TabStore) -> AppTab? {
-    guard let split = tabs.splitState else { return tabs.selected }
-    return split.activeID(pane).flatMap(tabs.tab)
   }
 }
 

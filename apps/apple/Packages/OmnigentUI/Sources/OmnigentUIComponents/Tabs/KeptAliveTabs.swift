@@ -6,14 +6,39 @@ extension EnvironmentValues {
   @Entry public var isTabContentHidden = false
 }
 
-/// Shows one tab and keeps a few recently shown ones built underneath, hidden, so switching back
-/// to them shows their views as they were (scroll position included) instead of building them
-/// again. Hidden tabs take no clicks, are hidden from accessibility, show no toolbar, commands
-/// or right panel (see ``EnvironmentValues/isTabContentHidden``). The shown conversation's
-/// toolbar items are placed here, so switching tabs updates them instead of replacing them.
+/// Where a kept tab goes: out of sight, over the whole content, or in one pane of a split.
+nonisolated enum KeptTabPlace: Hashable, Sendable {
+  /// Built, and not on screen.
+  case hidden
+  /// The only tab on screen.
+  case whole
+  /// One of two tabs side by side; the focused pane's tab publishes commands and toolbar.
+  case pane(TabPane, isFocused: Bool)
+
+  /// The pane the tab shows in, when the content is split.
+  var pane: TabPane? {
+    if case .pane(let pane, _) = self { return pane }
+    return nil
+  }
+
+  /// Whether the tab is the quiet one of two on screen.
+  var isUnfocusedPane: Bool {
+    if case .pane(_, isFocused: false) = self { return true }
+    return false
+  }
+}
+
+/// Shows one tab, or two side by side (``TabSplitView``), and keeps a few recently shown ones
+/// built underneath, hidden, so switching back to them shows their views as they were (scroll
+/// position included) instead of building them again. Hidden tabs take no clicks, are hidden
+/// from accessibility, show no toolbar, commands or right panel (see
+/// ``EnvironmentValues/isTabContentHidden``). The shown conversation's toolbar items are placed
+/// here, so switching tabs updates them instead of replacing them.
 public struct KeptAliveTabs<Item: Identifiable, Content: View>: View {
   private let items: [Item]
-  private let shownID: Item.ID
+  private let place: (Item) -> KeptTabPlace
+  private let fraction: Double
+  private let hinge: CGRect?
   private let content: (Item) -> Content
   @State private var sizes = KeptAliveSizes()
   /// The column has had a size of its own. A conversation built during the split view's
@@ -28,21 +53,41 @@ public struct KeptAliveTabs<Item: Identifiable, Content: View>: View {
   public init(
     _ items: [Item], shownID: Item.ID, @ViewBuilder content: @escaping (Item) -> Content
   ) {
+    self.init(
+      items, fraction: 0.5, hinge: nil, place: { $0.id == shownID ? .whole : .hidden },
+      content: content)
+  }
+
+  /// Creates the view for content that may be split in two panes.
+  /// - Parameters:
+  ///   - items: The tabs to keep built, the shown ones among them, in a stable order.
+  ///   - fraction: The left pane's share of the width.
+  ///   - hinge: An unfolded device's hinge, which the panes sit either side of.
+  ///   - place: Where a tab goes.
+  ///   - content: A tab's content.
+  init(
+    _ items: [Item], fraction: Double, hinge: CGRect?, place: @escaping (Item) -> KeptTabPlace,
+    @ViewBuilder content: @escaping (Item) -> Content
+  ) {
     self.items = items
-    self.shownID = shownID
+    self.fraction = fraction
+    self.hinge = hinge
+    self.place = place
     self.content = content
   }
 
   /// The view.
   public var body: some View {
-    KeptAliveLayout(sizes: sizes) {
+    KeptAliveLayout(sizes: sizes, fraction: fraction, hinge: hinge) {
       if hasColumnSize {
         ForEach(items) { item in
-          let isHidden = item.id != shownID
+          let place = place(item)
+          let isHidden = place == .hidden
           HeldWhileHidden(content: content(item), isHidden: isHidden)
             .equatable()
+            .modifier(PaneTabContent(place: place))
             .modifier(HiddenTabContent(isHidden: isHidden))
-            .layoutValue(key: KeptAliveKey.self, value: isHidden)
+            .layoutValue(key: KeptAliveKey.self, value: place)
         }
       }
     }
@@ -61,21 +106,26 @@ nonisolated private final class KeptAliveSizes: @unchecked Sendable {
   var lastMeasured: CGSize?
 }
 
-/// Whether a tab is hidden, so the layout can hold its size through placeholder passes.
+/// Where a tab goes, so the layout can place it, and hold a hidden one's size through
+/// placeholder passes.
 nonisolated private struct KeptAliveKey: LayoutValueKey {
-  static let defaultValue = false
+  static let defaultValue = KeptTabPlace.whole
 }
 
-/// A `ZStack` that proposes every tab the whole space, except while the split view lays the
-/// column out at its placeholder minimum (``UnmeasuredMinimum``): hidden tabs then keep the
-/// column's last measured size. A hidden tab at another size than the column (frozen at a size
-/// from the column's first passes, or laid out smaller than its content) has its right panel
-/// loop on constraint passes.
+/// A `ZStack` that proposes a whole tab the whole space and a pane's tab its pane, except while
+/// the split view lays the column out at its placeholder minimum (``UnmeasuredMinimum``):
+/// hidden tabs then keep the column's last measured size. A hidden tab at another size than the
+/// column (frozen at a size from the column's first passes, or laid out smaller than its
+/// content) has its right panel loop on constraint passes.
 private struct KeptAliveLayout: Layout {
   let sizes: KeptAliveSizes
+  let fraction: Double
+  let hinge: CGRect?
 
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    let shown = subviews.filter { !$0[KeptAliveKey.self] }
+    LayoutTally.count("kept tabs measure")
+    // Panes fill what is offered, as hidden tabs do: only a whole tab is measured.
+    let shown = subviews.filter { $0[KeptAliveKey.self] == .whole }
     let sizes = shown.map { $0.sizeThatFits(proposal) }
     return CGSize(
       width: sizes.map(\.width).max() ?? proposal.replacingUnspecifiedDimensions().width,
@@ -85,11 +135,22 @@ private struct KeptAliveLayout: Layout {
   func placeSubviews(
     in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
   ) {
+    LayoutTally.count("kept tabs place")
     if Self.isMeasured(bounds.size) { sizes.lastMeasured = bounds.size }
     let hiddenSize = sizes.lastMeasured ?? bounds.size
+    let panes = TabSplitLayout(width: bounds.width, fraction: fraction, hinge: hinge)
     for subview in subviews {
-      let size = subview[KeptAliveKey.self] ? hiddenSize : bounds.size
-      subview.place(at: bounds.origin, proposal: ProposedViewSize(size))
+      switch subview[KeptAliveKey.self] {
+      case .hidden:
+        subview.place(at: bounds.origin, proposal: ProposedViewSize(hiddenSize))
+      case .whole:
+        subview.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+      case .pane(let pane, _):
+        let frame = panes.frame(of: pane, in: bounds)
+        subview.place(
+          at: CGPoint(x: frame.midX, y: frame.midY), anchor: .center,
+          proposal: ProposedViewSize(frame.size))
+      }
     }
   }
 
@@ -162,6 +223,7 @@ extension View {
     let sizes: KeptAliveSizes
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+      LayoutTally.count(isHidden ? "hidden tab measure" : "shown tab measure")
       let offered = proposal.replacingUnspecifiedDimensions()
       return isHidden ? offered : subviews.first?.sizeThatFits(proposal) ?? offered
     }
@@ -169,6 +231,7 @@ extension View {
     func placeSubviews(
       in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
     ) {
+      LayoutTally.count(isHidden ? "hidden tab place" : "shown tab place")
       // Not a pass at the split view's placeholder: content held that small is not the tab's.
       if !isHidden, KeptAliveLayout.isMeasured(bounds.size) { sizes.lastMeasured = bounds.size }
       let size = isHidden ? sizes.lastMeasured ?? bounds.size : bounds.size
@@ -178,6 +241,31 @@ extension View {
     }
   }
 #endif
+
+/// A kept tab's content in a split's pane: clipped to the pane, and quiet in the pane without
+/// focus. The same views either way, so splitting and unsplitting rebuild nothing.
+private struct PaneTabContent: ViewModifier {
+  let place: KeptTabPlace
+
+  func body(content: Content) -> some View {
+    content
+      .transformEnvironment(\.isActiveTabPane) { if place.isUnfocusedPane { $0 = false } }
+      .clipShape(PaneClip(isPane: place.pane != nil))
+  }
+}
+
+/// A pane's bounds, or no clip at all for a whole tab, whose content reaches under the toolbar
+/// and a floating sidebar. A rectangle either way, so the clip is a bounds clip, not a mask.
+nonisolated private struct PaneClip: Shape {
+  /// Further than any content reaches outside its bounds.
+  static let unclipped: CGFloat = 100_000
+
+  let isPane: Bool
+
+  func path(in rect: CGRect) -> Path {
+    Path(isPane ? rect : rect.insetBy(dx: -Self.unclipped, dy: -Self.unclipped))
+  }
+}
 
 /// A kept tab's content while another tab shows: invisible, inert and quiet.
 struct HiddenTabContent: ViewModifier {

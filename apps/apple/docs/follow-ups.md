@@ -397,6 +397,24 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     target builds with it; its hosted tests have not run (they run in a VM).
   - A chat left in Terminal mode drops its terminal surface while hidden (100-165 ms to come
     back), and Terminal back to Chat builds the composer again (about 250 ms).
+  - A session that is not open renders its chat five to seven times and lays the window
+    out in eight or more passes as its header, rows, turns and terminals arrive (tenth
+    pass). One update for what arrives together would cut the passes; it changes how a
+    session hydrates.
+  - `ConversationStore.apply` digests every row for each delta (`digestRows`): 0.25 ms at
+    603 rows against 0.005 ms at three, for a hidden chat as for the shown one. A digest
+    kept per row, or the core not sending deltas for a session no window shows, would
+    take it out.
+  - A chat's rows body reads the rows inside SwiftUI's tracking the first time, so the
+    first change after it is built renders the rows once more, hidden or not. A chat shown
+    before the change's notice ran can publish the same rows twice.
+  - A key that changes the composer's height lays out the shown tab's column; one that
+    does not reaches the composer and the shown tab's outer layout once. Holding a height
+    change inside the composer needs the transcript's bottom inset to stop following it.
+  - iPhone and iPad keep three sessions open and three conversations built; a Mac keeps
+    six and eight. Their memory with more was not measured.
+  - The tenth pass's counts are from a hosted offscreen window; the list of what to
+    measure in a real window is at the end of that pass in performance.md.
   - A file an agent changes reloads the kept chats whose session directory is the changed
     session's, holds it or is inside it. An agent that writes outside its own directory, into
     another open session's unrelated one, no longer reloads that session's panel. Deciding

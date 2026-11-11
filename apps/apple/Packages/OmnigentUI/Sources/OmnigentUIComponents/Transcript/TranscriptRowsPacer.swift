@@ -62,9 +62,22 @@ final class TranscriptRowsPacer {
   /// - Parameter isShown: The transcript is on screen.
   func setShown(_ isShown: Bool) {
     self.isShown = isShown
-    guard isShown, isStale else { return }
+    guard isShown, isStale || hasUnreadRevision else { return }
     isStale = false
-    schedule(after: .zero)
+    // A first page waits for its markdown wherever it starts from.
+    guard !latest.rows.isEmpty else {
+      schedule(after: .zero)
+      return
+    }
+    // In the pass that shows it: a later turn would draw the rows it hid with for a frame.
+    pending?.cancel()
+    publish()
+  }
+
+  /// The rows changed since the last update, whether or not the change's notice has run yet.
+  private var hasUnreadRevision: Bool {
+    guard let reader else { return false }
+    return reader.read().revision != latest.revision
   }
 
   /// Reads the rows and asks to hear about their next change.
