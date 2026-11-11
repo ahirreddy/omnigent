@@ -20,8 +20,7 @@ enum InboxTriageMapping {
       let conversation = connection.conversations[summary.id]
       let cards =
         conversation?.decisions.cards.filter {
-          !$0.answered || conversation?.decisions.resolving.contains($0.id) == true
-            || conversation?.decisions.errors[$0.id] != nil
+          !$0.answered || conversation?.decisions.errors[$0.id] != nil
         } ?? []
       for card in cards {
         let identity = "\(card.targetSessionId):\(card.id)"
@@ -34,7 +33,6 @@ enum InboxTriageMapping {
         item.kind = decision.kind == .approval ? .approval : .question
         item.preview = summaryText(decision)
         item.phase = phase(card, store: conversation?.decisions)
-        if case .resolving = item.phase { item.decision?.answered = false }
         item.isReadOnly = conversation?.header?.readOnly ?? summary.isReadOnly
         items.append(item)
       }
@@ -172,7 +170,9 @@ enum InboxTriageMapping {
     -> DecisionPhase
   {
     if let failure = store?.errors[card.id] { return .failed(message: failure.message) }
-    if store?.resolving.contains(card.id) == true { return .resolving }
+    if let answer = store?.answers[card.id] {
+      return .answered(summary: OmnigentUIComponents.DecisionResponse(answer).summary)
+    }
     return card.answered ? .answered(summary: "Answered") : .pending
   }
 }

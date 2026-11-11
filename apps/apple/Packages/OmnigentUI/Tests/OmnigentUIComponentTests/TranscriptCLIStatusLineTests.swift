@@ -201,6 +201,24 @@
       #expect(applying.controlFrames.isEmpty)
     }
 
+    @Test("A busy session's model menu says why and its choices take no click")
+    func modelMenuBusy() throws {
+      var configuration = ComposerConfiguration(modelOptions: Self.models, selectedModelId: "fast")
+      let idle = try composer(
+        ComposerViewState(configuration: configuration),
+        actions: ComposerActions(send: {}, selectModel: { _ in }))
+      defer { idle.close() }
+      #expect(try menu(holding: "Deep", on: idle).item(named: "Deep")?.isEnabled == true)
+
+      configuration.busyReason = "A request is waiting for you."
+      let busy = try composer(
+        ComposerViewState(configuration: configuration),
+        actions: ComposerActions(send: {}, selectModel: { _ in }))
+      defer { busy.close() }
+      let opened = try menu(holding: "A request is waiting for you.", on: busy)
+      #expect(opened.item(named: "Deep")?.isEnabled == false)
+    }
+
     @Test("Smart Routing is named in the status line and can be turned off from the menu")
     func smartRouting() throws {
       var configuration = ComposerConfiguration(modelOptions: Self.models, selectedModelId: "fast")

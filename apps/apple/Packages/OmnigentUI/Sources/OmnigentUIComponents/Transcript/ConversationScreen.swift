@@ -330,7 +330,7 @@ extension ConversationScreen {
         extras.slots.documents?.showPanel()
         showsInspector = true
       })
-    if chat, let configuration = composer.configuration, !configuration.isApplying {
+    if chat, let configuration = composer.configuration, configuration.acceptsChanges {
       addModelCommands(to: &actions, configuration: configuration)
     }
     if let summary = state.summary, summary.canRename, extras.sessionActions.rename != nil {

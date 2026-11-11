@@ -124,9 +124,13 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
     return card.answered ? .answered(summary: "Response sent") : .pending
   }
 
-  /// Cards the user has not answered, in order.
+  /// Cards the user has not answered, in order. A card showing its answer while the server
+  /// confirms is answered.
   public var pendingDecisions: [DecisionCard] {
-    decisions.filter { !$0.answered }
+    decisions.filter { card in
+      if case .answered = phase(of: card) { return false }
+      return !card.answered
+    }
   }
 
   /// Rows that belong in the transcript.

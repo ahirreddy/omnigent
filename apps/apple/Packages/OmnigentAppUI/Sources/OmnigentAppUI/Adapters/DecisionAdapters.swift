@@ -150,3 +150,39 @@ nonisolated extension OmnigentCoreFFI.ElicitationValue {
     }
   }
 }
+
+nonisolated extension OmnigentUIComponents.DecisionResponse {
+  // The answer the store holds for a card, for the card's "Approved" line.
+  // swiftlint:disable:next cyclomatic_complexity
+  init(_ response: OmnigentCoreFFI.DecisionResponse) {
+    switch response {
+    case .approve: self = .approve
+    case .decline: self = .decline
+    case .cancel: self = .cancel
+    case .answer(let value): self = .answer(value: value)
+    case .form(let values):
+      self = .form(values: values.mapValues(OmnigentUIComponents.ElicitationValue.init))
+    case .approveAllEdits: self = .approveAllEdits
+    case .approveAutoMode: self = .approveAutoMode
+    case .approveDirectories: self = .approveDirectories
+    case .approveRemembering: self = .approveRemembering
+    case .approveCommandPolicy(let policy): self = .approveCommandPolicy(policy: policy)
+    case .approvePersist(let mode):
+      self = .approvePersist(mode: OmnigentUIComponents.PersistMode(mode))
+    case .declineWithFeedback(let feedback): self = .declineWithFeedback(feedback: feedback)
+    }
+  }
+}
+
+nonisolated extension OmnigentUIComponents.ElicitationValue {
+  init(_ value: OmnigentCoreFFI.ElicitationValue) {
+    switch value {
+    case .null: self = .null
+    case .bool(let value): self = .bool(value: value)
+    case .integer(let value): self = .integer(value: value)
+    case .number(let value): self = .number(value: value)
+    case .text(let value): self = .text(value: value)
+    case .textList(let values): self = .textList(values: values)
+    }
+  }
+}

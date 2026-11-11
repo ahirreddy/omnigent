@@ -62,6 +62,51 @@ struct InboxTriageRequestsTests {
     #expect(!message.isEmpty)
   }
 
+  @Test("An answer shows on its card and its inbox row until the server retires the card")
+  func aHeldAnswer() async throws {
+    let server = threeSessionServer()
+    let resolve = "/v1/sessions/conv_a/elicitations/req/resolve"
+    server.route(
+      "/v1/sessions/conv_a", method: "GET",
+      .json(
+        #"""
+        {"id":"conv_a","status":"idle","created_at":1,"permission_level":4,
+        "pending_elicitations":[{"elicitation_id":"req","params":{"message":"Approve?"}}]}
+        """#))
+    server.route(resolve, method: "POST", .json("{}"))
+    let gate = server.hold(resolve, method: "POST")
+    server.route("/v1/sessions/conv_a/items", .json(#"{"data":[],"has_more":false}"#))
+    let streams = FakeEventStreamTransport()
+    let connection = try await signedInStore(server, streams: streams)
+    try await eventually("the list") { connection.sessionList.session("conv_a") != nil }
+    let conversation = try #require(connection.conversation("conv_a"))
+    // The first frame on the stream makes the core read the session and its request.
+    let opened = await streams.waitForOpenedStream()
+    opened.sink.response(
+      status: 200, headers: [HttpHeader(name: "Content-Type", value: "text/event-stream")])
+    let heartbeat = #"event: session.heartbeat\#ndata: {"type":"session.heartbeat"}\#n\#n"#
+    opened.sink.chunk(bytes: Data(heartbeat.utf8))
+    try await eventually("the request") { conversation.decisions.cards.map(\.id) == ["req"] }
+    let request = try #require(conversation.decisions.cards.first)
+    let approved = DecisionPhase.answered(summary: "Approved")
+
+    let answer = Task { await conversation.decisions.resolve(request, with: .approve) }
+    try await eventually("the answer to reach the server") { gate.arrivals == 1 }
+    #expect(ConversationAdapter.decisionPhases(conversation.decisions) == ["req": approved])
+    #expect(ConversationAdapter.state(conversation, summary: nil).pendingDecisions.isEmpty)
+    #expect(requests(connection).map(\.phase) == [approved])
+    #expect(requests(connection).first?.isUnresolved == false)
+
+    gate.release()
+    await answer.value
+    #expect(ConversationAdapter.decisionPhases(conversation.decisions) == ["req": approved])
+    #expect(requests(connection).map(\.phase) == [approved])
+    #expect(server.requests("POST", resolve).count == 1)
+    conversation.decisions.replace([])
+    #expect(ConversationAdapter.decisionPhases(conversation.decisions).isEmpty)
+    #expect(requests(connection).isEmpty)
+  }
+
   @Test("A request carried by two sessions is listed once, under its target")
   func sharedRequests() async throws {
     let open = try await connection(

@@ -56,6 +56,25 @@ struct AdapterTests {
         == .form(values: ["n": .integer(value: 3)]))
   }
 
+  @Test("An answer the store holds maps back to the response the card was given")
+  func heldAnswers() {
+    let values: [String: OmnigentUIComponents.ElicitationValue] = [
+      "null": .null, "bool": .bool(value: true), "integer": .integer(value: 3),
+      "number": .number(value: 1.5), "text": .text(value: "yes"),
+      "list": .textList(values: ["a", "b"]),
+    ]
+    let responses: [OmnigentUIComponents.DecisionResponse] = [
+      .approve, .decline, .cancel, .answer(value: "Sessions"), .form(values: values),
+      .approveAllEdits, .approveAutoMode, .approveDirectories, .approveRemembering,
+      .approveCommandPolicy(policy: ["cargo", "test"]), .approvePersist(mode: .session),
+      .approvePersist(mode: .always), .declineWithFeedback(feedback: "Only the auth tests"),
+    ]
+    for response in responses {
+      let held = OmnigentCoreFFI.DecisionResponse(response)
+      #expect(OmnigentUIComponents.DecisionResponse(held) == response)
+    }
+  }
+
   @Test("A card's feedback support and a reply reach the core unchanged")
   func feedback() {
     #expect(

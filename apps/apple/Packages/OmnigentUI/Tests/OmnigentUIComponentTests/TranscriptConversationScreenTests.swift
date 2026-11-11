@@ -246,7 +246,7 @@
       #expect(log.entries == ["interrupt"])
     }
 
-    @Test("Next Model and Next Effort follow the session's choices")
+    @Test("Next Model and Next Effort follow the session's choices, and go while it takes none")
     func modelCommands() async throws {
       let model = chat()
       model.composer.configuration = ComposerConfiguration(
@@ -271,6 +271,13 @@
       try await letTasksRun(window)
 
       model.composer.configuration?.isApplying = true
+      try await letTasksRun(window)
+      #expect(model.commands?.cycleModel == nil)
+
+      model.composer.configuration?.isApplying = false
+      try await letTasksRun(window)
+      #expect(model.commands?.cycleModel != nil)
+      model.composer.configuration?.busyReason = "The agent is working."
       try await letTasksRun(window)
       #expect(model.commands?.cycleModel == nil)
     }

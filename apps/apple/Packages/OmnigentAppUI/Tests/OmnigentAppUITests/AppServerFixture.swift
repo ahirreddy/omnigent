@@ -73,10 +73,11 @@ nonisolated final class AppServer: Sendable {
 /// A store signed in to `server`.
 @MainActor
 func signedInStore(
-  _ server: AppServer, url: String = "http://127.0.0.1:6767"
+  _ server: AppServer, url: String = "http://127.0.0.1:6767",
+  streams: FakeEventStreamTransport = FakeEventStreamTransport()
 ) async throws -> ConnectionStore {
   let core = try ClientCore(
-    http: server.http, streams: FakeEventStreamTransport(), sockets: FakeWebSocketTransport(),
+    http: server.http, streams: streams, sockets: FakeWebSocketTransport(),
     clock: SystemClock(), scheduler: TaskScheduler(), secureStore: InMemorySecureStore(),
     entropy: FixedEntropySource(), config: HostConfig(urlPolicy: .development, oidcRedirect: .none))
   let store = ConnectionStore(core: core)

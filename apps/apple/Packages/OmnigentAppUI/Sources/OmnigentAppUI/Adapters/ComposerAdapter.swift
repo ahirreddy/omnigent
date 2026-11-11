@@ -34,6 +34,7 @@ enum ComposerAdapter {
       submitWithCommandReturn: submitWithCommandReturn,
       context: context(store, server: server), canSteer: composer.supportsSteering)
     state.isReadOnly = isReadOnly(store)
+    state.configuration?.busyReason = configurationBusyReason(store)
     state.offersUnsentMessage = !composer.unsentOffers.isEmpty
     state.commandNotice = composer.commandNotice
     state.slashCommandsNote = composer.skillsProblem
@@ -379,5 +380,15 @@ extension ComposerAdapter {
   static func smartRouting(_ composer: ComposerStore) -> SmartRoutingState {
     if composer.isSmartRoutingOn { return .enabled }
     return composer.offersSmartRouting ? .disabled : .unavailable
+  }
+
+  /// Why the core would refuse an agent, model, routing or effort change now: it takes them
+  /// only while the session is idle. The approval mode switches at any time.
+  static func configurationBusyReason(_ store: ConversationStore) -> String? {
+    switch store.header?.status {
+    case .running: "The agent is working. Wait for the reply or stop it to change these."
+    case .needsResponse: "A request is waiting for you. Answer it to change these."
+    case .idle, nil: nil
+    }
   }
 }

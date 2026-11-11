@@ -33,7 +33,7 @@ struct StoreFailureTests {
 
     await conversation.decisions.resolve(card, with: .decline)
     #expect(conversation.decisions.errors["d1"] != nil)
-    #expect(conversation.decisions.resolving.isEmpty)
+    #expect(conversation.decisions.answers.isEmpty)
     #expect(store.sessionList.session("conv_a")?.status == .idle)
   }
 
