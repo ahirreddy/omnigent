@@ -14,7 +14,7 @@ use omnigent_protocol::{DecodeError, Field, FromWire, ServerStreamEvent};
 use serde_json::{Value, json};
 
 use super::pin_order::PinStamp;
-use super::requests::{page_query, validate_identifier};
+use super::requests::{page_query, refused_write, validate_identifier};
 use super::{ClientCore, ClientEvent, SessionError, State, lock};
 use crate::config::session::{ModelChoice, SessionConfiguration};
 use crate::creation::MAX_TITLE_CHARS;
@@ -1073,43 +1073,33 @@ impl<T: HttpTransport> ClientCore<T> {
         Ok((decoded, epoch))
     }
 
-    /// The current summary of `session_id`, read fresh, failing unless the caller may edit it.
-    /// Every write runs this preflight first.
+    /// The cached row of `session_id`, refusing a session it shows as read-only. A session with
+    /// no cached row passes as `None`: the write goes out and the server decides.
     ///
     /// # Errors
     ///
-    /// [`SessionError::InvalidIdentifier`] before any request, the read errors, and
-    /// [`SessionError::ReadOnly`].
-    #[allow(
-        clippy::future_not_send,
-        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
-    )]
-    pub async fn editable_session(&self, session_id: &str) -> Result<SessionSummary, SessionError> {
-        let result = self.editable(session_id).await;
-        self.dispatch();
-        result
-    }
-
-    #[allow(
-        clippy::future_not_send,
-        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
-    )]
-    pub(crate) async fn editable(&self, session_id: &str) -> Result<SessionSummary, SessionError> {
-        let (decoded, epoch) = self.fetch_snapshot(session_id).await?;
-        let summary = lock(&self.state).accept_projection(&decoded.projection, epoch)?;
-        if summary.is_read_only {
+    /// [`SessionError::InvalidIdentifier`] and [`SessionError::ReadOnly`]. No request is made.
+    pub(crate) fn cached_editable(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<SessionSummary>, SessionError> {
+        validate_identifier(session_id)?;
+        let cached = self.cached_summary(session_id);
+        if cached.as_ref().is_some_and(|summary| summary.is_read_only) {
             return Err(SessionError::ReadOnly);
         }
-        Ok(summary)
+        Ok(cached)
     }
 
-    /// Renames, pins or archives a session with `PATCH /v1/sessions/{id}`, after a fresh
-    /// permission check: rename needs edit (2), pin view (1), archive owner (4).
+    /// Renames, pins or archives a session with one `PATCH /v1/sessions/{id}`: rename needs edit
+    /// (2), pin view (1), archive owner (4). The cached row refuses a change it rules out; with
+    /// no cached row the server decides.
     ///
     /// # Errors
     ///
     /// [`SessionError::InvalidIdentifier`] and [`SessionError::InvalidTitle`] before any
-    /// write; [`SessionError::ReadOnly`] without the permission; the read and write errors.
+    /// write; [`SessionError::ReadOnly`] without the permission, from the cached row or the
+    /// server's `403`; [`SessionError::SessionNotFound`] for its `404`; the write errors.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -1134,13 +1124,20 @@ impl<T: HttpTransport> ClientCore<T> {
         change: SessionChange,
     ) -> Result<SessionSummary, SessionError> {
         validate_identifier(session_id)?;
-        let (decoded, epoch) = self.fetch_snapshot(session_id).await?;
-        let summary = lock(&self.state).accept_projection(&decoded.projection, epoch)?;
+        let cached = self.cached_summary(session_id);
+        // Only a cached row can refuse here; a session without one is the server's to judge.
+        let allowed = |tier: fn(&SessionSummary) -> bool| {
+            if cached.as_ref().is_some_and(|summary| !tier(summary)) {
+                Err(SessionError::ReadOnly)
+            } else {
+                Ok(())
+            }
+        };
+        // Filing into a project that is gone is also a `404`, so that one keeps the server's text.
+        let names_project = matches!(&change, SessionChange::Project(Some(_)));
         let body = match change {
             SessionChange::Title(title) => {
-                if !summary.can_rename() {
-                    return Err(SessionError::ReadOnly);
-                }
+                allowed(SessionSummary::can_rename)?;
                 let cleaned = title.trim();
                 if cleaned.is_empty() || cleaned.chars().count() > MAX_TITLE_CHARS {
                     return Err(SessionError::InvalidTitle);
@@ -1148,9 +1145,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 json!({"title": cleaned})
             }
             SessionChange::Pinned { pinned, at_ms } => {
-                if !summary.can_pin() {
-                    return Err(SessionError::ReadOnly);
-                }
+                allowed(SessionSummary::can_pin)?;
                 let stamp = if pinned {
                     at_ms.to_string()
                 } else {
@@ -1159,18 +1154,14 @@ impl<T: HttpTransport> ClientCore<T> {
                 json!({"labels": {PINNED_LABEL: stamp}})
             }
             SessionChange::PinnedAt(stamp) => {
-                if !summary.can_pin() {
-                    return Err(SessionError::ReadOnly);
-                }
+                allowed(SessionSummary::can_pin)?;
                 json!({"labels": {PINNED_LABEL: stamp.label()}})
             }
             SessionChange::Archived {
                 archived,
                 delete_worktree,
             } => {
-                if !summary.can_archive() {
-                    return Err(SessionError::ReadOnly);
-                }
+                allowed(SessionSummary::can_archive)?;
                 // The server rejects `delete_worktree` without `archived: true`.
                 if archived && delete_worktree {
                     json!({"archived": true, "delete_worktree": true})
@@ -1179,9 +1170,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 }
             }
             SessionChange::Project(project_id) => {
-                if !summary.can_archive() {
-                    return Err(SessionError::ReadOnly);
-                }
+                allowed(SessionSummary::can_archive)?;
                 if let Some(id) = &project_id {
                     validate_identifier(id)?;
                 }
@@ -1193,7 +1182,13 @@ impl<T: HttpTransport> ClientCore<T> {
         };
         let path = format!("/v1/sessions/{session_id}");
         let mutation_epoch = lock(&self.state).metadata_epoch(session_id);
-        let acknowledgement = self.write_json("PATCH", &path, &body).await?;
+        let acknowledgement = self
+            .write_json("PATCH", &path, &body)
+            .await
+            .map_err(|error| match error {
+                SessionError::Rejected { status: 404, .. } if names_project => error,
+                other => refused_write(session_id)(other),
+            })?;
         let decoded = decode_snapshot_value(acknowledgement).map_err(|detail| {
             SessionError::DeliveryUncertain {
                 detail: format!("unreadable {path} acknowledgement: {detail}"),
@@ -1660,16 +1655,15 @@ mod tests {
     }
 
     #[test]
-    fn a_read_only_session_refuses_to_be_pinned_or_filed() {
+    fn a_read_only_cached_row_refuses_to_be_pinned_or_filed_without_a_request() {
         use futures::executor::block_on;
 
-        use super::super::test_support::{RouteTransport, connected};
+        use super::super::test_support::{RouteTransport, connected, lines_after_connect};
 
-        let transport = RouteTransport::local();
+        let core = connected(RouteTransport::local());
         let mut wire = row("conv_a");
         wire["permission_level"] = json!(0);
-        transport.ok("/v1/sessions/conv_a", wire.to_string());
-        let core = connected(transport);
+        core.apply_session_rows(vec![wire]).unwrap();
         for change in [
             SessionChange::Pinned {
                 pinned: true,
@@ -1683,6 +1677,7 @@ mod tests {
                 Err(SessionError::ReadOnly)
             );
         }
+        assert_eq!(lines_after_connect(&core), Vec::<String>::new());
     }
 
     #[test]
@@ -1692,7 +1687,6 @@ mod tests {
         use super::super::test_support::{Reply, RouteTransport, connected};
 
         let transport = RouteTransport::local();
-        transport.writable_session("[]");
         transport.respond(
             Some("PATCH"),
             "/v1/sessions/conv_a",

@@ -76,7 +76,7 @@ pub enum SessionError {
         /// The server's explanation, or a generic one.
         message: String,
     },
-    /// The host transport failed on a read.
+    /// The host transport failed on a read, or made no connection for a write: nothing was sent.
     #[error("Could not reach the server ({0}). Check the address and network connection.")]
     Transport(TransportError),
     /// A read was cancelled.

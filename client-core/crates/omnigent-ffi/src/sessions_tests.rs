@@ -176,7 +176,6 @@ fn membership_and_ownership_read_the_viewer() {
 fn owned() -> Harness {
     let harness = connected();
     let owned = r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":4}"#;
-    harness.http.route_method("GET", SESSION, json(200, owned));
     harness
         .http
         .route_method("PATCH", SESSION, json(200, owned));
@@ -261,12 +260,16 @@ fn stopping_deleting_and_leaving_send_their_requests_and_report_failures() {
         format!("DELETE {SESSION}/permissions/local")
     );
 
-    harness
-        .http
-        .route_method("GET", SESSION, json(403, r#"{"detail":"no"}"#));
-    harness
-        .http
-        .route_method("DELETE", SESSION, json(403, r#"{"detail":"no"}"#));
+    // Each write is refused by the server itself: nothing reads the session first.
+    for (method, path) in [
+        ("POST", format!("{SESSION}/events")),
+        ("PATCH", SESSION.to_owned()),
+        ("DELETE", SESSION.to_owned()),
+    ] {
+        harness
+            .http
+            .route_method(method, &path, json(403, r#"{"detail":"no"}"#));
+    }
     harness.http.route_method(
         "DELETE",
         &format!("{SESSION}/permissions/local"),

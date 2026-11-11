@@ -160,8 +160,8 @@ impl<T: HttpTransport> ClientCore<T> {
     ///
     /// # Errors
     ///
-    /// [`SessionError::ReadOnly`] without view permission; the read and write errors. Writes
-    /// made before a failure stay.
+    /// [`SessionError::ReadOnly`] without view permission; the write errors. Writes made
+    /// before a failure stay.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"

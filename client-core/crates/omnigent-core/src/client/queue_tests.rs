@@ -3,7 +3,7 @@
 use futures::executor::block_on;
 use serde_json::json;
 
-use super::test_support::{Reply, RouteTransport, body_json, live};
+use super::test_support::{Reply, RouteTransport, body_json, lines_after_connect, live};
 use super::{SessionError, lock};
 use crate::attachments::{DraftError, DraftKey, UploadFile};
 use crate::ledger::SubmissionOutcome;
@@ -12,7 +12,6 @@ const UPLOAD: &str = "/v1/sessions/conv_a/resources/files";
 
 fn transport() -> RouteTransport {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.ok("/v1/sessions/conv_a/events", r#"{"queued":true}"#);
     transport.respond(
         Some("POST"),
@@ -42,6 +41,13 @@ fn a_queued_message_sends_its_held_files_and_leaves_the_draft_alone() {
     let sent = block_on(core.send_queued_message("conv_a", "then this", Some(hold), None, &paths))
         .unwrap();
     assert_eq!(sent.draft, "still typing");
+    assert_eq!(
+        lines_after_connect(&core),
+        [
+            "POST /v1/sessions/conv_a/resources/files",
+            "POST /v1/sessions/conv_a/events"
+        ]
+    );
     let body = body_json(core.transport().writes().last().unwrap());
     assert_eq!(
         body["data"]["content"],

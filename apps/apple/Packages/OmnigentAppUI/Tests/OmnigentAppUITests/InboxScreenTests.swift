@@ -26,7 +26,7 @@ struct InboxScreenTests {
   private static let send = CGPoint(x: 905, y: 241)
   private static let retry = CGPoint(x: 899, y: 116)
   private static let firstAnswer = CGPoint(x: 730, y: 579)
-  private static let refusal = "The server denied access to this resource."
+  private static let refusal = "You have read-only access to this session."
 
   private func page(
     _ connection: ConnectionStore, defaults: UserDefaults? = nil

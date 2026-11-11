@@ -3,18 +3,19 @@
 
 use serde_json::json;
 
-use super::requests::validate_identifier;
+use super::requests::{refused_write, validate_identifier};
 use super::{ClientCore, ClientEvent, SessionError, lock};
 use crate::auth::pkce::percent_encode;
 use crate::http::HttpTransport;
 
 impl<T: HttpTransport> ClientCore<T> {
-    /// Ends the session's live process with a `stop_session` event. The transcript stays.
+    /// Ends the session's live process with one `stop_session` event. The transcript stays.
     ///
     /// # Errors
     ///
-    /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::ReadOnly`] below
-    /// edit permission; the read and write errors.
+    /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::ReadOnly`] when
+    /// the cached row is below edit permission or the server answers `403`;
+    /// [`SessionError::SessionNotFound`] for its `404`; the write errors.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -30,23 +31,26 @@ impl<T: HttpTransport> ClientCore<T> {
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     async fn stop(&self, session_id: &str) -> Result<(), SessionError> {
-        self.editable(session_id).await?;
+        self.cached_editable(session_id)?;
         let path = format!("/v1/sessions/{session_id}/events");
         let body = json!({"type": "stop_session", "data": {}});
         self.write(self.prepare("POST", &path, &[], Some(&body))?)
-            .await?;
+            .await
+            .map_err(refused_write(session_id))?;
         lock(&self.state).request_rehydration(session_id);
         Ok(())
     }
 
-    /// Deletes the session and its history (owner permission): stops it first when it is
-    /// running, as the web does, then `DELETE /v1/sessions/{id}`. The session leaves the list.
+    /// Deletes the session and its history (owner permission): stops it first when its cached
+    /// row shows it can be stopped, as the web does, then `DELETE /v1/sessions/{id}`. The session
+    /// leaves the list.
     ///
     /// # Errors
     ///
     /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::ReadOnly`]
-    /// without owner permission; the read and write errors of the delete. A failed stop does not
-    /// block the delete.
+    /// without owner permission, from the cached row or the server's `403`;
+    /// [`SessionError::SessionNotFound`] for its `404`; the write errors of the delete. A failed
+    /// stop does not block the delete.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -84,12 +88,14 @@ impl<T: HttpTransport> ClientCore<T> {
     )]
     async fn delete(&self, session_id: &str, delete_branch: bool) -> Result<(), SessionError> {
         validate_identifier(session_id)?;
-        let (decoded, epoch) = self.fetch_snapshot(session_id).await?;
-        let summary = lock(&self.state).accept_projection(&decoded.projection, epoch)?;
-        if !summary.can_archive() {
+        let cached = self.cached_summary(session_id);
+        if cached
+            .as_ref()
+            .is_some_and(|summary| !summary.can_archive())
+        {
             return Err(SessionError::ReadOnly);
         }
-        if summary.is_stoppable() {
+        if cached.is_some_and(|summary| summary.is_stoppable()) {
             let path = format!("/v1/sessions/{session_id}/events");
             let body = json!({"type": "stop_session", "data": {}});
             // Best effort, as the web's: a wedged or already stopped runner must not block the
@@ -106,7 +112,8 @@ impl<T: HttpTransport> ClientCore<T> {
             Vec::new()
         };
         self.write(self.prepare("DELETE", &path, &query, None)?)
-            .await?;
+            .await
+            .map_err(refused_write(session_id))?;
         self.forget(session_id);
         Ok(())
     }

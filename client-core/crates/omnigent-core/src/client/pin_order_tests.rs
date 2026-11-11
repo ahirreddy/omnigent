@@ -5,7 +5,9 @@ use futures::executor::block_on;
 use serde_json::json;
 
 use super::super::sessions::SessionSummary;
-use super::super::test_support::{Reply, RouteTransport, connected};
+use super::super::test_support::{
+    Reply, RouteTransport, cache_row, connected, lines_after_connect,
+};
 use super::{PinOrderWrite, PinStamp, compare, pin_order_writes};
 use crate::SessionError;
 use crate::session_query::{self, SessionFilter};
@@ -143,33 +145,33 @@ fn the_list_orders_pins_by_key_then_the_rest_by_recency() {
 #[test]
 fn moving_a_pin_writes_its_new_key_and_pins_an_unpinned_session_first() {
     let transport = RouteTransport::local();
-    for (id, labels) in [
+    let rows = [
         ("p0", r#"{"omnigent.pinned":"1000"}"#),
         ("p1", r#"{"omnigent.pinned":"2000"}"#),
         ("loose", "{}"),
-    ] {
+    ]
+    .map(|(id, labels)| {
         let row = format!(
             r#"{{"id":"{id}","status":"idle","created_at":1,"permission_level":4,"labels":{labels}}}"#
-        );
-        transport.respond(
-            Some("GET"),
-            &format!("/v1/sessions/{id}"),
-            None,
-            Reply::json(200, row.clone()),
         );
         transport.respond(
             Some("PATCH"),
             &format!("/v1/sessions/{id}"),
             None,
-            Reply::json(200, row),
+            Reply::json(200, row.clone()),
         );
-    }
+        row
+    });
     let core = connected(transport);
-    for id in ["p0", "p1", "loose"] {
-        block_on(core.editable_session(id)).unwrap();
+    for row in &rows {
+        cache_row(&core, row);
     }
     block_on(core.move_pin("p1", "p0", NOW)).unwrap();
     block_on(core.move_pin("loose", "p1", NOW)).unwrap();
+    assert_eq!(
+        lines_after_connect(&core),
+        ["PATCH /v1/sessions/p1", "PATCH /v1/sessions/loose"]
+    );
     assert_eq!(
         core.transport().write_bodies(),
         vec![

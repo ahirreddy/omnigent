@@ -5,7 +5,9 @@ use serde_json::json;
 
 use super::super::SessionError;
 use super::super::sessions::{SessionChange, SessionSummary};
-use super::super::test_support::{Reply, RouteTransport, connected, path_of, query_value};
+use super::super::test_support::{
+    Reply, RouteTransport, connected, lines_after_connect, path_of, query_value,
+};
 use super::{ProjectSummary, project_members};
 
 fn project(id: Option<&str>, name: &str) -> ProjectSummary {
@@ -97,6 +99,7 @@ fn moving_files_by_id_and_clears_the_legacy_label() {
     let core = connected(transport);
     block_on(core.edit_session("conv_a", SessionChange::Project(Some("p1".into())))).unwrap();
     block_on(core.edit_session("conv_a", SessionChange::Project(None))).unwrap();
+    assert_eq!(lines_after_connect(&core), ["PATCH /v1/sessions/conv_a"; 2]);
     assert_eq!(
         core.transport().write_bodies(),
         vec![

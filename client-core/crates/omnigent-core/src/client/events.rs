@@ -7,20 +7,28 @@
 //!    unreviewed uncertain send) and the session's staged attachments are captured;
 //! 2. the attachments are checked against the session, server and account
 //!    ([`UploadTarget::validate_message_attachments`]);
-//! 3. a fresh editable-session preflight: not read-only, not archived, able to execute, and the
-//!    session's live stream is open and hydrated;
-//! 4. the `POST`. Its outcome completes the ledger operation and the attachment batch.
+//! 3. the session's cached row, when there is one, must not show it read-only, archived or
+//!    unable to execute, and the session's live stream must be open and hydrated. No request is
+//!    made for this: a session with no cached row is the server's to refuse, as is an offline
+//!    host the row does not say can be woken;
+//! 4. the `POST`. Its outcome completes the ledger operation and the attachment batch. The
+//!    server's `403` is [`SessionError::ReadOnly`] and its `404`
+//!    [`SessionError::SessionNotFound`].
 //!
 //! The events route has no idempotency key: an unclear outcome is
 //! [`SessionError::DeliveryUncertain`] and blocks the session's next send until the user reviews
 //! it ([`ClientCore::acknowledge_uncertain_send`]). Nothing is ever re-posted automatically.
+//! A connection never made is not unclear: nothing was sent, so the send (or upload) fails with
+//! [`SessionError::Transport`], the draft is kept and the next send is not blocked.
 //! Messages ask the server to refuse rather than record a turn while the session's host is
 //! offline: that refusal is [`SessionError::HostOffline`], and the caller keeps the message.
 
 use serde_json::{Value, json};
 
 use super::json::{as_object, opt_bool, opt_str};
-use super::requests::{HOST_OFFLINE_HOLD_HEADER, connected_base_url, validate_identifier};
+use super::requests::{
+    HOST_OFFLINE_HOLD_HEADER, connected_base_url, refused_write, validate_identifier,
+};
 use super::{ChangedFilesFetch, ClientCore, ClientEvent, SessionError, lock};
 use crate::attachments::{
     AttachmentDraft, AttachmentSubmission, DraftError, DraftItem, DraftItemId, DraftKey, HoldId,
@@ -28,6 +36,7 @@ use crate::attachments::{
 };
 use crate::auth::endpoint::DATABRICKS_ORG_HEADER;
 use crate::auth::hosted::HostedConnection;
+use crate::config::session::HOST_OFFLINE_REASON;
 use crate::decisions::{Decision, DecisionError, DecisionResponse, ResolveError, ResolveRoute};
 use crate::http::{HttpHeader, HttpRequest, HttpTransport, TransportError};
 use crate::ledger::{SubmissionOperation, SubmissionOutcome};
@@ -364,12 +373,15 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 
     /// Uploads one staged file to `session_id` with the multipart `boundary` (random in
-    /// production). Runs the editable-session preflight first; the file is never uploaded twice.
+    /// production). Checks the session's cached row first, with no request; the file is never
+    /// uploaded twice.
     ///
     /// # Errors
     ///
-    /// [`SessionError::Draft`] when the item cannot be uploaded now, the preflight errors, and
-    /// [`SessionError::Upload`] (a `401` also ends the connection).
+    /// [`SessionError::Draft`] when the item cannot be uploaded now, the cached-row errors,
+    /// [`SessionError::ReadOnly`] for the server's `403`, [`SessionError::SessionNotFound`] for
+    /// its `404`, [`SessionError::Transport`] when no connection was made (the item is failed,
+    /// not uncertain), and [`SessionError::Upload`] (a `401` also ends the connection).
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -419,8 +431,7 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<UploadedAttachment, SessionError> {
         validate_identifier(session_id)?;
         let key = self.draft_key(session_id)?;
-        self.require_sendable(session_id, require_live_stream)
-            .await?;
+        self.require_sendable(session_id, require_live_stream)?;
         let (target, _) = self.upload_target(session_id)?;
         let (attempt, file, mut request, epoch) = {
             let mut state = lock(&self.state);
@@ -458,32 +469,42 @@ impl<T: HttpTransport> ClientCore<T> {
         if mapped == Err(UploadError::Unauthorized) {
             state.authentication_failed();
         }
-        Ok(mapped?)
+        // The server's refusal reads as the session errors: no permission, or a session gone;
+        // a connection never made, as a read's.
+        mapped.map_err(|error| match error {
+            UploadError::Unreachable(error) => SessionError::Transport(error),
+            UploadError::Forbidden => SessionError::ReadOnly,
+            UploadError::Rejected { status: 404 } => SessionError::SessionNotFound {
+                session_id: session_id.to_owned(),
+            },
+            other => other.into(),
+        })
     }
 
-    /// The preflight every message and upload runs: editable, not archived, able to execute,
-    /// and the session's live stream is open and hydrated.
-    #[allow(
-        clippy::future_not_send,
-        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
-    )]
-    async fn require_sendable(
+    /// The check every message and upload runs, with no request: the session's cached row, when
+    /// there is one, is editable, not archived and able to execute, and the session's live
+    /// stream is open and hydrated.
+    fn require_sendable(
         &self,
         session_id: &str,
         require_live_stream: bool,
     ) -> Result<(), SessionError> {
-        let summary = self.editable(session_id).await?;
-        if summary.is_archived {
-            return Err(SessionError::Archived);
-        }
-        if let Some(reason) = summary
-            .configuration
-            .as_ref()
-            .and_then(crate::config::session::SessionConfiguration::execution_unavailable_reason)
-        {
-            return Err(SessionError::ExecutionUnavailable {
-                reason: reason.to_owned(),
+        if let Some(summary) = self.cached_editable(session_id)? {
+            if summary.is_archived {
+                return Err(SessionError::Archived);
+            }
+            // Only a full read says whether an offline host can be woken: a row that never
+            // had one leaves an offline host to the server.
+            let unavailable = summary.configuration.as_ref().and_then(|configuration| {
+                let reason = configuration.execution_unavailable_reason()?;
+                (reason != HOST_OFFLINE_REASON || configuration.host_resumable.is_some())
+                    .then_some(reason)
             });
+            if let Some(reason) = unavailable {
+                return Err(SessionError::ExecutionUnavailable {
+                    reason: reason.to_owned(),
+                });
+            }
         }
         if require_live_stream && !lock(&self.state).live_sessions.contains(session_id) {
             return Err(SessionError::StreamNotReady);
@@ -499,8 +520,10 @@ impl<T: HttpTransport> ClientCore<T> {
     /// [`SessionError::EmptyMessage`] when there is neither text nor an attachment;
     /// [`SessionError::Ledger`] and [`SessionError::Draft`] when a send is in flight, unreviewed
     /// or attachments are not uploaded; [`SessionError::Upload`] for attachments of another
-    /// session; the preflight errors; [`SessionError::MessageDenied`] for a policy denial; and
-    /// the write errors, of which only [`SessionError::DeliveryUncertain`] may have delivered.
+    /// session; the cached-row errors; [`SessionError::ReadOnly`] for the server's `403` and
+    /// [`SessionError::SessionNotFound`] for its `404`; [`SessionError::MessageDenied`] for a
+    /// policy denial; and the write errors, of which only [`SessionError::DeliveryUncertain`]
+    /// may have delivered.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -601,7 +624,7 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 
     /// Sends `text` alone to a session that is not open here (the Inbox's reply): the same
-    /// ledger and editable-session preflight as [`Self::send_message`], without the live-stream
+    /// ledger and cached-row check as [`Self::send_message`], without the live-stream
     /// requirement and without the composer's staged attachments.
     ///
     /// # Errors
@@ -762,8 +785,7 @@ impl<T: HttpTransport> ClientCore<T> {
             .unwrap_or_default();
         let (target, local) = self.upload_target(session_id)?;
         target.validate_message_attachments(&attachments, local)?;
-        self.require_sendable(session_id, require_live_stream)
-            .await?;
+        self.require_sendable(session_id, require_live_stream)?;
         let path = format!("/v1/sessions/{session_id}/events");
         let mut prepared =
             self.prepare("POST", &path, &[], Some(&payload.body(text, &attachments)))?;
@@ -774,7 +796,10 @@ impl<T: HttpTransport> ClientCore<T> {
                 .headers
                 .push(HttpHeader::new(HOST_OFFLINE_HOLD_HEADER, "on"));
         }
-        let response = self.write(prepared).await?;
+        let response = self
+            .write(prepared)
+            .await
+            .map_err(refused_write(session_id))?;
         let value: Value = serde_json::from_slice(&response.body).map_err(|error| {
             SessionError::DeliveryUncertain {
                 detail: format!("unreadable acknowledgement from {path}: {error}"),
@@ -813,11 +838,12 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 
     /// Cancels the session's active turn (`type: "interrupt"`, never the owner-only
-    /// `stop_session`).
+    /// `stop_session`) with one request.
     ///
     /// # Errors
     ///
-    /// The preflight errors ([`SessionError::ReadOnly`] included) and the write errors.
+    /// [`SessionError::InvalidIdentifier`]; [`SessionError::ReadOnly`] from the cached row or
+    /// the server's `403`; [`SessionError::SessionNotFound`] for its `404`; the write errors.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -833,23 +859,25 @@ impl<T: HttpTransport> ClientCore<T> {
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     async fn interrupt_session(&self, session_id: &str) -> Result<(), SessionError> {
-        self.editable(session_id).await?;
+        self.cached_editable(session_id)?;
         let path = format!("/v1/sessions/{session_id}/events");
         let body = json!({"type": "interrupt", "data": {}});
         self.write(self.prepare("POST", &path, &[], Some(&body))?)
-            .await?;
+            .await
+            .map_err(refused_write(session_id))?;
         lock(&self.state).request_rehydration(session_id);
         Ok(())
     }
 
-    /// Answers the pending decision `decision_id` shown in `session_id`, after re-reading the
-    /// session so a stale card is never answered. A card mirrored from a child session posts to
-    /// the child, which must be editable too.
+    /// Answers the pending decision `decision_id` shown in `session_id`, after reading the
+    /// session once so a stale card is never answered. A card mirrored from a child session posts
+    /// to the child, whose cached row must not show it read-only.
     ///
     /// # Errors
     ///
     /// [`SessionError::Decision`] when the card is gone or the answer is not one it offered (no
-    /// request is made), the preflight errors and the write errors.
+    /// write is made), the read errors, [`SessionError::ReadOnly`] (from the read, the child's
+    /// cached row or the server's `403`), [`SessionError::SessionNotFound`] and the write errors.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -876,8 +904,13 @@ impl<T: HttpTransport> ClientCore<T> {
         response: &DecisionResponse,
     ) -> Result<(), SessionError> {
         validate_identifier(decision_id)?;
-        self.editable(session_id).await?;
-        let (decoded, _) = self.fetch_snapshot(session_id).await?;
+        // The core keeps no decisions, so this one read supplies the card the answer is checked
+        // against, and with it the caller's permission.
+        let (decoded, epoch) = self.fetch_snapshot(session_id).await?;
+        let summary = lock(&self.state).accept_projection(&decoded.projection, epoch)?;
+        if summary.is_read_only {
+            return Err(SessionError::ReadOnly);
+        }
         let decision = decoded
             .snapshot
             .pending_elicitations
@@ -889,7 +922,7 @@ impl<T: HttpTransport> ClientCore<T> {
             })?;
         let request = decision.resolve_request(response)?;
         if request.session_id != session_id {
-            self.editable(&request.session_id).await?;
+            self.cached_editable(&request.session_id)?;
         }
         let body = request
             .body(ResolveRoute::Dedicated)
@@ -899,7 +932,8 @@ impl<T: HttpTransport> ClientCore<T> {
             request.session_id, request.elicitation_id
         );
         self.write(self.prepare("POST", &path, &[], Some(&body))?)
-            .await?;
+            .await
+            .map_err(refused_write(&request.session_id))?;
         let mut state = lock(&self.state);
         state.request_rehydration(session_id);
         if request.session_id != session_id {

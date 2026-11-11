@@ -12,7 +12,7 @@ use serde_json::json;
 
 use super::fork::RunnerLaunch;
 use super::json::{as_object, opt_bool, opt_str};
-use super::requests::validate_identifier;
+use super::requests::{missing_session, refused_write, validate_identifier};
 use super::{ClientCore, SessionError, lock};
 use crate::creation::{CreationError, CreationGit, CreationHost, is_branch_name};
 use crate::http::HttpTransport;
@@ -35,10 +35,12 @@ impl<T: HttpTransport> ClientCore<T> {
     ///
     /// # Errors
     ///
-    /// Before any write: [`SessionError::InvalidIdentifier`], [`SessionError::ReadOnly`] (not
-    /// the owner), and [`CreationError::Unavailable`] for a path that is not absolute or a host
-    /// that is unknown, a sandbox or offline. The release's write errors (nothing moved). A
-    /// failed launch after the release is [`RunnerLaunch::Failed`] in `Ok`.
+    /// Before any write: [`SessionError::InvalidIdentifier`], [`SessionError::ReadOnly`] (the
+    /// cached row is not the owner's), and [`CreationError::Unavailable`] for a path that is not
+    /// absolute or a host that is unknown, a sandbox or offline. The release's write errors
+    /// (nothing moved), its `403` as [`SessionError::ReadOnly`] and its `404` as
+    /// [`SessionError::SessionNotFound`]. A failed launch after the release is
+    /// [`RunnerLaunch::Failed`] in `Ok`.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -70,7 +72,7 @@ impl<T: HttpTransport> ClientCore<T> {
         let release = json!({"runner_id": "", "model_override": "default", "silent": true});
         let released = self.write_json("PATCH", &path, &release).await;
         lock(&self.state).request_rehydration(session_id);
-        released?;
+        released.map_err(refused_write(session_id))?;
         Ok(
             match self
                 .launch_session_runner(host_id, session_id, workspace, None)
@@ -88,7 +90,9 @@ impl<T: HttpTransport> ClientCore<T> {
     /// # Errors
     ///
     /// As [`Self::switch_session_host`] before any write, also
-    /// [`CreationError::Unavailable`] for an invalid branch; then the launch's write errors.
+    /// [`CreationError::Unavailable`] for an invalid branch; then the launch's write errors,
+    /// its `404` (the session is gone, or is not the caller's) as
+    /// [`SessionError::SessionNotFound`].
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -105,6 +109,7 @@ impl<T: HttpTransport> ClientCore<T> {
                 .await?;
             self.launch_session_runner(host_id, session_id, workspace, git)
                 .await
+                .map_err(missing_session(session_id))
         }
         .await;
         self.dispatch();
@@ -144,7 +149,8 @@ impl<T: HttpTransport> ClientCore<T> {
         })
     }
 
-    /// The owner check and the target's checks a launch needs, against a fresh host list.
+    /// The owner check a launch needs, against the session's cached row when there is one, and
+    /// the target's checks, against a fresh host list.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -165,7 +171,8 @@ impl<T: HttpTransport> ClientCore<T> {
         if git.is_some_and(|git| !is_branch_name(git.branch_name.trim())) {
             return Err(unavailable("Use a valid git branch name for the worktree."));
         }
-        if !self.editable(session_id).await?.can_archive() {
+        let cached = self.cached_summary(session_id);
+        if cached.is_some_and(|summary| !summary.can_archive()) {
             return Err(SessionError::ReadOnly);
         }
         let hosts = self

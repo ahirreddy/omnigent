@@ -19,7 +19,7 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 
-use super::requests::validate_identifier;
+use super::requests::{refused_write, validate_identifier};
 use super::sessions::{SessionSummary, SummaryStatus, decode_snapshot_value};
 use super::{ClientCore, ClientEvent, SessionError, lock};
 use crate::config::approval::approval_mode_menu;
@@ -413,14 +413,16 @@ impl<T: HttpTransport> ClientCore<T> {
         Ok(Self::accept_configuration(&mut lock(&self.state), summary))
     }
 
-    /// Turns Smart Routing (the session's `cost_control_mode_override`) on or off. While it is
-    /// on, the router picks the model and effort each turn.
+    /// Turns Smart Routing (the session's `cost_control_mode_override`) on or off with one
+    /// `PATCH`. While it is on, the router picks the model and effort each turn.
     ///
     /// # Errors
     ///
     /// [`SessionError::Busy`] while another change is in flight; the guards (see
-    /// [`Self::apply_configuration`]); [`SessionError::DeliveryUncertain`] when the
-    /// acknowledgement does not show the mode; the read and write errors.
+    /// [`Self::apply_configuration`]) against the session's cached row, when there is one;
+    /// [`SessionError::StreamNotReady`]; [`SessionError::ReadOnly`] for the server's `403` and
+    /// [`SessionError::SessionNotFound`] for its `404`; [`SessionError::DeliveryUncertain`] when
+    /// the acknowledgement does not show the mode; the write errors.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -433,14 +435,19 @@ impl<T: HttpTransport> ClientCore<T> {
         let result = async {
             validate_identifier(session_id)?;
             let _guard = self.begin_mutation(session_id)?;
-            let summary = self.config_snapshot(session_id).await?;
-            self.mutation_allowed(&summary)?;
+            // The mode written does not depend on the session's state, so its cached row is
+            // enough to refuse; without one only the stream is known, and the server decides.
+            if let Some(summary) = self.cached_summary(session_id) {
+                self.mutation_allowed(&summary)?;
+            } else if !lock(&self.state).live_sessions.contains(session_id) {
+                return Err(SessionError::StreamNotReady);
+            }
             let value = if enabled { "on" } else { "off" };
             let result = self
                 .patch_configuration(session_id, ROUTING_FIELD, Some(value))
                 .await;
             lock(&self.state).request_rehydration(session_id);
-            result
+            result.map_err(refused_write(session_id))
         }
         .await;
         self.dispatch();

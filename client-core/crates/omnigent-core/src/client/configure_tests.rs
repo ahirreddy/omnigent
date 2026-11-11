@@ -9,7 +9,9 @@ use serde_json::{Value, json};
 use super::SessionError;
 use super::sessions::SessionSummary;
 use super::sessions::test_support::{summary_of, wire};
-use super::test_support::{Reply, RouteTransport, envelopes, fixture_lines, live, still_pending};
+use super::test_support::{
+    Reply, RouteTransport, envelopes, fixture_lines, lines_after_connect, live, still_pending,
+};
 use crate::config::session::{ConfigurationEdit, ConfigurationError};
 use crate::reconcile::ConversationSync;
 
@@ -516,41 +518,86 @@ fn approval_mode_without_an_acknowledged_mode_is_uncertain() {
 }
 
 #[test]
-fn smart_routing_patches_the_cost_control_mode_and_checks_the_acknowledgement() {
-    let transport = RouteTransport::local();
-    stub_session(&transport, &fields());
+fn smart_routing_is_one_patch_whose_acknowledgement_is_checked() {
     let routed = merged(&json!({"cost_control_mode_override": "on"}));
-    transport.respond(
-        Some("PATCH"),
-        PATH,
-        None,
-        Reply::json(200, wire(&routed, true).to_string()),
-    );
-    let core = live(transport);
-    let saved = block_on(core.set_smart_routing(true, "conv_a")).unwrap();
-    assert_eq!(
-        saved.configuration.unwrap().routing_mode.as_deref(),
-        Some("on")
-    );
-    assert_eq!(
-        mutation_bodies(core.transport()),
-        vec![json!({"cost_control_mode_override": "on"})]
-    );
+    for cached in [false, true] {
+        let transport = RouteTransport::local();
+        transport.respond(Some("PATCH"), PATH, None, patched(&routed));
+        let core = live(transport);
+        if cached {
+            core.apply_session_rows(vec![wire(&fields(), true)])
+                .unwrap();
+        }
+        let saved = block_on(core.set_smart_routing(true, "conv_a")).unwrap();
+        assert_eq!(
+            saved.configuration.unwrap().routing_mode.as_deref(),
+            Some("on")
+        );
+        assert_eq!(
+            lines_after_connect(&core),
+            ["PATCH /v1/sessions/conv_a"],
+            "cached row: {cached}"
+        );
+        assert_eq!(
+            mutation_bodies(core.transport()),
+            vec![json!({"cost_control_mode_override": "on"})]
+        );
+        assert_eq!(
+            core.cached_summary("conv_a")
+                .unwrap()
+                .configuration
+                .unwrap()
+                .routing_mode
+                .as_deref(),
+            Some("on")
+        );
 
-    let transport = RouteTransport::local();
-    stub_session(&transport, &routed);
-    transport.respond(
-        Some("PATCH"),
-        PATH,
-        None,
-        Reply::json(200, wire(&routed, true).to_string()),
+        // The acknowledgement still shows the mode on.
+        let error = block_on(core.set_smart_routing(false, "conv_a")).unwrap_err();
+        assert!(
+            matches!(error, SessionError::DeliveryUncertain { .. }),
+            "{error:?}"
+        );
+    }
+}
+
+#[test]
+fn smart_routing_is_refused_by_the_cached_row_or_a_closed_stream_without_a_request() {
+    let core = live(RouteTransport::local());
+    core.apply_session_rows(vec![wire(&fields(), false)])
+        .unwrap();
+    assert_eq!(
+        block_on(core.set_smart_routing(true, "conv_a")),
+        Err(SessionError::ReadOnly)
     );
-    let core = live(transport);
-    let error = block_on(core.set_smart_routing(false, "conv_a")).unwrap_err();
-    assert!(
-        matches!(error, SessionError::DeliveryUncertain { .. }),
-        "{error:?}"
+    // No cached row and no stream: nothing says the session is ready for the change.
+    assert_eq!(
+        block_on(core.set_smart_routing(true, "conv_b")),
+        Err(SessionError::StreamNotReady)
     );
+    assert_eq!(lines_after_connect(&core), Vec::<String>::new());
+}
+
+#[test]
+fn a_refused_smart_routing_patch_reads_as_the_removed_check_did() {
+    for (status, expected) in [
+        (403, SessionError::ReadOnly),
+        (
+            404,
+            SessionError::SessionNotFound {
+                session_id: "conv_a".into(),
+            },
+        ),
+    ] {
+        let transport = RouteTransport::local();
+        transport.respond(Some("PATCH"), PATH, None, Reply::json(status, "{}"));
+        let core = live(transport);
+        assert_eq!(
+            block_on(core.set_smart_routing(true, "conv_a")),
+            Err(expected),
+            "{status}"
+        );
+    }
 }
 
 fn patched(fields: &Value) -> Reply {
@@ -831,14 +878,18 @@ fn a_switch_to_a_target_the_catalog_rules_out_says_why_and_never_posts() {
 fn a_read_crossed_by_a_newer_row_returns_the_newer_row() {
     let transport = RouteTransport::local();
     stub_session(&transport, &merged(&json!({"title": "Stale"})));
+    transport.ok(
+        "/v1/sessions/conv_a/items",
+        r#"{"data":[],"has_more":false}"#,
+    );
     let gate = transport.gate("GET", PATH);
     let core = live(transport);
-    let mut read = pin!(core.editable("conv_a"));
+    let mut read = pin!(core.conversation_snapshot("conv_a"));
     assert!(still_pending(read.as_mut()));
     core.apply_session_rows(vec![wire(&merged(&json!({"title": "Newer"})), true)])
         .unwrap();
     gate.open();
-    assert_eq!(block_on(read).unwrap().title, "Newer");
+    assert_eq!(block_on(read).unwrap().summary.title, "Newer");
     assert_eq!(core.cached_summary("conv_a").unwrap().title, "Newer");
 }
 

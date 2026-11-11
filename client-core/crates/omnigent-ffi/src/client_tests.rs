@@ -26,6 +26,13 @@ fn offline() -> TransportError {
     }
 }
 
+/// A request that left and got no answer, so a write that failed this way may have landed.
+fn timed_out() -> TransportError {
+    TransportError::Timeout {
+        message: "no answer".into(),
+    }
+}
+
 fn locked() -> SecureStoreError {
     SecureStoreError::Unavailable {
         message: "device locked".into(),
@@ -1626,7 +1633,7 @@ fn composer_text_survives_a_send_and_the_block_clears() {
 fn an_unclear_send_blocks_the_next_until_it_is_acknowledged() {
     let mut harness = writable();
     let events = format!("/v1/sessions/{SESSION}/events");
-    harness.http.fail_next(&events, offline());
+    harness.http.fail_next(&events, timed_out());
     let error = harness
         .call(|core| async move { core.send_message(SESSION.into(), "once".into()).await })
         .unwrap_err();
@@ -1774,7 +1781,7 @@ fn staging_uploading_and_removing_attachments() {
     );
 
     // The answer never arrived, so the file may already be stored.
-    harness.http.fail_next(&files, offline());
+    harness.http.fail_next(&files, timed_out());
     let upload = Arc::clone(&core);
     harness
         .run(async move { upload.upload_attachment(SESSION.into(), id).await })

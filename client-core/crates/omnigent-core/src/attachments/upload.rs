@@ -1,8 +1,8 @@
 //! `POST /v1/sessions/{id}/resources/files`: the multipart request and the response mapping.
 //!
 //! The upload endpoint has no idempotency key. Any outcome the client cannot prove (a transport
-//! failure, a redirect, a 5xx, an unreadable 201) is [`UploadError::Uncertain`]: the file may be
-//! stored, so it is never re-posted automatically.
+//! failure once a connection was made, a redirect, a 5xx, an unreadable 201) is
+//! [`UploadError::Uncertain`]: the file may be stored, so it is never re-posted automatically.
 
 use serde_json::{Map, Value};
 use url::Url;
@@ -112,6 +112,9 @@ pub enum UploadError {
         /// The status.
         status: u16,
     },
+    /// No connection to the server was made, so the file was not sent; uploading again is safe.
+    #[error("could not reach the server ({0})")]
+    Unreachable(TransportError),
     /// The file may or may not be stored. Do not retry automatically.
     #[error(
         "upload confirmation was lost and the file may already be stored; automatic retry is disabled: {0}"
@@ -212,14 +215,20 @@ impl UploadTarget {
     /// # Errors
     ///
     /// [`UploadError::Unauthorized`], [`UploadError::Forbidden`] and [`UploadError::Rejected`]
-    /// when the server refused the file; [`UploadError::Uncertain`] when the outcome is unknown.
+    /// when the server refused the file; [`UploadError::Unreachable`] when no connection was
+    /// made; [`UploadError::Uncertain`] when the outcome is unknown.
     pub fn response(
         &self,
         file: &UploadFile,
         result: Result<HttpResponse, TransportError>,
     ) -> Result<UploadedAttachment, UploadError> {
-        let response =
-            result.map_err(|error| UploadError::Uncertain(UploadUncertainty::Transport(error)))?;
+        let response = result.map_err(|error| {
+            if error.is_unsent() {
+                UploadError::Unreachable(error)
+            } else {
+                UploadError::Uncertain(UploadUncertainty::Transport(error))
+            }
+        })?;
         match response.status {
             201 => {}
             300..=399 => {
@@ -541,7 +550,7 @@ mod tests {
         let mut outcomes = Vec::new();
         for envelope in &envelopes {
             let result = match envelope["error"].as_str() {
-                Some("networkConnectionLost") => Err(TransportError::Offline {
+                Some("networkConnectionLost") => Err(TransportError::Other {
                     message: "The network connection was lost.".into(),
                 }),
                 Some("cancelled") => Err(TransportError::Cancelled),
@@ -571,7 +580,7 @@ mod tests {
                 UploadError::Uncertain(UploadUncertainty::InvalidFileId {
                     id: "../wrong".into()
                 }),
-                UploadError::Uncertain(UploadUncertainty::Transport(TransportError::Offline {
+                UploadError::Uncertain(UploadUncertainty::Transport(TransportError::Other {
                     message: "The network connection was lost.".into()
                 })),
                 UploadError::Uncertain(UploadUncertainty::Transport(TransportError::Cancelled)),
@@ -611,6 +620,22 @@ mod tests {
                 Err(UploadError::Uncertain(expected))
             );
         }
+    }
+
+    #[test]
+    fn an_upload_that_made_no_connection_was_not_sent() {
+        let offline = TransportError::Offline {
+            message: "Could not connect to the server.".into(),
+        };
+        let error = local()
+            .response(&notes(), Err(offline.clone()))
+            .unwrap_err();
+        assert_eq!(error, UploadError::Unreachable(offline));
+        assert!(!error.is_uncertain());
+        assert_eq!(
+            error.to_string(),
+            "could not reach the server (offline: Could not connect to the server.)"
+        );
     }
 
     #[test]

@@ -3,7 +3,7 @@
 
 use serde_json::json;
 
-use super::requests::validate_identifier;
+use super::requests::{refused_write, validate_identifier};
 use super::{ClientCore, SessionError, lock};
 use crate::http::HttpTransport;
 use crate::slash::{SkillCatalog, SlashOptions};
@@ -89,8 +89,9 @@ impl<T: HttpTransport> ClientCore<T> {
     ///
     /// # Errors
     ///
-    /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::ReadOnly`] below
-    /// edit permission; the read and write errors.
+    /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::ReadOnly`] when
+    /// the cached row is below edit permission or the server answers `403`;
+    /// [`SessionError::SessionNotFound`] for its `404`; the write errors.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -106,11 +107,12 @@ impl<T: HttpTransport> ClientCore<T> {
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     async fn post_clear(&self, session_id: &str) -> Result<(), SessionError> {
-        self.editable(session_id).await?;
+        self.cached_editable(session_id)?;
         let path = format!("/v1/sessions/{session_id}/events");
         let body = json!({"type": "clear", "data": {}});
         self.write(self.prepare("POST", &path, &[], Some(&body))?)
-            .await?;
+            .await
+            .map_err(refused_write(session_id))?;
         lock(&self.state).request_rehydration(session_id);
         Ok(())
     }

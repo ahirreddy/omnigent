@@ -247,8 +247,8 @@ impl<T: HttpTransport> ClientCore<T> {
     /// [`SessionError::EmptyMessage`] and [`SessionError::InvalidIdentifier`] before any request;
     /// the read and write errors; [`SessionError::ExecutionUnavailable`] when the session's runner
     /// is gone and cannot be relaunched; [`SessionError::DeliveryUncertain`] when the fork may
-    /// exist. A failed runner binding is returned as its write error: the side chat exists but is
-    /// unbound.
+    /// exist or the binding's acknowledgement is unreadable. A failed runner binding is returned
+    /// as its write error: the side chat exists but is unbound.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -319,8 +319,18 @@ impl<T: HttpTransport> ClientCore<T> {
             .insert(receipt.session_id.clone());
         if let Some(runner_id) = runner_id {
             let path = format!("/v1/sessions/{}", receipt.session_id);
-            self.write_json("PATCH", &path, &json!({"runner_id": runner_id}))
+            let epoch = lock(&self.state).metadata_epoch(&receipt.session_id);
+            let binding = self
+                .write_json("PATCH", &path, &json!({"runner_id": runner_id}))
                 .await?;
+            // The first message is checked against the side chat's cached row, which the fork
+            // left without a runner: the binding's acknowledgement replaces it.
+            let bound = decode_snapshot_value(binding).map_err(|detail| {
+                SessionError::DeliveryUncertain {
+                    detail: format!("unreadable {path} acknowledgement: {detail}"),
+                }
+            })?;
+            lock(&self.state).accept_projection(&bound.projection, epoch)?;
         }
         Ok(receipt.session_id)
     }
