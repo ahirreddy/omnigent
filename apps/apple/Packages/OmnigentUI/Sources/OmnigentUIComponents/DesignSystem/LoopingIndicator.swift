@@ -37,10 +37,13 @@ struct LoopingIndicator: View {
 
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.appearsActive) private var appearsActive
+  @Environment(\.windowIsActive) private var windowIsActive
 
   var body: some View {
+    // A window that keeps its active look still reports its real state as `windowIsActive`.
     LoopingLayerView(
-      shape: shape, motion: motion, color: color, isAnimating: !reduceMotion && appearsActive)
+      shape: shape, motion: motion, color: color,
+      isAnimating: !reduceMotion && appearsActive && windowIsActive)
   }
 }
 

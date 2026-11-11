@@ -60,6 +60,9 @@ struct ServerWindowRoot: View {
         window: id.instance, persistence: services.tabPersistence, browser: services.browserTabs),
       serverSwitching: serverSwitching(session, openSettingsAt: settingsWindow)
     )
+    // First, so only the window's content keeps the look: the modifiers below it still read
+    // the window's real state (the key-window registry does).
+    .keepsActiveLook()
     .environment(\.useThisMachine, useThisMachine)
     .environment(\.openSettingsAt, settingsWindow)
     .navigationTitle(Self.title(session, boundTo: id.serverURL))
