@@ -138,6 +138,17 @@ import Testing
           #expect(try window.widths == wider, "from \(before)")
         }),
       WindowInteraction(
+        name: "a window resize step across the compact width",
+        // The shown chat lays out for the width; the chat kept behind it waits until it shows.
+        budget: ["composer": 1, "rows": 1, "screen": 1, "strip": 1, "transcript": 1],
+        prepare: { try $0.noteWidths() },
+        perform: { $0.screen.window.setContentSize(CGSize(width: 780, height: 600)) },
+        verify: { window in
+          let before = try #require(window.notes.widths)
+          #expect(try window.widths.transcript == before.transcript - 120, "from \(before)")
+          #expect(before.transcript >= 560 && before.transcript - 120 < 560)
+        }),
+      WindowInteraction(
         name: "a sidebar divider step",
         budget: ["strip": 1],
         prepare: { try $0.noteWidths() },
