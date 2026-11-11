@@ -43,12 +43,13 @@ impl<T: HttpTransport> ClientCore<T> {
 
     /// Deletes the session and its history (owner permission): stops it first when its cached
     /// row shows it can be stopped, as the web does, then `DELETE /v1/sessions/{id}`. The session
-    /// leaves the list.
+    /// leaves the list at once and comes back if the server refuses.
     ///
     /// # Errors
     ///
     /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::ReadOnly`]
     /// without owner permission, from the cached row or the server's `403`;
+    /// [`SessionError::Offline`] while the live link is down;
     /// [`SessionError::SessionNotFound`] for its `404`; the write errors of the delete. A failed
     /// stop does not block the delete.
     #[allow(
@@ -95,6 +96,7 @@ impl<T: HttpTransport> ClientCore<T> {
         {
             return Err(SessionError::ReadOnly);
         }
+        let hidden = self.hide_row(session_id)?;
         if cached.is_some_and(|summary| summary.is_stoppable()) {
             let path = format!("/v1/sessions/{session_id}/events");
             let body = json!({"type": "stop_session", "data": {}});
@@ -111,21 +113,20 @@ impl<T: HttpTransport> ClientCore<T> {
         } else {
             Vec::new()
         };
-        self.write(self.prepare("DELETE", &path, &query, None)?)
+        self.remove_hidden(hidden, &path, &query)
             .await
-            .map_err(refused_write(session_id))?;
-        self.forget(session_id);
-        Ok(())
+            .map_err(refused_write(session_id))
     }
 
     /// Leaves a session shared with the caller by revoking the caller's own grant
-    /// (`DELETE /v1/sessions/{id}/permissions/{user}`). The session leaves the list; the owner
-    /// sharing it again brings it back.
+    /// (`DELETE /v1/sessions/{id}/permissions/{user}`). The session leaves the list at once and
+    /// comes back if the server refuses; the owner sharing it again brings it back.
     ///
     /// # Errors
     ///
     /// [`SessionError::InvalidIdentifier`] before any request; [`SessionError::NotConnected`];
-    /// the write errors (the server refuses to remove the owner's own grant).
+    /// [`SessionError::Offline`] while the live link is down; the write errors (the server
+    /// refuses to remove the owner's own grant).
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -151,17 +152,16 @@ impl<T: HttpTransport> ClientCore<T> {
             "/v1/sessions/{session_id}/permissions/{}",
             percent_encode(&user_id)
         );
-        self.write(self.prepare("DELETE", &path, &[], None)?)
-            .await?;
-        self.forget(session_id);
-        Ok(())
+        let hidden = self.hide_row(session_id)?;
+        self.remove_hidden(hidden, &path, &[]).await
     }
 
     /// Drops a session the caller can no longer see and reports it removed.
-    fn forget(&self, session_id: &str) {
+    pub(super) fn forget(&self, session_id: &str) {
         let mut state = lock(&self.state);
         state.bump_metadata_epoch(session_id);
         state.summaries.remove(session_id);
+        state.drop_intents(session_id);
         state.live_sessions.remove(session_id);
         state.events.push(ClientEvent::SessionsRemoved {
             ids: vec![session_id.to_owned()],

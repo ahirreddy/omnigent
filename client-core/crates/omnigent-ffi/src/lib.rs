@@ -166,6 +166,8 @@ mod queue_tests;
 #[cfg(test)]
 mod session_index_tests;
 #[cfg(test)]
+mod session_intents_tests;
+#[cfg(test)]
 mod sessions_tests;
 #[cfg(test)]
 mod share_tests;

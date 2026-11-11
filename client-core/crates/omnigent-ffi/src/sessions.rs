@@ -143,6 +143,24 @@ pub enum SessionChange {
     },
 }
 
+/// One session's edit in [`ClientCore::edit_sessions`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+pub struct SessionEdit {
+    /// The session.
+    pub session_id: String,
+    /// What to change.
+    pub change: SessionChange,
+}
+
+/// An edit of [`ClientCore::edit_sessions`] that was not saved.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SessionEditFailure {
+    /// The session, whose row shows what it did before the edit.
+    pub session_id: String,
+    /// Why, as `edit_session` reports it.
+    pub error: CoreError,
+}
+
 /// How the session list changed. Apply in order.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum SessionListChange {
@@ -341,6 +359,27 @@ pub fn session_filter_title(filter: SessionFilter) -> String {
     CoreFilter::from(filter).title().to_owned()
 }
 
+impl ClientCore {
+    /// The core's form of `change`, a pin stamped with the host clock.
+    fn core_change(&self, change: SessionChange) -> CoreChange {
+        match change {
+            SessionChange::Title { title } => CoreChange::Title(title),
+            SessionChange::Pinned { pinned } => CoreChange::Pinned {
+                pinned,
+                at_ms: self.unix_ms(),
+            },
+            SessionChange::Archived {
+                archived,
+                delete_worktree,
+            } => CoreChange::Archived {
+                archived,
+                delete_worktree,
+            },
+            SessionChange::Project { project_id } => CoreChange::Project(project_id),
+        }
+    }
+}
+
 #[uniffi::export]
 impl ClientCore {
     /// Renames, pins or archives `session_id` after a fresh permission check. The updated
@@ -356,26 +395,34 @@ impl ClientCore {
         session_id: String,
         change: SessionChange,
     ) -> Result<SessionSummary, CoreError> {
-        let change = match change {
-            SessionChange::Title { title } => CoreChange::Title(title),
-            SessionChange::Pinned { pinned } => CoreChange::Pinned {
-                pinned,
-                at_ms: self.unix_ms(),
-            },
-            SessionChange::Archived {
-                archived,
-                delete_worktree,
-            } => CoreChange::Archived {
-                archived,
-                delete_worktree,
-            },
-            SessionChange::Project { project_id } => CoreChange::Project(project_id),
-        };
         self.sessions()
-            .edit_session(&session_id, change)
+            .edit_session(&session_id, self.core_change(change))
             .await
             .map(Into::into)
             .map_err(CoreError::from)
+    }
+
+    /// Edits several sessions at once (archiving a selection): every row changes in one
+    /// `SessionListChanged` upsert before any request, then the writes run side by side.
+    /// Returns the edits that were not saved, in the order given; each put its own row back.
+    pub async fn edit_sessions(&self, edits: Vec<SessionEdit>) -> Vec<SessionEditFailure> {
+        let (ids, edits): (Vec<String>, Vec<_>) = edits
+            .into_iter()
+            .map(|edit| {
+                let change = self.core_change(edit.change);
+                (edit.session_id.clone(), (edit.session_id, change))
+            })
+            .unzip();
+        let results = self.sessions().edit_sessions(edits).await;
+        ids.into_iter()
+            .zip(results)
+            .filter_map(|(session_id, result)| {
+                result.err().map(|error| SessionEditFailure {
+                    session_id,
+                    error: CoreError::from(error),
+                })
+            })
+            .collect()
     }
 
     /// Ends the session's live process (`stop_session`); the transcript stays.

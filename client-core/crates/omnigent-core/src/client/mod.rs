@@ -7,7 +7,8 @@
 //! - the cached [`SessionSummary`] of every session it has read, with per-session metadata
 //!   epochs so a slow read never rolls back newer metadata from an event or a list row;
 //! - the session whose live stream is open and hydrated (sends require it);
-//! - the [`SubmissionLedger`] and the [`AttachmentDraftStore`] that gate every message send.
+//! - the [`SubmissionLedger`] and the [`AttachmentDraftStore`] that gate every message send;
+//! - the [`IntentLedger`] of list-row edits that show before the server answers.
 //!
 //! Every method takes `&self`; state sits behind a mutex that is never held across an `.await`,
 //! so a disconnect can land while a request is in flight and the late result is discarded.
@@ -42,6 +43,7 @@ mod harness_setup;
 pub mod host_switch;
 mod hydration;
 pub mod inbox;
+mod intent_lanes;
 pub mod items;
 pub(crate) mod json;
 pub mod pin_order;
@@ -81,6 +83,7 @@ use crate::auth::hosted::{ConnectedServer, HostedConnection};
 use crate::discovery::{ServerDiscovery, discovery_from_response, manifest_request};
 use crate::error::CoreError;
 use crate::http::HttpTransport;
+use crate::intents::{IntentLedger, IntentTimer};
 use crate::ledger::SubmissionLedger;
 use crate::server_url;
 
@@ -128,6 +131,13 @@ pub enum ClientEvent {
         /// The entries, or why they are unavailable.
         update: ChangedFilesUpdate,
     },
+    /// For the host, not the UI: call [`ClientCore::intent_timer_elapsed`] with `timer` after
+    /// [`IntentTimer::delay_ms`]. Without it an accepted edit masks its field until a server
+    /// row agrees, and an edit lost with the link waits for the link without limit.
+    IntentTimerRequested {
+        /// The timer.
+        timer: IntentTimer,
+    },
 }
 
 /// Receives [`ClientEvent`]s. Called outside the core's lock, on the thread that ran the
@@ -167,6 +177,14 @@ struct State {
     configuration_mutations: BTreeSet<String>,
     changed_files: BTreeMap<(String, String), ChangedFilesFetch>,
     ledger: SubmissionLedger,
+    /// List-row edits that have not settled. They belong to the scope, as the ledger does.
+    intents: IntentLedger,
+    /// The host reports its live link to the server, so a link that returns will be heard of.
+    link_watched: bool,
+    /// The host reported its live link to the server down: list-row edits are refused.
+    link_down: bool,
+    /// How often the live link has returned; a write lost with it goes again after the next.
+    link_returns: u64,
     drafts: AttachmentDraftStore,
     composer: BTreeMap<(String, String), String>,
     events: Vec<ClientEvent>,
@@ -185,11 +203,13 @@ struct ChangedFilesFetch {
 }
 
 impl State {
-    /// Forgets everything tied to the previous connection. Delivery state (the ledger and
+    /// Forgets everything tied to the previous connection. Delivery state (the ledgers and
     /// drafts) belongs to the scope and session, so it survives a reconnect.
     fn reset_connection_state(&mut self) {
         self.epoch = self.epoch.wrapping_add(1);
         self.connected = None;
+        self.link_watched = false;
+        self.link_down = false;
         self.summaries.clear();
         self.metadata_epochs.clear();
         self.configuration_mutations.clear();
@@ -199,20 +219,23 @@ impl State {
         self.side_chats.clear();
     }
 
-    /// Drops side chats from list changes (the server's `GET /v1/sessions` leaves them out, but
-    /// its updates stream and per-session reads do not).
+    /// The queued events as the UI gets them. List changes carry what the list shows: side
+    /// chats are dropped (the server's `GET /v1/sessions` leaves them out, but its updates
+    /// stream and per-session reads do not), and every row goes through [`Self::shown_rows`].
     fn take_events(&mut self) -> Vec<ClientEvent> {
         let mut events = std::mem::take(&mut self.events);
-        if !self.side_chats.is_empty() {
-            for event in &mut events {
-                if let ClientEvent::SessionsChanged { sessions } = event {
-                    sessions.retain(|summary| !self.side_chats.contains(&summary.id));
-                }
-            }
-            events.retain(|event| {
-                !matches!(event, ClientEvent::SessionsChanged { sessions } if sessions.is_empty())
-            });
+        if self.side_chats.is_empty() && self.intents.is_empty() {
+            return events;
         }
+        for event in &mut events {
+            if let ClientEvent::SessionsChanged { sessions } = event {
+                sessions.retain(|summary| !self.side_chats.contains(&summary.id));
+                *sessions = self.shown_rows(std::mem::take(sessions));
+            }
+        }
+        events.retain(|event| {
+            !matches!(event, ClientEvent::SessionsChanged { sessions } if sessions.is_empty())
+        });
         events
     }
 
@@ -261,10 +284,14 @@ impl State {
 
     /// The delivery scope (server plus account) of the current connection.
     fn scope(&self) -> Result<String, SessionError> {
+        self.scope_id().ok_or(SessionError::NotConnected)
+    }
+
+    /// [`Self::scope`], `None` when not connected.
+    fn scope_id(&self) -> Option<String> {
         self.connected
             .as_ref()
             .map(|server| server.scope.account_id())
-            .ok_or(SessionError::NotConnected)
     }
 
     /// A `401` (or an auth-required transport failure) ends the connection.

@@ -95,6 +95,7 @@ impl Engine {
                 }
             }
             UpdatesOutput::StateChanged { state } => {
+                self.sessions.updates_link_changed(&state);
                 let sign_in = match &state {
                     ConnectionState::Failed { error } if error.requires_sign_in() => {
                         Some(CoreError::from(error.clone()))

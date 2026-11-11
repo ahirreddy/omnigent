@@ -514,6 +514,13 @@ impl Engine {
                 self.update_watch();
             }
             ClientEvent::InventoryInvalidated => self.schedule_list_refresh(),
+            ClientEvent::IntentTimerRequested { timer } => {
+                let sessions = Arc::clone(&self.sessions);
+                // Never aborted: a timer whose edit has moved on does nothing when it fires.
+                drop(self.host.after(timer.delay_ms(), move || {
+                    sessions.intent_timer_elapsed(timer);
+                }));
+            }
             ClientEvent::HydrationRequested { session_id } => self.request_hydration(&session_id),
             ClientEvent::ChangedFiles {
                 session_id,
