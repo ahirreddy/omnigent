@@ -337,6 +337,90 @@ fn a_batch_shows_every_row_in_one_change_and_reports_the_edits_not_saved() {
     assert!(!after.contains(&(FIRST.to_owned(), false)), "{after:?}");
 }
 
+/// The rows published by the time `call` answers, as `(id, archived)`; `None` for a removal.
+fn published_at_the_answer<T: 'static>(
+    harness: &mut Harness,
+    call: impl Future<Output = T> + 'static,
+) -> Vec<Option<(String, bool)>> {
+    harness.events.take();
+    let events = std::sync::Arc::clone(&harness.events);
+    let answered = harness.run(async move {
+        call.await;
+        events.all()
+    });
+    list_changes(&answered)
+        .into_iter()
+        .flat_map(|change| match change {
+            Ok(rows) => rows
+                .into_iter()
+                .map(|row| Some((row.id, row.is_archived)))
+                .collect(),
+            Err(ids) => vec![None; ids.len()],
+        })
+        .collect()
+}
+
+#[test]
+fn a_row_edit_answers_after_the_rows_it_changed_are_published() {
+    let mut harness = connected();
+    answers(&harness, FIRST, r#","archived":true"#);
+    harness
+        .http
+        .route_method("PATCH", &path(SECOND), json(403, r#"{"detail":"no"}"#));
+    let archive = |session_id: &str| SessionEdit {
+        session_id: session_id.to_owned(),
+        change: SessionChange::Archived {
+            archived: true,
+            delete_worktree: false,
+        },
+    };
+
+    // A batch: the refused row is back before the answer names it.
+    let edits = vec![archive(FIRST), archive(SECOND)];
+    let core = harness.core.clone();
+    let rows =
+        published_at_the_answer(&mut harness, async move { core.edit_sessions(edits).await });
+    assert_eq!(
+        rows.last(),
+        Some(&Some((SECOND.to_owned(), false))),
+        "{rows:?}"
+    );
+
+    // One refused edit: the row is shown changed, then put back, before the error.
+    let core = harness.core.clone();
+    let change = archive(SECOND).change;
+    let rows = published_at_the_answer(&mut harness, async move {
+        core.edit_session(SECOND.to_owned(), change).await
+    });
+    assert_eq!(
+        rows,
+        [
+            Some((SECOND.to_owned(), true)),
+            Some((SECOND.to_owned(), false))
+        ]
+    );
+
+    // A refused delete: the row is hidden, then back, before the error.
+    harness
+        .http
+        .route_method("DELETE", &path(FIRST), json(403, r#"{"detail":"no"}"#));
+    let core = harness.core.clone();
+    let rows = published_at_the_answer(&mut harness, async move {
+        core.delete_session_with_branch(FIRST.to_owned(), false)
+            .await
+    });
+    assert_eq!(rows, [None, Some((FIRST.to_owned(), true))]);
+
+    // An accepted leave: both removals are out before the answer.
+    let grant = format!("{}/permissions/local", path(SECOND));
+    harness.http.route_method("DELETE", &grant, json(204, ""));
+    let core = harness.core.clone();
+    let rows = published_at_the_answer(&mut harness, async move {
+        core.leave_session(SECOND.to_owned()).await
+    });
+    assert_eq!(rows, [None, None]);
+}
+
 #[test]
 fn edits_are_refused_while_the_updates_link_is_down_and_made_again_once_it_is_back() {
     let mut harness = connected();

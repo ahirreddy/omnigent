@@ -2,6 +2,7 @@
 //! and the `/v1/sessions/updates` socket; ordering and filtering are the core's
 //! (`omnigent_core::session_query`).
 
+use futures::channel::oneshot;
 use omnigent_core::projects::{self, ProjectSummary as CoreProject};
 use omnigent_core::session_query::{self, SessionFilter as CoreFilter};
 use omnigent_core::session_search::SearchScope;
@@ -11,6 +12,7 @@ use omnigent_core::sessions::{
 
 use crate::client::ClientCore;
 use crate::configuration::SessionConfiguration;
+use crate::engine::Msg;
 use crate::errors::CoreError;
 
 /// The status a session list shows.
@@ -378,6 +380,15 @@ impl ClientCore {
             SessionChange::Project { project_id } => CoreChange::Project(project_id),
         }
     }
+
+    /// Returns once the engine has published the list changes the calls so far caused. A row
+    /// edit answers through this, so the host holds the changed rows before it reads the answer.
+    async fn events_published(&self) {
+        let (reply, published) = oneshot::channel();
+        self.post(Msg::EventsPublished(reply));
+        // The engine drops the reply only once it has shut down and publishes nothing more.
+        published.await.unwrap_or(());
+    }
 }
 
 #[uniffi::export]
@@ -395,11 +406,12 @@ impl ClientCore {
         session_id: String,
         change: SessionChange,
     ) -> Result<SessionSummary, CoreError> {
-        self.sessions()
+        let edited = self
+            .sessions()
             .edit_session(&session_id, self.core_change(change))
-            .await
-            .map(Into::into)
-            .map_err(CoreError::from)
+            .await;
+        self.events_published().await;
+        edited.map(Into::into).map_err(CoreError::from)
     }
 
     /// Edits several sessions at once (archiving a selection): every row changes in one
@@ -414,6 +426,7 @@ impl ClientCore {
             })
             .unzip();
         let results = self.sessions().edit_sessions(edits).await;
+        self.events_published().await;
         ids.into_iter()
             .zip(results)
             .filter_map(|(session_id, result)| {
@@ -443,10 +456,9 @@ impl ClientCore {
     ///
     /// [`CoreError::Session`]: `ReadOnly` without owner permission; the read and write errors.
     pub async fn delete_session(&self, session_id: String) -> Result<(), CoreError> {
-        self.sessions()
-            .delete_session(&session_id)
-            .await
-            .map_err(CoreError::from)
+        let deleted = self.sessions().delete_session(&session_id).await;
+        self.events_published().await;
+        deleted.map_err(CoreError::from)
     }
 
     /// Deletes the session and, with `delete_branch`, its worktree and local git branch
@@ -460,10 +472,12 @@ impl ClientCore {
         session_id: String,
         delete_branch: bool,
     ) -> Result<(), CoreError> {
-        self.sessions()
+        let deleted = self
+            .sessions()
             .delete_session_with_branch(&session_id, delete_branch)
-            .await
-            .map_err(CoreError::from)
+            .await;
+        self.events_published().await;
+        deleted.map_err(CoreError::from)
     }
 
     /// Leaves a session shared with the caller; it leaves the list.
@@ -472,10 +486,9 @@ impl ClientCore {
     ///
     /// [`CoreError::Session`]: the write errors.
     pub async fn leave_session(&self, session_id: String) -> Result<(), CoreError> {
-        self.sessions()
-            .leave_session(&session_id)
-            .await
-            .map_err(CoreError::from)
+        let left = self.sessions().leave_session(&session_id).await;
+        self.events_published().await;
+        left.map_err(CoreError::from)
     }
 
     /// The caller's projects in display order.

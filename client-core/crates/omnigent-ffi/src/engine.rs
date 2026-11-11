@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use futures::StreamExt;
 use futures::channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use futures::channel::oneshot;
 use futures::future::AbortHandle;
 use omnigent_core as core;
 use omnigent_core::auth::SecretString;
@@ -199,6 +200,8 @@ pub(crate) enum Msg {
     TerminalTick { session_id: String },
     /// Read state: a caller's mark, or a finished write.
     Read(crate::read_driver::ReadMsg),
+    /// Answer once every message queued before this one is handled (`events_published`).
+    EventsPublished(oneshot::Sender<()>),
     /// Stop everything and end the engine.
     Shutdown,
 }
@@ -387,6 +390,8 @@ impl Engine {
             } => self.terminal_removed(&session_id, &terminal_id),
             Msg::TerminalTick { session_id } => self.publish_terminals(&session_id),
             Msg::Read(message) => self.read_message(message),
+            // A dropped receiver is a caller that stopped waiting.
+            Msg::EventsPublished(reply) => reply.send(()).unwrap_or(()),
             Msg::Shutdown => {
                 self.stop_realtime();
                 let ids: Vec<String> = self.drivers.keys().cloned().collect();
