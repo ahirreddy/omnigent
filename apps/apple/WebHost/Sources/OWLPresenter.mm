@@ -313,18 +313,18 @@ void Presenter::SetGeometry(double width, double height, double scale) {
   impl_->UpdateRootGeometry();
 }
 
-void Presenter::PresentAccelerated(OWLLayer layer, IOSurfaceRef source, int x, int y, int width,
+bool Presenter::PresentAccelerated(OWLLayer layer, IOSurfaceRef source, int x, int y, int width,
                                    int height, uint64_t paint_nanos) {
   if (IOSurfaceGetPixelFormat(source) != kBGRA) {
     Host::Get().ReportError(impl_->view_id, OWLHostErrorRenderFailed,
                             "CEF delivered a frame that is not BGRA.");
-    return;
+    return true;
   }
   Chain& chain = impl_->ChainFor(layer);
   Slot* slot = AcquireSlot(chain, width, height);
   if (slot == nullptr) {
     chain.dropped += 1;
-    return;
+    return false;
   }
   if (slot->texture == nil) {
     slot->texture = TextureForSurface(slot->surface);
@@ -333,7 +333,7 @@ void Presenter::PresentAccelerated(OWLLayer layer, IOSurfaceRef source, int x, i
   if (source_texture == nil || slot->texture == nil) {
     Host::Get().ReportError(impl_->view_id, OWLHostErrorRenderFailed,
                             "Could not wrap a frame IOSurface in a Metal texture.");
-    return;
+    return true;
   }
   const uint64_t blit_start = NowNanos();
   id<MTLCommandBuffer> buffer = [SharedQueue() commandBuffer];
@@ -356,23 +356,24 @@ void Presenter::PresentAccelerated(OWLLayer layer, IOSurfaceRef source, int x, i
     Host::Get().ReportError(impl_->view_id, OWLHostErrorRenderFailed,
                             std::string("Frame copy failed: ") +
                                 (detail != nullptr ? detail : "unknown Metal error"));
-    return;
+    return true;
   }
   impl_->Deliver(layer, *slot, width, height, paint_nanos, NowNanos() - blit_start);
+  return true;
 }
 
-void Presenter::PresentPixels(OWLLayer layer, const void* bgra, int width, int height,
+bool Presenter::PresentPixels(OWLLayer layer, const void* bgra, int width, int height,
                               uint64_t paint_nanos) {
   Chain& chain = impl_->ChainFor(layer);
   Slot* slot = AcquireSlot(chain, width, height);
   if (slot == nullptr) {
     chain.dropped += 1;
-    return;
+    return false;
   }
   const uint64_t copy_start = NowNanos();
   if (IOSurfaceLock(slot->surface, 0, nullptr) != kIOReturnSuccess) {
     Host::Get().ReportError(impl_->view_id, OWLHostErrorRenderFailed, "IOSurfaceLock failed.");
-    return;
+    return true;
   }
   auto* destination = static_cast<uint8_t*>(IOSurfaceGetBaseAddress(slot->surface));
   const size_t destination_stride = IOSurfaceGetBytesPerRow(slot->surface);
@@ -384,6 +385,7 @@ void Presenter::PresentPixels(OWLLayer layer, const void* bgra, int width, int h
   }
   IOSurfaceUnlock(slot->surface, 0, nullptr);
   impl_->Deliver(layer, *slot, width, height, paint_nanos, NowNanos() - copy_start);
+  return true;
 }
 
 void Presenter::SetPopupVisible(bool visible) {

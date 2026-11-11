@@ -74,6 +74,8 @@ nonisolated public struct FrameStatistics: Sendable, Hashable {
   public var framesPresented = 0
   /// Frames the host dropped because every buffer was busy.
   public var framesDropped: UInt64 = 0
+  /// When dropped frames were last logged, in uptime nanoseconds: at most one line a second.
+  var droppedFramesLoggedAt: UInt64 = 0
   /// Host paint callback to presentation, per frame, in microseconds. In IOSurface mode this
   /// ends when the client sets the layer contents; in remote-layer mode when the host commits.
   public var latencyMicroseconds: [Double] = []

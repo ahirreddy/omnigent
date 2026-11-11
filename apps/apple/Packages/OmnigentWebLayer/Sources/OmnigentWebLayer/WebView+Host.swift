@@ -222,17 +222,29 @@ extension WebView {
     }
     let now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
     let paint = fields.u64(.hostTimestampNanos) ?? now
-    statistics.framesDropped = fields.u64(.droppedFrames) ?? statistics.framesDropped
+    noteDroppedFrames(fields.u64(.droppedFrames))
     statistics.record(
       latency: Double(now &- paint) / 1000,
       copy: Double(fields.u64(.hostBlitNanos) ?? 0) / 1000)
     noteFirstFrame()
   }
 
+  /// Takes the host's count of frames it dropped because every buffer was busy, and says so in
+  /// the log when it grew: a page that looks frozen may be one whose last frame was dropped.
+  private func noteDroppedFrames(_ total: UInt64?) {
+    guard let total, total != statistics.framesDropped else { return }
+    let added = total &- statistics.framesDropped
+    statistics.framesDropped = total
+    let now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+    guard total > 0, now &- statistics.droppedFramesLoggedAt > 1_000_000_000 else { return }
+    statistics.droppedFramesLoggedAt = now
+    Logger.view.notice("View \(self.id): the host dropped \(added) frame(s), \(total) in all.")
+  }
+
   private func recordPresented(_ fields: WireDecoder) {
     let paint = fields.u64(.hostTimestampNanos) ?? 0
     let presented = fields.u64(.presentedNanos) ?? paint
-    statistics.framesDropped = fields.u64(.droppedFrames) ?? statistics.framesDropped
+    noteDroppedFrames(fields.u64(.droppedFrames))
     statistics.record(
       latency: Double(presented &- paint) / 1000,
       copy: Double(fields.u64(.hostBlitNanos) ?? 0) / 1000)

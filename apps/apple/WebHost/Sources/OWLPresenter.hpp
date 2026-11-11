@@ -25,10 +25,12 @@ class Presenter {
   bool Start(std::string* error);
   void SetGeometry(double width, double height, double scale);
   /// Copies `source` (a CEF shared texture, valid only during the call) and presents it.
-  void PresentAccelerated(OWLLayer layer, IOSurfaceRef source, int x, int y, int width,
+  /// Returns false when every buffer was busy and the frame was dropped: the page must be
+  /// painted again, or it stays on the frame before this one.
+  bool PresentAccelerated(OWLLayer layer, IOSurfaceRef source, int x, int y, int width,
                           int height, uint64_t paint_nanos);
-  /// CPU fallback for frames CEF delivers through OnPaint.
-  void PresentPixels(OWLLayer layer, const void* bgra, int width, int height,
+  /// CPU fallback for frames CEF delivers through OnPaint. Returns false as above.
+  bool PresentPixels(OWLLayer layer, const void* bgra, int width, int height,
                      uint64_t paint_nanos);
   void SetPopupVisible(bool visible);
   void SetPopupRect(double x, double y, double width, double height);

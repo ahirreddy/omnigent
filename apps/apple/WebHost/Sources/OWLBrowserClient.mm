@@ -3,13 +3,17 @@
 #import <AppKit/AppKit.h>
 
 #include "OWLHost.hpp"
+#include "include/base/cef_callback.h"
 #include "include/cef_parser.h"
+#include "include/cef_task.h"
+#include "include/wrapper/cef_closure_task.h"
 
 namespace owl {
 
 namespace {
 
 constexpr auto kSentKeyLifetime = std::chrono::seconds(5);
+constexpr int64_t kRepaintAfterDropMilliseconds = 16;
 
 /// The host's clock in `NSEvent.timestamp` terms: seconds of system uptime.
 double UptimeSeconds() {
@@ -399,8 +403,28 @@ void BrowserClient::OnPopupSize(CefRefPtr<CefBrowser>, const CefRect& rect) {
 
 void BrowserClient::OnPaint(CefRefPtr<CefBrowser>, PaintElementType type, const RectList&,
                             const void* buffer, int width, int height) {
-  presenter_.PresentPixels(type == PET_POPUP ? OWLLayerPopup : OWLLayerPage, buffer, width,
-                           height, NowNanos());
+  if (!presenter_.PresentPixels(type == PET_POPUP ? OWLLayerPopup : OWLLayerPage, buffer, width,
+                                height, NowNanos())) {
+    RepaintAfterDrop(type);
+  }
+}
+
+void BrowserClient::RepaintAfterDrop(PaintElementType type) {
+  if (repaint_after_drop_pending_) {
+    return;
+  }
+  repaint_after_drop_pending_ = true;
+  CefRefPtr<BrowserClient> self(this);
+  // Long enough for the window server to let go of a buffer, short enough not to be seen.
+  CefPostDelayedTask(TID_UI, base::BindOnce(
+                                 [](CefRefPtr<BrowserClient> client, PaintElementType element) {
+                                   client->repaint_after_drop_pending_ = false;
+                                   if (client->browser_ != nullptr) {
+                                     client->browser_->GetHost()->Invalidate(element);
+                                   }
+                                 },
+                                 self, type),
+                     kRepaintAfterDropMilliseconds);
 }
 
 void BrowserClient::OnAcceleratedPaint(CefRefPtr<CefBrowser>, PaintElementType type,
@@ -424,8 +448,10 @@ void BrowserClient::OnAcceleratedPaint(CefRefPtr<CefBrowser>, PaintElementType t
     width = visible.width;
     height = visible.height;
   }
-  presenter_.PresentAccelerated(type == PET_POPUP ? OWLLayerPopup : OWLLayerPage, surface, x, y,
-                                width, height, paint_nanos);
+  if (!presenter_.PresentAccelerated(type == PET_POPUP ? OWLLayerPopup : OWLLayerPage, surface,
+                                     x, y, width, height, paint_nanos)) {
+    RepaintAfterDrop(type);
+  }
 }
 
 // MARK: CefDisplayHandler

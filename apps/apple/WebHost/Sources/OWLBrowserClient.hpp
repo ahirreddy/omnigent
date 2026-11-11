@@ -286,6 +286,9 @@ class BrowserClient : public CefClient,
   void FocusForAgent(OWLInputOrigin origin);
   void InputMouse(const Decoder& fields);
   void InputKey(const Decoder& fields);
+  /// A frame of `type` found every buffer busy. Asks for it again shortly, once: otherwise a
+  /// page that then stops changing would stay on the frame before it and look frozen.
+  void RepaintAfterDrop(PaintElementType type);
   void ReplyWithScreenshot(uint64_t request, bool success, const std::string& json);
   void RunDevTools(uint64_t request, OWLMessageKind reply, const std::string& method,
                    CefRefPtr<CefDictionaryValue> params);
@@ -307,6 +310,8 @@ class BrowserClient : public CefClient,
   /// Seconds of system uptime that the next replayed input is stamped no earlier than: the
   /// previous input's time, or when the page last committed a navigation.
   double earliest_input_time_ = 0;
+  /// A frame was dropped and the page has not been asked to paint again yet.
+  bool repaint_after_drop_pending_ = false;
   int next_message_id_ = 0;
   std::string last_find_text_;
 
