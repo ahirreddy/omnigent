@@ -186,14 +186,9 @@
 
     /// The views a conversation scrolls and types in, in the tab drawn at no opacity.
     private func hiddenScrollAndTextViews(_ window: OffscreenWindow<AnyView>) -> [NSView] {
-      window.allViews.filter { view in
-        guard view is NSScrollView || view is NSTextView else { return false }
-        var current: NSView? = view
-        while let next = current {
-          if next.alphaValue == 0 || next.layer?.opacity == 0 { return true }
-          current = unsafe next.superview
-        }
-        return false
+      let drawn = Set(window.drawnViews.map(ObjectIdentifier.init))
+      return window.allViews.filter { view in
+        (view is NSScrollView || view is NSTextView) && !drawn.contains(ObjectIdentifier(view))
       }
     }
 

@@ -23,6 +23,16 @@
     }
   }
 
+  /// Two scroll views, the second drawn at no opacity as a tab kept behind another is.
+  private struct ShownAndHidden: View {
+    var body: some View {
+      ZStack {
+        ScrollView { Text("shown") }
+        ScrollView { Text("hidden") }.opacity(0)
+      }
+    }
+  }
+
   @MainActor
   private final class Taps {
     var log: [String] = []
@@ -192,6 +202,14 @@
       #expect(screen.controlFrames.count == 2, "the swap button and the row's")
       try screen.clickControl(at: 0)
       #expect(screen.controlFrames.count == 2, "\(screen.controlFrames)")
+    }
+
+    @Test("a view drawn at no opacity is among all the views and not among the drawn ones")
+    func drawnViews() {
+      let screen = OffscreenWindow(ShownAndHidden(), width: 200, height: 200)
+      defer { screen.close() }
+      #expect(screen.allViews.count { $0 is NSScrollView } == 2)
+      #expect(screen.drawnViews.count { $0 is NSScrollView } == 1)
     }
 
     @Test("a context menu can be read and chosen from without opening it")
