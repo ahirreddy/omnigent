@@ -273,6 +273,7 @@ struct HiddenTabContent: ViewModifier {
 
   func body(content: Content) -> some View {
     content
+      .modifier(HeldLayoutWidth(isHidden: isHidden))
       .transformEnvironment(\.isActiveTabPane) { if isHidden { $0 = false } }
       .environment(\.isTabContentHidden, isHidden)
       // One layer per tab: hiding it changes that layer. Without it, each AppKit view in the
@@ -282,5 +283,25 @@ struct HiddenTabContent: ViewModifier {
       .allowsHitTesting(!isHidden)
       .accessibilityHidden(isHidden)
       .zIndex(isHidden ? 0 : 1)
+  }
+}
+
+/// The width class a tab last had on screen, kept outside observation: only a body writes it.
+private final class HeldLayoutWidthValue {
+  var onScreen: LayoutWidth?
+}
+
+/// Keeps a hidden tab at the width class it last had on screen: a window resized across the
+/// compact width behind another tab renders nothing in it. It takes the column's class in the
+/// pass that shows it; a tab that never showed follows the column.
+private struct HeldLayoutWidth: ViewModifier {
+  let isHidden: Bool
+  @Environment(\.layoutWidth) private var layoutWidth
+  @State private var held = HeldLayoutWidthValue()
+
+  func body(content: Content) -> some View {
+    let width = isHidden ? held.onScreen ?? layoutWidth : layoutWidth
+    if !isHidden { held.onScreen = width }
+    return content.environment(\.layoutWidth, width)
   }
 }

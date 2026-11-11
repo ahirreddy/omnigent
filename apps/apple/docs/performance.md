@@ -1354,6 +1354,151 @@ Everything above is a count in a hosted, offscreen window in Debug. To confirm i
   against a first open, and the side chat built only when its tab is selected;
 - `footprint` with six long sessions open, against three.
 
+## Eleventh pass: what a resize step and a tab switch cost in the toolbar and the rows (November 2026)
+
+The Release profile of the real window (the tenth pass's VM and data set) showed a window
+resize with the main thread 99-100% busy in unbroken stretches of 626-1058 ms, 4-26 fps,
+with `-[NSToolbarView layout]` in 13-20% of the samples and, while the shown chat streams,
+text measurement in 30%; and a chat to browser tab switch of 190-350 ms with the toolbar
+in 30-34%. This pass reads those sample trees again and counts the same steps in the
+hosted window (Debug, offscreen, 1000 x 700; 10.7 pt steps, the drive's 320 pt in 30):
+renders by scope, the app's layouts by name, and, with test-only hooks on AppKit that are
+not checked in, toolbar layout passes, toolbar items added and removed, item viewers
+moved, and menu forms set. No real-window time was taken; see "Not checked in a real
+window" below.
+
+One thing was found to take out. The rest is what the toolbar, the lazy stack and text
+layout cost for work the step needs, or a product choice; it is listed with its evidence
+so the next pass does not look for it again.
+
+| One step | Before | After |
+| --- | --- | --- |
+| A resize step across the compact width (the detail column passes 560 pt), one chat kept behind the shown one | composer 2, screen 2, transcript 2, rows 2, strip 1 | composer 1, screen 1, transcript 1, rows 1, strip 1; the kept chat renders when it shows |
+| Any other resize step | strip 1; the toolbar laid out twice, 5-12 menu forms; one measure and place per hidden tab | the same |
+| A resize step that folds a trailing item, or shows it again | 19 or 30 menu forms, one or two item viewers put into the toolbar | the same |
+| Browser tab to chat | 2 toolbar items added, 88 menu forms, 3 toolbar layouts | the same |
+| Chat to browser tab | 2 toolbar items removed, 4 menu forms, 2 toolbar layouts | the same |
+| Chat to terminal tab, and back | 2 removed and 1 added, 43 menu forms; 1 removed and 2 added, 89 | the same |
+
+### A chat kept behind another waits for the width class
+
+The components lay out for a width class (`LayoutWidth`: compact under 560 pt of detail
+column, regular again from 584), which `adaptiveLayoutWidth()` puts in the environment.
+A resize across it reached every chat the window keeps built, shown or not: each rendered
+its screen, composer, transcript and rows in that step, up to eight conversations on a
+Mac. A hidden tab now keeps the class it last had on screen (`HeldLayoutWidth`, in
+`HiddenTabContent`) and takes the column's in the pass that shows it, as it already does
+with its size. A tab that never showed follows the column, as its size does. A
+transcript under its own terminal holds the class too and takes it when Chat shows again.
+
+The hosted step across the width costs 44.6 ms with one chat kept, against 16-19 ms for
+the steps beside it (Debug, CPU); the kept chat's share was not timed alone.
+
+### The toolbar in a resize step
+
+Where the profile's 13-20% is, from the sample trees:
+
+- **Steady steps: about 4%.** In the resize taken while three other chats stream, toolbar
+  layout is 61 samples, 4.3%. 31 of them are the strip's own `NSHostingView.layout`,
+  the tabs laid out at their new width, which the step needs; 10 are
+  `_computeToolbarItemKeyboardLoop`, 9 tiling, 8 constraint updates. Menu forms are 4.
+- **Events: the rest.** The quiet resize has 201, of which 110 are in
+  `_layoutDirtyItemViewersAndTileToolbarAndRecalculateKeyViewLoop:` under `addSubview:`
+  and `configureForLayoutInDisplayMode:`, with `hostingViewDidRequestUpdate` 130 and
+  menu forms 71, and one `-[NSToolbar _removeItemAtIndex:...]` under
+  `ToolbarBridge.preferencesDidChange` and `AppKitToolbarStrategy.updateToolbar`. Those
+  are item viewers put into the toolbar and an item removed: steps where the set of items
+  changes, not the cost of a step. Two such steps exist in the app. Across the compact
+  width a chat with a terminal removes its Chat / Terminal switch from the toolbar and
+  its group drops the viewers, the project tag and Share
+  (`ConversationToolbar.body`, the `isRegular` conditions). At the strip's 220 pt minimum
+  the toolbar folds a trailing item into its overflow menu, and shows it again a step
+  wider. Which of the two the drive crossed is not established: the window's width in the
+  VM was not recorded.
+
+A step lays the toolbar out twice where a plain AppKit toolbar with the same items lays
+out once. Both passes run inside one `-[NSWindow _setFrameCommon:display:fromServer:]`,
+in two rounds of the same layout loop. Sizing the strip's SwiftUI content independently
+of its width (so only the anchor's constraint sizes the item) left it at two, with the
+same menu forms, as the ninth pass found for a strip that does not render per step. The
+second pass is 1-2 ms of a 16-19 ms hosted step. Not changed.
+
+### The rows in a resize step
+
+`CLICodeHighlightCache` is not keyed by width (code, language and palette) and nothing in
+a resize evicts it: its 27 samples in the streaming resize are all in the miss closure,
+for rows built the first time. Markdown bodies are small (27 samples for
+`CLIMarkdownBlockView.body`, none in the quiet resize). The 30% is text measured at the
+new width: 274 samples run `LazyStack.place`, `ForEachList.applyNodes`,
+`LazyHVStack.lengthAndSpacing`, the row's stacks and `StyledTextLayoutEngine.sizeThatFits`,
+one measure per text.
+
+The profile's chats are in the terminal style, whose rows run edge to edge, so every step
+changes every row's width and the transcript takes the width the way earlier passes built
+it (`TranscriptScrollState.takeWidth`): to the top, the rows there at the new width, and
+back to where the reader was. A step therefore measures a viewport of rows at the top and
+one at the end. Holding the rows' width through a live resize would leave edge-to-edge
+rows short of the window's edge or clipped by it until the resize ends, and move them
+then; it was not done. A chat in the reading column already keeps its rows' width in a
+window wider than the column: the width the rows are offered is measured inside the
+column (`transcriptStackColumn()` outside `HeldRowWidth`), so it does not change. That is
+read from the code; no hosted check was added for it.
+
+In a 1200-row hosted chat a step also walks every row: `ScrollViewProxy.scrollTo` of the
+marker after the rows (`LazyScrollable.makeTarget`, `ForEachState.firstOffset(forID:)`,
+4.9% of samples), the lazy stack's `applyNodes` (8%), `TurnRail` (4.8%) and
+`updateActiveTurn()` (3.7%); a step costs 74-93 ms there against 20 ms in a short chat
+(Debug). In the real samples the same frames are 0.2-1.6%, 1.3-1.4%, 0.4-1.2% and
+0.4-0.7%, so it is a cost of very long transcripts, not of the profile. Not changed: the
+first is how the transcript returns to its end.
+
+### The toolbar in a tab switch
+
+A browser, terminal or New Tab page has no conversation toolbar items. The tab host
+places the shown conversation's items only when there are some
+(`hostsConversationToolbar()`: `if let items { ConversationToolbar(items: items) }`), and
+a tab that is not a chat sends none, so the switch away removes the two items and the
+switch back creates them: two `NSToolbarItem`s added, their viewers configured and put
+into the toolbar, 88 menu forms, three toolbar layouts, 34-38 ms of an 86-113 ms hosted
+switch (Debug). The trailing item count goes with them, so the strip is measured again
+at the 236 pt reserve and moves. In the real switch `-[NSToolbarView layout]` is 229
+samples, `hostingViewDidRequestUpdate` 146, `updateMenuFormRepresentation` 79 and
+`ToolbarBridge.preferencesDidChange` 55 of about 1030 busy.
+
+Keeping the items mounted and invisible on such a tab takes it to 4 menu forms, one
+toolbar layout and no item added or removed, but the group's glass capsule stays drawn
+(no public API hides it on a live item; `hidden` on the item costs as much as adding
+it), and on a terminal tab the kept items push Show Chat into the overflow menu. Showing
+the session's items disabled on its browser and terminal tabs would make the switch an
+update in place; that is a design change and was not made.
+
+### What holds it
+
+`WindowInteraction.layout`'s "a window resize step across the compact width" (in the
+table of `WindowRenderBudgetTests`) allows one render each of the screen, composer,
+transcript, rows and strip with a chat kept behind the shown one, and
+`KeptAliveTabsTests` hold the class a hidden tab reads, that the crossing renders the
+shown tab alone, that the hidden one takes the class when it shows, and that a tab that
+never showed follows the column. Both fail without `HeldLayoutWidth`. The resize steps
+that keep trailing items in place are `AppShellResizeTests`, unchanged.
+
+### Not checked in a real window
+
+Everything above is a count in a hosted, offscreen window in Debug, or a reading of the
+existing Release samples. To confirm in the VM (Release, the profile's data set):
+
+- the window's width and the shown session through the resize drive, to say which steps
+  change the toolbar's items; then the same drive in a window that stays 600 pt or more of
+  detail column and above the strip's minimum throughout: toolbar share against 13-20%,
+  longest unbroken stretch against 626-1058 ms;
+- a resize across 560 pt of detail column with one, three and six sessions open: the
+  worst frame against 176-393 ms;
+- a chat shown after the window crossed the width behind it: laid out for the new width
+  in its first frame, and the switch's time against 84 ms;
+- a resize of a terminal-style chat and of a reading-column chat in a window wider than
+  720 pt of column: time per step against 26-29 ms;
+- chat to browser and back, chat to terminal and back: unchanged at 190-350 ms.
+
 ## Where the time still goes
 
 - **Switching tabs** renders the detail and the tab that shows once, 50-80 ms in Release to a
