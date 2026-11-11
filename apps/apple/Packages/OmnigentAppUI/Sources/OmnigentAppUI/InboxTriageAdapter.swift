@@ -136,8 +136,7 @@ struct InboxTriageAdapter: View {
   ) {
     guard let conversation = connection.conversations[card.carryingSessionId],
       let original = conversation.decisions.pending.first(where: { $0.id == card.id }),
-      conversation.header?.readOnly != true,
-      !conversation.decisions.resolving.contains(card.id)
+      conversation.header?.readOnly != true
     else { return }
     Task {
       await conversation.decisions.resolve(

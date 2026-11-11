@@ -156,13 +156,18 @@ struct ViewStateModelTests {
       id: "a", carryingSessionId: "s", title: "T", detail: "", kind: .approval, answered: true)
     let recorded = DecisionCard(
       id: "r", carryingSessionId: "s", title: "T", detail: "", kind: .approval)
+    let confirming = DecisionCard(
+      id: "c", carryingSessionId: "s", title: "T", detail: "", kind: .approval)
     let state = ConversationViewState(
-      header: SessionHeader(id: "s", title: "S"), decisions: [pending, answered, recorded],
-      decisionPhases: ["r": .resolving],
+      header: SessionHeader(id: "s", title: "S"),
+      decisions: [pending, answered, recorded, confirming],
+      decisionPhases: ["r": .resolving, "c": .answered(summary: "Approved")],
       sections: [EventSection(id: "one", title: "One", summary: "")])
     #expect(state.phase(of: pending) == .pending)
     #expect(state.phase(of: answered) == .answered(summary: "Response sent"))
     #expect(state.phase(of: recorded) == .resolving)
+    #expect(state.phase(of: confirming) == .answered(summary: "Approved"))
+    // A card showing its answer while the server confirms no longer needs the user.
     #expect(state.pendingDecisions.map(\.id) == ["p", "r"])
     #expect(state.section("one")?.id == "one")
     #expect(state.section("two") == nil)

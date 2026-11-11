@@ -136,15 +136,15 @@ enum ConversationAdapter {
     return current?.message ?? store.lastFailure
   }
 
-  /// Answers in flight show as resolving and failed answers keep their message, so a pending
-  /// card is never hidden behind a stale state.
+  /// An answer given here shows on its card from the tap until the server retires the card, and
+  /// a failed answer keeps its message, so a card never reads as pending while its answer is out.
   static func decisionPhases(_ decisions: DecisionStore) -> [String: DecisionPhase] {
     var phases: [String: DecisionPhase] = [:]
     for (id, error) in decisions.errors {
       phases[id] = .failed(message: error.message)
     }
-    for id in decisions.resolving {
-      phases[id] = .resolving
+    for (id, answer) in decisions.answers {
+      phases[id] = .answered(summary: OmnigentUIComponents.DecisionResponse(answer).summary)
     }
     return phases
   }
