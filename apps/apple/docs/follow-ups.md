@@ -273,6 +273,13 @@ Details: [remote-browser-design.md](remote-browser-design.md).
 - [ ] **Archive Undo and worktrees:** after the server's grace the worktree is gone and Undo
   only warns; recreating it needs a runner launch with `existing_branch` for the unarchived
   session.
+- [ ] **Sidebar edits, the hold after a saved write:** the core keeps showing a saved edit for
+  12 s (`INTENT_HOLD_MS`, three of the list socket's 4 s rescans) so a list frame read before
+  the write cannot put the old value back. Whether such a frame arrives after the answer in
+  practice has not been measured; measure it against a real server and shorten or drop the hold.
+- [ ] **Sidebar edits, in a real window:** edits that show before the server answers are covered
+  by store and offscreen tests only. Not yet run in a macOS VM: archive then Undo while the
+  server is slow, and a refused edit's alert with Retry.
 - [ ] **Tests (Mac):** run the two remaining Mac UI tests (launch smoke, titlebar drags) in a
   macOS VM so they never take the developer's mouse and keyboard: Tart
   (`ghcr.io/cirruslabs/macos-tahoe-xcode:27.2`, 70.8 GB compressed) with the tests built on the
