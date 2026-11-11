@@ -134,7 +134,8 @@ extension ComposerStore {
   }
 
   /// Chooses `model` (`nil`: the harness default). The effort is kept when the new model
-  /// supports it. Never retried; an uncertain outcome is in ``configurationError``.
+  /// supports it. The choice shows at once and goes back if it fails. Never retried; an
+  /// uncertain outcome is in ``configurationError``.
   /// - Parameter model: The model's value.
   public func selectModel(_ model: String?) async {
     guard await stopRoutingForChoice() else { return }
@@ -179,17 +180,21 @@ extension ComposerStore {
     }
   }
 
-  /// Switches the live approval mode to `value`, also while a turn runs. When the harness lands
-  /// on another mode, that mode is read back and ``configurationError`` says so.
+  /// Switches the live approval mode to `value`, also while a turn runs. The mode shows at once;
+  /// when the switch fails or the harness lands on another mode, the session's mode is read back
+  /// and ``configurationError`` says so.
   /// - Parameter value: The mode's wire value.
   public func selectApprovalMode(_ value: String) async {
+    let settled = configuration?.approvalMode
     isApplyingConfiguration = true
     defer { isApplyingConfiguration = false }
+    show(approvalMode: value)
     do {
       adopt(try await core.setApprovalMode(sessionId: sessionID, value: value))
       configurationError = nil
     } catch {
       let failure = coreError(error)
+      show(approvalMode: settled)
       do {
         adopt(try await core.configurationSnapshot(sessionId: sessionID))
         configurationError = failure
@@ -228,16 +233,34 @@ extension ComposerStore {
     configurationError = nil
   }
 
+  /// Sends `edit`. Its model and effort show at once; a failure shows the last values the
+  /// server gave again and is kept in ``configurationError``.
   private func apply(_ edit: ConfigurationEdit) async {
+    let settled = configuration
     isApplyingConfiguration = true
     defer { isApplyingConfiguration = false }
+    show(model: edit.model, effort: edit.effort)
     do {
       let summary = try await core.applyConfiguration(sessionId: sessionID, edit: edit)
       adopt(summary)
       configurationError = nil
     } catch {
+      show(model: settled?.modelOverride, effort: settled?.effort)
       configurationError = coreError(error)
     }
+  }
+
+  /// Shows `model` and `effort` as the session's, leaving the rest of its configuration as read.
+  private func show(model: String?, effort: String?) {
+    var shown = configuration
+    shown?.modelOverride = model
+    shown?.effort = effort
+    if shown != configuration { configuration = shown }
+  }
+
+  /// Shows `mode` as the session's approval mode.
+  private func show(approvalMode mode: String?) {
+    if configuration?.approvalMode != mode { configuration?.approvalMode = mode }
   }
 
   /// The harness reported its approval mode on the stream. A session that never switched has no
@@ -246,16 +269,17 @@ extension ComposerStore {
   func harnessReported(mode: String?) {
     guard let mode, mode != reportedApprovalMode else { return }
     reportedApprovalMode = mode
-    configuration?.approvalMode = mode
+    show(approvalMode: mode)
   }
 
+  /// Takes the server's `summary` as the session's configuration. A choice already shown is
+  /// usually what comes back, so only what differs is assigned.
   private func adopt(_ summary: SessionSummary) {
     var read = summary.configuration
     if read?.approvalMode == nil { read?.approvalMode = reportedApprovalMode }
-    configuration = read
-    workspace = summary.workspace
-    configurationLabels = read.map {
-      OmnigentCoreFFI.configurationLabels(configuration: $0)
-    }
+    if configuration != read { configuration = read }
+    if workspace != summary.workspace { workspace = summary.workspace }
+    let labels = read.map { OmnigentCoreFFI.configurationLabels(configuration: $0) }
+    if configurationLabels != labels { configurationLabels = labels }
   }
 }

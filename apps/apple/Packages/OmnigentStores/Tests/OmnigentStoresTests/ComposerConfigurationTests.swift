@@ -6,7 +6,7 @@ import Testing
 @testable import OmnigentStores
 
 /// Answers the reads behind the harness list, with one built-in agent to switch to.
-private func offerHarnesses(_ server: RouteServer) {
+func offerHarnesses(_ server: RouteServer) {
   server.route(
     "/v1/hosts",
     .json(
