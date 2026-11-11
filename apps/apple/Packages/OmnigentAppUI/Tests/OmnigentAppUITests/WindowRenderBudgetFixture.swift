@@ -118,17 +118,18 @@ import Testing
       return row
     }
 
-    /// Gives the keyboard to the shown chat's composer: the hidden side chat has an editor too.
-    private func focusComposer() throws {
+    /// Gives the keyboard to `sessionID`'s composer: every chat kept built has an editor too.
+    func focusComposer(of sessionID: String = shown) throws {
       let editors = screen.allViews.compactMap { $0 as? NSTextView }.filter(\.isEditable)
-      let composers = try [Self.shown, Self.hidden].map { try conversation($0).composer }
+      let composers = session.connection.conversations.values.map(\.composer)
+      let wanted = try conversation(sessionID).composer
       for editor in editors {
         _ = screen.window.makeFirstResponder(editor)
         try screen.type("x")
         screen.settle(0.1)
-        if !composers[0].text.isEmpty { break }
+        if !wanted.text.isEmpty { break }
       }
-      try #require(!composers[0].text.isEmpty, "no editor reached the shown chat's composer")
+      try #require(!wanted.text.isEmpty, "no editor reached \(sessionID)'s composer")
       for composer in composers { composer.text = "" }
     }
 
@@ -168,8 +169,10 @@ import Testing
       try chooseSidebarRow(Self.titles[sessionID, default: sessionID])
     }
 
-    /// Shows the other sessions in turn until the first one shown is no longer kept open.
+    /// Shows the other sessions in turn until the first one shown is no longer kept open, in a
+    /// window that keeps three open: the fixture has too few sessions for a Mac's limit.
     func leaveUntilClosed() throws {
+      session.tabs.liveLimit = 3
       for sessionID in [Self.other, Self.another, Self.hidden] {
         selection.page = .session(sessionID)
         screen.settle(0.3)
