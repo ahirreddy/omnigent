@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 #define OWL_PROTOCOL_MAJOR 1
-#define OWL_PROTOCOL_MINOR 3
+#define OWL_PROTOCOL_MINOR 4
 
 /// The first minor version with projected browser UI (prompts, downloads, popups, IME, drag and
 /// drop). Each side enables those features only when the peer advertises at least this minor;
@@ -29,6 +29,10 @@
 /// FastPass and device-trust agents probe 127.0.0.1) and custom-scheme hand-off to native apps
 /// (`com-okta-authenticator:`). Older clients get them as OWLPermissionOther and FeatureBlocked.
 #define OWL_PROTOCOL_MINOR_SIGN_IN 3
+
+/// The first minor version where user input carries the time it happened (OWLFieldEventTime).
+/// Older hosts skip the field; a host stamps input that has none with its own clock.
+#define OWL_PROTOCOL_MINOR_EVENT_TIME 4
 
 /// Payload encoding: a sequence of fields, each an 8-byte header followed by `length` bytes.
 /// Integers and floats are little-endian. Strings are UTF-8 without a terminator.
@@ -180,6 +184,9 @@ typedef CF_ENUM(uint16_t, OWLField) {
   OWLFieldMuted = 125,
   OWLFieldAudible = 126,
   OWLFieldIgnoreCache = 127,
+  // 1.4: when a user's event happened, in seconds of system uptime (`NSEvent.timestamp`, the
+  // clock both processes share). A double. See DESIGN.md, "Input", "Event times".
+  OWLFieldEventTime = 128,
 };
 
 /// Structured 1.1 fields are UTF-8 JSON strings, because the TLV encoding has no lists:
@@ -244,9 +251,11 @@ typedef CF_ENUM(uint16_t, OWLMessageKind) {
   OWLMessageKindShowDevTools = 45,   // C->H
   OWLMessageKindDevToolsMethod = 46, // C->H Method JSON (request) -> DevToolsResult
   OWLMessageKindInputMouse = 50,     // C->H InputOrigin MouseKind X Y Button ClickCount
-                                     //      Modifiers DeltaX DeltaY
+                                     //      Modifiers DeltaX DeltaY EventTime? (1.4; user
+                                     //      input only)
   OWLMessageKindInputKey = 51,       // C->H InputOrigin KeyKind NativeKeyCode Modifiers
-                                     //      Character UnmodifiedCharacter
+                                     //      Character UnmodifiedCharacter EventTime? (1.4; user
+                                     //      input only)
   OWLMessageKindFrameAck = 53,       // C->H SurfaceIndex Sequence
 
   // View events (target: view ID).
@@ -363,6 +372,14 @@ typedef CF_ENUM(uint64_t, OWLInputOrigin) {
   OWLInputOriginAgent = 2,
 };
 
+/// The time a host stamps a replayed input with, in seconds of system uptime: the message's
+/// EventTime (0 when absent) if it is positive and no later than `now`, the host's clock, else
+/// `now`; and never before `earliest`, what the view's previous input got. Never 0 or backwards.
+static inline double owl_input_event_time(double event_time, double now, double earliest) {
+  const double resolved = (event_time > 0 && event_time <= now) ? event_time : now;
+  return resolved > earliest ? resolved : earliest;
+}
+
 /// Values of OWLFieldMouseKind.
 typedef CF_ENUM(uint64_t, OWLMouseKind) {
   OWLMouseKindMove = 1,
@@ -434,6 +451,8 @@ typedef CF_ENUM(uint64_t, OWLHostErrorCode) {
   // 1.1.
   OWLHostErrorUnknownPrompt = 9,
   OWLHostErrorPopupFailed = 10,
+  // 1.4: an input could not be given a time, so the host dropped it instead of replaying it.
+  OWLHostErrorInputFailed = 11,
 };
 
 // MARK: 1.1 value sets

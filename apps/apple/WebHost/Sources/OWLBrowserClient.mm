@@ -11,6 +11,11 @@ namespace {
 
 constexpr auto kSentKeyLifetime = std::chrono::seconds(5);
 
+/// The host's clock in `NSEvent.timestamp` terms: seconds of system uptime.
+double UptimeSeconds() {
+  return static_cast<double>(NowNanos()) / 1e9;
+}
+
 OWLCursor CursorFor(cef_cursor_type_t type) {
   switch (type) {
     case CT_CROSS:
@@ -257,6 +262,34 @@ void BrowserClient::FocusForAgent(OWLInputOrigin origin) {
   }
 }
 
+bool BrowserClient::IsInputCommand(uint16_t kind) {
+  return kind == OWLMessageKindInputMouse || kind == OWLMessageKindInputKey ||
+         (kind >= OWLMessageKindImeSetComposition && kind <= OWLMessageKindDragSourceEnded);
+}
+
+void BrowserClient::ReplayInput(uint16_t kind, const Decoder& fields) {
+  earliest_input_time_ = owl_input_event_time(fields.Double(OWLFieldEventTime).value_or(0),
+                                              UptimeSeconds(), earliest_input_time_);
+  const ScopedInputEvent current_event(earliest_input_time_);
+  if (!current_event.IsInstalled()) {
+    // Without it CEF would stamp the input with a stale time or none, which Blink rejects.
+    Host::Get().ReportError(view_id_, OWLHostErrorInputFailed,
+                            "Input " + std::to_string(kind) + " could not be given a time.");
+    return;
+  }
+  switch (kind) {
+    case OWLMessageKindInputMouse:
+      InputMouse(fields);
+      return;
+    case OWLMessageKindInputKey:
+      InputKey(fields);
+      return;
+    default:
+      HandleBrowserUICommand(kind, fields);
+      return;
+  }
+}
+
 void BrowserClient::InputMouse(const Decoder& fields) {
   auto origin = fields.U64(OWLFieldInputOrigin);
   auto kind = fields.U64(OWLFieldMouseKind);
@@ -400,6 +433,9 @@ void BrowserClient::OnAcceleratedPaint(CefRefPtr<CefBrowser>, PaintElementType t
 void BrowserClient::OnAddressChange(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
                                     const CefString& url) {
   if (frame->IsMain()) {
+    // Input that happened before this commit was aimed at the page before it. Blink requires
+    // the input that starts a soft navigation to be newer than the document it lands in.
+    earliest_input_time_ = std::max(earliest_input_time_, UptimeSeconds());
     Emit(OWLMessageKindURLChanged, Encoder().String(OWLFieldURL, url.ToString()));
   }
 }

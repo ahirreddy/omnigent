@@ -72,7 +72,7 @@ public final class WebContentRenderer {
   /// Forwards a mouse, drag or scroll event. `location` is in the view's top-left coordinates.
   public func forwardMouseEvent(_ event: NSEvent, location: CGPoint) {
     guard let input = InputTranslator.pointerInput(for: event, location: location) else { return }
-    webView?.sendIfLive(.inputMouse, input.encoded(origin: .user))
+    webView?.sendIfLive(.inputMouse, input.encoded(origin: .user, eventTime: event.timestamp))
   }
 
   /// Forwards keyDown, keyUp and flagsChanged.
@@ -81,7 +81,7 @@ public final class WebContentRenderer {
       lastKeyDown[event.keyCode] = event
     }
     for input in InputTranslator.keyInputs(for: event) {
-      webView?.sendIfLive(.inputKey, input.encoded(origin: .user))
+      webView?.sendIfLive(.inputKey, input.encoded(origin: .user, eventTime: event.timestamp))
     }
   }
 

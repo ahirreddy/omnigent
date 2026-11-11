@@ -2,8 +2,17 @@ internal import AppKit
 internal import OWLProtocol
 internal import OmnigentInput
 
+extension WireEncoder {
+  /// Adds when a user's event happened (`NSEvent.timestamp`). Agent input and events built
+  /// without a time carry none, and the host stamps them with its own clock.
+  func eventTime(_ time: TimeInterval?) -> Self {
+    guard let time, time.isFinite, time > 0 else { return self }
+    return double(.eventTime, time)
+  }
+}
+
 extension PointerInput {
-  func encoded(origin: OWLInputOrigin) -> WireEncoder {
+  func encoded(origin: OWLInputOrigin, eventTime: TimeInterval? = nil) -> WireEncoder {
     WireEncoder()
       .u64(.inputOrigin, origin.rawValue)
       .u64(.mouseKind, kind.rawValue)
@@ -14,11 +23,12 @@ extension PointerInput {
       .u64(.modifiers, modifiers.rawValue)
       .double(.deltaX, deltaX)
       .double(.deltaY, deltaY)
+      .eventTime(eventTime)
   }
 }
 
 extension NativeKeyInput {
-  func encoded(origin: OWLInputOrigin) -> WireEncoder {
+  func encoded(origin: OWLInputOrigin, eventTime: TimeInterval? = nil) -> WireEncoder {
     WireEncoder()
       .u64(.inputOrigin, origin.rawValue)
       .u64(.keyKind, kind.rawValue)
@@ -26,6 +36,7 @@ extension NativeKeyInput {
       .u64(.modifiers, modifiers.rawValue)
       .u64(.character, UInt64(character))
       .u64(.unmodifiedCharacter, UInt64(unmodifiedCharacter))
+      .eventTime(eventTime)
   }
 }
 

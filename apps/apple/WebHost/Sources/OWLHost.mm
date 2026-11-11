@@ -21,10 +21,31 @@
 
 @interface OWLHostApplication : NSApplication <CefAppProtocol> {
   BOOL _handlingSendEvent;
+  NSMutableArray<NSEvent*>* _replayedInputEvents;
 }
+/// Makes `event` the current event until the matching `endReplayingInput`.
+- (void)beginReplayingInputWithEvent:(NSEvent*)event;
+- (void)endReplayingInput;
 @end
 
 @implementation OWLHostApplication
+
+- (NSEvent*)currentEvent {
+  // An input replayed from the client is current while CEF handles it; replays can nest.
+  NSEvent* replayed = _replayedInputEvents.lastObject;
+  return replayed != nil ? replayed : [super currentEvent];
+}
+
+- (void)beginReplayingInputWithEvent:(NSEvent*)event {
+  if (_replayedInputEvents == nil) {
+    _replayedInputEvents = [NSMutableArray array];
+  }
+  [_replayedInputEvents addObject:event];
+}
+
+- (void)endReplayingInput {
+  [_replayedInputEvents removeLastObject];
+}
 
 - (BOOL)isHandlingSendEvent {
   return _handlingSendEvent;
@@ -137,7 +158,36 @@ bool RemoteLayerAvailable() {
              respondsToSelector:NSSelectorFromString(@"contextWithCGSConnection:options:")];
 }
 
+/// The application object as the host's own class, which it is once Run has created it.
+OWLHostApplication* HostApplication() {
+  return [NSApp isKindOfClass:[OWLHostApplication class]] ? (OWLHostApplication*)NSApp : nil;
+}
+
 }  // namespace
+
+ScopedInputEvent::ScopedInputEvent(double event_time) {
+  OWLHostApplication* application = HostApplication();
+  NSEvent* event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
+                                      location:NSZeroPoint
+                                 modifierFlags:0
+                                     timestamp:event_time
+                                  windowNumber:0
+                                       context:nil
+                                       subtype:0
+                                         data1:0
+                                         data2:0];
+  if (application == nil || event == nil) {
+    return;
+  }
+  [application beginReplayingInputWithEvent:event];
+  installed_ = true;
+}
+
+ScopedInputEvent::~ScopedInputEvent() {
+  if (installed_) {
+    [HostApplication() endReplayingInput];
+  }
+}
 
 Host& Host::Get() {
   static Host* host = new Host();
@@ -610,6 +660,10 @@ void Host::HandleViewMessage(owl_message* message, const Decoder& fields) {
   }
   // Hold a reference: Close() and other calls can erase the map entry.
   CefRefPtr<BrowserClient> view = found->second;
+  if (BrowserClient::IsInputCommand(message->kind)) {
+    view->ReplayInput(message->kind, fields);
+    return;
+  }
   if (BrowserClient::IsBrowserUICommand(message->kind)) {
     view->HandleBrowserUICommand(message->kind, fields);
     return;
@@ -670,12 +724,6 @@ void Host::HandleViewMessage(owl_message* message, const Decoder& fields) {
     case OWLMessageKindDevToolsMethod:
       view->DevToolsMethod(message->request, fields.String(OWLFieldMethod).value_or(""),
                           fields.String(OWLFieldJSON).value_or(""));
-      break;
-    case OWLMessageKindInputMouse:
-      view->InputMouse(fields);
-      break;
-    case OWLMessageKindInputKey:
-      view->InputKey(fields);
       break;
     case OWLMessageKindFrameAck:
       view->AcknowledgeFrame(static_cast<uint32_t>(fields.U64(OWLFieldSurfaceIndex).value_or(0)));

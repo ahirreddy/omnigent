@@ -56,8 +56,11 @@ class BrowserClient : public CefClient,
   void Find(const std::string& text, bool forward, bool match_case, bool find_next);
   void StopFind();
   void ShowDevTools();
-  void InputMouse(const Decoder& fields);
-  void InputKey(const Decoder& fields);
+  /// Whether `kind` replays input into the page: mouse, key, IME, or drag and drop.
+  static bool IsInputCommand(uint16_t kind);
+  /// Replays an input message with a current event that carries the input's time, which is
+  /// the time CEF records for it.
+  void ReplayInput(uint16_t kind, const Decoder& fields);
   void AcknowledgeFrame(uint32_t surface_id) { presenter_.AcknowledgeFrame(surface_id); }
 
   // 1.1 commands: replies to host requests, policies, IME and drag and drop
@@ -281,6 +284,8 @@ class BrowserClient : public CefClient,
   /// Runs a DevTools method whose result only matters when it fails (reported as a host error).
   void RunInternalDevTools(const std::string& method, CefRefPtr<CefDictionaryValue> params);
   void FocusForAgent(OWLInputOrigin origin);
+  void InputMouse(const Decoder& fields);
+  void InputKey(const Decoder& fields);
   void ReplyWithScreenshot(uint64_t request, bool success, const std::string& json);
   void RunDevTools(uint64_t request, OWLMessageKind reply, const std::string& method,
                    CefRefPtr<CefDictionaryValue> params);
@@ -299,6 +304,9 @@ class BrowserClient : public CefClient,
   CefRefPtr<CefRegistration> devtools_registration_;
   std::map<int, PendingDevTools> pending_devtools_;
   std::deque<SentKey> sent_keys_;
+  /// Seconds of system uptime that the next replayed input is stamped no earlier than: the
+  /// previous input's time, or when the page last committed a navigation.
+  double earliest_input_time_ = 0;
   int next_message_id_ = 0;
   std::string last_find_text_;
 

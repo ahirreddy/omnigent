@@ -13,8 +13,8 @@ struct ProofFailure: Error, CustomStringConvertible {
 /// sent to the window for user input, `WebContentRenderer` agent calls for agent input.
 final class Proofs {
   static let all = [
-    "boot", "render", "pixels", "input", "select", "js", "keys", "cookies", "agent", "crash",
-    "hang",
+    "boot", "render", "pixels", "input", "select", "js", "keys", "cookies", "agent",
+    "event-times", "crash", "hang",
   ]
 
   /// Scenario by name. "quit" only waits for the first page; the app then quits.
@@ -22,6 +22,7 @@ final class Proofs {
     "boot": { $0.boot }, "render": { $0.render }, "pixels": { $0.pixels },
     "input": { $0.input }, "select": { $0.select }, "js": { $0.javascript },
     "keys": { $0.unhandledKeys }, "cookies": { $0.cookies }, "agent": { $0.agentInput },
+    "event-times": { $0.eventTimes },
     "crash": { $0.crashRecovery }, "hang": { $0.hangRecovery }, "spike": { $0.renderingSpike },
     "quit": { $0.waitForPage },
     // Protocol 1.1 browser UI, through the shared OmnigentBrowser UI (`--engine` picks one).

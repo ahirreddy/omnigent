@@ -105,13 +105,16 @@ extension Proofs {
     return CGPoint(x: pointX, y: pointY)
   }
 
-  func click(at viewPoint: CGPoint) {
+  /// A user click through the window. `happened` is the events' time, by default now.
+  func click(
+    at viewPoint: CGPoint, happened: TimeInterval = ProcessInfo.processInfo.systemUptime
+  ) {
     guard let surface, let window else { return }
     let location = surface.convert(viewPoint, to: nil)
     for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
       if let event = NSEvent.mouseEvent(
         with: type, location: location, modifierFlags: [],
-        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+        timestamp: happened, windowNumber: window.windowNumber,
         context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0)
       {
         window.sendEvent(event)

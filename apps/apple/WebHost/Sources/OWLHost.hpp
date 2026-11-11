@@ -37,6 +37,23 @@ struct SessionConfig {
   uint64_t client_minor = 0;
 };
 
+/// While alive, `[NSApp currentEvent]` is a fresh event that happened at `event_time` (seconds
+/// of system uptime). CEF stamps the input it is handed with the current event's time, and the
+/// host's own current event is nil or left over from minutes ago.
+class ScopedInputEvent {
+ public:
+  explicit ScopedInputEvent(double event_time);
+  ~ScopedInputEvent();
+  ScopedInputEvent(const ScopedInputEvent&) = delete;
+  ScopedInputEvent& operator=(const ScopedInputEvent&) = delete;
+
+  /// False when the event could not be made current; the input must not reach CEF then.
+  bool IsInstalled() const { return installed_; }
+
+ private:
+  bool installed_ = false;
+};
+
 class Host {
  public:
   static Host& Get();

@@ -245,6 +245,26 @@ The client translates NSEvents itself (`InputTranslator`); the host never sees a
 
 Modifiers map to `cef_event_flags_t`, including held mouse buttons, which CEF needs for drags.
 
+**Event times (1.4).** Chromium records when each input happened and measures from it. Blink ends
+the renderer when the input that starts a soft navigation (a route change without a reload) is
+older than its document.
+
+- CEF stamps the input it is handed with `[NSApp currentEvent].timestamp`, or 0 without a current
+  event. The host has no windows, so its own current event is missing or minutes old.
+- User mouse and key messages carry `EventTime`, the `NSEvent.timestamp` of the event: seconds of
+  system uptime, a clock both processes share. Agent input, IME and drag messages carry none.
+- The host replays every input message (mouse, key, IME, drag) in `BrowserClient::ReplayInput`,
+  inside a `ScopedInputEvent`. While it lives, `OWLHostApplication.currentEvent` is a synthetic
+  event at the input's time: `EventTime` when it is a real time no later than the host's clock,
+  otherwise the host's clock (`owl_input_event_time`).
+- A view's times never run backwards and are never earlier than its last main-frame commit, so
+  input that was on its way while the page changed is not older than the new document. Input
+  that cannot be given a time is dropped and reported (`OWLHostErrorInputFailed`).
+
+The `event-times` proof reads `event.timeStamp` in the page for user and agent clicks and keys
+(a click sent 500 ms late shows as 500 ms old), then changes the route with `history.pushState`
+and checks the renderer is still there.
+
 **Unhandled keys.**
 
 1. `WebSurfaceView.performKeyEquivalent` gives the page the first chance at key equivalents, as
