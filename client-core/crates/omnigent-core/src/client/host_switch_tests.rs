@@ -1,12 +1,15 @@
 //! Switch host, resume on a host, and the live sign-in link: the requests each sends, the
-//! checks made before any write, and the stranded outcome of a half-finished switch.
+//! checks made before any write, what the server's refusal reads as, and the stranded outcome
+//! of a half-finished switch.
 
 use futures::executor::block_on;
 use serde_json::json;
 
 use super::super::SessionError;
 use super::super::fork::RunnerLaunch;
-use super::super::test_support::{Reply, RouteTransport, body_json, connected, path_of};
+use super::super::test_support::{
+    Reply, RouteTransport, body_json, cache_row, connected, lines_after_connect, path_of,
+};
 use super::SignInLink;
 use crate::creation::{CreationError, CreationGit};
 
@@ -25,7 +28,6 @@ fn hosts(status: &str) -> String {
 
 fn switching(launch: Reply) -> RouteTransport {
     let transport = RouteTransport::local();
-    transport.respond(Some("GET"), SESSION, None, Reply::json(200, OWNED));
     transport.respond(Some("PATCH"), SESSION, None, Reply::json(200, OWNED));
     transport.ok("/v1/hosts", hosts("online"));
     transport.respond(Some("POST"), RUNNERS, None, launch);
@@ -51,8 +53,12 @@ fn switch_releases_the_runner_and_model_then_launches_on_the_new_host() {
         }
     );
     assert_eq!(
-        writes(core.transport()),
-        ["PATCH /v1/sessions/conv_a", "POST /v1/hosts/host_b/runners"]
+        lines_after_connect(&core),
+        [
+            "GET /v1/hosts",
+            "PATCH /v1/sessions/conv_a",
+            "POST /v1/hosts/host_b/runners"
+        ]
     );
     assert_eq!(
         core.transport().write_bodies(),
@@ -96,22 +102,78 @@ fn switch_checks_the_path_owner_and_host_before_any_write() {
         Err(SessionError::Creation(CreationError::Unavailable(_)))
     ));
 
-    let shared = switching(Reply::json(201, r#"{"runner_id":"r"}"#));
-    shared.respond(
-        Some("GET"),
-        SESSION,
-        None,
-        Reply::json(
-            200,
-            r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":2}"#,
-        ),
+    let core = connected(switching(Reply::json(201, r#"{"runner_id":"r"}"#)));
+    cache_row(
+        &core,
+        r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":2}"#,
     );
-    let core = connected(shared);
     assert_eq!(
         block_on(core.switch_session_host("conv_a", "host_b", "/work/app")),
         Err(SessionError::ReadOnly)
     );
-    assert_eq!(core.transport().writes().len(), 0);
+    assert_eq!(
+        block_on(core.resume_session_on_host("conv_a", "host_b", "/work/app", None)),
+        Err(SessionError::ReadOnly)
+    );
+    assert_eq!(lines_after_connect(&core), Vec::<String>::new());
+}
+
+#[test]
+fn an_owners_cached_row_lets_the_switch_through() {
+    let core = connected(switching(Reply::json(201, r#"{"runner_id":"runner_new"}"#)));
+    cache_row(&core, OWNED);
+    block_on(core.switch_session_host("conv_a", "host_b", "/work/app")).unwrap();
+    assert_eq!(
+        writes(core.transport()),
+        ["PATCH /v1/sessions/conv_a", "POST /v1/hosts/host_b/runners"]
+    );
+}
+
+#[test]
+fn a_refused_release_reads_as_the_removed_owner_check_did_and_launches_nothing() {
+    for (status, expected) in [
+        (403, SessionError::ReadOnly),
+        (
+            404,
+            SessionError::SessionNotFound {
+                session_id: "conv_a".into(),
+            },
+        ),
+    ] {
+        let transport = switching(Reply::json(201, r#"{"runner_id":"r"}"#));
+        transport.respond(Some("PATCH"), SESSION, None, Reply::json(status, "{}"));
+        let core = connected(transport);
+        assert_eq!(
+            block_on(core.switch_session_host("conv_a", "host_b", "/work/app")),
+            Err(expected),
+            "{status}"
+        );
+        assert_eq!(
+            lines_after_connect(&core),
+            ["GET /v1/hosts", "PATCH /v1/sessions/conv_a"],
+            "{status}"
+        );
+    }
+}
+
+#[test]
+fn a_resume_the_server_cannot_find_the_session_for_is_a_missing_session() {
+    let core = connected(switching(Reply::json(
+        404,
+        r#"{"error":{"message":"session not found"}}"#,
+    )));
+    assert_eq!(
+        block_on(core.resume_session_on_host("conv_a", "host_b", "/work/app", None)),
+        Err(SessionError::SessionNotFound {
+            session_id: "conv_a".into()
+        })
+    );
+    // A host the caller does not own is not a missing session.
+    let core = connected(switching(Reply::json(403, "{}")));
+    assert_eq!(
+        block_on(core.resume_session_on_host("conv_a", "host_b", "/work/app", None)),
+        Err(SessionError::Forbidden)
+    );
 }
 
 #[test]
@@ -125,7 +187,10 @@ fn resume_launches_in_a_new_worktree_without_releasing_anything() {
     let runner =
         block_on(core.resume_session_on_host("conv_a", "host_b", "/work/app", Some(&git))).unwrap();
     assert_eq!(runner, "runner_new");
-    assert_eq!(writes(core.transport()), ["POST /v1/hosts/host_b/runners"]);
+    assert_eq!(
+        lines_after_connect(&core),
+        ["GET /v1/hosts", "POST /v1/hosts/host_b/runners"]
+    );
     assert_eq!(
         body_json(&core.transport().writes()[0]),
         json!({"session_id": "conv_a", "workspace": "/work/app",

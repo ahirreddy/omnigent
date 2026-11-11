@@ -8,7 +8,9 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::client::ClientEvent;
-use crate::client::test_support::{Reply, RouteTransport, body_json, connected, path_of, record};
+use crate::client::test_support::{
+    Reply, RouteTransport, body_json, connected, lines_after_connect, path_of, record,
+};
 
 const SESSION: &str = "/v1/sessions/conv_a";
 
@@ -39,12 +41,6 @@ fn side_chat_transport(source: &Value) -> RouteTransport {
     );
     transport.respond(
         Some("PATCH"),
-        "/v1/sessions/conv_side",
-        None,
-        Reply::json(200, side),
-    );
-    transport.respond(
-        Some("GET"),
         "/v1/sessions/conv_side",
         None,
         Reply::json(200, side),
@@ -114,6 +110,57 @@ fn a_failed_first_message_still_returns_the_side_chat() {
     let created = block_on(core.create_side_chat("conv_a", "Why?")).unwrap();
     assert_eq!(created.session_id, "conv_side");
     assert!(matches!(created.first_message, FirstMessage::Failed(_)));
+}
+
+#[test]
+fn a_side_chats_first_message_is_checked_against_the_row_its_binding_returned() {
+    let row = |runner_id: &Value, runner_online: bool| {
+        let body = json!({"id": "conv_side", "status": "idle", "created_at": 2,
+            "permission_level": 4, "runner_id": runner_id, "runner_online": runner_online});
+        Reply::json(200, body.to_string())
+    };
+    let bind = |core: &ClientCore<RouteTransport>, reply: Reply| {
+        core.transport()
+            .respond(Some("PATCH"), "/v1/sessions/conv_side", None, reply);
+    };
+    let transport = side_chat_transport(&json!({"runner_id": "run_1", "runner_online": true}));
+    // The fork answers before its runner is bound: that row alone would refuse the message.
+    transport.respond(
+        Some("POST"),
+        "/v1/sessions/conv_a/fork",
+        None,
+        row(&Value::Null, false),
+    );
+    let core = connected(transport);
+    bind(&core, row(&json!("run_1"), true));
+    let created = block_on(core.create_side_chat("conv_a", "Why?")).unwrap();
+    assert!(matches!(created.first_message, FirstMessage::Sent(_)));
+    assert_eq!(
+        lines_after_connect(&core),
+        [
+            "GET /v1/sessions/conv_a",
+            "POST /v1/sessions/conv_a/fork",
+            "PATCH /v1/sessions/conv_side",
+            "POST /v1/sessions/conv_side/events"
+        ]
+    );
+
+    // A binding the server answers as still unbound refuses the message without sending it.
+    bind(&core, row(&Value::Null, false));
+    let created = block_on(core.create_side_chat("conv_a", "Why?")).unwrap();
+    assert!(matches!(
+        created.first_message,
+        FirstMessage::Failed(SessionError::ExecutionUnavailable { .. })
+    ));
+    assert_eq!(lines_after_connect(&core).len(), 7);
+
+    bind(&core, Reply::json(200, r#"{"id":7}"#));
+    let outcome = block_on(core.create_side_chat("conv_a", "Why?"));
+    assert!(
+        matches!(&outcome, Err(SessionError::DeliveryUncertain { detail })
+            if detail.contains("acknowledgement")),
+        "{outcome:?}"
+    );
 }
 
 #[test]

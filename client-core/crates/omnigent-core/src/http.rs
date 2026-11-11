@@ -132,7 +132,8 @@ impl fmt::Debug for HttpResponse {
 /// response, not a transport error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransportError {
-    /// No network path to the server.
+    /// No connection to the server was made, so nothing was sent: no network path, or the
+    /// server refused the connection or could not be found.
     Offline {
         /// Host-provided detail.
         message: String,
@@ -154,6 +155,15 @@ pub enum TransportError {
         /// Host-provided detail.
         message: String,
     },
+}
+
+impl TransportError {
+    /// Whether the request never left the host, so a write that failed this way was not
+    /// delivered. Every other failure may have reached the server.
+    #[must_use]
+    pub const fn is_unsent(&self) -> bool {
+        matches!(self, Self::Offline { .. })
+    }
 }
 
 impl fmt::Display for TransportError {
@@ -202,6 +212,20 @@ mod tests {
             .to_string(),
             "odd"
         );
+    }
+
+    #[test]
+    fn only_a_connection_never_made_is_known_unsent() {
+        let message = || "detail".to_owned();
+        assert!(TransportError::Offline { message: message() }.is_unsent());
+        for sent in [
+            TransportError::Timeout { message: message() },
+            TransportError::Cancelled,
+            TransportError::Tls { message: message() },
+            TransportError::Other { message: message() },
+        ] {
+            assert!(!sent.is_unsent(), "{sent}");
+        }
     }
 
     #[test]

@@ -424,7 +424,9 @@ impl<T: HttpTransport> ClientCore<T> {
 mod tests {
     use futures::executor::block_on;
 
-    use super::super::test_support::{Reply, RouteTransport, body_json, connected};
+    use super::super::test_support::{
+        Reply, RouteTransport, body_json, connected, lines_after_connect,
+    };
     use super::*;
 
     const COMMENTS: &str = r#"[
@@ -629,7 +631,6 @@ mod tests {
     #[test]
     fn unreadable_replies_about_a_comment_are_malformed() {
         let transport = RouteTransport::local();
-        transport.writable_session("[]");
         transport.ok("/v1/sessions/conv_a/comments", r#"{"id":5}"#);
         transport.ok("/v1/sessions/conv_a/comments/c1", r#"{"id":5}"#);
         transport.ok(
@@ -655,7 +656,6 @@ mod tests {
     #[test]
     fn a_failed_send_stops_reopening_when_reopening_fails_too_and_keeps_the_first_error() {
         let failing = RouteTransport::local();
-        failing.writable_session("[]");
         failing.ok(
             "/v1/sessions/conv_a/comments/send",
             r#"{"formatted_message":"m"}"#,
@@ -692,7 +692,6 @@ mod tests {
     #[test]
     fn a_host_offline_failure_explains_the_comments_were_kept() {
         let transport = RouteTransport::local();
-        transport.writable_session("[]");
         transport.ok(
             "/v1/sessions/conv_a/comments/send",
             r#"{"formatted_message":"m"}"#,
@@ -718,7 +717,6 @@ mod tests {
     #[test]
     fn sends_comments_as_one_message_and_reopens_them_when_it_fails() {
         let transport = RouteTransport::local();
-        transport.writable_session("[]");
         transport.ok(
             "/v1/sessions/conv_a/comments/send",
             r#"{"formatted_message":"Please address:\n- a.rs:1 why?","sent_comment_ids":["c1","c2"]}"#,
@@ -727,6 +725,13 @@ mod tests {
         let core = connected(transport);
         let ids = ["c1".to_owned(), "c2".to_owned()];
         block_on(core.send_comments_to_agent("conv_a", &ids)).unwrap();
+        assert_eq!(
+            lines_after_connect(&core),
+            [
+                "POST /v1/sessions/conv_a/comments/send",
+                "POST /v1/sessions/conv_a/events"
+            ]
+        );
         let writes = core.transport().writes();
         assert_eq!(body_json(&writes[0]), json!({"comment_ids": ["c1", "c2"]}));
         assert_eq!(
@@ -739,7 +744,6 @@ mod tests {
         ));
 
         let failing = RouteTransport::local();
-        failing.writable_session("[]");
         failing.ok(
             "/v1/sessions/conv_a/comments/send",
             r#"{"formatted_message":"m","sent_comment_ids":["c1"]}"#,

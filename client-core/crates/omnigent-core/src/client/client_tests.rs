@@ -12,8 +12,8 @@ use serde_json::{Value, json};
 use super::events::{ChangedFile, ChangedFilesUpdate};
 use super::sessions::{SessionChange, SummaryStatus};
 use super::test_support::{
-    MOUNT, Reply, RouteTransport, body_json, connected, connected_hosted, core, envelopes, header,
-    live, path_of, query_value, record, still_pending,
+    MOUNT, Reply, RouteTransport, body_json, cache_row, connected, connected_hosted, core,
+    envelopes, header, lines_after_connect, live, path_of, query_value, record, still_pending,
 };
 use super::{ClientEvent, SessionError};
 use crate::attachments::UploadFile;
@@ -22,6 +22,9 @@ use crate::http::TransportError;
 use crate::realtime::WatchSet;
 
 const SESSIONS: &str = "sessions/LocalServerSessionClient--";
+
+/// A list row for `conv_a` that its owner may edit.
+const WRITABLE_ROW: &str = r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":4}"#;
 
 fn item_text(item: &ConversationItem) -> String {
     match &item.data {
@@ -81,7 +84,6 @@ fn changed_files_failure_is_visible_and_wrong_session_never_fetches() {
 #[test]
 fn submit_uses_real_message_wire_and_retains_accepted_queue_identity() {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.load(&format!(
         "{SESSIONS}SubmitUsesRealMessageWireAndRetainsAcceptedQueueIdentity.jsonl"
     ));
@@ -91,8 +93,12 @@ fn submit_uses_real_message_wire_and_retains_accepted_queue_identity() {
     assert_eq!(sent.submission.item_id.as_deref(), Some("item1"));
     assert_eq!(sent.submission.pending_id.as_deref(), Some("pending1"));
     assert_eq!(sent.draft, "");
+    // The message is the only request: the session is not read first.
+    assert_eq!(
+        lines_after_connect(&core),
+        ["POST /v1/sessions/conv_a/events"]
+    );
     let posts = core.transport().writes();
-    assert_eq!(posts.len(), 1);
     assert_eq!(
         body_json(&posts[0]),
         json!({"type": "message", "data": {"role": "user", "content": [
@@ -107,7 +113,6 @@ fn submit_uses_real_message_wire_and_retains_accepted_queue_identity() {
 #[test]
 fn reply_sends_text_alone_without_an_open_stream_and_keeps_the_composer() {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.load(&format!(
         "{SESSIONS}SubmitUsesRealMessageWireAndRetainsAcceptedQueueIdentity.jsonl"
     ));
@@ -130,12 +135,15 @@ fn reply_sends_text_alone_without_an_open_stream_and_keeps_the_composer() {
         block_on(core.send_reply("conv_a", "  ")),
         Err(SessionError::EmptyMessage)
     );
+    assert_eq!(
+        lines_after_connect(&core),
+        ["POST /v1/sessions/conv_a/events"]
+    );
 }
 
 #[test]
 fn send_requires_hydrated_live_stream_and_does_not_retry_uncertain_post() {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.load(&format!(
         "{SESSIONS}SendRequiresHydratedLiveStreamAndDoesNotRetryUncertainPOST.jsonl"
     ));
@@ -144,7 +152,7 @@ fn send_requires_hydrated_live_stream_and_does_not_retry_uncertain_post() {
         block_on(core.send_message("conv_a", "Hello")),
         Err(SessionError::StreamNotReady)
     );
-    assert_eq!(core.transport().writes(), []);
+    assert_eq!(lines_after_connect(&core), Vec::<String>::new());
     assert_eq!(core.is_send_blocked("conv_a"), Ok(false));
     core.set_live_session("conv_a", true);
     assert!(matches!(
@@ -157,7 +165,10 @@ fn send_requires_hydrated_live_stream_and_does_not_retry_uncertain_post() {
         block_on(core.send_message("conv_a", "Hello")),
         Err(SessionError::Ledger(_))
     ));
-    assert_eq!(core.transport().writes().len(), 1);
+    assert_eq!(
+        lines_after_connect(&core),
+        ["POST /v1/sessions/conv_a/events"]
+    );
     assert_eq!(core.acknowledge_uncertain_send("conv_a"), Ok(true));
     assert_eq!(core.is_send_blocked("conv_a"), Ok(false));
 }
@@ -165,7 +176,6 @@ fn send_requires_hydrated_live_stream_and_does_not_retry_uncertain_post() {
 #[test]
 fn denied_and_malformed_acknowledgements_are_not_success() {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.load(&format!(
         "{SESSIONS}DeniedAndMalformedAcknowledgementsAreNotSuccess.jsonl"
     ));
@@ -181,24 +191,271 @@ fn denied_and_malformed_acknowledgements_are_not_success() {
         Err(SessionError::DeliveryUncertain { .. })
     ));
     assert_eq!(core.composer_text("conv_a").unwrap(), "Hello");
-    assert_eq!(core.transport().writes().len(), 2);
+    assert_eq!(
+        lines_after_connect(&core),
+        ["POST /v1/sessions/conv_a/events"; 2]
+    );
 }
 
 #[test]
 fn interrupt_uses_interrupt_not_owner_stop_session() {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.load(&format!(
         "{SESSIONS}InterruptUsesInterruptNotOwnerStopSession.json"
     ));
     let core = connected(transport);
+    // With no cached row and with one that allows edits, the interrupt is the only request.
     block_on(core.interrupt("conv_a")).unwrap();
-    let writes = core.transport().writes();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(path_of(&writes[0]), "/v1/sessions/conv_a/events");
+    cache_row(&core, WRITABLE_ROW);
+    block_on(core.interrupt("conv_a")).unwrap();
     assert_eq!(
-        body_json(&writes[0]),
-        json!({"type": "interrupt", "data": {}})
+        lines_after_connect(&core),
+        ["POST /v1/sessions/conv_a/events"; 2]
+    );
+    assert_eq!(
+        core.transport().write_bodies(),
+        vec![json!({"type": "interrupt", "data": {}}); 2]
+    );
+    assert!(matches!(
+        block_on(core.interrupt("a/b")),
+        Err(SessionError::InvalidIdentifier { .. })
+    ));
+}
+
+#[test]
+fn a_refused_send_or_interrupt_reads_as_the_removed_check_did() {
+    let gone = SessionError::SessionNotFound {
+        session_id: "conv_a".into(),
+    };
+    for (status, expected) in [(403, SessionError::ReadOnly), (404, gone)] {
+        let transport = RouteTransport::local();
+        transport.respond(
+            Some("POST"),
+            "/v1/sessions/conv_a/events",
+            None,
+            Reply::json(status, r#"{"detail":"no"}"#),
+        );
+        let core = live(transport);
+        assert_eq!(
+            block_on(core.send_message("conv_a", "Hello")),
+            Err(expected.clone())
+        );
+        // A refusal is a definite answer: the next send is not held for review.
+        assert_eq!(core.is_send_blocked("conv_a"), Ok(false));
+        assert_eq!(
+            block_on(core.send_reply("conv_a", "Hello")),
+            Err(expected.clone())
+        );
+        assert_eq!(block_on(core.interrupt("conv_a")), Err(expected));
+        assert_eq!(
+            lines_after_connect(&core),
+            ["POST /v1/sessions/conv_a/events"; 3]
+        );
+    }
+}
+
+fn never_connected() -> TransportError {
+    TransportError::Offline {
+        message: "Could not connect to the server.".into(),
+    }
+}
+
+fn timed_out() -> TransportError {
+    TransportError::Timeout {
+        message: "The request timed out.".into(),
+    }
+}
+
+/// A `conv_a` with an uploaded file whose first message post fails below HTTP with `failure`.
+fn failing_send(failure: TransportError) -> crate::ClientCore<RouteTransport> {
+    let transport = upload_stub();
+    transport.enqueue(
+        "POST",
+        "/v1/sessions/conv_a/events",
+        vec![Reply::Fail(failure)],
+    );
+    let core = live(transport);
+    core.update_composer("conv_a", "Hello").unwrap();
+    let item = core.add_attachment("conv_a", notes("plan.txt")).unwrap();
+    block_on(core.upload_attachment("conv_a", item, "boundary-1")).unwrap();
+    core
+}
+
+const UPLOAD_THEN_SEND: [&str; 2] = [
+    "POST /v1/sessions/conv_a/resources/files",
+    "POST /v1/sessions/conv_a/events",
+];
+
+#[test]
+fn a_send_that_made_no_connection_keeps_the_draft_and_the_next_one_goes_out() {
+    let core = failing_send(never_connected());
+    assert_eq!(
+        block_on(core.send_message("conv_a", "Hello")),
+        Err(SessionError::Transport(never_connected()))
+    );
+    assert_eq!(lines_after_connect(&core), UPLOAD_THEN_SEND);
+    // Nothing was sent, so nothing waits for review: the text and the file are still the draft.
+    assert_eq!(core.is_send_blocked("conv_a"), Ok(false));
+    assert_eq!(core.composer_text("conv_a").unwrap(), "Hello");
+    let draft = core.attachment_draft("conv_a").unwrap();
+    assert!(matches!(
+        draft.items()[0].state(),
+        crate::attachments::UploadState::Uploaded(uploaded) if uploaded.id == "file_1"
+    ));
+
+    let sent = block_on(core.send_message("conv_a", "Hello")).unwrap();
+    assert_eq!(sent.draft, "");
+    assert_eq!(
+        lines_after_connect(&core),
+        [&UPLOAD_THEN_SEND[..], &UPLOAD_THEN_SEND[1..]].concat()
+    );
+    let body = body_json(core.transport().writes().last().unwrap());
+    assert_eq!(body["data"]["content"][0]["file_id"], "file_1");
+    assert!(!core.attachment_draft("conv_a").unwrap().has_attachments());
+}
+
+#[test]
+fn a_send_that_got_no_answer_is_uncertain_and_holds_the_next_one() {
+    let core = failing_send(timed_out());
+    assert_eq!(
+        block_on(core.send_message("conv_a", "Hello")),
+        Err(SessionError::DeliveryUncertain {
+            detail: timed_out().to_string()
+        })
+    );
+    assert_eq!(core.is_send_blocked("conv_a"), Ok(true));
+    // The file went with the unreviewed send, so its draft refuses the next one first.
+    assert_eq!(
+        block_on(core.send_message("conv_a", "Hello")),
+        Err(SessionError::Draft(
+            crate::attachments::DraftError::NotReady
+        ))
+    );
+    assert_eq!(lines_after_connect(&core), UPLOAD_THEN_SEND);
+    assert_eq!(core.composer_text("conv_a").unwrap(), "Hello");
+}
+
+#[test]
+fn an_edit_a_stop_and_a_delete_tell_a_connection_never_made_from_an_answer_never_read() {
+    let uncertain = SessionError::DeliveryUncertain {
+        detail: timed_out().to_string(),
+    };
+    for (failure, expected) in [
+        (
+            never_connected(),
+            SessionError::Transport(never_connected()),
+        ),
+        (timed_out(), uncertain),
+    ] {
+        let transport = RouteTransport::local();
+        for (method, path) in [
+            ("PATCH", "/v1/sessions/conv_a"),
+            ("POST", "/v1/sessions/conv_a/events"),
+            ("DELETE", "/v1/sessions/conv_a"),
+        ] {
+            transport.respond(Some(method), path, None, Reply::Fail(failure.clone()));
+        }
+        let core = live(transport);
+        assert_eq!(
+            block_on(core.edit_session("conv_a", SessionChange::Title("Renamed".into()))),
+            Err(expected.clone())
+        );
+        assert_eq!(block_on(core.stop_session("conv_a")), Err(expected.clone()));
+        assert_eq!(
+            block_on(core.delete_session("conv_a")),
+            Err(expected.clone())
+        );
+        // Each is its one request, and none of them holds the session's next message.
+        let failed = [
+            "PATCH /v1/sessions/conv_a",
+            "POST /v1/sessions/conv_a/events",
+            "DELETE /v1/sessions/conv_a",
+        ];
+        assert_eq!(lines_after_connect(&core), failed, "{expected:?}");
+        assert_eq!(core.is_send_blocked("conv_a"), Ok(false));
+        core.transport().respond(
+            Some("POST"),
+            "/v1/sessions/conv_a/events",
+            None,
+            Reply::json(200, r#"{"queued":true}"#),
+        );
+        block_on(core.send_message("conv_a", "Hello")).unwrap();
+        assert_eq!(
+            lines_after_connect(&core),
+            [&failed[..], &failed[1..2]].concat()
+        );
+    }
+}
+
+#[test]
+fn an_upload_that_made_no_connection_fails_the_file_and_can_be_tried_again() {
+    let transport = upload_stub();
+    transport.enqueue(
+        "POST",
+        "/v1/sessions/conv_a/resources/files",
+        vec![Reply::Fail(never_connected())],
+    );
+    let core = live(transport);
+    let item = core.add_attachment("conv_a", notes("plan.txt")).unwrap();
+    assert_eq!(
+        block_on(core.upload_attachment("conv_a", item, "boundary-1")),
+        Err(SessionError::Transport(never_connected()))
+    );
+    let draft = core.attachment_draft("conv_a").unwrap();
+    assert_eq!(
+        draft.items()[0].state(),
+        &crate::attachments::UploadState::Failed(crate::attachments::UploadError::Unreachable(
+            never_connected()
+        ))
+    );
+    // Nothing was stored, so the same file uploads on the next try.
+    let uploaded = block_on(core.upload_attachment("conv_a", item, "boundary-1")).unwrap();
+    assert_eq!(uploaded.id, "file_1");
+    assert_eq!(
+        lines_after_connect(&core),
+        ["POST /v1/sessions/conv_a/resources/files"; 2]
+    );
+}
+
+#[test]
+fn an_archived_cached_row_refuses_a_send_without_a_request() {
+    let core = live(RouteTransport::local());
+    cache_row(
+        &core,
+        r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":4,"archived":true}"#,
+    );
+    assert_eq!(
+        block_on(core.send_message("conv_a", "Hello")),
+        Err(SessionError::Archived)
+    );
+    assert_eq!(lines_after_connect(&core), Vec::<String>::new());
+}
+
+#[test]
+fn an_offline_host_the_row_cannot_say_is_wakeable_is_left_to_the_server() {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("POST"),
+        "/v1/sessions/conv_a/events",
+        None,
+        Reply::json(
+            503,
+            r#"{"error":{"code":"host_offline","message":"asleep"}}"#,
+        ),
+    );
+    let core = live(transport);
+    // A list row never says whether the host can be woken, so the message goes out.
+    cache_row(
+        &core,
+        r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":4,"host_id":"mac","host_online":false,"runner_online":false}"#,
+    );
+    assert!(matches!(
+        block_on(core.send_message("conv_a", "Wake this session")),
+        Err(SessionError::HostOffline { .. })
+    ));
+    assert_eq!(
+        lines_after_connect(&core),
+        ["POST /v1/sessions/conv_a/events"]
     );
 }
 
@@ -634,13 +891,23 @@ fn invalid_identifiers_and_limits_never_make_resource_requests() {
 
 #[test]
 fn read_only_permission_prevents_mutation_requests() {
+    let fixture = format!("{SESSIONS}ReadOnlyPermissionPreventsMutationRequests.json");
     let transport = RouteTransport::local();
-    transport.load(&format!(
-        "{SESSIONS}ReadOnlyPermissionPreventsMutationRequests.json"
-    ));
+    transport.load(&fixture);
     let core = live(transport);
+    // The view-only row is what refuses; only a decision answer reads the session.
+    let Reply::Response { body, .. } = &envelopes(&fixture)[0].reply else {
+        panic!("expected a response");
+    };
+    cache_row(&core, body);
     assert_eq!(
         block_on(core.send_message("conv_a", "Hello")),
+        Err(SessionError::ReadOnly)
+    );
+    let file = UploadFile::new("draft.txt", Some("text/plain"), b"draft".to_vec()).unwrap();
+    let item = core.add_attachment("conv_a", file).unwrap();
+    assert_eq!(
+        block_on(core.upload_attachment("conv_a", item, "boundary-1")),
         Err(SessionError::ReadOnly)
     );
     assert_eq!(
@@ -665,7 +932,11 @@ fn read_only_permission_prevents_mutation_requests() {
         )),
         Err(SessionError::ReadOnly)
     );
-    assert_eq!(core.transport().writes(), []);
+    assert_eq!(
+        block_on(core.edit_session("conv_a", SessionChange::Project(None))),
+        Err(SessionError::ReadOnly)
+    );
+    assert_eq!(lines_after_connect(&core), ["GET /v1/sessions/conv_a"]);
     // Creation needs a host and an agent; an empty selection never posts.
     assert!(matches!(
         block_on(core.create_session(&crate::creation::CreationSelection::default(), "New")),
@@ -717,10 +988,19 @@ fn connected_host_and_wakeable_host_allow_stopped_runner_submissions() {
         );
         transport.respond(Some("POST"), &pair[1].path, None, pair[1].reply.clone());
         let core = live(transport);
+        // Opening the session caches the row a send is checked against.
+        block_on(core.conversation_snapshot("conv_a")).unwrap();
         let sent = block_on(core.send_message("conv_a", "Wake this session")).unwrap();
         assert!(sent.submission.queued);
+        assert_eq!(
+            lines_after_connect(&core),
+            [
+                "GET /v1/sessions/conv_a",
+                "GET /v1/sessions/conv_a/items",
+                "POST /v1/sessions/conv_a/events"
+            ]
+        );
         let writes = core.transport().writes();
-        assert_eq!(writes.len(), 1);
         assert_eq!(Some(body_json(&writes[0])), pair[1].body);
     }
 }
@@ -732,7 +1012,13 @@ fn unavailable_session_never_posts_text_or_attachment_message() {
     ) {
         let transport = RouteTransport::local();
         transport.respond(None, &envelope.path, None, envelope.reply.clone());
+        transport.ok(
+            "/v1/sessions/conv_a/items",
+            r#"{"data":[],"has_more":false}"#,
+        );
         let core = live(transport);
+        // Opening the session caches the row that refuses, so no later request is made.
+        block_on(core.conversation_snapshot("conv_a")).unwrap();
         let Reply::Response { body, .. } = &envelope.reply else {
             panic!("expected a response");
         };
@@ -761,10 +1047,8 @@ fn unavailable_session_never_posts_text_or_attachment_message() {
             ))
         );
         assert_eq!(
-            core.transport().writes(),
-            [],
-            "{:?}",
-            core.transport().lines()
+            lines_after_connect(&core),
+            ["GET /v1/sessions/conv_a", "GET /v1/sessions/conv_a/items"]
         );
     }
 }
@@ -788,15 +1072,6 @@ fn hosted_requests_carry_bearer_and_never_a_cookie() {
 fn edits_trim_titles_pin_with_a_stamp_and_publish_the_acknowledgement() {
     let transport = RouteTransport::local();
     transport.respond(
-        Some("GET"),
-        "/v1/sessions/conv_a",
-        None,
-        Reply::json(
-            200,
-            r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":4}"#,
-        ),
-    );
-    transport.respond(
         Some("PATCH"),
         "/v1/sessions/conv_a",
         None,
@@ -807,6 +1082,7 @@ fn edits_trim_titles_pin_with_a_stamp_and_publish_the_acknowledgement() {
     );
     let core = connected(transport);
     let recorder = record(&core);
+    assert_eq!(core.cached_summary("conv_a"), None);
     let renamed =
         block_on(core.edit_session("conv_a", SessionChange::Title("  Renamed  ".into()))).unwrap();
     assert_eq!(renamed.title, "Renamed");
@@ -840,7 +1116,9 @@ fn edits_trim_titles_pin_with_a_stamp_and_publish_the_acknowledgement() {
             Err(SessionError::InvalidTitle)
         );
     }
-    assert_eq!(core.transport().writes().len(), 3);
+    // One request per edit, with no cached row and then with the acknowledged one.
+    assert_eq!(lines_after_connect(&core), ["PATCH /v1/sessions/conv_a"; 3]);
+    assert_eq!(core.cached_summary("conv_a").unwrap().title, "Renamed");
     assert!(recorder
         .take()
         .iter()
@@ -850,18 +1128,11 @@ fn edits_trim_titles_pin_with_a_stamp_and_publish_the_acknowledgement() {
 #[test]
 fn archive_asks_for_worktree_removal_only_when_archiving() {
     let transport = RouteTransport::local();
-    let snapshot = r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":4}"#;
-    transport.respond(
-        Some("GET"),
-        "/v1/sessions/conv_a",
-        None,
-        Reply::json(200, snapshot),
-    );
     transport.respond(
         Some("PATCH"),
         "/v1/sessions/conv_a",
         None,
-        Reply::json(200, snapshot),
+        Reply::json(200, WRITABLE_ROW),
     );
     let core = connected(transport);
     for (archived, delete_worktree) in [(true, true), (true, false), (false, true)] {
@@ -881,6 +1152,113 @@ fn archive_asks_for_worktree_removal_only_when_archiving() {
             json!({"archived": true}),
             json!({"archived": false}),
         ]
+    );
+    assert_eq!(lines_after_connect(&core), ["PATCH /v1/sessions/conv_a"; 3]);
+}
+
+/// One change of each permission tier: rename (edit), pin (view), archive and file (owner).
+fn tiered_changes() -> [(i64, SessionChange); 4] {
+    [
+        (2, SessionChange::Title("Renamed".into())),
+        (
+            1,
+            SessionChange::Pinned {
+                pinned: true,
+                at_ms: 42,
+            },
+        ),
+        (
+            4,
+            SessionChange::Archived {
+                archived: true,
+                delete_worktree: false,
+            },
+        ),
+        (4, SessionChange::Project(None)),
+    ]
+}
+
+#[test]
+fn an_edit_below_its_tier_on_the_cached_row_is_refused_without_a_request() {
+    for (needed, change) in tiered_changes() {
+        let row = |level: i64| {
+            format!(
+                r#"{{"id":"conv_a","status":"idle","created_at":1,"permission_level":{level}}}"#
+            )
+        };
+        let transport = RouteTransport::local();
+        transport.respond(
+            Some("PATCH"),
+            "/v1/sessions/conv_a",
+            None,
+            Reply::json(200, row(needed)),
+        );
+        let core = connected(transport);
+        cache_row(&core, &row(needed - 1));
+        assert_eq!(
+            block_on(core.edit_session("conv_a", change.clone())),
+            Err(SessionError::ReadOnly)
+        );
+        assert_eq!(lines_after_connect(&core), Vec::<String>::new());
+        // The same change at its tier is one request.
+        cache_row(&core, &row(needed));
+        block_on(core.edit_session("conv_a", change)).unwrap();
+        assert_eq!(lines_after_connect(&core), ["PATCH /v1/sessions/conv_a"]);
+    }
+}
+
+#[test]
+fn a_refused_edit_reads_as_the_removed_check_did() {
+    let gone = SessionError::SessionNotFound {
+        session_id: "conv_a".into(),
+    };
+    for (status, expected) in [(403, SessionError::ReadOnly), (404, gone)] {
+        let transport = RouteTransport::local();
+        transport.respond(
+            Some("PATCH"),
+            "/v1/sessions/conv_a",
+            None,
+            Reply::json(status, r#"{"detail":"no"}"#),
+        );
+        let core = connected(transport);
+        for (_, change) in tiered_changes() {
+            assert_eq!(
+                block_on(core.edit_session("conv_a", change)),
+                Err(expected.clone())
+            );
+        }
+        assert_eq!(lines_after_connect(&core), ["PATCH /v1/sessions/conv_a"; 4]);
+        assert_eq!(core.cached_summary("conv_a"), None);
+    }
+}
+
+#[test]
+fn filing_into_a_project_that_is_gone_keeps_the_servers_explanation() {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("PATCH"),
+        "/v1/sessions/conv_a",
+        None,
+        Reply::json(404, r#"{"detail":"Project not found"}"#),
+    );
+    let core = connected(transport);
+    assert_eq!(
+        block_on(core.edit_session("conv_a", SessionChange::Project(Some("p1".into())))),
+        Err(SessionError::Rejected {
+            status: 404,
+            message: "Project not found".into()
+        })
+    );
+    // The server's `403` is still the permission the caller lacks.
+    core.transport().respond(
+        Some("PATCH"),
+        "/v1/sessions/conv_a",
+        None,
+        Reply::json(403, "{}"),
+    );
+    assert_eq!(
+        block_on(core.edit_session("conv_a", SessionChange::Project(Some("p1".into())))),
+        Err(SessionError::ReadOnly)
     );
 }
 
@@ -978,10 +1356,9 @@ fn notes(name: &str) -> UploadFile {
     UploadFile::new(name, Some("text/plain"), b"notes".to_vec()).unwrap()
 }
 
-/// A writable `conv_a` that accepts messages and file uploads.
+/// A `conv_a` that accepts messages and file uploads.
 fn upload_stub() -> RouteTransport {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.ok("/v1/sessions/conv_a/events", r#"{"queued":true}"#);
     transport.respond(
         Some("POST"),
@@ -998,6 +1375,14 @@ fn a_staged_upload_goes_out_with_the_message_and_leaves_the_composer() {
     let item = core.add_attachment("conv_a", notes("plan.txt")).unwrap();
     block_on(core.upload_attachment("conv_a", item, "boundary-1")).unwrap();
     block_on(core.send_message("conv_a", "with a file")).unwrap();
+    // The upload and the message are each one request.
+    assert_eq!(
+        lines_after_connect(&core),
+        [
+            "POST /v1/sessions/conv_a/resources/files",
+            "POST /v1/sessions/conv_a/events"
+        ]
+    );
     let body = body_json(core.transport().writes().last().unwrap());
     assert_eq!(
         body["data"]["content"][0],
@@ -1086,14 +1471,6 @@ fn an_upload_whose_body_contains_the_boundary_fails_and_marks_the_item() {
 #[test]
 fn a_hosted_upload_carries_the_bearer_and_a_401_ends_the_connection() {
     let transport = RouteTransport::with_prefix(MOUNT, false);
-    transport.ok(
-        &format!("{MOUNT}/v1/sessions/conv_a"),
-        r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":4}"#,
-    );
-    transport.ok(
-        &format!("{MOUNT}/v1/sessions/conv_a/items"),
-        r#"{"data":[],"has_more":false}"#,
-    );
     transport.respond(
         Some("POST"),
         &format!("{MOUNT}/v1/sessions/conv_a/resources/files"),
@@ -1126,6 +1503,32 @@ fn a_hosted_upload_carries_the_bearer_and_a_401_ends_the_connection() {
 }
 
 #[test]
+fn a_refused_upload_reads_as_the_removed_check_did() {
+    let gone = SessionError::SessionNotFound {
+        session_id: "conv_a".into(),
+    };
+    for (status, expected) in [(403, SessionError::ReadOnly), (404, gone)] {
+        let transport = RouteTransport::local();
+        transport.respond(
+            Some("POST"),
+            "/v1/sessions/conv_a/resources/files",
+            None,
+            Reply::json(status, "{}"),
+        );
+        let core = live(transport);
+        let item = core.add_attachment("conv_a", notes("plan.txt")).unwrap();
+        assert_eq!(
+            block_on(core.upload_attachment("conv_a", item, "boundary-1")),
+            Err(expected)
+        );
+        assert_eq!(
+            lines_after_connect(&core),
+            ["POST /v1/sessions/conv_a/resources/files"]
+        );
+    }
+}
+
+#[test]
 fn a_disconnect_during_an_upload_makes_its_outcome_uncertain() {
     let transport = upload_stub();
     let gate = transport.gate("POST", "/v1/sessions/conv_a/resources/files");
@@ -1146,7 +1549,6 @@ fn a_disconnect_during_an_upload_makes_its_outcome_uncertain() {
 #[test]
 fn an_unreadable_acknowledgement_is_an_uncertain_delivery() {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.respond(
         Some("POST"),
         "/v1/sessions/conv_a/events",
@@ -1166,15 +1568,8 @@ fn a_decision_that_is_gone_is_reported_and_a_mirrored_one_posts_to_its_child() {
     transport.writable_session(
         r#"[{"elicitation_id":"ask1","params":{"target_session_id":"child1","message":"Approve?"}}]"#,
     );
-    transport.ok(
-        "/v1/sessions/child1",
-        r#"{"id":"child1","status":"idle","created_at":1,"permission_level":4}"#,
-    );
-    transport.ok(
-        "/v1/sessions/child1/items",
-        r#"{"data":[],"has_more":false}"#,
-    );
-    transport.ok("/v1/sessions/child1/elicitations/ask1/resolve", "{}");
+    let resolve = "/v1/sessions/child1/elicitations/ask1/resolve";
+    transport.ok(resolve, "{}");
     let core = connected(transport);
     assert!(matches!(
         block_on(core.resolve_decision("conv_a", "gone", &DecisionResponse::Approve)),
@@ -1183,14 +1578,37 @@ fn a_decision_that_is_gone_is_reported_and_a_mirrored_one_posts_to_its_child() {
         ))
     ));
     block_on(core.resolve_decision("conv_a", "ask1", &DecisionResponse::Approve)).unwrap();
-    assert_eq!(
+    // Each answer reads the session once for its card; the child is not read at all.
+    let read = "GET /v1/sessions/conv_a".to_owned();
+    let answered = vec![read.clone(), read.clone(), format!("POST {resolve}")];
+    assert_eq!(lines_after_connect(&core), answered);
+
+    // The server's refusal of the answer names the child the answer went to.
+    let gone = SessionError::SessionNotFound {
+        session_id: "child1".into(),
+    };
+    for (status, expected) in [(403, SessionError::ReadOnly), (404, gone)] {
         core.transport()
-            .writes()
-            .iter()
-            .map(path_of)
-            .collect::<Vec<_>>(),
-        ["/v1/sessions/child1/elicitations/ask1/resolve"]
+            .respond(Some("POST"), resolve, None, Reply::json(status, "{}"));
+        assert_eq!(
+            block_on(core.resolve_decision("conv_a", "ask1", &DecisionResponse::Approve)),
+            Err(expected)
+        );
+    }
+    let refusal = vec![read.clone(), format!("POST {resolve}")];
+    let refused = [answered, refusal.clone(), refusal].concat();
+    assert_eq!(lines_after_connect(&core), refused);
+
+    // A child whose cached row is read-only is refused after the read, with no answer sent.
+    cache_row(
+        &core,
+        r#"{"id":"child1","status":"idle","created_at":1,"permission_level":1}"#,
     );
+    assert_eq!(
+        block_on(core.resolve_decision("conv_a", "ask1", &DecisionResponse::Approve)),
+        Err(SessionError::ReadOnly)
+    );
+    assert_eq!(lines_after_connect(&core), [refused, vec![read]].concat());
 }
 
 #[test]

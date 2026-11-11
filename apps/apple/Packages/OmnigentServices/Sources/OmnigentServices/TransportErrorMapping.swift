@@ -22,11 +22,12 @@ public enum TransportErrorMapping {
 
   /// Maps a `URLError` by code.
   /// - Parameter error: The URL loading error.
-  /// - Returns: The matching `TransportError`.
+  /// - Returns: The matching `TransportError`. `.Offline` is only a connection never made, so
+  ///   nothing was sent; a connection lost mid-request may have delivered it and is `.Other`.
   public static func map(_ error: URLError) -> TransportError {
     let message = error.localizedDescription
     switch error.code {
-    case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost:
+    case .notConnectedToInternet, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
       return .Offline(message: message)
     case .timedOut:
       return .Timeout(message: message)
@@ -49,13 +50,18 @@ public enum TransportErrorMapping {
   /// Maps an error that ended a long-lived stream or socket.
   /// - Parameter error: The error reported by the task.
   /// - Returns: The matching `ConnectionFailure`. Platform authentication demands map to
-  ///   `.authenticationRequired`, because the core never supplies credentials.
+  ///   `.authenticationRequired`, because the core never supplies credentials. A lost connection
+  ///   is `.offline` here: a stream carries no request whose delivery could be in doubt.
   public static func connectionFailure(from error: any Error) -> ConnectionFailure {
-    if let urlError = error as? URLError,
-      urlError.code == .userAuthenticationRequired
-        || urlError.code == .userCancelledAuthentication
-    {
-      return .authenticationRequired(message: urlError.localizedDescription)
+    if let urlError = error as? URLError {
+      switch urlError.code {
+      case .userAuthenticationRequired, .userCancelledAuthentication:
+        return .authenticationRequired(message: urlError.localizedDescription)
+      case .networkConnectionLost:
+        return .offline(message: urlError.localizedDescription)
+      default:
+        break
+      }
     }
     switch map(error) {
     case .Offline(let message): return .offline(message: message)

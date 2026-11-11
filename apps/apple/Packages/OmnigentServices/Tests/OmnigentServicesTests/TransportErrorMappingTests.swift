@@ -5,14 +5,35 @@ import Testing
 @testable import OmnigentServices
 
 struct TransportErrorMappingTests {
-  @Test(arguments: [
-    URLError.Code.notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
-  ])
+  @Test(
+    "a connection never made is offline: nothing was sent",
+    arguments: [
+      URLError.Code.notConnectedToInternet, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
+    ])
   func offlineCodes(code: URLError.Code) {
-    guard case .Offline = TransportErrorMapping.map(URLError(code)) else {
+    guard case .Offline(let message) = TransportErrorMapping.map(URLError(code)) else {
       Issue.record("\(code) should map to offline")
       return
     }
+    #expect(message == URLError(code).localizedDescription)
+    guard case .offline = TransportErrorMapping.connectionFailure(from: URLError(code)) else {
+      Issue.record("\(code) should end a stream as offline")
+      return
+    }
+  }
+
+  @Test("a connection lost mid-request may have sent it, and still ends a stream as offline")
+  func aLostConnectionIsNotKnownUnsent() {
+    let lost = URLError(.networkConnectionLost)
+    guard case .Other(let message) = TransportErrorMapping.map(lost) else {
+      Issue.record("a request's lost connection should map to other")
+      return
+    }
+    let code = URLError.Code.networkConnectionLost.rawValue
+    #expect(message == "\(lost.localizedDescription) (URLError \(code))")
+    #expect(
+      TransportErrorMapping.connectionFailure(from: lost)
+        == .offline(message: lost.localizedDescription))
   }
 
   @Test func timedOutMapsToTimeout() {

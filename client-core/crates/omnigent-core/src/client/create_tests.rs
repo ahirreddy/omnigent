@@ -284,10 +284,6 @@ fn unauthorized_creation_ends_the_connection() {
 #[test]
 fn create_success_then_send_failure_never_creates_a_second_session() {
     let transport = stub();
-    transport.ok(
-        "/v1/sessions/conv_created",
-        r#"{"id":"conv_created","status":"idle","created_at":1,"permission_level":4,"host_id":"host_a","host_online":true}"#,
-    );
     transport.respond(
         Some("POST"),
         "/v1/sessions/conv_created/events",
@@ -347,10 +343,6 @@ fn create_success_then_send_failure_never_creates_a_second_session() {
 #[test]
 fn create_and_send_reports_the_first_message() {
     let transport = stub();
-    transport.ok(
-        "/v1/sessions/conv_created",
-        r#"{"id":"conv_created","status":"idle","created_at":1,"permission_level":4}"#,
-    );
     transport.respond(
         Some("POST"),
         "/v1/sessions/conv_created/events",
@@ -363,6 +355,12 @@ fn create_and_send_reports_the_first_message() {
         panic!("first message not sent");
     };
     assert_eq!(sent.submission.item_id.as_deref(), Some("item_1"));
+    // The message follows the create directly: the new session is not read first.
+    let lines = core.transport().lines();
+    assert_eq!(
+        lines[lines.len() - 2..],
+        ["POST /v1/sessions", "POST /v1/sessions/conv_created/events"]
+    );
 }
 
 #[test]
@@ -909,27 +907,20 @@ fn models_for_an_unavailable_agent_or_one_without_a_preview_are_empty_or_refused
 
 #[test]
 fn create_for_message_posts_and_the_first_message_can_follow_separately() {
-    let transport = stub();
-    transport.writable_session("[]");
-    let core = connected(transport);
+    let core = connected(stub());
     let receipt =
         block_on(core.create_session_for_message(&selection(), "", "first words")).unwrap();
     assert_eq!(posts(core.transport()), 1);
     let session = receipt.session_id;
-    core.transport().ok(
-        &format!("/v1/sessions/{session}"),
-        format!(r#"{{"id":"{session}","status":"idle","created_at":1,"permission_level":4}}"#),
-    );
-    core.transport().ok(
-        &format!("/v1/sessions/{session}/items"),
-        r#"{"data":[],"has_more":false}"#,
-    );
-    core.transport().ok(
-        &format!("/v1/sessions/{session}/events"),
-        r#"{"queued":true}"#,
-    );
+    let events = format!("/v1/sessions/{session}/events");
+    core.transport().ok(&events, r#"{"queued":true}"#);
     let sent = block_on(core.send_first_message(&session, "first words")).unwrap();
     assert!(sent.submission.queued);
+    assert_eq!(
+        core.transport().lines().last().unwrap(),
+        &format!("POST {events}")
+    );
+    assert_eq!(posts(core.transport()), 2);
 }
 
 #[test]

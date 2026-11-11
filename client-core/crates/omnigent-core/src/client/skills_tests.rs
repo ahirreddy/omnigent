@@ -5,7 +5,10 @@ use serde_json::json;
 
 use super::SessionError;
 use super::events::SendPayload;
-use super::test_support::{Reply, RouteTransport, body_json, connected, header, live, query_value};
+use super::test_support::{
+    Reply, RouteTransport, body_json, cache_row, connected, header, lines_after_connect, live,
+    query_value,
+};
 
 #[test]
 fn session_skills_reads_the_session_catalog() {
@@ -82,7 +85,6 @@ fn session_skills_surfaces_an_unready_host_and_a_malformed_reply() {
 #[test]
 fn skill_and_compact_sends_post_their_events_and_clear_the_draft() {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.enqueue(
         "POST",
         "/v1/sessions/conv_a/events",
@@ -123,7 +125,6 @@ fn skill_and_compact_sends_post_their_events_and_clear_the_draft() {
 #[test]
 fn mentions_go_ahead_of_the_text_and_the_draft_clears() {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.ok("/v1/sessions/conv_a/events", r#"{"queued":true}"#);
     let core = live(transport);
     core.update_composer("conv_a", "explain it").unwrap();
@@ -164,10 +165,13 @@ fn slash_options_follow_the_servers_event_types() {
 #[test]
 fn clear_context_posts_the_clear_control() {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.ok("/v1/sessions/conv_a/events", r#"{"queued":false}"#);
     let core = live(transport);
     block_on(core.clear_context("conv_a")).unwrap();
+    assert_eq!(
+        lines_after_connect(&core),
+        ["POST /v1/sessions/conv_a/events"]
+    );
     assert_eq!(
         core.transport().write_bodies(),
         [json!({"type": "clear", "data": {}})]
@@ -175,9 +179,54 @@ fn clear_context_posts_the_clear_control() {
 }
 
 #[test]
+fn clear_context_is_refused_by_a_read_only_cached_row_without_a_request() {
+    let core = live(RouteTransport::local());
+    cache_row(
+        &core,
+        r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":1}"#,
+    );
+    assert_eq!(
+        block_on(core.clear_context("conv_a")),
+        Err(SessionError::ReadOnly)
+    );
+    assert_eq!(lines_after_connect(&core), Vec::<String>::new());
+}
+
+#[test]
+fn a_refused_clear_reads_as_the_removed_check_did() {
+    for (status, expected) in [
+        (403, SessionError::ReadOnly),
+        (
+            404,
+            SessionError::SessionNotFound {
+                session_id: "conv_a".into(),
+            },
+        ),
+    ] {
+        let transport = RouteTransport::local();
+        transport.respond(
+            Some("POST"),
+            "/v1/sessions/conv_a/events",
+            None,
+            Reply::json(status, "{}"),
+        );
+        let core = live(transport);
+        // An editor's cached row does not stand in for the server's answer.
+        cache_row(
+            &core,
+            r#"{"id":"conv_a","status":"idle","created_at":1,"permission_level":2}"#,
+        );
+        assert_eq!(
+            block_on(core.clear_context("conv_a")),
+            Err(expected),
+            "{status}"
+        );
+    }
+}
+
+#[test]
 fn messages_ask_to_be_held_and_an_offline_host_refuses_them() {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.enqueue(
         "POST",
         "/v1/sessions/conv_a/events",
@@ -221,7 +270,6 @@ fn messages_ask_to_be_held_and_an_offline_host_refuses_them() {
 #[test]
 fn turning_titles_off_marks_event_posts() {
     let transport = RouteTransport::local();
-    transport.writable_session("[]");
     transport.ok("/v1/sessions/conv_a/events", r#"{"queued":true}"#);
     let core = live(transport);
     block_on(core.send_message("conv_a", "first")).unwrap();

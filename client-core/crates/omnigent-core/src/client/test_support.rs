@@ -425,11 +425,8 @@ fn transport_error(name: &str) -> TransportError {
             message: name.to_owned(),
         },
         "cancelled" => TransportError::Cancelled,
-        "networkConnectionLost" | "cannotConnectToHost" | "notConnectedToInternet" => {
-            TransportError::Offline {
-                message: name.to_owned(),
-            }
-        }
+        // The rest may have sent the request: `networkConnectionLost` is a connection lost
+        // mid-request, which the Apple transport reports as `Other`.
         other => TransportError::Other {
             message: other.to_owned(),
         },
@@ -533,6 +530,17 @@ pub(crate) fn live(transport: RouteTransport) -> ClientCore<RouteTransport> {
     let core = connected(transport);
     core.set_live_session("conv_a", true);
     core
+}
+
+/// Caches `row`, a session list row, as a list page or the updates socket would.
+pub(crate) fn cache_row<T: HttpTransport>(core: &ClientCore<T>, row: &str) {
+    core.apply_session_rows(vec![serde_json::from_str(row).unwrap()])
+        .unwrap();
+}
+
+/// The requests made since connecting, as `METHOD path` (the connect's own two are dropped).
+pub(crate) fn lines_after_connect(core: &ClientCore<RouteTransport>) -> Vec<String> {
+    core.transport().lines().split_off(2)
 }
 
 /// Records every event.

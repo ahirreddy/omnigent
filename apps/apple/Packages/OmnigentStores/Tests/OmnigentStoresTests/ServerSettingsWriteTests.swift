@@ -241,7 +241,7 @@ struct ArchivedSessionsPaneTests {
   }
 
   private func archivedRow(_ id: String) -> String {
-    #"{"id":"\#(id)","title":"\#(id)","status":"idle","created_at":1,"updated_at":2,"archived":true}"#
+    #"{"id":"\#(id)","title":"\#(id)","status":"idle","created_at":1,"updated_at":2,"archived":true,"permission_level":4}"#
   }
 
   private func archivedPage(_ ids: [String], hasMore: Bool) -> HttpResponse {

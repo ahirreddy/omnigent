@@ -4,6 +4,7 @@
 use serde_json::{Value, json};
 
 use super::json::{as_object, opt_bool};
+use super::requests::refused_write;
 use super::{ClientCore, SessionError, lock};
 use crate::http::HttpTransport;
 use crate::recovery::{CONTINUE_PROMPT, FailureRecovery};
@@ -14,9 +15,10 @@ impl<T: HttpTransport> ClientCore<T> {
     ///
     /// # Errors
     ///
-    /// The preflight errors ([`SessionError::ReadOnly`] included); [`SessionError::MessageDenied`]
-    /// when a policy blocks the continuation; the write errors; and
-    /// [`SessionError::DeliveryUncertain`] for an unreadable acknowledgement.
+    /// [`SessionError::InvalidIdentifier`]; [`SessionError::ReadOnly`] from the cached row or the
+    /// server's `403`; [`SessionError::SessionNotFound`] for its `404`;
+    /// [`SessionError::MessageDenied`] when a policy blocks the continuation; the write errors;
+    /// and [`SessionError::DeliveryUncertain`] for an unreadable acknowledgement.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -40,14 +42,17 @@ impl<T: HttpTransport> ClientCore<T> {
         session_id: &str,
         recovery: FailureRecovery,
     ) -> Result<bool, SessionError> {
-        self.editable(session_id).await?;
+        self.cached_editable(session_id)?;
         let path = format!("/v1/sessions/{session_id}/events");
         let body = match recovery {
             FailureRecovery::Continue => json!({"type": "message", "data": {"role": "user",
                 "content": [{"type": "input_text", "text": CONTINUE_PROMPT}]}}),
             FailureRecovery::Resume => json!({"type": "retry_session", "data": {}}),
         };
-        let value = self.write_json("POST", &path, &body).await?;
+        let value = self
+            .write_json("POST", &path, &body)
+            .await
+            .map_err(refused_write(session_id))?;
         let recovered =
             acknowledged(&value, recovery).map_err(|detail| SessionError::DeliveryUncertain {
                 detail: format!("unreadable {path} acknowledgement: {detail}"),

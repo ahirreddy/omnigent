@@ -7,9 +7,11 @@
 //!   [`SessionError::HttpStatus`]. A transport failure keeps its kind.
 //! - **Writes** accept 200, 201, 202 and 204. A transport failure, cancellation, 3xx, 5xx, a result
 //!   from an older connection, or an unreadable acknowledgement is
-//!   [`SessionError::DeliveryUncertain`]: the write may have landed and is never retried. A 401
-//!   ends the connection; 403 and other 4xx definitely did not deliver, nor did a 503
-//!   `host_offline` ([`SessionError::HostOffline`]).
+//!   [`SessionError::DeliveryUncertain`]: the write may have landed and is never retried. The one
+//!   transport failure that is not is a connection never made
+//!   ([`TransportError::is_unsent`]): nothing was sent, so it is [`SessionError::Transport`], as
+//!   on a read. A 401 ends the connection; 403 and other 4xx definitely did not deliver, nor did
+//!   a 503 `host_offline` ([`SessionError::HostOffline`]).
 //!
 //! Requests carry `Accept: application/json`, the Databricks org header when the endpoint has
 //! one, the replica routing key on a host-sharded server (see [`super::routing`]), and the bearer
@@ -71,6 +73,25 @@ pub(crate) fn validate_identifier(value: &str) -> Result<(), SessionError> {
         Err(SessionError::InvalidIdentifier {
             value: value.to_owned(),
         })
+    }
+}
+
+/// A session write's `404` is a session that is gone, as a read of it reports.
+pub(crate) fn missing_session(session_id: &str) -> impl Fn(SessionError) -> SessionError + '_ {
+    move |error| match error {
+        SessionError::Rejected { status: 404, .. } => SessionError::SessionNotFound {
+            session_id: session_id.to_owned(),
+        },
+        other => other,
+    }
+}
+
+/// A session write the server refused: `403` is a permission the caller lacks
+/// ([`SessionError::ReadOnly`]), `404` a session that is gone.
+pub(crate) fn refused_write(session_id: &str) -> impl Fn(SessionError) -> SessionError + '_ {
+    move |error| match error {
+        SessionError::Forbidden => SessionError::ReadOnly,
+        other => missing_session(session_id)(other),
     }
 }
 
@@ -448,7 +469,14 @@ impl<T: HttpTransport> ClientCore<T> {
             .await;
         let mut state = lock(&self.state);
         let uncertain = |detail: String| SessionError::DeliveryUncertain { detail };
-        let response = result.map_err(|error| uncertain(error.to_string()))?;
+        // A connection never made sent nothing: the write did not deliver, whatever came after.
+        let response = result.map_err(|error| {
+            if error.is_unsent() {
+                SessionError::Transport(error)
+            } else {
+                uncertain(error.to_string())
+            }
+        })?;
         if state.epoch != prepared.epoch || !state.is_connected() {
             return Err(uncertain(
                 "the connection ended while the write was in flight".into(),
@@ -540,7 +568,9 @@ mod tests {
     use futures::executor::block_on;
     use serde_json::json;
 
-    use super::super::test_support::{Reply, RouteTransport, connected, still_pending};
+    use super::super::test_support::{
+        Reply, RouteTransport, connected, lines_after_connect, still_pending,
+    };
     use super::*;
 
     const WRITE_PATH: &str = "/v1/sessions/conv_a/read-state";
@@ -569,6 +599,34 @@ mod tests {
             Err(SessionError::Unauthorized { .. })
         ));
         assert!(!lock(&core.state).is_connected());
+    }
+
+    #[test]
+    fn a_write_that_made_no_connection_was_not_sent_and_any_other_failure_is_uncertain() {
+        let message = || "no answer".to_owned();
+        let failed = |error: TransportError| {
+            let transport = RouteTransport::local();
+            transport.respond(Some("POST"), WRITE_PATH, None, Reply::Fail(error));
+            let core = connected(transport);
+            let outcome = block_on(core.write_json("POST", WRITE_PATH, &json!({})));
+            assert_eq!(lines_after_connect(&core), [format!("POST {WRITE_PATH}")]);
+            outcome.unwrap_err()
+        };
+        let offline = TransportError::Offline { message: message() };
+        assert_eq!(failed(offline.clone()), SessionError::Transport(offline));
+        for sent in [
+            TransportError::Timeout { message: message() },
+            TransportError::Cancelled,
+            TransportError::Tls { message: message() },
+            TransportError::Other { message: message() },
+        ] {
+            assert_eq!(
+                failed(sent.clone()),
+                SessionError::DeliveryUncertain {
+                    detail: sent.to_string()
+                }
+            );
+        }
     }
 
     #[test]
@@ -648,6 +706,28 @@ mod tests {
         );
         assert_eq!(error_code(br#"{"error":"busy"}"#), None);
         assert_eq!(error_code(b"<html>503</html>"), None);
+    }
+
+    #[test]
+    fn a_refused_session_write_reads_as_no_permission_or_a_missing_session() {
+        let gone = SessionError::SessionNotFound {
+            session_id: "conv_a".into(),
+        };
+        let rejected = |status| SessionError::Rejected {
+            status,
+            message: "no".into(),
+        };
+        assert_eq!(
+            refused_write("conv_a")(SessionError::Forbidden),
+            SessionError::ReadOnly
+        );
+        assert_eq!(refused_write("conv_a")(rejected(404)), gone);
+        assert_eq!(refused_write("conv_a")(rejected(409)), rejected(409));
+        assert_eq!(missing_session("conv_a")(rejected(404)), gone);
+        assert_eq!(
+            missing_session("conv_a")(SessionError::Forbidden),
+            SessionError::Forbidden
+        );
     }
 
     #[test]

@@ -13,8 +13,8 @@ struct ServerSettingsStoreTests {
       .json(
         #"""
         {"object":"list","has_more":false,"data":[
-          {"id":"a1","title":"Old","status":"idle","created_at":1,"updated_at":2,"archived":true},
-          {"id":"a2","title":"Older","status":"idle","created_at":1,"updated_at":1,"archived":true},
+          {"id":"a1","title":"Old","status":"idle","created_at":1,"updated_at":2,"archived":true,"permission_level":4},
+          {"id":"a2","title":"Older","status":"idle","created_at":1,"updated_at":1,"archived":true,"permission_level":4},
           {"id":"b1","title":"Live","status":"idle","created_at":1,"updated_at":3,"archived":false}]}
         """#))
     let settings = try #require(try await connectedStore(server).serverSettings())
