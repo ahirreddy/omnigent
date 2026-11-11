@@ -35,7 +35,37 @@ extension SessionListStore {
   public func setArchived(_ sessionID: String, _ archived: Bool, deleteWorktree: Bool = false)
     async -> Bool
   {
-    await edit(sessionID, .archived(archived: archived, deleteWorktree: deleteWorktree))
+    let refused = await setArchived(
+      [sessionID], archived, deletingWorktrees: deleteWorktree ? [sessionID] : [])
+    return refused.isEmpty
+  }
+
+  /// Archives or restores `sessionIDs` (owner permission) as one change of the list, with the
+  /// writes side by side: one refused session does not hold back the others.
+  /// - Parameters:
+  ///   - sessionIDs: The sessions.
+  ///   - archived: Archive or restore.
+  ///   - deletingWorktrees: When archiving, the sessions whose git worktree is removed too.
+  /// - Returns: The sessions that were not saved; the first failure is in ``editError``.
+  @discardableResult
+  public func setArchived(
+    _ sessionIDs: [String], _ archived: Bool, deletingWorktrees: Set<String> = []
+  ) async -> Set<String> {
+    guard let core else {
+      setEditError(.InvalidState(message: "Connect to a server before editing sessions."))
+      return Set(sessionIDs)
+    }
+    let edits = sessionIDs.map { sessionID in
+      SessionEdit(
+        sessionId: sessionID,
+        change: .archived(
+          archived: archived, deleteWorktree: deletingWorktrees.contains(sessionID)))
+    }
+    let failures = await whileDeparting(archived ? sessionIDs : []) {
+      await core.editSessions(edits: edits)
+    }
+    setEditError(failures.first?.error)
+    return Set(failures.map(\.sessionId))
   }
 
   /// Marks `sessionID` unread, or read.
@@ -61,7 +91,9 @@ extension SessionListStore {
   /// - Returns: Whether it was deleted.
   @discardableResult
   public func delete(_ sessionID: String) async -> Bool {
-    await perform { core in try await core.deleteSession(sessionId: sessionID) }
+    await whileDeparting([sessionID]) {
+      await perform { core in try await core.deleteSession(sessionId: sessionID) }
+    }
   }
 
   /// Deletes `sessionID` and its history, and with `deleteBranch` its worktree's local git
@@ -72,8 +104,10 @@ extension SessionListStore {
   /// - Returns: Whether it was deleted.
   @discardableResult
   public func delete(_ sessionID: String, deleteBranch: Bool) async -> Bool {
-    await perform { core in
-      try await core.deleteSessionWithBranch(sessionId: sessionID, deleteBranch: deleteBranch)
+    await whileDeparting([sessionID]) {
+      await perform { core in
+        try await core.deleteSessionWithBranch(sessionId: sessionID, deleteBranch: deleteBranch)
+      }
     }
   }
 
@@ -82,7 +116,9 @@ extension SessionListStore {
   /// - Returns: Whether the caller left it.
   @discardableResult
   public func leave(_ sessionID: String) async -> Bool {
-    await perform { core in try await core.leaveSession(sessionId: sessionID) }
+    await whileDeparting([sessionID]) {
+      await perform { core in try await core.leaveSession(sessionId: sessionID) }
+    }
   }
 
   /// Files `sessionID` into `project`, or removes it from its project. A label-only project
@@ -308,4 +344,37 @@ extension SessionListStore {
       return false
     }
   }
+}
+
+/// An edit between the click and the server's answer, and one the server refused.
+extension SessionListStore {
+  /// Offers the edit that just failed again, in the alert for ``editError``. Without a failure
+  /// on record there is nothing to offer it beside.
+  /// - Parameters:
+  ///   - title: The alert's title, naming what failed.
+  ///   - run: Makes the edit again.
+  public func offerRetry(_ title: String, _ run: @escaping () -> Void) {
+    guard editError != nil else { return }
+    editRetry = EditRetry(title: title, run: run)
+  }
+
+  /// Counts `sessionIDs` as ``departing`` until `operation` has the server's answer and the
+  /// rows show it.
+  func whileDeparting<Answer>(
+    _ sessionIDs: [String], _ operation: () async -> Answer
+  ) async -> Answer {
+    if !sessionIDs.isEmpty { departing.formUnion(sessionIDs) }
+    let answer = await operation()
+    await eventsBeforeAnswer()
+    if !sessionIDs.isEmpty { departing.subtract(sessionIDs) }
+    return answer
+  }
+}
+
+/// An edit that failed, for the alert that reports it to offer again.
+public struct EditRetry {
+  /// The alert's title, naming what failed.
+  public let title: String
+  /// Makes the edit again.
+  public let run: () -> Void
 }

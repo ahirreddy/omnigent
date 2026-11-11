@@ -12,6 +12,7 @@ import Testing
 nonisolated final class AppServer: Sendable {
   private final class Routes: Sendable {
     let table = Mutex<[String: HttpResponse]>([:])
+    let gates = Mutex<[String: RouteGate]>([:])
   }
 
   private let routes = Routes()
@@ -21,6 +22,8 @@ nonisolated final class AppServer: Sendable {
     let routes = routes
     http = FakeHttpTransport { request throws(TransportError) in
       let path = URLComponents(string: request.url)?.path ?? ""
+      let gate = routes.gates.withLock { $0["\(request.method) \(path)"] ?? $0[path] }
+      if let gate { await gate.pass() }
       return routes.table.withLock { $0["\(request.method) \(path)"] ?? $0[path] }
         ?? .json(#"{"detail":"not found"}"#, status: 404)
     }
@@ -33,6 +36,14 @@ nonisolated final class AppServer: Sendable {
   /// Answers `path`, for one method or for all of them.
   func route(_ path: String, method: String? = nil, _ response: HttpResponse) {
     routes.table.withLock { $0[(method.map { "\($0) " } ?? "") + path] = response }
+  }
+
+  /// Holds requests to `path` until the returned gate is released, to see the window while the
+  /// server has not answered.
+  func hold(_ path: String, method: String? = nil) -> RouteGate {
+    let gate = RouteGate()
+    routes.gates.withLock { $0[(method.map { "\($0) " } ?? "") + path] = gate }
+    return gate
   }
 
   /// The requests sent to `path` with `method`.

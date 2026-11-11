@@ -35,6 +35,10 @@ import Testing
     var scrollViews: [NSScrollView] = []
     /// How many requests the server had taken before the step.
     var requests = 0
+    /// The write the step's edit sent, held at the server.
+    var gate: RouteGate?
+    /// The edit the step started, with whether the server saved it.
+    var edit: Task<Bool, Never>?
   }
 
   extension BudgetWindow {

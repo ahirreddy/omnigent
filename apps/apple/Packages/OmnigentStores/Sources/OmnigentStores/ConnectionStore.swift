@@ -79,7 +79,9 @@ public final class ConnectionStore {
 
   /// The core, or `nil` when it could not start (see ``issues``).
   public let core: ClientCore?
-  private let relay = CoreEventRelay()
+  let relay = CoreEventRelay()
+  /// Callers of ``eventsSentSoFarApplied()``, each with the count of events it waits for.
+  var eventWaiters: [(target: Int, resume: CheckedContinuation<Void, Never>)] = []
   private var pump: Task<Void, Never>?
   private var preferenceWatch: Task<Void, Never>?
   private var attempt = 0
@@ -96,6 +98,7 @@ public final class ConnectionStore {
     pages = PagesStore(core: core)
     canvas = CanvasStore(core: core)
     sessionList.core = core
+    sessionList.eventsBeforeAnswer = { [weak self] in await self?.eventsSentSoFarApplied() }
     _ = core.subscribe(listener: relay)
     startPump()
     preferenceWatch = Self.watchBackgroundTitles(core)

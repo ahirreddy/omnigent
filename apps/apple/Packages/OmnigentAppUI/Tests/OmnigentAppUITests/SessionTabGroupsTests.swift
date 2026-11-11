@@ -129,6 +129,22 @@ struct SessionTabGroupsTests {
     #expect(groups.page == nil)
   }
 
+  @Test("Leaving a session being archived shows the one before it and keeps its tabs")
+  func showAway() {
+    let tabs = SessionTabGroups()
+    for id in ["s1", "s2", "s3"] { tabs.showChat(id) }
+    #expect(!tabs.showAway(from: ["s1"]), "the shown session stays")
+    #expect(tabs.page == .session("s3"))
+
+    #expect(tabs.showAway(from: ["s3", "s2"]))
+    #expect(tabs.page == .session("s1"), "the most recent session that stays")
+    #expect(tabs.groups["s3"] != nil, "only the page changed")
+
+    #expect(tabs.showAway(from: ["s1", "s2", "s3"]))
+    #expect(tabs.page == nil, "none stays")
+    #expect(!tabs.showAway(from: ["s1"]), "no session is shown")
+  }
+
   @Test("The few most recent sessions stay live; recent chats across them stay built")
   func keepAlive() throws {
     let groups = SessionTabGroups()

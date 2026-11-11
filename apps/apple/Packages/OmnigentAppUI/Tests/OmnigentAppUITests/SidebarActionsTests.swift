@@ -18,16 +18,16 @@ struct SidebarActionsTests {
     OmnigentUIComponents.SessionSummary(try #require(session.connection.sessionList.session(id)))
   }
 
-  @Test("Archiving closes the session's tabs and offers Undo, which restores it")
+  @Test("Archiving offers Undo at the click and closes the tabs with the answer; Undo restores")
   func archiveAndUndo() async throws {
     let server = threeSessionServer()
+    server.route("/v1/sessions/conv_a", method: "PATCH", archivedRow("conv_a"))
     let session = try await signedInSession(server)
     let view = connectedView(session, WindowSelection())
     session.tabs.showChat("conv_a")
     view.edit(.archive(["conv_a"], true))
-    try await eventually("the Undo bar") { view.sidebarModel.undo != nil }
-    #expect(session.tabs.groups["conv_a"] == nil, "an archived session's tabs leave with it")
-    #expect(view.sidebarModel.undo?.banner?.kind == .archived(count: 1))
+    #expect(view.sidebarModel.undo?.banner?.kind == .archived(count: 1), "offered at the click")
+    try await eventually("the tabs to leave") { session.tabs.groups["conv_a"] == nil }
     let archive = try #require(try server.patched("/v1/sessions/conv_a").last)
     #expect(archive["archived"] as? Bool == true)
 
@@ -39,37 +39,6 @@ struct SidebarActionsTests {
     #expect(view.sidebarModel.undo == nil, "Undo can't be undone from the bar")
   }
 
-  @Test("An archive the server refuses keeps the session's tabs and says why")
-  func aRefusedArchiveKeepsTabs() async throws {
-    let server = threeSessionServer()
-    server.route("/v1/sessions/conv_a", method: "PATCH", .json(#"{"detail":"nope"}"#, status: 422))
-    let session = try await signedInSession(server)
-    let view = connectedView(session, WindowSelection())
-    session.tabs.showChat("conv_a")
-    view.edit(.archive(["conv_a"], true))
-    try await eventually("the failure") { session.connection.sessionList.editError != nil }
-    try await eventually("the edit to end") { session.connection.sessionList.editing.isEmpty }
-    try await Task.sleep(for: .milliseconds(20))
-    #expect(session.tabs.groups["conv_a"] != nil, "the session wasn't archived")
-    #expect(view.sidebarModel.undo == nil)
-  }
-
-  @Test("Archiving several stops at a refusal: only those archived lose their tabs")
-  func aPartlyRefusedArchive() async throws {
-    let server = threeSessionServer()
-    server.route("/v1/sessions/conv_b", method: "PATCH", .json(#"{"detail":"nope"}"#, status: 422))
-    let session = try await signedInSession(server)
-    let view = connectedView(session, WindowSelection())
-    for id in ["conv_a", "conv_b", "conv_c"] { session.tabs.showChat(id) }
-    view.edit(.archive(["conv_a", "conv_b", "conv_c"], true))
-    try await eventually("the failure") { session.connection.sessionList.editError != nil }
-    try await Task.sleep(for: .milliseconds(20))
-    #expect(session.tabs.groups["conv_a"] == nil)
-    #expect(session.tabs.groups["conv_b"] != nil)
-    #expect(session.tabs.groups["conv_c"] != nil, "it was never tried")
-    #expect(try server.patched("/v1/sessions/conv_c").isEmpty)
-  }
-
   @Test("Pinning offers Undo with the right words")
   func pinAndUndo() async throws {
     let server = threeSessionServer()
@@ -77,8 +46,7 @@ struct SidebarActionsTests {
     let view = connectedView(session, WindowSelection())
     let row = try summary(session, "conv_b")
     view.sessionListActions.setPinned?(row, true)
-    try await eventually("the Undo bar") { view.sidebarModel.undo != nil }
-    #expect(view.sidebarModel.undo?.banner?.kind == .pinned)
+    #expect(view.sidebarModel.undo?.banner?.kind == .pinned, "offered at the click")
     view.sidebarActions.dismissUndo?()
     #expect(view.sidebarModel.undo == nil)
   }

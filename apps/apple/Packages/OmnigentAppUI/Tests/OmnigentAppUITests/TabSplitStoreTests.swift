@@ -333,6 +333,28 @@ struct SessionTabsLifecycleTests {
     #expect(gone == ["deleted", "archived"])
   }
 
+  @Test("A session on its way out keeps what was known of it until the server answers")
+  func holding() {
+    let known = SessionPresence(
+      isLoaded: true, archivedByID: ["archiving": false, "deleting": false, "kept": false])
+    // The rows left at the click: one reads archived, the other is gone from the list.
+    let unanswered = SessionPresence(
+      isLoaded: true, archivedByID: ["archiving": true, "kept": false, "new": false],
+      departing: ["archiving", "deleting", "new"])
+    let held = unanswered.holding(known)
+    #expect(held.archivedByID == ["archiving": false, "deleting": false, "kept": false])
+    #expect(
+      SessionTabsLifecycle.departed(previous: known.archivedByID, current: held.archivedByID)
+        .isEmpty)
+
+    var answered = unanswered
+    answered.departing = []
+    #expect(
+      SessionTabsLifecycle.departed(
+        previous: held.archivedByID, current: answered.holding(held).archivedByID)
+        == ["archiving", "deleting"])
+  }
+
   @Test("A session the server no longer has loses its tabs; a 404 the list contradicts doesn't")
   func missing() {
     let answers = [

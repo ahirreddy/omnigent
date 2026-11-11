@@ -234,6 +234,9 @@ struct SessionListWriteTests {
     let list = SessionListStore()
     #expect(await !list.setUnread("conv_a", true))
     #expect(list.editError?.message == "Connect to a server before editing sessions.")
+    list.dismissEditError()
+    #expect(await !list.rename("conv_a", to: "Renamed"))
+    #expect(list.editError?.message == "Connect to a server before editing sessions.")
     await list.loadProjects()
     #expect(await list.loadHosts(serverURL: "http://x").isEmpty)
     await #expect(throws: CoreError.self) { try await list.search("x", inMessages: true) }

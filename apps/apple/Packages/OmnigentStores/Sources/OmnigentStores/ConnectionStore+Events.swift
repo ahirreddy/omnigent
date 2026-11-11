@@ -3,6 +3,7 @@ import OmnigentCoreFFI
 extension ConnectionStore {
   func apply(_ event: CoreEvent) {
     eventsApplied += 1
+    defer { if !eventWaiters.isEmpty { resumeEventWaiters() } }
     switch event {
     case .connectionChanged(let phase):
       connectionChanged(phase)
@@ -15,6 +16,20 @@ extension ConnectionStore {
     default:
       applySessionEvent(event)
     }
+  }
+
+  /// Returns once every event the core has sent by now is applied. The core changes a row
+  /// before it answers a call, and the answer can overtake that event on its way here.
+  func eventsSentSoFarApplied() async {
+    let target = relay.eventsSent
+    guard eventsApplied < target else { return }
+    await withCheckedContinuation { eventWaiters.append((target, $0)) }
+  }
+
+  private func resumeEventWaiters() {
+    let reached = eventWaiters.filter { $0.target <= eventsApplied }
+    eventWaiters.removeAll { $0.target <= eventsApplied }
+    for waiter in reached { waiter.resume.resume() }
   }
 
   private func connectionChanged(_ phase: ConnectionPhase) {

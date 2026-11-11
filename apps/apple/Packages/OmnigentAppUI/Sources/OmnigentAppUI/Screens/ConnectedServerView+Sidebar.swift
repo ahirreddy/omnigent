@@ -179,32 +179,6 @@ extension ConnectedServerView {
     return withProjectActions(actions)
   }
 
-  /// Carries out a sidebar drag: pins into a slot, or files into or out of a project, unpinning
-  /// a pin so it shows where it was dropped (the web's `handleDragEnd`).
-  func drop(_ session: OmnigentUIComponents.SessionSummary, _ action: SidebarDropAction) {
-    let list = connection.sessionList
-    Task {
-      switch action {
-      case .move(let project, let unpin):
-        guard await list.move(session.id, to: ProjectSummary(project)), unpin else { return }
-        await list.setPinned(session.id, false)
-      case .ungroup(let unpin):
-        guard await list.move(session.id, to: nil), unpin else { return }
-        await list.setPinned(session.id, false)
-      case .pin(let target):
-        if let target {
-          await list.movePin(session.id, slotOf: target)
-        } else {
-          await list.setPinned(session.id, true)
-        }
-      case .unpin:
-        await list.setPinned(session.id, false)
-      case .none:
-        break
-      }
-    }
-  }
-
   var sessionListActions: SessionListActions {
     let list = connection.sessionList
     let connection = connection
@@ -223,7 +197,7 @@ extension ConnectedServerView {
       share: shareAction,
       fork: { summary in beginSidebarFork(summary.id) },
       moveToProject: { summary, project in
-        Task { await list.move(summary.id, to: project.map(ProjectSummary.init)) }
+        move(summary.id, to: project.map(ProjectSummary.init))
       },
       stop: { summary in Task { await list.stop(summary.id) } },
       delete: { summary in removeSession(summary.id) { await list.delete($0) } },
@@ -261,58 +235,6 @@ extension ConnectedServerView {
     let model = sidebarModel
     if model.display.show == .archived { setDisplay(model.display.with(show: .all)) }
     connection.sessionList.filter = OmnigentCoreFFI.SessionFilter(filter ?? .all)
-  }
-
-  /// Deletes or leaves a session; its tabs close once it is gone.
-  func removeSession(
-    _ sessionID: String, _ operation: @escaping @MainActor (String) async -> Bool
-  ) {
-    let tabs = session.tabs
-    Task {
-      if await operation(sessionID) { tabs.removeSessions([sessionID]) }
-    }
-  }
-
-  /// Renames through the session list, which reports a failure in `editError` (shown above).
-  func rename(_ sessionID: String, to title: String) {
-    let list = connection.sessionList
-    Task {
-      // The Boolean only repeats whether `editError` was set.
-      _ = await list.rename(sessionID, to: title)
-    }
-  }
-
-  /// Pins or archives through the session list (which reports failures in `editError`), and
-  /// offers Undo for the change. Archiving also removes the worktrees of `deletingWorktrees`
-  /// once the server's Undo grace passes; Undo after that restores the session, not the
-  /// worktree, and says so.
-  func edit(
-    _ change: SidebarUndo.Change, recordUndo: Bool = true, deletingWorktrees: Set<String> = []
-  ) {
-    let list = connection.sessionList
-    let model = sidebarModel
-    Task {
-      var succeeded = true
-      switch change {
-      case .pin(let id, let pinned):
-        succeeded = await list.setPinned(id, pinned)
-      case .archive(let ids, let archived):
-        var changed = Set<String>()
-        for id in ids where succeeded {
-          succeeded = await list.setArchived(
-            id, archived, deleteWorktree: deletingWorktrees.contains(id))
-          if succeeded { changed.insert(id) }
-        }
-        if archived {
-          // An archived session's tabs leave with it, its primary chat among them. A session the
-          // server refused to archive keeps its tabs.
-          session.tabs.removeSessions(changed)
-        }
-      }
-      if succeeded, recordUndo {
-        model.undo = SidebarUndo(change: change, removesWorktrees: !deletingWorktrees.isEmpty)
-      }
-    }
   }
 
   /// Previous and Next Session, and the pinned-session shortcuts, show the session's tabs.

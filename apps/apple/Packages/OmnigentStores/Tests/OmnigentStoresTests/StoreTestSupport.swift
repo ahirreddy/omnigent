@@ -7,41 +7,6 @@ import Testing
 
 @testable import OmnigentStores
 
-/// Holds requests to one route until the test releases them, to catch a store mid-request.
-nonisolated final class RouteGate: Sendable {
-  private struct State {
-    var arrivals = 0
-    var isReleased = false
-    var waiters: [CheckedContinuation<Void, Never>] = []
-  }
-
-  private let state = Mutex(State())
-
-  /// Requests that reached the gate so far.
-  var arrivals: Int { state.withLock { $0.arrivals } }
-
-  func pass() async {
-    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-      let isOpen = state.withLock { state -> Bool in
-        state.arrivals += 1
-        if state.isReleased { return true }
-        state.waiters.append(continuation)
-        return false
-      }
-      if isOpen { continuation.resume() }
-    }
-  }
-
-  func release() {
-    let waiters = state.withLock { state -> [CheckedContinuation<Void, Never>] in
-      state.isReleased = true
-      defer { state.waiters = [] }
-      return state.waiters
-    }
-    for waiter in waiters { waiter.resume() }
-  }
-}
-
 /// A loopback single-user server answering by method and path, then by path.
 nonisolated final class RouteServer: Sendable {
   private let routes = Mutex<[String: HttpResponse]>([:])

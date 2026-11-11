@@ -126,8 +126,12 @@ public struct ConnectedServerView: View {
     }
     .modifier(WindowTabOverview(tabs: tabs, isPresented: $showsTabOverview))
     .alert(
-      "Could Not Update the Session", isPresented: editErrorPresented,
-      actions: { Button("OK") { connection.sessionList.dismissEditError() } },
+      connection.sessionList.editRetry?.title ?? "Could Not Update the Session",
+      isPresented: editErrorPresented,
+      actions: {
+        Button("OK") { connection.sessionList.dismissEditError() }
+        if let retry = connection.sessionList.editRetry { Button("Retry", action: retry.run) }
+      },
       message: { Text(connection.sessionList.editError?.message ?? "") }
     )
     .sheet(isPresented: sidebarForkPresented) {

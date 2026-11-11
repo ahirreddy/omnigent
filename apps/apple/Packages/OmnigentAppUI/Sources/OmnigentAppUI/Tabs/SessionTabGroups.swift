@@ -100,6 +100,17 @@ public final class SessionTabGroups {
     onChange?(nil)
   }
 
+  /// Leaves the shown session for the most recently shown other one, keeping its tabs: it is
+  /// being archived, and the server has not answered yet.
+  /// - Parameter sessionIDs: The sessions on their way out.
+  /// - Returns: Whether the window was showing one of them.
+  @discardableResult
+  public func showAway(from sessionIDs: Set<String>) -> Bool {
+    guard let shown = currentSessionID, sessionIDs.contains(shown) else { return false }
+    show(recentSessions.first { !sessionIDs.contains($0) }.map(SidebarDestination.session))
+    return true
+  }
+
   /// Shows a session with its primary chat selected, as links to its conversation do.
   /// - Parameter sessionID: The session.
   public func showChat(_ sessionID: String) {
