@@ -443,6 +443,20 @@ Details: [remote-browser-design.md](remote-browser-design.md).
     session's, holds it or is inside it. An agent that writes outside its own directory, into
     another open session's unrelated one, no longer reloads that session's panel. Deciding
     by the changed file's path, not the session's directory, would cover it.
+- [ ] **Transcript read by an assistive client** (cause and numbers in
+  [performance.md](performance.md), "A layout that never ended"). The rows are in a plain stack
+  while VoiceOver, Voice Control, Accessibility Inspector or a UI test reads the window:
+  - Every row is built at the first read: 0.82 s for 83 rows in Debug against 0.075 s lazy.
+    Not measured for a session of a thousand rows, or in Release.
+  - The reader's place moves once if the first read happens while they are scrolled up (the
+    offset holds and the content above grows). The width-change restore in
+    `TranscriptScrollState` could hold the place at the switch.
+  - Rows are rebuilt at the switch, so state a row keeps itself (an expanded tool call) resets.
+  - The other lazy stacks (`TurnRail`, the pages, the inspector) were not checked for the
+    same loop.
+  - Report the loop to Apple with the reduced case: a `LazyVStack` in a `ScrollView`, tall
+    rows, a short last row and a 1 pt view after it, accessibility on, scrolled 140-600 pt
+    above the end, then a layout.
 
 ## Product decisions
 

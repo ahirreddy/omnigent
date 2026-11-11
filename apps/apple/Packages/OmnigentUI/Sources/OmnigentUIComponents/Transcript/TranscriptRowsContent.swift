@@ -36,6 +36,19 @@ private struct PacedWhileShown: ViewModifier {
   }
 }
 
+/// Says once in the performance log that an assistive client reads a transcript, which builds
+/// every row of it: a long session then opens more slowly.
+@MainActor
+enum AssistiveClientNotice {
+  private(set) static var isWritten = false
+
+  static func write() {
+    guard !isWritten else { return }
+    isWritten = true
+    HangLog.write("transcript: an assistive client reads the window, every row is built")
+  }
+}
+
 /// The transcript's scrolling content. It reads the rows in its own body (paced, see
 /// ``TranscriptRowsPacer``), so a row change re-renders this list and not the scroll view's
 /// modifiers and overlays in ``TranscriptView``.
@@ -51,18 +64,31 @@ struct TranscriptRowsContent<Header: View>: View {
 
   @Environment(\.transcriptAppearance) private var appearance
   @Environment(\.transcriptFocus) private var focus
+  @Environment(\.accessibilityEnabled) private var isReadByAssistiveClient
 
   var body: some View {
     let state = rowsState
     current.state = state
     pacer.warmup.warm(state.rows)
+    if isReadByAssistiveClient { AssistiveClientNotice.write() }
     return list(state).countsRenders("rows")
   }
 
+  /// The rows' stack: lazy, except for an assistive client. For one, a lazy stack places rows
+  /// out to an edge set by its own estimated height, and re-places without end when its last
+  /// rows are shorter than that estimate.
+  @ViewBuilder
+  private func stack(@ViewBuilder rows: () -> some View) -> some View {
+    let spacing = appearance.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row
+    if isReadByAssistiveClient {
+      VStack(alignment: .leading, spacing: spacing, content: rows).scrollTargetLayout()
+    } else {
+      LazyVStack(alignment: .leading, spacing: spacing, content: rows).scrollTargetLayout()
+    }
+  }
+
   private func list(_ state: ConversationViewState) -> some View {
-    LazyVStack(
-      alignment: .leading, spacing: appearance.isCLI ? CLIMetrics.blockGap : Theme.Spacing.row
-    ) {
+    stack {
       Color.clear.frame(height: 1).id(TranscriptView.topID)
       if appearance.isCLI {
         CLITranscriptRows(
@@ -72,7 +98,6 @@ struct TranscriptRowsContent<Header: View>: View {
       }
       Color.clear.frame(height: 1).id(TranscriptView.bottomID)
     }
-    .scrollTargetLayout()
     .padding(.vertical, Theme.Spacing.extraLarge)
     .modifier(HeldRowWidth())
     // CLI rows set their own column, so user bands reach the edges.

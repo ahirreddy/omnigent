@@ -1499,6 +1499,45 @@ existing Release samples. To confirm in the VM (Release, the profile's data set)
   720 pt of column: time per step against 26-29 ms;
 - chat to browser and back, chat to terminal and back: unchanged at 190-350 ms.
 
+## A layout that never ended, with an assistive client reading (November 2026)
+
+The Mac app could stop for good, its main thread inside one layout. It needed all of: an
+assistive client that had asked for the window's accessibility children (VoiceOver, Voice
+Control, Accessibility Inspector, a UI test's snapshot; window frame, title, focused element
+and hit tests do not count), a transcript whose last rows are short, the reader 140-600 pt
+above the end and not following, and a layout, such as a streamed chunk.
+
+The cause is in SwiftUI's `LazyVStack`, not in a modifier of ours: the hang stayed with all
+21 app-side candidates switched off. With accessibility on, a lazy stack places rows over the
+visible rectangle grown by about one container height above and two below. Near the end that
+edge is set by the stack's own height, which is an estimate while the last rows are unplaced.
+When they are much shorter than the estimated row, placing them shrinks the height (13780 to
+13263 pt in the trace), which moves the edge, which unplaces them, without end.
+
+The rows are now in a `VStack` while `accessibilityEnabled` is true and in the `LazyVStack`
+otherwise (`TranscriptRowsContent.stack`). Overriding `accessibilityEnabled` to false on the
+lazy stack also ends the loop, but takes the rows out of the accessibility tree (62 elements
+and no text, against 706 elements and 343 texts), so it was not taken.
+
+| Check | Lazy stack | Plain stack while read |
+|---|---|---|
+| Real app in the VM, read, streaming, scrolled up: runs hung | 10 of 12 | 0 of 12 |
+| `TranscriptAccessibilitySpinTests`, child process, VM | stalls 4 of 4 | passes 4 of 4 |
+| The same on the host | stalls (exit 71) | passes 3 of 3 |
+| Scrolling and history suites on the host (30 tests) | pass | pass 3 of 3 |
+| Every transcript suite on the host (378 tests) | not run | pass |
+| Frames per second while read and streaming, VM | 56 | 37-48 |
+| First read of 83 rows, Debug | 0.075 s | 0.82 s |
+
+The app says once per launch in the performance log when a transcript is read this way
+(`AssistiveClientNotice`), since it makes long sessions open more slowly:
+
+```sh
+log show --last 30m --predicate 'subsystem == "ai.omnigent.performance" AND category == "hang"'
+```
+
+What it costs is in [follow-ups.md](follow-ups.md), "Transcript read by an assistive client".
+
 ## Where the time still goes
 
 - **Switching tabs** renders the detail and the tab that shows once, 50-80 ms in Release to a
