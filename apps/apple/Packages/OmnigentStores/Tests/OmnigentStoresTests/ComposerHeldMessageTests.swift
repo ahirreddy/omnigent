@@ -51,7 +51,7 @@ struct ComposerHeldMessageTests {
     #expect(composer.hostRecheck == nil)
   }
 
-  @Test("A file added while the send was out keeps the message in the draft, with the reason")
+  @Test("A file added while the send was out stays in the draft; the message is held without it")
   func fileAddedDuringTheSend() async throws {
     let live = try await LiveComposer()
     let composer = live.composer
@@ -65,14 +65,15 @@ struct ComposerHeldMessageTests {
     gate.release()
     _ = await sending.value
 
-    #expect(composer.lastError?.isHostOffline == true)
-    #expect(composer.queue.items.isEmpty)
-    #expect(composer.text == "hello")
+    #expect(composer.lastError == nil, "a held message is not a failure")
+    #expect(composer.queue.items.map(\.text) == ["hello"])
+    #expect(composer.queue.items.first?.extras.isEmpty == true)
+    #expect(composer.text.isEmpty)
     #expect(composer.attachments.items.count == 1)
   }
 
-  @Test("A path untagged while its message was out leaves nothing to hold, and says so")
-  func nothingLeftToHold() async throws {
+  @Test("A held message keeps the path it was sent with, whatever the draft tags meanwhile")
+  func pathsAreHeldWithTheMessage() async throws {
     let live = try await LiveComposer()
     let composer = live.composer
     live.hostIsOffline()
@@ -81,12 +82,14 @@ struct ComposerHeldMessageTests {
 
     let sending = Task { await composer.send() }
     try await eventually("the post") { gate.arrivals == 1 }
-    composer.removeMention("src/")
+    #expect(composer.mentions.isEmpty, "the path left with the message")
+    composer.addMention("docs/")
     gate.release()
     _ = await sending.value
 
-    #expect(composer.queue.items.isEmpty)
-    #expect(composer.lastError != nil)
-    #expect(composer.lastError?.isHostOffline == false)
+    #expect(composer.queue.items.map(\.extras.mentions) == [["src/"]])
+    #expect(composer.queue.items.first?.state == .waitingForHost)
+    #expect(composer.mentions == ["docs/"])
+    #expect(composer.lastError == nil)
   }
 }

@@ -3,7 +3,8 @@ public import Observation
 public import OmnigentCoreFFI
 
 /// The composer of one conversation: draft text, quotes, attachments, and sending through the
-/// core's submission ledger. An uncertain send blocks the next one until the user reviews it.
+/// core's submission ledger. A sent draft leaves the field at once and comes back if it is not
+/// accepted. An uncertain send blocks the next one until the user reviews it.
 @Observable
 public final class ComposerStore {
   /// The draft text after the last quote. Changes are recorded in the core, so a late send
@@ -77,6 +78,9 @@ public final class ComposerStore {
   public internal(set) var configurationError: CoreError?
   /// Messages queued to send after the running turn.
   public internal(set) var queue = MessageQueue()
+  /// Messages that did not go out and could not return to the field, as the user had typed
+  /// since; oldest first. ``restoreUnsent()`` puts them back and ``discardUnsent()`` drops them.
+  public internal(set) var unsentOffers: [UnsentSend] = []
   /// The session's workspace path, from the last configuration read.
   public internal(set) var workspace: String?
 
@@ -87,6 +91,10 @@ public final class ComposerStore {
   @ObservationIgnored var isRestoring = false
   /// The draft had something to send, at the last change.
   @ObservationIgnored private var hadDraft = false
+  /// The message that left the field when Send was pressed, until the server answers.
+  @ObservationIgnored var inFlight: UnsentSend?
+  /// Queued messages that were sent while another was in flight: they go once it is accepted.
+  @ObservationIgnored var followUps: Set<Int> = []
   /// Told when the draft becomes empty or not (the sidebar's draft marker).
   @ObservationIgnored var draftChanged: ((Bool) -> Void)?
   /// Told the new draft, to keep it across launches.
@@ -130,26 +138,6 @@ public final class ComposerStore {
       try core.updateComposer(sessionId: sessionID, text: message)
     } catch {
       lastError = coreError(error)
-    }
-  }
-
-  func deliver(
-    _ post: (ClientCore, String, String) async throws -> MessageSent
-  ) async {
-    isSending = true
-    lastError = nil
-    commandNotice = nil
-    defer {
-      isSending = false
-      refreshBlocked()
-    }
-    do {
-      let sent = try await post(core, sessionID, draftMessage)
-      setText(fromCore: sent.draft)
-      refreshAttachments()
-    } catch {
-      lastError = coreError(error)
-      refreshAttachments()
     }
   }
 

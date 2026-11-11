@@ -25,7 +25,7 @@ struct ComposerSendTests {
     #expect(live.postedTexts == ["hello"])
   }
 
-  @Test("A refusal keeps the draft to fix and try again")
+  @Test("A refusal returns the draft to the field to fix and try again")
   func refused() async throws {
     let live = try await LiveComposer()
     live.server.fail("/v1/sessions/conv_a/events", method: "POST", status: 400, detail: "no")
@@ -53,6 +53,8 @@ struct ComposerSendTests {
     #expect(composer.lastError?.isDeliveryUncertain == true)
     #expect(composer.isBlocked)
     #expect(!composer.canSend)
+    #expect(composer.text == "hello", "the draft is back to send again after the review")
+    #expect(composer.unsentOffers.isEmpty)
 
     composer.acknowledgeUncertainSend()
     #expect(!composer.isBlocked)
@@ -60,7 +62,7 @@ struct ComposerSendTests {
     #expect(live.postedTexts.count == 1, "never retried on its own")
   }
 
-  @Test("Text typed while a send is in flight survives its result")
+  @Test("The field is empty the moment a send starts, and text typed meanwhile stays")
   func typingDuringSend() async throws {
     let live = try await LiveComposer()
     live.acceptMessages()
@@ -70,12 +72,15 @@ struct ComposerSendTests {
     let sending = Task { _ = await composer.send() }
     try await eventually("the post") { gate.arrivals == 1 }
     #expect(composer.isSending)
+    #expect(composer.text.isEmpty, "the server has not answered yet")
     #expect(!composer.canSend)
-    composer.text = "first and more"
+    composer.text = "typed meanwhile"
     gate.release()
     await sending.value
-    #expect(composer.text == "first and more")
+    #expect(composer.text == "typed meanwhile")
     #expect(!composer.isSending)
+    #expect(composer.lastError == nil)
+    #expect(live.postedTexts == ["first"])
   }
 
   @Test("A message for an offline host waits in the queue and goes when the host returns")

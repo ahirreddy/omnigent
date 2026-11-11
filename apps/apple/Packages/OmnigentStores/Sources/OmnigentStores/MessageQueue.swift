@@ -105,16 +105,16 @@ public struct MessageQueue: Equatable, Sendable {
   /// - Throws: ``Refusal/empty`` for blank text without extras.
   @discardableResult
   public mutating func enqueue(_ text: String, extras: Extras = Extras()) throws(Refusal) -> Item {
-    let item = try make(text, extras: extras, state: .queued)
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty || !extras.isEmpty else { throw .empty }
+    let item = make(trimmed, extras: extras, state: .queued)
     items.append(item)
     return item
   }
 
-  private mutating func make(_ text: String, extras: Extras, state: State) throws(Refusal) -> Item {
-    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty || !extras.isEmpty else { throw .empty }
+  private mutating func make(_ text: String, extras: Extras, state: State) -> Item {
     lastID += 1
-    return Item(id: lastID, text: trimmed, state: state, extras: extras)
+    return Item(id: lastID, text: text, state: state, extras: extras)
   }
 
   /// Replaces a message's text. A failed message becomes queued again.
@@ -173,12 +173,14 @@ public struct MessageQueue: Equatable, Sendable {
   public var isHoldingForHost: Bool { items.contains { $0.state == .waitingForHost } }
 
   /// Holds `text`, refused while the host was offline, ahead of the messages queued after it.
+  /// The server was asked to take it, so it has something to send.
   /// - Parameters:
   ///   - text: The message.
   ///   - extras: Its files and tagged paths.
-  /// - Throws: ``Refusal/empty`` for blank text without extras.
-  public mutating func hold(_ text: String, extras: Extras = Extras()) throws(Refusal) {
-    let item = try make(text, extras: extras, state: .waitingForHost)
+  public mutating func hold(_ text: String, extras: Extras = Extras()) {
+    let item = make(
+      text.trimmingCharacters(in: .whitespacesAndNewlines), extras: extras,
+      state: .waitingForHost)
     let index = items.firstIndex { $0.state != .waitingForHost } ?? items.endIndex
     items.insert(item, at: index)
   }

@@ -10,21 +10,30 @@ extension ComposerStore {
   /// Queues the draft (text, quotes, uploaded files and `@` paths) to send after the running
   /// turn, and clears it. Files still uploading keep everything in the draft.
   public func queueDraft() {
+    enqueueDraft()
+  }
+
+  /// Queues the draft and clears it.
+  /// - Returns: The queued message's id, or `nil` when it stayed in the draft with the reason.
+  @discardableResult
+  func enqueueDraft() -> Int? {
     let message = draftMessage
     let extras: MessageQueue.Extras
     do {
       extras = try takeExtras()
     } catch {
       lastError = coreError(error)
-      return
+      return nil
     }
     do {
-      try queue.enqueue(message, extras: extras)
+      let queued = try queue.enqueue(message, extras: extras)
       clearDraft()
       lastError = nil
+      return queued.id
     } catch {
       // Only a message with nothing to send is refused, so no files are left held.
       lastError = Self.queueError(error)
+      return nil
     }
   }
 
@@ -50,12 +59,7 @@ extension ComposerStore {
       lastError = Self.queueError(error)
       return
     }
-    guard let holdID else { return }
-    do {
-      try core.discardHeldAttachments(sessionId: sessionID, hold: holdID)
-    } catch {
-      lastError = coreError(error)
-    }
+    discardHeldFiles(holdID)
   }
 
   /// Reorders queued messages.
@@ -69,23 +73,16 @@ extension ComposerStore {
   /// Sends a queued message now: into the running turn, or again after a failure.
   /// - Parameter id: The message.
   public func sendQueuedNow(_ id: Int) async {
-    await deliver(id)
+    if await deliver(id) { await sendFollowUps() }
   }
 
   /// Takes the newest queued message out of the queue to edit it in the field (Up in an empty
   /// composer); its files and `@` paths go back to the draft. A message being sent stays.
   /// - Returns: Its text, or `nil` when nothing can be taken.
   public func takeLastQueued() -> String? {
-    guard let last = queue.items.last, last.state != .sending else { return nil }
-    if let holdID = last.extras.holdID {
-      do {
-        try core.restoreHeldAttachments(sessionId: sessionID, hold: holdID)
-      } catch {
-        lastError = coreError(error)
-        return nil
-      }
-      refreshAttachments()
-    }
+    guard let last = queue.items.last, last.state != .sending,
+      restoreHeldFiles(last.extras.holdID)
+    else { return nil }
     queue.removeNewest()
     for path in last.extras.mentions { addMention(path) }
     return last.text
@@ -100,13 +97,23 @@ extension ComposerStore {
     }
   }
 
+  /// Sends the messages that were sent while another was in flight, oldest first, once it was
+  /// accepted. Stops at the first that does not go out, so order is kept.
+  func sendFollowUps() async {
+    while !isSending, !isBlocked,
+      let next = queue.items.first(where: { followUps.contains($0.id) }), next.state == .queued
+    {
+      guard await deliver(next.id) else { return }
+    }
+  }
+
   /// Sends the oldest queued message when no turn runs and nothing else is sending. Call it
   /// whenever the turn ends.
   /// - Parameter isRunning: A turn is running.
   public func drainQueue(isRunning: Bool) async {
     guard let next = queue.next(isRunning: isRunning, isBlocked: isSending || isBlocked)
     else { return }
-    await deliver(next.id)
+    if await deliver(next.id) { await sendFollowUps() }
   }
 
   /// Takes the draft's uploaded files (into a core hold) and `@` paths for a queued message.
@@ -119,17 +126,44 @@ extension ComposerStore {
       mentions: mentions)
   }
 
-  private func deliver(_ id: Int) async {
+  /// Puts a hold's files back in the draft. A failure is shown and leaves them held.
+  /// - Returns: Whether the draft has them again (or there were none).
+  func restoreHeldFiles(_ holdID: UInt64?) -> Bool {
+    guard let holdID else { return true }
+    do {
+      try core.restoreHeldAttachments(sessionId: sessionID, hold: holdID)
+    } catch {
+      lastError = coreError(error)
+      return false
+    }
+    refreshAttachments()
+    return true
+  }
+
+  /// Forgets a hold's files. A failure is shown.
+  func discardHeldFiles(_ holdID: UInt64?) {
+    guard let holdID else { return }
+    do {
+      try core.discardHeldAttachments(sessionId: sessionID, hold: holdID)
+    } catch {
+      lastError = coreError(error)
+    }
+  }
+
+  /// Sends a queued message through the ledger.
+  /// - Returns: Whether the server accepted it.
+  @discardableResult
+  private func deliver(_ id: Int) async -> Bool {
     guard !isSending, !isBlocked else {
       lastError = .InvalidState(message: "Wait for the current send to finish.")
-      return
+      return false
     }
     let message: MessageQueue.Item
     do {
       message = try queue.begin(id)
     } catch {
       lastError = Self.queueError(error)
-      return
+      return false
     }
     isSending = true
     lastError = nil
@@ -146,6 +180,8 @@ extension ComposerStore {
       transcript?.messageAccepted(pendingRow, sent)
       setText(fromCore: sent.draft)
       queue.finish(id, failure: nil)
+      followUps.remove(id)
+      return true
     } catch {
       transcript?.messageNotSent(pendingRow)
       let failure = coreError(error)
@@ -153,14 +189,18 @@ extension ComposerStore {
         queue.waitForHost(id)
         commandNotice = failure.message
         scheduleHostRecheck()
-        return
+        return false
       }
-      queue.finish(
-        id,
-        failure: failure.isDeliveryUncertain
-          ? "It may have been sent. Check the conversation before retrying." : failure.message)
+      queue.finish(id, failure: Self.failureNote(failure))
       lastError = failure
+      return false
     }
+  }
+
+  /// Why a message did not go out; an unclear send warns before a retry.
+  static func failureNote(_ failure: CoreError) -> String {
+    failure.isDeliveryUncertain
+      ? "It may have been sent. Check the conversation before retrying." : failure.message
   }
 
   static func queueError(_ error: MessageQueue.Refusal) -> CoreError {

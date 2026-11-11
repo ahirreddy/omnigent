@@ -32,11 +32,17 @@ extension ComposerStore {
     quotes[index].before = text
   }
 
-  /// The draft to keep across launches: text, quotes and `@` paths.
-  var savedDraft: SavedDraft {
+  /// What the field holds: text, quotes and `@` paths.
+  var fieldDraft: SavedDraft {
     SavedDraft(
       text: text, quotes: quotes.map { SavedDraft.Quote(before: $0.before, text: $0.text) },
       mentions: mentions)
+  }
+
+  /// The draft to keep across launches: the field, then the messages that left it and were not
+  /// accepted, so quitting while one is out loses nothing.
+  var savedDraft: SavedDraft {
+    (unsentOffers + [inFlight].compactMap(\.self)).reduce(fieldDraft) { $0.appending($1.draft) }
   }
 
   /// Puts a kept draft back, recording it once (the core's text, the sidebar marker, the file).

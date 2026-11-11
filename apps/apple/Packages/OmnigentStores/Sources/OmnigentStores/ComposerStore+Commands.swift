@@ -19,8 +19,7 @@ struct ConversationFacts: Equatable {
   var hostOnline: Bool
 }
 
-/// Sending: a message, or the slash command the core recognizes in the draft. A message the
-/// server refuses because the session's host is offline waits in the queue for the host.
+/// Sending: a message, or the slash command the core recognizes in the draft.
 extension ComposerStore {
   /// Sends the draft and the uploaded attachments. A slash command does what the core says: a
   /// skill runs on the server, `/compact` and `/clear` use their controls, `/model` and
@@ -34,11 +33,11 @@ extension ComposerStore {
     case nil, .sendText:
       await deliverMessage()
     case .runSkill(let name, let arguments):
-      await deliver { core, session, text in
+      await deliverCommand { core, session, text in
         try await core.runSkill(sessionId: session, text: text, name: name, arguments: arguments)
       }
     case .compact:
-      await deliver { core, session, text in
+      await deliverCommand { core, session, text in
         try await core.compact(sessionId: session, text: text)
       }
     case .setModel(let model):
@@ -152,47 +151,8 @@ extension ComposerStore {
     }
   }
 
-  private func deliverMessage() async {
-    let draft = draftMessage
-    let (paths, harness) = (mentions, configuration?.harness)
-    let pendingRow = transcript?.showSending(
-      draft, attachments: attachments.items.map(PendingMessages.attachment))
-    await deliver { [transcript] core, session, text in
-      let sent: MessageSent
-      if paths.isEmpty {
-        sent = try await core.sendMessage(sessionId: session, text: text)
-      } else {
-        sent = try await core.sendMessageMentioning(
-          sessionId: session, text: text, harness: harness, paths: paths)
-      }
-      transcript?.messageAccepted(pendingRow, sent)
-      return sent
-    }
-    if lastError != nil { transcript?.messageNotSent(pendingRow) }
-    if lastError == nil, !paths.isEmpty { mentions.removeAll { paths.contains($0) } }
-    guard let failure = lastError, failure.isHostOffline else { return }
-    let extras: MessageQueue.Extras
-    do {
-      extras = try takeExtras()
-    } catch {
-      // A file still uploading keeps the message in the draft, with the failure shown.
-      return
-    }
-    do {
-      try queue.hold(draft, extras: extras)
-    } catch {
-      // Only a message with nothing to send is refused, so no files are left held.
-      lastError = Self.queueError(error)
-      return
-    }
-    mentions = []
-    lastError = nil
-    commandNotice = failure.message
-    if draftMessage == draft { clearDraft() }
-    scheduleHostRecheck()
-  }
-
   private func clearContext() async {
+    guard !refusesDuringSend() else { return }
     let command = text
     text = ""
     commandNotice = nil
