@@ -112,6 +112,10 @@ pub enum SessionError {
         /// The server's reason, when given.
         reason: Option<String>,
     },
+    /// The live link to the server is down, so a list-row edit was not attempted. Nothing was
+    /// sent or kept to send later.
+    #[error("You are offline, so this change was not made. Try again once the connection is back.")]
+    Offline,
     /// The caller cannot edit this session.
     #[error("You have read-only access to this session.")]
     ReadOnly,

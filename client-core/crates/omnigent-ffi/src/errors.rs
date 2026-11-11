@@ -71,6 +71,7 @@ pub enum SessionErrorKind {
     ExecutionUnavailable,
     MessageDenied,
     ReadOnly,
+    Offline,
     EmptyMessage,
     Busy,
     Archived,
@@ -247,7 +248,7 @@ pub enum CoreError {
         detail: Option<String>,
         /// The connection ended; sign in again.
         requires_sign_in: bool,
-        /// A write may have landed; it is never retried automatically.
+        /// A write may have landed, and nothing sends it again once this is reported.
         delivery_uncertain: bool,
     },
     /// Hosted sign-in or identity confirmation failed.
@@ -613,6 +614,7 @@ const fn session_kind(error: &SessionError) -> SessionErrorKind {
         SessionError::ExecutionUnavailable { .. } => SessionErrorKind::ExecutionUnavailable,
         SessionError::MessageDenied { .. } => SessionErrorKind::MessageDenied,
         SessionError::ReadOnly => SessionErrorKind::ReadOnly,
+        SessionError::Offline => SessionErrorKind::Offline,
         SessionError::EmptyMessage => SessionErrorKind::EmptyMessage,
         SessionError::Busy => SessionErrorKind::Busy,
         SessionError::Archived => SessionErrorKind::Archived,

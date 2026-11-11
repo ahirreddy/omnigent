@@ -4,7 +4,8 @@ import SwiftUI
 
 /// Removes a session's tabs, its primary chat among them, once the session is archived or
 /// deleted, here or on another device. It is the only way a primary chat leaves a window
-/// besides closing the window.
+/// besides closing the window. A session this app is archiving, deleting or leaving keeps its
+/// tabs until the server answers, though its row has left the list.
 ///
 /// Only changes between two loaded lists count, so a session that was never in the list (a
 /// sub-agent opened from its parent) or one opened from the Archived filter keeps its tabs.
@@ -15,7 +16,8 @@ struct SessionTabsLifecycle: ViewModifier {
   @State private var known = SessionPresence()
 
   func body(content: Content) -> some View {
-    content.onChange(of: presence, initial: true) { _, current in
+    content.onChange(of: presence, initial: true) { _, latest in
+      let current = latest.holding(known)
       defer { known = current }
       guard known.isLoaded, current.isLoaded else { return }
       let gone = Self.departed(previous: known.archivedByID, current: current.archivedByID)
@@ -61,7 +63,9 @@ struct SessionTabsLifecycle: ViewModifier {
   private var presence: SessionPresence {
     let list = session.connection.sessionList
     guard list.isLoaded else { return SessionPresence() }
-    return SessionPresence(isLoaded: true, archivedByID: list.sessionsByID.mapValues(\.isArchived))
+    return SessionPresence(
+      isLoaded: true, archivedByID: list.sessionsByID.mapValues(\.isArchived),
+      departing: list.departing)
   }
 
   /// The sessions deleted (gone from the list) or archived between two lists.
@@ -91,4 +95,14 @@ struct SessionAnswer: Equatable {
 struct SessionPresence: Equatable {
   var isLoaded = false
   var archivedByID: [String: Bool] = [:]
+  /// Sessions leaving the list whose archive, delete or leave the server has not answered.
+  var departing: Set<String> = []
+
+  /// This presence with each departing session as `known` had it: its row left at the click,
+  /// and its tabs stay until the server agrees. A refused one is back before it stops departing.
+  func holding(_ known: Self) -> Self {
+    var held = self
+    for id in departing { held.archivedByID[id] = known.archivedByID[id] }
+    return held
+  }
 }

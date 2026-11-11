@@ -10,6 +10,10 @@ public import OmnigentCoreFFI
 /// (``expect(_:for:)``) so the row changes at once; the session's next server row replaces the
 /// expectation, confirming or reverting it.
 ///
+/// A rename, pin, archive, move, delete or leave shows the same way from the core: its list
+/// event arrives before the server answers, and a refused one arrives again with the row as it
+/// was. This store keeps only the failure (``editError``) and what to offer beside it.
+///
 /// It is also the one source of attention (the core's `sessionAttention` and
 /// `attentionTotals`): every surface that says what needs the user reads ``attention(of:)`` and
 /// ``attentionTotals`` instead of counting rows itself, so their numbers agree.
@@ -53,14 +57,22 @@ public final class SessionListStore {
   /// The last list failure, until the next successful load.
   public private(set) var lastError: CoreError?
   /// The last rename, pin or archive failure, until the next edit.
-  public private(set) var editError: CoreError?
-  /// Sessions with an edit in flight.
-  public private(set) var editing: Set<String> = []
+  public private(set) var editError: CoreError? {
+    didSet { if editRetry != nil { editRetry = nil } }
+  }
+  /// The edit behind ``editError``, for its alert to offer again; it goes with the failure.
+  public internal(set) var editRetry: EditRetry?
+  /// Sessions whose archive, delete or leave the server has not answered. Their rows have left
+  /// the list already; their tabs wait for the answer.
+  public internal(set) var departing: Set<String> = []
 
   /// The core edits go through; set by the owning ``ConnectionStore``.
   @ObservationIgnored var core: ClientCore? {
     didSet { paging.core = core }
   }
+  /// Waits until the events the core sent before answering a call are applied; set by the
+  /// owning ``ConnectionStore``. Without one, the answer is all there is.
+  @ObservationIgnored var eventsBeforeAnswer: () async -> Void = {}
   /// Pages loaded beyond the first ("Load more", project folders).
   public let paging = SessionListPaging()
   /// The caller's projects (sidebar folders), in display order.
@@ -164,16 +176,17 @@ public final class SessionListStore {
       editError = .InvalidState(message: "Connect to a server before editing sessions.")
       return false
     }
-    editing.insert(sessionID)
-    defer { editing.remove(sessionID) }
     do {
       let updated = try await core.editSession(sessionId: sessionID, change: change)
+      await eventsBeforeAnswer()
       serverSessions[updated.id] = updated
       expectations[updated.id] = nil
       refresh([updated.id])
       editError = nil
       return true
     } catch {
+      // The row is back as it was before the failure shows.
+      await eventsBeforeAnswer()
       editError = coreError(error)
       return false
     }

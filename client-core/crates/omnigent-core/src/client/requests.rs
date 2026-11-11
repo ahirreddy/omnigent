@@ -462,6 +462,32 @@ impl<T: HttpTransport> ClientCore<T> {
         prepared: Prepared,
         allowed: Option<u16>,
     ) -> Result<HttpResponse, SessionError> {
+        self.write_outcome(prepared, allowed)
+            .await
+            .map_err(|failed| failed.error)
+    }
+
+    /// [`Self::write`], also saying whether a failure lost the connection itself.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(crate) async fn write_or_lose(
+        &self,
+        prepared: Prepared,
+    ) -> Result<HttpResponse, FailedWrite> {
+        self.write_outcome(prepared, None).await
+    }
+
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn write_outcome(
+        &self,
+        prepared: Prepared,
+        allowed: Option<u16>,
+    ) -> Result<HttpResponse, FailedWrite> {
         let path = prepared.request.url.clone();
         // A `wrong_replica` refusal did not deliver, so re-addressing it cannot duplicate a write.
         let result = self
@@ -470,19 +496,23 @@ impl<T: HttpTransport> ClientCore<T> {
         let mut state = lock(&self.state);
         let uncertain = |detail: String| SessionError::DeliveryUncertain { detail };
         // A connection never made sent nothing: the write did not deliver, whatever came after.
-        let response = result.map_err(|error| {
-            if error.is_unsent() {
+        let response = result.map_err(|error| FailedWrite {
+            link_lost: matches!(
+                error,
+                TransportError::Offline { .. } | TransportError::Other { .. }
+            ),
+            error: if error.is_unsent() {
                 SessionError::Transport(error)
             } else {
                 uncertain(error.to_string())
-            }
+            },
         })?;
         if state.epoch != prepared.epoch || !state.is_connected() {
-            return Err(uncertain(
-                "the connection ended while the write was in flight".into(),
-            ));
+            return Err(
+                uncertain("the connection ended while the write was in flight".into()).into(),
+            );
         }
-        match response.status {
+        let answer = match response.status {
             200..=202 | 204 => Ok(response),
             status if Some(status) == allowed => Ok(response),
             status @ 300..=399 => Err(uncertain(format!(
@@ -508,7 +538,8 @@ impl<T: HttpTransport> ClientCore<T> {
                 "{} answered HTTP {status}",
                 redact_query(&path)
             ))),
-        }
+        };
+        answer.map_err(FailedWrite::from)
     }
 
     /// Sends a JSON write and parses the acknowledgement; an unreadable one is uncertain.
@@ -525,9 +556,40 @@ impl<T: HttpTransport> ClientCore<T> {
         let response = self
             .write(self.prepare(method, path, &[], Some(body))?)
             .await?;
-        serde_json::from_slice(&response.body).map_err(|error| SessionError::DeliveryUncertain {
-            detail: format!("unreadable acknowledgement from {path}: {error}"),
-        })
+        acknowledgement(path, &response)
+    }
+}
+
+/// The JSON body of a write's answer; an unreadable one leaves the write's outcome uncertain.
+pub(crate) fn acknowledgement(path: &str, response: &HttpResponse) -> Result<Value, SessionError> {
+    serde_json::from_slice(&response.body).map_err(|error| SessionError::DeliveryUncertain {
+        detail: format!("unreadable acknowledgement from {path}: {error}"),
+    })
+}
+
+/// A write that did not succeed.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct FailedWrite {
+    /// What the caller is told.
+    pub(crate) error: SessionError,
+    /// The connection was never made, or was lost under the request: the same write may be sent
+    /// again once the link returns, when sending it twice is harmless.
+    pub(crate) link_lost: bool,
+}
+
+impl FailedWrite {
+    /// The server answered `404`.
+    pub(crate) const fn is_not_found(&self) -> bool {
+        matches!(self.error, SessionError::Rejected { status: 404, .. })
+    }
+}
+
+impl From<SessionError> for FailedWrite {
+    fn from(error: SessionError) -> Self {
+        Self {
+            error,
+            link_lost: false,
+        }
     }
 }
 

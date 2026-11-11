@@ -14,11 +14,12 @@ use omnigent_protocol::{DecodeError, Field, FromWire, ServerStreamEvent};
 use serde_json::{Value, json};
 
 use super::pin_order::PinStamp;
-use super::requests::{page_query, refused_write, validate_identifier};
+use super::requests::{page_query, validate_identifier};
 use super::{ClientCore, ClientEvent, SessionError, State, lock};
 use crate::config::session::{ModelChoice, SessionConfiguration};
 use crate::creation::MAX_TITLE_CHARS;
 use crate::http::HttpTransport;
+use crate::intents::SessionPatch;
 
 /// The status a session list shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -775,6 +776,89 @@ impl State {
     }
 }
 
+/// A validated [`SessionChange`]: the field it changes and the `PATCH` body that asks for it.
+pub(super) struct EditRequest {
+    pub(super) session_id: String,
+    pub(super) patch: SessionPatch,
+    pub(super) body: Value,
+    /// Filing into a project that is gone is also a `404`, so that one keeps the server's text.
+    pub(super) names_project: bool,
+}
+
+/// Checks `change` against the identifier rules and the cached row. Only a cached row can
+/// refuse here; a session without one is the server's to judge.
+pub(super) fn edit_request(
+    session_id: &str,
+    change: SessionChange,
+    cached: Option<&SessionSummary>,
+) -> Result<EditRequest, SessionError> {
+    validate_identifier(session_id)?;
+    let allowed = |tier: fn(&SessionSummary) -> bool| {
+        if cached.is_some_and(|summary| !tier(summary)) {
+            Err(SessionError::ReadOnly)
+        } else {
+            Ok(())
+        }
+    };
+    let names_project = matches!(&change, SessionChange::Project(Some(_)));
+    let (patch, body) = match change {
+        SessionChange::Title(title) => {
+            allowed(SessionSummary::can_rename)?;
+            let cleaned = title.trim();
+            if cleaned.is_empty() || cleaned.chars().count() > MAX_TITLE_CHARS {
+                return Err(SessionError::InvalidTitle);
+            }
+            (
+                SessionPatch::Title(cleaned.to_owned()),
+                json!({"title": cleaned}),
+            )
+        }
+        SessionChange::Pinned { pinned, at_ms } => {
+            allowed(SessionSummary::can_pin)?;
+            let stamp = pinned.then(|| at_ms.to_string());
+            let body = json!({"labels": {PINNED_LABEL: stamp.as_deref().unwrap_or_default()}});
+            (SessionPatch::Pin(stamp), body)
+        }
+        SessionChange::PinnedAt(stamp) => {
+            allowed(SessionSummary::can_pin)?;
+            (
+                SessionPatch::Pin(Some(stamp.label().to_owned())),
+                json!({"labels": {PINNED_LABEL: stamp.label()}}),
+            )
+        }
+        SessionChange::Archived {
+            archived,
+            delete_worktree,
+        } => {
+            allowed(SessionSummary::can_archive)?;
+            // The server rejects `delete_worktree` without `archived: true`.
+            let body = if archived && delete_worktree {
+                json!({"archived": true, "delete_worktree": true})
+            } else {
+                json!({"archived": archived})
+            };
+            (SessionPatch::Archived(archived), body)
+        }
+        SessionChange::Project(project_id) => {
+            allowed(SessionSummary::can_archive)?;
+            if let Some(id) = &project_id {
+                validate_identifier(id)?;
+            }
+            let body = json!({
+                "project_id": project_id.as_deref().unwrap_or_default(),
+                "labels": {PROJECT_LABEL: ""},
+            });
+            (SessionPatch::Project(project_id), body)
+        }
+    };
+    Ok(EditRequest {
+        session_id: session_id.to_owned(),
+        patch,
+        body,
+        names_project,
+    })
+}
+
 fn malformed(context: &str) -> impl FnOnce(String) -> SessionError + '_ {
     move |detail| SessionError::MalformedResponse {
         detail: format!("{context}: {detail}"),
@@ -1007,7 +1091,7 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 
     /// Reads one `GET /v1/sessions` page with `query`, recording its rows; `after` is the
-    /// cursor the query carries.
+    /// cursor the query carries. Returns the rows as the list shows them.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -1035,10 +1119,12 @@ impl<T: HttpTransport> ClientCore<T> {
             }
             let projection = SessionProjection::from_list_item(row);
             let epoch = epochs.get(&row.id).copied().unwrap_or(0);
-            sessions.push(state.accept_projection(&projection, epoch)?);
+            let summary = state.accept_projection(&projection, epoch)?;
+            state.settle_intents(&summary);
+            sessions.push(summary);
         }
         state.routing.resolve_modal();
-        Ok((sessions, next))
+        Ok((state.shown_rows(sessions), next))
     }
 
     /// `GET /v1/sessions/{id}?include_items=false`, decoded, with the metadata epoch the read
@@ -1095,11 +1181,16 @@ impl<T: HttpTransport> ClientCore<T> {
     /// (2), pin view (1), archive owner (4). The cached row refuses a change it rules out; with
     /// no cached row the server decides.
     ///
+    /// The list shows the change before the request leaves and goes back if the server refuses.
+    /// Edits of one session leave in the order made; one still waiting is replaced by a later
+    /// edit of the same field. Returns the row as the list shows it.
+    ///
     /// # Errors
     ///
     /// [`SessionError::InvalidIdentifier`] and [`SessionError::InvalidTitle`] before any
     /// write; [`SessionError::ReadOnly`] without the permission, from the cached row or the
-    /// server's `403`; [`SessionError::SessionNotFound`] for its `404`; the write errors.
+    /// server's `403`; [`SessionError::Offline`] while the live link is down;
+    /// [`SessionError::SessionNotFound`] for its `404`; the write errors.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -1112,95 +1203,6 @@ impl<T: HttpTransport> ClientCore<T> {
         let result = self.edit(session_id, change).await;
         self.dispatch();
         result
-    }
-
-    #[allow(
-        clippy::future_not_send,
-        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
-    )]
-    pub(super) async fn edit(
-        &self,
-        session_id: &str,
-        change: SessionChange,
-    ) -> Result<SessionSummary, SessionError> {
-        validate_identifier(session_id)?;
-        let cached = self.cached_summary(session_id);
-        // Only a cached row can refuse here; a session without one is the server's to judge.
-        let allowed = |tier: fn(&SessionSummary) -> bool| {
-            if cached.as_ref().is_some_and(|summary| !tier(summary)) {
-                Err(SessionError::ReadOnly)
-            } else {
-                Ok(())
-            }
-        };
-        // Filing into a project that is gone is also a `404`, so that one keeps the server's text.
-        let names_project = matches!(&change, SessionChange::Project(Some(_)));
-        let body = match change {
-            SessionChange::Title(title) => {
-                allowed(SessionSummary::can_rename)?;
-                let cleaned = title.trim();
-                if cleaned.is_empty() || cleaned.chars().count() > MAX_TITLE_CHARS {
-                    return Err(SessionError::InvalidTitle);
-                }
-                json!({"title": cleaned})
-            }
-            SessionChange::Pinned { pinned, at_ms } => {
-                allowed(SessionSummary::can_pin)?;
-                let stamp = if pinned {
-                    at_ms.to_string()
-                } else {
-                    String::new()
-                };
-                json!({"labels": {PINNED_LABEL: stamp}})
-            }
-            SessionChange::PinnedAt(stamp) => {
-                allowed(SessionSummary::can_pin)?;
-                json!({"labels": {PINNED_LABEL: stamp.label()}})
-            }
-            SessionChange::Archived {
-                archived,
-                delete_worktree,
-            } => {
-                allowed(SessionSummary::can_archive)?;
-                // The server rejects `delete_worktree` without `archived: true`.
-                if archived && delete_worktree {
-                    json!({"archived": true, "delete_worktree": true})
-                } else {
-                    json!({"archived": archived})
-                }
-            }
-            SessionChange::Project(project_id) => {
-                allowed(SessionSummary::can_archive)?;
-                if let Some(id) = &project_id {
-                    validate_identifier(id)?;
-                }
-                json!({
-                    "project_id": project_id.unwrap_or_default(),
-                    "labels": {PROJECT_LABEL: ""},
-                })
-            }
-        };
-        let path = format!("/v1/sessions/{session_id}");
-        let mutation_epoch = lock(&self.state).metadata_epoch(session_id);
-        let acknowledgement = self
-            .write_json("PATCH", &path, &body)
-            .await
-            .map_err(|error| match error {
-                SessionError::Rejected { status: 404, .. } if names_project => error,
-                other => refused_write(session_id)(other),
-            })?;
-        let decoded = decode_snapshot_value(acknowledgement).map_err(|detail| {
-            SessionError::DeliveryUncertain {
-                detail: format!("unreadable {path} acknowledgement: {detail}"),
-            }
-        })?;
-        let mut state = lock(&self.state);
-        let updated = state.accept_projection(&decoded.projection, mutation_epoch)?;
-        state.events.push(ClientEvent::SessionsChanged {
-            sessions: vec![updated.clone()],
-        });
-        state.request_rehydration(session_id);
-        Ok(updated)
     }
 
     /// Writes the caller's read state for one session: `PUT /v1/sessions/{id}/read-state`.
@@ -1327,6 +1329,7 @@ impl<T: HttpTransport> ClientCore<T> {
             };
             let summary = state.record_summary(summary);
             state.cache_summary(&summary);
+            state.settle_intents(&summary);
             if state.live_sessions.contains(&projection.id)
                 && !projection.has_configuration_identity()
             {
@@ -1359,6 +1362,7 @@ impl<T: HttpTransport> ClientCore<T> {
             for id in ids {
                 state.bump_metadata_epoch(id);
                 state.summaries.remove(id);
+                state.drop_intents(id);
             }
             state.live_sessions.retain(|live| !ids.contains(live));
             state

@@ -56,3 +56,24 @@ struct SidebarUndo: Identifiable {
     }
   }
 }
+
+extension SidebarUndo.Change {
+  /// The alert's title when the server refused the change for `refused` of its sessions.
+  func failureTitle(refused: Int) -> String {
+    let sessions = refused == 1 ? "the Session" : "\(refused) Sessions"
+    return switch self {
+    case .pin(_, true): "Could Not Pin the Session"
+    case .pin(_, false): "Could Not Unpin the Session"
+    case .archive(_, true): "Could Not Archive \(sessions)"
+    case .archive(_, false): "Could Not Unarchive \(sessions)"
+    }
+  }
+
+  /// The same change for only `sessionIDs`: what is left to retry after a partial refusal.
+  func limited(to sessionIDs: [String]) -> Self {
+    switch self {
+    case .pin: self
+    case .archive(_, let archived): .archive(sessionIDs, archived)
+    }
+  }
+}

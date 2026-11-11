@@ -544,6 +544,7 @@ fn every_session_error_keeps_its_kind_detail_and_flags() {
             Some("r"),
         ),
         (SessionError::ReadOnly, K::ReadOnly, None),
+        (SessionError::Offline, K::Offline, None),
         (SessionError::EmptyMessage, K::EmptyMessage, None),
         (SessionError::Busy, K::Busy, None),
         (SessionError::Archived, K::Archived, None),

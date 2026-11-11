@@ -585,6 +585,7 @@ budget.
 | Interaction | May render |
 | --- | --- |
 | Another session's row (title and time) | session row 1 |
+| A rename the server has not answered (another session's row) | nothing in the pass of the click, since the edit starts in a task; session row 1 once the core shows it, with the write held at the server; session row at most 1 more when the answer arrives |
 | Another session's files change | nothing, and no kept chat's workspace asks the server for its changes |
 | A file changes in a session that shares the shown chat's workspace | nothing; the shown chat's workspace asks for its changes again, and no other |
 | The shown session's preview and time; a hidden tab's session's | session row 1 |

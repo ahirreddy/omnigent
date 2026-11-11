@@ -187,12 +187,12 @@ impl<T: HttpTransport> ClientCore<T> {
         target_id: &str,
         now_ms: u64,
     ) -> Result<(), SessionError> {
-        let mut pinned: Vec<SessionSummary> = lock(&self.state)
-            .summaries
-            .values()
-            .filter(|session| session.is_pinned && !session.is_archived)
-            .cloned()
-            .collect();
+        // The order the list shows, edits that have not settled included.
+        let mut pinned: Vec<SessionSummary> = {
+            let state = lock(&self.state);
+            state.shown_rows(state.summaries.values().cloned().collect())
+        };
+        pinned.retain(|session| session.is_pinned && !session.is_archived);
         pinned.sort_by(compare);
         let mut writes = pin_order_writes(&pinned, session_id, target_id, now_ms);
         if let Some(index) = writes
@@ -202,12 +202,19 @@ impl<T: HttpTransport> ClientCore<T> {
             let moved = writes.remove(index);
             writes.insert(0, moved);
         }
-        for write in writes {
-            self.edit(
-                &write.session_id,
-                SessionChange::PinnedAt(pin_stamp(write.key)?),
-            )
-            .await?;
+        // The whole new order shows at once; the writes then leave one after another, and a
+        // failure puts back the rows whose writes had not left.
+        let edits = writes
+            .into_iter()
+            .map(|write| {
+                Ok((
+                    write.session_id,
+                    SessionChange::PinnedAt(pin_stamp(write.key)?),
+                ))
+            })
+            .collect::<Result<Vec<_>, SessionError>>()?;
+        for planned in self.plan_edits(edits) {
+            self.run_edit(planned?).await?;
         }
         Ok(())
     }

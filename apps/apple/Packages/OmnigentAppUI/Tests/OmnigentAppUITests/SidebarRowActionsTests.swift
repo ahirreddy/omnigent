@@ -70,9 +70,65 @@ struct SidebarRowActionsTests {
 
     view.drop(try summary(session), .none)
     view.drop(try summary(session), .pin(slotOf: "conv_b"))
-    try await eventually("the move") { session.connection.sessionList.editing.isEmpty }
-    try await Task.sleep(for: .milliseconds(20))
+    try await Task.sleep(for: .milliseconds(100))
     #expect(try server.patched("/v1/sessions/conv_a").count >= 2)
+  }
+
+  @Test("A refused drop stops at the refusal and offers the drop again")
+  func refusedDrops() async throws {
+    let server = threeSessionServer()
+    server.route("/v1/sessions/conv_a", method: "PATCH", .json(#"{"detail":"no"}"#, status: 422))
+    let (view, session) = try await opened(server)
+    let list = session.connection.sessionList
+    let titles: [(SidebarDropAction, String)] = [
+      (.move(to: project, unpin: true), "Could Not Move the Session"),
+      (.ungroup(unpin: true), "Could Not Move the Session"),
+      (.pin(slotOf: nil), "Could Not Pin the Session"),
+      (.unpin, "Could Not Unpin the Session"),
+    ]
+    for (index, (action, title)) in titles.enumerated() {
+      view.drop(try summary(session), action)
+      try await eventually("the offer to retry \(title)") { list.editRetry != nil }
+      #expect(list.editRetry?.title == title)
+      #expect(try server.patched("/v1/sessions/conv_a").count == index + 1, "one write, refused")
+      list.dismissEditError()
+    }
+
+    view.drop(try summary(session), .unpin)
+    try await eventually("the offer to retry") { list.editRetry != nil }
+    let sent = try server.patched("/v1/sessions/conv_a").count
+    list.editRetry?.run()
+    try await eventually("the drop again") {
+      (try? server.patched("/v1/sessions/conv_a").count) == sent + 1
+    }
+  }
+
+  @Test("A refused rename or move offers it again")
+  func refusedRenameAndMove() async throws {
+    let server = threeSessionServer()
+    server.route("/v1/sessions/conv_a", method: "PATCH", .json(#"{"detail":"no"}"#, status: 422))
+    let (view, session) = try await opened(server)
+    let list = session.connection.sessionList
+    let row = try summary(session)
+
+    view.sessionListActions.rename?(row, "Renamed")
+    try await eventually("the offer to retry") { list.editRetry != nil }
+    #expect(list.editRetry?.title == "Could Not Rename the Session")
+    #expect(list.session("conv_a")?.title != "Renamed", "the old title is back")
+    let renameAgain = list.editRetry
+    list.dismissEditError()
+    renameAgain?.run()
+    try await eventually("the second refusal") { list.editRetry != nil }
+    #expect(try server.patched("/v1/sessions/conv_a").count == 2)
+    list.dismissEditError()
+
+    view.sessionListActions.moveToProject?(row, project)
+    try await eventually("the offer to retry") { list.editRetry != nil }
+    #expect(list.editRetry?.title == "Could Not Move the Session")
+    list.editRetry?.run()
+    try await eventually("the move again") {
+      (try? server.patched("/v1/sessions/conv_a").count) == 4
+    }
   }
 
   @Test("A row's menu renames, marks unread, stops, moves and leaves")
