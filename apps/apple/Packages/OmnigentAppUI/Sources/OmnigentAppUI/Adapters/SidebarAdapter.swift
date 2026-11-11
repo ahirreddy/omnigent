@@ -179,11 +179,11 @@ enum SidebarAdapter {
     }
   }
 
-  /// The folder name of a workspace path; labels that are not paths have none.
+  /// The folder name of a workspace path; labels that are not paths have none. The path is often
+  /// on another machine, so it is read as text: a lookup under `/home` here takes milliseconds.
   static func repoName(_ workspace: String) -> String? {
     guard workspace.hasPrefix("/") || workspace.hasPrefix("~") else { return nil }
-    let name = URL(fileURLWithPath: workspace).lastPathComponent
-    return name.isEmpty || name == "/" ? nil : name
+    return workspace.split(separator: "/").last.map(String.init)
   }
 
   static func phase(_ list: SessionListStore) -> SessionListPhase {

@@ -72,6 +72,23 @@ struct SidebarAdapterTests {
     #expect(SidebarAdapter.repoName("Local server") == nil)
   }
 
+  @Test("A workspace on another machine is named from its text, without a lookup on this one")
+  func repoNameOfARemotePath() {
+    #expect(SidebarAdapter.repoName("/home/ubuntu/src/omnigent") == "omnigent")
+    #expect(SidebarAdapter.repoName("/home/ubuntu/src/omnigent/") == "omnigent")
+    #expect(SidebarAdapter.repoName("~/src/notes") == "notes")
+    #expect(SidebarAdapter.repoName("/") == nil)
+    // macOS answers a lookup under `/home` through its automounter in about 10 ms, so a
+    // sidebar of names that touched the disk would take seconds here.
+    let clock = ContinuousClock()
+    let elapsed = clock.measure {
+      for index in 0..<2_000 {
+        #expect(SidebarAdapter.repoName("/home/nobody/src/repo\(index)") == "repo\(index)")
+      }
+    }
+    #expect(elapsed < .seconds(1))
+  }
+
   @Test("Row info names the environment once the hosts are read, and carries the draft marker")
   func rowEnvironmentAndDraft() {
     func hosted(_ hostID: String?) -> OmnigentCoreFFI.SessionSummary {
