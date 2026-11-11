@@ -1,6 +1,7 @@
 #if os(macOS)
   import AppKit
   import OmnigentViewTesting
+  import OmnigentViewTextReading
   import SwiftUI
   import Testing
 
@@ -35,14 +36,17 @@
 
     @Test("a click on a blocked Send does nothing")
     func sendBlocked() throws {
-      let blocks: [(inout ComposerViewState) -> Void] = [
-        { $0.availability = .unavailable(reason: "Host offline") },
-        { $0.delivery = .uncertain(message: "Unknown") },
-        { $0.delivery = .sending },
+      // Without a queue, a second message cannot wait behind the one being sent.
+      var unqueued = log.actions
+      unqueued.extras.queueDraft = nil
+      let blocks: [(ComposerActions, (inout ComposerViewState) -> Void)] = [
+        (log.actions, { $0.availability = .unavailable(reason: "Host offline") }),
+        (log.actions, { $0.delivery = .uncertain(message: "Unknown") }),
+        (unqueued, { $0.delivery = .sending }),
       ]
-      for block in blocks {
+      for (actions, block) in blocks {
         let model = ComposerScreenModel(draft: "hello", state: bare())
-        let screen = openComposer(model, log.actions)
+        let screen = openComposer(model, actions)
         defer { screen.close() }
         let send = try #require(screen.buttons.first)
         block(&model.state)
@@ -50,6 +54,16 @@
         try screen.click(CGPoint(x: send.midX, y: send.midY))
         #expect(!log.events.contains("send"))
       }
+    }
+
+    @Test("text typed while a message is on its way can be sent, with no progress in its way")
+    func sendDuringASend() throws {
+      let model = ComposerScreenModel(draft: "and this", state: bare { $0.delivery = .sending })
+      let screen = openComposer(model, log.actions)
+      defer { screen.close() }
+      #expect(!screen.allViews.contains { $0 is NSProgressIndicator })
+      try screen.tapButton(0)
+      #expect(log.events == ["send"])
     }
 
     @Test("Send shows progress while sending, even with no draft left")
@@ -218,6 +232,24 @@
       // The banner's Copy, then its Dismiss.
       try screen.tapButton(1)
       #expect(log.events == ["dismissDelivery"])
+      #expect(try screen.shows("Dismiss"))
+      #expect(try !screen.shows("Restore message"))
+    }
+
+    @Test("a failed message the field has no room for is restored or discarded from its banner")
+    func failedDeliveryOffersTheMessage() throws {
+      let state = bare {
+        $0.delivery = .failed(message: "Network down.")
+        $0.offersUnsentMessage = true
+      }
+      let screen = openComposer(ComposerScreenModel(draft: "newer", state: state), log.actions)
+      defer { screen.close() }
+      #expect(try screen.shows("Discard message"))
+      #expect(try screen.shows("Restore message"))
+      // The banner's Copy, its Discard, then its Restore.
+      try screen.tapButton(2)
+      try screen.tapButton(1)
+      #expect(log.events == ["restoreUnsent", "dismissDelivery"])
     }
   }
 #endif

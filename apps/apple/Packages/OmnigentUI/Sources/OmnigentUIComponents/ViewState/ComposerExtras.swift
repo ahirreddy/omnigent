@@ -238,6 +238,8 @@ public struct ComposerExtraActions {
   public var recallPrevious: (@MainActor () -> String?)?
   /// Queue the draft to send after the current turn, instead of steering it in now.
   public var queueDraft: (@MainActor () -> Void)?
+  /// Put the messages that were not sent back in the field, after what was typed since.
+  public var restoreUnsent: (@MainActor () -> Void)?
   /// Reconnect the session's stream (the connection notice's button).
   public var reconnect: (@MainActor () -> Void)?
   /// Dismiss the output of a local command (`/help`, usage).

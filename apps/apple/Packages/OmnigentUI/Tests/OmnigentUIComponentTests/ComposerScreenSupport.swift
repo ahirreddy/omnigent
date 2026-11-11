@@ -71,6 +71,7 @@
         remove: recorder("removeQuote"),
         editLead: { [self] index, text in events.append("lead:\(index):\(text)") })
       extras.setSmartRouting = recorder("smartRouting")
+      extras.restoreUnsent = recorder("restoreUnsent")
       return ComposerActions(
         send: recorder("send"), interrupt: recorder("stop"),
         addAttachments: { [self] in attachments.append(contentsOf: $0) },

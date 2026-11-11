@@ -164,8 +164,11 @@ extension ConversationWiringTests {
     let composer = wired.store.composer
     actions.selectModel?("opus")
     try await eventually("the refusal") { composer.configurationError != nil }
+    // Dismissing also drops a message the failure banner offered to restore.
+    composer.unsentOffers = [UnsentSend(draft: SavedDraft(text: "not sent"))]
     actions.dismissDeliveryError?()
     #expect(composer.configurationError == nil)
+    #expect(composer.unsentOffers.isEmpty)
     actions.selectEffort?("high")
     try await eventually("the refusal") { composer.configurationError != nil }
     actions.selectAgent?("agent")

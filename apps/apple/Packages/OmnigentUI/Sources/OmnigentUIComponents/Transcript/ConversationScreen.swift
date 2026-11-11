@@ -287,7 +287,7 @@ extension ConversationScreen {
     CommandReturnArbitration(
       presence: draftPresence,
       sendIsOpen: !showsTerminal && composer.availability == .available
-        && composer.delivery == .idle,
+        && composer.delivery.acceptsSend(canQueue: composerActions.extras.queueDraft != nil),
       hasAttachedContent: !composer.attachments.isEmpty || !composer.mentions.isEmpty,
       approvableCardID: approveCandidate?.cardID)
   }

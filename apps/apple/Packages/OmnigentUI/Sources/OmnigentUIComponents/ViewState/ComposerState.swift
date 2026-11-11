@@ -28,7 +28,8 @@ nonisolated public enum DeliveryState: Hashable, Sendable {
   /// The send may or may not have reached the server. Another send is blocked until the user
   /// confirms they checked the conversation; the core never retries on its own.
   case uncertain(message: String)
-  /// The send failed and nothing was delivered. The draft is kept.
+  /// The send failed and nothing was delivered. The message returns to the field, or is
+  /// offered back when the field holds newer text.
   case failed(message: String)
 }
 
@@ -166,6 +167,9 @@ nonisolated public struct ComposerViewState: Hashable, Sendable {
   /// Sending will not become possible here (read-only, archived or closed); the touch composer
   /// shows the reason in place of the field.
   public var isReadOnly = false
+  /// A message that was not sent waits to be restored, as the field held newer text when it
+  /// failed: the failure banner offers Restore and Discard.
+  public var offersUnsentMessage = false
   /// The output of a local command (`/help`, a usage line), shown above the card.
   public var commandNotice: String?
   /// Why the `/` menu may be incomplete (skill discovery failed or is partial).

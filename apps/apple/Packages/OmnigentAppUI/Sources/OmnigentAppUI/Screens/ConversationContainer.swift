@@ -362,6 +362,8 @@ extension ConversationContainer {
       dismissDeliveryError: {
         dismissedSendError = composer.lastError
         composer.dismissConfigurationError()
+        // Dismissing also drops a message the banner offered to restore.
+        composer.discardUnsent()
       },
       extras: extras)
   }

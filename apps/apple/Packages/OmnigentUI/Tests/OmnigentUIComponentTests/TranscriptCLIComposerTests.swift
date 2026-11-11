@@ -233,6 +233,19 @@
       #expect(log.entries == ["dismissed"])
     }
 
+    @Test("A failed message the field has no room for can be restored from its banner")
+    func deliveryFailureOffersTheMessage() throws {
+      var state = ComposerViewState(delivery: .failed(message: "The server refused it"))
+      state.offersUnsentMessage = true
+      var actions = ComposerActions(send: {}, dismissDeliveryError: {})
+      actions.extras.restoreUnsent = { [log] in log.add("restored") }
+      let screen = try composer(state, actions: actions)
+      defer { screen.close() }
+      #expect(try screen.shows("Discard message"))
+      try screen.clickControl(at: 2)
+      #expect(log.entries == ["restored"])
+    }
+
     @Test("Queued messages show above the band")
     func queue() throws {
       let screen = try composer(

@@ -66,12 +66,14 @@
     private let log = DecisionDockLog()
     private let sent = HostLog()
 
-    private func open(_ model: CommandReturnModel) async throws -> OffscreenWindow<AnyView> {
+    private func open(
+      _ model: CommandReturnModel, extras: ComposerExtraActions = ComposerExtraActions()
+    ) async throws -> OffscreenWindow<AnyView> {
       let sent = self.sent
       let window = transcriptScreen(
         CommandReturnHost(
           model: model, actions: log.actions,
-          composerActions: ComposerActions(send: { sent.add("send") })),
+          composerActions: ComposerActions(send: { sent.add("send") }, extras: extras)),
         width: 900, height: 600)
       try await letTasksRun(window, milliseconds: 200)
       return window
@@ -182,6 +184,29 @@
       model.composer.delivery = .sending
       try await letTasksRun(window)
       #expect(model.commands?.send == nil, "a message is on its way")
+    }
+
+    @Test("With a queue to wait in, Send Message stays while a message is on its way")
+    func sendStaysDuringASend() async throws {
+      let model = CommandReturnModel(
+        ConversationViewState(header: SessionHeader(id: "session", title: "Session")))
+      model.draft = "And this"
+      let window = try await open(model, extras: ComposerExtraActions(queueDraft: {}))
+      defer { window.close() }
+
+      for delivery in [DeliveryState.sending, .failed(message: "Refused")] {
+        model.composer.delivery = delivery
+        try await letTasksRun(window)
+        #expect(model.commands?.send != nil, "\(delivery)")
+      }
+      model.composer.delivery = .sending
+      try await letTasksRun(window)
+      try pressCommandReturn(window)
+      #expect(sent.entries == ["send"])
+
+      model.composer.delivery = .uncertain(message: "Unclear")
+      try await letTasksRun(window)
+      #expect(model.commands?.send == nil, "an unclear send is reviewed first")
     }
 
     #if DEBUG
