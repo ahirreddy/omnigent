@@ -63,5 +63,23 @@
       try screen.click(tick(2))
       #expect(target.jumps == ["first u2", "second u2", "second u3"])
     }
+
+    @Test("the rail is as wide as the rows' gutter, so a click on a row's start is not a tick's")
+    func railStaysInTheGutter() throws {
+      let target = RailJumpTarget()
+      let model = TurnRailModel()
+      model.setTurns([
+        TranscriptTurn(id: "u1", text: "Fix the bug"),
+        TranscriptTurn(id: "u2", text: "And add tests"),
+      ])
+      let screen = OffscreenWindow(RailHost(target: target, model: model), width: 400, height: 300)
+      defer { screen.close() }
+
+      // Where a row's text starts in a pane no wider than its column.
+      try screen.click(CGPoint(x: Theme.Spacing.gutter + 1, y: tick(1).y))
+      #expect(target.jumps.isEmpty)
+      try screen.click(CGPoint(x: Theme.Spacing.gutter - 1, y: tick(1).y))
+      #expect(target.jumps == ["first u2"])
+    }
   }
 #endif

@@ -78,6 +78,10 @@ struct TurnRail: View {
   /// The faded inset above and below the ticks.
   static let fade: CGFloat = 24
   static let maxHeight: CGFloat = 288
+  /// The rows' gutter: a wider rail would take clicks meant for the start of a row beside it.
+  static let width = Theme.Spacing.gutter
+  /// A tick's clickable width, from the rail's leading inset to its trailing edge.
+  static let tickWidth = width - Theme.Spacing.small
 
   var body: some View {
     // A tick is not built again for a new jump, so it reaches the latest one through here.
@@ -111,7 +115,7 @@ struct TurnRail: View {
         .padding(.leading, Theme.Spacing.small)
       }
       .scrollIndicators(.hidden)
-      .frame(width: 28)
+      .frame(width: Self.width)
       .frame(height: railHeight)
       .mask(TurnRailFadeMask())
       .onScrollGeometryChange(for: CGFloat.self) {
@@ -195,8 +199,8 @@ private struct TurnTick: View, Equatable {
     Button(action: action) {
       Capsule()
         .fill(isHovered || isActive ? Color.primary : Color.secondary.opacity(0.4))
-        .frame(width: isHovered ? 16 : 7, height: 2)
-        .frame(width: 20, height: TurnRail.pitch, alignment: .leading)
+        .frame(width: isHovered ? TurnRail.tickWidth : 7, height: 2)
+        .frame(width: TurnRail.tickWidth, height: TurnRail.pitch, alignment: .leading)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
