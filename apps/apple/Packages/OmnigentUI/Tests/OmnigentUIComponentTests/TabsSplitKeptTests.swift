@@ -18,6 +18,8 @@
   private final class ShownTabs {
     var shownID = "one"
     var split: TabSplitState?
+    /// The room the tabs' pages ask the titlebar to keep for their toolbar items.
+    @ObservationIgnored var trailingItems: Int?
   }
 
   /// How often each tab's content was built.
@@ -28,15 +30,24 @@
 
   /// Draws a tab's name and whether it is hidden, the active pane or the other one.
   private struct KeptTabProbe: View {
+    /// The toolbar buttons each tab's page shows: a chat's, none reported (a page that says
+    /// nothing, as a terminal's) and a few.
+    static let toolbarItems: [String: Int] = ["one": 9, "three": 4]
+
     let id: String
     let builds: TabBuilds
     @Environment(\.isActiveTabPane) private var isActive
     @Environment(\.isTabContentHidden) private var isHidden
 
     var body: some View {
-      Text("\(id) \(isHidden ? "hidden" : isActive ? "active" : "idle")")
+      let probe = Text("\(id) \(isHidden ? "hidden" : isActive ? "active" : "idle")")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { builds.counts[id, default: 0] += 1 }
+      if let items = Self.toolbarItems[id] {
+        probe.titlebarTrailingItems(items)
+      } else {
+        probe
+      }
     }
   }
 
@@ -51,6 +62,7 @@
       ) { tab in
         KeptTabProbe(id: tab.id, builds: builds)
       }
+      .onPreferenceChange(TitlebarTrailingItems.self) { shown.trailingItems = $0 }
     }
   }
 
@@ -107,6 +119,39 @@
       #expect(try screen.shows("two hidden"))
       #expect(try screen.shows("three active"))
       #expect(builds.counts == ["one": 1, "two": 1, "three": 1])
+    }
+
+    /// Lets the window update until the titlebar is asked to keep room for `items`.
+    private func reserved(_ items: Int?, _ shown: ShownTabs, in screen: OffscreenWindow<AnyView>)
+      -> Bool
+    {
+      for _ in 0..<100 where shown.trailingItems != items { screen.settle(0.02) }
+      return shown.trailingItems == items
+    }
+
+    @Test("The titlebar keeps room for the focused pane's toolbar items, not the other pane's")
+    func focusedPaneReservesTheTitlebar() throws {
+      let shown = ShownTabs()
+      let screen = window(shown, TabBuilds())
+      defer { screen.close() }
+      #expect(reserved(9, shown, in: screen), "the shown tab's: \(shown.trailingItems ?? -1)")
+
+      // A page with no toolbar items of its own, focused beside the chat: the chat shows none.
+      shown.split = TabSplitState(leadingID: "one", trailingID: "two", focused: .trailing)
+      shown.shownID = "two"
+      #expect(reserved(nil, shown, in: screen), "the chat's: \(shown.trailingItems ?? -1)")
+
+      shown.split = TabSplitState(leadingID: "one", trailingID: "two", focused: .leading)
+      shown.shownID = "one"
+      #expect(reserved(9, shown, in: screen), "back in the chat: \(shown.trailingItems ?? -1)")
+
+      // Two pages with items: the focused one's, whichever side it is on.
+      shown.split = TabSplitState(leadingID: "one", trailingID: "three", focused: .trailing)
+      shown.shownID = "three"
+      #expect(reserved(4, shown, in: screen), "the right pane's: \(shown.trailingItems ?? -1)")
+      shown.split = TabSplitState(leadingID: "one", trailingID: "three", focused: .leading)
+      shown.shownID = "one"
+      #expect(reserved(9, shown, in: screen), "the left pane's: \(shown.trailingItems ?? -1)")
     }
 
     @Test("Too narrow for both panes, the focused pane's tab shows and the other stays built")

@@ -292,6 +292,16 @@ struct TitlebarTrailingItems: PreferenceKey {
   }
 }
 
+extension View {
+  /// Tells the titlebar's tab strip how many trailing toolbar buttons this tab's page shows while
+  /// it is on screen in the focused pane, so the tabs reach them: zero for a page with none.
+  /// - Parameter count: Button widths.
+  /// - Returns: The view.
+  public func titlebarTrailingItems(_ count: Int) -> some View {
+    modifier(ShownTabTrailingItems(count: count))
+  }
+}
+
 /// Hides the toolbar's title when the selected tab shows it. The bars are the system's: Liquid
 /// Glass backs their controls (solid under Reduce Transparency, bordered under Increase
 /// Contrast). On iOS content scrolls under them; on Mac it stops below them (`belowTitlebar()`),

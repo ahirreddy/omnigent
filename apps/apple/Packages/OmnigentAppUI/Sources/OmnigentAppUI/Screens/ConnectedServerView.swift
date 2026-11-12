@@ -336,7 +336,10 @@ extension ConnectedServerView {
           // On iPhone the page hides the navigation bar and shows these beside its address.
           navigation: BrowserTabNavigation(
             showSessions: { selection = nil }, tabsButton: AnyView(tabsButton(routes))),
-          changed: { tabs.tab(tab.id).flatMap { tabs.groups[$0.sessionID] }?.contentChanged() })
+          changed: { tabs.tab(tab.id).flatMap { tabs.groups[$0.sessionID] }?.contentChanged() }
+        )
+        // A page has no toolbar items of its own, so its pane's tabs reach New Tab.
+        .titlebarTrailingItems(0)
       case .agentBrowser(let sessionID):
         AgentBrowserTabContainer(
           host: tabContext.browser, sessionID: sessionID, showChat: { tabs.showChat(sessionID) })

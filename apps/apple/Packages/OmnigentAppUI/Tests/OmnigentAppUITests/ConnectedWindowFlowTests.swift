@@ -215,9 +215,10 @@ struct ConnectedWindowFlowTests {
 @MainActor
 func titledWindow(
   _ session: ServerSession, selection: WindowSelection = WindowSelection(),
-  preferences: UserDefaults = .standard
+  tabContext: TabWindowContext = TabWindowContext(), preferences: UserDefaults = .standard
 ) async throws -> OffscreenWindow<AppWindowRoot> {
-  let root = AppWindowRoot(session: session, selection: selection, preferences: preferences)
+  let root = AppWindowRoot(
+    session: session, selection: selection, tabContext: tabContext, preferences: preferences)
   let screen = OffscreenWindow(root, width: 900, height: 600)
   let frame = screen.window.frame
   screen.window.contentView = nil

@@ -25,13 +25,16 @@ struct HiddenUnderTerminal: ViewModifier {
   }
 }
 
-/// The titlebar space a shown conversation's trailing items take; a hidden tab reserves none.
+/// The titlebar space a page's trailing toolbar items take while it shows them. A hidden tab
+/// and a split's pane without focus show none (``ActivePaneToolbar``), so they reserve none.
 struct ShownTabTrailingItems: ViewModifier {
   let count: Int
   @Environment(\.isTabContentHidden) private var isHidden
+  @Environment(\.isActiveTabPane) private var isActivePane
 
   func body(content: Content) -> some View {
-    content.preference(key: TitlebarTrailingItems.self, value: isHidden ? nil : count)
+    let showsItems = !isHidden && isActivePane
+    content.preference(key: TitlebarTrailingItems.self, value: showsItems ? count : nil)
   }
 }
 
