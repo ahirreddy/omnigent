@@ -15,23 +15,14 @@ extension View {
 }
 
 #if os(macOS)
-  /// Turns the title bar's safe area into room above the view. Scroll views and backgrounds
-  /// reach into a safe area; with none left above them, they end where the tabs do.
+  /// Holds the view one pixel short of the title bar. A scroll view, a split view or a background
+  /// reaches into a safe area only from a view that touches its edge, so nothing in this one does:
+  /// each page starts where the tabs end, with no top inset left. Nothing is measured.
   private struct BelowTitlebar: ViewModifier {
-    /// The title bar and toolbar's height, once a layout has measured it.
-    @State private var titlebarHeight: CGFloat = 0
+    @Environment(\.pixelLength) private var pixelLength
 
     func body(content: Content) -> some View {
-      content
-        .padding(.top, titlebarHeight)
-        .ignoresSafeArea(.container, edges: .top)
-        // The toolbar's height: it changes in full screen, never with a scroll or a resize.
-        .onGeometryChange(for: CGFloat.self) {
-          $0.safeAreaInsets.top
-        } action: { height in
-          LoopProbe.record("titlebar height", "\(titlebarHeight) -> \(height)")
-          if titlebarHeight != height { titlebarHeight = height }
-        }
+      content.padding(.top, pixelLength)
     }
   }
 #endif

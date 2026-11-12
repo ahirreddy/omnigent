@@ -4,23 +4,12 @@ public import SwiftUI
 /// screen and scrollback survive SwiftUI re-renders.
 struct TerminalSurfaceRepresentable {
   let controller: TerminalSurfaceController
-  #if os(macOS)
-    /// Told how much of the terminal's top the window's title bar and toolbar cover.
-    var coveredTopChanged: (@MainActor (CGFloat) -> Void)?
-  #endif
 }
 
 #if os(macOS)
   extension TerminalSurfaceRepresentable: NSViewRepresentable {
-    func makeNSView(context: Context) -> TerminalSurfaceHostView {
-      let host = TerminalSurfaceHostView(surface: controller.view)
-      host.coveredTopChanged = coveredTopChanged
-      return host
-    }
-
-    func updateNSView(_ host: TerminalSurfaceHostView, context: Context) {
-      host.coveredTopChanged = coveredTopChanged
-    }
+    func makeNSView(context: Context) -> TerminalSurfaceNSView { controller.view }
+    func updateNSView(_ view: TerminalSurfaceNSView, context: Context) {}
   }
 #else
   extension TerminalSurfaceRepresentable: UIViewRepresentable {
@@ -129,12 +118,9 @@ public struct SessionTerminalView: View {
 /// The surface with its overlays.
 private struct AttachedTerminal: View {
   let controller: TerminalSurfaceController
-  /// How much of the terminal's top the window's title bar and toolbar cover: the surface
-  /// starts below it, and so does what is drawn over the surface.
-  @State private var coveredTop: CGFloat = 0
 
   var body: some View {
-    surface
+    TerminalSurfaceRepresentable(controller: controller)
       .background(Color(white: controller.runtime.appearance.colorScheme == .dark ? 0.04 : 1))
       .overlay(alignment: .top) {
         // The badge shares this stack so it can't sit on top of a banner's buttons.
@@ -159,24 +145,14 @@ private struct AttachedTerminal: View {
           }
         }
         .padding(8)
-        .padding(.top, coveredTop)
       }
       .overlay {
         TerminalStatusOverlay(state: controller.state) {
           controller.connection.start()
         }
-        .padding(.top, coveredTop)
       }
       .accessibilityElement(children: .contain)
       .accessibilityLabel(controller.title ?? "Terminal")
-  }
-
-  private var surface: TerminalSurfaceRepresentable {
-    #if os(macOS)
-      TerminalSurfaceRepresentable(controller: controller) { coveredTop = $0 }
-    #else
-      TerminalSurfaceRepresentable(controller: controller)
-    #endif
   }
 }
 
