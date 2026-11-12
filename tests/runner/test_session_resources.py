@@ -29,7 +29,7 @@ from omnigent.entities.session_resources import (
 )
 from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
 from omnigent.inner.os_env import EditEntry, OpResult, OSEnvironment, create_os_environment
-from omnigent.inner.terminal import TerminalInstance
+from omnigent.inner.terminal import TerminalInstance, TmuxUnavailableError
 from omnigent.runner import create_runner_app
 from omnigent.runner import resource_registry as resource_registry_mod
 from omnigent.runner.resource_registry import (
@@ -1178,6 +1178,63 @@ async def test_create_terminal_forwards_tmux_passthrough_opt_in(
     assert len(resource_registry.launches) == 1
     assert resource_registry.launches[0].tmux_allow_passthrough is True
     assert resource_registry.launches[0].tmux_start_on_attach is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure", "status", "code", "message"),
+    [
+        (
+            TmuxUnavailableError("tmux is not installed or not on PATH. Install it."),
+            412,
+            "harness_not_configured",
+            "tmux is not installed or not on PATH. Install it.",
+        ),
+        (RuntimeError("spawn failed at /private/secret"), 500, "terminal_launch_failed", None),
+    ],
+    ids=["host-needs-tmux", "other-failure"],
+)
+async def test_create_terminal_failure_tells_the_user_what_only_they_can_fix(
+    tmp_path: Path,
+    failure: RuntimeError,
+    status: int,
+    code: str,
+    message: str | None,
+) -> None:
+    """
+    A launch that fails for lack of tmux answers with the remedy, not a 500.
+
+    Other failures keep the generic detail that hides server-side text.
+    """
+
+    class _FailingRegistry(_CapturingResourceRegistry):
+        async def _launch(self, lifecycle: str, **kwargs: Any) -> SessionResourceView:
+            raise failure
+
+    app = create_runner_app(
+        resource_registry=_FailingRegistry(tmp_path),
+        server_client=NullServerClient(),  # type: ignore[arg-type]
+    )
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://runner") as c:
+        resp = await c.post(
+            "/v1/sessions/conv_abc/resources/terminals",
+            json={
+                "terminal": "shell",
+                "session_key": "u-1",
+                "spec": {"command": "bash", "os_env_type": "caller_process"},
+            },
+        )
+
+    assert resp.status_code == status
+    error = resp.json()["error"]
+    assert error["code"] == code
+    if message is None:
+        assert "/private/secret" not in error["message"]
+        assert "see the runner log" in error["message"]
+    else:
+        assert error["message"] == message
 
 
 @pytest.mark.asyncio

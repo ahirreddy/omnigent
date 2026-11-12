@@ -620,6 +620,14 @@ def register_resource_routes(
         except RuntimeError as exc:
             if launched_relay is not None:
                 _discard_comment_relay(session_id, launched_relay)
+            if isinstance(exc, OmnigentError) and exc.code == ErrorCode.HARNESS_NOT_CONFIGURED:
+                # Only the person can fix the host (for example its tmux), and the
+                # message says how, so it reaches the client as written.
+                _logger.warning("terminal launch needs host setup: %s", exc.message)
+                return JSONResponse(
+                    status_code=exc.http_status,
+                    content={"error": {"code": exc.code, "message": exc.message}},
+                )
             return JSONResponse(
                 status_code=500,
                 content={
