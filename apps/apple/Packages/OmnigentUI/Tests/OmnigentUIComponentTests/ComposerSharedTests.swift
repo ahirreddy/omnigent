@@ -76,21 +76,6 @@ struct ComposerSharedTests {
     #expect(FailureRecovery.resume.help.contains("Restart"))
   }
 
-  @Test("the Mac's pill over the column leaves room under the last row; beside it, none")
-  func navigatorClearance() {
-    let pill = Theme.Control.target * 2 + Theme.Spacing.medium
-    #expect(
-      TranscriptNavigator.bottomClearance(layout: .card, width: 900, column: .infinity) == pill,
-      "CLI edge to edge: the last row clears the pill")
-    #expect(TranscriptNavigator.bottomClearance(layout: .card, width: 800, column: 760) == pill)
-    #expect(
-      TranscriptNavigator.bottomClearance(layout: .card, width: 1_400, column: 760) == 0,
-      "the column leaves the pill its own lane")
-    #expect(
-      TranscriptNavigator.bottomClearance(layout: .touch, width: 390, column: .infinity) == 0,
-      "touch hides the pill over the column instead")
-  }
-
   @Test("the CLI shows the latest settled answer's actions on touch, as chat does")
   func cliLatestAnswerActions() {
     let rows = [

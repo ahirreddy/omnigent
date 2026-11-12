@@ -17,7 +17,7 @@ struct TranscriptRowEvents {
   var revisionChanged: () -> Void
   /// The first row changed (older history landed above).
   var firstRowChanged: () -> Void
-  /// Whether any user message is loaded, for the previous and next message buttons.
+  /// Whether there are user messages to move between, for the previous and next message keys.
   var hasUserMessagesChanged: (Bool) -> Void
   /// The user turns changed, for the turn rail.
   var turnsChanged: ([TranscriptTurn]) -> Void

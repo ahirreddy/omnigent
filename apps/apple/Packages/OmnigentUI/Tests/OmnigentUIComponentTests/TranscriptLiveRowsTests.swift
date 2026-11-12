@@ -175,13 +175,41 @@
       #expect(try !window.shows(preview))
     }
 
-    @Test("The room the navigator keeps under the last row depends on whether it fits beside")
-    func navigatorClearance() {
-      let beside = TranscriptNavigator.bottomClearance(layout: .card, width: 2000, column: 700)
-      let over = TranscriptNavigator.bottomClearance(layout: .card, width: 700, column: 700)
-      #expect(beside == 0)
-      #expect(over > 0)
-      #expect(TranscriptNavigator.bottomClearance(layout: .touch, width: 700, column: 700) == 0)
+    /// How far a working turn's last row rests above the dock, in a pane `width` wide.
+    private func gapUnderLastRow(width: CGFloat) async throws -> CGFloat {
+      var header = TranscriptFixture.header
+      header.status = .running
+      let conversation = LiveConversation(
+        ConversationViewState(header: header, rows: TranscriptFixture.turns(3)))
+      let height: CGFloat = 600
+      let dock: CGFloat = 120
+      let window = transcriptScreen(
+        DockedTranscriptHost(
+          conversation: conversation, pane: TranscriptPane(width: width, dock: dock)),
+        width: width, height: height)
+      defer { window.close() }
+      try await letOpeningEnd(window)
+      conversation.scrollRequest += 1
+      try await letTasksRun(window, milliseconds: 400)
+      let working = try window.withAccessibilityTree {
+        try window.accessibilityFrame("transcript-working")
+      }
+      // The row is at least a control high, with its line centered in it.
+      let rowBottom = working.midY + max(working.height, Theme.Control.target) / 2
+      return (height - dock) - rowBottom
+    }
+
+    @Test("A working turn's last row rests a row gap above the dock, and the kept room more")
+    func lastRowToComposer() async throws {
+      // The stack's gap between two rows, and the point-high row the transcript scrolls to.
+      let rowGap = Theme.Spacing.row + 1
+      let wide = try await gapUnderLastRow(width: 1_200)
+      #expect(abs(wide - rowGap) <= 0.5, "\(wide) points with a margin beside the column")
+      let narrow = try await gapUnderLastRow(width: 760)
+      let room = TranscriptClearance.height(layout: .card, hasMargin: false)
+      #expect(abs(narrow - rowGap - room) <= 0.5, "\(narrow) points with no margin")
+      #expect(TranscriptClearance.height(layout: .card, hasMargin: true) == 0)
+      #expect(TranscriptClearance.height(layout: .touch, hasMargin: false) == 0)
     }
 
     // MARK: The composer's remaining rows

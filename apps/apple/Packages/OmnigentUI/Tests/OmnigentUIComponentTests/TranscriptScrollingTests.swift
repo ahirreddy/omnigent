@@ -59,16 +59,6 @@
       return stopped && viewport.distanceToEnd() <= Theme.Spacing.extraLarge + 1
     }
 
-    /// Previous is above Next at the transcript's bottom-trailing corner.
-    private func navigatorButton(
-      _ direction: TranscriptNavigation.Direction, on window: OffscreenWindow<AnyView>
-    ) throws -> CGPoint {
-      let buttons = navigatorButtons(on: window, width: Self.width)
-      let button = try #require(direction == .previous ? buttons.first : buttons.last)
-      #expect(buttons.count == 2)
-      return CGPoint(x: button.midX, y: button.midY)
-    }
-
     @Test("Opening a session frames its latest question, so a long answer reads from its start")
     func opensAtLatestQuestion() async throws {
       let (window, viewport) = try await screen(longSession())
@@ -141,7 +131,7 @@
       defer { window.close() }
       try await clickJumpPill(on: window)
       try await letTasksRun(window, milliseconds: 400)
-      try window.click(try navigatorButton(.previous, on: window))
+      try pressMessageKey(.previous, on: window)
       try await letTasksRun(window, milliseconds: 300)
       let reading = viewport.offset
       #expect(try window.shows("Jump to latest"))
@@ -196,16 +186,28 @@
     // MARK: Message navigation
 
     @Test("Previous and next need a second question to move between")
-    func navigatorShowsWithTwoQuestions() async throws {
-      let conversation = LiveConversation(
-        ConversationViewState(
-          header: TranscriptFixture.header, rows: TranscriptFixture.turns(1)))
-      let (window, _) = try await screen(conversation)
+    func keysNeedTwoQuestions() async throws {
+      var actions = ConversationActions()
+      let log = self.log
+      actions.loadOlder = { log.add("older") }
+      var state = ConversationViewState(
+        header: TranscriptFixture.header, rows: TranscriptFixture.turns(1))
+      state.hasMoreHistory = true
+      let conversation = LiveConversation(state)
+      let (window, viewport) = try await screen(conversation, actions: actions)
       defer { window.close() }
-      #expect(!window.controlFrames.contains { $0.maxX > Self.width - 40 && $0.minY > 300 })
+      // With no question above, Previous would ask for older history: one question has no keys.
+      let alone = log.entries.count
+      try pressMessageKey(.previous, on: window)
+      try await letTasksRun(window)
+      #expect(log.entries.count == alone)
       conversation.append(contentsOf: TranscriptFixture.turns(1, startingAt: 1))
       try await letTasksRun(window)
-      #expect(try navigatorButton(.next, on: window).y > navigatorButton(.previous, on: window).y)
+      viewport.move(to: 0)
+      let paired = log.entries.count
+      try pressMessageKey(.previous, on: window)
+      try await letTasksRun(window)
+      #expect(log.entries.count > paired)
     }
 
     @Test("Previous moves up a question at a time and Next comes back down")
@@ -213,29 +215,18 @@
       let (window, viewport) = try await screen(longSession())
       defer { window.close() }
       let start = viewport.offset
-      try window.click(try navigatorButton(.previous, on: window))
+      try pressMessageKey(.previous, on: window)
       try await letTasksRun(window, milliseconds: 300)
       let onePrevious = viewport.offset
       #expect(onePrevious < start)
-      try window.click(try navigatorButton(.previous, on: window))
+      try pressMessageKey(.previous, on: window)
       try await letTasksRun(window, milliseconds: 300)
       #expect(viewport.offset < onePrevious)
-      try window.click(try navigatorButton(.next, on: window))
+      try pressMessageKey(.next, on: window)
       try await letTasksRun(window, milliseconds: 300)
       #expect(viewport.offset > 0)
       #expect(viewport.offset <= start)
       #expect(try window.shows("Jump to latest"))
-    }
-
-    @Test("The keyboard shortcuts move between questions too")
-    func navigatorShortcuts() async throws {
-      let (window, viewport) = try await screen(longSession())
-      defer { window.close() }
-      let start = viewport.offset
-      try window.press(
-        keyCode: 126, characters: "\u{F700}", modifiers: [.command, .option, .numericPad])
-      try await letTasksRun(window, milliseconds: 300)
-      #expect(viewport.offset < start)
     }
 
     @Test("With no question below, Next goes to the newest row")
@@ -243,7 +234,7 @@
       let (window, viewport) = try await screen(longSession())
       defer { window.close() }
       let framed = viewport.offset
-      try window.click(try navigatorButton(.next, on: window))
+      try pressMessageKey(.next, on: window)
       #expect(try await jumpReachesEnd(from: framed, viewport, on: window))
       #expect(try !window.shows("Jump to latest"))
     }
@@ -259,7 +250,7 @@
       let (window, viewport) = try await screen(LiveConversation(state), actions: actions)
       defer { window.close() }
       viewport.move(to: 0)
-      try window.click(try navigatorButton(.previous, on: window))
+      try pressMessageKey(.previous, on: window)
       try await letTasksRun(window)
       #expect(log.entries.first == "older")
     }
@@ -320,7 +311,7 @@
       let (window, viewport) = try await screen(conversation)
       defer { window.close() }
       try await sendFromTheTop(conversation, viewport, on: window)
-      try window.click(try navigatorButton(.previous, on: window))
+      try pressMessageKey(.previous, on: window)
       try await letTasksRun(window, milliseconds: 300)
       let reading = viewport.offset
       #expect(try window.shows("Jump to latest"))

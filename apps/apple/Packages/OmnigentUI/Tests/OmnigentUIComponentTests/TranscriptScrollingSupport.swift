@@ -157,11 +157,17 @@
     }
   }
 
-  /// The message navigator's Previous and Next, at the transcript's bottom-trailing corner.
+  /// Presses the Mac's key for the previous or next user message: Option-Command-Up or -Down.
   @MainActor
-  func navigatorButtons(on window: OffscreenWindow<AnyView>, width: CGFloat) -> [CGRect] {
-    window.controlFrames.filter { $0.maxX > width - 40 && $0.minY > 300 }
-      .sorted { $0.minY < $1.minY }
+  func pressMessageKey(
+    _ direction: TranscriptNavigation.Direction, on window: OffscreenWindow<AnyView>
+  ) throws {
+    let (keyCode, arrow): (UInt16, String) =
+      direction == .previous ? (126, "\u{F700}") : (125, "\u{F701}")
+    try window.press(
+      keyCode: keyCode, characters: arrow, modifiers: [.command, .option, .numericPad])
+    // The jump is an animated scroll: it gets the time a click's own settling gives one.
+    window.settle()
   }
 
   // An expectation on the driver would otherwise print the whole window's view tree.

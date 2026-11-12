@@ -158,8 +158,8 @@ public struct TranscriptView: View {
         await frameLatestTurn(proxy)
       }
       .modifier(
-        TranscriptNavigatorOverlay(
-          isShown: hasUserMessages,
+        MessageNavigationKeys(
+          isEnabled: hasUserMessages,
           previous: { step(.previous, proxy) }, next: { step(.next, proxy) })
       )
       .modifier(

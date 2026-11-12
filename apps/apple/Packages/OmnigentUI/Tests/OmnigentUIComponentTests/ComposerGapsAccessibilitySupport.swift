@@ -28,6 +28,16 @@
       throw OffscreenWindowError.notFound(identifier)
     }
 
+    /// Where the element with this identifier is, from the top left of the window's root view.
+    func accessibilityFrame(_ identifier: String) throws -> CGRect {
+      let element = try accessibilityElement(identifier)
+      let frame = Self.attribute("accessibilityFrame", of: element) as? NSValue
+      guard let onScreen = frame?.rectValue else {
+        throw OffscreenWindowError.notFound("the frame of \(identifier)")
+      }
+      return host.convert(window.convertFromScreen(onScreen), from: nil)
+    }
+
     /// The custom action of this name on an element.
     func customAction(_ name: String, of element: NSObject) throws -> NSAccessibilityCustomAction {
       let actions = Self.attribute("accessibilityCustomActions", of: element)

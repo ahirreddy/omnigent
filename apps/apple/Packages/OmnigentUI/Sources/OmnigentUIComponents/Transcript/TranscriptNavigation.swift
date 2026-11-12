@@ -112,151 +112,90 @@ final class TranscriptReadingPosition {
   }
 }
 
-/// Previous and next user message, at the transcript's trailing edge (web `UserMessageNav`).
-/// Jump to top is the pill the top edge reveals (``JumpToTopReveal``).
-struct TranscriptNavigator: View {
-  let previous: () -> Void
-  let next: () -> Void
-  @Environment(\.layoutWidth) private var layoutWidth
-  @Environment(\.composerLayoutStyle) private var composerLayout
-  @Environment(\.transcriptAppearance) private var appearance
-  @State private var fitsBeside = false
+/// The room the transcript keeps under its last row on the Mac, in a pane with no margin beside
+/// the column. A waiting request's inline card resting right above the dock leaves the screen as
+/// the dock gives its request back and returns as the dock takes it, without end; this room
+/// keeps it on screen.
+enum TranscriptClearance {
+  /// The margin beside the column from which no room is kept.
+  @MainActor static var margin: CGFloat { 2 * Theme.Control.target }
 
-  var body: some View {
-    if composerLayout == .touch {
-      // On touch it shows only in the margin beside the column: over the column it would cover
-      // the last row's trailing actions (a banner's Retry). The web leaves it out on phones.
-      let column = layoutWidth == .compact ? .infinity : appearance.contentWidth.maxWidth
-      let pill = Self.pillWidth
-      Group { if fitsBeside { navigator } }
-        .frame(maxWidth: .infinity, alignment: .trailing)
-        .onGeometryChange(for: Bool.self) { [fitsBeside] in
-          Self.fits(width: $0.size.width, column: column, pill: pill, wasFitting: fitsBeside)
-        } action: {
-          fitsBeside = $0
-        }
-    } else {
-      navigator
-    }
-  }
+  /// Points a margin may lose before it counts as gone: more than a legacy scroll bar, which
+  /// the room itself can show or hide, so the answer cannot flip on every pass.
+  static let slack: CGFloat = 20
 
-  /// Whether the pill fits in the margin beside a centered column of at most `column` points.
+  /// Whether a pane leaves `margin` beside the column; geometry callbacks run off the main actor.
   /// - Parameters:
-  ///   - width: The width the pill is laid out in.
-  ///   - column: The transcript column's maximum width.
-  /// - Returns: Whether the margin is at least the pill's width.
-  static func fitsBesideColumn(width: CGFloat, column: CGFloat) -> Bool {
-    fits(width: width, column: column, pill: pillWidth)
-  }
-
-  /// The pill's width.
-  static var pillWidth: CGFloat { 2 * Theme.Control.target }
-
-  /// Points a fitting pill may lose before it stops fitting: more than a legacy scroll bar, which
-  /// the pill's own bottom margin can show or hide, so the answer cannot flip on every pass.
-  nonisolated static let fitSlack: CGFloat = 20
-
-  /// Whether a margin beside the column holds `pill`; geometry callbacks run off the main actor.
-  /// - Parameters:
-  ///   - width: The width the pill is laid out in.
-  ///   - column: The transcript column's maximum width.
-  ///   - pill: The pill's width.
-  ///   - wasFitting: Whether it fit before; a fitting pill keeps fitting within ``fitSlack``.
-  /// - Returns: Whether the margin holds the pill.
-  nonisolated static func fits(
-    width: CGFloat, column: CGFloat, pill: CGFloat, wasFitting: Bool = false
-  ) -> Bool {
-    width - column >= pill - (wasFitting ? fitSlack : 0)
-  }
-
-  /// The room the transcript keeps under its last row while the pill floats over the column (the
-  /// Mac, whose pill also carries the shortcuts), so it never covers a banner's Retry there.
-  /// - Parameters:
-  ///   - layout: The composer's layout; touch hides the pill over the column instead.
   ///   - width: The transcript's width.
   ///   - column: The transcript column's maximum width.
-  /// - Returns: The bottom content margin.
-  static func bottomClearance(layout: ComposerLayoutStyle, width: CGFloat, column: CGFloat)
-    -> CGFloat
-  {
-    bottomClearance(layout: layout, fits: fitsBesideColumn(width: width, column: column))
+  ///   - margin: The margin looked for.
+  ///   - hadMargin: Whether it was there before; a margin stays one within ``slack``.
+  /// - Returns: Whether the margin is there.
+  static func hasMargin(
+    width: CGFloat, column: CGFloat, margin: CGFloat, hadMargin: Bool = false
+  ) -> Bool {
+    width - column >= margin - (hadMargin ? slack : 0)
   }
 
-  /// The bottom content margin for a pill that does or does not fit beside the column.
-  static func bottomClearance(layout: ComposerLayoutStyle, fits: Bool) -> CGFloat {
-    guard layout == .card, !fits else { return 0 }
+  /// The bottom content margin for a pane that does or does not have the margin.
+  /// - Parameters:
+  ///   - layout: The composer's layout; touch keeps no room.
+  ///   - hasMargin: Whether the pane leaves the margin beside the column.
+  /// - Returns: The room under the last row.
+  @MainActor
+  static func height(layout: ComposerLayoutStyle, hasMargin: Bool) -> CGFloat {
+    guard layout == .card, !hasMargin else { return 0 }
     return Theme.Control.target * 2 + Theme.Spacing.medium
-  }
-
-  private var navigator: some View {
-    VStack(spacing: 0) {
-      button(
-        "Previous message", shortcut: "\u{2318}\u{2325}\u{2191}", symbol: "chevron.up",
-        id: "transcript-previous-message", action: previous
-      )
-      .keyboardShortcut(AppShortcuts.previousMessage)
-      button(
-        "Next message", shortcut: "\u{2318}\u{2325}\u{2193}", symbol: "chevron.down",
-        id: "transcript-next-message", action: next
-      )
-      .keyboardShortcut(AppShortcuts.nextMessage)
-    }
-    .font(Theme.Typography.label)
-    .glassSurface(in: Capsule(), isInteractive: true)
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("Message navigation")
-  }
-
-  private func button(
-    _ title: String, shortcut: String? = nil, symbol: String, id: String,
-    action: @escaping () -> Void
-  ) -> some View {
-    Button(action: action) {
-      Image(systemName: symbol)
-        .frame(width: Theme.Control.target, height: Theme.Control.target)
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .foregroundStyle(.secondary)
-    .help(shortcut.map { "\(title) (\($0))" } ?? title)
-    .accessibilityLabel(title)
-    .accessibilityIdentifier(id)
   }
 }
 
-/// The transcript's ``TranscriptNavigator`` at its bottom-trailing corner, with
-/// ``TranscriptNavigator/bottomClearance(layout:width:column:)`` kept under the scroll content
-/// while the pill shows.
-struct TranscriptNavigatorOverlay: ViewModifier {
+/// The keys for the previous and next user message (Option-Command-Up and -Down), on buttons
+/// that are laid out and never drawn, with ``TranscriptClearance`` kept under the scroll
+/// content while there are messages to move between.
+struct MessageNavigationKeys: ViewModifier {
   /// There is a user message to move between.
-  let isShown: Bool
+  let isEnabled: Bool
   let previous: () -> Void
   let next: () -> Void
-  /// Whether the pill fits beside the column; kept instead of the width, so resizing re-renders
-  /// only when it flips.
-  @State private var fitsBeside = false
+  /// Whether the pane has the margin; kept instead of the width, so resizing re-renders only
+  /// when it flips.
+  @State private var hasMargin = false
   @Environment(\.layoutWidth) private var layoutWidth
   @Environment(\.composerLayoutStyle) private var composerLayout
   @Environment(\.transcriptAppearance) private var appearance
 
   func body(content: Content) -> some View {
     let column = layoutWidth == .compact ? .infinity : appearance.contentWidth.maxWidth
-    let pill = TranscriptNavigator.pillWidth
+    let margin = TranscriptClearance.margin
     let inset =
-      isShown ? TranscriptNavigator.bottomClearance(layout: composerLayout, fits: fitsBeside) : 0
+      isEnabled ? TranscriptClearance.height(layout: composerLayout, hasMargin: hasMargin) : 0
     content
       .overlay(alignment: .bottomTrailing) {
-        if isShown {
-          TranscriptNavigator(previous: previous, next: next).padding(Theme.Spacing.medium)
+        if isEnabled {
+          VStack(spacing: 0) {
+            key(AppShortcuts.previousMessage, action: previous)
+            key(AppShortcuts.nextMessage, action: next)
+          }
+          .opacity(0)
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
         }
       }
-      .onGeometryChange(for: Bool.self) { [fitsBeside] in
-        TranscriptNavigator.fits(
-          width: $0.size.width, column: column, pill: pill, wasFitting: fitsBeside)
+      .onGeometryChange(for: Bool.self) { [hasMargin] in
+        TranscriptClearance.hasMargin(
+          width: $0.size.width, column: column, margin: margin, hadMargin: hasMargin)
       } action: {
-        fitsBeside = $0
+        hasMargin = $0
       }
       .contentMargins(.bottom, inset, for: .scrollContent)
+  }
+
+  private func key(_ shortcut: KeyboardShortcut, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Color.clear.frame(width: Theme.Control.target, height: Theme.Control.target)
+    }
+    .buttonStyle(.plain)
+    .keyboardShortcut(shortcut)
   }
 }
 

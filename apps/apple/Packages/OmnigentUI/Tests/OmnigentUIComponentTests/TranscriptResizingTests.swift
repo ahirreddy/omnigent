@@ -56,11 +56,14 @@
       try await letTasksRun(window, milliseconds: 200)
       let viewport = TranscriptScrollDriver(screen: window)
       // Going to an earlier question is what stops following here; a scroll has no phases offscreen.
+      let opened = viewport.offset
       #expect(
-        try await waitUntil(window) { navigatorButtons(on: window, width: Self.wide).count == 2 })
-      let previous = try #require(navigatorButtons(on: window, width: Self.wide).first)
-      for _ in 0..<3 {
-        try window.click(CGPoint(x: previous.midX, y: previous.midY))
+        try await waitUntil(window) {
+          try pressMessageKey(.previous, on: window)
+          return viewport.offset < opened
+        })
+      for _ in 0..<2 {
+        try pressMessageKey(.previous, on: window)
         try await letTasksRun(window, milliseconds: 100)
       }
       let before = viewport.fractionRead

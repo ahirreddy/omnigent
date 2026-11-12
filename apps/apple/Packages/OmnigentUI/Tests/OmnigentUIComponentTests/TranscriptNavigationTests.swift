@@ -45,17 +45,6 @@ struct TranscriptNavigationTests {
     #expect(!scrolls)
     #expect(follow.hasUnseenOutput)
   }
-
-  @Test("on touch the message pill shows only in the margin beside the column")
-  func pillMargin() {
-    // A phone's column is the full width.
-    #expect(!TranscriptNavigator.fitsBesideColumn(width: 390, column: .infinity))
-    // An iPad mini beside the sidebar: the reading column reaches the pill.
-    #expect(!TranscriptNavigator.fitsBesideColumn(width: 520, column: 720))
-    #expect(!TranscriptNavigator.fitsBesideColumn(width: 740, column: 720))
-    // A wide iPad leaves room on either side.
-    #expect(TranscriptNavigator.fitsBesideColumn(width: 1_000, column: 720))
-  }
 }
 
 /// The "Jump to top" pill's response to the reader's scrolling.
@@ -92,16 +81,21 @@ struct ScrollTopRevealTests {
 /// Width measurers whose answer changes the width they measure settle instead of flipping on
 /// every layout pass.
 struct LayoutThresholdHysteresisTests {
-  @Test("a fitting pill keeps fitting until it loses more than a scroll bar")
-  func thePillFitsWithSlack() {
-    let pill = TranscriptNavigator.pillWidth
-    let edge = 720 + pill
-    #expect(TranscriptNavigator.fits(width: edge, column: 720, pill: pill))
-    #expect(!TranscriptNavigator.fits(width: edge - 15, column: 720, pill: pill))
-    #expect(TranscriptNavigator.fits(width: edge - 15, column: 720, pill: pill, wasFitting: true))
+  @Test("a margin beside the column stays one until it loses more than a scroll bar")
+  @MainActor
+  func theMarginHasSlack() {
+    let margin = TranscriptClearance.margin
+    let edge = 720 + margin
+    #expect(TranscriptClearance.hasMargin(width: edge, column: 720, margin: margin))
+    #expect(!TranscriptClearance.hasMargin(width: edge - 15, column: 720, margin: margin))
     #expect(
-      !TranscriptNavigator.fits(
-        width: edge - TranscriptNavigator.fitSlack - 1, column: 720, pill: pill, wasFitting: true))
+      TranscriptClearance.hasMargin(
+        width: edge - 15, column: 720, margin: margin, hadMargin: true))
+    #expect(
+      !TranscriptClearance.hasMargin(
+        width: edge - TranscriptClearance.slack - 1, column: 720, margin: margin, hadMargin: true))
+    // A compact pane's column is the full width.
+    #expect(!TranscriptClearance.hasMargin(width: 390, column: .infinity, margin: margin))
   }
 
   @Test("a compact layout grows past the threshold by the slack before it is regular")
