@@ -74,12 +74,16 @@ extension FocusedValues {
 public struct OmnigentSessionCommands: Commands {
   @FocusedValue(\.sessionCommands) private var actions
   @FocusedValue(\.paletteCommands) private var palette
+  @FocusedValue(\.sessionListCommands) private var sessionList
 
   /// Creates the commands.
   public init() {}
 
   /// The menu.
   public var body: some Commands {
+    CommandGroup(after: .sidebar) {
+      SessionListMenuItems(display: sessionList)
+    }
     CommandMenu("Navigate") {
       NavigateMenuItems(palette: palette)
     }

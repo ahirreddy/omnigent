@@ -208,31 +208,7 @@ struct DisplayMenu: View {
 
   var body: some View {
     Menu {
-      Picker("Grouping", selection: binding(\.groupBy)) {
-        ForEach(SessionGrouping.allCases, id: \.self) { Text($0.title).tag($0) }
-      }
-      Picker("Display", selection: binding(\.show)) {
-        ForEach(SessionShowScope.allCases.filter { showsShared || $0 != .shared }, id: \.self) {
-          Text($0.title).tag($0)
-        }
-      }
-      Picker("Ordering", selection: binding(\.sortBy)) {
-        ForEach(SessionSort.allCases, id: \.self) { Text($0.title).tag($0) }
-      }
-      Divider()
-      Menu("Show") {
-        ForEach(SessionRowDetail.allCases, id: \.self) { detail in
-          Toggle(
-            detail.title,
-            isOn: Binding(
-              get: { options.details.contains(detail) },
-              set: { isOn in
-                var copy = options
-                if isOn { copy.details.insert(detail) } else { copy.details.remove(detail) }
-                set(copy)
-              }))
-        }
-      }
+      DisplayMenuItems(options: options, showsShared: showsShared, set: set)
     } label: {
       Label("Group, sort, and filter sessions", systemImage: "line.3.horizontal.decrease")
         .labelStyle(.iconOnly)
@@ -246,6 +222,41 @@ struct DisplayMenu: View {
     .accessibilityLabel("Group, sort, and filter sessions")
     .accessibilityHint("Chooses which sessions show, how they are grouped and sorted")
     .accessibilityIdentifier("sidebar-display-menu")
+  }
+}
+
+/// The display menu's items, for the sidebar's menu and the menu bar's.
+struct DisplayMenuItems: View {
+  let options: SessionDisplayOptions
+  let showsShared: Bool
+  let set: @MainActor (SessionDisplayOptions) -> Void
+
+  var body: some View {
+    Picker("Grouping", selection: binding(\.groupBy)) {
+      ForEach(SessionGrouping.allCases, id: \.self) { Text($0.title).tag($0) }
+    }
+    Picker("Display", selection: binding(\.show)) {
+      ForEach(SessionShowScope.allCases.filter { showsShared || $0 != .shared }, id: \.self) {
+        Text($0.title).tag($0)
+      }
+    }
+    Picker("Ordering", selection: binding(\.sortBy)) {
+      ForEach(SessionSort.allCases, id: \.self) { Text($0.title).tag($0) }
+    }
+    Divider()
+    Menu("Show") {
+      ForEach(SessionRowDetail.allCases, id: \.self) { detail in
+        Toggle(
+          detail.title,
+          isOn: Binding(
+            get: { options.details.contains(detail) },
+            set: { isOn in
+              var copy = options
+              if isOn { copy.details.insert(detail) } else { copy.details.remove(detail) }
+              set(copy)
+            }))
+      }
+    }
   }
 
   private func binding<Value>(_ keyPath: WritableKeyPath<SessionDisplayOptions, Value>) -> Binding<

@@ -130,8 +130,10 @@ public struct AppShell<Detail: View>: View {
   /// The sidebar, reading its state in a view of its own.
   private var sidebarColumn: some View {
     ObservationScope("sidebar") {
-      SidebarView(
-        state: sidebar(), selection: $selection, searchText: searchText(), actions: actions)
+      let state = sidebar()
+      SidebarView(state: state, selection: $selection, searchText: searchText(), actions: actions)
+        .sessionListCommands(
+          display: state.display, showsShared: state.showsSharedScope, set: actions.setDisplay)
     }
   }
 

@@ -141,9 +141,11 @@ extension MacLiveUITestSupport {
       file: file, line: line)
   }
 
-  /// Picks a scope (`All sessions`, `Archived sessions`, ...) from the sidebar's display menu.
+  /// Picks a scope (`All sessions`, `Archived sessions`, ...) from View > Session List. The
+  /// sidebar's own display menu is in a section header, which is one accessibility element.
   func showDisplayScope(_ scope: String, in app: XCUIApplication) {
-    click(element("sidebar-display-menu", in: app), "the display menu")
+    click(app.menuBars.menuBarItems["View"], "the View menu")
+    clickMenuItem("Session List", in: app)
     clickMenuItem("Display", in: app)
     clickMenuItem(scope, in: app)
   }
