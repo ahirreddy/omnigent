@@ -15,9 +15,10 @@ enum SessionToolsAdapter {
     /// Opens a new side chat with a draft, sending it at once when the flag is set; `nil` where
     /// the window has no tabs to open it in.
     var openNewSideChat: (@MainActor (String, Bool) -> Void)?
-    /// A typed `/side` goes (`true`) or did not go (`false`) to an agent that forks the side
-    /// chat itself: the window opens the fork in a tab when the session reports it.
-    var awaitForkedSideChat: (@MainActor (Bool) -> Void)?
+    /// A typed `/side` is going to an agent that forks the side chat itself: the window opens
+    /// the fork in a tab when the session reports it. Returns what withdraws the wait when the
+    /// message was not sent.
+    var awaitForkedSideChat: (@MainActor () -> ForkedSideChats.Withdraw?)?
     /// Shows the right panel's Pull Requests tab.
     var showPullRequests: @MainActor () -> Void
     /// Opens the goal sheet.
@@ -83,18 +84,21 @@ enum SessionToolsAdapter {
       openGoal: extras.setGoal)
   }
 
-  /// Side chat, for a session the viewer can write to whose harness is known (web
-  /// `supportsSideChat`) and that is not itself a side chat; `nil` hides it.
+  /// Side chat, for a session the viewer can write to and may start one in, and that is not
+  /// itself a side chat; `nil` hides it.
   static func sideChat(_ store: ConversationStore, routes: Routes) -> (@MainActor () -> Void)? {
     guard offersSideChat(store) else { return nil }
     return { startSideChat(store, routes: routes) }
   }
 
-  /// Whether the session offers a side chat: see ``sideChat(_:routes:)``.
+  /// Whether the session offers a side chat: see ``sideChat(_:routes:)``. Who may start one is
+  /// the server's answer, read by the core (web `supportsSideChat`, `useCanStartSideChat`).
   static func offersSideChat(_ store: ConversationStore) -> Bool {
     let settings = store.header?.settings
-    return !ComposerAdapter.isReadOnly(store) && settings?.harness?.isEmpty == false
-      && settings?.sideChatSourceId == nil
+    return !ComposerAdapter.isReadOnly(store) && settings?.sideChatSourceId == nil
+      && OmnigentCoreFFI.offersSideChat(
+        harness: settings?.harness, sideChatAllowed: settings?.sideChatAllowed,
+        permissionLevel: store.header?.permissionLevel)
   }
 
   /// Sends the composer's draft and does what its command leaves to the screen: `/new` opens a
@@ -103,52 +107,44 @@ enum SessionToolsAdapter {
   static func send(
     _ store: ConversationStore, newSession: (@MainActor () -> Void)?, routes: Routes
   ) async {
-    let forksSideChat = sendsForkingSideChat(store)
-    if forksSideChat { routes.awaitForkedSideChat?(true) }
+    // The wait is queued before the message goes, as a side chat tab's own wait is.
+    let withdrawWait = sendsForkingSideChat(store) ? routes.awaitForkedSideChat?() : nil
     switch await store.composer.send() {
     case .handled: break
     case .newSession: newSession?()
-    case .sideChat(let question): startSideChat(store, routes: routes, question: question)
+    case .sideChat(let question):
+      // A typed `/side` is done once its side chat opens.
+      if startSideChat(store, routes: routes, question: question) { store.composer.text = "" }
     }
     // A message the server did not take forks nothing.
-    if forksSideChat, store.composer.lastError != nil { routes.awaitForkedSideChat?(false) }
+    if store.composer.lastError != nil { withdrawWait?() }
   }
 
-  /// Whether the draft is a `/side <question>` for an agent that forks the side chat itself
-  /// (web `isSideChatCommand` with `usesNativeSideChatFork`).
+  /// Whether the draft is a message that an agent forking its own side chats takes as the
+  /// request to fork one (web `isSideChatCommand` with `usesNativeSideChatFork`).
   static func sendsForkingSideChat(_ store: ConversationStore) -> Bool {
-    let harness = store.header?.settings?.harness
-    guard case .command(let prefix) = OmnigentCoreFFI.sideChatStart(harness: harness, quote: nil)
-    else { return false }
-    let draft = store.composer.text.drop { $0.isWhitespace }
-    return draft.hasPrefix(prefix) && draft.dropFirst(prefix.count).contains { !$0.isWhitespace }
+    let composer = store.composer
+    // Tagged paths go ahead of the text, which is then an ordinary message.
+    return composer.mentions.isEmpty
+      && messageForksSideChat(
+        harness: store.header?.settings?.harness, text: composer.draftMessage)
   }
 
-  /// Starts a side chat: a native `/side` fills the composer; any other opens a new side chat
-  /// next to this chat, created by its first message. A `quote` (selected transcript text)
-  /// starts its draft quoted; a `question` typed after `/side` is sent at once.
+  /// Opens a new side chat next to this chat, whatever the harness; its first message creates
+  /// it. A `quote` (selected transcript text) starts its draft quoted; a `question` typed after
+  /// `/side` is sent at once.
+  /// - Returns: Whether it opened; a window without tabs says why not.
+  @discardableResult
   static func startSideChat(
     _ store: ConversationStore, routes: Routes, quote: String? = nil, question: String = ""
-  ) {
-    let composer = store.composer
-    let harness = store.header?.settings?.harness
-    switch OmnigentCoreFFI.sideChatStart(harness: harness, quote: quote) {
-    case .command(let prefix):
-      // A native side chat is typed here, so a draft in progress is never replaced by a quote.
-      if quote != nil, !composer.text.isEmpty {
-        routes.report("Send or clear the message you are writing before asking in a side chat.")
-        return
-      }
-      composer.text = prefix + question
-    case .draft(let draft):
-      guard let open = routes.openNewSideChat else {
-        routes.report("Side chats open in tabs, which this window doesn't have.")
-        return
-      }
-      // A typed `/side` is done once its side chat opens.
-      if quote == nil, composer.text.hasPrefix("/side") { composer.text = "" }
-      open(question.isEmpty ? draft : question, !question.isEmpty)
+  ) -> Bool {
+    guard let open = routes.openNewSideChat else {
+      routes.report("Side chats open in tabs, which this window doesn't have.")
+      return false
     }
+    let start = sideChatStart(harness: store.header?.settings?.harness, quote: quote)
+    open(question.isEmpty ? start.draft : question, !question.isEmpty)
+    return true
   }
 
   /// "Reply" and "Ask in side chat" for text selected in the transcript, for a viewer who can

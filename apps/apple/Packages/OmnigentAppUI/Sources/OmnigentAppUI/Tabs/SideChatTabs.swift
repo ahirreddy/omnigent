@@ -13,6 +13,18 @@ final class SideChatDrafts {
     var text = ""
     var isStarting = false
     var failure: String?
+    /// The first message, while the session's own agent forks the side chat for it.
+    var asked: String?
+
+    /// The side chat did not start: the message is back in the field, with the reason.
+    mutating func giveBack(_ reason: String) {
+      if let asked {
+        text = text.isEmpty ? asked : "\(asked)\n\n\(text)"
+      }
+      asked = nil
+      isStarting = false
+      failure = reason
+    }
   }
 
   private(set) var drafts: [String: Draft] = [:]
@@ -59,15 +71,16 @@ struct PendingSideChatTab: View {
         set: { text in drafts.update(tabID) { $0.text = text } }),
       parent: CreatingSession(
         id: parentID, title: session.connection.sessionList.sessionWithoutActivity(parentID)?.title),
-      isStarting: draft.isStarting, failure: draft.failure,
+      isStarting: draft.isStarting, failure: draft.failure, asked: draft.asked,
       send: { Self.start(session: session, tabID: tabID, parentID: parentID, fail: fail) },
       dismissFailure: { drafts.update(tabID) { $0.failure = nil } },
       openParent: { session.tabs.showChat($0) })
   }
 
-  /// Creates the side chat with the tab's draft as its first message, then shows it in the tab.
-  /// A failure before the side chat exists keeps the draft for another try; once it exists, an
-  /// unsent first message waits in the side chat's composer.
+  /// Sends the tab's draft as the side chat's first message, then shows the side chat in the
+  /// tab. Where the server forks it, a failure before it exists keeps the draft for another try
+  /// and an unsent first message waits in its composer. Where the session's own agent forks it,
+  /// the tab shows the question and waits its turn for the child the session reports.
   static func start(
     session: ServerSession, tabID: String, parentID: String,
     fail: @escaping @MainActor (String) -> Void
@@ -81,21 +94,31 @@ struct PendingSideChatTab: View {
       drafts.update(tabID) { $0.failure = "The conversation isn't open." }
       return
     }
+    let harness = parent.header?.settings?.harness
+    let asksAgent = sideChatStart(harness: harness, quote: nil).delivery == .sendToParent
     drafts.update(tabID) {
       $0.isStarting = true
       $0.failure = nil
+      if asksAgent {
+        $0.asked = text
+        $0.text = ""
+      }
     }
+    // The fork is reported with nothing to pair it on, so the tab queues before the request.
+    let wait = asksAgent ? awaitFork(of: parent, session: session, tabID: tabID) : nil
     Task {
-      let created: CreatedSideChat
+      let started: StartedSideChat
       do throws(CoreError) {
-        created = try await parent.tools.createSideChat(text: text)
+        started = try await parent.tools.startSideChat(text: text, harness: harness)
       } catch {
+        if let wait { session.forkedSideChats.cancel(wait, of: parentID) }
         drafts.update(tabID) {
-          $0.isStarting = false
-          $0.failure = "Couldn't start a side chat for this session: \(error.message)"
+          $0.giveBack("Couldn't start a side chat for this session: \(error.message)")
         }
         return
       }
+      // An agent that was asked to fork reports the side chat itself: the queued wait shows it.
+      guard case .created(let created) = started else { return }
       if case .failed(let error) = created.firstMessage {
         parent.composer.seedDraft(text, forSession: created.sessionId)
         fail("The side chat started, but its first message wasn't sent: \(error.message)")
@@ -103,6 +126,47 @@ struct PendingSideChatTab: View {
       drafts.remove(tabID)
       session.tabs.replace(
         tabID, with: .sideChatSession(parentID: parentID, childID: created.sessionId))
+    }
+  }
+
+  /// Queues the tab for the next child `parent` reports: the tab then shows that side chat. A
+  /// fork that is not reported in time gives the question back with the reason.
+  private static func awaitFork(
+    of parent: ConversationStore, session: ServerSession, tabID: String
+  ) -> ForkedSideChats.WaitID {
+    let drafts = session.sideChatDrafts
+    let parentID = parent.sessionID
+    return session.forkedSideChats.awaitFork(
+      of: parent,
+      gaveUp: {
+        drafts.update(tabID) {
+          $0.giveBack(
+            "The agent didn't report a side chat for this question. Check it is running, then send again."
+          )
+        }
+      },
+      forked: { childID in
+        // Words typed while waiting go to the side chat's composer.
+        let typed = drafts.draft(tabID).text
+        if !typed.isEmpty { parent.composer.seedDraft(typed, forSession: childID) }
+        drafts.remove(tabID)
+        session.tabs.bindSideChat(tabID, to: childID, of: parentID)
+      })
+  }
+}
+
+extension SessionTabGroups {
+  /// Shows the side chat `childID` in the new side chat's tab `tabID`. When another tab of the
+  /// strip already shows it, that one is selected and the new tab closes.
+  func bindSideChat(_ tabID: String, to childID: String, of parentID: String) {
+    guard let (ownerID, _) = tab(tabID) else { return }
+    let group = group(ownerID)
+    if let shown = group.tabs.first(where: { $0.content.conversationID == childID }) {
+      let wasSelected = group.selectedID == tabID
+      group.close(tabID)
+      if wasSelected { group.select(shown.id) }
+    } else {
+      group.replace(tabID, with: .sideChatSession(parentID: parentID, childID: childID))
     }
   }
 }

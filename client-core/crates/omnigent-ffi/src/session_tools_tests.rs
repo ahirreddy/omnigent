@@ -5,7 +5,8 @@ use serde_json::json;
 
 use crate::creation::FirstMessage;
 use crate::session_tools::{
-    GoalControl, SessionGoal, SideChatStart, codex_plan_mode, goal_command, goal_control,
+    CreatedSideChat, GoalControl, SessionGoal, SideChatDelivery, SideChatStart, StartedSideChat,
+    codex_plan_mode, goal_command, goal_control, message_forks_side_chat, offers_side_chat,
     reply_quote, side_chat_start,
 };
 use crate::test_support::{connected, json as reply};
@@ -16,12 +17,22 @@ const GOAL: &str = r#"{"goal":{"objective":"Ship it","status":"active","token_bu
 #[test]
 fn starts_goal_controls_and_goals_map_each_arm() {
     assert_eq!(
-        SideChatStart::from(core::SideChatStart::Command { prefix: "p".into() }),
-        SideChatStart::Command { prefix: "p".into() }
+        SideChatStart::from(core::SideChatStart {
+            draft: "d".into(),
+            delivery: core::SideChatDelivery::SendToParent { prefix: "p".into() },
+        }),
+        SideChatStart {
+            draft: "d".into(),
+            delivery: SideChatDelivery::SendToParent,
+        }
     );
     assert_eq!(
-        SideChatStart::from(core::SideChatStart::Draft { draft: "d".into() }),
-        SideChatStart::Draft { draft: "d".into() }
+        SideChatDelivery::from(core::SideChatDelivery::ForkThenSend),
+        SideChatDelivery::ForkThenSend
+    );
+    assert_eq!(
+        StartedSideChat::from(core::StartedSideChat::AwaitingFork),
+        StartedSideChat::AwaitingFork
     );
     assert_eq!(
         GoalControl::from(core::GoalControl::Managed),
@@ -58,16 +69,28 @@ fn starts_goal_controls_and_goals_map_each_arm() {
 
 #[test]
 fn the_pure_rules_are_the_cores() {
-    assert!(matches!(
-        side_chat_start(Some("codex-native".into()), None),
-        SideChatStart::Command { .. }
-    ));
+    assert_eq!(
+        side_chat_start(Some("codex-native".into()), None).delivery,
+        SideChatDelivery::SendToParent
+    );
     assert_eq!(
         side_chat_start(None, Some("a line".into())),
-        SideChatStart::Draft {
-            draft: core::reply_quote("", "a line")
+        SideChatStart {
+            draft: core::reply_quote("", "a line"),
+            delivery: SideChatDelivery::ForkThenSend,
         }
     );
+    assert!(message_forks_side_chat(
+        Some("codex-native".into()),
+        "/side why?".into()
+    ));
+    assert!(!message_forks_side_chat(None, "/side why?".into()));
+    assert!(offers_side_chat(Some("codex".into()), None, Some(4)));
+    assert!(!offers_side_chat(
+        Some("codex".into()),
+        Some(false),
+        Some(4)
+    ));
     assert_eq!(
         codex_plan_mode(Some("codex-native-ui".into()), Some("Plan".into())),
         Some(true)
@@ -122,18 +145,46 @@ fn a_side_chat_forks_binds_and_sends_its_first_message() {
     harness
         .http
         .route_method("PATCH", "/v1/sessions/conv_side", reply(200, side));
-    let created = harness
-        .call(|core| async move { core.create_side_chat("conv_a".into(), "Why?".into()).await })
+    let started = harness
+        .call(|core| async move {
+            core.start_side_chat("conv_a".into(), Some("claude-native".into()), "Why?".into())
+                .await
+        })
         .unwrap();
-    assert_eq!(created.session_id, "conv_side");
-    let FirstMessage::Sent { sent } = created.first_message else {
-        panic!("first message not sent: {:?}", created.first_message);
+    let StartedSideChat::Created {
+        side_chat: CreatedSideChat {
+            session_id,
+            first_message,
+        },
+    } = started
+    else {
+        panic!("not forked on the server: {started:?}");
+    };
+    assert_eq!(session_id, "conv_side");
+    let FirstMessage::Sent { sent } = first_message else {
+        panic!("first message not sent: {first_message:?}");
     };
     assert_eq!(sent.item_id.as_deref(), Some("i1"));
     assert_eq!(
         harness.last_request().1["data"]["content"][0]["text"],
         json!("Why?")
     );
+}
+
+#[test]
+fn a_codex_side_chat_is_asked_of_the_parents_agent() {
+    let mut harness = connected();
+    harness.writable_session("conv_a");
+    let started = harness
+        .call(|core| async move {
+            core.start_side_chat("conv_a".into(), Some("codex-native".into()), "Why?".into())
+                .await
+        })
+        .unwrap();
+    assert_eq!(started, StartedSideChat::AwaitingFork);
+    let (line, body) = harness.last_request();
+    assert_eq!(line, "POST /v1/sessions/conv_a/events");
+    assert_eq!(body["data"]["content"][0]["text"], json!("/side Why?"));
 }
 
 #[test]

@@ -53,38 +53,126 @@ struct KnownChildren {
   }
 }
 
-/// The sessions whose agent was sent a typed `/side` and has not reported its fork yet (web
-/// `awaitingSideChatFor`). Each waits for the first child it did not have when the message went.
+/// The side chats asked of a session's own agent that it has not reported yet (web
+/// `awaitingSideChatFor` and `awaitingPendingIdsRef`). A fork is reported as a new child with
+/// nothing to pair it on, so each wait takes the next child the session did not have, oldest
+/// wait first.
 final class ForkedSideChats {
-  private var waits: [String: Task<Void, Never>] = [:]
+  typealias WaitID = UUID
+  /// Withdraws a wait whose request was not sent.
+  typealias Withdraw = @MainActor () -> Void
 
-  /// Hands `opened` the next new child of `conversation`, once.
+  private struct Wait {
+    let id: WaitID
+    let forked: @MainActor (String) -> Void
+    let gaveUp: @MainActor () -> Void
+    let timeout: Task<Void, Never>
+  }
+
+  private struct Parent {
+    /// The children the session had before its oldest wait, and those paired since.
+    var known: Set<String>
+    var waits: [Wait] = []
+    var watch: Task<Void, Never>?
+  }
+
+  private var parents: [String: Parent] = [:]
+  /// How long a fork may take to be reported before its wait gives up.
+  var patience: Duration = .seconds(60)
+
+  /// Queues a wait for the next new child of `conversation`. Call it before the request that
+  /// asks for the fork, so waits pair in the order their requests went.
+  /// - Parameters:
+  ///   - conversation: The session whose agent forks.
+  ///   - gaveUp: No fork was reported in time, or the session closed.
+  ///   - forked: The fork's session.
+  /// - Returns: The wait, to ``cancel(_:of:)`` when the request is refused.
+  @discardableResult
   func awaitFork(
-    of conversation: ConversationStore, opened: @escaping @MainActor (String) -> Void
-  ) {
+    of conversation: ConversationStore, gaveUp: @escaping @MainActor () -> Void,
+    forked: @escaping @MainActor (String) -> Void
+  ) -> WaitID {
     let parentID = conversation.sessionID
-    let known = Set(conversation.listedChildren.map(\.id))
-    waits[parentID]?.cancel()
-    waits[parentID] = Task { [weak self] in
-      for await children in Observations({ conversation.listedChildren.map(\.id) }) {
-        // A newer `/side`, or a message that was not sent, cancelled this wait.
-        guard !Task.isCancelled else { return }
-        guard let forked = children.first(where: { !known.contains($0) }) else { continue }
-        opened(forked)
-        break
+    let id = WaitID()
+    let patience = patience
+    let timeout = Task { [weak self] in
+      do {
+        try await Task.sleep(for: patience)
+      } catch {
+        // Paired or withdrawn meanwhile.
+        return
       }
-      // A cancelled wait's place may be a newer one's now.
-      if !Task.isCancelled { self?.waits[parentID] = nil }
+      if self?.remove(id, of: parentID) == true { gaveUp() }
+    }
+    var parent = parents[parentID] ?? Parent(known: Set(conversation.listedChildren.map(\.id)))
+    parent.waits.append(Wait(id: id, forked: forked, gaveUp: gaveUp, timeout: timeout))
+    if parent.watch == nil { parent.watch = watch(conversation) }
+    parents[parentID] = parent
+    return id
+  }
+
+  /// Withdraws a wait whose request was not sent: no fork comes for it.
+  func cancel(_ id: WaitID, of parentID: String) {
+    remove(id, of: parentID)
+  }
+
+  /// The session closed: its forks can no longer be seen, so every wait gives up.
+  func sessionClosed(_ parentID: String) {
+    guard let parent = parents.removeValue(forKey: parentID) else { return }
+    parent.watch?.cancel()
+    for wait in parent.waits {
+      wait.timeout.cancel()
+      wait.gaveUp()
     }
   }
 
-  /// Stops waiting: the message was not sent, or the session closed.
-  func cancel(_ parentID: String) {
-    waits.removeValue(forKey: parentID)?.cancel()
+  /// Whether a fork of `parentID` is awaited.
+  func isAwaiting(_ parentID: String) -> Bool { parents[parentID] != nil }
+
+  private func watch(_ conversation: ConversationStore) -> Task<Void, Never> {
+    let parentID = conversation.sessionID
+    return Task { [weak self] in
+      for await children in Observations({ conversation.listedChildren.map(\.id) }) {
+        guard !Task.isCancelled, let self else { return }
+        pair(children, of: parentID)
+      }
+    }
   }
 
-  /// Whether a fork of `parentID` is awaited.
-  func isAwaiting(_ parentID: String) -> Bool { waits[parentID] != nil }
+  /// Hands each child the session did not have to the oldest wait, in the order they started.
+  private func pair(_ children: [String], of parentID: String) {
+    guard var parent = parents[parentID] else { return }
+    var paired: [(wait: Wait, childID: String)] = []
+    for childID in children where !parent.known.contains(childID) && !parent.waits.isEmpty {
+      parent.known.insert(childID)
+      paired.append((parent.waits.removeFirst(), childID))
+    }
+    keep(parent, for: parentID)
+    for (wait, childID) in paired {
+      wait.timeout.cancel()
+      wait.forked(childID)
+    }
+  }
+
+  @discardableResult
+  private func remove(_ id: WaitID, of parentID: String) -> Bool {
+    guard var parent = parents[parentID],
+      let index = parent.waits.firstIndex(where: { $0.id == id })
+    else { return false }
+    parent.waits.remove(at: index).timeout.cancel()
+    keep(parent, for: parentID)
+    return true
+  }
+
+  /// Stores the session's waits, or stops watching it once none are left.
+  private func keep(_ parent: Parent, for parentID: String) {
+    if parent.waits.isEmpty {
+      parent.watch?.cancel()
+      parents[parentID] = nil
+    } else {
+      parents[parentID] = parent
+    }
+  }
 }
 
 extension WindowTabs {
@@ -149,24 +237,25 @@ extension WindowTabs {
     }
   }
 
-  /// A typed `/side` went to an agent that forks the side chat itself: the fork arrives as a new
-  /// child of `sessionID` and opens in a tab of `ownerID`. A message that was not sent awaits
-  /// nothing.
-  func awaitForkedSideChat(of sessionID: String, in ownerID: String, sent: Bool) {
-    let awaited = session.forkedSideChats
-    guard sent, let conversation = session.connection.openConversation(sessionID) else {
-      awaited.cancel(sessionID)
-      return
-    }
+  /// A `/side` typed in `sessionID`'s composer is going to an agent that forks the side chat
+  /// itself: the fork arrives as a new child of `sessionID` and opens in a tab of `ownerID`.
+  /// - Returns: The wait, to withdraw when the message is not sent; `nil` when the
+  ///   conversation is not open.
+  func awaitForkedSideChat(of sessionID: String, in ownerID: String) -> ForkedSideChats.WaitID? {
+    guard let conversation = session.connection.openConversation(sessionID) else { return nil }
     let groups = groups
-    awaited.awaitFork(of: conversation) { childID in
-      let group = groups.group(ownerID)
-      if let shown = group.tabs.first(where: { $0.content.conversationID == childID }) {
-        group.select(shown.id)
-      } else {
-        group.open(.sideChatSession(parentID: ownerID, childID: childID))
-      }
-    }
+    let fail = fail
+    return session.forkedSideChats.awaitFork(
+      of: conversation,
+      gaveUp: { fail("The agent didn't report a side chat for your /side question.") },
+      forked: { childID in
+        let group = groups.group(ownerID)
+        if let shown = group.tabs.first(where: { $0.content.conversationID == childID }) {
+          group.select(shown.id)
+        } else {
+          group.open(.sideChatSession(parentID: ownerID, childID: childID))
+        }
+      })
   }
 
   private func knownChildren(of ownerID: String, and sourceID: String) -> KnownChildren {

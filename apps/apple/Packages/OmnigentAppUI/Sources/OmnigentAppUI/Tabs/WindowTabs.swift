@@ -171,7 +171,12 @@ struct WindowTabs {
     if let conversation = session.connection.openConversation(current),
       SessionToolsAdapter.offersSideChat(conversation)
     {
-      actions.newSideChat = { startSideChat(conversation, in: current, replacing: id) }
+      // The new side chat takes the page's tab, whatever the harness.
+      actions.newSideChat = {
+        let harness = conversation.header?.settings?.harness
+        let start = OmnigentCoreFFI.sideChatStart(harness: harness, quote: nil)
+        openPendingSideChat(current, draft: start.draft, sendNow: false, replacing: id)
+      }
     }
     actions.newTerminal = { name in
       Task { await newTerminal(in: current, named: name, replacing: id) }
@@ -189,26 +194,6 @@ struct WindowTabs {
       }
     }
     return actions
-  }
-
-  /// Starts a side chat from the new-tab page: a new side chat in the page's tab, or for a
-  /// native harness, its chat with `/side` in the composer.
-  private func startSideChat(
-    _ conversation: ConversationStore, in sessionID: String, replacing id: String?
-  ) {
-    let harness = conversation.header?.settings?.harness
-    switch OmnigentCoreFFI.sideChatStart(harness: harness, quote: nil) {
-    case .command(let prefix):
-      if let id { groups.group(sessionID).close(id) }
-      groups.showChat(sessionID)
-      guard conversation.composer.text.isEmpty else {
-        fail("Send or clear the message you are writing before starting a side chat.")
-        return
-      }
-      conversation.composer.text = prefix
-    case .draft(let draft):
-      openPendingSideChat(sessionID, draft: draft, sendNow: false, replacing: id)
-    }
   }
 
   /// Shows `content` in a session's group, in the tab `id` when it is still open there, else

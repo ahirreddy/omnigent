@@ -551,6 +551,9 @@ pub struct SessionSnapshot {
     /// Project.
     #[serde(default, skip_serializing_if = "Field::is_absent")]
     pub project_id: Field<String>,
+    /// The caller may start side chats here; `null` where the response did not compute it.
+    #[serde(default, skip_serializing_if = "Field::is_absent")]
+    pub side_chat_allowed: Field<bool>,
 }
 
 impl SessionListItem {

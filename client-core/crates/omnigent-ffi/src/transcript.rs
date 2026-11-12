@@ -277,6 +277,9 @@ pub struct SessionSettings {
     pub side_chat_source_id: Option<String>,
     /// `cost_control_mode_override`.
     pub routing_mode: Option<String>,
+    /// Whether the viewer may start side chats here; `None` until the server says.
+    #[uniffi(default)]
+    pub side_chat_allowed: Option<bool>,
 }
 
 /// Session metadata shown with the conversation.
@@ -507,6 +510,7 @@ impl From<core::SessionSettings> for SessionSettings {
             parent_id: settings.parent_id,
             side_chat_source_id: settings.side_chat_source_id,
             routing_mode: settings.routing_mode,
+            side_chat_allowed: settings.side_chat_allowed,
         }
     }
 }

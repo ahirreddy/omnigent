@@ -8,27 +8,39 @@ use crate::client::ClientCore;
 use crate::creation::FirstMessage;
 use crate::errors::CoreError;
 
-/// How a side chat starts.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
-pub enum SideChatStart {
-    /// The harness forks from a typed command: put `prefix` in the composer for the question.
-    Command {
-        /// The command prefix.
-        prefix: String,
-    },
-    /// Open an empty side chat with `draft` in its composer; its session is created when the
-    /// first message is sent (`create_side_chat`).
-    Draft {
-        /// The composer's starting text, empty or a quote.
-        draft: String,
-    },
+/// How a side chat's first message reaches an agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SideChatDelivery {
+    /// The server forks the conversation and the message goes to the fork.
+    ForkThenSend,
+    /// The message goes to the session itself, whose agent forks and reports the side chat as a
+    /// new child: wait for that child after `start_side_chat`.
+    SendToParent,
+}
+
+impl From<core::SideChatDelivery> for SideChatDelivery {
+    fn from(delivery: core::SideChatDelivery) -> Self {
+        match delivery {
+            core::SideChatDelivery::ForkThenSend => Self::ForkThenSend,
+            core::SideChatDelivery::SendToParent { .. } => Self::SendToParent,
+        }
+    }
+}
+
+/// How a side chat starts: as a draft in a tab of its own, whatever the harness.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SideChatStart {
+    /// The composer's starting text, empty or a quote.
+    pub draft: String,
+    /// How the first message sent from it is delivered (`start_side_chat`).
+    pub delivery: SideChatDelivery,
 }
 
 impl From<core::SideChatStart> for SideChatStart {
     fn from(start: core::SideChatStart) -> Self {
-        match start {
-            core::SideChatStart::Command { prefix } => Self::Command { prefix },
-            core::SideChatStart::Draft { draft } => Self::Draft { draft },
+        Self {
+            draft: start.draft,
+            delivery: start.delivery.into(),
         }
     }
 }
@@ -51,11 +63,53 @@ impl From<core::CreatedSideChat> for CreatedSideChat {
     }
 }
 
+/// What a side chat's first message did.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum StartedSideChat {
+    /// The server forked the side chat.
+    Created {
+        /// The side chat and how its first message went.
+        side_chat: CreatedSideChat,
+    },
+    /// The session's agent took the question and forks the side chat itself: it is the next
+    /// child the session reports.
+    AwaitingFork,
+}
+
+impl From<core::StartedSideChat> for StartedSideChat {
+    fn from(started: core::StartedSideChat) -> Self {
+        match started {
+            core::StartedSideChat::Created(created) => Self::Created {
+                side_chat: created.into(),
+            },
+            core::StartedSideChat::AwaitingFork => Self::AwaitingFork,
+        }
+    }
+}
+
 /// How a side chat of a session on `harness` starts, with a `quote` (selected transcript text)
 /// quoted in its composer. Makes no request.
 #[uniffi::export]
 pub fn side_chat_start(harness: Option<String>, quote: Option<String>) -> SideChatStart {
     core::side_chat_start(harness.as_deref(), quote.as_deref()).into()
+}
+
+/// Whether `text`, sent as a message to a session on `harness`, asks its agent to fork a side
+/// chat. The server never echoes such a message into the session's transcript.
+#[uniffi::export]
+pub fn message_forks_side_chat(harness: Option<String>, text: String) -> bool {
+    core::message_forks_side_chat(harness.as_deref(), &text)
+}
+
+/// Whether a session offers side chats to its viewer: its harness is known and the server
+/// allows it, or, where the server does not say, the viewer's `permission_level` does.
+#[uniffi::export]
+pub fn offers_side_chat(
+    harness: Option<String>,
+    side_chat_allowed: Option<bool>,
+    permission_level: Option<i64>,
+) -> bool {
+    core::offers_side_chat(harness.as_deref(), side_chat_allowed, permission_level)
 }
 
 /// How a session takes a goal.
@@ -153,21 +207,24 @@ pub fn reply_quote(draft: String, selection: String) -> String {
 
 #[uniffi::export]
 impl ClientCore {
-    /// Creates a side chat of `session_id` and sends `text` as its first message. A failed first
-    /// message is reported in the result once the side chat exists.
+    /// Sends a new side chat's first message, `text`, the way the harness of `session_id` takes
+    /// it: by forking on the server and sending to the fork (a failed first message is reported
+    /// in the result once the side chat exists), or by asking the session's own agent to fork.
     ///
     /// # Errors
     ///
     /// [`CoreError::Session`]: `EmptyMessage`, the read and write errors,
     /// `ExecutionUnavailable` when the session's runner is gone, `DeliveryUncertain` when the
-    /// fork may exist.
-    pub async fn create_side_chat(
+    /// fork may exist or the agent may have been asked, and for an agent that forks itself
+    /// `StreamNotReady`, `HostOffline`, `MessageDenied` and the server's refusal.
+    pub async fn start_side_chat(
         &self,
         session_id: String,
+        harness: Option<String>,
         text: String,
-    ) -> Result<CreatedSideChat, CoreError> {
+    ) -> Result<StartedSideChat, CoreError> {
         self.sessions()
-            .create_side_chat(&session_id, &text)
+            .start_side_chat(&session_id, harness.as_deref(), &text)
             .await
             .map(Into::into)
             .map_err(CoreError::from)

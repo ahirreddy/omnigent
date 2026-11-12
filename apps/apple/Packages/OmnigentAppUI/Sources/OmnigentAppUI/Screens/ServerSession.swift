@@ -133,7 +133,7 @@ public final class ServerSession {
   /// - Parameter sessionID: The session.
   public func close(_ sessionID: String) {
     connection.closeConversation(sessionID)
-    forkedSideChats.cancel(sessionID)
+    forkedSideChats.sessionClosed(sessionID)
     openSessionIDs.remove(sessionID)
     changingStores(of: sessionID) {
       if let terminals = terminalStores.removeValue(forKey: sessionID) {

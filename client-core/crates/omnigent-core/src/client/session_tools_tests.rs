@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use super::*;
 use crate::client::ClientEvent;
 use crate::client::test_support::{
-    Reply, RouteTransport, body_json, connected, lines_after_connect, path_of, record,
+    Reply, RouteTransport, body_json, connected, header, lines_after_connect, live, path_of, record,
 };
 
 const SESSION: &str = "/v1/sessions/conv_a";
@@ -188,19 +188,213 @@ fn a_stopped_runner_is_relaunched_and_a_lost_one_refuses() {
 }
 
 #[test]
-fn side_chats_start_as_drafts_and_codex_native_ones_from_the_command() {
+fn every_side_chat_starts_as_a_draft_and_codex_native_delivers_through_the_parent() {
     assert_eq!(
         side_chat_start(Some("claude-native"), None),
-        SideChatStart::Draft {
-            draft: String::new()
+        SideChatStart {
+            draft: String::new(),
+            delivery: SideChatDelivery::ForkThenSend,
         }
     );
     assert_eq!(
         side_chat_start(Some("codex-native"), None),
-        SideChatStart::Command {
-            prefix: SIDE_CHAT_COMMAND_PREFIX.into()
+        SideChatStart {
+            draft: String::new(),
+            delivery: SideChatDelivery::SendToParent {
+                prefix: SIDE_CHAT_COMMAND_PREFIX.into()
+            },
         }
     );
+    for harness in [Some("claude-sdk"), Some("codex"), Some("pi-native"), None] {
+        assert_eq!(
+            side_chat_start(harness, None).delivery,
+            SideChatDelivery::ForkThenSend,
+            "{harness:?}"
+        );
+    }
+}
+
+const PARENT_EVENTS: &str = "/v1/sessions/conv_a/events";
+
+fn codex_parent() -> RouteTransport {
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("POST"),
+        PARENT_EVENTS,
+        None,
+        Reply::json(202, r#"{"queued":true}"#),
+    );
+    transport
+}
+
+#[test]
+fn a_codex_side_chat_asks_the_parents_agent_to_fork_with_the_side_command() {
+    let core = live(codex_parent());
+    core.update_composer("conv_a", "A draft in the main chat")
+        .unwrap();
+    let started =
+        block_on(core.start_side_chat("conv_a", Some("codex-native"), "Why is it slow?")).unwrap();
+    assert_eq!(started, StartedSideChat::AwaitingFork);
+    // One message to the parent: no fork route, no read, and nothing sent to another session.
+    assert_eq!(
+        lines_after_connect(&core),
+        [format!("POST {PARENT_EVENTS}")]
+    );
+    let writes = core.transport().writes();
+    assert_eq!(
+        body_json(&writes[0]),
+        json!({"type": "message", "data": {"role": "user", "content": [
+            {"type": "input_text", "text": "/side Why is it slow?"}
+        ]}})
+    );
+    // Refused rather than recorded while the host is offline, like a typed message.
+    assert_eq!(
+        header(&writes[0], "x-omnigent-hold-when-host-offline"),
+        Some("on")
+    );
+    // It is not the main composer's message: its draft stays and its next send is not held.
+    assert_eq!(
+        core.composer_text("conv_a").unwrap(),
+        "A draft in the main chat"
+    );
+    assert_eq!(core.is_send_blocked("conv_a"), Ok(false));
+}
+
+#[test]
+fn a_codex_side_chat_goes_out_while_the_main_composer_has_an_unreviewed_send() {
+    let transport = RouteTransport::local();
+    transport.enqueue(
+        "POST",
+        PARENT_EVENTS,
+        vec![
+            Reply::json(200, "not json"),
+            Reply::json(202, r#"{"queued":true}"#),
+        ],
+    );
+    let core = live(transport);
+    assert!(matches!(
+        block_on(core.send_message("conv_a", "Hello")),
+        Err(SessionError::DeliveryUncertain { .. })
+    ));
+    assert_eq!(core.is_send_blocked("conv_a"), Ok(true));
+    assert_eq!(
+        block_on(core.start_side_chat("conv_a", Some("codex-native"), "Why?")),
+        Ok(StartedSideChat::AwaitingFork)
+    );
+    assert_eq!(core.is_send_blocked("conv_a"), Ok(true));
+}
+
+#[test]
+fn a_codex_side_chat_that_cannot_be_asked_for_says_why_and_forks_nothing() {
+    // Blank: no request.
+    let core = live(codex_parent());
+    assert_eq!(
+        block_on(core.start_side_chat("conv_a", Some("codex-native"), " \n")),
+        Err(SessionError::EmptyMessage)
+    );
+    assert_eq!(lines_after_connect(&core), Vec::<String>::new());
+    // The parent's stream is not live, so its fork could never be seen: no request.
+    let core = connected(codex_parent());
+    assert_eq!(
+        block_on(core.start_side_chat("conv_a", Some("codex-native"), "Why?")),
+        Err(SessionError::StreamNotReady)
+    );
+    assert_eq!(lines_after_connect(&core), Vec::<String>::new());
+    // The server refuses a host too old to fork, in its own words.
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("POST"),
+        PARENT_EVENTS,
+        None,
+        Reply::json(
+            400,
+            r#"{"error":{"code":"invalid_input","message":"This session's host is too old to open a Codex side chat."}}"#,
+        ),
+    );
+    let core = live(transport);
+    let refused = block_on(core.start_side_chat("conv_a", Some("codex-native"), "Why?"));
+    let Err(SessionError::Rejected { message, .. }) = &refused else {
+        panic!("not refused: {refused:?}");
+    };
+    assert!(message.contains("too old"), "{message}");
+    assert_eq!(core.is_send_blocked("conv_a"), Ok(false));
+    // A viewer who is not the owner is refused as read-only.
+    let transport = RouteTransport::local();
+    transport.respond(Some("POST"), PARENT_EVENTS, None, Reply::json(403, "{}"));
+    assert_eq!(
+        block_on(live(transport).start_side_chat("conv_a", Some("codex-native"), "Why?")),
+        Err(SessionError::ReadOnly)
+    );
+    // A policy denial is the server's `denied` acknowledgement.
+    let transport = RouteTransport::local();
+    transport.respond(
+        Some("POST"),
+        PARENT_EVENTS,
+        None,
+        Reply::json(200, r#"{"queued":false,"denied":true,"reason":"No."}"#),
+    );
+    assert_eq!(
+        block_on(live(transport).start_side_chat("conv_a", Some("codex-native"), "Why?")),
+        Err(SessionError::MessageDenied {
+            reason: Some("No.".into())
+        })
+    );
+}
+
+#[test]
+fn other_harnesses_start_a_side_chat_by_forking_on_the_server() {
+    let core = connected(side_chat_transport(
+        &json!({"runner_id": "run_1", "runner_online": true, "host_id": "host_1"}),
+    ));
+    let started = block_on(core.start_side_chat("conv_a", Some("claude-native"), "Why?")).unwrap();
+    let StartedSideChat::Created(created) = started else {
+        panic!("not forked on the server: {started:?}");
+    };
+    assert_eq!(created.session_id, "conv_side");
+    let writes = core.transport().writes();
+    assert_eq!(path_of(&writes[0]), "/v1/sessions/conv_a/fork");
+    assert_eq!(
+        body_json(&writes[0]),
+        json!({"title": "Side chat", "side_chat": true})
+    );
+    // The question goes to the fork as typed, never to the parent.
+    assert_eq!(path_of(&writes[2]), "/v1/sessions/conv_side/events");
+    assert_eq!(
+        body_json(&writes[2])["data"]["content"][0]["text"],
+        json!("Why?")
+    );
+}
+
+#[test]
+fn only_a_message_the_agent_forks_from_is_a_side_chat_command() {
+    let codex = Some("codex-native");
+    assert!(message_forks_side_chat(codex, "/side why?"));
+    assert!(message_forks_side_chat(codex, "  \n/side   why?\n"));
+    // The command needs its space and a question, as the server's parser does.
+    assert!(!message_forks_side_chat(codex, "/side"));
+    assert!(!message_forks_side_chat(codex, "/side   "));
+    assert!(!message_forks_side_chat(codex, "/sidebar why?"));
+    assert!(!message_forks_side_chat(codex, "ask /side why?"));
+    // Other harnesses take the text as an ordinary message.
+    assert!(!message_forks_side_chat(
+        Some("claude-native"),
+        "/side why?"
+    ));
+    assert!(!message_forks_side_chat(None, "/side why?"));
+}
+
+#[test]
+fn side_chats_are_offered_where_the_server_allows_or_else_to_the_owner() {
+    let harness = Some("claude-native");
+    assert!(offers_side_chat(harness, Some(true), Some(1)));
+    assert!(!offers_side_chat(harness, Some(false), Some(4)));
+    // A server that does not say leaves it to the viewer's level; no level is single-user.
+    assert!(offers_side_chat(harness, None, Some(4)));
+    assert!(!offers_side_chat(harness, None, Some(3)));
+    assert!(offers_side_chat(harness, None, None));
+    // A session whose harness is not known yet offers none.
+    assert!(!offers_side_chat(None, Some(true), Some(4)));
+    assert!(!offers_side_chat(Some(""), Some(true), Some(4)));
 }
 
 #[test]
@@ -441,19 +635,14 @@ fn a_reply_quote_follows_the_draft_after_a_blank_line() {
 }
 
 #[test]
-fn a_quoted_side_chat_starts_with_the_quote_as_its_draft() {
-    assert_eq!(
-        side_chat_start(Some("claude-native"), Some("why this?")),
-        SideChatStart::Draft {
-            draft: "> why this?\n\n".into()
-        }
-    );
-    assert_eq!(
-        side_chat_start(Some("codex-native"), Some("why this?")),
-        SideChatStart::Command {
-            prefix: "/side > why this?\n\n".into()
-        }
-    );
+fn a_quoted_side_chat_starts_with_the_quote_as_its_draft_on_every_harness() {
+    for harness in ["claude-native", "codex-native"] {
+        assert_eq!(
+            side_chat_start(Some(harness), Some("why this?")).draft,
+            "> why this?\n\n",
+            "{harness}"
+        );
+    }
 }
 
 #[test]

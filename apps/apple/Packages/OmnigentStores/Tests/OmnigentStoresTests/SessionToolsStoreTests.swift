@@ -117,7 +117,9 @@ struct SessionToolsStoreTests {
     let server = RouteServer()
     server.fail("/v1/sessions/conv_a", method: "GET")
     let tools = try await tools(server)
-    await #expect(throws: CoreError.self) { try await tools.createSideChat(text: "hello") }
+    await #expect(throws: CoreError.self) {
+      try await tools.startSideChat(text: "hello", harness: "claude-native")
+    }
     #expect(tools.lastError == nil)
     #expect(!tools.isBusy)
   }
@@ -136,7 +138,11 @@ struct SessionToolsStoreTests {
       "/v1/sessions/conv_side/events", method: "POST",
       .json(#"{"queued":true,"item_id":"item_1"}"#, status: 202))
     let tools = try await tools(server)
-    let created = try await tools.createSideChat(text: "hello")
+    let started = try await tools.startSideChat(text: "hello", harness: "claude-native")
+    guard case .created(let created) = started else {
+      Issue.record("not forked on the server: \(started)")
+      return
+    }
     #expect(created.sessionId == "conv_side")
     #expect(server.requests(to: "/v1/sessions/conv_side/events", method: "POST").count == 1)
   }

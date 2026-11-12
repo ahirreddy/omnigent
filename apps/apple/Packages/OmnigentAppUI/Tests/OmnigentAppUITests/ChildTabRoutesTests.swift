@@ -114,6 +114,7 @@ extension ChildTabsTests {
     await SessionToolsAdapter.send(conversation, newSession: nil, routes: window.chat.toolRoutes)
     #expect(conversation.composer.lastError != nil)
     #expect(!window.session.forkedSideChats.isAwaiting("conv_a"))
+    #expect(conversation.composer.text == "/side why?", "the refused command is back in the field")
     try await window.reportChild("conv_worker")
     #expect(window.group.tabs.count == 1, "a later sub-agent is not taken for the side chat")
 
@@ -121,6 +122,10 @@ extension ChildTabsTests {
       conversation.composer.text = draft
       #expect(!SessionToolsAdapter.sendsForkingSideChat(conversation), "\(draft)")
     }
+    // A tagged path goes ahead of the text, which is then an ordinary message.
+    conversation.composer.text = "/side why?"
+    conversation.composer.mentions = ["notes.md"]
+    #expect(!SessionToolsAdapter.sendsForkingSideChat(conversation))
     // An agent whose side chats fork on the server is sent no `/side`.
     let other = try await ConversationFixtures.store(
       header: ConversationFixtures.header(settings: ConversationFixtures.settings()))
@@ -128,23 +133,64 @@ extension ChildTabsTests {
     #expect(!SessionToolsAdapter.sendsForkingSideChat(other))
   }
 
-  @Test("A closed session stops waiting for its fork; a second /side waits afresh")
+  @Test("Forks pair with their waits oldest first; a withdrawn or closed wait takes none")
   func forkWaits() async throws {
     let window = try await window()
     let forks = window.session.forkedSideChats
-    final class Opened { var ids: [String] = [] }
-    let opened = Opened()
+    final class Log { var events: [String] = [] }
+    let log = Log()
+    let conversation = window.conversation
+    func wait(_ name: String) -> ForkedSideChats.WaitID {
+      forks.awaitFork(
+        of: conversation, gaveUp: { log.events.append("\(name) gave up") },
+        forked: { log.events.append("\(name)=\($0)") })
+    }
+    // A child the session already had is nobody's fork.
     try await window.reportChild("conv_first")
-    forks.awaitFork(of: window.conversation) { opened.ids.append("stale:\($0)") }
-    forks.awaitFork(of: window.conversation) { opened.ids.append($0) }
+    let withdrawn = wait("a")
+    _ = wait("b")
+    _ = wait("c")
+    forks.cancel(withdrawn, of: "conv_a")
+    try await window.reportChild("conv_one")
+    try await eventually("the first fork") { log.events == ["b=conv_one"] }
     #expect(forks.isAwaiting("conv_a"))
-    try await window.reportChild("conv_side")
-    try await eventually("the fork") { opened.ids == ["conv_side"] }
-    try await eventually("the wait to end") { !forks.isAwaiting("conv_a") }
+    try await window.reportChild("conv_two")
+    try await eventually("the second fork") { log.events == ["b=conv_one", "c=conv_two"] }
+    #expect(!forks.isAwaiting("conv_a"), "nothing is watched once every wait has its fork")
 
-    forks.awaitFork(of: window.conversation) { opened.ids.append($0) }
+    // A session that closes can no longer report a fork: its waits give up, told.
+    _ = wait("d")
     window.session.close("conv_a")
+    #expect(log.events.last == "d gave up")
     #expect(!forks.isAwaiting("conv_a"))
+  }
+
+  @Test("A fork that is never reported gives up, and a late one is then nobody's")
+  func forkNeverReported() async throws {
+    let window = try await window()
+    let forks = window.session.forkedSideChats
+    forks.patience = .milliseconds(50)
+    final class Log { var events: [String] = [] }
+    let log = Log()
+    forks.awaitFork(
+      of: window.conversation, gaveUp: { log.events.append("gave up") },
+      forked: { log.events.append($0) })
+    try await eventually("the wait to give up") { log.events == ["gave up"] }
+    #expect(!forks.isAwaiting("conv_a"))
+    try await window.reportChild("conv_late")
+    #expect(log.events == ["gave up"])
+
+    // A typed /side whose fork never comes tells the window, and opens no tab.
+    final class Failures { var messages: [String] = [] }
+    let failures = Failures()
+    let tabs = WindowTabs(
+      session: window.session, context: TabWindowContext(), showAll: {},
+      fail: { failures.messages.append($0) })
+    #expect(tabs.awaitForkedSideChat(of: "conv_a", in: "conv_a") != nil)
+    try await eventually("the window to be told") { failures.messages.count == 1 }
+    #expect(failures.messages.first?.contains("didn't report a side chat") == true)
+    #expect(window.group.tabs.count == 1)
+    #expect(tabs.awaitForkedSideChat(of: "conv_closed", in: "conv_a") == nil, "not open")
   }
 
   @Test("A sub-agent's tab is titled by its name, else its session, and shows it working")

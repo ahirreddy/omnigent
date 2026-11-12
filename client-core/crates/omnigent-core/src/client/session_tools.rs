@@ -1,11 +1,12 @@
 //! The composer's session tools, as the web's Add (+) menu has them: side chats, Codex plan
 //! mode and the session goal.
 //!
-//! - A side chat opens as a draft and forks the conversation into its own session (`POST …/fork`
-//!   with `side_chat: true`) only when its first message is sent, bound to the parent's live
-//!   runner, relaunching the parent first when its runner stopped. Codex forks natively from a
-//!   typed `/side`, so for it the composer is prefilled instead (web `createSideChat`,
-//!   `usesNativeSideChatFork`).
+//! - A side chat opens as a draft in a tab of its own and exists only once its first message is
+//!   sent ([`ClientCore::start_side_chat`], web `startPendingSideChat`). For most harnesses the
+//!   server forks the conversation (`POST …/fork` with `side_chat: true`), bound to the parent's
+//!   live runner, relaunching the parent first when its runner stopped. Codex forks its own
+//!   thread instead: the message goes to the parent as `/side <question>`, which its runner
+//!   takes as the request to fork, and the fork is the next child the parent reports.
 //! - Plan mode is Codex-native's collaboration mode (`PATCH` `collaboration_mode`).
 //! - The goal is Codex-native's `…/codex_goal`; top-level Polly sessions on the Claude SDK or
 //!   Codex take a `/goal <condition>` command instead (web `shouldShow*GoalControl`).
@@ -15,13 +16,15 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value, json};
 
 use super::create::FirstMessage;
+use super::events::SendPayload;
 use super::json::{as_object, opt_str};
 use super::requests::validate_identifier;
 use super::sessions::decode_snapshot_value;
 use super::{ClientCore, SessionError, lock};
 use crate::http::HttpTransport;
+use crate::terminal::OWNER_LEVEL;
 
-/// What the composer puts before a side question for harnesses that fork natively.
+/// What goes before a side question sent to a session whose agent forks the side chat itself.
 pub const SIDE_CHAT_COMMAND_PREFIX: &str = "/side ";
 /// What the composer sends to start a goal on harnesses that take it as a command.
 pub const GOAL_COMMAND_PREFIX: &str = "/goal ";
@@ -39,20 +42,27 @@ const CODEX_NATIVE_WRAPPER: &str = "codex-native-ui";
 const COLLABORATION_LABEL: &str = "omnigent.codex_native.collaboration_mode";
 const PLAN: &str = "plan";
 
-/// How a side chat starts.
+/// How a side chat's first message reaches an agent.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SideChatStart {
-    /// The harness forks from a typed command: put `prefix` in the composer for the question.
-    Command {
-        /// The command prefix, [`SIDE_CHAT_COMMAND_PREFIX`].
+pub enum SideChatDelivery {
+    /// The server forks the conversation and the message goes to the fork
+    /// ([`ClientCore::create_side_chat`]).
+    ForkThenSend,
+    /// `prefix` and the message go to the session itself: its agent forks its own thread and
+    /// reports the side chat as a new child.
+    SendToParent {
+        /// What goes before the message, [`SIDE_CHAT_COMMAND_PREFIX`].
         prefix: String,
     },
-    /// Open an empty side chat with `draft` in its composer; its session is created when the
-    /// first message is sent ([`ClientCore::create_side_chat`]).
-    Draft {
-        /// The composer's starting text, empty or a quote.
-        draft: String,
-    },
+}
+
+/// How a side chat starts: as a draft in a tab of its own, whatever the harness.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SideChatStart {
+    /// The composer's starting text, empty or a quote.
+    pub draft: String,
+    /// How the first message sent from it is delivered.
+    pub delivery: SideChatDelivery,
 }
 
 /// A side chat created by its first message.
@@ -64,20 +74,66 @@ pub struct CreatedSideChat {
     pub first_message: FirstMessage,
 }
 
+/// What a side chat's first message did ([`ClientCore::start_side_chat`]).
+#[derive(Debug, Clone, PartialEq)]
+pub enum StartedSideChat {
+    /// The server forked the side chat.
+    Created(CreatedSideChat),
+    /// The session's agent took the question and forks the side chat itself: it is the next
+    /// child the session reports.
+    AwaitingFork,
+}
+
+fn side_chat_delivery(harness: Option<&str>) -> SideChatDelivery {
+    if harness == Some(CODEX_NATIVE_HARNESS) {
+        SideChatDelivery::SendToParent {
+            prefix: SIDE_CHAT_COMMAND_PREFIX.to_owned(),
+        }
+    } else {
+        SideChatDelivery::ForkThenSend
+    }
+}
+
 /// How a side chat of a session on `harness` starts, with a `quote` (text selected in the
 /// transcript) quoted in its composer. Makes no request.
 #[must_use]
 pub fn side_chat_start(harness: Option<&str>, quote: Option<&str>) -> SideChatStart {
-    let draft = quote
-        .map(|quote| reply_quote("", quote))
-        .unwrap_or_default();
-    if harness == Some(CODEX_NATIVE_HARNESS) {
-        SideChatStart::Command {
-            prefix: format!("{SIDE_CHAT_COMMAND_PREFIX}{draft}"),
-        }
-    } else {
-        SideChatStart::Draft { draft }
+    SideChatStart {
+        draft: quote
+            .map(|quote| reply_quote("", quote))
+            .unwrap_or_default(),
+        delivery: side_chat_delivery(harness),
     }
+}
+
+/// Whether `text`, sent as a message to a session on `harness`, asks its agent to fork a side
+/// chat (the server's `side_chat_question_from_text`).
+///
+/// The server never echoes such a message into the session's transcript.
+#[must_use]
+pub fn message_forks_side_chat(harness: Option<&str>, text: &str) -> bool {
+    let SideChatDelivery::SendToParent { prefix } = side_chat_delivery(harness) else {
+        return false;
+    };
+    text.trim_start()
+        .strip_prefix(prefix.as_str())
+        .is_some_and(|question| !question.trim().is_empty())
+}
+
+/// Whether a session offers side chats to its viewer (web `supportsSideChat` with
+/// `useCanStartSideChat`): its harness is known and the server allows it.
+///
+/// Only the owner of the session's root may; a server that does not say leaves it to the
+/// viewer's `permission_level`.
+#[must_use]
+pub fn offers_side_chat(
+    harness: Option<&str>,
+    side_chat_allowed: Option<bool>,
+    permission_level: Option<i64>,
+) -> bool {
+    harness.is_some_and(|harness| !harness.is_empty())
+        && side_chat_allowed
+            .unwrap_or_else(|| permission_level.is_none_or(|level| level >= OWNER_LEVEL))
 }
 
 /// The session a side chat was forked from, from its labels; `None` for any other session.
@@ -237,8 +293,63 @@ fn decode_goal(value: &Value) -> Result<Option<SessionGoal>, String> {
 }
 
 impl<T: HttpTransport> ClientCore<T> {
-    /// Creates a side chat of `source_id` and sends `text` as its first message (web
-    /// `startPendingSideChat`). Once the side chat exists the result is `Ok`: a failed first
+    /// Sends a new side chat's first message, `text`, the way the harness of `source_id` takes
+    /// it ([`side_chat_start`]): by forking on the server and sending to the fork, or by asking
+    /// the session's own agent to fork. The second posts to `source_id` outside its composer:
+    /// that draft and its submission ledger are untouched, and the transcript gets no row.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::create_side_chat`]. Asking the agent also fails with the message errors of a
+    /// send: [`SessionError::StreamNotReady`] while the session's stream is not live (its fork
+    /// could not be seen), [`SessionError::HostOffline`], [`SessionError::MessageDenied`], the
+    /// server's refusal (a host too old to fork says so) and
+    /// [`SessionError::DeliveryUncertain`].
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn start_side_chat(
+        &self,
+        source_id: &str,
+        harness: Option<&str>,
+        text: &str,
+    ) -> Result<StartedSideChat, SessionError> {
+        match side_chat_delivery(harness) {
+            SideChatDelivery::ForkThenSend => self
+                .create_side_chat(source_id, text)
+                .await
+                .map(StartedSideChat::Created),
+            SideChatDelivery::SendToParent { prefix } => {
+                let result = self.ask_agent_to_fork(source_id, &prefix, text).await;
+                self.dispatch();
+                result.map(|()| StartedSideChat::AwaitingFork)
+            }
+        }
+    }
+
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn ask_agent_to_fork(
+        &self,
+        source_id: &str,
+        prefix: &str,
+        text: &str,
+    ) -> Result<(), SessionError> {
+        if text.trim().is_empty() {
+            return Err(SessionError::EmptyMessage);
+        }
+        validate_identifier(source_id)?;
+        let command = format!("{prefix}{text}");
+        self.post_message(source_id, &command, &SendPayload::Message, &[], true)
+            .await
+            .map(|_| ())
+    }
+
+    /// Creates a side chat of `source_id` on the server and sends `text` as its first message
+    /// (web `createSideChat`). Once the side chat exists the result is `Ok`: a failed first
     /// message is reported in [`CreatedSideChat::first_message`], to be sent again to the side
     /// chat, never by creating another.
     ///

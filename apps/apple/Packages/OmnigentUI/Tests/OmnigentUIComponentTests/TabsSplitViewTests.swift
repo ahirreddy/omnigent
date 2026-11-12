@@ -241,11 +241,26 @@
     }
 
     private func pending(
-      isStarting: Bool = false, failure: String? = nil, calls: @escaping @MainActor (String) -> Void
+      isStarting: Bool = false, failure: String? = nil, asked: String? = nil,
+      calls: @escaping @MainActor (String) -> Void
     ) -> OffscreenWindow<AnyView> {
-      let view = PendingHost(isStarting: isStarting, failure: failure, calls: calls)
+      let view = PendingHost(isStarting: isStarting, failure: failure, asked: asked, calls: calls)
         .frame(width: 600, height: 500)
       return OffscreenWindow(AnyView(view), width: 600, height: 500)
+    }
+
+    @Test("A question the agent is forking a side chat for shows as sent, and that it is starting")
+    func pendingAsked() throws {
+      var calls: [String] = []
+      let screen = pending(isStarting: true, asked: "Why is it slow?") { calls.append($0) }
+      defer { screen.close() }
+      #expect(try screen.shows("Why is it slow?"))
+      #expect(try screen.shows("Starting the side chat\u{2026}"))
+      #expect(try !screen.shows(SideChatCopy.detail), "the question takes the introduction's place")
+      try screen.click(try #require(screen.allViews.compactMap { $0 as? NSTextView }.first))
+      try screen.type("hello")
+      try screen.press(keyCode: 36, characters: "\r")
+      #expect(calls.isEmpty, "nothing more is sent until the side chat is there")
     }
 
     @Test("A new side chat explains itself and names its parent")
@@ -290,14 +305,15 @@
   private struct PendingHost: View {
     let isStarting: Bool
     let failure: String?
+    var asked: String?
     let calls: @MainActor (String) -> Void
     @State private var draft = ""
 
     var body: some View {
       PendingSideChatView(
         draft: $draft, parent: CreatingSession(id: "p", title: "Parent"), isStarting: isStarting,
-        failure: failure, send: { calls("send \(draft)") }, dismissFailure: { calls("dismiss") },
-        openParent: { calls("open \($0)") })
+        failure: failure, asked: asked, send: { calls("send \(draft)") },
+        dismissFailure: { calls("dismiss") }, openParent: { calls("open \($0)") })
     }
   }
 #endif

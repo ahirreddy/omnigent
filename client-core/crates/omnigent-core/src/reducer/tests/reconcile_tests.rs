@@ -600,6 +600,40 @@ fn an_unknown_status_cannot_become_a_header() {
 }
 
 #[test]
+fn the_servers_side_chat_answer_stands_until_a_read_gives_another() {
+    let allowed = |header: &SessionHeader| header.settings.as_ref().unwrap().side_chat_allowed;
+    let unknown = header_from_snapshot(
+        &minimal_session(&serde_json::json!({"harness": "claude-native"})),
+        None,
+    )
+    .unwrap();
+    assert_eq!(allowed(&unknown), None);
+    let refused = header_from_snapshot(
+        &minimal_session(
+            &serde_json::json!({"harness": "claude-native", "side_chat_allowed": false}),
+        ),
+        Some(&unknown),
+    )
+    .unwrap();
+    assert_eq!(allowed(&refused), Some(false));
+    // A response that did not compute it sends `null`; a switched harness is the same viewer.
+    let kept = header_from_snapshot(
+        &minimal_session(
+            &serde_json::json!({"harness": "codex-native", "side_chat_allowed": null}),
+        ),
+        Some(&refused),
+    )
+    .unwrap();
+    assert_eq!(allowed(&kept), Some(false));
+    let granted = header_from_snapshot(
+        &minimal_session(&serde_json::json!({"side_chat_allowed": true})),
+        Some(&kept),
+    )
+    .unwrap();
+    assert_eq!(allowed(&granted), Some(true));
+}
+
+#[test]
 fn null_fields_clear_to_safe_defaults_and_absent_ones_keep_the_previous_value() {
     let earlier = header_from_snapshot(
         &minimal_session(&serde_json::json!({

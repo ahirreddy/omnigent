@@ -24,8 +24,7 @@ extension ComposerStore {
       return
     }
     let unsent = UnsentSend(draft: draft, extras: extras)
-    let pendingRow = transcript?.showSending(
-      message, attachments: extras.files.map(PendingMessages.attachment))
+    let pendingRow = showSending(message, extras: extras)
     let failure = await deliver(unsent) { core, session in
       let sent = try await core.sendQueuedMessage(
         sessionId: session, text: message, hold: extras.holdID,
@@ -46,6 +45,19 @@ extension ComposerStore {
     commandNotice = failure.message
     draftStored?(savedDraft)
     scheduleHostRecheck()
+  }
+
+  /// Shows a message being sent as a transcript row until the server echoes it. A message that
+  /// asks the agent to fork a side chat is never echoed here, so it gets no row.
+  /// - Returns: The row's id, or `nil` when there is no row.
+  func showSending(_ message: String, extras: MessageQueue.Extras) -> String? {
+    let harness = transcript?.header?.settings?.harness
+    // Tagged paths go ahead of the text, which is then an ordinary message.
+    if extras.mentions.isEmpty, messageForksSideChat(harness: harness, text: message) {
+      return nil
+    }
+    return transcript?.showSending(
+      message, attachments: extras.files.map(PendingMessages.attachment))
   }
 
   /// Sends the draft as a command the server runs (a skill, `/compact`). A command does not

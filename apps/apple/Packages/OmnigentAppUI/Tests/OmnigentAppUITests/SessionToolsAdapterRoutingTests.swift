@@ -42,6 +42,18 @@ struct SessionToolsAdapterRoutingTests {
         readOnly: readOnly))
   }
 
+  // swiftlint:disable discouraged_optional_boolean
+  /// A store whose server said whether the viewer, at `level`, may start side chats.
+  private func store(sideChatAllowed: Bool?, level: Int64?) async throws -> ConversationStore {
+    // swiftlint:enable discouraged_optional_boolean
+    var settings = Fixtures.settings()
+    settings.sideChatAllowed = sideChatAllowed
+    return try await Fixtures.store(
+      header: SessionHeader(
+        id: "conv", title: "", status: .idle, readOnly: false, archived: false,
+        permissionLevel: level, failureMessage: nil, settings: settings))
+  }
+
   private func summary(agent: String) -> OmnigentCoreFFI.SessionSummary {
     OmnigentCoreFFI.SessionSummary(
       id: "conv", title: "", preview: "", status: .idle, isReadOnly: false, updatedAt: 0,
@@ -65,6 +77,21 @@ struct SessionToolsAdapterRoutingTests {
       SessionToolsAdapter.sideChat(try await store(sideChatSourceID: ""), routes: routes) == nil)
   }
 
+  @Test("Side chat is offered where the server allows it, else to the session's owner")
+  func sideChatAllowed() async throws {
+    #expect(SessionToolsAdapter.offersSideChat(try await store(sideChatAllowed: true, level: 3)))
+    #expect(!SessionToolsAdapter.offersSideChat(try await store(sideChatAllowed: false, level: 4)))
+    // A server that does not say leaves it to the viewer's level.
+    #expect(SessionToolsAdapter.offersSideChat(try await store(sideChatAllowed: nil, level: 4)))
+    #expect(!SessionToolsAdapter.offersSideChat(try await store(sideChatAllowed: nil, level: 3)))
+    // Where it is not offered, a selection can't be asked in one either.
+    var actions = ConversationActions()
+    SessionToolsAdapter.addSelectionActions(
+      to: &actions, store: try await store(sideChatAllowed: false, level: 4),
+      routes: RouteLog().routes())
+    #expect(actions.replyWithSelection != nil && actions.askInSideChat == nil)
+  }
+
   @Test("A window without tabs reports that it can't open a side chat")
   func sideChatWithoutTabs() async throws {
     let log = RouteLog()
@@ -74,30 +101,31 @@ struct SessionToolsAdapterRoutingTests {
     #expect(log.openedChats.isEmpty)
   }
 
-  @Test("A typed /side clears once its chat opens; a question sends at once")
+  @Test("A question typed after /side sends at once; a quote starts the draft")
   func draftSideChats() async throws {
     let log = RouteLog()
     let conversation = try await store()
-    conversation.composer.text = "/side what now"
+    conversation.composer.text = "a draft"
     SessionToolsAdapter.startSideChat(conversation, routes: log.routes(), question: "what now")
-    #expect(conversation.composer.text.isEmpty)
     #expect(log.openedChats.map(\.draft) == ["what now"])
     #expect(log.openedChats.map(\.sends) == [true])
 
-    conversation.composer.text = "/sidebar is unrelated"
     SessionToolsAdapter.startSideChat(conversation, routes: log.routes(), quote: "picked")
-    #expect(conversation.composer.text == "/sidebar is unrelated")
+    #expect(conversation.composer.text == "a draft", "the main composer is not touched")
     #expect(log.openedChats.last?.draft.contains("> picked") == true)
     #expect(log.openedChats.last?.sends == false)
   }
 
-  @Test("A native side chat is typed in the composer, appending any question")
+  @Test("An agent that forks its own side chats opens one as any other does")
   func nativeSideChat() async throws {
     let log = RouteLog()
     let conversation = try await store(harness: "codex-native", wrapper: "codex-native-ui")
-    SessionToolsAdapter.startSideChat(conversation, routes: log.routes(), question: "why?")
-    #expect(conversation.composer.text == "/side why?")
-    #expect(log.openedChats.isEmpty)
+    conversation.composer.text = "a draft"
+    SessionToolsAdapter.startSideChat(conversation, routes: log.routes())
+    SessionToolsAdapter.startSideChat(conversation, routes: log.routes(), quote: "picked")
+    #expect(log.openedChats.map(\.draft) == ["", "> picked\n\n"])
+    #expect(log.openedChats.allSatisfy { !$0.sends })
+    #expect(conversation.composer.text == "a draft", "nothing is typed in the main composer")
   }
 
   @Test("The Add menu offers a command goal to a writer only")
@@ -195,6 +223,14 @@ struct SessionToolsAdapterRoutingTests {
     conversation.composer.text = "/side look here"
     await SessionToolsAdapter.send(conversation, newSession: nil, routes: log.routes())
     #expect(log.openedChats.map(\.draft) == ["look here"])
+    #expect(conversation.composer.text.isEmpty, "the typed command is done once its chat opens")
+
+    // Without tabs to open it in, the command stays typed and the window says why.
+    conversation.composer.text = "/side look again"
+    await SessionToolsAdapter.send(
+      conversation, newSession: nil, routes: log.routes(sideChats: false))
+    #expect(conversation.composer.text == "/side look again")
+    #expect(log.reports.count == 1)
   }
 
   @Test("Quoting in a side chat stays in its own composer; a blank selection changes nothing")

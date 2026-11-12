@@ -31,6 +31,28 @@ struct SideChatIntro: View {
   }
 }
 
+/// A side question that went to the session's own agent, which has not reported the side chat
+/// it forks for it yet: the question as sent, and that it is starting.
+struct SideChatAsked: View {
+  let question: String
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+      MessageRowView(
+        row: Row(id: "sidechat-asked", role: .user, text: question),
+        decoration: MessageDecoration())
+      TurnStatusRow {
+        TypingIndicator()
+      } label: {
+        Text("Starting the side chat\u{2026}")
+      }
+      .frame(minHeight: Theme.Control.target)
+      .accessibilityIdentifier("sidechat-starting")
+    }
+    .padding(Theme.Spacing.large)
+  }
+}
+
 /// A new side chat before its first message: no session exists yet, so it has only a draft. The
 /// first send creates the side chat (web pending side-chat tab).
 public struct PendingSideChatView: View {
@@ -38,6 +60,7 @@ public struct PendingSideChatView: View {
   private let parent: CreatingSession
   private let isStarting: Bool
   private let failure: String?
+  private let asked: String?
   private let send: @MainActor () -> Void
   private let dismissFailure: @MainActor () -> Void
   private let openParent: @MainActor (String) -> Void
@@ -48,11 +71,14 @@ public struct PendingSideChatView: View {
   ///   - parent: The session the side chat forks.
   ///   - isStarting: The side chat is being created.
   ///   - failure: Why creating it failed; the draft is kept.
+  ///   - asked: The first message, once the session's own agent was asked to fork the side
+  ///     chat for it and until it reports the fork.
   ///   - send: Creates the side chat with the draft as its first message.
   ///   - dismissFailure: Hides the failure.
   ///   - openParent: Shows the parent's chat.
   public init(
     draft: Binding<String>, parent: CreatingSession, isStarting: Bool, failure: String?,
+    asked: String? = nil,
     send: @escaping @MainActor () -> Void, dismissFailure: @escaping @MainActor () -> Void,
     openParent: @escaping @MainActor (String) -> Void
   ) {
@@ -60,6 +86,7 @@ public struct PendingSideChatView: View {
     self.parent = parent
     self.isStarting = isStarting
     self.failure = failure
+    self.asked = asked
     self.send = send
     self.dismissFailure = dismissFailure
     self.openParent = openParent
@@ -68,11 +95,13 @@ public struct PendingSideChatView: View {
   /// The page.
   public var body: some View {
     ScrollView {
-      SideChatIntro()
-        .frame(maxWidth: Theme.transcriptWidth)
-        .frame(maxWidth: .infinity)
+      Group {
+        if let asked { SideChatAsked(question: asked) } else { SideChatIntro() }
+      }
+      .frame(maxWidth: Theme.transcriptWidth)
+      .frame(maxWidth: .infinity)
     }
-    .defaultScrollAnchor(.center)
+    .defaultScrollAnchor(asked == nil ? .center : .bottom)
     .safeAreaBar(edge: .bottom, spacing: 0) {
       TranscriptComposer(
         draft: ComposerDraft($draft), state: composerState,

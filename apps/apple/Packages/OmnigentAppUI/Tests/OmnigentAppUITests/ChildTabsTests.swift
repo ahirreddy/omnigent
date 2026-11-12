@@ -147,6 +147,10 @@ struct ChildTabsTests {
     #expect(conversation.composer.lastError == nil)
     #expect(try window.server.posted("/v1/sessions/conv_a/events").count == 1, "sent as typed")
     #expect(group.tabs.count == 1, "nothing opens until the agent reports its fork")
+    // The server never echoes the command, so the transcript shows no row for it.
+    #expect(conversation.pendingMessages.rows.isEmpty)
+    #expect(!conversation.displayRows.contains { $0.text.contains("/side") })
+    #expect(conversation.composer.text.isEmpty)
 
     try await window.reportChild("conv_side", agent: "Side chat")
     try await eventually("the side chat's tab") { group.tabs.count == 2 }

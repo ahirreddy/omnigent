@@ -85,7 +85,7 @@ struct SessionToolsAdapterTests {
     #expect(extras.togglePlan != nil)
   }
 
-  @Test("Asking in a Codex-native side chat types the quoted /side command, never over a draft")
+  @Test("Asking in a Codex-native side chat opens one with the quote, leaving the main draft")
   func codexSideChatFromSelection() async throws {
     let store = try await PreviewData.connectedDemoStore()
     let conversation = try await loaded("demo-design", in: store)
@@ -94,29 +94,32 @@ struct SessionToolsAdapterTests {
     let routes = SessionToolsAdapter.Routes(
       openSession: { _ in }, openNewSideChat: { draft, _ in opened.append(draft) },
       showPullRequests: {}, showGoal: {}, report: { reports.append($0) })
-    conversation.composer.text = ""
+    conversation.composer.text = "half a thought"
     SessionToolsAdapter.startSideChat(conversation, routes: routes, quote: "why?")
-    #expect(conversation.composer.text == "/side > why?\n\n")
-    SessionToolsAdapter.startSideChat(conversation, routes: routes, quote: "again")
-    #expect(conversation.composer.text == "/side > why?\n\n")
-    #expect(reports.count == 1)
-    #expect(opened.isEmpty)
+    #expect(opened == ["> why?\n\n"])
+    #expect(conversation.composer.text == "half a thought", "the main composer is not touched")
+    #expect(reports.isEmpty)
   }
 
   @Test("Side Chat and Ask in Side Chat, from the composer and a selection, start the same way")
   func sideChatEntryPoints() async throws {
     let store = try await PreviewData.connectedDemoStore()
     let conversation = try await loaded("demo-design", in: store)
+    var opened: [(draft: String, sends: Bool)] = []
+    let routes = SessionToolsAdapter.Routes(
+      openSession: { _ in }, openNewSideChat: { opened.append((draft: $0, sends: $1)) },
+      showPullRequests: {}, showGoal: {}, report: { _ in })
     let start = try #require(SessionToolsAdapter.sideChat(conversation, routes: routes))
     conversation.composer.text = ""
     start()
-    #expect(conversation.composer.text.hasPrefix("/side"))
 
     var actions = ConversationActions()
     SessionToolsAdapter.addSelectionActions(to: &actions, store: conversation, routes: routes)
-    conversation.composer.text = ""
     actions.askInSideChat?("why?")
-    #expect(conversation.composer.text == "/side > why?\n\n")
+    // A Codex-native session's side chat opens as any other's: a tab with its own composer.
+    #expect(opened.map(\.draft) == ["", "> why?\n\n"])
+    #expect(opened.allSatisfy { !$0.sends })
+    #expect(conversation.composer.text.isEmpty)
   }
 
   @Test("A goal maps to the tray pill with its usage")

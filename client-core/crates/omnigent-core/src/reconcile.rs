@@ -120,6 +120,7 @@ struct SettingsPatch {
     host_resumable: Field<bool>,
     parent_id: Field<String>,
     routing_mode: Field<String>,
+    side_chat_allowed: Field<bool>,
 }
 
 fn same_as<T: PartialEq>(field: &Field<T>, known: Option<&T>) -> bool {
@@ -159,6 +160,7 @@ impl SettingsPatch {
             settings.runner_online = prior.runner_online;
             settings.runner_bound = prior.runner_bound;
             settings.host_resumable = prior.host_resumable;
+            settings.side_chat_allowed = prior.side_chat_allowed;
         }
         self.agent_id.apply_to(&mut settings.agent_id);
         self.harness.apply_to(&mut settings.harness);
@@ -193,6 +195,10 @@ impl SettingsPatch {
         self.host_resumable.apply_to(&mut settings.host_resumable);
         self.parent_id.apply_to(&mut settings.parent_id);
         self.routing_mode.apply_to(&mut settings.routing_mode);
+        // `null` means the response did not compute it, so the last answer stands.
+        if let Some(allowed) = self.side_chat_allowed.value() {
+            settings.side_chat_allowed = Some(*allowed);
+        }
         settings
     }
 }
@@ -294,6 +300,7 @@ pub fn header_from_snapshot(
             host_resumable: session.host_resumable.clone(),
             parent_id: session.parent_session_id.clone(),
             routing_mode: session.cost_control_mode_override.clone(),
+            side_chat_allowed: session.side_chat_allowed.clone(),
         },
     }
     .merge(previous)

@@ -785,10 +785,29 @@ impl<T: HttpTransport> ClientCore<T> {
             .unwrap_or_default();
         let (target, local) = self.upload_target(session_id)?;
         target.validate_message_attachments(&attachments, local)?;
+        self.post_message(session_id, text, payload, &attachments, require_live_stream)
+            .await
+    }
+
+    /// Checks the session can take a message and posts `payload` to its events route, outside
+    /// the submission ledger: for a send its caller has gated, or one that is not the
+    /// composer's.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub(super) async fn post_message(
+        &self,
+        session_id: &str,
+        text: &str,
+        payload: &SendPayload,
+        attachments: &[UploadedAttachment],
+        require_live_stream: bool,
+    ) -> Result<MessageSubmission, SessionError> {
         self.require_sendable(session_id, require_live_stream)?;
         let path = format!("/v1/sessions/{session_id}/events");
         let mut prepared =
-            self.prepare("POST", &path, &[], Some(&payload.body(text, &attachments)))?;
+            self.prepare("POST", &path, &[], Some(&payload.body(text, attachments)))?;
         if payload.is_message() {
             // The caller keeps a message refused for an offline host, so none is recorded.
             prepared

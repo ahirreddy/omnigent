@@ -401,6 +401,9 @@ pub struct SessionSettings {
     pub side_chat_source_id: Option<String>,
     /// `cost_control_mode_override` (for example `on` for smart routing).
     pub routing_mode: Option<String>,
+    /// Whether the viewer may start side chats here (`side_chat_allowed`); `None` until a read
+    /// says.
+    pub side_chat_allowed: Option<bool>,
 }
 
 /// Session metadata shown with the conversation.

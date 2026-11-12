@@ -171,8 +171,7 @@ extension ComposerStore {
       isSending = false
       refreshBlocked()
     }
-    let pendingRow = transcript?.showSending(
-      message.text, attachments: message.extras.files.map(PendingMessages.attachment))
+    let pendingRow = showSending(message.text, extras: message.extras)
     do {
       let sent = try await core.sendQueuedMessage(
         sessionId: sessionID, text: message.text, hold: message.extras.holdID,

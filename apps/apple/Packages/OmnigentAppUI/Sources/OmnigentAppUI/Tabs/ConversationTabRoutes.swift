@@ -18,9 +18,9 @@ struct ConversationTabRoutes {
   /// A sub-agent's or forked side chat's chat: a tab of this chat's session, or a window of
   /// its own (Settings).
   var openChild: (@MainActor (String) -> Void)?
-  /// A typed `/side` went (`true`) or did not go (`false`) to an agent that forks the side
-  /// chat itself: the fork opens in a tab when the session reports it.
-  var awaitForkedSideChat: (@MainActor (Bool) -> Void)?
+  /// A typed `/side` is going to an agent that forks the side chat itself: the fork opens in a
+  /// tab when the session reports it. Returns what withdraws the wait when it was not sent.
+  var awaitForkedSideChat: (@MainActor () -> ForkedSideChats.Withdraw?)?
   /// Starts a terminal (a declared name, or the default) and opens it in a tab.
   var newTerminal: (@MainActor (String?) -> Void)?
   /// Opens a browser tab; `nil` when the window has no browser.
@@ -54,7 +54,12 @@ extension WindowTabs {
       openSideChat: { open(.sideChat(sessionID: sessionID, rowID: $0), in: ownerID, title: $1) },
       openSession: { openSession($0, from: sessionID, in: ownerID, openChild: openChildTab) })
     routes.openChild = openChildTab
-    routes.awaitForkedSideChat = { awaitForkedSideChat(of: sessionID, in: ownerID, sent: $0) }
+    let forks = session.forkedSideChats
+    routes.awaitForkedSideChat = {
+      guard let wait = awaitForkedSideChat(of: sessionID, in: ownerID) else { return nil }
+      let withdraw: ForkedSideChats.Withdraw = { forks.cancel(wait, of: sessionID) }
+      return withdraw
+    }
     routes.viewChoice = groups.viewChoice(sessionID)
     routes.openNewSideChat = { openPendingSideChat(sessionID, draft: $0, sendNow: $1) }
     routes.newTerminal = { name in

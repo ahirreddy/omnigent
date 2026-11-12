@@ -71,15 +71,20 @@ public final class SessionToolsStore {
     await run { core in _ = try await core.setPlanMode(sessionId: sessionID, on: enabled) }
   }
 
-  /// Creates a side chat of this session with `text` as its first message. Each side chat
-  /// being started keeps its own failure, so this neither marks the store busy nor sets
-  /// ``lastError``.
-  /// - Parameter text: The first message.
-  /// - Returns: The side chat and how its first message went.
-  /// - Throws: The core's error when the side chat could not be created.
-  public func createSideChat(text: String) async throws(CoreError) -> CreatedSideChat {
+  /// Sends a new side chat's first message the way this session's `harness` takes it: the
+  /// server forks the side chat, or the session's own agent is asked to and reports it as a
+  /// child. Each side chat being started keeps its own failure, so this neither marks the store
+  /// busy nor sets ``lastError``.
+  /// - Parameters:
+  ///   - text: The first message.
+  ///   - harness: The session's harness, as its header reports it.
+  /// - Returns: The side chat, or that the agent was asked to fork it.
+  /// - Throws: The core's error when the side chat could not be started.
+  public func startSideChat(text: String, harness: String?) async throws(CoreError)
+    -> StartedSideChat
+  {
     do {
-      return try await core.createSideChat(sessionId: sessionID, text: text)
+      return try await core.startSideChat(sessionId: sessionID, harness: harness, text: text)
     } catch {
       throw coreError(error)
     }

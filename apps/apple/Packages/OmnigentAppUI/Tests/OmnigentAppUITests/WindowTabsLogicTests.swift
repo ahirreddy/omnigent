@@ -166,7 +166,7 @@ struct WindowTabsLogicTests {
     #expect(menu().actions.newTerminal != nil)
   }
 
-  @Test("New Tab's side chat replaces the page; a native agent's is typed in its chat")
+  @Test("New Tab's side chat replaces the page, for an agent that forks its own too")
   func newTabSideChat() async throws {
     let connection = try await ConversationFixtures.connection()
     connection.sessionList.apply(.reset(sessions: [ConversationFixtures.summary("s0")]))
@@ -195,18 +195,14 @@ struct WindowTabsLogicTests {
     #expect(group.tab(page.id)?.content == .sideChatSession(parentID: "s0", childID: nil))
 
     setHarness("codex-native", wrapper: "codex-native-ui", revision: 2)
+    conversation.composer.text = "a draft"
     page = group.open(.newTab)
     let startNativeSideChat = try #require(window.newTabActions(replacing: page.id).newSideChat)
     startNativeSideChat()
-    #expect(group.tab(page.id) == nil)
-    #expect(group.selected?.content == .chat(sessionID: "s0"))
-    #expect(conversation.composer.text == "/side ")
-
-    page = group.open(.newTab)
-    let startAgain = try #require(window.newTabActions(replacing: page.id).newSideChat)
-    startAgain()
-    #expect(conversation.composer.text == "/side ", "a draft in progress stays")
-    #expect(failures.messages.count == 1)
+    #expect(group.tab(page.id)?.content == .sideChatSession(parentID: "s0", childID: nil))
+    #expect(group.selectedID == page.id)
+    #expect(conversation.composer.text == "a draft", "nothing is typed in the main composer")
+    #expect(failures.messages.isEmpty)
   }
 
   @Test("Remote browser profiles list the default first, once each")
