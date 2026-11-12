@@ -101,11 +101,18 @@ struct SessionRow: View {
     #endif
     .help(tooltip)
     .contextMenu { menu.items }
-    .accessibilityElement(children: .combine)
+    // One element for the row, except while its title is edited in place: a combined row
+    // would hide the field from VoiceOver and from keyboard access.
+    .accessibilityElement(children: Self.accessibilityChildren(isRenaming: inlineRename != nil))
     .accessibilityLabel(accessibilityLabel)
     .accessibilityAddTraits(isSelecting && isChecked ? .isSelected : [])
     .accessibilityActions { menu.accessibilityItems }
     .accessibilityIdentifier("session-row-\(session.id)")
+  }
+
+  /// How the row's parts read: as one element, or each on its own while the title is edited.
+  static func accessibilityChildren(isRenaming: Bool) -> AccessibilityChildBehavior {
+    isRenaming ? .contain : .combine
   }
 
   @ViewBuilder private var trailing: some View {

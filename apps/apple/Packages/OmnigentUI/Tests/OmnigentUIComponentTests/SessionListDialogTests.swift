@@ -172,6 +172,24 @@
       #expect(one.id == ["a"])
     }
 
+    @Test("Remember my choice shows on the worktree prompt, not on the alerts of what it wraps")
+    func rememberStaysOnThePrompt() throws {
+      let spy = SidebarSpy(SidebarFixture.state)
+      let one = ArchiveWorktreeRequest(sessionIDs: ["a"], worktreeSessionIDs: ["a"])
+      let prompt = OffscreenWindow(PromptHost(spy: spy, request: one), width: 300, height: 200)
+      defer { prompt.close() }
+      #expect(
+        SystemSideEffects.record.suppressibleAlertMessages.contains("Also delete the worktree?"))
+
+      let wrapped = Color.clear
+        .alert("Rename Session", isPresented: .constant(true)) { Button("OK") {} }
+        .archiveWorktreePrompt(.constant(nil)) { _, _, _ in }
+      let screen = OffscreenWindow(wrapped, width: 300, height: 200)
+      defer { screen.close() }
+      #expect(SystemSideEffects.record.alertMessages.contains("Rename Session"))
+      #expect(!SystemSideEffects.record.suppressibleAlertMessages.contains("Rename Session"))
+    }
+
     @Test("a reasoned menu button is disabled with its reason as the tooltip")
     func reasoned() throws {
       let spy = SidebarSpy(SidebarFixture.state)

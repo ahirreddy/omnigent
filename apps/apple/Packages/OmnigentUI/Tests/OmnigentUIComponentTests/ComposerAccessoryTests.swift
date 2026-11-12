@@ -66,6 +66,23 @@
       #expect(log.events.last == "send")
     }
 
+    /// `tapButton` clicks half a point off center. A pointer lands on whole points, and a chip's
+    /// exact center line is where its card's border used to take the click.
+    @Test("a chip's Remove takes a click on the chip's exact center line")
+    func removeAtTheCenterLine() throws {
+      let screen = open {
+        $0.attachments = [DraftAttachment(id: "a", title: "a.txt", kind: .file, state: .uploaded)]
+        $0.mentions = ["src/main.swift"]
+      }
+      defer { screen.close() }
+      let removeButtons = screen.buttons.prefix(2)
+      try #require(removeButtons.count == 2)
+      for frame in removeButtons {
+        try screen.click(CGPoint(x: frame.midX, y: frame.midY))
+      }
+      #expect(log.events == ["removeAttachment:a", "removeMention:src/main.swift"])
+    }
+
     @Test("a quote can be removed, and text before a later one edited")
     func quotes() throws {
       let screen = open {

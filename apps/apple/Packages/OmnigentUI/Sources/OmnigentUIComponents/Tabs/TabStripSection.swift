@@ -107,7 +107,7 @@ struct TabStripSection<Reorder: Gesture>: View {
     return TabItemView(
       tab: tab, isSelected: isActive && isFocused, width: width, actions: actions,
       canCloseToRight: !tab.isPinned && !isLast, isVisibleInOtherPane: isActive && !isFocused,
-      isSplit: isSplit
+      isSplit: isSplit, isInTitlebar: isInTitlebar
     )
     .offset(x: dragged?.offset ?? 0, y: dragged?.isTearing == true ? dragged?.lift ?? 0 : 0)
     .opacity(dragged?.isTearing == true ? 0.75 : 1)

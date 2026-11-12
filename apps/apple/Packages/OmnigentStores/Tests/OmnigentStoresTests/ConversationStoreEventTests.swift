@@ -193,8 +193,13 @@ struct ConversationStoreEventTests {
     #expect(conversation.isLoadingOlderHistory)
     conversation.loadOlderHistory()
     #expect(server.requests(to: "/v1/sessions/conv_a/items").count == reads)
+    #expect(conversation.olderHistoryReads == 0)
     conversation.historyPagingChanged(hasOlder: false, isLoading: false)
     #expect(!conversation.hasOlderHistory)
+    // The read ended; a report that changes nothing about loading is not another read.
+    #expect(conversation.olderHistoryReads == 1)
+    conversation.historyPagingChanged(hasOlder: true, isLoading: false)
+    #expect(conversation.olderHistoryReads == 1)
   }
 
   @Test("Stopping shows idle at once, and a refusal puts the running status back")

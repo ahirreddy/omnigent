@@ -311,6 +311,11 @@
       try press(keyCode: ComposerKey.tab, characters: "\t", modifiers: modifiers)
     }
 
+    /// Shift-Tab as a keyboard sends it: the backtab character.
+    func pressShiftTab() throws {
+      try press(keyCode: ComposerKey.tab, characters: "\u{19}", modifiers: .shift)
+    }
+
     func pressEscape() throws {
       try press(keyCode: ComposerKey.escape, characters: "\u{1B}")
     }

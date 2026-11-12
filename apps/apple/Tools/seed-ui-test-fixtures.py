@@ -5,7 +5,12 @@ link, bound to the online host and a small workspace (folders for `@` mentions, 
 
 Stored test data, no model call; the host launches the session's runner so its file APIs work.
 Reruns keep the session (fixed id) and restore the workspace files, so a test that edited one
-starts from the same text. Prints the session id and the workspace path.
+starts from the same text. A session whose history has grown (every terminal a test opens adds
+an item) is deleted, with its terminals, and seeded again. Prints the session id and the
+workspace path.
+
+Also seeds a second session with a few pages of short history (its id is `fixed_id("ui-test",
+"paged")`, which the Mac flows know): enough to page, small enough for UI automation to read.
 """
 
 import argparse
@@ -16,6 +21,9 @@ import shutil
 from pathlib import Path
 
 TITLE = "UI test fixture"
+PAGED_TITLE = "UI test paged history"
+# The server pages history 50 items at a time; a turn here is two items.
+PAGED_TURNS = 60
 WORKSPACE_FILES = {
     "README.md": "# UI test fixture\n\nA workspace the native UI tests browse and edit.\n",
     "docs/guide.md": "# Guide\n\nSteps the tests read.\n",
@@ -102,6 +110,41 @@ def items(session_id: str, agent: str, fixed_id) -> list[tuple[str, str, dict, s
     ]
 
 
+def seed_paged(large, conversations, permissions, agent: dict) -> None:
+    """Seeds the session with several pages of history, once."""
+    from omnigent.entities import MessageData, NewConversationItem
+
+    session_id = large.fixed_id("ui-test", "paged")
+    existing = conversations.get_conversation(session_id)
+    if existing is not None:
+        if existing.title != PAGED_TITLE:
+            raise SystemExit(f"Refusing to modify an unexpected session: {session_id}")
+        return
+    conversations.create_conversation(
+        conversation_id=session_id, title=PAGED_TITLE, agent_id=agent["id"]
+    )
+    conversations.append(
+        session_id,
+        [
+            NewConversationItem(
+                type=spec.type,
+                response_id=spec.response_id,
+                data=MessageData(**spec.data),
+                stable_id=spec.stable_id,
+            )
+            for turn in range(1, PAGED_TURNS + 1)
+            for spec in large.short_turn_items(session_id, turn, agent["name"])
+        ],
+    )
+    permissions.grant("local", session_id, 4)
+
+
+def has_grown(large, server: str, session_id: str, seeded: int) -> bool:
+    """Whether the session's history holds more than its `seeded` items."""
+    path = f"/v1/sessions/{session_id}/items?limit={seeded + 1}"
+    return len(large.request_json(server, "GET", path)["data"]) > seeded
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     repo = Path(__file__).resolve().parents[3]
@@ -142,15 +185,23 @@ def seed(args: argparse.Namespace) -> None:
     session_id = large.fixed_id("ui-test", "conversation")
     uri = f"sqlite:///{database}"
     conversations = SqlAlchemyConversationStore(uri)
+    permissions = SqlAlchemyPermissionStore(uri)
+    agent = large.mock_agent(args.server)
+    seed_paged(large, conversations, permissions, agent)
     existing = conversations.get_conversation(session_id)
     if existing is not None:
         if existing.title != TITLE:
             raise SystemExit(f"Refusing to modify an unexpected session: {session_id}")
-        if existing.runner_id is None and existing.host_id is not None:
-            launch_runner(large, args.server, existing.host_id, session_id, workspace)
-        print(session_id, workspace)
-        return
-    agent = large.mock_agent(args.server)
+        seeded = len(items(session_id, agent["name"], large.fixed_id))
+        if not has_grown(large, args.server, session_id, seeded):
+            if existing.runner_id is None and existing.host_id is not None:
+                launch_runner(large, args.server, existing.host_id, session_id, workspace)
+            print(session_id, workspace)
+            return
+        # After a page of added items a new window shows none of the seeded messages. Deleting
+        # through the server also ends the session's runner and the terminals tests left.
+        large.request_json(args.server, "DELETE", f"/v1/sessions/{session_id}")
+        write_workspace(workspace)
     host_id = large.online_host(args.server)
     conversations.create_conversation(
         conversation_id=session_id,
@@ -173,7 +224,7 @@ def seed(args: argparse.Namespace) -> None:
             for kind, response, data, stable in items(session_id, agent["name"], large.fixed_id)
         ],
     )
-    SqlAlchemyPermissionStore(uri).grant("local", session_id, 4)
+    permissions.grant("local", session_id, 4)
     launch_runner(large, args.server, host_id, session_id, workspace)
     print(session_id, workspace)
 

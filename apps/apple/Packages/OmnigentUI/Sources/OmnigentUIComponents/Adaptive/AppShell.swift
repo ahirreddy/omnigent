@@ -205,6 +205,11 @@ final class TitlebarStripSpace {
   var detailWidth: CGFloat = 0
   /// The button widths the shown screen's trailing toolbar items take, if it reports them.
   var trailingItems: Int?
+  /// Counts the times the strip was offered to the toolbar again, as a new item, after the
+  /// toolbar left it out. Only the titlebar's items read it.
+  var stripOffer = 0
+  /// The strip width the last offer was made at, until the toolbar takes the strip.
+  @ObservationIgnored var offeredWidth: CGFloat?
 }
 
 /// The tab strip at the width the titlebar has for it.

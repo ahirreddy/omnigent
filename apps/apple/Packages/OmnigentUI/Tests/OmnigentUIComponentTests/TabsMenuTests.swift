@@ -115,6 +115,71 @@
     }
   }
 
+  @Suite("Tabs: a titlebar tab's context menu", .serialized)
+  @MainActor
+  struct TabsTitlebarMenuTests {
+    private func secondaryClick(in view: NSView, at point: NSPoint) throws -> NSEvent {
+      let window = try #require(unsafe view.window)
+      let event = NSEvent.mouseEvent(
+        with: .rightMouseDown, location: view.convert(point, to: nil), modifierFlags: [],
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+        context: nil, eventNumber: 1, clickCount: 1, pressure: 1)
+      return try #require(event)
+    }
+
+    @Test("A secondary click on the tab is taken and shows the tab's own menu")
+    func takesTheToolbarsClick() async throws {
+      let spy = TabSpy()
+      let view = TabItemView(
+        tab: TabFixture.tab("one"), isSelected: true, width: 224, actions: spy.actions,
+        canCloseToRight: true, isInTitlebar: true
+      )
+      .frame(width: 300, height: 40)
+      let screen = OffscreenWindow(AnyView(view), width: 300, height: 40)
+      defer { screen.close() }
+      let clicks = try #require(
+        screen.allViews.compactMap { $0 as? TitlebarMenuClickView }.first)
+      var shown: [NSMenu] = []
+      clicks.present = { menu, _, _ in shown.append(menu) }
+
+      let outside = NSPoint(x: clicks.bounds.maxX + 2_000, y: clicks.bounds.maxY + 2_000)
+      let takenOutside = clicks.takes(try secondaryClick(in: clicks, at: outside))
+      #expect(!takenOutside, "bounds \(clicks.bounds), visible \(clicks.visibleRect)")
+
+      let inside = NSPoint(x: clicks.bounds.midX, y: clicks.bounds.midY)
+      #expect(clicks.takes(try secondaryClick(in: clicks, at: inside)))
+      // The menu opens after the click's monitor returns.
+      for _ in 0..<100 where shown.isEmpty {
+        try await Task.sleep(for: .milliseconds(20))
+      }
+      let menu = try #require(shown.first)
+      try screen.choose("Open in Split View", in: menu)
+      #expect(spy.calls == ["show one trailing"])
+    }
+
+    @Test("A tab outside the titlebar leaves the click to SwiftUI's menu")
+    func onlyInTheTitlebar() {
+      let view = TabItemView(
+        tab: TabFixture.tab("one"), isSelected: true, width: 224, actions: TabSpy().actions,
+        canCloseToRight: true
+      )
+      .frame(width: 300, height: 40)
+      let screen = OffscreenWindow(AnyView(view), width: 300, height: 40)
+      defer { screen.close() }
+      #expect(!screen.allViews.contains { $0 is TitlebarMenuClickView })
+    }
+
+    @Test("Right clicks and Control-clicks inside open the menu; plain clicks do not")
+    func menuClicks() {
+      typealias Clicks = TitlebarMenuClickView
+      #expect(Clicks.isMenuClick(isRightButton: true, modifiers: [], isInside: true))
+      #expect(Clicks.isMenuClick(isRightButton: false, modifiers: .control, isInside: true))
+      #expect(!Clicks.isMenuClick(isRightButton: false, modifiers: [], isInside: true))
+      #expect(!Clicks.isMenuClick(isRightButton: false, modifiers: .command, isInside: true))
+      #expect(!Clicks.isMenuClick(isRightButton: true, modifiers: [], isInside: false))
+    }
+  }
+
   @Suite("Tabs: what a tab tells")
   struct TabsItemTextTests {
     @Test("The tooltip reads title, subtitle and the best status")

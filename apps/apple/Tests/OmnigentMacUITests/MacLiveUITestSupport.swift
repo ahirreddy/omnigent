@@ -37,6 +37,13 @@ struct MacLiveUITestSupport {
     try seeded("OMNIGENT_LONG_SESSION", "Seed with Tools/seed-large-fixtures.py")
   }
 
+  /// The seeded session with a few pages of short history: enough to page, and small enough
+  /// for UI automation to read whole. `Tools/seed-ui-test-fixtures.py` gives it this id.
+  func pagedSession() throws -> String {
+    _ = try fixtureSession()
+    return "ceae1edc3ad8513a5bf6d0bedcbd9f1d"
+  }
+
   /// A saved frame for the main window, as large as the screen allows, so a flow that resizes
   /// the window does not shape the next flow's. SwiftUI saves it under the scene's type name.
   nonisolated static let windowFrameArguments = ["OmnigentMac", "OmnigentMacAppStore"].flatMap {

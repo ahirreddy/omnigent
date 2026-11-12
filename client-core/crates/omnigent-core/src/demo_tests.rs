@@ -1039,6 +1039,38 @@ fn the_catalog_lists_the_demo_host_and_agents() {
 }
 
 #[test]
+fn a_demo_session_reads_its_agents_info() {
+    let core = sample();
+    for agent in demo_agents() {
+        let info = block_on(core.agent_info("demo-notes", &agent.id)).unwrap();
+        assert_eq!(info.name, agent.name);
+        assert_eq!(info.tools, Vec::<String>::new());
+        assert_eq!(info.policies, Vec::<String>::new());
+    }
+    assert_eq!(
+        block_on(core.agent_info("demo-notes", "no-such-agent")),
+        Err(SessionError::HttpStatus { status: 404 })
+    );
+}
+
+#[test]
+fn the_folder_browser_lists_the_demo_hosts_home_root_and_workspace() {
+    let core = sample();
+    let home = block_on(core.host_directory(DEMO_HOST_ID, None)).unwrap();
+    assert_eq!(home.path.as_deref(), Some("/"));
+    assert_eq!(home.directories.len(), 1);
+    assert_eq!(home.directories[0].path, "/demo");
+    let root = block_on(core.host_directory(DEMO_HOST_ID, Some("/"))).unwrap();
+    assert_eq!(root.path.as_deref(), Some("/"));
+    assert_eq!(root.directories, home.directories);
+    let workspace = block_on(core.host_directory(DEMO_HOST_ID, Some("/demo/"))).unwrap();
+    assert_eq!(workspace.path.as_deref(), Some("/demo"));
+    assert_eq!(workspace.parent.as_deref(), Some("/"));
+    assert_eq!(workspace.directories.len(), 0);
+    assert!(block_on(core.host_directory(DEMO_HOST_ID, Some("/elsewhere"))).is_err());
+}
+
+#[test]
 fn a_broken_fixture_is_a_workspace_error() {
     for text in [
         "{",

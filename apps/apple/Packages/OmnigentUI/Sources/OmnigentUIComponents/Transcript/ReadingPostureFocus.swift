@@ -17,6 +17,44 @@ extension View {
   }
 }
 
+extension View {
+  /// Keeps the keyboard and the pointer out of an editor that takes no input (a read-only or
+  /// archived session). `disabled` alone leaves a text editor that has the keyboard typing.
+  /// - Parameters:
+  ///   - isEditable: Whether the editor takes input.
+  ///   - focus: The editor's focus.
+  /// - Returns: The view.
+  func locksEditor(unless isEditable: Bool, focus: FocusState<Bool>.Binding) -> some View {
+    modifier(EditorLock(isEditable: isEditable, isFocused: focus))
+  }
+}
+
+private struct EditorLock: ViewModifier {
+  let isEditable: Bool
+  let isFocused: FocusState<Bool>.Binding
+
+  func body(content: Content) -> some View {
+    content
+      .disabled(!isEditable)
+      .allowsHitTesting(isEditable)
+      .onChange(of: isFocused.wrappedValue, initial: true) { _, focused in
+        if focused, !isEditable { isFocused.wrappedValue = false }
+      }
+      .onChange(of: isEditable) { _, editable in
+        if !editable, isFocused.wrappedValue { isFocused.wrappedValue = false }
+      }
+  }
+}
+
+/// The key press that brought a composer on screen, and whether the keyboard stays where it was.
+enum ComposerShowingKey {
+  /// A plain key (an arrow moving through the sidebar) keeps the keyboard in its list. A Command
+  /// shortcut (New Session, the next session) asked for the page, so its composer takes it.
+  static func keepsFocusElsewhere(isKeyDown: Bool, hasCommand: Bool) -> Bool {
+    isKeyDown && !hasCommand
+  }
+}
+
 private struct ReadingPostureFocus: ViewModifier {
   let isFocused: FocusState<Bool>.Binding
   let focusRequest: Int
@@ -33,7 +71,11 @@ private struct ReadingPostureFocus: ViewModifier {
     /// Takes the keyboard when the composer comes on screen, so typing reaches it. Moving through
     /// the sidebar with the keyboard keeps its focus; the wait lets a click on a list row finish.
     private func focusOnShowing() async {
-      guard !isHiddenTab, isActivePane, NSApp.currentEvent?.type != .keyDown else { return }
+      let event = NSApp.currentEvent
+      let keepsFocus = ComposerShowingKey.keepsFocusElsewhere(
+        isKeyDown: event?.type == .keyDown,
+        hasCommand: event?.modifierFlags.contains(.command) ?? false)
+      guard !isHiddenTab, isActivePane, !keepsFocus else { return }
       do {
         try await Task.sleep(for: .milliseconds(100))
       } catch {

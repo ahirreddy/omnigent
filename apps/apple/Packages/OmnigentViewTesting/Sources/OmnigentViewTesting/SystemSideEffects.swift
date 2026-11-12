@@ -22,6 +22,8 @@
       public var shownWindowTitles: [String] = []
       /// Messages of the alerts it tried to show.
       public var alertMessages: [String] = []
+      /// Those of them that offered a "do not ask again" checkbox.
+      public var suppressibleAlertMessages: [String] = []
       /// How many open or save panels it tried to show.
       public var panelCount = 0
       /// How many menus it tried to pop up.
@@ -197,17 +199,26 @@
 
     private static func installAlerts() {
       let run: @convention(c) (NSAlert, Selector) -> Int = { alert, _ in
-        let message = MainActor.assumeIsolated { alert.messageText }
-        Self.note { $0.alertMessages.append(message) }
+        Self.noteAlert(alert)
         return Self.state.withLock { $0.alertResponse.rawValue }
       }
       replace(NSAlert.self, "runModal", with: run)
       let sheet: AlertSheet = { alert, _, _, done in
-        let message = MainActor.assumeIsolated { alert.messageText }
-        Self.note { $0.alertMessages.append(message) }
+        Self.noteAlert(alert)
         done?(Self.state.withLock { $0.alertResponse.rawValue })
       }
       replace(NSAlert.self, "beginSheetModalForWindow:completionHandler:", with: sheet)
+    }
+
+    /// Records an alert AppKit was asked to show, on the main thread.
+    private static func noteAlert(_ alert: NSAlert) {
+      let (message, isSuppressible) = MainActor.assumeIsolated {
+        (alert.messageText, alert.showsSuppressionButton)
+      }
+      note {
+        $0.alertMessages.append(message)
+        if isSuppressible { $0.suppressibleAlertMessages.append(message) }
+      }
     }
 
     private static func installApplication() {

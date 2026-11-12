@@ -110,6 +110,9 @@ final class MacTabFlowUITests: XCTestCase {
       app.typeKey("b", modifierFlags: [.command, .option])
       let tab = live.tabs("browser", in: app).firstMatch
       XCTAssertTrue(tab.waitForExistence(timeout: 20), "Option-Command-B opened no browser tab")
+      // The browser's helpers ask to send notifications the first time they run on a machine,
+      // and their banners cover the strip's trailing tabs.
+      MacNotificationPrompts.decline(waiting: 2)
 
       tab.hover()
       live.click(live.elements(prefix: "tab-close-", in: app).firstMatch, "the close button")

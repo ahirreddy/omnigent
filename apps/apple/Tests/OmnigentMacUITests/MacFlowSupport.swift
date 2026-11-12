@@ -174,6 +174,36 @@ extension MacLiveUITestSupport {
     XCTAssertTrue(isEmpty(), "the search field kept \(search.value ?? "")", file: file, line: line)
   }
 
+  /// Starts a shell in the shown session with Option-Command-T and waits until its tab has
+  /// attached. Control-` is no way in: it shows the session's own terminal (the agent's, or the
+  /// Omnigent REPL its runner hosts) when there is one, and a shell only when there is none.
+  @discardableResult
+  func openShellTab(
+    in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line
+  ) -> XCUIElement {
+    app.typeKey("t", modifierFlags: [.command, .option])
+    XCTAssertTrue(
+      tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab",
+      file: file, line: line)
+    let surface = element("terminal-tab", in: app)
+    waitForAttachedShell(surface, in: app, file: file, line: line)
+    return surface
+  }
+
+  /// Waits for the shown shell tab to finish attaching: until then typing is dropped.
+  func waitForAttachedShell(
+    _ surface: XCUIElement, in app: XCUIApplication, file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    XCTAssertTrue(
+      surface.waitForExistence(timeout: 30), "no terminal is shown", file: file, line: line)
+    XCTAssertTrue(
+      waitUntil(timeout: 30) {
+        !text(containing: "Attaching", in: app).exists
+          && !text(containing: "Connecting", in: app).exists
+      }, "the terminal never attached", file: file, line: line)
+  }
+
   /// Quits with Command-Q, which saves windows and tabs, and waits for the app to exit.
   func quit(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
     app.typeKey("q", modifierFlags: .command)

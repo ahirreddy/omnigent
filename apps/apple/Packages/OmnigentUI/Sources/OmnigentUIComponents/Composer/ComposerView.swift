@@ -201,10 +201,13 @@ public struct ComposerView: View {
       identifier: "composer-input"
     )
     .focused($isFocused)
-    .disabled(!isEditable)
+    .locksEditor(unless: isEditable, focus: $isFocused)
     .imagePaste(isActive: isFocused) { providers in Task { await loadProviders(providers) } }
+    .shiftTabKey(isActive: isFocused) { keyboard.cycleApprovalMode() }
     .onKeyPress(.return, phases: .down) { press in keyboard.handleReturn(press) }
-    .onKeyPress(.tab, phases: .down) { press in keyboard.handleTab(press) }
+    .onKeyPress(keys: ComposerKeyboard.tabKeys, phases: .down) { press in
+      keyboard.handleTab(press)
+    }
     .onKeyPress(.escape, phases: .down) { _ in keyboard.handleEscape() }
     .onKeyPress(keys: [.upArrow, .downArrow], phases: .down) { press in
       keyboard.handleArrow(press)

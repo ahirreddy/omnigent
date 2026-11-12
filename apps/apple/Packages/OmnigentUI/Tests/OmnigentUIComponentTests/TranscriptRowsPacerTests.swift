@@ -68,6 +68,28 @@ struct TranscriptRowsPacerTests {
     #expect(pacer.rows(from: Self.reader(store)).revision == 2)
   }
 
+  @Test("Held rows stay as they are, and a release shows what changed meanwhile at once")
+  func holdsUntilReleased() async throws {
+    let store = Store()
+    let pacer = TranscriptRowsPacer(interval: .milliseconds(40))
+    store.append("first")
+    #expect(pacer.rows(from: Self.reader(store)).revision == 1)
+    pacer.hold()
+    store.append("a page")
+    store.append("another page")
+    try await Self.settle()
+    #expect(pacer.published == 0)
+    #expect(pacer.rows(from: Self.reader(store)).revision == 1)
+    pacer.release()
+    #expect(pacer.published == 1, "the release itself publishes, without waiting for a tick")
+    #expect(pacer.rows(from: Self.reader(store)).revision == 3)
+    // A release with nothing held, or nothing new, publishes nothing.
+    pacer.release()
+    pacer.hold()
+    pacer.release()
+    #expect(pacer.published == 1)
+  }
+
   @Test("A transcript that had rows takes what it missed in the turn that shows it again")
   func catchesUpInTheTurnItShows() async throws {
     let store = Store()

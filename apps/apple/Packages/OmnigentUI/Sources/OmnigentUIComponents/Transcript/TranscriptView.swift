@@ -138,8 +138,9 @@ public struct TranscriptView: View {
           loadOlder()
         }
       }
-      .onChange(of: state.isLoadingHistory) { _, isLoading in
-        if !isLoading { olderHistoryEnded(proxy) }
+      // The count too: a read that starts and ends between two renders never shows as loading.
+      .onChange(of: HistoryRead(isLoading: state.isLoadingHistory, ended: state.historyReads)) {
+        if !$1.isLoading { olderHistoryEnded(proxy) }
       }
       .onChange(of: scrollToLatestRequest) { _, _ in jumpToLatest(proxy) }
       // The reader's own send takes them to the latest, wherever they were reading.
@@ -151,6 +152,7 @@ public struct TranscriptView: View {
         follow.reset()
         scroll.sessionOpened()
         position.reset()
+        pacer.release()
         // Lazy rows size themselves after the first layout; anchor once they have.
         await Task.yield()
         await frameLatestTurn(proxy)
@@ -231,17 +233,23 @@ public struct TranscriptView: View {
     let order = layout.entries(for: shown).map(\.id)
     position.prependAnchor = order.first { position.visible.contains($0) }
     position.awaitsPage = true
+    position.topBeforePage = sourceTopRowID
     loadOlder()
   }
+
+  /// The first loaded row, read from the source: the list shows its rows a tick later.
+  private var sourceTopRowID: String? { (liveRows?.read().rows ?? state.rows).first?.id }
 
   /// Older rows landed above: put the row that was on top back at the top.
   private func holdReadingPosition(_ proxy: ScrollViewProxy) {
     scroll.firstRowChanged()
+    if position.seeksTop {
+      arriveAtTop(proxy)
+      return
+    }
     guard position.awaitsPage else { return }
     position.awaitsPage = false
-    if let anchor = position.prependAnchor, !position.seeksTop {
-      proxy.scrollTo(anchor, anchor: .top)
-    }
+    if let anchor = position.prependAnchor { proxy.scrollTo(anchor, anchor: .top) }
   }
 
   /// Jump to top pages in the rest of the history first, as the web does.
@@ -250,6 +258,8 @@ public struct TranscriptView: View {
     scroll.jumped(to: Self.topID)
     if state.hasMoreHistory, actions.loadOlder != nil {
       position.seeksTop = true
+      // The list shows the history once it is all read, not page by page above the reader.
+      pacer.hold()
       loadOlder()
     } else {
       withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
@@ -259,18 +269,23 @@ public struct TranscriptView: View {
   }
 
   /// A read of older history ended. Jump to top keeps paging while pages add rows; a failed or
-  /// empty page stops it where it is.
+  /// empty page stops it where it is. The page's rows may reach the list before or after this.
   private func olderHistoryEnded(_ proxy: ScrollViewProxy) {
-    let added = !position.awaitsPage
-    position.awaitsPage = false
-    position.prependAnchor = nil
-    guard position.seeksTop else { return }
-    if added, state.hasMoreHistory, actions.loadOlder != nil {
-      loadOlder()
-    } else {
-      position.seeksTop = false
-      proxy.scrollTo(Self.topID, anchor: .top)
+    let hasMore = state.hasMoreHistory && actions.loadOlder != nil
+    switch position.pageEnded(sourceTop: sourceTopRowID, hasMore: hasMore) {
+    case .settled: break
+    case .readNext: loadOlder()
+    case .arrive:
+      pacer.release()
+      arriveAtTop(proxy)
     }
+  }
+
+  /// Ends Jump to top at the first row, once the list shows the rows that were read.
+  private func arriveAtTop(_ proxy: ScrollViewProxy) {
+    guard position.arrivesAtTop, shown.rows.first?.id == sourceTopRowID else { return }
+    position.endSeekingTop()
+    proxy.scrollTo(Self.topID, anchor: .top)
   }
 
   /// Moves to the previous or next user message. With none above, older history loads; with

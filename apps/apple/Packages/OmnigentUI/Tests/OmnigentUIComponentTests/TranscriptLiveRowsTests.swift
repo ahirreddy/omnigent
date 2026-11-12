@@ -22,6 +22,40 @@
     }
   }
 
+  /// Rows whose changes the list is not told about, as when the pacer holds a burst for a tick.
+  @MainActor
+  private final class HeldRows {
+    private var rows: [Row]
+    private var revision: UInt64 = 1
+
+    init(_ rows: [Row]) {
+      self.rows = rows
+    }
+
+    var reader: LiveTranscriptRows {
+      LiveTranscriptRows { (rows: self.rows, revision: self.revision) }
+    }
+
+    /// Puts a page above the rows.
+    func prepend(_ page: [Row]) {
+      rows.insert(contentsOf: page, at: 0)
+      revision += 1
+    }
+
+  }
+
+  /// The transcript reading its rows apart from the conversation's paging state, as the app does.
+  private struct HeldRowsTranscript: View {
+    let conversation: LiveConversation
+    let rows: LiveTranscriptRows
+    let actions: ConversationActions
+
+    var body: some View {
+      TranscriptView(
+        state: conversation.state, liveRows: rows, actions: actions, scrollToLatestRequest: 0)
+    }
+  }
+
   @Suite("Live rows and resizing", .serialized)
   @MainActor
   struct TranscriptLiveRowsTests {
@@ -44,6 +78,45 @@
       try await letTasksRun(window, milliseconds: 200)
       #expect(try window.shows("From the live rows"))
       #expect(try !window.shows("From the state"))
+    }
+
+    @Test("Jump to top keeps paging when a page's rows reach the list after its read ends")
+    func jumpToTopWithLateRows() async throws {
+      let rows = HeldRows(TranscriptFixture.turns(6, startingAt: 10))
+      var state = ConversationViewState(header: TranscriptFixture.header, rows: [])
+      state.hasMoreHistory = true
+      let conversation = LiveConversation(state)
+      var actions = ConversationActions()
+      actions.loadOlder = { [log] in log.add("older") }
+      let window = transcriptScreen(
+        HeldRowsTranscript(conversation: conversation, rows: rows.reader, actions: actions),
+        width: 900, height: 500)
+      defer { window.close() }
+      try await letOpeningEnd(window)
+      let viewport = TranscriptScrollDriver(screen: window)
+      viewport.move(to: viewport.offset - 50)
+      log.clear()
+      try window.hover(CGPoint(x: 450, y: 40))
+      try window.click(CGPoint(x: 450, y: 22))
+      #expect(log.entries == ["older"])
+
+      // The read ends while the list still shows the rows from before the page.
+      conversation.state.isLoadingHistory = true
+      try await letTasksRun(window)
+      rows.prepend(TranscriptFixture.turns(1, startingAt: 5))
+      conversation.state.isLoadingHistory = false
+      try await letTasksRun(window)
+      #expect(log.entries == ["older", "older"])
+
+      // The last page, read between two renders, so the transcript never sees it loading:
+      // the list takes all that was read, and the jump ends at its top.
+      rows.prepend(TranscriptFixture.turns(1, startingAt: 2))
+      conversation.state.hasMoreHistory = false
+      conversation.state.historyReads += 1
+      try await letTasksRun(window, milliseconds: 300)
+      #expect(log.entries.count == 2)
+      #expect(viewport.offset < 30)
+      #expect(try window.shows("Question 2"))
     }
 
     @Test("Resizing while reading earlier keeps the reader on what they were reading")

@@ -165,6 +165,16 @@
       #expect(server.value == "two")
     }
 
+    @Test("the panes leave the window's toolbar and title to the Settings tabs")
+    func leavesTheWindowsToolbarAlone() async throws {
+      pane.value = .git
+      let screen = screen(state())
+      defer { screen.close() }
+      try await screen.letTasksRun()
+      #expect(screen.window.toolbar?.items.isEmpty ?? true)
+      #expect(screen.window.title != ServerSettingsPane.git.title)
+    }
+
     @Test("without a binding the view keeps its own pane")
     func localPane() async throws {
       SystemSideEffects.reset()

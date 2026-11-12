@@ -55,8 +55,9 @@ final class MacWorkflowUITests: XCTestCase {
     }
   #endif
 
-  /// Control-` starts the session's shell in a tab; typed input reaches it, and its command runs
-  /// on the session's machine (it writes a file the test reads back).
+  /// Option-Command-T starts a shell in a tab; typed input reaches it, and its command runs on
+  /// the session's machine (it writes a file the test reads back). Control-` then goes to the
+  /// chat, from the chat to the session's terminal, and back.
   @MainActor
   func testTerminalTabRunsACommand() throws {
     let live = MacLiveUITestSupport(self)
@@ -69,46 +70,57 @@ final class MacWorkflowUITests: XCTestCase {
     defer { app.terminate() }
     live.open(session, in: app)
 
-    app.typeKey("`", modifierFlags: .control)
-    XCTAssertTrue(
-      live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
-    let surface = live.element("terminal-tab", in: app)
-    live.click(surface, "the terminal", timeout: 30)
-    XCTAssertTrue(
-      live.waitUntil(timeout: 30) { !live.element("terminal-starting", in: app).exists },
-      "the terminal never started")
+    let surface = live.openShellTab(in: app)
+    surface.click()
     app.typeText("echo terminal-ok > '\(marker.path)'\r")
     XCTAssertTrue(
       live.waitUntil(timeout: 30) { FileManager.default.fileExists(atPath: marker.path) },
       "the command did not run (no \(marker.lastPathComponent))")
     XCTAssertEqual(try String(contentsOf: marker, encoding: .utf8), "terminal-ok\n")
     live.assertRunning(app, "after the command")
+    live.shot(app, "terminal")
 
-    // Back to the chat and to the terminal again: the same shell, not a new one.
+    // From the shell to the chat, and on to the session's terminal: its own in the chat's
+    // Terminal view (the Omnigent REPL, once its runner hosts one), else its first shell, which
+    // an earlier flow may have left running.
     app.typeKey("`", modifierFlags: .control)
     XCTAssertTrue(live.element("transcript-\(session)", in: app).waitForExistence(timeout: 10))
     app.typeKey("`", modifierFlags: .control)
-    XCTAssertTrue(surface.waitForExistence(timeout: 10), "the terminal did not come back")
-    XCTAssertEqual(live.tabs("terminal", in: app).count, 1, "toggling opened a second terminal")
+    let ownTerminal = live.element("session-terminal", in: app)
+    XCTAssertTrue(
+      live.waitUntil(timeout: 30) { ownTerminal.exists || (surface.exists && surface.isHittable) },
+      "Control-` showed no terminal\n\(app.debugDescription)")
+    if ownTerminal.exists {
+      XCTAssertEqual(live.tabs("terminal", in: app).count, 1, "its own terminal opened a shell")
+    }
+    live.shot(app, "terminal-from-chat")
+    app.typeKey("`", modifierFlags: .control)
+    XCTAssertTrue(
+      live.waitUntil(timeout: 10) {
+        !ownTerminal.exists && !(surface.exists && surface.isHittable)
+          && live.element("transcript-\(session)", in: app).exists
+      }, "Control-` did not come back to the chat")
     live.assertRunning(app, "after toggling the terminal")
-    live.shot(app, "terminal")
   }
 
-  /// In a transcript of hundreds of turns, Jump to the first message pages in the older history
-  /// and lands on the first message in one step. Reaching it by scrolling takes minutes of
-  /// wheel events, so paging while scrolling is left to the package tests.
+  /// In a transcript of several pages, Jump to the first message pages in the older history
+  /// and lands on the first message in one step. The session has a few pages, not hundreds of
+  /// turns: UI automation reads every row of a transcript, and times out on thousands.
   @MainActor
   func testJumpReachesTheFirstMessageOfALongTranscript() throws {
     let live = MacLiveUITestSupport(self)
-    let session = try live.longSession()
+    let session = try live.pagedSession()
     let app = live.launch()
     defer { app.terminate() }
     live.open(session, in: app)
-    // The scroll view itself: the transcript's identifier is also on the buttons over it.
-    let transcript = app.scrollViews["transcript-\(session)"].firstMatch
-    XCTAssertTrue(transcript.waitForExistence(timeout: 10), "no transcript to scroll")
-    // The long seed's first user message.
-    let first = live.text(containing: "(step 0).", in: app)
+    // The scroll view itself, the widest one: the transcript's identifier is also on the buttons
+    // over it and on the turn rail, a narrow scroll view at its leading edge.
+    let scrollViews = app.scrollViews.matching(identifier: "transcript-\(session)")
+    XCTAssertTrue(scrollViews.firstMatch.waitForExistence(timeout: 10), "no transcript to scroll")
+    let transcript = try XCTUnwrap(
+      scrollViews.allElementsBoundByIndex.max { $0.frame.width < $1.frame.width })
+    // The seed's first user message: its turns count from 1.
+    let first = live.text(containing: "(step 1).", in: app)
     XCTAssertFalse(first.exists, "the transcript opened at its first message")
 
     // The button shows once the transcript has left its end.
@@ -129,11 +141,7 @@ final class MacWorkflowUITests: XCTestCase {
     let app = live.launch()
     defer { app.terminate() }
     live.open(session, in: app)
-    if MacLiveUITestSupport.hostHasTmux {
-      app.typeKey("`", modifierFlags: .control)
-      XCTAssertTrue(
-        live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
-    }
+    if MacLiveUITestSupport.hostHasTmux { live.openShellTab(in: app) }
     #if OMNIGENT_CHROMIUM
       app.typeKey("b", modifierFlags: [.command, .option])
       XCTAssertTrue(
@@ -167,9 +175,7 @@ final class MacWorkflowUITests: XCTestCase {
     resizeThroughWidths(window, live, app, "chat")
 
     if MacLiveUITestSupport.hostHasTmux {
-      app.typeKey("`", modifierFlags: .control)
-      XCTAssertTrue(
-        live.element("terminal-tab", in: app).waitForExistence(timeout: 30), "no terminal")
+      live.openShellTab(in: app)
       resizeThroughWidths(window, live, app, "terminal")
     }
 

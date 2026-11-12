@@ -41,6 +41,11 @@ public struct ServerSettingsView: View {
 
   private var pane: Binding<ServerSettingsPane?> { selectedPane ?? $localPane }
 
+  #if os(macOS)
+    /// The pane list's width in the Mac Settings window.
+    static let paneListWidth: CGFloat = 200
+  #endif
+
   private var shownPane: ServerSettingsPane? {
     pane.wrappedValue.flatMap { state.panes.contains($0) ? $0 : nil } ?? state.panes.first
   }
@@ -55,19 +60,22 @@ public struct ServerSettingsView: View {
   }
 
   #if os(macOS)
+    /// Two columns side by side, not a `NavigationSplitView`: that one puts its own items in
+    /// the Settings window's toolbar, which then folds a tab away and stops switching tabs.
     private var splitLayout: some View {
-      NavigationSplitView {
+      HStack(spacing: 0) {
         List(selection: pane) {
           paneSections { Label($0.title, systemImage: $0.systemImage).tag($0) }
         }
+        .listStyle(.sidebar)
         .safeAreaInset(edge: .top, spacing: 0) {
           serverPicker
             .labelsHidden()
             .padding(Theme.Spacing.medium)
         }
-        .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-      } detail: {
-        paneForm(shownPane)
+        .frame(width: Self.paneListWidth)
+        Divider()
+        paneForm(shownPane).frame(maxWidth: .infinity, maxHeight: .infinity)
       }
       .frame(minWidth: 720, minHeight: 480)
       .accessibilityElement(children: .contain)
@@ -141,8 +149,8 @@ public struct ServerSettingsView: View {
   /// One pane's form, loading its data when the server or the pane changes.
   private func paneForm(_ pane: ServerSettingsPane?) -> some View {
     paneBody(pane)
-      .navigationTitle(pane?.title ?? "Server Settings")
       #if os(iOS)
+        .navigationTitle(pane?.title ?? "Server Settings")
         .navigationBarTitleDisplayMode(.inline)
       #endif
       .task(id: LoadKey(server: selectedServer, pane: pane)) {

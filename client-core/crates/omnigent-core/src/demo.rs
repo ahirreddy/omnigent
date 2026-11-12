@@ -610,13 +610,10 @@ impl DemoTransport {
             ) => state.find(id).map(|_| (200, json!({"entries": []}))),
             ("GET", ["v1", "hosts"]) => Ok((200, hosts())),
             ("GET", ["v1", "agents"]) => Ok((200, agents())),
-            ("GET", ["v1", "hosts", DEMO_HOST_ID, "filesystem"]) => Ok((
-                200,
-                json!({"data": [
-                    {"name": "demo", "path": "/demo", "type": "directory"},
-                    {"name": "notes.txt", "path": "/demo-notes.txt", "type": "file"},
-                ], "has_more": false}),
-            )),
+            ("GET", ["v1", "agents", id]) => agent(id),
+            ("GET", ["v1", "hosts", DEMO_HOST_ID, "filesystem", directory @ ..]) => {
+                demo_directory(directory)
+            }
             ("GET", ["v1", "hosts", DEMO_HOST_ID, "harnesses", _, "model-options"]) => Ok((
                 200,
                 json!({"models": demo_models().iter().map(ModelChoice::to_value).collect::<Vec<_>>()}),
@@ -635,6 +632,23 @@ impl HttpTransport for DemoTransport {
     }
 }
 
+/// The demo host's folders: its home is `/`, which holds the `/demo` workspace (empty) and a
+/// file. The folder browser asks for the home (no path), for `/` (an empty last segment) and
+/// for the folders it is shown.
+fn demo_directory(directory: &[&str]) -> Routed {
+    match directory {
+        [] | [""] => Ok((
+            200,
+            json!({"data": [
+                {"name": "demo", "path": "/demo", "type": "directory"},
+                {"name": "notes.txt", "path": "/demo-notes.txt", "type": "file"},
+            ], "has_more": false}),
+        )),
+        ["demo"] => Ok((200, json!({"data": [], "has_more": false}))),
+        _ => Err(Reject(404, "Not Found")),
+    }
+}
+
 fn hosts() -> Value {
     json!({"hosts": [{
         "host_id": DEMO_HOST_ID,
@@ -644,12 +658,22 @@ fn hosts() -> Value {
     }]})
 }
 
+fn agent_value(agent: &HarnessChoice) -> Value {
+    json!({"id": agent.id, "name": agent.name, "harness": agent.harness, "builtin": true})
+}
+
 fn agents() -> Value {
-    let data: Vec<Value> = demo_agents()
-        .iter()
-        .map(|agent| json!({"id": agent.id, "name": agent.name, "harness": agent.harness, "builtin": true}))
-        .collect();
+    let data: Vec<Value> = demo_agents().iter().map(agent_value).collect();
     json!({"data": data, "has_more": false})
+}
+
+/// One sample agent, which a session reads for its Agent info. The samples declare no tools.
+fn agent(id: &str) -> Routed {
+    demo_agents()
+        .iter()
+        .find(|agent| agent.id == id)
+        .map(|agent| (200, agent_value(agent)))
+        .ok_or(Reject(404, "Not Found"))
 }
 
 /// Gives a session saved before configuration existed the demo configuration.

@@ -28,6 +28,7 @@ final class TranscriptRowsPacer {
   @ObservationIgnored private var reader: LiveTranscriptRows?
   @ObservationIgnored private var isShown = true
   @ObservationIgnored private var isStale = false
+  @ObservationIgnored private var isHeld = false
   @ObservationIgnored private var lastPublished: ContinuousClock.Instant?
   @ObservationIgnored private var pending: Task<Void, Never>?
   @ObservationIgnored private let interval: Duration
@@ -74,6 +75,22 @@ final class TranscriptRowsPacer {
     publish()
   }
 
+  /// Keeps the rows as they are until ``release()``: Jump to top reads the rest of the history
+  /// page by page, and the list lays it out once, not once per page above the reader.
+  func hold() {
+    isHeld = true
+  }
+
+  /// Ends ``hold()`` and shows what changed meanwhile, in this pass.
+  func release() {
+    guard isHeld else { return }
+    isHeld = false
+    guard isShown, isStale || hasUnreadRevision else { return }
+    isStale = false
+    pending?.cancel()
+    publish()
+  }
+
   /// The rows changed since the last update, whether or not the change's notice has run yet.
   private var hasUnreadRevision: Bool {
     guard let reader else { return false }
@@ -90,7 +107,7 @@ final class TranscriptRowsPacer {
   }
 
   private func rowsChanged() {
-    guard isShown else {
+    guard isShown, !isHeld else {
       isStale = true
       return
     }
@@ -118,7 +135,7 @@ final class TranscriptRowsPacer {
   private func publish() {
     pending = nil
     guard let reader else { return }
-    guard isShown else {
+    guard isShown, !isHeld else {
       isStale = true
       return
     }

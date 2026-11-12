@@ -184,9 +184,7 @@ public struct SidebarView: View {
         // After the controls: the list's disclosure arrow takes the trailing edge on hover.
         Spacer()
       }
-      .labelStyle(.iconOnly)
-      .buttonStyle(.borderless)
-      .foregroundStyle(.secondary)
+      .sidebarHeaderControls()
       .sidebarDropTarget { item in drop(item, on: dropHandler.sectionTarget(section)) }
     }
   }

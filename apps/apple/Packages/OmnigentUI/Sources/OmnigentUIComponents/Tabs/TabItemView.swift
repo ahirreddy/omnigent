@@ -46,6 +46,8 @@ struct TabItemView: View {
   var isVisibleInOtherPane = false
   /// The window is split, for the context menu's pane items.
   var isSplit = false
+  /// The tab sits in the titlebar, where the toolbar would answer a secondary click itself.
+  var isInTitlebar = false
 
   @State private var isHovered = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -88,10 +90,10 @@ struct TabItemView: View {
     .animation(reduceMotion ? nil : Theme.Motion.feedback, value: isHovered)
     .onTapGesture { actions.select(tab.id) }
     .accessibilityAddTraits(.isButton)
-    .contextMenu {
-      TabContextMenu(
-        tab: tab, actions: actions, canCloseToRight: canCloseToRight, isSplit: isSplit)
-    }
+    .contextMenu { menuItems }
+    #if os(macOS)
+      .background { if isInTitlebar { TitlebarTabMenu { menuItems } } }
+    #endif
     .help(help)
     .accessibilityElement(children: .contain)
     .accessibilityLabel(tab.displayTitle)
@@ -103,6 +105,10 @@ struct TabItemView: View {
       // iPad: drag a tab onto either half of the content to show it in that pane.
       .draggable(TabDropPayload.text(for: tab.id))
     #endif
+  }
+
+  private var menuItems: TabContextMenu {
+    TabContextMenu(tab: tab, actions: actions, canCloseToRight: canCloseToRight, isSplit: isSplit)
   }
 
   private var audioMark: some View {

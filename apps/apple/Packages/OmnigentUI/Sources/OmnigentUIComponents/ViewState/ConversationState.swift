@@ -20,6 +20,8 @@ nonisolated public struct ConversationViewState: Hashable, Sendable {
   public var hasMoreHistory: Bool
   /// A page of older history is loading.
   public var isLoadingHistory: Bool
+  /// Counts the reads of older history that ended; one can start and end between two renders.
+  public var historyReads = 0
   /// The first read of the conversation is in flight: no row is known yet to be all there is.
   public var isHydrating = false
   /// How many messages and commands the user has sent from here. A new one takes the transcript

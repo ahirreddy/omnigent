@@ -55,6 +55,10 @@ final class AppServices {
   /// Why automatic updates are off, when the updater could not start.
   var updaterIssue: String?
   @ObservationIgnored private var notificationAuthorizationRequested = false
+  /// UI tests and screenshot runs launch with this argument to keep the permission banner,
+  /// which covers the window's corner, off the screen.
+  static let noNotificationPromptArgument = "-OmnigentNoNotificationPrompt"
+  @ObservationIgnored private let asksForNotifications: Bool
   @ObservationIgnored private let flushDrafts: () -> Void
   @ObservationIgnored private let notificationPermission: any NotificationAuthorizing
   @ObservationIgnored private let isDemo: Bool
@@ -88,6 +92,7 @@ final class AppServices {
       .standardTabs
   ) {
     isDemo = launchArguments.contains("-OmnigentDemo")
+    asksForNotifications = !launchArguments.contains(Self.noNotificationPromptArgument)
     self.makeDemoSession = makeDemoSession
     self.desktop = desktop
     self.flushDrafts = flushDrafts
@@ -246,6 +251,14 @@ final class AppServices {
     desktop.router.open(.conversation(sessionID: session), onServer: server)
   }
 
+  /// Opens a conversation in a new window on its server, whatever windows already show it.
+  /// - Parameters:
+  ///   - server: The server.
+  ///   - session: The conversation.
+  func openSessionInNewWindow(on server: URL, session: String) {
+    desktop.router.openInNewWindow(.conversation(sessionID: session), onServer: server)
+  }
+
   /// Records a successful connection and, the first time, asks for notification permission:
   /// the moment the app has something to notify about.
   /// - Parameter serverURL: The server the window connected to.
@@ -255,9 +268,9 @@ final class AppServices {
   }
 
   private func requestNotificationAuthorizationIfNeeded() async {
-    guard !notificationAuthorizationRequested, DesktopNotificationCenter.isAvailable else {
-      return
-    }
+    guard asksForNotifications, !notificationAuthorizationRequested,
+      DesktopNotificationCenter.isAvailable
+    else { return }
     notificationAuthorizationRequested = true
     do {
       try await notificationPermission.refreshAuthorization()

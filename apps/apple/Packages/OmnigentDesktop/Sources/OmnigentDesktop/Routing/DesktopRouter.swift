@@ -11,6 +11,7 @@ public final class DesktopRouter {
   enum Request {
     case link(OmnigentDeepLink)
     case trusted(DeepLinkRoute, serverURL: URL, origin: ServerOrigin)
+    case newWindow(DeepLinkRoute, serverURL: URL)
   }
 
   /// Servers the user connected to before: the default and recent servers, and typically the
@@ -88,6 +89,16 @@ public final class DesktopRouter {
     drain()
   }
 
+  /// Opens a route in a new window on a server the app already trusts, even while another
+  /// window shows that server: the user asked for a window, not for the route.
+  /// - Parameters:
+  ///   - route: The destination.
+  ///   - serverURL: The full server URL including any workspace mount.
+  public func openInNewWindow(_ route: DeepLinkRoute, onServer serverURL: URL) {
+    queue.append(.newWindow(route, serverURL: serverURL))
+    drain()
+  }
+
   private func drain() {
     guard drainTask == nil, !queue.isEmpty else { return }
     guard openWindow != nil else {
@@ -126,7 +137,7 @@ public final class DesktopRouter {
   private func knownServerURL(for request: Request) -> URL? {
     switch request {
     case .link(let link): knownServerURLs()[link.origin]
-    case .trusted(_, let serverURL, _): serverURL
+    case .trusted(_, let serverURL, _), .newWindow(_, let serverURL): serverURL
     }
   }
 
@@ -147,6 +158,8 @@ public final class DesktopRouter {
       await route(link.route, origin: link.origin, trustedURL: nil)
     case .trusted(let route, let serverURL, let origin):
       await self.route(route, origin: origin, trustedURL: serverURL)
+    case .newWindow(let route, let serverURL):
+      openNewWindow(serverURL, route: route)
     }
   }
 

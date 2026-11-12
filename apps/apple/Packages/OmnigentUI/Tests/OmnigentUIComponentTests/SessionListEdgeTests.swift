@@ -324,6 +324,12 @@
       #expect(screen.firstTextField == nil)
     }
 
+    @Test("A row reads as one element, and its parts apart while its title is edited in place")
+    func renameFieldIsReachable() {
+      #expect(SessionRow.accessibilityChildren(isRenaming: false) == .combine)
+      #expect(SessionRow.accessibilityChildren(isRenaming: true) == .contain)
+    }
+
     @Test("The selected row has a fill of its own, outlined under Increase Contrast")
     func selectionBackground() throws {
       let plain = try RenderSupport.picture(

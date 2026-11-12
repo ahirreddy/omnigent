@@ -62,19 +62,13 @@ struct TitlebarTabs: ViewModifier {
   private func toolbar(_ tabs: (() -> TabStripContent)?, showsStrip: Bool) -> some ToolbarContent {
     if let tabs {
       if showsStrip {
-        ToolbarItem(placement: .navigation) {
-          TitlebarTabStrip(tabs: tabs, space: space, isSidebarHidden: isSidebarHidden)
+        // Two branches with the same items: changing branch makes them new items, which the
+        // toolbar fits again (see `TitlebarStripAnchorView`).
+        if space.stripOffer.isMultiple(of: 2) {
+          stripItems(tabs)
+        } else {
+          stripItems(tabs)
         }
-        .sharedBackgroundVisibility(.hidden)
-        ToolbarSpacer(.flexible)
-        // New Tab sits by the trailing items, not wherever the tabs end.
-        ToolbarItem(placement: .primaryAction) {
-          ObservationScope("tab controls") {
-            let tabs = tabs()
-            TabStripControls(state: tabs.state, actions: tabs.actions)
-          }
-        }
-        .sharedBackgroundVisibility(.hidden)
       } else {
         ToolbarItem(placement: Self.switcherPlacement) {
           ObservationScope("tab switcher") {
@@ -84,6 +78,24 @@ struct TitlebarTabs: ViewModifier {
         }
       }
     }
+  }
+
+  /// The strip, then New Tab and the overview menu by the trailing items.
+  @ToolbarContentBuilder
+  private func stripItems(_ tabs: @escaping () -> TabStripContent) -> some ToolbarContent {
+    ToolbarItem(placement: .navigation) {
+      TitlebarTabStrip(tabs: tabs, space: space, isSidebarHidden: isSidebarHidden)
+    }
+    .sharedBackgroundVisibility(.hidden)
+    ToolbarSpacer(.flexible)
+    // New Tab sits by the trailing items, not wherever the tabs end.
+    ToolbarItem(placement: .primaryAction) {
+      ObservationScope("tab controls") {
+        let tabs = tabs()
+        TabStripControls(state: tabs.state, actions: tabs.actions)
+      }
+    }
+    .sharedBackgroundVisibility(.hidden)
   }
 
   /// Compact widths: beside the back button, where the bar never folds it into its overflow.

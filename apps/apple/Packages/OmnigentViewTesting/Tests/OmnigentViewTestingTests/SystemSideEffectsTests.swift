@@ -120,6 +120,10 @@
       #expect(NSOpenPanel().runModal() == .OK)
       #expect(NSSavePanel().runModal() == .OK)
       #expect(SystemSideEffects.record.alertMessages == ["Delete?", "Delete?"])
+      #expect(SystemSideEffects.record.suppressibleAlertMessages.isEmpty)
+      alert.showsSuppressionButton = true
+      _ = alert.runModal()
+      #expect(SystemSideEffects.record.suppressibleAlertMessages == ["Delete?"])
       #expect(SystemSideEffects.record.panelCount == 2)
       SystemSideEffects.reset()
       #expect(NSOpenPanel().runModal() == .cancel)

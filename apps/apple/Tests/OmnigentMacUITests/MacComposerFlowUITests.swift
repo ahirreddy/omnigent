@@ -200,7 +200,12 @@ final class MacComposerFlowUITests: XCTestCase {
     defer { app.terminate() }
     live.startIdleDemoSession(in: app)
     let chip = live.element("composer-approval-mode", in: app)
-    XCTAssertTrue(chip.waitForExistence(timeout: 10), "no mode chip")
+    // A new session reports no mode yet, and Shift-Tab only moves on from a known one.
+    live.click(chip, "the mode chip")
+    live.clickMenuItem("Auto-edit", in: app)
+    XCTAssertTrue(
+      live.waitUntil(timeout: 15) { chip.label.contains("Auto-edit") },
+      "the chip still says \(chip.label)")
     let before = chip.label
 
     live.click(live.composer(in: app), "the composer")

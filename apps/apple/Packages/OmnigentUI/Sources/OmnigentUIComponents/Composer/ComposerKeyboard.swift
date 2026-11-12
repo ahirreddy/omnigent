@@ -79,18 +79,29 @@ struct ComposerKeyboard {
     return .handled
   }
 
-  func handleTab(_ press: KeyPress) -> KeyPress.Result {
-    if press.modifiers.contains(.shift), let modes = state.approvalModes, let next = modes.next,
+  /// What a keyboard sends for Shift-Tab: the backtab character, not a tab with Shift held.
+  static let backtab = KeyEquivalent("\u{19}")
+  /// The keys ``handleTab(_:)`` answers.
+  static let tabKeys: Set<KeyEquivalent> = [.tab, backtab]
+
+  /// Shift-Tab: moves to the next approval mode and says which.
+  /// - Returns: Whether there was a mode to move to.
+  func cycleApprovalMode() -> Bool {
+    guard let modes = state.approvalModes, let next = modes.next,
       let select = actions.extras.selectApprovalMode
-    {
-      select(next)
-      modeHUD = next
-      AccessibilityNotification.Announcement(
-        "Approval mode \(next.label)\(next.detail.map { ", \($0)" } ?? "")"
-      ).post()
-      return .handled
-    }
-    if !press.modifiers.contains(.shift), let item = completions.item(at: highlighted) {
+    else { return false }
+    select(next)
+    modeHUD = next
+    AccessibilityNotification.Announcement(
+      "Approval mode \(next.label)\(next.detail.map { ", \($0)" } ?? "")"
+    ).post()
+    return true
+  }
+
+  func handleTab(_ press: KeyPress) -> KeyPress.Result {
+    let isShiftTab = press.key == Self.backtab || press.modifiers.contains(.shift)
+    if isShiftTab, cycleApprovalMode() { return .handled }
+    if !isShiftTab, let item = completions.item(at: highlighted) {
       attach(item)
       return .handled
     }

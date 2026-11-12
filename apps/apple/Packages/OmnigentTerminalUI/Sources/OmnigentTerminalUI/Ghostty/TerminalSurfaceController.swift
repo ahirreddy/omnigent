@@ -90,6 +90,11 @@ public final class TerminalSurfaceController {
   @ObservationIgnored private(set) var surface: ghostty_surface_t?
   @ObservationIgnored private let sink: SurfaceInputSink
   @ObservationIgnored private var tasks: [Task<Void, Never>] = []
+  /// Output held until the view reports its first size (see `show`).
+  @ObservationIgnored private var outputBeforeFirstSize: [UInt8] = []
+  /// How much output waits for a size. Past it the view is not coming soon, and the output is
+  /// parsed as it is rather than kept growing.
+  @ObservationIgnored var heldOutputLimit = 16 << 20
   #if os(macOS)
     /// The view the surface renders into.
     @ObservationIgnored let view: TerminalSurfaceNSView
@@ -211,14 +216,33 @@ public final class TerminalSurfaceController {
   func render(_ item: TerminalOutput) {
     switch item {
     case .bytes(let bytes):
-      feed(bytes)
+      show(bytes)
     case .resetScreen:
       // RIS: drop the old screen, scrollback and modes. The next bytes are the server's seed of
       // the current screen.
-      feed([0x1B, UInt8(ascii: "c")])
+      show([0x1B, UInt8(ascii: "c")])
     case .clipboardWrite(let text):
       remoteCopied(text)
     }
+  }
+
+  /// Parses remote output once the surface has a size. The server's seed of the screen can
+  /// arrive before the view is laid out, and a screen parsed then stays blank after the first
+  /// size. Later output queues behind what is still held, so the order is kept.
+  private func show(_ bytes: [UInt8]) {
+    guard gridSize != nil, outputBeforeFirstSize.isEmpty else {
+      outputBeforeFirstSize.append(contentsOf: bytes)
+      if outputBeforeFirstSize.count > heldOutputLimit { showHeldOutput() }
+      return
+    }
+    feed(bytes)
+  }
+
+  /// Parses what waited for the first size.
+  private func showHeldOutput() {
+    let held = outputBeforeFirstSize
+    outputBeforeFirstSize = []
+    feed(held)
   }
 
   /// Parses and renders remote output.
@@ -253,6 +277,10 @@ public final class TerminalSurfaceController {
       grid != gridSize
     else { return }
     gridSize = grid
+    if !outputBeforeFirstSize.isEmpty {
+      // On its own turn: this runs during layout, and parsing drains libghostty's callbacks.
+      Task { [weak self] in self?.showHeldOutput() }
+    }
     connection.resize(grid)
     view.requestRender()
   }

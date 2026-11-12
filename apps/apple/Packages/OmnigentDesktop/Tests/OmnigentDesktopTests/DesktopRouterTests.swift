@@ -105,6 +105,24 @@ struct DesktopRouterTests {
     #expect(harness.consentRequests.isEmpty)
   }
 
+  @Test("an explicit new window opens beside a ready window on the same server")
+  func newWindowBesideAReadyOne() async throws {
+    let harness = Harness()
+    let server = try url("https://ws.example.com/ml/omnigents")
+    let window = ServerWindowID.newWindow(serverURL: server)
+    harness.registry.update(window, isReady: true, viewedSessionID: nil, unreadCount: 0)
+    harness.registry.setKey(window.instance, isKey: true)
+    harness.attach()
+    harness.router.openInNewWindow(.conversation(sessionID: "c9"), onServer: server)
+    await harness.router.drainTask?.value
+    let opened = try #require(harness.opened.first)
+    #expect(harness.opened.count == 1)
+    #expect(opened.instance != window.instance)
+    #expect(opened.serverURL == server)
+    #expect(harness.registry.pendingRoute(for: opened.instance) == .conversation(sessionID: "c9"))
+    #expect(harness.registry.pendingRoute(for: window.instance) == nil)
+  }
+
   @Test("opens a known server with its recorded mount path")
   func knownServer() async throws {
     let harness = Harness(known: [

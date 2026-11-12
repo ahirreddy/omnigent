@@ -179,6 +179,29 @@
       #expect(log.entries.count <= 2)
     }
 
+    @Test("A read of older history that ends tells Jump to top to read on, arrive or do nothing")
+    func pageOutcomes() {
+      let position = TranscriptReadingPosition()
+      position.topBeforePage = "row-9"
+      position.awaitsPage = true
+      // No jump under way: rows that landed leave the wait to the list, an empty page ends it.
+      #expect(position.pageEnded(sourceTop: "row-5", hasMore: true) == .settled)
+      #expect(position.awaitsPage)
+      #expect(position.pageEnded(sourceTop: "row-9", hasMore: true) == .settled)
+      #expect(!position.awaitsPage)
+
+      position.seeksTop = true
+      #expect(position.pageEnded(sourceTop: "row-5", hasMore: true) == .readNext)
+      #expect(!position.arrivesAtTop)
+      #expect(position.pageEnded(sourceTop: "row-5", hasMore: false) == .arrive)
+      #expect(position.arrivesAtTop)
+      position.endSeekingTop()
+      position.seeksTop = true
+      #expect(position.pageEnded(sourceTop: "row-9", hasMore: true) == .arrive)
+      position.reset()
+      #expect(!position.seeksTop && !position.arrivesAtTop && position.topBeforePage == nil)
+    }
+
     @Test("What counts as being at the top, and what a scroll does to the pill")
     func scrollTopRules() {
       #expect(ScrollTopReveal.isAtTop(1, wasAtTop: false))

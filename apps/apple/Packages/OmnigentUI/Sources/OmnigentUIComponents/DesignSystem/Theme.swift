@@ -145,7 +145,11 @@ struct CardSurface: ViewModifier {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
           .strokeBorder(
             contrast == .increased ? ThemeColor.border : (stroke ?? ThemeColor.border),
-            lineWidth: contrast == .increased ? 1.5 : 0.5)
+            lineWidth: contrast == .increased ? 1.5 : 0.5
+          )
+          // The border is drawn over the card's controls; on the card's center line it would
+          // otherwise take a click meant for one of them.
+          .allowsHitTesting(false)
       }
   }
 }

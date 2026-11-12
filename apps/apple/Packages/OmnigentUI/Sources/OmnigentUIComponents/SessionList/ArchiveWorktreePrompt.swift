@@ -71,7 +71,13 @@ private struct ArchiveWorktreePrompt: ViewModifier {
   private var isPlural: Bool { (request?.worktreeSessionIDs.count ?? 0) > 1 }
 
   func body(content: Content) -> some View {
-    content.confirmationDialog(
+    // The dialog hangs off a view of its own: the suppression toggle goes on every dialog and
+    // alert inside the view it modifies, and the content has others (Rename, Delete).
+    content.background { dialog(on: Color.clear) }
+  }
+
+  private func dialog(on anchor: some View) -> some View {
+    anchor.confirmationDialog(
       isPlural ? "Also delete the worktrees?" : "Also delete the worktree?",
       isPresented: Binding(get: { request != nil }, set: { if !$0 { request = nil } }),
       titleVisibility: .visible, presenting: request

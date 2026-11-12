@@ -49,7 +49,7 @@ final class MacTerminalFlowUITests: XCTestCase {
   }
 
   /// A new shell takes the keyboard: typing reaches it without a click, and again after
-  /// switching to the chat and back with Control-`.
+  /// switching to the chat (Control-`) and back to the shell's tab (Command-2).
   @MainActor
   func testANewTerminalTakesTheKeyboard() throws {
     let live = MacLiveUITestSupport(self)
@@ -65,25 +65,21 @@ final class MacTerminalFlowUITests: XCTestCase {
     defer { app.terminate() }
     live.open(session, in: app)
 
-    app.typeKey("t", modifierFlags: [.command, .option])
+    let surface = live.openShellTab(in: app)
     typesWithoutAClick(into: opened, live: live, app: app)
     app.typeKey("`", modifierFlags: .control)
     XCTAssertTrue(live.element("transcript-\(session)", in: app).waitForExistence(timeout: 10))
-    app.typeKey("`", modifierFlags: .control)
+    // Not Control-` again: from the chat it shows the session's own terminal, not this shell.
+    app.typeKey("2", modifierFlags: .command)
+    live.waitForAttachedShell(surface, in: app)
     typesWithoutAClick(into: shownAgain, live: live, app: app)
   }
 
-  /// Once the shown terminal attaches, types a command that writes `marker` and waits for it.
+  /// Types a command that writes `marker` into the shown terminal, and waits for the file.
   @MainActor
   private func typesWithoutAClick(
     into marker: URL, live: MacLiveUITestSupport, app: XCUIApplication
   ) {
-    XCTAssertTrue(live.element("terminal-tab", in: app).waitForExistence(timeout: 30))
-    XCTAssertTrue(
-      live.waitUntil(timeout: 30) {
-        !live.text(containing: "Attaching", in: app).exists
-          && !live.text(containing: "Connecting", in: app).exists
-      }, "the terminal never attached")
     app.typeText("echo focused > '\(marker.path)'\r")
     XCTAssertTrue(
       live.waitUntil(timeout: 30) { FileManager.default.fileExists(atPath: marker.path) },
@@ -152,13 +148,7 @@ final class MacTerminalFlowUITests: XCTestCase {
     let session = try live.fixtureSession()
     let app = live.launch()
     live.open(session, in: app)
-    app.typeKey("t", modifierFlags: [.command, .option])
-    XCTAssertTrue(
-      live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
-    live.click(live.element("terminal-tab", in: app), "the terminal", timeout: 30)
-    XCTAssertTrue(
-      live.waitUntil(timeout: 30) { !live.element("terminal-starting", in: app).exists },
-      "the terminal never started")
+    live.openShellTab(in: app).click()
     return app
   }
 }

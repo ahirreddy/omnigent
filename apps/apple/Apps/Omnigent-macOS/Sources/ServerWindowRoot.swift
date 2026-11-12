@@ -308,7 +308,7 @@ struct ServerWindowRoot: View {
 
   func openNewWindow(on sessionID: String) {
     guard let serverURL = id.serverURL else { return }
-    services.openSession(on: serverURL, session: sessionID)
+    services.openSessionInNewWindow(on: serverURL, session: sessionID)
   }
 
   /// Whether the core is signed in to the window's server.

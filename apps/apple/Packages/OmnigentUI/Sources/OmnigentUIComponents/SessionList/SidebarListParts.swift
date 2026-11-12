@@ -292,3 +292,12 @@ struct SessionsHeaderButtons: View {
       .accessibilityIdentifier("toggle-selection-mode")
   }
 }
+
+extension View {
+  /// A section header's title and controls: icon-only borderless buttons in the muted ink.
+  func sidebarHeaderControls() -> some View {
+    labelStyle(.iconOnly)
+      .buttonStyle(.borderless)
+      .foregroundStyle(.secondary)
+  }
+}

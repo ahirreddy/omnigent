@@ -62,6 +62,8 @@ final class MacSessionFlowUITests: XCTestCase {
     live.contextMenu(live.row("demo-question", in: app), choose: "Rename\u{2026}", in: app)
     let prompt = app.sheets.firstMatch
     XCTAssertTrue(prompt.waitForExistence(timeout: 10), "no rename prompt")
+    XCTAssertFalse(
+      prompt.checkBoxes.firstMatch.exists, "the rename prompt offers another prompt's checkbox")
     // With keyboard navigation on, the prompt opens with Cancel focused, not the title.
     live.click(prompt.textFields.firstMatch, "the title field")
     app.typeKey("a", modifierFlags: .command)

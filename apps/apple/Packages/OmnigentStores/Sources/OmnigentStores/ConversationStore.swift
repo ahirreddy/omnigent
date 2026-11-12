@@ -107,6 +107,9 @@ public final class ConversationStore {
   public private(set) var hasOlderHistory = false
   /// A page of older history is loading.
   public private(set) var isLoadingOlderHistory = false
+  /// Counts the reads of older history that ended. A read can start and end between two
+  /// renders, so a view that acts when one ends watches this, not ``isLoadingOlderHistory``.
+  public private(set) var olderHistoryReads = 0
   /// The agent's MCP servers and the session's policies, once ``loadAgentInfo(agentID:)`` read
   /// them.
   public private(set) var agentInfo: AgentInfo?
@@ -334,7 +337,9 @@ public final class ConversationStore {
 
   func historyPagingChanged(hasOlder: Bool, isLoading: Bool) {
     if hasOlder != hasOlderHistory { hasOlderHistory = hasOlder }
-    if isLoading != isLoadingOlderHistory { isLoadingOlderHistory = isLoading }
+    guard isLoading != isLoadingOlderHistory else { return }
+    isLoadingOlderHistory = isLoading
+    if !isLoading { olderHistoryReads += 1 }
   }
 
   func failure(_ message: String) {

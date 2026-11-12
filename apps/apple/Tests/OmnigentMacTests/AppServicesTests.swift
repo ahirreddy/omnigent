@@ -297,3 +297,15 @@ struct AppServicesTests {
     #expect(recents.urls.isEmpty)
   }
 }
+
+extension AppServicesTests {
+  @Test func aLaunchThatDeclinesTheNotificationPromptNeverAsks() async throws {
+    let permission = Permission(.notDetermined)
+    let scratch = try TestScratch(
+      launchArguments: [AppServices.noNotificationPromptArgument, "YES"],
+      notificationPermission: permission)
+    defer { scratch.remove() }
+    await scratch.services.didConnect(to: try #require(serverURL))
+    #expect(permission.requests == 0)
+  }
+}

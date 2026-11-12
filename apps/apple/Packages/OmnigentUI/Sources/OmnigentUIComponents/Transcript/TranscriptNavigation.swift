@@ -42,6 +42,13 @@ nonisolated enum TranscriptNavigation {
   }
 }
 
+/// Where the reads of older history stand, for the transcript to act when one ends.
+struct HistoryRead: Equatable {
+  var isLoading: Bool
+  /// How many reads ended so far.
+  var ended: Int
+}
+
 /// Scroll facts the transcript acts on but never renders, so updating them on every scroll does
 /// not re-render the rows.
 @MainActor
@@ -55,13 +62,53 @@ final class TranscriptReadingPosition {
   var awaitsPage = false
   /// Jump to top is paging in the rest of the history first.
   var seeksTop = false
+  /// The first loaded row when older history was requested, to tell whether the page added any.
+  var topBeforePage: String?
+  /// Jump to top has read all it can, and goes to the top once the list shows those rows.
+  var arrivesAtTop = false
 
   /// Another session opened.
   func reset() {
     visible = []
+    topBeforePage = nil
+    endSeekingTop()
+  }
+
+  /// What a finished read of older history asks for.
+  enum PageOutcome {
+    /// Nothing more: no jump is under way.
+    case settled
+    /// Jump to top reads the next page.
+    case readNext
+    /// Jump to top has read all it can and goes to the top.
+    case arrive
+  }
+
+  /// A read of older history ended, before or after its rows reach the list. Jump to top keeps
+  /// reading while pages add rows and more remain; a failed or empty page ends it where it is.
+  /// - Parameters:
+  ///   - sourceTop: The first loaded row now.
+  ///   - hasMore: Older history remains and can be read.
+  /// - Returns: What to do next.
+  func pageEnded(sourceTop: String?, hasMore: Bool) -> PageOutcome {
+    let added = sourceTop != topBeforePage
+    if !added {
+      // Nothing lands above, so no row waits to be put back.
+      awaitsPage = false
+      prependAnchor = nil
+    }
+    guard seeksTop else { return .settled }
+    if added, hasMore { return .readNext }
+    arrivesAtTop = true
+    return .arrive
+  }
+
+  /// Jump to top arrived, or was given up.
+  func endSeekingTop() {
     prependAnchor = nil
     awaitsPage = false
     seeksTop = false
+    arrivesAtTop = false
   }
 }
 
