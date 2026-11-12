@@ -91,20 +91,27 @@ struct TranscriptLayoutTests {
     #expect(!live)
   }
 
-  @Test("the live turn stays open and keeps the streaming answer outside")
+  @Test("in the live turn the steps still growing are open; steps an answer followed are closed")
   func liveTurn() {
-    let rows = [
+    var rows = [
       Row(id: "u", role: .user, text: "Hi"),
       Row(id: "c1", role: .tool, activity: Activity(kind: .toolCall, title: "Read"), callId: "a"),
-      Row(id: "live", role: .assistant, text: "So far", isStreaming: true),
     ]
-    let segments = TurnLayout.segments(TranscriptLayout.items(for: rows), isRunning: true)
-    guard case .worked(_, _, _, let live) = segments[1] else {
-      Issue.record("expected a Worked fold")
-      return
+    func lives(_ rows: [Row]) -> [Bool] {
+      TurnLayout.segments(TranscriptLayout.items(for: rows), isRunning: true).compactMap {
+        if case .worked(_, _, _, let live) = $0 { live } else { nil }
+      }
     }
-    #expect(live)
-    #expect(segments.last?.id == "live")
+    #expect(lives(rows) == [true], "the turn is still on these steps")
+
+    rows.append(Row(id: "live", role: .assistant, text: "So far", isStreaming: true))
+    #expect(lives(rows) == [false], "the answer followed them")
+    let segments = TurnLayout.segments(TranscriptLayout.items(for: rows), isRunning: true)
+    #expect(segments.last?.id == "live", "the streaming answer stays outside the fold")
+
+    rows.append(
+      Row(id: "c2", role: .tool, activity: Activity(kind: .toolCall, title: "Bash"), callId: "b"))
+    #expect(lives(rows) == [false, true], "only the newest steps are open")
   }
 
   @Test("durations and tool summaries read like the web")

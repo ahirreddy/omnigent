@@ -14,6 +14,7 @@ struct WorkedFold: View {
   // swiftlint:disable:next discouraged_optional_boolean
   @State private var expandedOverride: Bool?
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.typeRamp) private var ramp
 
   private var isExpanded: Bool { expandedOverride ?? isLive }
 
@@ -33,18 +34,16 @@ struct WorkedFold: View {
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       Button {
-        withAnimation(reduceMotion ? nil : Theme.Motion.disclosure) {
-          expandedOverride = !isExpanded
-        }
+        expandedOverride = !isExpanded
       } label: {
-        HStack(spacing: Theme.Spacing.extraSmall) {
+        HStack(spacing: Theme.Spacing.small) {
           Text(title)
           Image(systemName: "chevron.right")
             .font(.caption2.weight(.semibold))
             .rotationEffect(.degrees(isExpanded ? 90 : 0))
             .accessibilityHidden(true)
         }
-        .font(.callout)
+        .font(.system(size: ramp.body))
         .foregroundStyle(.secondary)
         .padding(.vertical, Theme.Spacing.extraSmall)
         .frame(minHeight: Theme.Control.target)
@@ -56,6 +55,8 @@ struct WorkedFold: View {
       .accessibilityLabel(title)
       .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
       .accessibilityIdentifier("worked-fold-\(items.first?.id ?? "empty")")
+      // A hairline as wide as the column sets the work apart from the answer under it.
+      Divider()
       if isExpanded {
         VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
           ForEach(items) { item in
@@ -66,8 +67,11 @@ struct WorkedFold: View {
         .overlay(alignment: .leading) {
           Rectangle().fill(.separator).frame(width: 1)
         }
+        .transition(.reveal)
       }
     }
+    // A fold the turn opens or closes moves the same way as one that was clicked.
+    .animation(reduceMotion ? nil : Theme.Motion.disclosure, value: isExpanded)
   }
 }
 

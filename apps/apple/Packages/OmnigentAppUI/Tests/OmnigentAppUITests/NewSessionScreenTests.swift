@@ -16,9 +16,9 @@ import Testing
 @Suite("New session screen", .serialized, .timeLimit(.minutes(1)))
 struct NewSessionScreenTests {
   // Where the composer's menus sit in a 900 point wide window.
-  private static let hostMenu = CGPoint(x: 124, y: 423)
-  private static let agentMenu = CGPoint(x: 676, y: 423)
-  private static let modeMenu = CGPoint(x: 784, y: 423)
+  private static let hostMenu = CGPoint(x: 116, y: 423)
+  private static let agentMenu = CGPoint(x: 684, y: 423)
+  private static let modeMenu = CGPoint(x: 792, y: 423)
 
   private func startableServer() -> AppServer {
     let server = newSessionServer()

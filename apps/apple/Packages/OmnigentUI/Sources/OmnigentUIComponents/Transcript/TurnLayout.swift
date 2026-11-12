@@ -17,9 +17,10 @@ nonisolated enum TurnSegment: Hashable, Sendable, Identifiable {
 nonisolated enum TurnLayout {
   /// Folds each run of tool work and reasoning between assistant messages into its own Worked
   /// group, as the web does: every message, error and side question stays visible. A settled
-  /// turn with no message stays unfolded; trailing reasoning joins the turn's last run. The live
-  /// turn's folds stay open. `closesLastTurn` folds items that end before a user message (a
-  /// transcript's settled prefix), whose last turn is never the live one.
+  /// turn with no message stays unfolded; trailing reasoning joins the turn's last run. In the
+  /// live turn only the run still growing is open: one the turn has moved past is done, and
+  /// closes. `closesLastTurn` folds items that end before a user message (a transcript's settled
+  /// prefix), whose last turn is never the live one.
   static func segments(
     _ items: [TranscriptItem], isRunning: Bool, closesLastTurn: Bool = false
   ) -> [TurnSegment] {
@@ -64,11 +65,14 @@ nonisolated enum TurnLayout {
       }
     }
     mergeTrailingReasoning(&pieces)
-    return pieces.map { piece in
+    let last = pieces.count - 1
+    return pieces.enumerated().map { index, piece in
       switch piece {
       case .visible(let item): .item(item)
       case .work(let run):
-        .worked(id: run[0].id, responseID: run[0].responseID, items: run, isLive: isLive)
+        .worked(
+          id: run[0].id, responseID: run[0].responseID, items: run,
+          isLive: isLive && index == last)
       }
     }
   }

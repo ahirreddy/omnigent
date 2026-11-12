@@ -72,15 +72,11 @@ struct MessageRowView: View, Equatable {
           }
         }
         .padding(.horizontal, Theme.Spacing.large)
-        .padding(.vertical, Theme.Spacing.medium)
+        .padding(.vertical, Theme.Spacing.bubbleVertical)
         .background(
           Theme.userBubble,
           in: RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous)
         )
-        .overlay {
-          RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous)
-            .strokeBorder(ThemeColor.border, lineWidth: 0.5)
-        }
         .frame(maxWidth: Theme.userMessageWidth, alignment: .trailing)
         .fixedSize(horizontal: false, vertical: true)
         if decoration.showsAvatar, let author = row.author {

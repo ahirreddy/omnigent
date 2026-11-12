@@ -19,6 +19,8 @@ enum Theme {
     static let card = large
     static let gutter = extraLarge
     static let compactGutter = medium
+    /// Above and below a user bubble's text.
+    static let bubbleVertical: CGFloat = 10
   }
 
   enum Radius {
@@ -30,13 +32,17 @@ enum Theme {
   }
 
   /// The readable column width of the transcript.
-  static let transcriptWidth: CGFloat = 720
+  static let transcriptWidth: CGFloat = 736
   static let inboxWidth: CGFloat = 880
-  static let userMessageWidth: CGFloat = 560
+  static let userMessageWidth: CGFloat = 516
 
   enum Typography {
-    /// Body prose; the transcript's sizes derive from it (``TypeRamp``).
-    static let proseSize = TypeRamp.defaultBody
+    /// The composer's text size, its own: the transcript's body comes from ``TypeRamp``.
+    #if os(macOS)
+      static let proseSize: CGFloat = 15
+    #else
+      static let proseSize: CGFloat = 17
+    #endif
     /// The composer's extra leading; the transcript uses ``TypeRamp`` line heights.
     static let leading: CGFloat = 5
     static let editorLineHeight = proseSize + leading

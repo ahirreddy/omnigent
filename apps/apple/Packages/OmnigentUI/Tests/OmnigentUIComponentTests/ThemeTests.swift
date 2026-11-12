@@ -69,12 +69,14 @@ struct ThemeTests {
     #expect(faded.role == ThemeColor.failure.role)
   }
 
-  @Test("every built-in palette uses the web's id and accent")
+  @Test("every web palette keeps the web's id and accent, and Graphite follows them")
   func palettes() {
     #expect(
       OmnigentTheme.builtIn.map(\.id) == [
-        "omni", "dracula", "github", "catppuccin", "gruvbox", "solarized", "nord",
+        "omni", "dracula", "github", "catppuccin", "gruvbox", "solarized", "nord", "graphite",
       ])
+    #expect(ThemeSettingsView.hex(OmnigentTheme.graphite.dark.link) == "#6585cc")
+    #expect(OmnigentTheme.graphite.dark.canvasGlow == false, "a flat canvas")
     #expect(ThemeSettingsView.hex(OmnigentTheme.omni.light.accent) == "#df3c85")
     #expect(ThemeSettingsView.hex(OmnigentTheme.dracula.dark.brandAccent) == "#ff79c6")
     #expect(ThemeSettingsView.hex(OmnigentTheme.nord.light.link) == "#355e86")

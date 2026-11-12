@@ -25,7 +25,7 @@ struct TypeRampTests {
     #expect(ramp.code >= body * 0.8)
   }
 
-  @Test("line heights and gaps sit on the 4 pt grid", arguments: bodies)
+  @Test("line heights and gaps sit on the platform's grid", arguments: bodies)
   func grid(body: CGFloat) {
     let ramp = TypeRamp(body: body)
     let lines = [ramp.bodyLineHeight, ramp.codeLineHeight] + (1...4).map(ramp.headingLineHeight)
@@ -44,10 +44,11 @@ struct TypeRampTests {
   func platformDefault() {
     let ramp = TypeRamp(body: TypeRamp.defaultBody)
     #if os(macOS)
-      #expect(ramp.body == 15)
-      #expect(ramp.bodyLineHeight == 24)
-      #expect((1...4).map(ramp.heading) == [21, 19, 16.5, 15])
-      #expect(ramp.code == 13)
+      #expect(ramp.body == 14)
+      #expect(Theme.Typography.proseSize == 15, "the composer keeps its own size")
+      #expect(ramp.bodyLineHeight == 22)
+      #expect((1...4).map(ramp.heading) == [19.5, 17.5, 15.5, 14])
+      #expect(ramp.code == 12)
     #else
       #expect(ramp.body == 17)
       #expect(ramp.bodyLineHeight == 24)

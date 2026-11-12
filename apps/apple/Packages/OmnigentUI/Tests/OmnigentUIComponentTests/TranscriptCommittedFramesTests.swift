@@ -17,7 +17,7 @@
 
     static let narrow: CGFloat = 400
     /// Past the width at which the rows stop growing.
-    static let wide: CGFloat = 780
+    static let wide: CGFloat = 800
     static let dragSteps = 20
 
     /// The widths of a drag from narrow to wide.

@@ -125,7 +125,10 @@ struct SessionOriginBar: View {
     }
     .font(.caption)
     .padding(.horizontal, Theme.Spacing.large)
-    .padding(.vertical, Theme.Spacing.extraSmall)
+    .padding(.vertical, Theme.Spacing.small)
+    // A bar of its own: the transcript scrolls under it, not through it.
+    .background { ThemeCanvas(isBar: true) }
+    .overlay(alignment: .bottom) { Divider() }
     .accessibilityElement(children: .contain)
   }
 }

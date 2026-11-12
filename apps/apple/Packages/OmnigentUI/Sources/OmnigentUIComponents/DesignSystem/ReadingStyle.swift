@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The transcript's type ramp. Every reading size derives from one body size (the platform's
 /// prose size, the chat text-size setting and Dynamic Type), and every line height and gap sits
-/// on the 4 pt grid.
+/// on the platform's grid.
 nonisolated struct TypeRamp: Hashable, Sendable {
   /// Body prose, in points.
   var body: CGFloat
@@ -12,23 +12,31 @@ nonisolated struct TypeRamp: Hashable, Sendable {
   /// Code, inline and in blocks, as a multiple of the body.
   static let codeScale: CGFloat = 0.9
   /// Body line height as a multiple of its size, before snapping to the grid.
-  static let bodyLeading: CGFloat = 1.5
+  #if os(macOS)
+    static let bodyLeading: CGFloat = 1.6
+  #else
+    static let bodyLeading: CGFloat = 1.5
+  #endif
   /// Heading line height as a multiple of its size, before snapping to the grid.
   static let headingLeading: CGFloat = 1.25
   /// The gap between paragraphs and other blocks.
   static let paragraphSpacing: CGFloat = 16
-  /// The gap between list items.
-  static let listSpacing: CGFloat = 8
+  /// The gap between list items: a list reads as one block, tighter than paragraphs.
+  static let listSpacing: CGFloat = 4
   /// The gap above a heading that follows other blocks.
   static let headingAbove: CGFloat = 24
   /// The gap between a heading and its content.
   static let headingBelow: CGFloat = 8
   /// The grid every line height and gap sits on.
-  static let grid: CGFloat = 4
+  #if os(macOS)
+    static let grid: CGFloat = 2
+  #else
+    static let grid: CGFloat = 4
+  #endif
 
   /// The platform's body size before Dynamic Type.
   #if os(macOS)
-    static let defaultBody: CGFloat = 15
+    static let defaultBody: CGFloat = 14
   #else
     static let defaultBody: CGFloat = 17
   #endif
@@ -83,9 +91,9 @@ extension EnvironmentValues {
   @Entry var typeRamp = TypeRamp(body: TypeRamp.defaultBody)
 }
 
-/// Editable prose (the composer): the ramp's default body size with the editor's leading.
+/// Editable prose (the composer): its own size with the editor's leading.
 struct ProseStyle: ViewModifier {
-  @ScaledMetric(relativeTo: .body) private var size = TypeRamp.defaultBody
+  @ScaledMetric(relativeTo: .body) private var size = Theme.Typography.proseSize
   @ScaledMetric(relativeTo: .body) private var leading = Theme.Typography.leading
 
   func body(content: Content) -> some View {

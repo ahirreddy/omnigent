@@ -87,7 +87,7 @@ nonisolated public struct OmnigentTheme: Hashable, Sendable, Identifiable {
 
   /// The built-in themes, in the web's order. Custom is built from a ``CustomTheme``.
   public static let builtIn: [Self] = [
-    .omni, .dracula, .github, .catppuccin, .gruvbox, .solarized, .nord,
+    .omni, .dracula, .github, .catppuccin, .gruvbox, .solarized, .nord, .graphite,
   ]
 
   /// The built-in theme with `id`, or ``omni``.
@@ -182,6 +182,21 @@ nonisolated extension OmnigentTheme {
       accent: Color(hex: 0x88C0D0), link: Color(hex: 0x8FC4D3),
       selection: Color(hex: 0x88C0D0, alpha: 0.25), canvas: Color(hex: 0x2E3440), canvasGlow: true,
       sidebarTint: Color(hex: 0x2E3440, alpha: 0.8)))
+}
+
+nonisolated extension OmnigentTheme {
+  /// "Graphite": flat neutral greys with no glow, a white primary action and a quiet blue link.
+  /// Native only: the web has no palette with this id.
+  public static let graphite = Self(
+    id: "graphite", name: "Graphite", blurb: "Flat neutral greys with a quiet blue link.",
+    light: ThemePalette(
+      accent: Color(hex: 0x171717), brandAccent: Color(hex: 0xC2410C), link: Color(hex: 0x2563C4),
+      selection: Color(hex: 0x2563C4, alpha: 0.18), canvas: nil,
+      sidebarTint: Color(hex: 0xF9F9F9)),
+    dark: ThemePalette(
+      accent: Color(hex: 0xECECEC), brandAccent: Color(hex: 0xE8762D), link: Color(hex: 0x6585CC),
+      selection: Color(hex: 0x6585CC, alpha: 0.35), canvas: Color(hex: 0x181818),
+      sidebarTint: Color(hex: 0x1D1D1D)))
 }
 
 /// Status colors from the web's `index.css`. They do not change with the color theme, only with
@@ -301,6 +316,9 @@ extension View {
 }
 
 struct ThemeCanvas: View {
+  /// A bar pinned over the canvas: the flat color within the bar's own bounds, with no glow,
+  /// so what scrolls under the bar does not show through it.
+  var isBar = false
   @Environment(\.colorSchemeContrast) private var contrast
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   @Environment(\.omnigentTheme) private var theme
@@ -314,7 +332,9 @@ struct ThemeCanvas: View {
       } else {
         Rectangle().fill(.background)
       }
-      if palette.canvasGlow, colorScheme == .dark, contrast != .increased, !reduceTransparency {
+      if !isBar, palette.canvasGlow, colorScheme == .dark, contrast != .increased,
+        !reduceTransparency
+      {
         // `omnigent-center-glow.svg`: white radial gradient at 50% / 46%, 26% to 0%.
         GeometryReader { proxy in
           RadialGradient(
@@ -324,7 +344,7 @@ struct ThemeCanvas: View {
         }
       }
     }
-    .ignoresSafeArea()
+    .ignoresSafeArea(edges: isBar ? [] : .all)
   }
 }
 

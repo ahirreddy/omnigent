@@ -188,35 +188,39 @@ private struct MarkdownListView: View {
 struct MarkdownTableView: View {
   let table: MarkdownTable
   @Environment(\.workspaceFileLinks) private var links
+  @Environment(\.typeRamp) private var ramp
+
+  /// Above and below a cell's text.
+  static let rowPadding: CGFloat = 10
 
   var body: some View {
     ScrollView(.horizontal) {
+      // Open rows set apart by rules: no frame, fill or stripes. The header's rule is the
+      // stronger one.
       Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
         GridRow {
           ForEach(Array(table.header.enumerated()), id: \.offset) { column, cell in
             cellView(cell, column: column)
-              .font(.callout.weight(.semibold))
+              .font(.system(size: ramp.body, weight: .semibold))
           }
         }
-        .background(.quaternary.opacity(0.6))
+        rule(ThemeColor.border)
         ForEach(Array(table.rows.enumerated()), id: \.offset) { index, row in
-          Divider().gridCellUnsizedAxes(.horizontal)
+          if index > 0 { rule(ThemeColor.hover) }
           GridRow {
             ForEach(Array(row.enumerated()), id: \.offset) { column, cell in
               cellView(cell, column: column)
-                .font(.callout)
+                .font(.system(size: ramp.body))
             }
           }
-          .background(index.isMultiple(of: 2) ? Color.clear : Color.secondary.opacity(0.05))
         }
-      }
-      .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small))
-      .overlay {
-        RoundedRectangle(cornerRadius: Theme.Radius.small)
-          .strokeBorder(.separator)
       }
     }
     .scrollIndicators(.automatic)
+  }
+
+  private func rule(_ color: ThemeColor) -> some View {
+    Rectangle().fill(color).frame(height: 1).gridCellUnsizedAxes(.horizontal)
   }
 
   private func cellView(_ text: AttributedString, column: Int) -> some View {
@@ -225,8 +229,9 @@ struct MarkdownTableView: View {
       .textSelection(.enabled)
       .multilineTextAlignment(textAlignment(alignment))
       .frame(minWidth: 60, maxWidth: 360, alignment: frameAlignment(alignment))
-      .padding(.horizontal, Theme.Spacing.medium)
-      .padding(.vertical, Theme.Spacing.small)
+      // The first column starts at the prose's edge; the gap is between columns.
+      .padding(.trailing, Theme.Spacing.extraLarge)
+      .padding(.vertical, Self.rowPadding)
       .gridColumnAlignment(horizontalAlignment(alignment))
   }
 

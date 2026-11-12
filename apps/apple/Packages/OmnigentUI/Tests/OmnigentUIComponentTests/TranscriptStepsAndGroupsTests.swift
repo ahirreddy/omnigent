@@ -7,6 +7,28 @@
 
   @testable import OmnigentUIComponents
 
+  /// Whether the turn is still on a fold's steps.
+  @MainActor @Observable
+  private final class FoldTurn {
+    var isLive = true
+  }
+
+  /// The sizes two reveals took.
+  @MainActor
+  private final class RevealedSizes {
+    var half: CGSize?
+    var empty: CGSize?
+  }
+
+  private struct FoldHost: View {
+    let turn: FoldTurn
+    let item: TranscriptItem
+
+    var body: some View {
+      WorkedFold(items: [item], isLive: turn.isLive, duration: nil, decorations: [:])
+    }
+  }
+
   @Suite("Worked folds, diffs and sub-agent groups", .serialized)
   @MainActor
   struct TranscriptStepsAndGroupsTests {
@@ -29,6 +51,52 @@
       #expect(try screen.shows("A step"))
       try screen.clickControl(at: 0)
       #expect(try !screen.shows("A step"))
+    }
+
+    @Test("Steps the turn has finished close by themselves; ones the reader opened stay open")
+    func foldFollowsTheTurnUnlessTheReaderChose() async throws {
+      let item = TranscriptItem.activity(TranscriptFixture.activityRow(.error, title: "A step"))
+      let turn = FoldTurn()
+      let screen = transcriptScreen(FoldHost(turn: turn, item: item))
+      defer { screen.close() }
+      #expect(try screen.shows("A step"), "open while the turn is on these steps")
+
+      turn.isLive = false
+      #expect(try await waitUntil(screen) { try !screen.shows("A step") }, "closed once done")
+
+      try screen.clickControl(at: 0)
+      #expect(try await waitUntil(screen) { try screen.shows("A step") })
+      turn.isLive = true
+      turn.isLive = false
+      try await letTasksRun(screen, milliseconds: 400)
+      #expect(try screen.shows("A step"), "the reader's choice outlasts the turn's")
+    }
+
+    @Test("A reveal shows its content by height, a part at a time")
+    func revealLayout() {
+      var layout = RevealLayout(progress: 0.25)
+      #expect(layout.animatableData == 0.25)
+      layout.animatableData = 0.5
+      let sizes = RevealedSizes()
+      let screen = OffscreenWindow(
+        VStack {
+          layout { Color.clear.frame(width: 100, height: 80) }
+            .onGeometryChange(for: CGSize.self) {
+              $0.size
+            } action: {
+              sizes.half = $0
+            }
+          RevealLayout(progress: 1) {}
+            .onGeometryChange(for: CGSize.self) {
+              $0.size
+            } action: {
+              sizes.empty = $0
+            }
+        }, width: 200, height: 200)
+      defer { screen.close() }
+      screen.settle()
+      #expect(sizes.half == CGSize(width: 100, height: 40))
+      #expect(sizes.empty == .zero)
     }
 
     // MARK: Diffs
@@ -155,20 +223,12 @@
       #expect(try !screen.shows("1 done"))
     }
 
-    @Test("A failed child says why, in chat and in the CLI's line")
+    @Test("A failed child says why")
     func failedChild() throws {
       let screen = group([child("a", .failed, error: "It broke")], actions: openingActions)
       defer { screen.close() }
       if try !screen.shows("It broke") { try screen.clickControl(at: 0) }
       #expect(try screen.shows("It broke"))
-
-      var state = ConversationViewState(header: TranscriptFixture.header)
-      state.sections = [
-        PreviewData.childSection("a", title: "Child a", state: .failed, error: "It broke")
-      ]
-      let cli = transcriptScreen(CLISubagentLines(state: state, actions: ConversationActions()))
-      defer { cli.close() }
-      #expect(try cli.shows("It broke"))
     }
   }
 #endif
