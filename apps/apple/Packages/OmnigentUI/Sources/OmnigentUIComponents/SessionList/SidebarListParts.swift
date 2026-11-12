@@ -179,14 +179,13 @@ final class SearchTextRelay {
 
 /// The field itself. iPhone and iPad keep one search entry point: where the header's Search
 /// opens the palette (titles and message content), the field is left out, so a compact width
-/// does not also float a search button beside the list. A sidebar peeking over the content on
-/// Mac is outside the split view, so it draws its own field.
+/// does not also float a search button beside the list. The Mac draws its own field, under the
+/// sidebar's header.
 private struct SidebarSearchFieldContent: ViewModifier {
   /// What the field shows. The body reads it through the relay; a new value is what runs it.
   let text: String
   let relay: SearchTextRelay
   @Environment(\.openCommandPalette) private var openPalette
-  @Environment(\.isSidebarPeek) private var isPeek
 
   func body(content: Content) -> some View {
     field(content).countsRenders("search field")
@@ -201,15 +200,11 @@ private struct SidebarSearchFieldContent: ViewModifier {
         content.searchable(text: relay.binding, placement: .sidebar, prompt: "Search sessions")
       }
     #else
-      if isPeek {
-        content.safeAreaInset(edge: .top, spacing: 0) {
-          TextField("Search sessions", text: relay.binding)
-            .textFieldStyle(.roundedBorder)
-            .padding(.horizontal, Theme.Spacing.medium)
-            .padding(.vertical, Theme.Spacing.small)
-        }
-      } else {
-        content.searchable(text: relay.binding, placement: .sidebar, prompt: "Search sessions")
+      content.safeAreaInset(edge: .top, spacing: 0) {
+        SidebarSearchBox(text: relay.binding)
+          .padding(.horizontal, Theme.Spacing.medium)
+          .padding(.bottom, Theme.Spacing.small)
+          .background { SidebarBarBackdrop() }
       }
     #endif
   }

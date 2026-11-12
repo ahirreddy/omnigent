@@ -20,8 +20,11 @@
 
     /// The buttons that collapse and expand a list's sections, top to bottom.
     var sectionToggles: [NSButton] {
-      allViews.compactMap { $0 as? NSButton }
+      // The search field's own Search and Clear buttons are not the list's.
+      let searchFields = allViews.compactMap { $0 as? NSSearchField }
+      return allViews.compactMap { $0 as? NSButton }
         .filter { Swift.type(of: $0) == NSButton.self && $0.accessibilityLabel() != nil }
+        .filter { button in !searchFields.contains { button.isDescendant(of: $0) } }
     }
 
     /// Disclosure triangles of the list's outline rows, top to bottom.

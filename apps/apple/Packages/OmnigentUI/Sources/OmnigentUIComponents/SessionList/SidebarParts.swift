@@ -54,6 +54,10 @@ struct SidebarHeader: View {
     }
     .padding(.horizontal, Theme.Spacing.large)
     .padding(.vertical, Theme.Spacing.small)
+    #if os(macOS)
+      // Up to the window's top edge: rows scroll under the title bar's buttons too.
+      .background { SidebarBarBackdrop().ignoresSafeArea(edges: .top) }
+    #endif
   }
 
   @ViewBuilder private var wordmark: some View {
