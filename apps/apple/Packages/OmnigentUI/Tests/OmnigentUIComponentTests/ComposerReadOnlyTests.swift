@@ -66,6 +66,13 @@
       #expect(model.draft == "b", "with no click on the editor")
     }
 
+    @Test("a text field that took the keyboard while the session loaded keeps it")
+    func owedFocusLeavesAFieldAlone() {
+      #expect(OwedFocus.isFree(firstResponder: nil))
+      #expect(OwedFocus.isFree(firstResponder: NSView()))
+      #expect(!OwedFocus.isFree(firstResponder: NSTextView()), "a rename field's editor")
+    }
+
     @Test("a composer that becomes available again takes typing")
     func turnsEditable() throws {
       let model = ComposerScreenModel(state: readOnly)

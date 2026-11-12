@@ -50,11 +50,30 @@ private struct EditorLock: ViewModifier {
           if isFocused.wrappedValue { isFocused.wrappedValue = false }
         } else if owesFocus {
           owesFocus = false
-          isFocused.wrappedValue = true
+          if Self.collectsOwedFocus { isFocused.wrappedValue = true }
         }
       }
   }
+
+  /// Whether the keyboard is still free for the editor: not when a text field took it while
+  /// the session loaded (a rename begun in the sidebar).
+  private static var collectsOwedFocus: Bool {
+    #if os(macOS)
+      OwedFocus.isFree(firstResponder: NSApp.keyWindow?.firstResponder)
+    #else
+      true
+    #endif
+  }
 }
+
+#if os(macOS)
+  enum OwedFocus {
+    /// Whether nothing is being typed into: a text field's editor is not the first responder.
+    static func isFree(firstResponder: NSResponder?) -> Bool {
+      !(firstResponder is NSText)
+    }
+  }
+#endif
 
 /// The key press that brought a composer on screen, and whether the keyboard stays where it was.
 enum ComposerShowingKey {
