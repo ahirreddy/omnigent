@@ -138,26 +138,6 @@
       #expect(try screen.shows("(no output)"))
     }
 
-    @Test("A failed sub-agent's line carries its error; a finished one's doesn't")
-    func failedSubagentError() throws {
-      func section(_ id: String, state: String) -> EventSection {
-        EventSection(
-          id: "child-\(id)", title: id, summary: state,
-          details: [
-            DetailSection(id: "state", title: "State", text: state),
-            DetailSection(id: "error", title: "Error", text: "\(id) broke"),
-          ],
-          sessionId: id)
-      }
-      var state = PreviewData.conversation
-      state.rows = []
-      state.sections = [section("bad", state: "failed"), section("fine", state: "ready")]
-      let screen = transcriptScreen(CLISubagentLines(state: state, actions: ConversationActions()))
-      defer { screen.close() }
-      #expect(try screen.shows("bad broke"))
-      #expect(try !screen.shows("fine broke"))
-    }
-
     @Test("A line's defaults: no color and no bold unless asked")
     func lineParts() {
       var line = CLILineText()

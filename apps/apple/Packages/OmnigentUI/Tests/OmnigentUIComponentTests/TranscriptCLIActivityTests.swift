@@ -253,54 +253,29 @@
       #expect(try timed.shows("esc to interrupt"))
     }
 
-    @Test("Sub-agents read as lifecycle lines, each opening its transcript")
-    func subagentLines() throws {
-      var opened: [String] = []
-      var actions = ConversationActions()
-      actions.openChild = { opened.append($0) }
+    @Test("The CLI transcript ends with its rows: no line per sub-agent and no agents bar")
+    func noSubagentBlock() throws {
       var state = PreviewData.conversation
-      state.rows = []
       state.sections = [
-        EventSection(id: "child-a", title: "Done one", summary: "Ready", sessionId: "a"),
-        EventSection(id: "child-b", title: "Bad one", summary: "Failed", sessionId: "b"),
+        PreviewData.childSection("a", title: "Child a", state: .running),
+        PreviewData.childSection("b", title: "Child b", state: .ready),
       ]
-      let screen = transcriptScreen(CLISubagentLines(state: state, actions: actions))
-      defer { screen.close() }
-      #expect(try screen.shows("`Done one`"))
-      #expect(try screen.shows("`Bad one`"))
-      let menu = try #require(try screen.firstContextMenu())
-      let open = try #require(titles(of: menu).first { $0.hasPrefix("Open ") })
-      try screen.choose(open, in: menu)
-      #expect(opened.count == 1)
-    }
-
-    @Test("No children, no lines")
-    func noSubagents() throws {
-      var state = PreviewData.conversation
-      state.sections = []
-      let screen = transcriptScreen(CLISubagentLines(state: state, actions: ConversationActions()))
-      defer { screen.close() }
-      #expect(screen.controlFrames.isEmpty)
+      func screen(_ style: TranscriptStyle) -> OffscreenWindow<AnyView> {
+        transcriptScreen(
+          TranscriptView(state: state, actions: ConversationActions())
+            .transcriptAppearance(TranscriptAppearance(style: style)), height: 900)
+      }
+      func namesAgents(_ screen: OffscreenWindow<AnyView>) throws -> Bool {
+        try screen.shownText().contains { $0.contains("Child a") || $0.contains("2 agents") }
+      }
+      let cli = screen(.cli)
+      defer { cli.close() }
+      #expect(try !namesAgents(cli))
+      // The chat style keeps its bar while an agent is at work.
+      let chat = screen(.chat)
+      defer { chat.close() }
+      #expect(try namesAgents(chat))
     }
   }
 
-  extension TranscriptCLIActivityTests {
-    @Test("A host that logs agent starts as tool calls doesn't show them twice")
-    func agentsLoggedAsToolCalls() throws {
-      var state = PreviewData.conversation
-      state.sections = [
-        EventSection(id: "child-a", title: "Done one", summary: "Ready", sessionId: "a")
-      ]
-      #expect(SubagentGroup(state: state) != nil)
-      state.rows = [
-        Row(
-          id: "spawn", role: .tool,
-          activity: Activity(kind: .toolCall, title: "spawn_agent", summary: "Done one"))
-      ]
-      let screen = transcriptScreen(
-        CLISubagentLines(state: state, actions: ConversationActions()))
-      defer { screen.close() }
-      #expect(try !screen.shows("`Done one`"))
-    }
-  }
 #endif

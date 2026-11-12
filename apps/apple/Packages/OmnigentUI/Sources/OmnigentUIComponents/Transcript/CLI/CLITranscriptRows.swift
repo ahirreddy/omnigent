@@ -92,7 +92,7 @@ extension TurnSegment {
 
 /// The CLI transcript's rows, laid out inside ``TranscriptView``'s lazy stack so the reading
 /// position rules and Jump to latest are shared with chat style. Text blocks are terminal-like;
-/// plans, decisions, the live sub-agent group and banners stay native.
+/// plans, decisions and banners stay native.
 struct CLITranscriptRows<Header: View>: View {
   let state: ConversationViewState
   let actions: ConversationActions
@@ -122,11 +122,10 @@ struct CLITranscriptRows<Header: View>: View {
         // Over the row, since a user message's band is opaque.
         .overlay { if focus?.flashedRowID == entry.id { MessageFlash(isBand: true) } }
     }
-    InlineDecisions(
-      state: state, actions: actions, groupRowShown: CLISubagentLines.showsGroup(state)
-    )
-    .transcriptColumn()
-    CLISubagentLines(state: state, actions: actions)
+    // No sub-agent block here: an agent's start reads where the turn logged it, the sidebar
+    // lists the agents, and a request of theirs shows with the transcript's own.
+    InlineDecisions(state: state, actions: actions, groupRowShown: false)
+      .transcriptColumn()
     if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
       CLIWorkingLine(
         isBlocked: !state.pendingDecisions.isEmpty, startedAt: TurnElapsed.start(in: state))

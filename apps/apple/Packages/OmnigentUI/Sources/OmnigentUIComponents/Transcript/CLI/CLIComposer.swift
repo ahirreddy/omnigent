@@ -174,10 +174,8 @@ public struct CLIComposer: View {
   }
 
   private var band: some View {
-    // Touch centers the text on the 44 pt control row; the Mac keeps the terminal's baseline.
-    HStack(
-      alignment: layout == .touch ? .center : .firstTextBaseline, spacing: Theme.Spacing.small
-    ) {
+    // Touch centers the text on the 44 pt control row; on the Mac, Add sits on the first line.
+    HStack(alignment: layout == .touch ? .center : .top, spacing: Theme.Spacing.small) {
       editor
       if showsControls { controls }
     }
@@ -250,8 +248,9 @@ public struct CLIComposer: View {
         ? (layout == .touch ? "Send sends" : "Return sends") : (state.availability.reason ?? ""))
   }
 
-  /// The touch bar's controls: Add (files, photos, paste), the Full access warning, Mic, then
-  /// Send or Stop.
+  /// The band's controls. Touch has Add (files, photos, paste), the Full access warning, Mic,
+  /// then Send or Stop. The Mac has Add alone, no taller than a line of the text: Return sends
+  /// and Esc stops, as in a terminal.
   private var controls: some View {
     let parts = ComposerControlParts(
       state: state, actions: actions, rules: rules,
@@ -261,8 +260,14 @@ public struct CLIComposer: View {
       isImporting: $isImporting, isPickingPhotos: $isPickingPhotos, isExpanded: $isExpanded,
       loadProviders: { providers in Task { await loadProviders(providers) } }, perform: perform)
     return HStack(spacing: Theme.Spacing.tiny) {
-      parts.collapsedLeading
-      parts.collapsedTrailing
+      if layout == .touch {
+        parts.collapsedLeading
+        parts.collapsedTrailing
+      } else {
+        parts.collapsedLeading
+          .imageScale(.small)
+          .frame(height: size.line)
+      }
     }
     .foregroundStyle(palette.userText.color)
     .transition(.opacity)

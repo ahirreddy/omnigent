@@ -110,19 +110,40 @@
       #expect(log.entries == ["send"])
     }
 
-    @Test("The controls appear on hover or focus; Send sends")
-    func hoverControls() throws {
-      let screen = try composer(draft: "ready")
+    @Test("A plain Tab with no suggestions acts on nothing")
+    func plainTab() async throws {
+      let screen = try composer(draft: "a")
       defer { screen.close() }
+      try await letTasksRun(screen, milliseconds: 200)
+      try screen.press(keyCode: 48, characters: "\t")
+      #expect(log.entries.isEmpty)
+    }
+
+    @Test("On the Mac the band shows Add alone, on hover or focus, and it adds no height")
+    func hoverControls() async throws {
+      let log = self.log
+      var actions = ComposerActions(send: { log.add("send") })
+      actions.addAttachments = { _ in log.add("attach") }
+      let screen = try composer(actions: actions, draft: "ready")
+      defer { screen.close() }
+      // Focus shows the control too: the keyboard is given up to count the idle band.
+      try await letTasksRun(screen, milliseconds: 200)
+      _ = screen.window.makeFirstResponder(nil)
+      screen.settle()
       let idle = screen.controlFrames.count
-      let band = try editor(on: screen).convert(try editor(on: screen).bounds, to: screen.host)
+      let lines = try editor(on: screen)
+      let band = lines.convert(lines.bounds, to: screen.host)
       try screen.hover(CGPoint(x: band.midX, y: band.midY))
       screen.settle()
       let revealed = screen.controlFrames
-      #expect(revealed.count > idle)
-      let send = try #require(revealed.last)
-      try screen.click(CGPoint(x: send.midX, y: send.midY))
-      #expect(log.entries == ["send"])
+      #expect(revealed.count == idle + 1, "Add, with no Send or Stop beside it")
+      // The band is as tall as it was without the control: its text has not moved up or down.
+      let hovered = lines.convert(lines.bounds, to: screen.host)
+      #expect(hovered.minY == band.minY && hovered.height == band.height, "\(hovered) \(band)")
+      _ = screen.window.makeFirstResponder(lines)
+      try screen.press(keyCode: 36, characters: "\r")
+      #expect(log.entries == ["send"], "Return sends")
+      _ = screen.window.makeFirstResponder(nil)
       try screen.endHover()
       screen.settle()
       #expect(screen.controlFrames.count == idle)
