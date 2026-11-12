@@ -156,15 +156,71 @@ fn a_reload_asks_for_every_loaded_row_within_the_server_limit() {
     assert_eq!(window(4_000).reload_limit(), 1_000);
 }
 
+/// How many rows the last list reset carried.
+fn last_reset_rows(events: &[CoreEvent]) -> Option<usize> {
+    events.iter().rev().find_map(|event| match event {
+        CoreEvent::SessionListChanged {
+            change: SessionListChange::Reset { sessions },
+        } => Some(sessions.len()),
+        _ => None,
+    })
+}
+
+#[test]
+fn a_session_started_elsewhere_shows_at_the_next_periodic_read() {
+    use crate::list_driver::LIST_RECONCILE_INTERVAL_MS;
+    let (mut harness, _) = connected_with_first_page();
+    harness.events.take();
+    let reads = harness.http.count("/v1/sessions");
+    // Another app starts a session: the server's list has a row no socket announced here.
+    let (_, rest) = pages(0);
+    harness.http.route("/v1/sessions", respond(200, &rest));
+    harness.advance(LIST_RECONCILE_INTERVAL_MS - 1);
+    assert_eq!(harness.http.count("/v1/sessions"), reads, "not before");
+    harness.advance(1);
+    harness.pump();
+    assert_eq!(harness.http.count("/v1/sessions"), reads + 1);
+    let all = serde_json::from_str::<Value>(&rest).unwrap()["data"]
+        .as_array()
+        .unwrap()
+        .len();
+    assert!(
+        all > 2,
+        "the recorded list has more rows than the first page"
+    );
+    assert_eq!(last_reset_rows(&harness.events.take()), Some(all));
+
+    // Each answer arms the next read.
+    harness.advance(LIST_RECONCILE_INTERVAL_MS);
+    harness.pump();
+    assert_eq!(harness.http.count("/v1/sessions"), reads + 2);
+}
+
+#[test]
+fn the_periodic_read_stops_with_the_connection() {
+    use crate::list_driver::LIST_RECONCILE_INTERVAL_MS;
+    let (mut harness, _) = connected_with_first_page();
+    harness.core.disconnect();
+    harness.pump();
+    let reads = harness.http.count("/v1/sessions");
+    harness.advance(2 * LIST_RECONCILE_INTERVAL_MS);
+    harness.pump();
+    assert_eq!(harness.http.count("/v1/sessions"), reads);
+}
+
 #[test]
 fn a_new_connection_cancels_a_pending_reload() {
     let harness = Harness::new(UrlPolicy::Development);
     let (mut engine, _queue) = harness.idle_engine();
     let (timer, _registration) = futures::future::AbortHandle::new_pair();
+    let (periodic, _registration) = futures::future::AbortHandle::new_pair();
     engine.list.refresh = Some(timer.clone());
+    engine.list.reconcile = Some(periodic.clone());
     engine.reset_list_window();
     assert!(timer.is_aborted());
+    assert!(periodic.is_aborted());
     assert!(engine.list.refresh.is_none());
+    assert!(engine.list.reconcile.is_none());
 }
 
 #[test]

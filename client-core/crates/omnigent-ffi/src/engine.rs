@@ -477,9 +477,7 @@ impl Engine {
     }
 
     fn stop_realtime(&mut self) {
-        if let Some(timer) = self.list.refresh.take() {
-            timer.abort();
-        }
+        self.cancel_list_timers();
         if let Some(timer) = self.attention.timer.take() {
             timer.abort();
         }
@@ -558,8 +556,9 @@ impl Engine {
         }
     }
 
-    /// A hint that the list may be stale. While the updates socket is live it already delivers
-    /// every watched and discovered row, so only a disconnected socket falls back to a reload.
+    /// A hint that the list may be stale. While the updates socket is live it delivers the
+    /// watched rows and the new sessions it hears of, so only a disconnected socket reloads at
+    /// once; the periodic re-read finds what the socket was never told.
     fn schedule_list_refresh(&mut self) {
         let socket_live = matches!(self.updates.state(), core::realtime::ConnectionState::Live);
         if self.list.refresh.is_some() || !self.is_connected() || socket_live {

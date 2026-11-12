@@ -31,6 +31,11 @@ pub(crate) enum ListMsg {
     },
 }
 
+/// How often the list is read again while connected. The updates socket announces a new session
+/// only to sockets on the server process that made it, so one started from another app can
+/// reach this client by no other way. The web re-reads at the same pace.
+pub(crate) const LIST_RECONCILE_INTERVAL_MS: u64 = 60_000;
+
 /// Which pages of the list are loaded.
 #[derive(Default)]
 pub(crate) struct ListWindow {
@@ -38,6 +43,8 @@ pub(crate) struct ListWindow {
     pub(crate) generation: u64,
     /// A pending delayed reload.
     pub(crate) refresh: Option<AbortHandle>,
+    /// The next periodic re-read.
+    pub(crate) reconcile: Option<AbortHandle>,
     /// Rows the loaded pages held; a reload asks for as many, so pages stay loaded.
     rows: u32,
     /// The cursor after the loaded rows; `None` once every session is loaded.
@@ -68,9 +75,7 @@ impl Engine {
 
     /// A new connection starts again from the first page.
     pub(crate) fn reset_list_window(&mut self) {
-        if let Some(timer) = self.list.refresh.take() {
-            timer.abort();
-        }
+        self.cancel_list_timers();
         let generation = self.list.generation;
         self.list = ListWindow {
             generation,
@@ -78,10 +83,33 @@ impl Engine {
         };
     }
 
-    pub(crate) fn refresh_list(&mut self) {
-        if let Some(timer) = self.list.refresh.take() {
+    /// Drops the delayed reload and the periodic re-read, as a reload or a disconnect does.
+    pub(crate) fn cancel_list_timers(&mut self) {
+        for timer in [self.list.refresh.take(), self.list.reconcile.take()]
+            .into_iter()
+            .flatten()
+        {
             timer.abort();
         }
+    }
+
+    /// Arms the next periodic re-read; each answer, good or bad, arms the one after it.
+    fn schedule_list_reconcile(&mut self) {
+        if let Some(timer) = self.list.reconcile.take() {
+            timer.abort();
+        }
+        // The demo's sessions are made here; no other app adds to them.
+        if self.is_demo() {
+            return;
+        }
+        let tx = self.sender();
+        self.list.reconcile = Some(self.host.after(LIST_RECONCILE_INTERVAL_MS, move || {
+            post(&tx, Msg::List(ListMsg::Refresh));
+        }));
+    }
+
+    pub(crate) fn refresh_list(&mut self) {
+        self.cancel_list_timers();
         if !self.is_connected() {
             return;
         }
@@ -102,6 +130,7 @@ impl Engine {
         if generation != self.list.generation || !self.is_connected() {
             return;
         }
+        self.schedule_list_reconcile();
         match result {
             Ok(page) => {
                 self.list.rows = u32::try_from(page.sessions.len()).unwrap_or(u32::MAX);
