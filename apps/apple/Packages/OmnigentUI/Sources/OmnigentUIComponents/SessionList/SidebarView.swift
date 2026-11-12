@@ -30,6 +30,7 @@ public struct SidebarView: View {
   /// Collapsed section titles, newline-separated, kept across launches.
   @AppStorage(SidebarNavigationOrder.collapsedSectionsKey) private var collapsedSections = ""
   @State private var behavior = SidebarBehavior()
+  @State private var drawnGroups = SidebarDrawnGroups()
 
   /// Creates the sidebar.
   /// - Parameters:
@@ -49,9 +50,10 @@ public struct SidebarView: View {
 
   /// The sidebar.
   public var body: some View {
-    List(selection: listSelection) {
+    let sections = SidebarSections.sections(behavior.holding(state))
+    let groups = drawnGroups.shown(sections, projects: state.projects, selection: selection)
+    List(selection: listSelection(in: groups.selected)) {
       SidebarNavigationRows(state: state, selection: selection, actions: actions)
-      let sections = SidebarSections.sections(behavior.holding(state))
       ForEach(sections) { section in
         sessionSection(section)
       }
@@ -103,6 +105,8 @@ public struct SidebarView: View {
       .onExitCommand { if bulk.isActive { bulk.end() } }
     #endif
     .onChange(of: state.display.show) { bulk.end() }
+    // After the update that drew them, so a selection that waited on a new group is told late.
+    .task(id: groups.all) { drawnGroups.settle(groups.all) }
     .modifier(
       SessionDialogs(
         renaming: $renaming, renameText: $renameText, confirmingDelete: $confirmingDelete,
@@ -117,14 +121,14 @@ public struct SidebarView: View {
     )
   }
 
-  /// The list's selection. While selecting sessions a click checks the row instead (Shift
-  /// extends from the last one), and the list shows no selection of its own.
-  private var listSelection: Binding<SidebarDestination?> {
+  /// The list's selection, a session's once its group is drawn (``SidebarListSelection``). While
+  /// selecting sessions a click checks the row instead (Shift extends from the last one).
+  private func listSelection(in selectedGroup: String?) -> Binding<SidebarDestination?> {
     Binding(
-      get: { bulk.isActive ? nil : selection },
+      get: { bulk.isActive ? nil : drawnGroups.listed(selection, group: selectedGroup) },
       set: { destination in
         guard bulk.isActive else {
-          selection = destination
+          if destination != nil || !drawnGroups.isHoldingBack { selection = destination }
           return
         }
         if let id = destination?.sessionID {
