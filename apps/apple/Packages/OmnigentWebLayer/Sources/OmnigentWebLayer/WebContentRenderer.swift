@@ -72,6 +72,8 @@ public final class WebContentRenderer {
   /// Forwards a mouse, drag or scroll event. `location` is in the view's top-left coordinates.
   public func forwardMouseEvent(_ event: NSEvent, location: CGPoint) {
     guard let input = InputTranslator.pointerInput(for: event, location: location) else { return }
+    webView?.noteInput(
+      owl_input_class(OWLMessageKind.inputMouse.rawValue, input.kind.rawValue, 0, 0))
     webView?.sendIfLive(.inputMouse, input.encoded(origin: .user, eventTime: event.timestamp))
   }
 
@@ -81,6 +83,7 @@ public final class WebContentRenderer {
       lastKeyDown[event.keyCode] = event
     }
     for input in InputTranslator.keyInputs(for: event) {
+      webView?.noteInput(Self.inputClass(of: input))
       webView?.sendIfLive(.inputKey, input.encoded(origin: .user, eventTime: event.timestamp))
     }
   }
@@ -127,7 +130,7 @@ public final class WebContentRenderer {
         PointerInput(
           kind: kind, location: point, button: button.wire, clickCount: clickCount,
           modifiers: modifiers.wire
-        ).encoded(origin: .agent))
+        ).encoded(origin: .agent), as: .click)
     }
   }
 
@@ -136,7 +139,7 @@ public final class WebContentRenderer {
     try sendAgentMessage(
       .inputMouse,
       PointerInput(kind: .move, location: point, modifiers: modifiers.wire).encoded(
-        origin: .agent))
+        origin: .agent), as: .move)
   }
 
   /// Scrolls by the given deltas in points; positive `deltaY` scrolls up.
@@ -146,7 +149,7 @@ public final class WebContentRenderer {
     try sendAgentMessage(
       .inputMouse,
       PointerInput(kind: .wheel, location: point, deltaX: deltaX, deltaY: deltaY).encoded(
-        origin: .agent))
+        origin: .agent), as: .wheel)
   }
 
   /// Types `text` into the focused element, one key press per character.
@@ -159,12 +162,21 @@ public final class WebContentRenderer {
   /// Presses and releases one key.
   public func agentPress(_ key: AgentKey, modifiers: AgentModifiers = []) throws(WebLayerError) {
     for input in key.keyInputs(modifiers: modifiers.wire) {
-      try sendAgentMessage(.inputKey, input.encoded(origin: .agent))
+      try sendAgentMessage(.inputKey, input.encoded(origin: .agent), as: Self.inputClass(of: input))
     }
   }
 
-  func sendAgentMessage(_ kind: OWLMessageKind, _ fields: WireEncoder) throws(WebLayerError) {
+  /// How the freeze diagnostics count a key message: a press, or a release or bare modifier.
+  static func inputClass(of input: NativeKeyInput) -> OWLInputClass {
+    owl_input_class(
+      OWLMessageKind.inputKey.rawValue, 0, input.kind.rawValue, UInt64(input.nativeKeyCode))
+  }
+
+  func sendAgentMessage(
+    _ kind: OWLMessageKind, _ fields: WireEncoder, as input: OWLInputClass
+  ) throws(WebLayerError) {
     guard let webView else { throw .viewClosed }
+    webView.noteInput(input)
     switch webView.status {
     case .live:
       try webView.session.post(kind, target: webView.id, fields)

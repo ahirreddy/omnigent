@@ -426,6 +426,21 @@ bool Presenter::HasFrame() const {
   return CurrentSlot(impl_->page) != nullptr;
 }
 
+uint64_t Presenter::FramesDelivered() const {
+  return impl_->page.sequence + impl_->popup.sequence;
+}
+
+Presenter::RingState Presenter::PageRing() const {
+  RingState state;
+  state.slots = impl_->page.slots.size();
+  state.dropped = impl_->page.dropped;
+  for (const Slot& slot : impl_->page.slots) {
+    state.in_use += IOSurfaceIsInUse(slot.surface) ? 1 : 0;
+    state.awaiting_ack += slot.awaiting_ack ? 1 : 0;
+  }
+  return state;
+}
+
 bool Presenter::Snapshot(std::vector<uint8_t>* png, std::string* error) const {
   const Slot* page = CurrentSlot(impl_->page);
   if (page == nullptr) {

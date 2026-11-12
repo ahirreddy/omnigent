@@ -38,6 +38,17 @@ class Presenter {
   void AcknowledgeFrame(uint32_t surface_id);
   /// Whether a page frame has been presented.
   bool HasFrame() const;
+  /// Frames put on screen or sent to the client so far, on both layers.
+  uint64_t FramesDelivered() const;
+  /// The page layer's buffers, for freeze diagnostics: how many exist, how many the window
+  /// server still reads, and how many the client has not acknowledged.
+  struct RingState {
+    size_t slots = 0;
+    size_t in_use = 0;
+    size_t awaiting_ack = 0;
+    uint64_t dropped = 0;
+  };
+  RingState PageRing() const;
   /// PNG of the page with the open popup composited in, as the user sees it.
   bool Snapshot(std::vector<uint8_t>* png, std::string* error) const;
 

@@ -82,6 +82,8 @@ class Host {
   /// Drops a popup view whose creation was aborted before OnAfterCreated.
   void AbandonView(uint64_t view_id);
   bool IsShuttingDown() const { return shutting_down_; }
+  /// Asks a view's renderer whether it is alive, for the freeze watch. Main thread.
+  void ProbeView(uint64_t view_id, bool quiet);
   /// Closes every browser, then quits the CEF loop. A watchdog force-exits if that stalls.
   void BeginShutdown(const char* reason);
 

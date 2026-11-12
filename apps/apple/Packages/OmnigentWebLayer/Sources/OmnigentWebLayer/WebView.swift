@@ -111,6 +111,12 @@ public final class WebView {
   @ObservationIgnored var pendingFind: CheckedContinuation<FindResult, Never>?
   /// Set by `WebSurfaceView` to start a native drag the page began.
   @ObservationIgnored var onStartDrag: ((WebDragStart) -> Void)?
+  /// Freeze diagnostics: input sent against frames received (`WebView+Freeze.swift`).
+  @ObservationIgnored var freeze = FreezeDetector()
+  /// The host's last freeze report about this view.
+  @ObservationIgnored var lastHostReport: HostHealthReport?
+  /// Set by `WebSurfaceView`: whether clicks and typing can reach the page.
+  @ObservationIgnored var surfaceState: (() -> WebSurfaceState)?
 
   /// net::ERR_ABORTED, reported when a navigation is stopped or superseded.
   static let netErrorAborted = -3
@@ -273,6 +279,7 @@ public final class WebView {
     guard visible != isVisible else { return }
     isVisible = visible
     sendIfLive(.viewVisibility, WireEncoder().bool(.visible, visible))
+    logFreezeTransition(visible ? "shown" : "hidden")
   }
 
   /// Reports keyboard focus.
@@ -280,6 +287,7 @@ public final class WebView {
     guard focused != isFocused else { return }
     isFocused = focused
     sendIfLive(.viewFocus, WireEncoder().bool(.focused, focused))
+    logFreezeTransition(focused ? "focused" : "blurred")
   }
 
   // MARK: Helpers

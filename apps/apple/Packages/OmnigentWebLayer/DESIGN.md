@@ -122,6 +122,7 @@ port channel (`mojo::PlatformChannel` with Mach endpoints), so the process model
 | OWL message group | Mojo interface (proposed) | Client type that keeps its API |
 |---|---|---|
 | Hello / HelloAck / Ready / Ping / Shutdown | `owl.mojom.Host` (bootstrap, `Initialize(SessionConfig) => (HostInfo)`, `Ping() => ()`) | `Session` |
+| 1.5 HealthReport | `owl.mojom.HostObserver.OnHealthReport(kind, elapsed, line)` | `Session.freezeLines` |
 | ProfileCreate / ProfileDestroy | `owl.mojom.Profile` (one remote per profile, `CreateWebView(...)`) | `Profile` |
 | Navigate, Reload, SetZoom, Evaluate, Snapshot, Find, DevToolsMethod, view events | `owl.mojom.WebView` plus `owl.mojom.WebViewObserver` | `WebView` |
 | InputMouse / InputKey / KeyUnhandled | `owl.mojom.WebContentRenderer` (`blink.mojom.WidgetInputHandler`-style, `ForwardInputEvent(blink.mojom.Event) => (ack)`) | `WebContentRenderer` |
@@ -631,6 +632,95 @@ Proof (`crash` and `hang`):
 - After `kill -STOP`, the hang is detected after 8.2-9.9 s, the host is replaced, and the page
   recovers.
 
+## Freeze diagnostics (protocol 1.5)
+
+A page that "just freezes" has no crash to read, so both processes keep a little state and write
+one line when something stalls. The lines tell five kinds of freeze apart: (a) the renderer's
+main thread is stuck, (b) the renderer is fine but no frame reaches the screen, (c) input does not
+reach the page, (d) the host's own main thread is blocked, (e) the app is not reading the channel.
+
+Read them after a freeze; nothing has to be switched on first:
+
+```
+log show --last 30m --style compact \
+  --predicate 'subsystem BEGINSWITH "ai.omnigent.weblayer"' | grep ' freeze '
+```
+
+The app logs under `ai.omnigent.weblayer` (category `freeze`), the host under
+`ai.omnigent.weblayer.host`. Every line starts `freeze kind=<kind>` and is `key=value` pairs; the
+app repeats the host's lines as `freeze from=host kind=...`, so either process's log is enough.
+`Session.freezeLines` holds the last 128.
+
+**What is recorded.**
+
+- **Host, per view** (`ViewHealth` in `OWLFreezeWatch.hpp`): atomic counters and times the CEF UI
+  thread stores as it goes. Paint callbacks, frames presented, frames dropped, copy errors; the
+  last of each; input replayed by class (click, wheel, key, move, text, drag, key-up) since the
+  last frame; visibility and focus as last told to CEF; size and scale; loading; the page's host
+  name.
+- **Host watch** (`FreezeWatch`): a one-second timer on its own queue. It reads the records,
+  pings the main thread two ways (the main dispatch queue and a CEF UI task), counts sends to the
+  client that timed out, reads the kernel's App Nap state of the host, and notices its own timer
+  running late.
+- **Liveness question.** For a stalled view the host evaluates a constant over DevTools
+  (`document.visibilityState` and `hasFocus()`, reduced to two fixed words) with a 3 s timeout,
+  then one `requestAnimationFrame` with a 2 s timeout. One question at a time per view; an
+  unanswered one stays open so a late answer is recognized, and is forgotten after 60 s. A page
+  in use is asked the constant every 5 s, and only a missing answer is written.
+- **Client, per view** (`FreezeDetector`): input sent and frames received, on the app's own
+  clock, checked by a one-second timer. A stall line adds what only the app knows: whether the
+  surface is the window's first responder and which class has the keyboard instead, what it told
+  the host about visibility and focus, the host's CPU share, the age of the unanswered ping, the
+  channel's receive backlog and send failures, and the host's last report.
+- **Transitions**, when they happen: view shown, hidden, focused, blurred, keyboard refused, in
+  both processes; host spawned, ready, shut down, exited; renderer gone.
+
+**When a view counts as stalled** (`owl_freeze.h`, shared by both sides and unit-tested): it is
+visible and, for 2 s, has presented no frame since input other than pointer movement, key
+releases and bare modifiers; or frames that nobody was driving ran steadily for 3 s and stopped;
+or, for 5 s, it has been loading without a frame. Input replayed into a view marked hidden counts
+too. A stall is written at 2 s, 10 s, 30 s and then every minute, later lines only while input
+keeps coming, and once more when it ends, with its length. First lines of two stalls of one view
+are at least 5 s apart.
+
+**Signatures.**
+
+| Freeze | Lines |
+|---|---|
+| (a) Renderer hung | `kind=view-stall reason=input` and the app's `kind=client-stall`, then `kind=renderer-probe renderer=hung waited_ms=3000`; when it ends, `renderer=recovered answered_after_ms=N` and `kind=view-recovered`. A hung page that keeps drawing (it scrolls, a video plays) shows only `renderer=hung ... asked=while-in-use`. `dialogs=1` on the probe line means a script dialog nobody answered is what blocks the page |
+| (b) No frames, renderer alive | `kind=view-stall` then `renderer-probe renderer=alive`. Which hop: `page=hidden/...` or `reason=input-while-hidden` with the app's `told_host=visible:0` is a view left marked hidden; `frames=stopped` is begin-frames not reaching the renderer (compositor, GPU process, frame source); `paint_age_ms` small with `frame_age_ms` large, `dropped` growing and `ring=slots:4,in_use:4` is every buffer busy; `errors` growing is the copy failing; `frames=alive` with both ages large and `waiting=` growing over `line=2`, `line=3` is Chromium not painting. The app's `kind=client-frames-unseen ... layer=mode:...,in_view:0,size:0x0` is frames arriving while the layer that shows them is in no window or has no size. One click, `frames=alive` and a quick `view-recovered` is a click that had nothing to draw |
+| (c) Input not arriving | The app is not sending: no `client-stall` although the user clicks, `sent=` flat, `unsent=` growing, or `surface=...first_responder:0,keyboard_at:<class>` after `kind=client-blurred` or `client-keyboard-refused`. The host is not replaying: the app's `sent=` grows and the host's `inputs=` does not, `input_failures` grows, or the host's `recv_queue` is high. Chromium ignores it: `inputs=` grows, `keys_returned=` stays, and the probe says `page=visible/blurred` |
+| (d) Host main thread blocked | `kind=host-stall stalled_ms=N main_queue_late_ms=... cef_task_late_ms=...` and `kind=host-stall-stack main_thread=<frames, innermost first>`, then `kind=host-recovered`. From the app: `client-stall` with `ping_ms` over 1000 and `cpu_pct` (0 is blocked, about 100 is spinning). `kind=host-watch-late` means the whole process stood still, `kind=host-suppressed active=1` that macOS napped it |
+| (e) App not reading the channel | Host: `kind=channel-backlog send_failures=N blocked_ms=N`, `kind=report-undelivered`, then `kind=channel-drained`; its stack line ends in `owl_channel_send`. App: `kind=client-timer-late late_ms=N ... recv_queue=1024` |
+
+**Cost.** Per frame the host does a few relaxed atomic stores and one more clock read, the app
+one clock read and two integer stores; nothing is allocated or logged. The watch and the app's
+timer each run once a second and compare a handful of numbers per view. A visible view that drew
+or took input also gets one `kind=view-health` line a minute, so a freeze none of the rules catch
+still has the minutes before it on record.
+
+**Privacy.** Lines carry counters, times, class names and the page's host name (`site=`), cut at
+the first character that is not part of a host name. Never a path, a query, page content, typed
+text, a cookie or a token. The probe's answer is logged only when it is one of five fixed strings.
+
+**Limits.**
+
+- Chromium ignores an unresponsive renderer while a DevTools session is attached, and this host
+  always attaches one, so `OnRenderProcessUnresponsive` never fires here; only
+  `kind=renderer-responsive unresponsive_ms=unreported` appears, when a hang ends. The liveness
+  question stands in for it.
+- Begin-frames are not observable from CEF; the `requestAnimationFrame` question is the proxy.
+- The diagnostics change nothing: no reload, no renderer is ended, no input or frame is
+  re-timed. The stack line suspends the main thread for microseconds, and only once it has
+  already been stalled for a second.
+- While the app is not reading the channel the host's lines reach only the host's log.
+
+The `freeze-diagnostics` proof makes each of these happen against real Chromium: a script that
+hangs for 7 s and for 19 s, a view left marked hidden, a click that draws nothing, a script that
+hangs while a compositor animation keeps drawing, and an app that stops reading the channel
+while the page floods it (`--proof freeze-hung`, `freeze-hidden`, `freeze-idle`, `freeze-long`,
+`freeze-drawing`, `freeze-backlog` run one alone).
+
 ## Agent input: the security boundary
 
 Atlas's rule is that agent input goes directly to the renderer, never through the privileged
@@ -717,9 +807,12 @@ Universal Release builds roughly double the framework, as before.
   - `OpaquePointer` handles in `Channel.swift`;
   - `NSView.window` and `nextResponder`, which are `unowned(unsafe)`, behind one documented
     accessor;
-  - `proc_pid_rusage` in the example.
+  - `proc_pid_rusage`, for the host's CPU time in a freeze line (`Session+Freeze.swift`) and in
+    the example.
 - The `OWLField` enum cases `.URL`, `.JSON`, `.PNG`, `.X` and `.Y` keep the importer's
   capitalisation.
+- 1.5: the host reads its own App Nap state with `task_policy_get` and a flavor
+  (`TASK_SUPPRESSION_POLICY`) that XNU defines but the SDK does not; a refusal is logged once.
 - 1.1: `OWLPermissionOther` is `1 << 30`, not `1 << 31`, so the enumerator stays in `int` range
   in the host's C17 build.
 - 1.1: two `swiftlint:disable:next` lines, each for an SDK signature (WebKit's optional `[URL]`

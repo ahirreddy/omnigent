@@ -38,7 +38,7 @@ public final class WebLayerView: NSView {
 
   /// Gives keyboard focus to the page.
   public func focusPage() {
-    hostWindow?.makeFirstResponder(surface)
+    surface.takeKeyboard()
   }
 
   private func observeStatus() {
@@ -74,6 +74,7 @@ class WebSurfaceView: NSView {
     textComposer.sink = self
     webView.renderer.onUnhandledKeyEvent = { [weak self] event in self?.redispatch(event) }
     webView.onStartDrag = { [weak self] start in self?.beginPageDrag(start) }
+    webView.surfaceState = { [weak self] in self?.surfaceState ?? WebSurfaceState() }
     registerForDraggedTypes(Self.acceptedDragTypes)
     observeCursor()
   }
@@ -96,6 +97,24 @@ class WebSurfaceView: NSView {
   override func resignFirstResponder() -> Bool {
     webView.setFocused(false)
     return true
+  }
+
+  /// Makes this view the window's first responder, and says so in the log when the window
+  /// refuses: typing then goes somewhere else while the page looks ready for it.
+  func takeKeyboard() {
+    guard let window = hostWindow, !window.makeFirstResponder(self) else { return }
+    webView.logFreezeTransition("keyboard-refused")
+  }
+
+  /// Whether clicks and typing can reach the page, for freeze diagnostics.
+  var surfaceState: WebSurfaceState {
+    guard let window = hostWindow else { return WebSurfaceState(isHidden: isHidden) }
+    let responder = window.firstResponder
+    return WebSurfaceState(
+      inWindow: true, windowVisible: window.occlusionState.contains(.visible),
+      windowIsKey: window.isKeyWindow, isHidden: isHiddenOrHasHiddenAncestor,
+      isFirstResponder: responder === self,
+      firstResponder: responder.map { String(describing: type(of: $0)) } ?? "none")
   }
 
   // MARK: Geometry
@@ -170,7 +189,7 @@ class WebSurfaceView: NSView {
   }
 
   override func mouseDown(with event: NSEvent) {
-    hostWindow?.makeFirstResponder(self)
+    takeKeyboard()
     lastMouseDown = event
     forwardMouse(event)
   }
@@ -182,7 +201,7 @@ class WebSurfaceView: NSView {
   override func mouseExited(with event: NSEvent) { forwardMouse(event) }
 
   override func rightMouseDown(with event: NSEvent) {
-    hostWindow?.makeFirstResponder(self)
+    takeKeyboard()
     forwardMouse(event)
   }
 

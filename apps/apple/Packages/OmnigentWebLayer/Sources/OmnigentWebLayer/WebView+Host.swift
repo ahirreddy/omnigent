@@ -151,6 +151,8 @@ extension WebView {
       presentFrame(message)
     case .presented:
       recordPresented(fields)
+    case .healthReport:
+      session.noteHostReport(fields, view: self)
     case .popupVisibility:
       if let released = layerHost.setPopupVisible(fields.bool(.visible)) {
         acknowledge(released)
@@ -226,6 +228,7 @@ extension WebView {
     statistics.record(
       latency: Double(now &- paint) / 1000,
       copy: Double(fields.u64(.hostBlitNanos) ?? 0) / 1000)
+    noteFrame()
     noteFirstFrame()
   }
 
@@ -248,6 +251,7 @@ extension WebView {
     statistics.record(
       latency: Double(presented &- paint) / 1000,
       copy: Double(fields.u64(.hostBlitNanos) ?? 0) / 1000)
+    noteFrame()
     noteFirstFrame()
   }
 

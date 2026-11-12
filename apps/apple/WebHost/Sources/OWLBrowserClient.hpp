@@ -19,6 +19,8 @@
 
 namespace owl {
 
+struct ViewHealth;
+
 class BrowserClient : public CefClient,
                       public CefRenderHandler,
                       public CefDisplayHandler,
@@ -62,6 +64,10 @@ class BrowserClient : public CefClient,
   /// the time CEF records for it.
   void ReplayInput(uint16_t kind, const Decoder& fields);
   void AcknowledgeFrame(uint32_t surface_id) { presenter_.AcknowledgeFrame(surface_id); }
+  /// Freeze diagnostics: asks the renderer a constant over DevTools and reports whether it
+  /// answered, then whether it still draws frames. One question at a time, each with a timeout.
+  /// A `quiet` question reports only a missing answer. See DESIGN.md, "Freeze diagnostics".
+  void ProbeRenderer(bool quiet);
 
   // 1.1 commands: replies to host requests, policies, IME and drag and drop
   // (OWLBrowserPrompts.mm, OWLBrowserPopups.mm, OWLBrowserInput.mm).
@@ -140,6 +146,9 @@ class BrowserClient : public CefClient,
   void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
 
   // CefRequestHandler
+  bool OnRenderProcessUnresponsive(CefRefPtr<CefBrowser> browser,
+                                   CefRefPtr<CefUnresponsiveProcessCallback> callback) override;
+  void OnRenderProcessResponsive(CefRefPtr<CefBrowser> browser) override;
   void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser, TerminationStatus status,
                                  int error_code, const CefString& error_string) override;
   bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
@@ -289,6 +298,31 @@ class BrowserClient : public CefClient,
   /// A frame of `type` found every buffer busy. Asks for it again shortly, once: otherwise a
   /// page that then stops changing would stay on the frame before it and look frozen.
   void RepaintAfterDrop(PaintElementType type);
+
+  /// The liveness question in flight, if any (OWLBrowserClient.mm, "Freeze diagnostics").
+  struct RendererProbe {
+    enum class Stage { kIdle, kAnswer, kFrame };
+    Stage stage = Stage::kIdle;
+    int message_id = 0;
+    uint64_t serial = 0;
+    uint64_t started_nanos = 0;
+    bool timed_out = false;
+    bool quiet = false;
+    uint64_t answer_milliseconds = 0;
+    std::string page_state;
+  };
+  /// Records what became of a frame Chromium painted: shown, dropped, or lost to an error.
+  void NotePresentResult(PaintElementType type, bool kept, uint64_t delivered_before);
+  void StartProbeStage(RendererProbe::Stage stage, const char* script, bool await_promise,
+                       int64_t timeout_milliseconds);
+  void ProbeTimedOut(uint64_t serial);
+  /// Takes a DevTools result that answers the probe; false when it is some other call's.
+  bool HandleProbeResult(int message_id, bool success, const std::string& json);
+  void ReportProbe(const std::string& verdict, uint64_t elapsed_milliseconds);
+  /// The buffers and open prompts, which only this thread can read.
+  std::string PresentationState() const;
+  /// Requests waiting for the client's answer; a script dialog among them blocks the page.
+  size_t PendingPromptCount() const;
   void ReplyWithScreenshot(uint64_t request, bool success, const std::string& json);
   void RunDevTools(uint64_t request, OWLMessageKind reply, const std::string& method,
                    CefRefPtr<CefDictionaryValue> params);
@@ -312,6 +346,11 @@ class BrowserClient : public CefClient,
   double earliest_input_time_ = 0;
   /// A frame was dropped and the page has not been asked to paint again yet.
   bool repaint_after_drop_pending_ = false;
+  /// What the freeze watch reads about this view; written on this thread.
+  std::shared_ptr<ViewHealth> health_;
+  RendererProbe probe_;
+  uint64_t probe_serial_ = 0;
+  uint64_t unresponsive_since_nanos_ = 0;
   int next_message_id_ = 0;
   std::string last_find_text_;
 

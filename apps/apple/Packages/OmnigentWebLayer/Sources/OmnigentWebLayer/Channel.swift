@@ -36,7 +36,7 @@ struct IncomingMessage {
 
   /// The kind, `nil` past the newest kind this client knows (the C enum accepts any number).
   var kind: OWLMessageKind? {
-    kindValue <= OWLMessageKind.externalProtocol.rawValue
+    kindValue <= OWLMessageKind.healthReport.rawValue
       ? OWLMessageKind(rawValue: kindValue) : nil
   }
 }
@@ -113,6 +113,13 @@ struct IncomingMessage {
       throw .channelFailed(
         "Sending message \(kind.rawValue) failed: \(Self.describe(result)) (\(result)).")
     }
+  }
+
+  /// Messages from the host that this process has not read yet, or -1 when unknown. A count that
+  /// stays high means the app's main thread is not draining the channel.
+  var receiveBacklog: Int64 {
+    guard let handle = unsafe handle else { return -1 }
+    return unsafe owl_channel_receive_backlog(handle)
   }
 
   /// Stops delivery and releases the channel. Idempotent.

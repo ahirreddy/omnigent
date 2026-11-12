@@ -14,15 +14,19 @@ struct ProofFailure: Error, CustomStringConvertible {
 final class Proofs {
   static let all = [
     "boot", "render", "pixels", "input", "select", "js", "keys", "cookies", "agent",
-    "event-times", "crash", "hang",
+    "event-times", "freeze-diagnostics", "crash", "hang",
   ]
 
   /// Scenario by name. "quit" only waits for the first page; the app then quits.
-  static let scenarios: [String: (Proofs) -> () async throws -> Void] = [
+  static let scenarios: [String: (Proofs) -> () async throws -> Void] = baseScenarios.merging(
+    freezeScenarios
+  ) { first, _ in first }
+
+  private static let baseScenarios: [String: (Proofs) -> () async throws -> Void] = [
     "boot": { $0.boot }, "render": { $0.render }, "pixels": { $0.pixels },
     "input": { $0.input }, "select": { $0.select }, "js": { $0.javascript },
     "keys": { $0.unhandledKeys }, "cookies": { $0.cookies }, "agent": { $0.agentInput },
-    "event-times": { $0.eventTimes },
+    "event-times": { $0.eventTimes }, "freeze-diagnostics": { $0.freezeDiagnostics },
     "crash": { $0.crashRecovery }, "hang": { $0.hangRecovery }, "spike": { $0.renderingSpike },
     "quit": { $0.waitForPage },
     // Protocol 1.1 browser UI, through the shared OmnigentBrowser UI (`--engine` picks one).

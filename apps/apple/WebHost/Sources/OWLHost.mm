@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "OWLBrowserClient.hpp"
+#include "OWLFreezeWatch.hpp"
 #include "OWLPresenter.hpp"
 #include "include/cef_app.h"
 #include "include/cef_application_mac.h"
@@ -408,6 +409,13 @@ void Host::OnContextInitialized() {
        Encoder()
            .U64(OWLFieldElapsedMilliseconds, elapsed)
            .U64(OWLFieldRenderMode, config_.render_mode));
+  FreezeWatch::Get().Start(channel_, config_.client_minor >= OWL_PROTOCOL_MINOR_HEALTH,
+                           [](uint64_t view_id, bool quiet) {
+                             Host::Get().ProbeView(view_id, quiet);
+                           });
+  FreezeWatch::Get().Note("kind=host-ready pid=" + std::to_string(getpid()) + " init_ms=" +
+                          std::to_string(elapsed) + " frame_rate=" +
+                          std::to_string(DisplayFrameRate()));
   if (shutting_down_ && views_.empty()) {
     QuitLoop();
   }
@@ -419,10 +427,16 @@ void Host::Send(OWLMessageKind kind, uint64_t request, uint64_t target, const En
     return;
   }
   const auto& data = payload.data();
+  const uint64_t send_start = NowNanos();
   kern_return_t kr = owl_channel_send(channel_, kind, request, target, data.data(), data.size(),
                                       port, disposition, kSendTimeoutMs);
   if (kr == KERN_SUCCESS) {
     return;
+  }
+  if (kr == MACH_SEND_TIMED_OUT) {
+    // The client is not taking messages, and this thread just waited the whole timeout for it.
+    const uint64_t send_end = NowNanos();
+    FreezeWatch::Get().NoteSendFailure(send_end, send_end - send_start);
   }
   if (kr == MACH_SEND_INVALID_DEST && shutting_down_) {
     return;  // The client is already gone; nothing is waiting for this message.
@@ -453,6 +467,8 @@ void Host::BeginShutdown(const char* reason) {
   }
   shutting_down_ = true;
   Log("shutting down: %s", reason);
+  FreezeWatch::Get().Note(std::string("kind=host-shutdown reason=\"") + reason + "\"");
+  FreezeWatch::Get().Stop();
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, kShutdownWatchdogSeconds * NSEC_PER_SEC),
                  dispatch_get_main_queue(), ^{
                    Log("shutdown did not finish in %llds; exiting",
@@ -482,6 +498,14 @@ void Host::OnBrowserClosed(uint64_t view_id) {
   views_.erase(view_id);
   if (shutting_down_ && views_.empty()) {
     QuitLoop();
+  }
+}
+
+void Host::ProbeView(uint64_t view_id, bool quiet) {
+  auto found = views_.find(view_id);
+  if (found != views_.end() && !shutting_down_) {
+    CefRefPtr<BrowserClient> view = found->second;
+    view->ProbeRenderer(quiet);
   }
 }
 

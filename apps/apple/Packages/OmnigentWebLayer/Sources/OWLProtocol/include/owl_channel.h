@@ -98,6 +98,10 @@ kern_return_t owl_channel_send(owl_channel *_Nonnull channel,
                                mach_msg_type_name_t disposition,
                                uint32_t timeout_ms);
 
+/// Messages queued on the channel's receive port that this side has not taken yet, or -1 when
+/// the kernel does not say. A count that stays high means this side is not draining the channel.
+int64_t owl_channel_receive_backlog(const owl_channel *_Nonnull channel);
+
 /// Takes ownership of the message's port right.
 mach_port_t owl_message_take_port(owl_message *_Nonnull message);
 

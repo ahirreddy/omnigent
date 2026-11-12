@@ -18,6 +18,9 @@ public final class Session {
   public internal(set) var lastProtocolError: WebLayerError?
   /// Every download any view in this session started.
   public let downloads = WebDownloadList()
+  /// The most recent freeze diagnostics, oldest first, as they were written to the log: the
+  /// client's own lines and the host's (`from=host`). See DESIGN.md, "Freeze diagnostics".
+  @ObservationIgnored public internal(set) var freezeLines: [String] = []
 
   @ObservationIgnored var process: HostProcess?
   @ObservationIgnored var channel: HostChannel?
@@ -43,6 +46,11 @@ public final class Session {
   @ObservationIgnored var profiles: [UInt64: Profile] = [:]
   @ObservationIgnored var views: [UInt64: WebView] = [:]
   @ObservationIgnored var terminationObserver: (any NSObjectProtocol)?
+  @ObservationIgnored var freeze = SessionFreezeState()
+  /// The clock freeze diagnostics measure with, in uptime nanoseconds. A test supplies its own.
+  @ObservationIgnored var uptimeNanos: () -> UInt64 = { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
+  /// CPU time a process has used; a test supplies its own.
+  @ObservationIgnored var hostCPUNanos: (pid_t) -> UInt64? = Session.processCPUNanos
   /// Tests only: receives every message `post` would send, instead of the channel.
   @ObservationIgnored var outgoingTap: ((OWLMessageKind, UInt64, WireDecoder) -> Void)?
 
@@ -197,7 +205,12 @@ public final class Session {
       return
     }
     guard isReady, let channel else { throw .notReady }
-    try channel.send(kind, target: target, fields)
+    do throws(WebLayerError) {
+      try channel.send(kind, target: target, fields)
+    } catch {
+      freeze.sendFailures += 1
+      throw error
+    }
   }
 
   func request(

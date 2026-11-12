@@ -178,6 +178,15 @@ mach_port_t owl_channel_receive_port(const owl_channel *channel) {
   return channel->receive;
 }
 
+int64_t owl_channel_receive_backlog(const owl_channel *channel) {
+  mach_port_status_t status;
+  mach_msg_type_number_t count = MACH_PORT_RECEIVE_STATUS_COUNT;
+  kern_return_t kr = mach_port_get_attributes(mach_task_self(), channel->receive,
+                                              MACH_PORT_RECEIVE_STATUS, (mach_port_info_t)&status,
+                                              &count);
+  return kr == KERN_SUCCESS ? (int64_t)status.mps_msgcount : -1;
+}
+
 mach_port_t owl_message_take_port(owl_message *message) {
   mach_port_t port = message->port;
   message->port = MACH_PORT_NULL;

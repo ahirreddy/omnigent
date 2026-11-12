@@ -45,6 +45,18 @@ public final class LayerHost {
     }
   }
 
+  /// Whether content given to this host can reach the screen: it is attached, its root is in a
+  /// view's layer, and it has a size.
+  var isShowable: Bool {
+    mode != nil && rootLayer.superlayer != nil && !rootLayer.bounds.isEmpty
+  }
+
+  /// The above as `key:value` pairs, for freeze diagnostics.
+  var stateText: String {
+    "mode:\(mode?.rawValue ?? "none"),in_view:\(rootLayer.superlayer == nil ? 0 : 1)"
+      + ",size:\(Int(rootLayer.bounds.width))x\(Int(rootLayer.bounds.height))"
+  }
+
   /// Sizes the root (and the remote layer) to the view.
   func layout(bounds: CGRect) {
     CATransaction.begin()

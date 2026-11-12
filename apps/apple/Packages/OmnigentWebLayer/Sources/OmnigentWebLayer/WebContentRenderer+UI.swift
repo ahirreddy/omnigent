@@ -128,7 +128,8 @@ extension WebContentRenderer {
       return
     }
     try sendAgentMessage(
-      .imeCommitText, Self.commitFields(text, replacementRange: nil).bool(.agentInput, true))
+      .imeCommitText, Self.commitFields(text, replacementRange: nil).bool(.agentInput, true),
+      as: .text)
   }
 
   /// A drag entered the page.
@@ -185,6 +186,7 @@ extension WebContentRenderer {
 
   private func sendUser(_ kind: OWLMessageKind, _ fields: WireEncoder = WireEncoder()) {
     guard let webView, webView.session.supportsBrowserUI else { return }
+    webView.noteInput(owl_input_class(kind.rawValue, 0, 0, 0))
     webView.sendIfLive(kind, fields)
   }
 }

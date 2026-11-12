@@ -2,6 +2,7 @@
 
 #import <AppKit/AppKit.h>
 
+#include "OWLFreezeWatch.hpp"
 #include "OWLHost.hpp"
 #include "include/base/cef_callback.h"
 #include "include/cef_parser.h"
@@ -14,10 +15,53 @@ namespace {
 
 constexpr auto kSentKeyLifetime = std::chrono::seconds(5);
 constexpr int64_t kRepaintAfterDropMilliseconds = 16;
+// How long the renderer has to answer a constant, and then to run one animation frame.
+constexpr int64_t kProbeAnswerMilliseconds = 3000;
+constexpr int64_t kProbeFrameMilliseconds = 2000;
+// An unanswered question is forgotten after this long, and the next stall asks again.
+constexpr uint64_t kProbeForgetNanos = 60 * NSEC_PER_SEC;
+// What Blink believes about the page, as two fixed words. Nothing of the page's content.
+constexpr char kProbeStateScript[] =
+    "document.visibilityState + '/' + (document.hasFocus() ? 'focused' : 'blurred')";
+constexpr char kProbeFrameScript[] =
+    "new Promise((resolve) => requestAnimationFrame(() => resolve(true)))";
 
 /// The host's clock in `NSEvent.timestamp` terms: seconds of system uptime.
 double UptimeSeconds() {
   return static_cast<double>(NowNanos()) / 1e9;
+}
+
+uint64_t MillisecondsSince(uint64_t since_nanos) {
+  const uint64_t now = NowNanos();
+  return now > since_nanos ? (now - since_nanos) / NSEC_PER_MSEC : 0;
+}
+
+/// The page state a probe answered with, kept only when it is the two words the script builds:
+/// a page can redefine what the script reads, and nothing else may reach the log.
+std::string ProbeState(bool success, const std::string& json) {
+  CefRefPtr<CefValue> parsed = success ? CefParseJSON(json, JSON_PARSER_RFC) : nullptr;
+  if (!parsed || parsed->GetType() != VTYPE_DICTIONARY) {
+    return "unreadable";
+  }
+  CefRefPtr<CefDictionaryValue> result = parsed->GetDictionary()->GetDictionary("result");
+  const std::string state = result ? result->GetString("value").ToString() : "";
+  for (const char* known : {"visible/focused", "visible/blurred", "hidden/focused",
+                            "hidden/blurred", "prerender/blurred"}) {
+    if (state == known) {
+      return state;
+    }
+  }
+  return "unreadable";
+}
+
+/// The page's host name for the health record, or its scheme when it has none (data:, about:).
+std::string SiteOf(const CefString& url) {
+  CefURLParts parts;
+  if (!CefParseURL(url, parts)) {
+    return "";
+  }
+  const std::string host = CefString(&parts.host).ToString();
+  return host.empty() ? CefString(&parts.scheme).ToString() + ":" : host;
 }
 
 OWLCursor CursorFor(cef_cursor_type_t type) {
@@ -67,8 +111,13 @@ BrowserClient::BrowserClient(uint64_t view_id, double width, double height, doub
       height_(height),
       scale_(scale),
       visible_(visible),
-      presenter_(view_id, Host::Get().config().render_mode) {
+      presenter_(view_id, Host::Get().config().render_mode),
+      health_(FreezeWatch::Get().AddView(view_id)) {
   presenter_.SetGeometry(width, height, scale);
+  health_->width.store(width);
+  health_->height.store(height);
+  health_->scale.store(scale);
+  health_->visible.store(visible);
 }
 
 bool BrowserClient::StartPresenter(std::string* error) {
@@ -135,6 +184,9 @@ void BrowserClient::Resize(double width, double height, double scale, double scr
   screen_x_ = screen_x;
   screen_y_ = screen_y;
   presenter_.SetGeometry(width, height, scale);
+  health_->width.store(width);
+  health_->height.store(height);
+  health_->scale.store(scale);
   if (!browser_) {
     return;
   }
@@ -145,14 +197,25 @@ void BrowserClient::Resize(double width, double height, double scale, double scr
 }
 
 void BrowserClient::SetVisible(bool visible) {
+  if (visible != visible_) {
+    FreezeWatch::Get().Note("kind=view-visibility view=" + std::to_string(view_id_) +
+                            " visible=" + std::to_string(visible) + " browser=" +
+                            std::to_string(browser_ != nullptr));
+  }
   visible_ = visible;
+  health_->visible.store(visible);
   if (browser_) {
     browser_->GetHost()->WasHidden(!visible);
   }
 }
 
 void BrowserClient::SetFocused(bool focused) {
+  if (focused != focused_) {
+    FreezeWatch::Get().Note("kind=view-focus view=" + std::to_string(view_id_) + " focused=" +
+                            std::to_string(focused) + " visible=" + std::to_string(visible_));
+  }
   focused_ = focused;
+  health_->focused.store(focused);
   if (browser_) {
     browser_->GetHost()->SetFocus(focused);
   }
@@ -272,10 +335,15 @@ bool BrowserClient::IsInputCommand(uint16_t kind) {
 }
 
 void BrowserClient::ReplayInput(uint16_t kind, const Decoder& fields) {
+  health_->NoteInput(owl_input_class(kind, fields.U64(OWLFieldMouseKind).value_or(0),
+                                     fields.U64(OWLFieldKeyKind).value_or(0),
+                                     fields.U64(OWLFieldNativeKeyCode).value_or(0)),
+                     NowNanos());
   earliest_input_time_ = owl_input_event_time(fields.Double(OWLFieldEventTime).value_or(0),
                                               UptimeSeconds(), earliest_input_time_);
   const ScopedInputEvent current_event(earliest_input_time_);
   if (!current_event.IsInstalled()) {
+    health_->input_failures.fetch_add(1);
     // Without it CEF would stamp the input with a stale time or none, which Blink rejects.
     Host::Get().ReportError(view_id_, OWLHostErrorInputFailed,
                             "Input " + std::to_string(kind) + " could not be given a time.");
@@ -394,6 +462,7 @@ bool BrowserClient::GetScreenInfo(CefRefPtr<CefBrowser> browser, CefScreenInfo& 
 }
 
 void BrowserClient::OnPopupShow(CefRefPtr<CefBrowser>, bool show) {
+  health_->popup_open.store(show);
   presenter_.SetPopupVisible(show);
 }
 
@@ -403,9 +472,24 @@ void BrowserClient::OnPopupSize(CefRefPtr<CefBrowser>, const CefRect& rect) {
 
 void BrowserClient::OnPaint(CefRefPtr<CefBrowser>, PaintElementType type, const RectList&,
                             const void* buffer, int width, int height) {
-  if (!presenter_.PresentPixels(type == PET_POPUP ? OWLLayerPopup : OWLLayerPage, buffer, width,
-                                height, NowNanos())) {
+  const uint64_t paint_nanos = NowNanos();
+  health_->NotePaint(paint_nanos);
+  const uint64_t delivered = presenter_.FramesDelivered();
+  const bool kept = presenter_.PresentPixels(type == PET_POPUP ? OWLLayerPopup : OWLLayerPage,
+                                             buffer, width, height, paint_nanos);
+  NotePresentResult(type, kept, delivered);
+}
+
+void BrowserClient::NotePresentResult(PaintElementType type, bool kept,
+                                      uint64_t delivered_before) {
+  const uint64_t now = NowNanos();
+  if (!kept) {
+    health_->NoteDrop(now);
     RepaintAfterDrop(type);
+  } else if (presenter_.FramesDelivered() != delivered_before) {
+    health_->NoteFrame(now);
+  } else {
+    health_->present_errors.fetch_add(1, std::memory_order_relaxed);
   }
 }
 
@@ -430,8 +514,10 @@ void BrowserClient::RepaintAfterDrop(PaintElementType type) {
 void BrowserClient::OnAcceleratedPaint(CefRefPtr<CefBrowser>, PaintElementType type,
                                        const RectList&, const CefAcceleratedPaintInfo& info) {
   const uint64_t paint_nanos = NowNanos();
+  health_->NotePaint(paint_nanos);
   auto surface = static_cast<IOSurfaceRef>(info.shared_texture_io_surface);
   if (surface == nullptr) {
+    health_->present_errors.fetch_add(1, std::memory_order_relaxed);
     Host::Get().ReportError(view_id_, OWLHostErrorRenderFailed,
                             "OnAcceleratedPaint delivered no IOSurface.");
     return;
@@ -448,10 +534,10 @@ void BrowserClient::OnAcceleratedPaint(CefRefPtr<CefBrowser>, PaintElementType t
     width = visible.width;
     height = visible.height;
   }
-  if (!presenter_.PresentAccelerated(type == PET_POPUP ? OWLLayerPopup : OWLLayerPage, surface,
-                                     x, y, width, height, paint_nanos)) {
-    RepaintAfterDrop(type);
-  }
+  const uint64_t delivered = presenter_.FramesDelivered();
+  const bool kept = presenter_.PresentAccelerated(
+      type == PET_POPUP ? OWLLayerPopup : OWLLayerPage, surface, x, y, width, height, paint_nanos);
+  NotePresentResult(type, kept, delivered);
 }
 
 // MARK: CefDisplayHandler
@@ -462,6 +548,8 @@ void BrowserClient::OnAddressChange(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> f
     // Input that happened before this commit was aimed at the page before it. Blink requires
     // the input that starts a soft navigation to be newer than the document it lands in.
     earliest_input_time_ = std::max(earliest_input_time_, UptimeSeconds());
+    health_->SetSite(SiteOf(url));
+    health_->NoteNavigation();
     Emit(OWLMessageKindURLChanged, Encoder().String(OWLFieldURL, url.ToString()));
   }
 }
@@ -485,6 +573,7 @@ bool BrowserClient::OnCursorChange(CefRefPtr<CefBrowser>, CefCursorHandle, cef_c
 
 void BrowserClient::OnLoadingStateChange(CefRefPtr<CefBrowser>, bool is_loading,
                                          bool can_go_back, bool can_go_forward) {
+  health_->SetLoading(is_loading, NowNanos());
   Emit(OWLMessageKindLoadingState, Encoder()
                                        .Bool(OWLFieldIsLoading, is_loading)
                                        .Bool(OWLFieldCanGoBack, can_go_back)
@@ -507,6 +596,7 @@ void BrowserClient::OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame
 
 void BrowserClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
   browser_ = browser;
+  health_->has_browser.store(true);
   devtools_registration_ = browser->GetHost()->AddDevToolsMessageObserver(this);
   if (close_requested_) {
     browser->GetHost()->CloseBrowser(true);
@@ -527,6 +617,8 @@ void BrowserClient::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
 void BrowserClient::OnBeforeClose(CefRefPtr<CefBrowser>) {
   devtools_registration_ = nullptr;
   browser_ = nullptr;
+  health_->has_browser.store(false);
+  probe_ = RendererProbe();
   CancelPendingPrompts("The view was closed.");
   for (const auto& entry : pending_devtools_) {
     if (entry.second.request == 0) {
@@ -545,6 +637,11 @@ void BrowserClient::OnBeforeClose(CefRefPtr<CefBrowser>) {
 
 void BrowserClient::OnRenderProcessTerminated(CefRefPtr<CefBrowser>, TerminationStatus status,
                                               int error_code, const CefString& error_string) {
+  // Its answer will never come, and the hang monitor has nothing left to watch.
+  probe_ = RendererProbe();
+  health_->unresponsive.store(false);
+  FreezeWatch::Get().Note("kind=renderer-gone view=" + std::to_string(view_id_) + " status=" +
+                          std::to_string(status) + " code=" + std::to_string(error_code));
   Emit(OWLMessageKindRendererGone, Encoder()
                                        .I64(OWLFieldStatus, status)
                                        .I64(OWLFieldErrorCode, error_code)
@@ -564,6 +661,7 @@ void BrowserClient::OnFindResult(CefRefPtr<CefBrowser>, int, int count, const Ce
 // MARK: CefKeyboardHandler
 
 bool BrowserClient::OnKeyEvent(CefRefPtr<CefBrowser>, const CefKeyEvent& event, CefEventHandle) {
+  health_->keys_returned.fetch_add(1, std::memory_order_relaxed);
   OWLInputOrigin origin = OWLInputOriginUser;
   bool matched = false;
   while (!sent_keys_.empty()) {
@@ -614,6 +712,10 @@ void BrowserClient::ReplyWithScreenshot(uint64_t request, bool success, const st
 
 void BrowserClient::OnDevToolsMethodResult(CefRefPtr<CefBrowser>, int message_id, bool success,
                                            const void* result, size_t result_size) {
+  if (HandleProbeResult(message_id, success,
+                        std::string(static_cast<const char*>(result), result_size))) {
+    return;
+  }
   auto found = pending_devtools_.find(message_id);
   if (found == pending_devtools_.end()) {
     return;
@@ -634,6 +736,166 @@ void BrowserClient::OnDevToolsMethodResult(CefRefPtr<CefBrowser>, int message_id
   }
   Host::Get().Send(pending.reply, pending.request, view_id_,
                    Encoder().Bool(OWLFieldSuccess, success).String(OWLFieldJSON, json));
+}
+
+// MARK: Freeze diagnostics
+
+bool BrowserClient::OnRenderProcessUnresponsive(CefRefPtr<CefBrowser>,
+                                                CefRefPtr<CefUnresponsiveProcessCallback>) {
+  unresponsive_since_nanos_ = NowNanos();
+  health_->unresponsive.store(true);
+  FreezeWatch::Get().Report(
+      OWLHealthKindRendererUnresponsive, view_id_, 0,
+      "kind=renderer-unresponsive view=" + std::to_string(view_id_) + " " +
+          health_->Line(unresponsive_since_nanos_, 0) + " " + PresentationState());
+  // Chromium keeps waiting, as it did before this was recorded.
+  return false;
+}
+
+void BrowserClient::OnRenderProcessResponsive(CefRefPtr<CefBrowser>) {
+  // Chromium does not report the start while a DevTools session is attached, as this host's
+  // always is; it still reports the end.
+  const bool started = unresponsive_since_nanos_ != 0;
+  const uint64_t lasted = started ? MillisecondsSince(unresponsive_since_nanos_) : 0;
+  unresponsive_since_nanos_ = 0;
+  health_->unresponsive.store(false);
+  FreezeWatch::Get().Report(OWLHealthKindRendererResponsive, view_id_, lasted,
+                            "kind=renderer-responsive view=" + std::to_string(view_id_) +
+                                " unresponsive_ms=" +
+                                (started ? std::to_string(lasted) : "unreported"));
+}
+
+size_t BrowserClient::PendingPromptCount() const {
+  return dialogs_.size() + permission_prompts_.size() + media_requests_.size() +
+         file_dialogs_.size() + download_requests_.size() + context_menus_.size() +
+         auth_requests_.size() + certificate_errors_.size() + color_requests_.size();
+}
+
+std::string BrowserClient::PresentationState() const {
+  const Presenter::RingState ring = presenter_.PageRing();
+  return "ring=slots:" + std::to_string(ring.slots) + ",in_use:" + std::to_string(ring.in_use) +
+         ",unacked:" + std::to_string(ring.awaiting_ack) + ",dropped:" +
+         std::to_string(ring.dropped) + " prompts=" + std::to_string(PendingPromptCount()) +
+         " dialogs=" + std::to_string(dialogs_.size()) + " devtools_pending=" +
+         std::to_string(pending_devtools_.size());
+}
+
+void BrowserClient::ReportProbe(const std::string& verdict, uint64_t elapsed_milliseconds) {
+  FreezeWatch::Get().Report(OWLHealthKindRendererProbe, view_id_, elapsed_milliseconds,
+                            "kind=renderer-probe view=" + std::to_string(view_id_) + " " +
+                                verdict + " " + PresentationState());
+}
+
+void BrowserClient::ProbeRenderer(bool quiet) {
+  if (probe_.stage != RendererProbe::Stage::kIdle) {
+    const uint64_t waited = MillisecondsSince(probe_.started_nanos);
+    if (waited * NSEC_PER_MSEC < kProbeForgetNanos) {
+      if (quiet || (probe_.quiet && !probe_.timed_out)) {
+        // One question at a time: the one in flight now also answers for the stall.
+        probe_.quiet = probe_.quiet && quiet;
+        return;
+      }
+      // The earlier question is still unanswered; a second one would only queue behind it.
+      ReportProbe(std::string(probe_.stage == RendererProbe::Stage::kAnswer
+                                  ? "renderer=hung"
+                                  : "renderer=alive frames=stopped") +
+                      " asked=earlier waiting_ms=" + std::to_string(waited),
+                  waited);
+      return;
+    }
+    probe_ = RendererProbe();
+  }
+  if (!browser_) {
+    if (!quiet) {
+      ReportProbe("renderer=unknown why=no-browser", 0);
+    }
+    return;
+  }
+  probe_.quiet = quiet;
+  StartProbeStage(RendererProbe::Stage::kAnswer, kProbeStateScript, false,
+                  kProbeAnswerMilliseconds);
+}
+
+void BrowserClient::StartProbeStage(RendererProbe::Stage stage, const char* script,
+                                    bool await_promise, int64_t timeout_milliseconds) {
+  CefRefPtr<CefDictionaryValue> params = CefDictionaryValue::Create();
+  params->SetString("expression", script);
+  params->SetBool("returnByValue", true);
+  params->SetBool("awaitPromise", await_promise);
+  const int message_id = ++next_message_id_;
+  if (browser_->GetHost()->ExecuteDevToolsMethod(message_id, "Runtime.evaluate", params) == 0) {
+    probe_ = RendererProbe();
+    ReportProbe("renderer=unknown why=devtools-rejected", 0);
+    return;
+  }
+  probe_.stage = stage;
+  probe_.message_id = message_id;
+  probe_.serial = ++probe_serial_;
+  probe_.started_nanos = NowNanos();
+  probe_.timed_out = false;
+  CefRefPtr<BrowserClient> self(this);
+  CefPostDelayedTask(TID_UI, base::BindOnce(
+                                 [](CefRefPtr<BrowserClient> client, uint64_t serial) {
+                                   client->ProbeTimedOut(serial);
+                                 },
+                                 self, probe_.serial),
+                     timeout_milliseconds);
+}
+
+void BrowserClient::ProbeTimedOut(uint64_t serial) {
+  if (probe_.stage == RendererProbe::Stage::kIdle || probe_.serial != serial ||
+      probe_.timed_out) {
+    return;
+  }
+  // The question stays open so a late answer is recognized; nothing new is asked meanwhile.
+  probe_.timed_out = true;
+  const uint64_t waited = MillisecondsSince(probe_.started_nanos);
+  if (probe_.stage == RendererProbe::Stage::kAnswer) {
+    ReportProbe("renderer=hung waited_ms=" + std::to_string(waited) +
+                    (probe_.quiet ? " asked=while-in-use" : ""),
+                waited);
+  } else {
+    ReportProbe("renderer=alive answer_ms=" + std::to_string(probe_.answer_milliseconds) +
+                    " page=" + probe_.page_state + " frames=stopped waited_ms=" +
+                    std::to_string(waited),
+                waited);
+  }
+}
+
+bool BrowserClient::HandleProbeResult(int message_id, bool success, const std::string& json) {
+  if (probe_.stage == RendererProbe::Stage::kIdle || message_id != probe_.message_id) {
+    return false;
+  }
+  const uint64_t took = MillisecondsSince(probe_.started_nanos);
+  const bool late = probe_.timed_out;
+  if (probe_.stage == RendererProbe::Stage::kFrame) {
+    ReportProbe(late ? "renderer=alive frames=resumed answered_after_ms=" + std::to_string(took)
+                     : "renderer=alive answer_ms=" + std::to_string(probe_.answer_milliseconds) +
+                           " page=" + probe_.page_state + " frames=alive frame_ms=" +
+                           std::to_string(took),
+                took);
+    probe_ = RendererProbe();
+    return true;
+  }
+  probe_.answer_milliseconds = took;
+  probe_.page_state = ProbeState(success, json);
+  const bool hidden = probe_.page_state.rfind("hidden", 0) == 0;
+  if (probe_.quiet && !late) {
+    probe_ = RendererProbe();  // The routine question was answered in time: nothing to write.
+    return true;
+  }
+  if (late || hidden || !browser_) {
+    // A hidden page runs no animation frames, so there is nothing more to ask it.
+    ReportProbe(late ? "renderer=recovered answered_after_ms=" + std::to_string(took) + " page=" +
+                           probe_.page_state
+                     : "renderer=alive answer_ms=" + std::to_string(took) + " page=" +
+                           probe_.page_state + " frames=not-asked",
+                took);
+    probe_ = RendererProbe();
+    return true;
+  }
+  StartProbeStage(RendererProbe::Stage::kFrame, kProbeFrameScript, true, kProbeFrameMilliseconds);
+  return true;
 }
 
 }  // namespace owl

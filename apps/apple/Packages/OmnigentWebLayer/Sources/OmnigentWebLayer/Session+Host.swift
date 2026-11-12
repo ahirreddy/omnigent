@@ -72,6 +72,7 @@ extension Session {
     spawnDuration = ContinuousClock.now - launchStart
     state = .launching
     Logger.session.info("Spawned host \(process.pid)")
+    logFreeze("kind=client-host-spawned pid=\(process.pid) generation=\(current)")
     let handshake = configuration.handshakeTimeout
     schedule(after: handshake, generation: current) { session in
       if session.helloDuration == nil {
@@ -181,12 +182,19 @@ extension Session {
       Logger.session.error("\(error.localizedDescription, privacy: .public)")
       lastProtocolError = error
     default:
-      if let view = views[message.target] {
-        view.handle(message)
-      } else {
-        Logger.session.debug(
-          "Message \(message.kindValue) for unknown view \(message.target) ignored after close.")
-      }
+      route(message)
+    }
+  }
+
+  /// Hands a message to the view it targets; the host's reports about itself target none.
+  private func route(_ message: IncomingMessage) {
+    if let view = views[message.target] {
+      view.handle(message)
+    } else if message.kind == .healthReport, message.target == 0 {
+      noteHostReport(message.fields, view: nil)
+    } else {
+      Logger.session.debug(
+        "Message \(message.kindValue) for unknown view \(message.target) ignored after close.")
     }
   }
 
@@ -289,6 +297,10 @@ extension Session {
     schedule(after: configuration.pingInterval, generation: generation, repeats: true) {
       $0.watchdogTick()
     }
+    // A new host: nothing measured against the old one's clock carries over.
+    freeze.lastTickNanos = 0
+    freeze.hostCPU = nil
+    schedule(after: .seconds(1), generation: generation, repeats: true) { $0.freezeTick() }
   }
 
   func createInHost(_ profile: Profile) {
@@ -350,6 +362,9 @@ extension Session {
     let reason = signaled ? "killed by signal \(status)" : "exited"
     let error = pendingFailure ?? .hostExited(status: status, reason: reason)
     pendingFailure = nil
+    logFreeze(
+      "kind=client-host-exited status=\(status) signaled=\(signaled ? 1 : 0) "
+        + "expected=\(state == .stopped ? 1 : 0)")
     tearDownConnection()
     switch state {
     case .stopped:

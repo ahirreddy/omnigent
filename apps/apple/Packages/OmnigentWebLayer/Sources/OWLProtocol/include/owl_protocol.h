@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 #define OWL_PROTOCOL_MAJOR 1
-#define OWL_PROTOCOL_MINOR 4
+#define OWL_PROTOCOL_MINOR 5
 
 /// The first minor version with projected browser UI (prompts, downloads, popups, IME, drag and
 /// drop). Each side enables those features only when the peer advertises at least this minor;
@@ -33,6 +33,10 @@
 /// The first minor version where user input carries the time it happened (OWLFieldEventTime).
 /// Older hosts skip the field; a host stamps input that has none with its own clock.
 #define OWL_PROTOCOL_MINOR_EVENT_TIME 4
+
+/// The first minor version where the host reports what its freeze watch sees (HealthReport).
+/// A host sends those only to clients that advertise at least this minor.
+#define OWL_PROTOCOL_MINOR_HEALTH 5
 
 /// Payload encoding: a sequence of fields, each an 8-byte header followed by `length` bytes.
 /// Integers and floats are little-endian. Strings are UTF-8 without a terminator.
@@ -187,6 +191,9 @@ typedef CF_ENUM(uint16_t, OWLField) {
   // 1.4: when a user's event happened, in seconds of system uptime (`NSEvent.timestamp`, the
   // clock both processes share). A double. See DESIGN.md, "Input", "Event times".
   OWLFieldEventTime = 128,
+  // 1.5: which freeze diagnostic a HealthReport carries (OWLHealthKind). See DESIGN.md, "Freeze
+  // diagnostics".
+  OWLFieldHealthKind = 129,
 };
 
 /// Structured 1.1 fields are UTF-8 JSON strings, because the TLV encoding has no lists:
@@ -349,6 +356,12 @@ typedef CF_ENUM(uint16_t, OWLMessageKind) {
   OWLMessageKindExternalProtocol = 130,  // H->C URL Origin? (a navigation to a scheme Chromium
                                          //      does not handle; the client may open it with
                                          //      the OS, the host never does)
+
+  // 1.5, host to client (target: view ID, or 0 for the host itself). Sent only to clients that
+  // advertise OWL_PROTOCOL_MINOR_HEALTH.
+  OWLMessageKindHealthReport = 131,      // H->C HealthKind ElapsedMilliseconds Text (one log
+                                         //      line of key=value pairs, see owl_freeze.h; never
+                                         //      page content, typed text or a full URL)
 };
 
 /// How the host delivers pixels. See DESIGN.md, "Rendering".
@@ -436,6 +449,26 @@ typedef CF_ENUM(uint64_t, OWLCursor) {
   OWLCursorGrab = 9,
   OWLCursorGrabbing = 10,
   OWLCursorNone = 11,
+};
+
+/// Values of OWLFieldHealthKind: what the host's freeze watch noticed. See owl_freeze.h.
+typedef CF_ENUM(uint64_t, OWLHealthKind) {
+  /// A visible view owes a frame and has presented none; ElapsedMilliseconds is for how long.
+  OWLHealthKindViewStall = 1,
+  /// That view presented a frame again; ElapsedMilliseconds is how long the stall lasted.
+  OWLHealthKindViewRecovered = 2,
+  /// The answer, or the lack of one, to the liveness question the host asked a stalled view's
+  /// renderer.
+  OWLHealthKindRendererProbe = 3,
+  /// Chromium's own hang monitor: the renderer stopped handling input, then handled it again.
+  OWLHealthKindRendererUnresponsive = 4,
+  OWLHealthKindRendererResponsive = 5,
+  /// The host's own main thread did not run for ElapsedMilliseconds, then ran again.
+  OWLHealthKindHostStall = 6,
+  OWLHealthKindHostRecovered = 7,
+  /// The host's messages to the client time out: the client is not draining the channel.
+  OWLHealthKindChannelBacklog = 8,
+  OWLHealthKindChannelDrained = 9,
 };
 
 /// Values of OWLFieldErrorCode in HostError.
