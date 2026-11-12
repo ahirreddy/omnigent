@@ -186,7 +186,7 @@ nonisolated public struct SubagentGroup: Hashable, Sendable {
   public static func inlineDecisions(
     in state: ConversationViewState, groupRowShown: Bool
   ) -> [DecisionCard] {
-    let grouped = groupRowShown ? SubagentGroup(state: state)?.decisionIDs ?? [] : []
+    let grouped = groupRowShown ? Self(state: state)?.decisionIDs ?? [] : []
     return state.decisions.filter { !$0.answered && !grouped.contains($0.id) }
   }
 
