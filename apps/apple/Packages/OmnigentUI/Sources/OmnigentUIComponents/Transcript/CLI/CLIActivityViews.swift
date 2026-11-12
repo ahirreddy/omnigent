@@ -296,8 +296,7 @@ struct CLISubagentLines: View {
 
   var body: some View {
     if let group = SubagentGroup(state: state) {
-      // Hosts that log agent starts as tool calls already show these lines in the turn.
-      let logsAgents = state.rows.contains(where: CLIAgentTool.isAgent)
+      let logsAgents = Self.logsAgents(state)
       VStack(alignment: .leading, spacing: CLIMetrics.blockGap) {
         ForEach(logsAgents ? [] : group.children) { child in
           CLIBulletLine(line: line(child), marker: marker(child))
@@ -311,7 +310,7 @@ struct CLISubagentLines: View {
                 ]
               } ?? [])
         }
-        if logsAgents || !group.active.isEmpty {
+        if Self.showsGroup(state) {
           SubagentGroupView(state: state, actions: actions).transcriptColumn()
         }
       }
@@ -321,6 +320,17 @@ struct CLISubagentLines: View {
   }
 
   private var open: (@MainActor (String) -> Void)? { actions.openChild ?? actions.openSession }
+
+  /// Hosts that log agent starts as tool calls already show the lifecycle lines in the turn.
+  private static func logsAgents(_ state: ConversationViewState) -> Bool {
+    state.rows.contains(where: CLIAgentTool.isAgent)
+  }
+
+  /// Whether the native group follows the lines; it then answers its children's requests.
+  static func showsGroup(_ state: ConversationViewState) -> Bool {
+    guard let group = SubagentGroup(state: state) else { return false }
+    return logsAgents(state) || group.showsInTranscript
+  }
 
   private func line(_ child: SubagentChild) -> CLILineText {
     var line = CLILineText()

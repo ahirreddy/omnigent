@@ -2,10 +2,11 @@
 //! session client; decoding and the status policy are the workspace module's own.
 //!
 //! The session client's `read` drops the body of an error response, and the workspace routes
-//! put the reason there, so these reads send through the host transport directly. They keep
-//! the session client's rules: nothing is sent while disconnected, a result that arrives after
-//! the connection ended or changed identity is [`SessionError::NotConnected`], a `401` ends the
-//! connection, and redirects are never followed.
+//! put the reason there, so these reads apply their own status policy. They keep the session
+//! client's rules: nothing is sent while disconnected, a result that arrives after the
+//! connection ended or changed identity is [`SessionError::NotConnected`], a `401` ends the
+//! connection, redirects are never followed, and a request that reached the wrong replica of a
+//! host-sharded server is re-addressed like any other session request.
 
 use super::content::{FileBody, FileContent};
 use super::error::WorkspaceError;
@@ -55,8 +56,7 @@ impl<T: HttpTransport> ClientCore<T> {
         let http = with_segments(prepared.request, &route.segments)?;
         let identity = self.connected_server();
         let response = self
-            .transport()
-            .send(http)
+            .send_routed(http, prepared.addressing)
             .await
             .map_err(|error| match error {
                 TransportError::Cancelled => SessionError::Cancelled,

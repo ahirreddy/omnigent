@@ -176,6 +176,20 @@ nonisolated public struct SubagentGroup: Hashable, Sendable {
     Set(children.flatMap { $0.decisions.map(\.id) })
   }
 
+  /// The requests the transcript's inline list shows: every unanswered one the group row does
+  /// not render. While the row is hidden the inline list keeps the sub-agents' requests too, so
+  /// a request waiting on the user is never left without a place.
+  /// - Parameters:
+  ///   - state: The parent conversation.
+  ///   - groupRowShown: Whether the transcript shows the group's row.
+  /// - Returns: The cards, in order.
+  public static func inlineDecisions(
+    in state: ConversationViewState, groupRowShown: Bool
+  ) -> [DecisionCard] {
+    let grouped = groupRowShown ? SubagentGroup(state: state)?.decisionIDs ?? [] : []
+    return state.decisions.filter { !$0.answered && !grouped.contains($0.id) }
+  }
+
   /// "Subagent · Write auth tests" for a mirrored card, when its child is known.
   /// - Parameters:
   ///   - card: A card.

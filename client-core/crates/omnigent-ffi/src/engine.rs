@@ -143,6 +143,12 @@ pub(crate) enum Msg {
         driver: DriverInstance,
         input: StreamInput,
     },
+    /// The host lookup before a stream attempt finished: open the attempt.
+    StreamRouted {
+        session_id: String,
+        driver: DriverInstance,
+        attempt: AttemptId,
+    },
     /// A history read finished.
     Hydrated {
         session_id: String,
@@ -355,6 +361,11 @@ impl Engine {
                 driver,
                 input,
             } => self.stream_message(&session_id, driver, input),
+            Msg::StreamRouted {
+                session_id,
+                driver,
+                attempt,
+            } => self.stream_routed(&session_id, driver, attempt),
             Msg::Hydrated {
                 session_id,
                 driver,

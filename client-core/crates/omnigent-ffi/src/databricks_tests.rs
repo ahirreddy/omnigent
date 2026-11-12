@@ -603,6 +603,112 @@ fn a_session_on_a_known_host_and_the_updates_socket_carry_the_routing_key() {
     );
 }
 
+const LISTED_ON_HOST_A: &str = r#"{"object":"list","data":[{"id":"conv_a","status":"idle","title":"A","created_at":1,"updated_at":1,"permission_level":4,"host_id":"host_a"}],"has_more":false}"#;
+const CHILD_SNAPSHOT: &str = "/api/2.0/omnigent/v1/sessions/conv_child";
+
+/// A signed-in workspace whose one listed session runs on `host_a`.
+fn listed_on_host_a() -> Harness {
+    let (mut harness, challenge) = signing_in();
+    harness
+        .http
+        .route("/api/2.0/omnigent/v1/sessions", json(200, LISTED_ON_HOST_A));
+    complete(&mut harness, &challenge).unwrap();
+    harness.pump();
+    harness
+}
+
+fn stream_key(request: &crate::http::HttpRequest) -> Option<String> {
+    request
+        .headers
+        .iter()
+        .find(|header| header.name == omnigent_core::SLICE_KEY_HEADER)
+        .map(|header| header.value.clone())
+}
+
+#[test]
+fn a_sub_agents_stream_opens_on_its_parents_replica() {
+    let mut harness = listed_on_host_a();
+    // A sub-agent has no host of its own; its snapshot names the session it runs under.
+    harness.http.route(
+        CHILD_SNAPSHOT,
+        json(
+            200,
+            r#"{"id":"conv_child","status":"idle","created_at":2,"host_id":null,"kind":"sub_agent","parent_session_id":"conv_a"}"#,
+        ),
+    );
+    let release = harness.http.hold(CHILD_SNAPSHOT);
+    let before = harness.streams.count();
+    harness.core.open_session("conv_child".into());
+    harness.pump();
+    assert_eq!(
+        harness.streams.count(),
+        before,
+        "the stream waits for the host lookup instead of going out unkeyed"
+    );
+    drop(release);
+    harness.pump();
+    assert_eq!(harness.streams.count(), before + 1);
+    let (_, _, request) = harness.streams.last();
+    assert_eq!(
+        stream_key(&request).as_deref(),
+        Some("host_a"),
+        "{request:?}"
+    );
+    assert_eq!(harness.http.count(CHILD_SNAPSHOT), 1);
+}
+
+#[test]
+fn a_stream_closed_during_its_host_lookup_is_never_opened() {
+    let mut harness = listed_on_host_a();
+    let release = harness.http.hold(CHILD_SNAPSHOT);
+    let before = harness.streams.count();
+    harness.core.open_session("conv_child".into());
+    harness.pump();
+    harness.core.close_session("conv_child".into());
+    harness.pump();
+    drop(release);
+    harness.pump();
+    assert_eq!(harness.streams.count(), before);
+}
+
+#[test]
+fn a_stream_the_server_keeps_refusing_fails_with_its_status_instead_of_retrying_forever() {
+    let mut harness = listed_on_host_a();
+    // No snapshot names a host, so every attempt goes out unkeyed and is refused.
+    harness.core.open_session("conv_child".into());
+    harness.pump();
+    let first = harness.streams.count();
+    for _ in 0..=10 {
+        let (sink, _, request) = harness.streams.last();
+        assert_eq!(stream_key(&request), None);
+        sink.response(400, Vec::new());
+        sink.finish(None);
+        harness.pump();
+        harness.advance(6_000);
+    }
+    assert_eq!(
+        harness.streams.count(),
+        first + 10,
+        "ten retries after the first refusal, then none"
+    );
+    harness.advance(60_000);
+    assert_eq!(harness.streams.count(), first + 10);
+    let failed = harness.events.all().into_iter().any(|event| {
+        matches!(
+            event,
+            CoreEvent::SessionLinkChanged {
+                session_id,
+                state: crate::events::LinkState::Failed { .. },
+            } if session_id == "conv_child"
+        )
+    });
+    assert!(failed, "the refusal reaches the app as a failed stream");
+    // Opening it again (the app's Reconnect) starts a fresh run.
+    harness.core.open_session("conv_child".into());
+    harness.pump();
+    assert_eq!(harness.streams.count(), first + 11);
+}
+
 #[test]
 fn a_shared_refresh_with_no_waiter_left_still_saves_its_grant() {
     let mut harness = signed_in();

@@ -230,6 +230,21 @@ fn a_sub_agents_tree_is_read_from_its_root_depth_first() {
 }
 
 #[test]
+fn the_children_a_tree_lists_are_recorded_under_their_parents_for_routing() {
+    let core = connected(two_level_tree());
+    block_on(core.agent_tree("conv_root")).expect("tree");
+    let state = lock(&core.state);
+    for (child, parent) in [
+        ("conv_a", "conv_root"),
+        ("conv_b", "conv_root"),
+        ("conv_a1", "conv_a"),
+    ] {
+        assert_eq!(state.routing.parent(child), Some(parent), "{child}");
+    }
+    assert_eq!(state.routing.parent("conv_root"), None);
+}
+
+#[test]
 fn an_older_server_without_a_root_id_walks_the_parent_chain() {
     let transport = RouteTransport::local();
     respond(

@@ -80,12 +80,21 @@ private final class StreamHandleImpl: StreamHandle, Sendable {
   }
 }
 
-/// Routes one stream's delegate callbacks to its sink. All callbacks run on `queue`, which
-/// serializes them, so the sink sees response, chunks and finish in order.
+/// Routes one stream's delegate callbacks to its sink, in order, on the serial `queue`. A refusal
+/// (4xx or 5xx) is held until its body's start has arrived, so the log can say why the server
+/// refused: the core drops a refused stream as soon as it sees the status.
 final class EventStreamDelegate: NSObject, URLSessionDataDelegate, Sendable {
   struct State {
     var finished = false
     var cancelled = false
+    var refusal: Refusal?
+  }
+
+  /// A refused response not yet handed to the sink, and the start of its body.
+  struct Refusal {
+    let request: URLRequest?
+    let response: HTTPURLResponse
+    var body = Data()
   }
 
   let sink: any ByteSinkReceiving
@@ -121,16 +130,32 @@ final class EventStreamDelegate: NSObject, URLSessionDataDelegate, Sendable {
         session: session)
       return
     }
-    logRefusedRequest(dataTask.originalRequest, status: http.statusCode)
     completionHandler(.allow)
-    sink.response(
-      status: UInt16(truncatingIfNeeded: http.statusCode),
-      headers: URLSessionHttpTransport.headers(from: http))
+    guard http.statusCode >= 400 else {
+      deliver(http)
+      return
+    }
+    state.withLock {
+      $0.refusal = Refusal(request: dataTask.originalRequest, response: http)
+    }
   }
 
   func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
     guard isLive() else { return }
-    sink.chunk(bytes: data)
+    let held = state.withLock { state -> Bool in
+      guard state.refusal != nil else { return false }
+      state.refusal?.body.append(data)
+      return true
+    }
+    guard held else {
+      sink.chunk(bytes: data)
+      return
+    }
+    // A refusal that keeps sending has said enough once the log's excerpt is full.
+    let isEnough = state.withLock {
+      ($0.refusal?.body.count ?? 0) >= RefusedRequestLine.bodyLimit * 4
+    }
+    if isEnough { deliverRefusal() }
   }
 
   func urlSession(
@@ -138,7 +163,24 @@ final class EventStreamDelegate: NSObject, URLSessionDataDelegate, Sendable {
     task: URLSessionTask,
     didCompleteWithError error: (any Error)?
   ) {
+    if isLive() { deliverRefusal() }
     finish(with: error.map(TransportErrorMapping.connectionFailure(from:)), session: session)
+  }
+
+  private func deliver(_ response: HTTPURLResponse) {
+    sink.response(
+      status: UInt16(truncatingIfNeeded: response.statusCode),
+      headers: URLSessionHttpTransport.headers(from: response))
+  }
+
+  /// Logs a held refusal with what its body said, then hands the sink the response and the
+  /// bytes held so far, in the order they arrived.
+  private func deliverRefusal() {
+    guard let refusal = state.withLock({ $0.refusal.take() }) else { return }
+    logRefusedRequest(
+      refusal.request, status: refusal.response.statusCode, body: refusal.body)
+    deliver(refusal.response)
+    if !refusal.body.isEmpty { sink.chunk(bytes: refusal.body) }
   }
 
   /// Refuses every redirect, so the 3xx is delivered as the response.

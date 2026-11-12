@@ -14,6 +14,9 @@
 //!   the host is remembered as keyless (its tunnels dialed in without a key and live on the
 //!   default replica). A keyless one answered `wrong_replica` for a session whose host was unknown
 //!   learns the host from the session snapshot and is retried once with it.
+//! - A sub-agent or side chat has no host of its own: it is keyed by its parent's, so the parent
+//!   link is recorded wherever a child is seen (its snapshot, its parent's child list and stream
+//!   events), and a session whose host is unknown is looked up before its first request.
 
 #![allow(
     clippy::redundant_pub_crate,
@@ -42,6 +45,8 @@ pub(crate) struct ReplicaRouting {
     hosts: BTreeMap<String, String>,
     parents: BTreeMap<String, String>,
     keyless: BTreeSet<String>,
+    /// Sessions whose snapshots were read up the parent chain and named no host.
+    hostless: BTreeSet<String>,
     modal: Modal,
 }
 
@@ -140,6 +145,45 @@ impl ReplicaRouting {
         self.parents.get(session_id).map(String::as_str)
     }
 
+    /// Records that `child` runs on `parent`'s runner: a row of the parent's child list, or a
+    /// child event on the parent's stream. Such rows carry no host, so the link is all there is.
+    pub(crate) fn record_parent(&mut self, child: &str, parent: &str) {
+        if child.is_empty() || parent.is_empty() || child == parent {
+            return;
+        }
+        self.parents.insert(child.to_owned(), parent.to_owned());
+        self.hostless.remove(child);
+    }
+
+    /// Records that `child` runs under `ancestor` when no nearer parent is known: a request
+    /// mirrored into `ancestor`'s chat is answered on the child, on the ancestor's replica.
+    pub(crate) fn record_ancestor(&mut self, child: &str, ancestor: &str) {
+        if !self.parents.contains_key(child) {
+            self.record_parent(child, ancestor);
+        }
+    }
+
+    /// A lookup up `session_id`'s parent chain found no host, so the next request for it goes
+    /// straight out instead of repeating the lookup.
+    pub(crate) fn mark_hostless(&mut self, session_id: &str) {
+        self.hostless.insert(session_id.to_owned());
+    }
+
+    /// Whether a request for `session_id` should first look its host up: none is known and no
+    /// lookup has come back empty yet.
+    pub(crate) fn needs_lookup(&self, session_id: &str) -> bool {
+        self.session_host(session_id).is_none() && !self.hostless.contains(session_id)
+    }
+
+    /// How a request for `host`, learned after the request was built, is addressed.
+    pub(crate) fn addressed_to(&self, host: &str) -> Addressing {
+        Addressing {
+            host: Some(host.to_owned()),
+            keyed: !self.keyless.contains(host),
+            unresolved_session: None,
+        }
+    }
+
     /// Freezes the modal host after the first successful session list; later calls do nothing.
     pub(crate) fn resolve_modal(&mut self) {
         if matches!(self.modal, Modal::Frozen(_)) {
@@ -184,7 +228,13 @@ impl ReplicaRouting {
             };
             param("session_id").map_or_else(
                 || param("host_id").map(str::to_owned),
-                |session| self.session_host(session).map(str::to_owned),
+                |session| {
+                    let host = self.session_host(session).map(str::to_owned);
+                    if host.is_none() {
+                        unresolved_session = Some(session.to_owned());
+                    }
+                    host
+                },
             )
         } else if let Some(host) = segment_after(path, "/v1/hosts/") {
             Some(host.to_owned())
@@ -346,6 +396,61 @@ mod tests {
         routing.record("conv_x", Reported::Cleared, Reported::Value("conv_y"), None);
         routing.record("conv_y", Reported::Cleared, Reported::Value("conv_x"), None);
         assert_eq!(routing.session_host("conv_x"), None);
+    }
+
+    #[test]
+    fn a_child_listed_under_its_parent_routes_by_the_parents_host() {
+        let mut routing = ReplicaRouting::default();
+        routing.record("conv_a", Reported::Value("host_a"), Reported::Unsaid, None);
+        assert!(routing.needs_lookup("conv_child"));
+        routing.mark_hostless("conv_child");
+        assert!(
+            !routing.needs_lookup("conv_child"),
+            "an empty lookup is not repeated"
+        );
+
+        routing.record_parent("conv_child", "conv_a");
+        assert_eq!(routing.session_host("conv_child"), Some("host_a"));
+        assert!(!routing.needs_lookup("conv_child"));
+        let address = routing.address("GET", "/v1/sessions/conv_child/stream", &[], None);
+        assert_eq!(address.host.as_deref(), Some("host_a"));
+        assert!(address.keyed);
+        assert_eq!(address.unresolved_session, None);
+
+        // A child of an unknown parent is looked up again; nonsense links are ignored.
+        routing.mark_hostless("conv_grandchild");
+        routing.record_parent("conv_grandchild", "conv_unknown");
+        assert!(routing.needs_lookup("conv_grandchild"));
+        routing.record_parent("conv_a", "conv_a");
+        routing.record_parent("", "conv_a");
+        routing.record_parent("conv_x", "");
+        assert_eq!(routing.parent("conv_a"), None);
+        assert_eq!(routing.parent("conv_x"), None);
+
+        // A mirrored request's carrying session stands in only while no parent is known.
+        routing.record_ancestor("conv_child", "conv_other");
+        assert_eq!(routing.parent("conv_child"), Some("conv_a"));
+        routing.record_ancestor("conv_deep", "conv_a");
+        assert_eq!(routing.session_host("conv_deep"), Some("host_a"));
+
+        // A host learned later is addressed with or without the key, as the host stands.
+        assert!(routing.addressed_to("host_a").keyed);
+        routing.mark_keyless("host_a");
+        let demoted = routing.addressed_to("host_a");
+        assert_eq!(demoted.host.as_deref(), Some("host_a"));
+        assert!(!demoted.keyed);
+    }
+
+    #[test]
+    fn a_skill_read_for_a_session_with_no_known_host_names_the_session_to_look_up() {
+        let routing = ReplicaRouting::default();
+        let query = [("session_id", "conv_child".to_owned())];
+        let address = routing.address("GET", "/v1/skills", &query, None);
+        assert_eq!(address.host, None);
+        assert_eq!(address.unresolved_session.as_deref(), Some("conv_child"));
+        let by_host = [("host_id", "host_b".to_owned())];
+        let address = routing.address("GET", "/v1/skills", &by_host, None);
+        assert_eq!(address.unresolved_session, None);
     }
 
     #[test]

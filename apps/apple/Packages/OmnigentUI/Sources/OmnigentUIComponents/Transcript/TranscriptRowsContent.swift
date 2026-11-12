@@ -144,8 +144,9 @@ struct TranscriptRowsContent<Header: View>: View {
         .probesRowHeight(entry.id)
         .background { if focus?.flashedRowID == entry.id { MessageFlash() } }
     }
-    InlineDecisions(state: state, actions: actions)
-    if SubagentGroup(state: state)?.showsInTranscript == true {
+    let showsGroup = SubagentGroup(state: state)?.showsInTranscript == true
+    InlineDecisions(state: state, actions: actions, groupRowShown: showsGroup)
+    if showsGroup {
       SubagentGroupView(state: state, actions: actions)
     }
     if let startup = state.section("startup") {

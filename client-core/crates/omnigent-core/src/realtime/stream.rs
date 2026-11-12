@@ -7,8 +7,10 @@
 //!
 //! - **Open.** A 2xx `text/event-stream` response is accepted. A 3xx, 401 or 403 fails for good
 //!   (401 and 403 ask for sign-in again). A 404 is retried up to
-//!   [`super::RetryConfig::max_not_found_retries`] times in a row. Any other status, or a 2xx
-//!   with another content type, retries with backoff.
+//!   [`super::RetryConfig::max_not_found_retries`] times in a row, and any other answer that
+//!   refuses the request itself (see [`is_refusal`]) up to
+//!   [`StreamConfig::max_refused_retries`] times in a row, then fails with that status so the
+//!   user sees it. Any other status, or a 2xx with another content type, retries with backoff.
 //! - **Ready.** The first decoded event is the server's ready `session.heartbeat` on a current
 //!   server, though any event counts. It moves the stream to [`ConnectionState::Live`] and
 //!   emits [`StreamOutput::Ready`]. Heartbeats (`session.heartbeat`, `response.heartbeat`) only
@@ -48,6 +50,10 @@ pub struct StreamConfig {
     pub stall_timeout_ms: u64,
     /// SSE line and event caps.
     pub limits: SseLimits,
+    /// Consecutive refusals of the request itself (a 4xx waiting cannot change, such as 400)
+    /// retried before the stream fails. A replica rollout answers 400 for a few attempts; a
+    /// request the server will never take must not be repeated forever. The default is 10.
+    pub max_refused_retries: u32,
 }
 
 impl Default for StreamConfig {
@@ -56,8 +62,17 @@ impl Default for StreamConfig {
             retry: RetryConfig::default(),
             stall_timeout_ms: 45_000,
             limits: SseLimits::default(),
+            max_refused_retries: 10,
         }
     }
+}
+
+/// Whether `status` refuses the request itself: a client error other than the ones with their
+/// own rule (401 and 403 fail at once, 404 has its own run) or that ask to try later (408, 425,
+/// 429).
+#[must_use]
+pub const fn is_refusal(status: u16) -> bool {
+    matches!(status, 400..=499) && !matches!(status, 401 | 403 | 404 | 408 | 425 | 429)
 }
 
 /// One decoded stream event. `data` is the SSE `data:` JSON object, and it always holds a
@@ -237,6 +252,8 @@ pub struct SessionStream<J> {
     attempt: Option<Attempt>,
     reconnect_timer: Option<TimerToken>,
     ever_ready: bool,
+    /// Opens refused in a row (see [`is_refusal`]).
+    refusals: u32,
 }
 
 impl<J: JitterSource> SessionStream<J> {
@@ -251,6 +268,7 @@ impl<J: JitterSource> SessionStream<J> {
             attempt: None,
             reconnect_timer: None,
             ever_ready: false,
+            refusals: 0,
         }
     }
 
@@ -316,6 +334,7 @@ impl<J: JitterSource> SessionStream<J> {
             | ConnectionState::Stopped
             | ConnectionState::Failed { .. } => {
                 self.retry.reset();
+                self.refusals = 0;
                 self.set_state(ConnectionState::Connecting, out);
                 self.open_attempt(now_ms, out);
             }
@@ -508,6 +527,22 @@ impl<J: JitterSource> SessionStream<J> {
         let live_for_ms = self
             .end_attempt(cancel, out)
             .map(|ready_at| now_ms.saturating_sub(ready_at));
+        let refused = matches!(
+            error,
+            LinkError::HttpStatus { status }
+            | LinkError::Hydration(HydrationFailure::HttpStatus { status })
+                if is_refusal(status)
+        );
+        self.refusals = if refused {
+            self.refusals.saturating_add(1)
+        } else {
+            0
+        };
+        if self.refusals > self.config.max_refused_retries {
+            // The server keeps refusing this request: say so instead of asking again.
+            self.set_state(ConnectionState::Failed { error }, out);
+            return;
+        }
         match self.retry.after_loss(&error, live_for_ms, &mut self.jitter) {
             RetryDecision::GiveUp => self.set_state(ConnectionState::Failed { error }, out),
             RetryDecision::Reconnect { delay_ms, failures } => {
@@ -965,6 +1000,86 @@ mod tests {
                 error: LinkError::HttpStatus { status: 404 }
             })
         );
+    }
+
+    #[test]
+    fn a_refused_open_is_retried_ten_times_then_fails_with_its_status() {
+        for status in [400, 409, 422] {
+            let mut harness = Harness::new();
+            harness.run(StreamInput::Start);
+            for _ in 0..10 {
+                let outputs = harness.respond(status, "application/json");
+                let [(token, _)] = scheduled(&outputs, TimerKind::Reconnect)[..] else {
+                    panic!("{status} should retry: {outputs:?}");
+                };
+                harness.run(StreamInput::TimerFired { token });
+            }
+            let outputs = harness.respond(status, "application/json");
+            assert_eq!(
+                last_state(&outputs),
+                Some(&ConnectionState::Failed {
+                    error: LinkError::HttpStatus { status }
+                }),
+                "{status}"
+            );
+            assert!(
+                opens(&outputs).is_empty(),
+                "no further attempt: {outputs:?}"
+            );
+            // Reconnect starts a fresh run.
+            let restarted = harness.run(StreamInput::Start);
+            assert_eq!(opens(&restarted).len(), 1);
+            let outputs = harness.respond(status, "application/json");
+            assert!(matches!(
+                last_state(&outputs),
+                Some(ConnectionState::Reconnecting { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn refusals_only_count_in_a_row_and_statuses_that_ask_to_wait_never_count() {
+        let mut harness = Harness::new();
+        harness.run(StreamInput::Start);
+        for round in 0..25 {
+            // Nine refusals, then a server error: the run never reaches the limit.
+            let status = if round % 10 == 9 { 503 } else { 400 };
+            let outputs = harness.respond(status, "application/json");
+            let [(token, _)] = scheduled(&outputs, TimerKind::Reconnect)[..] else {
+                panic!("round {round} should retry: {outputs:?}");
+            };
+            harness.run(StreamInput::TimerFired { token });
+        }
+        for status in [408, 425, 429, 500, 502, 503] {
+            assert!(!is_refusal(status), "{status}");
+        }
+        for status in [401, 403, 404] {
+            assert!(!is_refusal(status), "{status} has its own rule");
+        }
+    }
+
+    #[test]
+    fn a_refused_history_read_counts_like_a_refused_open() {
+        let mut harness = Harness::new();
+        harness.run(StreamInput::Start);
+        for round in 0..=10 {
+            let attempt = harness.accept_and_ready();
+            let outputs = harness.run(StreamInput::HydrationFailed {
+                attempt,
+                failure: HydrationFailure::HttpStatus { status: 400 },
+            });
+            if round == 10 {
+                assert!(matches!(
+                    last_state(&outputs),
+                    Some(ConnectionState::Failed { .. })
+                ));
+                break;
+            }
+            let [(token, _)] = scheduled(&outputs, TimerKind::Reconnect)[..] else {
+                panic!("round {round} should retry: {outputs:?}");
+            };
+            harness.run(StreamInput::TimerFired { token });
+        }
     }
 
     type RetryCase = (

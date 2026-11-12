@@ -86,6 +86,80 @@ struct SubagentGroupTests {
   }
 }
 
+/// Where a sub-agent's request is answered in its parent's chat: in the group row while the
+/// transcript shows it, else inline, and never in neither.
+@Suite("Sub-agent requests in the parent's chat")
+struct SubagentRequestPlacementTests {
+  private static let phases: [DecisionPhase?] = [
+    nil, .pending, .resolving, .failed(message: "No connection"), .answered(summary: "Approved"),
+  ]
+
+  /// The parent with one child in `status` and that child's request in `phase`.
+  private func parent(
+    child status: SubagentStatus, phase: DecisionPhase?, answered: Bool
+  ) -> (state: ConversationViewState, card: DecisionCard) {
+    var card = PreviewData.subagentCommand
+    card.answered = answered
+    var state = PreviewData.conversation
+    state.sections = [
+      PreviewData.childSection(card.targetSessionId, title: "Migrations", state: status),
+      PreviewData.childSection("sess_done", title: "Docs", state: .ready),
+    ]
+    state.decisions = [card]
+    state.decisionPhases = phase.map { [card.id: $0] } ?? [:]
+    return (state, card)
+  }
+
+  @Test("an unanswered request is in the group row or inline, whatever its child's state")
+  func alwaysHasAPlace() throws {
+    for status in SubagentStatus.allCases {
+      for phase in Self.phases {
+        for answered in [false, true] {
+          let (state, card) = parent(child: status, phase: phase, answered: answered)
+          let group = try #require(SubagentGroup(state: state))
+          let rowShown = group.showsInTranscript
+          let inRow = rowShown && group.decisionIDs.contains(card.id)
+          let inline = SubagentGroup.inlineDecisions(in: state, groupRowShown: rowShown)
+            .contains { $0.id == card.id }
+          let label = "\(status) \(String(describing: phase)) answered=\(answered)"
+          #expect(!(inRow && inline), "shown twice: \(label)")
+          if !answered { #expect(inRow || inline, "shown nowhere: \(label)") }
+          // A request still waiting on the user brings the row back with its child.
+          if state.pendingDecisions.contains(card) {
+            #expect(inRow, "a waiting request belongs to its child's row: \(label)")
+            #expect(group.children.first?.status == .needsYou, "\(label)")
+          }
+        }
+      }
+    }
+  }
+
+  @Test("with the row hidden, the inline list keeps a request the row would have rendered")
+  func hiddenRowKeepsItInline() throws {
+    // The answer is out and the server already calls the child ready: the row is gone.
+    let (state, card) = parent(
+      child: .ready, phase: .answered(summary: "Approved"), answered: false)
+    let group = try #require(SubagentGroup(state: state))
+    #expect(!group.showsInTranscript)
+    #expect(group.decisionIDs == [card.id])
+    #expect(SubagentGroup.inlineDecisions(in: state, groupRowShown: false).map(\.id) == [card.id])
+    #expect(SubagentGroup.inlineDecisions(in: state, groupRowShown: true).isEmpty)
+  }
+
+  @Test("a request with no group to render it, or the session's own, stays inline")
+  func othersStayInline() {
+    var orphan = PreviewData.subagentCommand
+    orphan.targetSessionId = "sess_side_chat"
+    var state = PreviewData.conversation
+    state.decisions = [orphan, PreviewData.codexCommand]
+    for rowShown in [false, true] {
+      #expect(
+        SubagentGroup.inlineDecisions(in: state, groupRowShown: rowShown).map(\.id)
+          == [orphan.id, PreviewData.codexCommand.id])
+    }
+  }
+}
+
 @Suite("Reading position")
 struct TranscriptFollowTests {
   @Test("incoming output follows only while following and never under the user's finger")

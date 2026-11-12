@@ -3,7 +3,7 @@
 
 use futures::executor::block_on;
 
-use super::test_support::{Reply, RouteTransport, core, header, path_of};
+use super::test_support::{Reply, RouteTransport, core, header, path_of, query_value};
 use super::{SLICE_KEY_HEADER, SessionError};
 use crate::auth::SecretString;
 use crate::auth::endpoint::ServerEndpoint;
@@ -109,20 +109,14 @@ fn a_wrong_replica_refusal_is_retried_keyless_and_the_host_remembered() {
 }
 
 #[test]
-fn an_unknown_sessions_host_is_learned_from_its_snapshot() {
+fn an_unknown_sessions_host_is_looked_up_before_its_first_request() {
     let transport = RouteTransport::with_prefix(MOUNT, false);
     listed(&transport);
     let agent = format!("{MOUNT}/v1/sessions/conv_new/agent");
-    transport.enqueue(
-        "GET",
-        &agent,
-        vec![
-            Reply::json(400, WRONG_REPLICA),
-            Reply::json(200, r#"{"terminals":["bash"]}"#),
-        ],
-    );
+    transport.ok(&agent, r#"{"terminals":["bash"]}"#);
+    let snapshot = format!("{MOUNT}/v1/sessions/conv_new");
     transport.ok(
-        &format!("{MOUNT}/v1/sessions/conv_new"),
+        &snapshot,
         r#"{"id":"conv_new","status":"idle","created_at":3,"host_id":"host_n"}"#,
     );
     let core = workspace(transport);
@@ -132,8 +126,74 @@ fn an_unknown_sessions_host_is_learned_from_its_snapshot() {
     assert_eq!(terminals, Some(vec!["bash".to_owned()]));
     assert_eq!(
         keys(&core.transport, &agent),
-        [None, Some("host_n".to_owned())],
-        "unkeyed (host unknown), then keyed with the snapshot's host"
+        [Some("host_n".to_owned())],
+        "keyed with the snapshot's host on the first attempt"
+    );
+    let lookups: Vec<_> = core
+        .transport
+        .taken()
+        .into_iter()
+        .filter(|request| path_of(request) == snapshot)
+        .collect();
+    assert_eq!(lookups.len(), 1);
+    for (name, value) in super::requests::ROUTING_SNAPSHOT_QUERY {
+        assert_eq!(
+            query_value(&lookups[0], name).as_deref(),
+            Some(value),
+            "{name}: only the routing fields are read"
+        );
+    }
+    assert_eq!(header(&lookups[0], SLICE_KEY_HEADER), None);
+}
+
+#[test]
+fn a_host_bound_after_an_empty_lookup_is_learned_from_the_refusal() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    let agent = format!("{MOUNT}/v1/sessions/conv_new/agent");
+    transport.enqueue(
+        "GET",
+        &agent,
+        vec![
+            Reply::json(200, r#"{"terminals":[]}"#),
+            Reply::json(400, WRONG_REPLICA),
+            Reply::json(200, r#"{"terminals":["bash"]}"#),
+        ],
+    );
+    // A managed session has no host until its sandbox binds.
+    transport.enqueue(
+        "GET",
+        &format!("{MOUNT}/v1/sessions/conv_new"),
+        vec![
+            Reply::json(
+                200,
+                r#"{"id":"conv_new","status":"idle","created_at":3,"host_id":null}"#,
+            ),
+            Reply::json(
+                200,
+                r#"{"id":"conv_new","status":"idle","created_at":3,"host_id":"host_n"}"#,
+            ),
+        ],
+    );
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+
+    block_on(core.declared_terminal_names("conv_new")).unwrap();
+    let terminals = block_on(core.declared_terminal_names("conv_new")).unwrap();
+    assert_eq!(terminals, Some(vec!["bash".to_owned()]));
+    assert_eq!(
+        keys(&core.transport, &agent),
+        [None, None, Some("host_n".to_owned())],
+        "unkeyed after the empty lookup, unkeyed and refused, then keyed with the learned host"
+    );
+    assert_eq!(
+        core.transport
+            .taken()
+            .iter()
+            .filter(|request| path_of(request) == format!("{MOUNT}/v1/sessions/conv_new"))
+            .count(),
+        2,
+        "the empty lookup is not repeated before the second request, only after its refusal"
     );
 }
 
@@ -168,14 +228,7 @@ fn a_sub_agents_host_is_its_nearest_host_bound_ancestors() {
     let transport = RouteTransport::with_prefix(MOUNT, false);
     listed(&transport);
     let agent = format!("{MOUNT}/v1/sessions/conv_child/agent");
-    transport.enqueue(
-        "GET",
-        &agent,
-        vec![
-            Reply::json(400, WRONG_REPLICA),
-            Reply::json(200, r#"{"terminals":[]}"#),
-        ],
-    );
+    transport.ok(&agent, r#"{"terminals":[]}"#);
     transport.ok(
         &format!("{MOUNT}/v1/sessions/conv_child"),
         r#"{"id":"conv_child","status":"idle","created_at":3,"host_id":null,"parent_session_id":"conv_mid"}"#,
@@ -194,9 +247,233 @@ fn a_sub_agents_host_is_its_nearest_host_bound_ancestors() {
     block_on(core.declared_terminal_names("conv_child")).unwrap();
     assert_eq!(
         keys(&core.transport, &agent),
-        [None, Some("host_r".to_owned())],
+        [Some("host_r".to_owned())],
         "keyed with the root's host after walking the chain"
     );
+}
+
+/// What a replica without the runner's tunnel answers for a sub-agent's stream and files, and
+/// the sub-agent's and a side chat's snapshots, as a two-replica server sent them.
+const STREAM_ON_ANOTHER_REPLICA: &str =
+    r#"{"error":{"code":"wrong_replica","message":"session runner is on another replica; retry"}}"#;
+const FILES_ON_ANOTHER_REPLICA: &str = r#"{"error":{"code":"wrong_replica","message":"runner 'runner_1' is offline for conversation 'conv_child'"}}"#;
+const SUB_AGENT_SNAPSHOT: &str = r#"{"id":"conv_child","agent_id":"ag_1","agent_name":"codex-native-parent","status":"idle","background_task_count":null,"background_tasks":null,"created_at":1794446599,"updated_at":1794446599,"title":"codex-native-ui-subagent:thr_worker_1","labels":{"omnigent.codex_native.agent_role":"worker","omnigent.wrapper":"codex-native-ui-subagent"},"runner_id":"runner_1","host_id":null,"runner_online":false,"host_online":null,"host_resumable":false,"items":[],"permission_level":null,"sub_agent_name":"Codex","kind":"sub_agent","parent_session_id":"conv_a","root_conversation_id":"conv_a","harness":"claude-sdk","pending_elicitations":[],"workspace":null,"archived":false,"todos":[],"model_options":[],"side_chat_parent_id":null}"#;
+const SIDE_CHAT_SNAPSHOT: &str = r#"{"id":"conv_side","agent_id":"ag_1","agent_name":"codex-native-parent","status":"idle","created_at":1794446604,"updated_at":1794446604,"title":"Side chat","labels":{"omnigent.client_surface":"cli","omnigent.fork.source_id":"conv_a","omnigent.side_chat":"1","omnigent.side_chat.source_id":"conv_a","omnigent.wrapper":"codex-native-ui"},"runner_id":"runner_1","host_id":null,"runner_online":false,"host_online":null,"items":[],"sub_agent_name":null,"kind":"default","parent_session_id":null,"root_conversation_id":"conv_side","harness":"claude-sdk","pending_elicitations":[],"archived":false,"todos":[],"model_options":[],"side_chat_parent_id":"conv_a"}"#;
+
+fn changes(session: &str) -> String {
+    format!("{MOUNT}/v1/sessions/{session}/resources/environments/default/changes")
+}
+
+#[test]
+fn a_sub_agents_files_are_read_from_its_parents_replica() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_child"),
+        SUB_AGENT_SNAPSHOT,
+    );
+    transport.ok(&changes("conv_child"), r#"{"object":"list","data":[]}"#);
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+
+    block_on(core.workspace_changes("conv_child", "default")).unwrap();
+    assert_eq!(
+        keys(&core.transport, &changes("conv_child")),
+        [Some("host_a".to_owned())],
+        "the workspace read is keyed by the parent's host"
+    );
+}
+
+#[test]
+fn a_workspace_read_refused_by_the_wrong_replica_is_re_addressed() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    transport.enqueue(
+        "GET",
+        &changes("conv_a"),
+        vec![
+            Reply::json(400, FILES_ON_ANOTHER_REPLICA),
+            Reply::json(200, r#"{"object":"list","data":[]}"#),
+        ],
+    );
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+
+    block_on(core.workspace_changes("conv_a", "default")).unwrap();
+    assert_eq!(
+        keys(&core.transport, &changes("conv_a")),
+        [Some("host_a".to_owned()), None],
+        "keyed, then once more without the key"
+    );
+    assert!(super::routing::is_wrong_replica(
+        400,
+        STREAM_ON_ANOTHER_REPLICA.as_bytes()
+    ));
+}
+
+#[test]
+fn a_sub_agents_stream_is_keyed_once_its_host_is_resolved() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_child"),
+        SUB_AGENT_SNAPSHOT,
+    );
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+
+    let stream = "/v1/sessions/conv_child/stream";
+    assert!(core.stream_needs_host("conv_child"));
+    assert_eq!(
+        core.slice_key(stream),
+        None,
+        "unkeyed is what every replica but one refuses"
+    );
+    assert!(block_on(core.resolve_session_host("conv_child")));
+    assert!(!core.stream_needs_host("conv_child"));
+    assert_eq!(core.slice_key(stream).as_deref(), Some("host_a"));
+    assert!(
+        !core.stream_needs_host("conv_a"),
+        "a listed session needs no lookup"
+    );
+}
+
+#[test]
+fn a_side_chats_stream_is_keyed_by_the_session_it_was_forked_from() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_side"),
+        SIDE_CHAT_SNAPSHOT,
+    );
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+
+    assert!(block_on(core.resolve_session_host("conv_side")));
+    assert_eq!(
+        core.slice_key("/v1/sessions/conv_side/stream").as_deref(),
+        Some("host_a")
+    );
+}
+
+#[test]
+fn a_stream_whose_host_cannot_be_found_opens_unkeyed_and_asks_again() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    let snapshot = format!("{MOUNT}/v1/sessions/conv_gone");
+    transport.enqueue(
+        "GET",
+        &snapshot,
+        vec![
+            Reply::json(404, r#"{"error":{"code":"not_found","message":"gone"}}"#),
+            Reply::json(
+                200,
+                r#"{"id":"conv_gone","status":"idle","created_at":3,"parent_session_id":"conv_a"}"#,
+            ),
+        ],
+    );
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+
+    assert!(!block_on(core.resolve_session_host("conv_gone")));
+    assert_eq!(core.slice_key("/v1/sessions/conv_gone/stream"), None);
+    assert!(
+        core.stream_needs_host("conv_gone"),
+        "a stream's refusal has no body to learn from, so the next attempt looks again"
+    );
+    assert!(block_on(core.resolve_session_host("conv_gone")));
+    assert_eq!(
+        core.slice_key("/v1/sessions/conv_gone/stream").as_deref(),
+        Some("host_a")
+    );
+}
+
+#[test]
+fn a_child_named_on_its_parents_stream_needs_no_lookup() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+    let before = core.transport.taken().len();
+
+    let updated = serde_json::json!({
+        "type": "session.child_session.updated",
+        "conversation_id": "conv_a",
+        "child_session_id": "conv_child",
+        "child": {"id": "conv_child", "parent_session_id": "conv_a", "busy": true},
+    });
+    let created = serde_json::json!({
+        "type": "session.created",
+        "conversation_id": "conv_b",
+        "child_session_id": "conv_other",
+    });
+    for (session, event) in [("conv_a", updated), ("conv_b", created)] {
+        let event = crate::reducer::decode_event(event, session)
+            .unwrap()
+            .unwrap();
+        core.record_stream_event(session, &event);
+    }
+
+    for child in ["conv_child", "conv_other"] {
+        assert!(!core.stream_needs_host(child), "{child}");
+        assert_eq!(
+            core.slice_key(&format!("/v1/sessions/{child}/stream"))
+                .as_deref(),
+            Some("host_a"),
+            "{child}"
+        );
+    }
+    assert_eq!(core.transport.taken().len(), before, "nothing was read");
+}
+
+#[test]
+fn an_answer_to_a_sub_agents_request_goes_to_its_parents_replica() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    // The parent's snapshot carries the sub-agent's request, mirrored with its target.
+    transport.ok(
+        &format!("{MOUNT}/v1/sessions/conv_a"),
+        r#"{"id":"conv_a","status":"running","created_at":1,"host_id":"host_a","permission_level":4,"pending_elicitations":[{"elicitation_id":"ask1","params":{"target_session_id":"conv_child","message":"Run the migration?"}}]}"#,
+    );
+    // A replica without the runner accepts the answer and drops it, so nothing would re-address.
+    let resolve = format!("{MOUNT}/v1/sessions/conv_child/elicitations/ask1/resolve");
+    transport.respond(
+        Some("POST"),
+        &resolve,
+        None,
+        Reply::json(200, r#"{"queued":false}"#),
+    );
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+
+    block_on(core.resolve_decision(
+        "conv_a",
+        "ask1",
+        &crate::decisions::DecisionResponse::Approve,
+    ))
+    .unwrap();
+    assert_eq!(
+        keys(&core.transport, &resolve),
+        [Some("host_a".to_owned())],
+        "keyed by the session whose chat showed the request"
+    );
+    assert!(
+        !core
+            .transport
+            .taken()
+            .iter()
+            .any(|request| path_of(request) == format!("{MOUNT}/v1/sessions/conv_child")),
+        "the child is not read to find its host"
+    );
+}
+
+#[test]
+fn a_session_on_a_server_that_does_not_route_by_host_is_never_looked_up() {
+    let core = super::test_support::connected(RouteTransport::local());
+    assert!(!core.stream_needs_host("conv_child"));
+    let before = core.transport.taken().len();
+    assert!(!block_on(core.resolve_session_host("conv_child")));
+    assert_eq!(core.transport.taken().len(), before);
 }
 
 #[test]

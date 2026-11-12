@@ -281,7 +281,53 @@ impl Engine {
         }
     }
 
+    /// Opens `attempt`, first looking up the host the session routes by when a host-sharded
+    /// server would otherwise get the request unkeyed: a sub-agent or side chat has no host of
+    /// its own, and its stream is refused by every replica but its parent's.
     fn open_stream(&mut self, session_id: &str, attempt: AttemptId) {
+        let Some(driver) = self.drivers.get(session_id).map(|driver| driver.instance) else {
+            return;
+        };
+        if !self.sessions.stream_needs_host(session_id) {
+            self.open_routed_stream(session_id, attempt);
+            return;
+        }
+        let sessions = Arc::clone(&self.sessions);
+        let tx = self.sender();
+        let id = session_id.to_owned();
+        self.host.spawn(async move {
+            // Found or not, the attempt opens: unkeyed is what it would have been anyway.
+            sessions.resolve_session_host(&id).await;
+            post(
+                &tx,
+                Msg::StreamRouted {
+                    session_id: id,
+                    driver,
+                    attempt,
+                },
+            );
+        });
+    }
+
+    /// The host lookup for `attempt` finished: open it, unless the attempt has ended since.
+    pub(crate) fn stream_routed(
+        &mut self,
+        session_id: &str,
+        instance: DriverInstance,
+        attempt: AttemptId,
+    ) {
+        let current = self
+            .drivers
+            .get(session_id)
+            .filter(|driver| driver.instance == instance)
+            .and_then(|driver| driver.machine.as_ref())
+            .and_then(SessionStream::current_attempt);
+        if current == Some(attempt) {
+            self.open_routed_stream(session_id, attempt);
+        }
+    }
+
+    fn open_routed_stream(&mut self, session_id: &str, attempt: AttemptId) {
         let (Some(link), Some(streams)) = (self.link.clone(), self.transports.streams.clone())
         else {
             return;

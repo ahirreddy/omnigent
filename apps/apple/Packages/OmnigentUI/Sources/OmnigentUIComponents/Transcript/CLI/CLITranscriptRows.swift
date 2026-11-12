@@ -122,7 +122,10 @@ struct CLITranscriptRows<Header: View>: View {
         // Over the row, since a user message's band is opaque.
         .overlay { if focus?.flashedRowID == entry.id { MessageFlash(isBand: true) } }
     }
-    InlineDecisions(state: state, actions: actions).transcriptColumn()
+    InlineDecisions(
+      state: state, actions: actions, groupRowShown: CLISubagentLines.showsGroup(state)
+    )
+    .transcriptColumn()
     CLISubagentLines(state: state, actions: actions)
     if state.header.status == .running, !(state.rows.last?.isStreaming ?? false) {
       CLIWorkingLine(

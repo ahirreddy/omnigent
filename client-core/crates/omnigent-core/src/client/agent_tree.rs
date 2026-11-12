@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 
 use super::json::{as_object, opt_array, opt_object, opt_str, opt_u64};
 use super::requests::validate_identifier;
-use super::{ClientCore, SessionError};
+use super::{ClientCore, SessionError, lock};
 use crate::config::session::{canonical_harness, harness_label};
 use crate::http::HttpTransport;
 
@@ -520,9 +520,17 @@ impl<T: HttpTransport> ClientCore<T> {
         validate_identifier(session_id)?;
         let path = format!("/v1/sessions/{session_id}/child_sessions");
         let value = self.get_json(&path, &[]).await?;
-        decode_child_sessions(&value).map_err(|detail| SessionError::MalformedResponse {
-            detail: format!("{path}: {detail}"),
-        })
+        let rows =
+            decode_child_sessions(&value).map_err(|detail| SessionError::MalformedResponse {
+                detail: format!("{path}: {detail}"),
+            })?;
+        // Children run on this session's runner: their requests are keyed by its host.
+        let mut state = lock(&self.state);
+        for row in &rows {
+            state.routing.record_parent(&row.id, session_id);
+        }
+        drop(state);
+        Ok(rows)
     }
 
     /// The session's latest visible message, one line.

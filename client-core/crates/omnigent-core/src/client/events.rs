@@ -923,6 +923,11 @@ impl<T: HttpTransport> ClientCore<T> {
         let request = decision.resolve_request(response)?;
         if request.session_id != session_id {
             self.cached_editable(&request.session_id)?;
+            // The child runs on this session's runner. An answer sent to another replica is
+            // accepted and dropped there, so it must be keyed like this session's requests.
+            lock(&self.state)
+                .routing
+                .record_ancestor(&request.session_id, session_id);
         }
         let body = request
             .body(ResolveRoute::Dedicated)

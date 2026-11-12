@@ -40,6 +40,14 @@ pub(crate) const MAX_PAGE_LIMIT: u32 = 1000;
 /// How many snapshots a host lookup reads up a session's parent chain.
 const MAX_HOST_CHAIN_READS: usize = 16;
 
+/// The cheapest snapshot that still names a session's host, parent and labels.
+pub(super) const ROUTING_SNAPSHOT_QUERY: [(&str, &str); 4] = [
+    ("include_items", "false"),
+    ("include_liveness", "false"),
+    ("include_live_status", "false"),
+    ("include_usage", "false"),
+];
+
 /// A request bound to the connection epoch it was built in.
 #[derive(Debug)]
 pub(crate) struct Prepared {
@@ -199,6 +207,16 @@ pub(super) fn address_built_request(
     Some(addressing)
 }
 
+/// `request` with the routing key `addressing` asks for.
+fn keyed_by(mut request: HttpRequest, addressing: &Addressing) -> HttpRequest {
+    if let (Some(host), true) = (&addressing.host, addressing.keyed) {
+        request
+            .headers
+            .push(HttpHeader::new(SLICE_KEY_HEADER, host.as_str()));
+    }
+    request
+}
+
 impl<T: HttpTransport> ClientCore<T> {
     /// Turns the server's automatic session titles on or off for this device's requests (the
     /// web's "Automatically name new sessions"). On unless turned off.
@@ -256,14 +274,15 @@ impl<T: HttpTransport> ClientCore<T> {
         })
     }
 
-    /// Sends `prepared`, re-addressing a `wrong_replica` refusal once: a keyed request without
-    /// its key (remembering the host as keyless when that works), or a session request whose host
-    /// was unknown with the host its snapshot names.
+    /// Sends `request`. A session request whose host is unknown first looks the host up (a
+    /// sub-agent or side chat is keyed by its parent's), and a `wrong_replica` refusal is
+    /// re-addressed once: a keyed request without its key (remembering the host as keyless when
+    /// that works), or one whose host was unknown with the host its snapshots name.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
-    pub(super) async fn send_routed(
+    pub(crate) async fn send_routed(
         &self,
         request: HttpRequest,
         addressing: Option<Addressing>,
@@ -271,6 +290,7 @@ impl<T: HttpTransport> ClientCore<T> {
         let Some(addressing) = addressing else {
             return self.transport.send(request).await;
         };
+        let (request, addressing) = self.look_up_host_first(request, addressing).await;
         let response = self.transport.send(request.clone()).await?;
         if !routing::is_wrong_replica(response.status, &response.body) {
             return Ok(response);
@@ -305,6 +325,40 @@ impl<T: HttpTransport> ClientCore<T> {
             .headers
             .push(HttpHeader::new(SLICE_KEY_HEADER, host.as_str()));
         self.transport.send(keyed).await
+    }
+
+    /// Keys `request` by its session's host when that host was unknown as the request was
+    /// built and a lookup finds it. A lookup that finds none is not repeated per request.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn look_up_host_first(
+        &self,
+        request: HttpRequest,
+        addressing: Addressing,
+    ) -> (HttpRequest, Addressing) {
+        let Some(session) = addressing.unresolved_session.clone() else {
+            return (request, addressing);
+        };
+        // Another request may have learned the host since this one was built.
+        let known = {
+            let state = lock(&self.state);
+            let host = state.routing.session_host(&session);
+            let learned = host.map(|host| state.routing.addressed_to(host));
+            (learned, state.routing.needs_lookup(&session))
+        };
+        let learned = match known {
+            (Some(learned), _) => learned,
+            (None, false) => return (request, addressing),
+            (None, true) => {
+                let Some(host) = self.learn_session_host(&session).await else {
+                    return (request, addressing);
+                };
+                lock(&self.state).routing.addressed_to(&host)
+            }
+        };
+        (keyed_by(request, &learned), learned)
     }
 
     /// The routing key to send on an event stream or WebSocket for `path` (a `GET`), on a
@@ -346,6 +400,27 @@ impl<T: HttpTransport> ClientCore<T> {
         }
     }
 
+    /// Whether opening `session_id`'s event stream should first look its host up: the server
+    /// routes by host and none is known for the session or its recorded parents. A stream's
+    /// refusal carries no body to learn from, so each attempt asks again.
+    pub fn stream_needs_host(&self, session_id: &str) -> bool {
+        let state = lock(&self.state);
+        state.routes_by_host() && state.routing.session_host(session_id).is_none()
+    }
+
+    /// Looks up the host `session_id` routes by, for a stream or socket about to open. Returns
+    /// whether one is known afterwards; `false` leaves the request to go out unkeyed.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn resolve_session_host(&self, session_id: &str) -> bool {
+        if !self.stream_needs_host(session_id) {
+            return lock(&self.state).routing.session_host(session_id).is_some();
+        }
+        self.learn_session_host(session_id).await.is_some()
+    }
+
     /// Learns a session's routing host from snapshots, which any replica serves: the session's,
     /// then each ancestor's until one names a host (a sub-agent runs on its parent's runner), as
     /// the web client does, reading at most [`MAX_HOST_CHAIN_READS`] snapshots.
@@ -354,10 +429,27 @@ impl<T: HttpTransport> ClientCore<T> {
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
     )]
     async fn learn_session_host(&self, session_id: &str) -> Option<String> {
+        let host = self.read_host_chain(session_id).await;
+        if host.is_none() {
+            lock(&self.state).routing.mark_hostless(session_id);
+        }
+        host
+    }
+
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn read_host_chain(&self, session_id: &str) -> Option<String> {
         let mut visited = BTreeSet::new();
         let mut current = session_id.to_owned();
         while visited.len() < MAX_HOST_CHAIN_READS && visited.insert(current.clone()) {
-            self.read_routing_snapshot(&current).await?;
+            // A child whose parent is already recorded (its parent's child list or stream
+            // named it) has nothing more to say: go straight to the parent.
+            let parent_known = lock(&self.state).routing.parent(&current).is_some();
+            if current != session_id || !parent_known {
+                self.read_routing_snapshot(&current).await?;
+            }
             let state = lock(&self.state);
             if let Some(host) = state.routing.session_host(session_id) {
                 return Some(host.to_owned());
@@ -368,7 +460,8 @@ impl<T: HttpTransport> ClientCore<T> {
     }
 
     /// Reads `session_id`'s snapshot and records its host and parent; `None` when it is
-    /// unreadable.
+    /// unreadable. Only routing fields are wanted, so the read skips history, liveness, the
+    /// runner's live status and usage, as the web client's does.
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -379,12 +472,7 @@ impl<T: HttpTransport> ClientCore<T> {
             let state = lock(&self.state);
             let connection = state.connection.as_ref()?;
             connection
-                .request(
-                    "GET",
-                    &path,
-                    &[("include_items", "false")],
-                    "application/json",
-                )
+                .request("GET", &path, &ROUTING_SNAPSHOT_QUERY, "application/json")
                 .ok()?
         };
         let response = self.transport.send(request).await.ok()?;

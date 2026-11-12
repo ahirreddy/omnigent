@@ -1375,7 +1375,11 @@ impl<T: HttpTransport> ClientCore<T> {
 
     /// Records a stream event for `session_id`: settings, status, turn and decision events mean
     /// any snapshot read in flight may already be stale, so its configuration is not trusted.
+    /// A sub-agent event also records which session the child runs under, for replica routing.
     pub fn record_stream_event(&self, session_id: &str, event: &ServerStreamEvent) {
+        if let Some((child, parent)) = child_link(session_id, event) {
+            lock(&self.state).routing.record_parent(child, parent);
+        }
         if !METADATA_EVENT_TYPES.contains(&event.event_type()) {
             return;
         }
@@ -1390,6 +1394,31 @@ impl<T: HttpTransport> ClientCore<T> {
         }
         lock(&self.state).bump_metadata_epoch(session_id);
     }
+}
+
+/// The child and parent a sub-agent event on `session_id`'s stream links: the child runs on the
+/// parent's runner, so its requests are keyed by the parent's host.
+fn child_link<'a>(session_id: &'a str, event: &'a ServerStreamEvent) -> Option<(&'a str, &'a str)> {
+    let (child, parent) = match event {
+        ServerStreamEvent::SessionCreated(created) => (
+            created.child_session_id.as_str(),
+            created
+                .parent_session_id
+                .as_deref()
+                .or(created.conversation_id.as_deref()),
+        ),
+        ServerStreamEvent::SessionChildSessionUpdated(updated) => (
+            updated.child_session_id.as_str(),
+            updated
+                .child
+                .get("parent_session_id")
+                .and_then(Value::as_str)
+                .or(updated.conversation_id.as_deref()),
+        ),
+        _ => return None,
+    };
+    let parent = parent.filter(|id| !id.is_empty()).unwrap_or(session_id);
+    Some((child, parent))
 }
 
 impl State {
