@@ -12,10 +12,15 @@ struct ConversationTabRoutes {
   /// A new side chat with a draft, sent at once when the flag is set; `nil` where side chats
   /// open as plain sessions.
   var openNewSideChat: (@MainActor (String, Bool) -> Void)?
-  /// Another session (a sub-agent or the parent): the window shows it with its tabs.
+  /// Another session. One that runs under this chat's session opens as ``openChild`` does, that
+  /// session itself shows its chat, and any other (a parent, a fork) shows with its own tabs.
   var openSession: @MainActor (String) -> Void
-  /// A sub-agent's chat, when it opens elsewhere than `openSession` (a window of its own).
+  /// A sub-agent's or forked side chat's chat: a tab of this chat's session, or a window of
+  /// its own (Settings).
   var openChild: (@MainActor (String) -> Void)?
+  /// A typed `/side` went (`true`) or did not go (`false`) to an agent that forks the side
+  /// chat itself: the fork opens in a tab when the session reports it.
+  var awaitForkedSideChat: (@MainActor (Bool) -> Void)?
   /// Starts a terminal (a declared name, or the default) and opens it in a tab.
   var newTerminal: (@MainActor (String?) -> Void)?
   /// Opens a browser tab; `nil` when the window has no browser.
@@ -27,21 +32,36 @@ struct ConversationTabRoutes {
 }
 
 extension WindowTabs {
-  /// The routes for `sessionID`'s conversation: its tabs open in its own group.
-  func routes(for sessionID: String) -> ConversationTabRoutes {
+  /// The routes for `sessionID`'s conversation. Its tabs open in `ownerID`'s group: its own, or
+  /// for a side chat or sub-agent shown in a tab, the session whose strip that tab is in.
+  /// - Parameters:
+  ///   - sessionID: The conversation's session.
+  ///   - ownerID: The session whose tabs it shows in; its own when `nil`.
+  ///   - childrenApart: Opens a sub-agent in a window of its own instead of a tab.
+  /// - Returns: The routes.
+  func routes(
+    for sessionID: String, in ownerID: String? = nil,
+    childrenApart: (@MainActor (String) -> Void)? = nil
+  ) -> ConversationTabRoutes {
     let groups = groups
+    let ownerID = ownerID ?? sessionID
+    let openChildTab: @MainActor (String) -> Void = {
+      openChild($0, from: sessionID, in: ownerID, apart: childrenApart)
+    }
     var routes = ConversationTabRoutes(
       openHarness: { groups.setViewMode(.terminal, for: sessionID) },
-      openTerminal: { groups.open(.terminal(sessionID: sessionID, terminalID: $0)) },
-      openSideChat: { groups.open(.sideChat(sessionID: sessionID, rowID: $0), title: $1) },
-      openSession: { groups.show(.session($0)) })
+      openTerminal: { open(.terminal(sessionID: sessionID, terminalID: $0), in: ownerID) },
+      openSideChat: { open(.sideChat(sessionID: sessionID, rowID: $0), in: ownerID, title: $1) },
+      openSession: { openSession($0, from: sessionID, in: ownerID, openChild: openChildTab) })
+    routes.openChild = openChildTab
+    routes.awaitForkedSideChat = { awaitForkedSideChat(of: sessionID, in: ownerID, sent: $0) }
     routes.viewChoice = groups.viewChoice(sessionID)
     routes.openNewSideChat = { openPendingSideChat(sessionID, draft: $0, sendNow: $1) }
     routes.newTerminal = { name in
-      Task { await newTerminal(in: sessionID, named: name, replacing: nil) }
+      Task { await newTerminal(in: sessionID, named: name, replacing: nil, shownIn: ownerID) }
     }
     if browser != nil {
-      routes.openBrowser = { openBrowser(in: sessionID) }
+      routes.openBrowser = { openBrowser(in: ownerID) }
     }
     return routes
   }

@@ -197,16 +197,19 @@ public struct ConnectedServerView: View {
       get: { list.editError != nil }, set: { if !$0 { list.dismissEditError() } })
   }
 
-  /// Links from a session's chat: server links in the app, others in a browser tab or outside.
-  private func linkOpener(in sessionID: String) -> ExternalURLOpener {
+  /// Links from the chat `id` in `ownerID`'s tabs: server links in the app, others in a browser
+  /// tab of that strip or outside.
+  private func linkOpener(from id: String, in ownerID: String) -> ExternalURLOpener {
     serverLinkOpener(
-      windowTabs.linkOpener(opener, inApp: openLinksInApp, in: sessionID),
+      windowTabs.linkOpener(opener, inApp: openLinksInApp, from: id, in: ownerID),
       openSettings: openSettingsAt)
   }
 
-  /// A destination's content; `sideChatOf` names the session a side chat was forked from.
+  /// A destination's content. A side chat or sub-agent shows in a tab of `ownerID`, the session
+  /// it runs under; `sideChatOf` names the session a side chat was forked from.
   @ViewBuilder private func detail(
-    _ destination: SidebarDestination?, sideChatOf source: String? = nil
+    _ destination: SidebarDestination?, in ownerID: String? = nil,
+    sideChatOf source: String? = nil
   ) -> some View {
     switch destination {
     case .session(let id):
@@ -216,12 +219,13 @@ public struct ConnectedServerView: View {
           terminals: session.terminals(of: id), workspace: session.workspace(of: id),
           panel: session.panel(of: id),
           changedFilesRevision: { connection.fileChanges(in: id) },
-          navigation: navigation(from: id),
-          opener: linkOpener(in: id),
+          navigation: navigation(from: ownerID ?? id),
+          opener: linkOpener(from: id, in: ownerID ?? id),
           openSession: { selection = .session($0) },
           retry: { connection.foreground() },
           server: connection.connectedServer,
-          tabRoutes: windowTabs.routes(for: id, subagentsApart: openSubagentsApart),
+          tabRoutes: windowTabs.routes(
+            for: id, in: ownerID, subagentsApart: openSubagentsApart),
           terminalNames: session.declaredTerminalNames(in: id),
           sessionActions: sidebarActions.sessions,
           makeForkStore: { connection.makeForkStore() },
@@ -320,16 +324,18 @@ extension ConnectedServerView {
       case .terminal(let sessionID, let terminalID):
         TerminalTabView(
           session: session, sessionID: sessionID, terminalID: terminalID,
-          showChat: { tabs.showChat(sessionID) })
+          showChat: { routes.showConversation(sessionID, fromTab: tab.id) })
       // The agent's terminal shows in its session's chat; a tab left for it shows that chat.
       case .harness(let sessionID):
         detail(.session(sessionID))
       case .sideChat(let sessionID, let rowID):
         SideChatTabContainer(
           session: session, sessionID: sessionID, rowID: rowID,
-          showChat: { tabs.showChat(sessionID) })
+          showChat: { routes.showConversation(sessionID, fromTab: tab.id) })
       case .sideChatSession(let parentID, let childID):
         sideChat(tab, parentID: parentID, childID: childID, routes: routes)
+      case .subagent(let parentID, let childID):
+        detail(.session(childID), in: parentID)
       case .browser(let browserID):
         BrowserTabContainer(
           host: tabContext.browser, tab: tab, browserID: browserID,
@@ -355,7 +361,7 @@ extension ConnectedServerView {
     _ tab: AppTab, parentID: String, childID: String?, routes: WindowTabs
   ) -> some View {
     if let childID {
-      detail(.session(childID), sideChatOf: parentID)
+      detail(.session(childID), in: parentID, sideChatOf: parentID)
     } else {
       PendingSideChatTab(session: session, tabID: tab.id, parentID: parentID, fail: routes.fail)
     }

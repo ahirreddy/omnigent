@@ -66,7 +66,7 @@ struct KeptPlaces {
   @discardableResult
   mutating func take(_ content: AppTabContent) -> Bool {
     switch content {
-    case .chat, .sideChat, .sideChatSession:
+    case .chat, .sideChat, .sideChatSession, .subagent:
       guard conversations > 0 else { return false }
       conversations -= 1
       return true

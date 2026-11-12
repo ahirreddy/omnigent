@@ -51,7 +51,7 @@ enum TabAdapter {
     case .newTab, .newSession, .inbox, .canvas, .automations, .usage:
       item.title = tab.content.kind == .newTab ? "New Tab" : tab.content.kind.label.capitalized
       item.canDuplicate = false
-    case .chat, .harness, .agentBrowser, .sideChat, .sideChatSession:
+    case .chat, .harness, .agentBrowser, .sideChat, .sideChatSession, .subagent:
       sessionItem(&item, tab: tab, session: session)
     case .terminal(let sessionID, let terminalID):
       let store = session.terminals(of: sessionID)
@@ -142,12 +142,30 @@ enum TabAdapter {
       if let childID, connection.openConversation(childID)?.isRunning == true {
         item.status = .running
       }
+    case .subagent(_, let childID):
+      // The name it was opened under (the agent list's), else its own session's title.
+      item.title = subagentTitle(tab.title, childID: childID, connection: connection)
+      item.subtitle = summary?.title
+      item.canDuplicate = false
+      if connection.openConversation(childID)?.isRunning == true { item.status = .running }
     default:
       item.title = "Agent Browser"
       item.subtitle = summary?.title
       item.isReadOnly = true
       item.canDuplicate = false
     }
+  }
+
+  /// A sub-agent tab's title, never the parent chat's: what it was opened as, else its session's
+  /// title, else "Sub-agent" (the web's fallback).
+  private static func subagentTitle(
+    _ opened: String?, childID: String, connection: ConnectionStore
+  ) -> String {
+    let titles = [
+      opened, connection.sessionList.sessionWithoutActivity(childID)?.title,
+      connection.openConversation(childID)?.header?.title,
+    ]
+    return titles.lazy.compactMap(\.self).first { !$0.isEmpty } ?? "Sub-agent"
   }
 
   /// Reads a chat tab's status line for its tooltip, in the tab's own body: the shell building
@@ -175,7 +193,8 @@ enum TabAdapter {
   ) -> String? {
     switch tab.content {
     case .newTab, .newSession, .inbox, .canvas, .automations, .usage, .agentBrowser: nil
-    case .chat, .terminal, .harness, .sideChat, .sideChatSession, .browser, .remoteBrowser:
+    case .chat, .terminal, .harness, .sideChat, .sideChatSession, .subagent, .browser,
+      .remoteBrowser:
       item(tab, session: session, browser: browser).title
     }
   }

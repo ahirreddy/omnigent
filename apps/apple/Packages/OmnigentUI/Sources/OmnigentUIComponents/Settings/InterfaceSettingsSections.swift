@@ -23,8 +23,8 @@ public struct LinksAndSessionsSettingsSection: View {
       Toggle(isOn: $openSubagentsInPanel) {
         Text("Open sub-agents in a new window")
         Text(
-          "On: a sub-agent opens in a window of its own, beside this one. Off: it replaces this "
-            + "session in the window. On iPhone, sub-agents always open in place.")
+          "On: a sub-agent opens in a window of its own, beside this one. Off: it opens in a "
+            + "tab beside its session's chat. On iPhone, sub-agents always open in a tab.")
       }
       .accessibilityIdentifier("settings.open-subagents-in-panel")
     }

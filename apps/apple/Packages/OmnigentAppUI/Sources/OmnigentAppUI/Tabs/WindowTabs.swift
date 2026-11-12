@@ -304,8 +304,12 @@ struct WindowTabs {
 
   /// Starts a terminal in a session and shows it in a tab: `name`, else the remembered one the
   /// agent declares, else its first (the host's login shell for a native harness), else the
-  /// conventional "Shell" while the declared names are unknown.
-  func newTerminal(in sessionID: String, named name: String?, replacing id: String?) async {
+  /// conventional "Shell" while the declared names are unknown. The tab opens in `ownerID`'s
+  /// strip, for a side chat or sub-agent shown there.
+  func newTerminal(
+    in sessionID: String, named name: String?, replacing id: String?,
+    shownIn ownerID: String? = nil
+  ) async {
     session.open(sessionID)
     guard let terminals = session.terminals(of: sessionID)?.terminals else {
       fail("The session's terminals are not available.")
@@ -323,9 +327,12 @@ struct WindowTabs {
       return
     }
     show(
-      .terminal(sessionID: sessionID, terminalID: created.id), in: sessionID, replacing: id)
+      .terminal(sessionID: sessionID, terminalID: created.id), in: ownerID ?? sessionID,
+      replacing: id)
   }
+}
 
+extension WindowTabs {
   private func duplicate(_ id: String, in store: TabStore) {
     guard let tab = store.tab(id) else { return }
     if case .browser(let pageID) = tab.content {

@@ -27,6 +27,8 @@ public final class ServerSession {
   public let tabs = SessionTabGroups()
   /// The drafts of new side chats, by tab.
   let sideChatDrafts = SideChatDrafts()
+  /// The sessions waiting for the side chat their agent forks from a typed `/side`.
+  let forkedSideChats = ForkedSideChats()
   /// Messages that `?message=` links ask the transcript to scroll to.
   public let transcriptFocus = TranscriptFocus()
   /// Sessions whose conversation, terminals and workspace are open.
@@ -131,6 +133,7 @@ public final class ServerSession {
   /// - Parameter sessionID: The session.
   public func close(_ sessionID: String) {
     connection.closeConversation(sessionID)
+    forkedSideChats.cancel(sessionID)
     openSessionIDs.remove(sessionID)
     changingStores(of: sessionID) {
       if let terminals = terminalStores.removeValue(forKey: sessionID) {

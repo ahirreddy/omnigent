@@ -261,13 +261,14 @@ extension SessionTabGroups {
   nonisolated static func belongsInGroup(_ content: AppTabContent) -> Bool {
     switch content {
     case .newSession, .inbox, .canvas, .automations, .usage, .harness: false
-    case .newTab, .chat, .terminal, .sideChat, .sideChatSession, .browser, .agentBrowser,
-      .remoteBrowser:
+    case .newTab, .chat, .terminal, .sideChat, .sideChatSession, .subagent, .browser,
+      .agentBrowser, .remoteBrowser:
       true
     }
   }
 
-  /// Saved tabs fit for `sessionID`'s group: its own tabs, browser and new-tab pages, with its
+  /// Saved tabs fit for `sessionID`'s group: its own tabs, the tabs of the side chats and
+  /// sub-agents shown there, browser and new-tab pages, with its
   /// primary chat (added first among the unpinned tabs when missing) and a valid selection.
   /// - Parameters:
   ///   - snapshot: The saved tabs.
@@ -276,8 +277,14 @@ extension SessionTabGroups {
   nonisolated static func normalized(_ snapshot: TabWindowSnapshot, for sessionID: String)
     -> TabWindowSnapshot
   {
+    // A side chat's or sub-agent's own tabs (its terminals) stay beside its tab.
+    let children = Set(
+      snapshot.tabs.filter { $0.content.sessionID == sessionID }
+        .compactMap(\.content.conversationID))
     let fits = { (content: AppTabContent) in
-      belongsInGroup(content) && (content.sessionID ?? sessionID) == sessionID
+      guard belongsInGroup(content) else { return false }
+      guard let owner = content.sessionID, owner != sessionID else { return true }
+      return children.contains(owner) && !content.isPrimaryChat
     }
     let chat = AppTabContent.chat(sessionID: sessionID)
     var hasChat = false

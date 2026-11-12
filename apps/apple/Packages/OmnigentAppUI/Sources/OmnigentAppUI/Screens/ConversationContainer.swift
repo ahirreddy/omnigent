@@ -186,6 +186,7 @@ struct ConversationContainer: View {
     SessionToolsAdapter.Routes(
       openSession: tabRoutes?.openSession ?? openSession,
       openNewSideChat: tabRoutes?.openNewSideChat,
+      awaitForkedSideChat: tabRoutes?.awaitForkedSideChat,
       showPullRequests: {
         inspectorTab = .pullRequests
         panelRoute.choice = .open
@@ -245,8 +246,8 @@ struct ConversationContainer: View {
     ).slots
   }
 
-  /// Side questions open in their own tab; sub-agents and the "Back to the parent session"
-  /// capsule open or focus their session's chat tab next to this one.
+  /// Side questions and sub-agents open in tabs beside this chat; the "Back to the parent
+  /// session" capsule shows the parent's chat.
   func routed(_ actions: ConversationActions) -> ConversationActions {
     var actions = actions
     if let tabRoutes {

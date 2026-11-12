@@ -357,7 +357,11 @@ extension WindowTabsActionsTests {
     let apart = tabs.routes(for: "conv_a", subagentsApart: true)
     apart.openChild?("conv_child")
     #expect(children.ids == ["conv_child"])
-    #expect(tabs.routes(for: "conv_a", subagentsApart: false).openChild == nil)
+    tabs.routes(for: "conv_a", subagentsApart: false).openChild?("conv_child")
+    #expect(children.ids == ["conv_child"], "a tab of the session, not a window")
+    let opened = try #require(window.session.tabs.group("conv_a").selected)
+    #expect(opened.content == .subagent(parentID: "conv_a", childID: "conv_child"))
+    window.session.tabs.close(opened.id)
 
     let key = TranscriptViewDefault.key
     let saved = UserDefaults.standard.object(forKey: key)

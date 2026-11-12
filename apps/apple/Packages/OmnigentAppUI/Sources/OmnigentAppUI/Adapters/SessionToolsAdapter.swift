@@ -15,6 +15,9 @@ enum SessionToolsAdapter {
     /// Opens a new side chat with a draft, sending it at once when the flag is set; `nil` where
     /// the window has no tabs to open it in.
     var openNewSideChat: (@MainActor (String, Bool) -> Void)?
+    /// A typed `/side` goes (`true`) or did not go (`false`) to an agent that forks the side
+    /// chat itself: the window opens the fork in a tab when the session reports it.
+    var awaitForkedSideChat: (@MainActor (Bool) -> Void)?
     /// Shows the right panel's Pull Requests tab.
     var showPullRequests: @MainActor () -> Void
     /// Opens the goal sheet.
@@ -95,15 +98,30 @@ enum SessionToolsAdapter {
   }
 
   /// Sends the composer's draft and does what its command leaves to the screen: `/new` opens a
-  /// blank session and `/side` a side chat.
+  /// blank session and `/side` a side chat. A `/side` the agent forks itself is a message like
+  /// any other, whose fork the window then waits for.
   static func send(
     _ store: ConversationStore, newSession: (@MainActor () -> Void)?, routes: Routes
   ) async {
+    let forksSideChat = sendsForkingSideChat(store)
+    if forksSideChat { routes.awaitForkedSideChat?(true) }
     switch await store.composer.send() {
     case .handled: break
     case .newSession: newSession?()
     case .sideChat(let question): startSideChat(store, routes: routes, question: question)
     }
+    // A message the server did not take forks nothing.
+    if forksSideChat, store.composer.lastError != nil { routes.awaitForkedSideChat?(false) }
+  }
+
+  /// Whether the draft is a `/side <question>` for an agent that forks the side chat itself
+  /// (web `isSideChatCommand` with `usesNativeSideChatFork`).
+  static func sendsForkingSideChat(_ store: ConversationStore) -> Bool {
+    let harness = store.header?.settings?.harness
+    guard case .command(let prefix) = OmnigentCoreFFI.sideChatStart(harness: harness, quote: nil)
+    else { return false }
+    let draft = store.composer.text.drop { $0.isWhitespace }
+    return draft.hasPrefix(prefix) && draft.dropFirst(prefix.count).contains { !$0.isWhitespace }
   }
 
   /// Starts a side chat: a native `/side` fills the composer; any other opens a new side chat

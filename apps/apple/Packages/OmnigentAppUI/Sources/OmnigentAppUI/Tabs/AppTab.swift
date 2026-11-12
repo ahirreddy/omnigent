@@ -26,6 +26,9 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
   /// A side chat forked from `parentID`, showing only its own turns; `childID` is `nil` until
   /// its first message creates it.
   case sideChatSession(parentID: String, childID: String?)
+  /// A sub-agent's whole chat, opened from the session it runs under and shown in that
+  /// session's tabs; `parentID` is the session whose tabs it is in.
+  case subagent(parentID: String, childID: String)
   /// A web page; the browser host keeps the page under `browserID`.
   case browser(browserID: UUID)
   /// The page an agent drives for a session, read-only.
@@ -38,8 +41,20 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     switch self {
     case .chat(let id), .harness(let id), .agentBrowser(let id): id
     case .terminal(let id, _), .sideChat(let id, _), .remoteBrowser(let id, _): id
-    case .sideChatSession(let id, _): id
+    case .sideChatSession(let id, _), .subagent(let id, _): id
     case .newTab, .newSession, .inbox, .canvas, .automations, .usage, .browser: nil
+    }
+  }
+
+  /// The session whose conversation the tab shows: a chat's own, a side chat's or a sub-agent's.
+  public var conversationID: String? {
+    switch self {
+    case .chat(let id): id
+    case .sideChatSession(_, let childID): childID
+    case .subagent(_, let childID): childID
+    case .newTab, .newSession, .inbox, .canvas, .automations, .usage, .terminal, .harness,
+      .sideChat, .browser, .agentBrowser, .remoteBrowser:
+      nil
     }
   }
 
@@ -52,7 +67,7 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .canvas: .canvas
     case .automations: .automations
     case .usage: .usage
-    case .chat: .chat
+    case .chat, .subagent: .chat
     case .terminal: .terminal
     case .harness: .agentTerminal
     case .sideChat, .sideChatSession: .sideChat
@@ -68,19 +83,23 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     switch self {
     case .newTab, .newSession, .browser: false
     case .inbox, .canvas, .automations, .usage, .chat, .terminal, .harness, .sideChat,
-      .agentBrowser, .remoteBrowser:
+      .subagent, .agentBrowser, .remoteBrowser:
       true
     // Every new side chat is a tab of its own until it has a session.
     case .sideChatSession(_, let childID): childID != nil
     }
   }
 
-  /// The sessions a built tab keeps open: its session's, and a side chat's own.
+  /// The sessions a built tab keeps open: its session's, and a side chat's or sub-agent's own.
   public var openSessionIDs: [String] {
-    if case .sideChatSession(let parentID, let childID) = self {
-      return [parentID] + (childID.map { [$0] } ?? [])
+    switch self {
+    case .sideChatSession(let parentID, let childID):
+      [parentID] + (childID.map { [$0] } ?? [])
+    case .subagent(let parentID, let childID):
+      [parentID, childID]
+    default:
+      sessionID.map { [$0] } ?? []
     }
-    return sessionID.map { [$0] } ?? []
   }
 
   /// The sidebar row that shows this content, when there is one.
@@ -92,8 +111,8 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     case .canvas: .canvas
     case .automations: .automations
     case .usage: .usage
-    case .newTab, .terminal, .harness, .sideChat, .sideChatSession, .browser, .agentBrowser,
-      .remoteBrowser:
+    case .newTab, .terminal, .harness, .sideChat, .sideChatSession, .subagent, .browser,
+      .agentBrowser, .remoteBrowser:
       nil
     }
   }
