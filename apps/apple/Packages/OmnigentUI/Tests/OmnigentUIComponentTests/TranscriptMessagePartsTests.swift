@@ -94,6 +94,8 @@
       defer { view.close() }
       #expect(try view.shows("Audio \u{00B7} not shown in this app"))
       #expect(try !view.shows("Inner text"))
+      // Unfocused, the row's last control is the line itself, not an action focus reveals.
+      restKeyboard(view)
       let frame = try #require(view.controlFrames.last)
       try view.click(center(frame))
       #expect(try view.shows("Inner text"))

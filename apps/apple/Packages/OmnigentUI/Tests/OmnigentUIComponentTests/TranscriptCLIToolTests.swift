@@ -168,6 +168,7 @@
     func hoverCluster() throws {
       let screen = tools([entry(summary: "the input")])
       defer { screen.close() }
+      restKeyboard(screen)
       let resting = screen.controlFrames.count
       let line = try #require(screen.controlFrames.first)
       try screen.hover(CGPoint(x: line.midX, y: line.midY))

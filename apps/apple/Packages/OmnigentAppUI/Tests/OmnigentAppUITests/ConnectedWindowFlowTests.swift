@@ -166,6 +166,8 @@ struct ConnectedWindowFlowTests {
     #expect(footer.minX < 20 && footer.maxY > 580, "the sidebar's bottom left: \(footer)")
     try screen.choose("Sign Out", in: try screen.openMenu(CGPoint(x: footer.midX, y: footer.midY)))
     try await settle(screen, until: "the sign-out") { !session.connection.isSignedIn }
+    // The window goes back to the sign-in flow, which says who was signed out.
+    try await settle(screen, untilShowing: "signed out of", contains: true)
   }
 
   /// A window's session signed in to an OIDC account as `u1`.

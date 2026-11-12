@@ -120,10 +120,12 @@ struct NewSessionScreenTests {
     let server = startableServer()
     let (screen, _) = try await page(server)
     defer { screen.close() }
-    try screen.choose("Codex", in: menu(screen, at: Self.agentMenu, offering: "Codex"))
-    try await pause(screen)
     try screen.choose(
-      "codex-native-fast", in: menu(screen, at: Self.agentMenu, offering: "codex-native-fast"))
+      "Codex", in: try await menu(screen, at: Self.agentMenu, onceOffering: "Codex"))
+    // Codex's models are read once it is chosen: the menu lists them when they arrive.
+    try screen.choose(
+      "codex-native-fast",
+      in: try await menu(screen, at: Self.agentMenu, onceOffering: "codex-native-fast"))
     try await pause(screen)
     let body = try await typeAndStart(screen, server)
     #expect(body["agent_id"] as? String == "ag_codex")
@@ -135,7 +137,8 @@ struct NewSessionScreenTests {
     let server = startableServer()
     let (screen, _) = try await page(server)
     defer { screen.close() }
-    try screen.choose("Full access", in: menu(screen, at: Self.modeMenu, offering: "Full access"))
+    try screen.choose(
+      "Full access", in: try await menu(screen, at: Self.modeMenu, onceOffering: "Full access"))
     try await pause(screen)
     #expect(try screen.shows("Full access"))
     let body = try await typeAndStart(screen, server)
@@ -148,7 +151,7 @@ struct NewSessionScreenTests {
     let server = startableServer()
     let (screen, _) = try await page(server)
     defer { screen.close() }
-    try screen.choose("box", in: menu(screen, at: Self.hostMenu, offering: "box"))
+    try screen.choose("box", in: try await menu(screen, at: Self.hostMenu, onceOffering: "box"))
     try await pause(screen, .milliseconds(120))
     let shown = try screen.shownText()
     #expect(shown.contains { $0.contains("box") }, "\(shown)")

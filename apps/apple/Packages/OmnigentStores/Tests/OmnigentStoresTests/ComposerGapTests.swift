@@ -115,6 +115,28 @@ struct ComposerGapTests {
     #expect(live.postedTexts.filter { $0 == "hello" }.count == 2, "the refusal, then the send")
   }
 
+  @Test("On Codex a /side question shows no sending row; tagged paths make it a message again")
+  func sideChatQuestionShowsNoRow() async throws {
+    let live = try await LiveComposer(fields: codexFields)
+    let composer = live.composer
+    live.acceptMessages()
+    let gate = live.server.hold("/v1/sessions/conv_a/events", method: "POST")
+
+    composer.text = "/side why this branch?"
+    let asking = Task { _ = await composer.send() }
+    try await eventually("the side chat question's post") { gate.arrivals == 1 }
+    #expect(live.conversation.displayRows.isEmpty, "the server never echoes it here")
+    gate.release()
+    await asking.value
+    #expect(composer.lastError == nil)
+    #expect(live.postedTexts == ["/side why this branch?"])
+
+    // The paths go ahead of the text, so the agent reads an ordinary message.
+    let mentions = MessageQueue.Extras(mentions: ["src/app.swift"])
+    #expect(composer.showSending("/side why this branch?", extras: mentions) != nil)
+    #expect(live.conversation.displayRows.map(\.text) == ["/side why this branch?"])
+  }
+
   @Test("Steering follows the session's harness")
   func steering() async throws {
     let live = try await LiveComposer(fields: claudeFields("default"))

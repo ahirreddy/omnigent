@@ -32,17 +32,14 @@ extension ConnectedWindowFlowTests {
     let group = mounted.session.tabs.group("conv_a")
     let shell = group.open(.terminal(sessionID: "conv_a", terminalID: "t1"), title: "zsh")
     group.select(group.tabs[0].id)
-    try await pause(mounted.screen, .milliseconds(100))
-    let framesBefore = mounted.screen.controlFrames
+    let framesBefore = try await settledControlFrames(mounted.screen)
     SystemSideEffects.answer(alert: .alertFirstButtonReturn)
     group.closingShell = shell.id
     let message = "The shell could not be closed"
     try await settle(mounted.screen, untilShowing: message, contains: true)
-
     // The banner's only control is the one it added, and it pushes the page below it down.
-    let dismiss = try #require(
-      mounted.screen.controlFrames.first { !framesBefore.contains($0) },
-      "\(mounted.screen.controlFrames)")
+    let frames = try await settledControlFrames(mounted.screen)
+    let dismiss = try #require(frames.first { !framesBefore.contains($0) }, "\(frames)")
     try mounted.screen.click(CGPoint(x: dismiss.midX, y: dismiss.midY))
     try await settle(mounted.screen, until: "the banner to go") {
       (try? mounted.screen.shows(message)) == false

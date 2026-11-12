@@ -427,6 +427,50 @@ fn a_child_named_on_its_parents_stream_needs_no_lookup() {
 }
 
 #[test]
+fn a_request_built_before_its_sessions_host_was_learned_is_keyed_without_a_lookup() {
+    let transport = RouteTransport::with_prefix(MOUNT, false);
+    listed(&transport);
+    let agent = format!("{MOUNT}/v1/sessions/conv_child/agent");
+    transport.ok(&agent, r#"{"terminals":[]}"#);
+    let core = workspace(transport);
+    block_on(core.sessions()).unwrap();
+
+    // Built while nothing was known of the session: it names the session to look up.
+    let prepared = core
+        .prepare("GET", "/v1/sessions/conv_child/agent", &[], None)
+        .unwrap();
+    let addressing = prepared.addressing.clone().unwrap();
+    assert_eq!(addressing.host, None);
+    assert_eq!(addressing.unresolved_session.as_deref(), Some("conv_child"));
+
+    // Its parent's stream names it before the request goes out.
+    let created = serde_json::json!({
+        "type": "session.created",
+        "conversation_id": "conv_a",
+        "child_session_id": "conv_child",
+    });
+    let event = crate::reducer::decode_event(created, "conv_a")
+        .unwrap()
+        .unwrap();
+    core.record_stream_event("conv_a", &event);
+
+    block_on(core.send_routed(prepared.request, prepared.addressing)).unwrap();
+    assert_eq!(
+        keys(&core.transport, &agent),
+        [Some("host_a".to_owned())],
+        "keyed by the host learned meanwhile"
+    );
+    let snapshot = format!("{MOUNT}/v1/sessions/conv_child");
+    assert!(
+        core.transport
+            .taken()
+            .iter()
+            .all(|request| path_of(request) != snapshot),
+        "what is already known is not read again"
+    );
+}
+
+#[test]
 fn an_answer_to_a_sub_agents_request_goes_to_its_parents_replica() {
     let transport = RouteTransport::with_prefix(MOUNT, false);
     listed(&transport);

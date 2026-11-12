@@ -220,8 +220,11 @@
           with: .mouseMoved, location: CGPoint(x: 2, y: 100), modifierFlags: [],
           timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: screen.window.windowNumber,
           context: nil, eventNumber: 1, clickCount: 0, pressure: 0))
+      let sidebarRows = { try screen.shownText().filter { $0 == "Beta" }.count }
+      let rowsBefore = try sidebarRows()
       tracker.mouseMoved(with: edge)
-      try await Task.sleep(for: SidebarPeek.revealDelay + .milliseconds(30))
+      // The panel draws the sidebar's rows once the pointer has rested, however late timers run.
+      #expect(try await waitUntil(screen) { try sidebarRows() > rowsBefore })
       screen.settle(0.3)
       let peekMarker = screen.allViews.contains {
         $0.frame.width == SidebarPeekOverlay<EmptyView>.panelWidth

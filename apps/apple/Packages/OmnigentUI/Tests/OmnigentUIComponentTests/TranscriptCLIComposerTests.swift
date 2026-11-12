@@ -208,6 +208,19 @@
       #expect(!(screen.window.firstResponder is NSTextView))
     }
 
+    @Test("A tab hidden while its composer waits to take the keyboard never takes it")
+    func hiddenBeforeTakingTheKeyboard() async throws {
+      let requests = FocusRequests()
+      let screen = transcriptScreen(FocusRequestHost(requests: requests))
+      defer { screen.close() }
+      // The composer's wait has begun when the tab leaves the screen, which ends the wait. No
+      // time passes between the two: the update that hides the tab runs as this test next waits.
+      for _ in 0..<3 { await Task.yield() }
+      requests.isHidden = true
+      try await letTasksRun(screen, milliseconds: 200)
+      #expect(!(screen.window.firstResponder is NSTextView))
+    }
+
     @Test("A read-only session on touch shows why instead of an editor")
     func readOnlyTouch() throws {
       var state = ComposerViewState(availability: .unavailable(reason: "Shared with you"))

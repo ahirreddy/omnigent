@@ -87,6 +87,7 @@
       actions.forkFrom = { _ in }
       let hidden = message(Fixture.answer("a"), actions: actions)
       defer { hidden.close() }
+      restKeyboard(hidden)
       var decoration = MessageDecoration()
       decoration.showsActions = true
       let pinned = message(Fixture.answer("a"), decoration: decoration, actions: actions)

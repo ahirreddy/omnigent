@@ -18,6 +18,25 @@ extension ConnectionStore {
     }
   }
 
+  /// Discovers `serverURL`, then connects: a saved credential is used when there is one,
+  /// otherwise ``phase`` becomes `signInRequired` with the methods to offer.
+  /// - Parameters:
+  ///   - serverURL: The server URL as typed.
+  ///   - expectedUserID: The account to restore on an accounts server.
+  public func connect(serverURL: String, expectedUserID: String? = nil) async {
+    await discover(serverURL: serverURL)
+    guard let core, discovery != nil else { return }
+    do {
+      let connected = try await core.connect(serverUrl: serverURL, expectedUserId: expectedUserID)
+      // The phases the core passed through are still on their way here: applied after its
+      // answer, one of them would show the connection as not made until the last arrives.
+      await eventsSentSoFarApplied()
+      phase = connected
+    } catch {
+      record(scope: .connection, coreError(error))
+    }
+  }
+
   /// Returns once every event the core has sent by now is applied. The core changes a row
   /// before it answers a call, and the answer can overtake that event on its way here.
   func eventsSentSoFarApplied() async {

@@ -1427,6 +1427,27 @@ fn signing_out_of_oidc_revokes_and_reports_what_failed() {
     ));
 }
 
+/// A host sets its phase from the answer: an earlier phase published after it would undo that.
+#[test]
+fn a_connect_answers_after_the_phases_it_passed_through_are_published() {
+    let local = Harness::new(UrlPolicy::Development);
+    local.local_server();
+    for (mut harness, server) in [(local, "http://127.0.0.1:6767"), (oidc_server(), SERVER)] {
+        let core = Arc::clone(&harness.core);
+        let events = Arc::clone(&harness.events);
+        let (answer, published) = harness.run(async move {
+            let answer = core.connect(server.into(), None).await;
+            (answer, phases(&events.all()))
+        });
+        let answer = answer.unwrap();
+        assert!(
+            matches!(published.first(), Some(ConnectionPhase::Discovering { .. })),
+            "{published:?}"
+        );
+        assert_eq!(published.last(), Some(&answer), "{published:?}");
+    }
+}
+
 /// A sign-out waiting on a slow revoke must not throw a newer connection back to sign-in.
 #[test]
 fn a_connect_during_a_slow_sign_out_keeps_its_phase() {

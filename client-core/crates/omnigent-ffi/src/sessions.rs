@@ -381,9 +381,10 @@ impl ClientCore {
         }
     }
 
-    /// Returns once the engine has published the list changes the calls so far caused. A row
-    /// edit answers through this, so the host holds the changed rows before it reads the answer.
-    async fn events_published(&self) {
+    /// Returns once the engine has published what the calls so far caused. A row edit and a
+    /// connect answer through this, so the host holds the changed rows, or the phases passed
+    /// through, before it reads the answer.
+    pub(crate) async fn events_published(&self) {
         let (reply, published) = oneshot::channel();
         self.post(Msg::EventsPublished(reply));
         // The engine drops the reply only once it has shut down and publishes nothing more.

@@ -23,7 +23,8 @@ extension ConnectedWindowFlowTests {
     let mounted = try await mounted(server, page: .usage)
     defer { mounted.screen.close() }
     try await settle(mounted.screen, untilShowing: "Fix")
-    let row = try #require(mounted.screen.controlFrames.last)
+    // The page is still laying out as its first row shows: the row is clicked where it rests.
+    let row = try #require(try await settledControlFrames(mounted.screen).last)
     try mounted.screen.click(CGPoint(x: row.midX, y: row.midY))
     try await settle(mounted.screen, until: "the session") {
       mounted.selection.page == .session("conv_b")

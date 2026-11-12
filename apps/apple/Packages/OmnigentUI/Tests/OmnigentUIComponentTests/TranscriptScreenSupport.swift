@@ -26,6 +26,15 @@
       width: width, height: height)
   }
 
+  /// Takes the keyboard from the window's views. With the system's keyboard navigation on (a CI
+  /// image's setting) a window gives the keyboard to its first control as it opens, and a row
+  /// then shows at rest what it reveals on focus.
+  @MainActor
+  func restKeyboard(_ screen: OffscreenWindow<AnyView>) {
+    screen.window.makeFirstResponder(nil)
+    screen.settle()
+  }
+
   /// Lets what a click or a view's `task` started finish: a run loop spun inside the test's job
   /// would hold those tasks back on the main queue, so this suspends instead.
   @MainActor

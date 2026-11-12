@@ -148,8 +148,13 @@
       let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 340, height: 800)
       defer { screen.close() }
       try screen.press(keyCode: 51, characters: "\u{7F}")
-      withKnownIssue("onDeleteCommand comes from the Edit menu, which no offscreen window has") {
+      // With the system's keyboard navigation on (a CI image's setting) the list has the keyboard
+      // and takes the key. Without it onDeleteCommand comes only from the Edit menu, which no
+      // offscreen window has.
+      withKnownIssue("Delete reaches an offscreen list only with keyboard navigation on") {
         #expect(spy.calls == ["archive beta true"])
+      } when: {
+        !NSApp.isFullKeyboardAccessEnabled
       }
     }
 

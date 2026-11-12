@@ -927,7 +927,8 @@ impl ClientCore {
     /// Connects to `server_url`: discovery, then a saved credential if there is one (OIDC grant,
     /// or the accounts credential of `expected_user_id`), then identity confirmation. Returns
     /// `Connected`, or `SignInRequired` with the methods to offer. Progress is also reported
-    /// as `ConnectionChanged` events.
+    /// as `ConnectionChanged` events, all published by the time this answers: a host that
+    /// takes the answer is not then sent an earlier phase.
     ///
     /// # Errors
     ///
@@ -938,7 +939,9 @@ impl ClientCore {
         server_url: String,
         expected_user_id: Option<String>,
     ) -> Result<ConnectionPhase, CoreError> {
-        self.inner.connect(&server_url, expected_user_id).await
+        let answer = self.inner.connect(&server_url, expected_user_id).await;
+        self.events_published().await;
+        answer
     }
 
     /// Signs in with a username and password (accounts mode), saves the credential and

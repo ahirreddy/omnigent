@@ -69,8 +69,7 @@
       try view.mouseEntered(with: moved(screen, toX: 2))
       screen.settle(0.02)
       #expect(try !screen.shows("peek panel"))
-      try await wait(SidebarPeek.revealDelay, screen)
-      #expect(try screen.shows("peek panel"))
+      #expect(try await waitUntil(screen) { try screen.shows("peek panel") })
     }
 
     @Test("Passing over the edge doesn't flash the panel")
@@ -80,8 +79,10 @@
       defer { screen.close() }
       let view = try #require(tracker(screen))
       try view.mouseMoved(with: moved(screen, toX: 2))
-      // The reveal's timer is running when the pointer moves on: it gets cancelled.
-      try await wait(.milliseconds(20), screen)
+      // The reveal's wait has begun when the pointer moves on, which ends it. No time passes
+      // here: on a machine with late timers a pause could outlast the wait itself.
+      screen.settle(0.005)
+      for _ in 0..<3 { await Task.yield() }
       try view.mouseMoved(with: moved(screen, toX: 300))
       try await wait(SidebarPeek.revealDelay, screen)
       #expect(try !screen.shows("peek panel"))
@@ -99,9 +100,24 @@
       #expect(try screen.shows("peek panel"))
 
       try view.mouseExited(with: moved(screen, toX: 0))
+      // The delay runs on this machine's timers, which may be late: wait for the panel to go.
+      #expect(try await waitUntil(screen) { try !screen.shows("peek panel") })
+    }
+
+    @Test("Coming back onto the panel while it waits to hide keeps it")
+    func returnsBeforeHiding() async throws {
+      let host = Host()
+      let screen = screen(host, startsShown: true)
+      defer { screen.close() }
+      let view = try #require(tracker(screen))
+      try view.mouseExited(with: moved(screen, toX: 0))
+      // The wait to hide has begun when the pointer comes back, which ends the wait.
+      screen.settle(0.005)
+      for _ in 0..<3 { await Task.yield() }
+      try view.mouseMoved(with: moved(screen, toX: 100))
+      screen.settle(0.005)
       try await wait(SidebarPeek.hideDelay, screen)
-      screen.settle(0.3)
-      #expect(try !screen.shows("peek panel"))
+      #expect(try screen.shows("peek panel"))
     }
 
     @Test("In a right-to-left window the edge is on the right")
@@ -114,8 +130,7 @@
       try await wait(SidebarPeek.revealDelay, screen)
       #expect(try !screen.shows("peek panel"))
       try view.mouseMoved(with: moved(screen, toX: 798))
-      try await wait(SidebarPeek.revealDelay, screen)
-      #expect(try screen.shows("peek panel"))
+      #expect(try await waitUntil(screen) { try screen.shows("peek panel") })
     }
 
     @Test("A sheet over the window stops the edge from revealing the panel")

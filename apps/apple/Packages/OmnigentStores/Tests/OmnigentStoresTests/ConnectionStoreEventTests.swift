@@ -30,6 +30,18 @@ struct ConnectionStoreEventTests {
     #expect(expired.requiresSignIn)
   }
 
+  @Test("A connection, once made, is not undone by the phases the core passed through to it")
+  func connectedStaysConnected() async throws {
+    for attempt in 0..<100 {
+      let store = try await connectedStore(RouteServer())
+      // What the core sent on the way was applied before the answer; none of it arrives now.
+      for _ in 0..<10 {
+        await Task.yield()
+        #expect(store.isSignedIn, "attempt \(attempt), phase: \(store.phase)")
+      }
+    }
+  }
+
   @Test("A renewed credential counts up and keeps the new expiry, with no reconnect")
   func credentialRotation() async throws {
     let store = try await connectedStore(RouteServer())

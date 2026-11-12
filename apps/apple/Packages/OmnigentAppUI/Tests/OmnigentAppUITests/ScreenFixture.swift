@@ -55,6 +55,24 @@ func pause<Content: View>(_ screen: OffscreenWindow<Content>, _ time: Duration =
   }
 }
 
+/// The window's controls once they have stopped moving, over three reads in a row: a page that
+/// loads, a tab that opens and a banner that arrives lay the window out over several updates,
+/// and a click must land where a control is.
+@MainActor
+func settledControlFrames<Content: View>(_ screen: OffscreenWindow<Content>) async throws
+  -> [CGRect]
+{
+  var frames = screen.controlFrames
+  var unchangedReads = 0
+  try await settle(screen, until: "the controls to stop moving") {
+    let latest = screen.controlFrames
+    unchangedReads = latest == frames ? unchangedReads + 1 : 0
+    frames = latest
+    return unchangedReads >= 3
+  }
+  return frames
+}
+
 /// Every title on a menu, at any depth.
 @MainActor
 func menuTitles(_ menu: NSMenu) -> [String] {
@@ -73,6 +91,25 @@ func menu<Content: View>(
     throw OffscreenWindowError.notFound("\(title) in \(menuTitles(menu))")
   }
   return menu
+}
+
+/// The menu at `point`, once it offers `title`. What a menu lists can arrive after the screen
+/// shows or after the pick that changes it (an agent's models are read when it is chosen), so
+/// this opens it again until the title is there.
+@MainActor
+func menu<Content: View>(
+  _ screen: OffscreenWindow<Content>, at point: CGPoint, onceOffering title: String,
+  timeout: Duration = .seconds(5)
+) async throws -> NSMenu {
+  let deadline = ContinuousClock.now + timeout
+  while true {
+    do {
+      return try menu(screen, at: point, offering: title)
+    } catch let error as OffscreenWindowError {
+      guard ContinuousClock.now < deadline else { throw error }
+    }
+    try await pause(screen)
+  }
 }
 
 /// One element of what VoiceOver reads on a screen.

@@ -40,11 +40,15 @@ let package = Package(
       swiftSettings: mainActorSwiftSettings,
       linkerSettings: [.linkedLibrary("bsm")]
     ),
+    // C callers of the protocol's inline rules: Swift's own copy of an imported inline function
+    // carries no coverage counters, so the tests run those rules through compiled C.
+    .target(
+      name: "OWLProtocolCallers", dependencies: ["OWLProtocol"], path: "Tests/OWLProtocolCallers"),
     .testTarget(
       name: "OmnigentWebLayerTests",
       dependencies: [
         .product(name: "OmnigentViewTesting", package: "OmnigentViewTesting"), "OmnigentWebLayer",
-        "OWLProtocol",
+        "OWLProtocol", "OWLProtocolCallers",
         .product(name: "OmnigentInput", package: "OmnigentInput"),
       ],
       swiftSettings: mainActorSwiftSettings

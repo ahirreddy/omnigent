@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import OWLProtocol
+import OWLProtocolCallers
 import Testing
 
 @testable import OmnigentWebLayer
@@ -137,22 +138,22 @@ struct InputEventTimeTests {
   @Test("the host uses a real past time and its own clock for anything else")
   func resolvedTime() {
     let now = 500.0
-    #expect(owl_input_event_time(499.5, now, 0) == 499.5)
-    #expect(owl_input_event_time(now, now, 0) == now)
+    #expect(owl_input_event_time_in_c(499.5, now, 0) == 499.5)
+    #expect(owl_input_event_time_in_c(now, now, 0) == now)
     // Absent, the future, and values that are not times.
     for unusable in [0, 500.001, 9e18, -1, -Double.infinity, Double.infinity, Double.nan] {
-      #expect(owl_input_event_time(unusable, now, 0) == now, "\(unusable)")
+      #expect(owl_input_event_time_in_c(unusable, now, 0) == now, "\(unusable)")
     }
     // The first input of a host that has seen no event yet is stamped, not left at 0.
-    #expect(owl_input_event_time(0, 0.25, 0) == 0.25)
+    #expect(owl_input_event_time_in_c(0, 0.25, 0) == 0.25)
   }
 
   @Test("a view's input times never run backwards")
   func timesNeverRunBackwards() {
     // An event older than what the view already got is moved up to it.
-    #expect(owl_input_event_time(100, 500, 400) == 400)
-    #expect(owl_input_event_time(0, 500, 600) == 600)
-    #expect(owl_input_event_time(450, 500, 400) == 450)
+    #expect(owl_input_event_time_in_c(100, 500, 400) == 400)
+    #expect(owl_input_event_time_in_c(0, 500, 600) == 600)
+    #expect(owl_input_event_time_in_c(450, 500, 400) == 450)
 
     // Agent input (0) between user events, a late event, a bogus one, and a page commit.
     let inputs: [(eventTime: Double, now: Double)] = [
@@ -163,7 +164,7 @@ struct InputEventTimeTests {
     var stamped: [Double] = []
     for (index, input) in inputs.enumerated() {
       if index == 4 { earliest = max(earliest, 11.25) }
-      earliest = owl_input_event_time(input.eventTime, input.now, earliest)
+      earliest = owl_input_event_time_in_c(input.eventTime, input.now, earliest)
       stamped.append(earliest)
     }
     #expect(stamped == [10, 10, 10.25, 11, 11.25, 11.5, 12, 12])

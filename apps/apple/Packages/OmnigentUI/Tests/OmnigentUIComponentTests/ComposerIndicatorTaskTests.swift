@@ -125,12 +125,10 @@
 
       try screen.hover(screen.clickPoint(chip))
       #expect(screen.popoverWindow == nil)
-      screen.settle(0.45)
-      await screen.drainTasks()
-      #expect(screen.popoverWindow != nil)
+      // The preview opens once the pointer has rested, however late this machine's timers run.
+      #expect(try await screen.eventually { screen.popoverWindow != nil })
       try screen.endHover()
-      screen.settle(0.3)
-      #expect(screen.popoverWindow == nil)
+      #expect(try await screen.eventually { screen.popoverWindow == nil })
     }
 
     @Test("the context line says where it runs and opens the details")

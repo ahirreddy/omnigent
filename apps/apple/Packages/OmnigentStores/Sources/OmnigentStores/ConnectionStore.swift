@@ -204,21 +204,6 @@ public final class ConnectionStore {
     state = next
   }
 
-  /// Discovers `serverURL`, then connects: a saved credential is used when there is one,
-  /// otherwise ``phase`` becomes `signInRequired` with the methods to offer.
-  /// - Parameters:
-  ///   - serverURL: The server URL as typed.
-  ///   - expectedUserID: The account to restore on an accounts server.
-  public func connect(serverURL: String, expectedUserID: String? = nil) async {
-    await discover(serverURL: serverURL)
-    guard let core, discovery != nil else { return }
-    do {
-      phase = try await core.connect(serverUrl: serverURL, expectedUserId: expectedUserID)
-    } catch {
-      record(scope: .connection, coreError(error))
-    }
-  }
-
   /// Signs in with a username and password (accounts mode).
   ///
   /// The returned server is the outcome: ``phase`` follows through the core's events, which can

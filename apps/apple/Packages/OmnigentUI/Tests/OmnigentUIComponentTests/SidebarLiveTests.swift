@@ -169,7 +169,12 @@ struct SidebarArrangementTests {
       let screen = sidebar(spy, source)
       defer { screen.close() }
       screen.sectionToggles[2].performClick(nil)
-      screen.settle(0.3)
+      // The rows leave when the collapse has finished, however long this machine takes over it.
+      var waits = 0
+      while try screen.shows("Gamma"), waits < 50 {
+        screen.settle(0.1)
+        waits += 1
+      }
       #expect(try !screen.shows("Gamma"), "the Sessions rows are hidden")
       let labels = try needsYouLabels(screen)
 
