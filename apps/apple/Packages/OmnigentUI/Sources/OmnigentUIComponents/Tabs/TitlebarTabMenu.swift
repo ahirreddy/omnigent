@@ -47,7 +47,9 @@
       guard unsafe window != nil else { return }
       let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
       monitor = NSEvent.addLocalMonitorForEvents(matching: clicks) { [weak self] event in
+        // coverage:off the monitor sees only real clicks; the tab menu flow
         self?.takes(event) == true ? nil : event
+        // coverage:on
       }
     }
 

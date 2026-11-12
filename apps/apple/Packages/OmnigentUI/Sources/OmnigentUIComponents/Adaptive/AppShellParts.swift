@@ -67,7 +67,9 @@ struct TitlebarTabs: ViewModifier {
         if space.stripOffer.isMultiple(of: 2) {
           stripItems(tabs)
         } else {
+          // coverage:off a toolbar folds its strip only in a window on screen; the relaunch flow
           stripItems(tabs)
+          // coverage:on
         }
       } else {
         ToolbarItem(placement: Self.switcherPlacement) {

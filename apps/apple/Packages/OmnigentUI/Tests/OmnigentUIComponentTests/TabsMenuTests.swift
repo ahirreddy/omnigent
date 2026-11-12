@@ -141,6 +141,7 @@
         screen.allViews.compactMap { $0 as? TitlebarMenuClickView }.first)
       var shown: [NSMenu] = []
       clicks.present = { menu, _, _ in shown.append(menu) }
+      #expect(clicks.hitTest(NSPoint(x: clicks.bounds.midX, y: clicks.bounds.midY)) == nil)
 
       let outside = NSPoint(x: clicks.bounds.maxX + 2_000, y: clicks.bounds.maxY + 2_000)
       let takenOutside = clicks.takes(try secondaryClick(in: clicks, at: outside))

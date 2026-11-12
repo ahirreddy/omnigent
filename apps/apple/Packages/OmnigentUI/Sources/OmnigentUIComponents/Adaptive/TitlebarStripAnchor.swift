@@ -71,6 +71,7 @@
     /// Whether a toolbar on screen holds this strip's item and has folded it away. Replaced in
     /// tests, whose windows are never on screen.
     var isFoldedOnScreen: @MainActor (TitlebarStripAnchorView) -> Bool = { anchor in
+      // coverage:off a toolbar folds its strip only in a window on screen; the relaunch flow
       for window in NSApp.windows where window.occlusionState.contains(.visible) {
         guard let toolbar = window.toolbar, toolbar.isVisible else { continue }
         let item = toolbar.items.first { item in
@@ -78,6 +79,7 @@
         }
         if let item { return !(toolbar.visibleItems ?? []).contains(item) }
       }
+      // coverage:on
       return false
     }
 
