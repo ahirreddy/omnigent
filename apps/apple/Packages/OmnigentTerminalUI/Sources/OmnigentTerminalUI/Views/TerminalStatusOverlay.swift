@@ -12,9 +12,14 @@ struct TerminalStatusOverlay: View {
     case .idle, .attached:
       EmptyView()
     case .connecting:
-      ProgressView("Connecting…")
-        .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+      // Its own text under the spinner: SwiftUI can leave a ProgressView's label out.
+      VStack(spacing: 8) {
+        ProgressView()
+        Text("Connecting…")
+      }
+      .accessibilityElement(children: .combine)
+      .padding(14)
+      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
     case .reconnecting(let failures, let delay, let reason):
       VStack {
         Spacer()

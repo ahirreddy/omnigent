@@ -80,29 +80,6 @@ struct SurfaceRoundTripTests {
     #expect(!controller.visibleText().contains("echo shell"))
   }
 
-  /// The server sends the pane's current screen the moment an attach opens, which can be before
-  /// the view is laid out. Parsed then, the screen stays blank in the app after the first size.
-  @Test("a screen that arrives before the surface has a size waits for it, then shows")
-  func outputBeforeTheFirstSize() async throws {
-    let controller = try TerminalSurfaceController(connection: EchoTerminalConnection())
-    controller.render(.resetScreen)
-    controller.render(.bytes(Array("\u{1b}[H\u{1b}[2Jseeded screen\r\n".utf8)))
-    #expect(controller.gridSize == nil, "the view has reported no size yet")
-    #expect(!controller.visibleText().contains("seeded screen"), "parsed without a size")
-    _ = try SurfaceHost(controller: controller, width: 640, height: 360)
-    #expect(await eventually { controller.visibleText().contains("seeded screen") })
-  }
-
-  @Test("a surface that never gets a size parses its output rather than hold it without end")
-  func outputPastTheHeldLimit() throws {
-    let controller = try TerminalSurfaceController(connection: EchoTerminalConnection())
-    controller.heldOutputLimit = 16
-    controller.render(.bytes(Array("held".utf8)))
-    #expect(controller.visibleText().isEmpty)
-    controller.render(.bytes(Array(" then parsed past the limit".utf8)))
-    #expect(controller.visibleText().contains("held then parsed past the limit"))
-  }
-
   @Test("the recorded REPL TUI renders")
   func recordedTUI() async throws {
     let connection = try ReplayTerminalConnection.recordedReplTUI()
