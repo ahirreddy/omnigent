@@ -32,16 +32,26 @@ extension View {
 private struct EditorLock: ViewModifier {
   let isEditable: Bool
   let isFocused: FocusState<Bool>.Binding
+  /// The keyboard was asked for while locked (a session still loading when it comes on
+  /// screen); the editor gets it once it takes input.
+  @State private var owesFocus = false
 
   func body(content: Content) -> some View {
     content
       .disabled(!isEditable)
       .allowsHitTesting(isEditable)
       .onChange(of: isFocused.wrappedValue, initial: true) { _, focused in
-        if focused, !isEditable { isFocused.wrappedValue = false }
+        guard focused, !isEditable else { return }
+        owesFocus = true
+        isFocused.wrappedValue = false
       }
       .onChange(of: isEditable) { _, editable in
-        if !editable, isFocused.wrappedValue { isFocused.wrappedValue = false }
+        if !editable {
+          if isFocused.wrappedValue { isFocused.wrappedValue = false }
+        } else if owesFocus {
+          owesFocus = false
+          isFocused.wrappedValue = true
+        }
       }
   }
 }

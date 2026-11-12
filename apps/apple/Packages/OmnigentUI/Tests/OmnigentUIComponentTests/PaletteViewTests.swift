@@ -216,6 +216,18 @@
       screen.settle(0.02)
     }
 
+    /// Whether the palette comes to show `text`: an answer arrives as late as the timers run.
+    private func comesToShow<V: View>(_ text: String, _ screen: OffscreenWindow<V>) async throws
+      -> Bool
+    {
+      var waits = 0
+      while try !screen.shows(text), waits < 15 {
+        try await waitForSearch(screen)
+        waits += 1
+      }
+      return try screen.shows(text)
+    }
+
     @Test("a search asks the server once typing pauses, trimmed, and shows what it found")
     func serverSearch() async throws {
       let spy = PaletteSpy()
@@ -279,8 +291,7 @@
       defer { screen.close() }
       screen.settle()
       try screen.type("zzq")
-      try await waitForSearch(screen)
-      #expect(try screen.shows("zzq found"))
+      #expect(try await comesToShow("zzq found", screen))
       for _ in 0..<3 { try screen.press(keyCode: 51, characters: "\u{7F}") }
       try await waitForSearch(screen)
       #expect(try !screen.shows("zzq found"))

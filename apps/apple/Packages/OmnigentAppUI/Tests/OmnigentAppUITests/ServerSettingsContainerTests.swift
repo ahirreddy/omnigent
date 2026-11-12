@@ -56,10 +56,10 @@ struct ServerSettingsContainerTests {
     try await pause(page.screen, .milliseconds(150))
   }
 
-  /// Clicks a control of the pane. Their frames leave out the sidebar, which sits beside them.
+  /// Clicks a control of the window: the server picker is the first, then the pane's.
   private func clickInPane(_ index: Int, on page: Page) throws {
     let frame = page.screen.controlFrames[index]
-    try page.screen.click(CGPoint(x: frame.midX + 200, y: frame.midY))
+    try page.screen.click(CGPoint(x: frame.midX, y: frame.midY))
   }
 
   @Test("It opens on the first signed-in server, and a request moves it to a pane")

@@ -46,6 +46,26 @@
       #expect(model.draft == "a")
     }
 
+    @Test("a composer shown while its session loads takes the keyboard once it has loaded")
+    func focusWaitsForLoading() async throws {
+      var loading = ComposerSamples.idle
+      loading.availability = .unavailable(reason: "Waiting for the session to load\u{2026}")
+      let model = ComposerScreenModel(state: loading)
+      let screen = OffscreenWindow(ComposerScreen(model: model, actions: log.actions))
+      defer { screen.close() }
+      // Showing asks for the keyboard a moment later, while the editor still takes no input.
+      try await Task.sleep(for: .milliseconds(300))
+      screen.settle(0.02)
+      try screen.type("a")
+      #expect(model.draft.isEmpty)
+
+      model.state = ComposerSamples.idle
+      try await Task.sleep(for: .milliseconds(100))
+      screen.settle(0.05)
+      try screen.type("b")
+      #expect(model.draft == "b", "with no click on the editor")
+    }
+
     @Test("a composer that becomes available again takes typing")
     func turnsEditable() throws {
       let model = ComposerScreenModel(state: readOnly)
