@@ -77,6 +77,9 @@ struct ViewHealth {
   std::atomic<uint64_t> expectant_inputs{0};
   std::atomic<uint64_t> keys_returned{0};
   std::atomic<uint32_t> unanswered_total{0};
+  /// The page's frame buffers: how many exist, and the most that were busy at once.
+  std::atomic<uint32_t> ring_slots{0};
+  std::atomic<uint32_t> ring_busy_peak{0};
   std::atomic<uint32_t> unanswered[OWL_INPUT_CLASS_COUNT] = {};
 
   // MARK: Written on the CEF UI thread
@@ -189,7 +192,9 @@ struct ViewHealth {
     const owl_view_health health = Snapshot(now, frames_last_second);
     char buffer[640];
     const size_t length = owl_view_health_format(&health, buffer, sizeof(buffer));
-    return std::string(buffer, length);
+    return std::string(buffer, length) + " ring_slots=" +
+           std::to_string(ring_slots.load(std::memory_order_relaxed)) + " ring_busy_peak=" +
+           std::to_string(ring_busy_peak.load(std::memory_order_relaxed));
   }
 
   /// What the watch remembers between ticks. Touched on the watch's queue only.
@@ -691,7 +696,8 @@ class FreezeWatch {
   uint64_t failures_at_tick_ = 0;
   owl_stall_episode host_episode_ = {};
   owl_stall_episode channel_episode_ = {};
-  integer_t suppressed_ = 0;
+  // Not read yet: the first reading is written down too, so the log shows the check works.
+  integer_t suppressed_ = -1;
   bool suppression_unreadable_ = false;
 };
 

@@ -483,6 +483,10 @@ void BrowserClient::OnPaint(CefRefPtr<CefBrowser>, PaintElementType type, const 
 void BrowserClient::NotePresentResult(PaintElementType type, bool kept,
                                       uint64_t delivered_before) {
   const uint64_t now = NowNanos();
+  health_->ring_slots.store(static_cast<uint32_t>(presenter_.PageRingSlots()),
+                            std::memory_order_relaxed);
+  health_->ring_busy_peak.store(static_cast<uint32_t>(presenter_.PageRingBusyPeak()),
+                                std::memory_order_relaxed);
   if (!kept) {
     health_->NoteDrop(now);
     RepaintAfterDrop(type);

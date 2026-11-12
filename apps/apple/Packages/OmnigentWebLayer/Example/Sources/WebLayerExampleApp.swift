@@ -14,6 +14,8 @@ internal import SwiftUI
 /// - `--engine chromium|system`: the engine for the browser-UI proofs (default chromium).
 /// - `--browser-dir <dir>`, `--server-port <port>`: state directory and server port for the
 ///   browsing proofs; the restore proof passes them to the relaunched app.
+/// - `--soak-minutes <n>`, `--soak-plan <steps>`, `--soak-gap-ms <n>`: the soak proof's length,
+///   its steps, and how late a frame may be. See `Proofs.soak`.
 @main
 struct WebLayerExampleApp: App {
   @State private var model = ExampleModel()
@@ -93,6 +95,9 @@ struct ExampleOptions {
   var browserDirectory: URL?
   /// A fixed proof-server port, so a relaunch can load the pages it saved.
   var serverPort: UInt16?
+  var soakMinutes = 3.0
+  var soakPlan: String?
+  var soakGapMilliseconds = 1000.0
 
   init(arguments: [String]) {
     var iterator = arguments.dropFirst().makeIterator()
@@ -107,8 +112,19 @@ struct ExampleOptions {
       case "--browser-dir":
         browserDirectory = iterator.next().map { URL(fileURLWithPath: $0, isDirectory: true) }
       case "--server-port": serverPort = iterator.next().flatMap { UInt16($0) }
-      default: break
+      default: takeSoakOption(argument) { iterator.next() }
       }
+    }
+  }
+
+  /// The soak proof's options; anything else is left alone.
+  private mutating func takeSoakOption(_ argument: String, value: () -> String?) {
+    switch argument {
+    case "--soak-minutes": soakMinutes = value().flatMap(Double.init) ?? soakMinutes
+    case "--soak-plan": soakPlan = value()
+    case "--soak-gap-ms":
+      soakGapMilliseconds = value().flatMap(Double.init) ?? soakGapMilliseconds
+    default: break
     }
   }
 }

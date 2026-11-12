@@ -62,6 +62,7 @@ extension Proofs {
     "freeze-hung": { $0.hungRenderer }, "freeze-hidden": { $0.viewLeftHidden },
     "freeze-idle": { $0.clickThatDrawsNothing }, "freeze-long": { $0.longHang },
     "freeze-drawing": { $0.hungWhileDrawing }, "freeze-backlog": { $0.channelBacklog },
+    "freeze-late-input": { $0.inputHeldUpInTheApp },
   ]
 
   func freezeDiagnostics() async throws {
@@ -71,6 +72,7 @@ extension Proofs {
     try await longHang()
     try await hungWhileDrawing()
     try await channelBacklog()
+    try await inputHeldUpInTheApp()
   }
 
   private func loadFreezePage() async throws {
@@ -243,6 +245,21 @@ extension Proofs {
     }
     Clock.log(
       "the page \(result); the host \(stalled ? "reported" : "did not report") a stall of its own")
+  }
+
+  /// The app hands the page a click long after it happened, as it does when its main thread
+  /// was busy meanwhile. The page answers at once, so only the app's line shows the wait.
+  private func inputHeldUpInTheApp() async throws {
+    try await loadFreezePage()
+    let mark = freezeMark()
+    let paint = try await center(of: "#paint")
+    click(at: paint, happened: ProcessInfo.processInfo.systemUptime - 1.5)
+    try await freezeLine("the app says the click was held up", after: mark, timeout: 5) {
+      $0.hasPrefix("kind=client-input-late view=\(self.webView.id) late_ms=15")
+    }
+    try await settle(0.5)
+    let result = try await resultText(webView)
+    guard result.hasPrefix("painted ") else { throw ProofFailure("The page says \(result).") }
   }
 
   /// Keeps the app from reading the channel, as a long layout pass would.

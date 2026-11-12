@@ -9,6 +9,8 @@
 #include <objc/message.h>
 #include <time.h>
 
+#include <algorithm>
+
 #include "OWLHost.hpp"
 
 namespace owl {
@@ -34,6 +36,7 @@ struct Chain {
   uint32_t current_id = 0;
   uint64_t sequence = 0;
   uint64_t dropped = 0;
+  size_t busy_peak = 0;
 };
 
 id<MTLDevice> SharedDevice() {
@@ -93,11 +96,19 @@ Slot* AcquireSlot(Chain& chain, int width, int height) {
       ++it;
     }
   }
+  Slot* free_slot = nullptr;
+  size_t busy = 0;
   for (Slot& slot : chain.slots) {
     if (SizeMatches(slot, width, height) && !slot.awaiting_ack &&
         slot.surface_id != chain.current_id && !IOSurfaceIsInUse(slot.surface)) {
-      return &slot;
+      free_slot = free_slot != nullptr ? free_slot : &slot;
+    } else {
+      busy += 1;
     }
+  }
+  chain.busy_peak = std::max(chain.busy_peak, busy);
+  if (free_slot != nullptr) {
+    return free_slot;
   }
   if (chain.slots.size() >= kMaxSlots) {
     return nullptr;
@@ -439,6 +450,14 @@ Presenter::RingState Presenter::PageRing() const {
     state.awaiting_ack += slot.awaiting_ack ? 1 : 0;
   }
   return state;
+}
+
+size_t Presenter::PageRingBusyPeak() const {
+  return impl_->page.busy_peak;
+}
+
+size_t Presenter::PageRingSlots() const {
+  return impl_->page.slots.size();
 }
 
 bool Presenter::Snapshot(std::vector<uint8_t>* png, std::string* error) const {

@@ -70,8 +70,21 @@ extension WebSurfaceView: NSDraggingSource {
       webView.renderer.dragSourceEnded(at: start.location, operation: [])
       return
     }
+    // AppKit raises on a dragging item that writes nothing, which ends the app: a draggable
+    // element whose page gives it no text, link or file is such a drag, so it ends here.
+    guard Self.writesToPasteboard(start.data) else {
+      Logger.view.notice("The page started a drag with nothing for the pasteboard; it was ended.")
+      webView.renderer.dragSourceEnded(at: start.location, operation: [])
+      return
+    }
     pageDrag = start
     beginDraggingSession(with: [Self.draggingItem(for: start)], event: event, source: self)
+  }
+
+  /// Whether a drag of `data` would put anything on the pasteboard.
+  static func writesToPasteboard(_ data: WebDragData) -> Bool {
+    guard let item = pasteboardWriter(for: data) as? NSPasteboardItem else { return true }
+    return !item.types.isEmpty
   }
 
   /// What the pointer carries: the page's image, or a placeholder when it gave none or a bad one.

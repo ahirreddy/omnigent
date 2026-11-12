@@ -49,6 +49,10 @@ class Presenter {
     uint64_t dropped = 0;
   };
   RingState PageRing() const;
+  /// The most page buffers that were busy when a frame needed one, since the view began: at
+  /// the ring's size, frames were dropped. Costs nothing to read.
+  size_t PageRingBusyPeak() const;
+  size_t PageRingSlots() const;
   /// PNG of the page with the open popup composited in, as the user sees it.
   bool Snapshot(std::vector<uint8_t>* png, std::string* error) const;
 

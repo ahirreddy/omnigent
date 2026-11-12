@@ -10,6 +10,22 @@ extension WebView {
     freeze.noteInput(input, sent: status == .live, now: session.uptimeNanos())
   }
 
+  /// A user's input reached the view. `happened` is the event's own time, in seconds of
+  /// uptime: when that was long ago the app's main thread was busy, the page got nothing
+  /// meanwhile, and a line says so.
+  func noteInputDelivery(happened: TimeInterval) {
+    // Events built without a time carry zero; nothing can be said about those.
+    guard happened > 0, happened < 1e9 else { return }
+    let now = session.uptimeNanos()
+    guard let late = freeze.noteDelivery(happened: UInt64(happened * 1e9), now: now) else {
+      return
+    }
+    session.logFreeze(
+      "kind=client-input-late view=\(id) late_ms=\(late.milliseconds) "
+        + "late_inputs=\(late.count) worst_ms=\(late.worstMilliseconds) "
+        + session.freezeStateText(now: now))
+  }
+
   /// A frame reached the screen (remote layer) or this process (IOSurface).
   func noteFrame() {
     freeze.noteFrame(now: session.uptimeNanos())

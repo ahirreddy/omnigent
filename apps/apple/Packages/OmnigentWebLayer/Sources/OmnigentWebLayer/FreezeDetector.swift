@@ -40,6 +40,41 @@ nonisolated struct FreezeDetector: Sendable {
   /// Whether input is waiting for a frame.
   var isWaiting: Bool { unansweredSinceNanos != 0 }
 
+  /// A user's input that reaches the view this long after it happened was held up in the app.
+  static let lateInputNanos: UInt64 = 300_000_000
+  /// Nanoseconds between two lines about late input, as between the first lines of two stalls.
+  static let lateInputQuietNanos: UInt64 = 5_000_000_000
+  private var lateInputs: UInt64 = 0
+  private var worstLateNanos: UInt64 = 0
+  private var lateLineNanos: UInt64 = 0
+
+  /// Input that waited in the app before the view got it: the page could not answer meanwhile.
+  struct LateInput: Equatable, Sendable {
+    var milliseconds: UInt64
+    /// Late inputs since the last line, this one included, and the longest wait among them.
+    var count: UInt64
+    var worstMilliseconds: UInt64
+  }
+
+  /// Compares when a user's input happened with when the view got it, both in uptime
+  /// nanoseconds. Returns what to write when it was held up; later ones within
+  /// `lateInputQuietNanos` are counted into the next line.
+  mutating func noteDelivery(happened: UInt64, now: UInt64) -> LateInput? {
+    guard happened != 0, now > happened, now - happened >= Self.lateInputNanos else { return nil }
+    lateInputs += 1
+    worstLateNanos = max(worstLateNanos, now - happened)
+    guard lateLineNanos == 0 || now - lateLineNanos >= Self.lateInputQuietNanos else {
+      return nil
+    }
+    let late = LateInput(
+      milliseconds: (now - happened) / 1_000_000, count: lateInputs,
+      worstMilliseconds: worstLateNanos / 1_000_000)
+    lateLineNanos = now
+    lateInputs = 0
+    worstLateNanos = 0
+    return late
+  }
+
   mutating func noteInput(_ input: OWLInputClass, sent: Bool, now: UInt64) {
     guard sent else {
       inputsUnsent += 1

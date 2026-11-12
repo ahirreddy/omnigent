@@ -327,6 +327,11 @@ The `ime` proof drives the client as an input method would (`setMarkedText` に,
   `NSDraggingSession` from the last mouse-down, and its end becomes `DragSourceEnded`
   (`DragSourceEndedAt` plus `DragSourceSystemDragEnded`).
 - Drags started by agent input never leave the page (`StartDragging` returns false).
+- A drag with nothing the pasteboard can carry (a draggable element whose page gives it only
+  data of its own type, as a board's cards have) is ended at once and logged. AppKit raises on a
+  dragging item that writes nothing, which ended the app; and a drag that is never ended leaves
+  Blink ignoring every click, key and wheel step. The `drag-end` proof flicks and drags a box, a
+  link, an image and selected text, and checks each drag ends and the page still takes input.
 - Synthesized drag events carry their mouse button in the modifiers even when the hardware state
   says otherwise, which CEF needs to start a drag.
 
@@ -635,9 +640,10 @@ Proof (`crash` and `hang`):
 ## Freeze diagnostics (protocol 1.5)
 
 A page that "just freezes" has no crash to read, so both processes keep a little state and write
-one line when something stalls. The lines tell five kinds of freeze apart: (a) the renderer's
+one line when something stalls. The lines tell six kinds of freeze apart: (a) the renderer's
 main thread is stuck, (b) the renderer is fine but no frame reaches the screen, (c) input does not
-reach the page, (d) the host's own main thread is blocked, (e) the app is not reading the channel.
+reach the page, (d) the host's own main thread is blocked, (e) the app is not reading the channel,
+(f) the app's main thread was busy, so the user's input waited in the app before the page got it.
 
 Read them after a freeze; nothing has to be switched on first:
 
@@ -657,11 +663,14 @@ app repeats the host's lines as `freeze from=host kind=...`, so either process's
   thread stores as it goes. Paint callbacks, frames presented, frames dropped, copy errors; the
   last of each; input replayed by class (click, wheel, key, move, text, drag, key-up) since the
   last frame; visibility and focus as last told to CEF; size and scale; loading; the page's host
-  name.
+  name; how many frame buffers the page has and the most that were busy when a frame needed one
+  (`ring_slots=`, `ring_busy_peak=`, at the end of every `view-stall` and `view-health` line: a
+  peak of four is a full ring, which drops frames).
 - **Host watch** (`FreezeWatch`): a one-second timer on its own queue. It reads the records,
   pings the main thread two ways (the main dispatch queue and a CEF UI task), counts sends to the
-  client that timed out, reads the kernel's App Nap state of the host, and notices its own timer
-  running late.
+  client that timed out, reads the kernel's App Nap state of the host (written once when the
+  watch starts, `kind=host-suppressed active=0`, and again whenever it changes), and notices its
+  own timer running late.
 - **Liveness question.** For a stalled view the host evaluates a constant over DevTools
   (`document.visibilityState` and `hasFocus()`, reduced to two fixed words) with a 3 s timeout,
   then one `requestAnimationFrame` with a 2 s timeout. One question at a time per view; an
@@ -672,6 +681,10 @@ app repeats the host's lines as `freeze from=host kind=...`, so either process's
   surface is the window's first responder and which class has the keyboard instead, what it told
   the host about visibility and focus, the host's CPU share, the age of the unanswered ping, the
   channel's receive backlog and send failures, and the host's last report.
+- **Late input**: every user event carries the time it happened. One that reaches the view
+  300 ms or more after that was held up in the app, whose main thread was busy; the page was
+  never asked anything meanwhile, and nothing else here would show it. Written at once, then at
+  most every 5 s with the count and the longest wait since.
 - **Transitions**, when they happen: view shown, hidden, focused, blurred, keyboard refused, in
   both processes; host spawned, ready, shut down, exited; renderer gone.
 
@@ -692,6 +705,7 @@ are at least 5 s apart.
 | (c) Input not arriving | The app is not sending: no `client-stall` although the user clicks, `sent=` flat, `unsent=` growing, or `surface=...first_responder:0,keyboard_at:<class>` after `kind=client-blurred` or `client-keyboard-refused`. The host is not replaying: the app's `sent=` grows and the host's `inputs=` does not, `input_failures` grows, or the host's `recv_queue` is high. Chromium ignores it: `inputs=` grows, `keys_returned=` stays, and the probe says `page=visible/blurred` |
 | (d) Host main thread blocked | `kind=host-stall stalled_ms=N main_queue_late_ms=... cef_task_late_ms=...` and `kind=host-stall-stack main_thread=<frames, innermost first>`, then `kind=host-recovered`. From the app: `client-stall` with `ping_ms` over 1000 and `cpu_pct` (0 is blocked, about 100 is spinning). `kind=host-watch-late` means the whole process stood still, `kind=host-suppressed active=1` that macOS napped it |
 | (e) App not reading the channel | Host: `kind=channel-backlog send_failures=N blocked_ms=N`, `kind=report-undelivered`, then `kind=channel-drained`; its stack line ends in `owl_channel_send`. App: `kind=client-timer-late late_ms=N ... recv_queue=1024` |
+| (f) Input held up in the app | `kind=client-input-late late_ms=N late_inputs=N worst_ms=N`, and no stall line from the host: the page drew and answered as soon as it was asked. The app's own hang watchdog, where it has one, has the same seconds on record |
 
 **Cost.** Per frame the host does a few relaxed atomic stores and one more clock read, the app
 one clock read and two integer stores; nothing is allocated or logged. The watch and the app's
@@ -717,9 +731,81 @@ text, a cookie or a token. The probe's answer is logged only when it is one of f
 
 The `freeze-diagnostics` proof makes each of these happen against real Chromium: a script that
 hangs for 7 s and for 19 s, a view left marked hidden, a click that draws nothing, a script that
-hangs while a compositor animation keeps drawing, and an app that stops reading the channel
-while the page floods it (`--proof freeze-hung`, `freeze-hidden`, `freeze-idle`, `freeze-long`,
-`freeze-drawing`, `freeze-backlog` run one alone).
+hangs while a compositor animation keeps drawing, an app that stops reading the channel while
+the page floods it, and a click the app delivers 1.5 s late (`--proof freeze-hung`,
+`freeze-hidden`, `freeze-idle`, `freeze-long`, `freeze-drawing`, `freeze-backlog`,
+`freeze-late-input` run one alone).
+
+### Soak proof (`--proof soak`)
+
+Minutes of what a tab spends its day doing, to find a freeze nobody can make happen on demand,
+and to show a fix holds. `--soak-minutes <n>` (default 3) runs rounds of: load a page, input
+for 10 s, a stretch without input, input for 6 s. `--soak-plan page:timers,active:10,idle:60`
+names the steps instead; `--soak-gap-ms <n>` (default 1000) is how late a frame may be.
+
+- **Pages**, from the proof server, every other one from another site so the renderer process
+  changes: a compositor and script animation; a 240-section document with images, scrolled by
+  wheel; a dashboard whose cells change twice a second; a single-page app whose links change the
+  route and whose card is dragged; a form that is typed into and submitted.
+- **Input** goes the user's way (mouse and key events through the window) except wheel steps,
+  which use the agent call. Each input must be followed by a frame within the limit, and the
+  page's script must have handled every one.
+- **Stretches without input**: idle for 10, 30 and 60 s (once for 5 minutes in a soak of twelve
+  minutes or more); the window covered by another, minimized, hidden with its app; the web view
+  taken out of its window and put back; the view hidden and shown about 50 times in 6 s; the
+  window resized about 130 times in 6 s; history back and forward; a second animating page in
+  no window; six of them at once.
+- **What fails it**: an input without a frame in time; a page that draws by itself going
+  longer than its interval plus the limit without one; frames not resuming when the view is
+  shown again; a page that did not handle its input; the frame on screen still spelling an older
+  state than the page's script is in after a second (each page draws its state as a strip of
+  cells, read back from a snapshot of the presented frame); any `view-stall`, `client-stall`,
+  `host-stall`, `host-watch-late`, `renderer=hung`, `frames=stopped`, `channel-backlog`,
+  `client-timer-late`, `client-frames-unseen`, `client-input-late` or `renderer-gone` line, in
+  the session's lines or in the host's own log.
+- **The summary line** has the frames, the drops as the app and the host count them, the
+  longest gap while frames were owed, input-to-frame times, the host's frame rate from its
+  minute lines, the ring's size and busiest moment, naps, and the freeze lines; it is also
+  written to `soak-summary.txt` in the output directory.
+
+Measured on a 16-core M4 Max MacBook Pro, macOS 26.7.2, built-in 120 Hz display only, Debug
+build, `--soak-minutes 14`:
+
+| | Result |
+|---|---|
+| Before the drag fix in "Input" | The app ended 84 s in, at the first drag of the card (AppKit's exception); nothing had failed until then |
+| With it | Passed: 865 s, 68 steps |
+| Frames presented | 10056; none dropped, by the app's count and the host's |
+| Input | 1888 inputs; input to frame 10 ms median, 19 ms at the 95th percentile, 33 ms at most |
+| Longest gap while a page owed frames | 516 ms, on the page that changes every 500 ms; 300 s without input included |
+| Shown again to first frame | 77 ms at most |
+| Frame on screen older than the page | never |
+| Ring | four buffers, at most three busy |
+| Freeze lines that fail it | none; the host's memory stayed between 243 and 283 MB |
+
+What it showed besides:
+
+- **Frame rate.** Asked for 120, CEF 156 presents 120 frames a second for a page that
+  animates, and the page's own `requestAnimationFrame` runs at 120. After the first click in
+  the page both fall to 60 and stay there until the page is loaded again. The cause is inside
+  Chromium and was not found.
+- **The ring.** At most three of the four buffers were busy at once, and nothing was dropped.
+  With the ring cut to two for one run, 340 of 1444 frames were dropped in a minute and every
+  one was painted again 16 ms later: no stale frame, no stall.
+- **App Nap.** `kind=host-suppressed active=0` at start and never a change, over a five-minute
+  idle too. Chromium registers `NSAppSleepDisabled` in every process it starts.
+- **A page in no window** kept 120 frames a second with nothing dropped, six at once too: the
+  window server lets go of the buffers of a layer that nothing shows.
+- **A killed GPU process** was replaced in about 80 ms; frames went on within half a second.
+- **24 busy processes on 16 cores** changed nothing (input to frame p95 17 ms).
+- **At 60 frames a second** (the rate forced for one run) the same pages gave the same input
+  times, and at most two of three buffers were busy.
+- **The display asleep** for 22 s: the window still counted as on screen and the page went on
+  at 120 frames a second with nothing dropped. Woken to the lock screen, the view was told
+  hidden and stopped, as intended. Unlocking was not tested.
+
+Not covered: a second display, unlocking after the display slept, the Mac sleeping, real
+sites, and the app this is embedded in, whose main thread every input passes through.
 
 ## Agent input: the security boundary
 
@@ -840,6 +926,12 @@ Universal Release builds roughly double the framework, as before.
 - **Media capture.** Allowing camera, microphone or location needs the usage strings and
   entitlements in the app's Info.plist (`BrowserTargets.swift`); without them macOS refuses
   access after the user allowed it in the app.
+- **Drags within a page.** A drag that carries only data of the page's own type is cancelled
+  (see "Input"), so such elements cannot be reordered by dragging. Keeping the page's drag data
+  in the client and handing it back in `DragEnter` would make them work.
+- **View state after a failed send.** Visibility, focus and size are sent once. If the host's
+  queue is full for the 100 ms the send waits, the message is lost and logged ("Message N for
+  view V failed"), and the host keeps the old state until the next change.
 - **Download continuation.** Downloads are tied to the view that started them; closing that view
   mid-download is not handled specially.
 - **beforeunload on WebKit** has no public API; the shared UI shows it for Chromium only.

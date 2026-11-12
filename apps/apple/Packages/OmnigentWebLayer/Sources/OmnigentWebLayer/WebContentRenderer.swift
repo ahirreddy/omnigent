@@ -72,6 +72,7 @@ public final class WebContentRenderer {
   /// Forwards a mouse, drag or scroll event. `location` is in the view's top-left coordinates.
   public func forwardMouseEvent(_ event: NSEvent, location: CGPoint) {
     guard let input = InputTranslator.pointerInput(for: event, location: location) else { return }
+    webView?.noteInputDelivery(happened: event.timestamp)
     webView?.noteInput(
       owl_input_class(OWLMessageKind.inputMouse.rawValue, input.kind.rawValue, 0, 0))
     webView?.sendIfLive(.inputMouse, input.encoded(origin: .user, eventTime: event.timestamp))
@@ -82,6 +83,7 @@ public final class WebContentRenderer {
     if event.type == .keyDown {
       lastKeyDown[event.keyCode] = event
     }
+    webView?.noteInputDelivery(happened: event.timestamp)
     for input in InputTranslator.keyInputs(for: event) {
       webView?.noteInput(Self.inputClass(of: input))
       webView?.sendIfLive(.inputKey, input.encoded(origin: .user, eventTime: event.timestamp))

@@ -111,6 +111,28 @@ struct WebSurfaceInputTests {
     #expect(fixture.last(.dragSourceEnded) != nil)
   }
 
+  @Test("a page's drag with nothing for the pasteboard is ended, and no session starts")
+  func pageDragWithoutContentEnds() throws {
+    let fixture = ProtocolFixture()
+    let surface = RecordingDragSurface(webView: fixture.webView)
+    surface.lastMouseDown = try Offscreen.mouseEvent(.leftMouseDown)
+    // A draggable element whose page gives the drag only data of its own kind.
+    let start = WebDragStart(
+      data: WebDragData(), operations: .move, location: CGPoint(x: 3, y: 4), image: nil)
+    surface.beginPageDrag(start)
+    #expect(surface.startedItems.isEmpty)
+    #expect(surface.pageDrag == nil)
+    let ended = try #require(fixture.last(.dragSourceEnded))
+    #expect(ended.double(.X) == 3)
+    #expect(ended.u64(.dragOperations) == 0)
+
+    #expect(!WebSurfaceView.writesToPasteboard(WebDragData(urlTitle: "t", fileName: "f")))
+    #expect(WebSurfaceView.writesToPasteboard(WebDragData(text: "t")))
+    #expect(WebSurfaceView.writesToPasteboard(WebDragData(html: "<b>t</b>")))
+    #expect(WebSurfaceView.writesToPasteboard(WebDragData(url: "https://a/")))
+    #expect(WebSurfaceView.writesToPasteboard(WebDragData(paths: ["/tmp/a"])))
+  }
+
   @Test("the page's cursor shows at once only while the pointer is over the view")
   func cursorUnderThePointer() throws {
     let host = HostedSurface()
