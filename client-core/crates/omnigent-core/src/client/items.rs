@@ -153,8 +153,14 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<ConversationPage, SessionError> {
         validate_identifier(session_id)?;
         page_query(None, limit)?;
-        let (decoded, epoch) = self.fetch_snapshot(session_id).await?;
-        let history = self.history(session_id, None, limit).await?;
+        // Neither read needs the other's answer, so they share one round trip.
+        let (snapshot, history) = futures::future::join(
+            self.fetch_snapshot(session_id),
+            self.history(session_id, None, limit),
+        )
+        .await;
+        let (decoded, epoch) = snapshot?;
+        let history = history?;
         let decisions = decoded
             .snapshot
             .pending_elicitations

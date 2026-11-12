@@ -1,10 +1,11 @@
 //! Older history above the newest page.
 //!
-//! Hydration reads only the newest page. Pages loaded above it are kept here, with the cursor
-//! for the next one, so a rehydration or reconnect shows them again instead of collapsing the
-//! transcript to the newest page. They are kept only while the new newest page still reaches the
-//! oldest item it had when they were loaded; otherwise the gap cannot be filled and they are
-//! dropped (the reader can load them again).
+//! Hydration reads only the newest page. The items known above it are kept here, with the cursor
+//! for the next older page, so a rehydration or reconnect shows them again instead of collapsing
+//! the transcript to the newest page: the pages a reader loaded, and the items new output pushed
+//! out of the newest page. They are kept while the new newest page still shares an item with
+//! what was known; otherwise the gap cannot be filled and they are dropped (the reader can load
+//! them again).
 //!
 //! A server-forked side chat shows only its own turns (web `SideChatPane`): the history it copied
 //! from its parent, created before the side chat was, is left out and never paged in.
@@ -36,13 +37,13 @@ pub struct OlderHistoryRequest {
     ticket: u64,
 }
 
-/// Older pages loaded above the newest page.
+/// The history known above the newest page.
 #[derive(Debug, Clone, Default)]
 pub(super) struct OlderHistory {
-    /// Loaded items, oldest first; all older than `boundary`.
+    /// Known items older than `newest`, oldest first.
     items: Vec<ConversationItem>,
-    /// The newest page's oldest item when the first older page loaded.
-    boundary: Option<String>,
+    /// The newest page as last read, oldest first.
+    newest: Vec<ConversationItem>,
     /// The cursor for the next older page; `None` when history is complete or not read yet.
     cursor: Option<String>,
     /// The ticket of the read in flight.
@@ -79,27 +80,30 @@ impl OlderHistory {
         page: &[ConversationItem],
         older_cursor: Option<&str>,
     ) -> Vec<ConversationItem> {
-        let contiguous = older_cursor.is_some()
-            && self
-                .boundary
-                .as_deref()
-                .is_some_and(|boundary| page.iter().any(|item| item.id == boundary));
-        if !contiguous {
-            // A complete page holds everything; a page that no longer reaches the loaded
-            // items leaves a gap. Either way paging restarts from this page.
-            self.items.clear();
-            self.boundary = None;
+        let in_page: BTreeSet<&str> = page.iter().map(|item| item.id.as_str()).collect();
+        // Everything known before the first known item the page holds is older than the page.
+        let reached = older_cursor.and_then(|_| {
+            self.items
+                .iter()
+                .chain(&self.newest)
+                .position(|item| in_page.contains(item.id.as_str()))
+        });
+        let above: Vec<ConversationItem> = self
+            .items
+            .iter()
+            .chain(&self.newest)
+            .take(reached.unwrap_or(0))
+            .cloned()
+            .collect();
+        // A complete page holds everything and one that shares no item leaves a gap: paging
+        // goes on from this page, and a read from another cursor is no longer wanted.
+        if above.is_empty() && self.cursor.as_deref() != older_cursor {
             self.cursor = older_cursor.map(str::to_owned);
             self.loading = None;
-            return page.to_vec();
         }
-        let in_page: BTreeSet<&str> = page.iter().map(|item| item.id.as_str()).collect();
-        self.items
-            .iter()
-            .filter(|item| !in_page.contains(item.id.as_str()))
-            .chain(page)
-            .cloned()
-            .collect()
+        self.newest = page.to_vec();
+        self.items = above;
+        self.items.iter().chain(page).cloned().collect()
     }
 
     pub(super) fn clear(&mut self) {
@@ -190,9 +194,6 @@ impl ConversationSync {
             .collect();
         merged.extend(self.older.items.iter().cloned());
         let rows = history_rows(&merged)?;
-        if self.older.boundary.is_none() {
-            self.older.boundary = Some(request.cursor.clone());
-        }
         self.older.items = merged;
         self.older.cursor = next_cursor.map(str::to_owned);
         let changes = self

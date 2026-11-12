@@ -754,6 +754,53 @@ fn older_history_loads_above_the_rows_on_request() {
     );
 }
 
+#[test]
+fn a_page_of_hidden_history_reads_on_to_the_rows_above_it() {
+    let mut harness = connected();
+    route_session(&harness);
+    let items = format!("/v1/sessions/{SESSION}/items");
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["msg_3", "msg_2"], true)));
+    harness.core.open_session(SESSION.into());
+    harness.pump();
+    let (sink, _, _) = harness.streams.last();
+    sink.response(200, event_stream_head());
+    sink.chunk(HEARTBEAT.to_vec());
+    harness.pump();
+
+    let hidden = harness.http.hold(&items);
+    let shown = harness.http.hold(&items);
+    harness.core.load_older_history(SESSION.into());
+    harness.pump();
+    let context = serde_json::json!({
+        "data": [{"id": "meta_1", "type": "message", "role": "user", "content": "context",
+                  "is_meta": true}],
+        "has_more": true,
+        "last_id": "meta_1",
+    });
+    harness.http.route(&items, json(200, &context.to_string()));
+    hidden.send(()).unwrap();
+    harness.pump();
+    // The page showed nothing, so the next one is read without the reader asking again.
+    assert_eq!(row_ids(&harness), ["msg_2", "msg_3"]);
+    let next = lock(&harness.http.requests).last().cloned().unwrap();
+    assert!(next.url.contains("after=meta_1"), "{}", next.url);
+    assert!(next.url.contains("limit=200"), "{}", next.url);
+
+    harness
+        .http
+        .route(&items, json(200, &message_page(&["msg_1"], false)));
+    shown.send(()).unwrap();
+    harness.pump();
+    assert_eq!(row_ids(&harness), ["msg_1", "msg_2", "msg_3"]);
+    // One read as far as the reader can tell: loading from the request to the rows.
+    assert_eq!(
+        paging_events(&harness.events.all()),
+        [(false, false), (true, false), (true, true), (false, false)]
+    );
+}
+
 const HEARTBEAT: &[u8] = b"event: session.heartbeat\ndata: {\"type\":\"session.heartbeat\"}\n\n";
 
 fn offline() -> crate::http::TransportError {

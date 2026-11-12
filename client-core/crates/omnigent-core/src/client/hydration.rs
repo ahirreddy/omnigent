@@ -9,7 +9,7 @@
 //! ([`ConversationSync::hydration_failed`]) and the driver reconnects.
 
 use super::events::ChangedFilesUpdate;
-use super::sessions::DEFAULT_PAGE_LIMIT;
+use super::sessions::{DEFAULT_PAGE_LIMIT, OLDER_HISTORY_PAGE_LIMIT};
 use super::{ClientCore, SessionError, lock};
 use crate::http::HttpTransport;
 use crate::reconcile::{ConversationSync, HydrationRequest, OlderHistoryRequest, SyncUpdate};
@@ -102,7 +102,7 @@ impl<T: HttpTransport> ClientCore<T> {
             .history_page(
                 &request.session_id,
                 Some(&request.cursor),
-                DEFAULT_PAGE_LIMIT,
+                OLDER_HISTORY_PAGE_LIMIT,
             )
             .await
         {
@@ -136,10 +136,14 @@ impl<T: HttpTransport> ClientCore<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::pin::pin;
+
     use futures::executor::block_on;
 
     use super::*;
-    use crate::client::test_support::{Reply, RouteTransport, connected};
+    use crate::client::test_support::{
+        Reply, RouteTransport, connected, query_value, still_pending,
+    };
     use crate::http::TransportError;
     use crate::reconcile::{HistoryPaging, SyncError};
     use crate::reducer::ProjectionError;
@@ -278,6 +282,117 @@ mod tests {
         block_on(core.hydrate(&mut sync, &reconnect)).unwrap();
         assert_eq!(row_ids(&sync), ["msg_1", "msg_2", "msg_3"]);
         assert!(!sync.history_paging().has_older);
+    }
+
+    #[test]
+    fn the_session_and_its_newest_history_are_read_in_one_round_trip() {
+        let transport = transport();
+        let gate = transport.gate("GET", "/v1/sessions/conv_a");
+        let core = connected(transport);
+        let mut read = pin!(core.conversation_page("conv_a", 50));
+        assert!(still_pending(read.as_mut()));
+        // The history is asked for while the session's own read is still out.
+        let sent = core.transport().lines();
+        assert_eq!(
+            sent.get(sent.len().saturating_sub(2)..),
+            Some(
+                &[
+                    "GET /v1/sessions/conv_a".to_owned(),
+                    "GET /v1/sessions/conv_a/items".to_owned(),
+                ][..]
+            )
+        );
+        gate.open();
+        assert_eq!(block_on(read).unwrap().items.len(), 1);
+    }
+
+    /// The transport of a history whose newest page is `msg_5, msg_4` with `msg_3, msg_2` above.
+    fn long_transport() -> RouteTransport {
+        let transport = transport();
+        transport.ok("/v1/sessions/conv_a/items", page(&["msg_5", "msg_4"], true));
+        transport.respond(
+            None,
+            "/v1/sessions/conv_a/items",
+            Some("msg_4"),
+            Reply::json(200, page(&["msg_3", "msg_2"], true)),
+        );
+        transport
+    }
+
+    #[test]
+    fn older_pages_stay_when_new_output_moves_the_newest_page_on() {
+        let core = connected(long_transport());
+        let mut sync = ConversationSync::new("conv_a");
+        let request = sync.open_stream();
+        block_on(core.hydrate(&mut sync, &request)).unwrap();
+        let older = sync.begin_older_history().unwrap();
+        block_on(core.load_older_history(&mut sync, &older)).unwrap();
+        let read = core.transport().taken().pop().unwrap();
+        assert_eq!(query_value(&read, "limit").as_deref(), Some("200"));
+        assert_eq!(row_ids(&sync), ["msg_2", "msg_3", "msg_4", "msg_5"]);
+
+        // One new item pushes the page's oldest item out of the newest page.
+        core.transport()
+            .ok("/v1/sessions/conv_a/items", page(&["msg_6", "msg_5"], true));
+        let again = sync.request_hydration().unwrap();
+        block_on(core.hydrate(&mut sync, &again)).unwrap();
+        assert_eq!(
+            row_ids(&sync),
+            ["msg_2", "msg_3", "msg_4", "msg_5", "msg_6"]
+        );
+        assert_eq!(sync.begin_older_history().unwrap().cursor, "msg_2");
+    }
+
+    #[test]
+    fn rows_that_left_the_newest_page_stay_and_paging_goes_on_above_them() {
+        let core = connected(long_transport());
+        let mut sync = ConversationSync::new("conv_a");
+        let request = sync.open_stream();
+        block_on(core.hydrate(&mut sync, &request)).unwrap();
+        core.transport()
+            .ok("/v1/sessions/conv_a/items", page(&["msg_6", "msg_5"], true));
+        let again = sync.request_hydration().unwrap();
+        block_on(core.hydrate(&mut sync, &again)).unwrap();
+        assert_eq!(row_ids(&sync), ["msg_4", "msg_5", "msg_6"]);
+        let older = sync.begin_older_history().unwrap();
+        assert_eq!(older.cursor, "msg_4");
+        block_on(core.load_older_history(&mut sync, &older)).unwrap();
+        assert_eq!(
+            row_ids(&sync),
+            ["msg_2", "msg_3", "msg_4", "msg_5", "msg_6"]
+        );
+    }
+
+    #[test]
+    fn an_older_read_in_flight_lands_after_a_rehydration_of_the_same_page() {
+        let core = connected(long_transport());
+        let mut sync = ConversationSync::new("conv_a");
+        let request = sync.open_stream();
+        block_on(core.hydrate(&mut sync, &request)).unwrap();
+        let older = sync.begin_older_history().unwrap();
+        let again = sync.request_hydration().unwrap();
+        block_on(core.hydrate(&mut sync, &again)).unwrap();
+        assert!(sync.history_paging().is_loading);
+        block_on(core.load_older_history(&mut sync, &older)).unwrap();
+        assert_eq!(row_ids(&sync), ["msg_2", "msg_3", "msg_4", "msg_5"]);
+    }
+
+    #[test]
+    fn a_newest_page_that_reaches_further_back_restarts_paging_from_its_own_cursor() {
+        let core = connected(long_transport());
+        let mut sync = ConversationSync::new("conv_a");
+        let request = sync.open_stream();
+        block_on(core.hydrate(&mut sync, &request)).unwrap();
+        let stale = sync.begin_older_history().unwrap();
+        // The page now starts above the oldest known item, as after items were deleted.
+        core.transport()
+            .ok("/v1/sessions/conv_a/items", page(&["msg_4", "msg_3"], true));
+        let again = sync.request_hydration().unwrap();
+        block_on(core.hydrate(&mut sync, &again)).unwrap();
+        assert_eq!(row_ids(&sync), ["msg_3", "msg_4"]);
+        assert!(!sync.history_paging().is_loading);
+        assert!(!sync.older_history_failed(&stale));
+        assert_eq!(sync.begin_older_history().unwrap().cursor, "msg_3");
     }
 
     /// A newest-first `/items` page of messages created at the given times.

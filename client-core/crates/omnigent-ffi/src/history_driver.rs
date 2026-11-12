@@ -6,7 +6,7 @@ use std::sync::Arc;
 use omnigent_core::SessionError;
 use omnigent_core::items::HistoryPage;
 use omnigent_core::reconcile::OlderHistoryRequest;
-use omnigent_core::sessions::DEFAULT_PAGE_LIMIT;
+use omnigent_core::sessions::OLDER_HISTORY_PAGE_LIMIT;
 
 use crate::engine::{Engine, Msg};
 use crate::errors::CoreError;
@@ -46,19 +46,25 @@ impl Engine {
 
     /// Starts reading the page above `session_id`'s rows, unless there is none or one is loading.
     fn load_older(&mut self, session_id: &str) {
+        if self.read_older(session_id) {
+            self.emit_paging(session_id);
+        }
+    }
+
+    /// Starts the read of the page above `session_id`'s rows; `false` when none started.
+    fn read_older(&self, session_id: &str) -> bool {
         let Some((driver, request)) = self.drivers.get(session_id).and_then(|driver| {
             let request = driver.sync.begin_older_history_raw()?;
             Some((driver.instance, request))
         }) else {
-            return;
+            return false;
         };
-        self.emit_paging(session_id);
         let sessions = Arc::clone(&self.sessions);
         let tx = self.sender();
         let id = session_id.to_owned();
         self.host.spawn(async move {
             let result = sessions
-                .history_page(&id, Some(&request.cursor), DEFAULT_PAGE_LIMIT)
+                .history_page(&id, Some(&request.cursor), OLDER_HISTORY_PAGE_LIMIT)
                 .await;
             post(
                 &tx,
@@ -70,6 +76,7 @@ impl Engine {
                 }),
             );
         });
+        true
     }
 
     fn older_loaded(
@@ -85,11 +92,20 @@ impl Engine {
         else {
             return;
         };
+        // A read that paging was restarted under is no longer waited for.
+        let awaited = sync.history_paging_raw().is_loading;
         let applied = result.map_err(CoreError::from).and_then(|page| {
             sync.finish_older_history_raw(request, &page.items, page.next_cursor.as_deref())
         });
         match applied {
-            Ok(applied) => self.publish(session_id, applied),
+            Ok(applied) => {
+                let shows_nothing = applied.change.is_none();
+                self.publish(session_id, applied);
+                // A page of hidden items gave the reader no rows: the read goes on above it.
+                if awaited && shows_nothing && self.read_older(session_id) {
+                    return;
+                }
+            }
             Err(error) => {
                 if sync.older_history_failed_raw(request) {
                     self.error(

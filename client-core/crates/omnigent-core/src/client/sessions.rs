@@ -726,6 +726,9 @@ pub(crate) fn decode_list_row(value: Value) -> Result<SessionProjection, String>
 pub const INVENTORY_PAGE_LIMIT: u32 = 500;
 /// The default list page size.
 pub const DEFAULT_PAGE_LIMIT: u32 = 50;
+/// How many items one page of older history asks for. Larger than the page a session opens
+/// with, so reading far back takes a quarter of the round trips.
+pub const OLDER_HISTORY_PAGE_LIMIT: u32 = 200;
 /// How many rows one Canvas page asks for: the server's maximum.
 pub const CANVAS_PAGE_LIMIT: u32 = 1_000;
 /// The most sessions the Canvas shows, as the web.
