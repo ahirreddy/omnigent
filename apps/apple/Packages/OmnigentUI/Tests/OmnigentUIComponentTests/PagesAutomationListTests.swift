@@ -153,6 +153,10 @@
       let title = try rowTitle(0, screen)
       try screen.click(title, clickCount: 1)
       #expect(log.entries.isEmpty)
+      // Past the double-click interval, the next two clicks are a double click of their own,
+      // whether or not the row counted the one before.
+      screen.settle(NSEvent.doubleClickInterval + 0.1)
+      try screen.click(title, clickCount: 1)
       try screen.click(title, clickCount: 2)
       #expect(log.entries == ["edit a"])
     }
