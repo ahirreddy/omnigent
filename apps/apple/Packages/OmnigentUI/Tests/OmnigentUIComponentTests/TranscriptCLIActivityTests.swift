@@ -192,28 +192,27 @@
           id: "w", items: [.tools(id: "t", entries: entries)], isLive: false, decorations: [:]))
       defer { screen.close() }
       #expect(try screen.shows("Ran `ls -la`"))
+      // The pointer resting on a line puts nothing over its text.
+      restKeyboard(screen)
+      let resting = screen.controlFrames.count
       try screen.hover(CGPoint(x: 100, y: 8))
-      // The fold button, then the first line's Show output, Copy input and Copy output.
-      let frames = screen.controlFrames
-      let cluster = Array(frames.prefix(4))
-      for (index, frame) in cluster.enumerated() {
-        for other in cluster[(index + 1)...] { #expect(!frame.intersects(other), "\(cluster)") }
-      }
-      try screen.clickControl(at: 3)
+      #expect(screen.controlFrames.count == resting)
+      try screen.endHover()
+
+      // The line's menu copies its output; the group's folds it and opens it again.
+      let line = try #require(try screen.contextMenu(offering: "Copy output"))
+      #expect(line.item(withTitle: "Show output") != nil)
+      try screen.choose("Copy output", in: line)
       #expect(copiedText() == "total 0")
       #expect(try !screen.shows("Ran 2 shell commands"))
 
-      try screen.clickControl(at: 0)
+      try screen.choose(
+        "Collapse work", in: try #require(try screen.contextMenu(offering: "Collapse work")))
       #expect(try screen.shows("Ran 2 shell commands"))
       #expect(try !screen.shows("Ran `ls -la`"))
-      try clickFoldButton(screen)
+      try screen.choose(
+        "Expand work", in: try #require(try screen.contextMenu(offering: "Expand work")))
       #expect(try screen.shows("Ran `ls -la`"))
-    }
-
-    /// With nothing else revealed, the fold button is the narrowest control: the rest is its host.
-    private func clickFoldButton(_ screen: OffscreenWindow<AnyView>) throws {
-      let button = try #require(screen.controlFrames.min { $0.width < $1.width })
-      try screen.click(CGPoint(x: button.midX, y: button.midY))
     }
 
     @Test("A work group with no tools says it worked; a live one can't be folded")
@@ -222,14 +221,14 @@
       let settled = transcriptScreen(
         CLIWorkGroup(id: "w", items: [.activity(row)], isLive: false, decorations: [:]))
       defer { settled.close() }
-      try settled.hover(CGPoint(x: 100, y: 8))
-      try clickFoldButton(settled)
+      try settled.choose(
+        "Collapse work", in: try #require(try settled.contextMenu(offering: "Collapse work")))
       #expect(try settled.shows("Worked \u{2026}"))
 
       let live = transcriptScreen(
         CLIWorkGroup(id: "w", items: [.activity(row)], isLive: true, decorations: [:]))
       defer { live.close() }
-      try live.hover(CGPoint(x: 100, y: 8))
+      #expect(try live.contextMenu(offering: "Collapse work") == nil)
       #expect(live.controlFrames.isEmpty)
       #expect(try live.shows("Compacted"))
     }

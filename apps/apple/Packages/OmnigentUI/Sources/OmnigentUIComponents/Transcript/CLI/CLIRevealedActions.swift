@@ -36,20 +36,20 @@ struct CLIActionCluster<Content: View>: View {
   }
 }
 
-/// Reveals a non-message CLI block's ``CLIActionCluster`` on hover or keyboard focus (Mac); touch
-/// has no hover, so a visible ``CLITouchActionsButton`` sits at the block's trailing edge. Both
-/// also offer the actions in the context menu and to VoiceOver. A message uses
+/// Offers a non-message CLI block's actions in its context menu and to VoiceOver. On the Mac
+/// the ``CLIActionCluster`` shows for the keyboard's focus only: the pointer resting on a block
+/// puts nothing over its text. Touch has a visible ``CLITouchActionsButton`` at the block's
+/// trailing edge. A message uses
 /// ``View/messageActionsHost(row:actions:pinned:showsOnTouch:focus:)`` instead.
 private struct CLIActionsHost: ViewModifier {
   let actions: [CLIAction]
   let trailingClearance: CGFloat
-  @State private var isHovered = false
   @FocusState private var isFocused: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var revealed: Bool {
     #if os(macOS)
-      isHovered || isFocused
+      isFocused
     #else
       false
     #endif
@@ -81,9 +81,10 @@ private struct CLIActionsHost: ViewModifier {
           .focusable(interactions: .activate)
           .focused($isFocused)
         #endif
-        .onHover { isHovered = $0 }
         .environment(\.messageActionsRevealed, revealed)
         .animation(reduceMotion ? nil : Theme.Motion.feedback, value: revealed)
+        // The whole block takes the secondary click, not only its glyphs.
+        .contentShape(Rectangle())
         .contextMenu {
           ForEach(actions) { action in
             Button(action.title, systemImage: action.systemImage, action: action.perform)

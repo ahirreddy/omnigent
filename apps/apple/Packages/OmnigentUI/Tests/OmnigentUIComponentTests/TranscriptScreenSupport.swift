@@ -106,6 +106,20 @@
       }
       return nil
     }
+
+    /// The context menu that offers `title`, looked for down three columns of the window.
+    func contextMenu(offering title: String) throws -> NSMenu? {
+      for row in stride(from: CGFloat(2), to: host.bounds.height, by: 4) {
+        for column in [CGFloat(20), 100, 300] where column < host.bounds.width {
+          if let menu = try contextMenu(at: CGPoint(x: column, y: row)),
+            menu.item(withTitle: title) != nil
+          {
+            return menu
+          }
+        }
+      }
+      return nil
+    }
   }
 
   /// What the test's private pasteboard holds.

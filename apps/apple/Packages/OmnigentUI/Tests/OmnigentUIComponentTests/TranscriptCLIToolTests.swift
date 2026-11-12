@@ -164,19 +164,19 @@
       #expect(try !screen.shows("+5 lines"))
     }
 
-    @Test("A line's actions appear on hover and work from the cluster")
-    func hoverCluster() throws {
+    @Test("A line's actions stay off its text under the pointer, and are in its menu")
+    func actionsInTheMenuNotOnHover() throws {
       let screen = tools([entry(summary: "the input")])
       defer { screen.close() }
       restKeyboard(screen)
       let resting = screen.controlFrames.count
       let line = try #require(screen.controlFrames.first)
       try screen.hover(CGPoint(x: line.midX, y: line.midY))
-      let frames = screen.controlFrames
-      #expect(frames.count == resting + 3)
-      try screen.clickControl(at: 1)
-      try screen.endHover()
       #expect(screen.controlFrames.count == resting)
+      try screen.endHover()
+      let menu = try #require(try screen.contextMenu(at: CGPoint(x: line.midX, y: line.midY)))
+      #expect(menu.item(withTitle: "Show output") != nil)
+      #expect(menu.item(withTitle: "Copy input") != nil)
     }
 
     @Test("On touch one action is a button, and several open from a menu")
