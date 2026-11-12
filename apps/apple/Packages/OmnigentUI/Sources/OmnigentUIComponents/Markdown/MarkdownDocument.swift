@@ -193,7 +193,7 @@ nonisolated enum MarkdownParser {
   private static func inline(_ markup: any Markup) -> AttributedString {
     switch markup {
     case let text as Markdown.Text:
-      return AttributedString(text.string)
+      return MarkdownAutolink.linking(text.string)
     case is SoftBreak:
       return AttributedString(" ")
     case is LineBreak:
@@ -226,7 +226,7 @@ nonisolated enum MarkdownParser {
       var span = inline(link.children)
       if span.characters.isEmpty { span = AttributedString(link.destination ?? "") }
       if let url = safeURL(link.destination) {
-        span.link = url
+        span = MarkdownAutolink.link(span, to: url)
       } else if let path = WorkspacePaths.linkedPath(link.destination) {
         span[WorkspacePathAttribute.self] = path
         span[WorkspacePathIsExplicitAttribute.self] = true
@@ -235,7 +235,7 @@ nonisolated enum MarkdownParser {
     case let image as Markdown.Image:
       let alt = String(inline(image.children).characters)
       var span = AttributedString(alt.isEmpty ? "[Image]" : "[Image: \(alt)]")
-      if let url = safeURL(image.source) { span.link = url }
+      if let url = safeURL(image.source) { span = MarkdownAutolink.link(span, to: url) }
       return span
     default:
       return AttributedString(markup.format())

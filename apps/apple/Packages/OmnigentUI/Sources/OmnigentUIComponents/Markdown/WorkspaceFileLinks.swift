@@ -173,6 +173,7 @@ extension WorkspaceFileLinks {
         let url = target.url
       else { continue }
       linked[run.range].link = url
+      linked[run.range].underlineStyle = .single
     }
     return linked
   }
