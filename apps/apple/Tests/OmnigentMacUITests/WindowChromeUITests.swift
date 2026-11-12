@@ -23,10 +23,11 @@ final class WindowChromeUITests: XCTestCase {
     let tabs = FileManager.default.temporaryDirectory.appending(
       path: "omnigent-chrome-uitest-\(UUID().uuidString)", directoryHint: .isDirectory)
     let app = XCUIApplication()
-    app.launchArguments = [
-      "-OmnigentDemo", "YES", "-desktop.defaultServerURL", "http://127.0.0.1:6767",
-      "-ApplePersistenceIgnoreState", "YES", "-OmnigentTabsDirectory", tabs.path,
-    ]
+    app.launchArguments =
+      [
+        "-OmnigentDemo", "YES", "-desktop.defaultServerURL", "http://127.0.0.1:6767",
+        "-ApplePersistenceIgnoreState", "YES", "-OmnigentTabsDirectory", tabs.path,
+      ] + MacLiveUITestSupport.noLocalServerArguments + MacLiveUITestSupport.windowFrameArguments
     app.launch()
     defer { app.terminate() }
     let window = app.windows.firstMatch

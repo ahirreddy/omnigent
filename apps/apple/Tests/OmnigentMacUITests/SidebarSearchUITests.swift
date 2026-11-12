@@ -6,10 +6,11 @@ final class SidebarSearchUITests: XCTestCase {
   @MainActor
   func testSearchExpandsACollapsedSection() {
     let app = XCUIApplication()
-    app.launchArguments = [
-      "-OmnigentDemo", "YES", "-desktop.defaultServerURL", "http://127.0.0.1:6767",
-      "-ApplePersistenceIgnoreState", "YES", "-omnigent:sidebar-collapsed-sections", "Pinned",
-    ]
+    app.launchArguments =
+      [
+        "-OmnigentDemo", "YES", "-desktop.defaultServerURL", "http://127.0.0.1:6767",
+        "-ApplePersistenceIgnoreState", "YES", "-omnigent:sidebar-collapsed-sections", "Pinned",
+      ] + MacLiveUITestSupport.noLocalServerArguments
     app.launch()
     defer { app.terminate() }
     let window = app.windows.firstMatch
@@ -24,8 +25,7 @@ final class SidebarSearchUITests: XCTestCase {
     search.typeText("mobile")
     XCTAssertTrue(pinned.waitForExistence(timeout: 10), "searching left Pinned collapsed")
 
-    search.typeKey("a", modifierFlags: .command)
-    search.typeKey(.delete, modifierFlags: [])
+    MacLiveUITestSupport(self).clear(search)
     XCTAssertTrue(pinned.waitForNonExistence(timeout: 10), "clearing the search left Pinned open")
   }
 }

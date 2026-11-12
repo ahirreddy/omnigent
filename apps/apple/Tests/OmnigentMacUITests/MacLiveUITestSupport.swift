@@ -37,6 +37,30 @@ struct MacLiveUITestSupport {
     try seeded("OMNIGENT_LONG_SESSION", "Seed with Tools/seed-large-fixtures.py")
   }
 
+  /// A saved frame for the main window, as large as the screen allows, so a flow that resizes
+  /// the window does not shape the next flow's. SwiftUI saves it under the scene's type name.
+  nonisolated static let windowFrameArguments = ["OmnigentMac", "OmnigentMacAppStore"].flatMap {
+    [
+      "-NSWindow Frame SwiftUI.PresentedWindowContent<OmnigentDesktop.ServerWindowID, "
+        + "OmnigentDesktop.WindowMinimumSize<\($0).ServerWindowRoot>>-1-AppWindow-1",
+      "0 0 1440 900 0 0 1440 900 ",
+    ]
+  }
+
+  /// Whether this Mac, which hosts the seeded sessions, has the tmux their terminals run in.
+  nonisolated static var hostHasTmux: Bool {
+    ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"].contains {
+      FileManager.default.isExecutableFile(atPath: $0)
+    }
+  }
+
+  /// Skips a flow that opens a terminal when the session's host cannot start one.
+  func requireTerminals() throws {
+    try XCTSkipUnless(
+      Self.hostHasTmux,
+      "Terminals need tmux 3.3 or newer on the session's host; install it (brew install tmux).")
+  }
+
   private func seeded(_ key: String, _ how: String) throws -> String {
     guard let value = Self.environment[key], !value.isEmpty else {
       throw XCTSkip("\(how); pass TEST_RUNNER_\(key).")
@@ -52,6 +76,8 @@ struct MacLiveUITestSupport {
       + Self.freshStateArguments
     app.launch()
     XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 30), "no window")
+    MacNotificationPrompts.decline(waiting: 3)
+    parkPointer(in: app)
     return app
   }
 
@@ -67,7 +93,15 @@ struct MacLiveUITestSupport {
       ] + Self.freshStateArguments
     app.launch()
     XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 30), "no window")
+    MacNotificationPrompts.decline(waiting: 3)
+    parkPointer(in: app)
     return app
+  }
+
+  /// Moves the pointer off the sidebar, where the last flow may have left it: a row under the
+  /// pointer shows its hover buttons instead of its status.
+  private func parkPointer(in app: XCUIApplication) {
+    app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.6)).hover()
   }
 
   /// A folder of this run's own for saved tabs, never the user's.
@@ -78,9 +112,17 @@ struct MacLiveUITestSupport {
 
   /// No restored windows or notification prompt, the right panel closed, and the sidebar's saved
   /// options discarded (undecodable ones fall back to the defaults), so no test inherits a scope.
-  nonisolated static let freshStateArguments = [
-    "-ApplePersistenceIgnoreState", "YES", "-OmnigentNoNotificationPrompt", "YES",
-    "-omnigent:default-workspace-panel", "collapsed", "-omnigent:sidebar-view", "<7b7d>",
+  nonisolated static let freshStateArguments =
+    [
+      "-ApplePersistenceIgnoreState", "YES", "-OmnigentNoNotificationPrompt", "YES",
+      "-omnigent:default-workspace-panel", "collapsed", "-omnigent:sidebar-view", "<7b7d>",
+    ] + noLocalServerArguments + windowFrameArguments
+
+  /// A CLI and a data folder that are not there, so the app neither starts This Mac's server nor
+  /// finds one already running. With either, it moves a window on a loopback server to it.
+  nonisolated static let noLocalServerArguments = [
+    "-desktop.localServer.cliPath", "/var/empty/no-omnigent-cli-in-ui-tests",
+    "-desktop.localServer.dataDirectory", "/var/empty/no-omnigent-data-in-ui-tests",
   ]
 
   /// Opens a demo session (demo-notes, demo-design, demo-question) from the sidebar and waits for
@@ -90,7 +132,7 @@ struct MacLiveUITestSupport {
     let transcript = element("transcript-\(sessionID)", in: app)
     // Right after launch the window can still be settling on its server; a click can be lost.
     for _ in 0..<3 where !transcript.exists {
-      click(row, "the \(sessionID) row", timeout: 30)
+      clickTitle(of: row, "the \(sessionID) row", timeout: 30)
       _ = transcript.waitForExistence(timeout: 10)
     }
     XCTAssertTrue(transcript.exists, "\(sessionID) did not open\n\(app.debugDescription)")
@@ -103,11 +145,39 @@ struct MacLiveUITestSupport {
     let link = Self.sessionLink(server: server, sessionID: sessionID)
     for _ in 0..<3 where !transcript.exists {
       // Right after launch the window can still be connecting; a link then may be dropped.
-      if let link { app.open(link) }
+      if let link { deliver(link) }
       _ = transcript.waitForExistence(timeout: 20)
     }
     XCTAssertTrue(transcript.exists, "session \(sessionID) did not open\n\(app.debugDescription)")
+    // The app asks to send notifications once it has connected to a server.
+    MacNotificationPrompts.decline(waiting: 0)
     assertRunning(app, "after opening \(sessionID)")
+  }
+
+  /// Hands `link` to the running app, as the system does for a clicked link.
+  /// `XCUIApplication.open` would start a second copy of the app beside the one under test.
+  private func deliver(_ link: URL) {
+    guard let bundle = Self.runningAppUnderTest()?.bundleURL else {
+      XCTFail("the app under test is not running, so nothing can take \(link)")
+      return
+    }
+    let delivered = test.expectation(description: "the link reached the app")
+    NSWorkspace.shared.open(
+      [link], withApplicationAt: bundle, configuration: NSWorkspace.OpenConfiguration()
+    ) { _, error in
+      if let error { XCTFail("the system could not open \(link): \(error)") }
+      delivered.fulfill()
+    }
+    test.wait(for: [delivered], timeout: 30)
+  }
+
+  /// The launched app: the one built beside this test runner, whichever edition that is.
+  private static func runningAppUnderTest() -> NSRunningApplication? {
+    let products = Bundle.main.bundleURL.deletingLastPathComponent().resolvingSymlinksInPath()
+    return NSWorkspace.shared.runningApplications.first { candidate in
+      candidate != .current
+        && candidate.bundleURL?.deletingLastPathComponent().resolvingSymlinksInPath() == products
+    }
   }
 
   /// The session's deep link on the server.
@@ -132,10 +202,15 @@ struct MacLiveUITestSupport {
     elements(prefix: "tab-\(kind)-", in: app)
   }
 
-  /// Any element whose text contains `text`.
+  /// Any element whose label contains `text`, or text element whose value does. Values are read
+  /// only from text elements: `value CONTAINS` on a number (a scroll bar's, a splitter's) never
+  /// returns, and the query times out.
   func text(containing text: String, in app: XCUIApplication) -> XCUIElement {
-    app.descendants(matching: .any).matching(
-      NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text)
+    let textTypes: [XCUIElement.ElementType] = [.staticText, .textView, .textField, .searchField]
+    return app.descendants(matching: .any).matching(
+      NSPredicate(
+        format: "label CONTAINS %@ OR (elementType IN %@ AND value CONTAINS %@)",
+        argumentArray: [text, textTypes.map(\.rawValue), text])
     ).firstMatch
   }
 
@@ -143,6 +218,13 @@ struct MacLiveUITestSupport {
   func click(_ element: XCUIElement, _ name: String, timeout: TimeInterval = 10) {
     XCTAssertTrue(element.waitForExistence(timeout: timeout), "\(name) is missing")
     element.click()
+  }
+
+  /// Clicks a sidebar row on its title. Under the pointer a row shows Pin and More at its
+  /// trailing edge, and the row's own click point then lands on More, which opens a menu.
+  func clickTitle(of row: XCUIElement, _ name: String, timeout: TimeInterval = 10) {
+    XCTAssertTrue(row.waitForExistence(timeout: timeout), "\(name) is missing")
+    row.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).click()
   }
 
   /// Fails when the app is no longer running in front: a crash or a hang that killed it.

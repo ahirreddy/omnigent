@@ -18,12 +18,14 @@ final class OmnigentMacUITests: XCTestCase {
     super.tearDown()
   }
 
-  /// The app launches (with its helper processes) and, with no default server and no restored
-  /// windows, shows the connect form.
+  /// The app launches (with its helper processes) and, with no default server, no restored
+  /// windows and no CLI to start This Mac's server with, shows the connect form.
   @MainActor
   func testLaunchShowsConnectForm() {
     let app = XCUIApplication()
-    app.launchArguments = ["-desktop.defaultServerURL", "", "-ApplePersistenceIgnoreState", "YES"]
+    app.launchArguments =
+      ["-desktop.defaultServerURL", "", "-ApplePersistenceIgnoreState", "YES"]
+      + MacLiveUITestSupport.noLocalServerArguments
     app.launch()
     defer { app.terminate() }
 

@@ -18,6 +18,7 @@ final class MacTerminalFlowUITests: XCTestCase {
   @MainActor
   func testNewTabPageOpensATerminal() throws {
     let live = MacLiveUITestSupport(self)
+    try live.requireTerminals()
     let session = try live.fixtureSession()
     let app = live.launch()
     defer { app.terminate() }
@@ -34,6 +35,7 @@ final class MacTerminalFlowUITests: XCTestCase {
   @MainActor
   func testPlusMenuOpensATerminal() throws {
     let live = MacLiveUITestSupport(self)
+    try live.requireTerminals()
     let session = try live.fixtureSession()
     let app = live.launch()
     defer { app.terminate() }
@@ -51,6 +53,7 @@ final class MacTerminalFlowUITests: XCTestCase {
   @MainActor
   func testANewTerminalTakesTheKeyboard() throws {
     let live = MacLiveUITestSupport(self)
+    try live.requireTerminals()
     let session = try live.fixtureSession()
     let workspace = try live.fixtureWorkspace()
     let opened = workspace.appending(path: "terminal-focus-\(UUID().uuidString).txt")
@@ -145,6 +148,7 @@ final class MacTerminalFlowUITests: XCTestCase {
   /// Launches on the fixture session with a new shell started and focused.
   @MainActor
   private func openShell(_ live: MacLiveUITestSupport) throws -> XCUIApplication {
+    try live.requireTerminals()
     let session = try live.fixtureSession()
     let app = live.launch()
     live.open(session, in: app)

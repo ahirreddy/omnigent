@@ -95,7 +95,7 @@ final class MacTabFlowUITests: XCTestCase {
     XCTAssertTrue(
       live.waitUntil { !tabs.firstMatch.exists }, "the other session shows the first's tab")
 
-    live.click(live.row("demo-notes", in: app), "the first session")
+    live.clickTitle(of: live.row("demo-notes", in: app), "the first session")
     XCTAssertTrue(live.waitUntil { tabs.count == 1 }, "coming back lost the tab")
   }
 

@@ -148,13 +148,30 @@ extension MacLiveUITestSupport {
     clickMenuItem(scope, in: app)
   }
 
-  /// Opens the right panel if it is closed.
+  /// The right panel's section tabs, which show whenever the panel is open.
+  func inspectorTabs(in app: XCUIApplication) -> XCUIElement {
+    elements(prefix: "inspector-tab-", in: app).firstMatch
+  }
+
+  /// Opens the right panel if it is closed, with Option-Command-I: in a narrow window the
+  /// toolbar's toggle is folded into the overflow menu.
   func showInspector(in app: XCUIApplication) {
-    let inspector = element("session-inspector", in: app)
-    if !inspector.exists {
-      click(element("toggle-inspector", in: app), "the right-panel toggle")
+    let tabs = inspectorTabs(in: app)
+    if !tabs.exists { app.typeKey("i", modifierFlags: [.command, .option]) }
+    XCTAssertTrue(tabs.waitForExistence(timeout: 10), "the right panel did not open")
+  }
+
+  /// Empties a search field, again if the keys were lost: a list that is still updating can
+  /// take the keyboard between two key presses.
+  func clear(_ search: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+    let isEmpty = { (search.value as? String ?? "").isEmpty }
+    for _ in 0..<3 where !isEmpty() {
+      search.click()
+      search.typeKey("a", modifierFlags: .command)
+      search.typeKey(.delete, modifierFlags: [])
+      _ = waitUntil(timeout: 3, isEmpty)
     }
-    XCTAssertTrue(inspector.waitForExistence(timeout: 10), "the right panel did not open")
+    XCTAssertTrue(isEmpty(), "the search field kept \(search.value ?? "")", file: file, line: line)
   }
 
   /// Quits with Command-Q, which saves windows and tabs, and waits for the app to exit.

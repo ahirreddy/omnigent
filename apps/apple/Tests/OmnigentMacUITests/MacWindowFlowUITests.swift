@@ -13,7 +13,8 @@ final class MacWindowFlowUITests: XCTestCase {
     super.tearDown()
   }
 
-  /// Control-Command-F grows the window to the whole screen, and again restores it.
+  /// View > Enter Full Screen grows the window to the whole screen, and Exit Full Screen
+  /// restores it. By the menu: the key for it differs between macOS versions.
   @MainActor
   func testFullScreenFillsTheScreenAndLeaves() {
     let live = MacLiveUITestSupport(self)
@@ -23,17 +24,27 @@ final class MacWindowFlowUITests: XCTestCase {
     let window = app.windows.firstMatch
     let before = window.frame
 
-    app.typeKey("f", modifierFlags: [.command, .control])
+    app.menuBars.menuBarItems["View"].click()
+    live.clickMenuItem("Enter Full Screen", in: app)
     XCTAssertTrue(
       live.waitUntil(timeout: 15) { window.frame.height > before.height }, "no full screen")
     live.assertRunning(app, "in full screen")
-    app.typeKey("f", modifierFlags: [.command, .control])
+    // In full screen the menu bar hides until the pointer rests at the top of the screen.
+    let viewMenu = app.menuBars.menuBarItems.matching(NSPredicate(format: "title == %@", "View"))
+    window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).hover()
+    guard let menu = live.hittable(viewMenu, timeout: 10) else {
+      XCTFail("the menu bar did not show in full screen")
+      return
+    }
+    menu.click()
+    live.clickMenuItem("Exit Full Screen", in: app)
     XCTAssertTrue(
       live.waitUntil(timeout: 15) { window.frame == before },
       "the window did not return: \(window.frame) from \(before)")
   }
 
-  /// Window > Zoom resizes the window, and again restores it.
+  /// Window > Zoom resizes the window. What a second Zoom returns to is the system's to choose:
+  /// a window that opened as large as the screen has no smaller size to go back to.
   @MainActor
   func testWindowMenuZoomResizesTheWindow() {
     let live = MacLiveUITestSupport(self)
@@ -49,7 +60,7 @@ final class MacWindowFlowUITests: XCTestCase {
     XCTAssertTrue(live.waitUntil(timeout: 10) { window.frame != before }, "Zoom did nothing")
     zoom.click()
     live.clickMenuItem("Zoom", in: app)
-    XCTAssertTrue(live.waitUntil(timeout: 10) { window.frame == before }, "Zoom did not restore")
+    live.assertRunning(app, "after zooming twice")
   }
 
   /// Quitting with a session open and relaunching opens that same session.
@@ -97,27 +108,35 @@ final class MacWindowFlowUITests: XCTestCase {
     let windows = app.windows.count
 
     live.contextMenu(live.row("demo-question", in: app), choose: "Open in New Window", in: app)
-    XCTAssertTrue(live.waitUntil(timeout: 20) { app.windows.count == windows + 1 }, "no window")
+    XCTAssertTrue(
+      live.waitUntil(timeout: 20) { app.windows.count == windows + 1 },
+      "no new window: \(app.windows.count) of \(windows) before")
     XCTAssertTrue(
       live.element("transcript-demo-question", in: app).waitForExistence(timeout: 20),
       "the window does not show the session")
   }
 
-  /// Open in Split View shows the session beside the open one.
+  /// A tab's Open in Split View shows it beside the session's chat. Split view holds two tabs
+  /// of one session, so it is offered on tabs, not on the sidebar's rows.
   @MainActor
   func testOpenInSplitViewShowsTwoPanes() {
     let live = MacLiveUITestSupport(self)
     let app = live.launchDemo()
     defer { app.terminate() }
     live.openDemo("demo-notes", in: app)
+    app.typeKey("t", modifierFlags: .command)
+    let tab = live.tabs("newTab", in: app).firstMatch
+    XCTAssertTrue(tab.waitForExistence(timeout: 10), "Command-T opened no tab")
 
-    live.contextMenu(live.row("demo-question", in: app), choose: "Open in Split View", in: app)
+    live.contextMenu(tab, choose: "Open in Split View", in: app)
     XCTAssertTrue(
       live.element("tab-split-divider", in: app).waitForExistence(timeout: 15), "no split")
     XCTAssertTrue(
-      live.element("transcript-demo-question", in: app).waitForExistence(timeout: 15),
-      "the new pane does not show the session")
-    XCTAssertTrue(live.element("transcript-demo-notes", in: app).exists, "the first pane is gone")
+      live.element("newtab-page", in: app).waitForExistence(timeout: 15),
+      "the new pane does not show the tab")
+    XCTAssertTrue(
+      live.element("transcript-demo-notes", in: app).waitForExistence(timeout: 15),
+      "the first pane does not show the chat")
   }
 
   /// The command palette finds a session by name and opens it.

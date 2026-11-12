@@ -91,10 +91,11 @@ final class MacDemoWorkflowUITests: XCTestCase {
     app.typeKey("t", modifierFlags: .command)
 
     app.typeKey("\\", modifierFlags: [.command, .shift])
-    let sheet = live.element("tab-overview-sheet", in: app)
+    // The sheet is found by its Done button: a sheet's own identifier does not show on a Mac.
+    let sheet = live.element("tab-overview-done", in: app)
     XCTAssertTrue(sheet.waitForExistence(timeout: 10), "no tab overview")
     XCTAssertGreaterThanOrEqual(live.elements(prefix: "tab-overview-row-", in: app).count, 2)
-    live.click(live.element("tab-overview-done", in: app), "Done")
+    live.click(sheet, "Done")
     XCTAssertTrue(sheet.waitForNonExistence(timeout: 10), "Done left the overview open")
     live.assertRunning(app, "after the tab overview")
   }
@@ -135,7 +136,7 @@ final class MacDemoWorkflowUITests: XCTestCase {
     app.typeKey("s", modifierFlags: [.command, .control])
     XCTAssertTrue(sidebar.waitForExistence(timeout: 10), "the sidebar did not come back")
 
-    let inspector = live.element("session-inspector", in: app)
+    let inspector = live.inspectorTabs(in: app)
     let shown = inspector.exists
     app.typeKey("i", modifierFlags: [.command, .option])
     XCTAssertTrue(
@@ -153,7 +154,8 @@ final class MacDemoWorkflowUITests: XCTestCase {
     defer { app.terminate() }
     live.openDemo("demo-notes", in: app)
 
-    let sheet = live.element("keyboard-shortcuts", in: app)
+    // The sheet is found by its Done button: a sheet's own identifier does not show on a Mac.
+    let sheet = live.element("shortcuts-done", in: app)
     app.typeKey("/", modifierFlags: .command)
     XCTAssertTrue(sheet.waitForExistence(timeout: 10), "no shortcuts list")
     app.typeKey(.escape, modifierFlags: [])

@@ -22,7 +22,7 @@ final class MacSessionFlowUITests: XCTestCase {
     // The window has settled once a first session has opened, so the next click must count.
     live.openDemo("demo-notes", in: app)
 
-    live.row("demo-question", in: app).click()
+    live.clickTitle(of: live.row("demo-question", in: app), "the demo-question row")
     XCTAssertTrue(
       live.element("transcript-demo-question", in: app).waitForExistence(timeout: 10),
       "one click did not open the session")
@@ -30,18 +30,25 @@ final class MacSessionFlowUITests: XCTestCase {
     XCTAssertFalse(live.element("transcript-demo-notes", in: app).exists, "the old session stayed")
   }
 
-  /// A read-only session opens with a read-only bar and no composer.
+  /// A read-only session opens with its composer locked and saying why.
   @MainActor
-  func testReadOnlySessionHasNoComposer() {
+  func testReadOnlySessionLocksTheComposer() {
     let live = MacLiveUITestSupport(self)
     let app = live.launchDemo()
     defer { app.terminate() }
 
     live.openDemo("demo-notes", in: app)
+    let notice = live.element("composer-unavailable", in: app)
+    XCTAssertTrue(notice.waitForExistence(timeout: 10), "no read-only notice")
     XCTAssertTrue(
-      live.element("composer-read-only", in: app).waitForExistence(timeout: 10),
-      "no read-only notice")
-    XCTAssertFalse(live.composer(in: app).exists, "a read-only session offered a composer")
+      (notice.value as? String ?? notice.label).contains("read this session but not send"),
+      "the notice says \(notice.value ?? notice.label)")
+    // Typing proves it: the editor reports itself disabled to accessibility even when it is not.
+    live.click(live.composer(in: app), "the composer")
+    app.typeText("locked")
+    let tookText = live.waitUntil(timeout: 2) { live.composerText(in: app).contains("locked") }
+    live.shot(app, "read-only-composer-after-typing")
+    XCTAssertFalse(tookText, "a read-only session's composer took typing")
   }
 
   /// Rename in the row's context menu asks for a title, and the row shows it.
@@ -53,7 +60,10 @@ final class MacSessionFlowUITests: XCTestCase {
     let title = "Renamed \(UUID().uuidString.prefix(6))"
 
     live.contextMenu(live.row("demo-question", in: app), choose: "Rename\u{2026}", in: app)
-    XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 10), "no rename prompt")
+    let prompt = app.sheets.firstMatch
+    XCTAssertTrue(prompt.waitForExistence(timeout: 10), "no rename prompt")
+    // With keyboard navigation on, the prompt opens with Cancel focused, not the title.
+    live.click(prompt.textFields.firstMatch, "the title field")
     app.typeKey("a", modifierFlags: .command)
     app.typeText(title)
     live.clickDialogButton("Rename", in: app)

@@ -28,8 +28,7 @@ final class MacSidebarFilterFlowUITests: XCTestCase {
     XCTAssertTrue(notes.waitForNonExistence(timeout: 10), "search left a session that differs")
     XCTAssertTrue(live.row("demo-question", in: app).exists, "search hid the match")
 
-    search.typeKey("a", modifierFlags: .command)
-    search.typeKey(.delete, modifierFlags: [])
+    live.clear(search)
     XCTAssertTrue(notes.waitForExistence(timeout: 10), "clearing did not restore the list")
   }
 

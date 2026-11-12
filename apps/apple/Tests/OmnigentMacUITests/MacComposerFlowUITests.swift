@@ -95,28 +95,42 @@ final class MacComposerFlowUITests: XCTestCase {
       "the queued message is not in the transcript")
   }
 
-  /// A file pasted into the composer shows as a chip, and sending carries it into the transcript.
+  /// An image pasted into the composer shows as a chip, and sending carries it into the
+  /// transcript. Command-V attaches images only; other files paste as their path.
   @MainActor
-  func testPastedFileAttachesAndSends() throws {
+  func testPastedImageAttachesAndSends() throws {
     let live = MacLiveUITestSupport(self)
-    let file = try live.writeTextFile(named: "pasted-flow.txt")
+    let image = try XCTUnwrap(Self.pngSquare(), "could not draw an image to paste")
     let app = live.launchDemo()
     defer { app.terminate() }
     live.startIdleDemoSession(in: app)
 
     NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(file.absoluteString, forType: .fileURL)
+    XCTAssertTrue(NSPasteboard.general.setData(image, forType: .png), "the pasteboard refused it")
     live.click(live.composer(in: app), "the composer")
     app.typeKey("v", modifierFlags: .command)
     let chip = live.elements(prefix: "draft-attachment-", in: app).firstMatch
-    XCTAssertTrue(chip.waitForExistence(timeout: 15), "the pasted file is not attached")
+    XCTAssertTrue(chip.waitForExistence(timeout: 15), "the pasted image is not attached")
 
-    app.typeText("With the pasted file")
+    app.typeText("With the pasted image")
     app.typeKey(.return, modifierFlags: .command)
     XCTAssertTrue(chip.waitForNonExistence(timeout: 15), "the chip stayed after sending")
     XCTAssertTrue(
       live.elements(prefix: "attachment-", in: app).firstMatch.waitForExistence(timeout: 15),
       "the sent message has no attachment")
+  }
+
+  /// A small opaque square as PNG data.
+  private static func pngSquare() -> Data? {
+    let image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
+      NSColor.systemTeal.setFill()
+      rect.fill()
+      return true
+    }
+    guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff) else {
+      return nil
+    }
+    return bitmap.representation(using: .png, properties: [:])
   }
 
   /// The Add menu's file panel attaches the chosen file, and its chip can be removed.
@@ -171,9 +185,10 @@ final class MacComposerFlowUITests: XCTestCase {
 
     let chip = live.element("composer-approval-mode", in: app)
     live.click(chip, "the mode chip")
-    live.clickMenuItem("Full access", in: app)
+    // The demo's default agent runs Claude Code, whose modes are these.
+    live.clickMenuItem("Auto-edit", in: app)
     XCTAssertTrue(
-      live.waitUntil(timeout: 15) { chip.label.contains("Full access") },
+      live.waitUntil(timeout: 15) { chip.label.contains("Auto-edit") },
       "the chip still says \(chip.label)")
   }
 

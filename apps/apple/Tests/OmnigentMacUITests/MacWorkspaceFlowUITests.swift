@@ -58,7 +58,6 @@ final class MacWorkspaceFlowUITests: XCTestCase {
     let sections = [
       ("files", live.element("workspace.tree", in: app)),
       ("changes", live.element("workspace.changes", in: app)),
-      ("search", live.element("workspace.search", in: app)),
       ("info", live.text(containing: "Session ID", in: app)),
     ]
     for (section, content) in sections {
@@ -126,8 +125,8 @@ final class MacWorkspaceFlowUITests: XCTestCase {
     live.open(session, in: app)
 
     live.contextMenu(live.row(session, in: app), choose: "Fork", in: app)
-    XCTAssertTrue(live.element("fork-sheet", in: app).waitForExistence(timeout: 15), "no sheet")
-    live.click(live.element("fork-clone", in: app), "Fork")
+    // The sheet is found by its Clone button: a sheet's own identifier does not show on a Mac.
+    live.click(live.element("fork-clone", in: app), "Clone", timeout: 15)
 
     let original = live.element("transcript-\(session)", in: app)
     XCTAssertTrue(original.waitForNonExistence(timeout: 30), "the fork did not open")

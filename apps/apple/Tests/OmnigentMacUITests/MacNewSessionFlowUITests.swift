@@ -56,7 +56,8 @@ final class MacNewSessionFlowUITests: XCTestCase {
     XCTAssertTrue(live.element("new-session-page", in: app).exists, "the form went away")
   }
 
-  /// The chosen agent is the one the new session runs.
+  /// The chosen agent is the one the new session runs: its chip names the agent's harness,
+  /// Claude Code, where the default agent's says Codex.
   @MainActor
   func testChosenAgentIsWhatTheSessionUses() {
     let live = MacLiveUITestSupport(self)
@@ -70,7 +71,7 @@ final class MacNewSessionFlowUITests: XCTestCase {
       live.anyTranscript(in: app).waitForExistence(timeout: 15), "the session did not start")
     let chip = live.element("composer-configuration", in: app)
     XCTAssertTrue(
-      live.waitUntil { chip.label.contains("Sample Claude") }, "the session runs \(chip.label)")
+      live.waitUntil { chip.label.contains("Claude Code") }, "the session runs \(chip.label)")
   }
 
   /// Browse Folders chooses the folder the session works in.

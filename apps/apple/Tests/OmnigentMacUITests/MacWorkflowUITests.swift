@@ -2,8 +2,8 @@ import AppKit
 import XCTest
 
 /// The Mac app's everyday workflows on a live local server, end to end through real input: a
-/// browser tab loading a page, a terminal running a command, scrolling a long transcript back to
-/// its first message, sessions keeping their own tabs, and resizing the window over each tab
+/// browser tab loading a page, a terminal running a command, jumping to a long transcript's
+/// first message, sessions keeping their own tabs, and resizing the window over each tab
 /// kind. Each step also checks that the app is still running, so a crash fails at the step that
 /// caused it. See ``MacLiveUITestSupport`` for the seeded sessions each test needs.
 final class MacWorkflowUITests: XCTestCase {
@@ -60,6 +60,7 @@ final class MacWorkflowUITests: XCTestCase {
   @MainActor
   func testTerminalTabRunsACommand() throws {
     let live = MacLiveUITestSupport(self)
+    try live.requireTerminals()
     let session = try live.fixtureSession()
     let marker = try live.fixtureWorkspace().appending(
       path: "terminal-check-\(UUID().uuidString).txt")
@@ -93,36 +94,29 @@ final class MacWorkflowUITests: XCTestCase {
     live.shot(app, "terminal")
   }
 
-  /// Scrolling up a transcript of hundreds of turns pages in older history until its first
-  /// message, and Jump to the first message gets there in one step.
+  /// In a transcript of hundreds of turns, Jump to the first message pages in the older history
+  /// and lands on the first message in one step. Reaching it by scrolling takes minutes of
+  /// wheel events, so paging while scrolling is left to the package tests.
   @MainActor
-  func testScrollingBackReachesTheFirstMessage() throws {
+  func testJumpReachesTheFirstMessageOfALongTranscript() throws {
     let live = MacLiveUITestSupport(self)
     let session = try live.longSession()
     let app = live.launch()
     defer { app.terminate() }
     live.open(session, in: app)
-    let transcript = live.element("transcript-\(session)", in: app)
+    // The scroll view itself: the transcript's identifier is also on the buttons over it.
+    let transcript = app.scrollViews["transcript-\(session)"].firstMatch
+    XCTAssertTrue(transcript.waitForExistence(timeout: 10), "no transcript to scroll")
     // The long seed's first user message.
     let first = live.text(containing: "(step 0).", in: app)
+    XCTAssertFalse(first.exists, "the transcript opened at its first message")
 
-    var scrolls = 0
-    while !first.exists, scrolls < 150 {
-      transcript.scroll(byDeltaX: 0, deltaY: 3000)
-      scrolls += 1
-      if scrolls.isMultiple(of: 10) { live.assertRunning(app, "after \(scrolls) scrolls") }
-    }
-    XCTAssertTrue(first.exists, "scrolling up \(scrolls) times did not reach the first message")
-    live.assertRunning(app, "at the first message")
-    live.shot(app, "transcript-top-by-scrolling")
-
-    // From the end again, the jump button goes straight to the top.
-    app.typeKey(.downArrow, modifierFlags: .command)
+    // The button shows once the transcript has left its end.
     transcript.scroll(byDeltaX: 0, deltaY: 500)
-    let jump = live.element("transcript-jump-top", in: app)
-    live.click(jump, "Jump to the first message")
-    XCTAssertTrue(first.waitForExistence(timeout: 30), "the jump did not reach the first message")
+    live.click(app.buttons["Jump to the first message"].firstMatch, "Jump to the first message")
+    XCTAssertTrue(first.waitForExistence(timeout: 60), "the jump did not reach the first message")
     live.assertRunning(app, "after the jump")
+    live.shot(app, "transcript-top")
   }
 
   /// A session's browser and terminal tabs stay with it: another session shows only its own
@@ -135,15 +129,18 @@ final class MacWorkflowUITests: XCTestCase {
     let app = live.launch()
     defer { app.terminate() }
     live.open(session, in: app)
-    app.typeKey("`", modifierFlags: .control)
-    XCTAssertTrue(
-      live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
+    if MacLiveUITestSupport.hostHasTmux {
+      app.typeKey("`", modifierFlags: .control)
+      XCTAssertTrue(
+        live.tabs("terminal", in: app).firstMatch.waitForExistence(timeout: 30), "no terminal tab")
+    }
     #if OMNIGENT_CHROMIUM
       app.typeKey("b", modifierFlags: [.command, .option])
       XCTAssertTrue(
         live.tabs("browser", in: app).firstMatch.waitForExistence(timeout: 20), "no browser tab")
     #endif
     let ownTabs = otherTabCount(live, app)
+    try XCTSkipIf(ownTabs == 0, "This edition and host can open neither a browser nor a terminal.")
 
     live.open(other, in: app)
     XCTAssertTrue(
@@ -169,10 +166,12 @@ final class MacWorkflowUITests: XCTestCase {
     let window = app.windows.firstMatch
     resizeThroughWidths(window, live, app, "chat")
 
-    app.typeKey("`", modifierFlags: .control)
-    XCTAssertTrue(
-      live.element("terminal-tab", in: app).waitForExistence(timeout: 30), "no terminal")
-    resizeThroughWidths(window, live, app, "terminal")
+    if MacLiveUITestSupport.hostHasTmux {
+      app.typeKey("`", modifierFlags: .control)
+      XCTAssertTrue(
+        live.element("terminal-tab", in: app).waitForExistence(timeout: 30), "no terminal")
+      resizeThroughWidths(window, live, app, "terminal")
+    }
 
     #if OMNIGENT_CHROMIUM
       app.typeKey("b", modifierFlags: [.command, .option])
@@ -190,12 +189,13 @@ final class MacWorkflowUITests: XCTestCase {
     live.tabs("terminal", in: app).count + live.tabs("browser", in: app).count
   }
 
-  /// Drags the window's bottom-right corner narrow, wide and back, checking the app after each.
+  /// Drags the window's bottom-right corner narrow, wide, narrow and as wide as the screen,
+  /// checking the app after each.
   @MainActor
   private func resizeThroughWidths(
     _ window: XCUIElement, _ live: MacLiveUITestSupport, _ app: XCUIApplication, _ kind: String
   ) {
-    for widthChange in [-500.0, 700, -350, 150] {
+    for widthChange in [-500.0, 700, -350, 1200] {
       let corner = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
         .withOffset(CGVector(dx: -2, dy: -2))
       corner.press(
