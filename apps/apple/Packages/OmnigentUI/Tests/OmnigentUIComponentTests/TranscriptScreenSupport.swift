@@ -34,6 +34,14 @@
     screen.settle(0.02)
   }
 
+  /// Lets a transcript's opening end: its wait for the framing scroll to land, which takes as
+  /// long as this machine's timers and main thread make it, and then what follows that wait.
+  @MainActor
+  func letOpeningEnd(_ screen: OffscreenWindow<AnyView>) async throws {
+    try await TranscriptFollow.waitForFrameLanding()
+    try await letTasksRun(screen, milliseconds: 300)
+  }
+
   /// Whether `condition` comes true within ten seconds, for what takes however long the machine
   /// and the suites running beside this one let it. The limit is in time, whatever a check costs.
   @MainActor

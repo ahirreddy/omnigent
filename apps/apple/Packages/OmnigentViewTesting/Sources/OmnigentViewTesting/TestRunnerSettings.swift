@@ -7,6 +7,12 @@
     TestRunnerSettings.clearEarlierRun()
   }
 
+  /// The test bundle's load calls this from C, before the process makes a scroll view.
+  @_cdecl("omnigent_view_testing_overlay_scroll_bars")
+  func overlayScrollBars() {
+    TestRunnerSettings.overlayScrollBars()
+  }
+
   /// `@AppStorage` saves to the test runner's own settings on disk, so a value one run leaves
   /// behind would decide what the next run's views show. Each run starts with none.
   enum TestRunnerSettings {
@@ -22,6 +28,21 @@
       if let domain = domainToClear(processName: ProcessInfo.processInfo.processName) {
         UserDefaults.standard.removePersistentDomain(forName: domain)
       }
+    }
+
+    /// The system's setting for when scroll bars show.
+    static let scrollBarsKey = "AppleShowScrollBars"
+    /// Scroll bars show over the content, and only during a scroll.
+    static let scrollBarsWhenScrolling = "WhenScrolling"
+
+    /// Has this process's scroll bars show over the content. Left to the system, a machine with
+    /// a mouse (a VM's virtual one too) gets a bar beside the content, which is then narrower
+    /// than its scroll view. Set for this process alone, over the machine's own setting.
+    static func overlayScrollBars() {
+      let defaults = UserDefaults.standard
+      var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
+      arguments[scrollBarsKey] = scrollBarsWhenScrolling
+      defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
     }
   }
 #endif

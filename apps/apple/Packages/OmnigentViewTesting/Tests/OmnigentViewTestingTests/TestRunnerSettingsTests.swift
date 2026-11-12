@@ -1,4 +1,5 @@
 #if os(macOS)
+  import AppKit
   import Foundation
   import Testing
 
@@ -29,6 +30,39 @@
       defer { UserDefaults.standard.removeObject(forKey: key) }
       TestRunnerSettings.clearEarlierRun()
       #expect(UserDefaults.standard.string(forKey: key) == nil)
+    }
+
+    @Test("a scroll view's bars take no room, whatever pointing devices the machine has")
+    @MainActor
+    func scrollBarsOverlayTheContent() {
+      // The test bundle's load set this; the system's own choice arrives on the run loop.
+      let setting = UserDefaults.standard.string(forKey: TestRunnerSettings.scrollBarsKey)
+      #expect(setting == TestRunnerSettings.scrollBarsWhenScrolling)
+      _ = NSScroller.preferredScrollerStyle
+      RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+      #expect(NSScroller.preferredScrollerStyle == .overlay)
+      let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 200))
+      scrollView.hasVerticalScroller = true
+      scrollView.documentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 900))
+      scrollView.tile()
+      #expect(scrollView.scrollerStyle == .overlay)
+      #expect(scrollView.contentView.bounds.width == 300)
+    }
+
+    @Test("the scroll bar setting keeps what the process was launched with")
+    func scrollBarsKeepLaunchArguments() {
+      let defaults = UserDefaults.standard
+      let launched = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
+      defer { defaults.setVolatileDomain(launched, forName: UserDefaults.argumentDomain) }
+      let key = "omnigent.test.launch-argument"
+      var arguments = launched
+      arguments[key] = "kept"
+      defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+      TestRunnerSettings.overlayScrollBars()
+      #expect(defaults.string(forKey: key) == "kept")
+      #expect(
+        defaults.string(forKey: TestRunnerSettings.scrollBarsKey)
+          == TestRunnerSettings.scrollBarsWhenScrolling)
     }
   }
 #endif

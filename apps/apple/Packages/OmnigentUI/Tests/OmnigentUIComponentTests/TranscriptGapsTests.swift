@@ -36,7 +36,8 @@
     @Test("An update timed for a transcript that was hidden meanwhile waits until it shows")
     func pacerHiddenBeforeTick() async throws {
       let store = RowStore()
-      let pacer = TranscriptRowsPacer(interval: .milliseconds(30))
+      // Long against a sleep that ends late on a busy machine: it hides well before the tick.
+      let pacer = TranscriptRowsPacer(interval: .milliseconds(300))
       _ = pacer.rows(from: reader(store))
       store.append("first")
       try await spin { pacer.published == 1 }
@@ -44,7 +45,7 @@
       store.append("second")
       try await Task.sleep(for: .milliseconds(5))
       pacer.setShown(false)
-      try await Task.sleep(for: .milliseconds(60))
+      try await Task.sleep(for: .milliseconds(600))
       #expect(pacer.published == 1, "nothing publishes to a hidden transcript")
       pacer.setShown(true)
       try await spin { pacer.published == 2 }

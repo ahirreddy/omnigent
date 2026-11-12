@@ -65,14 +65,14 @@
       return LiveConversation(ConversationViewState(header: TranscriptFixture.header, rows: rows))
     }
 
-    /// The conversation open in the wide pane, at its end as opening leaves it.
+    /// The conversation open in the wide pane, at its end and following, as opening leaves it.
     private func open(_ pane: TranscriptPane, _ conversation: LiveConversation) async throws
       -> OffscreenWindow<AnyView>
     {
       let window = transcriptScreen(
         DockedTranscriptHost(conversation: conversation, pane: pane), width: 1200, height: 800)
       window.settle(0.5)
-      try await letTasksRun(window, milliseconds: 600)
+      try await letOpeningEnd(window)
       return window
     }
 
