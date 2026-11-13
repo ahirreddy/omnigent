@@ -83,8 +83,12 @@
       defer { window.close() }
       try await letTasksRun(window, milliseconds: 200)
       column.width = Self.narrow
-      let viewport = TranscriptScrollDriver(screen: window)
-      #expect(try await waitUntil(window) { viewport.distanceToEnd() < 2 })
+      // Measuring moves the scroll view as a reader would, so only once the rows are back.
+      let settle = Int(TranscriptScrollState.restoreWindow * 2_000)
+      try await letTasksRun(window, milliseconds: settle)
+      let distance = TranscriptScrollDriver(screen: window).distanceToEnd()
+      // The bottom row rests the rows' padding short of the content's edge.
+      #expect(distance <= Theme.Spacing.extraLarge + 1, "\(distance) points from the end")
     }
   }
 #endif

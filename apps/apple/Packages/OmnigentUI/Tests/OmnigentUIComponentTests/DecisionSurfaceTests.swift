@@ -58,20 +58,45 @@ struct DecisionSurfaceTests {
         Self.placement(minY: 200, height: 40), wasOnScreen: false))
   }
 
-  @Test("The tracker publishes only entries and exits")
+  @Test("The tracker publishes entries and exits once layout has ended")
   func tracker() {
     let surfaces = DecisionSurfaces()
     surfaces.report("a", isOnScreen: true, showsApprove: true)
     surfaces.report("b", isOnScreen: true, showsApprove: false)
+    // Layout is still placing the cards: the dock keeps what it had.
+    #expect(surfaces.visibility.onScreen.isEmpty)
+    surfaces.layoutEnded()
     #expect(surfaces.visibility.onScreen == ["a", "b"])
     #expect(surfaces.visibility.approvable == ["a"])
     // A row that starts answering in place shows Approve from then on.
     surfaces.report("b", isOnScreen: true, showsApprove: true)
+    surfaces.layoutEnded()
     #expect(surfaces.visibility.approvable == ["a", "b"])
     surfaces.report("b", isOnScreen: false, showsApprove: true)
+    surfaces.layoutEnded()
     #expect(surfaces.visibility.onScreen == ["a"])
     #expect(surfaces.visibility.approvable == ["a"])
     surfaces.report("a", isOnScreen: false, showsApprove: true)
+    surfaces.layoutEnded()
+    #expect(surfaces.visibility.onScreen.isEmpty)
+  }
+
+  @Test("A card that leaves and returns while layout runs never reaches the dock")
+  func layoutPassReports() {
+    let surfaces = DecisionSurfaces()
+    surfaces.report("a", isOnScreen: true, showsApprove: true)
+    // The main thread back at its run loop is what ends a layout pass.
+    CFRunLoopRunInMode(.defaultMode, 0.02, false)
+    #expect(surfaces.visibility.onScreen == ["a"])
+
+    surfaces.report("a", isOnScreen: false, showsApprove: true)
+    #expect(surfaces.visibility.onScreen == ["a"])
+    surfaces.report("a", isOnScreen: true, showsApprove: true)
+    CFRunLoopRunInMode(.defaultMode, 0.02, false)
+    #expect(surfaces.visibility.onScreen == ["a"])
+    // Still gone when the pass has ended, it has left.
+    surfaces.report("a", isOnScreen: false, showsApprove: true)
+    CFRunLoopRunInMode(.defaultMode, 0.02, false)
     #expect(surfaces.visibility.onScreen.isEmpty)
   }
 

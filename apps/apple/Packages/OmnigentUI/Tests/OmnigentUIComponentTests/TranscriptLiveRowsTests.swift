@@ -199,17 +199,13 @@
       return (height - dock) - rowBottom
     }
 
-    @Test("A working turn's last row rests a row gap above the dock, and the kept room more")
-    func lastRowToComposer() async throws {
+    @Test(
+      "A working turn's last row rests one row gap above the dock, in a narrow or wide pane",
+      arguments: [760, 1_200] as [CGFloat])
+    func lastRowToComposer(width: CGFloat) async throws {
+      let gap = try await gapUnderLastRow(width: width)
       // The stack's gap between two rows, and the point-high row the transcript scrolls to.
-      let rowGap = Theme.Spacing.row + 1
-      let wide = try await gapUnderLastRow(width: 1_200)
-      #expect(abs(wide - rowGap) <= 0.5, "\(wide) points with a margin beside the column")
-      let narrow = try await gapUnderLastRow(width: 760)
-      let room = TranscriptClearance.height(layout: .card, hasMargin: false)
-      #expect(abs(narrow - rowGap - room) <= 0.5, "\(narrow) points with no margin")
-      #expect(TranscriptClearance.height(layout: .card, hasMargin: true) == 0)
-      #expect(TranscriptClearance.height(layout: .touch, hasMargin: false) == 0)
+      #expect(abs(gap - (Theme.Spacing.row + 1)) <= 0.5, "\(gap) points under the last row")
     }
 
     // MARK: The composer's remaining rows

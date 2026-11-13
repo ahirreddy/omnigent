@@ -81,23 +81,6 @@ struct ScrollTopRevealTests {
 /// Width measurers whose answer changes the width they measure settle instead of flipping on
 /// every layout pass.
 struct LayoutThresholdHysteresisTests {
-  @Test("a margin beside the column stays one until it loses more than a scroll bar")
-  @MainActor
-  func theMarginHasSlack() {
-    let margin = TranscriptClearance.margin
-    let edge = 720 + margin
-    #expect(TranscriptClearance.hasMargin(width: edge, column: 720, margin: margin))
-    #expect(!TranscriptClearance.hasMargin(width: edge - 15, column: 720, margin: margin))
-    #expect(
-      TranscriptClearance.hasMargin(
-        width: edge - 15, column: 720, margin: margin, hadMargin: true))
-    #expect(
-      !TranscriptClearance.hasMargin(
-        width: edge - TranscriptClearance.slack - 1, column: 720, margin: margin, hadMargin: true))
-    // A compact pane's column is the full width.
-    #expect(!TranscriptClearance.hasMargin(width: 390, column: .infinity, margin: margin))
-  }
-
   @Test("a compact layout grows past the threshold by the slack before it is regular")
   func theWidthClassHasSlack() {
     #expect(LayoutWidth.measuring(559, compactBelow: 560, previous: .regular) == .compact)

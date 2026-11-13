@@ -55,32 +55,46 @@ nonisolated struct InlineDecisionVisibility: Hashable, Sendable {
 }
 
 /// Tracks which inline decision cards are on screen for one conversation. Each card decides for
-/// itself; the dock reads ``visibility``, which only changes when a card enters or leaves.
+/// itself as layout places it; the dock reads ``visibility``, which takes the cards' answers
+/// once the main thread is back at its run loop. A dock resizing inside the layout pass that
+/// placed the cards would move them and be answered again, without that pass ever ending.
 @Observable
 public final class DecisionSurfaces {
   private(set) var visibility = InlineDecisionVisibility()
+  /// The cards' latest answers, which layout may change many times before it is done.
+  @ObservationIgnored private var reported = InlineDecisionVisibility()
+  @ObservationIgnored private var awaitsLayoutEnd = false
 
   /// Creates an empty tracker.
   public init() {}
 
   /// Records whether an inline card is on screen, and whether it shows Approve when it is.
   func report(_ cardID: String, isOnScreen: Bool, showsApprove: Bool) {
-    var next = visibility
     if isOnScreen {
-      next.onScreen.insert(cardID)
+      reported.onScreen.insert(cardID)
     } else {
-      next.onScreen.remove(cardID)
+      reported.onScreen.remove(cardID)
     }
     if isOnScreen, showsApprove {
-      next.approvable.insert(cardID)
+      reported.approvable.insert(cardID)
     } else {
-      next.approvable.remove(cardID)
+      reported.approvable.remove(cardID)
     }
-    guard next != visibility else { return }
+    guard reported != visibility, !awaitsLayoutEnd else { return }
+    awaitsLayoutEnd = true
+    MainRunLoop.perform { [weak self] in
+      MainActor.assumeIsolated { self?.layoutEnded() }
+    }
+  }
+
+  /// Shows the dock what the cards last answered: layout is done placing them.
+  func layoutEnded() {
+    awaitsLayoutEnd = false
+    guard reported != visibility else { return }
     #if DEBUG
-      LoopProbe.record("decision visibility \(probeTag)", "on screen \(next.onScreen.sorted())")
+      LoopProbe.record("decision visibility \(probeTag)", "on screen \(reported.onScreen.sorted())")
     #endif
-    visibility = next
+    visibility = reported
   }
 
   #if DEBUG

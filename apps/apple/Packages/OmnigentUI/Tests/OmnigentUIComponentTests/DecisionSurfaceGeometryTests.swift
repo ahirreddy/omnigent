@@ -43,9 +43,76 @@
       }
     }
 
+    /// A following transcript with two requests waiting inline above the dock, at a fixed size
+    /// as a gallery page draws it.
+    private struct TwoRequests: View {
+      static let pane = CGSize(width: 1_007, height: 775)
+
+      var body: some View {
+        GalleryConversation(
+          state: PreviewData.shellConversation, composer: PreviewData.sessionComposer
+        )
+        .frame(width: Self.pane.width, height: Self.pane.height)
+      }
+    }
+
+    /// Counts its layout passes and drops its content past ``limit``: a dock and its cards
+    /// answering each other inside one pass would never give the test its thread back.
+    private final class BoundedHost: NSHostingView<AnyView> {
+      /// Several times the passes a settling conversation takes.
+      static let limit = 100
+      private(set) var layoutPasses = 0
+      private(set) var gaveUp = false
+
+      override func updateConstraints() {
+        giveUpPastLimit()
+        super.updateConstraints()
+      }
+
+      override func layout() {
+        layoutPasses += 1
+        giveUpPastLimit()
+        super.layout()
+      }
+
+      private func giveUpPastLimit() {
+        guard layoutPasses > Self.limit, !gaveUp else { return }
+        gaveUp = true
+        rootView = AnyView(EmptyView())
+      }
+    }
+
     /// Lines the decision surfaces have logged and the trace still holds.
     private func decisionChanges() -> Int {
       HangTrace.report(since: [:]).components(separatedBy: "\n").count { $0.contains("decision ") }
+    }
+
+    @Test("Two requests above the dock of a window sized right after its first layout come to rest")
+    func requestsAboveTheDockSettle() {
+      HangTrace.isEnabled = true
+      LoopProbe.sink = { _ in }
+      defer {
+        LoopProbe.sink = nil
+        HangTrace.isEnabled = false
+      }
+      let screen = OffscreenWindow(EmptyView(), width: TwoRequests.pane.width, height: 100)
+      defer { screen.close() }
+      let host = BoundedHost(rootView: AnyView(TwoRequests()))
+      host.sizingOptions = []
+      // The navigation bar stays in the content, over the transcript, as an exported page's.
+      host.sceneBridgingOptions = []
+      screen.window.contentView = host
+      // Laid out in a window too short for it, which has its size before the run loop is back.
+      host.layoutSubtreeIfNeeded()
+      screen.window.setContentSize(TwoRequests.pane)
+      host.frame = CGRect(origin: .zero, size: TwoRequests.pane)
+      host.layoutSubtreeIfNeeded()
+      screen.settle(2)
+      #expect(!host.gaveUp, "layout was still running after \(host.layoutPasses) passes")
+      // Pushes what settling logged out of the trace, which keeps only the latest changes.
+      for _ in 0..<(HangTrace.keptChanges * 2) { HangTrace.change("settled") }
+      screen.settle(0.5)
+      #expect(decisionChanges() == 0, "the requests still change surface")
     }
 
     @Test("A card under the bar isn't on screen, and one above it is")

@@ -167,7 +167,9 @@
       let conversation = LiveConversation(
         ConversationViewState(header: TranscriptFixture.header, rows: rows))
       let screen = transcriptScreen(
-        LiveTranscriptHost(conversation: conversation, actions: ConversationActions()),
+        // Over a bar, as the transcript is over the composer in the app.
+        LiveTranscriptHost(conversation: conversation, actions: ConversationActions())
+          .safeAreaBar(edge: .bottom, spacing: 0) { Color.clear.frame(height: 68) },
         width: 500, height: 300)
       defer { screen.close() }
       // Past the opening's framing wait, so the transcript follows.

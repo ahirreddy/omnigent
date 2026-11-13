@@ -28,15 +28,15 @@
 
   /// How far a pane widens and comes back while its tab is hidden.
   enum HiddenWidening: CaseIterable, Sendable {
-    /// The message navigator stays under the rows.
-    case besideNothing
-    /// Wide enough that the navigator moves beside the rows, and its inset under them goes.
-    case pastTheNavigator
+    /// The rows are still as wide as the pane lets them be.
+    case withinTheColumn
+    /// Past the width at which the rows stop growing.
+    case pastTheColumn
 
     var widest: CGFloat {
       switch self {
-      case .besideNothing: WidthDrive.narrow + 200
-      case .pastTheNavigator: WidthDrive.wide
+      case .withinTheColumn: WidthDrive.narrow + 200
+      case .pastTheColumn: WidthDrive.wide
       }
     }
   }
@@ -164,7 +164,7 @@
     }
 
     @Test(
-      "A tab shown at the width it hid at builds no row, and scrolls a follower back at most",
+      "A tab shown at the width it hid at builds no row and scrolls nowhere",
       arguments: ResizedReader.allCases, HiddenWidening.allCases)
     func showingAtTheSameWidth(reader: ResizedReader, widening: HiddenWidening) async throws {
       let width = PaneWidth(WidthDrive.narrow)
@@ -191,10 +191,7 @@
       #expect(shown.viewport.width == WidthDrive.narrow)
       let place = try #require(place(of: reader, anchor: anchor, in: shown))
       #expect(abs(place - placed) <= 2)
-      // Narrow again, the navigator's inset is back under a follower: one scroll returns them
-      // to the bottom row.
-      let insetCameBack = reader == .atEnd && widening == .pastTheNavigator
-      #expect(count(Self.scrolling, since: before) == (insetCameBack ? 1 : 0))
+      #expect(count(Self.scrolling, since: before) == 0)
     }
   }
 #endif

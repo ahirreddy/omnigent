@@ -27,6 +27,8 @@
 
     var body: some View {
       LiveTranscriptHost(conversation: conversation, actions: actions)
+        // Over a bar, as the transcript is over the composer in the app.
+        .safeAreaBar(edge: .bottom, spacing: 0) { Color.clear.frame(height: 68) }
         .onScrollGeometryChange(for: Bool.self) { geometry in
           geometry.contentOffset.y <= ScrollEdgeWatch.reach
         } action: { _, isAtTop in
@@ -46,7 +48,7 @@
 
     /// The part of the content in view.
     var viewport: CGRect
-    /// The viewport's bottom that the content keeps clear, as under the message navigator.
+    /// The viewport's bottom that the content keeps clear, as under a dock.
     var bottomInset: CGFloat
     var lines: [Line]
     /// The scroll view clips what it scrolls to its own bounds, the pane's.

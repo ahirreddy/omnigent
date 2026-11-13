@@ -32,6 +32,7 @@
       for id in ids {
         surfaces.report(id, isOnScreen: true, showsApprove: true)
       }
+      surfaces.layoutEnded()
       return surfaces
     }
 

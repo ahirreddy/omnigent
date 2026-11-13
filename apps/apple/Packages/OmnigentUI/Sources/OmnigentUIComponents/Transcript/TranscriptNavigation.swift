@@ -112,82 +112,26 @@ final class TranscriptReadingPosition {
   }
 }
 
-/// The room the transcript keeps under its last row on the Mac, in a pane with no margin beside
-/// the column. A waiting request's inline card resting right above the dock leaves the screen as
-/// the dock gives its request back and returns as the dock takes it, without end; this room
-/// keeps it on screen.
-enum TranscriptClearance {
-  /// The margin beside the column from which no room is kept.
-  @MainActor static var margin: CGFloat { 2 * Theme.Control.target }
-
-  /// Points a margin may lose before it counts as gone: more than a legacy scroll bar, which
-  /// the room itself can show or hide, so the answer cannot flip on every pass.
-  static let slack: CGFloat = 20
-
-  /// Whether a pane leaves `margin` beside the column; geometry callbacks run off the main actor.
-  /// - Parameters:
-  ///   - width: The transcript's width.
-  ///   - column: The transcript column's maximum width.
-  ///   - margin: The margin looked for.
-  ///   - hadMargin: Whether it was there before; a margin stays one within ``slack``.
-  /// - Returns: Whether the margin is there.
-  static func hasMargin(
-    width: CGFloat, column: CGFloat, margin: CGFloat, hadMargin: Bool = false
-  ) -> Bool {
-    width - column >= margin - (hadMargin ? slack : 0)
-  }
-
-  /// The bottom content margin for a pane that does or does not have the margin.
-  /// - Parameters:
-  ///   - layout: The composer's layout; touch keeps no room.
-  ///   - hasMargin: Whether the pane leaves the margin beside the column.
-  /// - Returns: The room under the last row.
-  @MainActor
-  static func height(layout: ComposerLayoutStyle, hasMargin: Bool) -> CGFloat {
-    guard layout == .card, !hasMargin else { return 0 }
-    return Theme.Control.target * 2 + Theme.Spacing.medium
-  }
-}
-
 /// The keys for the previous and next user message (Option-Command-Up and -Down), on buttons
-/// that are laid out and never drawn, with ``TranscriptClearance`` kept under the scroll
-/// content while there are messages to move between.
+/// that are laid out and never drawn: the transcript shows no control for them.
 struct MessageNavigationKeys: ViewModifier {
   /// There is a user message to move between.
   let isEnabled: Bool
   let previous: () -> Void
   let next: () -> Void
-  /// Whether the pane has the margin; kept instead of the width, so resizing re-renders only
-  /// when it flips.
-  @State private var hasMargin = false
-  @Environment(\.layoutWidth) private var layoutWidth
-  @Environment(\.composerLayoutStyle) private var composerLayout
-  @Environment(\.transcriptAppearance) private var appearance
 
   func body(content: Content) -> some View {
-    let column = layoutWidth == .compact ? .infinity : appearance.contentWidth.maxWidth
-    let margin = TranscriptClearance.margin
-    let inset =
-      isEnabled ? TranscriptClearance.height(layout: composerLayout, hasMargin: hasMargin) : 0
-    content
-      .overlay(alignment: .bottomTrailing) {
-        if isEnabled {
-          VStack(spacing: 0) {
-            key(AppShortcuts.previousMessage, action: previous)
-            key(AppShortcuts.nextMessage, action: next)
-          }
-          .opacity(0)
-          .allowsHitTesting(false)
-          .accessibilityHidden(true)
+    content.overlay(alignment: .bottomTrailing) {
+      if isEnabled {
+        VStack(spacing: 0) {
+          key(AppShortcuts.previousMessage, action: previous)
+          key(AppShortcuts.nextMessage, action: next)
         }
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
       }
-      .onGeometryChange(for: Bool.self) { [hasMargin] in
-        TranscriptClearance.hasMargin(
-          width: $0.size.width, column: column, margin: margin, hadMargin: hasMargin)
-      } action: {
-        hasMargin = $0
-      }
-      .contentMargins(.bottom, inset, for: .scrollContent)
+    }
   }
 
   private func key(_ shortcut: KeyboardShortcut, action: @escaping () -> Void) -> some View {
