@@ -29,6 +29,11 @@ extension TerminalSurfaceController {
     case GHOSTTY_ACTION_RING_BELL:
       view.ringBell()
       return true
+    case GHOSTTY_ACTION_CELL_SIZE:
+      // A new text size gives the same view a new grid. Before the view's first size there is
+      // no grid yet to correct.
+      if gridSize != nil { reportGrid() }
+      return true
     default:
       return false
     }

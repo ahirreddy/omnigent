@@ -272,6 +272,13 @@ public final class TerminalSurfaceController {
     else { return }
     unsafe ghostty_surface_set_content_scale(surface, Double(scale), Double(scale))
     unsafe ghostty_surface_set_size(surface, width, height)
+    reportGrid()
+  }
+
+  /// Tells the connection the surface's grid when it is not the one last told: after a new view
+  /// size, or a new text size in a view that kept its size.
+  func reportGrid() {
+    guard let surface = unsafe surface else { return }
     let size = unsafe ghostty_surface_size(surface)
     guard let grid = TerminalGridSize(columns: Int(size.columns), rows: Int(size.rows)),
       grid != gridSize
