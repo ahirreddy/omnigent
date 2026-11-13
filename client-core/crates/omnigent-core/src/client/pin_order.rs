@@ -111,19 +111,30 @@ pub fn pin_order_writes(
             key: between,
         }];
     }
+    renumbered(pinned, moved, now_ms)
+}
+
+/// The writes that number `ordered` (each pin with its current key) upward from the lowest key
+/// of `pinned`, or from just below `now_ms` when that is too large to count up from. Pins
+/// already at their new key are skipped.
+fn renumbered(
+    pinned: &[SessionSummary],
+    ordered: Vec<(String, f64)>,
+    now_ms: u64,
+) -> Vec<PinOrderWrite> {
     let lowest = pinned
         .iter()
         .map(key)
         .filter(|value| value.is_finite())
         .reduce(f64::min)
         .unwrap_or(f64::NAN);
-    let count = exact_count(moved.len());
+    let count = exact_count(ordered.len());
     let base = if lowest.abs() + count <= MAX_SAFE_INTEGER {
         lowest
     } else {
         exact(now_ms) - count
     };
-    moved
+    ordered
         .into_iter()
         .enumerate()
         .filter_map(|(index, (session_id, current))| {
@@ -136,6 +147,69 @@ pub fn pin_order_writes(
             (!unchanged).then_some(PinOrderWrite { session_id, key })
         })
         .collect()
+}
+
+/// The writes that put the pins named in `order` into that order, in the slots they hold in
+/// `pinned` (already in pin order). Pins that are not named keep their place, and ids that are
+/// not pinned are ignored.
+///
+/// One moved pin is rewritten between its new neighbours, as a drag is; any other change
+/// renumbers every pin, skipping those already at their new key. Empty for a no-op.
+#[must_use]
+pub fn pin_sequence_writes(
+    pinned: &[SessionSummary],
+    order: &[String],
+    now_ms: u64,
+) -> Vec<PinOrderWrite> {
+    let mut named: Vec<&SessionSummary> = Vec::new();
+    for id in order {
+        let pin = pinned.iter().find(|session| session.id == *id);
+        if let Some(pin) = pin.filter(|pin| !named.iter().any(|seen| seen.id == pin.id)) {
+            named.push(pin);
+        }
+    }
+    let current: Vec<&SessionSummary> = pinned.iter().collect();
+    let is_named = |session: &SessionSummary| named.iter().any(|pin| pin.id == session.id);
+    // Each named pin takes the next slot a named pin holds now.
+    let mut next = named.iter().copied();
+    let target: Vec<&SessionSummary> = current
+        .iter()
+        .filter_map(|held| {
+            if is_named(held) {
+                next.next()
+            } else {
+                Some(*held)
+            }
+        })
+        .collect();
+    let Some(first) = target
+        .iter()
+        .zip(&current)
+        .position(|(wanted, held)| wanted.id != held.id)
+    else {
+        return Vec::new();
+    };
+    let without = |rows: &[&SessionSummary], skipped: &str| -> Vec<String> {
+        let rest = rows.iter().filter(|row| row.id != skipped);
+        rest.map(|row| row.id.clone()).collect()
+    };
+    // Taking one pin out of both orders leaves them equal when only that pin moved.
+    for moved in [target.get(first), current.get(first)]
+        .into_iter()
+        .flatten()
+    {
+        let only_it_moved = without(&target, &moved.id) == without(&current, &moved.id);
+        let slot = target.iter().position(|row| row.id == moved.id);
+        let holder = slot.and_then(|index| current.get(index));
+        if let Some(holder) = holder.filter(|_| only_it_moved) {
+            return pin_order_writes(pinned, &moved.id, &holder.id, now_ms);
+        }
+    }
+    let ordered = target
+        .iter()
+        .map(|row| (row.id.clone(), key(row)))
+        .collect();
+    renumbered(pinned, ordered, now_ms)
 }
 
 /// `value` as a float; list lengths and epoch milliseconds are far below 2^53, so it is exact.
@@ -177,6 +251,24 @@ impl<T: HttpTransport> ClientCore<T> {
         result
     }
 
+    /// Puts the pins named in `order` into that order, in the slots they hold now in the Pinned
+    /// section; pins that are not named keep their place (see [`pin_sequence_writes`]).
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::ReadOnly`] without view permission; the write errors. Writes made
+    /// before a failure stay.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn set_pin_order(&self, order: &[String], now_ms: u64) -> Result<(), SessionError> {
+        let writes = pin_sequence_writes(&self.shown_pins(), order, now_ms);
+        let result = self.write_pin_keys(writes).await;
+        self.dispatch();
+        result
+    }
+
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -187,14 +279,7 @@ impl<T: HttpTransport> ClientCore<T> {
         target_id: &str,
         now_ms: u64,
     ) -> Result<(), SessionError> {
-        // The order the list shows, edits that have not settled included.
-        let mut pinned: Vec<SessionSummary> = {
-            let state = lock(&self.state);
-            state.shown_rows(state.summaries.values().cloned().collect())
-        };
-        pinned.retain(|session| session.is_pinned && !session.is_archived);
-        pinned.sort_by(compare);
-        let mut writes = pin_order_writes(&pinned, session_id, target_id, now_ms);
+        let mut writes = pin_order_writes(&self.shown_pins(), session_id, target_id, now_ms);
         if let Some(index) = writes
             .iter()
             .position(|write| write.session_id == session_id)
@@ -202,8 +287,27 @@ impl<T: HttpTransport> ClientCore<T> {
             let moved = writes.remove(index);
             writes.insert(0, moved);
         }
-        // The whole new order shows at once; the writes then leave one after another, and a
-        // failure puts back the rows whose writes had not left.
+        self.write_pin_keys(writes).await
+    }
+
+    /// The pins in the order the list shows, edits that have not settled included.
+    fn shown_pins(&self) -> Vec<SessionSummary> {
+        let mut pinned: Vec<SessionSummary> = {
+            let state = lock(&self.state);
+            state.shown_rows(state.summaries.values().cloned().collect())
+        };
+        pinned.retain(|session| session.is_pinned && !session.is_archived);
+        pinned.sort_by(compare);
+        pinned
+    }
+
+    /// Writes each pin's new key. The whole new order shows at once; the writes then leave one
+    /// after another, and a failure puts back the rows whose writes had not left.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn write_pin_keys(&self, writes: Vec<PinOrderWrite>) -> Result<(), SessionError> {
         let edits = writes
             .into_iter()
             .map(|write| {

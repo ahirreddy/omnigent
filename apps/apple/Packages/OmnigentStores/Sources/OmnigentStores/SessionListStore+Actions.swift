@@ -233,6 +233,15 @@ extension SessionListStore {
     await perform { core in try await core.movePin(sessionId: sessionID, targetId: targetID) }
   }
 
+  /// Puts the pinned sessions named in `sessionIDs` into that order, in the slots they hold now
+  /// in the Pinned section; pins that are not named keep their place.
+  /// - Parameter sessionIDs: The pinned sessions, in their new order.
+  /// - Returns: Whether every write was saved.
+  @discardableResult
+  public func setPinOrder(_ sessionIDs: [String]) async -> Bool {
+    await perform { core in try await core.setPinOrder(sessionIds: sessionIDs) }
+  }
+
   /// Saves `projects` as the project order (promoting label-only ones), then re-reads them.
   /// - Parameter projects: The projects, in their new order.
   /// - Returns: Whether the order was saved.

@@ -8,7 +8,7 @@ use super::super::sessions::SessionSummary;
 use super::super::test_support::{
     Reply, RouteTransport, cache_row, connected, lines_after_connect,
 };
-use super::{PinOrderWrite, PinStamp, compare, pin_order_writes};
+use super::{PinOrderWrite, PinStamp, compare, pin_order_writes, pin_sequence_writes};
 use crate::SessionError;
 use crate::session_query::{self, SessionFilter};
 
@@ -177,6 +177,125 @@ fn moving_a_pin_writes_its_new_key_and_pins_an_unpinned_session_first() {
         vec![
             json!({"labels": {"omnigent.pinned": "999"}}),
             json!({"labels": {"omnigent.pinned": "1500"}}),
+        ]
+    );
+}
+
+fn order(ids: &[&str]) -> Vec<String> {
+    ids.iter().map(|id| (*id).to_owned()).collect()
+}
+
+#[test]
+fn a_new_order_that_moves_one_pin_rewrites_only_that_pin() {
+    let rows = pins(&[Some(1000.0), Some(2000.0), Some(3000.0)]);
+    // Up, down, and a swap of neighbours.
+    assert_eq!(
+        pin_sequence_writes(&rows, &order(&["conv_2", "conv_0", "conv_1"]), NOW),
+        [write("conv_2", 999.0)]
+    );
+    assert_eq!(
+        pin_sequence_writes(&rows, &order(&["conv_1", "conv_2", "conv_0"]), NOW),
+        [write("conv_0", 3001.0)]
+    );
+    assert_eq!(
+        pin_sequence_writes(&rows, &order(&["conv_0", "conv_2", "conv_1"]), NOW),
+        [write("conv_2", 1500.0)]
+    );
+    assert_eq!(
+        pin_sequence_writes(&rows, &order(&["conv_0", "conv_1", "conv_2"]), NOW),
+        []
+    );
+}
+
+#[test]
+fn a_new_order_that_moves_several_pins_renumbers_them() {
+    let rows = pins(&[Some(1000.0), Some(2000.0), Some(3000.0), Some(4000.0)]);
+    assert_eq!(
+        pin_sequence_writes(
+            &rows,
+            &order(&["conv_3", "conv_2", "conv_1", "conv_0"]),
+            NOW
+        ),
+        [
+            write("conv_3", 1000.0),
+            write("conv_2", 1001.0),
+            write("conv_1", 1002.0),
+            write("conv_0", 1003.0)
+        ]
+    );
+    // A pin already at its new key is left alone.
+    assert_eq!(
+        pin_sequence_writes(
+            &rows,
+            &order(&["conv_0", "conv_3", "conv_2", "conv_1"]),
+            NOW
+        ),
+        [
+            write("conv_3", 1001.0),
+            write("conv_2", 1002.0),
+            write("conv_1", 1003.0)
+        ]
+    );
+}
+
+#[test]
+fn a_new_order_of_some_pins_fills_the_slots_they_hold_and_ignores_strangers() {
+    let rows = pins(&[Some(1000.0), Some(2000.0), Some(3000.0), Some(4000.0)]);
+    // conv_1 is not named (a search hides it), so it stays second.
+    assert_eq!(
+        pin_sequence_writes(&rows, &order(&["conv_3", "conv_2", "conv_0"]), NOW),
+        [
+            write("conv_3", 1000.0),
+            write("conv_1", 1001.0),
+            write("conv_2", 1002.0),
+            write("conv_0", 1003.0)
+        ]
+    );
+    // Ids that are not pinned, and a pin named twice, change nothing.
+    assert_eq!(
+        pin_sequence_writes(&rows, &order(&["loose", "conv_3", "conv_3", "conv_0"]), NOW),
+        pin_sequence_writes(&rows, &order(&["conv_3", "conv_0"]), NOW)
+    );
+    assert_eq!(pin_sequence_writes(&rows, &order(&["conv_2"]), NOW), []);
+    assert_eq!(pin_sequence_writes(&rows, &[], NOW), []);
+    assert_eq!(pin_sequence_writes(&[], &order(&["conv_0"]), NOW), []);
+}
+
+#[test]
+fn setting_the_pin_order_writes_each_changed_key() {
+    let transport = RouteTransport::local();
+    let rows = [("p0", "1000"), ("p1", "2000"), ("p2", "3000")].map(|(id, stamp)| {
+        let row = format!(
+            r#"{{"id":"{id}","status":"idle","created_at":1,"permission_level":4,"labels":{{"omnigent.pinned":"{stamp}"}}}}"#
+        );
+        transport.respond(
+            Some("PATCH"),
+            &format!("/v1/sessions/{id}"),
+            None,
+            Reply::json(200, row.clone()),
+        );
+        row
+    });
+    let core = connected(transport);
+    for row in &rows {
+        cache_row(&core, row);
+    }
+    let reversed = order(&["p2", "p1", "p0"]);
+    block_on(core.set_pin_order(&reversed, NOW)).unwrap();
+    assert_eq!(
+        lines_after_connect(&core),
+        [
+            "PATCH /v1/sessions/p2",
+            "PATCH /v1/sessions/p1",
+            "PATCH /v1/sessions/p0"
+        ]
+    );
+    assert_eq!(
+        core.transport().write_bodies(),
+        vec![
+            json!({"labels": {"omnigent.pinned": "1000"}}),
+            json!({"labels": {"omnigent.pinned": "1001"}}),
+            json!({"labels": {"omnigent.pinned": "1002"}}),
         ]
     );
 }

@@ -86,6 +86,37 @@ struct StoreFailureTests {
     #expect(try server.body(of: write)["labels"] != nil)
   }
 
+  @Test("Setting the pin order writes the moved pin's key, and a refusal is reported")
+  func setsThePinOrder() async throws {
+    let server = RouteServer()
+    let row = { (id: String, stamp: String) in
+      #"{"id":"\#(id)","status":"idle","created_at":1,"permission_level":4,"labels":{"omnigent.pinned":"\#(stamp)"}}"#
+    }
+    server.route(
+      "/v1/sessions",
+      .json(
+        #"{"object":"list","has_more":false,"data":[\#(row("p0", "1000")),\#(row("p1", "2000"))]}"#
+      ))
+    let store = try await connectedStore(server)
+    try await eventually("the list") { store.sessionList.session("p1")?.isPinned == true }
+    server.route("/v1/sessions/p0", .json(row("p0", "1000")))
+    server.route("/v1/sessions/p1", .json(row("p1", "2000")))
+
+    #expect(await store.sessionList.setPinOrder(["p0", "p1"]), "the order they already have")
+    #expect(server.requests(method: "PATCH").isEmpty)
+
+    server.fail("/v1/sessions/p1", method: "PATCH", status: 400)
+    #expect(await !store.sessionList.setPinOrder(["p1", "p0"]))
+    #expect(store.sessionList.editError != nil)
+
+    server.route("/v1/sessions/p1", method: "PATCH", .json(row("p1", "999")))
+    #expect(await store.sessionList.setPinOrder(["p1", "p0"]))
+    let write = try #require(server.requests(method: "PATCH").last)
+    let labels = try #require(try server.body(of: write)["labels"] as? [String: String])
+    #expect(labels["omnigent.pinned"] == "999")
+    #expect(store.sessionList.visible.map(\.id) == ["p1", "p0"])
+  }
+
   @Test("Marking a session seen reports a refusal so the unread dot's stuck state is explained")
   func markSeenRefused() async throws {
     let server = RouteServer()

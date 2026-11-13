@@ -250,6 +250,14 @@ fn a_pin_move_stamps_the_key_and_the_order_saves_every_id() {
     assert_eq!(line, "PATCH /v1/sessions/p1");
     assert_eq!(body, json!({"labels": {"omnigent.pinned": "999"}}));
 
+    // The server answered with p1's old key, so naming it first moves it again.
+    let writes = harness.http.count("/v1/sessions/p1");
+    harness
+        .call(|core| async move { core.set_pin_order(vec!["p1".into(), "p0".into()]).await })
+        .unwrap();
+    assert_eq!(harness.http.count("/v1/sessions/p1"), writes + 1);
+    assert_eq!(harness.last_request().0, "PATCH /v1/sessions/p1");
+
     harness.http.route_method(
         "PUT",
         "/v1/projects/order",

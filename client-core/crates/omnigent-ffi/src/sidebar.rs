@@ -239,6 +239,19 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
+    /// Puts the pinned sessions named in `session_ids` into that order, in the slots they hold
+    /// now; pins that are not named keep their place.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `ReadOnly` without view permission; the write errors.
+    pub async fn set_pin_order(&self, session_ids: Vec<String>) -> Result<(), CoreError> {
+        self.sessions()
+            .set_pin_order(&session_ids, self.unix_ms())
+            .await
+            .map_err(CoreError::from)
+    }
+
     /// Saves `projects` as the caller's project order, promoting label-only ones; returns them
     /// with their ids.
     ///
