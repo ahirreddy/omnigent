@@ -35,6 +35,8 @@ nonisolated public struct HarnessAppearance: Hashable, Sendable {
       KnownHarness(prefixes: ["antigravity", "agy"], id: "antigravity", label: "Antigravity"),
       KnownHarness(prefixes: ["goose", "native-goose"], id: "goose", label: "Goose"),
       KnownHarness(prefixes: ["pi"], id: "pi", label: "Pi"),
+      KnownHarness(prefixes: ["devin"], id: "devin", label: "Devin"),
+      KnownHarness(prefixes: ["qwen"], id: "qwen", label: "Qwen"),
       KnownHarness(prefixes: ["hermes"], id: "hermes", label: "Hermes"),
       KnownHarness(prefixes: ["openai-agents"], id: "openai-agents", label: "OpenAI Agents"),
     ]
@@ -85,27 +87,27 @@ nonisolated public struct HarnessAppearance: Hashable, Sendable {
 struct HarnessGlyph: View {
   let harness: String?
   var size: CGFloat = 18
+  /// Draws the outlined monogram whatever the harness's brand color.
+  var isMonochrome = false
 
   var body: some View {
     let appearance = HarnessAppearance(harness: harness)
     let shape = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+    let isPlain = isMonochrome || (appearance.tint == nil && !appearance.usesCodexGradient)
     Text(verbatim: appearance.monogram)
       .font(.system(size: size * 0.5, weight: .bold, design: .rounded))
-      .foregroundStyle(
-        appearance.tint == nil && !appearance.usesCodexGradient
-          ? AnyShapeStyle(.primary) : AnyShapeStyle(.white)
-      )
+      .foregroundStyle(isPlain ? AnyShapeStyle(.primary) : AnyShapeStyle(.white))
       .frame(width: size, height: size)
       .background {
-        if appearance.usesCodexGradient {
+        if isPlain {
+          shape.strokeBorder(.secondary.opacity(0.6), lineWidth: 1)
+        } else if appearance.usesCodexGradient {
           shape.fill(
             LinearGradient(
               colors: [Color(hex: 0xB1A7FF), Color(hex: 0x7A9DFF), Color(hex: 0x3941FF)],
               startPoint: .top, endPoint: .bottom))
         } else if let tint = appearance.tint {
           shape.fill(tint)
-        } else {
-          shape.strokeBorder(.secondary.opacity(0.6), lineWidth: 1)
         }
       }
       .accessibilityElement()

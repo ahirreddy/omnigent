@@ -127,6 +127,8 @@ nonisolated public struct SessionDisplayOptions: Hashable, Sendable, Codable {
   public var sortBy: SessionSort
   /// Row details shown under the title.
   public var details: Set<SessionRowDetail>
+  /// The harness's mark at the start of each row.
+  public var harnessIcon: HarnessIconStyle
 
   /// Creates options.
   /// - Parameters:
@@ -134,14 +136,29 @@ nonisolated public struct SessionDisplayOptions: Hashable, Sendable, Codable {
   ///   - groupBy: Grouping.
   ///   - sortBy: Sort.
   ///   - details: Row details.
+  ///   - harnessIcon: The harness's mark on each row.
   public init(
     show: SessionShowScope = .all, groupBy: SessionGrouping = .default,
-    sortBy: SessionSort = .updated, details: Set<SessionRowDetail> = [.updated]
+    sortBy: SessionSort = .updated, details: Set<SessionRowDetail> = [.updated],
+    harnessIcon: HarnessIconStyle = .color
   ) {
     self.show = show
     self.groupBy = groupBy
     self.sortBy = sortBy
     self.details = details
+    self.harnessIcon = harnessIcon
+  }
+
+  /// Reads saved options. Ones saved before the harness mark existed show it in color.
+  /// - Parameter decoder: The decoder.
+  /// - Throws: `DecodingError` for a value of the wrong shape.
+  public init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    show = try values.decode(SessionShowScope.self, forKey: .show)
+    groupBy = try values.decode(SessionGrouping.self, forKey: .groupBy)
+    sortBy = try values.decode(SessionSort.self, forKey: .sortBy)
+    details = try values.decode(Set<SessionRowDetail>.self, forKey: .details)
+    harnessIcon = try values.decodeIfPresent(HarnessIconStyle.self, forKey: .harnessIcon) ?? .color
   }
 }
 

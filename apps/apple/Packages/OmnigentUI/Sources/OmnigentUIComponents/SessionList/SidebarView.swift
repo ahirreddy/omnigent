@@ -363,7 +363,8 @@ extension SidebarView {
       }, shareUnavailableReason: sessionActions.shareUnavailableReason)
     return SessionRow(
       session: session, info: row.info, isUnread: row.isUnread, attention: row.requests ?? 0,
-      details: state.display.details, now: state.list.now, menu: menu,
+      details: state.display.details, harnessIcon: state.display.harnessIcon,
+      now: state.list.now, menu: menu,
       isSelecting: bulk.isActive, isChecked: bulk.ids.contains(session.id),
       inlineRename: inlineEdit.session?.id == session.id
         ? SidebarInlineEdit.field($inlineEdit, rename: actions.sessions.rename) : nil,

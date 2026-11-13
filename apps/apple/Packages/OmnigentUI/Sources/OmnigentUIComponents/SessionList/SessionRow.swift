@@ -14,6 +14,8 @@ struct SessionRow: View {
   /// Pending decisions the user can answer, shown in the Needs you capsule when more than one.
   let attention: Int
   let details: Set<SessionRowDetail>
+  /// Whether the harness's mark leads the row, and in which colors.
+  var harnessIcon = HarnessIconStyle.hidden
   /// The time the row's age is counted from; `nil` follows the clock.
   let now: Date?
   let menu: SessionRowMenu
@@ -36,6 +38,9 @@ struct SessionRow: View {
         Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
           .foregroundStyle(isChecked ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
           .accessibilityHidden(true)
+      }
+      if harnessIcon != .hidden {
+        HarnessIcon(harness: info.harness, style: harnessIcon)
       }
       VStack(alignment: .leading, spacing: 1) {
         if let inlineRename {

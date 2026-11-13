@@ -260,6 +260,10 @@ struct DisplayMenuItems: View {
               set(copy)
             }))
       }
+      Divider()
+      Picker("Harness Icon", selection: binding(\.harnessIcon)) {
+        ForEach(HarnessIconStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+      }
     }
   }
 
