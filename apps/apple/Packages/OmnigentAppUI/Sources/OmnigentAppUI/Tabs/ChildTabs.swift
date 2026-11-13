@@ -207,6 +207,18 @@ extension WindowTabs {
     groups.show(.session(ownerID))
   }
 
+  /// Move Tab to New Window, for the sub-agent tab `id`: it leaves `store`'s strip without being
+  /// remembered as closed, and its session opens in a window of its own; `nil` where the
+  /// platform has no windows or another kind of tab is named.
+  func moveToNewWindow(_ id: String, from store: TabStore) -> (@MainActor () -> Void)? {
+    guard let openInNewWindow, let childID = store.tab(id)?.content.ownWindowSessionID else {
+      return nil
+    }
+    return {
+      if store.detach(id) != nil { openInNewWindow(childID) }
+    }
+  }
+
   /// Opens a session that `sourceID`'s conversation links to, from a tab of `ownerID`: one that
   /// runs under `ownerID` joins its tabs (`openChild`), `ownerID` itself shows its chat, and any
   /// other session (a parent, a creator, a fork) shows with its own tabs.

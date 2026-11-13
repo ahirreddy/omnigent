@@ -58,6 +58,13 @@ nonisolated public enum AppTabContent: Hashable, Sendable, Codable {
     }
   }
 
+  /// The session a window of its own can show in place of the tab: a sub-agent's. Every other
+  /// tab (a terminal, a page, a side chat) shows only with the session whose tabs it is in.
+  public var ownWindowSessionID: String? {
+    if case .subagent(_, let childID) = self { return childID }
+    return nil
+  }
+
   /// The strip's kind.
   public var kind: TabKind {
     switch self {

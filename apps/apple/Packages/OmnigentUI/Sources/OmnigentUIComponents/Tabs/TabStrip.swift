@@ -293,7 +293,8 @@ struct TabDrag: Equatable {
       id: tab.id, pane: tab.pane, location: isBelow ? pointer.location : nil,
       section: drops.section)
     let dropsInPane = drops.canShowInPane && drops.tracker?.target != nil
-    isTearing = drops.canTear && tab.isClosable && isBelow && !dropsInPane
+    let canLeave = drops.canTear && tab.isClosable && tab.canMoveToNewWindow
+    isTearing = canLeave && isBelow && !dropsInPane
     return neighbour
   }
 }

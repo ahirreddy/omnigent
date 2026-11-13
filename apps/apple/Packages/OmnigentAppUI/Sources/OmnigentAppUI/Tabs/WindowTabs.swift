@@ -77,6 +77,9 @@ struct WindowTabs {
     if !store.closed.isEmpty {
       actions.reopenClosed = { store.reopenClosed() }
     }
+    if openInNewWindow != nil {
+      actions.moveToNewWindow = { moveToNewWindow($0, from: store)?() }
+    }
     if supportsSplit {
       actions.showInPane = { store.show($0, in: $1) }
       actions.focusPane = { store.focus($0) }
@@ -118,6 +121,7 @@ struct WindowTabs {
       if TabAdapter.item(selected, session: session, browser: nil).canDuplicate {
         commands.duplicateTab = { duplicate(selected.id, in: store) }
       }
+      commands.moveTabToNewWindow = moveToNewWindow(selected.id, from: store)
       if supportsSplit {
         let target = store.pane(of: selected.id)?.other ?? .trailing
         commands.moveTabToOtherPane = { store.show(selected.id, in: target) }

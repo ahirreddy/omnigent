@@ -296,7 +296,7 @@ struct TabContextMenu: View {
       Button("Rename Session\u{2026}", systemImage: "pencil") { rename(tab.id) }
         .accessibilityIdentifier("tab-menu-rename-session")
     }
-    if let moveToNewWindow = actions.moveToNewWindow {
+    if tab.canMoveToNewWindow, let moveToNewWindow = actions.moveToNewWindow {
       Button("Move Tab to New Window", systemImage: "macwindow.badge.plus") {
         moveToNewWindow(tab.id)
       }

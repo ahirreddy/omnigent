@@ -110,6 +110,12 @@ struct TabsReorderTests {
     var noWindow = TabDrag(id: "b")
     _ = follow(&noWindow, across: 0, down: 200, tab: "b", canTear: false)
     #expect(!noWindow.isTearing)
+    // A tab only its own window can show stays, whatever the window offers.
+    var bound = TabFixture.tab("b")
+    bound.canMoveToNewWindow = false
+    var staying = TabDrag(id: "b")
+    _ = follow(&staying, across: 0, down: 200, tab: "b", in: [bound])
+    #expect(!staying.isTearing)
   }
 
   @Test("Over a content edge the tab previews a pane instead of tearing")

@@ -113,6 +113,17 @@
       defer { screen.close() }
       #expect(try #require(menu).item(named: "Rename Session\u{2026}") == nil)
     }
+
+    @Test("A tab only its own window can show has no Move Tab to New Window")
+    func boundToItsWindow() throws {
+      var tab = TabFixture.tab("one")
+      tab.canMoveToNewWindow = false
+      let (screen, menu) = try menu(tab, spy: TabSpy())
+      defer { screen.close() }
+      let items = try #require(menu)
+      #expect(items.item(named: "Move Tab to New Window") == nil)
+      #expect(items.item(named: "Close Tab") != nil)
+    }
   }
 
   @Suite("Tabs: a titlebar tab's context menu", .serialized)

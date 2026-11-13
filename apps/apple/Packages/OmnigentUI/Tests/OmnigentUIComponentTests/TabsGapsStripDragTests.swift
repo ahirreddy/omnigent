@@ -69,6 +69,24 @@
       #expect(spy.calls == ["new window two"])
     }
 
+    @Test("A tab only its own window can show stays in the strip when released below it")
+    func boundTabStays() throws {
+      var bound = TabFixture.tab("two")
+      bound.canMoveToNewWindow = false
+      let spy = TabSpy()
+      let tabs = TabsState(
+        tabs: [TabFixture.tab("one"), bound, TabFixture.tab("three")], selectedID: "one")
+      let screen = screen(tabs, spy.actions)
+      defer { screen.close() }
+      let start = tab(1)
+      try screen.dragGesture(
+        from: start,
+        through: [
+          CGPoint(x: start.x, y: start.y + 10), CGPoint(x: 450, y: start.y + 150),
+        ])
+      #expect(spy.calls.isEmpty)
+    }
+
     @Test("A release on a content edge shows the tab in that pane; the tracker ends")
     func dropsOnEdge() throws {
       let spy = TabSpy()

@@ -123,6 +123,34 @@ struct TabCommandWiringTests {
     #expect(store.selected?.content == .chat(sessionID: "s1"))
   }
 
+  @Test("Move Tab to New Window is for a sub-agent's tab, in a window that can open another")
+  func moveTabToNewWindow() throws {
+    final class Windows { var sessions: [String] = [] }
+    let windows = Windows()
+    let window = try opened()
+    var tabs = window.tabs
+    let store = window.store
+    let child = store.open(.subagent(parentID: "s1", childID: "child"))
+    #expect(tabs.commands.moveTabToNewWindow == nil, "nowhere to open a window")
+    #expect(tabs.actions(store).moveToNewWindow == nil)
+
+    tabs.openInNewWindow = { windows.sessions.append($0) }
+    let shell = store.open(.terminal(sessionID: "s1", terminalID: "t1"))
+    #expect(tabs.commands.moveTabToNewWindow == nil, "a shell shows only with its session")
+    tabs.actions(store).moveToNewWindow?(shell.id)
+    #expect(store.tab(shell.id) != nil)
+    #expect(windows.sessions.isEmpty)
+
+    store.select(child.id)
+    let move = try #require(tabs.commands.moveTabToNewWindow)
+    move()
+    #expect(windows.sessions == ["child"])
+    #expect(store.tab(child.id) == nil)
+    #expect(store.closed.isEmpty, "the tab moved; it was not closed")
+    move()
+    #expect(windows.sessions == ["child"], "a tab that already left opens no second window")
+  }
+
   @Test("A conversation's routes open their tabs in that session's group")
   func routes() throws {
     let window = try opened()

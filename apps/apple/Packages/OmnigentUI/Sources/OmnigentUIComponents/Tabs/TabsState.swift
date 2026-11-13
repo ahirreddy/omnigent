@@ -84,6 +84,9 @@ nonisolated public struct TabItemState: Identifiable, Hashable, Sendable {
   public var pane: TabPane?
   /// A session's primary chat the viewer may rename: its menu offers Rename Session.
   public var canRenameSession = false
+  /// Whether a window of its own can show the tab: Move Tab to New Window and dragging it off
+  /// the strip are offered. A host sets `false` for a tab that only its window can show.
+  public var canMoveToNewWindow = true
 
   /// Creates a tab.
   /// - Parameters:

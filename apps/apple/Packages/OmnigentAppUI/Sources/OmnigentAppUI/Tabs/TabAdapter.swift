@@ -80,6 +80,7 @@ enum TabAdapter {
     item.groupID = tab.content.sessionID
     item.leadsGroup = tab.content.isPrimaryChat
     item.isClosable = !item.leadsGroup
+    item.canMoveToNewWindow = tab.content.ownWindowSessionID != nil
     if item.leadsGroup { item.canDuplicate = false }
     return item
   }

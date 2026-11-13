@@ -1,9 +1,11 @@
+import AppKit
 import Foundation
 import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentTestSupport
 import OmnigentUIComponents
 import OmnigentViewTesting
+import SwiftUI
 import Testing
 
 @testable import OmnigentAppUI
@@ -129,6 +131,31 @@ struct ChildTabsTests {
     group.requestClose(tab.id)
     #expect(group.tabs.map(\.id) == [chat.id])
     #expect(group.selectedID == chat.id)
+  }
+
+  @Test("Move Tab to New Window on a sub-agent's tab opens it in a window and takes the tab away")
+  func movingASubagentToAWindow() async throws {
+    final class Windows { var sessions: [String] = [] }
+    let windows = Windows()
+    var window = try await window()
+    window.tabs.openInNewWindow = { windows.sessions.append($0) }
+    let group = window.group
+    let chat = try #require(group.selected)
+    try await window.reportChild("conv_child")
+    window.tabs.routes(for: "conv_a", subagentsApart: false).openSession("conv_child")
+    #expect(window.strip.map(\.canMoveToNewWindow) == [false, true])
+
+    // The overview's rows carry each tab's menu, after the list's own first row.
+    let strip = try #require(window.tabs.strip)
+    let screen = OffscreenWindow(
+      TabOverviewSheet(state: strip.state, actions: strip.actions) {}, width: 600, height: 600)
+    defer { screen.close() }
+    let title = "Move Tab to New Window"
+    #expect(!menuTitles(try contextMenu(ofListRow: 1, in: screen)).contains(title))
+    try screen.choose(title, in: try contextMenu(ofListRow: 2, in: screen))
+    #expect(windows.sessions == ["conv_child"])
+    #expect(group.tabs.map(\.id) == [chat.id], "the tab left this window")
+    #expect(group.closed.isEmpty, "it moved: Reopen Closed Tab has nothing to bring back")
   }
 
   @Test("A /side typed to an agent that forks the side chat itself opens the fork in a tab")

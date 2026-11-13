@@ -93,6 +93,31 @@ func menu<Content: View>(
   return menu
 }
 
+/// The context menu of a row of the screen's first list, as a right click on the row opens it.
+@MainActor
+func contextMenu<Content: View>(
+  ofListRow row: Int, in screen: OffscreenWindow<Content>
+) throws -> NSMenu {
+  let list = try #require(screen.allViews.lazy.compactMap { $0 as? NSTableView }.first)
+  try #require(row < list.numberOfRows, "row \(row) of \(list.numberOfRows)")
+  let frame = list.rect(ofRow: row)
+  let center = CGPoint(x: frame.midX, y: frame.midY)
+  let event = try #require(
+    NSEvent.mouseEvent(
+      with: .rightMouseDown, location: list.convert(center, to: nil), modifierFlags: [],
+      timestamp: ProcessInfo.processInfo.systemUptime,
+      windowNumber: screen.activeWindow.windowNumber, context: nil, eventNumber: 1,
+      clickCount: 1, pressure: 1))
+  // The menu belongs to the row's content, or to the table around it. A sheet's list is
+  // reached here too, which a hit test from the window's own root is not.
+  var view: NSView? = unsafe list.hitTest(list.convert(center, to: list.superview))
+  while let current = view {
+    if let menu = current.menu(for: event) { return menu }
+    view = unsafe current.superview
+  }
+  throw OffscreenWindowError.notFound("a context menu on row \(row)")
+}
+
 /// The menu at `point`, once it offers `title`. What a menu lists can arrive after the screen
 /// shows or after the pick that changes it (an agent's models are read when it is chosen), so
 /// this opens it again until the title is there.
