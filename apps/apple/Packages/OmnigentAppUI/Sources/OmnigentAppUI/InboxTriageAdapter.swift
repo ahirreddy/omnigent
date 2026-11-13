@@ -105,6 +105,10 @@ struct InboxTriageAdapter: View {
         }
       },
       respond: { card, response in resolve(card, response) })
+    actions.validateForm = { card, values in
+      let pending = connection.conversations[card.carryingSessionId]?.decisions.pending ?? []
+      return .fromCore(cards: pending, cardID: card.id, values: values)
+    }
     actions.editReply = { item in pages?.clearReply(item.sessionId) }
     actions.retry = {
       Task {

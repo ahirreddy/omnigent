@@ -151,6 +151,22 @@ nonisolated extension OmnigentCoreFFI.ElicitationValue {
   }
 }
 
+nonisolated extension OmnigentUIComponents.DecisionFormProblem {
+  /// The core validator's first problem with `values` for the form card `cardID` among `cards`;
+  /// `nil` when the answers are valid, or when `cards` holds no such form.
+  static func fromCore(
+    cards: [OmnigentCoreFFI.DecisionCard], cardID: String,
+    values: [String: OmnigentUIComponents.ElicitationValue]
+  ) -> Self? {
+    guard case .form(let fields) = cards.first(where: { $0.id == cardID })?.kind else {
+      return nil
+    }
+    let problem = OmnigentCoreFFI.validateForm(
+      fields: fields, values: values.mapValues(OmnigentCoreFFI.ElicitationValue.init))
+    return problem.map { Self(message: $0.message, fieldKey: $0.fieldKey) }
+  }
+}
+
 nonisolated extension OmnigentUIComponents.DecisionResponse {
   // The answer the store holds for a card, for the card's "Approved" line.
   // swiftlint:disable:next cyclomatic_complexity

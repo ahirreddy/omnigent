@@ -163,6 +163,29 @@
       #expect(log.entries.contains { $0.hasPrefix("respond a") }, "\(log.entries)")
     }
 
+    @Test("a form request's answers pass the host's validator before Submit sends them")
+    func formValidation() throws {
+      var actions = bed.actions
+      actions.validateForm = { card, values in
+        values["name"] == .text(value: "Ada")
+          ? nil : DecisionFormProblem(message: "\(card.id) wants Ada", fieldKey: "name")
+      }
+      let field = FormField(key: "name", title: "Name", kind: .text, required: false)
+      let form = DecisionCard(
+        id: "f", carryingSessionId: "session-f", title: "Who?", detail: "Details",
+        kind: .form(fields: [field]))
+      let screen = row(bed.item("f", kind: .question, decision: form), actions: actions)
+      defer { screen.close() }
+      try screen.clickElement("inbox-decision-review-f")
+      #expect(try screen.shows("f wants Ada"))
+      try screen.clickElement("inbox-decision-form-submit-f")
+      #expect(log.entries.isEmpty)
+      try screen.replaceText(in: try #require(screen.textFields.first), with: "Ada")
+      #expect(try !screen.shows("f wants Ada"))
+      try screen.clickElement("inbox-decision-form-submit-f")
+      #expect(log.entries.count == 1 && log.entries[0].hasPrefix("respond f"), "\(log.entries)")
+    }
+
     @Test(
       "the label reads what the row is",
       arguments: [

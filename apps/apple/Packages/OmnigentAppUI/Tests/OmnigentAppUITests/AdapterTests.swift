@@ -96,6 +96,34 @@ struct AdapterTests {
     #expect(!OmnigentUIComponents.DecisionCard(codex).acceptsFeedback)
   }
 
+  @Test("A form's answers go to the core's validator; a card that isn't a held form has none")
+  func formProblems() {
+    typealias Problem = OmnigentUIComponents.DecisionFormProblem
+    let title = OmnigentCoreFFI.FormField(
+      key: "title", title: "Title", detail: "", kind: .text, required: true, options: [],
+      allowsCustom: false, isSecret: false, minimum: nil, maximum: nil, minLength: nil,
+      maxLength: 5, minItems: nil, maxItems: nil)
+    func card(_ id: String, _ kind: OmnigentCoreFFI.DecisionKind) -> OmnigentCoreFFI.DecisionCard {
+      OmnigentCoreFFI.DecisionCard(
+        id: id, carryingSessionId: "s", targetSessionId: "s", title: "", detail: "",
+        message: nil, toolInput: nil, kind: kind,
+        permissions: OmnigentCoreFFI.PermissionOptions(
+          allowAllEdits: false, allowAutoMode: false, permissionDirectories: [],
+          rememberLabel: nil, plan: nil, command: nil, execPolicyAmendment: nil,
+          persistModes: [], antigravity: nil, fileChanges: []),
+        phase: nil, policyName: nil, acceptsFeedback: false, answered: false)
+    }
+    let cards = [card("form", .form(fields: [title])), card("approval", .approval)]
+    let long: [String: OmnigentUIComponents.ElicitationValue] = ["title": .text(value: "Too long")]
+    #expect(
+      Problem.fromCore(cards: cards, cardID: "form", values: long)
+        == Problem(message: "Title allows at most 5 characters.", fieldKey: "title"))
+    #expect(
+      Problem.fromCore(cards: cards, cardID: "form", values: ["title": .text(value: "Fix")]) == nil)
+    #expect(Problem.fromCore(cards: cards, cardID: "approval", values: long) == nil)
+    #expect(Problem.fromCore(cards: cards, cardID: "gone", values: long) == nil)
+  }
+
   @Test("An edit approval's files, message and tool input reach the card")
   func editedFiles() {
     let card = OmnigentCoreFFI.DecisionCard(

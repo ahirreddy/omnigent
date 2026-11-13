@@ -38,6 +38,12 @@
       return host.convert(window.convertFromScreen(onScreen), from: nil)
     }
 
+    /// Clicks the middle of the element with this identifier.
+    func clickElement(_ identifier: String) throws {
+      let frame = try withAccessibilityTree { try accessibilityFrame(identifier) }
+      try click(CGPoint(x: frame.midX, y: frame.midY))
+    }
+
     /// The custom action of this name on an element.
     func customAction(_ name: String, of element: NSObject) throws -> NSAccessibilityCustomAction {
       let actions = Self.attribute("accessibilityCustomActions", of: element)

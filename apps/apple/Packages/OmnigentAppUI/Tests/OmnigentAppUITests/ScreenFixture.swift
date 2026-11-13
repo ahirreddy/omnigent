@@ -212,6 +212,17 @@ func click<Content: View>(_ name: String, in screen: OffscreenWindow<Content>) t
   try screen.click(CGPoint(x: frame.midX, y: frame.midY))
 }
 
+/// The controls that start under `view`, in reading order. A list's rows keep their buttons out
+/// of the accessibility tree, so a test knows one there by where it is; a disabled control is
+/// not among them at all.
+@MainActor
+func controls<Content: View>(
+  under view: NSView, in screen: OffscreenWindow<Content>
+) -> [CGRect] {
+  let bottom = view.convert(view.bounds, to: screen.activeWindow.contentView).maxY
+  return screen.controlFrames.filter { $0.minY >= bottom }
+}
+
 /// Presses a keyboard shortcut the way the app delivers it, before the key reaches the focused
 /// view. Returns whether anything took it.
 @MainActor

@@ -53,6 +53,22 @@ extension ConversationWiringTests {
     #expect(info.policies == ["no-rm"])
   }
 
+  @Test("A form's answers are checked by the core: a title over its limit says so and isn't sent")
+  func formAnswersAreValidated() async throws {
+    let server = formRequestServer()
+    let connection = try await storeWithFormRequest(server)
+    let page = ConversationContainer(
+      conversation: try #require(connection.conversations["conv_a"]),
+      summary: connection.sessionList.session("conv_a"), terminals: nil, workspace: nil,
+      panel: nil, changedFilesRevision: { 0 }, navigation: SessionCommandActions(),
+      opener: ExternalURLOpener { _ in true }, openSession: { _ in }, retry: {},
+      server: connection.connectedServer, failureList: ConversationFailures(),
+      forkFlow: ForkFlow(), livenessSheets: SessionLivenessSheets())
+    let screen = OffscreenWindow(page, width: 1000, height: 700)
+    defer { screen.close() }
+    try await answerFormRequest(on: screen, server: server)
+  }
+
   @Test("A save panel that couldn't write the transcript says why; a saved file says nothing")
   func savingFinishes() async throws {
     struct DiskFull: LocalizedError {

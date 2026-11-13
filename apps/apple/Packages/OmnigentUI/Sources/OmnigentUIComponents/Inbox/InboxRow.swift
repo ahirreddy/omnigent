@@ -127,7 +127,8 @@ struct InboxRow: View {
         card: decision, phase: item.phase, isReadOnly: item.isReadOnly, style: .compact,
         context: [item.agentName, item.sessionTitle].filter { !$0.isEmpty }
           .joined(separator: " \u{00B7} "),
-        respond: actions.respond.map { respond in { respond(decision, $0) } }
+        respond: actions.respond.map { respond in { respond(decision, $0) } },
+        validate: actions.validateForm.map { validate in { validate(decision, $0) } }
       )
       .decisionApproveShortcut(ownsApproveShortcut ? decision.id : nil)
       .environment(\.decisionIDPrefix, "inbox-")

@@ -208,6 +208,10 @@ public struct InboxActions {
   public var reply: (@MainActor (InboxItem, String) -> Void)?
   /// Answer the item's decision in place.
   public var respond: (@MainActor (DecisionCard, DecisionResponse) -> Void)?
+  /// Validates a form request's answers with the core (`validate_form`); returns the first
+  /// problem and the field it is about.
+  public var validateForm:
+    (@MainActor (DecisionCard, [String: ElicitationValue]) -> DecisionFormProblem?)?
   /// The reply draft changed after a failure or a sent reply.
   public var editReply: (@MainActor (InboxItem) -> Void)?
   /// Read the items that failed again.

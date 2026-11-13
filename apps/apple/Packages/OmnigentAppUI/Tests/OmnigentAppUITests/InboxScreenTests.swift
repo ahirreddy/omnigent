@@ -159,6 +159,20 @@ struct InboxScreenTests {
     try await settle(screen, until: "the answer") { conversation.decisions.pending.isEmpty }
   }
 
+  @Test("A form answered in its row is checked by the core: a title over its limit isn't sent")
+  func validatingAFormInTheRow() async throws {
+    let server = formRequestServer()
+    let (screen, _) = try page(try await storeWithFormRequest(server))
+    defer { screen.close() }
+    try await settle(screen, untilShowing: "Name the change", contains: true)
+    // The request's summary line, the first control under the row's own, opens its form.
+    let row = try #require(rowFrames(in: screen).first, "\(screen.controlFrames)")
+    let inRow = screen.controlFrames.filter { $0.minY >= row.maxY }
+    let summary = try #require(inRow.first, "\(screen.controlFrames)")
+    try screen.click(CGPoint(x: summary.minX + 40, y: summary.midY))
+    try await answerFormRequest(on: screen, server: server)
+  }
+
   @Test("A session with unseen output previews it; Mark as read tells the server")
   func markingRead() async throws {
     let server = inboxServer()

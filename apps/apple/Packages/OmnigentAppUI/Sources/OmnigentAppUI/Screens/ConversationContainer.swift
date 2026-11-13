@@ -310,6 +310,9 @@ extension ConversationContainer {
             original, with: OmnigentCoreFFI.DecisionResponse(response))
         }
       },
+      validateForm: { card, values in
+        .fromCore(cards: conversation.decisions.cards, cardID: card.id, values: values)
+      },
       dismissError: { conversation.dismissErrors() },
       retry: retry,
       resume: { Task { await conversation.recoverTurn(.resume) } })
