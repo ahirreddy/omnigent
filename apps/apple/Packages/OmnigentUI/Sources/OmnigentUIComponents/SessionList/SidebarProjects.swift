@@ -92,6 +92,10 @@ struct ProjectFolder<Row: View>: View {
           folderMarker
         }
       }
+      #if os(macOS)
+        // The outline no longer indents, which was also the room between its chevron and this.
+        .padding(.leading, Theme.Spacing.extraSmall + Theme.Spacing.tiny)
+      #endif
       .contentShape(Rectangle())
       .onHover { isHovered = $0 }
       .contextMenu { menu.items }
