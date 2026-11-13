@@ -1,6 +1,9 @@
 """The coverage report reads llvm-cov's segments correctly."""
 
+import argparse
+import contextlib
 import importlib.util
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -98,6 +101,125 @@ class CoverageTests(unittest.TestCase):
             self.assertEqual(
                 coverage.unmeasured_files(document, sources), [(str(sources / "Phone.swift"), 3)]
             )
+
+    def test_unmeasured_ignores_a_data_file_whose_comment_has_a_code_word(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sources = Path(directory)
+            (sources / "Art.swift").write_text(
+                '// Path data from the set the web app draws.\nlet art = [\n  "M1 2",\n]\n'
+            )
+            (sources / "Code.swift").write_text("// A note.\nvar size: Int { 1 }\n")
+            self.assertEqual(
+                coverage.unmeasured_files({"data": []}, sources),
+                [(str(sources / "Code.swift"), 1)],
+            )
+
+    def test_unmeasured_ignores_a_file_of_protocols_and_empty_conformances(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sources = Path(directory)
+            (sources / "Receiving.swift").write_text(
+                "protocol Receiving: Sendable {\n  func chunk(bytes: Data)\n"
+                "  var count: Int { get }\n}\n\nextension Sink: Receiving {}\n"
+            )
+            (sources / "Mixed.swift").write_text(
+                "public protocol Naming {\n  func name() -> String\n}\n\n"
+                "extension Naming {\n  func shout() -> String { name().uppercased() }\n}\n"
+            )
+            self.assertEqual(
+                coverage.unmeasured_files({"data": []}, sources),
+                [(str(sources / "Mixed.swift"), 6)],
+            )
+
+    def test_ios_scheme_is_the_package_scheme_when_there_are_several_products(self):
+        self.assertEqual(
+            coverage.ios_scheme("Kit", ["Kit", "Kit-Package", "KitExtras"]), "Kit-Package"
+        )
+        self.assertEqual(coverage.ios_scheme("Kit", ["Kit"]), "Kit")
+        with self.assertRaisesRegex(SystemExit, "Kit: no scheme for its tests among Other"):
+            coverage.ios_scheme("Kit", ["Other"])
+        with self.assertRaisesRegex(SystemExit, "among none"):
+            coverage.ios_scheme("Kit", [])
+
+    def test_ios_tests_run_on_the_named_simulator_with_coverage(self):
+        bundle = Path("/b/Kit.xcresult")
+        command = coverage.ios_test_command("Kit", "Kit-Package", "iPad Pro 13-inch (M5)", bundle)
+        self.assertEqual(command[:4], ["xcodebuild", "test", "-scheme", "Kit-Package"])
+        destination = command[command.index("-destination") + 1]
+        self.assertEqual(destination, "platform=iOS Simulator,name=iPad Pro 13-inch (M5)")
+        self.assertEqual(command[command.index("-enableCodeCoverage") + 1], "YES")
+        self.assertEqual(command[command.index("-resultBundlePath") + 1], str(bundle))
+        self.assertEqual(
+            command[command.index("-derivedDataPath") + 1],
+            str(coverage.IOS_BUILD / "DerivedData"),
+        )
+        self.assertEqual(command[-1], str(bundle))
+
+    def test_ios_tests_can_build_from_a_folder_of_package_checkouts_offline(self):
+        self.assertEqual(coverage.source_package_arguments(None), [])
+        command = coverage.ios_test_command("Kit", "Kit", "iPhone 18 Pro", Path("/b/r"), "/sp")
+        self.assertEqual(
+            command[-4:],
+            [
+                "-clonedSourcePackagesDirPath",
+                "/sp",
+                "-disableAutomaticPackageResolution",
+                "-skipPackageUpdates",
+            ],
+        )
+
+    def test_ios_tests_leave_out_what_the_package_says_needs_a_live_host(self):
+        command = coverage.ios_test_command(
+            "OmnigentRemoteBrowser", "OmnigentRemoteBrowser", "iPhone 18 Pro", Path("/b/r")
+        )
+        self.assertEqual(
+            command[-1], "-skip-testing:OmnigentRemoteBrowserTests/RemoteBrowserE2ETests"
+        )
+
+    def test_ios_summary_measures_the_files_the_simulator_built_and_keeps_the_rest(self):
+        source = "a\nb\n// coverage:off a real finger\nc\n// coverage:on\n"
+        archive = {
+            "/p/Sources/Touch.swift": [
+                {"line": 1, "isExecutable": True, "executionCount": 2},
+                {"line": 2, "isExecutable": True, "executionCount": 0},
+                {"line": 4, "isExecutable": True, "executionCount": 0},
+            ],
+            # Built for iOS too, but the Mac bundles measured it: not this run's to report.
+            "/p/Sources/Shared.swift": [{"line": 1, "isExecutable": True, "executionCount": 1}],
+            # Listed with no code that runs.
+            "/p/Sources/Types.swift": [{"line": 1, "isExecutable": False}],
+        }
+        unmeasured = [
+            ("/p/Sources/Touch.swift", 40),
+            ("/p/Sources/Types.swift", 9),
+            ("/p/Sources/MacSample.swift", 7),
+        ]
+        rows, rest = coverage.summarize_ios(unmeasured, archive, read_source=lambda _path: source)
+        self.assertEqual(rows, [("/p/Sources/Touch.swift", 1, 2, [2], [(3, 5, "a real finger")])])
+        self.assertEqual(rest, [("/p/Sources/Types.swift", 9), ("/p/Sources/MacSample.swift", 7)])
+
+    def test_archive_rows_print_a_total_then_the_details_asked_for(self):
+        rows = [
+            ("/p/Sources/Kit/Touch.swift", 1, 3, [2, 3], [(7, 9, "a real finger")]),
+            ("/p/Sources/Kit/Keys.swift", 2, 2, [], []),
+        ]
+        options = argparse.Namespace(excluded=True, files=True, uncovered="Touch")
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            coverage.print_archive_rows("Kit, 2 iOS-only files on the simulator", rows, options)
+        self.assertEqual(
+            printed.getvalue().splitlines(),
+            [
+                "  60.0%       3/5       Kit, 2 iOS-only files on the simulator",
+                "        Kit/Touch.swift:7-9  a real finger",
+                "         33.3%      2 missing  Kit/Touch.swift",
+                "        /p/Sources/Kit/Touch.swift: 2-3",
+            ],
+        )
+        summary = argparse.Namespace(excluded=False, files=False, uncovered=None)
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            coverage.print_archive_rows("iOS-only files", [], summary)
+        self.assertEqual(printed.getvalue(), " 100.0%       0/0       iOS-only files\n")
 
     def test_screen_lock_reads_the_session_flag(self):
         locked = "<key>CGSSessionScreenIsLocked</key>\n\t\t\t<true/>"

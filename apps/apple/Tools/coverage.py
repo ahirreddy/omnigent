@@ -2,12 +2,18 @@
 """Line coverage of the Apple packages from their own fast tests.
 
 Usage: coverage.py [--package NAME ...] [--no-test] [--uncovered PATH_SUBSTRING] [--excluded]
-                   [--unmeasured]
+                   [--unmeasured] [--ios] [--simulator NAME] [--source-packages DIR]
+                   [--no-mac-test]
        coverage.py --hosted XCRESULT [--files] [--uncovered PATH_SUBSTRING] [--excluded]
 
 Runs each package's offscreen-safe tests with coverage on, then reports its source lines. Tests
 that open real windows or need a live server are left out, here and in CI's fast tier; the VM
 flows in Tests/OmnigentMacUITests cover those.
+
+`--ios` also runs the tests of each package with files only an iOS build compiles on an iOS
+simulator, and reports those files in rows and a total of their own; the Mac rows don't change.
+`--source-packages` names a folder of package checkouts to use where their origins are unreachable.
+`--no-mac-test` reports the Mac rows from the last run's data and still runs the simulator's tests.
 
 `--hosted` instead reads the macOS app target's own code from a result bundle of its hosted tests.
 
@@ -18,6 +24,7 @@ Previews and the design gallery don't count. Code only a real window can reach g
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -34,6 +41,7 @@ EXCLUDED_SOURCES = re.compile(r"/Gallery/|/Preview/|Playground[^/]*\.swift$|Prev
 COVERAGE_OFF = re.compile(r"^\s*// coverage:off(?:\s+(.*\S))?\s*$")
 COVERAGE_ON = re.compile(r"^\s*// coverage:on\s*$")
 PREVIEW = re.compile(r"^(\s*)#Preview\b")
+PROTOCOL = re.compile(r"^\s*(?:(?:public|private|fileprivate|nonisolated|@\w+)\s+)*protocol\s")
 EXECUTABLE_CODE = re.compile(r"\b(func|init|get|set|didSet|willSet)\b|\bvar \w+[^=\n]*\{")
 
 # The app target the hosted tests measure; its VM-only chaos driver and generated code don't count.
@@ -65,6 +73,16 @@ TEST_ARGUMENTS = {
         "--skip",
         "AgentBrowserWebKitTests",
     ],
+}
+
+
+# Where the simulator runs build and leave their result bundles; one build serves every package.
+IOS_BUILD = ROOT / ".build" / "ios-coverage"
+IOS_SIMULATOR = "iPhone 18 Pro"
+
+# Per-package `xcodebuild test` arguments on the simulator. Left out: the live host test.
+IOS_TEST_ARGUMENTS = {
+    "OmnigentRemoteBrowser": ["-skip-testing:OmnigentRemoteBrowserTests/RemoteBrowserE2ETests"],
 }
 
 
@@ -199,18 +217,20 @@ def summarize_hosted(paths, archive, read_source=None):
     return rows
 
 
+def view_result_bundle(result_bundle, *arguments):
+    """xccov's JSON for a result bundle: `--archive` is every file's lines."""
+    command = ["xcrun", "xccov", "view", *arguments, "--json", str(result_bundle)]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise SystemExit(f"{result_bundle}: xccov failed: {result.stderr.strip()}")
+    return json.loads(result.stdout)
+
+
 def read_hosted(result_bundle):
     """Reads the app target's coverage rows from a result bundle."""
-
-    def view(*arguments):
-        command = ["xcrun", "xccov", "view", *arguments, "--json", str(result_bundle)]
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
-        if result.returncode != 0:
-            raise SystemExit(f"{result_bundle}: xccov failed: {result.stderr.strip()}")
-        return json.loads(result.stdout)
-
-    listing = view("--report", "--files-for-target", HOSTED_TARGET)
-    rows = summarize_hosted(hosted_files(listing), view("--archive"))
+    listing = view_result_bundle(result_bundle, "--report", "--files-for-target", HOSTED_TARGET)
+    archive = view_result_bundle(result_bundle, "--archive")
+    rows = summarize_hosted(hosted_files(listing), archive)
     # No lines means the bundle didn't measure the target, which must not read as full coverage.
     if not any(row[2] for row in rows):
         raise SystemExit(f"{result_bundle}: no coverage for {HOSTED_TARGET}.")
@@ -219,10 +239,15 @@ def read_hosted(result_bundle):
 
 def print_hosted(rows, options):
     """Prints the app target's total and what `--files`, `--uncovered` and `--excluded` ask for."""
+    print_archive_rows(HOSTED_TARGET, rows, options)
+
+
+def print_archive_rows(title, rows, options):
+    """Prints a total for rows read from xccov, and the details the options ask for."""
     covered = sum(row[1] for row in rows)
     lines = sum(row[2] for row in rows)
     percent = 100 * covered / lines if lines else 100
-    print(f"{percent:6.1f}%  {covered:>6}/{lines:<6}  {HOSTED_TARGET}")
+    print(f"{percent:6.1f}%  {covered:>6}/{lines:<6}  {title}", flush=True)
     for path, file_covered, file_lines, missing, reasons in sorted(
         rows, key=lambda row: row[1] - row[2]
     ):
@@ -253,9 +278,107 @@ def unmeasured_files(document, sources):
             for line in text.splitlines()
             if line.strip() and not line.lstrip().startswith("//")
         ]
-        if EXECUTABLE_CODE.search(text):
+        # A comment's words ("the set the app draws") and a protocol's requirements are not code.
+        if EXECUTABLE_CODE.search("\n".join(without_protocols(code))):
             rows.append((str(path), len(code)))
     return sorted(rows, key=lambda row: -row[1])
+
+
+def without_protocols(lines):
+    """`lines` without protocol declarations, whose `func` and `get` have no bodies to run."""
+    kept, depth = [], None
+    for line in lines:
+        if depth is None and PROTOCOL.match(line):
+            depth = 0
+        if depth is None:
+            kept.append(line)
+            continue
+        depth += line.count("{") - line.count("}")
+        if depth <= 0 and "}" in line:
+            depth = None
+    return kept
+
+
+def ios_scheme(name, schemes):
+    """The scheme that runs a package's tests: xcodebuild adds `-Package` for several products."""
+    for candidate in (f"{name}-Package", name):
+        if candidate in schemes:
+            return candidate
+    raise SystemExit(f"{name}: no scheme for its tests among {', '.join(schemes) or 'none'}.")
+
+
+def source_package_arguments(source_packages):
+    """`xcodebuild` arguments that resolve remote packages from a folder of checkouts, offline."""
+    if not source_packages:
+        return []
+    return [
+        "-clonedSourcePackagesDirPath",
+        str(source_packages),
+        "-disableAutomaticPackageResolution",
+        "-skipPackageUpdates",
+    ]
+
+
+def ios_test_command(name, scheme, simulator, result_bundle, source_packages=None):
+    """The `xcodebuild test` call that runs a package's tests on a simulator with coverage."""
+    return [
+        "xcodebuild",
+        "test",
+        "-scheme",
+        scheme,
+        "-destination",
+        f"platform=iOS Simulator,name={simulator}",
+        "-enableCodeCoverage",
+        "YES",
+        "-derivedDataPath",
+        str(IOS_BUILD / "DerivedData"),
+        "-resultBundlePath",
+        str(result_bundle),
+        *source_package_arguments(source_packages),
+        *IOS_TEST_ARGUMENTS.get(name, []),
+    ]
+
+
+def summarize_ios(unmeasured, archive, read_source=None):
+    """Splits `unmeasured` into coverage rows for the files `archive` has lines for, and the rest.
+
+    The rows are `summarize_hosted`'s; the rest stay `(path, code_lines)`.
+    """
+    built = [
+        path
+        for path, _lines in unmeasured
+        if any(line["isExecutable"] for line in archive.get(path, []))
+    ]
+    rest = [row for row in unmeasured if row[0] not in built]
+    return summarize_hosted(built, archive, read_source), rest
+
+
+def run_ios_package(name, simulator, should_test, source_packages=None):
+    """Runs one package's tests on a simulator: xccov's lines per file, `None` if they failed."""
+    path = PACKAGES / name
+    result_bundle = IOS_BUILD / f"{name}.xcresult"
+    if should_test:
+        list_schemes = ["xcodebuild", "-list", "-json", *source_package_arguments(source_packages)]
+        listing = subprocess.run(
+            list_schemes, cwd=path, capture_output=True, text=True, check=True
+        )
+        scheme = ios_scheme(name, json.loads(listing.stdout)["workspace"]["schemes"])
+        if result_bundle.exists():
+            # xcodebuild refuses to write over an earlier run's bundle.
+            shutil.rmtree(result_bundle)
+        command = ios_test_command(name, scheme, simulator, result_bundle, source_packages)
+        result = subprocess.run(command, cwd=path, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            output = result.stdout + result.stderr
+            failures = [
+                line for line in output.splitlines() if "\u2718" in line or "error:" in line
+            ]
+            shown = "\n".join(failures[:40]) or output[-2000:]
+            print(f"{name}: iOS tests failed\n{shown}", file=sys.stderr)
+            return None
+    if not result_bundle.exists():
+        raise SystemExit(f"{name}: no simulator run to report; run with --ios, without --no-test.")
+    return view_result_bundle(result_bundle, "--archive")
 
 
 def screen_is_locked(registry=None):
@@ -329,8 +452,21 @@ def main():
     parser.add_argument(
         "--hosted", metavar="XCRESULT", help="Report the app target from this result bundle."
     )
+    parser.add_argument(
+        "--ios", action="store_true", help="Measure iOS-only files on an iOS simulator too."
+    )
+    parser.add_argument(
+        "--simulator", default=IOS_SIMULATOR, help=f"The simulator's name ({IOS_SIMULATOR})."
+    )
+    parser.add_argument(
+        "--source-packages", metavar="DIR", help="Remote packages' checkouts, to build offline."
+    )
+    parser.add_argument(
+        "--no-mac-test", action="store_true", help="Reuse the Mac data; still run the simulator."
+    )
     options = parser.parse_args()
-    if not options.no_test and not options.hosted and screen_is_locked():
+    tests_mac = not options.no_test and not options.no_mac_test
+    if tests_mac and not options.hosted and screen_is_locked():
         # Clicks on borderless buttons and other controls fail while locked, as if broken.
         raise SystemExit("The screen is locked: view tests can't click. Unlock it and run again.")
     if options.hosted:
@@ -344,9 +480,20 @@ def main():
     total_covered = total_lines = 0
     failed = []
     unmeasured = []
+    ios_rows = []
     for name in names:
-        rows, passed, package_unmeasured = run_package(name, not options.no_test)
+        rows, passed, package_unmeasured = run_package(name, tests_mac)
+        package_ios_rows = []
+        if options.ios and package_unmeasured:
+            archive = run_ios_package(
+                name, options.simulator, not options.no_test, options.source_packages
+            )
+            if archive is None:
+                failed.append(f"{name} (iOS)")
+            else:
+                package_ios_rows, package_unmeasured = summarize_ios(package_unmeasured, archive)
         unmeasured += package_unmeasured
+        ios_rows += package_ios_rows
         if not passed:
             # The profile on disk may be from an older run, so it says nothing about this one.
             failed.append(name)
@@ -376,11 +523,18 @@ def main():
                     line for line in uncovered_lines(segments) if line not in excluded
                 ]
                 print(f"        {path}: {' '.join(line_ranges(missing_lines))}")
+        if package_ios_rows:
+            title = f"{name}, {len(package_ios_rows)} iOS-only files on the simulator"
+            print_archive_rows(title, package_ios_rows, options)
     if total_lines:
         percent = 100 * total_covered / total_lines
         print(f"{percent:6.1f}%  {total_covered:>6}/{total_lines:<6}  total")
     else:
         print("    n/a  no coverage measured")
+    if ios_rows:
+        # Its own total: another platform's run, counted by xccov and not from llvm-cov's segments.
+        summary_only = argparse.Namespace(excluded=False, files=False, uncovered=None)
+        print_archive_rows("iOS-only files, on the simulator", ios_rows, summary_only)
     if unmeasured:
         # A total must not read as all the code: iOS files and untested targets aren't in it.
         lines = sum(row[1] for row in unmeasured)
