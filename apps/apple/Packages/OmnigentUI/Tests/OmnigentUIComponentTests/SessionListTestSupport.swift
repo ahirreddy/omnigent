@@ -40,13 +40,12 @@
       return CGPoint(x: frame.midX, y: frame.midY)
     }
 
-    /// Clicks a list row with the real mouse path. Rows without a drag or button in them need
-    /// ``selectRow(_:)``: AppKit's click recognizer doesn't run for synthesized events.
+    /// Clicks a list row with the real mouse path: a session row and a navigation row alike.
     func clickRow(_ row: Int, modifiers: NSEvent.ModifierFlags = []) throws {
       try click(center(ofRow: row), modifiers: modifiers)
     }
 
-    /// Selects a row as the list's own click handling does.
+    /// Selects a row without an event, as the list's own click handling ends up doing.
     func selectRow(_ row: Int) throws {
       try #require(list).selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
       settle()

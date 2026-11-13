@@ -61,6 +61,20 @@
       #expect(screen.plainButtons.isEmpty)
     }
 
+    @Test("the hover More menu opens the row's menu, and its items run")
+    func hoverMoreMenu() throws {
+      let spy = spy
+      let screen = OffscreenWindow(RowHost(spy: spy, session: session), width: 280, height: 32)
+      defer { screen.close() }
+      try screen.hover(middle)
+      let menu = try screen.openMenu(try #require(screen.popUps.first))
+      #expect(menu.titles.prefix(2) == ["Pin", "Share"])
+      try screen.choose("Archive", in: menu)
+      try screen.choose("Rename\u{2026}", in: menu)
+      try screen.choose("Mark as unread", in: menu)
+      #expect(spy.calls == ["archive s true", "rename prompt", "unread s true"])
+    }
+
     @Test("the hover Unpin and Unarchive ask for the opposite")
     func hoverOpposites() throws {
       let spy = spy

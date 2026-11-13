@@ -46,6 +46,22 @@
       #expect(text.value.isEmpty)
     }
 
+    @Test("Typing searches as the text changes, and a click on the field's clear button empties it")
+    func clearButton() throws {
+      let text = SearchText()
+      let screen = OffscreenWindow(SearchBoxHost(text: text), width: 260, height: 60)
+      defer { screen.close() }
+      let box = try field(screen)
+      try screen.click(box)
+      try screen.type("zeta")
+      #expect(text.value == "zeta")
+      let cell = try #require(box.cell as? NSSearchFieldCell)
+      let clear = box.convert(cell.cancelButtonRect(forBounds: box.bounds), to: screen.host)
+      try screen.click(CGPoint(x: clear.midX, y: clear.midY))
+      #expect(text.value.isEmpty)
+      #expect(box.stringValue.isEmpty)
+    }
+
     @Test("The header comes first, then the search field, then the rows")
     func headerAboveSearch() throws {
       let spy = SidebarSpy(SidebarFixture.state)

@@ -79,6 +79,56 @@
       #expect(spy.calls == ["drop beta pin(slotOf: Optional(\"pinned\"))", "drop pinned unpin"])
     }
 
+    /// What the sidebar asked for, without the open folder's page read.
+    private func asked(_ spy: SidebarSpy) -> [String] {
+      spy.calls.filter { !$0.hasPrefix("load project") }
+    }
+
+    @Test("A loose session dropped on a folder, or on a row inside one, is filed in that project")
+    func ontoProjects() async throws {
+      let spy = GroupSortFixture.openSpy()
+      let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 320, height: 900)
+      defer { screen.close() }
+      let loose = SidebarDragItem.session("loose").payload
+      // Home is the closed folder under Work's three rows.
+      let homeFolder = GroupSortFixture.firstWorkRow + 3
+      try await screen.drop(loose, at: try screen.center(ofRow: homeFolder))
+      try await screen.drop(loose, at: try screen.center(ofRow: GroupSortFixture.firstWorkRow))
+      #expect(
+        asked(spy) == [
+          "drop loose \(SidebarDropAction.move(to: GroupSortFixture.home, unpin: false))",
+          "drop loose \(SidebarDropAction.move(to: GroupSortFixture.work, unpin: false))",
+        ])
+    }
+
+    @Test(
+      "A filed session dropped on a Sessions row, or on the Sessions header, leaves its project")
+    func outOfAProject() async throws {
+      let spy = GroupSortFixture.openSpy()
+      let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 320, height: 900)
+      defer { screen.close() }
+      try await screen.drop(
+        SidebarDragItem.session("w1").payload,
+        at: try screen.center(ofRow: GroupSortFixture.looseRow))
+      try await screen.drop(
+        SidebarDragItem.session("w2").payload,
+        at: try screen.center(ofRow: GroupSortFixture.looseRow - 1))
+      let ungrouped = SidebarDropAction.ungroup(unpin: false)
+      #expect(asked(spy) == ["drop w1 \(ungrouped)", "drop w2 \(ungrouped)"])
+    }
+
+    @Test("A folder dropped on another folder takes its place; dropped on itself nothing moves")
+    func reordersProjects() async throws {
+      let spy = GroupSortFixture.openSpy()
+      let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 320, height: 900)
+      defer { screen.close() }
+      let work = SidebarDragItem.project("work").payload
+      try await screen.drop(work, at: try screen.center(ofRow: GroupSortFixture.workFolder))
+      #expect(asked(spy).isEmpty)
+      try await screen.drop(work, at: try screen.center(ofRow: GroupSortFixture.firstWorkRow + 3))
+      #expect(asked(spy) == ["reorder home,work"])
+    }
+
     @Test("While selecting sessions, a drop does nothing")
     func whileSelecting() async throws {
       let spy = SidebarSpy(SidebarFixture.state)

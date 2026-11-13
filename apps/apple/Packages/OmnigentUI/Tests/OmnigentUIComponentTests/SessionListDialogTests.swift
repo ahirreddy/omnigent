@@ -190,6 +190,28 @@
       #expect(!SystemSideEffects.record.suppressibleAlertMessages.contains("Rename Session"))
     }
 
+    @Test("ticking Remember my choice reports it with the answer, and only for that answer")
+    func rememberedChoice() throws {
+      let spy = SidebarSpy(SidebarFixture.state)
+      let one = ArchiveWorktreeRequest(sessionIDs: ["a"], worktreeSessionIDs: ["a"])
+      SystemSideEffects.answer(alert: .alertSecondButtonReturn, ticksSuppression: true)
+      let kept = OffscreenWindow(PromptHost(spy: spy, request: one), width: 300, height: 200)
+      defer { kept.close() }
+      #expect(spy.calls == [#"choose ["a"] false true"#])
+
+      SystemSideEffects.answer(alert: .alertFirstButtonReturn, ticksSuppression: true)
+      let deleted = OffscreenWindow(PromptHost(spy: spy, request: one), width: 300, height: 200)
+      defer { deleted.close() }
+      #expect(spy.calls.last == #"choose ["a"] true true"#)
+
+      // Cancel with the box ticked remembers nothing, for this prompt or the next.
+      spy.calls = []
+      SystemSideEffects.answer(alert: .alertThirdButtonReturn, ticksSuppression: true)
+      let cancelled = OffscreenWindow(PromptHost(spy: spy, request: one), width: 300, height: 200)
+      defer { cancelled.close() }
+      #expect(spy.calls.isEmpty)
+    }
+
     @Test("a reasoned menu button is disabled with its reason as the tooltip")
     func reasoned() throws {
       let spy = SidebarSpy(SidebarFixture.state)

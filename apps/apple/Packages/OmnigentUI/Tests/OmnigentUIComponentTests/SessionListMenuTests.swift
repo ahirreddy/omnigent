@@ -139,6 +139,47 @@
       #expect(spy.calls == ["leave beta"])
     }
 
+    @Test("Cancel in the Rename, Stop and Leave prompts asks the host for nothing")
+    func cancelledPrompts() throws {
+      var state = SidebarFixture.state
+      state.list.sessions[1].canStop = true
+      state.rowInfo["gamma"] = SessionRowInfo(isShared: true)
+      let (spy, screen) = sidebar(state)
+      defer { screen.close() }
+      SystemSideEffects.answer(alert: .alertSecondButtonReturn)
+      // gamma is shared, so it has a section of its own above Sessions: 9 Shared, 10 gamma.
+      let betaRow = 12
+      try choose("Rename\u{2026}", row: betaRow, screen)
+      try choose("Stop session", row: betaRow, screen)
+      try choose("Leave session\u{2026}", row: 10, screen)
+      #expect(
+        SystemSideEffects.record.alertMessages == [
+          "Rename Session", "Stop session?", "Leave this session?",
+        ])
+      #expect(spy.calls.isEmpty)
+
+      // The same prompts, answered with their first button, do ask.
+      SystemSideEffects.answer(alert: .alertFirstButtonReturn)
+      try choose("Rename\u{2026}", row: betaRow, screen)
+      try choose("Stop session", row: betaRow, screen)
+      try choose("Leave session\u{2026}", row: 10, screen)
+      #expect(spy.calls == ["rename beta Beta", "stop beta", "leave gamma"])
+    }
+
+    @Test("Rename can't be confirmed for a blank or an over-long title")
+    func renameDisabled() throws {
+      var state = SidebarFixture.state
+      state.list.sessions[1].title = String(
+        repeating: "x", count: SessionDialogs.maxTitleLength + 1)
+      state.list.sessions[2].title = "   "
+      let (spy, screen) = sidebar(state)
+      defer { screen.close() }
+      try choose("Rename\u{2026}", row: SidebarFixture.betaRow, screen)
+      try choose("Rename\u{2026}", row: SidebarFixture.gammaRow, screen)
+      #expect(SystemSideEffects.record.alertMessages == ["Rename Session", "Rename Session"])
+      #expect(spy.calls.isEmpty)
+    }
+
     @Test("Fork and Share stay visible, disabled, when they can't run")
     func unavailableReasons() throws {
       let spy = SidebarSpy(SidebarFixture.state)

@@ -32,7 +32,7 @@
       defer { screen.close() }
       let destinations: [SidebarDestination] = [.newSession, .automations, .inbox, .canvas, .usage]
       for (row, destination) in destinations.enumerated() {
-        try screen.selectRow(row)
+        try screen.clickRow(row)
         #expect(spy.selection == destination)
       }
       let rowsWithAll = try #require(screen.list).numberOfRows
