@@ -115,7 +115,8 @@ nonisolated enum ToolTitle {
     "sys_terminal_list": "List terminals",
   ]
 
-  private static func object(_ arguments: String?) -> [String: Any] {
+  /// A call's arguments as a JSON object; empty for anything else.
+  static func object(_ arguments: String?) -> [String: Any] {
     guard let data = arguments?.data(using: .utf8) else { return [:] }
     do {
       return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]

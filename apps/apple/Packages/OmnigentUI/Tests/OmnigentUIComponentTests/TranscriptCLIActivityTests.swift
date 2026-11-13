@@ -35,11 +35,11 @@
           Fixture.activityRow(
             .terminal, summary: "fallback",
             details: [DetailSection(id: "input", title: "Input", text: "make test")]),
-          "$ make test"
+          "You ran make test"
         ),
-        (Fixture.activityRow(.terminal, summary: "ls"), "$ ls"),
-        (Fixture.activityRow(.error, summary: "It broke", isFailure: true), "Error: It broke"),
-        (Fixture.activityRow(.error, title: "Only title", isFailure: true), "Error: Only title"),
+        (Fixture.activityRow(.terminal, summary: "ls"), "You ran ls"),
+        (Fixture.activityRow(.error, summary: "It broke", isFailure: true), "It broke"),
+        (Fixture.activityRow(.error, title: "Only title", isFailure: true), "Only title"),
         (Fixture.activityRow(.command, title: "Run", summary: "/x"), "Run /x"),
         (
           Fixture.activityRow(.retry, title: "Retrying", status: "in_progress"),
@@ -89,7 +89,7 @@
       #expect(try !screen.shows("Weighed the options"))
     }
 
-    @Test("A command's output opens with its errors, and the copy is the command")
+    @Test("A shell command's output shows under it with its errors, and the copy is the command")
     func terminalDetails() throws {
       let row = Fixture.activityRow(
         .terminal,
@@ -100,12 +100,25 @@
         ])
       let screen = line(row)
       defer { screen.close() }
-      let menu = try #require(try screen.firstContextMenu())
-      try screen.choose("Show details", in: menu)
+      #expect(try screen.shows("You ran make"))
       #expect(try screen.shows("built"))
       #expect(try screen.shows("warned"))
+      let menu = try #require(try screen.firstContextMenu())
+      #expect(titles(of: menu) == ["Copy"])
       try screen.choose("Copy", in: menu)
       #expect(copiedText() == "make")
+
+      // The output's own row has no command line: it continues the command's.
+      let output = line(
+        Fixture.activityRow(
+          .terminal, title: "Terminal output", summary: "built",
+          details: [DetailSection(id: "stdout", title: "Out", text: "built")]))
+      defer { output.close() }
+      #expect(try output.shows("built"))
+      #expect(try !output.shows("You ran"))
+      let outputMenu = try #require(try output.firstContextMenu())
+      try output.choose("Copy", in: outputMenu)
+      #expect(copiedText() == "built")
     }
 
     @Test("A row with nothing to show or copy offers no actions")
@@ -191,7 +204,7 @@
         CLIWorkGroup(
           id: "w", items: [.tools(id: "t", entries: entries)], isLive: false, decorations: [:]))
       defer { screen.close() }
-      #expect(try screen.shows("Ran `ls -la`"))
+      #expect(try screen.shows("Ran ls -la"))
       // The pointer resting on a line puts nothing over its text.
       restKeyboard(screen)
       let resting = screen.controlFrames.count
@@ -209,10 +222,10 @@
       try screen.choose(
         "Collapse work", in: try #require(try screen.contextMenu(offering: "Collapse work")))
       #expect(try screen.shows("Ran 2 shell commands"))
-      #expect(try !screen.shows("Ran `ls -la`"))
+      #expect(try !screen.shows("Ran ls -la"))
       try screen.choose(
         "Expand work", in: try #require(try screen.contextMenu(offering: "Expand work")))
-      #expect(try screen.shows("Ran `ls -la`"))
+      #expect(try screen.shows("Ran ls -la"))
     }
 
     @Test("A work group with no tools says it worked; a live one can't be folded")
@@ -249,7 +262,7 @@
         CLIWorkingLine(isBlocked: false, startedAt: Date().addingTimeInterval(-12))
           .environment(\.composerLayoutStyle, .card))
       defer { timed.close() }
-      #expect(try timed.shows("esc to interrupt"))
+      #expect(try timed.shows("s \u{2022} esc to interrupt)"))
     }
 
     @Test("The CLI transcript ends with its rows: no line per sub-agent and no agents bar")

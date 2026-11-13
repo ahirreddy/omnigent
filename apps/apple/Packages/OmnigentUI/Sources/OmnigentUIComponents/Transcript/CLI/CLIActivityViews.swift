@@ -27,9 +27,15 @@ struct CLIActivityLine: View, Equatable {
   var body: some View {
     if let activity = row.activity, activity.kind != .sidechat, activity.kind != .unknown {
       VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-        CLIBulletLine(
-          line: line(activity), marker: activity.isFailure ? palette.failure : nil,
-          isLive: row.isStreaming)
+        // A shell command's output row has no line of its own: it continues the command's.
+        if activity.kind != .terminal || !isOutputOnly(activity) {
+          CLIBulletLine(
+            line: line(activity), marker: activity.isFailure ? palette.failure : nil,
+            isLive: row.isStreaming,
+            glyph: activity.kind == .error ? CLIBullet.error : CLIBullet.glyph,
+            spokenPrefix: activity.kind == .error ? "Error: " : "")
+        }
+        if activity.kind == .terminal { terminalOutput(activity) }
         if let recovery = recovery(activity) { recoveryButton(recovery, help: activity) }
         if activity.kind == .error {
           ErrorRecoveryLinks(row: row, activity: activity).padding(.leading, size.character * 2)
@@ -51,10 +57,11 @@ struct CLIActivityLine: View, Equatable {
     case .reasoning:
       line.append(row.isStreaming ? "Thinking\u{2026}" : "Thought", palette.dim)
     case .terminal:
-      line.append("$ ", palette.code, bold: true)
-      line.append(activity.detail("input") ?? activity.summary)
+      line.append("You ran", bold: true)
+      line.append(" ")
+      line.append(
+        styled: CLIShell.highlighted(activity.detail("input") ?? activity.summary, palette))
     case .error:
-      line.append("Error: ", palette.failure, bold: true)
       line.append(activity.summary.isEmpty ? activity.title : activity.summary, palette.failure)
     default:
       line.append(activity.displayTitle, activity.isFailure ? palette.failure : nil, bold: true)
@@ -82,18 +89,27 @@ struct CLIActivityLine: View, Equatable {
     .accessibilityIdentifier(action.identifier)
   }
 
+  /// Whether a shell-mode row carries only what the command printed, not the command.
+  private func isOutputOnly(_ activity: Activity) -> Bool {
+    let printed = ["stdout", "stderr"].contains { activity.detail($0)?.isEmpty == false }
+    return printed && activity.detail("input")?.isEmpty != false
+  }
+
+  /// What a shell-mode command printed, on the branch under it; its errors in the failure color.
+  @ViewBuilder private func terminalOutput(_ activity: Activity) -> some View {
+    if let stdout = activity.detail("stdout"), !stdout.isEmpty {
+      CLIDetailText(text: stdout)
+    }
+    if let stderr = activity.detail("stderr"), !stderr.isEmpty {
+      CLIDetailText(text: stderr, color: \.failure)
+    }
+  }
+
   @ViewBuilder private func details(_ activity: Activity) -> some View {
     VStack(alignment: .leading, spacing: Theme.Spacing.small) {
       switch activity.kind {
       case .reasoning:
         CLIDetailText(text: activity.detail("summary") ?? activity.summary)
-      case .terminal:
-        if let stdout = activity.detail("stdout"), !stdout.isEmpty {
-          CLIDetailText(text: stdout, color: \.body)
-        }
-        if let stderr = activity.detail("stderr"), !stderr.isEmpty {
-          CLIDetailText(text: stderr, color: \.failure)
-        }
       default:
         if appearance.outputRendering == .rich {
           DetailSectionsView(sections: activity.details, rowID: row.id)
@@ -111,9 +127,8 @@ struct CLIActivityLine: View, Equatable {
     guard let activity = row.activity else { return false }
     switch activity.kind {
     case .reasoning: return !(activity.detail("summary") ?? activity.summary).isEmpty
-    case .terminal:
-      return activity.detail("stdout")?.isEmpty == false
-        || activity.detail("stderr")?.isEmpty == false
+    // A shell command's output always shows under it.
+    case .terminal: return false
     default: return !activity.details.isEmpty
     }
   }
@@ -132,7 +147,6 @@ struct CLIActivityLine: View, Equatable {
   private func toggleIdentifier(_ activity: Activity) -> String {
     switch activity.kind {
     case .reasoning: "reasoning-toggle-\(row.id)"
-    case .terminal: "terminal-toggle-\(row.id)"
     case .compaction: "compaction-toggle-\(row.id)"
     default: "activity-toggle-\(row.id)"
     }
@@ -150,7 +164,8 @@ struct CLIActivityLine: View, Equatable {
     }
     let copyText =
       activity.kind == .terminal
-      ? activity.detail("input") ?? "" : (row.text.isEmpty ? activity.summary : row.text)
+      ? activity.detail("input") ?? activity.summary
+      : (row.text.isEmpty ? activity.summary : row.text)
     if !copyText.isEmpty {
       actions.append(
         CLIAction(
@@ -249,8 +264,8 @@ struct CLIFooterLine: View {
   }
 }
 
-/// The live turn's working line, or the blocked state, as the CLI shows it:
-/// "• Working (12s · esc to interrupt)".
+/// The live turn's working line, or the blocked state, as the Codex CLI shows it:
+/// "• Working (12s • esc to interrupt)".
 struct CLIWorkingLine: View {
   let isBlocked: Bool
   /// When the turn started; `nil` leaves the time out.
@@ -280,7 +295,7 @@ struct CLIWorkingLine: View {
     let detail = [startedAt.map { TurnElapsed.elapsed(since: $0, now: now) }, hint]
       .compactMap(\.self)
     if !detail.isEmpty {
-      line.append(" (\(detail.joined(separator: " \u{00B7} ")))", palette.dim)
+      line.append(" (\(detail.joined(separator: " \u{2022} ")))", palette.dim)
     }
     return line
   }

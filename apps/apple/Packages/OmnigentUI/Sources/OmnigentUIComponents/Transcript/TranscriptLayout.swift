@@ -175,7 +175,8 @@ nonisolated struct DiffSummary: Hashable, Sendable {
     return Self(files: files, added: added, removed: removed, lines: lines)
   }
 
-  private static func filePath(_ line: String) -> String? {
+  /// The path a file header line names (a patch's `*** Update File:` or a diff's `+++ b/`).
+  static func filePath(_ line: String) -> String? {
     for prefix in ["*** Update File: ", "*** Add File: ", "*** Delete File: ", "+++ b/"]
     where line.hasPrefix(prefix) {
       return String(line.dropFirst(prefix.count))

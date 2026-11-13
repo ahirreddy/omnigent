@@ -1,8 +1,9 @@
 import OmnigentPlatform
 import SwiftUI
 
-/// A run of tool calls as terminal lines: "Ran `git status`", "Edited `Sources/App.swift`
-/// (+3 −1)", "Failed `npm test`". Output folds under each line, opened from the hover actions.
+/// A run of tool calls as the cells the Codex CLI draws: "Ran git status" with its output on
+/// the `└` branch, "Explored" over the files read and searched, "Edited App.swift (+3 -1)" over
+/// its changed lines. A cell's actions are in its context menu.
 struct CLIToolLines: View, Equatable {
   let entries: [ToolEntry]
 
@@ -11,7 +12,12 @@ struct CLIToolLines: View, Equatable {
   var body: some View {
     let agents = entries.filter(CLIAgentTool.isAgent)
     VStack(alignment: .leading, spacing: CLIMetrics.blockGap) {
-      ForEach(entries.filter { !CLIAgentTool.isAgent($0) }) { CLIToolLine(entry: $0) }
+      ForEach(CLIToolCell.cells(for: entries.filter { !CLIAgentTool.isAgent($0) })) { cell in
+        switch cell {
+        case .explored(let steps): CLIExploredCell(steps: steps)
+        case .call(let step): CLIToolLine(step: step)
+        }
+      }
       // Agents run side by side: every start, then each finish, as the CLI logs them.
       ForEach(agents) { CLIAgentLine(entry: $0, phase: .started) }
       ForEach(agents.filter { !$0.isRunning }) { CLIAgentLine(entry: $0, phase: .finished) }
@@ -77,127 +83,153 @@ struct CLIAgentLine: View {
   }
 }
 
-struct CLIToolLine: View {
-  let entry: ToolEntry
-  @State private var isExpanded = false
-  @Environment(\.cliPalette) private var palette
-  @Environment(\.transcriptAppearance) private var appearance
-  private(set) var size = CLIFontSize()
-
-  private var activity: Activity? { entry.primary?.activity }
-
-  private var diff: DiffSummary? {
-    let texts = [
-      entry.call?.activity?.detail("arguments"), entry.result?.activity?.detail("output"),
-    ]
-    return texts.lazy.compactMap { $0 }.compactMap(DiffSummary.find(in:)).first
-  }
-
-  private var subject: String {
-    let summary = entry.call?.activity?.summary ?? activity?.summary ?? ""
-    let first = summary.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
-    if let diff, !diff.files.isEmpty { return diff.files.joined(separator: ", ") }
-    return first.isEmpty ? (activity?.title ?? "tool") : first
-  }
-
-  private var verb: String {
-    if entry.isRunning { return "Running" }
-    if entry.isFailure { return "Failed" }
-    switch ToolRunSummary.category(of: activity?.title ?? "") {
-    case .shell: return "Ran"
-    case .list: return "Listed"
-    case .read: return "Read"
-    case .edit: return "Edited"
-    case .search: return "Searched"
-    case nil: return "Called \(activity?.title ?? "tool")"
-    }
-  }
-
-  private var output: String? {
-    entry.result?.activity?.detail("output") ?? entry.result?.text.nilIfEmpty
-  }
-
-  var body: some View {
-    let diff = diff
-    VStack(alignment: .leading, spacing: Theme.Spacing.extraSmall) {
-      CLIBulletLine(line: line(diff), marker: marker)
-      if isExpanded { expanded(diff) }
-    }
-    .transcriptColumn()
-    .cliActions(actions)
-    .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("tool-\(entry.id)")
-  }
-
-  private var marker: SRGB? {
-    if entry.isFailure { return palette.failure }
-    return entry.isRunning ? palette.marker : nil
-  }
-
-  private func line(_ diff: DiffSummary?) -> CLILineText {
-    var line = CLILineText()
-    line.append(verb, entry.isFailure ? palette.failure : nil, bold: true)
-    line.append(" ")
-    line.append("`\(subject)`", palette.path)
-    if let diff {
-      line.append(" (")
-      line.append("+\(diff.added)", palette.added)
-      line.append(" ")
-      line.append("\u{2212}\(diff.removed)", palette.failure)
-      line.append(")")
-    }
-    return line
-  }
-
-  @ViewBuilder private func expanded(_ diff: DiffSummary?) -> some View {
-    VStack(alignment: .leading, spacing: Theme.Spacing.small) {
-      if appearance.outputRendering == .rich {
-        if let diff { DiffView(diff: diff) }
-        if let call = entry.call?.activity, !call.details.isEmpty {
-          DetailSectionsView(sections: call.details, rowID: entry.call?.id ?? entry.id)
-        }
-        if let result = entry.result?.activity {
-          DetailSectionsView(sections: result.details, rowID: entry.result?.id ?? entry.id)
-        }
-      } else {
-        if let input = entry.call?.activity?.summary, input.contains("\n") {
-          CLIDetailText(text: input, color: \.body)
-        }
-        if let output {
-          CLIDetailText(text: output, color: entry.isFailure ? \.failure : \.dim)
-        } else if !entry.isRunning {
-          CLIDetailText(text: "(no output)")
-        }
-      }
-      AttachmentStrip(
-        attachments: (entry.call?.attachments ?? []) + (entry.result?.attachments ?? []))
-    }
-    .padding(.leading, appearance.outputRendering == .rich ? 0 : size.character * 2)
-  }
-
-  private var actions: [CLIAction] {
+extension CLIToolStep {
+  /// Show output, Copy input and Copy output for the steps a cell or one of its lines holds.
+  @MainActor
+  static func actions(
+    for steps: [Self], isExpanded: Bool, toggle: @escaping @MainActor () -> Void
+  ) -> [CLIAction] {
+    let id = steps.first?.id ?? ""
     var actions = [
       CLIAction(
         title: isExpanded ? "Hide output" : "Show output",
         systemImage: isExpanded ? "chevron.up" : "chevron.down",
-        identifier: "tool-toggle-\(entry.id)", perform: { isExpanded.toggle() })
+        identifier: "tool-toggle-\(id)", perform: toggle)
     ]
-    if let input = entry.call?.activity?.summary, !input.isEmpty {
+    let input = steps.map(\.input).filter { !$0.isEmpty }.joined(separator: "\n")
+    if !input.isEmpty {
       actions.append(
         CLIAction(
-          title: "Copy input", systemImage: "doc.on.doc", identifier: "tool-copy-input-\(entry.id)",
+          title: "Copy input", systemImage: "doc.on.doc", identifier: "tool-copy-input-\(id)",
           perform: { Pasteboard.copy(input) }))
     }
-    if let output {
+    let output = steps.compactMap(\.output).joined(separator: "\n")
+    if !output.isEmpty {
       actions.append(
         CLIAction(
           title: "Copy output", systemImage: "doc.on.clipboard",
-          identifier: "tool-copy-output-\(entry.id)", perform: { Pasteboard.copy(output) }))
+          identifier: "tool-copy-output-\(id)", perform: { Pasteboard.copy(output) }))
     }
     return actions
   }
 }
 
-extension String {
-  fileprivate var nilIfEmpty: String? { isEmpty ? nil : self }
+/// One tool call's cell: its header line, then what it left on the `└` branch: a command's
+/// first lines of output, an edit's changed lines, a plan's steps.
+struct CLIToolLine: View {
+  /// The output lines a cell shows before "… +N lines".
+  static let previewLines = 3
+  /// The lines of a command after its first that a cell shows.
+  static let commandLines = 2
+
+  let step: CLIToolStep
+  @State private var isExpanded = false
+  @Environment(\.cliPalette) private var palette
+  @Environment(\.transcriptAppearance) private var appearance
+  private(set) var size = CLIFontSize()
+
+  private var entry: ToolEntry { step.entry }
+  private var files: [CLIDiffFile] { step.diff.map(CLIDiffFile.files(in:)) ?? [] }
+  private var isEdit: Bool {
+    if case .edit = step.call { return true }
+    return step.diff != nil
+  }
+
+  var body: some View {
+    let files = files
+    VStack(alignment: .leading, spacing: size.lineSpacing) {
+      CLIBulletLine(
+        line: line(files), marker: marker, isLive: entry.isRunning,
+        glyph: isEdit && entry.isFailure ? CLIBullet.failed : CLIBullet.glyph,
+        spokenPrefix: entry.isFailure && !isEdit ? "Failed: " : "")
+      if isExpanded, appearance.outputRendering == .rich {
+        rich
+      } else {
+        detail(files)
+      }
+      if isExpanded {
+        AttachmentStrip(
+          attachments: (entry.call?.attachments ?? []) + (entry.result?.attachments ?? []))
+      }
+    }
+    .transcriptColumn()
+    .cliActions(
+      CLIToolStep.actions(for: [step], isExpanded: isExpanded) { isExpanded.toggle() }
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("tool-\(entry.id)")
+  }
+
+  /// Red for a failure, pulsing while it runs, green for a command or call that worked.
+  private var marker: SRGB? {
+    if entry.isFailure { return palette.failure }
+    if entry.isRunning { return palette.marker }
+    if case .plan = step.call { return nil }
+    return isEdit ? nil : palette.added
+  }
+
+  private func line(_ files: [CLIDiffFile]) -> CLILineText {
+    var line = CLILineText()
+    if isEdit {
+      editLine(&line, files)
+    } else if case .command(let script) = step.call {
+      line.append(entry.isRunning ? "Running" : "Ran", bold: true)
+      line.append(" ")
+      line.append(styled: CLIShell.highlighted(CLIShell.lines(script).first ?? "", palette))
+    } else if case .other(let name, let arguments) = step.call {
+      // A result whose call is not on screen has only its own title to show.
+      let verb = entry.isRunning ? "Calling " : "Called "
+      line.append(entry.call == nil ? "" : verb, bold: true)
+      line.append(name, entry.call == nil ? nil : palette.marker)
+      line.append(arguments.isEmpty ? "" : "(")
+      line.append(arguments, palette.dim)
+      line.append(arguments.isEmpty ? "" : ")")
+    } else {
+      line.append("Updated Plan", bold: true)
+    }
+    return line
+  }
+
+  /// "Edited App.swift (+3 -1)", "Added notes.md (+2 -0)" or "Edited 2 files (+6 -1)".
+  private func editLine(_ line: inout CLILineText, _ files: [CLIDiffFile]) {
+    var subject = files.count > 1 ? "\(files.count) files" : files.first?.path ?? ""
+    if case .edit(let path) = step.call, subject.isEmpty { subject = path ?? "files" }
+    if entry.isFailure {
+      line.append("Failed to edit \(subject)", palette.failure, bold: true)
+      return
+    }
+    let verb = files.count == 1 ? files[0].verb : "Edited"
+    line.append(entry.isRunning ? "Editing" : verb, bold: true)
+    line.append(" \(subject)")
+    if let diff = step.diff, diff.added + diff.removed > 0 {
+      CLIDiffCounts.append(to: &line, added: diff.added, removed: diff.removed, palette)
+    }
+  }
+
+  @ViewBuilder
+  private func detail(_ files: [CLIDiffFile]) -> some View {
+    if case .command(let script) = step.call, !isEdit {
+      CLICommandLines(lines: Array(CLIShell.lines(script).dropFirst()), showsAll: $isExpanded)
+    }
+    if case .plan(let note, let steps) = step.call {
+      CLIPlanSteps(note: note, steps: steps)
+    } else if !files.isEmpty, !entry.isFailure {
+      CLIDiffFiles(files: files, showsAll: $isExpanded)
+    } else if let output = step.output {
+      CLIOutputTree(text: output, limit: Self.previewLines, showsAll: $isExpanded)
+    } else if !entry.isRunning {
+      CLIOutputTree(text: "(no output)", limit: 1, showsAll: .constant(true))
+    }
+  }
+
+  /// Rich rendering opens the chat's cards: the diff, then the call's and the result's sections.
+  @ViewBuilder private var rich: some View {
+    if let diff = step.diff { DiffView(diff: diff) }
+    if let call = entry.call?.activity, !call.details.isEmpty {
+      DetailSectionsView(sections: call.details, rowID: entry.call?.id ?? entry.id)
+    }
+    if let result = entry.result?.activity {
+      DetailSectionsView(sections: result.details, rowID: entry.result?.id ?? entry.id)
+    }
+  }
 }

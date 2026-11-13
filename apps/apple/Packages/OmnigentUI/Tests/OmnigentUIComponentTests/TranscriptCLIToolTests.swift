@@ -6,7 +6,30 @@
 
   @testable import OmnigentUIComponents
 
-  @Suite("CLI tool lines", .serialized)
+  /// A tool call with its result, and the CLI cells that draw a run of them.
+  @MainActor
+  enum CLIToolFixture {
+    static func entry(
+      _ id: String = "c", title: String = "Bash", summary: String = "ls -la",
+      status: String? = "completed", output: String? = "total 0", isFailure: Bool = false
+    ) -> ToolEntry {
+      ToolEntry(
+        call: TranscriptFixture.toolCall(id, title: title, summary: summary, status: status),
+        result: output.map {
+          TranscriptFixture.toolResult("\(id)-result", callID: id, output: $0, isFailure: isFailure)
+        })
+    }
+
+    static func screen(_ entries: [ToolEntry], rendering: OutputRendering = .styled)
+      -> OffscreenWindow<AnyView>
+    {
+      transcriptScreen(
+        CLIToolLines(entries: entries)
+          .transcriptAppearance(TranscriptAppearance(style: .cli, outputRendering: rendering)))
+    }
+  }
+
+  @Suite("CLI tool cells", .serialized)
   @MainActor
   struct TranscriptCLIToolTests {
     private typealias Fixture = TranscriptFixture
@@ -15,90 +38,106 @@
       SystemSideEffects.reset()
     }
 
-    private func entry(
-      title: String = "Bash", summary: String = "ls -la", status: String? = "completed",
-      output: String? = "total 0", isFailure: Bool = false
-    ) -> ToolEntry {
-      ToolEntry(
-        call: Fixture.toolCall("c", title: title, summary: summary, status: status),
-        result: output.map {
-          Fixture.toolResult("r", callID: "c", output: $0, isFailure: isFailure)
-        })
-    }
-
-    private func tools(_ entries: [ToolEntry], rendering: OutputRendering = .styled)
-      -> OffscreenWindow<AnyView>
-    {
-      transcriptScreen(
-        CLIToolLines(entries: entries)
-          .transcriptAppearance(TranscriptAppearance(style: .cli, outputRendering: rendering)))
-    }
-
-    @Test("A line's verb comes from its tool, with the subject in backticks")
-    func verbs() throws {
-      let cases: [(String, String)] = [
-        ("Bash", "Ran `s`"), ("Read", "Read `s`"), ("Edit", "Edited `s`"), ("Grep", "Searched `s`"),
-        ("ls", "Listed `s`"), ("Custom", "Called Custom `s`"),
+    @Test("A cell's header says what the call did, with no backticks or argument keys")
+    func headers() throws {
+      let cases: [(ToolEntry, String)] = [
+        (CLIToolFixture.entry(title: "Bash", summary: "s"), "Ran s"),
+        (CLIToolFixture.entry(title: "Custom", summary: "s"), "Called Custom(s)"),
+        (CLIToolFixture.entry(title: "Custom", summary: ""), "Called Custom"),
+        (
+          CLIToolFixture.entry(title: "mcp__docs__find", summary: "limit: 3\nquery: q"),
+          "Called docs.find(limit: 3, query: q)"
+        ),
+        (CLIToolFixture.entry(title: "Edit", summary: "file_path: a.swift"), "Edited a.swift"),
+        (CLIToolFixture.entry(title: "Write", summary: ""), "Edited files"),
       ]
-      for (title, expected) in cases {
-        let screen = tools([entry(title: title, summary: "s")])
+      for (entry, expected) in cases {
+        let screen = CLIToolFixture.screen([entry])
         defer { screen.close() }
-        #expect(try screen.shows(expected), "\(title)")
+        let shown = try screen.shownText()
+        #expect(shown.contains(expected), "\(shown)")
       }
     }
 
-    @Test("A running or failed tool says so, and a blank summary falls back to its name")
-    func states() throws {
-      let running = tools([entry(status: "in_progress", output: nil)])
-      defer { running.close() }
-      #expect(try running.shows("Running `ls -la`"))
-
-      let failed = tools([entry(output: "boom", isFailure: true)])
-      defer { failed.close() }
-      #expect(try failed.shows("Failed `ls -la`"))
-
-      let blank = tools([entry(summary: "")])
-      defer { blank.close() }
-      #expect(try blank.shows("Ran `Bash`"))
-
-      let multiline = tools([entry(summary: "first\nsecond")])
-      defer { multiline.close() }
-      #expect(try multiline.shows("Ran `first`"))
+    @Test("A command shows without its login shell, its later lines behind a bar")
+    func commandLines() throws {
+      let script = "python3 - <<'PY'\nprint(1)\nprint(2)\nprint(3)\nprint(4)\nPY"
+      let screen = CLIToolFixture.screen([
+        CLIToolFixture.entry(summary: "command: /usr/bin/zsh -lc \"\(script)\"\nworkdir: /repo")
+      ])
+      defer { screen.close() }
+      let shown = try screen.shownText()
+      #expect(shown.contains("Ran python3 - <<'PY'"))
+      #expect(shown.contains("print(2)"))
+      #expect(shown.contains("\u{2026} +3 lines"))
+      #expect(!shown.contains { $0.contains("zsh") || $0.contains("command:") })
+      #expect(try !screen.shows("print(4)"))
+      let menu = try #require(try screen.firstContextMenu())
+      try screen.choose("Copy input", in: menu)
+      #expect(copiedText() == script)
+      // The count of hidden lines is the button that shows them.
+      try screen.clickControl(at: screen.controlFrames.count - 1)
+      #expect(try screen.shows("print(4)"))
     }
 
-    @Test("Show output opens the output, Hide output closes it, and both copies work")
+    @Test("A running or failed command says so, and a blank one falls back to its tool")
+    func states() throws {
+      let running = CLIToolFixture.screen([CLIToolFixture.entry(status: "in_progress", output: nil)]
+      )
+      defer { running.close() }
+      #expect(try running.shows("Running ls -la"))
+      #expect(try !running.shows("(no output)"))
+
+      // A failure keeps "Ran" and its output: its marker turns red, as the Codex CLI marks it.
+      let failed = CLIToolFixture.screen([CLIToolFixture.entry(output: "boom", isFailure: true)])
+      defer { failed.close() }
+      #expect(try failed.shows("Ran ls -la"))
+      #expect(try failed.shows("boom"))
+
+      let blank = CLIToolFixture.screen([CLIToolFixture.entry(summary: "")])
+      defer { blank.close() }
+      #expect(try blank.shows("Ran Bash"))
+    }
+
+    @Test("Output shows its first lines; Show output opens the rest, and both copies work")
     func output() throws {
-      let screen = tools([entry(summary: "first\nsecond", output: "the output")])
+      let lines = (1...5).map { "line\($0)" }.joined(separator: "\n")
+      let screen = CLIToolFixture.screen([CLIToolFixture.entry(output: lines + "\n")])
       defer { screen.close() }
-      #expect(try !screen.shows("the output"))
+      #expect(try screen.shows("line3"))
+      #expect(try !screen.shows("line4"))
+      #expect(try screen.shows("\u{2026} +2 lines"))
       let menu = try #require(try screen.firstContextMenu())
       #expect(titles(of: menu) == ["Show output", "Copy input", "Copy output"])
       try screen.choose("Copy input", in: menu)
-      #expect(copiedText() == "first\nsecond")
+      #expect(copiedText() == "ls -la")
       try screen.choose("Copy output", in: menu)
-      #expect(copiedText() == "the output")
+      #expect(copiedText() == lines)
       try screen.choose("Show output", in: menu)
-      #expect(try screen.shows("the output"))
-      #expect(try screen.shows("second"))
+      #expect(try screen.shows("line5"))
       let open = try #require(try screen.firstContextMenu())
       try screen.choose("Hide output", in: open)
-      #expect(try !screen.shows("the output"))
+      #expect(try !screen.shows("line5"))
+      try screen.clickControl(at: screen.controlFrames.count - 1)
+      #expect(try screen.shows("line5"))
     }
 
-    @Test("A finished tool with no output says that when opened; a running one doesn't")
+    @Test("A finished call with no output says that; a running one doesn't")
     func noOutput() throws {
-      let finished = tools([ToolEntry(call: Fixture.toolCall("c", summary: ""), result: nil)])
+      let finished = CLIToolFixture.screen([
+        ToolEntry(call: Fixture.toolCall("c", summary: ""), result: nil)
+      ])
       defer { finished.close() }
+      #expect(try finished.shows("(no output)"))
       let menu = try #require(try finished.firstContextMenu())
       #expect(titles(of: menu) == ["Show output"])
-      try finished.choose("Show output", in: menu)
-      #expect(try finished.shows("(no output)"))
 
-      let running = tools([entry(status: "in_progress", output: nil)])
-      defer { running.close() }
-      let runningMenu = try #require(try running.firstContextMenu())
-      try running.choose("Show output", in: runningMenu)
-      #expect(try !running.shows("(no output)"))
+      let orphan = CLIToolFixture.screen([
+        ToolEntry(call: nil, result: Fixture.toolResult("r", callID: "c"))
+      ])
+      defer { orphan.close() }
+      #expect(try orphan.shownText().contains("Result"))
+      #expect(try orphan.shows("total 0"))
     }
 
     @Test("Rich rendering opens the call's and the result's sections, with attachments")
@@ -107,33 +146,20 @@
       let call = Fixture.toolCall(
         "c", details: [DetailSection(id: "arguments", title: "Arguments", text: "the args")],
         attachments: [attachment])
-      let screen = tools(
+      let screen = CLIToolFixture.screen(
         [ToolEntry(call: call, result: Fixture.toolResult("r", callID: "c"))], rendering: .rich)
       defer { screen.close() }
+      #expect(try !screen.shows("report.pdf"))
       let menu = try #require(try screen.firstContextMenu())
       try screen.choose("Show output", in: menu)
-      #expect(try screen.shows("the args"))
       #expect(try screen.shows("report.pdf"))
-    }
-
-    @Test("An edit names its files and its added and removed lines")
-    func editDiff() throws {
-      let patch = "--- a/app.swift\n+++ b/app.swift\n@@ -1,2 +1,2 @@\n-old\n+new\n+more\n"
-      let call = Fixture.toolCall(
-        "c", title: "Edit", summary: "edit",
-        details: [DetailSection(id: "arguments", title: "Arguments", text: patch)])
-      let screen = tools([ToolEntry(call: call, result: nil)], rendering: .rich)
-      defer { screen.close() }
-      #expect(try screen.shows("Edited `app.swift` (+2 \u{2212}1)"))
-      let menu = try #require(try screen.firstContextMenu())
-      try screen.choose("Show output", in: menu)
-      #expect(try screen.shows("old"))
     }
 
     @Test("Agents log every start, then each finish, and only a finish copies its result")
     func agentLines() throws {
-      let done = entry(title: "spawn_agent", summary: "/root/one", output: "its answer")
-      let screen = tools([done])
+      let done = CLIToolFixture.entry(
+        title: "spawn_agent", summary: "/root/one", output: "its answer")
+      let screen = CLIToolFixture.screen([done])
       defer { screen.close() }
       #expect(try screen.shows("Started `/root/one`"))
       #expect(try screen.shows("Completed `/root/one`"))
@@ -141,11 +167,15 @@
       try screen.choose("Copy result", in: menu)
       #expect(copiedText() == "its answer")
 
-      let failed = tools([entry(title: "agent", summary: "", output: "bad", isFailure: true)])
+      let failed = CLIToolFixture.screen([
+        CLIToolFixture.entry(title: "agent", summary: "", output: "bad", isFailure: true)
+      ])
       defer { failed.close() }
       #expect(try failed.shows("Failed `agent`"))
 
-      let running = tools([entry(title: "task", summary: "s", status: "in_progress", output: nil)])
+      let running = CLIToolFixture.screen([
+        CLIToolFixture.entry(title: "task", summary: "s", status: "in_progress", output: nil)
+      ])
       defer { running.close() }
       #expect(try running.shows("Started `s`"))
       #expect(try !running.shows("Completed"))
@@ -162,11 +192,12 @@
       try screen.clickControl(at: 0)
       #expect(try screen.shows("line7"))
       #expect(try !screen.shows("+5 lines"))
+      #expect(CLIOutputTree.more(1) == "\u{2026} +1 line")
     }
 
-    @Test("A line's actions stay off its text under the pointer, and are in its menu")
+    @Test("A cell's actions stay off its text under the pointer, and are in its menu")
     func actionsInTheMenuNotOnHover() throws {
-      let screen = tools([entry(summary: "the input")])
+      let screen = CLIToolFixture.screen([CLIToolFixture.entry(summary: "the input")])
       defer { screen.close() }
       restKeyboard(screen)
       let resting = screen.controlFrames.count
