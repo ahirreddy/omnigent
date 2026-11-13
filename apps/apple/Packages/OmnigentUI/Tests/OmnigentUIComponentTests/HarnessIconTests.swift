@@ -143,6 +143,25 @@
       #expect(withMark > RenderSupport.inkCoverage(try row(.hidden)))
     }
 
+    @Test("In a sidebar list row the one-color mark is drawn in the row's text color")
+    func inSidebarList() throws {
+      func row(_ style: HarnessIconStyle) throws -> RenderSupport.Rendered {
+        try RenderSupport.render(
+          List {
+            HStack {
+              if style != .hidden { HarnessIcon(harness: "codex-native", style: style, size: 32) }
+              Spacer()
+            }
+            .foregroundStyle(Color(red: 0, green: 1, blue: 0))
+          }
+          .listStyle(.sidebar)
+          .frame(height: 80),
+          width: 200, height: 80, scheme: .dark, layout: .regular)
+      }
+      #expect(shows(0x00FF00, in: try row(.monochrome)))
+      #expect(!shows(0x00FF00, in: try row(.hidden)))
+    }
+
     @Test("The style is monochrome until chosen, and display options saved with one still load")
     func setting() throws {
       #expect(HarnessIconStyle.default == .monochrome)
