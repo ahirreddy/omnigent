@@ -92,4 +92,33 @@
       #expect(log.choices == [HostMoveChoice(hostID: "new", workspace: "/srv/project")])
     }
   }
+
+  extension ComposerGapsHostMoveTests {
+    @Test("Cancel in Browse goes back to the move sheet with its directory as it was")
+    func cancelsBrowse() async throws {
+      let screen = OffscreenWindow(
+        ComposerSheetHost(
+          sheet: HostMoveSheet(kind: .switchHost(currentHostID: "old"), actions: actions()) {}))
+      defer { screen.close() }
+      screen.settle(0.5)
+      await screen.drainTasks()
+      // The icon-only Browse button sits before Cancel and Switch Host.
+      try screen.tapButton(fromEnd: 2)
+      #expect(try await screen.eventually { screen.activeWindow.attachedSheet != nil })
+      await screen.drainTasks()
+      // A sheet over the sheet is out of the window helper's reach; Esc is its Cancel.
+      let browser = try #require(screen.activeWindow.attachedSheet)
+      let escape = try #require(
+        NSEvent.keyEvent(
+          with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+          windowNumber: browser.windowNumber, context: nil, characters: "\u{1B}",
+          charactersIgnoringModifiers: "\u{1B}", isARepeat: false, keyCode: ComposerKey.escape))
+      #expect(browser.performKeyEquivalent(with: escape))
+      #expect(try await screen.eventually { screen.activeWindow.attachedSheet == nil })
+      #expect(screen.window.attachedSheet != nil, "the move sheet is still up")
+      try screen.tapButton(fromEnd: 0)
+      await screen.drainTasks()
+      #expect(log.choices == [HostMoveChoice(hostID: "new", workspace: "/Users/me")])
+    }
+  }
 #endif

@@ -87,12 +87,19 @@
       #expect(try screen.shows("can't take attachments right now."))
     }
 
-    @Test("text on the clipboard is left for the editor to paste")
+    @Test("text on the clipboard is left for the editor, which pastes it into the draft")
     func textStaysText() async throws {
-      let screen = openComposer(ComposerScreenModel(state: ComposerViewState()), log.actions)
+      let model = ComposerScreenModel(state: ComposerViewState())
+      let screen = openComposer(model, log.actions)
       defer { screen.close() }
       clipboard(nil, text: "words")
       try await pressCommandV(screen)
+      #expect(log.attachments.isEmpty)
+      // The key goes on to Edit > Paste, which sends paste to the focused editor.
+      let editor = try #require(screen.window.firstResponder as? NSTextView)
+      #expect(editor.tryToPerform(#selector(NSText.paste(_:)), with: nil))
+      await screen.drainTasks()
+      #expect(model.draft == "words")
       #expect(log.attachments.isEmpty)
     }
 

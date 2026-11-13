@@ -151,4 +151,26 @@
       #expect(shown == [.switchHost, nil, nil, nil])
     }
   }
+
+  extension ComposerLivenessRowTests {
+    @Test("Resume on a Machine in the reconnect sheet brings up the sheet that resumes it")
+    func resumeFromTheSheet() async throws {
+      let sheets = SessionLivenessSheets()
+      let screen = OffscreenWindow(
+        SessionLivenessRow(
+          notice: notice(.stranded), actions: actions(resume: true, sheets: sheets)))
+      defer { screen.close() }
+      try screen.tapButton(0)
+      screen.settle(0.5)
+      #expect(sheets.shown == .reconnect)
+      #expect(try screen.shows("Resume on a Machine\u{2026}"))
+      #expect(try !screen.shows("Start Session"))
+      // Resume on a Machine, Check Again, Fork Session, then Done.
+      try screen.tapButton(fromEnd: 3)
+      #expect(sheets.shown == .resume)
+      #expect(try await screen.eventually { try screen.shows("Start Session") })
+      #expect(screen.window.attachedSheet != nil)
+      #expect(log.events.isEmpty, "neither Check Again nor Fork ran")
+    }
+  }
 #endif

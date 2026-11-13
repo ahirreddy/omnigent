@@ -80,10 +80,11 @@
       #expect(try screen.shows("10 / 100 tokens"))
       #expect(try screen.shows("Update Goal"))
       #expect(try screen.shows("Clear Goal"))
+      try screen.tapButton(fromEnd: 3)
       try screen.tapButton(fromEnd: 2)
       try screen.tapButton(fromEnd: 1)
       try screen.tapButton(fromEnd: 0)
-      #expect(log.events == ["active:false", "dismiss", "submit:Ship it:100"])
+      #expect(log.events == ["clear", "active:false", "dismiss", "submit:Ship it:100"])
     }
 
     @Test("a paused goal offers Resume; one that can do neither offers only Clear")
@@ -101,6 +102,9 @@
       #expect(try done.shows("Clear Goal"))
       #expect(try !done.shows("Pause"))
       #expect(try !done.shows("Resume"))
+      // Clear Goal, Cancel, Update Goal.
+      try done.tapButton(fromEnd: 2)
+      #expect(log.events == ["active:true", "clear"])
     }
 
     @Test("a /goal harness starts one by command, without a budget")

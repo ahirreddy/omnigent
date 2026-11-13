@@ -7,6 +7,26 @@
 
   @testable import OmnigentUIComponents
 
+  /// A conversation as the app mounts it, with the chat-wide drop over its transcript.
+  private struct DropConversationHost: View {
+    let composer: ComposerViewState
+    let actions: ComposerActions
+    @State private var draft = ""
+    @State private var mode = SessionViewMode.chat
+    @State private var showsInspector = false
+
+    var body: some View {
+      ConversationScreen(
+        state: ConversationViewState(
+          header: TranscriptFixture.header, rows: [TranscriptFixture.answer("a")]),
+        composer: composer, draft: ComposerDraft($draft), showsInspector: $showsInspector,
+        mode: $mode, actions: ConversationActions(), composerActions: actions
+      ) {
+        EmptyView()
+      }
+    }
+  }
+
   /// Files and queued messages dropped on the composer and the chat. The drop goes to the view's
   /// own drop target with a scripted `NSDraggingInfo`; no system drag starts.
   @Suite("Composer: drops", .serialized)
@@ -166,6 +186,46 @@
       screen.finishScriptedDrop(drop)
       await screen.drainTasks()
       #expect(log.events.isEmpty)
+    }
+  }
+
+  // MARK: The conversation screen
+
+  extension ComposerGapsDropTests {
+    /// A point in the transcript, well above the composer.
+    private static var transcript: CGPoint { CGPoint(x: 450, y: 150) }
+
+    private func conversation(_ composer: ComposerViewState) -> OffscreenWindow<some View> {
+      let screen = OffscreenWindow(
+        DropConversationHost(composer: composer, actions: log.actions), width: 900, height: 600)
+      screen.settle(0.3)
+      return screen
+    }
+
+    @Test("A file dropped on a conversation's transcript attaches through its composer")
+    func conversationTakesFile() async throws {
+      let screen = conversation(ComposerViewState())
+      defer { screen.close() }
+      let drop = try screen.beginScriptedDrop(
+        at: Self.transcript, pasteboard: filePasteboard(screen))
+      #expect(!drop.operation.isEmpty)
+      #expect(try screen.shows("Drop files here"))
+      #expect(screen.finishScriptedDrop(drop))
+      #expect(try await screen.eventually { !log.attachments.isEmpty })
+      #expect(log.attachments == [.file(url: Self.file)])
+      #expect(try !screen.shows("Drop files here"))
+    }
+
+    @Test("A conversation that can't send now takes no dropped file")
+    func conversationRefusesFile() throws {
+      let screen = conversation(
+        ComposerViewState(availability: .unavailable(reason: "Host offline")))
+      defer { screen.close() }
+      let drop = try screen.beginScriptedDrop(
+        at: Self.transcript, pasteboard: filePasteboard(screen))
+      #expect(drop.operation.isEmpty)
+      #expect(try !screen.shows("Drop files here"))
+      #expect(log.attachments.isEmpty)
     }
   }
 #endif
