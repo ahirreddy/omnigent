@@ -75,9 +75,7 @@ public struct OmnigentDesktopCommands: Commands {
         openServerWindow: { openWindow(value: $0) })
     }
     CommandGroup(after: .appInfo) {
-      if let checkForUpdates = actions.checkForUpdates {
-        Button("Check for Updates\u{2026}", action: checkForUpdates)
-      }
+      UpdateMenuItems(actions: actions)
     }
     CommandGroup(after: .pasteboard) {
       Divider()
@@ -93,6 +91,17 @@ public struct OmnigentDesktopCommands: Commands {
     }
     CommandGroup(replacing: .help) {
       HelpMenuItems(actions: actions)
+    }
+  }
+}
+
+/// Omnigent: Check for Updates, hidden where the edition doesn't update itself.
+struct UpdateMenuItems: View {
+  let actions: DesktopCommandActions
+
+  var body: some View {
+    if let checkForUpdates = actions.checkForUpdates {
+      Button("Check for Updates\u{2026}", action: checkForUpdates)
     }
   }
 }

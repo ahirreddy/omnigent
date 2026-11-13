@@ -106,12 +106,41 @@
       let body = commands.body
       let type = String(describing: Swift.type(of: body))
       let menus = [
-        "NewWindowMenuItems", "FindMenu", "ViewMenuItems", "HelpMenuItems", "Button<Text>",
+        "NewWindowMenuItems", "FindMenu", "ViewMenuItems", "HelpMenuItems", "UpdateMenuItems",
       ]
       for menu in menus { #expect(type.contains(menu)) }
       let server = try #require(firstValue(of: ServerMenuItems.self, in: body))
       #expect(server.localServer === fixture.manager)
       #expect(server.window == nil)
+    }
+
+    private func hostedMenu(of items: some View) throws -> (OffscreenWindow<some View>, NSMenu) {
+      let screen = OffscreenWindow(MenuHost { items }, width: 200, height: 80)
+      let frame = try #require(screen.controlFrames.first)
+      // The menu's own title is its first, untitled item.
+      return (screen, try screen.openMenu(CGPoint(x: frame.midX, y: frame.midY)))
+    }
+
+    @Test("Check for Updates\u{2026} runs the app's update check, and is not listed without one")
+    func checkForUpdates() throws {
+      var checks = 0
+      let updating = DesktopCommandActions(
+        defaultServerURL: { nil }, checkForUpdates: { checks += 1 })
+      let (screen, menu) = try hostedMenu(of: UpdateMenuItems(actions: updating))
+      defer { screen.close() }
+      #expect(menu.items.map(\.title).filter { !$0.isEmpty } == ["Check for Updates\u{2026}"])
+      #expect(checks == 0)
+      try screen.choose("Check for Updates\u{2026}", in: menu)
+      #expect(checks == 1)
+
+      let fixed = DesktopCommandActions(defaultServerURL: { nil })
+      let (other, without) = try hostedMenu(
+        of: Group {
+          UpdateMenuItems(actions: fixed)
+          Button("About") {}
+        })
+      defer { other.close() }
+      #expect(without.items.map(\.title).filter { !$0.isEmpty } == ["About"])
     }
   }
 #endif
