@@ -35,7 +35,7 @@
       if unsafe ghostty_surface_mouse_captured(surface) {
         button(GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RIGHT, event)
       } else {
-        // coverage:off AppKit's edit menu popup, a real menu; on the VM flow backlog
+        // coverage:off AppKit's edit menu popup; the flow testContextMenuPastesIntoTheShell
         super.rightMouseDown(with: event)
         // coverage:on
       }

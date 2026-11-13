@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 
 /// Terminal tabs on the local server's fixture session. The surface is not readable through
@@ -139,6 +140,29 @@ final class MacTerminalFlowUITests: XCTestCase {
     app.typeKey("w", modifierFlags: .command)
     live.clickDialogButton("Close Shell", in: app)
     XCTAssertTrue(tab.disappears(within: 15), "Close Shell left the tab")
+  }
+
+  /// A right-click on the terminal shows its edit menu, and Paste there types the clipboard
+  /// into the shell: the pasted command runs and writes a file.
+  @MainActor
+  func testContextMenuPastesIntoTheShell() throws {
+    let live = MacLiveUITestSupport(self)
+    let marker = try live.fixtureWorkspace().appending(
+      path: "terminal-paste-\(UUID().uuidString).txt")
+    defer { try? FileManager.default.removeItem(at: marker) }
+    let app = try openShell(live)
+    defer { app.terminate() }
+
+    NSPasteboard.general.clearContents()
+    XCTAssertTrue(
+      NSPasteboard.general.setString("echo pasted > '\(marker.path)'", forType: .string),
+      "the pasteboard refused the command")
+    live.contextMenu(live.element("terminal-tab", in: app), choose: "Paste", in: app)
+    app.typeText("\r")
+    XCTAssertTrue(
+      live.waitUntil(timeout: 30) { FileManager.default.fileExists(atPath: marker.path) },
+      "Paste did not reach the shell (no \(marker.lastPathComponent))")
+    XCTAssertEqual(try String(contentsOf: marker, encoding: .utf8), "pasted\n")
   }
 
   /// Launches on the fixture session with a new shell started and focused.
