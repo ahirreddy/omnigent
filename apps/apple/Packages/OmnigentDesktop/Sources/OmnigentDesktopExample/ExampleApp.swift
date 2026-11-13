@@ -26,7 +26,6 @@ struct OmnigentDesktopExampleApp: App {
         actions: DesktopCommandActions(
           defaultServerURL: defaultServerURL,
           helpURL: URL(string: "https://github.com/omnigent-ai/omnigent"),
-          exportDiagnostics: { print("export diagnostics") },
           checkForUpdates: { print("check for updates") },
           localServer: desktop.localServer))
     }
@@ -36,9 +35,7 @@ struct OmnigentDesktopExampleApp: App {
     OmnigentMenuBarExtra(desktop: desktop, sessions: ExampleSessions.source)
 
     Settings {
-      OmnigentSettingsView(
-        desktop: desktop, recentServers: ExampleWindow.knownServers,
-        exportDiagnostics: { print("export diagnostics") })
+      OmnigentSettingsView(desktop: desktop, recentServers: ExampleWindow.knownServers)
     }
   }
 }

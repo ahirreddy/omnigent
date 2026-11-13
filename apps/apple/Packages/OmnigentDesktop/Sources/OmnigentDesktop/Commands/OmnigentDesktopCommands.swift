@@ -7,8 +7,6 @@ public struct DesktopCommandActions {
   public var defaultServerURL: () -> URL?
   /// Opened by Help > Omnigent Help; the item is hidden when `nil`.
   public var helpURL: URL?
-  /// Help > Export Diagnostics...; hidden when `nil`.
-  public var exportDiagnostics: (() -> Void)?
   /// Omnigent > Check for Updates...; hidden when `nil`. Bind to Sparkle's updater.
   public var checkForUpdates: (() -> Void)?
   /// Adds the local server and host items to the Server menu; hidden when `nil` or when the
@@ -19,19 +17,16 @@ public struct DesktopCommandActions {
   /// - Parameters:
   ///   - defaultServerURL: Server for new windows.
   ///   - helpURL: Documentation URL.
-  ///   - exportDiagnostics: Diagnostics export.
   ///   - checkForUpdates: Update check.
   ///   - localServer: The local server manager for the Server menu.
   public init(
     defaultServerURL: @escaping () -> URL?,
     helpURL: URL? = nil,
-    exportDiagnostics: (() -> Void)? = nil,
     checkForUpdates: (() -> Void)? = nil,
     localServer: LocalServerManager? = nil
   ) {
     self.defaultServerURL = defaultServerURL
     self.helpURL = helpURL
-    self.exportDiagnostics = exportDiagnostics
     self.checkForUpdates = checkForUpdates
     self.localServer = localServer
   }
@@ -49,7 +44,7 @@ public struct DesktopCommandActions {
 /// - Server: Change Server... and Sign Out of Server, then (with `actions.localServer`) Start
 ///   Server on This Mac, Stop Server, Start Host on This Mac..., Stop Host and Show Server Logs.
 /// - Window: the standard window list, tiling and tabs.
-/// - Help: Omnigent Help and Export Diagnostics....
+/// - Help: Omnigent Help.
 ///
 /// Window-specific items act on the key window's `ServerWindowActions` and are disabled when it
 /// does not provide them.
@@ -186,16 +181,13 @@ struct ViewMenuItems: View {
   }
 }
 
-/// Help: Omnigent Help and Export Diagnostics, each hidden without its action.
+/// Help: Omnigent Help, hidden without its page.
 struct HelpMenuItems: View {
   let actions: DesktopCommandActions
 
   var body: some View {
     if let helpURL = actions.helpURL {
       Button("Omnigent Help") { NSWorkspace.shared.open(helpURL) }
-    }
-    if let exportDiagnostics = actions.exportDiagnostics {
-      Button("Export Diagnostics\u{2026}", action: exportDiagnostics)
     }
   }
 }

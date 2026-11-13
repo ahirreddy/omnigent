@@ -209,19 +209,16 @@
       }
     }
 
-    @Test("Help opens the help page and exports diagnostics; each hides without its action")
+    @Test("Help opens the help page, and is the menu's only item")
     func help() throws {
-      var exported = 0
       let helpPage = try url("https://omnigent.ai/docs")
-      let actions = DesktopCommandActions(
-        defaultServerURL: { nil }, helpURL: helpPage, exportDiagnostics: { exported += 1 })
+      let actions = DesktopCommandActions(defaultServerURL: { nil }, helpURL: helpPage)
       let screen = hosted(HelpMenuItems(actions: actions))
       defer { screen.close() }
       let menu = try menu(of: screen)
       try screen.choose("Omnigent Help", in: menu)
       #expect(SystemSideEffects.record.openedURLs == [helpPage])
-      try screen.choose("Export Diagnostics\u{2026}", in: menu)
-      #expect(exported == 1)
+      #expect(menu.items.map(\.title).filter { !$0.isEmpty } == ["Omnigent Help"])
     }
 
     @Test("Help lists nothing without actions")

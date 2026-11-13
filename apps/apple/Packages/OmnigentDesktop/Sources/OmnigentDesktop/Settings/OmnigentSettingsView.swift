@@ -42,7 +42,6 @@ public struct SettingsTabItem: Identifiable {
 public struct OmnigentSettingsView<BrowserSettings: View>: View {
   private let desktop: DesktopController
   private let recentServers: [URL]
-  private let exportDiagnostics: (() -> Void)?
   private let browserSettings: BrowserSettings
   private let extraTabs: [SettingsTabItem]
   private let selection: Binding<String>?
@@ -52,20 +51,17 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
   /// - Parameters:
   ///   - desktop: The shell services.
   ///   - recentServers: The user's recent servers, offered as the default server.
-  ///   - exportDiagnostics: Shown on the Advanced tab when provided.
   ///   - extraTabs: Tabs after Notifications, in order.
   ///   - selection: The shown tab's id (a ``SettingsTabID`` or an extra tab's title), so other
   ///     windows can open Settings at a tab; the view keeps its own when `nil`.
   ///   - browserSettings: A `Section` for the General tab's browser settings.
   public init(
     desktop: DesktopController, recentServers: [URL] = [],
-    exportDiagnostics: (() -> Void)? = nil, extraTabs: [SettingsTabItem] = [],
-    selection: Binding<String>? = nil,
+    extraTabs: [SettingsTabItem] = [], selection: Binding<String>? = nil,
     @ViewBuilder browserSettings: () -> BrowserSettings
   ) {
     self.desktop = desktop
     self.recentServers = recentServers
-    self.exportDiagnostics = exportDiagnostics
     self.extraTabs = extraTabs
     self.selection = selection
     self.browserSettings = browserSettings()
@@ -101,10 +97,8 @@ public struct OmnigentSettingsView<BrowserSettings: View>: View {
         .frame(width: Self.formWidth)
       }
       Tab(SettingsTabID.advanced, systemImage: "gearshape.2", value: SettingsTabID.advanced) {
-        AdvancedSettingsTab(
-          managed: desktop.managedPreferences, exportDiagnostics: exportDiagnostics
-        )
-        .frame(width: Self.formWidth)
+        AdvancedSettingsTab(managed: desktop.managedPreferences)
+          .frame(width: Self.formWidth)
       }
     }
     .scenePadding()
@@ -125,14 +119,8 @@ extension OmnigentSettingsView where BrowserSettings == EmptyView {
   /// - Parameters:
   ///   - desktop: The shell services.
   ///   - recentServers: The user's recent servers, offered as the default server.
-  ///   - exportDiagnostics: Shown on the Advanced tab when provided.
-  public init(
-    desktop: DesktopController, recentServers: [URL] = [],
-    exportDiagnostics: (() -> Void)? = nil
-  ) {
-    self.init(
-      desktop: desktop, recentServers: recentServers, exportDiagnostics: exportDiagnostics
-    ) { EmptyView() }
+  public init(desktop: DesktopController, recentServers: [URL] = []) {
+    self.init(desktop: desktop, recentServers: recentServers) { EmptyView() }
   }
 }
 
@@ -312,7 +300,6 @@ struct NotificationSettingsTab: View {
 
 struct AdvancedSettingsTab: View {
   let managed: ManagedPreferences
-  let exportDiagnostics: (() -> Void)?
   @State private var snapshot: Result<ManagedPreferencesSnapshot, ManagedPreferencesError>?
   @State private var internalFeatures: Result<Bool, ManagedPreferencesError>?
 
@@ -344,9 +331,6 @@ struct AdvancedSettingsTab: View {
       Section {
         Button("Reset Window Position") {
           NSWindow.removeFrame(usingName: ServerWindowMetrics.frameAutosaveName)
-        }
-        if let exportDiagnostics {
-          Button("Export Diagnostics\u{2026}", action: exportDiagnostics)
         }
       } header: {
         Text("Troubleshooting")

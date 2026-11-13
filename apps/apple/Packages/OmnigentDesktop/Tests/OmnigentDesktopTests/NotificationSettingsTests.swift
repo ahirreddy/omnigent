@@ -165,11 +165,8 @@
         readForced: { _, _ in forced })
     }
 
-    private func advanced(
-      _ managed: ManagedPreferences, export: (() -> Void)? = nil
-    ) -> OffscreenWindow<AdvancedSettingsTab> {
-      OffscreenWindow(
-        AdvancedSettingsTab(managed: managed, exportDiagnostics: export), width: 580, height: 560)
+    private func advanced(_ managed: ManagedPreferences) -> OffscreenWindow<AdvancedSettingsTab> {
+      OffscreenWindow(AdvancedSettingsTab(managed: managed), width: 580, height: 560)
     }
 
     @Test("Advanced lists the organization's servers and where they came from")
@@ -218,18 +215,16 @@
           .localizedSummary == "d serverUrls entry 1 is empty")
     }
 
-    @Test("Reset Window Position forgets the saved frame, and Export Diagnostics runs")
+    @Test("Reset Window Position, Troubleshooting's one control, forgets the saved frame")
     func troubleshooting() async throws {
-      var exported = 0
-      let screen = advanced(managed([:], domains: []), export: { exported += 1 })
+      let screen = advanced(managed([:], domains: []))
       defer { screen.close() }
       await flush(screen)
       let key = "NSWindow Frame \(ServerWindowMetrics.frameAutosaveName)"
       UserDefaults.standard.set("0 0 100 100 0 0 800 800", forKey: key)
       try screen.click(screen.controlFrames[0])
       #expect(UserDefaults.standard.string(forKey: key) == nil)
-      try screen.click(screen.controlFrames[1])
-      #expect(exported == 1)
+      #expect(screen.controlFrames.count == 1)
       #expect(try screen.allText().contains("No managed preference domain is read."))
       #expect(try screen.allText().contains("No organization servers are configured."))
     }
