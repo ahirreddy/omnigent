@@ -60,6 +60,18 @@
       #expect(log.entries == ["dismiss"])
     }
 
+    @Test("Return presses Next, and Done on the last step")
+    func returnKey() throws {
+      let screen = guide(sessionModes: false, triggers: false)
+      defer { screen.close() }
+      #expect(try screen.shows("1 of 2"))
+      try screen.press(keyCode: 36, characters: "\r")
+      #expect(try screen.shows("2 of 2"))
+      #expect(log.entries.isEmpty)
+      try screen.press(keyCode: 36, characters: "\r")
+      #expect(log.entries == ["dismiss"])
+    }
+
     @Test("clicking a step goes straight to it")
     func jump() throws {
       let screen = guide()
@@ -137,22 +149,64 @@
       #expect(screen.allViews.compactMap { $0 as? NSDatePicker }.count == 2)
     }
 
-    @Test("a start after the end drags the end along, so the range is never backwards")
-    func customDates() throws {
-      let dates = EditedValue<[Date]>([])
+    /// The page on its custom range, with dates written month, day, year; the range it reports
+    /// lands in `dates`.
+    private func customRange(_ dates: EditedValue<[Date]>) throws -> OffscreenWindow<some View> {
+      SystemSideEffects.reset()
       var actions = actions
       actions.setRange = { _, start, end in dates.value = [start, end] }
-      let screen = page(UsageViewState(), actions: actions)
-      defer { screen.close() }
+      let screen = OffscreenWindow(
+        UsageView(state: UsageViewState(), actions: actions)
+          .environment(\.locale, Locale(identifier: "en_US")), width: 900, height: 1_100)
       try screen.click(segment: 4, of: try #require(screen.segmentedControls.first))
+      try #require(dates.value.count == 2, "choosing Custom reports its dates")
+      return screen
+    }
+
+    /// The From and to pickers, left to right.
+    private func datePickers(_ screen: OffscreenWindow<some View>) throws -> [NSDatePicker] {
       let pickers = screen.allViews.compactMap { $0 as? NSDatePicker }
-      let from = try #require(pickers.first)
-      from.dateValue = Date.now.addingTimeInterval(-86_400)
-      _ = from.sendAction(from.action, to: from.target)
-      screen.settle()
+      try #require(pickers.count == 2)
+      return pickers.sorted {
+        $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX
+      }
+    }
+
+    @Test("a start stepped past the end stops at the end, so the range is never backwards")
+    func customDates() throws {
+      let dates = EditedValue<[Date]>([])
+      let screen = try customRange(dates)
+      defer { screen.close() }
+      let opened = dates.value
+      // A year later than 29 days ago is past today, where the range ends.
+      try screen.step(try datePickers(screen)[0], element: 2, upward: true)
       let reported = dates.value
-      #expect(reported.count == 2)
-      #expect(reported.first.map { $0 <= reported[1] } == true)
+      #expect(reported[0] > opened[0].addingTimeInterval(86_400), "From moved later")
+      #expect(reported[0] <= reported[1], "\(reported)")
+      #expect(reported[1] == opened[1], "the end stays")
+    }
+
+    @Test("stepping From a year back with the keyboard reports the earlier start")
+    func fromByKeys() throws {
+      let dates = EditedValue<[Date]>([])
+      let screen = try customRange(dates)
+      defer { screen.close() }
+      let opened = dates.value
+      try screen.step(try datePickers(screen)[0], element: 2, upward: false)
+      #expect(dates.value[0] < opened[0].addingTimeInterval(-300 * 86_400), "\(dates.value)")
+      #expect(dates.value[1] == opened[1], "the end stays")
+    }
+
+    @Test("stepping to a year back with the keyboard stops at the start, and reports that end")
+    func untilByKeys() throws {
+      let dates = EditedValue<[Date]>([])
+      let screen = try customRange(dates)
+      defer { screen.close() }
+      let opened = dates.value
+      try screen.step(try datePickers(screen)[1], element: 2, upward: false)
+      #expect(dates.value[1] < opened[1].addingTimeInterval(-86_400), "\(dates.value)")
+      #expect(dates.value[0] <= dates.value[1], "\(dates.value)")
+      #expect(dates.value[0] == opened[0], "the start stays")
     }
 
     @Test("a failed report offers Retry and hides the numbers")
@@ -239,6 +293,33 @@
       let point = table.convert(CGPoint(x: rect.minX + 20, y: rect.midY), to: screen.host)
       try screen.click(point)
       #expect(log.entries == ["open b"])
+    }
+
+    @Test("clicking the Cost column sorts the sessions by cost, and again reverses them")
+    func sortByCost() throws {
+      let rows = [
+        session("a", cost: 9, age: 500), session("b", cost: 1, age: 900), session("c", cost: 5),
+      ]
+      let screen = page(UsageViewState(sessions: rows))
+      defer { screen.close() }
+      let table = try #require(screen.allViews.compactMap { $0 as? NSTableView }.first)
+      let header = try #require(table.headerView)
+      /// Opens the first row's session, so the log names which row is on top.
+      func openTop() throws {
+        let cell = table.frameOfCell(atColumn: 0, row: 0)
+        try screen.click(table.convert(CGPoint(x: cell.minX + 20, y: cell.midY), to: screen.host))
+      }
+      func clickCost() throws {
+        let rect = header.headerRect(ofColumn: 4)
+        try screen.click(header.convert(CGPoint(x: rect.midX, y: rect.midY), to: screen.host))
+      }
+      try openTop()
+      #expect(log.entries == ["open c"], "the most recent leads until a column is clicked")
+      try clickCost()
+      try openTop()
+      try clickCost()
+      try openTop()
+      #expect(log.entries.dropFirst().sorted() == ["open a", "open b"], "\(log.entries)")
     }
 
     @Test("the phone list's rows open their session, and its menu changes the sort")

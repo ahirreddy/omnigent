@@ -174,6 +174,18 @@
       #expect(screen.textFields.contains { $0.stringValue == "Rendered prompt" })
     }
 
+    @Test("the prompt each run sends stays folded away until its disclosure is clicked")
+    func promptDisclosure() throws {
+      let screen = sheet(draft(), prompt: "Rendered prompt")
+      defer { screen.close() }
+      #expect(try !screen.shows("Rendered prompt"))
+      // Add condition, the disclosure, Edit as a prompt, Cancel, Save.
+      let frames = screen.buttonFrames
+      try screen.click(frames[frames.count - 4].center)
+      screen.settle(0.3)
+      #expect(try screen.shows("Rendered prompt"))
+    }
+
     @Test("no rendered prompt offers nothing to take over")
     func noPromptYet() throws {
       let screen = sheet(draft())

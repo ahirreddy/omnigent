@@ -130,18 +130,32 @@
       #expect(try bare.shows("Nothing in this project"))
     }
 
-    @Test("Zoom controls leave the board usable, at both ends of the range")
+    /// How wide the board is drawn, which follows the zoom once it is wider than the page.
+    private func boardWidth(_ screen: OffscreenWindow<AnyView>) throws -> CGFloat {
+      let scrollViews = screen.allViews.compactMap { $0 as? NSScrollView }
+      let board = try #require(scrollViews.max { $0.frame.height < $1.frame.height })
+      return try #require(board.documentView).frame.width
+    }
+
+    @Test("Zoom in and Zoom out resize the board, and Fit view brings the fit back")
     func zoomControls() throws {
       let state = CanvasViewState(
         boards: boards, activeBoard: "main", cards: [card("a"), card("b", left: 6_400, top: 3_200)])
       let screen = page(state)
       defer { screen.close() }
-      let zoomIn = controlIndex(0)
-      let zoomOut = controlIndex(1)
-      let fit = controlIndex(2)
-      for _ in 0..<3 { try screen.clickControl(at: zoomIn) }
-      for _ in 0..<6 { try screen.clickControl(at: zoomOut) }
-      try screen.clickControl(at: fit)
+      let fitted = try boardWidth(screen)
+      try screen.clickControl(at: controlIndex(0))
+      let zoomedIn = try boardWidth(screen)
+      #expect(zoomedIn > fitted)
+      try screen.clickControl(at: controlIndex(0))
+      let zoomedInTwice = try boardWidth(screen)
+      #expect(zoomedInTwice > zoomedIn + 1)
+      try screen.clickControl(at: controlIndex(1))
+      let zoomedOut = try boardWidth(screen)
+      #expect(abs(zoomedOut - zoomedIn) < 1, "Zoom out undoes one Zoom in")
+      try screen.clickControl(at: controlIndex(2))
+      let refitted = try boardWidth(screen)
+      #expect(abs(refitted - fitted) < 1, "Fit view goes back to the fit")
       #expect(try screen.shows("Title b"))
     }
 

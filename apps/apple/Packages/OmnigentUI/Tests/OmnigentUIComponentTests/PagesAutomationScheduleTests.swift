@@ -119,14 +119,33 @@
       let screen = screen(choice)
       defer { screen.close() }
       let picker = try #require(screen.allViews.compactMap { $0 as? NSDatePicker }.first)
-      var parts = Calendar.current.dateComponents([.year, .month, .day], from: picker.dateValue)
-      parts.hour = 14
-      parts.minute = 35
-      picker.dateValue = try #require(Calendar.current.date(from: parts))
-      _ = picker.sendAction(picker.action, to: picker.target)
-      screen.settle()
-      #expect(choice.value.hour == 14)
-      #expect(choice.value.minute == 35)
+      // The hour leads, then the minute.
+      try screen.step(picker, upward: true)
+      #expect(choice.value.hour == 10)
+      #expect(choice.value.minute == 0)
+      try screen.step(picker, element: 1, upward: true)
+      #expect(choice.value.hour == 10)
+      #expect(choice.value.minute == 1)
+    }
+
+    @Test("the end date picker moves the ending, kept at the end of the day chosen")
+    func endDate() throws {
+      let noon = DateComponents(year: 2030, month: 3, day: 10, hour: 12)
+      let start = try #require(Calendar.current.date(from: noon))
+      let choice = EditedValue(ScheduleChoice(end: .until(start)))
+      let screen = screen(choice)
+      defer { screen.close() }
+      // The time, then the end date.
+      let pickers = screen.allViews.compactMap { $0 as? NSDatePicker }
+      try #require(pickers.count == 2)
+      try screen.step(pickers[1], upward: true)
+      guard case .until(let date) = choice.value.end else {
+        Issue.record("no end date: \(choice.value.end)")
+        return
+      }
+      #expect(date > start.addingTimeInterval(86_400), "at least a day later")
+      let time = Calendar.current.dateComponents([.hour, .minute, .second], from: date)
+      #expect([time.hour, time.minute, time.second] == [23, 59, 59])
     }
 
     @Test("the ending can be a date at the end of that day, or a run count from 2")

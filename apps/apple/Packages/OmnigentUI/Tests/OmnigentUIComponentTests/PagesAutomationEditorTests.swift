@@ -94,8 +94,8 @@
       let draft = EditedValue(AutomationDraftState(name: "Brief"))
       let screen = sheet(draft, context: context())
       defer { screen.close() }
-      let name = try #require(screen.textFields.first { $0.placeholderString == "daily-brief" })
-      try screen.click(name)
+      // With no field focused, as the keys suite presses it to save a complete form.
+      _ = screen.activeWindow.makeFirstResponder(nil)
       try screen.press(keyCode: 36, characters: "\r")
       #expect(log.entries.isEmpty)
     }

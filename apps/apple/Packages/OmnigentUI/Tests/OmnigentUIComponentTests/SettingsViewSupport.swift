@@ -99,6 +99,16 @@
       settle(0.02)
     }
 
+    /// Steps one element of a date picker with real events: a click selects its first element,
+    /// Right moves along, and Up or Down changes the one selected.
+    func step(_ picker: NSDatePicker, element: Int = 0, upward: Bool) throws {
+      let frame = picker.convert(picker.bounds, to: activeWindow.contentView)
+      try click(CGPoint(x: frame.minX + 8, y: frame.midY))
+      for _ in 0..<element { try press(keyCode: 124, characters: "\u{F703}") }
+      try press(keyCode: upward ? 126 : 125, characters: upward ? "\u{F700}" : "\u{F701}")
+      settle()
+    }
+
     /// Sets a switch by clicking its side: a click on the right turns it on, the left off.
     func set(_ control: NSControl, isOn: Bool) throws {
       let frame = control.convert(control.bounds, to: activeWindow.contentView)
