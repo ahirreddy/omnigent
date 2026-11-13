@@ -15,6 +15,8 @@ nonisolated public enum InterfacePreferences {
   public static let workspacePanelKey = "omnigent:default-workspace-panel"
   /// `omnigent:default-workspace-tab`: the right panel's first tab.
   public static let defaultWorkspaceTabKey = "omnigent:default-workspace-tab"
+  /// `omnigent:harness-icon`: how a session row draws its harness's mark.
+  public static let harnessIconKey = "omnigent:harness-icon"
 
   /// A Boolean preference; unset reads as `false`, as on the web.
   /// - Parameters:

@@ -31,8 +31,8 @@ public struct LinksAndSessionsSettingsSection: View {
   }
 }
 
-/// Settings › Appearance extras, as the web's: the new-session picker, the right panel's
-/// defaults and code typography.
+/// Settings › Appearance extras, as the web's: the new-session picker, the session list's
+/// harness icons, the right panel's defaults and code typography.
 public struct InterfaceAppearanceSections: View {
   @AppStorage(InterfacePreferences.hideUnconfiguredHarnessesKey) private var hideUnconfigured =
     false
@@ -41,6 +41,8 @@ public struct InterfaceAppearanceSections: View {
   @AppStorage(InterfacePreferences.defaultWorkspaceTabKey) private var workspaceTab =
     DefaultWorkspaceTab.files
   @AppStorage(TranscriptViewDefault.key) private var transcriptView = TranscriptViewDefault.chat
+  @AppStorage(InterfacePreferences.harnessIconKey) private var harnessIcon = HarnessIconStyle
+    .default
   @Environment(\.pickerVisibilitySource) private var pickerSource
   @Bindable private var code = CodeTypography.shared
 
@@ -69,6 +71,15 @@ public struct InterfaceAppearanceSections: View {
             + "window stays open as its tab.")
       }
       .accessibilityIdentifier("settings.default-transcript-view")
+    }
+    Section("Session list") {
+      Picker(selection: $harnessIcon) {
+        ForEach(HarnessIconStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+      } label: {
+        Text("Harness icons")
+        Text("The mark at the start of each session: in its brand colors, in one color, or off.")
+      }
+      .accessibilityIdentifier("settings.harness-icon")
     }
     Section {
       Picker("Workspace panel", selection: $workspacePanel) {

@@ -9,6 +9,9 @@ nonisolated public enum HarnessIconStyle: String, Hashable, Sendable, CaseIterab
   /// No mark.
   case hidden
 
+  /// The style until one is chosen.
+  public static let `default` = Self.monochrome
+
   /// The menu title.
   public var title: String {
     switch self {

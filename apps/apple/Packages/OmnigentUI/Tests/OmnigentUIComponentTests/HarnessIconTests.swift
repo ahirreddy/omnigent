@@ -143,34 +143,59 @@
       #expect(withMark > RenderSupport.inkCoverage(try row(.hidden)))
     }
 
-    @Test("Saved display options without the setting show the mark in color, and it round-trips")
+    @Test("The style is monochrome until chosen, and display options saved with one still load")
     func setting() throws {
-      let old = Data(
-        (#"{"show":"all","groupBy":"default","sortBy":"updated","#
-          + #""details":["repo"]}"#).utf8)
-      let read = try JSONDecoder().decode(SessionDisplayOptions.self, from: old)
-      #expect(read.harnessIcon == .color)
-      #expect(read.details == [.repo])
-      var changed = read
-      changed.harnessIcon = .hidden
-      let saved = try JSONEncoder().encode(changed)
-      #expect(try JSONDecoder().decode(SessionDisplayOptions.self, from: saved) == changed)
+      #expect(HarnessIconStyle.default == .monochrome)
       #expect(HarnessIconStyle.allCases.map(\.title) == ["Color", "Monochrome", "Off"])
+      let saved = Data(
+        (#"{"show":"all","groupBy":"default","sortBy":"updated","#
+          + #""details":["repo"],"harnessIcon":"color"}"#).utf8)
+      let read = try JSONDecoder().decode(SessionDisplayOptions.self, from: saved)
+      #expect(read.details == [.repo])
     }
 
-    @Test("The display menu's Show submenu chooses the mark's style")
-    func menu() throws {
-      var written: [SessionDisplayOptions] = []
+    @Test("Appearance settings choose the style under its own key")
+    func appearanceSetting() throws {
+      let store = try #require(UserDefaults(suiteName: "harness-icon-\(UUID())"))
+      let screen = settingsForm(store: store) { InterfaceAppearanceSections() }
+      defer { screen.close() }
+      #expect(try screen.shows("Harness icons"))
+      let picker = try #require(
+        screen.popUps.first { $0.title == HarnessIconStyle.monochrome.title })
+      try screen.choose(HarnessIconStyle.color.title, inPopUp: picker)
+      #expect(store.string(forKey: InterfacePreferences.harnessIconKey) == "color")
+      try screen.choose(HarnessIconStyle.hidden.title, inPopUp: picker)
+      #expect(store.string(forKey: InterfacePreferences.harnessIconKey) == "hidden")
+    }
+
+    @Test("The session list draws the mark by the stored style, and follows a change at once")
+    func sidebarFollowsSetting() throws {
+      let store = try #require(UserDefaults(suiteName: "harness-icon-\(UUID())"))
+      var state = SidebarFixture.state
+      // A harness with no mark draws its letter, which the window's text shows.
+      state.rowInfo["beta"] = SessionRowInfo(harness: "zeta-runner")
       let screen = OffscreenWindow(
-        DisplayMenu(options: SessionDisplayOptions(), showsShared: false) { written.append($0) },
+        SidebarHarness(spy: SidebarSpy(state)).defaultAppStorage(store), width: 340, height: 800)
+      defer { screen.close() }
+      #expect(try screen.shows("Z"))
+      store.set(HarnessIconStyle.hidden.rawValue, forKey: InterfacePreferences.harnessIconKey)
+      screen.settle()
+      #expect(try !screen.shows("Z"))
+      store.set(HarnessIconStyle.color.rawValue, forKey: InterfacePreferences.harnessIconKey)
+      screen.settle()
+      #expect(try screen.shows("Z"))
+    }
+
+    @Test("The display menu no longer offers the style")
+    func menu() throws {
+      let screen = OffscreenWindow(
+        DisplayMenu(options: SessionDisplayOptions(), showsShared: false) { _ in },
         width: 80, height: 40)
       defer { screen.close() }
       let menu = try screen.openMenu(try #require(screen.popUps.first))
       let show = try #require(menu.item(named: "Show")?.submenu)
-      let styles = try #require(show.item(named: "Harness Icon")?.submenu)
-      try screen.choose(HarnessIconStyle.monochrome.title, in: styles)
-      #expect(written.last?.harnessIcon == .monochrome)
-      #expect(written.last?.details == SessionDisplayOptions().details)
+      #expect(show.item(named: "Harness Icon") == nil)
+      #expect(show.items.contains { !$0.isSeparatorItem })
     }
   }
 #endif

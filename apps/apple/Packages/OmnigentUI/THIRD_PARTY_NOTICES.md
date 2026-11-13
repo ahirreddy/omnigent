@@ -3,7 +3,7 @@
 ## Harness marks (@lobehub/icons)
 
 The path data in `Sources/OmnigentUIComponents/DesignSystem/HarnessMarkArt.swift` (the marks
-of Claude Code, Codex, Cursor, OpenCode, Pi, Goose, Kiro, Devin, Kimi, Qwen and Antigravity)
+of Claude Code, Codex (OpenAI's mark), Cursor, OpenCode, Pi, Goose, Kiro, Devin, Kimi, Qwen and Antigravity)
 comes from [@lobehub/icons](https://github.com/lobehub/lobe-icons) 5.23.0, the set the web app
 draws, with each path rewritten as absolute move, line, curve and close commands. The marks are
 trademarks of their owners; the app uses them only to label a session with the harness that
