@@ -43,7 +43,7 @@ private struct SidebarSelectionModifier: ViewModifier {
         .environment(\.backgroundProminence, .standard)
       #endif
       #if os(macOS)
-        .background { SystemSelectionHighlightRemover().accessibilityHidden(true) }
+        .background { SidebarTableStyle().accessibilityHidden(true) }
         .onHover { isHovered = $0 }
       #endif
       .listRowBackground(
@@ -93,38 +93,40 @@ struct SidebarSelectionBackground: View {
 
 #if os(macOS)
 
-  /// Turns off the enclosing table's own selection highlight. It sits in a row, so the table is
-  /// one of its ancestors; the style is set again whenever the row moves, since SwiftUI may
-  /// rebuild the table.
-  private struct SystemSelectionHighlightRemover: NSViewRepresentable {
-    func makeNSView(context: Context) -> HighlightRemoverView { HighlightRemoverView() }
+  /// Turns off the enclosing table's own selection highlight and its indent of a folder's rows.
+  /// It sits in a row, so the table is one of its ancestors; the style is set again whenever
+  /// the row moves, since SwiftUI may rebuild the table.
+  private struct SidebarTableStyle: NSViewRepresentable {
+    func makeNSView(context: Context) -> TableStyleView { TableStyleView() }
 
-    func updateNSView(_ view: HighlightRemoverView, context: Context) {
-      view.removeHighlight()
+    func updateNSView(_ view: TableStyleView, context: Context) {
+      view.styleTable()
     }
 
-    final class HighlightRemoverView: NSView {
+    final class TableStyleView: NSView {
       override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        removeHighlight()
+        styleTable()
       }
 
       override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
-        removeHighlight()
+        styleTable()
       }
 
       override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-      func removeHighlight() {
+      func styleTable() {
         // `superview` is `unowned(unsafe)` in AppKit. Each step reads it on the main thread
         // while this view is in the hierarchy, so every ancestor is alive.
         var ancestor = unsafe superview
         while let view = ancestor, !(view is NSTableView) { ancestor = unsafe view.superview }
-        guard let table = ancestor as? NSTableView, table.selectionHighlightStyle != .none else {
-          return
+        guard let table = ancestor as? NSTableView else { return }
+        if table.selectionHighlightStyle != .none { table.selectionHighlightStyle = .none }
+        // A project's sessions line up with the rest; the folder's chevron marks the nesting.
+        if let outline = table as? NSOutlineView, outline.indentationPerLevel != 0 {
+          outline.indentationPerLevel = 0
         }
-        table.selectionHighlightStyle = .none
       }
     }
   }

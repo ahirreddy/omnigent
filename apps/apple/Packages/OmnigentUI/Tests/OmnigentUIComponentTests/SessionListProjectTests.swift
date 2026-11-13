@@ -112,6 +112,23 @@
       #expect(expanded()?.isEmpty == true)
     }
 
+    @Test("a project's sessions line up with the sessions outside it")
+    func noIndent() throws {
+      let spy = spy()
+      let key = SidebarNavigationOrder.expandedProjectsKey
+      let before = UserDefaults.standard.string(forKey: key)
+      defer { UserDefaults.standard.set(before, forKey: key) }
+      UserDefaults.standard.set("p1", forKey: key)
+      let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 300, height: 800)
+      defer { screen.close() }
+      let outline = try #require(screen.list as? NSOutlineView)
+      // Rows: 6 the pinned session, 8 Work, 9 beta inside it.
+      #expect(outline.level(forRow: 9) > outline.level(forRow: 6))
+      #expect(
+        outline.frameOfCell(atColumn: 0, row: 9).minX
+          == outline.frameOfCell(atColumn: 0, row: 6).minX)
+    }
+
     @Test("an empty open folder says it's loading, then that it's empty")
     func emptyFolder() throws {
       let spy = spy()
