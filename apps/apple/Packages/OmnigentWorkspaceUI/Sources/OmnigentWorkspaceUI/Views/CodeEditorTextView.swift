@@ -62,6 +62,10 @@ struct CodeEditorTextView {
     var revision: Int
     var onSelection: (NSRange?) -> Void
     private var lastSelection: NSRange?
+    #if os(macOS)
+      /// The text view whose Undo and Redo this hears.
+      weak var undoTextView: NSTextView?
+    #endif
 
     init(
       editor: FileEditor, language: SyntaxLanguage?, scheme: ColorScheme,
@@ -136,6 +140,7 @@ struct CodeEditorTextView {
       textView.textContainerInset = NSSize(width: 6, height: 8)
       textView.typingAttributes = context.coordinator.highlighter.baseAttributes
       textView.delegate = context.coordinator
+      context.coordinator.followUndo(of: textView)
       textView.setAccessibilityIdentifier("workspace.editor")
       unsafe context.coordinator.load(textView.textStorage)
       controller.textView = textView
@@ -159,6 +164,25 @@ struct CodeEditorTextView {
     func textViewDidChangeSelection(_ notification: Notification) {
       guard let textView = notification.object as? NSTextView else { return }
       selectionChanged(textView.selectedRange())
+    }
+
+    /// Hears the text view's Undo and Redo: AppKit changes the text for them without sending
+    /// `textDidChange`, and the editor would go on holding the text from before.
+    func followUndo(of textView: NSTextView) {
+      undoTextView = textView
+      let center = NotificationCenter.default
+      for name in [Notification.Name.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange] {
+        center.addObserver(self, selector: #selector(undoChanged(_:)), name: name, object: nil)
+      }
+    }
+
+    @objc func undoChanged(_ notification: Notification) {
+      guard let textView = undoTextView, let manager = notification.object as? UndoManager,
+        manager === textView.undoManager
+      else { return }
+      // Another view's undo in the same window leaves this text as the editor has it.
+      guard let storage = unsafe textView.textStorage, storage.string != editor.text else { return }
+      textChanged(storage)
     }
   }
 #else
