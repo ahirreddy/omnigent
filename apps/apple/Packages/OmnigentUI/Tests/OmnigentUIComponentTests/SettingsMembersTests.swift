@@ -64,6 +64,20 @@
       #expect(SystemSideEffects.pasteboard.string(forType: .string) == "new-secret")
     }
 
+    @Test("Done on the new password shows it without copying it")
+    func resetDone() async throws {
+      let actions = actions
+      let member = member
+      let screen = settingsForm(store: store) { MembersPane(members: [member], actions: actions) }
+      defer { screen.close() }
+      SystemSideEffects.answer(alert: .alertSecondButtonReturn)
+      try screen.choose("Reset Password\u{2026}", inPopUp: try #require(screen.popUps.first))
+      try await screen.letTasksRun()
+      #expect(log.entries == ["reset ada"])
+      #expect(SystemSideEffects.record.alertMessages == ["New password for ada"])
+      #expect(SystemSideEffects.pasteboard.string(forType: .string) == nil)
+    }
+
     @Test("a member with nothing this server can do to them has no menu")
     func noMenu() throws {
       var noRemove = ServerSettingsActions()
@@ -150,6 +164,29 @@
       try screen.clickButton(at: 1)
       screen.settle(0.3)
       #expect(screen.window.attachedSheet == nil)
+    }
+
+    @Test("Return creates the invite and then closes the link; Escape cancels before creating")
+    func inviteKeys() async throws {
+      let link = MemberInviteLink(url: "https://x.dev/register/abc", expiresAt: nil)
+      let canceled = try inviteSheet(link: link)
+      defer { canceled.close() }
+      try canceled.press(keyCode: 53, characters: "\u{1B}")
+      canceled.settle(0.3)
+      #expect(canceled.window.attachedSheet == nil)
+      #expect(log.entries.isEmpty)
+
+      let screen = try inviteSheet(link: link)
+      defer { screen.close() }
+      try screen.press(keyCode: 36, characters: "\r")
+      try await screen.letTasksRun()
+      #expect(log.entries == ["invite admin=false"])
+      #expect(try screen.shows(link.url))
+      #expect(screen.window.attachedSheet != nil)
+      try screen.press(keyCode: 36, characters: "\r")
+      screen.settle(0.3)
+      #expect(screen.window.attachedSheet == nil)
+      #expect(log.entries == ["invite admin=false"], "Done creates nothing more")
     }
 
     @Test("a link that expires says when; the server's reason beats the generic failure")

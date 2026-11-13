@@ -189,14 +189,59 @@
       try screen.set(toggles[1], isOn: true)
       try screen.set(toggles[2], isOn: false)
       try screen.choose("y", inPopUp: try #require(screen.popUps.first))
-      #expect(screen.textFields.contains { $0.placeholderString == "JSON object" })
-      #expect(screen.textFields.contains { $0.placeholderString == "Comma-separated" })
+      let object = try #require(
+        screen.textFields.first { $0.placeholderString == "JSON object" })
+      try screen.replaceText(in: object, with: #"{"k":1}"#)
+      let list = try #require(
+        screen.textFields.first { $0.placeholderString == "Comma-separated" })
+      try screen.replaceText(in: list, with: "a, b")
       try screen.clickButton(at: 2)
       try await screen.letTasksRun()
       let sent = try #require(log.entries.first)
       #expect(sent.contains("flag=true"), "\(sent)")
       #expect(sent.contains("many=m"), "\(sent)")
       #expect(sent.contains("pick=y"), "\(sent)")
+      #expect(sent.contains(#""list=a, b""#), "\(sent)")
+      #expect(sent.contains(#"object={\"k\":1}"#), "\(sent)")
+    }
+
+    @Test("Cancel, by its button or Escape, closes the sheet and adds nothing")
+    func cancels() async throws {
+      let clicked = try addSheet(templates: [template])
+      defer { clicked.close() }
+      try chooseFirst(clicked)
+      // Change Policy, Cancel, Add.
+      try clicked.clickButton(at: 1)
+      clicked.settle(0.3)
+      #expect(clicked.window.attachedSheet == nil)
+      let escaped = try addSheet(templates: [template])
+      defer { escaped.close() }
+      try chooseFirst(escaped)
+      _ = escaped.activeWindow.makeFirstResponder(nil)
+      try escaped.press(keyCode: 53, characters: "\u{1B}")
+      escaped.settle(0.3)
+      #expect(escaped.window.attachedSheet == nil)
+      try await escaped.letTasksRun()
+      #expect(log.entries.isEmpty)
+    }
+
+    @Test("Return adds the chosen policy, and does nothing before one is chosen")
+    func returnAdds() async throws {
+      let screen = try addSheet(templates: [template])
+      defer { screen.close() }
+      // Each press is with no field focused, so the key goes to the sheet's default button.
+      _ = screen.activeWindow.makeFirstResponder(nil)
+      try screen.press(keyCode: 36, characters: "\r")
+      try await screen.letTasksRun()
+      #expect(log.entries.isEmpty, "no policy chosen yet")
+      #expect(screen.window.attachedSheet != nil)
+      try chooseFirst(screen)
+      _ = screen.activeWindow.makeFirstResponder(nil)
+      try screen.press(keyCode: 36, characters: "\r")
+      try await screen.letTasksRun()
+      screen.settle(0.3)
+      #expect(log.entries == [#"add budget [budget-1] ["limit=10"]"#])
+      #expect(screen.window.attachedSheet == nil)
     }
 
     @Test("no templates yet says Loading; a template repeated by the registry doesn't crash")

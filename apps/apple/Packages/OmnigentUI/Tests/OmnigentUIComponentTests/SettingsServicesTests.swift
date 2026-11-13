@@ -82,6 +82,26 @@
       #expect(screen.window.attachedSheet == nil)
     }
 
+    @Test("Return in the token field connects as the button does, and not without a token")
+    func returnConnects() async throws {
+      let screen = try tokenSheet()
+      defer { screen.close() }
+      let field = try #require(screen.secureFields.first)
+      // Pressed with no field focused: off screen, Return in a focused field doesn't reach the
+      // default button.
+      _ = screen.activeWindow.makeFirstResponder(nil)
+      try screen.press(keyCode: 36, characters: "\r")
+      try await screen.letTasksRun()
+      #expect(log.entries.isEmpty, "no token yet")
+      try screen.replaceText(in: field, with: "secret")
+      _ = screen.activeWindow.makeFirstResponder(nil)
+      try screen.press(keyCode: 36, characters: "\r")
+      try await screen.letTasksRun()
+      screen.settle(0.3)
+      #expect(log.entries == ["connect docs [secret]"])
+      #expect(screen.window.attachedSheet == nil)
+    }
+
     @Test("a refused token says why beside the field, and typing clears it")
     func refusedToken() async throws {
       let screen = try tokenSheet(connects: false, errorMessage: "Bad token")

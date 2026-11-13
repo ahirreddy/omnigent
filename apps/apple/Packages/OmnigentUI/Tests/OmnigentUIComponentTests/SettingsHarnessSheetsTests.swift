@@ -304,6 +304,14 @@
       #expect(SystemSideEffects.pasteboard.string(forType: .string) == "codex login")
     }
 
+    /// The Save button on a field's row; a disabled one isn't a control, so there is none.
+    private func saveButton<Content>(
+      beside field: NSView, in screen: OffscreenWindow<Content>
+    ) -> CGRect? {
+      let frame = field.convert(field.bounds, to: screen.activeWindow.contentView)
+      return screen.buttonFrames.first { abs($0.midY - frame.midY) < 8 && $0.minX >= frame.maxX }
+    }
+
     @Test("an API key saves trimmed, from the button or Return, and spaces don't save")
     func apiKey() throws {
       let screen = screen(credentialState(adoptable: nil))
@@ -311,11 +319,16 @@
       try openForm(screen)
       let key = try #require(screen.secureFields.first)
       try screen.replaceText(in: key, with: "   ")
+      #expect(saveButton(beside: key, in: screen) == nil, "Save is off for spaces")
       try screen.press(keyCode: 36, characters: "\r")
       #expect(log.entries == ["opened"])
       try screen.replaceText(in: key, with: " sk-1 ")
+      try screen.click(try #require(saveButton(beside: key, in: screen)).center)
+      #expect(log.entries == ["opened", "save \(HarnessCredentialChoice.apiKey("sk-1"))"])
+      #expect(key.stringValue.isEmpty, "the saved key leaves the field")
+      try screen.replaceText(in: key, with: " sk-2 ")
       try screen.press(keyCode: 36, characters: "\r")
-      #expect(log.entries.last == "save \(HarnessCredentialChoice.apiKey("sk-1"))")
+      #expect(log.entries.last == "save \(HarnessCredentialChoice.apiKey("sk-2"))")
     }
 
     @Test("a gateway needs both its URL and key, and saves them trimmed")
@@ -329,11 +342,19 @@
       try screen.click(key)
       try screen.press(keyCode: 36, characters: "\r")
       #expect(log.entries == ["opened"], "no key yet")
+      #expect(saveButton(beside: key, in: screen) == nil, "Save is off without a key")
       try screen.replaceText(in: key, with: " gk ")
       try screen.press(keyCode: 36, characters: "\r")
       #expect(
         log.entries.last
           == "save \(HarnessCredentialChoice.gateway(baseURL: "https://proxy.test", apiKey: "gk"))")
+      try screen.replaceText(in: key, with: " gk2 ")
+      try screen.click(try #require(saveButton(beside: key, in: screen)).center)
+      #expect(
+        log.entries.last
+          == "save \(HarnessCredentialChoice.gateway(baseURL: "https://proxy.test", apiKey: "gk2"))"
+      )
+      #expect(log.entries.count == 3, "opened, then one save by Return and one by the button")
     }
 
     @Test("a credential being saved can't be saved again")

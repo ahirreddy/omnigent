@@ -170,6 +170,39 @@
       #expect(preferences.paletteID == "custom")
     }
 
+    @Test("the second color well edits the background tint, and leaves the accent alone")
+    func pickTint() throws {
+      let preferences = ThemePreferences(defaults: store)
+      let base = preferences.theme
+      let screen = screen(preferences)
+      defer { screen.close() }
+      let wells = screen.allViews.compactMap { $0 as? NSColorWell }
+      try #require(wells.count == 2)
+      wells[1].color = NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1)
+      _ = wells[1].sendAction(wells[1].action, to: wells[1].target)
+      screen.settle()
+      #expect(preferences.paletteID == "custom")
+      // The window is dark, so the dark variant is the one edited.
+      #expect(preferences.custom.darkTint == "#0000ff")
+      #expect(preferences.custom.darkAccent == ThemeSettingsView.hex(base.dark.accent))
+      #expect(preferences.custom.tint == ThemeSettingsView.hex(base.light.canvas ?? .white))
+    }
+
+    @Test("choosing a palette in its pop-up selects it, stores it and describes it")
+    func choosePalette() throws {
+      let preferences = ThemePreferences(defaults: store)
+      let other = try #require(OmnigentTheme.builtIn.last { $0.id != preferences.paletteID })
+      let screen = screen(preferences)
+      defer { screen.close() }
+      let popUp = try #require(
+        try screen.popUps.first { try screen.titles(inPopUp: $0).contains(other.name) },
+        "no pop-up offers \(other.name)")
+      try screen.choose(other.name, inPopUp: popUp)
+      #expect(preferences.paletteID == other.id)
+      #expect(ThemePreferences(defaults: store).paletteID == other.id)
+      #expect(try screen.shows(other.blurb))
+    }
+
     @Test("a palette says what it is; Custom says what it's based on")
     func palette() throws {
       let preferences = ThemePreferences(defaults: store)
