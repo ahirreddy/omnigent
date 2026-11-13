@@ -80,23 +80,28 @@ final class MacSystemPanelFlowUITests: XCTestCase {
       XCTAssertTrue(
         sheet.buttons["Print"].appears(within: 10),
         "the sheet has no Print button\n\(app.debugDescription)")
-      declineLocalNetworkPrompt(waiting: 6)
+      declineLocalNetworkPrompt()
       live.clickDialogButton("Cancel", in: app)
       XCTAssertTrue(sheet.disappears(within: 15), "Cancel left the print sheet")
       XCTAssertTrue(live.text(containing: page.title, in: app).exists, "the page is gone")
       live.assertRunning(app, "after cancelling the print sheet")
     }
 
-    /// Answers the system's "find devices on local networks" prompt with Don't Allow. The print
-    /// sheet's search for printers raises it mid-screen once per build of the app, a few
-    /// seconds after the sheet, and it stays over every later flow until it is answered.
+    /// Whether a print sheet of this run already showed the local network prompt is answered.
+    @MainActor private static var localNetworkIsAnswered = false
+
+    /// Answers the system's "find devices on local networks" prompt with Don't Allow. The app's
+    /// first print sheet on a machine raises it mid-screen, a few seconds after the sheet (it
+    /// looks for printers), and it stays over every later flow until it is answered.
     @MainActor
-    private func declineLocalNetworkPrompt(waiting seconds: TimeInterval) {
+    private func declineLocalNetworkPrompt() {
       let system = XCUIApplication(bundleIdentifier: "com.apple.UserNotificationCenter")
       let prompt = system.staticTexts.matching(
         NSPredicate(format: "value CONTAINS %@", "local networks")
       ).firstMatch
-      guard prompt.appears(within: seconds) else { return }
+      let wait: TimeInterval = Self.localNetworkIsAnswered ? 0 : 8
+      Self.localNetworkIsAnswered = true
+      guard prompt.appears(within: wait) else { return }
       let decline = system.dialogs.buttons.matching(
         NSPredicate(format: "title BEGINSWITH %@", "Don")
       ).firstMatch

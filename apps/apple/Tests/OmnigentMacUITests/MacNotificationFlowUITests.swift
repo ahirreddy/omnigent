@@ -26,48 +26,54 @@ final class MacNotificationFlowUITests: XCTestCase {
     defer { app.terminate() }
     try requireAllowedNotifications(live, app)
     live.open(session, in: app)
+    // Open, the list covers the window's trailing controls: a failed run must not leave it.
+    addTeardownBlock { @MainActor in Self.showNotificationCenter(false) }
     // An earlier run's notification may still be listed; a new one has its own identifier.
-    showNotificationCenter(true)
-    let earlier = Set(listedNotifications().allElementsBoundByIndex.map(\.identifier))
-    showNotificationCenter(false)
+    Self.showNotificationCenter(true)
+    let earlier = Set(Self.listedNotifications().allElementsBoundByIndex.map(\.identifier))
+    Self.showNotificationCenter(false)
 
     // Leave before the reply ends: the session on screen never notifies.
     let message = "Notify me \(UUID().uuidString.prefix(6))"
     live.send(message, in: app)
     live.assertShows(message, in: app)
     live.open(other, in: app)
+    let transcript = app.descendants(matching: .any).matching(identifier: "transcript-\(session)")
+    XCTAssertNil(live.hittable(transcript, timeout: 0), "the session is still on screen")
 
     // The core waits ten seconds after a turn ends before it notifies.
     var posted: String?
     for _ in 0..<15 where posted == nil {
-      showNotificationCenter(true)
+      Self.showNotificationCenter(true)
       _ = live.waitUntil(timeout: 5) {
-        posted = listedNotifications().allElementsBoundByIndex.map(\.identifier)
+        posted = Self.listedNotifications().allElementsBoundByIndex.map(\.identifier)
           .first { !earlier.contains($0) }
         return posted != nil
       }
-      if posted == nil { showNotificationCenter(false) }
+      if posted == nil { Self.showNotificationCenter(false) }
     }
     let identifier = try XCTUnwrap(posted, "no notification for the session")
-    let notification = listedNotifications().matching(identifier: identifier).firstMatch
+    let notification = Self.listedNotifications().matching(identifier: identifier).firstMatch
     XCTAssertTrue(
       notification.label.contains("local mock model"),
       "the notification does not carry the reply: \(notification.label)")
 
     // Among older notifications of the app the first click only spreads the stack out.
-    let transcript = live.element("transcript-\(session)", in: app)
-    for _ in 0..<2 where !transcript.exists && notification.exists {
+    for _ in 0..<2 where notification.exists {
       notification.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-      _ = transcript.appears(within: 10)
+      _ = notification.disappears(within: 5)
     }
-    XCTAssertTrue(transcript.exists, "the notification did not open its session")
+    XCTAssertFalse(notification.exists, "the clicked notification stayed in the list")
+    Self.showNotificationCenter(false)
+    XCTAssertNotNil(
+      live.hittable(transcript, timeout: 15), "the notification did not open its session")
     live.assertRunning(app, "after opening the session from its notification")
   }
 
   /// The fixture session's notifications listed in Notification Center, while it is open:
   /// each is labeled with the app, the session's title and the body.
   @MainActor
-  private func listedNotifications() -> XCUIElementQuery {
+  private static func listedNotifications() -> XCUIElementQuery {
     XCUIApplication(bundleIdentifier: "com.apple.notificationcenterui")
       .descendants(matching: .any)
       .matching(NSPredicate(format: "label CONTAINS %@", ", UI test fixture, "))
@@ -75,7 +81,7 @@ final class MacNotificationFlowUITests: XCTestCase {
 
   /// Opens or closes Notification Center with the menu bar's clock.
   @MainActor
-  private func showNotificationCenter(_ shows: Bool) {
+  private static func showNotificationCenter(_ shows: Bool) {
     let list = XCUIApplication(bundleIdentifier: "com.apple.notificationcenterui")
       .dialogs["Notification Center"]
     let clock = XCUIApplication(bundleIdentifier: "com.apple.controlcenter")
