@@ -114,7 +114,9 @@
 
     @Test("a missing command-line tool says so, and Refresh looks again")
     func missingCLI() async throws {
-      let fixture = try DesktopFixture(executables: [])
+      // Installed where Automatic doesn't look.
+      let installed = "/opt/tools/omnigent"
+      let fixture = try DesktopFixture(executables: [installed])
       defer { fixture.cleanUp() }
       let screen = hosted(fixture)
       defer { screen.close() }
@@ -124,11 +126,18 @@
         return
       }
       #expect(try screen.allText().contains(error.message))
-      // Choose, then Refresh: Use Automatic is off while no path is chosen.
-      let row = screen.controlFrames.filter { $0.minY > 200 && $0.minY < 400 }
-      try screen.click(try #require(row.last))
+      // The saved path changes behind the pane, which keeps what it last found until Refresh.
+      fixture.desktop.localServerPreferences.cliPath = installed
       await flush(screen)
       #expect(try screen.allText().contains("Not found"))
+      // Choose, Use Automatic, then Refresh.
+      let row = screen.controlFrames.filter { $0.minY > 200 && $0.minY < 400 }
+      try screen.click(try #require(row.last))
+      #expect(await settle(screen) { fixture.manager.cli.resolution != nil })
+      await flush(screen)
+      let text = try screen.allText()
+      #expect(text.contains(installed))
+      #expect(!text.contains("Not found"))
     }
 
     @Test("Choose takes the tool's path, and Use Automatic goes back to looking")

@@ -116,6 +116,31 @@ struct CustomAgentsScreenTests {
     try await settle(screen, untilShowing: "Yours")
   }
 
+  @Test("Instructions typed in the editor are what Save sends")
+  func editingInstructions() async throws {
+    let server = agentsServer()
+    server.route(
+      "/v1/agents/a1", method: "PATCH",
+      .json(#"{"id":"a1","name":"Reviewer","version":3,"model":"m","harness":"claude-native"}"#))
+    let screen = try await opened(server)
+    defer { screen.close() }
+    try screen.clickControl(at: Self.edit)
+    try await settle(screen, untilShowing: "Delete Agent…")
+    let editor = try #require(
+      screen.allViews.lazy.compactMap { $0 as? NSTextView }.first { $0.isEditable })
+    #expect(editor.string == "Be kind")
+    try screen.click(editor)
+    editor.selectAll(nil)
+    try screen.type("Be terse")
+    try await pause(screen)
+    try screen.clickControl(at: screen.controlFrames.count - 1)
+    try await settle(screen, until: "the save") {
+      !server.requests("PATCH", "/v1/agents/a1").isEmpty
+    }
+    let sent = try #require(try server.patched("/v1/agents/a1").first)
+    #expect(sent["instructions"] as? String == "Be terse", "\(sent)")
+  }
+
   @Test("Back leaves the editor")
   func backOnly() async throws {
     let screen = try await opened()

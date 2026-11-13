@@ -226,6 +226,36 @@ struct AutomationsScreenTests {
 }
 
 extension AutomationsScreenTests {
+  @Test("Return in the editor creates the automation once the form is complete")
+  func creatingWithReturn() async throws {
+    let server = automationsServer()
+    server.route("/v1/scheduled-tasks", method: "POST", .json(task, status: 201))
+    let (screen, _) = try await page(server)
+    defer { screen.close() }
+    let menu = try menu(screen, at: Self.newMenu, offering: "Create manually")
+    try screen.choose("Create manually", in: menu)
+    try await settle(screen, untilShowing: "Create automation")
+    let name = try #require(
+      screen.allViews.compactMap { $0 as? NSTextField }.first {
+        $0.placeholderString == "daily-brief"
+      })
+    #expect(name.stringValue.isEmpty)
+    // Each press is with no field focused, so the key goes to the sheet's default button.
+    _ = screen.activeWindow.makeFirstResponder(nil)
+    try screen.press(keyCode: 36, characters: "\r")
+    try await pause(screen, .milliseconds(100))
+    #expect(server.requests("POST", "/v1/scheduled-tasks").isEmpty, "nothing to save yet")
+    try typeAFullDraft(screen)
+    _ = screen.activeWindow.makeFirstResponder(nil)
+    try screen.press(keyCode: 36, characters: "\r")
+    try await settle(screen, until: "the create") {
+      !server.requests("POST", "/v1/scheduled-tasks").isEmpty
+    }
+    let body = try #require(try server.posted("/v1/scheduled-tasks").first)
+    #expect(body["name"] as? String == "Report")
+    #expect(body["prompt"] as? String == "Do it")
+  }
+
   @Test("A trigger starts from its template")
   func aTrigger() async throws {
     let (screen, _) = try await page(

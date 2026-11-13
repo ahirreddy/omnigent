@@ -73,6 +73,33 @@ struct ServerSettingsContainerTests {
     #expect(try !page.screen.shows("Signed in as"))
   }
 
+  /// The middle of the sidebar row that draws `title`.
+  private func rowPoint(titled title: String, on page: Page) throws -> CGPoint {
+    let screen = page.screen
+    let list = try #require(screen.allViews.lazy.compactMap { $0 as? NSTableView }.first)
+    let row = try (0..<list.numberOfRows).first { row in
+      guard let view = list.rowView(atRow: row, makeIfNecessary: false) else { return false }
+      return try screen.shownText(under: view).contains(title)
+    }
+    let frame = list.convert(
+      list.rect(ofRow: try #require(row, "no row titled \(title)")),
+      to: screen.activeWindow.contentView)
+    return CGPoint(x: frame.midX, y: frame.midY)
+  }
+
+  @Test("Clicking a pane in the sidebar shows it and reads its data from the server")
+  func clickingAPane() async throws {
+    let server = settingsServer()
+    let page = try await page(server)
+    defer { page.screen.close() }
+    #expect(try page.screen.shows("Signed in as"))
+    #expect(server.requests("GET", "/v1/mcp-registry/services").isEmpty)
+    try page.screen.click(try rowPoint(titled: ServerSettingsPane.mcp.title, on: page))
+    try await settle(page.screen, untilShowing: "Docs")
+    #expect(!server.requests("GET", "/v1/mcp-registry/services").isEmpty)
+    #expect(try !page.screen.shows("Signed in as"))
+  }
+
   @Test("A request can name another signed-in server, however its address is spelled")
   func anotherServer() async throws {
     let otherServer = settingsServer()
