@@ -220,9 +220,13 @@
       let screen = row(item)
       defer { screen.close() }
       #expect(try screen.shows("Show full reply"))
+      #expect(screen.popoverWindow == nil)
       // The summary, Show full reply.
       try screen.clickControl(at: 1)
-      screen.settle()
+      screen.settle(0.3)
+      let popover = try #require(screen.popoverWindow?.contentView)
+      let shown = try screen.shownText(under: popover)
+      #expect(shown.contains { $0.contains("The whole reply") }, "\(shown)")
       #expect(log.entries.isEmpty)
     }
 

@@ -177,6 +177,23 @@
       #expect(log.entries.isEmpty)
     }
 
+    @Test("Return in the search field hands the keys back to the list")
+    func returnLeavesSearch() throws {
+      let screen = bed.screen(items: [
+        bed.item("a", age: 10), bed.item("b", age: 20), bed.item("c", age: 30),
+      ])
+      defer { screen.close() }
+      try press("/", screen)
+      try screen.type("preview")
+      try pressReturn(screen)
+      #expect(log.entries.isEmpty, "Return in the field opens nothing")
+      try press("j", screen)
+      let search = try #require(screen.textFields.first)
+      #expect(search.stringValue == "preview", "J moved the selection instead of typing")
+      try pressReturn(screen)
+      #expect(log.entries == ["open b"])
+    }
+
     @Test("nothing to select leaves every key doing nothing")
     func keysOnEmpty() throws {
       let screen = bed.screen(items: [])

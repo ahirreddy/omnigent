@@ -123,6 +123,25 @@
       #expect(log.responses == ["one:Approved"])
     }
 
+    @Test("A click on a row of the list opens that request, and Back returns to the list")
+    func rowThenBack() throws {
+      let (screen, _) = sheet(.requests([request("one"), request("two")]))
+      defer { screen.close() }
+      #expect(try screen.shows("path [] closes 0"))
+      #expect(try !screen.shows("Approval required"))
+      // 0 is the first request's row, 1 the second's.
+      try screen.clickRow(1)
+      screen.settle(0.5)
+      #expect(try screen.shows("path [\"two\"] closes 0"))
+      #expect(try screen.shows("Approval required"))
+      // Back comes first, before the card's own buttons.
+      try screen.tapButton(0)
+      screen.settle(0.5)
+      #expect(try screen.shows("path [] closes 0"))
+      #expect(try !screen.shows("Approval required"))
+      #expect(log.responses.isEmpty)
+    }
+
     @Test("A request that's gone says it was answered")
     func gone() throws {
       let (screen, _) = sheet(.requests([request("one")]), start: ["missing"])

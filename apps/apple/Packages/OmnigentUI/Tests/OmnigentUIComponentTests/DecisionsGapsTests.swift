@@ -68,6 +68,29 @@
       #expect(surfaces.visibility.onScreen == ["one"])
     }
 
+    @Test("A long edit's diff folds on a card, and a click on Show all unfolds it to its last line")
+    func diffShowAll() throws {
+      let added = (1...20).map { "added \($0)" }.joined(separator: "\\n")
+      let input =
+        #"Edit({"file_path": "/a.swift", "old_string": "one", "new_string": ""#
+        + added + #""})"#
+      let screen = OffscreenWindow(
+        DecisionCardScreen(
+          card: .sample(message: "Edit", toolInput: input), model: DecisionCardModel(),
+          log: DecisionResponseLog()))
+      defer { screen.close() }
+      screen.settle()
+      #expect(try screen.shows("added 1"))
+      #expect(try screen.shows("Show all \u{00B7} "))
+      #expect(try !screen.shows("added 20"))
+      let showAll = try screen.withAccessibilityTree {
+        try screen.accessibilityFrame("preview-show-all")
+      }
+      try screen.click(CGPoint(x: showAll.midX, y: showAll.midY))
+      #expect(try screen.shows("added 20"))
+      #expect(try !screen.shows("Show all"))
+    }
+
     @Test("Inline Markdown applies, and text it can't parse shows as written")
     func inlineMarkdown() {
       let styled = InlineMarkdownText.attributed("use **Bash** now")
