@@ -176,7 +176,7 @@
     }
 
     /// How far a working turn's last row rests above the dock, in a pane `width` wide.
-    private func gapUnderLastRow(width: CGFloat) async throws -> CGFloat {
+    private func gapUnderLastRow(width: CGFloat, style: TranscriptStyle) async throws -> CGFloat {
       var header = TranscriptFixture.header
       header.status = .running
       let conversation = LiveConversation(
@@ -185,7 +185,9 @@
       let dock: CGFloat = 120
       let window = transcriptScreen(
         DockedTranscriptHost(
-          conversation: conversation, pane: TranscriptPane(width: width, dock: dock)),
+          conversation: conversation, pane: TranscriptPane(width: width, dock: dock)
+        )
+        .transcriptAppearance(TranscriptAppearance(style: style)),
         width: width, height: height)
       defer { window.close() }
       try await letOpeningEnd(window)
@@ -194,18 +196,20 @@
       let working = try window.withAccessibilityTree {
         try window.accessibilityFrame("transcript-working")
       }
-      // The row is at least a control high, with its line centered in it.
-      let rowBottom = working.midY + max(working.height, Theme.Control.target) / 2
-      return (height - dock) - rowBottom
+      // A chat row is at least a control high, with its line centered in it.
+      let rowHeight = style == .cli ? working.height : max(working.height, Theme.Control.target)
+      return (height - dock) - (working.midY + rowHeight / 2)
     }
 
     @Test(
       "A working turn's last row rests one row gap above the dock, in a narrow or wide pane",
-      arguments: [760, 1_200] as [CGFloat])
-    func lastRowToComposer(width: CGFloat) async throws {
-      let gap = try await gapUnderLastRow(width: width)
+      arguments: [(760, .chat), (1_200, .chat), (760, .cli), (1_200, .cli)]
+        as [(CGFloat, TranscriptStyle)])
+    func lastRowToComposer(width: CGFloat, style: TranscriptStyle) async throws {
+      let gap = try await gapUnderLastRow(width: width, style: style)
       // The stack's gap between two rows, and the point-high row the transcript scrolls to.
-      #expect(abs(gap - (Theme.Spacing.row + 1)) <= 0.5, "\(gap) points under the last row")
+      let rowGap = style == .cli ? CLIMetrics.blockGap : Theme.Spacing.row
+      #expect(abs(gap - (rowGap + 1)) <= 0.5, "\(gap) points under the last row")
     }
 
     // MARK: The composer's remaining rows

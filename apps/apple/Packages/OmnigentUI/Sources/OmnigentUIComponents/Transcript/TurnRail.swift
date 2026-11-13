@@ -82,6 +82,10 @@ struct TurnRail: View {
   static let width = Theme.Spacing.gutter
   /// A tick's clickable width, from the rail's leading inset to its trailing edge.
   static let tickWidth = width - Theme.Spacing.small
+  /// A tick's drawn width while the pointer is elsewhere.
+  static let restingTickWidth: CGFloat = 7
+  /// Where a resting tick ends, from the transcript's leading edge.
+  static let restingEdge = Theme.Spacing.small + restingTickWidth
 
   var body: some View {
     // A tick is not built again for a new jump, so it reaches the latest one through here.
@@ -199,7 +203,7 @@ private struct TurnTick: View, Equatable {
     Button(action: action) {
       Capsule()
         .fill(isHovered || isActive ? Color.primary : Color.secondary.opacity(0.4))
-        .frame(width: isHovered ? TurnRail.tickWidth : 7, height: 2)
+        .frame(width: isHovered ? TurnRail.tickWidth : TurnRail.restingTickWidth, height: 2)
         .frame(width: TurnRail.tickWidth, height: TurnRail.pitch, alignment: .leading)
         .contentShape(Rectangle())
     }

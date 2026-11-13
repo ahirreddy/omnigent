@@ -198,8 +198,14 @@ struct TranscriptColumn: ViewModifier {
     let maxWidth = layoutWidth == .compact ? .infinity : appearance.contentWidth.maxWidth
     content
       .frame(minWidth: 0, maxWidth: maxWidth, alignment: .leading)
-      .padding(.horizontal, gutter)
+      .padding(.leading, gutter + railRoom)
+      .padding(.trailing, gutter)
       .frame(minWidth: 0, maxWidth: .infinity)
+  }
+
+  /// Room for the turn rail's ticks, which would otherwise sit on the CLI's hanging markers.
+  private var railRoom: CGFloat {
+    appearance.isCLI && layoutWidth == .regular ? TurnRail.restingEdge : 0
   }
 
   private var gutter: CGFloat {
