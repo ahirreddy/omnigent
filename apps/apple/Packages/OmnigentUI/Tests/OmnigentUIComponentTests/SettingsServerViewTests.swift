@@ -163,6 +163,40 @@
       #expect(log.entries == ["load git"])
       try screen.choose("Two", inPopUp: try #require(screen.popUps.first { $0.title == "One" }))
       #expect(server.value == "two")
+      try await screen.letTasksRun()
+      #expect(log.entries == ["load git", "load git"], "the same pane, read from the new server")
+    }
+
+    /// The middle of the sidebar row that draws this title.
+    private func rowPoint(
+      titled title: String, in screen: OffscreenWindow<some View>
+    ) throws -> CGPoint {
+      let list = try #require(screen.list)
+      let row = try (0..<list.numberOfRows).first { row in
+        guard let view = list.rowView(atRow: row, makeIfNecessary: false) else { return false }
+        return try screen.shownText(under: view).contains(title)
+      }
+      return try screen.center(ofRow: try #require(row, "no row titled \(title)"))
+    }
+
+    @Test("clicking a pane's row in the sidebar shows and loads that pane")
+    func paneRowClick() async throws {
+      SystemSideEffects.reset()
+      let server = server
+      // The view keeps the pane itself, as a window's state does for the app.
+      let screen = OffscreenWindow(
+        ServerSettingsView(state: state(), selectedServer: server.binding, actions: actions),
+        width: 900, height: 700)
+      defer { screen.close() }
+      try await screen.letTasksRun()
+      #expect(log.entries == ["load account"])
+      #expect(try !screen.shows("No MCP services."))
+      try screen.click(try rowPoint(titled: ServerSettingsPane.mcp.title, in: screen))
+      // The list reports its selection a moment after the click.
+      for _ in 0..<40 where log.entries.count < 2 { try await screen.letTasksRun() }
+      #expect(try screen.shows("No MCP services."))
+      #expect(try !screen.shows("Change password"))
+      #expect(log.entries == ["load account", "load mcp"])
     }
 
     @Test("the panes leave the window's toolbar and title to the Settings tabs")
