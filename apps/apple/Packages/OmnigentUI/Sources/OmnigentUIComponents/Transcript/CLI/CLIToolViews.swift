@@ -30,10 +30,6 @@ nonisolated enum CLIAgentTool {
   static func isAgent(_ entry: ToolEntry) -> Bool {
     names.contains((entry.primary?.activity?.title ?? "").lowercased())
   }
-
-  static func isAgent(_ row: Row) -> Bool {
-    row.activity?.kind == .toolCall && names.contains((row.activity?.title ?? "").lowercased())
-  }
 }
 
 /// "Started `/root/sample_list`" or "Completed `/root/sample_list`" for a sub-agent tool.
