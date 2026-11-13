@@ -101,6 +101,42 @@ fn usage_sparse_merge_replacement_and_response_context_tokens() {
 }
 
 #[test]
+fn the_model_in_use_is_the_one_the_session_ran_on_most() {
+    let in_use = |models: Value| {
+        let mut harness = Harness::new(SESSION);
+        harness.send(json!({"type": "session.usage", "usage_by_model": models}));
+        harness
+            .reducer
+            .sections()
+            .iter()
+            .find(|section| section.id == "usage")
+            .and_then(|usage| {
+                usage
+                    .details
+                    .iter()
+                    .find(|detail| detail.id == "model_in_use")
+                    .map(|detail| detail.text.clone())
+            })
+    };
+    assert_eq!(
+        in_use(json!({
+            "small": {"input_tokens": 10, "output_tokens": 5},
+            "large": {"input_tokens": 900, "output_tokens": 100},
+            "counted-whole": {"total_tokens": 400},
+        }))
+        .as_deref(),
+        Some("large")
+    );
+    // Equal use: the first by name, whatever order the server listed them in.
+    assert_eq!(
+        in_use(json!({"zeta": {"total_tokens": 7}, "alpha": {"total_tokens": 7}})).as_deref(),
+        Some("alpha")
+    );
+    assert_eq!(in_use(json!({"only": {}})).as_deref(), Some("only"));
+    assert_eq!(in_use(json!({})), None);
+}
+
+#[test]
 fn usage_by_model_reads_as_counts_and_cost() {
     let mut harness = Harness::new(SESSION);
     harness.send(json!({

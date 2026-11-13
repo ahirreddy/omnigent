@@ -318,6 +318,9 @@ fn usage_section(state: &SessionEventState, result: &mut Vec<EventSection>) {
             "Usage by model",
             &lines.join("\n"),
         ));
+        if let Some(model) = model_in_use(models) {
+            details.push(detail("model_in_use", "Model in use", model));
+        }
     }
     if details.is_empty() {
         return;
@@ -327,6 +330,24 @@ fn usage_section(state: &SessionEventState, result: &mut Vec<EventSection>) {
         |tokens| format!("{tokens} context tokens"),
     );
     result.push(EventSection::new("usage", "Usage", summary).with_details(details));
+}
+
+/// The model the session has run on most, by tokens: what to call its model when neither the
+/// user nor the server names one. The first by name settles a tie.
+fn model_in_use(models: &std::collections::BTreeMap<String, ModelUsage>) -> Option<&str> {
+    let tokens = |usage: &ModelUsage| {
+        usage.total_tokens.unwrap_or_else(|| {
+            usage
+                .input_tokens
+                .unwrap_or(0)
+                .saturating_add(usage.output_tokens.unwrap_or(0))
+        })
+    };
+    models
+        .iter()
+        .rev()
+        .max_by_key(|(_, usage)| tokens(usage))
+        .map(|(model, _)| model.as_str())
 }
 
 /// One model's usage as a person reads it: `gpt-5: 8,303 input · 120 output · $0.04`. A total
