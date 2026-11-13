@@ -275,4 +275,27 @@
       #expect(current.popoverFieldValues == ["fix", "dev"])
     }
   }
+
+  extension NewSessionProfileTests {
+    @Test("Cancel in the options bar's New Worktree form closes it and chooses no worktree")
+    func branchFormCancelsInTheBar() throws {
+      var chosen: [NewSessionWorktreeChoice] = []
+      var actions = NewSessionOptionActions()
+      actions.selectWorktree = { chosen.append($0) }
+      let screen = OffscreenWindow(
+        NewSessionOptionsBar(
+          options: NewSessionOptions(folder: "/a", offersWorktrees: true), actions: actions
+        )
+        .frame(width: 800, height: 200, alignment: .top))
+      defer { screen.close() }
+      screen.settle()
+      try screen.choose("New Worktree\u{2026}", in: try screen.menu(at: 1))
+      screen.settle(0.2)
+      #expect(screen.popoverWindow != nil)
+      // With no name typed Use Branch isn't listed, so Cancel is the rightmost button.
+      try screen.clickPopoverButton(fromRight: 0)
+      #expect(screen.popoverWindow == nil)
+      #expect(chosen.isEmpty)
+    }
+  }
 #endif
