@@ -80,9 +80,15 @@ TEST_ARGUMENTS = {
 IOS_BUILD = ROOT / ".build" / "ios-coverage"
 IOS_SIMULATOR = "iPhone 18 Pro"
 
-# Per-package `xcodebuild test` arguments on the simulator. Left out: the live host test.
+# Per-package `xcodebuild test` arguments on the simulator. Left out: the live host test, and
+# three tests that expect the Mac's device name, shortcut wording and sidebar, and fail on iOS.
 IOS_TEST_ARGUMENTS = {
     "OmnigentRemoteBrowser": ["-skip-testing:OmnigentRemoteBrowserTests/RemoteBrowserE2ETests"],
+    "OmnigentUI": [
+        "-skip-testing:OmnigentUIComponentTests/ComposerRulesTests/blockedReasons()",
+        "-skip-testing:OmnigentUIComponentTests/FocusedActionsRelayTests/sidebarToggle()",
+        "-skip-testing:OmnigentUIComponentTests/SettingsPaneLogicTests/presenters()",
+    ],
 }
 
 

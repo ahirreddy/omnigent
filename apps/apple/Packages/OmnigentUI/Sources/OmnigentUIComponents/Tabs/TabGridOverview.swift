@@ -141,10 +141,12 @@
         .accessibilityIdentifier("tab-overview-new")
         .contextMenu {
           if let reopen = actions.reopenClosed, !state.recentlyClosed.isEmpty {
+            // coverage:off chosen from a long press's menu; iOS flow backlog: reopen a tab
             Button("Reopen Closed Tab", systemImage: "arrow.uturn.backward") {
               reopen()
               dismiss()
             }
+            // coverage:on
           }
         }
         Spacer()

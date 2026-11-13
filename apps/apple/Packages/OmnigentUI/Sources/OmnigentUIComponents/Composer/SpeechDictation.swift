@@ -17,6 +17,7 @@
     @ObservationIgnored private var request: SFSpeechAudioBufferRecognitionRequest?
     @ObservationIgnored private var task: SFSpeechRecognitionTask?
 
+    // coverage:off the microphone and speech recognizer, by consent; iOS flow backlog: dictate
     /// Starts listening, or stops when already listening.
     /// - Parameter update: Receives the words recognized so far.
     /// - Returns: Why dictation could not start, or `nil`.
@@ -66,6 +67,7 @@
         }
       }
     }
+    // coverage:on
 
     /// Stops listening and releases the microphone.
     func stop() {
@@ -80,8 +82,10 @@
       do {
         try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
       } catch {
+        // coverage:off another app holding the audio session, on a device that is playing
         // Another app's audio keeps the session; nothing to undo here.
         return
+        // coverage:on
       }
     }
 
@@ -91,6 +95,7 @@
       return base + " " + words
     }
 
+    // coverage:off the audio thread's tap and consent prompts; iOS flow backlog: dictate
     /// The microphone tap, which runs on the audio thread, so it must not be main-actor
     /// isolated.
     nonisolated private static func tap(
@@ -109,5 +114,6 @@
       guard speech == .authorized else { return false }
       return await AVAudioApplication.requestRecordPermission()
     }
+    // coverage:on
   }
 #endif

@@ -25,8 +25,9 @@
   /// technology does, so a test runs a control's own action without a UI test or a touch.
   ///
   /// Activation reaches `Button`s, `Toggle`s and links by accessibility identifier or label. It
-  /// opens no `Menu` and types into no `TextField`: host a menu's items outside the menu, and
-  /// call a UIKit view's own input methods.
+  /// opens no `Menu`, types into no `TextField` and finds no row inside a `ScrollView`, whose
+  /// elements SwiftUI makes only for assistive technology itself: host a menu's items or a
+  /// row's view outside its container, and call a UIKit view's own input methods.
   @MainActor
   public final class InProcessWindow {
     /// The window holding the view.
