@@ -211,7 +211,10 @@
     @Test("an alert sheet can open for real, unseen, and answers with the button pressed")
     func realAlertSheet() throws {
       let screen = OffscreenWindow(Text("Page"), width: 300, height: 200)
-      defer { screen.close() }
+      defer {
+        screen.close()
+        SystemSideEffects.reset()
+      }
       SystemSideEffects.showAlertSheets()
       let alert = NSAlert()
       alert.messageText = "Delete?"
@@ -237,6 +240,7 @@
 
     @Test("a popped-up menu chooses the item a test named, at any depth, and otherwise none")
     func menuChoice() {
+      defer { SystemSideEffects.reset() }
       let target = MenuChoiceTarget()
       let menu = NSMenu()
       menu.autoenablesItems = false
