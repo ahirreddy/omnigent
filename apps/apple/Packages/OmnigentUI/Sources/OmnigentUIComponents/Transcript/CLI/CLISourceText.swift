@@ -20,6 +20,8 @@ nonisolated enum SourceTinting {
     /// UTF-8 offsets into the source.
     var range: Range<Int>
     var tint: SourceTint
+    /// Where a link's source goes, when it may be opened.
+    var link: URL?
   }
 
   static func spans(in text: String) -> [Span] {
@@ -42,7 +44,8 @@ nonisolated enum SourceTinting {
         let lower = offset(range.lowerBound), let upper = offset(range.upperBound),
         lower < upper
       {
-        spans.append(Span(range: lower..<min(upper, end), tint: tint))
+        let link = MarkdownParser.safeURL((markup as? Markdown.Link)?.destination)
+        spans.append(Span(range: lower..<min(upper, end), tint: tint, link: link))
       }
       for child in markup.children { visit(child) }
     }
@@ -73,25 +76,34 @@ nonisolated enum SourceTinting {
   }
 
   /// The source with each span's color; later (inner) spans win over the ones around them.
+  /// Links, and web addresses written out anywhere in the text, open when clicked.
   static func attributed(
     _ text: String, spans: [Span], palette: CLIPalette, cursor: Bool
   ) -> AttributedString {
     let utf8 = text.utf8
     var tints = [SourceTint](repeating: .none, count: utf8.count)
+    var links = SourceLinks(text)
     for span in spans {
       for index in span.range where index < tints.count { tints[index] = span.tint }
+      if let link = span.link { links.claim(span.range, for: link) }
     }
     var result = AttributedString()
     var start = 0
     var startIndex = utf8.startIndex
     while start < tints.count {
       var end = start + 1
-      while end < tints.count, tints[end] == tints[start] { end += 1 }
+      while end < tints.count, tints[end] == tints[start], links.isSame(end, start) { end += 1 }
       // Span edges come from the parser, so they fall on character boundaries.
       let endIndex = utf8.index(startIndex, offsetBy: end - start)
       var piece = AttributedString(String(text[startIndex..<endIndex]))
       if let color = color(tints[start], palette: palette) { piece.foregroundColor = color }
-      if tints[start] == .link { piece.underlineStyle = .single }
+      if let link = links.url(at: start) {
+        piece.link = link
+        if tints[start] == .none { piece.foregroundColor = palette.link.color }
+        piece.underlineStyle = .single
+      } else if tints[start] == .link {
+        piece.underlineStyle = .single
+      }
       result.append(piece)
       start = end
       startIndex = endIndex
@@ -110,6 +122,44 @@ nonisolated enum SourceTinting {
     case .link: palette.link.color
     case .fence: palette.code.color
     }
+  }
+}
+
+/// Which link each byte of a source belongs to. Text with no link keeps no table.
+nonisolated struct SourceLinks {
+  private var urls: [URL] = []
+  /// An index into `urls` per UTF-8 byte, or -1; empty until the first claim.
+  private var owners: [Int32] = []
+  private let count: Int
+
+  /// The web addresses written out in `text`; a markdown link claimed later wins over them.
+  init(_ text: String) {
+    let utf8 = text.utf8
+    count = utf8.count
+    var offset = 0
+    var index = utf8.startIndex
+    for address in MarkdownAutolink.addresses(in: text) {
+      offset += utf8.distance(from: index, to: address.range.lowerBound)
+      let length = utf8.distance(from: address.range.lowerBound, to: address.range.upperBound)
+      claim(offset..<offset + length, for: address.url)
+      offset += length
+      index = address.range.upperBound
+    }
+  }
+
+  mutating func claim(_ range: Range<Int>, for url: URL) {
+    if owners.isEmpty { owners = [Int32](repeating: -1, count: count) }
+    urls.append(url)
+    for index in range where index < count { owners[index] = Int32(urls.count - 1) }
+  }
+
+  func url(at index: Int) -> URL? {
+    guard !owners.isEmpty, owners[index] >= 0 else { return nil }
+    return urls[Int(owners[index])]
+  }
+
+  func isSame(_ index: Int, _ other: Int) -> Bool {
+    owners.isEmpty || owners[index] == owners[other]
   }
 }
 

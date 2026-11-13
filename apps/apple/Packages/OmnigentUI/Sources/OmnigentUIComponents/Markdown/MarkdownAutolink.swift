@@ -3,21 +3,38 @@ import SwiftUI
 /// Web addresses written out in prose become links, as GitHub's Markdown makes them, and every
 /// link is underlined so it reads as one beside tinted text.
 nonisolated enum MarkdownAutolink {
-  /// `text` with each `http` or `https` address in it linked.
-  static func linking(_ text: String) -> AttributedString {
-    guard text.contains("http") else { return AttributedString(text) }
+  /// A web address written out in text, and where.
+  struct Address {
+    let range: Range<String.Index>
+    let url: URL
+  }
+
+  /// Each `http` or `https` address written out in `text`, in order.
+  static func addresses(in text: String) -> [Address] {
+    guard text.contains("http") else { return [] }
     let address = /https?:\/\/[^\s<>]+/
-    var result = AttributedString()
+    var found: [Address] = []
     var rest = text[...]
     while let match = rest.firstMatch(of: address) {
       let written = trimmed(match.output)
-      result.append(AttributedString(String(rest[..<written.startIndex])))
-      var span = AttributedString(String(written))
-      if let url = MarkdownParser.safeURL(String(written)) { span = link(span, to: url) }
-      result.append(span)
+      if let url = MarkdownParser.safeURL(String(written)) {
+        found.append(Address(range: written.startIndex..<written.endIndex, url: url))
+      }
       rest = rest[written.endIndex...]
     }
-    result.append(AttributedString(String(rest)))
+    return found
+  }
+
+  /// `text` with each `http` or `https` address in it linked.
+  static func linking(_ text: String) -> AttributedString {
+    var result = AttributedString()
+    var rest = text.startIndex
+    for address in addresses(in: text) {
+      result.append(AttributedString(String(text[rest..<address.range.lowerBound])))
+      result.append(link(AttributedString(String(text[address.range])), to: address.url))
+      rest = address.range.upperBound
+    }
+    result.append(AttributedString(String(text[rest...])))
     return result
   }
 

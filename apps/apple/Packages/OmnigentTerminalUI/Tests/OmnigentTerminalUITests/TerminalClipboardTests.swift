@@ -148,6 +148,31 @@ struct TerminalClipboardTests {
     #expect(SystemSideEffects.record.openedURLs.count == 1)
   }
 
+  @Test("a Command-click on an address the program printed opens it; a plain click does not")
+  func commandClickOpensALink() async throws {
+    let surface = try NeverShownSurface()
+    #expect(await surface.ready())
+    SystemSideEffects.reset()
+    #expect(await surface.survives([], marker: "https://example.com/printed"))
+    // The first row, inside the address: the view is 240 pt tall with 6 pt of padding.
+    let point = CGPoint(x: 80, y: 224)
+    surface.view.mouseMoved(with: try Events.mouse(.mouseMoved, at: point))
+    surface.view.mouseDown(with: try Events.mouse(.leftMouseDown, at: point))
+    surface.view.mouseUp(with: try Events.mouse(.leftMouseUp, at: point))
+    try await Task.sleep(for: .milliseconds(200))
+    #expect(SystemSideEffects.record.openedURLs.isEmpty)
+
+    // Command goes down over the address, as a hand on the keyboard presses it.
+    surface.view.flagsChanged(with: try Events.flags(keyCode: 0x37, flags: .maskCommand))
+    surface.view.mouseDown(with: try Events.mouse(.leftMouseDown, at: point, flags: .command))
+    surface.view.mouseUp(with: try Events.mouse(.leftMouseUp, at: point, flags: .command))
+    #expect(
+      await eventually {
+        SystemSideEffects.record.openedURLs.map(\.absoluteString)
+          == ["https://example.com/printed"]
+      })
+  }
+
   @Test("Ghostty's other actions: a render request is taken and an unknown one isn't")
   func otherActions() throws {
     let controller = try NeverShownSurface().controller
