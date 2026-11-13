@@ -58,12 +58,15 @@
       var panelResponse = NSApplication.ModalResponse.cancel
       var panelURL: URL?
       var opensFail = false
+      var showsAlertSheets = false
+      var menuChoice: String?
     }
 
     static let state = OSAllocatedUnfairLock(initialState: State())
     private nonisolated(unsafe) static var originalWindowInit: IMP?
     private nonisolated(unsafe) static var originalSetAlpha: IMP?
     nonisolated(unsafe) static var originalPanelURL: IMP?
+    private nonisolated(unsafe) static var originalAlertSheet: IMP?
     private static let installation = OSAllocatedUnfairLock(initialState: false)
 
     /// A private clipboard standing in for `NSPasteboard.general`, unique to this process.
@@ -203,11 +206,20 @@
         return Self.state.withLock { $0.alertResponse.rawValue }
       }
       replace(NSAlert.self, "runModal", with: run)
-      let sheet: AlertSheet = { alert, _, _, done in
+      let sheet: AlertSheet = { alert, selector, window, done in
         Self.noteAlert(alert)
+        if Self.state.withLock({ $0.showsAlertSheets }),
+          let original = unsafe Self.originalAlertSheet
+        {
+          // The real sheet: its window is transparent like every other, so it is never seen.
+          unsafe unsafeBitCast(original, to: AlertSheet.self)(alert, selector, window, done)
+          return
+        }
         done?(Self.state.withLock { $0.alertResponse.rawValue })
       }
-      replace(NSAlert.self, "beginSheetModalForWindow:completionHandler:", with: sheet)
+      let present = unsafe method(NSAlert.self, "beginSheetModalForWindow:completionHandler:")
+      unsafe originalAlertSheet = method_setImplementation(
+        present, unsafeBitCast(sheet, to: IMP.self))
     }
 
     /// Records an alert AppKit was asked to show, on the main thread.
@@ -247,9 +259,10 @@
       }
       replace(NSWindow.self, "makeKeyAndOrderFront:", with: show)
       replace(NSWindow.self, "orderFront:", with: show)
-      let popUp: MenuPopUp = { _, _, _, _, _ in
+      let popUp: MenuPopUp = { menu, _, _, _, _ in
         Self.note { $0.poppedUpMenuCount += 1 }
-        return false
+        guard let title = Self.state.withLock({ $0.menuChoice }) else { return false }
+        return Self.choose(title, in: menu)
       }
       replace(NSMenu.self, "popUpMenuPositioningItem:atLocation:inView:", with: popUp)
     }

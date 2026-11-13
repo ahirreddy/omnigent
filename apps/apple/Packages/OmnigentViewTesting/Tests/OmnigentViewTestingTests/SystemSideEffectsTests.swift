@@ -36,6 +36,14 @@
     }
   }
 
+  /// Records the titles of the menu items sent to it.
+  @MainActor
+  private final class MenuChoiceTarget: NSObject {
+    var chosen: [String] = []
+
+    @objc func choose(_ sender: NSMenuItem) { chosen.append(sender.title) }
+  }
+
   /// Windows of this process that a person could see right now.
   @MainActor
   private func visibleWindows() -> [String] {
@@ -198,6 +206,59 @@
       #expect(SystemSideEffects.endsRunEarly(callStack: early))
       #expect(!SystemSideEffects.endsRunEarly(callStack: normal))
       #expect(!SystemSideEffects.endsRunEarly(callStack: ["exit", "main"]))
+    }
+
+    @Test("an alert sheet can open for real, unseen, and answers with the button pressed")
+    func realAlertSheet() throws {
+      let screen = OffscreenWindow(Text("Page"), width: 300, height: 200)
+      defer { screen.close() }
+      SystemSideEffects.showAlertSheets()
+      let alert = NSAlert()
+      alert.messageText = "Delete?"
+      alert.addButton(withTitle: "Delete")
+      alert.addButton(withTitle: "Keep")
+      var answers: [NSApplication.ModalResponse] = []
+      alert.beginSheetModal(for: screen.window) { answers.append($0) }
+      screen.settle()
+      #expect(answers.isEmpty, "the sheet waits for a button")
+      #expect(screen.window.attachedSheet === alert.window)
+      #expect(visibleWindows().isEmpty)
+      #expect(SystemSideEffects.record.alertMessages == ["Delete?"])
+      let keep = try #require(
+        screen.allViews.compactMap { $0 as? NSButton }.first { $0.title == "Keep" })
+      try screen.click(keep)
+      #expect(answers == [.alertSecondButtonReturn])
+      #expect(screen.window.attachedSheet == nil)
+
+      SystemSideEffects.reset()
+      alert.beginSheetModal(for: screen.window) { answers.append($0) }
+      #expect(answers == [.alertSecondButtonReturn, .alertFirstButtonReturn], "at once again")
+    }
+
+    @Test("a popped-up menu chooses the item a test named, at any depth, and otherwise none")
+    func menuChoice() {
+      let target = MenuChoiceTarget()
+      let menu = NSMenu()
+      menu.autoenablesItems = false
+      let action = #selector(MenuChoiceTarget.choose(_:))
+      menu.addItem(withTitle: "Copy", action: action, keyEquivalent: "").target = target
+      let more = menu.addItem(withTitle: "More", action: nil, keyEquivalent: "")
+      let submenu = NSMenu()
+      submenu.autoenablesItems = false
+      submenu.addItem(withTitle: "Deep", action: action, keyEquivalent: "").target = target
+      more.submenu = submenu
+      #expect(!menu.popUp(positioning: nil, at: .zero, in: nil))
+      #expect(target.chosen.isEmpty)
+      SystemSideEffects.chooseFromMenus("Copy")
+      #expect(menu.popUp(positioning: nil, at: .zero, in: nil))
+      #expect(target.chosen == ["Copy"])
+      SystemSideEffects.chooseFromMenus("Deep")
+      #expect(menu.popUp(positioning: nil, at: .zero, in: nil))
+      #expect(target.chosen == ["Copy", "Deep"])
+      SystemSideEffects.chooseFromMenus("Absent")
+      #expect(!menu.popUp(positioning: nil, at: .zero, in: nil))
+      #expect(target.chosen == ["Copy", "Deep"])
+      #expect(SystemSideEffects.record.poppedUpMenuCount == 4)
     }
 
     @Test("an exit that's on time goes on as usual")
