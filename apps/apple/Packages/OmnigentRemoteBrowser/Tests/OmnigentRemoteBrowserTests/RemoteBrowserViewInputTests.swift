@@ -36,13 +36,21 @@
       return try #require(NSEvent(cgEvent: event))
     }
 
-    /// A scroll event, built but never posted.
-    static func scroll(_ deltaY: Int32, _ deltaX: Int32 = 0) throws -> NSEvent {
+    /// A scroll event at a place in a windowless view, built but never posted. A scroll event
+    /// carries a screen point measured down from the top of the main display.
+    static func scroll(_ deltaY: Int32, _ deltaX: Int32 = 0, at location: CGPoint) throws -> NSEvent
+    {
       let event = try #require(
         CGEvent(
           scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: deltaY,
           wheel2: deltaX, wheel3: 0))
-      return try #require(NSEvent(cgEvent: event))
+      let screenHeight = try #require(NSScreen.screens.first).frame.height
+      event.location = CGPoint(x: location.x, y: screenHeight - location.y)
+      let scroll = try #require(NSEvent(cgEvent: event))
+      // Wherever the pointer really is, the event must be where the test put it.
+      let placed = scroll.locationInWindow
+      try #require(abs(placed.x - location.x) < 1 && abs(placed.y - location.y) < 1, "\(placed)")
+      return scroll
     }
   }
 
@@ -95,14 +103,40 @@
       #expect(hosted.connector.driver.mice.count == 8)
     }
 
-    @Test("wheel events of any size send real deltas or nothing")
+    @Test("a wheel over the page sends its deltas in CSS pixels, signed as the DOM's")
     func wheel() async throws {
       let (hosted, view) = await inControl()
       defer { hosted.finish() }
-      for delta in [Int32.max, .min, 0, 1, -1] {
-        view.scrollWheel(with: try Events.scroll(delta, delta))
+      view.scrollWheel(with: try Events.scroll(-30, 12, at: location(100, 350)))
+      let sent = hosted.connector.driver.mice
+      try #require(sent.count == 1)
+      #expect(sent[0].kind == .wheel)
+      #expect(abs(sent[0].x - 100) < 1)
+      #expect(abs(sent[0].y - 100) < 1)
+      #expect(sent[0].dy == 30, "scrolling down is positive for the page")
+      #expect(sent[0].dx == -12)
+      #expect(sent[0].button == nil)
+    }
+
+    @Test("a wheel over the letterbox sends nothing")
+    func wheelOverLetterbox() async throws {
+      let (hosted, view) = await inControl()
+      defer { hosted.finish() }
+      view.scrollWheel(with: try Events.scroll(-30, 12, at: location(100, 100)))
+      #expect(hosted.connector.driver.mice.isEmpty)
+    }
+
+    @Test("wheel events of any size over the page each send finite deltas")
+    func wheelOfAnySize() async throws {
+      let (hosted, view) = await inControl()
+      defer { hosted.finish() }
+      let deltas = [Int32.max, .min, 0, 1, -1]
+      for delta in deltas {
+        view.scrollWheel(with: try Events.scroll(delta, delta, at: location(100, 350)))
       }
-      #expect(hosted.connector.driver.mice.allSatisfy { $0.dx.isFinite && $0.dy.isFinite })
+      let sent = hosted.connector.driver.mice
+      #expect(sent.count == deltas.count)
+      #expect(sent.allSatisfy { $0.kind == .wheel && $0.dx.isFinite && $0.dy.isFinite })
     }
 
     @Test("the pointer leaving the page over the letterbox tells it once")
