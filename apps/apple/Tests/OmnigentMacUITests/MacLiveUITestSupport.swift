@@ -89,15 +89,19 @@ struct MacLiveUITestSupport {
   }
 
   /// Launches the app on the core's offline demo server (`-OmnigentDemo`).
-  /// - Parameter tabs: Where tabs are saved; pass the same folder to a relaunch to restore them.
+  /// - Parameters:
+  ///   - tabs: Where tabs are saved; pass the same folder to a relaunch to restore them.
+  ///   - arguments: More launch arguments: preferences that hold for this launch only.
   /// - Returns: The app.
-  func launchDemo(tabs: URL = Self.scratchDirectory()) -> XCUIApplication {
+  func launchDemo(tabs: URL = Self.scratchDirectory(), arguments: [String] = [])
+    -> XCUIApplication
+  {
     let app = XCUIApplication()
     app.launchArguments =
       [
         "-OmnigentDemo", "YES", "-desktop.defaultServerURL", "http://127.0.0.1:6767",
         "-OmnigentTabsDirectory", tabs.path,
-      ] + Self.freshStateArguments
+      ] + Self.freshStateArguments + arguments
     app.launch()
     XCTAssertTrue(app.windows.firstMatch.appears(within: 30), "no window")
     MacNotificationPrompts.decline(waiting: 3)

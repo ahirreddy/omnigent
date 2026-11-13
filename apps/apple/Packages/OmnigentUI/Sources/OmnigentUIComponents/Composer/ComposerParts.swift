@@ -49,7 +49,7 @@ protocol PickedPhoto {
 }
 
 extension PhotosPickerItem: PickedPhoto {
-  // coverage:off only the system photo picker hands out items that load; VM flow backlog
+  // coverage:off only the system picker's items load; the flow testPhotosPickerAttachesAPhoto
   func loadData() async throws -> Data? {
     try await loadTransferable(type: Data.self)
   }

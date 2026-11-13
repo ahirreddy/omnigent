@@ -24,34 +24,14 @@ final class MacWorkflowUITests: XCTestCase {
     func testBrowserTabLoadsAPage() throws {
       let live = MacLiveUITestSupport(self)
       let session = try live.fixtureSession()
-      let page = try writePage(title: "Omnigent UI check \(UUID().uuidString.prefix(8))")
+      let page = try live.writePage(title: "Omnigent UI check \(UUID().uuidString.prefix(8))")
       let app = live.launch()
       defer { app.terminate() }
       live.open(session, in: app)
 
-      app.typeKey("b", modifierFlags: [.command, .option])
-      XCTAssertTrue(
-        live.tabs("browser", in: app).firstMatch.appears(within: 20), "no browser tab")
-      let omnibox = live.element("browser.omnibox", in: app)
-      live.click(omnibox, "the address field", timeout: 20)
-      app.typeKey("a", modifierFlags: .command)
-      app.typeText(page.url.absoluteString + "\r")
-      XCTAssertTrue(
-        live.text(containing: page.title, in: app).appears(within: 30),
-        "the page's title never showed\n\(app.debugDescription)")
+      live.openBrowserTab(loading: page, in: app)
       live.assertRunning(app, "after loading the page")
       live.shot(app, "browser-page")
-    }
-
-    /// An HTML page with `title` in a scratch folder.
-    private func writePage(title: String) throws -> (url: URL, title: String) {
-      let folder = FileManager.default.temporaryDirectory.appending(
-        path: "omnigent-page-\(UUID().uuidString)", directoryHint: .isDirectory)
-      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-      let url = folder.appending(path: "index.html")
-      let html = "<!doctype html><title>\(title)</title><h1>\(title)</h1>"
-      try html.write(to: url, atomically: true, encoding: .utf8)
-      return (url, title)
     }
   #endif
 

@@ -86,7 +86,7 @@ extension SystemBrowserTab {
       guard let window = webView.window else {
         throw .printFailed("The page is not in a window.")
       }
-      // coverage:off the print sheet; VM flow backlog "print a browser page"
+      // coverage:off the print sheet; on a Mac the flow testPrintShowsThePrintSheetOnWebKit
       let operation = webView.printOperation(with: NSPrintInfo.shared)
       operation.view?.frame = webView.bounds
       operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)

@@ -69,7 +69,7 @@
       else {
         throw .printFailed("The page's PDF could not be prepared for printing.")
       }
-      // coverage:off the print sheet; VM flow backlog "print a browser page"
+      // coverage:off the print sheet; the flow testPrintShowsThePrintSheet prints with Chromium
       operation.jobTitle = webView.title
       operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }

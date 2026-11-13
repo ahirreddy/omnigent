@@ -158,6 +158,18 @@ extension MacLiveUITestSupport {
     clickMenuItem(scope, in: app)
   }
 
+  /// Opens the shown session's menu from the toolbar. A narrow window folds the button into the
+  /// toolbar's overflow menu, where the session's menu is a submenu.
+  func openSessionMenu(in app: XCUIApplication) {
+    let button = element("header-session-menu", in: app)
+    if button.appears(within: 3), button.isHittable {
+      button.click()
+      return
+    }
+    click(app.toolbars.popUpButtons["more toolbar items"].firstMatch, "the toolbar's overflow")
+    clickMenuItem("Session", in: app)
+  }
+
   /// The right panel's section tabs, which show whenever the panel is open.
   func inspectorTabs(in app: XCUIApplication) -> XCUIElement {
     elements(prefix: "inspector-tab-", in: app).firstMatch
@@ -224,6 +236,41 @@ extension MacLiveUITestSupport {
     XCTAssertTrue(
       app.wait(for: .notRunning, timeout: 30), "Command-Q did not quit the app", file: file,
       line: line)
+  }
+
+  /// An HTML page with `title` in a scratch folder.
+  func writePage(title: String) throws -> (url: URL, title: String) {
+    let folder = Self.scratchDirectory()
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let url = folder.appending(path: "index.html")
+    let html = "<!doctype html><title>\(title)</title><h1>\(title)</h1>"
+    try html.write(to: url, atomically: true, encoding: .utf8)
+    return (url, title)
+  }
+
+  /// Opens a browser tab in the shown session with Option-Command-B and loads `page` from its
+  /// address field, waiting for the page's title.
+  func openBrowserTab(
+    loading page: (url: URL, title: String), in app: XCUIApplication,
+    file: StaticString = #filePath, line: UInt = #line
+  ) {
+    app.typeKey("b", modifierFlags: [.command, .option])
+    XCTAssertTrue(
+      tabs("browser", in: app).firstMatch.appears(within: 20), "no browser tab", file: file,
+      line: line)
+    let omnibox = element("browser.omnibox", in: app)
+    click(omnibox, "the address field", timeout: 20)
+    let address = page.url.absoluteString
+    // A new tab that is still loading its start page puts that address back: type again.
+    for _ in 0..<3 {
+      app.typeKey("a", modifierFlags: .command)
+      app.typeText(address)
+      if waitUntil(timeout: 2, { omnibox.value as? String == address }) { break }
+    }
+    app.typeText("\r")
+    XCTAssertTrue(
+      text(containing: page.title, in: app).appears(within: 30),
+      "the page's title never showed\n\(app.debugDescription)", file: file, line: line)
   }
 
   /// A small text file in a scratch folder, for attaching.

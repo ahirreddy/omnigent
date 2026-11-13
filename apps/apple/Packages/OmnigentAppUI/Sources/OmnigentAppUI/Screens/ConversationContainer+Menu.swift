@@ -41,7 +41,7 @@ struct TranscriptExport: FileDocument {
     UTType(filenameExtension: fileExtension) ?? .json
   }
 
-  // coverage:off only SwiftUI's save panel can make these; VM flow backlog: export a transcript
+  // coverage:off only SwiftUI's save panel can make these; the flow testExportSavesTheTranscript
   init(configuration: ReadConfiguration) throws {
     try self.init(fileContents: configuration.file.regularFileContents)
   }
