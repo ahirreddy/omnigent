@@ -142,6 +142,54 @@
       #expect(Set(tab.commands) == ["hardReload", "devtools", "print", "viewSource"])
     }
 
+    @Test("opened again, the overflow menu offers Remove Bookmark and Unmute Tab, which undo both")
+    func overflowTitlesFollowTheTab() async throws {
+      let fixture = try TabFixture()
+      let tab = try fixture.tab
+      let screen = OffscreenWindow(
+        BrowserTabMenu(
+          model: fixture.model, environment: fixture.environment, sheet: .constant(nil)),
+        width: 200, height: 60)
+      defer { screen.close() }
+      let first = try screen.popupMenu()
+      #expect(!first.items.map(\.title).contains("Remove Bookmark"))
+      #expect(!first.items.map(\.title).contains("Unmute Tab"))
+      try screen.choose("Bookmark This Page", in: first)
+      try screen.choose("Mute Tab", in: first)
+      await screen.catchUp()
+      let second = try screen.popupMenu()
+      let titles = second.items.map(\.title)
+      #expect(titles.contains("Remove Bookmark"))
+      #expect(!titles.contains("Bookmark This Page"))
+      #expect(titles.contains("Unmute Tab"))
+      #expect(!titles.contains("Mute Tab"))
+      try screen.choose("Remove Bookmark", in: second)
+      #expect(!fixture.model.isBookmarked)
+      try screen.choose("Unmute Tab", in: second)
+      #expect(!tab.state.isMuted)
+    }
+
+    @Test("Show Bookmarks Bar in the overflow menu is ticked while the bar shows, and toggles it")
+    func overflowBookmarksBar() async throws {
+      let fixture = try TabFixture()
+      let settings = fixture.environment.settings
+      let screen = OffscreenWindow(
+        BrowserTabMenu(
+          model: fixture.model, environment: fixture.environment, sheet: .constant(nil)),
+        width: 200, height: 60)
+      defer { screen.close() }
+      try #require(settings.showsBookmarksBar, "the bar shows until it is turned off")
+      let first = try screen.popupMenu()
+      #expect(first.items.first { $0.title == "Show Bookmarks Bar" }?.state == .on)
+      try screen.choose("Show Bookmarks Bar", in: first)
+      #expect(!settings.showsBookmarksBar)
+      await screen.catchUp()
+      let second = try screen.popupMenu()
+      #expect(second.items.first { $0.title == "Show Bookmarks Bar" }?.state == .off)
+      try screen.choose("Show Bookmarks Bar", in: second)
+      #expect(settings.showsBookmarksBar)
+    }
+
     @Test("the engine submenu lists what this build offers, and switches")
     func engineMenu() throws {
       let fixture = try TabFixture()

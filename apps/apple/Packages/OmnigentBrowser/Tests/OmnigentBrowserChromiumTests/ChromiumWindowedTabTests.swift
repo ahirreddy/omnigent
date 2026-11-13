@@ -79,6 +79,64 @@
       #expect(await fixture.eventually { fixture.last(.contextMenuReply) != nil })
     }
 
+    /// Delivers the menu of a right-click on a link, as the host sends it, with the page's own
+    /// `items`.
+    private func rightClickLink(_ fixture: ChromiumTabFixture, items: String = "[]") throws {
+      try fixture.receive(
+        .contextMenu,
+        WireEncoder().u64(.promptID, 6).string(.menuItems, items).string(
+          .menuParams,
+          #"{"x":1,"y":1,"linkURL":"https://link.test/","sourceURL":"","pageURL":"","frameURL":"","selectionText":"","isEditable":false,"mediaType":0,"editFlags":0}"#
+        ))
+    }
+
+    @Test("choosing Copy Link in a link's menu copies its address and runs no page command")
+    func copyLinkChosen() async throws {
+      SystemSideEffects.reset()
+      defer { SystemSideEffects.reset() }
+      SystemSideEffects.chooseFromMenus("Copy Link")
+      let fixture = try ChromiumTabFixture()
+      let window = window(for: fixture)
+      defer { window.close() }
+      try rightClickLink(fixture)
+      #expect(await fixture.eventually { fixture.last(.contextMenuReply) != nil })
+      #expect(fixture.last(.contextMenuReply)?.i64(.commandID) == -1)
+      #expect(SystemSideEffects.pasteboard.string(forType: .string) == "https://link.test/")
+      #expect(fixture.recorder.popups.isEmpty)
+    }
+
+    @Test("choosing Open Link in New Tab opens the link in a background tab and copies nothing")
+    func openLinkChosen() async throws {
+      SystemSideEffects.reset()
+      defer { SystemSideEffects.reset() }
+      SystemSideEffects.chooseFromMenus("Open Link in New Tab")
+      let fixture = try ChromiumTabFixture()
+      let window = window(for: fixture)
+      defer { window.close() }
+      try rightClickLink(fixture)
+      #expect(await fixture.eventually { !fixture.recorder.popups.isEmpty })
+      #expect(fixture.recorder.popups.map(\.targetURL?.absoluteString) == ["https://link.test/"])
+      #expect(fixture.recorder.popups.first?.disposition == .backgroundTab)
+      #expect(fixture.last(.contextMenuReply)?.i64(.commandID) == -1)
+      #expect(SystemSideEffects.pasteboard.string(forType: .string) == nil)
+    }
+
+    @Test("choosing one of the page's own items answers the host with that item's command")
+    func pageItemChosen() async throws {
+      SystemSideEffects.reset()
+      defer { SystemSideEffects.reset() }
+      SystemSideEffects.chooseFromMenus("Back")
+      let fixture = try ChromiumTabFixture()
+      let window = window(for: fixture)
+      defer { window.close() }
+      let back = #"[{"id":35,"kind":"command","label":"Back","enabled":true,"checked":false}]"#
+      try rightClickLink(fixture, items: back)
+      #expect(await fixture.eventually { fixture.last(.contextMenuReply) != nil })
+      #expect(fixture.last(.contextMenuReply)?.i64(.commandID) == 35)
+      #expect(fixture.recorder.popups.isEmpty, "the app's own items did not run")
+      #expect(SystemSideEffects.pasteboard.string(forType: .string) == nil)
+    }
+
     @Test("the tab's keyboard view, made first responder, tells Chromium the page has focus")
     func keyboardView() throws {
       let fixture = try ChromiumTabFixture()
