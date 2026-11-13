@@ -111,7 +111,7 @@
       #expect(spy.calls.last == "archive many beta,gamma true")
 
       // A navigation row leaves selection, and opens as usual.
-      try screen.selectRow(1)
+      try screen.clickRow(1)
       #expect(spy.selection == .inbox)
       #expect(try screen.plainButtons(inRow: 9).count == 2)
     }
@@ -122,10 +122,34 @@
       let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 340, height: 800)
       defer { screen.close() }
       try screen.click(try screen.plainButtons(inRow: 9)[1])
+      try screen.clickRow(SidebarFixture.betaRow)
+      #expect(try screen.plainButtons(inRow: 9).isEmpty)
+      #expect(spy.selection == nil, "the click checked the row")
+      try screen.press(keyCode: 53, characters: "\u{1B}")
+      #expect(try screen.plainButtons(inRow: 9).count == 2)
+      // Out of selection a click opens the row again.
+      try screen.clickRow(SidebarFixture.gammaRow)
+      #expect(spy.selection == .session("gamma"))
+
+      try screen.click(try screen.plainButtons(inRow: 9)[1])
       #expect(try screen.plainButtons(inRow: 9).isEmpty)
       spy.state.display.show = .archived
       screen.settle()
       #expect(try screen.plainButtons(inRow: 9).count == 2)
+    }
+
+    @Test("Down and Up move the open session through the rows")
+    func arrowKeys() throws {
+      let spy = SidebarSpy(SidebarFixture.state)
+      let screen = OffscreenWindow(SidebarHarness(spy: spy), width: 340, height: 800)
+      defer { screen.close() }
+      try screen.clickRow(SidebarFixture.betaRow)
+      #expect(spy.selection == .session("beta"))
+      let arrowKeys: NSEvent.ModifierFlags = [.function, .numericPad]
+      try screen.press(keyCode: 125, characters: "\u{F701}", modifiers: arrowKeys)
+      #expect(spy.selection == .session("gamma"))
+      try screen.press(keyCode: 126, characters: "\u{F700}", modifiers: arrowKeys)
+      #expect(spy.selection == .session("beta"))
     }
 
     @Test("bulk delete confirms, then clears what was checked")
