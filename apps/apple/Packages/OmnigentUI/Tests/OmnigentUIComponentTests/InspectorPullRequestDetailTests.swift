@@ -265,6 +265,19 @@
       #expect(screen.firstTextField?.stringValue.isEmpty == true)
     }
 
+    @Test("Command-Return posts what's typed, and nothing while the field is blank")
+    func commandReturn() throws {
+      let spy = PullRequestSpy()
+      let screen = comments({ $0.canComment = true }, spy: spy)
+      defer { screen.close() }
+      try screen.click(try #require(screen.firstTextField))
+      _ = try screen.pressShortcut(keyCode: 36, characters: "\r", modifiers: .command)
+      #expect(spy.calls.isEmpty)
+      try screen.type("Ship it")
+      _ = try screen.pressShortcut(keyCode: 36, characters: "\r", modifiers: .command)
+      #expect(spy.calls == ["comment Ship it"])
+    }
+
     @Test("Text typed while a comment posts stays in the field")
     func typedWhilePosting() throws {
       let spy = PullRequestSpy()

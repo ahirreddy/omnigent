@@ -245,9 +245,19 @@
       #expect(log.calls.contains("browse - /repo"))
       #expect(try screen.shows("Choose a Folder"))
       #expect(try screen.shows("sub"))
+      let list = try #require(screen.list)
+      let row = try (0..<list.numberOfRows).first { row in
+        guard let view = list.rowView(atRow: row, makeIfNecessary: false) else { return false }
+        return try screen.shownText(under: view).contains("sub")
+      }
+      let frame = list.convert(
+        list.rect(ofRow: try #require(row)), to: screen.activeWindow.contentView)
+      try screen.click(CGPoint(x: frame.minX + 40, y: frame.midY))
       // Cancel and Choose close the bar's end.
       try screen.clickControl(at: screen.controlFrames.count - 1)
       #expect(screen.window.attachedSheet == nil)
+      let directory = try #require(screen.firstTextField)
+      #expect(directory.stringValue == "/repo/sub")
     }
 
     @Test("Cancelling the browser leaves the directory alone")

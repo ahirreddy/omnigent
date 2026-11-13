@@ -51,6 +51,50 @@
       #expect(try checking.shows("Checking current branches\u{2026}"))
     }
 
+    @Test("A repository URL typed for a new sandbox is added to its repositories")
+    func sandboxRepository() throws {
+      let log = SheetLog()
+      let options = ForkOptions(hosts: [ForkHostOption(id: "h", name: "Box")], offersSandbox: true)
+      var actions = forkActions(log)
+      actions.repositories = SandboxRepositoriesActions(
+        setRepos: { log.calls.append("repos \($0.map(\.url))") }, urlProblem: { _, _ in nil },
+        branchProblem: { _, _ in nil }, repoName: { $0 }, isSameRepo: { $0 == $1 })
+      let screen = forkSheet(forkState(options: options), actions)
+      defer { screen.close() }
+      try screen.pick("New sandbox", in: screen.pickers[1])
+      let fields = screen.allViews.compactMap { $0 as? NSTextField }
+      let url = try #require(
+        fields.first { $0.placeholderString == "https://github.com/org/repo" })
+      try screen.click(url)
+      try screen.type(" https://example.test/acme/app ")
+      try screen.press(keyCode: 36, characters: "\r")
+      #expect(log.calls.last == #"repos ["https://example.test/acme/app"]"#)
+      #expect(url.stringValue.isEmpty, "the added URL leaves the field")
+      try screen.clickBar()
+      #expect(log.choices?.isSandbox == true)
+    }
+
+    @Test("A title and branch typed under Advanced go into what Clone & start sends")
+    func titleAndBranch() throws {
+      let log = SheetLog()
+      let screen = forkSheet(forkState(), forkActions(log))
+      defer { screen.close() }
+      try screen.clickControl(at: screen.controlFrames.count - 4)
+      screen.settle(0.1)
+      let fields = screen.allViews.compactMap { $0 as? NSTextField }
+      let title = try #require(fields.first { $0.placeholderString == "Fork of the original" })
+      let branch = try #require(fields.first { $0.placeholderString == "feature/my-branch" })
+      try screen.click(title)
+      try screen.type("Second try")
+      try screen.click(branch)
+      try screen.type("fix/crash")
+      try screen.clickBar()
+      #expect(log.choices?.title == "Second try")
+      #expect(log.choices?.branch == "fix/crash")
+      #expect(log.choices?.start == true)
+      #expect(log.choices?.directory == "/repo")
+    }
+
     @Test("Named sandboxes report their provider")
     func namedSandbox() throws {
       let log = SheetLog()

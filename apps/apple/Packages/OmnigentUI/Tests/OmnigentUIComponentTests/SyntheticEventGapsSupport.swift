@@ -47,6 +47,55 @@
       settle(0.2)
     }
 
+    /// Every view in the open popover, in depth-first order.
+    var popoverViews: [NSView] {
+      guard let root = popoverWindow?.contentView else { return [] }
+      var found: [NSView] = []
+      var pending = [root]
+      while let view = pending.popLast() {
+        found.append(view)
+        pending.append(contentsOf: view.subviews.reversed())
+      }
+      return found
+    }
+
+    /// Clicks a point of the open popover's window with a real mouse down and up, letting an
+    /// AppKit control that tracks the mouse inside its mouse down see the up, as `click` does.
+    func clickInPopover(at location: CGPoint) throws {
+      guard let popover = popoverWindow else { throw OffscreenWindowError.notFound("popover") }
+      func event(_ type: NSEvent.EventType, delay: TimeInterval) throws -> NSEvent {
+        let made = NSEvent.mouseEvent(
+          with: type, location: location, modifierFlags: [],
+          timestamp: ProcessInfo.processInfo.systemUptime + delay,
+          windowNumber: popover.windowNumber, context: nil, eventNumber: 1, clickCount: 1,
+          pressure: 1)
+        guard let made else { throw OffscreenWindowError.eventUnavailable }
+        return made
+      }
+      let down = try event(.leftMouseDown, delay: 0)
+      let mouseUp = try event(.leftMouseUp, delay: 0.03)
+      nonisolated(unsafe) let trackedUp = mouseUp
+      let release = Timer(timeInterval: 0.03, repeats: false) { _ in
+        MainActor.assumeIsolated { NSApp.postEvent(unsafe trackedUp, atStart: false) }
+      }
+      RunLoop.main.add(release, forMode: .common)
+      popover.makeKey()
+      send(down, to: popover)
+      if release.isValid {
+        release.invalidate()
+        send(mouseUp, to: popover)
+      }
+      // An up that tracking never took would end the next button's tracking early.
+      NSApp.discardEvents(matching: .leftMouseUp, before: nil)
+      settle(0.2)
+    }
+
+    /// Clicks the middle of a view in the open popover.
+    func clickInPopover(_ view: NSView) throws {
+      let frame = view.convert(view.bounds, to: nil)
+      try clickInPopover(at: CGPoint(x: frame.midX, y: frame.midY))
+    }
+
     /// Presses at `start`, moves through to `end` and lets go, as a gesture sees a mouse drag.
     func dragGesture(from start: CGPoint, to end: CGPoint, steps: Int = 4) throws {
       let root = activeWindow.contentView ?? host
