@@ -1,5 +1,6 @@
 import Foundation
 import OmnigentCoreFFI
+import OmnigentUIComponents
 import Testing
 
 @testable import OmnigentAppUI
@@ -21,14 +22,14 @@ struct NewSessionDefaultsTests {
   }
 
   /// Claude sorts first but only Codex runs on the host.
-  private func catalog(hosts: [CreationHost]) -> OmnigentCoreFFI.CreationCatalog {
+  private func catalog(hosts: [OmnigentCoreFFI.CreationHost]) -> OmnigentCoreFFI.CreationCatalog {
     OmnigentCoreFFI.CreationCatalog(
       hosts: hosts, agents: [agent("claude", rank: 0), agent("codex", rank: 1)],
       managedSandboxes: false)
   }
 
-  private func host(_ id: String, online: Bool = true) -> CreationHost {
-    CreationHost(
+  private func host(_ id: String, online: Bool = true) -> OmnigentCoreFFI.CreationHost {
+    OmnigentCoreFFI.CreationHost(
       hostId: id, name: id, status: online ? "online" : "offline", sandboxProvider: nil,
       configuredHarnesses: [
         HarnessStatus(harness: "claude", readiness: .notReady),
@@ -47,8 +48,26 @@ struct NewSessionDefaultsTests {
     #expect(form.selection.agentId == "codex")
   }
 
+  @Test func aNewSandboxStartsOnTheProfileUsedLastElseAnX86OneElseTheFirst() {
+    func profile(_ id: String, _ name: String) -> SandboxProfileOption {
+      SandboxProfileOption(id: id, name: name, revision: "1")
+    }
+    let arm = profile("p-arm", "ARM 16 GB")
+    let intel = profile("p-intel", "x86 32 GB")
+    let amd = profile("linux-AMD64", "Large")
+    let plain = profile("p-plain", "Default")
+    #expect(SandboxChoices.defaultProfile([arm, intel], last: nil) == intel)
+    #expect(SandboxChoices.defaultProfile([arm, amd], last: nil) == amd)
+    #expect(SandboxChoices.defaultProfile([arm, intel], last: "p-arm") == arm)
+    #expect(SandboxChoices.defaultProfile([arm, intel], last: "gone") == intel)
+    #expect(SandboxChoices.defaultProfile([arm, plain], last: nil) == arm)
+    #expect(SandboxChoices.defaultProfile([], last: "p-arm") == nil)
+  }
+
   /// A server that starts sandboxes of two providers.
-  private func sandboxCatalog(hosts: [CreationHost]) -> OmnigentCoreFFI.CreationCatalog {
+  private func sandboxCatalog(hosts: [OmnigentCoreFFI.CreationHost])
+    -> OmnigentCoreFFI.CreationCatalog
+  {
     var catalog = catalog(hosts: hosts)
     catalog.managedSandboxes = true
     catalog.sandboxProviders = ["arclet", "modal"]

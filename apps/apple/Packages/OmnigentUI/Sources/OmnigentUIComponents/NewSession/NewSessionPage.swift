@@ -51,6 +51,9 @@ public struct NewSessionPage: View {
     self.showsContextDetails = showsContextDetails
   }
 
+  /// The composer's widest: the transcript's column plus the card's own margins.
+  static let composerWidth = Theme.transcriptWidth + 2 * Theme.Spacing.extraLarge
+
   /// The web's new-session heading, when the server's branding sets none.
   public static let defaultHeading = "What should we build?"
 
@@ -93,7 +96,10 @@ public struct NewSessionPage: View {
   private var composerView: some View {
     VStack(spacing: Theme.Spacing.small) {
       ComposerView(
-        draft: $draft, state: composer, actions: actions, showsContextDetails: showsContextDetails)
+        draft: $draft, state: composer, actions: actions, showsContextDetails: showsContextDetails
+      )
+      // A reading column in the middle of a wide window, as a conversation's composer is.
+      .frame(maxWidth: pinsComposer ? nil : Self.composerWidth)
       if let options {
         NewSessionOptionsBar(options: options, actions: optionActions)
           .frame(maxWidth: Theme.transcriptWidth)

@@ -17,7 +17,6 @@ import UniformTypeIdentifiers
 @Suite("New session page wiring", .serialized, .timeLimit(.minutes(1)))
 struct NewSessionContainerTests {
   private static let hostMenu = CGPoint(x: 116, y: 423)
-  private static let agentMenu = CGPoint(x: 684, y: 423)
 
   /// The page in a window, its catalog read.
   private func page(
@@ -107,7 +106,9 @@ struct NewSessionContainerTests {
     defer { screen.close() }
     try screen.choose(
       "Create Custom Agent\u{2026}",
-      in: menu(screen, at: Self.agentMenu, offering: "Create Custom Agent\u{2026}"))
+      in: menu(
+        screen, at: try center(of: "composer-configuration", in: screen),
+        offering: "Create Custom Agent\u{2026}"))
     try await settle(screen, untilShowing: "Create Custom Agent")
     #expect(try screen.shows("Cancel"))
     _ = try pressShortcut(screen, keyCode: 53, characters: "\u{1b}", modifiers: [])
@@ -126,7 +127,9 @@ struct NewSessionContainerTests {
     let screen = try await page(server)
     defer { screen.close() }
     try await settle(screen, untilShowing: "Set Up", contains: true)
-    try screen.clickControl(at: 6)  // The notice's Set Up, under the composer's controls.
+    // The agent's models arrive after the notice and add their menus: click once the page rests.
+    _ = try await settledControlFrames(screen)
+    try screen.click(try center(of: "new-session-harness-setup", in: screen))
     try await settle(screen, until: "the setup catalog") {
       !server.requests("GET", "/v1/harnesses").isEmpty
     }
@@ -135,11 +138,18 @@ struct NewSessionContainerTests {
 
   @Test("Choosing a model keeps an effort it offers; effort and approval mode are the form's")
   func modelAndEffort() async throws {
-    let page = try await wired()
+    let server = newSessionServer()
+    let page = try await wired(server)
     let actions = page.container.actions(page.creation)
     page.form.selection.reasoningEffort = "high"
+    let modelReads = { server.http.requests.filter { $0.url.contains("model-options") }.count }
+    let reads = modelReads()
+    #expect(reads > 0, "the agent's models were read when the page opened")
     actions.selectModel?("claude-native-fast")
     #expect(page.form.selection.model == "claude-native-fast")
+    // The model comes from the list already read, which is not read again.
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(modelReads() == reads)
     actions.selectEffort?("low")
     #expect(page.form.selection.reasoningEffort == "low")
     let extras = page.container.extraActions(page.creation)

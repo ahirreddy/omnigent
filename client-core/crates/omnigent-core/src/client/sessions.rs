@@ -22,6 +22,7 @@ use crate::config::session::{ModelChoice, SessionConfiguration};
 use crate::creation::MAX_TITLE_CHARS;
 use crate::http::HttpTransport;
 use crate::intents::SessionPatch;
+use crate::reconcile::UNTITLED_SESSION;
 
 /// The status a session list shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -470,7 +471,7 @@ impl SessionProjection {
                 .value()
                 .filter(|title| !title.is_empty())
                 .cloned()
-                .unwrap_or_else(|| "Untitled session".to_owned()),
+                .unwrap_or_else(|| UNTITLED_SESSION.to_owned()),
             preview: if pending_requests > 0 {
                 "Needs your response".to_owned()
             } else {
@@ -775,6 +776,24 @@ const METADATA_EVENT_TYPES: [&str; 15] = [
 ];
 
 impl State {
+    /// Puts the rows of sessions created here that no list page has shown yet at the head of
+    /// `sessions`, the newest first page, when it does not have them. One whose row is gone
+    /// (deleted or left here) is forgotten.
+    fn keep_unlisted_creations(&mut self, sessions: &mut Vec<SessionSummary>) {
+        let summaries = &self.summaries;
+        self.unlisted_creations
+            .retain(|id| summaries.contains_key(id));
+        let missing: Vec<SessionSummary> = self
+            .unlisted_creations
+            .iter()
+            .filter(|id| !sessions.iter().any(|row| &row.id == *id))
+            .filter_map(|id| self.summaries.get(id).cloned())
+            .collect();
+        if !missing.is_empty() {
+            sessions.splice(0..0, self.shown_rows(missing));
+        }
+    }
+
     /// The summary for `projection`, unless the session's metadata changed since the read began
     /// (`epoch_at_start`) and a newer summary is cached: then that one. Recorded and cached.
     pub(super) fn accept_projection(
@@ -964,9 +983,14 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<SessionPage, SessionError> {
         let result = self.list_page(after, limit, ListScope::Visible).await;
         self.dispatch();
-        result.map(|(sessions, next_cursor)| SessionPage {
-            sessions,
-            next_cursor,
+        result.map(|(mut sessions, next_cursor)| {
+            if after.is_none() {
+                lock(&self.state).keep_unlisted_creations(&mut sessions);
+            }
+            SessionPage {
+                sessions,
+                next_cursor,
+            }
         })
     }
 
@@ -1147,6 +1171,8 @@ impl<T: HttpTransport> ClientCore<T> {
             state.settle_intents(&summary);
             sessions.push(summary);
         }
+        // The server lists them now, so from here a page without one means it is gone.
+        state.unlisted_creations.retain(|id| !seen.contains(id));
         state.routing.resolve_modal();
         Ok((state.shown_rows(sessions), next))
     }

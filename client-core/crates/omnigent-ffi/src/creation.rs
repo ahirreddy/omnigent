@@ -655,6 +655,25 @@ impl ClientCore {
             .map_err(CoreError::from)
     }
 
+    /// The models `agent_id` can run on a new sandbox of `provider`, which has no host to ask
+    /// yet; empty for an agent without a model preview.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::Session`]: `InvalidIdentifier`, kind `Creation` for an agent the catalog
+    /// does not have, and the read errors.
+    pub async fn sandbox_creation_models(
+        &self,
+        agent_id: String,
+        provider: String,
+    ) -> Result<Vec<ModelChoice>, CoreError> {
+        self.sessions()
+            .sandbox_creation_models(&agent_id, &provider)
+            .await
+            .map(|models| models.into_iter().map(Into::into).collect())
+            .map_err(CoreError::from)
+    }
+
     /// Creates a session for `selection` without a first message, re-validating readiness and
     /// the model against a fresh catalog first. Never retried: an unclear outcome is
     /// `delivery_uncertain`, and the session may exist.

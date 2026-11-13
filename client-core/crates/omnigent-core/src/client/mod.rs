@@ -177,6 +177,12 @@ struct State {
     /// Sessions created here whose first message the server has not taken yet. Their machine
     /// may still be starting (a new sandbox), so a message to them is the server's to hold.
     awaiting_first_message: BTreeSet<String>,
+    /// Sessions created here that no list page has shown yet. A list read that began before
+    /// the create was answered does not have them, and must not take their rows away.
+    unlisted_creations: BTreeSet<String>,
+    /// What a session created here is called until the server names it: its first message, cut
+    /// as the server cuts the title it seeds once the message is stored (the web does the same).
+    first_message_titles: BTreeMap<String, String>,
     configuration_mutations: BTreeSet<String>,
     changed_files: BTreeMap<(String, String), ChangedFilesFetch>,
     ledger: SubmissionLedger,
@@ -219,6 +225,8 @@ impl State {
         self.changed_files.clear();
         self.live_sessions.clear();
         self.awaiting_first_message.clear();
+        self.unlisted_creations.clear();
+        self.first_message_titles.clear();
         self.routing = routing::ReplicaRouting::default();
         self.side_chats.clear();
     }
@@ -268,6 +276,15 @@ impl State {
     /// Stamps `summary` with the next metadata revision, bumping the session's metadata epoch
     /// when anything that gates a write changed.
     fn record_summary(&mut self, mut summary: SessionSummary) -> SessionSummary {
+        // A session created here goes by its first message until the server (or the user)
+        // names it; every row of it passes through here on its way to the cache.
+        if let Some(title) = self.first_message_titles.get(&summary.id) {
+            if summary.title == crate::reconcile::UNTITLED_SESSION {
+                summary.title.clone_from(title);
+            } else if summary.title != *title {
+                self.first_message_titles.remove(&summary.id);
+            }
+        }
         let changed = self.summaries.get(&summary.id).is_none_or(|previous| {
             previous.configuration != summary.configuration
                 || previous.status != summary.status

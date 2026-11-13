@@ -27,7 +27,7 @@ extension NewSessionForm {
         agents?.choices ?? [], name: \.name, id: \.id, selectedID: selection.agentId,
         hidden: PickerVisibility.hidden()) + (pendingChoice.map { [$0] } ?? []),
       selectedAgentId: selection.agentId,
-      modelOptions: isSandbox || startsPendingAgent
+      modelOptions: startsPendingAgent
         ? [] : NewSessionAdapter.models(creation.models.value ?? []),
       selectedModelId: selection.model, selectedEffort: selection.reasoningEffort)
     configuration.agentGroups = agents?.groups ?? [:]

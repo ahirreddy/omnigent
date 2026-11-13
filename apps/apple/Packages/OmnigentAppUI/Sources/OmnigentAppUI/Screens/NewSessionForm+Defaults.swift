@@ -1,6 +1,7 @@
 import Foundation
 import OmnigentCoreFFI
 import OmnigentStores
+import OmnigentUIComponents
 
 /// What the new-session page starts with, as the web's New Chat dialog: the host and agent used
 /// last (when still offered), and on each host its most recent session's folder, else the
@@ -11,6 +12,7 @@ extension NewSessionForm {
     static let host = "omnigent:new-session:last-host"
     static let agent = "omnigent:new-session:last-agent"
     static let sandboxProvider = "omnigent:new-session:last-sandbox-provider"
+    static let sandboxProfile = "omnigent:new-session:last-sandbox-profile"
   }
 
   /// The remembered host, when the catalog still lists it.
@@ -41,11 +43,41 @@ extension NewSessionForm {
     isSandbox = true
   }
 
+  /// Reloads what `selection` can choose from: a machine's folders and the agent's models on
+  /// it, or, for a new sandbox, the models its provider previews for the agent.
+  func reloadChoices(
+    _ creation: CreationStore, _ selection: OmnigentCoreFFI.CreationSelection
+  ) async {
+    guard isSandbox else {
+      await creation.selectionChanged(selection)
+      return
+    }
+    let catalog = creation.catalog.value
+    await creation.selectionChanged(
+      selection,
+      sandbox: NewSandboxChoice(
+        provider: sandbox.option(catalog)?.provider ?? catalog?.defaultSandboxProvider))
+  }
+
+  /// Chooses the sandbox's profile when none is chosen and the provider's are loaded, so a
+  /// session can start without visiting the picker: the one used last, else an x86 one, else
+  /// the first.
+  func defaultSandboxProfile(_ catalog: OmnigentCoreFFI.CreationCatalog?) {
+    guard isSandbox, sandbox.profile == nil,
+      let offered = sandbox.profilesState(catalog, sandboxes: sandboxes)?.profiles
+    else { return }
+    sandbox.profile = SandboxChoices.defaultProfile(
+      offered, last: preferences.string(forKey: DefaultsKey.sandboxProfile))
+  }
+
   /// Keeps this start's host (or sandbox provider) and agent for the next new session. Only
   /// the kind started on last is kept, so the next page opens on it.
   func rememberChoices() {
     if isSandbox {
       preferences.set(sandbox.provider ?? "", forKey: DefaultsKey.sandboxProvider)
+      if let profile = sandbox.profile {
+        preferences.set(profile.id, forKey: DefaultsKey.sandboxProfile)
+      }
       preferences.removeObject(forKey: DefaultsKey.host)
     } else if !selection.hostId.isEmpty {
       preferences.set(selection.hostId, forKey: DefaultsKey.host)

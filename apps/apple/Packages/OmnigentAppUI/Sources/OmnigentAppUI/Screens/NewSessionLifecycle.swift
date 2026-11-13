@@ -19,6 +19,7 @@ struct NewSessionLifecycle: ViewModifier {
         form.fileInLabelProject(sessionID, list: connection.sessionList)
         if firstMessageError == nil {
           creation.reset()
+          form.name = ""
           opened(sessionID)
         }
       }
@@ -36,6 +37,7 @@ struct NewSessionLifecycle: ViewModifier {
       .task(id: form.isSandbox ? form.sandbox.provider ?? "" : nil) {
         if form.isSandbox, let sandboxes = form.sandboxes {
           await form.sandbox.load(creation.catalog.value, sandboxes: sandboxes)
+          form.defaultSandboxProfile(creation.catalog.value)
         }
       }
   }

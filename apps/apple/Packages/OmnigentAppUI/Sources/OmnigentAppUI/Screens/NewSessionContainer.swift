@@ -152,14 +152,14 @@ struct NewSessionContainer: View {
       removeAttachment: { chip in
         if let id = UUID(uuidString: chip.id) { creation.removeAttachment(id) }
       },
+      // A model is chosen from the agent's list already read: nothing is read again, so the
+      // page never refuses a start while the same list loads a second time.
       selectModel: { model in
-        form.change(creation) {
-          let current = ComposerConfiguration(
-            modelOptions: NewSessionAdapter.models(creation.models.value ?? []),
-            selectedModelId: $0.model, selectedEffort: $0.reasoningEffort)
-          $0.reasoningEffort = current.effortKept(selecting: model)
-          $0.model = model
-        }
+        let current = ComposerConfiguration(
+          modelOptions: NewSessionAdapter.models(creation.models.value ?? []),
+          selectedModelId: form.selection.model, selectedEffort: form.selection.reasoningEffort)
+        form.selection.reasoningEffort = current.effortKept(selecting: model)
+        form.selection.model = model
       },
       selectEffort: { effort in form.selection.reasoningEffort = effort },
       selectAgent: { agentID in form.selectAgent(agentID, creation) },
@@ -239,6 +239,7 @@ struct NewSessionContainer: View {
         setupTarget = HarnessSetupTarget(harness: harness, hostID: form.selection.hostId)
       })
     actions.connectHost = { isConnectingHost = true }
+    actions.setName = { form.name = $0 }
     actions.selectProject = { name in
       guard let project = name.flatMap({ name in list.projects.first { $0.name == name } }) else {
         form.project = nil

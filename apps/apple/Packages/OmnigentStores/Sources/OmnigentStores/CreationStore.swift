@@ -117,17 +117,23 @@ public final class CreationStore {
     }
   }
 
-  /// The host or agent changed: loads the host's folders and the agent's models on it. A newer
-  /// selection supersedes an older one's results.
-  /// - Parameter selection: The current selection.
-  public func selectionChanged(_ selection: CreationSelection) async {
+  /// The host or agent changed: loads the host's folders and the agent's models on it. On a new
+  /// sandbox, which has no folders and no host to ask, the models are its provider's preview
+  /// for the agent. A newer selection supersedes an older one's results.
+  /// - Parameters:
+  ///   - selection: The current selection.
+  ///   - sandbox: The new sandbox the session starts on, when it does.
+  public func selectionChanged(
+    _ selection: CreationSelection, sandbox: NewSandboxChoice? = nil
+  ) async {
     selectionGeneration += 1
     let generation = selectionGeneration
     workspaces = .loading
     models = .loading
     let folders: CreationLoad<[CreationWorkspace]>
     do {
-      folders = .loaded(try await core.creationWorkspaces(hostId: selection.hostId))
+      folders = .loaded(
+        sandbox == nil ? try await core.creationWorkspaces(hostId: selection.hostId) : [])
     } catch {
       folders = .failed(coreError(error))
     }
@@ -135,13 +141,23 @@ public final class CreationStore {
     workspaces = folders
     let advertised: CreationLoad<[ModelChoice]>
     do {
-      advertised = .loaded(
-        try await core.creationModels(agentId: selection.agentId, hostId: selection.hostId))
+      advertised = .loaded(try await offeredModels(selection, sandbox))
     } catch {
       advertised = .failed(coreError(error))
     }
     guard generation == selectionGeneration else { return }
     models = advertised
+  }
+
+  private func offeredModels(
+    _ selection: CreationSelection, _ sandbox: NewSandboxChoice?
+  ) async throws -> [ModelChoice] {
+    guard let sandbox else {
+      return try await core.creationModels(agentId: selection.agentId, hostId: selection.hostId)
+    }
+    // A server that names no provider previews no models.
+    guard let provider = sandbox.provider, !selection.agentId.isEmpty else { return [] }
+    return try await core.sandboxCreationModels(agentId: selection.agentId, provider: provider)
   }
 
   /// The folder changed: loads its repository's worktrees on `hostID`. A newer folder supersedes
@@ -194,16 +210,6 @@ public final class CreationStore {
     } catch {
       return .failure(coreError(error))
     }
-  }
-
-  /// Why `selection` cannot be created now (the core's validation against the loaded catalog
-  /// and models), or `nil` when it can.
-  /// - Parameter selection: The selection.
-  /// - Returns: The reason to show.
-  public func unavailableReason(_ selection: CreationSelection) -> String? {
-    guard let catalog = catalog.value else { return "The host and agent list has not loaded." }
-    return creationValidationError(
-      catalog: catalog, selection: selection, models: models.value ?? [])
   }
 
   /// Stages a file for the first message.

@@ -165,6 +165,38 @@ func location<Content: View>(
   return root.convert(inWindow, from: nil)
 }
 
+/// The middle of the element identified `identifier`, from the top left of the screen's root
+/// view: where to click a control whose place moves with the layout. SwiftUI builds its
+/// accessibility tree only once an assistive client says it is there, so this says so first.
+@MainActor
+func center<Content: View>(
+  of identifier: String, in screen: OffscreenWindow<Content>
+) throws -> CGPoint {
+  let setter = NSSelectorFromString("accessibilitySetValue:forAttribute:")
+  _ = unsafe NSApp.perform(setter, with: true, with: "AXEnhancedUserInterface")
+  defer { _ = unsafe NSApp.perform(setter, with: false, with: "AXEnhancedUserInterface") }
+  screen.settle(0.2)
+  func attribute(_ name: String, of element: NSObject) -> Any? {
+    element.responds(to: NSSelectorFromString(name)) ? element.value(forKey: name) : nil
+  }
+  let window = screen.activeWindow
+  let root = try #require(window.contentView)
+  var pending: [Any] = [root]
+  var seen = Set<ObjectIdentifier>()
+  while let next = pending.popLast() {
+    guard let element = next as? NSObject, seen.insert(ObjectIdentifier(element)).inserted
+    else { continue }
+    if attribute("accessibilityIdentifier", of: element) as? String == identifier,
+      let onScreen = (attribute("accessibilityFrame", of: element) as? NSValue)?.rectValue
+    {
+      let frame = root.convert(window.convertFromScreen(onScreen), from: nil)
+      return CGPoint(x: frame.midX, y: frame.midY)
+    }
+    pending.append(contentsOf: attribute("accessibilityChildren", of: element) as? [Any] ?? [])
+  }
+  throw OffscreenWindowError.notFound(identifier)
+}
+
 /// Clicks, with a real mouse down and up, the element labeled or identified `name`.
 @MainActor
 func click<Content: View>(_ name: String, in screen: OffscreenWindow<Content>) throws {

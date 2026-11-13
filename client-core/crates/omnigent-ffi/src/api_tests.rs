@@ -86,6 +86,31 @@ fn creation_creates_once_and_reports_a_failed_first_message_without_recreating()
         })
         .unwrap();
     assert_eq!(models[0].value, "provider-model");
+    // A new sandbox has no host to ask: its provider's preview for the agent is read.
+    harness.http.route(
+        "/v1/sandbox-providers/arclet/harnesses/codex-native/model-options",
+        json(
+            200,
+            r#"{"configured":true,"models":[{"id":"cloud","model":"cloud-model"}]}"#,
+        ),
+    );
+    let core = Arc::clone(&harness.core);
+    let sandbox_models = harness
+        .run(async move {
+            core.sandbox_creation_models("ag_codex".into(), "arclet".into())
+                .await
+        })
+        .unwrap();
+    assert_eq!(sandbox_models[0].value, "cloud-model");
+    let core = Arc::clone(&harness.core);
+    assert!(
+        harness
+            .run(async move {
+                core.sandbox_creation_models("ag_missing".into(), "arclet".into())
+                    .await
+            })
+            .is_err()
+    );
     let selection = CreationSelection {
         host_id: "host_a".into(),
         agent_id: "ag_codex".into(),

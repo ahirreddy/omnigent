@@ -69,6 +69,8 @@ nonisolated public struct NewSessionOptions: Hashable, Sendable {
   public var project: String?
   /// The caller's projects, by name.
   public var projects: [String] = []
+  /// The name the session starts with; empty leaves it to its first message.
+  public var name = ""
 
   /// Creates options.
   /// - Parameters:
@@ -136,6 +138,8 @@ public struct NewSessionOptionActions {
   public var connectHost: (@MainActor () -> Void)?
   /// Choose the project by name (`nil` for none).
   public var selectProject: (@MainActor (String?) -> Void)?
+  /// Name the session.
+  public var setName: (@MainActor (String) -> Void)?
 
   /// Creates actions.
   /// - Parameters:
@@ -216,6 +220,9 @@ struct NewSessionOptionsBar: View {
           Label("Plan mode", systemImage: "doc.text")
             .accessibilityIdentifier("new-session-plan-mode")
         }
+        if let setName = actions.setName {
+          nameField(setName)
+        }
         Spacer(minLength: 0)
       }
     }
@@ -238,6 +245,22 @@ struct NewSessionOptionsBar: View {
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("new-session-options")
   }
+
+  /// The session's name, for those who want to choose it; left empty, the first message names it.
+  private func nameField(_ setName: @escaping @MainActor (String) -> Void) -> some View {
+    HStack(spacing: Theme.Spacing.extraSmall) {
+      Image(systemName: "pencil").foregroundStyle(.secondary).accessibilityHidden(true)
+      TextField(
+        "Name (optional)", text: Binding(get: { options.name }, set: { setName($0) })
+      )
+      .textFieldStyle(.plain)
+      .frame(width: Self.nameWidth)
+      .accessibilityLabel("Session name, optional")
+      .accessibilityIdentifier("new-session-name")
+    }
+  }
+
+  private static let nameWidth: CGFloat = 170
 
   /// The amber line for a server with nowhere to run agents, and the way to fix it.
   private var hostNoticeRow: some View {

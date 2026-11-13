@@ -10,6 +10,17 @@ extension ApprovalRisk {
     }
   }
 
+  /// The symbol's color in the Mac's row, one per level so the level reads at a glance.
+  var symbolColor: ThemeColor {
+    switch self {
+    case .readOnly: Theme.info
+    case .ask: Theme.success
+    case .autoEdit: Theme.link
+    case .autoApprove: Theme.attention
+    case .fullAccess: Theme.warning
+    }
+  }
+
   /// A short risk word for VoiceOver.
   var accessibilityDescription: String {
     switch self {
@@ -71,16 +82,18 @@ struct ApprovalModeChip: View {
     .accessibilityIdentifier("composer-approval-mode")
   }
 
-  /// The Mac's row under the pill: the mode's name as plain text; full access keeps its warning
-  /// symbol and color.
+  /// The Mac's row under the pill: the level's symbol in its color, then the mode's name; full
+  /// access keeps its warning color on both.
   private var footerLabel: some View {
     HStack(spacing: Theme.Spacing.extraSmall) {
-      if risk == .fullAccess {
-        Image(systemName: risk.systemImage).accessibilityHidden(true)
-      }
-      Text(name).lineLimit(1)
+      Image(systemName: risk.systemImage)
+        .foregroundStyle(risk.symbolColor)
+        .accessibilityHidden(true)
+      Text(name)
+        .lineLimit(1)
+        .foregroundStyle(
+          risk == .fullAccess ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(.primary))
     }
-    .foregroundStyle(risk == .fullAccess ? AnyShapeStyle(Theme.warning) : AnyShapeStyle(.primary))
     .contentShape(Rectangle())
     .accessibilityElement(children: .combine)
   }

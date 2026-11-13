@@ -62,6 +62,20 @@ struct ConnectedWindowFlowTests {
     try await settle(mounted.screen, until: "the session") {
       mounted.selection.page == .session("conv_new")
     }
+    let list = mounted.session.connection.sessionList
+    // Until the server names it, the session goes by its first message.
+    try await settle(mounted.screen, until: "the name") {
+      list.sessionsByID["conv_new"]?.title == "hello"
+    }
+    // A list the server built before the session existed must not take the window off it.
+    let reads = server.requests("GET", "/v1/sessions").count
+    mounted.session.connection.refreshSessions()
+    try await settle(mounted.screen, until: "the reload") {
+      server.requests("GET", "/v1/sessions").count > reads
+    }
+    try await pause(mounted.screen, .milliseconds(300))
+    #expect(mounted.selection.page == .session("conv_new"))
+    #expect(list.sessionsByID["conv_new"]?.title == "hello")
   }
 
   @Test("A split window shows each pane's tab, and closing one goes back to one pane")

@@ -44,6 +44,8 @@ final class NewSessionForm {
   @ObservationIgnored var filedSessionID: String?
   /// A picked file that could not be read.
   var attachmentError: String?
+  /// The name the user gave the session; empty leaves it to the first message.
+  var name = ""
 
   /// The selected agent in `creation`'s catalog.
   func selectedAgent(_ creation: CreationStore?) -> OmnigentCoreFFI.CreationAgent? {
@@ -56,7 +58,7 @@ final class NewSessionForm {
     if creation.catalog.value == nil { await creation.loadCatalog() }
     guard let catalog = creation.catalog.value else { return }
     applyDefaults(catalog)
-    await creation.selectionChanged(selection)
+    await reloadChoices(creation, selection)
   }
 
   /// Fills what the user hasn't chosen: an online host, then an agent ready on it. Runs again as
@@ -98,7 +100,7 @@ final class NewSessionForm {
     selection.hostId = hostID
     if let catalog = creation.catalog.value { applyDefaults(catalog) }
     let selection = selection
-    Task { await creation.selectionChanged(selection) }
+    Task { await reloadChoices(creation, selection) }
   }
 
   /// The Host menu's row: a new sandbox of a provider, or a machine. Picking the machine already
@@ -108,6 +110,8 @@ final class NewSessionForm {
       if sandbox.provider != provider { sandbox.profile = nil }
       sandbox.provider = provider
       isSandbox = true
+      let selection = selection
+      Task { await reloadChoices(creation, selection) }
     } else {
       isSandbox = false
       chooseHost(rowID, creation)
@@ -120,7 +124,7 @@ final class NewSessionForm {
   ) {
     edit(&selection)
     let selection = selection
-    Task { await creation.selectionChanged(selection) }
+    Task { await reloadChoices(creation, selection) }
   }
 
   /// Models, efforts and launch modes belong to the agent: a new agent starts on its defaults.
@@ -146,7 +150,7 @@ final class NewSessionForm {
   func reloadCatalog(_ creation: CreationStore) async {
     await creation.loadCatalog()
     if let catalog = creation.catalog.value { applyDefaults(catalog) }
-    await creation.selectionChanged(selection)
+    await reloadChoices(creation, selection)
   }
 
   /// A new or imported agent: reload the catalog and select it.
@@ -191,18 +195,16 @@ final class NewSessionForm {
     if selection.approvalMode == nil, let agent = selectedAgent(creation) {
       selection.approvalMode = creationApprovalModeMenu(agent: agent)?.selected
     }
+    let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
     if isSandbox {
-      // The composer offers no model on a new sandbox, so one picked on a host doesn't follow.
-      selection.model = nil
-      selection.reasoningEffort = nil
       let target = sandbox.target(creation.catalog.value)
       Task {
-        await creation.createInSandbox(selection, target: target, title: "", firstMessage: text)
+        await creation.createInSandbox(selection, target: target, title: title, firstMessage: text)
       }
     } else if let draft = pendingAgent, selection.agentId == Self.pendingAgentID {
       Task { await creation.create(agent: draft, selection, firstMessage: text) }
     } else {
-      Task { await creation.create(selection, title: "", firstMessage: text) }
+      Task { await creation.create(selection, title: title, firstMessage: text) }
     }
   }
 
@@ -240,7 +242,7 @@ final class NewSessionForm {
     }
     if let catalog = creation.catalog.value {
       applyDefaults(catalog)
-      await creation.selectionChanged(selection)
+      await reloadChoices(creation, selection)
     }
   }
 
@@ -320,6 +322,7 @@ final class NewSessionForm {
     options.needsHost = needsHost(creation)
     options.project = project?.name
     options.projects = projects.map(\.name)
+    options.name = name
     return options
   }
 

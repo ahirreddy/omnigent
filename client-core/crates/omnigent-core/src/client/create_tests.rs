@@ -880,6 +880,68 @@ fn a_title_over_the_limit_is_refused_before_any_request() {
 }
 
 #[test]
+fn a_new_sandboxs_models_come_from_its_providers_preview_for_the_agent() {
+    let transport = stub();
+    transport.ok(
+        "/v1/sandbox-providers/arclet/harnesses/codex-native/model-options",
+        r#"{"configured":true,"status":"ready","default_model":"fast","models":[
+            {"id":"fast","model":"fast","displayName":"Fast"},
+            {"id":"deep","model":"deep","displayName":"Deep"},
+            {"id":"twin","model":"deep","displayName":"Deep again"},
+            {"id":"quiet","model":"quiet","hidden":true}]}"#,
+    );
+    let core = connected(transport);
+    let models = block_on(core.sandbox_creation_models("ag_codex", "arclet")).unwrap();
+    assert_eq!(
+        models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        ["fast", "deep"],
+        "hidden rows and a repeated model are left out, as for a host"
+    );
+    let reads = core.transport().taken();
+    let read = reads
+        .iter()
+        .find(|request| path_of(request).starts_with("/v1/sandbox-providers/"))
+        .unwrap();
+    assert_eq!(query_value(read, "agent_id").as_deref(), Some("ag_codex"));
+    assert!(matches!(
+        block_on(core.sandbox_creation_models("ag_missing", "arclet")),
+        Err(SessionError::Creation(CreationError::Unavailable(_)))
+    ));
+    for (agent, provider) in [("ag codex", "arclet"), ("ag_codex", "../x")] {
+        assert!(matches!(
+            block_on(core.sandbox_creation_models(agent, provider)),
+            Err(SessionError::InvalidIdentifier { .. })
+        ));
+    }
+}
+
+#[test]
+fn a_harness_without_a_model_preview_offers_a_new_sandbox_no_models() {
+    let plain = RouteTransport::local();
+    plain.ok("/v1/hosts", r#"{"hosts":[]}"#);
+    plain.ok(
+        "/v1/agents",
+        r#"{"data":[{"id":"ag_plain","name":"n","harness":"openai-agents"}],"has_more":false}"#,
+    );
+    let core = connected(plain);
+    assert_eq!(
+        block_on(core.sandbox_creation_models("ag_plain", "arclet")).unwrap(),
+        []
+    );
+    assert!(
+        !core
+            .transport()
+            .lines()
+            .iter()
+            .any(|line| line.contains("sandbox-providers")),
+        "nothing is asked for an agent with no preview"
+    );
+}
+
+#[test]
 fn models_for_an_unavailable_agent_or_one_without_a_preview_are_empty_or_refused() {
     let transport = stub();
     let core = connected(transport);
@@ -948,6 +1010,154 @@ fn a_new_sessions_first_message_goes_out_before_its_sandbox_is_up() {
         Err(SessionError::ExecutionUnavailable { .. })
     ));
     assert_eq!(posts(core.transport()), 2, "the create and the one message");
+}
+
+#[test]
+fn a_list_page_built_before_the_create_keeps_the_new_sessions_row() {
+    let core = connected(stub());
+    let session = block_on(core.create_session(&selection(), ""))
+        .unwrap()
+        .session_id;
+    let row = |id: &str| {
+        format!(r#"{{"id":"{id}","status":"idle","created_at":1,"permission_level":4}}"#)
+    };
+    cache_row(&core, &row(&session));
+    let page = |ids: &[&str]| {
+        let rows: Vec<String> = ids.iter().map(|id| row(id)).collect();
+        format!(
+            r#"{{"object":"list","data":[{}],"has_more":false}}"#,
+            rows.join(",")
+        )
+    };
+    let listed = |core: &super::ClientCore<RouteTransport>| -> Vec<String> {
+        block_on(core.session_page(None, 50))
+            .unwrap()
+            .sessions
+            .into_iter()
+            .map(|row| row.id)
+            .collect()
+    };
+    // The server built this page before the session existed: its row stays, and leads.
+    core.transport().ok("/v1/sessions", page(&["conv_other"]));
+    assert_eq!(listed(&core), [session.as_str(), "conv_other"]);
+    // Once a page has listed it, a page without it means it is gone.
+    core.transport()
+        .ok("/v1/sessions", page(&[&session, "conv_other"]));
+    assert_eq!(listed(&core), [session.as_str(), "conv_other"]);
+    core.transport().ok("/v1/sessions", page(&["conv_other"]));
+    assert_eq!(listed(&core), ["conv_other"]);
+}
+
+#[test]
+fn a_first_message_title_is_cut_as_the_server_cuts_it() {
+    use super::create::first_message_title;
+    assert_eq!(
+        first_message_title("  Fix   the\n build\t now "),
+        Some("Fix the build now".to_owned())
+    );
+    for marker in [
+        "[Attached: a.png]",
+        "[Attached file: notes.txt]",
+        "[Attachment a.png could not be loaded]",
+    ] {
+        assert_eq!(first_message_title(marker), None, "{marker}");
+        assert_eq!(
+            first_message_title(&format!("{marker}\nlook at this")),
+            Some("look at this".to_owned())
+        );
+    }
+    // Not markers: nothing named, or a bracket inside the name of one that did not load.
+    for text in ["[Attached: ]", "[Attachment a]b could not be loaded]"] {
+        assert_eq!(first_message_title(text), Some(text.to_owned()));
+    }
+    assert_eq!(first_message_title(" \n\t"), None);
+    let exact = "a".repeat(60);
+    assert_eq!(first_message_title(&exact), Some(exact));
+    // Sixty characters at most, counted as characters, with no space before the ellipsis.
+    let long = format!("{} {}", "\u{e9}".repeat(58), "tail of the message");
+    assert_eq!(
+        first_message_title(&long),
+        Some(format!("{}\u{2026}", "\u{e9}".repeat(58)))
+    );
+}
+
+#[test]
+fn a_session_created_here_is_called_by_its_first_message_until_the_server_names_it() {
+    let core = connected(stub());
+    let session = block_on(core.create_session(&selection(), ""))
+        .unwrap()
+        .session_id;
+    let row = |title: &str| {
+        format!(
+            r#"{{"id":"{session}","status":"idle","created_at":1,"permission_level":4{title}}}"#
+        )
+    };
+    cache_row(&core, &row(""));
+    assert_eq!(
+        core.cached_summary(&session).unwrap().title,
+        "Untitled session"
+    );
+    core.transport().ok(
+        &format!("/v1/sessions/{session}/events"),
+        r#"{"queued":true}"#,
+    );
+    let recorder = super::test_support::record(&core);
+    block_on(core.send_first_message(&session, "Fix the\nflaky build")).unwrap();
+    assert_eq!(
+        core.cached_summary(&session).unwrap().title,
+        "Fix the flaky build"
+    );
+    assert!(recorder.take().iter().any(|event| matches!(
+        event,
+        ClientEvent::SessionsChanged { sessions }
+            if sessions.iter().any(|row| row.title == "Fix the flaky build")
+    )));
+    // A row the server has not titled yet keeps the name; the server's title replaces it.
+    cache_row(&core, &row(""));
+    assert_eq!(
+        core.cached_summary(&session).unwrap().title,
+        "Fix the flaky build"
+    );
+    cache_row(&core, &row(r#","title":"Build fix""#));
+    assert_eq!(core.cached_summary(&session).unwrap().title, "Build fix");
+    cache_row(&core, &row(""));
+    assert_eq!(
+        core.cached_summary(&session).unwrap().title,
+        "Untitled session"
+    );
+}
+
+#[test]
+fn a_message_with_nothing_to_show_or_to_a_session_made_elsewhere_names_nothing() {
+    let core = connected(stub());
+    let session = block_on(core.create_session(&selection(), ""))
+        .unwrap()
+        .session_id;
+    let row = |id: &str| {
+        format!(r#"{{"id":"{id}","status":"idle","created_at":1,"permission_level":4}}"#)
+    };
+    cache_row(&core, &row(&session));
+    core.transport().ok(
+        &format!("/v1/sessions/{session}/events"),
+        r#"{"queued":true}"#,
+    );
+    block_on(core.send_first_message(&session, "[Attached: a.png]")).unwrap();
+    assert_eq!(
+        core.cached_summary(&session).unwrap().title,
+        "Untitled session"
+    );
+    // A session this client did not create keeps what the server calls it.
+    cache_row(&core, &row("conv_elsewhere"));
+    core.transport()
+        .ok("/v1/sessions/conv_elsewhere/events", r#"{"queued":true}"#);
+    // Whether the send is taken is not the point here: either way it names nothing.
+    drop(block_on(
+        core.send_first_message("conv_elsewhere", "not the first words"),
+    ));
+    assert_eq!(
+        core.cached_summary("conv_elsewhere").unwrap().title,
+        "Untitled session"
+    );
 }
 
 #[test]

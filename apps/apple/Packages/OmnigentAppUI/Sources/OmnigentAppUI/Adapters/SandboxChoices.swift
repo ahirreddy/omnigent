@@ -1,3 +1,4 @@
+import Foundation
 import OmnigentCoreFFI
 import OmnigentStores
 import OmnigentUIComponents
@@ -42,6 +43,22 @@ struct SandboxChoices: Equatable {
     case .failed: return "Could not load sandbox profiles. Try again."
     case .idle, .loading, nil: return "Loading sandbox profiles\u{2026}"
     }
+  }
+
+  /// The profile a new sandbox starts with when the user has not chosen: the one used last
+  /// when it is still offered, else the first x86 one (most repositories build there), else
+  /// the first.
+  static func defaultProfile(
+    _ offered: [SandboxProfileOption], last: String?
+  ) -> SandboxProfileOption? {
+    if let last, let same = offered.first(where: { $0.id == last }) { return same }
+    let isX86: (SandboxProfileOption) -> Bool = { profile in
+      ["x86", "amd64"].contains { architecture in
+        profile.name.localizedCaseInsensitiveContains(architecture)
+          || profile.id.localizedCaseInsensitiveContains(architecture)
+      }
+    }
+    return offered.first(where: isX86) ?? offered.first
   }
 
   /// The sandbox a new session starts on.

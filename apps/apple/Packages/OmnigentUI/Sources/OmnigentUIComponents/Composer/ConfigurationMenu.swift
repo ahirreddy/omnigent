@@ -21,6 +21,15 @@ struct ConfigurationMenu: View {
   }
 
   var body: some View {
+    // A new session on the Mac chooses in order: the agent, then its model, then its effort.
+    if showsAgent, layout == .card {
+      StartConfigurationMenus(menu: self)
+    } else {
+      combinedMenu
+    }
+  }
+
+  private var combinedMenu: some View {
     Menu {
       // A busy session refuses every change here, so the choices say why and take no click.
       if let reason = configuration.busyReason {
@@ -49,6 +58,13 @@ struct ConfigurationMenu: View {
   }
 
   @ViewBuilder private var choices: some View {
+    agentChoices
+    modelChoices
+    effortChoices
+  }
+
+  /// The agents, grouped as on the web when the host says how.
+  @ViewBuilder var agentChoices: some View {
     if let selectAgent = actions.selectAgent, !configuration.harnessChoices.isEmpty {
       if configuration.agentGroups.isEmpty {
         Section("Agent") { agentRows(configuration.harnessChoices, selectAgent) }
@@ -56,10 +72,18 @@ struct ConfigurationMenu: View {
         groupedAgentRows(selectAgent)
       }
     }
+  }
+
+  /// Smart Routing and the selected agent's models.
+  @ViewBuilder var modelChoices: some View {
     SmartRoutingToggle(configuration: configuration, set: actions.extras.setSmartRouting)
     if let selectModel = actions.selectModel, !configuration.visibleModels.isEmpty {
       Section("Model") { modelPicker(selectModel) }
     }
+  }
+
+  /// The selected model's efforts.
+  @ViewBuilder var effortChoices: some View {
     if let selectEffort = actions.selectEffort, !configuration.efforts.isEmpty {
       Section("Effort") { effortPicker(selectEffort) }
         .disabled(configuration.isSmartRoutingOn)

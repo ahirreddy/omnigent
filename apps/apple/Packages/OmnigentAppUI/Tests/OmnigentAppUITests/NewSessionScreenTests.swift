@@ -17,7 +17,6 @@ import Testing
 struct NewSessionScreenTests {
   // Where the composer's menus sit in a 900 point wide window.
   private static let hostMenu = CGPoint(x: 116, y: 423)
-  private static let agentMenu = CGPoint(x: 684, y: 423)
   private static let modeMenu = CGPoint(x: 792, y: 423)
 
   private func startableServer() -> AppServer {
@@ -61,6 +60,9 @@ struct NewSessionScreenTests {
   private func typeAndStart(
     _ screen: OffscreenWindow<NewSessionContainer>, _ server: AppServer
   ) async throws -> [String: Any] {
+    // A menu chosen before this may have taken the keyboard; a person clicks the field first.
+    let composer = try #require(screen.allViews.first { $0 is NSTextView })
+    try screen.click(composer)
     try screen.type("hello")
     try screen.press(keyCode: 36, characters: "\r")
     try await settle(screen, until: "the create") {
@@ -121,11 +123,18 @@ struct NewSessionScreenTests {
     let (screen, _) = try await page(server)
     defer { screen.close() }
     try screen.choose(
-      "Codex", in: try await menu(screen, at: Self.agentMenu, onceOffering: "Codex"))
-    // Codex's models are read once it is chosen: the menu lists them when they arrive.
+      "Codex",
+      in: try await menu(
+        screen, at: try center(of: "composer-configuration", in: screen), onceOffering: "Codex"))
+    // Codex's models are read once it is chosen: its Model menu shows when they arrive.
+    try await settle(screen, until: "the Model menu") {
+      (try? center(of: "composer-model-menu", in: screen)) != nil
+    }
     try screen.choose(
       "codex-native-fast",
-      in: try await menu(screen, at: Self.agentMenu, onceOffering: "codex-native-fast"))
+      in: try await menu(
+        screen, at: try center(of: "composer-model-menu", in: screen),
+        onceOffering: "codex-native-fast"))
     try await pause(screen)
     let body = try await typeAndStart(screen, server)
     #expect(body["agent_id"] as? String == "ag_codex")

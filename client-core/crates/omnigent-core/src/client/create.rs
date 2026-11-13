@@ -32,6 +32,7 @@ use crate::creation::{
     merge_user_agents, parent_directory, sandbox_creation_body,
 };
 use crate::http::HttpTransport;
+use crate::reconcile::UNTITLED_SESSION;
 
 /// The largest page the catalog routes are asked for.
 const CATALOG_PAGE_LIMIT: u32 = 1000;
@@ -245,7 +246,22 @@ impl<T: HttpTransport> ClientCore<T> {
         validate_identifier(host_id)?;
         validate_identifier(harness)?;
         let path = format!("/v1/hosts/{host_id}/harnesses/{harness}/model-options");
-        let value = self.get_json(&path, &[]).await?;
+        self.model_options(&path, &[], by_value).await
+    }
+
+    /// The models a model-options read at `path` lists, as [`Self::host_model_options`] keeps
+    /// them.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    async fn model_options(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+        by_value: bool,
+    ) -> Result<Vec<ModelChoice>, SessionError> {
+        let value = self.get_json(path, query).await?;
         let malformed = |detail: String| SessionError::MalformedResponse {
             detail: format!("{path}: {detail}"),
         };
@@ -585,6 +601,44 @@ impl<T: HttpTransport> ClientCore<T> {
         result
     }
 
+    /// The models `agent_id` can run on a new sandbox of `provider`, from the server's preview
+    /// for that provider: no host exists yet to ask. An agent with no model preview has none.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::InvalidIdentifier`]; [`SessionError::Creation`] for an agent the catalog
+    /// does not have; the read errors.
+    #[allow(
+        clippy::future_not_send,
+        reason = "Send-ness follows the host transport; WASM transports are !Send by design"
+    )]
+    pub async fn sandbox_creation_models(
+        &self,
+        agent_id: &str,
+        provider: &str,
+    ) -> Result<Vec<ModelChoice>, SessionError> {
+        let result = async {
+            validate_identifier(agent_id)?;
+            validate_identifier(provider)?;
+            let catalog = self.catalog().await?;
+            let agent = catalog
+                .agent(agent_id)
+                .ok_or_else(|| CreationError::Unavailable("Choose a registered agent.".into()))?;
+            if !agent.supports_model_preview() {
+                return Ok(Vec::new());
+            }
+            let harness = agent.harness_id();
+            validate_identifier(&harness)?;
+            let path =
+                format!("/v1/sandbox-providers/{provider}/harnesses/{harness}/model-options");
+            self.model_options(&path, &[("agent_id", agent_id.to_owned())], true)
+                .await
+        }
+        .await;
+        self.dispatch();
+        result
+    }
+
     #[allow(
         clippy::future_not_send,
         reason = "Send-ness follows the host transport; WASM transports are !Send by design"
@@ -666,6 +720,7 @@ impl<T: HttpTransport> ClientCore<T> {
     ) -> Result<CreatedSession, SessionError> {
         let result = async {
             let receipt = self.create(selection, title, Some(text)).await?;
+            self.title_from_first_message(&receipt.session_id, text);
             let first_message = match self.send(&receipt.session_id, text, false).await {
                 Ok(sent) => FirstMessage::Sent(sent),
                 Err(error) => FirstMessage::Failed(error),
@@ -696,9 +751,38 @@ impl<T: HttpTransport> ClientCore<T> {
         session_id: &str,
         text: &str,
     ) -> Result<MessageSent, SessionError> {
+        self.title_from_first_message(session_id, text);
         let result = self.send(session_id, text, false).await;
         self.dispatch();
         result
+    }
+
+    /// Shows a session created here under its first message until the server names it. The
+    /// title is never sent: one in the create would count as the user's own and stay for good.
+    fn title_from_first_message(&self, session_id: &str, text: &str) {
+        let Some(title) = first_message_title(text) else {
+            return;
+        };
+        let mut state = lock(&self.state);
+        if !state.awaiting_first_message.contains(session_id) {
+            return;
+        }
+        state
+            .first_message_titles
+            .insert(session_id.to_owned(), title.clone());
+        let untitled = state
+            .summaries
+            .get(session_id)
+            .filter(|summary| summary.title == UNTITLED_SESSION)
+            .cloned();
+        if let Some(mut summary) = untitled {
+            summary.title = title;
+            let summary = state.record_summary(summary);
+            state.cache_summary(&summary);
+            state.events.push(ClientEvent::SessionsChanged {
+                sessions: vec![summary],
+            });
+        }
     }
 
     #[allow(
@@ -857,6 +941,7 @@ impl<T: HttpTransport> ClientCore<T> {
         }
         state.events.push(ClientEvent::InventoryInvalidated);
         state.awaiting_first_message.insert(id.clone());
+        state.unlisted_creations.insert(id.clone());
         Ok(CreationReceipt {
             session_id: id,
             summary,
@@ -891,4 +976,45 @@ fn filesystem_route(host_id: &str, directory: Option<&str>) -> Result<String, Se
     } else {
         format!("/v1/hosts/{host_id}/filesystem{trimmed}")
     })
+}
+
+/// The longest title the server seeds from a first message.
+const FIRST_MESSAGE_TITLE_CHARS: usize = 60;
+
+/// The title the server seeds for a session whose first message is `text`: its lines without
+/// the attachment markers, on one line, cut to 60 characters with an ellipsis. `None` when
+/// nothing is left.
+pub(crate) fn first_message_title(text: &str) -> Option<String> {
+    let collapsed = text
+        .lines()
+        .filter(|line| !is_attachment_marker(line.trim()))
+        .flat_map(str::split_whitespace)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    if collapsed.chars().count() <= FIRST_MESSAGE_TITLE_CHARS {
+        return Some(collapsed);
+    }
+    let kept: String = collapsed
+        .chars()
+        .take(FIRST_MESSAGE_TITLE_CHARS - 1)
+        .collect();
+    Some(format!("{}\u{2026}", kept.trim_end()))
+}
+
+/// A line the composer adds for an attachment: `[Attached: a.png]`, `[Attached file: a.txt]`
+/// or `[Attachment a.png could not be loaded]`.
+fn is_attachment_marker(line: &str) -> bool {
+    let named = |prefix: &str| {
+        line.strip_prefix(prefix)
+            .and_then(|rest| rest.strip_suffix(']'))
+            .is_some_and(|name| !name.is_empty())
+    };
+    let unloaded = line
+        .strip_prefix("[Attachment ")
+        .and_then(|rest| rest.strip_suffix(" could not be loaded]"))
+        .is_some_and(|name| !name.is_empty() && !name.contains(']'));
+    named("[Attached: ") || named("[Attached file: ") || unloaded
 }

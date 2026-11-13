@@ -102,7 +102,7 @@ struct NewSessionWiringTests {
       !server.requests("GET", "/v1/hosts/mac/filesystem").isEmpty
     }
     try await pause(screen, .milliseconds(150))
-    let point = CGPoint(x: 684, y: 423)
+    let point = try center(of: "composer-configuration", in: screen)
     try screen.choose(
       "Create Custom Agent\u{2026}",
       in: menu(screen, at: point, offering: "Create Custom Agent\u{2026}"))

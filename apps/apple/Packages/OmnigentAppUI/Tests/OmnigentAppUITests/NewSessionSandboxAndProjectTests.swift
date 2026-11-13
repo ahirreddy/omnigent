@@ -31,24 +31,39 @@ struct NewSessionSandboxAndProjectTests {
     return (form, (creation, connection))
   }
 
-  @Test("Picking a sandbox row sends a managed create, without what only applied to the host")
+  @Test("Picking a sandbox row offers its provider's models, and sends what was picked and named")
   func aSandboxStartSendsWhatItShows() async throws {
     let server = sandboxServer()
+    server.route(
+      "/v1/sandbox-providers/modal/harnesses/claude-native/model-options",
+      .json(
+        #"{"configured":true,"models":[{"id":"cloud-fast","model":"cloud-fast","displayName":"Cloud Fast","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]}"#
+      ))
     let (form, (creation, connection)) = try await opened(server)
     form.selectFolder(creation, "/work")
-    form.change(creation) {
-      $0.model = "claude-native-fast"
-      $0.reasoningEffort = "high"
-    }
+    // A model picked on the machine is not the sandbox's to run.
+    form.change(creation) { $0.model = "claude-native-fast" }
 
     form.chooseHostRow(NewSessionAdapter.sandboxHostID("modal"), creation)
     #expect(form.isSandbox)
+    try await eventually("the provider's models") {
+      creation.models.value?.map(\.id) == ["cloud-fast"]
+    }
+    let read = try #require(
+      server.requests(
+        "GET", "/v1/sandbox-providers/modal/harnesses/claude-native/model-options"
+      ).first)
+    #expect(read.url.contains("agent_id=ag_claude"))
     let state = form.composerState(creation, connection: connection)
     #expect(state.hosts?.selectedID == NewSessionAdapter.sandboxHostID("modal"))
-    #expect(state.configuration?.modelOptions.isEmpty == true, "no model is offered")
+    #expect(state.configuration?.modelOptions.map(\.id) == ["cloud-fast"])
     #expect(state.context?.directory == nil)
     #expect(state.availability == .available)
 
+    form.selection.model = "cloud-fast"
+    form.selection.reasoningEffort = "high"
+    form.name = "  Night build  "
+    #expect(form.options(creation).name == "  Night build  ")
     form.start(creation, text: "")
     try await eventually("the create") { !server.requests("POST", "/v1/sessions").isEmpty }
     let body = try #require(try server.posted("/v1/sessions").first)
@@ -56,8 +71,51 @@ struct NewSessionSandboxAndProjectTests {
     #expect(body["sandbox_provider"] as? String == "modal")
     #expect(body["agent_id"] as? String == "ag_claude")
     #expect(body["workspace"] == nil)
-    #expect(body["model_override"] == nil, "the composer shows no model on a sandbox")
-    #expect(body["reasoning_effort"] == nil)
+    #expect(body["model_override"] as? String == "cloud-fast")
+    #expect(body["reasoning_effort"] as? String == "high")
+    #expect(body["title"] as? String == "Night build")
+  }
+
+  @Test("A sandbox whose server names no provider offers no models and asks for none")
+  func aSandboxWithNoProviderOffersNoModels() async throws {
+    let server = newSessionServer()
+    server.route(
+      "/v1/info",
+      .json(
+        #"{"single_user":true,"accounts_enabled":false,"managed_sandboxes_enabled":true}"#))
+    let (form, (creation, _)) = try await opened(server)
+    form.chooseHostRow(NewSessionAdapter.sandboxHostID(nil), creation)
+    try await eventually("the empty list") { creation.models.value?.isEmpty == true }
+    #expect(creation.workspaces.value?.isEmpty == true)
+    #expect(
+      server.requests("GET", "/v1/sandbox-providers/modal/harnesses/claude-native/model-options")
+        .isEmpty)
+  }
+
+  @Test("A model list the server can't give says so in place of the models")
+  func aFailedSandboxModelRead() async throws {
+    let server = sandboxServer()
+    server.route(
+      "/v1/sandbox-providers/modal/harnesses/claude-native/model-options",
+      .json(#"{"detail":"down"}"#, status: 500))
+    let (form, (creation, _)) = try await opened(server)
+    form.chooseHostRow(NewSessionAdapter.sandboxHostID("modal"), creation)
+    try await eventually("the failure") {
+      if case .failed = creation.models { return true }
+      return false
+    }
+  }
+
+  @Test("A session started without a name sends none, so its first message names it")
+  func anUnnamedStartSendsNoTitle() async throws {
+    let server = sandboxServer()
+    let (form, (creation, _)) = try await opened(server)
+    form.selectFolder(creation, "/work")
+    form.name = "   "
+    form.start(creation, text: "")
+    try await eventually("the create") { !server.requests("POST", "/v1/sessions").isEmpty }
+    let body = try #require(try server.posted("/v1/sessions").first)
+    #expect(body["title"] == nil)
   }
 
   @Test("Another provider forgets the profile chosen for the last")
