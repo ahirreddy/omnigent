@@ -16,14 +16,15 @@ struct CLIStyleTests {
   // MARK: Preferences
 
   @Test(
-    "defaults: chat style, reading width and rich output for chat, edge to edge and plain for CLI")
+    "defaults: chat style, reading width and rich output for chat, edge to edge and styled for CLI"
+  )
   func preferenceDefaults() throws {
     let preferences = TranscriptPreferences(defaults: try scratchDefaults())
     #expect(preferences.style == .chat)
     #expect(preferences.contentWidth(for: .chat) == .reading)
     #expect(preferences.contentWidth(for: .cli) == .edgeToEdge)
     #expect(preferences.outputRendering(for: .chat) == .rich)
-    #expect(preferences.outputRendering(for: .cli) == .plain)
+    #expect(preferences.outputRendering(for: .cli) == .styled)
     #expect(preferences.fontSize == TranscriptAppearance.defaultFontSize)
     #expect(preferences.readErrors.isEmpty)
   }

@@ -94,9 +94,9 @@ nonisolated public enum OutputRendering: String, Hashable, Sendable, CaseIterabl
 
   /// The default for `style`.
   /// - Parameter style: A transcript style.
-  /// - Returns: Plain for CLI, rich for chat.
+  /// - Returns: Styled for CLI, as a terminal agent renders markdown; rich for chat.
   public static func defaultValue(for style: TranscriptStyle) -> Self {
-    style == .cli ? .plain : .rich
+    style == .cli ? .styled : .rich
   }
 }
 
