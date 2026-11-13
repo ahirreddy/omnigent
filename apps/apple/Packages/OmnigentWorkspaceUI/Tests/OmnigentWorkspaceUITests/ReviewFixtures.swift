@@ -210,6 +210,43 @@
       return nil
     }
 
+    /// Presses a key equivalent as the menu pass does, before any view gets the key.
+    /// - Returns: Whether a view took it.
+    @discardableResult
+    func pressShortcut(
+      _ characters: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags = .command
+    ) throws -> Bool {
+      let event = NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: modifiers,
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: activeWindow.windowNumber,
+        context: nil, characters: characters, charactersIgnoringModifiers: characters,
+        isARepeat: false, keyCode: keyCode)
+      guard let event else { throw OffscreenWindowError.eventUnavailable }
+      let handled = activeWindow.performKeyEquivalent(with: event)
+      settle(0.05)
+      return handled
+    }
+
+    /// Sends a menu command down the responder chain from whatever has the keyboard, as AppKit
+    /// does for a menu item with no target of its own while this window is key.
+    /// - Returns: Whether a responder took it.
+    @discardableResult
+    func sendMenuCommand(_ action: Selector, tag: Int = 0) -> Bool {
+      let item = NSMenuItem(title: "", action: action, keyEquivalent: "")
+      item.tag = tag
+      let taken = activeWindow.firstResponder?.tryToPerform(action, with: item) ?? false
+      settle(0.05)
+      return taken
+    }
+
+    /// The middles of a `List`'s rows, top to bottom.
+    var listRowPoints: [CGPoint] {
+      allViews.compactMap { $0 as? NSTableRowView }
+        .map { $0.convert($0.bounds, to: host) }
+        .sorted { $0.minY < $1.minY }
+        .map { CGPoint(x: $0.midX, y: $0.midY) }
+    }
+
     /// The menu a `Menu` opens: its popup's by position.
     func menu(ofPopUp index: Int) throws -> NSMenu {
       let frame = popUps[index].convert(popUps[index].bounds, to: host)

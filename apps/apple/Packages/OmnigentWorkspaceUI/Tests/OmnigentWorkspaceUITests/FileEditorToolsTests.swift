@@ -8,6 +8,38 @@
 
   @testable import OmnigentWorkspaceUI
 
+  /// A Markdown toolbar button, the text it is clicked on with its first line selected, and what
+  /// that text becomes.
+  nonisolated struct MarkdownButtonCase: Sendable, CustomTestStringConvertible {
+    let format: MarkdownFormat
+    let source: String
+    let expected: String
+
+    var testDescription: String { format.rawValue }
+
+    /// The toolbar's buttons, left to right.
+    static let toolbarOrder: [MarkdownFormat] = [
+      .paragraph, .heading1, .heading2, .heading3, .quote, .bold, .italic, .strikethrough, .code,
+      .link, .bulletList, .numberedList, .taskList,
+    ]
+
+    static let all = [
+      Self(format: .paragraph, source: "# word\n", expected: "word\n"),
+      Self(format: .heading1, source: "word\n", expected: "# word\n"),
+      Self(format: .heading2, source: "word\n", expected: "## word\n"),
+      Self(format: .heading3, source: "word\n", expected: "### word\n"),
+      Self(format: .quote, source: "word\n", expected: "> word\n"),
+      Self(format: .bold, source: "word\n", expected: "**word**\n"),
+      Self(format: .italic, source: "word\n", expected: "*word*\n"),
+      Self(format: .strikethrough, source: "word\n", expected: "~~word~~\n"),
+      Self(format: .code, source: "word\n", expected: "`word`\n"),
+      Self(format: .link, source: "word\n", expected: "[word](https://)\n"),
+      Self(format: .bulletList, source: "word\n", expected: "- word\n"),
+      Self(format: .numberedList, source: "word\n", expected: "1. word\n"),
+      Self(format: .taskList, source: "word\n", expected: "- [ ] word\n"),
+    ]
+  }
+
   /// The editor's Markdown tools, selection bar, limits and following outside changes.
   @MainActor
   @Suite("File editor tools", .serialized)
@@ -42,18 +74,26 @@
       #expect(editor.text == "**word**\n")
     }
 
-    @Test("every Markdown format changes the text and can be undone by Revert")
-    func everyFormat() async throws {
-      let editor = ReviewFixtures.editor(path: "a.md", text: "word\n")
+    @Test(
+      "each Markdown format button writes its own marks, and Revert takes them back",
+      arguments: MarkdownButtonCase.all)
+    func everyFormat(button: MarkdownButtonCase) async throws {
+      let editor = ReviewFixtures.editor(path: "a.md", text: button.source)
       let screen = hosted(editor, markdown: true)
       defer { screen.close() }
       let text = try textView(screen)
-      for index in 0..<13 {
-        text.setSelectedRange(NSRange(location: 0, length: 4))
-        try screen.click(screen.appKitButtons[2 + index])
-      }
-      #expect(await settle(screen) { editor.isDirty })
-      #expect(text.string != "word\n")
+      // The whole first line, without its line break.
+      text.setSelectedRange(NSRange(location: 0, length: button.source.utf16.count - 1))
+      let place = try #require(MarkdownButtonCase.toolbarOrder.firstIndex(of: button.format))
+      // The format buttons follow the save bar's Revert and Save.
+      try screen.click(screen.appKitButtons[2 + place])
+      #expect(await settle(screen) { text.string == button.expected }, "\(text.string)")
+      #expect(await settle(screen) { editor.text == button.expected })
+      #expect(editor.isDirty)
+      try screen.click(screen.appKitButtons[0])
+      #expect(await settle(screen) { text.string == button.source }, "\(text.string)")
+      #expect(editor.text == button.source)
+      #expect(!editor.isDirty)
     }
 
     @Test("a selection offers Comment, Attach and Ask for the selected lines")

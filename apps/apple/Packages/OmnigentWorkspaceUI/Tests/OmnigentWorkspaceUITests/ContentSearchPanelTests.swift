@@ -162,16 +162,26 @@
       #expect(opened.map(\.id) == [first])
     }
 
-    @Test("a match and its file's header have the path menu")
+    @Test("a file's header and a match under it each have the path menu, which copies the path")
     func contextMenus() throws {
-      let screen = hosted(WorkspaceSamples.searchedModel())
+      SystemSideEffects.reset()
+      let model = WorkspaceSamples.searchedModel()
+      let first = try #require(model.state.value?.files.first)
+      let screen = hosted(model)
       defer { screen.close() }
       let results = try #require(screen.controlFrames.last { $0.height > 100 })
       let header = CGPoint(x: results.midX, y: results.minY + 30)
-      let menu = try #require(try screen.contextMenuUnder(header))
-      #expect(menu.items.map(\.title).contains("Copy Path"))
+      let headerMenu = try #require(try screen.contextMenuUnder(header))
+      try screen.choose("Copy Path", in: headerMenu)
+      #expect(SystemSideEffects.pasteboard.string(forType: .string) == first.path)
+      try screen.choose("Copy Absolute Path", in: headerMenu)
+      let absolute = SampleWorkspaceDataSource().absoluteLocation(of: first.path)
+      #expect(SystemSideEffects.pasteboard.string(forType: .string) == absolute)
       let match = CGPoint(x: results.midX, y: results.minY + 55)
-      #expect(try screen.contextMenuUnder(match) != nil)
+      let matchMenu = try #require(try screen.contextMenuUnder(match))
+      #expect(matchMenu !== headerMenu)
+      try screen.choose("Copy Path", in: matchMenu)
+      #expect(SystemSideEffects.pasteboard.string(forType: .string) == first.path)
     }
   }
 #endif

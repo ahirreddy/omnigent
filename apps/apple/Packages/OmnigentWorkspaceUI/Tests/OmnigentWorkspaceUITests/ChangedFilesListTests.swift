@@ -13,11 +13,11 @@
   @Suite("Changed files list", .serialized)
   struct ChangedFilesListTests {
     private func hosted(
-      _ model: ChangesModel, source: any WorkspaceDataSource,
+      _ model: ChangesModel, source: any WorkspaceDataSource, actions: WorkspaceActions = .none,
       onOpen: @escaping (ChangedFile) -> Void = { _ in }
     ) -> OffscreenWindow<ChangedFilesList> {
       OffscreenWindow(
-        ChangedFilesList(model: model, source: source, actions: .none, onOpen: onOpen),
+        ChangedFilesList(model: model, source: source, actions: actions, onOpen: onOpen),
         width: 360, height: 400)
     }
 
@@ -49,6 +49,55 @@
       let file = try #require(model.state.value?.files.first)
       model.selection = file.path
       #expect(await settle(screen) { opened == [file.path] })
+    }
+
+    @Test("clicking a row selects it and opens its diff, and another row opens that one")
+    func rowClickOpens() async throws {
+      let source = SampleWorkspaceDataSource()
+      let model = ChangesModel(source: source)
+      var opened: [String] = []
+      let screen = hosted(model, source: source) { opened.append($0.path) }
+      defer { screen.close() }
+      #expect(await settle(screen) { model.state.value != nil })
+      await flush(screen)
+      let files = try #require(model.state.value?.files)
+      try #require(files.count >= 2)
+      let rows = screen.listRowPoints
+      try #require(rows.count == files.count, "\(rows.count) rows for \(files.count) files")
+      #expect(model.selection == nil)
+      try screen.click(rows[1])
+      #expect(await settle(screen) { opened == [files[1].path] })
+      #expect(model.selection == files[1].path)
+      try screen.click(rows[0])
+      #expect(await settle(screen) { opened == [files[1].path, files[0].path] })
+      #expect(model.selection == files[0].path)
+    }
+
+    @Test("a row's menu copies its path, relative or absolute, and reveals it in Finder")
+    func rowMenu() async throws {
+      SystemSideEffects.reset()
+      let source = SampleWorkspaceDataSource()
+      let model = ChangesModel(source: source)
+      var revealed: [String] = []
+      var opened: [String] = []
+      let screen = hosted(
+        model, source: source, actions: WorkspaceActions(reveal: { revealed.append($0) })
+      ) { opened.append($0.path) }
+      defer { screen.close() }
+      #expect(await settle(screen) { model.state.value != nil })
+      await flush(screen)
+      let files = try #require(model.state.value?.files)
+      let rows = screen.listRowPoints
+      try #require(rows.count == files.count && files.count >= 2)
+      let absolute = try #require(source.absoluteLocation(of: files[1].path))
+      let menu = try #require(try screen.contextMenu(at: rows[1]))
+      try screen.choose("Copy Path", in: menu)
+      #expect(SystemSideEffects.pasteboard.string(forType: .string) == files[1].path)
+      try screen.choose("Copy Absolute Path", in: menu)
+      #expect(SystemSideEffects.pasteboard.string(forType: .string) == absolute)
+      try screen.choose("Reveal in Finder", in: menu)
+      #expect(revealed == [absolute])
+      #expect(opened.isEmpty, "the menu opens no diff")
     }
 
     @Test("a file already open under a diff opens again after another document showed")

@@ -189,5 +189,30 @@
       let titles = try screen.menu(ofPopUp: 0).items.map(\.title).filter { !$0.isEmpty }
       #expect(titles == ["Copy Path"])
     }
+
+    @Test("Copy Line in a line's menu copies that line, without its line break")
+    func copyLine() throws {
+      let text = "old pond\nfrog leaps in\n"
+      let file = WorkspaceFile(
+        path: "poems/haiku.txt", byteCount: UInt64(text.utf8.count),
+        preview: .text(TextPreview(text: text, lineCount: 2)))
+      let screen = OffscreenWindow(
+        FileViewerView(
+          file: file, source: SampleWorkspaceDataSource(), review: ReviewFixtures.context()),
+        width: 900, height: 400)
+      defer { screen.close() }
+      // The first point down the page whose menu is a line's is in line 1.
+      let firstLine = try #require(
+        try stride(from: 10.0, to: 400.0, by: 4.0).first { height in
+          try screen.contextMenuUnder(CGPoint(x: 50, y: height))?.items
+            .contains { $0.title == "Copy Line" } == true
+        })
+      for (line, expected) in ["old pond", "frog leaps in"].enumerated() {
+        let point = CGPoint(x: 50, y: firstLine + 2 + CGFloat(line) * WorkspaceTheme.lineHeight)
+        let menu = try #require(try screen.contextMenuUnder(point))
+        try screen.choose("Copy Line", in: menu)
+        #expect(SystemSideEffects.pasteboard.string(forType: .string) == expected)
+      }
+    }
   }
 #endif

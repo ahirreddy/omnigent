@@ -45,6 +45,30 @@
       #expect(SystemSideEffects.record.openedURLs == [url])
     }
 
+    @Test("clicking a link in a shown HTML preview opens it in the browser, and the preview stays")
+    func previewLinkClick() async throws {
+      let html = """
+        <body style="margin:0"><a href="https://example.com/page" \
+        style="display:block;width:400px;height:300px">docs</a></body>
+        """
+      let screen = OffscreenWindow(HTMLPreview(html: html), width: 400, height: 300)
+      defer { screen.close() }
+      let webView = try #require(screen.allViews.compactMap { $0 as? WKWebView }.first)
+      // WebKit starts a process for the page; its first load can outlast one round of polling.
+      for _ in 0..<5 where webView.isLoading || webView.estimatedProgress < 1 {
+        _ = await settle(screen) { !webView.isLoading && webView.estimatedProgress >= 1 }
+      }
+      try #require(!webView.isLoading)
+      #expect(SystemSideEffects.record.openedURLs.isEmpty)
+      try screen.click(CGPoint(x: 200, y: 150))
+      for _ in 0..<5 where SystemSideEffects.record.openedURLs.isEmpty {
+        _ = await settle(screen) { !SystemSideEffects.record.openedURLs.isEmpty }
+      }
+      #expect(
+        SystemSideEffects.record.openedURLs.map(\.absoluteString) == ["https://example.com/page"])
+      #expect(webView.url?.host() != "example.com", "the preview itself went nowhere")
+    }
+
     @Test("the preview's own load goes ahead without opening anything")
     func previewLoad() async throws {
       let coordinator = HTMLPreview(html: "").makeCoordinator()

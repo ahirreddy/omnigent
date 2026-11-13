@@ -18,6 +18,8 @@
     var nextCursors: [String: String] = [:]
     var absoluteRoot: String?
     var requests: [String] = []
+    /// Each path search's query, include globs and exclude globs, in order.
+    var pathSearches: [[String]] = []
     var failure: WorkspaceFailure?
     var commentsFailure: WorkspaceFailure?
     /// Runs before a content search answers, to hold one in flight.
@@ -46,6 +48,7 @@
       async throws(WorkspaceFailure) -> PathSearchResult
     {
       requests.append("search \(query)")
+      pathSearches.append([query, include, exclude])
       if let failure { throw failure }
       return matches
     }

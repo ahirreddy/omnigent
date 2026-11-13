@@ -97,6 +97,47 @@
       #expect(spy.added.isEmpty)
     }
 
+    @Test("Return adds the comment and closes the sheet, as Add Comment does")
+    func returnAdds() async throws {
+      let spy = ReviewSpy()
+      let review = ReviewFixtures.context(spy: spy)
+      let screen = OffscreenWindow(
+        ComposerSheetHost(span: Self.span, add: review.add), width: 420, height: 300)
+      defer { screen.close() }
+      try screen.clickControl(at: 0)
+      #expect(await settle(screen) { screen.window.attachedSheet != nil })
+      // A field passes a Return it has no use for to its window, as a key equivalent.
+      try screen.pressShortcut("\r", keyCode: 36, modifiers: [])
+      await flush(screen)
+      #expect(spy.added.isEmpty, "nothing typed, nothing to add")
+      #expect(screen.window.attachedSheet != nil)
+      try screen.click(try field(screen))
+      try screen.type("Why?")
+      await flush(screen)
+      #expect(try screen.pressShortcut("\r", keyCode: 36, modifiers: []))
+      #expect(await settle(screen) { spy.added.count == 1 })
+      #expect(spy.added.first?.0 == "Why?")
+      #expect(spy.added.first?.1 == Self.span)
+      #expect(await settle(screen) { screen.window.attachedSheet == nil })
+    }
+
+    @Test("Escape closes the sheet without adding what was typed")
+    func escapeCancels() async throws {
+      let spy = ReviewSpy()
+      let review = ReviewFixtures.context(spy: spy)
+      let screen = OffscreenWindow(
+        ComposerSheetHost(span: Self.span, add: review.add), width: 420, height: 300)
+      defer { screen.close() }
+      try screen.clickControl(at: 0)
+      #expect(await settle(screen) { screen.window.attachedSheet != nil })
+      try screen.click(try field(screen))
+      try screen.type("Why?")
+      await flush(screen)
+      try screen.press(keyCode: 53, characters: "\u{1B}")
+      #expect(await settle(screen) { screen.window.attachedSheet == nil })
+      #expect(spy.added.isEmpty)
+    }
+
     @Test("adding closes the sheet")
     func addCloses() async throws {
       let spy = ReviewSpy()
