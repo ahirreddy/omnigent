@@ -94,6 +94,8 @@ nonisolated public struct SidebarArrangement: Equatable, Sendable {
   public init(_ state: SidebarViewState) {
     let sections = SidebarSections.sections(state)
     titles = sections.map(\.title)
-    rows = sections.map { $0.sessions.map(\.id) }
+    rows =
+      sections.map { $0.sessions.map(\.id) }
+      + state.projects.map { SidebarSections.sessions(of: $0, in: state).map(\.id) }
   }
 }

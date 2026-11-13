@@ -45,18 +45,7 @@ extension SessionProject {
   /// `projects` with the project `id` moved as `move` says (the web's `moveProject`); empty
   /// when it is missing or already there.
   public static func moved(_ projects: [Self], id: String, _ move: ProjectMove) -> [Self] {
-    guard let from = projects.firstIndex(where: { $0.id == id }) else { return [] }
-    let to =
-      switch move {
-      case .upOne: from - 1
-      case .downOne: from + 1
-      case .top: 0
-      case .bottom: projects.count - 1
-      }
-    guard projects.indices.contains(to), to != from else { return [] }
-    var result = projects
-    result.insert(result.remove(at: from), at: to)
-    return result
+    projects.moved(id, move)
   }
 }
 

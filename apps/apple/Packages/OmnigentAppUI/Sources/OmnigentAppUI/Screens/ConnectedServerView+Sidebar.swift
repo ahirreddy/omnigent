@@ -109,6 +109,8 @@ extension SessionDisplayOptions {
 @Observable
 final class SidebarModel {
   var display = SidebarDisplayDefaults.load()
+  /// How Pinned and each project sort their sessions, per server.
+  let groupSorts: SidebarGroupSortStore
   var undo: SidebarUndo?
   /// The open Project settings sheet.
   var projectSettings: ProjectSettingsFlow?
@@ -120,6 +122,10 @@ final class SidebarModel {
   /// The session a chat tab's menu is renaming.
   var renamingFromTab: OmnigentUIComponents.SessionSummary?
   var renameText = ""
+
+  init(groupSorts: SidebarGroupSortStore = SidebarGroupSortStore()) {
+    self.groupSorts = groupSorts
+  }
 
   /// Asks for a new title for a chat tab's session, as the session menu does.
   func askToRename(tabID: String, tabs: SessionTabGroups, list: SessionListStore) {
@@ -176,7 +182,7 @@ extension ConnectedServerView {
     actions.loadProjectPage = { project in
       Task { await paging.loadProject(ProjectSummary(project), id: project.id) }
     }
-    return withProjectActions(actions)
+    return withGroupSortActions(withProjectActions(actions))
   }
 
   var sessionListActions: SessionListActions {

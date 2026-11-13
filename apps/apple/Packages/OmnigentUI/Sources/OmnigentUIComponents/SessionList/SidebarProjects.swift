@@ -150,10 +150,13 @@ struct ProjectFolder<Row: View>: View {
   }
 }
 
-/// A project's menu in the web's order: New session, Rename, Project settings, Move, Delete.
+/// A project's menu in the web's order: New session, Rename, Project settings, Move, Delete;
+/// and how its sessions sort.
 struct ProjectMenu {
   let project: SessionProject
   let projects: [SessionProject]
+  /// How its sessions sort now.
+  let sort: SessionGroupSort
   let actions: SidebarActions
   let rename: () -> Void
   let confirmDelete: () -> Void
@@ -168,14 +171,11 @@ struct ProjectMenu {
     if let settings = actions.openProjectSettings {
       Button("Project settings\u{2026}", systemImage: "slider.horizontal.3") { settings(project) }
     }
+    if let setSort = actions.setGroupSort {
+      GroupSortPicker(sort: sort) { setSort(.project(project.id), $0) }
+    }
     if let reorder = actions.reorderProjects, projects.count > 1 {
-      Menu("Move", systemImage: "arrow.up.arrow.down") {
-        ForEach(ProjectMove.allCases) { move in
-          let moved = SessionProject.moved(projects, id: project.id, move)
-          Button(move.title) { reorder(moved) }
-            .disabled(moved.isEmpty)
-        }
-      }
+      MoveMenu(items: { projects }, id: project.id, save: reorder)
     }
     if actions.deleteProject != nil {
       Divider()

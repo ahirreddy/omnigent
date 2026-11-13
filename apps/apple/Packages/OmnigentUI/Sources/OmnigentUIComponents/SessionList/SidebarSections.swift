@@ -13,11 +13,12 @@ nonisolated enum SidebarSections {
   }
 
   static func sections(_ state: SidebarViewState, calendar: Calendar = .current) -> [Section] {
-    let sessions = sorted(state.list.sessions, state: state)
-    guard state.display.groupBy != .default else { return defaultSections(sessions, state: state) }
+    let pinned = pinned(state)
+    let rest = sorted(state.list.sessions.filter { !$0.isPinned }, state: state)
+    guard state.display.groupBy != .default else {
+      return defaultSections(pinned: pinned, rest: rest, state: state)
+    }
     // Grouped views keep Pinned on top and group the rest, as the web does.
-    let pinned = sessions.filter(\.isPinned)
-    let rest = sessions.filter { !$0.isPinned }
     let groups: [Section] =
       switch state.display.groupBy {
       case .default, .status: statusSections(rest, state: state)
@@ -28,26 +29,61 @@ nonisolated enum SidebarSections {
     return (pinned.isEmpty ? [] : [pinnedSection]) + groups
   }
 
+  /// The sessions outside Pinned, in the list's Ordering.
   private static func sorted(_ sessions: [SessionSummary], state: SidebarViewState)
     -> [SessionSummary]
   {
     guard state.display.sortBy == .created else { return sessions }
-    return sessions.enumerated().sorted { left, right in
-      let leftCreated = state.rowInfo[left.element.id]?.createdAt ?? left.element.updatedAt
-      let rightCreated = state.rowInfo[right.element.id]?.createdAt ?? right.element.updatedAt
-      if leftCreated != rightCreated { return leftCreated > rightCreated }
-      return left.offset < right.offset
-    }.map(\.element)
+    return order(sessions, by: .created, state: state)
   }
 
-  private static func defaultSections(_ sessions: [SessionSummary], state: SidebarViewState)
-    -> [Section]
+  /// `sessions` in `sort`'s order; a session without a creation date sorts by its last update.
+  private static func order(
+    _ sessions: [SessionSummary], by sort: SessionGroupSort, custom: [String] = [],
+    state: SidebarViewState
+  ) -> [SessionSummary] {
+    sort.ordered(
+      sessions, createdAt: { state.rowInfo[$0.id]?.createdAt ?? $0.updatedAt }, custom: custom)
+  }
+
+  /// The Pinned group's rows top to bottom; its Custom order is the server's pin order.
+  static func pinned(_ state: SidebarViewState) -> [SessionSummary] {
+    order(state.list.sessions.filter(\.isPinned), by: state.sort(of: .pinned), state: state)
+  }
+
+  /// A project's loaded sessions top to bottom, in its sort's order.
+  static func sessions(of project: SessionProject, in state: SidebarViewState)
+    -> [SessionSummary]
   {
+    let members = Set(project.sessionIds)
+    let loaded = Dictionary(
+      state.list.sessions.lazy.filter { members.contains($0.id) }.map { ($0.id, $0) },
+      uniquingKeysWith: { first, _ in first })
+    let sessions = project.sessionIds.compactMap { loaded[$0] }
+    let group = SessionGroup.project(project.id)
+    let sort = state.sort(of: group)
+    // A project's sessions arrive most recent first: the list's own order.
+    guard sort != .recent else { return sessions }
+    return order(
+      sessions, by: sort, custom: state.groupSorts.customOrder[group.key] ?? [], state: state)
+  }
+
+  /// A group's rows top to bottom: Pinned's, or a project's loaded sessions.
+  static func rows(of group: SessionGroup, in state: SidebarViewState) -> [SessionSummary] {
+    switch group {
+    case .pinned: pinned(state)
+    case .project(let id):
+      state.projects.first { $0.id == id }.map { sessions(of: $0, in: state) } ?? []
+    }
+  }
+
+  private static func defaultSections(
+    pinned: [SessionSummary], rest sessions: [SessionSummary], state: SidebarViewState
+  ) -> [Section] {
     let inProject = Set(state.projects.flatMap(\.sessionIds))
-    let pinned = sessions.filter(\.isPinned)
-    let shared = sessions.filter { !$0.isPinned && state.rowInfo[$0.id]?.isShared == true }
+    let shared = sessions.filter { state.rowInfo[$0.id]?.isShared == true }
     let rest = sessions.filter {
-      !$0.isPinned && !inProject.contains($0.id) && state.rowInfo[$0.id]?.isShared != true
+      !inProject.contains($0.id) && state.rowInfo[$0.id]?.isShared != true
     }
     var result: [Section] = []
     if !pinned.isEmpty { result.append(Section(title: "Pinned", sessions: pinned, isPinned: true)) }

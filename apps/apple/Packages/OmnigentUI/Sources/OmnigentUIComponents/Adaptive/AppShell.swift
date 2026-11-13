@@ -132,8 +132,7 @@ public struct AppShell<Detail: View>: View {
     ObservationScope("sidebar") {
       let state = sidebar()
       SidebarView(state: state, selection: $selection, searchText: searchText(), actions: actions)
-        .sessionListCommands(
-          display: state.display, showsShared: state.showsSharedScope, set: actions.setDisplay)
+        .sessionListCommands(state, actions: actions)
     }
   }
 

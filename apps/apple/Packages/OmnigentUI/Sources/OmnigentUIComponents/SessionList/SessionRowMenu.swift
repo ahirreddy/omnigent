@@ -19,6 +19,8 @@ struct SessionRowMenu {
   var newProject: (() -> Void)?
   /// Why Share is unavailable; it then shows disabled with the reason.
   var shareUnavailableReason: String?
+  /// Its place among its group's rows (Pinned, or a project); `nil` hides Reorder.
+  var move: SessionRowMove?
 
   /// Hover buttons are Mac-only; touch uses the context menu and swipe actions.
   var showsHoverActions: Bool {
@@ -106,6 +108,9 @@ struct SessionRowMenu {
           Button("Remove from project") { move(session, nil) }
         }
       }
+    }
+    if let move {
+      MoveMenu(title: "Reorder", items: move.rows, id: session.id, save: move.save)
     }
     // Stop, Archive and Delete end the session's life, below a divider.
     Divider()

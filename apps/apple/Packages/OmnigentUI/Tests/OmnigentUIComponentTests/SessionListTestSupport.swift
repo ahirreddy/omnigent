@@ -197,6 +197,10 @@
       actions.newSessionInProject = { [self] in calls.append("new in \($0.id)") }
       actions.openProjectSettings = { [self] in calls.append("project settings \($0.id)") }
       actions.setProjectSort = { [self] in calls.append("project sort \($0)") }
+      actions.setGroupSort = { [self] in calls.append("sort \($0.key) \($1)") }
+      actions.reorderGroup = { [self] in
+        calls.append("order \($0.key) \($1.joined(separator: ","))")
+      }
       actions.signOut = { [self] in calls.append("sign out") }
       actions.loadMoreSessions = { [self] in calls.append("load more") }
       actions.loadProjectPage = { [self] in calls.append("load project \($0.id)") }

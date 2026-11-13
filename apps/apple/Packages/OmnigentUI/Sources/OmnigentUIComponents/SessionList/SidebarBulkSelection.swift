@@ -53,6 +53,32 @@ nonisolated struct SidebarBulkSelection: Hashable {
   }
 }
 
+/// The bars under the sidebar's list: the bulk actions while selecting, Undo, and a load failure.
+struct SidebarBottomBars: View {
+  let state: SidebarViewState
+  let actions: SidebarActions
+  @Binding var bulk: SidebarBulkSelection
+  let confirmDelete: ([SessionSummary]) -> Void
+
+  var body: some View {
+    VStack(spacing: 0) {
+      if bulk.isActive {
+        BulkActionBar(
+          selected: state.list.sessions.filter { bulk.ids.contains($0.id) }, state: state,
+          actions: actions, exit: { bulk.end() }, clear: { bulk.clear() },
+          confirmDelete: confirmDelete)
+      }
+      if let undo = state.undo {
+        UndoBar(banner: undo, actions: actions)
+      }
+      if case .failed(let message) = state.list.phase {
+        SessionListErrorBar(message: message, retry: actions.sessions.retry)
+      }
+    }
+    .frame(minWidth: 0, maxWidth: .infinity)
+  }
+}
+
 /// The bulk action bar under the sidebar while selecting: Mark read or unread, Archive,
 /// Unarchive, Move to project and Delete, as the web's `BulkActionBar`. Ownership gates
 /// Archive, Move and Delete; read state is per viewer, so it applies to every row.

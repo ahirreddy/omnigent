@@ -110,6 +110,7 @@ public struct ConnectedServerView: View {
     .onAppear { overviewPresenter.open = { showsTabOverview = true } }
     .modifier(PaletteAdapter(session: session, selection: $selection))
     .background { PinnedSessionShortcuts(open: openPinnedSession) }
+    .modifier(groupSortPruning)
     .copyConfirmations()
     .environment(\.transcriptFocus, session.transcriptFocus)
     .modifier(TabCommandsPublishing(tabs: tabs, relay: tabCommandRelay))
@@ -172,7 +173,7 @@ public struct ConnectedServerView: View {
   var sidebarState: SidebarViewState {
     var state = sidebarMemo.state(
       list: connection.sessionList, display: sidebar.display,
-      server: connection.connectedServer,
+      sorts: sidebar.groupSorts.sorts(for: groupSortAccount), server: connection.connectedServer,
       servers: serverSwitching?.choices ?? [])
     state.undo = sidebar.undo?.banner
     state.showsAutomations = connection.pages?.offered?.automations == true

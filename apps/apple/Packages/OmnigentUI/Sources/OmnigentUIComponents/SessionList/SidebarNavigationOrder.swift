@@ -36,6 +36,15 @@ public enum SidebarNavigationOrder {
     return pinned.sessions.map(\.id)
   }
 
+  /// A group's session ids top to bottom, as its sort shows them.
+  /// - Parameters:
+  ///   - group: Pinned, or a project.
+  ///   - state: The sidebar.
+  /// - Returns: The ids.
+  public static func groupIDs(_ group: SessionGroup, in state: SidebarViewState) -> [String] {
+    SidebarSections.rows(of: group, in: state).map(\.id)
+  }
+
   /// The session `offset` rows from `current`, wrapping at the ends. Off the list, forward
   /// enters at the top and back at the bottom.
   /// - Parameters:
@@ -56,12 +65,11 @@ public enum SidebarNavigationOrder {
     _ state: SidebarViewState, collapsed: Set<String>, expandedProjects: Set<String>,
     shownInProject: [String: Int] = [:]
   ) -> [String] {
-    let loaded = Set(state.list.sessions.map(\.id))
     let open = SidebarSections.sections(state).filter { !collapsed.contains($0.title) }
     return open.flatMap { (section: SidebarSections.Section) -> [String] in
       guard section.isProjects else { return section.sessions.map(\.id) }
       return state.projects.filter { expandedProjects.contains($0.id) }.flatMap { project in
-        let members = project.sessionIds.filter(loaded.contains)
+        let members = SidebarSections.sessions(of: project, in: state).map(\.id)
         let count = ProjectFolderPaging.visibleCount(
           count: members.count, shown: shownInProject[project.id] ?? 0, selectedIndex: nil)
         return Array(members.prefix(count))

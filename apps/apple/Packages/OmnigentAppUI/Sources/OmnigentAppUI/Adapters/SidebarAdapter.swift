@@ -14,11 +14,13 @@ enum SidebarAdapter {
   /// - Parameters:
   ///   - list: The session list.
   ///   - display: The user's display options.
+  ///   - sorts: How Pinned and each project sort their sessions.
   ///   - server: The connected server, offered in the server switcher.
   ///   - servers: Other servers the switcher offers.
   /// - Returns: The state.
   static func state(
-    list: SessionListStore, display: SessionDisplayOptions, server: ConnectedServer?,
+    list: SessionListStore, display: SessionDisplayOptions,
+    sorts: SessionGroupSorts = SessionGroupSorts(), server: ConnectedServer?,
     servers: [ServerChoice] = []
   ) -> SidebarViewState {
     let contents = list.contents
@@ -53,6 +55,7 @@ enum SidebarAdapter {
       display: display, quickFilter: filter == .all || filter == .archived ? nil : filter,
       servers: choices, currentServerID: current?.id)
     state.paging = paging(list.paging)
+    state.groupSorts = sorts
     return state
   }
 

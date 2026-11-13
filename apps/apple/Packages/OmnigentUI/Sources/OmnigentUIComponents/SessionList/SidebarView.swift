@@ -88,7 +88,10 @@ public struct SidebarView: View {
     .themeSidebar()
     .modifier(SidebarSearchField(text: $searchText))
     .safeAreaInset(edge: .top, spacing: 0) { SidebarHeader(state: state, actions: actions) }
-    .safeAreaInset(edge: .bottom, spacing: 0) { bottomBars }
+    .safeAreaInset(edge: .bottom, spacing: 0) {
+      SidebarBottomBars(
+        state: state, actions: actions, bulk: $bulk, confirmDelete: { confirmingBulkDelete = $0 })
+    }
     .sidebarAccountFooter(state.account, signOut: actions.signOut)
     #if os(macOS)
       .contextMenu(forSelectionType: SidebarDestination.self) { _ in
@@ -169,6 +172,9 @@ public struct SidebarView: View {
           .foregroundStyle(Theme.mutedText)
           .textCase(nil)
         hiddenMarker(section)
+        if section.isPinned, !bulk.isActive, let setSort = actions.setGroupSort {
+          PinnedSortMenu(sort: state.sort(of: .pinned)) { setSort(.pinned, $0) }
+        }
         if section.isProjects, !bulk.isActive {
           projectsHeaderButtons
         }
@@ -250,23 +256,6 @@ public struct SidebarView: View {
     actions.live?.row(id, false)?.session ?? summary(id)
   }
 
-  @ViewBuilder private var bottomBars: some View {
-    VStack(spacing: 0) {
-      if bulk.isActive {
-        BulkActionBar(
-          selected: state.list.sessions.filter { bulk.ids.contains($0.id) }, state: state,
-          actions: actions, exit: { bulk.end() }, clear: { bulk.clear() },
-          confirmDelete: { confirmingBulkDelete = $0 })
-      }
-      if let undo = state.undo {
-        UndoBar(banner: undo, actions: actions)
-      }
-      if case .failed(let message) = state.list.phase {
-        SessionListErrorBar(message: message, retry: actions.sessions.retry)
-      }
-    }
-    .frame(minWidth: 0, maxWidth: .infinity)
-  }
 }
 
 extension SidebarView {
@@ -285,7 +274,7 @@ extension SidebarView {
   }
 
   private func projectGroup(_ project: SessionProject) -> some View {
-    let sessions = project.sessionIds.compactMap(summary)
+    let sessions = SidebarSections.sessions(of: project, in: state)
     let marker = { (rows: ArraySlice<SessionSummary>) in
       SidebarHiddenMarker(sessions: Array(rows), state: state, live: actions.live)
     }
@@ -306,14 +295,15 @@ extension SidebarView {
         }),
       pages: pages,
       menu: ProjectMenu(
-        project: project, projects: state.projects, actions: actions,
+        project: project, projects: state.projects,
+        sort: state.sort(of: .project(project.id)), actions: actions,
         rename: {
           projectName = project.name
           projectPrompt = .rename(project)
         },
         confirmDelete: { confirmingProjectDelete = project }),
       drop: { item in drop(item, on: .project(project)) },
-      row: { session in row(session, target: .project(project)) },
+      row: { session in row(session, target: .projectSlot(project, session.id)) },
       folderMarker: expandedProjects.contains(project.id) ? nil : marker(sessions[...]),
       moreMarker: pages.visibleCount < sessions.count
         ? marker(sessions.dropFirst(pages.visibleCount)) : nil)
@@ -324,7 +314,7 @@ extension SidebarView {
     return SidebarLiveRow(
       snapshot: state.rowContent(session), live: actions.live, showsDraft: !isOpen
     ) { row in
-      sessionRow(row)
+      sessionRow(row, reorder: dropHandler.move(in: target?.group))
     }
     .tag(SidebarDestination.session(session.id))
     .sidebarSelection(bulk.isActive ? bulk.ids.contains(session.id) : isOpen)
@@ -333,7 +323,7 @@ extension SidebarView {
   }
 
   /// A row and its menu for the session as it is now.
-  private func sessionRow(_ row: SidebarRowContent) -> some View {
+  private func sessionRow(_ row: SidebarRowContent, reorder: SessionRowMove?) -> some View {
     let session = row.session
     var sessionActions = actions.sessions
     if let move = sessionActions.moveToProject {
@@ -360,7 +350,7 @@ extension SidebarView {
           projectName = ""
           projectPrompt = .create(moving: session)
         }
-      }, shareUnavailableReason: sessionActions.shareUnavailableReason)
+      }, shareUnavailableReason: sessionActions.shareUnavailableReason, move: reorder)
     return SessionRow(
       session: session, info: row.info, isUnread: row.isUnread, attention: row.requests ?? 0,
       details: state.display.details, harnessIcon: state.display.harnessIcon,

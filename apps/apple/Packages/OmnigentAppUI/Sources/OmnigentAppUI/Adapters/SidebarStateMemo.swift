@@ -20,6 +20,7 @@ final class SidebarStateMemo: SessionListFollower {
     var environments: [String: SessionEnvironment]
     var phase: SessionListPhase
     var display: SessionDisplayOptions
+    var sorts: SessionGroupSorts
     var server: ConnectedServer?
     var servers: [ServerChoice]
   }
@@ -34,9 +35,11 @@ final class SidebarStateMemo: SessionListFollower {
   /// How many times the state was built for a reader, for tests.
   @ObservationIgnored private(set) var builds = 0
 
-  /// ``SidebarAdapter/state(list:display:server:servers:)``, reused until the list changes.
+  /// ``SidebarAdapter/state(list:display:sorts:server:servers:)``, reused until the list
+  /// changes.
   func state(
-    list: SessionListStore, display: SessionDisplayOptions, server: ConnectedServer?,
+    list: SessionListStore, display: SessionDisplayOptions,
+    sorts: SessionGroupSorts = SessionGroupSorts(), server: ConnectedServer?,
     servers: [ServerChoice] = []
   ) -> SidebarViewState {
     _ = rearrangements
@@ -48,13 +51,15 @@ final class SidebarStateMemo: SessionListFollower {
     let current = Inputs(
       placement: list.placementRevision, filter: list.filter, projects: list.projects,
       viewerID: list.viewerID, environments: list.hostEnvironments,
-      phase: SidebarAdapter.phase(list), display: display, server: server, servers: servers)
+      phase: SidebarAdapter.phase(list), display: display, sorts: sorts, server: server,
+      servers: servers)
     // Paging is a store of its own and cheap to read, so a reused state takes it afresh.
     if var cached, !isStale, current == inputs {
       cached.paging = SidebarAdapter.paging(list.paging)
       return cached
     }
-    let state = SidebarAdapter.state(list: list, display: display, server: server, servers: servers)
+    let state = SidebarAdapter.state(
+      list: list, display: display, sorts: sorts, server: server, servers: servers)
     inputs = current
     cached = state
     isStale = false
@@ -68,15 +73,21 @@ final class SidebarStateMemo: SessionListFollower {
     // A list this no longer reads still tells it.
     guard list === followed else { return }
     isStale = true
-    guard let inputs, let cached, Self.followsRows(inputs.display) else { return }
+    guard let inputs, let cached, Self.followsRows(inputs.display, sorts: inputs.sorts) else {
+      return
+    }
     let next = SidebarAdapter.state(
-      list: list, display: inputs.display, server: inputs.server, servers: inputs.servers)
+      list: list, display: inputs.display, sorts: inputs.sorts, server: inputs.server,
+      servers: inputs.servers)
     if SidebarArrangement(next) != SidebarArrangement(cached) { rearrangements += 1 }
   }
 
-  /// Whether a row's own status, marks or time can move it: grouping by status or last update.
-  /// Every row carries its creation date, so the created order never falls back to the update.
-  private static func followsRows(_ display: SessionDisplayOptions) -> Bool {
-    display.groupBy == .status || display.groupBy == .updated
+  /// Whether a row's own status, marks, time or title can move it: grouping by status or last
+  /// update, or a group sorted by what its rows say. Every row carries its creation date, so the
+  /// created order never falls back to the update.
+  private static func followsRows(_ display: SessionDisplayOptions, sorts: SessionGroupSorts)
+    -> Bool
+  {
+    display.groupBy == .status || display.groupBy == .updated || sorts.followsRows
   }
 }

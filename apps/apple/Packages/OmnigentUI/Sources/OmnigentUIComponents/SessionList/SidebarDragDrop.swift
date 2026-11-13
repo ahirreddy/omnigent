@@ -29,8 +29,10 @@ nonisolated enum SidebarDragItem: Hashable {
 
 /// Where a session was dropped (the web's `SidebarDropTarget`).
 nonisolated public enum SidebarDropTarget: Hashable, Sendable {
-  /// A project folder or one of its rows.
+  /// A project folder.
   case project(SessionProject)
+  /// A row of a project: a session of that project takes its slot, any other is filed there.
+  case projectSlot(SessionProject, String)
   /// The Pinned header.
   case pinned
   /// A pinned row: the dragged session takes its slot.
@@ -58,7 +60,7 @@ nonisolated public enum SidebarDropAction: Hashable, Sendable {
     session: SessionSummary, project: SessionProject?, isShared: Bool, target: SidebarDropTarget
   ) -> Self {
     switch target {
-    case .project(let destination):
+    case .project(let destination), .projectSlot(let destination, _):
       if isShared || (destination.id == project?.id && !session.isPinned) { return .none }
       return .move(to: destination, unpin: session.isPinned)
     case .pinned:
@@ -72,16 +74,22 @@ nonisolated public enum SidebarDropAction: Hashable, Sendable {
   }
 }
 
+nonisolated extension SidebarDropTarget {
+  /// The group whose rows change places when one is dropped on this row.
+  var group: SessionGroup? {
+    switch self {
+    case .pinSlot: .pinned
+    case .projectSlot(let project, _): .project(project.id)
+    case .project, .pinned, .sessions: nil
+    }
+  }
+}
+
 extension SessionProject {
   /// `projects` with `moving` placed at `target`'s index (the web's `arrayMove`); empty when
   /// either is missing or they are the same.
   static func reordered(_ projects: [Self], moving: String, onto target: String) -> [Self] {
-    guard let from = projects.firstIndex(where: { $0.id == moving }),
-      let to = projects.firstIndex(where: { $0.id == target }), from != to
-    else { return [] }
-    var result = projects
-    result.insert(result.remove(at: from), at: to)
-    return result
+    projects.reordered(moving: moving, onto: target)
   }
 }
 
@@ -108,6 +116,37 @@ struct SidebarDropHandler {
     return section.showsDisplayMenu ? .sessions : nil
   }
 
+  /// The group and its new order when `session` is dropped on another row of its own group.
+  func reordering(_ session: SessionSummary, onto target: SidebarDropTarget)
+    -> (group: SessionGroup, ids: [String])?
+  {
+    let (group, targetID): (SessionGroup, String)
+    switch target {
+    case .pinSlot(let id) where session.isPinned: (group, targetID) = (.pinned, id)
+    case .projectSlot(let project, let id) where project.sessionIds.contains(session.id):
+      (group, targetID) = (.project(project.id), id)
+    case .pinSlot, .projectSlot, .project, .pinned, .sessions: return nil
+    }
+    let rows = SidebarSections.rows(of: group, in: state)
+    let ids = rows.reordered(moving: session.id, onto: targetID).map(\.id)
+    return ids.isEmpty ? nil : (group, ids)
+  }
+
+  /// A row's Move submenu in `group`; none outside a group that orders itself, for a group of
+  /// one, or without the host's action.
+  func move(in group: SessionGroup?) -> SessionRowMove? {
+    guard let group, let reorder = actions.reorderGroup else { return nil }
+    let size =
+      switch group {
+      case .pinned: state.pinnedCount
+      case .project(let id): state.projects.first { $0.id == id }?.sessionIds.count ?? 0
+      }
+    guard size > 1 else { return nil }
+    return SessionRowMove(
+      rows: { SidebarSections.rows(of: group, in: state) },
+      save: { rows in reorder(group, rows.map(\.id)) })
+  }
+
   /// Carries out the drop; `false` when it does nothing.
   @MainActor func drop(_ item: SidebarDragItem, on target: SidebarDropTarget) -> Bool {
     switch item {
@@ -122,6 +161,10 @@ struct SidebarDropHandler {
       guard let dropSession = actions.dropSession,
         let session = state.list.sessions.first(where: { $0.id == id })
       else { return false }
+      if let reorder = actions.reorderGroup, let order = reordering(session, onto: target) {
+        reorder(order.group, order.ids)
+        return true
+      }
       let action = SidebarDropAction.resolve(
         session: session, project: state.projects.first { $0.sessionIds.contains(id) },
         isShared: state.rowInfo[id]?.isShared == true, target: target)

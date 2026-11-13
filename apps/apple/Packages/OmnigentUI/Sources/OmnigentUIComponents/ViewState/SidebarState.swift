@@ -247,6 +247,8 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
   public var paging = SidebarPaging()
   /// The signed-in account at the sidebar's foot; `nil` shows no footer.
   public var account: SignedInAccount?
+  /// How Pinned and each project sort their sessions.
+  public var groupSorts = SessionGroupSorts()
 
   /// Creates sidebar state.
   /// - Parameters:
@@ -288,6 +290,13 @@ nonisolated public struct SidebarViewState: Hashable, Sendable {
 
   /// Pinned sessions now.
   public var pinnedCount: Int { list.sessions.count(where: \.isPinned) }
+
+  /// The sort `group` shows: the one chosen for it, or its default.
+  /// - Parameter group: Pinned, or a project.
+  /// - Returns: The sort in effect.
+  public func sort(of group: SessionGroup) -> SessionGroupSort {
+    groupSorts.sort(of: group, listSort: display.sortBy)
+  }
 }
 
 /// Sidebar actions. `nil` hides or disables the matching item.
@@ -329,6 +338,11 @@ public struct SidebarActions {
   public var openProjectSettings: (@MainActor (SessionProject) -> Void)?
   /// Sort projects by name or keep the current order as the manual one.
   public var setProjectSort: (@MainActor (ProjectSort) -> Void)?
+  /// Choose how a group (Pinned, or a project) sorts its sessions.
+  public var setGroupSort: (@MainActor (SessionGroup, SessionGroupSort) -> Void)?
+  /// Save a group's sessions in a new order (a row dragged within it, or Move); the group
+  /// then sorts by Custom.
+  public var reorderGroup: (@MainActor (SessionGroup, [String]) -> Void)?
   /// Sign out of the current server.
   public var signOut: (@MainActor () -> Void)?
   /// Load the page of sessions after the loaded ones.

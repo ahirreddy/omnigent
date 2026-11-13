@@ -34,8 +34,8 @@
       let menu = try #require(try screen.menu(ofRow: workRow))
       #expect(
         menu.titles == [
-          "New session", "Rename project\u{2026}", "Project settings\u{2026}", "Move",
-          "Delete project\u{2026}",
+          "New session", "Rename project\u{2026}", "Project settings\u{2026}",
+          "Sort sessions by", "Move", "Delete project\u{2026}",
         ])
       try screen.choose("New session", in: menu)
       try screen.choose("Project settings\u{2026}", in: menu)
@@ -90,8 +90,8 @@
       #expect(menu.item(named: "Delete project\u{2026}") != nil)
       #expect(menu.item(named: "Move") == nil)
       let items = ProjectMenu(
-        project: home, projects: [home], actions: SidebarActions(sessions: SessionListActions()),
-        rename: {}, confirmDelete: {})
+        project: home, projects: [home], sort: .recent,
+        actions: SidebarActions(sessions: SessionListActions()), rename: {}, confirmDelete: {})
       _ = items.items
     }
 
