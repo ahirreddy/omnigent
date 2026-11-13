@@ -80,35 +80,49 @@
       )
     }
 
-    private static func json(_ object: [String: String]) throws -> String {
-      let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
-      return String(bytes: data, encoding: .utf8) ?? ""
+    /// A login-shell command's arguments as the core records them: one field a line.
+    private static func shell(_ script: String) -> String {
+      "command: /usr/bin/zsh -lc '\(script)'\nworkdir: /repo"
     }
 
-    static func toolRows() throws -> [Row] {
+    static let script = "python3 - <<PY\nimport json\nprint(json.dumps({}))\nprint(1)\nPY"
+
+    static let plan = """
+      explanation: Fix the greeting, then prove it
+      plan: status: completed
+      step: Read the greeter
+      status: in_progress
+      step: Change the greeting
+      status: pending
+      step: Run the tests
+      """
+
+    static func toolRows() -> [Row] {
       let listing = (1...8).map { "file\($0).swift" }.joined(separator: "\n")
       return [
         Fixture.user("u1", "run the checks, look around and fix the greeting\nthen tell me"),
-        call("c1", "shell", try json(["command": "git status --short"])),
+        call("c0", "update_plan", plan),
+        Fixture.toolResult("r0", callID: "c0", output: "Plan updated"),
+        call("c1", "shell", shell("git status --short")),
         Fixture.toolResult("r1", callID: "c1", output: " M Sources/App/Greeter.swift"),
-        call("c2", "shell", try json(["command": "ls Sources/App"])),
+        call("c2", "shell", shell("ls Sources/App")),
         Fixture.toolResult("r2", callID: "c2", output: listing),
-        call("c3", "shell", try json(["command": "swift test --filter Greeter"])),
+        call("c3", "shell", shell("swift test --filter Greeter")),
         Fixture.toolResult(
           "r3", callID: "c3", output: "error: 1 test failed\nGreeterTests.greets", isFailure: true),
-        call("c4", "shell", try json(["command": "mkdir -p build\ntouch build/.keep"])),
+        call("c4", "shell", shell(script)),
         Fixture.toolResult("r4", callID: "c4", output: ""),
-        call("c5", "Read", try json(["file_path": "Sources/App/Greeter.swift"])),
+        call("c5", "Read", "file_path: Sources/App/Greeter.swift"),
         Fixture.toolResult("r5", callID: "c5", output: "struct Greeter {}"),
-        call("c6", "Read", try json(["file_path": "Tests/AppTests/GreeterTests.swift"])),
+        call("c6", "Read", "file_path: Tests/AppTests/GreeterTests.swift"),
         Fixture.toolResult("r6", callID: "c6", output: "import Testing"),
-        call("c7", "Grep", try json(["pattern": "greeting", "path": "Sources"])),
+        call("c7", "Grep", "path: Sources\npattern: greeting"),
         Fixture.toolResult("r7", callID: "c7", output: "Sources/App/Greeter.swift:2"),
-        call("c8", "apply_patch", try json(["input": patch])),
+        call("c8", "apply_patch", "input: " + patch),
         Fixture.toolResult("r8", callID: "c8", output: "Done"),
-        call("c9", "mcp__docs__find_page", try json(["query": "greeting style"])),
+        call("c9", "mcp__docs__find_page", "limit: 3\nquery: greeting style"),
         Fixture.toolResult("r9", callID: "c9", output: "Found the style guide"),
-        call("c10", "shell", try json(["command": "swift build"]), status: "in_progress"),
+        call("c10", "shell", shell("swift build"), status: "in_progress"),
       ]
     }
 
@@ -117,11 +131,12 @@
         Fixture.answer("a1", "The greeting is fixed."),
         Fixture.activityRow(.reasoning, id: "t1", summary: "Weighed the two greetings"),
         Fixture.activityRow(
-          .terminal, id: "s1",
-          details: [
-            DetailSection(id: "input", title: "Input", text: "make test"),
-            DetailSection(id: "stdout", title: "Out", text: "ok 12 tests"),
-          ]),
+          .terminal, id: "s1", title: "Terminal command", summary: "make test",
+          details: [DetailSection(id: "input", title: "Command", text: "make test")]),
+        Fixture.activityRow(
+          .terminal, id: "s2", title: "Terminal output", summary: "ok 12 tests",
+          details: [DetailSection(id: "stdout", title: "Output", text: "ok 12 tests\nok 3 suites")]
+        ),
         Fixture.activityRow(
           .error, id: "e1", summary: "The model stopped answering", isFailure: true),
         Fixture.activityRow(.compaction, id: "k1", title: "Compacted the conversation"),
@@ -158,7 +173,7 @@
 
     @Test("commands, exploring, edits and other tools draw as cells")
     func tools() throws {
-      try render(try Self.toolRows(), rendering: .styled, name: "tools")
+      try render(Self.toolRows(), rendering: .styled, name: "tools")
     }
 
     @Test("reasoning, a shell command, an error and a notice draw as lines")
