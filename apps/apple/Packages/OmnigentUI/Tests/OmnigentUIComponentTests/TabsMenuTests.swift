@@ -158,6 +158,53 @@
       #expect(spy.calls == ["show one trailing"])
     }
 
+    /// A press through the application, where the titlebar tab's event monitor listens.
+    private func pressThroughApp(
+      _ type: NSEvent.EventType, modifiers: NSEvent.ModifierFlags = [], in view: NSView
+    ) throws {
+      let window = try #require(unsafe view.window)
+      let middle = NSPoint(x: view.bounds.midX, y: view.bounds.midY)
+      let event = NSEvent.mouseEvent(
+        with: type, location: view.convert(middle, to: nil), modifierFlags: modifiers,
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+        context: nil, eventNumber: 1, clickCount: 1, pressure: 1)
+      NSApp.sendEvent(try #require(event))
+    }
+
+    @Test(
+      "A Control-click and a right click on a titlebar tab open its menu; a plain click selects")
+    func clicksThroughTheApp() async throws {
+      let spy = TabSpy()
+      let view = TabItemView(
+        tab: TabFixture.tab("one"), isSelected: false, width: 224, actions: spy.actions,
+        canCloseToRight: true, isInTitlebar: true
+      )
+      .frame(width: 300, height: 40)
+      let screen = OffscreenWindow(AnyView(view), width: 300, height: 40)
+      defer { screen.close() }
+      let clicks = try #require(
+        screen.allViews.compactMap { $0 as? TitlebarMenuClickView }.first)
+      var shown: [NSMenu] = []
+      clicks.present = { menu, _, _ in shown.append(menu) }
+      // A window that isn't key takes a press as first mouse, and no tap follows.
+      screen.window.makeKey()
+
+      try pressThroughApp(.leftMouseDown, in: clicks)
+      try pressThroughApp(.leftMouseUp, in: clicks)
+      try await screen.letTasksRun()
+      #expect(spy.calls == ["select one"])
+      #expect(shown.isEmpty, "a plain click is the tab's, not the menu's")
+
+      try pressThroughApp(.leftMouseDown, modifiers: .control, in: clicks)
+      for _ in 0..<100 where shown.isEmpty { try await screen.letTasksRun() }
+      try pressThroughApp(.rightMouseDown, in: clicks)
+      for _ in 0..<100 where shown.count < 2 { try await screen.letTasksRun() }
+      #expect(shown.count == 2)
+      #expect(spy.calls == ["select one"], "the menu's clicks never reach the tab")
+      try screen.choose("Close Tab", in: try #require(shown.last))
+      #expect(spy.calls == ["select one", "close one"])
+    }
+
     @Test("A tab outside the titlebar leaves the click to SwiftUI's menu")
     func onlyInTheTitlebar() {
       let view = TabItemView(

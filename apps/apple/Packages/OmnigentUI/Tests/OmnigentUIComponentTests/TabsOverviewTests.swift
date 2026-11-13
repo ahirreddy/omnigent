@@ -62,6 +62,21 @@
       #expect(spy.calls == ["select two", "dismissed"])
     }
 
+    @Test("Return and Escape each close the sheet, selecting nothing")
+    func keysClose() throws {
+      let keys: [(code: UInt16, characters: String)] = [(36, "\r"), (53, "\u{1B}")]
+      for key in keys {
+        let spy = TabSpy()
+        let screen = sheet(TabFixture.pair, spy: spy)
+        defer { screen.close() }
+        #expect(screen.window.attachedSheet != nil)
+        try screen.press(keyCode: key.code, characters: key.characters)
+        screen.settle(0.2)
+        #expect(spy.calls == ["dismissed"], "key \(key.code)")
+        #expect(screen.window.attachedSheet == nil, "key \(key.code)")
+      }
+    }
+
     @Test("A row's context menu is the tab's")
     func contextMenu() throws {
       let spy = TabSpy()

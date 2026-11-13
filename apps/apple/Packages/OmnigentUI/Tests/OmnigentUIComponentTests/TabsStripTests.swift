@@ -24,6 +24,21 @@
       #expect(spy.calls == ["select two"])
     }
 
+    @Test("VoiceOver's press on a tab selects it")
+    func accessibilityPress() throws {
+      let spy = TabSpy()
+      let screen = OffscreenWindow(strip(TabFixture.pair, spy.actions), width: 700, height: 38)
+      defer { screen.close() }
+      try screen.withAccessibilityTree {
+        let tab = try screen.accessibilityElement("tab-chat-two")
+        let press = NSSelectorFromString("accessibilityPerformPress")
+        try #require(tab.responds(to: press))
+        _ = unsafe tab.perform(press)
+      }
+      screen.settle()
+      #expect(spy.calls == ["select two"])
+    }
+
     @Test("A double click on the strip's empty space opens a tab")
     func doubleClickEmpty() throws {
       let spy = TabSpy()

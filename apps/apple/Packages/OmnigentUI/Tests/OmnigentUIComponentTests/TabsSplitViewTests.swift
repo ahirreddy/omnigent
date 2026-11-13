@@ -35,9 +35,13 @@
     }
 
     /// A press and release through the application, where the pane's event monitor listens.
-    private func sendThroughApp(_ screen: OffscreenWindow<AnyView>, at point: CGPoint) throws {
+    private func sendThroughApp(
+      _ screen: OffscreenWindow<AnyView>, at point: CGPoint, isRightButton: Bool = false
+    ) throws {
       let location = screen.host.convert(point, to: nil)
-      for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+      let types: [NSEvent.EventType] =
+        isRightButton ? [.rightMouseDown, .rightMouseUp] : [.leftMouseDown, .leftMouseUp]
+      for type in types {
         let event = try #require(
           NSEvent.mouseEvent(
             with: type, location: location, modifierFlags: [],
@@ -95,6 +99,17 @@
       let screen = view(split, spy.actions)
       defer { screen.close() }
       try sendThroughApp(screen, at: CGPoint(x: 700, y: 200))
+      #expect(spy.calls == ["focus trailing"])
+    }
+
+    @Test("A right click in the other pane focuses it too, and one in the focused pane does not")
+    func rightClickFocuses() throws {
+      let spy = TabSpy()
+      let screen = view(split, spy.actions)
+      defer { screen.close() }
+      try sendThroughApp(screen, at: CGPoint(x: 200, y: 200), isRightButton: true)
+      #expect(spy.calls.isEmpty)
+      try sendThroughApp(screen, at: CGPoint(x: 700, y: 200), isRightButton: true)
       #expect(spy.calls == ["focus trailing"])
     }
 
@@ -277,6 +292,18 @@
       let screen = pending(failure: "No server") { _ in }
       defer { screen.close() }
       #expect(try screen.shows("No server"))
+    }
+
+    @Test("A click on the parent's name in the Side chat of bar opens the parent's chat")
+    func pendingOpensParent() throws {
+      var calls: [String] = []
+      let screen = pending { calls.append($0) }
+      defer { screen.close() }
+      let parent = try screen.withAccessibilityTree {
+        try screen.accessibilityFrame("sidechat-open-parent")
+      }
+      try screen.click(CGPoint(x: parent.midX, y: parent.midY))
+      #expect(calls == ["open p"])
     }
 
     @Test("Typing a first message and pressing Return sends it")
