@@ -1,12 +1,15 @@
 import CoreMedia
 import Foundation
 import OmnigentCoreFFI
-import OmnigentViewTesting
 import SwiftUI
 import Synchronization
 import Testing
 
 @testable import OmnigentRemoteBrowser
+
+#if os(macOS)
+  import OmnigentViewTesting
+#endif
 
 /// What a fixture driver told its listener.
 nonisolated private final class FixtureEvents: RemoteBrowserListener {
@@ -163,16 +166,18 @@ struct FixtureResourceFailureTests {
     }
   }
 
-  @Test("the fixture tab adds its tab to the shared host and shows the page's chrome")
-  func fixtureTab() async throws {
-    let id = "btab_\(UUID().uuidString)"
-    let screen = OffscreenWindow(
-      RemoteBrowserFixtureTab(id: id, url: "https://fixture.example/"), width: 800, height: 500)
-    defer { screen.close() }
-    screen.settle(0.3)
-    #expect(!screen.controlFrames.isEmpty)
-    try await FixtureRemoteBrowser.shared.closeTab(sessionID: "fixture", tabID: id)
-  }
+  #if os(macOS)
+    @Test("the fixture tab adds its tab to the shared host and shows the page's chrome")
+    func fixtureTab() async throws {
+      let id = "btab_\(UUID().uuidString)"
+      let screen = OffscreenWindow(
+        RemoteBrowserFixtureTab(id: id, url: "https://fixture.example/"), width: 800, height: 500)
+      defer { screen.close() }
+      screen.settle(0.3)
+      #expect(!screen.controlFrames.isEmpty)
+      try await FixtureRemoteBrowser.shared.closeTab(sessionID: "fixture", tabID: id)
+    }
+  #endif
 }
 
 private struct DecoderDied: Error, CustomStringConvertible {

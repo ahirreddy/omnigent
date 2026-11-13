@@ -102,18 +102,21 @@ struct VideoTests {
     }
   }
 
-  /// The hardware decoder accepts the stream and decodes every frame. Verified on Apple silicon
-  /// Macs; the probe is what the renderer logs in the app on each platform.
-  @Test func theStreamDecodesInHardware() throws {
-    let stream = try SharedFixtures.stream(FixtureVideoStream.large)
-    let format = try H264SampleBuffers.formatDescription(
-      try #require(stream.frames[0].params))
-    let report = HardwareDecodeReport.probe(format)
-    #expect(report.codecSupported)
-    #expect(report.sessionCreated)
-    #expect(report.usingHardware)
-    #expect(try decodedFrameCount(stream, format: format) == stream.frames.count)
-  }
+  // The simulator has no hardware decoder.
+  #if !targetEnvironment(simulator)
+    /// The hardware decoder accepts the stream and decodes every frame. Verified on Apple
+    /// silicon Macs; the probe is what the renderer logs in the app on each platform.
+    @Test func theStreamDecodesInHardware() throws {
+      let stream = try SharedFixtures.stream(FixtureVideoStream.large)
+      let format = try H264SampleBuffers.formatDescription(
+        try #require(stream.frames[0].params))
+      let report = HardwareDecodeReport.probe(format)
+      #expect(report.codecSupported)
+      #expect(report.sessionCreated)
+      #expect(report.usingHardware)
+      #expect(try decodedFrameCount(stream, format: format) == stream.frames.count)
+    }
+  #endif
 
   private func decodedFrameCount(_ stream: FixtureVideoStream, format: CMVideoFormatDescription)
     throws -> Int
@@ -180,7 +183,9 @@ struct RendererTests {
     renderer.enqueue(small.frames[1])
     #expect(sizes == [CGSize(width: 1280, height: 800), CGSize(width: 640, height: 400)])
     #expect(renderer.framesEnqueued == 3)
-    #expect(renderer.hardwareDecode?.sessionCreated == true)
+    #if !targetEnvironment(simulator)
+      #expect(renderer.hardwareDecode?.sessionCreated == true)
+    #endif
   }
 
   @Test func aKeyframeWithoutParameterSetsIsAnError() throws {

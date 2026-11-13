@@ -26,12 +26,16 @@
     let tap = UITapGestureRecognizer()
     let doubleTap = UITapGestureRecognizer()
     let twoFingerTap = UITapGestureRecognizer()
-    let pinch = UIPinchGestureRecognizer()
-    let pan = UIPanGestureRecognizer()
-    let longPress = UILongPressGestureRecognizer()
+    let pinch: UIPinchGestureRecognizer
+    let pan: UIPanGestureRecognizer
+    let longPress: UILongPressGestureRecognizer
     let hover = UIHoverGestureRecognizer()
     var editMenu: UIEditMenuInteraction?
     var menuAnchor: CGPoint?
+    /// The edit menu waiting for the host's selection report; a newer touch cancels it.
+    var pendingMenu: Task<Void, Never>?
+    /// The scroll bar press waiting for the bar to show; the pan ending cancels it.
+    private var scrollBarGrab: Task<Void, Never>?
 
     private var panMode: PanMode?
     private var lastPanPoint = CGPoint.zero
@@ -42,8 +46,17 @@
     private var displayLink: CADisplayLink?
     private var lastTick: CFTimeInterval = 0
 
-    init(view: RemoteBrowserView) {
+    /// The recognizers whose state the others consult are passed in, so a test can stand in
+    /// for the fingers.
+    init(
+      view: RemoteBrowserView, pinch: UIPinchGestureRecognizer = UIPinchGestureRecognizer(),
+      pan: UIPanGestureRecognizer = UIPanGestureRecognizer(),
+      longPress: UILongPressGestureRecognizer = UILongPressGestureRecognizer()
+    ) {
       self.view = view
+      self.pinch = pinch
+      self.pan = pan
+      self.longPress = longPress
       super.init()
       doubleTap.numberOfTapsRequired = 2
       twoFingerTap.numberOfTouchesRequired = 2
@@ -94,29 +107,29 @@
 
     // MARK: Taps
 
-    @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
+    @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
       guard let view else { return }
-      editMenu?.dismissMenu()
+      dismissEditMenu()
       view.lastTapAt = .now
       if !view.keyboardProxy.isFirstResponder { view.becomeFirstResponder() }
       guard let point = css(recognizer.location(in: view)) else { return }
       click(point, button: .left)
     }
 
-    @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
+    @objc func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
       guard let view else { return }
       view.zoom.toggle(at: recognizer.location(in: view), fit: fit, bounds: bounds)
       view.relayout(animated: true)
     }
 
-    @objc private func handleTwoFingerTap(_ recognizer: UITapGestureRecognizer) {
+    @objc func handleTwoFingerTap(_ recognizer: UITapGestureRecognizer) {
       guard let view, let point = css(recognizer.location(in: view)) else { return }
       click(point, button: .right)
     }
 
     // MARK: Pinch
 
-    @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
+    @objc func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
       guard let view else { return }
       let anchor = recognizer.location(in: view)
       switch recognizer.state {
@@ -140,7 +153,7 @@
   // MARK: Pan, scrolling and momentum
 
   extension RemoteTouchController {
-    @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
+    @objc func handlePan(_ recognizer: UIPanGestureRecognizer) {
       guard let view else { return }
       let location = recognizer.location(in: view)
       switch recognizer.state {
@@ -154,6 +167,7 @@
     private func panBegan(_ recognizer: UIPanGestureRecognizer, at location: CGPoint) {
       guard let view, let store else { return }
       stopMomentum()
+      scrollBarGrab?.cancel()
       springFrom = nil
       let translation = recognizer.translation(in: view)
       let start = CGPoint(x: location.x - translation.x, y: location.y - translation.y)
@@ -183,6 +197,7 @@
     private func panEnded(_ recognizer: UIPanGestureRecognizer, at location: CGPoint) {
       switch panMode {
       case .mouseDrag(let armed):
+        scrollBarGrab?.cancel()
         if armed, let point = css(location, clamped: true) { mouse(.up, point, button: .left) }
       case .scrub:
         break
@@ -220,11 +235,11 @@
     /// shown, so a one-pixel scroll shows them first.
     private func grabScrollBar(at point: CGPoint) {
       mouse(.wheel, point, deltaY: 1)
-      Task { [weak self] in
+      scrollBarGrab = Task { [weak self] in
         do {
           try await Task.sleep(for: .milliseconds(60))
         } catch {
-          return
+          return  // The finger lifted first.
         }
         guard let self, case .mouseDrag(armed: false) = self.panMode else { return }
         self.mouse(.move, point)

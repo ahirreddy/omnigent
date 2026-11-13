@@ -1,13 +1,16 @@
-import AppKit
 import Foundation
 import OmnigentCoreFFI
 import OmnigentServices
 import OmnigentTestSupport
-import OmnigentViewTesting
 import Synchronization
 import Testing
 
 @testable import OmnigentRemoteBrowser
+
+#if os(macOS)
+  import AppKit
+  import OmnigentViewTesting
+#endif
 
 /// A connector that answers as a test says, for what a server can do to tab creation.
 nonisolated final class ScriptedConnector: RemoteBrowserConnecting {
@@ -191,21 +194,23 @@ struct CoreConnectorTests {
   }
 }
 
-@Suite("The system pasteboard, kept off the user's", .serialized)
-struct SystemPasteboardTests {
-  @Test("what a remote page copies can be pasted back")
-  func roundTrip() {
-    SystemSideEffects.install()
-    SystemSideEffects.reset()
-    let pasteboard = SystemPasteboard()
-    #expect(pasteboard.read() == nil)
-    pasteboard.write("copied")
-    #expect(pasteboard.read() == "copied")
-    #expect(SystemSideEffects.pasteboard.string(forType: .string) == "copied")
-    pasteboard.write("replaced")
-    #expect(pasteboard.read() == "replaced")
+#if os(macOS)
+  @Suite("The system pasteboard, kept off the user's", .serialized)
+  struct SystemPasteboardTests {
+    @Test("what a remote page copies can be pasted back")
+    func roundTrip() {
+      SystemSideEffects.install()
+      SystemSideEffects.reset()
+      let pasteboard = SystemPasteboard()
+      #expect(pasteboard.read() == nil)
+      pasteboard.write("copied")
+      #expect(pasteboard.read() == "copied")
+      #expect(SystemSideEffects.pasteboard.string(forType: .string) == "copied")
+      pasteboard.write("replaced")
+      #expect(pasteboard.read() == "replaced")
+    }
   }
-}
+#endif
 
 @Suite("Viewport modes that only matter on mobile")
 struct MobileViewportTests {

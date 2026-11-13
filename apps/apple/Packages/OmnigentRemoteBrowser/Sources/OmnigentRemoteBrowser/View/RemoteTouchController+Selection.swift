@@ -14,7 +14,7 @@
       switch recognizer.state {
       case .began:
         stopMomentum()
-        editMenu?.dismissMenu()
+        dismissEditMenu()
         // The keyboard stays up while editing a field, as in Safari.
         if !view.keyboardProxy.isFirstResponder { view.becomeFirstResponder() }
         // A double click selects the word; holding the second click and moving extends the
@@ -28,18 +28,30 @@
       case .ended, .cancelled, .failed:
         mouse(.up, point, button: .left, clicks: 2)
         menuAnchor = location
-        // The host's selection report follows within about 100 ms.
-        Task { [weak self] in
-          do {
-            try await Task.sleep(for: .milliseconds(250))
-          } catch {
-            return
-          }
-          self?.presentEditMenu()
-        }
+        presentEditMenuSoon()
       default:
         break
       }
+    }
+
+    /// Shows the edit menu once the host has reported the new selection, which follows within
+    /// about 100 ms. A tap or another long press before then cancels it.
+    func presentEditMenuSoon() {
+      pendingMenu?.cancel()
+      pendingMenu = Task { [weak self] in
+        do {
+          try await Task.sleep(for: .milliseconds(250))
+        } catch {
+          return  // A newer touch came first.
+        }
+        self?.presentEditMenu()
+      }
+    }
+
+    /// Hides the edit menu, and one that was about to appear.
+    func dismissEditMenu() {
+      pendingMenu?.cancel()
+      editMenu?.dismissMenu()
     }
 
     /// Shows the edit menu at the page's selection (or where the finger lifted).

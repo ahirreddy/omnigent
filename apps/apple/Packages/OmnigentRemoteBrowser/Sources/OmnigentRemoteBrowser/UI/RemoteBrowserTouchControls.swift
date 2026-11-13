@@ -11,50 +11,9 @@
     @Binding var editingCustomSize: Bool
 
     var body: some View {
-      let status = RemoteControlStatus(
-        connection: store.snapshot.connection, control: store.snapshot.control)
       Menu {
-        if let showSessions {
-          Button("Sessions", systemImage: "sidebar.leading") { showSessions() }
-            .accessibilityIdentifier("remote-browser.menu.sessions")
-        }
-        Section(status.message) {
-          if status.kind == .inControl {
-            Button("Hand Back to Agent", systemImage: "hand.point.up.left.fill") {
-              store.releaseControl()
-            }
-            .accessibilityIdentifier("remote-browser.menu.handBack")
-          } else if status.canTakeOver {
-            Button("Take Over", systemImage: "hand.point.up.left") { store.takeControl() }
-              .accessibilityIdentifier("remote-browser.menu.takeOver")
-          }
-        }
-        Section {
-          Button("Copy Link", systemImage: "link") {
-            store.pasteboard.write(store.navigation.url)
-          }
-          .disabled(RemoteAddressDisplay(url: store.navigation.url).isEmpty)
-          .accessibilityIdentifier("remote-browser.copyLink")
-          if let percent = store.zoomPercent {
-            Button("Reset Zoom (\(percent)%)", systemImage: "arrow.down.right.and.arrow.up.left") {
-              store.resetZoom()
-            }
-            .accessibilityIdentifier("remote-browser.resetZoom")
-          }
-        }
-        Section {
-          Menu {
-            RemoteViewportMenuItems(store: store, editingCustomSize: $editingCustomSize)
-          } label: {
-            Label("Viewport: \(store.viewportMode.title)", systemImage: "aspectratio")
-          }
-          .accessibilityIdentifier("remote-browser.viewport")
-          RemoteMobileSiteButton(store: store)
-        }
-        Section {
-          Label("Profile: \(store.profile)", systemImage: "server.rack")
-            .accessibilityIdentifier("remote-browser.profile")
-        }
+        RemotePageMenuItems(
+          store: store, showSessions: showSessions, editingCustomSize: $editingCustomSize)
       } label: {
         Label("Page Menu", systemImage: "list.bullet.below.rectangle")
           .labelStyle(.iconOnly)
@@ -64,6 +23,59 @@
       .menuIndicator(.hidden)
       .tint(.primary)
       .accessibilityIdentifier("remote-browser.menu")
+    }
+  }
+
+  /// The page menu's items, apart from the menu so they can be shown and pressed without it.
+  struct RemotePageMenuItems: View {
+    let store: RemoteBrowserStore
+    let showSessions: (@MainActor () -> Void)?
+    @Binding var editingCustomSize: Bool
+
+    var body: some View {
+      let status = RemoteControlStatus(
+        connection: store.snapshot.connection, control: store.snapshot.control)
+      if let showSessions {
+        Button("Sessions", systemImage: "sidebar.leading") { showSessions() }
+          .accessibilityIdentifier("remote-browser.menu.sessions")
+      }
+      Section(status.message) {
+        if status.kind == .inControl {
+          Button("Hand Back to Agent", systemImage: "hand.point.up.left.fill") {
+            store.releaseControl()
+          }
+          .accessibilityIdentifier("remote-browser.menu.handBack")
+        } else if status.canTakeOver {
+          Button("Take Over", systemImage: "hand.point.up.left") { store.takeControl() }
+            .accessibilityIdentifier("remote-browser.menu.takeOver")
+        }
+      }
+      Section {
+        Button("Copy Link", systemImage: "link") {
+          store.pasteboard.write(store.navigation.url)
+        }
+        .disabled(RemoteAddressDisplay(url: store.navigation.url).isEmpty)
+        .accessibilityIdentifier("remote-browser.copyLink")
+        if let percent = store.zoomPercent {
+          Button("Reset Zoom (\(percent)%)", systemImage: "arrow.down.right.and.arrow.up.left") {
+            store.resetZoom()
+          }
+          .accessibilityIdentifier("remote-browser.resetZoom")
+        }
+      }
+      Section {
+        Menu {
+          RemoteViewportMenuItems(store: store, editingCustomSize: $editingCustomSize)
+        } label: {
+          Label("Viewport: \(store.viewportMode.title)", systemImage: "aspectratio")
+        }
+        .accessibilityIdentifier("remote-browser.viewport")
+        RemoteMobileSiteButton(store: store)
+      }
+      Section {
+        Label("Profile: \(store.profile)", systemImage: "server.rack")
+          .accessibilityIdentifier("remote-browser.profile")
+      }
     }
   }
 
@@ -126,9 +138,11 @@
           .keyboardType(.webSearch)
           .submitLabel(.go)
           .focused($focused)
+          // coverage:off Return on a real keyboard; the iOS UI flows load pages by typing one
           .onSubmit {
             if store.submitAddress(text) { editing = false }
           }
+          // coverage:on
           .accessibilityIdentifier("remote-browser.address")
         if !text.isEmpty {
           Button("Clear", systemImage: "xmark.circle.fill") { text = "" }

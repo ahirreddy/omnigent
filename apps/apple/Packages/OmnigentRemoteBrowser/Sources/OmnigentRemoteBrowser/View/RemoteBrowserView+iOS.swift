@@ -202,14 +202,7 @@
     override public func selectAll(_ sender: Any?) {
       store.selectAll()
       // Offer Copy (and Cut) for what is now selected.
-      Task { [weak self] in
-        do {
-          try await Task.sleep(for: .milliseconds(250))
-        } catch {
-          return
-        }
-        self?.touchInput?.presentEditMenu()
-      }
+      touchInput?.presentEditMenuSoon()
     }
   }
 #endif
