@@ -10,10 +10,11 @@
 #pragma once
 
 #include <CoreFoundation/CFAvailability.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #define OWL_PROTOCOL_MAJOR 1
-#define OWL_PROTOCOL_MINOR 5
+#define OWL_PROTOCOL_MINOR 6
 
 /// The first minor version with projected browser UI (prompts, downloads, popups, IME, drag and
 /// drop). Each side enables those features only when the peer advertises at least this minor;
@@ -37,6 +38,11 @@
 /// The first minor version where the host reports what its freeze watch sees (HealthReport).
 /// A host sends those only to clients that advertise at least this minor.
 #define OWL_PROTOCOL_MINOR_HEALTH 5
+
+/// The first minor version with editing commands (EditCommand): Undo, Redo, Cut, Copy, Paste,
+/// Paste and Match Style, Delete and Select All, which Blink on macOS leaves to the embedder's
+/// Edit menu. A client sends them only to hosts that advertise at least this minor.
+#define OWL_PROTOCOL_MINOR_EDITING 6
 
 /// Payload encoding: a sequence of fields, each an 8-byte header followed by `length` bytes.
 /// Integers and floats are little-endian. Strings are UTF-8 without a terminator.
@@ -194,6 +200,9 @@ typedef CF_ENUM(uint16_t, OWLField) {
   // 1.5: which freeze diagnostic a HealthReport carries (OWLHealthKind). See DESIGN.md, "Freeze
   // diagnostics".
   OWLFieldHealthKind = 129,
+  // 1.6: which editing command an EditCommand runs (OWLEditCommand). See DESIGN.md, "Input",
+  // "Editing commands".
+  OWLFieldEditCommand = 130,
 };
 
 /// Structured 1.1 fields are UTF-8 JSON strings, because the TLV encoding has no lists:
@@ -318,6 +327,12 @@ typedef CF_ENUM(uint16_t, OWLMessageKind) {
   // 1.2, client to host (target: view ID). Sent only to hosts that advertise
   // OWL_PROTOCOL_MINOR_BROWSING.
   OWLMessageKindSetAudioMuted = 101,     // C->H Muted
+
+  // 1.6, client to host (target: view ID). Sent only to hosts that advertise
+  // OWL_PROTOCOL_MINOR_EDITING.
+  OWLMessageKindEditCommand = 102,       // C->H EditCommand (runs in the view's focused frame;
+                                         //      Cut, Copy and Paste use the general pasteboard,
+                                         //      which the host process reads and writes)
 
   // 1.1, host to client (target: view ID; PopupCreated targets the new view).
   OWLMessageKindJSDialog = 110,          // H->C PromptID DialogKind Origin Message DefaultText?
@@ -451,6 +466,26 @@ typedef CF_ENUM(uint64_t, OWLCursor) {
   OWLCursorNone = 11,
 };
 
+/// Values of OWLFieldEditCommand: the Edit menu's actions, run in the view's focused frame.
+typedef CF_ENUM(uint64_t, OWLEditCommand) {
+  OWLEditCommandUndo = 1,
+  OWLEditCommandRedo = 2,
+  OWLEditCommandCut = 3,
+  OWLEditCommandCopy = 4,
+  OWLEditCommandPaste = 5,
+  /// Pastes the pasteboard's text without its formatting.
+  OWLEditCommandPasteAndMatchStyle = 6,
+  /// Deletes the selection and leaves the pasteboard alone.
+  OWLEditCommandDelete = 7,
+  OWLEditCommandSelectAll = 8,
+};
+
+/// Whether `command` is an OWLEditCommand this version defines. A host reports any other value
+/// as a malformed message and runs nothing.
+static inline bool owl_edit_command_is_known(uint64_t command) {
+  return command >= OWLEditCommandUndo && command <= OWLEditCommandSelectAll;
+}
+
 /// Values of OWLFieldHealthKind: what the host's freeze watch noticed. See owl_freeze.h.
 typedef CF_ENUM(uint64_t, OWLHealthKind) {
   /// A visible view owes a frame and has presented none; ElapsedMilliseconds is for how long.
@@ -486,6 +521,8 @@ typedef CF_ENUM(uint64_t, OWLHostErrorCode) {
   OWLHostErrorPopupFailed = 10,
   // 1.4: an input could not be given a time, so the host dropped it instead of replaying it.
   OWLHostErrorInputFailed = 11,
+  // 1.6: an editing command found no frame to run in, so the host dropped it.
+  OWLHostErrorEditFailed = 12,
 };
 
 // MARK: 1.1 value sets

@@ -105,6 +105,8 @@ Embedding Mojo and using XPC were both rejected.
     least the one that introduced it (`OWL_PROTOCOL_MINOR_PROMPTS` for the browser UI below). A
     1.1 host serving a 1.0 client keeps every 1.0 behavior, including blocking that UI; a 1.1
     client talking to a 1.0 host never sends 1.1 messages (`Session.supportsBrowserUI`).
+  - The minors so far: 1.1 browser UI, 1.2 browsing state, 1.3 sign-in, 1.4 event times, 1.5
+    freeze diagnostics, 1.6 editing commands (`Session.supportsEditingCommands`).
   - Lists and nested values in 1.1 fields are UTF-8 JSON strings, documented field by field at
     the top of `owl_protocol.h`.
 - **Back-pressure.** Receive queues use `MACH_PORT_QLIMIT_LARGE`. Sends time out after 100 ms
@@ -130,6 +132,7 @@ port channel (`mojo::PlatformChannel` with Mach endpoints), so the process model
 | 1.1 prompt requests and replies (JSDialog, PermissionRequest, FileChooser, DownloadRequest, AuthRequest, CertificateError, ContextMenu, ColorChooser, PromptCancelled) | `owl.mojom.WebViewUIClient` with one `=> (reply)` method per prompt; cancellation is the reply pipe closing | `WebViewUIDelegate`, `WebPrompt` |
 | 1.1 PopupCreated / PopupBlocked / SetPopupPolicy / SetNavigationRules / NavigationBlocked | `owl.mojom.WebView.SetPolicies(...)`, `WebViewUIClient.OnPopup(pending_remote<WebView>)` | `WebView`, `WebPopup` |
 | 1.1 Ime* / Drag* / StartDrag / DragCursor | `owl.mojom.WebContentRenderer` (`blink.mojom.FrameWidgetInputHandler`-style IME and drag methods) | `WebContentRenderer` |
+| 1.6 EditCommand | `owl.mojom.WebContentRenderer` (`blink.mojom.FrameWidgetInputHandler`'s `Undo`, `Cut`, `Copy`, `Paste`, `SelectAll` and the rest) | `WebSurfaceView`'s Edit menu actions |
 
 Only `HostChannel` and the `Wire*` types change: they become generated Swift bindings for the
 mojom files (Atlas generates its own). The public Swift API stays the same.
@@ -295,6 +298,37 @@ step 3 does:
   window, the main menu and the responder chain as above.
 
 The `keys` proof shows Cmd+Shift+U reaching a menu item after the page declined it.
+
+**Editing commands (1.6).** Blink on macOS binds no keys to Undo, Redo, Cut, Copy, Paste or
+Select All. Chrome's Edit menu sends `copy:` and the rest to its web view, and cefclient's
+off-screen view does the same. Here:
+
+1. ⌘C goes to the page first, like every key equivalent. A page that handles the key keeps it.
+2. A key the page gives back reaches the app's Edit menu item (see "Unhandled keys"), whose
+   action goes to the first responder: `WebSurfaceView`. Choosing the item with the mouse starts
+   here.
+3. `WebSurfaceView` implements `undo:`, `redo:`, `cut:`, `copy:`, `paste:`, `pasteAsPlainText:`
+   (Paste and Match Style), `delete:` and `selectAll:`, and sends `EditCommand`.
+4. The host calls the matching `CefFrame` method (`Undo` ... `SelectAll`) on the view's focused
+   frame, or its main frame when none has focus.
+
+- **Pasteboard.** Cut, Copy and Paste read and write the general pasteboard in the host process,
+  which has no App Sandbox, so text moves between a page and the rest of the app.
+- **Menu state.** `validateUserInterfaceItem` enables the items while the surface is the first
+  responder, the view is live and the host speaks 1.6. As in Chromium the page is not asked what
+  is selected or undoable. An older host is never sent `EditCommand`: the items are disabled.
+- **Undo.** The surface answers `undo:` and `redo:` before the window does, so the window's undo
+  manager does not take them while the page has the keyboard.
+- **Agents.** This is the user's path only. Agent keys are never re-dispatched, so an agent's ⌘V
+  pastes nothing from the user's pasteboard.
+- **Not covered: Control-key bindings** (⌃A, ⌃E, ⌃K, ⌃D and the rest). AppKit reports them to
+  `doCommand(by:)`, which is ignored, and Blink binds none of them itself. Chromium sends such
+  commands with the key event (`ForwardKeyboardEventWithCommands`), which
+  `CefBrowserHost::SendKeyEvent` cannot carry; DevTools' `Input.dispatchKeyEvent` can, in its
+  `commands` list.
+
+The `editing` proof types into a field and checks ⌘A, ⌘C, ⌘X, ⌘Z, ⇧⌘Z and ⌘V against the field
+and the general pasteboard, then the Edit menu's own actions sent as the menu sends them.
 
 **IME and dead keys (1.1).** `WebSurfaceView` is an `NSTextInputClient`, on the model of
 Chromium's own Mac view and cefclient's off-screen text input client:

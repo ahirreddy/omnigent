@@ -74,7 +74,7 @@ final class RecordingUIDelegate: WebViewUIDelegate {
 struct ProtocolSchemaTests {
   @Test func versionAndNumberingAreStable() {
     #expect(OWL_PROTOCOL_MAJOR == 1)
-    #expect(OWL_PROTOCOL_MINOR == 5)
+    #expect(OWL_PROTOCOL_MINOR == 6)
     #expect(OWL_PROTOCOL_MINOR_PROMPTS == 1)
     // Kinds and tags are never renumbered; these pin the 1.1 ranges.
     #expect(OWLMessageKind.setPopupPolicy.rawValue == 81)

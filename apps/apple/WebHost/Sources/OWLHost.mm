@@ -730,6 +730,9 @@ void Host::HandleViewMessage(owl_message* message, const Decoder& fields) {
     case OWLMessageKindSetAudioMuted:
       view->SetAudioMuted(fields.Bool(OWLFieldMuted).value_or(false));
       break;
+    case OWLMessageKindEditCommand:
+      view->RunEditCommand(fields);
+      break;
     case OWLMessageKindStop:
       view->Stop();
       break;

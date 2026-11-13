@@ -89,6 +89,11 @@ class BrowserClient : public CefClient,
   /// Returns whether it did (OnBeforeBrowse, UI thread).
   bool HandOffExternalNavigation(CefRefPtr<CefFrame> frame, const std::string& url);
 
+  // 1.6 editing commands (OWLBrowserInput.mm).
+  /// Runs the EditCommand named by `fields` in the focused frame. Blink on macOS leaves Undo,
+  /// Cut, Copy, Paste and Select All to the embedder's Edit menu, which is the client's.
+  void RunEditCommand(const Decoder& fields);
+
   // CefClient
   CefRefPtr<CefRenderHandler> GetRenderHandler() override { return this; }
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }

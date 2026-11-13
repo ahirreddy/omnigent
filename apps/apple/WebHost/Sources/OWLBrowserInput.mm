@@ -1,5 +1,5 @@
-// IME composition, drag and drop in both directions, and the isolated-world bridge that projects
-// `<input type=color>` to the client. See DESIGN.md, "Input".
+// IME composition, editing commands, drag and drop in both directions, and the isolated-world
+// bridge that projects `<input type=color>` to the client. See DESIGN.md, "Input".
 #include "OWLBrowserClient.hpp"
 
 #import <Foundation/Foundation.h>
@@ -293,6 +293,59 @@ void BrowserClient::UpdateDragCursor(CefRefPtr<CefBrowser>, DragOperation operat
   if (ClientHandlesPrompts()) {
     Emit(OWLMessageKindDragCursor,
          Encoder().U64(OWLFieldDragOperations, static_cast<uint64_t>(operation)));
+  }
+}
+
+// MARK: Editing commands
+
+void BrowserClient::RunEditCommand(const Decoder& fields) {
+  const uint64_t command = fields.U64(OWLFieldEditCommand).value_or(0);
+  if (!owl_edit_command_is_known(command)) {
+    Host::Get().ReportError(view_id_, OWLHostErrorMalformedMessage,
+                            "EditCommand needs a known EditCommand.");
+    return;
+  }
+  if (!browser_) {
+    return;
+  }
+  // The frame the user is typing in; a page with no focused frame edits its main frame.
+  CefRefPtr<CefFrame> frame = browser_->GetFocusedFrame();
+  if (!frame || !frame->IsValid()) {
+    frame = browser_->GetMainFrame();
+  }
+  if (!frame || !frame->IsValid()) {
+    Host::Get().ReportError(
+        view_id_, OWLHostErrorEditFailed,
+        "EditCommand " + std::to_string(command) + " found no frame to run in.");
+    return;
+  }
+  // CEF sends each of these to the frame's renderer; the pasteboard ones use the general
+  // pasteboard through this process.
+  switch (static_cast<OWLEditCommand>(command)) {
+    case OWLEditCommandUndo:
+      frame->Undo();
+      return;
+    case OWLEditCommandRedo:
+      frame->Redo();
+      return;
+    case OWLEditCommandCut:
+      frame->Cut();
+      return;
+    case OWLEditCommandCopy:
+      frame->Copy();
+      return;
+    case OWLEditCommandPaste:
+      frame->Paste();
+      return;
+    case OWLEditCommandPasteAndMatchStyle:
+      frame->PasteAndMatchStyle();
+      return;
+    case OWLEditCommandDelete:
+      frame->Delete();
+      return;
+    case OWLEditCommandSelectAll:
+      frame->SelectAll();
+      return;
   }
 }
 
